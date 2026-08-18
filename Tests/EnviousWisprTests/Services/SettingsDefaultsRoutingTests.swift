@@ -89,6 +89,38 @@ struct SettingsDefaultsRoutingTests {
       SettingsManager.unifiedDefaultsKeys.filter { $0 == "smartInsertion" }.count == 1)
   }
 
+  /// #2087. Tested in the ON direction because OFF is the default: writing the
+  /// default proves nothing about persistence, since a store that dropped the
+  /// write entirely would still read back `false`.
+  @Test("Escape Recovery persists ON and belongs to unified defaults")
+  func escapeRecoveryPersistsOn() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+
+    #expect(settings.escapeRecoveryEnabled == false, "ships OFF — the product decision")
+
+    settings.escapeRecoveryEnabled = true
+
+    #expect(suite.object(forKey: "escapeRecoveryEnabled") as? Bool == true)
+    #expect(SettingsManager(defaults: suite).escapeRecoveryEnabled == true)
+    #expect(
+      SettingsManager.unifiedDefaultsKeys.filter { $0 == "escapeRecoveryEnabled" }.count == 1,
+      "missing from unified keys means it never migrates to the shared suite (#923)")
+  }
+
+  @Test("Escape Recovery change emits its SettingKey exactly once")
+  func escapeRecoveryNotifies() {
+    let settings = SettingsManager(defaults: Self.freshSuite())
+    var matchingChanges = 0
+
+    settings.onChange = { key in
+      if case .escapeRecoveryEnabled = key { matchingChanges += 1 }
+    }
+
+    settings.escapeRecoveryEnabled = true
+    #expect(matchingChanges == 1)
+  }
+
   @Test("Smart insertion change emits its SettingKey exactly once")
   func smartInsertionNotifies() {
     let settings = SettingsManager(defaults: Self.freshSuite())

@@ -308,7 +308,8 @@ struct RecoveryCoordinatorTests {
     let h = Self.makeHarness()
     let allEndings: [RecordingRecoveryEnding] = [
       .discarded, .noSpeech, .failed, .asrRetryExhausted, .audioInterrupted,
-      .asrInterrupted, .noTransport, .cancelled(.user), .cancelled(.systemOrFault),
+      .asrInterrupted, .noTransport, .cancelled(.user(.shortcut)),
+      .cancelled(.user(.cancelButton)), .cancelled(.systemOrFault),
     ]
     for ending in allEndings {
       let id = "del-\(UUID().uuidString)"
@@ -342,7 +343,13 @@ struct RecoveryCoordinatorTests {
     // Unchanged cells (already deleted before #1755):
     #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.discarded), "unchanged")
     #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.noSpeech), "unchanged")
-    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.user)), "unchanged")
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.user(.shortcut))), "unchanged")
+    // #2087 adversarial cell: the trigger split must not move this decision.
+    // Escape Recovery changes what happens to the TEXT; the audio is discarded
+    // for BOTH triggers, so the #1755 doctrine is untouched by that change.
+    #expect(
+      RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.user(.cancelButton))),
+      "the cancel BUTTON still discards its spool, exactly like the shortcut")
     // FLIPPED by the founder's discard doctrine (#1755, Gate 2 2026-07-23):
     #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.failed), "flipped: live failure discards")
     #expect(

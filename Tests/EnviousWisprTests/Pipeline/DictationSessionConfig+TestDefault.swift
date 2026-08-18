@@ -26,7 +26,11 @@ extension DictationSessionConfig {
     polishInstructions: PolishInstructions = .default,
     useExtendedThinking: Bool = false,
     selectedInputDeviceUID: String = "",
-    preferredInputDeviceIDOverride: String = ""
+    preferredInputDeviceIDOverride: String = "",
+    // #2087: both default to the pre-feature world — off, and no spool — so
+    // every existing suite keeps its behaviour until it opts in explicitly.
+    escapeRecoveryEnabled: Bool = false,
+    recoverySessionID: String? = nil
   ) -> DictationSessionConfig {
     DictationSessionConfig(
       autoCopyToClipboard: autoCopyToClipboard,
@@ -47,7 +51,9 @@ extension DictationSessionConfig {
       polishInstructions: polishInstructions,
       useExtendedThinking: useExtendedThinking,
       selectedInputDeviceUID: selectedInputDeviceUID,
-      preferredInputDeviceIDOverride: preferredInputDeviceIDOverride
+      preferredInputDeviceIDOverride: preferredInputDeviceIDOverride,
+      recoverySessionID: recoverySessionID,
+      escapeRecoveryEnabled: escapeRecoveryEnabled
     )
   }
 }

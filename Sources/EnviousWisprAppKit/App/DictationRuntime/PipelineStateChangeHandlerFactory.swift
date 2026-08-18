@@ -33,6 +33,24 @@ enum PipelineStateChangeHandlerFactory {
     /// This handler's driver — completion telemetry reads its length, stop
     /// reason, route, capture health, and salvage markers (#1060, #1376, #1434).
     let driver: KernelDictationDriver
+    /// #2087: raise the Escape Recovery pill. Separate from `showOverlay`
+    /// because the payload carries main-actor AX handles the `Sendable` intent
+    /// cannot. No-op default keeps every existing construction site unchanged.
+    var presentEscapeRecoveryPill: @MainActor (CancelUndoPayload) -> Void = { _ in }
+    /// #2087: put the held row into History's in-memory list. It is already on
+    /// disk by the time this runs — the kernel's storage step wrote it to the
+    /// pending namespace — so this is the in-session view catching up, not a
+    /// second write. Without it a held recovery is invisible until the next
+    /// launch, and the 24-hour offer would quietly begin with the user unable
+    /// to see the thing being offered.
+    var appendPendingTranscript: @MainActor (Transcript) -> Void = { _ in }
+    /// #2087: the completion half of the funnel. Takes the terminal outcome AND
+    /// the row it describes, and reads every number from that row rather than
+    /// from the driver — the driver holds whatever take is current at emission
+    /// time, which after a fast follow-up recording is a different one.
+    /// Nil transcript for the terminals that have no row.
+    var reportEscapeRecoveryCompleted:
+      @MainActor (EscapeRecoveryTerminalOutcome, Transcript?) -> Void = { _, _ in }
   }
 
   static func make(backendLabel: String, deps: Deps) -> PipelineStateChangeHandler {
@@ -81,6 +99,33 @@ enum PipelineStateChangeHandlerFactory {
       scheduleInterruptionWarning: { disclosure, alsoTrimmedLead in
         deps.schedulePostCompletionWarning(
           .interruptedTail(disclosure: disclosure, alsoTrimmedLead: alsoTrimmedLead))
+      },
+      // #2087: the WHOLE payload goes to the panel, not just the row id. The
+      // payload's reason for existing is the paste TARGET — the app and field
+      // the dictation was aimed at — and dropping it here would have made the
+      // feature's own promise unreachable while everything still compiled.
+      //
+      // A dedicated seam rather than `showOverlay`, because `OverlayIntent` is
+      // `Sendable` and cannot carry main-actor AX handles.
+      // Both wired at activation (chunk 12). They carried no-op defaults through
+      // chunks 6-11 so the transport could ship without behaviour, and leaving
+      // either defaulted here is the shape of bug this feature cannot have: a
+      // held row nobody can see, or a funnel missing the event that says it
+      // worked.
+      appendPendingTranscript: { transcript in
+        deps.appendPendingTranscript(transcript)
+        // #2087: the pending row is durable by the time this effect is emitted
+        // — the planner only emits it for `.saved`, and `.saved` now requires a
+        // successful write — so this take's spool and its Escape marker have
+        // nothing left to protect. The ordinary append above deletes them via
+        // the same call; a held row that skipped it would keep the ENCRYPTED
+        // AUDIO alive until some later launch, which is the one thing the
+        // setting's own copy promises does not happen.
+        if let sid = transcript.recoverySessionID { deps.onDurableSave(sid) }
+      },
+      presentEscapeRecoveryPill: { payload in deps.presentEscapeRecoveryPill(payload) },
+      reportEscapeRecoveryCompleted: { outcome, transcript in
+        deps.reportEscapeRecoveryCompleted(outcome, transcript)
       }
     )
   }

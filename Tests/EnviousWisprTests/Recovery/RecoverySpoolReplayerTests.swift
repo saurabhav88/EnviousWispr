@@ -134,7 +134,13 @@ struct RecoverySpoolReplayerTests {
     let transcriptCoordinator: TranscriptCoordinator
   }
 
-  private static func makeHarness(transcriptDir: URL? = nil) -> Harness {
+  /// `now` is injectable so the #2087 expiry guard can be exercised without
+  /// waiting 24 hours or depending on the wall clock. Defaults to real time, so
+  /// every pre-existing test keeps its exact behaviour.
+  private static func makeHarness(
+    transcriptDir: URL? = nil,
+    now: @escaping @Sendable () -> Date = { Date() }
+  ) -> Harness {
     let spoolDir = tempDir()
     let keyStore = RecoveryKeyStore(backend: .file, fileDirectory: tempDir())
     let transcriptStore = TranscriptStore(directory: transcriptDir ?? tempDir())
@@ -154,6 +160,7 @@ struct RecoverySpoolReplayerTests {
       transcriptCoordinator: transcriptCoordinator,
       keychainManager: KeychainManager(),
       outputClassifierHolder: OutputClassifierHolder(),
+      now: now,
       currentVocabulary: { (.empty, .empty) })
     return Harness(
       replayer: replayer, asr: asr,
@@ -197,7 +204,7 @@ struct RecoverySpoolReplayerTests {
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
     #expect(outcome == .recovered)
     #expect(h.asr.transcribeCallCount == 1)
-    let saved = h.transcriptCoordinator.transcripts
+    let saved = h.transcriptCoordinator.visibleTranscripts
     #expect(saved.count == 1)
     #expect(saved.first?.isRecovered == true)
     #expect(saved.first?.recoverySessionID == id)
@@ -217,10 +224,151 @@ struct RecoverySpoolReplayerTests {
     try h.spoolStore.writeAttemptMarker(for: id)
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
     #expect(outcome == .abandoned)
-    #expect(h.asr.transcribeCallCount == 0, "never re-transcribe a spool whose attempt already began")
-    #expect(h.transcriptCoordinator.transcripts.isEmpty)
+    #expect(
+      h.asr.transcribeCallCount == 0, "never re-transcribe a spool whose attempt already began")
+    #expect(h.transcriptCoordinator.visibleTranscripts.isEmpty)
     // The coordinator deletes on `.abandoned`; the replayer leaves the spool.
     #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
+  }
+
+  // MARK: - Escape Recovery provenance (#2087)
+
+  /// A crash between "user pressed cancel" and "finalization finished" must not
+  /// upgrade a cancelled dictation into a permanent History row wearing the
+  /// crash-Recovered badge. The marker carries the provenance across the crash.
+  @Test("a valid escape marker makes replay produce a PENDING row, not permanent History")
+  func escapeMarkerProducesPendingRow() async throws {
+    // Replay happens one minute after the cancel — inside the 24-hour window.
+    // The clock is injected rather than real, because the expiry guard below
+    // measures against it and a wall-clock test would start failing the moment
+    // the fixed `triggeredAt` aged past a day.
+    let triggered = Date(timeIntervalSince1970: 1_755_300_000)
+    let h = Self.makeHarness(now: { triggered.addingTimeInterval(60) })
+    let id = "esc-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.1, 0.2])
+    try h.spoolStore.writeEscapeMarker(
+      EscapeRecoveryMarker(recoverySessionID: id, triggeredAt: triggered, takeID: "take-42"))
+
+    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+
+    #expect(outcome == .recovered)
+    // Invisible to ordinary History: `loadAll` enumerates one level and never
+    // sees the `pending/` child, so an un-updated build cannot show this row.
+    #expect(try await h.transcriptStore.loadAll().isEmpty, "must NOT land in ordinary History")
+    let pending = try await h.transcriptStore.loadPending(now: triggered.addingTimeInterval(60))
+    #expect(pending.count == 1)
+    #expect(
+      pending.first?.isRecovered != true,
+      "the crash-rescue badge would misdescribe a deliberate cancel")
+    #expect(
+      pending.first?.escapeRecoveredAt == triggered,
+      "the 24-hour clock runs from the keypress, not from replay")
+    #expect(pending.first?.escapeRecoveryTakeID == "take-42", "the funnel join key survives")
+  }
+
+  /// #2087: a recovery whose 24 hours elapsed while the Mac was off is born
+  /// expired, and must be refused BEFORE the engine runs.
+  ///
+  /// The wasted-work assertion is the point. Read-time expiry would hide the row
+  /// anyway, so transcribing it burns the engine — and on a BYOK provider spends
+  /// the user's own money — to produce something they can never see. Asserting
+  /// only "no row was saved" would pass even if the whole pipeline had run.
+  ///
+  /// Boundary chosen deliberately at exactly `+24h`: the guard is `>=`, so the
+  /// instant the window closes is already expired. A test at `+25h` would pass
+  /// against an off-by-one that lets the boundary itself through.
+  @Test("an escape recovery already past 24 hours is refused before any ASR work")
+  func expiredEscapeMarkerIsRefusedBeforeTranscribe() async throws {
+    let triggered = Date(timeIntervalSince1970: 1_755_300_000)
+    let h = Self.makeHarness(
+      now: { triggered.addingTimeInterval(AppConstants.pendingTranscriptRetention) })
+    let id = "stale-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.9])
+    try h.spoolStore.writeEscapeMarker(
+      EscapeRecoveryMarker(recoverySessionID: id, triggeredAt: triggered))
+
+    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+
+    #expect(outcome == .failed(.unrecoverable))
+    #expect(h.asr.transcribeCallCount == 0, "no engine work for a row nobody can ever see")
+    #expect(
+      !h.spoolStore.hasAttemptMarker(for: id),
+      "refused before the attempt marker — an expired row must not spend the one attempt")
+    #expect(try await h.transcriptStore.loadAll().isEmpty)
+    #expect(try await h.transcriptStore.loadPending(now: triggered).isEmpty)
+  }
+
+  /// The half the first version of the pre-ASR gate MISSED.
+  ///
+  /// It checked elapsed time only, so a future-dated marker — a skewed clock, a
+  /// hand-edited file — sailed through, spent the engine, and produced a row the
+  /// store then refused as corrupt. Both halves of the admission rule now come
+  /// from one place, and this pins the half that was absent.
+  ///
+  /// Reported as `malformed`, not `expired`: a nonsensical clock is our problem,
+  /// while an elapsed window is just a Mac that was switched off.
+  @Test("a future-dated escape marker is refused before any ASR work")
+  func futureDatedEscapeMarkerIsRefusedBeforeTranscribe() async throws {
+    let nowStamp = Date(timeIntervalSince1970: 1_755_300_000)
+    let h = Self.makeHarness(now: { nowStamp })
+    let id = "future-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.7])
+    // Comfortably beyond the tolerated forward skew.
+    try h.spoolStore.writeEscapeMarker(
+      EscapeRecoveryMarker(
+        recoverySessionID: id,
+        triggeredAt: nowStamp.addingTimeInterval(AppConstants.pendingClockSkewTolerance + 60)))
+
+    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+
+    #expect(outcome == .failed(.unrecoverable))
+    #expect(h.asr.transcribeCallCount == 0, "a marker the store would reject must not cost ASR")
+    #expect(!h.spoolStore.hasAttemptMarker(for: id))
+    #expect(try await h.transcriptStore.loadAll().isEmpty)
+    #expect(try await h.transcriptStore.loadPending(now: nowStamp).isEmpty)
+  }
+
+  /// The fail-closed direction, and it is the one that matters: a marker that
+  /// cannot be trusted must NOT fall back to ordinary crash recovery, because
+  /// that produces a permanent row for a dictation the user cancelled.
+  ///
+  /// Also asserts the refusal happens BEFORE transcribe — the check is at the
+  /// entry guard, so a corrupt marker costs no ASR work.
+  @Test("a malformed escape marker fails closed before transcribe, saving nothing")
+  func malformedEscapeMarkerFailsClosed() async throws {
+    let h = Self.makeHarness()
+    let id = "bad-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.3])
+    try Data("not a marker".utf8).write(
+      to: h.spoolStore.directoryURL.appendingPathComponent(
+        "\(id).\(RecoveryConstants.escapeMarkerFileExtension)"))
+
+    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+
+    #expect(outcome == .failed(.unrecoverable), "the coordinator deletes on every .failed")
+    #expect(h.asr.transcribeCallCount == 0, "refused at the entry guard, before any ASR work")
+    #expect(try await h.transcriptStore.loadAll().isEmpty, "no permanent row for a cancelled take")
+    #expect(
+      try await h.transcriptStore.loadPending(now: Date()).isEmpty, "and no pending row either")
+  }
+
+  /// The control that keeps the two tests above honest: with NO marker, replay
+  /// is byte-for-byte today's behaviour. Without this, a change that treated
+  /// every spool as an escape recovery would still pass both tests above.
+  @Test("no escape marker leaves ordinary crash recovery exactly as it was")
+  func absentEscapeMarkerIsOrdinaryRecovery() async throws {
+    let h = Self.makeHarness()
+    let id = "plain-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.4])
+
+    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+
+    #expect(outcome == .recovered)
+    let saved = try await h.transcriptStore.loadAll()
+    #expect(saved.count == 1, "ordinary History, as today")
+    #expect(saved.first?.isRecovered == true, "the crash badge is correct here")
+    #expect(saved.first?.escapeRecoveredAt == nil)
+    #expect(try await h.transcriptStore.loadPending(now: Date()).isEmpty)
   }
 
   @Test("the attempt marker is written BEFORE transcribe (one-attempt guard armed)")
@@ -246,7 +394,7 @@ struct RecoverySpoolReplayerTests {
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
     #expect(outcome == .failed(.unrecoverable))
     #expect(h.asr.transcribeCallCount == 0)
-    #expect(h.transcriptCoordinator.transcripts.isEmpty)
+    #expect(h.transcriptCoordinator.visibleTranscripts.isEmpty)
     #expect(FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: id).path))
   }
 
@@ -265,7 +413,7 @@ struct RecoverySpoolReplayerTests {
       let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
       #expect(outcome == .deferred)
       #expect(h.asr.transcribeCallCount == 0, "never reaches transcribe on a deferred key read")
-      #expect(h.transcriptCoordinator.transcripts.isEmpty)
+      #expect(h.transcriptCoordinator.visibleTranscripts.isEmpty)
       // Bypass, not failure: no ASR ran, so the attempt is UNSPENT. The spool +
       // key are retained and the marker is cleared so a later attempt remains
       // eligible instead of being abandoned as already spent.
@@ -347,7 +495,7 @@ struct RecoverySpoolReplayerTests {
     h.asr.onTranscribe = { discarded = true }
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { discarded })
     #expect(outcome == .aborted)
-    #expect(h.transcriptCoordinator.transcripts.isEmpty, "a discarded result never saves")
+    #expect(h.transcriptCoordinator.visibleTranscripts.isEmpty, "a discarded result never saves")
   }
 
   @Test("Discard during loadModel skips the expensive transcribe (P2)")
@@ -361,7 +509,7 @@ struct RecoverySpoolReplayerTests {
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { discarded })
     #expect(outcome == .aborted)
     #expect(h.asr.transcribeCallCount == 0, "no transcribe runs after Discard during load")
-    #expect(h.transcriptCoordinator.transcripts.isEmpty)
+    #expect(h.transcriptCoordinator.visibleTranscripts.isEmpty)
   }
 
   @Test("a recovered transcript with NO polish output carries no provider/model stamp (#1305)")
@@ -371,7 +519,7 @@ struct RecoverySpoolReplayerTests {
     try await Self.seedSpool(h, id: id, samples: [0.3, 0.2])
     let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
     #expect(outcome == .recovered)
-    let saved = try #require(h.transcriptCoordinator.transcripts.first)
+    let saved = try #require(h.transcriptCoordinator.visibleTranscripts.first)
     #expect(saved.polishedText == nil)
     #expect(saved.llmProvider == nil)
     #expect(saved.llmModel == nil)
@@ -424,6 +572,108 @@ struct RecoverySpoolReplayerTests {
         e.boolProps["audio_decrypted"] == nil, "not reconstructed ⇒ never emit audio_decrypted")
       #expect(e.boolProps["camp_b_candidate"] == nil)
       #expect(e.stringProps["spool_seconds_bucket"] == nil)
+    }
+
+    /// #2087: the two non-live admission verdicts must reach DIFFERENT channels,
+    /// and the reason is what carries that difference.
+    ///
+    /// This is the assertion that makes the classification real rather than
+    /// decorative. An earlier version of the verdict branch emitted its own
+    /// breadcrumb and never called `captureError`, so future-skew was documented
+    /// as alerting, carried an alerting category, sat in the alert inventory —
+    /// and produced no Sentry error at all. Everything about it looked correct
+    /// except what it did.
+    ///
+    /// Asserted end to end through the replayer, not by calling the classifier:
+    /// the classifier was already right in that broken version.
+    @Test("expiry and future-skew emit different reasons, so they alert differently")
+    func telemetryAdmissionVerdictsRouteSeparately() async throws {
+      let stamp = Date(timeIntervalSince1970: 1_755_300_000)
+
+      // Elapsed window — the world being ordinary. Counted, never alerted.
+      let expired = Self.makeHarness(now: { stamp })
+      let expiredID = "tel-exp-\(UUID().uuidString)"
+      try await Self.seedSpool(expired, id: expiredID, samples: [0.6])
+      try expired.spoolStore.writeEscapeMarker(
+        EscapeRecoveryMarker(
+          recoverySessionID: expiredID,
+          triggeredAt: stamp.addingTimeInterval(-AppConstants.pendingTranscriptRetention)))
+      let expiredBox = await Self.capturingTelemetry {
+        _ = await expired.replayer.replay(recoverySessionID: expiredID, isAborted: { false })
+      }
+      let expiredEvent = try #require(expiredBox.recoveryEvents().first)
+      #expect(expiredEvent.stringProps["reason"] == "escape_recovery_expired")
+      #expect(
+        RecoverySpoolReplayer.isCountedNotAlerted(.escapeRecoveryExpired),
+        "a Mac left off is not a defect of ours")
+
+      // A clock we cannot reason about — ours. Alerts.
+      let skewed = Self.makeHarness(now: { stamp })
+      let skewedID = "tel-skew-\(UUID().uuidString)"
+      try await Self.seedSpool(skewed, id: skewedID, samples: [0.6])
+      try skewed.spoolStore.writeEscapeMarker(
+        EscapeRecoveryMarker(
+          recoverySessionID: skewedID,
+          triggeredAt: stamp.addingTimeInterval(AppConstants.pendingClockSkewTolerance + 60)))
+      let skewedBox = await Self.capturingTelemetry {
+        _ = await skewed.replayer.replay(recoverySessionID: skewedID, isAborted: { false })
+      }
+      let skewedEvent = try #require(skewedBox.recoveryEvents().first)
+      #expect(skewedEvent.stringProps["reason"] == "malformed_escape_marker")
+      #expect(
+        !RecoverySpoolReplayer.isCountedNotAlerted(.malformedEscapeMarker),
+        "a marker we wrote that will not read back IS our defect")
+    }
+
+    /// The assertions above are NOT sufficient, and it is worth being exact about
+    /// why: the bug they were written for — hand-emitting the right telemetry
+    /// reason while never calling `captureError` — passes every one of them. The
+    /// reason was correct in the broken version. The classifier was correct in
+    /// the broken version. The only thing that was wrong was whether Sentry was
+    /// ever told, and nothing above observes that.
+    ///
+    /// So this watches the actual channel. `captureErrorDelegate` fires only on
+    /// the alerting path, so its absence and presence ARE the classification.
+    @Test("expiry never captures; future-skew captures exactly once, in its own category")
+    func admissionVerdictsReachTheRightSentryChannel() async throws {
+      final class CaptureSpy: @unchecked Sendable {
+        var categories: [SentryBreadcrumb.ErrorCategory] = []
+      }
+      let spy = CaptureSpy()
+      let prior = SentryBreadcrumb.captureErrorDelegate
+      SentryBreadcrumb.captureErrorDelegate = { _, category, _, _ in
+        spy.categories.append(category)
+      }
+      defer { SentryBreadcrumb.captureErrorDelegate = prior }
+
+      let stamp = Date(timeIntervalSince1970: 1_755_300_000)
+
+      // Elapsed window: counted only. A capture here would page someone because
+      // a Mac was switched off.
+      let expired = Self.makeHarness(now: { stamp })
+      let expiredID = "chan-exp-\(UUID().uuidString)"
+      try await Self.seedSpool(expired, id: expiredID, samples: [0.6])
+      try expired.spoolStore.writeEscapeMarker(
+        EscapeRecoveryMarker(
+          recoverySessionID: expiredID,
+          triggeredAt: stamp.addingTimeInterval(-AppConstants.pendingTranscriptRetention)))
+      _ = await expired.replayer.replay(recoverySessionID: expiredID, isAborted: { false })
+
+      #expect(spy.categories.isEmpty, "an expired window must never raise a Sentry error")
+
+      // A clock we cannot reason about: ours, and it must actually alert.
+      let skewed = Self.makeHarness(now: { stamp })
+      let skewedID = "chan-skew-\(UUID().uuidString)"
+      try await Self.seedSpool(skewed, id: skewedID, samples: [0.6])
+      try skewed.spoolStore.writeEscapeMarker(
+        EscapeRecoveryMarker(
+          recoverySessionID: skewedID,
+          triggeredAt: stamp.addingTimeInterval(AppConstants.pendingClockSkewTolerance + 60)))
+      _ = await skewed.replayer.replay(recoverySessionID: skewedID, isAborted: { false })
+
+      #expect(
+        spy.categories == [.recoveryMalformedEscapeMarker],
+        "exactly one capture, in its own category — not the decrypt catch-all, not silence")
     }
 
     @Test("transcribe failure on good audio is a Camp B candidate with a failure class")

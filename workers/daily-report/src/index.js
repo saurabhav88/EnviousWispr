@@ -303,6 +303,83 @@ export function formatAdoption(data, buckets) {
     lines.push(`Top 5 users by dictation volume: ${data.top5.map((u) => u.n).join(", ")}.`);
   }
 
+  // Escape Recovery (#2087). Built from INDEPENDENT clauses, each gated on its
+  // own count, because the counts are windowed independently and no one of them
+  // can stand for the others. A held row lives 24 hours by design, so a recovery
+  // saved yesterday and undone today lands in this window as a restore with no
+  // attempt beside it. Gating the whole line on attempts hid that day entirely,
+  // and gating the middle clause on it would have printed "0 saved for 0 people"
+  // on a day something really happened.
+  //
+  // Omitted entirely only when NOTHING happened, rather than printing a row of
+  // zeroes: this is opt-in, and an all-zero line every day is how a reader
+  // learns to skip a section.
+  {
+    const er = data.escapeRecovery || {};
+    const attempts = er.attempts ?? 0;
+    const kept = er.kept ?? 0;
+    const people = er.keptUsers ?? 0;
+    const undone = er.undone ?? 0;
+    const fromHistory = er.fromHistory ?? 0;
+    const clipboardOnly = er.clipboardOnly ?? 0;
+    const failedTranscription = er.failedTranscription ?? 0;
+    const failedSave = er.failedSave ?? 0;
+
+    const clauses = [];
+    // ATTEMPTS AND SAVES ARE SEPARATE CLAUSES. A recovery can start just before
+    // the day boundary and complete just after it, so attempts=0 with kept>0 is
+    // reachable — and the previous revision nested the save inside the attempt
+    // clause, which omitted that success entirely.
+    if (attempts > 0) {
+      clauses.push(
+        `${attempts} cancelled dictation${attempts === 1 ? " was" : "s were"} held.`
+      );
+    }
+    if (kept > 0) {
+      clauses.push(
+        `${kept} ${kept === 1 ? "was" : "were"} saved for ${people} ` +
+          `${people === 1 ? "person" : "people"}.`
+      );
+    }
+    // Two buttons, one event. Naming them apart is not pedantry: they are
+    // reached differently and mean different things about the feature. The pill
+    // is the three-second offer working; History is the user going and finding
+    // it later, which is the fallback doing its job.
+    if (undone > 0) {
+      clauses.push(
+        `${undone} ${undone === 1 ? "was" : "were"} taken back with Undo.`
+      );
+    }
+    if (fromHistory > 0) {
+      clauses.push(
+        `${fromHistory} ${fromHistory === 1 ? "was" : "were"} pasted later from History.`
+      );
+    }
+    // Named apart, because they are different defects and one is worse. A save
+    // failure lost text we already had.
+    if (failedSave > 0) {
+      clauses.push(
+        `${failedSave} ${failedSave === 1 ? "was" : "were"} transcribed and then lost ` +
+          `when the save failed, which is a defect rather than a user choice.`
+      );
+    }
+    if (failedTranscription > 0) {
+      clauses.push(
+        `${failedTranscription} could not be transcribed at all, so there was never ` +
+          `anything to save.`
+      );
+    }
+    if (clipboardOnly > 0) {
+      clauses.push(
+        `${clipboardOnly} restore${clipboardOnly === 1 ? "" : "s"} could not reach the ` +
+          `original app and went to the clipboard instead.`
+      );
+    }
+    if (clauses.length) {
+      lines.push("", `Escape Recovery: ${clauses.join(" ")}`);
+    }
+  }
+
   return lines;
 }
 

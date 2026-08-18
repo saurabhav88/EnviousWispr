@@ -16,6 +16,10 @@ struct DictationTerminalTelemetryTests {
   private final class Recorder {
     var terminals: [(takeID: String, backend: String, result: String, reason: String?)] = []
     var attributions: [(kind: String?, peak: Float?, transport: String?)] = []
+    /// #2087. Recorded so the ordinary path can assert it stays `ordinary` —
+    /// an additive dimension is only safe if the existing population keeps its
+    /// value.
+    var dispositions: [String?] = []
     var starts: [(takeID: String, backend: String)] = []
   }
 
@@ -30,9 +34,11 @@ struct DictationTerminalTelemetryTests {
         recorder.starts.append((takeID, backend))
       },
       dictationTerminal: {
-        takeID, backend, result, reason, kind, effectiveTransport, _, _, _, _, peak, _, _, _ in
+        takeID, backend, result, reason, kind, effectiveTransport, _, _, _, _, peak, _, _, _,
+        disposition in
         recorder.terminals.append((takeID, backend, result, reason))
         recorder.attributions.append((kind, peak, effectiveTransport))
+        recorder.dispositions.append(disposition)
       }
     )
   }
@@ -46,6 +52,34 @@ struct DictationTerminalTelemetryTests {
   }
 
   // MARK: - The seven terminals
+
+  /// #2087: the additive dimension has to actually reach the row, and the
+  /// existing population has to keep its old value.
+  ///
+  /// Both halves matter. A disposition that never arrives makes the claimed
+  /// disaggregation fiction; one that arrives on ordinary dictations too would
+  /// relabel every historical row's successor and break the comparison it was
+  /// added to enable.
+  @Test("the terminal row carries the session's delivery disposition")
+  func terminalCarriesDeliveryDisposition() {
+    let recorder = Recorder()
+    let sink = makeSink(recorder)
+
+    sink.emitTerminal(snapshot(.completed))
+    #expect(
+      recorder.dispositions == ["ordinary"],
+      "an ordinary dictation keeps the value every existing row has")
+
+    var held = snapshot(.completed)
+    held.deliveryDisposition = .escapeRecovery
+    sink.emitTerminal(held)
+    #expect(
+      recorder.dispositions == ["ordinary", "escape_recovery"],
+      "and a held recovery is distinguishable without touching `result`")
+    #expect(
+      recorder.terminals.map(\.result) == ["completed", "completed"],
+      "the eight-label result vocabulary is unchanged, which is why this is additive")
+  }
 
   @Test("every terminal emits exactly one row with its expected label")
   func everyTerminalEmitsItsLabel() {

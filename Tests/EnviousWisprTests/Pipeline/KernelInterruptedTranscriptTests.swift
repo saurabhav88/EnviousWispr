@@ -51,7 +51,7 @@ struct KernelInterruptedTranscriptTests {
         llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
         emojiRestore: EmojiRestoreStep()),
       textProcessingRunner: TextProcessingRunner(),
-      save: { saved.transcript = $0 },
+      save: { transcript, _ in saved.transcript = transcript },
       deliverPaste: { _ in
         PasteDeliveryResult(
           tier: .cgEvent, durationMs: 1,
@@ -73,7 +73,7 @@ struct KernelInterruptedTranscriptTests {
     // the ONLY cause backed by a `DeviceIsAlive` check, so it is the only one
     // allowed to leave a permanent crossed-out-microphone badge.
     telemetryState.interruptionCause = .deviceRemoved
-    try await wiring.store("hi", UUID())
+    try await wiring.store("hi", UUID(), .ordinary)
 
     let transcript = try #require(saved.transcript)
     #expect(transcript.inputDeviceWasRemoved == true)
@@ -90,7 +90,7 @@ struct KernelInterruptedTranscriptTests {
     let wiring = makeWiring(telemetryState: telemetryState, saved: saved)
 
     telemetryState.interruptionCause = .engineLost
-    try await wiring.store("hi", UUID())
+    try await wiring.store("hi", UUID(), .ordinary)
 
     #expect(try #require(saved.transcript).inputDeviceWasRemoved == false)
   }
@@ -108,7 +108,7 @@ struct KernelInterruptedTranscriptTests {
     let wiring = makeWiring(telemetryState: telemetryState, saved: saved)
 
     telemetryState.interruptionCause = .engineLost
-    try await wiring.store("hi", UUID())
+    try await wiring.store("hi", UUID(), .ordinary)
 
     #expect(try #require(saved.transcript).inputDeviceWasRemoved == false)
   }
@@ -119,7 +119,7 @@ struct KernelInterruptedTranscriptTests {
     let saved = InterruptedSavedTranscriptBox()
     let wiring = makeWiring(telemetryState: telemetryState, saved: saved)
 
-    try await wiring.store("hi", UUID())
+    try await wiring.store("hi", UUID(), .ordinary)
 
     let transcript = try #require(saved.transcript)
     #expect(transcript.inputDeviceWasRemoved == false)
@@ -138,7 +138,7 @@ struct KernelInterruptedTranscriptTests {
     telemetryState.interruptionCause = .engineLost
     telemetryState.resetForNewSession(
       takeID: "3c8f5b21-7d94-4a60-b1e8-5f2a9c04d7e6", polishEnabled: false)
-    try await wiring.store("hi", UUID())
+    try await wiring.store("hi", UUID(), .ordinary)
 
     #expect(telemetryState.interruptionCause == nil)
     #expect(try #require(saved.transcript).inputDeviceWasRemoved == false)

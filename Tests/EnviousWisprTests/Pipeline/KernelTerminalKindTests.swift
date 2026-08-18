@@ -12,7 +12,7 @@ import Testing
 /// mapping, payloads dropped); the delete/retain split is frozen separately in the
 /// coordinator predicate tests. `matcher-set-adversarial-tests`: every outcome is
 /// exercised, and `.completed` / `.cancelled` map to nil (a saved take never
-/// fires; a cancel is resolved dynamically via `pendingCancelOrigin`).
+/// fires; a cancel is resolved dynamically from the kernel's `lastCancelOrigin`).
 @MainActor
 @Suite("Kernel recovery-ending projection (#1063 PR2, #1548 D1, #1464)")
 struct KernelTerminalKindTests {
@@ -116,7 +116,7 @@ struct KernelTerminalKindTests {
   func cancelledIsDynamic() {
     // `.cancelled` is reached by both a user cancel and a fault/system cancel, so
     // the static projection returns nil and the fire site injects the origin from
-    // `pendingCancelOrigin` into `.cancelled(_)` (Codex terminal-kind matrix).
+    // the kernel's `lastCancelOrigin` into `.cancelled(_)` (Codex terminal-kind matrix).
     #expect(KernelDictationDriver.recoveryEnding(for: .cancelled) == nil)
   }
 
@@ -178,7 +178,7 @@ struct EndingRetryOutcomeComposedMatrixTests {
     #expect(KernelDictationDriver.recoveryEnding(for: .completed) == nil)
     #expect(KernelDictationDriver.recoveryEnding(for: .cancelled) == nil)
     // Both DYNAMIC cancel origins delete when presented to the coordinator.
-    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.user)))
+    #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.user(.shortcut))))
     #expect(RecoveryCoordinator.shouldDeleteOnLiveEnding(.cancelled(.systemOrFault)))
     // No-ending/app-gone has no predicate invocation by construction — there
     // is no synthetic ending to test, which is the point.

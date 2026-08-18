@@ -78,7 +78,11 @@ final class KernelLifecycleTelemetrySink {
     _ inputDeviceKind: String?, _ effectiveTransport: String?, _ selectedTransport: String?,
     _ inputSelectionMode: String?, _ wholeBufferRMS: Float?, _ maxWindowRMS: Float?,
     _ peakAudioLevel: Float?, _ durationMs: Int?, _ captureNativeRateHz: Double?,
-    _ captureNativeChannelCount: Int?
+    _ captureNativeChannelCount: Int?,
+    // #2087: `ordinary` or `escape_recovery`. An Escape Recovery session
+    // concludes `.completed` like any other, so without this the terminal row
+    // reports withheld text as a delivered dictation.
+    _ deliveryDisposition: String?
   ) -> Void
 
   typealias CaptureErrorSink = @MainActor (
@@ -226,7 +230,7 @@ final class KernelLifecycleTelemetrySink {
     dictationTerminal: @escaping DictationTerminalSink = {
       takeID, backend, result, reason, inputDeviceKind, effectiveTransport, selectedTransport,
       inputSelectionMode, wholeBufferRMS, maxWindowRMS, peakAudioLevel, durationMs,
-      captureNativeRateHz, captureNativeChannelCount in
+      captureNativeRateHz, captureNativeChannelCount, deliveryDisposition in
       TelemetryService.shared.dictationTerminal(
         takeID: takeID, backend: backend, result: result, reason: reason,
         inputDeviceKind: inputDeviceKind, effectiveTransport: effectiveTransport,
@@ -234,7 +238,8 @@ final class KernelLifecycleTelemetrySink {
         wholeBufferRMS: wholeBufferRMS, maxWindowRMS: maxWindowRMS,
         peakAudioLevel: peakAudioLevel, durationMs: durationMs,
         captureNativeRateHz: captureNativeRateHz,
-        captureNativeChannelCount: captureNativeChannelCount)
+        captureNativeChannelCount: captureNativeChannelCount,
+        deliveryDisposition: deliveryDisposition)
     },
     captureError: @escaping CaptureErrorSink = { error, category, stage, extra in
       // #2021: promote the groupable capture fields to per-event TAGS. This sink
@@ -357,7 +362,8 @@ final class KernelLifecycleTelemetrySink {
       attribution?.selectedTransport, attribution?.inputSelectionMode,
       attribution?.wholeBufferRMS, attribution?.maxWindowRMS,
       attribution?.peakAudioLevel, attribution?.durationMs,
-      attribution?.captureNativeRateHz, attribution?.captureNativeChannelCount)
+      attribution?.captureNativeRateHz, attribution?.captureNativeChannelCount,
+      snapshot.deliveryDisposition.rawValue)
   }
 
   func emit(_ event: KernelLifecycleEvent) {

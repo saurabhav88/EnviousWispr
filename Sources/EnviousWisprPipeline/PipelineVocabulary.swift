@@ -55,6 +55,14 @@ public enum RecordingWarningReason: Equatable, Sendable {
   case polishFailed
   /// The dictation was pasted but the history write threw. Carries the reason.
   case historySaveFailed(reason: String)
+  /// #2087: Escape Recovery was on and the take could NOT be kept, so the
+  /// ordinary destructive cancel ran instead.
+  ///
+  /// Surfaced rather than silent, which was the adjudicated call: with the
+  /// toggle ON the user is expecting a recovery, so saying nothing lets them
+  /// believe one happened. This is NOT the recovery pill — there is nothing to
+  /// offer, and a button that restores nothing is worse than a sentence.
+  case escapeRecoveryUnavailable
   /// The degraded-lead retry recovered this take by trimming a poisoned opening.
   case salvagedBeginning
   /// Capture died mid-recording; the pasted text is what survived. `disclosure`
@@ -152,6 +160,108 @@ public enum OverlayIntent: Equatable, Sendable {
   /// settings", the input changes away from Bluetooth, or the tips setting is
   /// turned off. Its decision + lifecycle are owned by `BluetoothAwarenessPresenter`.
   case bluetoothAwareness
+  /// The Escape Recovery pill (#2087) — the sixteenth case. Offers to paste a
+  /// dictation the user cancelled with the cancel shortcut while the feature is
+  /// on. One sentence, one action, 3 seconds, and it NEVER blocks: no focus
+  /// steal, no modal, no required dismissal. A user who did not mean to cancel
+  /// is by definition not watching, so a prompt demanding an answer is the
+  /// wrong shape; History is the unhurried second door for 24 hours.
+  ///
+  /// Carries the transcript's **id, never its text**. The pill re-reads by id
+  /// when Paste is pressed, so a row deleted or expired inside the 3-second
+  /// dwell resolves to nothing and no-ops, instead of pasting from a stale
+  /// in-memory copy the store no longer agrees with.
+  ///
+  /// Shown only AFTER the row is durably saved (#1897): an offer to restore
+  /// something that failed to save is a lie the user cannot detect.
+  ///
+  /// Sits beside the five existing post-dictation intents rather than reusing
+  /// `flashRecordingNotice`, which renders an in-panel banner scoped to *during*
+  /// a recording. This fires after the session concluded, when there is no panel
+  /// left to put a banner in.
+  case escapeRecovery(transcriptID: UUID)
+}
+
+/// Commit this session's spool to Escape Recovery, returning whether it worked
+/// (#2087).
+///
+/// Dependency injection for STORAGE, not a second completion route. The kernel
+/// already receives closures for processing, storage and delivery; this is the
+/// same shape, and it exists because kernel construction had no way to write a
+/// crash-provenance marker at all.
+///
+/// **`false` means fail closed**, and the caller's fallback is today's ordinary
+/// destructive cancel — so a failure here costs the user exactly what pressing
+/// cancel already costs them, and never leaves a spool that a later launch would
+/// replay into permanent History.
+///
+/// Called BEFORE the disposition changes and before the stop tail is entered: the
+/// marker must be durable before anything downstream can start behaving as though
+/// the take is being kept.
+public typealias PrepareEscapeRecovery = @MainActor (
+  _ recoverySessionID: String, _ triggeredAt: Date, _ takeID: String?
+) -> Bool
+
+/// What a finalizing session IS, for the run that is finishing (#2087).
+///
+/// **Kernel-owned and session-scoped.** Set once when the exit arm decides, read
+/// by storage, delivery, terminal routing and telemetry, and reset to `.ordinary`
+/// in `resetSessionState()`.
+///
+/// This is one authority rather than a boolean inspected at delivery, because
+/// `runFinalizing` orders the work **process → store → deliver → conclude**.
+/// Storage runs BEFORE delivery, so a flag consulted at delivery arrives after
+/// the row has already been written into ordinary History instead of `pending/`.
+/// A delivery-only signal cannot express this fact early enough to be correct.
+///
+/// `triggeredAt` is the moment the user pressed the cancel shortcut, captured at
+/// the exit and carried forward, NOT the moment finalization happened. The 24-hour
+/// clock the user was promised starts when they hit Escape; a long transcription
+/// must not silently spend part of their recovery window.
+///
+/// Deliberately INTERNAL to Pipeline. AppKit never needs the disposition, only
+/// the narrow capability "is an escape recovery transcribing right now", exposed
+/// as `KernelDictationDriver.isEscapeRecoveryTranscribing`. Publishing the enum
+/// would widen the public surface for no consumer.
+enum FinalizationDisposition: Equatable, Sendable {
+  /// Every dictation that is not an escape recovery. The default.
+  case ordinary
+  /// The user cancelled with the shortcut while Escape Recovery was on: run the
+  /// ordinary pipeline, but hold the text instead of pasting it.
+  case escapeRecovery(triggeredAt: Date)
+  /// The user pressed the shortcut a SECOND time during the recovery, asking to
+  /// discard the result. The session stays busy until the decode returns, because
+  /// adapter cancellation invalidates the generation without interrupting the
+  /// decode — starting a new recording on top of one that is still running would
+  /// recreate the two-decodes-one-engine hazard the toggle never disclosed.
+  /// Abandonment discards the OUTPUT; it cannot shorten the WAIT.
+  case abandonedEscapeRecovery(triggeredAt: Date)
+
+  /// Whether this session HELD its text rather than delivering it (#2087).
+  ///
+  /// Both the live and abandoned cases count: an abandoned recovery is still an
+  /// Escape Recovery session, and reporting it as an ordinary dictation would
+  /// hide exactly the population the funnel measures.
+  var isEscapeRecovery: Bool {
+    switch self {
+    case .ordinary: false
+    case .escapeRecovery, .abandonedEscapeRecovery: true
+    }
+  }
+
+  /// When the user pressed cancel, or nil for an ordinary take (#2087).
+  ///
+  /// The stamp a pending row is written with, so the 24-hour window starts at
+  /// the KEYPRESS rather than at finalization. Reading a fresh `Date()` at the
+  /// storage step instead would silently hand back the minutes a long
+  /// transcription spent, which is the part of the promise most likely to
+  /// matter on exactly the takes people cancel.
+  var escapeRecoveryTriggeredAt: Date? {
+    switch self {
+    case .ordinary: nil
+    case .escapeRecovery(let at), .abandonedEscapeRecovery(let at): at
+    }
+  }
 }
 
 /// Typed cancellation PROVENANCE for a `.cancelled` terminal: who asked —
@@ -159,8 +269,30 @@ public enum OverlayIntent: Equatable, Sendable {
 /// origins delete the recovery spool; the distinction survives for
 /// diagnostics and copy, not as a retain/delete fork.
 public enum RecordingCancelOrigin: Equatable, Sendable {
-  case user
+  case user(UserCancelTrigger)
   case systemOrFault
+}
+
+/// WHICH control the user reached for (#2087).
+///
+/// The distinction exists because the two are not equally unambiguous. A click
+/// on a button labelled Cancel says exactly one thing. A press of the cancel
+/// shortcut — Escape by default — is also how people dismiss popovers, leave
+/// fields and back out of menus, so it collides with dictation by accident.
+/// Escape Recovery is therefore offered for `.shortcut` only; `.cancelButton`
+/// keeps discarding immediately.
+///
+/// Carried as an associated value on `.user` rather than as a sibling enum so
+/// that `.systemOrFault` cannot be paired with a user trigger — the invalid
+/// combination is unrepresentable instead of merely undocumented. Consumers
+/// that do not care may match `.user(_)`; today exactly one behavioural site
+/// switches on the origin at all (`RecoveryCoordinator.shouldDeleteOnLiveEnding`).
+public enum UserCancelTrigger: Equatable, Sendable {
+  /// The configured cancel shortcut. Escape by default, and user-rebindable —
+  /// which is why copy says "your cancel shortcut", never a hard-coded key.
+  case shortcut
+  /// The explicit Cancel button in the main window.
+  case cancelButton
 }
 
 /// The narrow PUBLIC projection of a recording's terminal `RecordingOutcome` that

@@ -202,6 +202,60 @@ public struct RecoverySpoolHeader: Codable, Sendable, Equatable {
   }
 }
 
+/// Sidecar record marking a spool as belonging to an Escape Recovery (#2087).
+///
+/// **Why it exists.** If the app dies after the user pressed their cancel
+/// shortcut but before finalization finished, the spool alone cannot say WHY the
+/// recording stopped — it records id, date, settings and cipher, never the
+/// ending. Launch replay would then save a permanent `isRecovered: true`
+/// transcript with no expiry, which is exactly the outcome the toggle did not
+/// disclose: the user cancelled, and a crash upgraded their cancelled dictation
+/// to a permanent History row wearing the crash-rescue badge.
+///
+/// **Metadata only, by construction.** No audio, no text, no transcript. It says
+/// that a session ended a particular way and when; the audio stays in the spool
+/// it already lived in, and nothing here widens what leaves the machine.
+///
+/// It does NOT make the spool same-session eligible. This is provenance for the
+/// EXISTING launch-recovery path, not a second route into recovery.
+public struct EscapeRecoveryMarker: Codable, Sendable, Equatable {
+  /// Versioned so a future shape can be rejected rather than misread. An unknown
+  /// version fails closed at the read site — a marker we cannot interpret must
+  /// not be treated as absent, because "absent" means ordinary crash recovery
+  /// and would produce the permanent row this marker exists to prevent.
+  public let version: Int
+  public let recoverySessionID: String
+  /// When the user pressed cancel. The 24-hour recovery window is measured from
+  /// here, not from replay: the clock the user was promised starts at the
+  /// keypress, and a crash plus a relaunch must not silently hand them back a
+  /// fresh 24 hours they were never offered.
+  public let triggeredAt: Date
+  /// The originating take's correlation id, when one was known.
+  ///
+  /// Optional because it is a telemetry join key, never a correctness input —
+  /// recovery must work identically without it, and an older marker that
+  /// predates this field must still decode. Carried so that a pending row
+  /// created by CRASH replay can still join the funnel: `restored`, `kept` and
+  /// `expired` fire hours later, and without this those rows would be the only
+  /// ones permanently unjoinable — precisely the sessions where something went
+  /// wrong, which are the interesting ones.
+  public let takeID: String?
+
+  public init(
+    version: Int = EscapeRecoveryMarker.currentVersion,
+    recoverySessionID: String,
+    triggeredAt: Date,
+    takeID: String? = nil
+  ) {
+    self.version = version
+    self.recoverySessionID = recoverySessionID
+    self.triggeredAt = triggeredAt
+    self.takeID = takeID
+  }
+
+  public static let currentVersion = 1
+}
+
 /// A single decoded frame the store yields while reconstructing the valid
 /// continuous prefix. Audio frames carry `samples`; the terminal marker frame
 /// carries `terminationReason`.

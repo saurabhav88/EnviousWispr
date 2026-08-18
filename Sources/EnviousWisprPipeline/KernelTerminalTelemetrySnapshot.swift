@@ -63,4 +63,25 @@ struct KernelTerminalTelemetrySnapshot: Sendable {
   let backend: String
   let outcome: RecordingOutcome
   let signalAttribution: KernelSignalAttributionTelemetry?
+  /// #2087. Defaulted to `.ordinary` so every existing construction site is
+  /// unchanged.
+  ///
+  /// The default is a trade, not a safeguard: it PERMITS a new construction site
+  /// to omit the field and report an escape recovery as an ordinary dictation.
+  /// What actually prevents that is `EscapeRecoveryTerminalDispositionTests`,
+  /// which drives the real kernel and fails if the value is not populated —
+  /// added because a mutation hardcoding `.ordinary` survived every other test.
+  var deliveryDisposition: DeliveryDisposition = .ordinary
+}
+
+/// Whether a terminal row describes a delivered dictation or a held recovery
+/// (#2087).
+///
+/// Additive on `dictation.terminal` rather than a ninth `result` label: the
+/// existing eight-label vocabulary is what every shipped chart reads, so adding
+/// to it breaks them, while adding a NEW dimension leaves them working and lets
+/// a new query disaggregate.
+enum DeliveryDisposition: String, Sendable, CaseIterable {
+  case ordinary
+  case escapeRecovery = "escape_recovery"
 }

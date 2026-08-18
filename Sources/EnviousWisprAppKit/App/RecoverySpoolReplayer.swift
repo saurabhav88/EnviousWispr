@@ -107,6 +107,12 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// entirely if the detached Keychain-read task races ahead of the poll.
   var onAttemptMarkerWritten: (() -> Void)?
 
+  /// Wall clock, injected so the #2087 expiry check is testable without waiting
+  /// 24 hours. A test that slept on real time to cross this boundary would be
+  /// flaky by construction and would take a day to exercise the case that
+  /// matters.
+  private let now: @Sendable () -> Date
+
   init(
     activeEngine: ActiveEngineOperation,
     keyStore: RecoveryKeyStore,
@@ -116,10 +122,12 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     keychainManager: KeychainManager,
     outputClassifierHolder: OutputClassifierHolder,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
+    now: @escaping @Sendable () -> Date = { Date() },
     currentVocabulary: @escaping @MainActor () -> (
       corrector: CorrectorVocabulary, polish: PolishVocabulary
     )
   ) {
+    self.now = now
     self.activeEngine = activeEngine
     self.keyStore = keyStore
     self.makeSpoolStore = makeSpoolStore
@@ -160,6 +168,59 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
         outcome: "abandoned", reason: .attemptAlreadySpent)
       return .abandoned
     }
+    // #2087: is this spool a cancelled-but-kept dictation? Read BEFORE spending
+    // ASR, because a marker we cannot trust must abort the whole replay rather
+    // than be discovered after the expensive work.
+    //
+    // `.absent` for anyone who has not turned Escape Recovery on, which is the
+    // default, so the path below stays exactly today's behaviour for them.
+    let escapeMarker = spoolStore.readEscapeMarker(for: id)
+    if case .malformed = escapeMarker {
+      // FAIL CLOSED, and note which way "closed" points here. The safe default
+      // is NOT "carry on as an ordinary crash rescue": a corrupt Escape marker
+      // is positive evidence this spool probably WAS a cancel, so recovering it
+      // normally would hand the user a PERMANENT History row wearing the
+      // crash-Recovered badge for a dictation they deliberately cancelled.
+      // Nor can it become a pending row — the trustworthy `triggeredAt` is
+      // exactly what was lost, so its 24-hour clock is unknowable.
+      //
+      // `.unrecoverable` because the coordinator deletes on every `.failed`, and
+      // deleting is the honest outcome: the user asked for this to go away, and
+      // the one artefact that could have kept it is unreadable.
+      //
+      // Routed through `failUnrecoverable` — the single place that maps a reason
+      // to its category and its channel — rather than emitting here. Hand-rolled
+      // emission is how the sibling verdict branch below came to be classified as
+      // alerting while producing no Sentry error at all.
+      return failUnrecoverable(reason: .malformedEscapeMarker)
+    }
+    // #2087: a marker the store would refuse to SHOW must not cost the engine.
+    //
+    // Asked through the shared `PendingAdmission` rule rather than re-derived
+    // here. The first version of this gate checked only elapsed time, and missed
+    // future-dated markers: a skewed clock would decrypt, transcribe, polish and
+    // save a row that `loadPending` then rejects as corrupt — pure waste, and on
+    // a BYOK provider the user's own money spent producing something they can
+    // never see. Two copies of one rule diverge the moment one gains a condition,
+    // which is precisely what happened, so there is now only one copy.
+    //
+    // Both non-live verdicts discard, but they are NOT the same event: `.expired`
+    // is a Mac left off over a weekend (ordinary, counted), `.corrupt` is a clock
+    // we cannot reason about (ours, alerted).
+    if case .valid(let marker) = escapeMarker {
+      let verdict = PendingAdmission.verdict(stampedAt: marker.triggeredAt, now: now())
+      if verdict != .live {
+        // Routed through `failUnrecoverable`, which is the ONE place that turns a
+        // reason into a channel. An earlier version emitted its own breadcrumb
+        // here and never called `captureError`, so `.corrupt` was documented as
+        // alerting, carried an alerting category, sat in the alert inventory —
+        // and silently produced no Sentry error at all. The classification was
+        // decorative; the routing is what makes it real.
+        return failUnrecoverable(
+          reason: verdict == .expired ? .escapeRecoveryExpired : .malformedEscapeMarker)
+      }
+    }
+
     // Write the marker DURABLY before any risky load/transcribe (warm-up included).
     // If it can't be written, defer rather than risk an un-guarded attempt.
     do {
@@ -319,6 +380,17 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     if isAborted() { return .aborted }
 
     // Build the recovered transcript.
+    //
+    // #2087: a valid Escape marker changes what this row IS, so it is read here
+    // rather than at the save call. `isRecovered` must be FALSE for an escape
+    // recovery: that flag drives the crash-rescue badge, and this take was not
+    // rescued from a crash — the user cancelled it on purpose and the app kept
+    // it as they asked. Wearing the crash badge would misdescribe both what
+    // happened and why the row is there.
+    let escapeInfo: EscapeRecoveryMarker? = {
+      if case .valid(let marker) = escapeMarker { return marker }
+      return nil
+    }()
     let recoveredSeconds = Double(recovered.samples.count) / AudioConstants.sampleRate
     let transcript = Transcript(
       text: textOutcome.text,
@@ -332,14 +404,20 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       llmProvider: textOutcome.polishedText != nil ? recovered.settings?.llmProvider : nil,
       llmModel: textOutcome.polishedText != nil ? recovered.settings?.llmModel : nil,
       recoverySessionID: id,
-      isRecovered: true,
+      isRecovered: escapeInfo == nil,
       // #1408: unknown, never guessed. The spool's own `RecoverySpoolTermination
       // Reason` is a WRITER-side reason (its `.interrupted` means the helper
       // process exited); a mic disconnect leaves the helper alive, so it never
       // appears there and cannot answer "was the input device removed." `true`
       // would lie for app-crash recovery, `false` for a retained disconnect
       // spool. `isRecovered: true` above is the honest abnormal-exit signal.
-      inputDeviceWasRemoved: nil)
+      inputDeviceWasRemoved: nil,
+      // #2087: the user's own clock, carried across the crash. Measuring the 24
+      // hours from replay instead would hand them a fresh day they were never
+      // offered — and on a Mac left off for two days, would resurrect a take
+      // that should already have expired.
+      escapeRecoveredAt: escapeInfo?.triggeredAt,
+      escapeRecoveryTakeID: escapeInfo?.takeID)
 
     // FINAL abort check immediately before the SYNCHRONOUS save + append — there
     // is no `await` between here and `append`, so a Discard cannot interleave a
@@ -347,7 +425,15 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     if isAborted() { return .aborted }
     let spoolSeconds = Int(recoveredSeconds.rounded())
     do {
-      try transcriptStore.save(transcript)
+      // #2087: an escape recovery lands in the `pending/` namespace with its
+      // 24-hour clock, never in ordinary History. Routed here rather than at the
+      // store because the DESTINATION is a property of what this session was,
+      // and the store must not have to infer that from a stamped field.
+      if escapeInfo != nil {
+        try transcriptStore.savePending(transcript)
+      } else {
+        try transcriptStore.save(transcript)
+      }
     } catch {
       // #1740 — the ATTEMPT is spent. ASR ran and produced text; only the
       // History write failed. The attempt marker written above stays
@@ -366,6 +452,10 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
         audioDecrypted: true, spoolSeconds: spoolSeconds)
       return .failed(.save(failureClass))
     }
+    // Both paths append: History is where the user looks either way, and the
+    // live Escape path appends its pending row too. What makes a pending row
+    // LOOK pending — the Kept badge, the countdown, read-time expiry, exclusion
+    // from search — belongs to `TranscriptCoordinator`, not to this replay.
     transcriptCoordinator.append(transcript)
 
     // Success. #1464: the coordinator deletes the spool (+ marker) + key on
@@ -425,6 +515,18 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     case .saveFailed, .markerWriteFailed, .markerClearFailed, .attemptAlreadySpent,
       .keychainTransient:
       return .recoveryDecryptFailed
+    // #2087: its own category, not the decrypt catch-all above. Nothing was
+    // decrypted on this path — the spool is refused at the entry guard on the
+    // strength of an untrustworthy sidecar. Folding it into the decrypt bucket
+    // would inflate a count that is meant to mean "the audio would not come
+    // back", which is the conflation this function was written to end.
+    case .malformedEscapeMarker:
+      return .recoveryMalformedEscapeMarker
+    // #2087: distinct from the malformed case above. That one is OUR defect and
+    // alerts; this is the world being ordinary — a Mac that stayed off — and is
+    // counted only.
+    case .escapeRecoveryExpired:
+      return .recoveryEscapeRecoveryExpired
     }
   }
 
@@ -456,17 +558,28 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// breadcrumb for context, never an alert.
   nonisolated static func isCountedNotAlerted(_ reason: RecoveryTelemetryReason) -> Bool {
     switch reason {
-    case .emptyText: return true
+    // #2087: an escape recovery that outlived its 24 hours while the Mac was off
+    // is the world behaving normally, not a defect of ours. Counted so we can see
+    // how often it happens; never alerted, for the same reason `.emptyText` is
+    // not — a condition whose triage verdict can only ever be "working as
+    // designed" is a counted outcome sitting on the wrong channel.
+    case .emptyText, .escapeRecoveryExpired: return true
     // Listed exhaustively rather than with a `default`, so a NEW reason is a
     // compile error here and someone has to decide its channel on purpose
     // instead of inheriting silence.
+    // #2087 `malformedEscapeMarker` ALERTS, deliberately. By the principle
+    // above it is unambiguously OUR defect: we wrote that marker durably
+    // ourselves, so a version we do not recognise, an id that does not match its
+    // filename, or bytes that will not decode means our write path or format is
+    // broken — never a user's environment. It should sit at ~0, and its cost when
+    // non-zero is silently discarding dictations users chose to keep.
     case .keyMissing, .keyReadFailed, .reconstructionFailed, .emptyOrUnreadableSamples,
       .modelLoadFailed, .transcribeError, .saveFailed, .markerWriteFailed,
-      .markerClearFailed, .attemptAlreadySpent, .keychainTransient:
+      .markerClearFailed, .attemptAlreadySpent, .keychainTransient,
+      .malformedEscapeMarker:
       return false
     }
   }
-
 
   private func failUnrecoverable(
     reason: RecoveryTelemetryReason,

@@ -117,6 +117,30 @@ public struct DictationSessionConfig: Sendable {
   /// a limb the kernel is unaware of); nil ⇒ the helper behaves exactly as today.
   public let recoveryPayload: Data?
 
+  // MARK: Escape Recovery (#2087)
+
+  /// Was Escape Recovery on when THIS recording started?
+  ///
+  /// Frozen here, and the kernel never reads live `SettingsManager` state, so
+  /// toggling mid-dictation governs the NEXT recording rather than the one in
+  /// flight. Same classification as every other per-recording setting.
+  ///
+  /// The contract is predictability, not protection: a recording ends under the
+  /// rules it began under, so pressing the cancel shortcut does what it would
+  /// have done when the user started speaking.
+  ///
+  /// Be precise about the direction of the trade, because it is easy to state
+  /// backwards. Freezing means a user who turns the feature OFF mid-recording
+  /// still gets THIS recording kept — the live-read alternative is what would
+  /// destroy it. Neither is a safety win over the other; the reason to freeze is
+  /// that a setting changed for the next dictation must not silently rewrite the
+  /// one already in progress.
+  ///
+  /// Defaults to `false` so a construction site that forgets it gets today's
+  /// behaviour — an immediate discard — rather than silently retaining a
+  /// cancelled dictation the user never opted into.
+  public let escapeRecoveryEnabled: Bool
+
   public init(
     autoCopyToClipboard: Bool,
     inputMode: RecordingMode,
@@ -138,7 +162,8 @@ public struct DictationSessionConfig: Sendable {
     selectedInputDeviceUID: String,
     preferredInputDeviceIDOverride: String,
     recoverySessionID: String? = nil,
-    recoveryPayload: Data? = nil
+    recoveryPayload: Data? = nil,
+    escapeRecoveryEnabled: Bool = false
   ) {
     self.autoCopyToClipboard = autoCopyToClipboard
     self.inputMode = inputMode
@@ -161,5 +186,6 @@ public struct DictationSessionConfig: Sendable {
     self.preferredInputDeviceIDOverride = preferredInputDeviceIDOverride
     self.recoverySessionID = recoverySessionID
     self.recoveryPayload = recoveryPayload
+    self.escapeRecoveryEnabled = escapeRecoveryEnabled
   }
 }

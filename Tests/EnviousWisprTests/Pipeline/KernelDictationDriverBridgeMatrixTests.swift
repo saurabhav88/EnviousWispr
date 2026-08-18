@@ -56,7 +56,7 @@ import Testing
         vad: FakeVADSignalSource(),
         currentTick: { 0 }, sleepTicks: { _ in },
         processText: { raw, _ in raw },
-        store: { _, _ in }, deliver: { _ in .pasted },
+        store: { _, _, _ in }, deliver: { _, _ in .pasted },
         engineMutationScope: .alwaysAllowedForTesting,
         minimumRecordingTicks: 0)
       let observer = KernelHeartPathTelemetryObserver(
@@ -297,6 +297,86 @@ import Testing
       // kernel state — crucially NOT .error(.modelWedged).
       #expect(fx.driver.state != .error(.modelWedged))
     }
+
+    // MARK: 6. Escape Recovery stays inert until its single activation point (#2087)
+
+    /// The whole 13-chunk order rests on one invariant: chunks 1-11 add
+    /// capability that nothing can reach, and chunk 12 is the ONLY place the
+    /// feature turns on. `isEscapeRecoveryTranscribing` is the capability every
+    /// later chunk's policy code reads, so it is where premature activation
+    /// would first become observable.
+    ///
+    /// This is an activation canary, not a tautology. The second assertion is
+    /// the load-bearing one: even parked in `.delivering(.transcribing)` — the
+    /// exact state where a real escape recovery WOULD report true — it reports
+    /// false today. If a later chunk wires the kernel's disposition through
+    /// before chunk 12, this fails, and it fails in the file that already owns
+    /// the driver-bridges-kernel contract.
+    @Test("the escape-recovery capability stays inert before chunk 12 activates it")
+    func escapeRecoveryCapabilityIsInertBeforeActivation() async {
+      let fx = makeFixture()
+      #expect(fx.driver.isEscapeRecoveryTranscribing == false, "idle reports not-transcribing")
+
+      await place(fx.kernel, in: .deliveringTranscribing)
+      #expect(
+        fx.driver.isEscapeRecoveryTranscribing == false,
+        """
+        The capability reported TRUE before chunk 12. Either the feature was \
+        activated early — which breaks the inert-chunks invariant and can append \
+        a pending row to ordinary History — or activation has landed and this \
+        canary should be replaced by a real behavioural assertion.
+        """)
+    }
+
+    // MARK: 7. Cancel provenance reaches the recovery ending (#2087)
+
+    /// Lives in this suite because the driver fixture and the bounded `drain()`
+    /// already exist here; the subject is the same driver-bridges-kernel
+    /// contract the matrix above covers.
+    ///
+    /// #2087 removed the driver's own `pendingCancelOrigin` and made the fire
+    /// site read `kernel.lastCancelOrigin`. Kernel-level tests cannot see that
+    /// line: they would still pass if it hard-coded `.systemOrFault`, projected
+    /// the wrong value, or stopped firing the callback entirely. This asserts
+    /// the emitted `RecordingRecoveryEnding`, which is the actual contract the
+    /// crash-recovery coordinator consumes.
+    ///
+    /// `.stopping` is chosen deliberately: it is the accepting state where
+    /// `cancel` concludes SYNCHRONOUSLY, so `cancelRecording`'s terminal await
+    /// resolves without a forward path running. Driving this from `.live`
+    /// instead is what hung a run for five hours
+    /// (`swift-patterns.md` RULE: tests-no-unconditional-continuation-await).
+    @Test("the driver projects the kernel's accepted cancel origin into the ending")
+    func cancelProvenanceReachesTheRecoveryEnding() async {
+      for trigger in [UserCancelTrigger.shortcut, .cancelButton] {
+        let fx = makeFixture()
+        await place(fx.kernel, in: .stopping)
+        let box = EndingBox()
+        fx.driver.onSessionEndedWithoutSave = { _, ending in box.value = ending }
+
+        await fx.driver.cancelRecording(disposition: .user(trigger))
+        await drain()
+
+        #expect(
+          box.value == .cancelled(.user(trigger)),
+          "the ending must carry the trigger the user actually used, not a default")
+
+        // First-wins, end to end: a fault cancel arriving behind the accepted
+        // user cancel must not rewrite what was emitted.
+        await fx.driver.cancelRecording()
+        await drain()
+        #expect(
+          box.value == .cancelled(.user(trigger)),
+          "a later system cancel must not alter the already-emitted ending")
+      }
+    }
+  }
+
+  /// Captures the ending emitted by the driver's `@MainActor` callback. The
+  /// suite is `@MainActor`, so plain mutation is safe.
+  @MainActor
+  private final class EndingBox {
+    var value: RecordingRecoveryEnding?
   }
 
 #endif  // DEBUG

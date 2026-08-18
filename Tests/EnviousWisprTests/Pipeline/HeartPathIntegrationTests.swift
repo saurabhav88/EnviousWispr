@@ -348,7 +348,7 @@ private final class HeartPathHarness {
         llmPolish: polishStep,
         emojiRestore: EmojiRestoreStep()),
       textProcessingRunner: textProcessingRunner,
-      save: { _ in },
+      save: { _, _ in },
       deliverPaste: { [pasteSink] request in
         await pasteSink.deliver(request)
       },
@@ -361,8 +361,8 @@ private final class HeartPathHarness {
 
     // The live order the kernel uses: process, then store, then deliver.
     let displayText = try await wiring.processText(asrResult.text) {}
-    try await wiring.store(displayText, UUID())
-    _ = await wiring.deliver(displayText)
+    try await wiring.store(displayText, UUID(), .ordinary)
+    _ = await wiring.deliver(displayText, .ordinary)
 
     return HeartPathHarnessResult(outcome: outcome, usedASRFallback: false)
   }

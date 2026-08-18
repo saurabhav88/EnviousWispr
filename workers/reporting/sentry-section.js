@@ -130,6 +130,18 @@ export const ERROR_CATEGORIES = Object.freeze({
   recovery_transcribe_failed: { group: LOST, deliveryProven: true, emitted: true, label: "saved recording could not be transcribed" },
   recovery_empty_text: { group: LOST, deliveryProven: true, emitted: true, label: "saved recording produced no text" },
   recovery_abandoned_after_attempt: { group: LOST, deliveryProven: true, emitted: true, label: "saved recording was abandoned" },
+
+  // #2087 Escape Recovery. Both are the rescue of a take the user CANCELLED and
+  // chose to keep, so unlike the four above there was never a delivery: the
+  // whole point of the feature is that the text is held rather than pasted.
+  // `deliveryProven: false` is therefore the honest value, not the conservative
+  // one, and it is what keeps these out of the DEGRADED group where a row
+  // asserts the user still got their words.
+  recovery_malformed_escape_marker: { group: LOST, deliveryProven: false, emitted: true, label: "kept recording had unreadable provenance and was discarded" },
+  // Expected and benign: a Mac left off past the 24-hour window. Counted so the
+  // breadcrumb stays honest, never alerted. It shares the LOST group because the
+  // user does not get the text back, which is true however unsurprising it is.
+  recovery_escape_recovery_expired: { group: LOST, deliveryProven: false, emitted: true, label: "kept recording expired before it could be restored" },
 });
 
 /** An unhandled crash carries NO `error.category` at all - measured 2026-08-06,

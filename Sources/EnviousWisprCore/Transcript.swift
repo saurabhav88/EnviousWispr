@@ -326,6 +326,26 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// (grounded review: the old name promised every interruption while the value
   /// carried one).
   public let inputDeviceWasRemoved: Bool?
+  /// When the user's cancel shortcut produced this row under Escape Recovery
+  /// (#2087). Non-nil means PENDING: restorable until
+  /// `AppConstants.pendingTranscriptRetention` after this instant, after which
+  /// it is never rendered, restored, searched or counted. `Keep` clears it,
+  /// which is what makes the row permanent.
+  ///
+  /// This is the CLOCK, not the class — a pending row is identified by living
+  /// in `AppConstants.pendingTranscriptsDir`, because a nil field is
+  /// indistinguishable from an ordinary legacy row and a malformed one decodes
+  /// to nil rather than failing. Optional so pre-#2087 JSON decodes rather than
+  /// throwing (synthesized `Codable`, no custom decode), matching
+  /// `isRecovered` (#1063) and `inputDeviceWasRemoved` (#1408).
+  public let escapeRecoveredAt: Date?
+  /// The originating dictation's telemetry take id, persisted so the
+  /// restored / kept / expired events can still join the funnel after a
+  /// relaunch (#2087). `take_id` is an EPHEMERAL per-take correlation id and is
+  /// unrelated to `id`, so it cannot be re-derived later — it is either carried
+  /// here or the funnel breaks at exactly the point it exists to measure.
+  /// Metadata only; never rendered to the user.
+  public let escapeRecoveryTakeID: String?
 
   public init(
     id: UUID = UUID(),
@@ -341,7 +361,9 @@ public struct Transcript: Codable, Identifiable, Sendable {
     metrics: ExecutionMetrics? = nil,
     recoverySessionID: String? = nil,
     isRecovered: Bool? = nil,
-    inputDeviceWasRemoved: Bool? = nil
+    inputDeviceWasRemoved: Bool? = nil,
+    escapeRecoveredAt: Date? = nil,
+    escapeRecoveryTakeID: String? = nil
   ) {
     self.id = id
     self.text = text
@@ -357,6 +379,32 @@ public struct Transcript: Codable, Identifiable, Sendable {
     self.recoverySessionID = recoverySessionID
     self.isRecovered = isRecovered
     self.inputDeviceWasRemoved = inputDeviceWasRemoved
+    self.escapeRecoveredAt = escapeRecoveredAt
+    self.escapeRecoveryTakeID = escapeRecoveryTakeID
+  }
+
+  /// A copy promoted to permanent History: the clock is cleared, everything
+  /// else is preserved. `Transcript` is immutable, so `Keep` constructs a
+  /// replacement rather than mutating in place. Idempotent — promoting an
+  /// already-permanent row returns an equal value.
+  public func promotedFromPending() -> Transcript {
+    Transcript(
+      id: id,
+      text: text,
+      polishedText: polishedText,
+      language: language,
+      duration: duration,
+      processingTime: processingTime,
+      backendType: backendType,
+      createdAt: createdAt,
+      llmProvider: llmProvider,
+      llmModel: llmModel,
+      metrics: metrics,
+      recoverySessionID: recoverySessionID,
+      isRecovered: isRecovered,
+      inputDeviceWasRemoved: inputDeviceWasRemoved,
+      escapeRecoveredAt: nil,
+      escapeRecoveryTakeID: escapeRecoveryTakeID)
   }
 
   /// The text to display — polished if available, otherwise raw.

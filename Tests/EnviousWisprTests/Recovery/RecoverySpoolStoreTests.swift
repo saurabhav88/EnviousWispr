@@ -271,4 +271,262 @@ struct RecoverySpoolStoreTests {
     try store.writeAttemptMarker(for: "lonely-marker")
     #expect(try store.listSpoolSessionIDs().isEmpty, "scan lists only .ewrec spools")
   }
+
+  // MARK: - Escape Recovery marker (#2087)
+
+  @Test("escape marker: round-trips with its clock and take id intact")
+  func escapeMarkerRoundTrips() throws {
+    let store = makeStore()
+    let id = "esc-\(UUID().uuidString)"
+    // A whole number of seconds: the encoder uses ISO8601, which does not carry
+    // sub-second precision, so a `Date()` here would fail on a rounding artefact
+    // and teach nothing about the code.
+    let triggered = Date(timeIntervalSince1970: 1_755_300_000)
+
+    #expect(store.readEscapeMarker(for: id) == .absent, "no marker before one is written")
+
+    try store.writeEscapeMarker(
+      EscapeRecoveryMarker(recoverySessionID: id, triggeredAt: triggered, takeID: "take-7"))
+
+    guard case .valid(let marker) = store.readEscapeMarker(for: id) else {
+      Issue.record("expected a valid marker")
+      return
+    }
+    #expect(marker.recoverySessionID == id)
+    #expect(marker.triggeredAt == triggered, "the user's clock survives the round trip")
+    #expect(marker.takeID == "take-7", "the telemetry join key survives")
+    #expect(marker.version == EscapeRecoveryMarker.currentVersion)
+  }
+
+  /// Each of these is a marker we cannot trust, and every one must read as
+  /// `.malformed` rather than `.absent`.
+  ///
+  /// The distinction is the whole point: `.absent` means "an ordinary crash
+  /// rescue", which produces a PERMANENT History row. A marker that exists but
+  /// cannot be read is positive evidence the take was a cancel, so collapsing it
+  /// into `.absent` would keep a dictation the user deliberately discarded — the
+  /// exact outcome the marker exists to prevent.
+  @Test("escape marker: every untrustworthy shape reads as malformed, never absent")
+  func escapeMarkerFailsClosed() throws {
+    let store = makeStore()
+    let dir = store.directoryURL
+
+    func write(_ id: String, _ bytes: Data) throws {
+      try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      try bytes.write(
+        to: dir.appendingPathComponent(
+          "\(id).\(RecoveryConstants.escapeMarkerFileExtension)"))
+    }
+
+    // 1. Not JSON at all.
+    try write("corrupt", Data("not json".utf8))
+    #expect(store.readEscapeMarker(for: "corrupt") == .malformed)
+
+    // 2. Valid JSON, wrong shape.
+    try write("wrongshape", Data(#"{"hello":"world"}"#.utf8))
+    #expect(store.readEscapeMarker(for: "wrongshape") == .malformed)
+
+    // 3. A version this build does not know. Fails closed rather than guessing
+    //    at fields a future format may have moved or redefined.
+    try write(
+      "future",
+      Data(
+        #"{"version":99,"recoverySessionID":"future","triggeredAt":"2026-08-16T00:00:00Z"}"#.utf8))
+    #expect(store.readEscapeMarker(for: "future") == .malformed)
+
+    // 4. The id inside disagrees with the filename. The filename is the
+    //    authority for WHICH spool this belongs to; honouring the contents would
+    //    apply one session's clock to another session's audio.
+    try write(
+      "mismatch",
+      Data(
+        #"{"version":1,"recoverySessionID":"someone-else","triggeredAt":"2026-08-16T00:00:00Z"}"#
+          .utf8))
+    #expect(store.readEscapeMarker(for: "mismatch") == .malformed)
+  }
+
+  @Test("escape marker: delete is idempotent, and a spool delete takes it too")
+  func escapeMarkerDeletion() async throws {
+    let store = makeStore()
+    let cipher = RecoverySpoolCipher(mode: .aesGcm256, keyData: Self.key())
+    await writeSpool(
+      store: store, sessionID: "delta", cipher: cipher, chunks: [[0.4]], reason: .cleanFinalized)
+    try store.writeEscapeMarker(
+      EscapeRecoveryMarker(recoverySessionID: "delta", triggeredAt: Date()))
+    guard case .valid = store.readEscapeMarker(for: "delta") else {
+      Issue.record("marker should be present before the delete")
+      return
+    }
+
+    // A marker outliving its spool would tell the next launch that audio which
+    // no longer exists was an escape recovery.
+    try store.delete(recoverySessionID: "delta")
+    #expect(store.readEscapeMarker(for: "delta") == .absent, "spool delete cleared the marker")
+
+    // Idempotent — a missing marker is success, not an error.
+    try store.deleteEscapeMarker(for: "delta")
+  }
+
+  /// The repair for "one sidecar deletion failing skips the other".
+  ///
+  /// Chaining the two with `try` looks equivalent and is not: by this point the
+  /// spool is already gone, so nothing will ever rescan that id, and a sidecar
+  /// skipped because its predecessor threw is orphaned permanently.
+  ///
+  /// The attempt marker is made undeletable by being a directory whose contents
+  /// cannot be removed (0500 parent), which leaves the escape marker — an
+  /// ordinary file in the still-writable spool directory — perfectly removable.
+  /// A permissions trick on the spool directory itself would break both and
+  /// prove nothing about the ordering.
+  @Test("a failing sidecar deletion does not prevent the other, and still surfaces")
+  func sidecarDeletionIsAttemptedForBoth() throws {
+    let store = makeStore()
+    let id = "stuck"
+    let fm = FileManager.default
+    try fm.createDirectory(at: store.directoryURL, withIntermediateDirectories: true)
+
+    // An undeletable `<id>.attempt`: a directory with a child, then sealed.
+    let attemptDir = store.directoryURL.appendingPathComponent(
+      "\(id).\(RecoveryConstants.attemptFileExtension)")
+    try fm.createDirectory(at: attemptDir, withIntermediateDirectories: true)
+    try Data([0]).write(to: attemptDir.appendingPathComponent("child"))
+    try fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: attemptDir.path)
+    defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: attemptDir.path) }
+
+    try store.writeEscapeMarker(
+      EscapeRecoveryMarker(recoverySessionID: id, triggeredAt: Date()))
+
+    var threw = false
+    do { try store.delete(recoverySessionID: id) } catch { threw = true }
+
+    #expect(threw, "the failure must surface, not be swallowed")
+    #expect(
+      store.readEscapeMarker(for: id) == .absent,
+      "the escape marker was still attempted after the attempt marker failed")
+  }
+
+  // MARK: - prepareEscapeRecovery, the kernel's one-call connector (#2087)
+
+  @Test("prepare succeeds: the marker is readable afterwards")
+  func prepareEscapeRecoverySucceeds() async throws {
+    let store = makeStore()
+    let cipher = RecoverySpoolCipher(mode: .aesGcm256, keyData: Self.key())
+    await writeSpool(
+      store: store, sessionID: "prep", cipher: cipher, chunks: [[0.2]], reason: .cleanFinalized)
+    let at = Date(timeIntervalSince1970: 1_755_300_000)
+
+    #expect(store.prepareEscapeRecovery(recoverySessionID: "prep", triggeredAt: at, takeID: "t-9"))
+
+    guard case .valid(let marker) = store.readEscapeMarker(for: "prep") else {
+      Issue.record("expected the marker to be committed")
+      return
+    }
+    #expect(marker.triggeredAt == at)
+    #expect(marker.takeID == "t-9")
+    #expect(try store.listSpoolSessionIDs() == ["prep"], "the audio is untouched on success")
+  }
+
+  /// FAIL CLOSED, and this is the assertion that makes the word mean something.
+  ///
+  /// Returning `false` alone would not be enough: a spool left on disk with no
+  /// readable marker is replayed at the next launch as an ordinary crash rescue,
+  /// producing a PERMANENT History row for a dictation the user cancelled. So the
+  /// failure path must also DESTROY the spool — which costs the user exactly what
+  /// pressing cancel already costs them, and is what the caller falls back to.
+  @Test("prepare fails: returns false AND destroys the spool, leaving nothing to replay")
+  func prepareEscapeRecoveryFailsClosed() async throws {
+    let store = makeStore()
+    let cipher = RecoverySpoolCipher(mode: .aesGcm256, keyData: Self.key())
+    await writeSpool(
+      store: store, sessionID: "doomed", cipher: cipher, chunks: [[0.3]], reason: .cleanFinalized)
+
+    // Block the marker write at its FIRST step: the temp path is already a
+    // directory, so `open(…, O_CREAT | O_WRONLY)` fails with EISDIR.
+    //
+    // An earlier version of this test blocked the DESTINATION instead and proved
+    // nothing — macOS `replaceItemAt` happily replaces a non-empty directory with
+    // a file, so the write succeeded and the assertion caught my wrong assumption
+    // about the filesystem rather than a defect. The spool directory itself stays
+    // writable on purpose: sealing it would break the cleanup too, and then the
+    // test could not observe the destruction it exists to check.
+    let tmpBlocker = store.directoryURL.appendingPathComponent(
+      ".doomed.\(RecoveryConstants.escapeMarkerFileExtension).tmp")
+    try FileManager.default.createDirectory(at: tmpBlocker, withIntermediateDirectories: true)
+
+    let ok = store.prepareEscapeRecovery(
+      recoverySessionID: "doomed", triggeredAt: Date(), takeID: nil)
+
+    #expect(ok == false, "the caller must be told to perform an ordinary cancel")
+    #expect(
+      try store.listSpoolSessionIDs() == [],
+      "the spool is destroyed — a survivor with no marker replays as permanent History")
+  }
+
+  /// An interrupted marker write is EVIDENCE, not absence.
+  ///
+  /// `writeEscapeMarker` is temp-then-rename, so a process killed between
+  /// creating `.<id>.escape.tmp` and renaming it leaves the temp file and no
+  /// marker. Reading that as `.absent` says "ordinary dictation", and launch
+  /// replay then saves a take the user CANCELLED as a permanent History row —
+  /// the exact outcome this mechanism exists to prevent, reached through the
+  /// mechanism's own writer.
+  ///
+  /// `.malformed` because the temp file may be half-written by construction, and
+  /// the caller's malformed branch already aborts the replay and discards the
+  /// spool. That costs the user exactly what pressing cancel already costs them.
+  @Test("escape marker: an interrupted write reads as malformed, never absent")
+  func interruptedMarkerWriteIsNotAbsence() throws {
+    let store = makeStore()
+    let tmp = store.directoryURL.appendingPathComponent(
+      ".interrupted.\(RecoveryConstants.escapeMarkerFileExtension).tmp")
+    try Data("{\"partial\":".utf8).write(to: tmp)
+
+    #expect(
+      store.readEscapeMarker(for: "interrupted") == .malformed,
+      "absent would replay a cancelled dictation into permanent History")
+  }
+
+  /// The control: with no temp file and no marker, absence still means absence.
+  /// Without this the guard above could be satisfied by calling everything
+  /// malformed, which would fail closed on every ordinary crash recovery and
+  /// discard text nobody cancelled.
+  @Test("escape marker: a spool with no marker at all is still absent")
+  func noMarkerIsStillAbsent() throws {
+    let store = makeStore()
+
+    #expect(store.readEscapeMarker(for: "ordinary") == .absent)
+  }
+
+  /// The temp file must go when the marker does, or a later read for that id
+  /// fails closed forever on evidence of a recovery whose spool is long gone.
+  @Test("escape marker: deletion clears an interrupted write too")
+  func deletionClearsTheTempMarker() throws {
+    let store = makeStore()
+    let tmp = store.directoryURL.appendingPathComponent(
+      ".stale.\(RecoveryConstants.escapeMarkerFileExtension).tmp")
+    try Data("{\"partial\":".utf8).write(to: tmp)
+
+    try store.deleteEscapeMarker(for: "stale")
+
+    #expect(!FileManager.default.fileExists(atPath: tmp.path))
+    #expect(
+      store.readEscapeMarker(for: "stale") == .absent,
+      "and the id reads clean again, rather than failing closed forever")
+  }
+
+  @Test("escape marker: written 0600 and never listed as a spool")
+  func escapeMarkerPermissionsAndScan() throws {
+    let store = makeStore()
+    try store.writeEscapeMarker(
+      EscapeRecoveryMarker(recoverySessionID: "perm", triggeredAt: Date()))
+
+    #expect(try store.listSpoolSessionIDs().isEmpty, "scan lists only .ewrec spools")
+
+    let url = store.directoryURL.appendingPathComponent(
+      "perm.\(RecoveryConstants.escapeMarkerFileExtension)")
+    let mode =
+      try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions]
+      as? NSNumber
+    #expect(mode?.int16Value == 0o600, "owner-only, matching the attempt marker and the spool")
+  }
 }

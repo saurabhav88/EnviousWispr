@@ -237,6 +237,12 @@ final class PipelineSettingsSync {
       break  // UI-only or cold flag.
     case .crashRecoveryEnabled:
       break  // #1063: read by the recovery wiring at capture start, not the live pipeline.
+    case .escapeRecoveryEnabled:
+      // #2087: deliberately NOT synced live. The value is frozen into
+      // `DictationSessionConfig` at recording start, so a recording always ends
+      // under the rules it began with and a change applies to the NEXT one.
+      // Same classification as `crashRecoveryEnabled` above.
+      break
     case .isDictationAudioArchiveEnabled:
       break  // #1247: kernel pulls this live via `dictationAudioArchiveOptInProvider` — no push needed here.
     case .livePreviewEnabled:

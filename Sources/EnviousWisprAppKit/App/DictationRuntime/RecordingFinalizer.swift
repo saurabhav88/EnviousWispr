@@ -44,12 +44,14 @@ final class RecordingFinalizer {
   var requestStopDispatch: @MainActor (KernelDictationDriver) async throws -> Void = {
     try await $0.handle(event: .requestStop)
   }
-  var cancelRecordingDispatch: @MainActor (KernelDictationDriver) async -> Void = {
-    // #1063 PR2 / #1464 / #1755: the genuine USER cancel path (the cancel
-    // button → `RecordingFinalizer.cancel()`) — attributed `.user` for
-    // provenance; every cancel origin deletes under the discard doctrine.
-    await $0.cancelRecording(disposition: .user)
-  }
+  var cancelRecordingDispatch: @MainActor (KernelDictationDriver, UserCancelTrigger) async ->
+    Void = {
+      // #1063 PR2 / #1464 / #1755: the genuine USER cancel path — attributed
+      // `.user` for provenance; every cancel origin deletes under the discard
+      // doctrine. #2087 carries WHICH control was used, because only the
+      // shortcut is ambiguous enough to be worth recovering from.
+      await $0.cancelRecording(disposition: .user($1))
+    }
 
   /// Read accessor exposed to `RecordingStarter` so the start path's
   /// post-condition wedge guard can detect "user stopped during start"
@@ -93,22 +95,34 @@ final class RecordingFinalizer {
     }
   }
 
-  func cancel() async {
+  /// Cancel, returning whether it was an ABANDONMENT (#2087) — the caller must
+  /// disarm on that, and `CancelAffordancePolicy.isAbandonment` owns why.
+  @discardableResult
+  func cancel(trigger: UserCancelTrigger) async -> Bool {
     TelemetryService.shared.dictationCanceled(
       stage: "recording", reason: "user_cancel", durationSeconds: nil)
-    languageSuggestionPresenter?.clearCurrentChip()
-    languageSuggestionPresenter?.clearBuffer()
+    // Prologue: an ignored cancel still unlocks (RecordingFinalizerCancelPathTests).
     recordingLockedAccess.set(false)
     lastUserStopRequest = ContinuousClock.now
-    recordingOverlay.hide()
     // PR-5 Rung 5 (#827): both backends are kernel drivers now; collapse the
     // WhisperKit-specific cancel branch (which used `handle(.cancelRecording)`
     // and gated on the now-extinct `.startingUp` state) onto the same
     // `cancelRecording()` shape Parakeet uses.
     let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
-    guard active.state == .recording || active.state == .loadingModel else { return }
-    await cancelRecordingDispatch(active)
+    // #2087: abandonment returns at once — no teardown, no terminal await; see policy.
+    if CancelAffordancePolicy.isAbandonment(
+      trigger: trigger, isEscapeRecoveryTranscribing: active.isEscapeRecoveryTranscribing)
+    {
+      active.requestEscapeRecoveryAbandonment()
+      return true
+    }
+    guard active.state == .recording || active.state == .loadingModel else { return false }
+    languageSuggestionPresenter?.clearCurrentChip()
+    languageSuggestionPresenter?.clearBuffer()
+    recordingOverlay.hide()
+    await cancelRecordingDispatch(active, trigger)
+    return false
   }
 
   func markLocked() {

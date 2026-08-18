@@ -110,7 +110,7 @@ struct StatusView: View {
             .foregroundStyle(.stError)
 
             Button {
-              Task { await dictationRuntime.cancelRecording() }
+              Task { await dictationRuntime.cancelRecording(trigger: .cancelButton) }
             } label: {
               HStack(spacing: 4) {
                 // The CONFIGURED cancel key, not a hard-coded "Esc". This label

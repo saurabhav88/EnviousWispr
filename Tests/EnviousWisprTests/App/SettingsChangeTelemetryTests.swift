@@ -73,6 +73,43 @@ import Testing
       #expect(SettingsProjection.value(for: .smartInsertion, settings: settings) == "off")
     }
 
+    /// #2087. Off-to-on is the direction that matters: the feature ships OFF, so
+    /// every real adoption event is this transition, and adoption is the single
+    /// question that decides whether the rest of Escape Recovery earns its keep.
+    ///
+    /// Asserts the logical name and both endpoints, not just that something was
+    /// emitted. Without the endpoints, a projection wired to the wrong setting
+    /// would still emit one `escape_recovery` delta and pass.
+    @Test("Escape Recovery emits one privacy-safe off-to-on delta")
+    func escapeRecoveryDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.escapeRecoveryEnabled = true
+      telemetry.flush()
+
+      let d = deltas(box, setting: "escape_recovery")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "off", "ships off — that is the baseline")
+      #expect(d.first?.stringProps["to"] == "on")
+      #expect(d.first?.stringProps["source"] == "user")
+      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "on")
+    }
+
+    /// The projection must follow the SETTING, not a constant. A value hard-wired
+    /// to "on" would satisfy the delta test above on its `to` assertion alone.
+    @Test("the Escape Recovery projection tracks the setting in both directions")
+    func escapeRecoveryProjectionTracksBothDirections() {
+      let (settings, _, _, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "off")
+      settings.escapeRecoveryEnabled = true
+      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "on")
+      settings.escapeRecoveryEnabled = false
+      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "off")
+    }
+
     // MARK: - #1987 toggle hotkey identity fan-out
 
     @Test("Binding the Globe key emits an identity delta while shape stays a no-op")
@@ -162,6 +199,10 @@ import Testing
       #expect(SettingsProjection.logicals(for: .llmModel) == [.llmModel])
       #expect(SettingsProjection.logicals(for: .ollamaModel) == [.llmModel])
       #expect(SettingsProjection.logicals(for: .selectedBackend).isEmpty)
+      // #2087: exactly one logical, and it is its own. Routing it to a
+      // neighbouring logical would double-count that setting and leave adoption
+      // of this one invisible.
+      #expect(SettingsProjection.logicals(for: .escapeRecoveryEnabled) == [.escapeRecovery])
     }
 
     /// Discriminates the onboarding fan-out: the suppression branch must clear
@@ -223,6 +264,21 @@ import Testing
       // `globe` unconditionally would still pass the Globe case below.
       let atDefault = emitSnapshot()
       #expect(atDefault?.stringProps["toggle_hotkey_identity"] == "right_option")
+
+      // #2087: the standing snapshot must carry the Escape Recovery BASELINE.
+      // Deltas alone cannot reconstruct a user's config query-side — they say
+      // what changed, not where it started — so a setting present in the delta
+      // stream but absent from the snapshot reads as never adopted by anyone who
+      // had it on before the window. Adding `.escapeRecovery` to the snapshot
+      // exclusion set would do exactly that while every delta test stayed green.
+      #expect(
+        atDefault?.stringProps["escape_recovery"] == "off",
+        "the shipped default must appear in the baseline, not only in deltas")
+
+      settings.escapeRecoveryEnabled = true
+      #expect(
+        emitSnapshot()?.stringProps["escape_recovery"] == "on",
+        "the baseline must track the setting, not report a constant")
 
       settings.toggleKeyCode = ModifierKeyCodes.globe
       let afterBind = emitSnapshot()

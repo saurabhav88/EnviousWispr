@@ -2,6 +2,7 @@
 // logic (no network). Run: node --test (from workers/daily-report/)
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import worker, {
   easternYesterdayWindowUTC,
   resolveReportWindow,
@@ -264,6 +265,256 @@ test("adoption section: golden fixture matches the founder-approved report shape
   assert.doesNotMatch(msg, /[–—]/);
   // Nothing degraded on the golden run - no "temporarily unavailable" wording.
   assert.doesNotMatch(msg, /temporarily unavailable/);
+});
+
+// ---- Escape Recovery in the daily report (#2087) --------------------------
+//
+// Founder ask, 2026-08-18: "we should be able to tell post hoc how often this
+// feature is being leveraged. And if for whatever reason it fails, we should
+// know also." The events already reached PostHog and nothing queried them.
+//
+// The first version of this line counted `escape_recovery.started` as "kept",
+// which is false: started fires when a cancel SELECTS recovery, and the take can
+// still end with nothing saved. Cloud review caught it. These rows pin the
+// corrected reading, and the failure row is the one that matters most.
+
+const ER = (over = {}) => ({
+  ...GOLDEN_DATA,
+  escapeRecovery: {
+    attempts: 0, kept: 0, keptUsers: 0, failedTranscription: 0, failedSave: 0,
+    undone: 0, fromHistory: 0, clipboardOnly: 0, ...over,
+  },
+});
+
+test("adoption section: Escape Recovery reports attempts, saves and undos as separate facts", () => {
+  const msg = formatAdoption(ER({ attempts: 9, kept: 7, keptUsers: 3, undone: 4 }), GOLDEN_BUCKETS).join("\n");
+  assert.match(msg, /Escape Recovery: 9 cancelled dictations were held\./);
+  assert.match(msg, /7 were saved for 3 people\./);
+  assert.match(msg, /4 were taken back with Undo\./);
+  assert.doesNotMatch(msg, /the save failed/);
+  assert.doesNotMatch(msg, /pasted later from History/);
+  // Global copy rule: no em-dashes or en-dashes in anything a person reads.
+  assert.doesNotMatch(msg, /[–—]/);
+});
+
+test("adoption section: a save recorded without an attempt in the window still reports", () => {
+  // Reachable across the day boundary: the cancel lands before midnight, the
+  // save after it. Nesting the save inside the attempt clause omitted this
+  // success entirely.
+  const msg = formatAdoption(ER({ kept: 2, keptUsers: 1 }), GOLDEN_BUCKETS).join("\n");
+  assert.match(msg, /Escape Recovery: 2 were saved for 1 person\./);
+  assert.doesNotMatch(msg, /cancelled dictations were held/);
+  assert.doesNotMatch(msg, /0 saved/);
+});
+
+test("adoption section: a History paste is not described as an Undo", () => {
+  // One event, two buttons. The pill says Undo; History says Paste, is reached
+  // minutes or hours later, and its rows stay available afterwards.
+  const msg = formatAdoption(ER({ attempts: 3, kept: 3, keptUsers: 1, fromHistory: 5 }), GOLDEN_BUCKETS).join("\n");
+  assert.match(msg, /5 were pasted later from History\./);
+  assert.doesNotMatch(msg, /taken back with Undo/);
+});
+
+test("adoption section: both restore routes appear, each named for its own button", () => {
+  const msg = formatAdoption(ER({ attempts: 4, kept: 4, keptUsers: 2, undone: 1, fromHistory: 2 }), GOLDEN_BUCKETS).join("\n");
+  assert.match(msg, /1 was taken back with Undo\./);
+  assert.match(msg, /2 were pasted later from History\./);
+});
+
+test("adoption section: a restore with no attempt in the window still reports", () => {
+  // A held row lives 24 hours, so a recovery saved yesterday and undone today
+  // arrives as a restore with no attempt beside it.
+  const msg = formatAdoption(ER({ undone: 3 }), GOLDEN_BUCKETS).join("\n");
+  assert.match(msg, /Escape Recovery: 3 were taken back with Undo\./);
+  assert.doesNotMatch(msg, /cancelled dictations were held/);
+});
+
+test("adoption section: a save failure says text was LOST, and names it a defect", () => {
+  const msg = formatAdoption(ER({ attempts: 5, kept: 3, keptUsers: 2, failedSave: 2 }), GOLDEN_BUCKETS).join("\n");
+  assert.match(msg, /2 were transcribed and then lost when the save failed, which is a defect rather than a user choice\./);
+  assert.doesNotMatch(msg, /could not be transcribed/);
+});
+
+test("adoption section: a transcription failure is NOT described as a failed save", () => {
+  const msg = formatAdoption(ER({ attempts: 4, kept: 2, keptUsers: 1, failedTranscription: 2 }), GOLDEN_BUCKETS).join("\n");
+  assert.match(msg, /2 could not be transcribed at all, so there was never anything to save\./);
+  assert.doesNotMatch(msg, /the save failed/);
+});
+
+test("adoption section: both failure kinds appear, each in its own words", () => {
+  const msg = formatAdoption(
+    ER({ attempts: 6, kept: 2, keptUsers: 1, failedSave: 1, failedTranscription: 3 }), GOLDEN_BUCKETS
+  ).join("\n");
+  assert.match(msg, /1 was transcribed and then lost when the save failed/);
+  assert.match(msg, /3 could not be transcribed at all/);
+});
+
+test("adoption section: a day where every attempt failed still reports", () => {
+  const msg = formatAdoption(ER({ attempts: 4, kept: 0, failedTranscription: 4 }), GOLDEN_BUCKETS).join("\n");
+  assert.match(msg, /4 cancelled dictations were held\./);
+  assert.match(msg, /4 could not be transcribed at all/);
+  assert.doesNotMatch(msg, /were saved for/);
+});
+
+test("adoption section: singular wording throughout when every count is one", () => {
+  const msg = formatAdoption(
+    ER({ attempts: 1, kept: 1, keptUsers: 1, undone: 1, clipboardOnly: 1 }), GOLDEN_BUCKETS
+  ).join("\n");
+  assert.match(msg, /1 cancelled dictation was held\./);
+  assert.match(msg, /1 was saved for 1 person\./);
+  assert.match(msg, /1 was taken back with Undo\./);
+  assert.match(msg, /1 restore could not reach the original app/);
+});
+
+test("adoption section: a day with no recovery activity omits the line entirely", () => {
+  const msg = formatAdoption(ER(), GOLDEN_BUCKETS).join("\n");
+  assert.doesNotMatch(msg, /Escape Recovery/);
+});
+
+// THE CLASS, ENUMERATED MECHANICALLY RATHER THAN ROW BY ROW.
+//
+// Four review rounds each returned a variant of ONE defect: a clause gated on a
+// count that is not measured over the same set of events as the clause's own
+// subject. Every count here is windowed independently, and a held row lives 24
+// hours by design, so ANY of them can be positive while ANY other is zero.
+// Hand-picked rows cover the combinations someone thought of, which is the same
+// blind spot the check exists to cover for.
+//
+// So: drive every count alone, and require the line to render and to name that
+// count's own subject. A future clause that borrows another count's gate fails
+// here without anyone having to imagine the day it breaks.
+const SOLO_COUNTS = [
+  ["attempts", { attempts: 3 }, /3 cancelled dictations were held/],
+  ["kept", { kept: 3, keptUsers: 2 }, /3 were saved for 2 people/],
+  ["undone", { undone: 3 }, /3 were taken back with Undo/],
+  ["fromHistory", { fromHistory: 3 }, /3 were pasted later from History/],
+  ["failedSave", { failedSave: 3 }, /3 were transcribed and then lost when the save failed/],
+  ["failedTranscription", { failedTranscription: 3 }, /3 could not be transcribed at all/],
+  ["clipboardOnly", { clipboardOnly: 3 }, /3 restores could not reach the original app/],
+];
+
+for (const [name, over, expected] of SOLO_COUNTS) {
+  test(`adoption section: '${name}' alone still renders the Escape Recovery line`, () => {
+    const msg = formatAdoption(ER(over), GOLDEN_BUCKETS).join("\n");
+    assert.match(msg, /Escape Recovery:/, `${name} alone must not be swallowed by another count's gate`);
+    assert.match(msg, expected);
+    assert.doesNotMatch(msg, /[–—]/);
+    // No fabricated zeroes from the clauses that did not fire.
+    assert.doesNotMatch(msg, /\b0 /);
+  });
+}
+
+test("adoption section: every recovery column the query asks for reaches the formatter", async () => {
+  // THIRD MECHANISM FOR THIS CHECK, AND THE FIRST THAT IS NOT A TEXT MATCH.
+  //
+  // v1 compared the sweep against a fixture this file maintains, so a column
+  // added to the query and forgotten in the mapping was absent from BOTH sides
+  // and passed. v2 read `adoption.js` as text, and review returned two more
+  // defects of the same kind rather than of the same instance: a future alias
+  // that is a PREFIX of an existing one (`er_kept_user` inside `er_kept_users`)
+  // satisfies a substring check, and a nested object inside the mapping ends the
+  // `},` slice early so later keys become invisible. Both are the mechanism
+  // failing, not the pattern — so the mechanism changed instead of the pattern
+  // being written a third time.
+  //
+  // Names are never compared here. The stub reads the query the code ACTUALLY
+  // sent, answers every column with a value unique to that column, and the
+  // assertion is that each value arrived. A column that is not carried has no
+  // way to smuggle its value through, whatever it is called, however it is
+  // spelled, and whatever the mapping's punctuation looks like.
+  const realFetch = globalThis.fetch;
+  let sentinels = null;
+  globalThis.fetch = async (url, init) => {
+    const target = String(url);
+    if (!target.includes("posthog.com")) return realFetch(url, init);
+    const body = JSON.parse(init.body);
+    const queryName = body.name.replace(/^daily_report_/, "");
+    const sql = body.query.query;
+    // Routed by NAME, and the recovery query identified by `net_dictations`
+    // rather than by a search for "er_" — that substring also appears inside
+    // `tier_a`, which sent an unrelated query down the recovery branch and the
+    // positive control caught it on the first run.
+    if (!sql.includes("net_dictations")) {
+      // The other queries keep exactly the shapes `mockPostHog` gives them, or
+      // this test fails for reasons that have nothing to do with what it checks.
+      if (queryName === "dev_ids") {
+        return new Response(JSON.stringify({ results: [], columns: ["distinct_id"] }), { status: 200 });
+      }
+      if (queryName === "engine_and_tier_b") {
+        return new Response(JSON.stringify({
+          results: [["u1", "parakeet", null]],
+          columns: ["distinct_id", "engine", "tier_b_provider"],
+        }), { status: 200 });
+      }
+      if (queryName === "tier_a") {
+        return new Response(JSON.stringify({
+          results: [["u1", "openai"]], columns: ["distinct_id", "provider"],
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ results: [[0]], columns: ["c"] }), { status: 200 });
+    }
+    // The recovery-bearing query. Read its aliases from what was SENT.
+    const columns = [...sql.matchAll(/\bAS\s+([a-z_]+)/g)].map((m) => m[1]);
+    assert.ok(
+      columns.includes("net_dictations") && columns.some((c) => c.startsWith("er_")),
+      "positive control: the captured query must be the one carrying the recovery columns"
+    );
+    sentinels = new Map();
+    const row = columns.map((col, i) => {
+      // total_users must stay 1 to match the engine query's single row, or the
+      // completeness check downstream throws for an unrelated reason.
+      if (col === "total_users") return 1;
+      const value = 90_000 + i;
+      sentinels.set(col, value);
+      return value;
+    });
+    return new Response(JSON.stringify({ results: [row], columns }), { status: 200 });
+  };
+
+  try {
+    const captured = await fetchAdoption();
+    assert.ok(sentinels, "the recovery query was never issued");
+
+    const carried = captured.data.escapeRecovery;
+    const arrived = new Set(Object.values(carried));
+    const missing = [...sentinels.entries()]
+      .filter(([col]) => col.startsWith("er_"))
+      .filter(([, value]) => !arrived.has(value))
+      .map(([col]) => col);
+
+    assert.deepEqual(
+      missing, [],
+      `declared by the query and never carried to the formatter: ${missing.join(", ")}`
+    );
+
+    // The other direction, so a mapping cannot satisfy this by carrying one
+    // column under several names: as many distinct values as recovery columns.
+    const recoveryColumns = [...sentinels.keys()].filter((c) => c.startsWith("er_"));
+    const distinctCarried = new Set(
+      Object.values(carried).filter((v) => typeof v === "number" && v >= 90_000)
+    );
+    assert.equal(
+      distinctCarried.size, recoveryColumns.length,
+      "each recovery column must arrive exactly once, under one key"
+    );
+
+    // And every carried count must have a solo row in the sweep above.
+    // `keptUsers` is exempt BY DESIGN and stated rather than skipped: it
+    // qualifies the kept clause ("N saved for M people") instead of gating a
+    // clause of its own, so driving it alone has no sentence to produce.
+    const swept = new Set(SOLO_COUNTS.map(([name]) => name));
+    const unswept = Object.keys(carried).filter((k) => k !== "keptUsers" && !swept.has(k));
+    assert.deepEqual(unswept, [], `these counts have no solo row: ${unswept.join(", ")}`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("adoption section: a report predating the feature renders without it, and without throwing", () => {
+  const { escapeRecovery, ...withoutIt } = GOLDEN_DATA;
+  const msg = formatAdoption(withoutIt, GOLDEN_BUCKETS).join("\n");
+  assert.doesNotMatch(msg, /Escape Recovery/);
+  assert.match(msg, /Total users: 110 people used the app that day\./);
 });
 
 test("adoption section: zero-count buckets are omitted, not shown as '(0%)'", () => {

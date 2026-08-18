@@ -147,6 +147,11 @@ enum DictationNarrator {
       return "Polish failed. Using raw text."
     case .historySaveFailed(let reason):
       return "Couldn't save to history: \(reason)"
+    // #2087. States the OUTCOME the user has to act on — the words are gone —
+    // rather than the mechanism, which is a crash-recovery file they never
+    // heard of. No dash characters, per the content rules.
+    case .escapeRecoveryUnavailable:
+      return "Couldn't keep this recording. It was discarded."
     case .salvagedBeginning:
       return "Beginning of dictation was unclear and was skipped"
     case .interruptedTail(let disclosure, let alsoTrimmedLead):
@@ -203,10 +208,28 @@ enum DictationNarrator {
     case .recoverySucceeded: return recoverySucceededText
     case .bluetoothAwareness:
       return "Bluetooth microphone detected. Wait a moment before speaking on a cold start."
+    // #2087: no "Warning: " or "Error: " prefix — nothing went wrong. The
+    // sentence names what happened and the one action, matching the pill's
+    // founder-locked copy (`Transcript cancelled` · Undo). History is named
+    // because a VoiceOver user who misses a 3-second dwell needs the unhurried
+    // door, and the pill must never be the only way back to the text.
+    case .escapeRecovery:
+      return "Transcript cancelled. Press Undo to get it back, or find it in History."
     }
   }
 
   // MARK: - Fixed status-pill + window/badge/sidebar copy (E4, #1569). Byte-identical.
+
+  /// #2087, founder-locked (revised 2026-08-18 after hand-testing the build).
+  ///
+  /// Names the EVENT the user just caused, then offers the reversal. The earlier
+  /// pair — "Recording kept" · Paste — announced our internal outcome and named
+  /// a mechanism; the user's own act was cancelling, and "Undo" is the word for
+  /// taking that back. It also stops the button reading as a second, competing
+  /// paste beside History's, which does something different: History pastes
+  /// wherever you are NOW, this returns the text to where you were dictating.
+  static let escapeRecoveryPillTitle = "Transcript cancelled"
+  static let escapeRecoveryPillAction = "Undo"
 
   static let coldStartTitle = "Getting dictation ready…"
   static func coldStartSubtitle(engineLabel: String) -> String {

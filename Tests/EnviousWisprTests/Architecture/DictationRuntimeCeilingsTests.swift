@@ -15,7 +15,7 @@ import Testing
 ///   the recording-control surface lifted out of the former root state). Non-private
 ///   method cap 0 → 6 — DictationRuntime is now the App-level façade for
 ///   recording commands (`startHotkeyServiceIfEnabled`, `suspendHotkeys`,
-///   `resumeHotkeys`, `toggleRecording(source:)`, `cancelRecording()`,
+///   `resumeHotkeys`, `toggleRecording(source:)`, `cancelRecording(trigger:)`,
 ///   `resetActivePipeline()`). Line cap 100 → 200 to absorb the 7-collab
 ///   field block + 6 façade methods + DR.init body that builds the
 ///   recording subsystem internally (HeartControlRecovery + Finalizer +

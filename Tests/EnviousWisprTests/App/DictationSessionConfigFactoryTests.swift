@@ -73,6 +73,69 @@ struct DictationSessionConfigFactoryTests {
     #expect(next.smartInsertion == false, "the next recording observes the new value")
   }
 
+  /// #2087. Same shape as the smart-insertion freeze above, applied to a setting
+  /// whose value is more visible to the user: it decides whether the cancel
+  /// shortcut destroys a dictation or keeps it.
+  ///
+  /// The asserted contract is predictability, NOT protection, and the direction
+  /// is worth stating exactly because it is easy to get backwards. Freezing
+  /// means a recording that STARTED with the feature on stays recoverable even
+  /// if the user turns it off before cancelling; a live read is what would
+  /// destroy it. The reason to freeze is that a setting changed for the next
+  /// dictation must not silently rewrite the one already running.
+  @Test("Escape Recovery is frozen at recording start by the production factory")
+  func escapeRecoveryFrozenAtRecordingStart() async throws {
+    let harness = try Harness.make(backend: .parakeet)
+    harness.settings.escapeRecoveryEnabled = true
+
+    let captured = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager,
+      kernelDriver: harness.kernelDriver,
+      whisperKitKernelDriver: harness.whisperKitKernelDriver,
+      settings: harness.settings,
+      triggerSource: .pttHotkey
+    )
+
+    // The user turns it OFF mid-dictation — the direction that must not leak.
+    harness.settings.escapeRecoveryEnabled = false
+    let next = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager,
+      kernelDriver: harness.kernelDriver,
+      whisperKitKernelDriver: harness.whisperKitKernelDriver,
+      settings: harness.settings,
+      triggerSource: .pttHotkey
+    )
+
+    #expect(
+      captured.escapeRecoveryEnabled == true,
+      "the in-flight recording keeps the rules it started under")
+    #expect(
+      next.escapeRecoveryEnabled == false,
+      "the next recording observes the new value")
+  }
+
+  /// The factory must READ the setting, not hard-code the default. Without this,
+  /// a factory that simply omitted the argument would inherit
+  /// `DictationSessionConfig`'s `false` default and pass the freeze test above
+  /// on its first assertion by accident.
+  @Test("the factory reads Escape Recovery from settings rather than the type default")
+  func escapeRecoveryComesFromSettingsNotTheTypeDefault() async throws {
+    let harness = try Harness.make(backend: .parakeet)
+    harness.settings.escapeRecoveryEnabled = true
+
+    let config = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager,
+      kernelDriver: harness.kernelDriver,
+      whisperKitKernelDriver: harness.whisperKitKernelDriver,
+      settings: harness.settings,
+      triggerSource: .pttHotkey
+    )
+
+    #expect(
+      config.escapeRecoveryEnabled == true,
+      "a factory that forgot the argument would report the type's false default")
+  }
+
   // MARK: - LLM model resolution
 
   @Test("appleIntelligence resolves to apple-intelligence literal")

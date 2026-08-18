@@ -5,8 +5,8 @@ category: "recording-and-keybinds"
 section: "Recording"
 order: 5
 keywords: ["cancel", "stop without pasting", "throw away", "discard", "escape", "abort", "undo", "didnt mean to record", "delete recording"]
-related: ["recording-won-t-stop-or-seems-stuck"]
-updated: 2026-08-06
+related: ["recording-won-t-stop-or-seems-stuck", "escape-recovery"]
+updated: 2026-08-17
 ---
 If you misspeak, get interrupted, or start recording by accident, you can stop the recording without leaving any text behind. EnviousWispr ends the recording, discards the audio, and leaves your cursor untouched. This works in every recording mode and at any point during a recording.
 
@@ -25,3 +25,9 @@ In hands-free mode, pressing your recording keybind stops the recording and send
 EnviousWispr ends the session entirely. Nothing is transcribed, nothing is pasted into the app you were working in, and no entry is saved to your History. The recording bar disappears from the screen and EnviousWispr returns to waiting, which is how you know the cancellation worked.
 
 You can change the cancel key if you prefer a different keybind. Click the EnviousWispr icon in your menu bar, choose **Settings**, and select **Keybinds**.
+
+### If you would rather keep what you said
+
+Everything above describes how EnviousWispr behaves out of the box. There is an optional setting, **Escape Recovery**, that changes it: with the setting on, your cancel keybind keeps the dictation instead of discarding it, transcribes it, and offers to paste it back. The triple press of your recording keybind does the same. The Cancel button in the recording bar still discards immediately either way.
+
+The setting is off unless you turn it on, in **Settings**, **Keybinds**, under Cancel Recording. [Escape Recovery](/help/escape-recovery/) explains what it changes and what it costs you.

@@ -122,10 +122,77 @@ export function createAdoptionSection(env, context, opts = {}) {
     FROM events
     WHERE event = 'onboarding.completed' AND ${prod} AND ${win}`;
 
+  // Carries Escape Recovery (#2087) as well as the headline totals, in ONE
+  // query. An eighth adoption query would have taken the designed worst case
+  // from 44 outbound requests to 47, inside Cloudflare's cap of 50 but through
+  // the headroom floor the subrequest guard asserts — and that guard is right,
+  // so the query moved rather than the assertion.
+  //
+  // `net_dictations` and `total_users` are unchanged in meaning: `countIf` and
+  // `uniqExactIf` over the same predicate select exactly the set the narrower
+  // WHERE clause used to. The window and the environment filter are shared, so
+  // recovery numbers can never describe a different period from the totals
+  // beside them.
+  //
+  // THE COUNTS COME FROM `completed`, NOT `started`, and that is the difference
+  // between a true sentence and a false one. `started` fires when an eligible
+  // cancel SELECTS recovery; the take can still end with nothing kept, so
+  // counting it as "kept" was simply wrong. `EscapeRecoveryTerminalOutcome`
+  // draws the lines and this query must not redraw them:
+  //   saved                -> a keep, and the only outcome that can offer a pill
+  //   transcription_failed -> broke. A real failure.
+  //   save_failed          -> text existed, the durable write failed. A failure.
+  //   empty                -> no speech in the recording. NOT a failure; the
+  //                           enum says outright there is nothing to apologise for.
+  //   abandoned            -> the user cancelled again. A CHOICE, and the enum
+  //                           says it must never read as a failure in the data.
+  // The two that broke are counted SEPARATELY, because they are not the same
+  // defect and are not equally bad: a transcription failure loses a recording we
+  // never managed to read, while a save failure loses text we HAD and then
+  // dropped. Reporting both as "failed to save" describes the wrong one half the
+  // time. Folding in `empty` or `abandoned` would go further still and
+  // manufacture a failure rate out of people using the feature as designed.
+  //
+  // `er_attempts` rides along because attempts-versus-keeps is its own question,
+  // and a keep count with no denominator answers nothing.
+  // RESTORES ARE SPLIT BY `source`, because one event covers two buttons.
+  // `pill` is the three-second Undo; `history` is the Paste inside History,
+  // which the user reaches minutes or hours later and which reports `.pasted`
+  // unconditionally. Calling both "taken back with Undo" names a button the
+  // person did not press. History rows also stay available after a paste, so
+  // `history` can exceed the number of keeps in the same window — legitimately,
+  // and only confusing if the two are added together.
+  //
+  // `clipboard_only` is a softer signal across both: the original app had gone
+  // or refused focus, so the words reached the clipboard instead of the field.
+  // Still a restore, which is why it is reported apart from a failure rather
+  // than added to one.
   const totalsSql = `
-    SELECT count() AS net_dictations, uniqExact(distinct_id) AS total_users
+    SELECT
+      countIf(event = 'dictation.completed' AND properties.result = 'success')
+        AS net_dictations,
+      uniqExactIf(distinct_id,
+                  event = 'dictation.completed' AND properties.result = 'success')
+        AS total_users,
+      countIf(event = 'escape_recovery.started') AS er_attempts,
+      countIf(event = 'escape_recovery.completed'
+              AND properties.outcome = 'saved') AS er_kept,
+      uniqExactIf(distinct_id, event = 'escape_recovery.completed'
+                  AND properties.outcome = 'saved') AS er_kept_users,
+      countIf(event = 'escape_recovery.completed'
+              AND properties.outcome = 'transcription_failed') AS er_failed_transcription,
+      countIf(event = 'escape_recovery.completed'
+              AND properties.outcome = 'save_failed') AS er_failed_save,
+      countIf(event = 'escape_recovery.restored'
+              AND properties.source = 'pill') AS er_undone,
+      countIf(event = 'escape_recovery.restored'
+              AND properties.source = 'history') AS er_from_history,
+      countIf(event = 'escape_recovery.restored'
+              AND properties.paste_result = 'clipboard_only') AS er_restored_clipboard_only
     FROM events
-    WHERE event = 'dictation.completed' AND properties.result = 'success' AND ${prod} AND ${win}`;
+    WHERE event IN ('dictation.completed', 'escape_recovery.started',
+                    'escape_recovery.completed', 'escape_recovery.restored')
+      AND ${prod} AND ${win}`;
 
   // Engine (row 3) + polish tier-b fallback (row 4) share the same event
   // population, so one query resolves both per user.
@@ -213,6 +280,19 @@ export function createAdoptionSection(env, context, opts = {}) {
         geoDegraded: geoResult.degraded,
         top5: top5Result.degraded ? [] : rowsToObjects(top5Result.response),
         top5Degraded: top5Result.degraded,
+        // Rides on `totals`, which is the fail-loud query — so there is no
+        // separate degraded state to carry. If these are missing, the whole
+        // report failed and nothing is rendered at all.
+        escapeRecovery: {
+          attempts: rowsToObjects(totals)[0]?.er_attempts ?? 0,
+          kept: rowsToObjects(totals)[0]?.er_kept ?? 0,
+          keptUsers: rowsToObjects(totals)[0]?.er_kept_users ?? 0,
+          failedTranscription: rowsToObjects(totals)[0]?.er_failed_transcription ?? 0,
+          failedSave: rowsToObjects(totals)[0]?.er_failed_save ?? 0,
+          undone: rowsToObjects(totals)[0]?.er_undone ?? 0,
+          fromHistory: rowsToObjects(totals)[0]?.er_from_history ?? 0,
+          clipboardOnly: rowsToObjects(totals)[0]?.er_restored_clipboard_only ?? 0,
+        },
       };
 
       // When engineAndTierB itself degraded, activeIds is empty and tier-a is

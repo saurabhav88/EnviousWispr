@@ -168,6 +168,19 @@ enum FinalizingSubStatus: Equatable, Sendable {
 enum KernelDeliveryOutcome: Equatable, Sendable {
   case pasted
   case clipboardOnly
+  /// Delivery ran its epilogue but deliberately wrote nowhere (#2087 Escape
+  /// Recovery). Zero paste count, nil paste result, zero paste duration, and it
+  /// must NEVER map to clipboard fallback.
+  ///
+  /// A third case rather than reusing `.clipboardOnly`, because `.clipboardOnly`
+  /// is a true statement about the clipboard that would be false here, and it
+  /// can raise the clipboard-fallback overlay — telling the user their text is
+  /// on the clipboard when nothing was written to it.
+  ///
+  /// The epilogue still runs. Skipping the delivery closure wholesale is unsafe:
+  /// it owns pipeline-end timing, paste metrics and final metric attachment.
+  /// `.suppressed` means "delivered nothing on purpose", not "did not run".
+  case suppressed
 }
 
 /// The user-visible error surface a terminal state renders (PR-1 §B.1.3).
@@ -272,8 +285,42 @@ final class RecordingSessionKernel {
   private let processText:
     @MainActor (_ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void)
       async throws -> String
-  private let store: @MainActor (_ text: String, _ transcriptID: UUID) async throws -> Void
-  private let deliver: @MainActor (_ text: String) async -> KernelDeliveryOutcome
+  private let store:
+    @MainActor (_ text: String, _ transcriptID: UUID, _ disposition: FinalizationDisposition)
+      async throws -> Void
+  private let deliver:
+    @MainActor (_ text: String, _ disposition: FinalizationDisposition) async ->
+      KernelDeliveryOutcome
+  /// #2087: commit this session's spool to Escape Recovery, or fail closed.
+  ///
+  /// Injected like `store` and `deliver` — the kernel owns WHEN a session's
+  /// provenance is committed, never HOW it is written. Its one caller is
+  /// `prepareEscapeRecoveryIfNeeded`, from the `.cancel` arm.
+  private let prepareEscapeRecovery: PrepareEscapeRecovery
+  /// #2087: fired the instant the recovery branch commits, with the ASR
+  /// backend, the polish provider and how long the user had been speaking.
+  ///
+  /// Emitted HERE rather than at the terminal because it is the START of the
+  /// funnel: a recovery that never finishes — the app quits, the decode dies —
+  /// must still be counted as having been attempted, or the completion rate is
+  /// measured against a denominator that quietly excludes its own failures.
+  /// #2087 Q4: this take had Escape Recovery switched ON and could not keep it.
+  ///
+  /// A LATCH the driver projects, not a notice this object pushes. An earlier
+  /// draft called an injected `overlay.show` here, one line before
+  /// `finishTerminal(.cancelled)`; the terminal's own state observation then
+  /// planned `.showOverlay(.hidden)` and `.cancelPendingWarning`, so the
+  /// sentence was replaced before it could be read. Ordering is no defence,
+  /// because that observation runs in a `Task` and wins from either side.
+  ///
+  /// Session-scoped and cleared in `resetSessionState()`, like every other fact
+  /// about the take that is finishing.
+  private(set) var escapeRecoveryUnavailable = false
+  private let escapeRecoveryStartedTelemetry:
+    @MainActor (
+      _ asrBackend: String, _ polishProvider: String, _ recordingDurationMs: Int,
+      _ takeID: String
+    ) -> Void
 
   // MARK: Wedge-detection tuning
 
@@ -869,8 +916,16 @@ final class RecordingSessionKernel {
     processText: @escaping @MainActor (
       _ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void
     ) async throws -> String,
-    store: @escaping @MainActor (_ text: String, _ transcriptID: UUID) async throws -> Void,
-    deliver: @escaping @MainActor (_ text: String) async -> KernelDeliveryOutcome,
+    store: @escaping @MainActor (
+      _ text: String, _ transcriptID: UUID, _ disposition: FinalizationDisposition
+    ) async throws -> Void,
+    deliver: @escaping @MainActor (
+      _ text: String, _ disposition: FinalizationDisposition
+    ) async -> KernelDeliveryOutcome,
+    prepareEscapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
+    escapeRecoveryStartedTelemetry: @escaping @MainActor (String, String, Int, String) -> Void = {
+      _, _, _, _ in
+    },
     engineMutationScope: EngineMutationScope,
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
@@ -914,6 +969,8 @@ final class RecordingSessionKernel {
     self.processText = processText
     self.store = store
     self.deliver = deliver
+    self.prepareEscapeRecovery = prepareEscapeRecovery
+    self.escapeRecoveryStartedTelemetry = escapeRecoveryStartedTelemetry
     self.engineMutationScope = engineMutationScope
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks
@@ -1034,18 +1091,142 @@ final class RecordingSessionKernel {
     }
   }
 
+  /// Provenance of the cancel that ACTUALLY ended this session (#2087). Inert
+  /// in chunk 2: latched here and read by nothing.
+  ///
+  /// Two properties, both load-bearing for chunk 7, which branches on this to
+  /// decide whether a cancelled take is recoverable:
+  ///
+  /// - **Accepted-only.** A cancel the kernel ignores (`.idle`, the safe point,
+  ///   `.arming` behind a latched exit) leaves it untouched. Recording every
+  ///   REQUEST would let an ignored late cancel rewrite the provenance of the
+  ///   real one.
+  /// - **First-wins.** More than one cancel can be accepted across an exit
+  ///   (`.live` then `.stopping`), and internal fault paths call `cancel()` with
+  ///   the `.systemOrFault` default during teardown. Without the latch a user's
+  ///   genuine shortcut cancel could be overwritten by a system cancel arriving
+  ///   behind it, and chunk 7 would silently decline to offer recovery.
+  ///
+  /// Both are cleared per session in `resetSessionState()`.
+  private(set) var lastCancelOrigin: RecordingCancelOrigin = .systemOrFault
+  private var cancelOriginLatched = false
+
+  /// What the session that is finishing IS (#2087). See `FinalizationDisposition`
+  /// for why this is kernel-owned rather than read at delivery.
+  ///
+  /// Session-scoped and reset in `resetSessionState()`. `.ordinary` for every
+  /// take unless the frozen setting is on AND the cancel came from the shortcut.
+  /// `.abandonedEscapeRecovery` is reachable only from `.escapeRecovery`, which
+  /// is why abandonment cannot fire on an ordinary cancel by mistake.
+  private(set) var finalizationDisposition: FinalizationDisposition = .ordinary
+
+  /// Conclude an abandoned Escape Recovery, if this session is one (#2087).
+  ///
+  /// Called at EVERY point where a decode can return, not only before
+  /// `runFinalizing`. A single pre-finalizing check would cover the
+  /// successful-transcript path and miss three others — the empty, no-speech and
+  /// failed routes — each of which could otherwise run further ASR work after the
+  /// user asked for none, or conclude under an outcome that misreports a
+  /// deliberate abandonment as `asr_empty_despite_audio`, `no_speech` or `failed`.
+  ///
+  /// Every call site sits AFTER the existing `isCurrent(sid) && recordingOutcome
+  /// == nil` currency guard and BEFORE the decode result is inspected or
+  /// recorded, so an abandoned session never stamps telemetry for work its user
+  /// disowned.
+  ///
+  /// Returns whether it concluded, so callers can `guard` and return.
+  @discardableResult
+  private func finishAbandonedEscapeRecoveryIfNeeded(_ sid: SessionID) -> Bool {
+    guard case .abandonedEscapeRecovery = finalizationDisposition else { return false }
+    // `.cancelled` and not a failure: the user chose this. Reporting it as a
+    // fault would make a working feature look broken in the data.
+    finishTerminal(.cancelled, sid: sid)
+    return true
+  }
+
+  /// Make this take survive a crash as a PENDING row, if it can (#2087).
+  ///
+  /// Without a marker, a crash after the keypress but before finalization lets
+  /// launch replay save a permanent `isRecovered` transcript with no expiry —
+  /// outside anything the toggle disclosed.
+  ///
+  /// **A missing `recoverySessionID` is NOT a failure.** With crash recovery
+  /// disabled there is no spool to mark, so there is nothing to write and
+  /// nothing to fail; the take proceeds and simply carries the documented lack
+  /// of crash survival, exactly as an ordinary dictation does. Treating nil as
+  /// failure would silently disable Escape Recovery for every user who turned
+  /// crash recovery off — a whole population losing a feature they enabled,
+  /// with no message and no telemetry to explain it.
+  ///
+  /// A FAILED WRITE for a spool that does exist fails closed: the closure has
+  /// already removed the spool and its sidecars, and the caller performs today's
+  /// ordinary destructive cancel. That costs the user exactly what pressing
+  /// cancel already costs them, and never leaves a spool a later launch would
+  /// replay into permanent History.
+  ///
+  /// **KNOWN LIMIT, and it is SYMMETRIC with the destructive cancel rather than
+  /// introduced here (cloud review, 2026-08-18).** The marker is written on this
+  /// branch, which runs in the task `deliverRecordingExit(.cancel)` resumes — so
+  /// a process killed between the keypress being accepted and that task running
+  /// leaves an unmarked spool, and the next launch replays it as an ordinary
+  /// crash rescue into permanent History.
+  ///
+  /// Not fixed by writing the marker at the keypress instead, because that trades
+  /// one wrong outcome for another: the branch below can still REFUSE (a marker
+  /// write that fails for a real spool falls closed to the destructive cancel),
+  /// and a marker already on disk would then resurrect a deliberately destroyed
+  /// take as a pending row.
+  ///
+  /// The same window already governs an ordinary cancel, which deletes its spool
+  /// from the terminal's ending callback — also after the keypress, also
+  /// asynchronously — so a crash in that gap has always been able to replay a
+  /// cancelled dictation. This feature does not widen it. What the marker
+  /// protects is the LONG window this feature actually adds: the whole transcribe
+  /// and polish run, which is seconds to minutes rather than the sub-millisecond
+  /// gap between accepting a keypress and draining an exit.
+  ///
+  /// - Returns: whether Escape Recovery may proceed.
+  private func prepareEscapeRecoveryIfNeeded(triggeredAt: Date) -> Bool {
+    guard let recoverySessionID = sessionConfig?.recoverySessionID else { return true }
+    return prepareEscapeRecovery(recoverySessionID, triggeredAt, telemetryState.takeID)
+  }
+
+  /// Record the origin of an ACCEPTED cancel, once. Called from each accepting
+  /// arm of `cancel(origin:)` rather than at its top, so acceptance is decided
+  /// in exactly one place and cannot drift from a second copy of the rules.
+  private func latchCancelOrigin(_ origin: RecordingCancelOrigin, at now: Date = Date()) {
+    guard !cancelOriginLatched else { return }
+    cancelOriginLatched = true
+    lastCancelOrigin = origin
+    // #2087: the KEYPRESS instant, latched here rather than read at the exit.
+    // The exit is drained asynchronously, so a `Date()` taken there would start
+    // the user's 24-hour window late by however long the drain took — and the
+    // whole promise is that the window starts when they pressed cancel.
+    lastCancelAt = now
+  }
+
+  /// When the accepted cancel was requested. Session-scoped, reset with the
+  /// origin latch it accompanies.
+  private var lastCancelAt = Date()
+
   /// Cancel. Before the safe point it routes to `cancelled`; inside
   /// `delivering(.finalizing(_))` it is ignored — the safe point is inviolable
   /// (PR-1 §B.1.4 invariant 5); elsewhere ignored (#1548 D1).
-  func cancel() {
+  func cancel(origin: RecordingCancelOrigin = .systemOrFault) {
+    // #2087: provenance is latched inside each accepting arm rather than at the
+    // top, so acceptance is decided in one place. The recording-exit branch
+    // later requires BOTH the frozen setting and `.user(.shortcut)`; latching
+    // here keeps that decision a pure read with no plumbing of its own.
     switch state {
     case .live:
+      latchCancelOrigin(origin)
       deliverRecordingExit(.cancel)
     case .arming:
       // First-wins (Codex code-diff P2): a latched capture failure wins; a cancel
       // arriving afterward is fully inert, including `detachedAdapterCancel()` (see
       // `requestStop`).
       guard !recordingExitLatched else { return }
+      latchCancelOrigin(origin)
       cancelRequested = true
       detachedAdapterCancel()
       // The forward path's checkpoint consumes `cancelRequested` and concludes
@@ -1058,12 +1239,36 @@ final class RecordingSessionKernel {
       // path drops its in-flight `stopCapture()` / `finalize()` result when it
       // returns (`recordingOutcome != nil`). `stopping` is included so a cancel
       // during a slow capture-stop is not lost (Codex P2).
+      latchCancelOrigin(origin)
       finishTerminal(.cancelled, sid: currentSessionID)
     case .delivering:
       switch deliveringPhase {
       case .transcribing:
-        // Before the transcript is in hand — cancel honored (§5.2).
-        finishTerminal(.cancelled, sid: currentSessionID)
+        latchCancelOrigin(origin)
+        // #2087: what a cancel MEANS here depends on what this session is.
+        switch finalizationDisposition {
+        case .ordinary:
+          // Before the transcript is in hand — cancel honored (§5.2). Unchanged.
+          finishTerminal(.cancelled, sid: currentSessionID)
+        case .escapeRecovery(let triggeredAt):
+          // A second cancel during a recovery abandons the OUTPUT, and cannot
+          // abandon the WAIT. Adapter cancellation invalidates the generation so
+          // a late result cannot mutate the next session, but the decode itself
+          // keeps running (`ASREngineAdapter` recoverFromASRInterruption /
+          // cancel contract). Concluding here would free the FSM while that
+          // decode still owns the single ASR engine, so a new recording could
+          // start on top of it — the two-decodes-one-engine hazard, reached by a
+          // path the user never consented to. So: mark, stay busy, and let the
+          // decode's own return points conclude the session.
+          finalizationDisposition = .abandonedEscapeRecovery(triggeredAt: triggeredAt)
+          log("escape recovery abandoned by user — staying busy until the decode returns")
+          bump()
+        case .abandonedEscapeRecovery:
+          // Idempotent. A user pressing Escape a third time is asking for
+          // something already granted, and re-marking would be a no-op that
+          // reads like a second event in the logs.
+          log("cancel ignored — escape recovery already abandoned")
+        }
       case .finalizing:
         log("cancel ignored — safe point (transcript in hand)")
       }
@@ -1489,6 +1694,52 @@ final class RecordingSessionKernel {
     // and stops capture — no per-exit `adapter.cancel()` needed here.
     switch exit {
     case .cancel:
+      // #2087 ACTIVATION. Everything chunks 1-11 built is inert until this
+      // branch chooses it.
+      //
+      // TWO conditions, and both are deliberate. The setting is read from the
+      // FROZEN session config, never live `SettingsManager` state, so toggling
+      // mid-recording affects the next recording and not this one. The trigger
+      // must be the SHORTCUT: a click on a button labelled Cancel is
+      // unambiguous intent to destroy, while a press of a key people also use
+      // to dismiss popovers is not.
+      if sessionConfig?.escapeRecoveryEnabled == true,
+        lastCancelOrigin == .user(.shortcut)
+      {
+        guard prepareEscapeRecoveryIfNeeded(triggeredAt: lastCancelAt) else {
+          // Q4, adjudicated: SURFACED, not silent. With the toggle on the user
+          // is expecting a recovery, so saying nothing lets them believe one
+          // happened. Still fails closed to the ordinary destructive cancel
+          // below — the notice explains the outcome, it does not change it.
+          escapeRecoveryUnavailable = true
+          finishTerminal(.cancelled, sid: sid)
+          return
+        }
+        finalizationDisposition = .escapeRecovery(triggeredAt: lastCancelAt)
+        log("escape recovery: keeping this take, running the ordinary pipeline")
+        // The funnel's first event, fired at the DECISION rather than at the
+        // terminal. A recovery that never finishes still has to appear in the
+        // denominator, or the completion rate is measured against a population
+        // that silently excludes the failures worth knowing about.
+        if let takeID = telemetryState.takeID {
+          // Computed from the start tick directly, NOT via
+          // `recordingElapsedSeconds`, which is gated on `state == .live` — and
+          // by the time this exit is drained the state has already moved on, so
+          // that accessor returns nil here and every recovery would report a
+          // length of zero.
+          let elapsedTicks = recordingStartedAtTick.map { currentTick() &- $0 } ?? 0
+          escapeRecoveryStartedTelemetry(
+            adapter.engineIdentity.backendType.rawValue,
+            sessionConfig?.llmProvider.rawValue ?? "none",
+            Int(
+              TimeInterval(elapsedTicks) * KernelFinalizationWiring.tickDurationSeconds * 1000),
+            takeID)
+        }
+        // FALL THROUGH to the stop tail, exactly as `.audioInterruption` does
+        // below. The take is transcribed and polished normally; only storage
+        // and delivery differ, and both read the disposition just set.
+        break
+      }
       finishTerminal(.cancelled, sid: sid)
       return
     case .audioInterruption:
@@ -2218,6 +2469,10 @@ final class RecordingSessionKernel {
     }
     let outcome = await finalize(sid, batchSamples: asrSamples)
     guard isCurrent(sid), recordingOutcome == nil else { return }
+    // #2087: before ASR timing and before the outcome switch, so an abandoned
+    // recovery neither stamps latency for a decode its user disowned nor takes
+    // any of the branches below.
+    guard !finishAbandonedEscapeRecoveryIfNeeded(sid) else { return }
     let asrEnd = CFAbsoluteTimeGetCurrent()
     markASRTimingEnd()
 
@@ -2377,16 +2632,38 @@ final class RecordingSessionKernel {
         adapter.capabilities.decodesConditionedBatchSamples, !asrSamples.isEmpty
       {
         let salvageAttemptResult = await attemptDegradedLeadSalvage(sid, samples: asrSamples)
-        // #1434 cloud review: the ladder's retry decode(s) run AFTER the
-        // line-1376 markASRTimingEnd() call for the (empty) primary decode,
-        // so a salvaged completion needs its own, later stamp — otherwise
-        // pipeline.completed's asr_s and the timing logs record only the
-        // primary decode's time, making the retry work invisible in
-        // latency telemetry for exactly the recoveries this path exists
-        // for. Idempotent: outcome.asrEndedAtSeconds is a plain overwrite.
+        // The ladder AWAITED, so this session may no longer be the live one —
+        // and the guard has to come before the stamp, not inside the success
+        // arm below.
+        //
+        // This is the same defect #1725's cloud review fixed on the Phase-2
+        // retry path, in the one place that fix did not reach.
+        // `markASRTimingEnd()` writes into the kernel's single shared
+        // `KernelFinalizationOutcome`, not a per-session value, so a stale
+        // session's ladder resolving after a NEW session has started and
+        // stamped its own `asrStartedAtSeconds` overwrites the LIVE session's
+        // `asrEndedAtSeconds` with a stale timestamp — corrupting the next
+        // dictation's ASR latency even though its own terminal stays correct.
+        // Only the current session's telemetry ever reads the field, so
+        // stamping once currency is confirmed loses nothing for the live case
+        // and closes the cross-session write for the stale one.
+        //
+        // Unconditional, covering BOTH arms of the split below. The previous
+        // copy lived only inside `if let salvaged`, leaving the `nil` arm — a
+        // ladder that found nothing — entirely unguarded.
+        guard isCurrent(sid), recordingOutcome == nil else { return }
+        // #2087: the abandonment check sits between the guard and the stamp, so
+        // a take the user disowned records no salvage latency either.
+        guard !finishAbandonedEscapeRecoveryIfNeeded(sid) else { return }
+        // #1434 cloud review: the ladder's retry decode(s) run AFTER the primary
+        // decode's own `markASRTimingEnd()`, so a salvaged completion needs its
+        // own, later stamp — otherwise `pipeline.completed`'s `asr_s` and the
+        // timing logs record only the primary decode's time, making the retry
+        // work invisible in latency telemetry for exactly the recoveries this
+        // path exists for. Idempotent: `outcome.asrEndedAtSeconds` is a plain
+        // overwrite.
         markASRTimingEnd()
         if let salvaged = salvageAttemptResult {
-          guard isCurrent(sid), recordingOutcome == nil else { return }
           let trimMs = salvaged.trimSamples * 1000 / Int(AudioConstants.sampleRate)
           lastSalvagedLeadTrimMs = trimMs
           var completed = KernelASRCompletedTelemetry(
@@ -2411,10 +2688,9 @@ final class RecordingSessionKernel {
           #endif
           await runFinalizing(sid, asrText: salvaged.result.text, transcriptID: transcriptID)
           salvageDelivered = true
-        } else {
-          // The ladder awaited — a supersede/cancel during it owns the session.
-          guard isCurrent(sid), recordingOutcome == nil else { return }
         }
+        // (The `else` arm's own currency guard is gone: the unconditional one
+        // above covers both arms, and having it in only one arm was the bug.)
       }
       if !salvageDelivered {
         if !effectiveSpeechEvidence {
@@ -2521,6 +2797,11 @@ final class RecordingSessionKernel {
       // only once currency is confirmed loses nothing for the live case
       // and eliminates the cross-session write for the stale one.
       guard isCurrent(sid), recordingOutcome == nil else { return }
+      // #2087: before `markASRTimingEnd()`, for the same reason the primary
+      // decode's check is — the retry's latency belongs to work the user asked
+      // to discard, and the `.failed(.asrFailed)` branch just below would
+      // otherwise report a deliberate abandonment as a retry failure.
+      guard !finishAbandonedEscapeRecoveryIfNeeded(sid) else { return }
       markASRTimingEnd()
       // A TIMEOUT (`nil`) is not a confirmed second failure — `.attempted`
       // remains the honest diagnostic that no decode conclusion was accepted
@@ -2740,6 +3021,12 @@ final class RecordingSessionKernel {
   /// `.delivering`; the sub-phase advances to `.finalizing(_)`, which is what
   /// `isLegalConclusion` reads to enforce the safe point (#1548 D1).
   private func runFinalizing(_ sid: SessionID, asrText: String, transcriptID: UUID) async {
+    // #2087: the FIRST statement, before `deliveringPhase` becomes `.finalizing`.
+    // One line later the safe point is in force and cancel is ignored, so this is
+    // the last instant an abandonment can still be honoured — and honouring it
+    // here means no partial row and no orphaned payload can exist, because the
+    // session concludes while still legally `.delivering(.transcribing)`.
+    guard !finishAbandonedEscapeRecoveryIfNeeded(sid) else { return }
     deliveringPhase = .finalizing(.transcribing)
     bump()
 
@@ -2788,7 +3075,10 @@ final class RecordingSessionKernel {
     transcriptReadyForDelivery = true
 
     do {
-      try await store(processed, transcriptID)
+      // The disposition is read HERE, at the storage step, because storage
+      // runs before delivery and a flag consulted at delivery would arrive
+      // after the row was already written to permanent History.
+      try await store(processed, transcriptID, finalizationDisposition)
     } catch {
       // #1167: the history save is best-effort — `store` absorbs storage
       // failures internally (records them on the finalization outcome +
@@ -2799,7 +3089,7 @@ final class RecordingSessionKernel {
     }
     guard isCurrent(sid) else { return }
 
-    let result = await deliver(processed)
+    let result = await deliver(processed, finalizationDisposition)
     guard isCurrent(sid) else { return }
     deliveredTranscript = processed
     deliveryOutcome = result
@@ -3557,7 +3847,7 @@ final class RecordingSessionKernel {
   /// up. (Since #1755 neither question decides retention.)
   ///
   /// `.cancelled` is NEVER floored: an explicit user cancel is honored, and
-  /// its provenance belongs to the driver's `pendingCancelOrigin` (both
+  /// its provenance belongs to this kernel's latched `lastCancelOrigin` (both
   /// origins delete under #1755). Every other `.failed(reason)` (`.asrEmpty`,
   /// `.asrFailed`, `.captureStartFailed`, `.modelLoadFailed`) keeps its own
   /// honest reason.
@@ -3799,7 +4089,11 @@ final class RecordingSessionKernel {
       outcome: outcome,
       // COPIED, never measured here. Populated at its producer (§G5); nil for
       // every take that is not signal-free.
-      signalAttribution: telemetryState.signalAttribution
+      signalAttribution: telemetryState.signalAttribution,
+      // #2087: read from the kernel's own disposition, the same field that
+      // decided whether to hold the text. Deriving it here from the outcome
+      // would be a second opinion that can disagree with the first.
+      deliveryDisposition: finalizationDisposition.isEscapeRecovery ? .escapeRecovery : .ordinary
     )
     defer { sessionTerminalTelemetry(terminalSnapshot) }
 
@@ -3959,6 +4253,18 @@ final class RecordingSessionKernel {
   private func resetSessionState() {
     stopLatched = false
     cancelRequested = false
+    // #2087: a stale origin must not leak into the next take, and the latch
+    // must clear with it — otherwise the first session's provenance would win
+    // forever and every later take would read as that one's cancel.
+    lastCancelOrigin = .systemOrFault
+    cancelOriginLatched = false
+    // #2087: the disposition describes THIS take. Leaking it forward would make
+    // the next session inherit an abandonment the user never requested, and the
+    // abandonment checks would then conclude it `.cancelled` mid-decode.
+    finalizationDisposition = .ordinary
+    // #2087: likewise the unavailable latch, or the next ordinary cancel would
+    // display a failure belonging to a take that already ended.
+    escapeRecoveryUnavailable = false
     recordingExitContinuation = nil
     pendingRecordingExit = nil
     recordingExitLatched = false
@@ -4168,6 +4474,15 @@ final class RecordingSessionKernel {
       let retry = await finalize(sid, batchSamples: Array(samples[trim...]))
       guard isCurrent(sid), recordingOutcome == nil else {
         telemetryState.asrEmptyDiagnostics?.salvageAbortedReason = "superseded"
+        return nil
+      }
+      // #2087: returns `nil` rather than concluding, because this helper's
+      // caller owns the terminal — concluding here would conclude twice. A
+      // distinct reason so an abandoned ladder is separable from a superseded
+      // one: the two look identical in the outcome and mean opposite things
+      // about whether anything went wrong.
+      if case .abandonedEscapeRecovery = finalizationDisposition {
+        telemetryState.asrEmptyDiagnostics?.salvageAbortedReason = "user_abandoned"
         return nil
       }
       switch retry {
@@ -4422,6 +4737,31 @@ final class RecordingSessionKernel {
     /// #1548 D1 test seam — set the FSM state directly to one of the 5 cases
     /// (no legality check), for consumer-mapping tests that need a specific
     /// in-flight state without driving the forward path.
+    /// #2087 test seam — enter a disposition without driving a whole recovery.
+    ///
+    /// The production setter is the cancel arm, and it is exercised end to end by
+    /// `EscapeRecoveryActivationTests`. This seam exists for the consumers of the
+    /// disposition — the five decode-return abandonment checks, and the driver's
+    /// completion capture — which each need a session already IN a disposition
+    /// and would otherwise have to stage a full recording to reach one.
+    func testSetFinalizationDisposition(_ disposition: FinalizationDisposition) {
+      finalizationDisposition = disposition
+      bump()
+    }
+
+    /// #2087 test seam — stage the "could not keep this recording" latch.
+    ///
+    /// Its production setter is the marker-failure arm of the cancel branch,
+    /// covered by `EscapeRecoveryActivationTests`. This seam is for the OTHER
+    /// half: the driver projects the latch into an overlay intent, and that
+    /// projection is what the user actually sees. Asserting the latch alone
+    /// would pass with the projection deleted, which is the difference between a
+    /// flag being set and a person being told.
+    func testSetEscapeRecoveryUnavailable(_ value: Bool) {
+      escapeRecoveryUnavailable = value
+      bump()
+    }
+
     func testForceState(_ next: RecordingSessionState) {
       state = next
       bump()

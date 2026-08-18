@@ -371,19 +371,44 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   private var lastEndedWithoutSaveSessionID: SessionID?
 
-  /// #1063 PR2 / #1464 — the origin attributed to the CURRENT session's
-  /// `.cancelled` terminal. `.cancelled` is reached by BOTH a genuine user cancel
-  /// (`RecordingFinalizer.cancel()` → `cancelRecording(disposition: .user)`) AND
-  /// fault/system cancels that route through `kernel.cancel()` (active
-  /// `reset()`, `setTerminalReason()`). PROVENANCE only (#1755): both origins
-  /// delete at the coordinator; the distinction feeds diagnostics and copy.
-  /// Defaults to `.systemOrFault` so a cancel NOT explicitly attributed as a
-  /// user discard never masquerades as one. Set at the `cancelRecording` call
-  /// site, consumed + reset at the `.cancelled` signal fire, and reset on
-  /// each new session start. Projected into
-  /// `RecordingRecoveryEnding.cancelled(_)` for the coordinator's predicate.
+  /// #2087 — the one-shot handoff for a concluded Escape Recovery.
+  ///
+  /// It exists because the route the pill has to travel is hostile to it.
+  /// `clearContextConfigIfTerminalOrIdle()` nils `context.config`,
+  /// `context.targetApp` and `context.targetElement` on its `.idle` arm, and it
+  /// runs BEFORE `onStateChange` fires; anything reading them during the
+  /// callback finds nothing. So the completion is frozen on this side of the
+  /// clear and read synchronously on the other, and `onStateChange` keeps its
+  /// signature.
+  ///
+  /// **Nothing writes it in production yet**, and the sentence above is the
+  /// ordering whoever writes it must satisfy: capture before
+  /// `clearContextConfigIfTerminalOrIdle()`, not after. `.saved` is written only
+  /// once the pending row is durable. A `.saved` completion in
+  /// particular cannot be built until a durable row exists to point at, so its
+  /// producer lands with the storage path rather than with the cancel branch.
+  ///
+  /// Consumed with `take()`, never read: the callback can fire more than once
+  /// per session, and a plain read would offer the user their text again on
+  /// every later notification.
   @ObservationIgnored
-  private var pendingCancelOrigin: RecordingCancelOrigin = .systemOrFault
+  private let escapeRecoveryCompletion = EscapeRecoveryCompletionSlot()
+  /// Dedupes the production capture, which the state observation re-runs on
+  /// every transition. Separate from the CLEAR latch: they answer different
+  /// questions and sharing one would make the first capture clear itself.
+  private var escapeRecoveryCaptureSessionID: SessionID?
+
+  /// The session the slot's contents belong to, so a completion nobody consumed
+  /// cannot surface against a later, unrelated dictation. Tracked here rather
+  /// than reusing `lastEndedWithoutSaveSessionID`: that one latches at a
+  /// CONCLUSION, and this must clear at a session's START.
+  ///
+  /// Seeded from the kernel at construction rather than left `nil`, so the guard
+  /// means exactly "the session changed" from the first observation onward. A
+  /// `nil` seed would count construction itself as a change and spend the first
+  /// clear on nothing.
+  @ObservationIgnored
+  private var escapeRecoveryCompletionSessionID: SessionID
 
   /// Fired by the finalizing-sub-status observer (`observeDisplayOnlyOverlay`)
   /// whenever the overlay's intent should refresh because of a `.transcribing`
@@ -442,6 +467,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     self.lastFiredState = Self.pipelineState(
       for: kernel.state, outcome: kernel.recordingOutcome, externalReason: nil)
     self.lastEndedWithoutSaveSessionID = nil
+    self.escapeRecoveryCompletionSessionID = kernel.currentSessionID
   }
 
   /// Cold-boot warm-up coordinator (#879). The SINGLE shared entry every warm-up
@@ -682,6 +708,29 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   // MARK: Caller-visible signals
 
+  /// Is an Escape Recovery transcription running right now (#2087)?
+  ///
+  /// The ONLY thing AppKit learns about the kernel's `FinalizationDisposition`.
+  /// A capability, not an identity: callers ask "may the cancel affordance stay
+  /// live", never "which disposition is this" or "which backend is running".
+  /// Publishing the disposition itself would widen the public surface for no
+  /// consumer, and would invite policy code to branch on a literal.
+  ///
+  /// **`.abandonedEscapeRecovery` answers `false`, and that is the whole point of
+  /// asking a capability rather than an identity.** A decode is still running
+  /// then, so the identity question "is this an escape recovery" would say yes —
+  /// but there is no longer anything to recover, and the affordance this gates
+  /// must be gone. A caller branching on the disposition itself would have to
+  /// remember that; a caller asking this cannot get it wrong.
+  ///
+  /// `false` for every take the setting is off for, which is the default: the
+  /// disposition only leaves `.ordinary` when a cancel takes the recovery
+  /// branch, and that branch reads the frozen setting.
+  public var isEscapeRecoveryTranscribing: Bool {
+    guard case .escapeRecovery = kernel.finalizationDisposition else { return false }
+    return kernel.deliveringPhase == .transcribing
+  }
+
   /// The kernel's `RecordingSessionState` mapped to the legacy `PipelineState`.
   public var state: PipelineState {
     Self.pipelineState(
@@ -756,14 +805,46 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// `cancelRequested`, but the actual transition to `.cancelled` /
   /// `.discarded` happens on the forward path's next yield.
   /// `disposition` (#1063 PR2 / #1464 / #1755) attributes a `.cancelled`
-  /// terminal's PROVENANCE for crash recovery: `.user` (genuine USER cancel)
-  /// vs the default `.systemOrFault` (a system/fault cancel). Both delete
-  /// under the #1755 discard doctrine — the origin is diagnostics/copy, not a
-  /// retain/delete fork. The user-cancel path passes `.user` explicitly.
+  /// terminal's PROVENANCE for crash recovery: `.user(_)` (genuine USER cancel,
+  /// carrying WHICH control per #2087) vs the default `.systemOrFault`. Both
+  /// delete under the #1755 discard doctrine — the origin is diagnostics/copy,
+  /// not a retain/delete fork. The user path passes `.user(trigger)` explicitly.
   public func cancelRecording(disposition: RecordingCancelOrigin = .systemOrFault) async {
-    pendingCancelOrigin = disposition
-    kernel.cancel()
+    kernel.cancel(origin: disposition)
     await awaitKernelTerminal()
+  }
+
+  /// Abandon an in-flight Escape Recovery, returning immediately (#2087).
+  ///
+  /// Not waiting is the whole point: an abandonment has no terminal until its
+  /// decode returns, and the caller must disarm the cancel shortcut NOW —
+  /// because an abandonment publishes no state change, so no LIFECYCLE
+  /// transition will disarm it. (The bare-modifier dispatch in `HotkeyService`
+  /// already disarms synchronously before invoking the callback, for its own
+  /// two-key reason; the caller's disarm is what covers the Carbon chord path,
+  /// and is a shared backstop for both.) The ordinary cancel path must never
+  /// behave this way; returning early there would let a new recording start
+  /// before the old one released the engine.
+  ///
+  /// **Two narrowings, and only the second is enforcement.** Taking no argument
+  /// means an unsafe ORIGIN cannot be supplied — abandonment is shortcut-only,
+  /// so it is fixed here. That narrows what a caller can express, not what the
+  /// method does: an earlier draft stopped there, and a package caller could
+  /// still invoke it during an ordinary recording. The `guard` is what makes
+  /// MISUSE INERT, and it is the reason the contract is a property rather than a
+  /// warning label. `abandonmentRequestIsInertOutsideARecovery` writes the
+  /// misuse deliberately and proves nothing happens — not even a latched cancel
+  /// origin.
+  ///
+  /// Redundant with `RecordingFinalizer`'s own check, deliberately. That one
+  /// decides whether the user asked for an abandonment; this one decides whether
+  /// this driver can honour it, and a boundary that trusts its callers is a
+  /// boundary in name only.
+  ///
+  /// `package`: the sole caller is `RecordingFinalizer` in this package.
+  package func requestEscapeRecoveryAbandonment() {
+    guard isEscapeRecoveryTranscribing else { return }
+    kernel.cancel(origin: .user(.shortcut))
   }
 
   /// Sync reset. Wraps `kernel.reset()` + driver-side cleanup. Mirrors the
@@ -1036,6 +1117,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       switch outcome {
       // #1920: `.asrEmptyDespiteAudio` is hidden. The engine ran and found no
       // words while audio was arriving; that is not an event to announce.
+      // #2087: a cancel that MEANT to keep the take and could not is the one
+      // cancel with something to say. It rides the terminal rather than
+      // preceding it, which is the only way it survives — the planner hides the
+      // overlay for every non-`.complete` activity and cancels pending
+      // warnings, so a notice pushed before this point is already gone.
+      case .cancelled where kernel.escapeRecoveryUnavailable:
+        return .warning(reason: .escapeRecoveryUnavailable)
       case .completed, .cancelled, .discarded, .noSpeech, .asrEmptyDespiteAudio:
         return .hidden
       case .failed(let reason):
@@ -1112,11 +1200,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // closures to read at finalize time (the wiring's optional-chained
         // reads were always-nil in production until this PR — finding #6).
         lastTerminalReason = nil
-        // #1063 PR2 / #1755: a fresh session starts at the `.systemOrFault`
-        // provenance default — only a genuine user cancel during this session
-        // flips it to `.user`, so a stale user attribution from a prior
-        // session can never leak onto this session's fault-cancel.
-        pendingCancelOrigin = .systemOrFault
         outcome.transcript = nil
         outcome.polishError = nil
         outcome.rawText = nil
@@ -1294,6 +1377,25 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     /// otherwise observable from outside the driver.
     // periphery:ignore - test seam
     var contextForTesting: KernelSessionContext { context }
+
+    /// Test-only writer for the Escape Recovery slot (#2087).
+    ///
+    /// Production writes through `captureEscapeRecoveryCompletionIfNeeded()`.
+    /// This seam stays because it drives the slot's own guarantees — take-once,
+    /// cleared on a new session — directly, without having to stage a whole
+    /// recovery to reach them.
+    // periphery:ignore - test seam
+    func putEscapeRecoveryCompletionForTesting(_ completion: EscapeRecoveryCompletion) {
+      escapeRecoveryCompletion.put(completion)
+    }
+
+    /// Whether the slot is empty. Emptiness only, never the value: a test that
+    /// could read the completion without consuming it would be exercising a
+    /// capability production must not have.
+    // periphery:ignore - test seam
+    var escapeRecoveryCompletionIsEmptyForTesting: Bool {
+      escapeRecoveryCompletion.isEmptyForTesting
+    }
   #endif
 
   // MARK: Kernel-state observation
@@ -1315,6 +1417,17 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         guard let self else { return }
+        // #2087 — before anything else: a new session invalidates a completion
+        // the consumer never took. The ordering is a REQUIREMENT on the capture
+        // site that lands later, not an observation about one: that site must run
+        // on this session's terminal, so that clearing first can never discard a
+        // completion frozen moments earlier.
+        self.clearEscapeRecoveryCompletionOnNewSession()
+        // #2087 chunk 12: freeze THIS session's completion while the target
+        // handles are still live. Must sit after the new-session clear and
+        // before the config clear below — the first would discard what this
+        // writes, the second nils what it reads.
+        self.captureEscapeRecoveryCompletionIfNeeded()
         // #1063 PR2 — FIRST, before `clearContextConfigIfTerminalOrIdle()` nulls
         // `context.config`: capture this session's recovery id off the still-live
         // config and fire the ended-without-save signal on a fresh non-`.completed`
@@ -1376,6 +1489,108 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     }
   }
 
+  /// Take this session's Escape Recovery completion, if one was frozen (#2087).
+  ///
+  /// Called from `PipelineStateChangeDispatch.run(_:driver:to:)`, synchronously
+  /// inside `DictationLifecycleCoordinator`'s `onStateChange` handling — the only
+  /// window where the completion is both present and still meaningful.
+  /// Destructive: a second call returns nil, which is what stops one cancelled
+  /// dictation being offered back twice.
+  ///
+  /// `package` rather than `public`: the consumer is a first-party target in
+  /// this package, and `architecture-rules.md` RULE: minimize-visibility.
+  package func takeEscapeRecoveryCompletion() -> EscapeRecoveryCompletion? {
+    escapeRecoveryCompletion.take()
+  }
+
+  /// Freeze this session's Escape Recovery completion (#2087, chunk 12).
+  ///
+  /// **The production writer the slot waited five chunks for.** Until this
+  /// existed the slot was written only by a DEBUG seam, so a saved recovery
+  /// never appended a row, never raised a pill and never reported a completion —
+  /// every consumer was wired to a producer that did not exist, and the whole
+  /// chain compiled and passed its own tests regardless.
+  ///
+  /// Runs BEFORE `clearContextConfigIfTerminalOrIdle()` and after the
+  /// new-session clear, which is the ordering the slot's contract demands: the
+  /// target app and element are nil moments later, and freezing after the clear
+  /// would capture the very emptiness the payload exists to prevent.
+  ///
+  /// Deduped by session id for the same reason `fireSessionEndedWithoutSaveIfNeeded`
+  /// is: the observation re-runs on every transition, and a completion written
+  /// twice for one take is a second pill for a dictation the user already
+  /// answered.
+  private func captureEscapeRecoveryCompletionIfNeeded() {
+    guard kernel.finalizationDisposition.isEscapeRecovery else { return }
+    guard let recordingOutcome = kernel.recordingOutcome else { return }
+    guard kernel.currentSessionID != escapeRecoveryCaptureSessionID else { return }
+    escapeRecoveryCaptureSessionID = kernel.currentSessionID
+
+    // `.saved` requires a durably written row to point at. Everything else is a
+    // recovery that produced nothing restorable, and must NOT be able to raise
+    // a pill — which the enum enforces, since only `.saved` carries a target.
+    //
+    // `outcome.historySaved` is the third condition and the one that is easy to
+    // miss: a `.completed` terminal whose pending write THREW still carries a
+    // transcript, so reading the transcript alone would announce `.saved`,
+    // append a row nothing persisted, and offer a pill pointing at a file that
+    // does not exist. `nothingToRestoreReason` already maps `.completed` to
+    // `.saveFailed` for exactly this case; before this condition existed,
+    // nothing could reach that arm.
+    guard case .completed = recordingOutcome, outcome.historySaved,
+      let transcript = outcome.transcript
+    else {
+      escapeRecoveryCompletion.put(
+        .nothingToRestore(Self.nothingToRestoreReason(for: recordingOutcome)))
+      return
+    }
+    escapeRecoveryCompletion.put(
+      .saved(
+        CancelUndoPayload(
+          transcriptID: transcript.id,
+          targetApp: context.targetApp,
+          targetElement: context.targetElement)))
+  }
+
+  /// Why a recovery ended with nothing to restore.
+  ///
+  /// Exhaustive on the kernel's terminal so a new one is a compile error here
+  /// rather than a silent `.empty` — the reason travels into the completion
+  /// event, and a wrong label is a funnel that lies about which failure the
+  /// feature has.
+  private static func nothingToRestoreReason(
+    for outcome: RecordingOutcome
+  ) -> EscapeRecoveryCompletion.NothingToRestore {
+    switch outcome {
+    // `.completed` reaching here means the pipeline finished but no row was
+    // written — the save failed. That is the only way a completed take arrives
+    // with nothing to restore.
+    case .completed: return .saveFailed
+    // A recovery concludes `.cancelled` only via the abandonment path: the user
+    // pressed the shortcut a second time and asked for the output to go.
+    case .cancelled: return .abandoned
+    // Both mean "we heard nothing usable", which is `.empty` from the user's
+    // side. `.asrEmptyDespiteAudio` is a distinct DIAGNOSTIC — there was audio
+    // and the engine still returned nothing — but the recovery outcome the user
+    // experiences is the same, and the diagnostic detail already travels on the
+    // ordinary terminal telemetry rather than needing a second label here.
+    case .noSpeech, .asrEmptyDespiteAudio: return .empty
+    case .failed, .audioInterrupted, .asrInterrupted, .discarded, .noTransport:
+      return .transcriptionFailed
+    }
+  }
+
+  /// Drop an unconsumed completion when the kernel moves to a different session.
+  ///
+  /// Keyed by session identity rather than by state: a completion is stale
+  /// exactly when the take it describes is no longer the take in progress, and
+  /// no single state marks that boundary.
+  private func clearEscapeRecoveryCompletionOnNewSession() {
+    guard kernel.currentSessionID != escapeRecoveryCompletionSessionID else { return }
+    escapeRecoveryCompletionSessionID = kernel.currentSessionID
+    escapeRecoveryCompletion.clear()
+  }
+
   private func fireStateChangeIfNeeded() {
     let mapped = state
     guard mapped != lastFiredState else { return }
@@ -1405,14 +1620,21 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     lastEndedWithoutSaveSessionID = kernel.currentSessionID
     let ending: RecordingRecoveryEnding?
     if case .cancelled = outcome {
-      // `.cancelled` carries per-cancel PROVENANCE (user vs system/fault),
-      // attributed at the `kernel.cancel()` call site; consume + reset to the
-      // default so a stale user attribution can't leak to a later fault
-      // cancel. Both origins delete under #1755 — the disposition decision
-      // lives solely in the coordinator's predicate; the driver only
-      // projects the origin.
-      ending = .cancelled(pendingCancelOrigin)
-      pendingCancelOrigin = .systemOrFault
+      // `.cancelled` carries per-cancel PROVENANCE (user vs system/fault). The
+      // KERNEL is the single authority: it latches the origin of the cancel it
+      // actually ACCEPTED, first-wins, and clears it per session.
+      //
+      // #2087 removed a second copy that lived here. The driver used to record
+      // the origin on every `cancelRecording(disposition:)` call, last-write-
+      // wins, which could disagree with the kernel — a cancel the kernel
+      // IGNORED (idle, the safe point, a latched exit) still overwrote the
+      // driver's copy, and a fault cancel arriving behind a genuine user cancel
+      // replaced it. Reading the kernel makes the two impossible to diverge,
+      // rather than keeping them in step by matching latch rules in two places.
+      //
+      // Both origins delete under #1755 — the disposition decision lives solely
+      // in the coordinator's predicate; the driver only projects the origin.
+      ending = .cancelled(kernel.lastCancelOrigin)
     } else {
       ending = Self.recoveryEnding(for: outcome, retryOutcome: kernel.asrRetryOutcome)
     }
@@ -1430,7 +1652,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// here already as `.audioInterrupted`. Payloads are dropped — the coordinator's
   /// predicate keys only on the terminal FAMILY, never `DiscardReason`/
   /// `NoSpeechSource`, keeping the internal enum inside Pipeline. `.cancelled` is
-  /// EXCLUDED (returns nil) — resolved at the fire site via `pendingCancelOrigin`.
+  /// EXCLUDED (returns nil) — resolved at the fire site from the kernel's latched
+  /// `lastCancelOrigin`.
   /// Also nil for `.completed` (durable save ran). Exhaustive so a new
   /// `RecordingOutcome` forces a routing decision. Internal (not private) so the
   /// split is unit-tested directly (`matcher-set-adversarial-tests`).

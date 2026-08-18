@@ -97,6 +97,128 @@ final class RecordingOverlayPanel {
   // fires. The closures are MainActor-bound; the panel itself is @MainActor.
   private var passiveChipLockHandler: (() -> Void)?
   private var passiveChipDismissHandler: (() -> Void)?
+
+  /// #2087 — invoked when the user presses Paste on the Escape Recovery pill.
+  ///
+  /// Carries the WHOLE payload, not just the row id. An earlier draft passed the
+  /// id alone, which quietly made the feature's own promise unreachable: the
+  /// payload exists to hold the paste TARGET — the app and field the dictation
+  /// was aimed at, captured before the terminal cleanup nils them — and the
+  /// promise is to put the text back where it was going, not merely somewhere.
+  ///
+  /// It carries no TEXT, and that part was right. The pill may sit for its full
+  /// dwell while the row is deleted or expires underneath it, so whoever handles
+  /// this re-reads by id and no-ops if there is nothing there.
+  ///
+  /// Unbound today; binding it to the paste cascade is chunk 8b's, and needs the
+  /// pending-row read that chunk 9 owns.
+  var onEscapeRecoveryPaste: ((CancelUndoPayload) -> Void)?
+
+  /// The payload for the pill currently showing, held because
+  /// `OverlayIntent` is `Sendable` and cannot carry main-actor AX handles.
+  ///
+  /// Cleared whenever the offer ends: consumed by press or expiry, replaced by
+  /// another intent, or hidden directly. Replacement is the one with no teardown
+  /// of its own, and the one whose failure is worst: a payload outliving its
+  /// pill could paste a later recovery into the app this one was aimed at.
+  private var escapeRecoveryPayload: CancelUndoPayload?
+
+  /// Take the payload ONLY if it is still the one the caller was showing (#2087).
+  ///
+  /// Panel replacement can be DEFERRED while the user is dragging the overlay,
+  /// so an outgoing pill's SwiftUI callbacks can still fire after a newer pill
+  /// has stored its own payload. Without the id match, the old view's expiry
+  /// would clear the new offer, or its Paste would restore the new row from the
+  /// old pill's press — a click the user aimed at different text.
+  ///
+  /// Consuming and matching in one step, for the same reason
+  /// `EscapeRecoveryCompletionSlot.take()` is: a check followed by a separate
+  /// clear is two chances to get the ordering wrong.
+  private func takeEscapeRecoveryPayload(matching id: UUID) -> CancelUndoPayload? {
+    guard let payload = escapeRecoveryPayload, payload.transcriptID == id else { return nil }
+    escapeRecoveryPayload = nil
+    return payload
+  }
+
+  /// The pair of callbacks a pill hands its view, built together so both guards
+  /// sit in one screenful and a change to one is read beside the other. That is
+  /// a legibility property, not an enforced one — what actually fails if either
+  /// guard goes missing is `EscapeRecoveryPillTests`, which drives both closures
+  /// through the DEBUG wrapper below.
+  ///
+  /// This exists because testing the guard helper alone proves nothing about the
+  /// callbacks: an unguarded payload read inside either closure passes a test
+  /// that only calls `takeEscapeRecoveryPayload` directly. `show(intent:)` posts
+  /// to `NSApp.mainWindow` and traps in a unit host, so the closures cannot be
+  /// reached through the panel's public surface — the DEBUG wrapper below hands
+  /// tests THESE closures rather than a reconstruction of them.
+  private func escapeRecoveryCallbacks(
+    shownID: UUID, paste: ((CancelUndoPayload) -> Void)?
+  ) -> (onPaste: () -> Void, onExpire: () -> Void) {
+    let onPaste = { [weak self] in
+      // One-shot at BOTH ends: the view refuses a second press, and taking the
+      // payload here means even a press that slipped through reaches nothing.
+      guard let self, let held = self.takeEscapeRecoveryPayload(matching: shownID) else { return }
+      // Finish tearing down OUR offer before handing control outside. `hide()`
+      // clears `escapeRecoveryPayload` synchronously, so a handler that presents
+      // its own overlay during the paste would have that brand-new payload wiped
+      // by this teardown — the offer the user is looking at revoked by the one
+      // they just accepted. Unreachable while `onEscapeRecoveryPaste` is unbound;
+      // fixed here so chunk 8b inherits the safe order rather than this trap.
+      self.hide()
+      paste?(held)
+    }
+    let onExpire = { [weak self] in
+      // The offer is gone, so the target goes with it — but only if this pill
+      // still owns it. A superseded pill expiring must not silently revoke the
+      // offer the user can currently see.
+      guard let self, self.takeEscapeRecoveryPayload(matching: shownID) != nil else { return }
+      self.hide()
+    }
+    return (onPaste, onExpire)
+  }
+
+  #if DEBUG
+    /// Test-only writer. The production writer is `presentEscapeRecoveryPill`,
+    /// which shows the panel and therefore traps outside a real app.
+    // periphery:ignore - test seam
+    func setEscapeRecoveryPayloadForTesting(_ payload: CancelUndoPayload?) {
+      escapeRecoveryPayload = payload
+    }
+
+    // periphery:ignore - test seam
+    var escapeRecoveryPayloadForTesting: CancelUndoPayload? { escapeRecoveryPayload }
+
+    /// Hands back the PRODUCTION closures, not a copy of their logic.
+    // periphery:ignore - test seam
+    func escapeRecoveryCallbacksForTesting(
+      shownID: UUID, paste: ((CancelUndoPayload) -> Void)?
+    ) -> (onPaste: () -> Void, onExpire: () -> Void) {
+      escapeRecoveryCallbacks(shownID: shownID, paste: paste)
+    }
+  #endif
+
+  /// Whether an intent keeps the pill's paste target alive (#2087).
+  ///
+  /// Extracted because `show(intent:)` cannot be driven in a unit context — every
+  /// arm posts to `NSApp.mainWindow`, which is nil off a real app — so a rule
+  /// left inline there would ship untested. Here it is a total function over the
+  /// intent set, enumerated rather than defaulted so a future case has to decide
+  /// rather than silently inheriting "drop it".
+  ///
+  /// Only the pill itself retains. Everything else REPLACES the pill, and
+  /// replacement is the exit with no teardown of its own: a payload surviving it
+  /// could paste a later recovery into the app this one was aimed at.
+  static func retainsEscapeRecoveryPayload(_ intent: OverlayIntent) -> Bool {
+    switch intent {
+    case .escapeRecovery:
+      return true
+    case .hidden, .recording, .processing, .clipboardFallback, .accessibilityToast,
+      .warning, .error, .advisory, .interruption, .passiveChip, .cachingModel,
+      .engineReady, .recoveringLastRecording, .recoverySucceeded, .bluetoothAwareness:
+      return false
+    }
+  }
   private var passiveChipAutoDismissHandler: ((UInt64) -> Void)?
 
   // #1480 Bluetooth awareness card handlers — installed once by the composition
@@ -388,6 +510,12 @@ final class RecordingOverlayPanel {
     else { return }
     self.isRecordingLocked = isRecordingLocked
     currentIntent = intent
+    // #2087: any intent that is NOT the pill replaces it, and the paste target
+    // must go with it. Otherwise the payload outlives its offer — a new
+    // recording starts, and a later pill could paste into the app THIS one was
+    // aimed at. Cleared here rather than in each teardown path because
+    // replacement is the path with no teardown of its own.
+    if !Self.retainsEscapeRecoveryPayload(intent) { escapeRecoveryPayload = nil }
     // #1569 (E4): the narrator is the sole author of the spoken announcement;
     // the panel keeps choosing the per-case AX priority + target element.
     let spokenAnnouncement = DictationNarrator.announcement(for: intent)
@@ -568,6 +696,27 @@ final class RecordingOverlayPanel {
           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
         ])
       showBluetoothAwareness()
+    // #2087. The announcement is posted here (the narrator authors the words)
+    // beside the visible pill, following `.passiveChip`'s post-dictation shape.
+    //
+    // The spoken form names History as well as Paste. The row is saved before
+    // any pill is offered (#1897), so a VoiceOver user who misses the dwell
+    // still has a true and unhurried way back to the text.
+    case .escapeRecovery:
+      NSAccessibility.post(
+        element: NSApp.mainWindow as Any,
+        notification: .announcementRequested,
+        userInfo: [
+          .announcement: spokenAnnouncement,
+          .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
+        ])
+      // FAIL CLOSED. The pill needs a payload the intent cannot carry, so
+      // `presentEscapeRecoveryPill(_:)` stores one first. A bare `show` with
+      // this intent finds none and renders nothing — it still announces, which
+      // is true (the row is saved), rather than offering a Paste pointing at no
+      // target.
+      guard escapeRecoveryPayload != nil else { return }
+      showEscapeRecoveryPill()
     }
   }
 
@@ -1439,6 +1588,74 @@ final class RecordingOverlayPanel {
   // periphery:ignore - test seam
   internal var isRecordingLockedForTesting: Bool { isRecordingLocked }
 
+  // MARK: - Escape Recovery pill (#2087)
+
+  /// Raise the Escape Recovery pill for a durably saved row (#2087).
+  ///
+  /// The entry point, because the payload cannot travel on the intent:
+  /// `OverlayIntent` is `Sendable` and `AXUIElement` / `NSRunningApplication`
+  /// are main-actor handles. The payload is stored here and the intent then
+  /// carries only the id, which is also what the announcement needs.
+  func presentEscapeRecoveryPill(_ payload: CancelUndoPayload) {
+    escapeRecoveryPayload = payload
+    show(intent: .escapeRecovery(transcriptID: payload.transcriptID))
+  }
+
+  /// Mirrors `showPassiveChip` rather than `presentTransientNotice`, because the
+  /// VIEW owns this dwell. A panel-level timer cannot be paused by a hover the
+  /// view sees, so the two would race and the hover would appear to do nothing.
+  private func showEscapeRecoveryPill() {
+    guard panel == nil else {
+      deferringIfPanelIsBeingDragged { [weak self] in
+        self?.transitionToEscapeRecoveryPillNow()
+      }
+      return
+    }
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    generation &+= 1
+    let token = generation
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token else { return }
+      self.pendingCreateWork = nil
+      self.createEscapeRecoveryPillPanel()
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
+  }
+
+  private func transitionToEscapeRecoveryPillNow() {
+    guard let existingPanel = panel else { return }
+    let inheritedFrame = existingPanel.frame
+    panel = nil
+    autoDismissTask?.cancel()
+    autoDismissTask = nil
+    CATransaction.flush()
+    existingPanel.close()
+    generation &+= 1
+    let token = generation
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token else { return }
+      self.pendingCreateWork = nil
+      self.createEscapeRecoveryPillPanel(inheritedFrame: inheritedFrame)
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
+  }
+
+  private func createEscapeRecoveryPillPanel(inheritedFrame: NSRect? = nil) {
+    guard panel == nil, let payload = escapeRecoveryPayload else { return }
+    // The id THIS pill is showing. Both callbacks match on it, so a pill that
+    // has been superseded cannot act on its successor's payload.
+    let callbacks = escapeRecoveryCallbacks(
+      shownID: payload.transcriptID, paste: onEscapeRecoveryPaste)
+    let view = EscapeRecoveryPillView(
+      onPaste: callbacks.onPaste, onExpire: callbacks.onExpire
+    )
+    .frame(width: 320, height: 56)
+    showPanel(content: view, width: 320, height: 56, inheritedFrame: inheritedFrame)
+  }
+
   /// Show the passive language-detection chip as a floating panel. Mirrors the
   /// `showAccessibilityToast` shape: defers creation to next run loop cycle,
   /// guards against rapid replace via the generation token. Auto-dismiss is 6s
@@ -1666,6 +1883,11 @@ final class RecordingOverlayPanel {
     // deduplicated against a `currentIntent` this queued hide hasn't applied
     // yet (Codex grounded review round 2, #2075).
     currentIntent = .hidden
+    // #2087: SYNCHRONOUSLY, for the same reason `currentIntent` is. The teardown
+    // below can be deferred while the overlay is being dragged, and a paste
+    // target that outlives its hidden pill is a target a later recovery could
+    // reach.
+    escapeRecoveryPayload = nil
     deferringIfPanelIsBeingDragged { [weak self] in
       self?.hideNow()
     }
@@ -2223,6 +2445,93 @@ struct PolishingOverlayView: View {
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
     .background(OverlayCapsuleBackground())
+  }
+}
+
+// MARK: - EscapeRecoveryPillView
+
+/// The Escape Recovery pill (#2087): one sentence, one action.
+///
+/// Deliberately NOT a question. The founder chose this over a "Want to paste?"
+/// prompt, and the persona work agreed independently: a prompt demands attention
+/// from someone who by definition is not looking, and the whole feature exists
+/// for the case where the user has already moved on. It never steals focus (the
+/// panel is `.nonactivatingPanel`), never blocks, and never requires dismissal.
+///
+/// History is the real path for most people; this is an accelerator for whoever
+/// happens to be watching. That is why letting it expire costs nothing, and why
+/// the spoken announcement names History rather than only the button.
+///
+/// **The view owns its own dwell**, exactly as `LanguageChipView` does, because
+/// a panel-level timer cannot be paused by a hover only the view can see. Hover
+/// cancels; hover-exit restarts the FULL three seconds rather than resuming the
+/// remainder — matching the shipped chip deliberately, so two overlay pills do
+/// not behave differently under the same gesture.
+struct EscapeRecoveryPillView: View {
+  let onPaste: () -> Void
+  let onExpire: () -> Void
+
+  /// Founder-specified.
+  private static let dwellSeconds: Double = 3.0
+
+  @State private var dismissTask: Task<Void, Never>?
+  /// One-shot. Without it a fast double-click restores twice — and the second
+  /// restore lands after the first has already moved the user's cursor.
+  @State private var acted = false
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "arrow.uturn.backward.circle.fill")
+        .foregroundStyle(.white.opacity(0.85))
+        .font(.system(size: 18))
+        .accessibilityHidden(true)
+
+      Text(DictationNarrator.escapeRecoveryPillTitle)
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.white)
+        .lineLimit(1)
+
+      Spacer(minLength: 8)
+
+      Button(action: {
+        guard !acted else { return }
+        acted = true
+        dismissTask?.cancel()
+        onPaste()
+      }) {
+        Text(DictationNarrator.escapeRecoveryPillAction)
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(.white)
+          .padding(.horizontal, 12)
+          .padding(.vertical, 5)
+          .contentShape(Rectangle())
+          .background(Capsule().fill(.white.opacity(0.18)))
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(DictationNarrator.escapeRecoveryPillAction)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(OverlayCapsuleBackground())
+    .onHover { isHovering in
+      if isHovering {
+        dismissTask?.cancel()
+      } else {
+        scheduleExpiry()
+      }
+    }
+    .onAppear { scheduleExpiry() }
+    .onDisappear { dismissTask?.cancel() }
+  }
+
+  private func scheduleExpiry() {
+    guard !acted else { return }
+    dismissTask?.cancel()
+    dismissTask = Task { @MainActor in
+      try? await Task.sleep(for: .seconds(Self.dwellSeconds))
+      guard !Task.isCancelled, !acted else { return }
+      onExpire()
+    }
   }
 }
 

@@ -415,8 +415,14 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
     eventLog.append(.acceptAudio)
   }
 
+  /// Fired at the TOP of each `finalize`, with this call's 1-based index. Lets a
+  /// scenario act BETWEEN salvage-ladder candidates — the only window in which
+  /// a session can be superseded mid-ladder rather than before or after it.
+  var onFinalizeCall: (@MainActor (Int) -> Void)?
+
   func finalize(batchSamples: [Float]?) async -> ASREngineOutcome {
     finalizeCallCount += 1
+    onFinalizeCall?(finalizeCallCount)
     eventLog.append(.finalize)
     // `beginSession` resets this to nil so a fresh session sees nil if its
     // finalize is never reached — only the LAST finalize's value survives.

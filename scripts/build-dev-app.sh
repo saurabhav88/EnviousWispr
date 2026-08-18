@@ -46,10 +46,32 @@ ASR_XPC_ID="com.enviouswispr.asrservice.dev"
 
 cd "$PROJECT_ROOT"
 
-# ─── Step 1: Preflight — the self-signed dev cert must exist ──────────────────
-echo "==> Step 1: Preflight (dev signing cert)..."
-if ! security find-identity -v -p codesigning | grep -q "$DEV_CERT_NAME"; then
-  echo "ERROR: '$DEV_CERT_NAME' signing certificate not found. See docs/self-hosted-runner.md."
+# ─── Step 1: Preflight — the self-signed dev identity must be USABLE ──────────
+#
+# Tests what signing actually needs — the identity and its private key — and NOT
+# whether the certificate is trusted. `find-identity -v` means valid-only, which
+# for a self-signed cert also requires a trust setting, and signing has never
+# required one: `codesign` needs the key, trust governs VERIFICATION.
+#
+# The distinction is not academic. On 2026-08-18, after the machine migration,
+# this gate failed with "certificate not found" for a certificate that was
+# present WITH its key. `xcodebuild` signed the app perfectly, and step 5 below —
+# `codesign --verify --deep --strict` — passed, reporting "valid on disk" and
+# "satisfies its Designated Requirement". So the only thing standing between a
+# working build and a launched app was a precondition check asserting something
+# the build does not need, and its message sent the reader hunting for a missing
+# file. That cost about an hour and blocked Live UAT on a branch.
+#
+# Step 5 is the real guard and is unchanged: it verifies the SIGNATURE that came
+# out, which is the outcome anyone actually cares about. This step only refuses
+# the case where there is nothing to sign with at all.
+echo "==> Step 1: Preflight (dev signing identity)..."
+if ! security find-identity -p codesigning | grep -q "$DEV_CERT_NAME"; then
+  echo "ERROR: no '$DEV_CERT_NAME' code-signing identity in the keychain."
+  echo "Diagnose with the UNFILTERED list, which shows why:"
+  echo "  security find-identity -p codesigning"
+  echo "A '(CSSMERR_TP_NOT_TRUSTED)' suffix means the cert is present and this"
+  echo "check passes — trust affects verification by others, never signing."
   exit 1
 fi
 

@@ -113,15 +113,68 @@ struct KeybindsSettingsView: View {
       VStack(alignment: .leading, spacing: 10) {
         eyebrow("Cancel Recording")
 
-        ProminentHotkeyRow(
-          title: "Cancel keybind",
-          description: "Press to discard the current recording and return to idle.",
-          keyCode: $settings.cancelKeyCode,
-          modifiers: $settings.cancelModifiers,
-          defaultKeyCode: 53,
-          defaultModifiers: [],
-          accessibilityLabel: "Cancel keybind"
-        )
+        VStack(alignment: .leading, spacing: 14) {
+          ProminentHotkeyRow(
+            title: "Cancel keybind",
+            // Conditional, because with Escape Recovery on the old sentence is
+            // simply false — and a settings screen describing the opposite of
+            // what the app does is worse than one saying nothing.
+            // Deliberately NOT conditional on the live setting. The value
+            // that decides what this key does is the one FROZEN when the
+            // recording started, so a description that tracks the toggle is
+            // wrong for the only reader who can see both at once: someone
+            // flipping it while a recording runs.
+            description:
+              "Press to cancel the current recording. Escape Recovery below applies "
+              + "from the next recording you start.",
+            keyCode: $settings.cancelKeyCode,
+            modifiers: $settings.cancelModifiers,
+            defaultKeyCode: 53,
+            defaultModifiers: [],
+            accessibilityLabel: "Cancel keybind"
+          )
+
+          Divider().opacity(0.6)
+
+          // Founder-authored copy (plan §3.7), reproduced exactly. Three
+          // constraints it keeps, each from a real finding: "your cancel
+          // shortcut, Escape by default" and never a bare "Escape", because the
+          // key is user-configurable; no mention of recording length, because no
+          // length is refused; and "stays in History for 24 hours", never a
+          // promise about a Mac that is powered off, because nothing deletes
+          // files while the app is not running.
+          Toggle(isOn: $settings.escapeRecoveryEnabled) {
+            VStack(alignment: .leading, spacing: 4) {
+              // `stRowLabel`, not `stRowTitle`: the tokens reserve the title for
+              // one-per-section subjects, and this card's subject is already the
+              // "Cancel Recording" eyebrow above.
+              Text("Escape Recovery")
+                .font(.stRowLabel)
+                .foregroundStyle(.stTextPrimary)
+              Text(
+                """
+                When you use your cancel keybind, Escape by default, EnviousWispr keeps the \
+                dictation instead of discarding it. It finishes transcribing and polishing, then \
+                offers to paste it. Another recording cannot start until that finishes, the same \
+                as after any dictation. AI polish runs as usual, which uses your own API key when \
+                configured. The audio is deleted once the text is saved; the text stays in \
+                History for 24 hours unless you Keep it. The Cancel button still discards \
+                immediately.
+                """
+              )
+              // `stBody` at PRIMARY colour: the tokens define this as
+              // reading-copy, and this is the disclosure a user has to actually
+              // read before turning the feature on. Quieting it would be a
+              // legibility choice made against the one paragraph that explains
+              // what changes about their cancel key.
+              .font(.stBody)
+              .foregroundStyle(.stTextPrimary)
+              .fixedSize(horizontal: false, vertical: true)
+            }
+          }
+          .toggleStyle(.switch)
+          .accessibilityLabel("Escape Recovery")
+        }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(SettingsCardSurface())

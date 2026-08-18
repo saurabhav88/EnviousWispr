@@ -156,6 +156,13 @@ final class StoreLog {
   var storedTexts: [String] = []
 }
 
+/// Reference-type holder so the injected `markASRTimingEnd` closure can count
+/// without capturing the session wrapper before it is fully initialized.
+@MainActor
+final class ASRTimingEndLog {
+  var count = 0
+}
+
 /// #1317: reference-type holder so `stopTimeZeroSignalTelemetry`'s closure
 /// (constructed before `self` fully exists, same constraint `LimbInjectionBox`
 /// works around) can append fired contexts without capturing `self`.
@@ -181,6 +188,15 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// inspect kernel internals (`RecordingSessionKernelTests`).
   var testKernel: RecordingSessionKernel { kernel }
 
+  /// #2087: the config `.start` freezes, and the cancel origin `.cancel` sends.
+  ///
+  /// Both are knobs because Escape Recovery's activation is decided by exactly
+  /// these two facts — the setting as frozen at recording start, and whether the
+  /// user reached for the shortcut or the button. Defaults reproduce the
+  /// pre-#2087 simulator behaviour, so every existing scenario is unchanged.
+  var sessionConfigForTesting: DictationSessionConfig = .testDefault()
+  var cancelOriginForTesting: RecordingCancelOrigin = .systemOrFault
+
   /// The kernel's per-session telemetry side-channel, held so a test can read
   /// what the kernel stamped (#1408: `interruptionCause`). Production shares ONE
   /// instance across the kernel, the finalization wiring, and the lifecycle sink;
@@ -190,6 +206,16 @@ final class KernelRecordingSession: RecordingSessionDriving {
   private let storeLog = StoreLog()
   /// #1755 chunk 2: every text the kernel handed the `store` seam, in order.
   var storedTexts: [String] { storeLog.storedTexts }
+
+  /// How many times the kernel stamped the end of ASR timing.
+  ///
+  /// A COUNT, not a timestamp. `markASRTimingEnd` is an injected closure whose
+  /// production body writes into the single shared `KernelFinalizationOutcome`,
+  /// so counting calls answers the question a test actually has — did this
+  /// session stamp latency it had no right to stamp — without reaching into a
+  /// type the kernel owns privately.
+  private let asrTimingLog = ASRTimingEndLog()
+  var asrTimingEndCount: Int { asrTimingLog.count }
 
   private let stopTimeTelemetryLog = StopTimeZeroSignalTelemetryLog()
   /// #1317: `CaptureStallContext`s the kernel's STOP-time classification
@@ -215,6 +241,10 @@ final class KernelRecordingSession: RecordingSessionDriving {
     // #1408: the floor's regression guard needs the minimum-recording gate ARMED
     // (the inventory zeroes it, see the note at the `minimumRecordingTicks`
     // argument below). Defaulted so every existing scenario is unchanged.
+    // #2087: the marker writer the activation branch consults. Defaults to
+    // REFUSING, which is the fail-closed production default — a scenario that
+    // wants recovery to proceed with a real spool must say so explicitly.
+    prepareEscapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
     minimumRecordingTicks: Int = 0,
     // #1317: deterministic by default (`true`) — real scenarios exercising
     // the muted/unknown fail-closed path override this explicitly. Avoids
@@ -231,7 +261,14 @@ final class KernelRecordingSession: RecordingSessionDriving {
       ZeroSignalDecisionSnapshot(eligibility: .eligible, currentRunWasClassifiedReactively: false)
     },
     /// #1578: collects refusals the kernel drains or classifies at STOP.
-    zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in }
+    zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in },
+    /// #2087: the terminal telemetry snapshot, as the KERNEL built it.
+    ///
+    /// Added because a mutation that hardcoded `deliveryDisposition: .ordinary`
+    /// at the kernel's construction site survived every test — the sink and the
+    /// event were covered, and the step that FILLS the field was not. Defaulted
+    /// so every existing scenario is unchanged.
+    onTerminalSnapshot: @escaping @MainActor (KernelTerminalTelemetrySnapshot) -> Void = { _ in }
   ) {
     self.vad = vad
     let limb = self.limb
@@ -257,7 +294,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
         if limb.forceEmptyAfterProcessing { return "" }
         return raw
       },
-      store: { [storeLog] text, _ in
+      store: { [storeLog] text, _, _ in
         storeLog.storedTexts.append(text)
         // #1167: a throwing save models the best-effort store seam. The kernel
         // ABSORBS the throw (records it on the finalization outcome) and still
@@ -266,16 +303,26 @@ final class KernelRecordingSession: RecordingSessionDriving {
         // retained to exercise that the kernel swallows a store throw.
         if limb.storageWriteFails { throw KernelLimbError.storageFailed }
       },
-      deliver: { text in
+      deliver: { text, _ in
         switch paste.attemptPaste(text) {
         case .pasted: return .pasted
         case .clipboardOnly, .none: return .clipboardOnly
+        // #2087: unreachable — `FakePasteTarget` returns only `.pasted` or
+        // `.clipboardOnly`. Deliberately NOT folded in with `.clipboardOnly`
+        // above: suppression means nothing was written anywhere, and quietly
+        // reporting a clipboard write is the exact lie `.suppressed` exists to
+        // prevent. Fail loudly and propagate the truth, so a future fixture that
+        // produces this is caught rather than believed.
+        case .suppressed:
+          Issue.record("FakePasteTarget returned .suppressed; a paste attempt cannot suppress")
+          return .suppressed
         }
       },
       // PR-4.5 #4 (Codex r3): the simulator's 37-scenario inventory does not
       // advance the FakeClock between start and stop, so a positive
       // minimum-recording threshold would discard most scenarios. The
       // dedicated #4 coverage lives in `ConductorParitySeamTests`.
+      prepareEscapeRecovery: prepareEscapeRecovery,
       engineMutationScope: .alwaysAllowedForTesting,
       minimumRecordingTicks: minimumRecordingTicks,
       captureTelemetry: captureTelemetry,
@@ -290,6 +337,8 @@ final class KernelRecordingSession: RecordingSessionDriving {
       },
       zeroSignalDecisionSnapshot: zeroSignalDecisionSnapshot,
       zeroSignalRefusalSink: zeroSignalRefusalSink,
+      sessionTerminalTelemetry: onTerminalSnapshot,
+      markASRTimingEnd: { [asrTimingLog] in asrTimingLog.count += 1 },
       telemetryState: telemetryState)
   }
 
@@ -303,6 +352,10 @@ final class KernelRecordingSession: RecordingSessionDriving {
     switch kernel.deliveryOutcome {
     case .pasted: result.pasteOutcome = .pasted
     case .clipboardOnly: result.pasteOutcome = .clipboardOnly
+    // #2087: mapped to its own case, never folded into `.none`. Suppressed
+    // means the user still HAS their text (held for recovery); `.none` means
+    // no delivery outcome exists at all.
+    case .suppressed: result.pasteOutcome = .suppressed
     case nil: result.pasteOutcome = .none
     }
     result.transcript = kernel.deliveredTranscript
@@ -328,11 +381,11 @@ final class KernelRecordingSession: RecordingSessionDriving {
       // `vad.setCurrentSessionID(sid)` in `runForwardPath` (was a simulator-only
       // manual stamp before; that hid the production gap where the kernel never
       // wired the call).
-      kernel.start(config: .testDefault())
+      kernel.start(config: sessionConfigForTesting)
     case .stop:
       kernel.requestStop()
     case .cancel:
-      kernel.cancel()
+      kernel.cancel(origin: cancelOriginForTesting)
     case .reset:
       kernel.reset()
     case .preWarm:
