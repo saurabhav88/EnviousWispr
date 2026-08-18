@@ -48,6 +48,15 @@ an exception or a Ctrl-C still leaves the machine as it was found — including 
 a developer who had already customised the cancel shortcut. Restoring is not the
 same as resetting, and an earlier revision did the second while claiming the
 first.
+
+THE SETTINGS IT BORROWS ARE THE REAL ONES
+-----------------------------------------
+The dev build reads the SHARED defaults domain, not its own — see `DOMAIN`
+below. So this run rebinds the cancel shortcut the developer actually uses, and
+handing it back correctly is a real obligation rather than tidiness. Two rules
+follow, both encoded: settings are written with the app DOWN, because the app
+writes its own values back and wins any race; and the app is quit BEFORE the
+restore, so it cannot overwrite the restored values on the way out.
 """
 import os
 import subprocess
@@ -59,8 +68,21 @@ sys.path.insert(0, HERE)
 
 import simulate_input as si  # noqa: E402
 import wispr_eyes as w  # noqa: E402
+from ui_helpers import find_app_pid, find_element, get_attr, get_ax_app  # noqa: E402
 
-DOMAIN = "com.enviouswispr.app.dev"
+# NOT `com.enviouswispr.app.dev`, however wrong that looks next to the dev
+# bundle id below. `SettingsDefaults.store` redirects the DEV build to the shared
+# suite for every unified key -- the cancel binding and the Escape Recovery flag
+# among them -- and reads its own domain only for the one-time migration
+# sentinel. Writing to the dev domain is writing where the app never looks: the
+# 2026-08-18 run rebound cancel and enabled the feature there, the app read
+# neither, and the "ON" phase ran with Escape Recovery OFF while reporting three
+# passes. Authority: `Sources/EnviousWisprServices/SettingsDefaults.swift`.
+#
+# CONSEQUENCE, and it is why `restore` is not housekeeping: this domain is the
+# one the developer's own installed app uses. The run borrows their real cancel
+# shortcut and must hand it back exactly, type included.
+DOMAIN = "com.enviouswispr.app"
 APP = os.path.join(os.path.dirname(os.path.dirname(HERE)), "build", "EnviousWispr Local.app")
 LOG = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
 LCTRL = 59  # left Control, a bare modifier: the event-tap path
@@ -243,16 +265,78 @@ def ensure_stopped(base, why="", grace=0.0):
     return False
 
 
-def restart_app():
-    """Restart, waiting on the app's OWN readiness line rather than a guess."""
+def stop_app():
+    """Down, and confirmed down.
+
+    Separate from `start_app` so settings can be written while the app is NOT
+    running. `SettingsManager` writes its own values back on change, so a write
+    made underneath a live app is a race against it, and the app wins on quit.
+    """
     subprocess.run(["pkill", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
                    check=False, capture_output=True)
     wait_for("the old instance to exit", lambda: not app_is_running(), deadline=15.0)
+
+
+def start_app():
+    """Up, waiting on the app's OWN readiness line rather than a guess."""
     base = log_length()
     subprocess.run(["open", "-n", APP], check=True)
     if not wait_for("the app to finish its startup scan",
                     lambda: "scan finished" in log_since(base), deadline=60.0):
         raise RuntimeError("app did not reach a ready state; aborting rather than guessing")
+
+
+def apply_settings(pairs, label):
+    """Write settings with the app DOWN, then prove they are what we asked for.
+
+    The read-back is the check the 2026-08-18 run did not have. It cannot prove
+    the app honoured them -- nothing observable from here can -- but it does
+    prove the values are in the domain the app reads, which is exactly what was
+    wrong that night and silently so.
+    """
+    stop_app()
+    for key, value, kind in pairs:
+        if value is None:
+            defaults_delete(key)
+        else:
+            defaults_write(key, value, kind=kind)
+    wrong = []
+    for key, value, _ in pairs:
+        got = defaults_read(key)
+        if value is None:
+            if got is not None:
+                wrong.append(f"{key}={got[0]!r}, expected absent")
+        elif got is None:
+            wrong.append(f"{key} is absent, expected {str(value)!r}")
+        elif got[0] != str(value):
+            wrong.append(f"{key}={got[0]!r}, expected {str(value)!r}")
+    if wrong:
+        raise Aborted(f"{label}: settings did not take -- " + "; ".join(wrong))
+    start_app()
+
+
+def field_text(path):
+    """What the DOCUMENT holds. The file on disk is not the oracle.
+
+    TextEdit keeps an unsaved document in memory, so the file stays empty
+    however much text is pasted into it. The 2026-08-18 run read the file and
+    reported "field A is still empty -- the text is HELD until the user asks for
+    it" in the same second the app logged
+    `Paste cascade: tier=ax_direct, app=com.apple.TextEdit`. Every paste
+    assertion in this harness was unfalsifiable: the empty answer it wanted was
+    the only answer it could ever get.
+    """
+    pid = find_app_pid("TextEdit")
+    if pid is None:
+        return ""
+    want = os.path.basename(path)
+    app = get_ax_app(pid)
+    for window in (get_attr(app, "AXWindows") or []):
+        if str(get_attr(window, "AXTitle") or "") != want:
+            continue
+        area = find_element(window, role="AXTextArea")
+        return str(get_attr(area, "AXValue") or "") if area else ""
+    return ""
 
 
 def focus(path):
@@ -329,15 +413,16 @@ def main():
     try:
         # ---- OFF path first: the promise that covers everyone -------------
         print("[1] Setting OFF — cancel must discard, exactly as it always has")
-        defaults_delete("escapeRecoveryEnabled")
-        defaults_write("cancelKeyCode", LCTRL)
         # `cancelModifiersRaw`, NOT `cancelModifiers`. That is the key
         # `SettingsManager` reads and writes; the other name is read by nothing,
         # so writing it leaves any existing modifiers in place and the binding
         # stays Carbon-registrable — the exact condition the rebind exists to
         # avoid, failing only on a machine that had a customised shortcut.
-        defaults_write("cancelModifiersRaw", 0)
-        restart_app()
+        apply_settings([
+            ("escapeRecoveryEnabled", None, None),
+            ("cancelKeyCode", LCTRL, "-int"),
+            ("cancelModifiersRaw", 0, "-int"),
+        ], "OFF phase")
 
         base = log_length()
         focus(field_a)
@@ -350,12 +435,11 @@ def main():
         check("off: the take is CANCELLED", "terminal cancelled" in off,
               "the disposition never leaves .ordinary with the setting off")
         check("off: nothing was kept", "escape recovery: keeping this take" not in off)
-        check("off: field A is untouched", open(field_a).read().strip() == "")
+        check("off: field A is untouched", field_text(field_a).strip() == "")
 
         # ---- ON path: the feature -----------------------------------------
         print("\n[2] Setting ON — cancel must KEEP the dictation")
-        defaults_write("escapeRecoveryEnabled", "true", kind="-bool")
-        restart_app()
+        apply_settings([("escapeRecoveryEnabled", 1, "-bool")], "ON phase")
 
         base = log_length()
         focus(field_a)
@@ -370,7 +454,7 @@ def main():
         check("on: delivery was SUPPRESSED, not clipboard-only",
               "tier=clipboard_only" not in on,
               "a kept take is held; nothing is pasted, nothing touches the clipboard")
-        check("on: field A is still empty", open(field_a).read().strip() == "",
+        check("on: field A is still empty", field_text(field_a).strip() == "",
               "the text is HELD until the user asks for it")
 
         # ---- The item nothing else can cover: §11.1 item 3 -----------------
@@ -383,11 +467,11 @@ def main():
             w.connect()
             tapped = w.tap("Paste")
             landed = wait_for("text to land in either field",
-                              lambda: bool(open(field_a).read().strip()
-                                           or open(field_b).read().strip()),
+                              lambda: bool(field_text(field_a).strip()
+                                           or field_text(field_b).strip()),
                               deadline=20.0)
-            a_text = open(field_a).read().strip()
-            b_text = open(field_b).read().strip()
+            a_text = field_text(field_a).strip()
+            b_text = field_text(field_b).strip()
             check("retarget: the pill's Paste was reachable", bool(tapped))
             check("retarget: something was pasted", landed)
             check("retarget: text landed in the ORIGINAL field A", len(a_text) > 0,
@@ -399,13 +483,21 @@ def main():
         aborted = str(stop)
 
     finally:
-        # Order matters: the stop presses the cancel key, which is only bound to
-        # `lctrl` until `restore` puts the real binding back.
-        ensure_stopped(base, "cleaning up before restoring settings")
+        # THREE STEPS, AND THE ORDER IS LOAD-BEARING IN BOTH DIRECTIONS.
+        #
+        # Stop the recording FIRST: the cancel key it presses is only bound to a
+        # bare modifier until the real binding goes back, so a restore-first
+        # cleanup could not end a take.
+        #
+        # Quit the app SECOND, BEFORE restoring. `SettingsManager` writes its
+        # in-memory values back to this domain, and this domain is the one the
+        # developer's own app reads. Restoring under a live app hands it the
+        # right values and then lets it overwrite them on the way out -- the
+        # cleanup would be what destroys their cancel shortcut.
+        ensure_stopped(base, "cleaning up before quitting")
+        stop_app()
         print("\n[restore] putting every setting back to what it was")
         restore(before)
-        subprocess.run(["pkill", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
-                       check=False, capture_output=True)
 
     passed = [n for n, s, _ in results if s == "PASS"]
     failed = [n for n, s, _ in results if s == "FAIL"]

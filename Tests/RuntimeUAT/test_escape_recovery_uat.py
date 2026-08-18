@@ -137,6 +137,54 @@ missed = uat.ensure_stopped(0, "late", grace=0.0)
 ok("control: with grace=0 the late take IS missed", missed is True and presses == [],
    "the old code's shape -- returns 'nothing to stop' while a take is starting")
 
+print("\nDOMAIN is bound to the app's own authority")
+import re, pathlib as _pl
+_src = _pl.Path(__file__).resolve().parents[2] / "Sources/EnviousWisprServices/SettingsDefaults.swift"
+_m = re.search(r'sharedSuite\s*=\s*"([^"]+)"', _src.read_text())
+ok("the authority was readable", bool(_m),
+   "a silent miss here would make the row below pass on nothing")
+ok("the harness writes where the dev build READS", _m and uat.DOMAIN == _m.group(1),
+   f"harness={uat.DOMAIN!r} authority={_m.group(1) if _m else None!r}")
+
+print("\napply_settings read-back")
+# The guard that would have caught the wrong-domain bug. Stubbed at the process
+# boundary: what is under test is whether a value that did not land ABORTS.
+uat.stop_app = lambda: None
+uat.start_app = lambda: None
+STORE = {}
+uat.defaults_write = lambda k, v, kind="-int": STORE.__setitem__(k, (str(v), kind))
+uat.defaults_delete = lambda k: STORE.pop(k, None)
+uat.defaults_read = lambda k: STORE.get(k)
+
+STORE.clear()
+try:
+    uat.apply_settings([("cancelKeyCode", 59, "-int"),
+                        ("escapeRecoveryEnabled", None, None)], "row")
+    ok("settings that land are accepted", True)
+except uat.Aborted as e:
+    ok("settings that land are accepted", False, str(e))
+
+# The real defect: written to a domain nothing reads, so the read-back is empty.
+STORE.clear()
+uat.defaults_write = lambda k, v, kind="-int": None  # the write goes nowhere
+try:
+    uat.apply_settings([("cancelKeyCode", 59, "-int")], "row")
+    ok("a write that goes nowhere ABORTS", False,
+       "this is the 2026-08-18 wrong-domain bug -- it must never pass silently")
+except uat.Aborted as e:
+    ok("a write that goes nowhere ABORTS", True, str(e))
+
+# And the opposite: a key that should be gone but is not.
+STORE.clear()
+STORE["escapeRecoveryEnabled"] = ("1", "-bool")
+uat.defaults_delete = lambda k: None  # the delete goes nowhere
+try:
+    uat.apply_settings([("escapeRecoveryEnabled", None, None)], "row")
+    ok("a delete that goes nowhere ABORTS", False,
+       "the OFF phase would then run with the feature ON")
+except uat.Aborted as e:
+    ok("a delete that goes nowhere ABORTS", True, str(e))
+
 print("\n" + "=" * 56)
 print(f"{len(fails)} failed" if fails else "all rows passed")
 for f in fails:
