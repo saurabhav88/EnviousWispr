@@ -110,6 +110,11 @@ struct ClipboardIsolationFreezeTests {
     /// the required `copyToClipboard` seam is what makes the mistake unwriteable.
     /// `SwiftSyntax` keeps the backticks on an escaped identifier, so `` `general` `` would not match a
     /// literal comparison. Same normalisation the inventory gate settled on.
+    ///
+    /// EVERY name this visitor reads goes through here — the member, the base, the FUNCTION name and the
+    /// argument LABEL. Review found this file normalising one, then two, then three of those, each time
+    /// leaving the rest raw, which is how a spelling class survives being "fixed" repeatedly. The rule is
+    /// not "normalise the name that was reported"; it is "a name is never compared as raw text".
     private static func identifierText(_ token: TokenSyntax) -> String {
       token.identifier?.name ?? token.text
     }
@@ -169,10 +174,11 @@ struct ClipboardIsolationFreezeTests {
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
       guard let callee = node.calledExpression.as(MemberAccessExprSyntax.self),
         Self.trailingName(of: callee.base) == "PasteService",
-        ClipboardIsolationFreezeTests.clipboardFunctions.contains(callee.declName.baseName.text)
+        ClipboardIsolationFreezeTests.clipboardFunctions.contains(
+          Self.identifierText(callee.declName.baseName))
       else { return .visitChildren }
 
-      let name = callee.declName.baseName.text
+      let name = Self.identifierText(callee.declName.baseName)
 
       guard isAllowlisted else {
         violations.append(
@@ -187,7 +193,10 @@ struct ClipboardIsolationFreezeTests {
       // where the `from:` belongs to a different call and the clipboard call
       // still defaults to the user's board.
       let boardArguments = node.arguments.filter { argument in
-        guard let label = argument.label?.text else { return false }
+        // Labels too. An escaped `` `to`: `` would not match, the call would look board-LESS, and the
+        // author would be told their correctly-boarded call defaults to the user's clipboard — the
+        // confident-wrong-subject direction rather than the silent one, and still worth closing.
+        guard let label = argument.label.map({ Self.identifierText($0) }) else { return false }
         return ClipboardIsolationFreezeTests.boardLabels.contains(label)
       }
 
@@ -468,11 +477,18 @@ struct ClipboardIsolationFreezeTests {
       (#"PasteService.copyToClipboard("x", to: ((.general)))"#, 1),
       (##"PasteService.copyToClipboard("x", to: NSPasteboard.`general`)"##, 1),
       (##"PasteService.copyToClipboard("x", to: `NSPasteboard`.general)"##, 1),
+      // The FUNCTION name and the argument LABEL are names too.
+      (##"PasteService.`copyToClipboard`("x", to: .general)"##, 1),
+      (##"PasteService.`copyToClipboard`("x")"##, 1),
+      (##"PasteService.copyToClipboard("x", `to`: .general)"##, 1),
       // Safe halves: a unique board, however it is spelled, must still pass.
       (#"PasteService.copyToClipboard("x", to: pb)"#, 0),
       (#"PasteService.copyToClipboard("x", to: NSPasteboard.withUniqueName())"#, 0),
       (#"_ = PasteService.saveClipboard(from: board)"#, 0),
       (#"PasteService.copyToClipboard("x", to: (pb))"#, 0),
+      // Safe halves for the same two axes: escaped spellings of a UNIQUE board must still pass.
+      (##"PasteService.`copyToClipboard`("x", to: pb)"##, 0),
+      (##"PasteService.copyToClipboard("x", `to`: pb)"##, 0),
     ])
   func implicitGeneralInABoardPositionIsCaught(call: String, expected: Int) {
     let hits = Self.violations(
