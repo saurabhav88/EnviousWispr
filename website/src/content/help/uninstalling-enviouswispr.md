@@ -6,7 +6,7 @@ section: "Basics"
 order: 6
 keywords: ["uninstall", "remove", "delete", "get rid of it", "clean up", "free up space", "leftover files", "models taking up space"]
 related: ["model-downloads-and-management"]
-updated: 2026-08-06
+updated: 2026-08-17
 ---
 Removing the app involves two parts: deleting the application itself, and deleting the support files it saved on your Mac.
 
@@ -26,7 +26,7 @@ Those remaining files can add up to a few gigabytes of storage. Follow these ste
 
 **Open the Go to Folder box.** In Finder, press **Shift+Cmd+G** on your keyboard.
 
-**Delete the application support folder.** Paste `~/Library/Application Support/EnviousWispr` into the box, press Enter, and move that folder to the Trash. It holds your dictation history, your custom words, and the WhisperKit and EG-1 models.
+**Delete the application support folder.** Paste `~/Library/Application Support/EnviousWispr` into the box, press Enter, and move that folder to the Trash. It holds your dictation history, your custom words, and the WhisperKit and EG-1 models. Any recording that Escape Recovery was still holding for you sits in there too, and goes with it.
 
 **Delete the preferences file.** Press **Shift+Cmd+G** again, paste `~/Library/Preferences`, press Enter, and move `com.enviouswispr.app.plist` to the Trash. That file stores your settings.
 

@@ -3,7 +3,7 @@ title: "Using a Mouse Button for Dictation"
 description: "Start dictation from a side button on a gaming mouse."
 category: "recording-and-hotkeys"
 section: "Recording"
-order: 6
+order: 7
 keywords: ["mouse", "mouse button", "gaming mouse", "side buttons", "thumb buttons", "razer", "naga", "logitech", "mmo mouse", "extra buttons", "bind mouse button", "middle click", "scroll wheel click", "start dictation with mouse", "hotkey on mouse"]
 related: ["customizing-your-hotkey"]
 updated: 2026-08-10

@@ -6,13 +6,15 @@ section: "Privacy"
 order: 2
 keywords: ["what data", "analytics", "telemetry", "collected", "do you see my text", "do you store", "opt out", "tracking", "crash reports"]
 related: ["privacy-overview"]
-updated: 2026-08-06
+updated: 2026-08-17
 ---
 EnviousWispr collects anonymous usage data and crash reports. Nothing you say is part of that. Your audio and your transcripts never reach Envious Labs, the company that makes the app.
 
 ### What stays on your Mac
 
 Your transcripts are saved to your History so you can find them later. They sit in your user folder, and Envious Labs never receives a copy.
+
+If you turn on [Escape Recovery](/help/escape-recovery/), a recording you cancel with your shortcut is transcribed and held in that same folder for 24 hours, so you can paste it back or press Keep to make it permanent. It is removed within 24 hours otherwise, either while the app is running or the next time you launch it. Its audio is deleted once its text is saved, exactly as with any other dictation.
 
 While you dictate, the app keeps an encrypted backup of the recording. Once your text is safely saved, the app requests deletion of that backup. If the app quits first, EnviousWispr makes one recovery attempt the next time it runs, then requests deletion whether that recovery succeeded or failed.
 

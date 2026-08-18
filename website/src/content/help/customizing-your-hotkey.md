@@ -5,7 +5,7 @@ category: "recording-and-hotkeys"
 section: "Recording"
 order: 4
 keywords: ["hotkey", "shortcut", "keyboard shortcut", "change the key", "how do i change the key", "key combo", "keybinding", "remap", "different key", "globe key", "fn key", "caps lock", "conflicts with another app"]
-updated: 2026-08-09
+updated: 2026-08-17
 ---
 Your hotkey is the key you hold or press to record, and you can change it to whatever suits your hands. EnviousWispr arrives set to the right Option key.
 
@@ -38,6 +38,8 @@ If holding a key down is uncomfortable, toggle mode asks less of your hand: one 
 ### The cancel key
 
 Pressing Escape throws the current recording away without transcribing it. You can change this cancel key on the same **Shortcuts** page if you prefer a different one.
+
+The same page carries an optional setting called **Escape Recovery**. It is off unless you turn it on. With it on, your cancel shortcut keeps the recording and offers to paste it back rather than discarding it, which is worth knowing before you reassign the key. See [Escape Recovery](/help/escape-recovery/).
 
 ### If your hotkey stops working
 
