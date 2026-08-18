@@ -100,10 +100,31 @@ def defaults_delete(key):
     subprocess.run(["defaults", "delete", DOMAIN, key], check=False, capture_output=True)
 
 
+# `defaults read-type` wording -> the write flag that reproduces it. Restoring
+# a value without its TYPE is not restoring it: `SettingsManager` reads these
+# keys with `as? Int`, `as? UInt` and `as? Bool`, every one of which fails on a
+# string and falls through to the default. The key would be present, the value
+# would look right in `defaults read`, and the app would ignore it.
+_TYPE_FLAG = {
+    "integer": "-int",
+    "boolean": "-bool",
+    "float": "-float",
+    "string": "-string",
+}
+
+
 def defaults_read(key):
-    """The stored value, or None when the key is absent."""
+    """The stored value AND its property-list type, or None when absent."""
     out = subprocess.run(["defaults", "read", DOMAIN, key], capture_output=True, text=True)
-    return out.stdout.strip() if out.returncode == 0 else None
+    if out.returncode != 0:
+        return None
+    kind = subprocess.run(
+        ["defaults", "read-type", DOMAIN, key], capture_output=True, text=True)
+    # "Type is integer" -> "integer". Unknown wording falls back to `-string`,
+    # which is wrong for an exotic type but never worse than the untyped write
+    # it replaces.
+    word = kind.stdout.strip().rsplit(" ", 1)[-1] if kind.returncode == 0 else "string"
+    return (out.stdout.strip(), _TYPE_FLAG.get(word, "-string"))
 
 
 def snapshot(keys):
@@ -117,11 +138,12 @@ def restore(before):
     Deleting unconditionally would silently reset a developer's own cancel
     shortcut, which is a destructive tidy-up wearing the word "restore".
     """
-    for key, value in before.items():
-        if value is None:
+    for key, captured in before.items():
+        if captured is None:
             defaults_delete(key)
         else:
-            subprocess.run(["defaults", "write", DOMAIN, key, value], check=False)
+            value, flag = captured
+            subprocess.run(["defaults", "write", DOMAIN, key, flag, value], check=False)
 
 
 def screen_is_locked():

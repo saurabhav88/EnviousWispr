@@ -37,7 +37,9 @@ Clicking **Cancel** in the recording bar throws the recording away immediately, 
 
 ### Changing your mind while it is working
 
-Press your cancel shortcut again while the text is being prepared and the result is discarded when it arrives. Pressing again does not make the work finish sooner: the recording still has to be processed before you can start a new one. A third press does nothing, because you have already asked for the only thing there is to ask for.
+Press your cancel shortcut again **while it is still being transcribed** and the result is discarded when it arrives. Once it moves on to AI polish the shortcut stands down and the dictation is kept, so this is a window rather than something available for the whole wait. Nothing is lost either way: a kept dictation is in History for 24 hours, and you can delete it there.
+
+Pressing again never makes the work finish sooner. The recording still has to be processed before you can start a new one. A third press does nothing, because you have already asked for the only thing there is to ask for.
 
 ### How long a kept dictation lasts
 
