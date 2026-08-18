@@ -90,7 +90,10 @@ struct LivePreviewSettingsView: View {
       // continuously. Read live rather than snapshotted, for the same reason the
       // resolver reads it live: the answer must be current.
       heartIsStreaming: WhisperPreviewDeliveryWiring.heartIsStreaming(settings: settings),
-      active: packs.active)
+      active: packs.active,
+      // The model refuses to reload while an install runs, so `active` is stale
+      // for that whole window and the card must not assert from it.
+      anInstallIsInFlight: packs.installingTag != nil)
   }
 
   private var showsApplePacks: Bool {

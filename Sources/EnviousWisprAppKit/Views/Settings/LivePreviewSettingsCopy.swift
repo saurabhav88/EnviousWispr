@@ -235,6 +235,11 @@ enum LivePreviewSettingsCopy {
 
   static let statusCheckingLabel = "Checking"
   static let statusCheckingDetail = "Reading which languages are on this Mac."
+  /// Shown while a language download is running, when the resolved language is
+  /// stale by construction. True whichever language is downloading, which is
+  /// what lets the card say it without knowing.
+  static let statusInstallInFlightDetail =
+    "A language download is in progress. This updates when it finishes."
 
   static func statusNeedsLanguageLabel(_ languageName: String) -> String {
     "\(languageName) isn't downloaded yet"

@@ -45,7 +45,8 @@ enum LivePreviewStatusMapping {
     universalExists: Bool,
     universalState: DeliveryState,
     heartIsStreaming: Bool,
-    active: LivePreviewPacksModel.ActiveLanguage?
+    active: LivePreviewPacksModel.ActiveLanguage?,
+    anInstallIsInFlight: Bool = false
   ) -> Summary {
     // (1) Can ANYTHING run here? Asked first because "off" is not the useful
     // answer on a Mac where the switch could never help.
@@ -87,7 +88,8 @@ enum LivePreviewStatusMapping {
     switch engine {
     case .apple:
       return apple(
-        supported: appleSupported, active: active, universalIsAnOption: universalExists)
+        supported: appleSupported, active: active, universalIsAnOption: universalExists,
+        anInstallIsInFlight: anInstallIsInFlight)
     case .universal:
       return universal(
         exists: universalExists, state: universalState, heartIsStreaming: heartIsStreaming)
@@ -102,7 +104,8 @@ enum LivePreviewStatusMapping {
   private static func apple(
     supported: Bool,
     active: LivePreviewPacksModel.ActiveLanguage?,
-    universalIsAnOption: Bool
+    universalIsAnOption: Bool,
+    anInstallIsInFlight: Bool
   ) -> Summary {
     guard supported else {
       return Summary(
@@ -142,6 +145,27 @@ enum LivePreviewStatusMapping {
       // invented under an unattended session.
       return Self.activeSummary
     case .needsDownload(let name):
+      // **`active` is KNOWN STALE while any install runs, so do not assert from
+      // it.** `LivePreviewPacksModel.install(tag:)` sets `installingTag`
+      // synchronously but only recomputes `active` when the install finishes,
+      // and `load()` refuses to run in between — so during a download this value
+      // still says "not downloaded" for a language that may be seconds from
+      // ready. The table row below already spins "Downloading", so the card
+      // asserting the opposite made one page disagree with itself, which is the
+      // defect this card exists to remove. Cloud review, PR #2169.
+      //
+      // Answers "checking" rather than guessing which language is downloading:
+      // the limb reports `installRequired(languageName:)` with no tag, so the
+      // page genuinely cannot tell whether the in-flight install is THIS
+      // language. Refusing to answer during a window where the input is stale by
+      // construction is the accurate claim, and it is the same refusal the
+      // unresolved case already makes.
+      guard !anInstallIsInFlight else {
+        return Summary(
+          chip: ProviderStatus(
+            label: LivePreviewSettingsCopy.statusCheckingLabel, tone: .unavailable),
+          detail: LivePreviewSettingsCopy.statusInstallInFlightDetail)
+      }
       return Summary(
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusNeedsLanguageLabel(name), tone: .needsSetup),

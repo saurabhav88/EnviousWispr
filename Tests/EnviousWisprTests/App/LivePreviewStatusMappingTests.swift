@@ -29,7 +29,8 @@ struct LivePreviewStatusMappingTests {
     universalExists: Bool = true,
     universalState: DeliveryState = .admitted,
     heartIsStreaming: Bool = false,
-    active: LivePreviewPacksModel.ActiveLanguage? = .ready(tag: "en-US", name: "English")
+    active: LivePreviewPacksModel.ActiveLanguage? = .ready(tag: "en-US", name: "English"),
+    anInstallIsInFlight: Bool = false
   ) -> LivePreviewStatusMapping.Summary {
     LivePreviewStatusMapping.summary(
       isEnabled: isEnabled,
@@ -38,7 +39,8 @@ struct LivePreviewStatusMappingTests {
       universalExists: universalExists,
       universalState: universalState,
       heartIsStreaming: heartIsStreaming,
-      active: active)
+      active: active,
+      anInstallIsInFlight: anInstallIsInFlight)
   }
 
   // MARK: - The two answers that must never be wrong
@@ -227,6 +229,37 @@ struct LivePreviewStatusMappingTests {
     }
     // Positive control: it still says something actionable rather than nothing.
     #expect(d.contains("switch it on"))
+  }
+
+  /// **Cloud review, PR #2169.** `install(tag:)` sets `installingTag`
+  /// synchronously but only recomputes `active` when the install finishes, and
+  /// `load()` refuses to run in between — so during a download the resolved
+  /// language still reads `.needsDownload` for a language that may be seconds
+  /// from ready. The table row below already spins "Downloading", so a card
+  /// asserting the opposite made one page contradict itself.
+  @Test("The card stops asserting a missing language while a download is running")
+  func needsDownloadDefersWhileAnInstallRuns() {
+    let idle = summary(engine: .apple, active: .needsDownload(name: "German"))
+    let installing = summary(
+      engine: .apple, active: .needsDownload(name: "German"), anInstallIsInFlight: true)
+
+    #expect(idle.chip.label.contains("German"))
+    // While an install runs the card refuses to answer rather than claiming a
+    // state its input cannot currently support.
+    #expect(installing.chip.label == LivePreviewSettingsCopy.statusCheckingLabel)
+    #expect(installing.chip.tone == .unavailable)
+    #expect(installing.detail == LivePreviewSettingsCopy.statusInstallInFlightDetail)
+    #expect(installing.chip.label != idle.chip.label)
+  }
+
+  /// The deferral is scoped to the state whose input is stale. A resolved,
+  /// installed language stays reported as ready while an unrelated pack
+  /// downloads — otherwise every download would blank a working status.
+  @Test("A download elsewhere does not disturb an already-ready language")
+  func installInFlightDoesNotDisturbReady() {
+    let s = summary(engine: .apple, active: .ready(tag: "en-US", name: "English"),
+                    anInstallIsInFlight: true)
+    #expect(s.chip.tone == .ready)
   }
 
   @Test("An unsupported language and an unsupported system are different answers")

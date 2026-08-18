@@ -54,6 +54,7 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.statusNeedsMacOS26DetailNoAlternative,
       LivePreviewSettingsCopy.statusCheckingLabel,
       LivePreviewSettingsCopy.statusCheckingDetail,
+      LivePreviewSettingsCopy.statusInstallInFlightDetail,
       LivePreviewSettingsCopy.statusNeedsLanguageDetail,
       LivePreviewSettingsCopy.statusUnsupportedLanguageLabel,
       LivePreviewSettingsCopy.statusUnsupportedLanguageDetail,
