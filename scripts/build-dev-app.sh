@@ -19,6 +19,11 @@ set -euo pipefail
 # Usage: ./scripts/build-dev-app.sh   (no arguments)
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# #2157 chunk C: shared owner for conditional project generation. Sourced from
+# THIS worktree, never the main checkout — `scripts/` is tracked, so every
+# checkout has its own copy and each must generate its OWN project.
+# shellcheck source=scripts/lib/ensure-generated.sh
+. "$PROJECT_ROOT/scripts/lib/ensure-generated.sh"
 DERIVED_DATA="$PROJECT_ROOT/.derivedData/Dev"
 BUILT_APP="$DERIVED_DATA/Build/Products/Dev/EnviousWispr Local.app"
 APP_PATH="$PROJECT_ROOT/build/EnviousWispr Local.app"
@@ -76,8 +81,10 @@ for pid in $(dev_llama_pids); do
 done
 
 # ─── Step 3: Generate the Xcode project (gitignored, never committed) ─────────
-echo "==> Step 3: Generating Xcode project (Tuist)..."
-mise x tuist@4.195.11 -- tuist generate --no-open
+# #2157 chunk C: only regenerates when a generation INPUT changed. Measured 6.7 s
+# per invocation for a byte-identical `project.pbxproj` on a warm tree.
+echo "==> Step 3: Ensuring Xcode project is current (Tuist)..."
+ew_ensure_generated "$PROJECT_ROOT"
 
 # ─── Step 4: Build + sign the Dev configuration via Xcode ─────────────────────
 echo "==> Step 4: Building EnviousWispr-Dev (Dev config, self-signed)..."
@@ -134,9 +141,39 @@ codesign --verify "$APP_PATH"
 # ─── Step 8: Launch ───────────────────────────────────────────────────────────
 echo "==> Step 8: Launching..."
 open "$APP_PATH"
-sleep 3
-# Verify launch by THIS worktree's executable path, not a global process-name
-# match (which could see a sibling worktree's or the prod app).
-this_worktree_pids() { pgrep -f "$APP_PATH/Contents/MacOS/EnviousWispr" 2>/dev/null || true; }
-[ -n "$(this_worktree_pids)" ] || { echo "ERROR: this worktree's dev app did not launch"; exit 1; }
+
+# #2157 chunk C. Two defects fixed here, both of which made this check weaker
+# than it looked:
+#   1. `sleep 3` was a fixed wait, not a signal. It cost 3 s on every rebuild and
+#      still could not prove anything — the app is either up before it or not.
+#   2. `pgrep -f <path>` matches a REGEX against the whole command line, so it
+#      matches a SIBLING worktree's app whose command line contains this path as
+#      a substring, and any unrelated process that merely mentions it. It never
+#      resolved the executable. Resolve `ps -o comm=` and compare `pwd -P`
+#      normalised real paths instead — the /tmp vs /private/tmp spelling makes
+#      raw string comparison wrong.
+this_worktree_pids() {
+  local expected actual pid
+  expected="$(cd "$APP_PATH/Contents/MacOS" && pwd -P)/EnviousWispr"
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    actual="$(ps -o comm= -p "$pid" 2>/dev/null || true)"
+    if [ -n "$actual" ] && [ -d "$(dirname "$actual")" ]; then
+      actual="$(cd "$(dirname "$actual")" && pwd -P)/$(basename "$actual")"
+    fi
+    if [ "$actual" = "$expected" ]; then
+      printf '%s\n' "$pid"
+    fi
+  done < <(pgrep -f "EnviousWispr Local.app/Contents/MacOS/EnviousWispr" 2>/dev/null || true)
+}
+
+launched=0
+for _ in $(seq 1 50); do
+  if [ -n "$(this_worktree_pids)" ]; then
+    launched=1
+    break
+  fi
+  sleep 0.1
+done
+[ "$launched" = "1" ] || { echo "ERROR: this worktree's dev app did not launch"; exit 1; }
 echo "==> EnviousWispr (dev) running ✓  ($APP_PATH)"

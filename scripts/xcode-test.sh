@@ -16,6 +16,9 @@ set -euo pipefail
 #   scripts/xcode-test.sh --release       # also run the Release-config lane
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# #2157 chunk C: shared owner for conditional project generation.
+# shellcheck source=scripts/lib/ensure-generated.sh
+. "$PROJECT_ROOT/scripts/lib/ensure-generated.sh"
 DERIVED_DATA="${DERIVED_DATA_PATH:-$PROJECT_ROOT/.derivedData/Test}"
 PROJECT="EnviousWispr.xcodeproj"
 DEBUG_SCHEME="EnviousWispr"
@@ -35,8 +38,9 @@ done
 cd "$PROJECT_ROOT"
 mkdir -p "$PROJECT_ROOT/build"   # log dir for `tee` below; absent on a clean checkout
 
-# Generate the Xcode project (gitignored, never committed).
-mise x tuist@4.195.11 -- tuist generate --no-open
+# Generate the Xcode project (gitignored, never committed) — only when a
+# generation input actually changed (#2157 chunk C).
+ew_ensure_generated "$PROJECT_ROOT"
 
 TEST_ARGS=()
 [ -n "$FILTER" ] && TEST_ARGS=(-only-testing:"$FILTER")

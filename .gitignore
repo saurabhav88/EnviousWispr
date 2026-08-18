@@ -141,6 +141,15 @@ scripts/*
 !scripts/build-dev-app.sh
 !scripts/check-xpc-error-hygiene.sh
 !scripts/check-contacts-data-flow.sh
+# #2157: local build-loop tooling. `scripts/*` ignores everything by default, so
+# a new tracked script needs an explicit exception or it silently never ships —
+# it would work on the author's machine and be absent for everyone else.
+# The DIRECTORY exception is required too: git does not descend into an excluded
+# directory to find a file exception inside it.
+!scripts/lib/
+!scripts/lib/ensure-generated.sh
+!scripts/lib/ensure-generated-test.sh
+!scripts/build-benchmark.sh
 # #1951: catalog ids are pull targets, so a wrong one ships a dead Download
 # button. Tracked deliberately — a gitignored validator can only be run by
 # someone who remembers it exists, which is how the false green happens.
