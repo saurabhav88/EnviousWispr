@@ -160,8 +160,9 @@ final class LivePreviewPacksModel {
   /// trigger that cannot fire. Bounded, because each pass either agrees with the
   /// current mode or observes a NEWER one, and a user cannot change the language
   /// faster than the resolver returns indefinitely; the cap makes that a
-  /// guarantee rather than an argument, and exhausting it publishes the honest
-  /// stale pair, which the consumers already handle.
+  /// guarantee rather than an argument. Exhausting it is NOT a terminal state:
+  /// the caller hands back to `load()` via `reloadIfStale`, which is unblocked
+  /// by then, so the cap costs one extra resolve rather than parking the page.
   private func resolveSettledActive() async -> (ActiveLanguage, LanguageMode) {
     var attempt = 0
     while true {
@@ -258,6 +259,13 @@ final class LivePreviewPacksModel {
         self.active = resolved
         self.resolvedMode = resolvedFor
         self.installingTag = nil
+        // The cap above can return a stale pair if the language moved during
+        // every attempt. `installingTag` is nil NOW, so the ordinary reload is
+        // no longer refused — hand back to it rather than leaving the page
+        // parked on "Checking" until the user happens to navigate. Cloud review
+        // r5. This is what makes the cap a safety net rather than a correctness
+        // boundary: exceeding it costs one extra resolve, never a stuck state.
+        await self.reloadIfStale(resolvedFor)
       } catch {
         // Re-read rather than trusting the failure: Apple may have installed it and then thrown
         // on something else, and the list must show what the system says, not what we inferred.
@@ -284,8 +292,20 @@ final class LivePreviewPacksModel {
         self.state = Self.state(for: refreshed)
         self.active = resolved
         self.resolvedMode = resolvedFor
+        await self.reloadIfStale(resolvedFor)
       }
     }
+  }
+
+  /// Hand back to the ordinary reload when the settled answer is still stale.
+  ///
+  /// Only reachable after the install has cleared `installingTag`, which is
+  /// precisely when `load()` stops being refused, so this cannot recurse into
+  /// the blocked path it exists to escape. `load()` has its own generation
+  /// guard, so a newer reload still wins.
+  private func reloadIfStale(_ resolvedFor: LanguageMode) async {
+    guard resolvedFor != currentMode() else { return }
+    await load()
   }
 
   // **NOTHING happens when the page disappears, deliberately.**
