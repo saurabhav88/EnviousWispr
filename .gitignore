@@ -156,6 +156,7 @@ scripts/lib/*
 !scripts/lib/spm-seed-lock-test.sh
 !scripts/lib/spm-seed.sh
 !scripts/lib/spm-seed-test.sh
+!scripts/lib/benchmark-gate-test.sh
 !scripts/build-benchmark.sh
 # #1951: catalog ids are pull targets, so a wrong one ships a dead Download
 # button. Tracked deliberately — a gitignored validator can only be run by

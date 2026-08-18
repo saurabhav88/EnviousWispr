@@ -157,12 +157,29 @@ else
   bad "malformed warning" "refused silently: '$warn_out'"
 fi
 
+# --- an ownerless lock: FRESH must be kept, AGED must be reclaimed -------------
+# This replaces an assertion that refused EVERY ownerless lock. That was right
+# while the owner record was written by a plain redirect, because a partial file
+# was possible and a half-acquired lock had to be assumed live. The record is now
+# renamed into place, so `owner` is either absent or complete, and "absent" only
+# ever means the acquirer died between `mkdir` and the rename — microseconds.
+# What the old assertion protected (never stealing a lock from a live acquirer)
+# is now carried by the AGE check, which the fresh case below proves. The old
+# behaviour had a cost the new one removes: a process killed inside that gap left
+# a lock NOTHING could reclaim, so the key lost seeding permanently.
+mkdir -p "$EW_SEED_ROOT/.locks/freshnoowner"
+if ew_seed_lock_is_reclaimable freshnoowner 60; then
+  bad "fresh ownerless lock" "stole a lock from an acquirer that is still mid-write"
+else
+  ok "a FRESH lock with no owner file is left alone (age is what protects it)"
+fi
+
 mkdir -p "$EW_SEED_ROOT/.locks/noowner"
 touch -t 202001010000 "$EW_SEED_ROOT/.locks/noowner"
 if ew_seed_lock_is_reclaimable noowner 60; then
-  bad "missing owner file" "reclaimed a lock caught mid-write"
+  ok "an AGED lock with no owner file IS reclaimed (the acquirer died in the gap)"
 else
-  ok "a lock with NO owner file fails closed (caught mid-acquire)"
+  bad "aged ownerless lock" "left a stranded lock that nothing else can ever clear"
 fi
 
 if ew_seed_lock_is_reclaimable neverexisted 60; then
@@ -171,9 +188,66 @@ else
   ok "an ABSENT lock is not reclaimable"
 fi
 
+# --- the lock is TRACKED before anything interruptible happens ----------------
+# A signal between `mkdir` and the tracking line strands a lock the EXIT cleanup
+# does not know about. Order cannot be tested by sending a signal at the right
+# microsecond, so it is tested from INSIDE the window: the owner record calls
+# `ew_seed_process_identity`, which runs AFTER the tracking line, so shadowing it
+# lets the test observe the array at that exact moment. If the tracking line
+# moves back below the write, this records "no" and the case goes red.
+ORDER_PROBE="$TMPROOT/order-probe"
+_real_identity_body="$(declare -f ew_seed_process_identity)"
+ew_seed_process_identity() {
+  local d="$EW_SEED_ROOT/.locks/ordering" i seen=no
+  for i in ${EW_SEED_HELD_LOCKS[@]+"${EW_SEED_HELD_LOCKS[@]}"}; do
+    [ "$i" = "$d" ] && seen=yes
+  done
+  printf '%s\n' "$seen" > "$ORDER_PROBE"
+  printf 'probe-identity\n'
+}
+ew_seed_lock_acquire ordering >/dev/null 2>&1
+eval "$_real_identity_body"
+if [ "$(cat "$ORDER_PROBE" 2>/dev/null)" = "yes" ]; then
+  ok "the lock is registered for cleanup BEFORE its owner record is written"
+else
+  bad "tracking order" "the lock was still untracked while the owner record was being written"
+fi
+ew_seed_lock_release ordering
+
+# --- the owner record is renamed into place, never written in place -----------
+# A partial record is PERMANENT: `is_reclaimable` refuses an unknown version, so
+# a truncated `version=` would make that key read as busy for the life of the
+# machine. Atomicity is what makes "absent or complete" the only two states.
+ew_seed_lock_acquire atomicowner >/dev/null 2>&1
+_leftover=0
+for _t in "$EW_SEED_ROOT/.locks/atomicowner"/.owner.*; do
+  [ -e "$_t" ] && _leftover=$((_leftover + 1))
+done
+if [ "$_leftover" -eq 0 ] && [ -f "$EW_SEED_ROOT/.locks/atomicowner/owner" ] \
+   && [ "$(sed -n 's/^version=//p' "$EW_SEED_ROOT/.locks/atomicowner/owner")" = "$EW_SEED_LOCK_VERSION" ]; then
+  ok "a successful acquire leaves a COMPLETE owner record and no staging file"
+else
+  bad "atomic owner" "leftover=$_leftover owner=$(cat "$EW_SEED_ROOT/.locks/atomicowner/owner" 2>/dev/null | tr '\n' ' ')"
+fi
+ew_seed_lock_release atomicowner
+
+# THE TWIN: when the rename fails, acquire must leave NOTHING — no lock
+# directory for others to trip over, and no entry in the cleanup list pointing
+# at a path that no longer exists.
+mv() { return 1; }
+_before="${#EW_SEED_HELD_LOCKS[@]}"
+ew_seed_lock_acquire rollback >/dev/null 2>&1; _rc=$?
+unset -f mv
+if [ "$_rc" -ne 0 ] && [ ! -e "$EW_SEED_ROOT/.locks/rollback" ] \
+   && [ "${#EW_SEED_HELD_LOCKS[@]}" -eq "$_before" ]; then
+  ok "a failed owner write rolls the lock back completely (the twin)"
+else
+  bad "acquire rollback" "rc=$_rc dir_present=$([ -e "$EW_SEED_ROOT/.locks/rollback" ] && echo yes || echo no) tracked=${#EW_SEED_HELD_LOCKS[@]} was=$_before"
+fi
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 16 ]; then
-  printf 'ERROR: expected at least 16 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 20 ]; then
+  printf 'ERROR: expected at least 20 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1

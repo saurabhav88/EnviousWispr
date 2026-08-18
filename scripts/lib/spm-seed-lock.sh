@@ -71,27 +71,52 @@ ew_seed_lock_acquire() {
   # slow path rather than waiting, because waiting could exceed the time the
   # cache was meant to save.
   mkdir "$dir" 2>/dev/null || return 1
-  # Ownership is written AFTER winning the lock, so a reader that sees a lock
-  # directory with no owner file has caught us mid-write and must treat it as
-  # busy rather than reclaimable.
-  {
+
+  # TRACK IT IMMEDIATELY, BEFORE ANY OTHER WORK. Registering after the owner
+  # record was written left a window in which HUP/INT/TERM stranded a lock the
+  # EXIT cleanup did not know about. Between `mkdir` and this line there is now
+  # nothing that can be interrupted.
+  EW_SEED_HELD_LOCKS[${#EW_SEED_HELD_LOCKS[@]}]="$dir"
+
+  # WRITE THE OWNER RECORD ATOMICALLY, and the reason is not tidiness — it is
+  # that a PARTIAL record is PERMANENT. Redirecting straight into `owner` meant a
+  # signal mid-write could leave `version=` truncated or empty, and
+  # `ew_seed_lock_is_reclaimable` deliberately refuses an unknown version, so
+  # that key would read as busy for the rest of the machine's life and lose
+  # seeding entirely. Same-directory rename is atomic, so `owner` is now either
+  # ABSENT or COMPLETE — never in between. That also narrows "malformed" back to
+  # what it was meant to mean: a record written by a version we do not know,
+  # which SHOULD fail closed.
+  if {
     printf 'version=%s\n' "$EW_SEED_LOCK_VERSION"
     printf 'pid=%s\n' "$$"
     printf 'started=%s\n' "$(ew_seed_process_identity "$$")"
-  } > "$dir/owner" 2>/dev/null || { rmdir "$dir" 2>/dev/null; return 1; }
-  EW_SEED_HELD_LOCKS[${#EW_SEED_HELD_LOCKS[@]}]="$dir"
-  return 0
+  } > "$dir/.owner.$$" 2>/dev/null && mv -f "$dir/.owner.$$" "$dir/owner" 2>/dev/null; then
+    return 0
+  fi
+
+  rm -rf "$dir" 2>/dev/null || true
+  ew_seed_lock_untrack "$dir"
+  return 1
 }
 
-ew_seed_lock_release() {
-  local key="$1" dir i kept
-  dir="$(ew_seed_lock_dir "$key")"
-  rm -rf "$dir" 2>/dev/null || true
+# Remove one directory from the held list. Extracted because acquire's failure
+# path and release both need it, and two copies of an array filter in bash 3.2
+# is how they drift.
+ew_seed_lock_untrack() {
+  local dir="$1" i kept
   kept=()
   for i in ${EW_SEED_HELD_LOCKS[@]+"${EW_SEED_HELD_LOCKS[@]}"}; do
     [ "$i" = "$dir" ] || kept[${#kept[@]}]="$i"
   done
   EW_SEED_HELD_LOCKS=(${kept[@]+"${kept[@]}"})
+}
+
+ew_seed_lock_release() {
+  local key="$1" dir
+  dir="$(ew_seed_lock_dir "$key")"
+  rm -rf "$dir" 2>/dev/null || true
+  ew_seed_lock_untrack "$dir"
 }
 
 ew_seed_release_all() {
@@ -121,8 +146,20 @@ ew_seed_lock_is_reclaimable() {
   owner="$dir/owner"
 
   [ -d "$dir" ] || return 1
-  [ -f "$owner" ] || return 1   # mid-write or malformed: not ours to judge
+  # AGE FIRST, because it is what makes the ownerless case decidable below.
   [ -n "$(find "$dir" -maxdepth 0 -mmin "+$max_age_min" -print 2>/dev/null)" ] || return 1
+
+  # NO OWNER RECORD AND AGED IS NOW PROVABLY ABANDONED, which it was not before
+  # the write became atomic. The gap between `mkdir` and the owner rename is a
+  # few microseconds and the directory's mtime is set at `mkdir`, so a live
+  # acquirer cannot be aged. Previously this returned 1 unconditionally, which
+  # meant a process killed inside that gap left a lock nothing could ever
+  # reclaim — the same permanent-busy failure as a partial record, reached by a
+  # different door.
+  if [ ! -f "$owner" ]; then
+    echo "seed-lock: $key has no owner record and is older than ${max_age_min}m; reclaiming" >&2
+    return 0
+  fi
 
   version="$(sed -n 's/^version=//p' "$owner" 2>/dev/null | head -1)"
   pid="$(sed -n 's/^pid=//p' "$owner" 2>/dev/null | head -1)"

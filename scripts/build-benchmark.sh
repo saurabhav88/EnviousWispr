@@ -153,9 +153,23 @@ run_execute() {
 # INSTANTANEOUS absence, and a sequential battery is a chain of short builds
 # with gaps between them, so it can pass here mid-run. It catches the common
 # case (a build in flight) and cannot certify a quiet machine.
-if pgrep -x xcodebuild >/dev/null 2>&1 || pgrep -x tuist >/dev/null 2>&1; then
-  echo "REFUSING: another xcodebuild/tuist is running — a contended timing is not comparable." >&2
-  echo "Wait for it to clear, or accept that the number describes the machine, not the build." >&2
+# `pgrep` exits 0 on a match, 1 on NO match, and >1 on an ERROR. The `||` form
+# this replaced treated every one of those the same way, so a probe that FAILED
+# read as "nothing is running" and the benchmark went ahead having established
+# nothing. That is the silent-empty family, and `xcode-build-tooling.md`
+# RULE: purge-orphaned-derived-data already says exit >1 is an error, not a
+# no-match — so this file was breaking a rule the repo had already written down.
+# Proceed only when BOTH probes said, specifically, "no match".
+pgrep -x xcodebuild >/dev/null 2>&1; _xb=$?
+pgrep -x tuist     >/dev/null 2>&1; _tu=$?
+if [ "$_xb" -ne 1 ] || [ "$_tu" -ne 1 ]; then
+  if [ "$_xb" -gt 1 ] || [ "$_tu" -gt 1 ]; then
+    echo "REFUSING: the contention probe itself failed (xcodebuild=$_xb tuist=$_tu)." >&2
+    echo "A timing taken without knowing the machine was quiet is not a measurement." >&2
+  else
+    echo "REFUSING: another xcodebuild/tuist is running — a contended timing is not comparable." >&2
+    echo "Wait for it to clear, or accept that the number describes the machine, not the build." >&2
+  fi
   exit 3
 fi
 
