@@ -126,6 +126,16 @@ else
   bad "consume" "target incomplete or unannounced: '$out'"
 fi
 
+# The REAL clone must leave the provenance marker, naming the key it came from.
+# Every other provenance case below fabricates the marker by hand, so without
+# this one a mutation deleting the write survives untouched — which is exactly
+# what happened on the first mutation run.
+if [ "$(cat "$DD3/SourcePackages/$EW_SEED_PROVENANCE_FILE" 2>/dev/null)" = "$KEY" ]; then
+  ok "a real clone records its provenance, naming the snapshot key"
+else
+  bad "provenance write" "marker missing or wrong: '$(cat "$DD3/SourcePackages/$EW_SEED_PROVENANCE_FILE" 2>/dev/null)' vs key '$KEY'"
+fi
+
 # --- consume sweeps ITS OWN key's orphaned staging, and only its own -----------
 # A SIGKILL leaves a consumer staging copy behind with no handler to remove it,
 # and each is a full 3.6 GB. Consume sweeps them under the key's lock. The
@@ -434,9 +444,138 @@ else
 fi
 EW_SEED_CONSUMED=0
 
+# --- a clone that was never validated is recognised by a LATER process --------
+# `EW_SEED_CONSUMED` is a variable in ONE process and the dangerous window spans
+# two: a seeded run interrupted DURING validation leaves the tree behind,
+# possibly half-validated, and the next process took consume's early return with
+# the fallback disarmed. The tree was then trusted forever and every build failed
+# the same way until somebody deleted DerivedData by hand.
+PROV="$TMPROOT/prov"; mkdir -p "$PROV"
+make_tree "$PROV/SourcePackages"
+printf 'somekey\n' > "$PROV/SourcePackages/$EW_SEED_PROVENANCE_FILE"
+EW_SEED_CONSUMED=0
+# REDIRECT TO A FILE, never `out="$(...)"`. A command substitution runs the
+# function in a SUBSHELL, so the variable it sets never reaches the assertion and
+# the case fails while the code is correct. Caught on the first run here; the
+# same class of harness-alters-the-subject defect produced a vacuous test and a
+# wrong measurement earlier in this branch, both times through `eval`. Ask of any
+# assertion on a side effect whether the harness put the subject in a subshell.
+ew_seed_consume "$ROOT" "$PROV" > "$TMPROOT/prov.out" 2>&1
+out="$(cat "$TMPROOT/prov.out")"
+if [ "$EW_SEED_CONSUMED" = "1" ] && printf '%s' "$out" | grep -q "earlier run"; then
+  ok "an existing tree carrying the marker ARMS the fallback in a later process"
+else
+  bad "provenance carry-over" "consumed=$EW_SEED_CONSUMED out='$out'"
+fi
+
+# THE TWIN, and it is the one that stops this over-firing: a tree WITHOUT the
+# marker is somebody else's — xcodebuild's own, or a developer's — and must be
+# left completely alone.
+PROV2="$TMPROOT/prov2"; mkdir -p "$PROV2"
+make_tree "$PROV2/SourcePackages"
+EW_SEED_CONSUMED=0
+ew_seed_consume "$ROOT" "$PROV2" > "$TMPROOT/prov2.out" 2>&1
+out="$(cat "$TMPROOT/prov2.out")"
+if [ "$EW_SEED_CONSUMED" = "0" ] && [ -z "$out" ]; then
+  ok "an existing tree with NO marker is left alone and does not arm anything (the twin)"
+else
+  bad "provenance false arm" "consumed=$EW_SEED_CONSUMED out='$out'"
+fi
+EW_SEED_CONSUMED=0
+
+# A VALIDATED tree stops being the seed's problem, so the marker is cleared.
+# Without this the fallback arms on every later run and would discard a good tree
+# on the first unrelated package error.
+PROV3="$TMPROOT/prov3"; mkdir -p "$PROV3/SourcePackages"
+printf 'somekey\n' > "$PROV3/SourcePackages/$EW_SEED_PROVENANCE_FILE"
+EW_SEED_CONSUMED=1
+ew_seed_resolve_or_unseed "$PROV3" true
+if [ ! -e "$PROV3/SourcePackages/$EW_SEED_PROVENANCE_FILE" ]; then
+  ok "a successful resolve CLEARS the marker (the tree is xcodebuild's now)"
+else
+  bad "marker not cleared" "a validated tree still claims seed provenance"
+fi
+EW_SEED_CONSUMED=0
+
+# --- the shared cache bounds itself, in TRACKED code --------------------------
+# Every key publishes its own ~3.6 GB snapshot and keys roll on any dependency
+# bump or Xcode upgrade. Cleanup existed only in a gitignored script, which means
+# it did not exist on any machine but the one it was written on.
+PR="$TMPROOT/prunecache"
+export EW_SEED_ROOT="$PR"
+mkdir -p "$PR/oldkey" "$PR/freshkey" "$PR/keepkey"
+make_tree "$PR/oldkey/SourcePackages"; make_tree "$PR/freshkey/SourcePackages"; make_tree "$PR/keepkey/SourcePackages"
+touch -t 202001010000 "$PR/oldkey" "$PR/keepkey"
+EW_SEED_MAX_AGE_DAYS=14 ew_seed_prune keepkey >/dev/null 2>&1
+if [ ! -e "$PR/oldkey" ]; then
+  ok "a snapshot unused past the age bound is pruned"
+else
+  bad "prune stale" "an idle snapshot survived"
+fi
+if [ -d "$PR/freshkey/SourcePackages" ]; then
+  ok "a RECENTLY USED snapshot is kept (the twin)"
+else
+  bad "prune fresh" "pruned a snapshot that was in use"
+fi
+if [ -d "$PR/keepkey/SourcePackages" ]; then
+  ok "the key just published is kept even when its directory is old"
+else
+  bad "prune keep" "pruned the key it was told to keep"
+fi
+
+# A malformed bound must prune NOTHING. Reading "" or "abc" as zero would delete
+# the whole cache, which is the expensive direction for a housekeeping routine.
+mkdir -p "$PR/oldkey2"; make_tree "$PR/oldkey2/SourcePackages"; touch -t 202001010000 "$PR/oldkey2"
+EW_SEED_MAX_AGE_DAYS="not-a-number" ew_seed_prune >/dev/null 2>&1
+EW_SEED_MAX_AGE_DAYS="" ew_seed_prune >/dev/null 2>&1
+EW_SEED_MAX_AGE_DAYS=0 ew_seed_prune >/dev/null 2>&1
+if [ -d "$PR/oldkey2/SourcePackages" ]; then
+  ok "a malformed or zero age bound prunes NOTHING"
+else
+  bad "prune malformed bound" "deleted a snapshot on an unusable bound"
+fi
+
+# A snapshot whose lock is HELD is in use right now, whatever its age says.
+mkdir -p "$PR/busykey"; make_tree "$PR/busykey/SourcePackages"; touch -t 202001010000 "$PR/busykey"
+ew_seed_lock_acquire busykey >/dev/null 2>&1
+EW_SEED_MAX_AGE_DAYS=14 ew_seed_prune >/dev/null 2>&1
+if [ -d "$PR/busykey/SourcePackages" ]; then
+  ok "a LOCKED snapshot is never pruned, however old (a consumer may be mid-clone)"
+else
+  bad "prune locked" "deleted a snapshot while its lock was held"
+fi
+ew_seed_lock_release busykey
+
+# The lock directory is not a snapshot and must survive. TWO corrections here,
+# both found by the mutation control and neither visible from reading:
+#   1. AGE IT FIRST. A freshly created .locks fails the age test and is never a
+#      candidate, so the case could not reach its subject at all.
+#   2. ASSERT ON CONTENTS, NOT EXISTENCE. Pruning any later key calls
+#      `ew_seed_lock_acquire`, which does `mkdir -p` on .locks — so a deleted
+#      .locks is REBUILT before the assertion runs and `[ -d ]` is true either
+#      way. A sentinel inside it is what distinguishes "never touched" from
+#      "destroyed and silently recreated empty".
+# What protects .locks is the glob: `"$EW_SEED_ROOT"/*` does not match a leading
+# dot. This case binds that choice, so replacing the glob with `find` or enabling
+# `dotglob` goes red here.
+#   3. SENTINEL FIRST, THEN AGE IT. Writing a file INTO a directory updates that
+#      directory's own mtime, so ageing it and then dropping the sentinel in made
+#      it fresh again — the case could not reach its subject for a third distinct
+#      reason. Three vacuity causes in one assertion, each invisible from reading
+#      and each found only by the mutant surviving.
+printf 'sentinel\n' > "$PR/.locks/.ew-sentinel"
+touch -t 202001010000 "$PR/.locks"
+EW_SEED_MAX_AGE_DAYS=14 ew_seed_prune >/dev/null 2>&1
+if [ -f "$PR/.locks/.ew-sentinel" ]; then
+  ok "the lock directory is never a prune candidate (contents intact, not just recreated)"
+else
+  bad "prune locks dir" "the lock directory was deleted — .locks may have been rebuilt empty by a later acquire"
+fi
+export EW_SEED_ROOT="$TMPROOT/spm-seed"
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 35 ]; then
-  printf 'ERROR: expected at least 35 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 45 ]; then
+  printf 'ERROR: expected at least 45 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1

@@ -61,6 +61,23 @@ ew_seed_key() {
 
 ew_seed_dir() { printf '%s\n' "$EW_SEED_ROOT/$1/SourcePackages"; }
 
+# A CLONED TREE CARRIES A MARKER SAYING SO, because `EW_SEED_CONSUMED` is a
+# variable in ONE process and the window that matters spans two.
+#
+# The failure it closes: a seeded run is interrupted DURING validation. The tree
+# survives, possibly half-validated. The next process sees a `SourcePackages`
+# that already exists, takes consume's early return, and starts with
+# `EW_SEED_CONSUMED=0` — so the unseed-and-retry fallback never arms, and a tree
+# that came from a clone is now trusted forever. Every later build fails the same
+# way until somebody deletes DerivedData by hand.
+#
+# The marker is written INSIDE the tree, so it survives SIGKILL exactly as the
+# tree does, and it is REMOVED once a resolve succeeds: after that the tree is
+# validated and xcodebuild owns it, and a later failure is not the seed's fault.
+# Without that removal the fallback would arm forever and discard a good tree on
+# the first unrelated package error.
+EW_SEED_PROVENANCE_FILE=".ew-seeded-from"
+
 # A snapshot is usable only if it looks completely resolved. These are necessary
 # conditions, not sufficient ones — which is exactly why publication is atomic:
 # a reader must never be able to observe a partial tree in the first place.
@@ -119,6 +136,62 @@ PYEOF
   return 0
 }
 
+# THE CACHE MUST BOUND ITSELF, IN TRACKED CODE.
+#
+# Every distinct lockfile-plus-toolchain key publishes its own snapshot, and each
+# is ~3.6 GB. Keys roll on any dependency bump and on every Xcode upgrade, so a
+# machine that never prunes accumulates them indefinitely. Cleanup DID exist —
+# in `.claude/scripts/purge-derived-data.sh` — but that file is gitignored, so it
+# is local-only by construction: on a fresh clone, or on any machine but the one
+# it was written on, the cleanup simply does not exist while the growth does.
+# A mechanism whose only cleanup lives in an untracked file has no cleanup.
+#
+# Age, not count: a count keeps N snapshots however stale, and the thing worth
+# keeping is the one you have USED recently. `ew_seed_consume` touches a
+# snapshot's directory on every hit, so mtime means last-used rather than
+# last-written.
+#
+# `-mmin` rather than `-mtime`, deliberately: `find -mtime +N` truncates to whole
+# days and silently means N+1 (measured on this repo 2026-07-28, a 3.97-day-old
+# cache surviving a 3-day rule).
+EW_SEED_MAX_AGE_DAYS="${EW_SEED_MAX_AGE_DAYS:-14}"
+
+# ew_seed_prune [keep_key]
+# Removes snapshots unused for longer than the age bound. Every failure is a
+# no-op: this is housekeeping and must never fail a build.
+ew_seed_prune() {
+  local keep="${1:-}" mins dir key
+  [ -d "$EW_SEED_ROOT" ] || return 0
+  case "$EW_SEED_MAX_AGE_DAYS" in
+    ''|*[!0-9]*) return 0 ;;   # malformed bound: prune nothing rather than guess
+  esac
+  [ "$EW_SEED_MAX_AGE_DAYS" -gt 0 ] || return 0
+  mins=$((EW_SEED_MAX_AGE_DAYS * 1440))
+
+  # `"$EW_SEED_ROOT"/*` is the mechanism that protects `.locks`, not a name check:
+  # a shell glob does not match a leading dot. A `[ "$key" = ".locks" ]` guard was
+  # written here first and a mutation control proved it DEAD — deleting it changed
+  # nothing, because `.locks` was never a candidate. Removed rather than left in,
+  # since a guard that cannot fire reads as the thing keeping you safe and is not.
+  # Anyone replacing this glob with `find`, or enabling `dotglob`, re-opens it —
+  # which is what the ".locks is not mistaken for a snapshot" case now binds.
+  for dir in "$EW_SEED_ROOT"/*; do
+    [ -d "$dir" ] || continue
+    key="$(basename "$dir")"
+    [ -n "$keep" ] && [ "$key" = "$keep" ] && continue
+    [ -n "$(find "$dir" -maxdepth 0 -mmin "+$mins" -print 2>/dev/null)" ] || continue
+    # Take the key's lock first. Age says nobody has USED it; the lock is what
+    # says nobody is using it RIGHT NOW, and those are different claims — a
+    # consumer mid-clone has an old snapshot open.
+    if ew_seed_lock_acquire "$key"; then
+      rm -rf "$dir" 2>/dev/null || true
+      ew_seed_lock_release "$key"
+      echo "==> Pruned unused package seed ${key:0:12} (idle > ${EW_SEED_MAX_AGE_DAYS}d)"
+    fi
+  done
+  return 0
+}
+
 # ew_seed_consume <project_root> <derived_data_path>
 # Clones a snapshot into an ABSENT target. Prints what it did and why; a silent
 # fast path is indistinguishable from a broken one.
@@ -126,8 +199,15 @@ ew_seed_consume() {
   local root="$1" dd="$2" key snap target tmp _stale
   target="$dd/SourcePackages"
 
-  # Never overwrite an existing tree: xcodebuild owns it once it exists.
+  # Never overwrite an existing tree: xcodebuild owns it once it exists. But
+  # "exists" and "is trustworthy" are different questions, and a tree carrying
+  # our provenance marker is one an EARLIER process cloned and never got to
+  # validate. Arm the fallback for it rather than inheriting it silently.
   if [ -e "$target" ]; then
+    if [ -f "$target/$EW_SEED_PROVENANCE_FILE" ]; then
+      EW_SEED_CONSUMED=1
+      echo "==> Reusing a cloned package tree from an earlier run (unvalidated; will re-resolve unseeded if it fails)"
+    fi
     return 0
   fi
 
@@ -173,6 +253,11 @@ ew_seed_consume() {
      && ew_seed_rename_exclusive "$tmp" "$target"; then
     ew_seed_lock_release "$key"
     EW_SEED_CONSUMED=1
+    printf '%s\n' "$key" > "$target/$EW_SEED_PROVENANCE_FILE" 2>/dev/null || true
+    # Mark the snapshot as USED, which is what the age bound in ew_seed_prune
+    # reads. Without this, mtime means "when it was written" and a snapshot in
+    # daily use would be pruned on its birthday.
+    touch "$EW_SEED_ROOT/$key" 2>/dev/null || true
     echo "==> Seeded packages from snapshot ${key:0:12} (copy-on-write)"
     return 0
   fi
@@ -225,6 +310,10 @@ ew_seed_resolve_or_unseed() {
   [ "$EW_SEED_CONSUMED" = "1" ] || return 0
 
   if "$@"; then
+    # Validated. The tree is now xcodebuild's, not the seed's, so drop the
+    # provenance marker — otherwise the next run would arm this fallback again
+    # and discard a perfectly good tree on the first unrelated package error.
+    rm -f "$dd/SourcePackages/$EW_SEED_PROVENANCE_FILE" 2>/dev/null || true
     return 0
   fi
 
@@ -264,12 +353,20 @@ ew_seed_publish() {
   ew_seed_track_temp "$tmp"
 
   if cp -Rc "$src" "$tmp" 2>/dev/null && ew_seed_is_complete "$tmp"; then
+    # A snapshot is never itself a clone. If the source tree still carried a
+    # marker the publication would hand every future consumer a tree that arms
+    # the fallback on arrival.
+    rm -f "$tmp/$EW_SEED_PROVENANCE_FILE" 2>/dev/null || true
     # Same-filesystem rename is atomic, so a reader sees a complete snapshot or
     # nothing. Atomicity is not mutual exclusion, which is what the lock and the
     # re-check above provide.
     if ew_seed_rename_exclusive "$tmp" "$snap"; then
       ew_seed_lock_release "$key"
       echo "==> Published package seed snapshot ${key:0:12}"
+      # Publishing is the moment the cache grows, so it is the right moment to
+      # shrink it. Never before: a prune that ran first could delete the very
+      # snapshot a concurrent consumer was cloning.
+      ew_seed_prune "$key"
       return 0
     fi
   fi
