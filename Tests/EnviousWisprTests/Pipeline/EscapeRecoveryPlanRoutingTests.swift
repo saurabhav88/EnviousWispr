@@ -93,6 +93,54 @@ struct EscapeRecoveryPlanRoutingTests {
     }
   }
 
+  /// A write that FAILED is the one silent outcome, so it is the one that speaks.
+  ///
+  /// The user pressed cancel EXPECTING this take to be kept and the disk refused.
+  /// Without this the pill simply never appears and nothing else does either:
+  /// silence reads as "it worked and I missed the offer", which is the worst
+  /// available reading because it stops them looking in History, where there is
+  /// also nothing. The other three outcomes each reach a terminal the user can
+  /// already read — `empty` and `transcriptionFailed` show the ordinary no-text
+  /// ending, and `abandoned` is the thing they just asked for.
+  @Test("a failed pending write raises the save-failure warning")
+  func saveFailedWarnsTheUser() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: .hidden,
+      isClipboardFallback: false,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: true,
+      historySaved: false,
+      historySaveReason: "disk full",
+      escapeRecoveryOutcome: .saveFailed)
+
+    #expect(plan.effects.contains(.scheduleHistorySaveFailedWarning(reason: "disk full")))
+    #expect(
+      !plan.effects.contains(.presentEscapeRecoveryPill),
+      "control: there is still nothing to offer, so the pill must stay away")
+  }
+
+  @Test("the other outcomes raise no save-failure warning")
+  func onlySaveFailedWarns() {
+    for outcome in EscapeRecoveryTerminalOutcome.allCases where outcome != .saveFailed {
+      let plan = PipelineStateChangePlanner.plan(
+        to: PipelineState.complete,
+        pipelineOverlayIntent: .hidden,
+        isClipboardFallback: false,
+        isAccessibilityToast: false,
+        lastPolishError: nil,
+        hasCurrentTranscript: true,
+        historySaved: false,
+        historySaveReason: "disk full",
+        escapeRecoveryOutcome: outcome)
+
+      #expect(
+        !plan.effects.contains(.scheduleHistorySaveFailedWarning(reason: "disk full")),
+        "\(outcome.rawValue) did not fail to write, so it must not claim it did")
+    }
+  }
+
   /// Abandonment concludes on the `.idle` callback, not on `.complete`. The
   /// outcome must still be reported there — a user who deliberately discarded
   /// their text is the single most important thing this feature can learn, and

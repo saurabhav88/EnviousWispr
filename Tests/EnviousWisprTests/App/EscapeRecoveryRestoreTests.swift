@@ -91,6 +91,58 @@ struct EscapeRecoveryRestoreTests {
     #expect(spy.reports.isEmpty)
   }
 
+  /// The target quit while the offer stood.
+  ///
+  /// Activation fails silently against a dead process — and the pid can even
+  /// belong to a REPLACEMENT process by then — after which an unconditional
+  /// Cmd-V lands in whatever is frontmost now. That is the user's words arriving
+  /// in an unrelated application, which is worse than not restoring them: they
+  /// did not ask for it and may not notice where it went.
+  @Test("a target that has quit is never pasted past")
+  func terminatedTargetIsNotPastedInto() {
+    let spy = Spy()
+    let payload = CancelUndoPayload(
+      transcriptID: UUID(), targetApp: nil, targetElement: nil)
+
+    EscapeRecoveryPasteAction.paste(
+      payload: payload,
+      restorable: { _ in ("kept", Date(), "take-1") },
+      report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
+      retarget: { spy.retargeted.append($0.transcriptID) },
+      targetHasQuit: { _ in true })
+
+    #expect(
+      spy.retargeted.isEmpty,
+      "no activation, so no keystroke goes to whatever replaced it")
+    #expect(
+      spy.reports.first?.result == .clipboardOnly,
+      """
+      still a restore, and the vocabulary already had the word for it: the text \
+      is on the clipboard and the row stands in History for 24 hours. Reporting \
+      `.pasted` would claim an insertion that did not happen.
+      """)
+  }
+
+  /// The control that keeps the test above honest: with a live target the paste
+  /// proceeds exactly as before, so the guard cannot be satisfied by refusing
+  /// everything.
+  @Test("a live target still pastes")
+  func liveTargetStillPastes() {
+    let spy = Spy()
+    let payload = CancelUndoPayload(
+      transcriptID: UUID(), targetApp: nil, targetElement: nil)
+
+    EscapeRecoveryPasteAction.paste(
+      payload: payload,
+      restorable: { _ in ("kept", Date(), "take-1") },
+      report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
+      retarget: { spy.retargeted.append($0.transcriptID) },
+      targetHasQuit: { _ in false })
+
+    #expect(spy.retargeted == [payload.transcriptID])
+    #expect(spy.reports.first?.result == .pasted)
+  }
+
   // MARK: History's door
 
   private func coordinator(_ emitted: EmitBox) -> TranscriptCoordinator {

@@ -26,6 +26,10 @@ enum EscapeRecoveryPasteAction {
   ///     would hand back text the user was told had gone, which is the one thing
   ///     the 24-hour promise forbids.
   ///   - report: the restore event, injected so a test can read it.
+  ///   - targetHasQuit: whether the app this dictation was aimed at is gone.
+  ///     Injected because `NSRunningApplication.isTerminated` cannot be staged
+  ///     in a unit test, and the branch it guards is the one that decides
+  ///     whether the user's words land somewhere they never asked for.
   ///   - retarget: activate the app and refocus the field, injected for the same
   ///     reason `report` is. It defaults to the real AX calls, so production
   ///     reads exactly as it did; a test cannot otherwise observe that the
@@ -35,7 +39,8 @@ enum EscapeRecoveryPasteAction {
     payload: CancelUndoPayload,
     restorable: (UUID) -> (text: String, stampedAt: Date, takeID: String?)?,
     report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void,
-    retarget: @MainActor (CancelUndoPayload) -> Void = Self.retargetWithAccessibility
+    retarget: @MainActor (CancelUndoPayload) -> Void = Self.retargetWithAccessibility,
+    targetHasQuit: (CancelUndoPayload) -> Bool = { $0.targetApp?.isTerminated == true }
   ) {
     guard let row = restorable(payload.transcriptID) else {
       // Lapsed between render and press. Silent: the row is already gone from
@@ -45,6 +50,33 @@ enum EscapeRecoveryPasteAction {
     }
 
     PasteService.copyToClipboard(row.text)
+
+    // A TARGET THAT HAS QUIT MUST NOT BE PASTED PAST (cloud review).
+    //
+    // The app the dictation was aimed at can quit while the recovery is still
+    // transcribing, or while the pill is on screen. Activation then fails
+    // silently — `forceActivateApp` against a dead pid, `activate()` on a
+    // terminated `NSRunningApplication` — and the unconditional Cmd-V that
+    // follows lands in whatever happens to be frontmost NOW. That is the user's
+    // words arriving in an unrelated application, which is worse than not
+    // restoring them at all. PID reuse makes it worse still: the pid can belong
+    // to a replacement process by then.
+    //
+    // Distinct from a NIL target, which stays as it was and pastes wherever
+    // focus is. Nil means no target was ever captured, which is History's
+    // shipped behaviour and a documented normal case; terminated means we knew
+    // where the text belonged and that place is gone.
+    //
+    // The text is already on the clipboard by this point, so the user still has
+    // it and the row still stands in History for 24 hours. `.clipboardOnly` is
+    // the vocabulary's own word for exactly this — "the target was gone, so the
+    // text went to the clipboard instead. Still a restore."
+    if targetHasQuit(payload) {
+      guard let takeID = row.takeID else { return }
+      report(Int(Date().timeIntervalSince(row.stampedAt) * 1000), .clipboardOnly, takeID)
+      return
+    }
+
     retarget(payload)
     NSApp.hide(nil)
     Task {

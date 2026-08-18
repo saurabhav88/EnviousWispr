@@ -255,6 +255,23 @@ enum PipelineStateChangePlanner {
         effects.append(.appendPendingTranscript)
         effects.append(.presentEscapeRecoveryPill)
       }
+      // A FAILED WRITE has to say so, and it is the only one of the four that
+      // does (cloud review). `empty`, `transcriptionFailed` and `abandoned` all
+      // reach a terminal the user can already read: the first two show the
+      // ordinary no-text ending, and the third is the thing they just asked for.
+      // `saveFailed` is different — the user pressed cancel EXPECTING this take
+      // to be kept, the disk refused, and without this the pill simply never
+      // appears. Silence there reads as "it worked and I missed the offer",
+      // which is the worst available reading because it stops them looking in
+      // History, where there is also nothing.
+      //
+      // Reuses the ordinary path's single post-completion warning slot rather
+      // than inventing a second failure surface; a recovery cannot collide with
+      // the polish or interruption pills, because Step 2b replaces the ordinary
+      // completion effects entirely.
+      if outcome == .saveFailed, let reason = historySaveReason {
+        effects.append(.scheduleHistorySaveFailedWarning(reason: reason))
+      }
       effects.append(.reportEscapeRecoveryCompleted(outcome: outcome))
     }
 
