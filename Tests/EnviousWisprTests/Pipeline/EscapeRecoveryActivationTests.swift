@@ -161,6 +161,15 @@ struct EscapeRecoveryActivationTests {
       #expect(
         h.wrapper.storedTexts.isEmpty,
         "so the take is discarded — costing the user exactly what cancel always costs them")
+      #expect(
+        h.wrapper.testKernel.escapeRecoveryUnavailable,
+        """
+        failing closed is the right OUTCOME and saying so is a separate \
+        obligation. This user switched the setting on, so silence lets them \
+        believe a recovery happened — and by then the recording is gone. \
+        `KernelDictationDriver.overlayIntent` is what turns this latch into a \
+        sentence; `EscapeRecoveryCompletionProducerTests` pins that half.
+        """)
     }
 
     @Test("marker write succeeds for a real spool: recovery proceeds")
@@ -174,6 +183,9 @@ struct EscapeRecoveryActivationTests {
       #expect(
         h.wrapper.testKernel.finalizationDisposition.isEscapeRecovery,
         "control: the failure case above is about the WRITE failing, not about having a spool")
+      #expect(
+        !h.wrapper.testKernel.escapeRecoveryUnavailable,
+        "control: a recovery that worked must not raise the failure notice")
     }
   #endif
 }

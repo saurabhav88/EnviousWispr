@@ -51,7 +51,7 @@ enum EscapeRecoveryCompletionReport {
     fallbackTakeID: String?,
     emit: (
       _ outcome: EscapeRecoveryTerminalOutcome, _ asrMs: Int?, _ polishMs: Int?,
-      _ durationMs: Int, _ backend: String, _ takeID: String
+      _ durationMs: Int?, _ backend: String?, _ takeID: String
     ) -> Void
   ) {
     // The take id comes from the ROW when there is one and from the FALLBACK
@@ -65,13 +65,22 @@ enum EscapeRecoveryCompletionReport {
     // cannot enter the funnel at all, so emitting it would only inflate the
     // denominator with rows nothing can match.
     guard let takeID = transcript?.escapeRecoveryTakeID ?? fallbackTakeID else { return }
+    // EVERY measured field comes from the row or is OMITTED. The take id has a
+    // fallback because a join key is what makes the event countable at all; the
+    // measurements do not, because there is nothing to fall back TO. A default
+    // backend would stamp one engine's name on every row-less terminal —
+    // `abandoned`, `empty`, `transcriptionFailed` — and those are the only
+    // terminals that reach here without a row, so the fabrication would land on
+    // exactly the population being measured and nowhere else. `escape_recovery.started`
+    // already carries the real backend and spoken length under this same take
+    // id, so the funnel joins for them rather than being told a guess.
     let metrics = transcript?.metrics
     emit(
       outcome,
       metrics?.asrLatencySeconds.map { Int($0 * 1000) },
       metrics?.llmLatencySeconds.map { Int($0 * 1000) },
-      Int((transcript?.processingTime ?? 0) * 1000),
-      (transcript?.backendType ?? .parakeet).rawValue,
+      transcript.map { Int($0.processingTime * 1000) },
+      transcript?.backendType.rawValue,
       takeID)
   }
 }

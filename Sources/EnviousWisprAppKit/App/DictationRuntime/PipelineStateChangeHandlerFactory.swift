@@ -112,7 +112,17 @@ enum PipelineStateChangeHandlerFactory {
       // either defaulted here is the shape of bug this feature cannot have: a
       // held row nobody can see, or a funnel missing the event that says it
       // worked.
-      appendPendingTranscript: { transcript in deps.appendPendingTranscript(transcript) },
+      appendPendingTranscript: { transcript in
+        deps.appendPendingTranscript(transcript)
+        // #2087: the pending row is durable by the time this effect is emitted
+        // — the planner only emits it for `.saved`, and `.saved` now requires a
+        // successful write — so this take's spool and its Escape marker have
+        // nothing left to protect. The ordinary append above deletes them via
+        // the same call; a held row that skipped it would keep the ENCRYPTED
+        // AUDIO alive until some later launch, which is the one thing the
+        // setting's own copy promises does not happen.
+        if let sid = transcript.recoverySessionID { deps.onDurableSave(sid) }
+      },
       presentEscapeRecoveryPill: { payload in deps.presentEscapeRecoveryPill(payload) },
       reportEscapeRecoveryCompleted: { outcome, transcript in
         deps.reportEscapeRecoveryCompleted(outcome, transcript)

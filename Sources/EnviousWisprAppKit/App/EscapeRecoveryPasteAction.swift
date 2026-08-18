@@ -26,10 +26,16 @@ enum EscapeRecoveryPasteAction {
   ///     would hand back text the user was told had gone, which is the one thing
   ///     the 24-hour promise forbids.
   ///   - report: the restore event, injected so a test can read it.
+  ///   - retarget: activate the app and refocus the field, injected for the same
+  ///     reason `report` is. It defaults to the real AX calls, so production
+  ///     reads exactly as it did; a test cannot otherwise observe that the
+  ///     FIELD was restored, only that the app was, and those are the two
+  ///     halves a cancel most often separates.
   static func paste(
     payload: CancelUndoPayload,
     restorable: (UUID) -> (text: String, stampedAt: Date, takeID: String?)?,
-    report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void
+    report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void,
+    retarget: @MainActor (CancelUndoPayload) -> Void = Self.retargetWithAccessibility
   ) {
     guard let row = restorable(payload.transcriptID) else {
       // Lapsed between render and press. Silent: the row is already gone from
@@ -39,11 +45,7 @@ enum EscapeRecoveryPasteAction {
     }
 
     PasteService.copyToClipboard(row.text)
-    // The pill's advantage over History: go back to the app the dictation was
-    // aimed at, rather than whatever happens to be frontmost now. `activate`
-    // fails quietly for an app that has since quit, and the paste then lands
-    // wherever focus actually is — the same cascade History relies on.
-    payload.targetApp?.activate()
+    retarget(payload)
     NSApp.hide(nil)
     Task {
       try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))
@@ -59,5 +61,28 @@ enum EscapeRecoveryPasteAction {
     // unmatched — the same rule every other event in this funnel follows.
     guard let takeID = row.takeID else { return }
     report(Int(Date().timeIntervalSince(row.stampedAt) * 1000), .pasted, takeID)
+  }
+
+  /// The production retarget: bring back the app, then the field.
+  ///
+  /// `forceActivateApp` and not `NSRunningApplication.activate()`. macOS 14+
+  /// restricts a background process from taking focus, so the plain call fails
+  /// quietly and the paste lands wherever focus already was; the AX route is the
+  /// one this app already ships for exactly that restriction. It needs
+  /// Accessibility permission, which the paste itself needs anyway, so
+  /// `activate()` is the fallback for the case where nothing was going to be
+  /// pasted regardless.
+  ///
+  /// Then the FIELD, which is the half that is easy to drop. Restoring the app
+  /// alone hands the caret back to wherever that app last left it, and after a
+  /// cancel that is frequently a different field — so the user's words arrive
+  /// somewhere they never dictated them. A nil element is normal and documented,
+  /// not a failure: an app-only target still pastes wherever focus lands.
+  @MainActor
+  static func retargetWithAccessibility(_ payload: CancelUndoPayload) {
+    if let app = payload.targetApp {
+      if !PasteService.forceActivateApp(pid: app.processIdentifier) { app.activate() }
+    }
+    if let element = payload.targetElement { PasteService.focusElement(element) }
   }
 }

@@ -344,33 +344,48 @@ public final class TelemetryService {
   /// Takes the ENUM, not its raw value: an invalid label must be unrepresentable
   /// rather than merely discouraged. The set includes `abandoned` and
   /// `transcriptionFailed`, the two the abandonment contract creates.
+  /// `durationMs` and `asrBackend` are OPTIONAL, and omitted rather than
+  /// defaulted when the terminal produced no row to read them from. The
+  /// terminals with no row — `abandoned`, `empty`, `transcriptionFailed` — are
+  /// precisely the ones this funnel exists to count, so a default would put a
+  /// fabricated backend and a zero duration on every failure and nowhere else,
+  /// which is worse than a gap because it looks like data. Same contract the
+  /// language fields keep (`KernelFinalizationWiring`): absent means no
+  /// measurement was attempted, a value means one was taken. `escape_recovery.started`
+  /// already carries the backend and the spoken length for every attempt under
+  /// the same `take_id`, so the join, not a guess, is where those come from.
   public func escapeRecoveryCompleted(
-    outcome: EscapeRecoveryTerminalOutcome, asrDurationMs: Int?, polishDurationMs: Int?, durationMs: Int,
-    asrBackend: String, takeID: String
+    outcome: EscapeRecoveryTerminalOutcome, asrDurationMs: Int?, polishDurationMs: Int?,
+    durationMs: Int?, asrBackend: String?, takeID: String
   ) {
     var props: [String: Any] = [
       "outcome": outcome.rawValue,
-      "duration_ms": durationMs,
-      // Seconds in the reserved aggregation slot, raw milliseconds under their
-      // own name (#2060). `$value` is a mirror, never the only copy.
-      "$value": Double(durationMs) / 1000.0,
-      "asr_backend": asrBackend,
       "take_id": takeID,
     ]
+    if let durationMs {
+      props["duration_ms"] = durationMs
+      // Seconds in the reserved aggregation slot, raw milliseconds under their
+      // own name (#2060). `$value` is a mirror, never the only copy.
+      props["$value"] = Double(durationMs) / 1000.0
+    }
+    if let asrBackend { props["asr_backend"] = asrBackend }
     if let asrDurationMs { props["asr_duration_ms"] = asrDurationMs }
     if let polishDurationMs { props["polish_duration_ms"] = polishDurationMs }
     #if DEBUG
-      var intProps: [String: Int] = ["duration_ms": durationMs]
+      var intProps: [String: Int] = [:]
+      if let durationMs { intProps["duration_ms"] = durationMs }
       if let asrDurationMs { intProps["asr_duration_ms"] = asrDurationMs }
       if let polishDurationMs { intProps["polish_duration_ms"] = polishDurationMs }
+      var stringProps: [String: String] = [
+        "outcome": outcome.rawValue, "take_id": takeID,
+      ]
+      if let asrBackend { stringProps["asr_backend"] = asrBackend }
       testEventHook?(
         CapturedTelemetryEvent(
           name: "escape_recovery.completed",
-          stringProps: [
-            "outcome": outcome.rawValue, "asr_backend": asrBackend, "take_id": takeID,
-          ],
+          stringProps: stringProps,
           intProps: intProps,
-          doubleProps: ["$value": Double(durationMs) / 1000.0]))
+          doubleProps: durationMs.map { ["$value": Double($0) / 1000.0] } ?? [:]))
     #endif
     PostHogSDK.shared.capture("escape_recovery.completed", properties: props)
   }

@@ -116,9 +116,7 @@ public enum KernelDictationDriverFactory {
     /// spool was a cancelled-but-kept dictation. Defaults to "cannot prepare", so
     /// a call site that never wires it gets today's destructive cancel rather
     /// than a spool with no provenance.
-    /// #2087: the marker writer AND the failure notice, as one value so a
-    /// call site cannot wire one and forget the other.
-    package let escapeRecovery: EscapeRecoveryConnectors
+    package let escapeRecovery: PrepareEscapeRecovery
 
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
@@ -141,8 +139,7 @@ public enum KernelDictationDriverFactory {
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
       parakeetDelivery: ParakeetDeliveryHandle? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
-      escapeRecovery: EscapeRecoveryConnectors = EscapeRecoveryConnectors(
-        writeMarker: { _, _, _ in false }, unavailableNotice: {})
+      escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
@@ -197,9 +194,7 @@ public enum KernelDictationDriverFactory {
     /// spool was a cancelled-but-kept dictation. Defaults to "cannot prepare", so
     /// a call site that never wires it gets today's destructive cancel rather
     /// than a spool with no provenance.
-    /// #2087: the marker writer AND the failure notice, as one value so a
-    /// call site cannot wire one and forget the other.
-    package let escapeRecovery: EscapeRecoveryConnectors
+    package let escapeRecovery: PrepareEscapeRecovery
 
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
@@ -224,8 +219,7 @@ public enum KernelDictationDriverFactory {
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
-      escapeRecovery: EscapeRecoveryConnectors = EscapeRecoveryConnectors(
-        writeMarker: { _, _, _ in false }, unavailableNotice: {})
+      escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
     ) {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
@@ -374,8 +368,7 @@ public enum KernelDictationDriverFactory {
     dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
-    escapeRecovery: EscapeRecoveryConnectors = EscapeRecoveryConnectors(
-      writeMarker: { _, _, _ in false }, unavailableNotice: {})
+    escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
   ) -> KernelDictationDriver {
     // #1803: prepare the English word oracle off the heart path. Its one-time
     // setup measures 105.6 ms cold — language resolution plus a tag-scheme
@@ -501,7 +494,7 @@ public enum KernelDictationDriverFactory {
       deliver: wiring.deliver,
       // #2087: storage injection, alongside the other three. Reached only from
       // the kernel's cancel branch, which the frozen setting gates.
-      prepareEscapeRecovery: escapeRecovery.writeMarker,
+      prepareEscapeRecovery: escapeRecovery,
       // #2087: the funnel's first event, routed the same way every other
       // kernel-side telemetry closure is.
       // #2087 Q4: injected from the composition root, exactly as the marker
@@ -511,7 +504,6 @@ public enum KernelDictationDriverFactory {
           asrBackend: backend, polishProvider: provider,
           recordingDurationMs: durationMs, takeID: takeID)
       },
-      escapeRecoveryUnavailableNotice: escapeRecovery.unavailableNotice,
       engineMutationScope: engineMutationScope,
       // Production wedge-stall window — `RecordingSessionKernel` defaults
       // to 2 ticks (test-only value); with the wiring's 100ms tick clock

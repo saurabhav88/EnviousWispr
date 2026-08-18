@@ -6,9 +6,11 @@ section: "Recording"
 order: 6
 keywords: ["escape recovery", "cancelled by mistake", "i cancelled by accident", "get my dictation back", "undo cancel", "recover a cancelled recording", "keep a cancelled recording", "pressed escape by mistake", "lost what i said", "accidental cancel"]
 related: ["canceling-a-recording", "transcript-history"]
-updated: 2026-08-17
+updated: 2026-08-18
 ---
 Cancelling a recording normally throws it away. If you have ever pressed your cancel shortcut and wished a second later that you had not, Escape Recovery is the setting that changes that. It is off until you turn it on, and turning it off puts everything back exactly as it was.
+
+A recording follows the setting as it stood when that recording started. Changing the toggle applies from the next recording you begin, never to one already running.
 
 ### Turning it on
 
@@ -39,7 +41,7 @@ Press your cancel shortcut again while the text is being prepared and the result
 
 ### How long a kept dictation lasts
 
-A kept dictation appears in History with a **Kept** badge and a countdown reading something like **Deleted in 23h**. It is removed within 24 hours, either while the app is running or the next time you launch it. Nothing is deleted while EnviousWispr is not running.
+A kept dictation appears in History with a **Kept** badge and a countdown reading something like **Deleted in 23h**. It stays available for 24 hours. Once that window ends it stops being offered, and EnviousWispr removes it while the app is running, or the next time you launch it. Nothing is deleted while EnviousWispr is not running, so a dictation whose window ended while the app was closed is removed at the next launch rather than at the moment the clock ran out.
 
 While the countdown is going you have two choices in History.
 
@@ -54,4 +56,4 @@ The audio is deleted once the text is saved, exactly as it is after a normal dic
 
 ### Turning it off
 
-Switch the toggle off in **Shortcuts**. Your cancel shortcut goes straight back to discarding recordings the moment you press it. Anything already sitting in History stays there until its countdown runs out, or until you press Keep.
+Switch the toggle off in **Shortcuts**. Recordings you start after that go straight back to being discarded the moment you press your cancel shortcut. A recording already running keeps the rules it started with, and anything already sitting in History stays there until its countdown runs out, or until you press Keep.

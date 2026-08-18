@@ -202,32 +202,6 @@ public typealias PrepareEscapeRecovery = @MainActor (
   _ recoverySessionID: String, _ triggeredAt: Date, _ takeID: String?
 ) -> Bool
 
-/// The two things the app layer must give the kernel for Escape Recovery.
-///
-/// ONE value rather than two parallel init arguments, because they must be
-/// wired together or not at all: a marker writer with no notice fails closed
-/// SILENTLY, and a notice with no writer announces a failure that cannot
-/// happen. Bundling makes "wire one, forget the other" unrepresentable rather
-/// than merely discouraged — and this feature has already shipped that exact
-/// half-connection twice, in the pill's Paste button and in the completion slot.
-@MainActor
-public struct EscapeRecoveryConnectors {
-  /// Named `writeMarker`, NOT `prepare`. `prepare` is tracked vocabulary in
-  /// the engine-mutation inventory, and an unrelated property borrowing that
-  /// word puts noise into a table whose value is that every entry is a real
-  /// engine mutation. The freeze test caught it, which is the job.
-  public let writeMarker: PrepareEscapeRecovery
-  public let unavailableNotice: @MainActor () -> Void
-
-  public init(
-    writeMarker: @escaping PrepareEscapeRecovery,
-    unavailableNotice: @escaping @MainActor () -> Void
-  ) {
-    self.writeMarker = writeMarker
-    self.unavailableNotice = unavailableNotice
-  }
-}
-
 /// What a finalizing session IS, for the run that is finishing (#2087).
 ///
 /// **Kernel-owned and session-scoped.** Set once when the exit arm decides, read

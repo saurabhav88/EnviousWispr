@@ -17,8 +17,8 @@ struct EscapeRecoveryCompletionReportTests {
   private final class Captured {
     var calls:
       [(
-        outcome: EscapeRecoveryTerminalOutcome, asrMs: Int?, polishMs: Int?, durationMs: Int,
-        backend: String, takeID: String
+        outcome: EscapeRecoveryTerminalOutcome, asrMs: Int?, polishMs: Int?, durationMs: Int?,
+        backend: String?, takeID: String
       )] = []
   }
 
@@ -90,7 +90,11 @@ struct EscapeRecoveryCompletionReportTests {
     #expect(call.takeID == "take-failed")
     #expect(call.outcome == .transcriptionFailed)
     #expect(call.asrMs == nil, "there is no row, so there are no latencies to report")
-    #expect(call.durationMs == 0)
+    // Was `== 0`, which pinned a fabrication rather than a behaviour: the mapper
+    // defaulted a missing duration to zero and this line agreed with it. Absent
+    // is the honest value, and `rowlessTerminalInventsNothing` below is the case
+    // that now argues for it rather than merely recording it.
+    #expect(call.durationMs == nil, "there is no row, so there is no duration either")
   }
 
   @Test("the row's take id wins over the fallback when both exist")
@@ -134,5 +138,32 @@ struct EscapeRecoveryCompletionReportTests {
     #expect(call.asrMs == nil)
     #expect(call.polishMs == nil)
     #expect(call.durationMs == 2500, "control: the total is still reported")
+  }
+
+  /// A row-less terminal must not be given a backend or a duration it never had.
+  ///
+  /// This is the sharp version of the case above, and it is worth its own test
+  /// because the wrong answer is INVISIBLE in the data rather than absent from
+  /// it. Only `abandoned`, `empty` and `transcriptionFailed` arrive without a
+  /// row, so a default backend would stamp one engine's name on every failure
+  /// and on nothing else — a query grouping failures by engine would then read
+  /// as a finding about that engine, produced entirely by the default. A zero
+  /// duration does the same to any latency chart. `escape_recovery.started`
+  /// already carries the real backend and spoken length under the same take id,
+  /// so the funnel has a place to get them from that is not a guess.
+  @Test("a terminal with no row reports no backend and no duration, rather than defaults")
+  func rowlessTerminalInventsNothing() throws {
+    let captured = emit(
+      outcome: .abandoned, transcript: nil, fallbackTakeID: "take-9")
+
+    let call = try #require(captured.calls.first)
+    #expect(call.takeID == "take-9", "control: the join key still travels")
+    #expect(call.outcome == .abandoned, "control: the outcome still travels")
+    #expect(
+      call.backend == nil,
+      "a default here would attribute every abandoned recovery to one engine")
+    #expect(
+      call.durationMs == nil,
+      "a zero here would report a measurement that was never taken")
   }
 }

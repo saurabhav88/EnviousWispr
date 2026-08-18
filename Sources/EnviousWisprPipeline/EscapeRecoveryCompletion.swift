@@ -46,6 +46,10 @@ public final class CancelUndoPayload {
 /// held or copied freely — the one-shot discipline belongs to
 /// `EscapeRecoveryCompletionSlot`, which is what the driver actually owns.
 ///
+/// Production writes it in `KernelDictationDriver.captureEscapeRecoveryCompletionIfNeeded()`,
+/// at the recovery's terminal and before the target handles are cleared. The
+/// pill consumes it through the slot's single read.
+///
 /// **"No payload ⇒ no pill" is structural, not asserted.** An earlier draft was a
 /// class carrying `outcome` and `payload?` side by side, with an `assert` pinning
 /// the two together. `assert` compiles out of Release, so that guarantee held
@@ -130,9 +134,9 @@ public enum EscapeRecoveryCompletion {
 package final class EscapeRecoveryCompletionSlot {
   private var stored: EscapeRecoveryCompletion?
 
-  /// Populate the slot. No production caller exists yet; the one that lands must
-  /// run BEFORE the driver clears its session context, while the paste target
-  /// handles are still live. Today only the driver's DEBUG test seam writes here.
+  /// Populate the slot. Production calls this from the driver's terminal
+  /// capture, BEFORE it clears the session context, while the paste target
+  /// handles are still live; a DEBUG seam also reaches it directly.
   package func put(_ completion: EscapeRecoveryCompletion) { stored = completion }
 
   /// Take the completion, clearing it. A second call returns nil — that is the

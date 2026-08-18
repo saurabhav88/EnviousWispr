@@ -1543,6 +1543,28 @@ public enum PasteService {
     return result == .success
   }
 
+  /// Return keyboard focus to a specific field captured earlier (#2087).
+  ///
+  /// Activating the app alone puts the caret wherever that app last left it,
+  /// which after a cancel is often a different field than the one the user was
+  /// dictating into. `captureFocusedElement` already stamped a 1-second
+  /// `AXTimeout` on this handle, so a dead or wedged element fails fast here
+  /// rather than hanging the press.
+  ///
+  /// Best effort by contract: the field may be gone, the window closed, or the
+  /// app quit. Returns whether focus was accepted so a caller can tell the two
+  /// apart; nothing downstream should REQUIRE it, because an app-only target is
+  /// a normal, documented case.
+  @discardableResult
+  public static func focusElement(_ element: AXUIElement) -> Bool {
+    guard AXIsProcessTrusted() else { return false }
+    return AXUIElementSetAttributeValue(
+      element,
+      kAXFocusedAttribute as CFString,
+      true as CFTypeRef
+    ) == .success
+  }
+
   // MARK: - Private
 
   /// Send Cmd+V keystroke via CGEvent. Returns true on success.

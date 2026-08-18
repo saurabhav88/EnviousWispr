@@ -119,9 +119,14 @@ struct ShortcutsSettingsView: View {
             // Conditional, because with Escape Recovery on the old sentence is
             // simply false — and a settings screen describing the opposite of
             // what the app does is worse than one saying nothing.
-            description: settings.escapeRecoveryEnabled
-              ? "Press to stop the current recording and keep it instead of discarding it."
-              : "Press to discard the current recording and return to idle.",
+            // Deliberately NOT conditional on the live setting. The value
+            // that decides what this key does is the one FROZEN when the
+            // recording started, so a description that tracks the toggle is
+            // wrong for the only reader who can see both at once: someone
+            // flipping it while a recording runs.
+            description:
+              "Press to cancel the current recording. Escape Recovery below applies "
+              + "from the next recording you start.",
             keyCode: $settings.cancelKeyCode,
             modifiers: $settings.cancelModifiers,
             defaultKeyCode: 53,

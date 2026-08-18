@@ -46,6 +46,8 @@ final class TranscriptCoordinator {
   /// is the instrument that decides whether this feature earns its keep.
   private let emitEscapeRecoveryKept: (_ ageMs: Int, _ takeID: String) -> Void
   private let emitEscapeRecoveryExpired: (_ ageMs: Int, _ takeID: String) -> Void
+  private let emitEscapeRecoveryRestoredFromHistory:
+    (_ ageMs: Int, _ takeID: String) -> Void
   private var loadTask: Task<Void, Never>?
   private var pulseTask: Task<Void, Never>?
 
@@ -214,7 +216,8 @@ final class TranscriptCoordinator {
     pendingPulseInterval: Duration = .seconds(60),
     pendingPulseSleep: (@Sendable (Duration) async -> Void)? = nil,
     emitEscapeRecoveryKept: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil,
-    emitEscapeRecoveryExpired: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil
+    emitEscapeRecoveryExpired: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil,
+    emitEscapeRecoveryRestoredFromHistory: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil
   ) {
     self.store = store
     self.pendingPulseInterval = pendingPulseInterval
@@ -229,6 +232,33 @@ final class TranscriptCoordinator {
       ?? { ageMs, takeID in
         TelemetryService.shared.escapeRecoveryExpired(ageMs: ageMs, takeID: takeID)
       }
+    self.emitEscapeRecoveryRestoredFromHistory =
+      emitEscapeRecoveryRestoredFromHistory
+      ?? { ageMs, takeID in
+        TelemetryService.shared.escapeRecoveryRestored(
+          source: .history, ageMs: ageMs, pasteResult: .pasted, takeID: takeID)
+      }
+  }
+
+  /// Report that a HELD recovery was pasted from History (#2087).
+  ///
+  /// `EscapeRecoveryRestoreSource` has two cases and only `.pill` had a
+  /// producer, so every restore that went through History was invisible and the
+  /// funnel understated the one number the feature is judged on. History's Paste
+  /// button has shipped since chunk 10; nothing about it changed, it simply was
+  /// never counted.
+  ///
+  /// Silent for an ordinary row and for a lapsed one. A row that is no longer
+  /// offerable was refused by `textForDelivery` before this is reached, so
+  /// reporting here would count a paste that did not happen.
+  func reportRestoredFromHistory(_ transcript: Transcript) {
+    guard
+      let stampedAt = transcript.escapeRecoveredAt,
+      let takeID = transcript.escapeRecoveryTakeID,
+      Self.isVisible(transcript, at: Date())
+    else { return }
+    emitEscapeRecoveryRestoredFromHistory(
+      Int(Date().timeIntervalSince(stampedAt) * 1000), takeID)
   }
 
   /// Sweep pending rows that aged out un-restored, reporting each (#2087).

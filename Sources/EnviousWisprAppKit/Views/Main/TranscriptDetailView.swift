@@ -100,6 +100,10 @@ struct TranscriptDetailView: View {
             let text = transcriptCoordinator.textForDelivery(transcript)
           else { return }
           PasteService.copyToClipboard(text)
+          // #2087: the OTHER door back to a held recovery. The pill reports its
+          // restores; without this one the funnel counted only the users who
+          // caught a three-second offer. No-op for an ordinary row.
+          transcriptCoordinator.reportRestoredFromHistory(transcript)
           NSApp.hide(nil)
           Task {
             try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))

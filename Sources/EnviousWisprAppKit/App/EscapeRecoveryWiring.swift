@@ -102,12 +102,8 @@ enum EscapeRecoveryWiring {
   @MainActor
   static func wire(
     _ overlay: RecordingOverlayPanel, _ history: TranscriptCoordinator
-  ) -> EscapeRecoveryConnectors {
+  ) -> PrepareEscapeRecovery {
     bindPill(overlay: overlay, coordinator: history)
-    return EscapeRecoveryConnectors(
-      writeMarker: writer(),
-      unavailableNotice: { [weak overlay] in
-        overlay?.show(intent: .warning(reason: .escapeRecoveryUnavailable))
-      })
+    return writer()
   }
 }

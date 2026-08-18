@@ -49,6 +49,23 @@ struct EscapeRecoveryRowConnectorTests {
       "reading the pulse is what re-renders the countdown; without it the row freezes")
   }
 
+  /// History is the other door back to a held recovery, and it was uncounted.
+  ///
+  /// `EscapeRecoveryRestoreSource` has two cases and only `.pill` had a producer,
+  /// so the restore rate was measured over the people who happened to catch a
+  /// three-second offer. The behaviour of the reporter is pinned next door in
+  /// `EscapeRecoveryRestoreTests`; what this asserts is that the view ASKS,
+  /// which is the half that was missing and the half a behavioural test cannot
+  /// see.
+  @Test("History's Paste reports the restore")
+  func historyPasteReportsTheRestore() throws {
+    let source = try source(Self.detailPath)
+
+    #expect(
+      source.contains("transcriptCoordinator.reportRestoredFromHistory("),
+      "a restore nobody counts makes the feature look less used than it is")
+  }
+
   @Test("Copy and Paste both route through the delivery guard")
   func deliveryActionsRouteThroughTheCoordinator() throws {
     let source = try source(Self.detailPath)

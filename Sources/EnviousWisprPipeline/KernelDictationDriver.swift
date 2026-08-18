@@ -383,7 +383,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   ///
   /// **Nothing writes it in production yet**, and the sentence above is the
   /// ordering whoever writes it must satisfy: capture before
-  /// `clearContextConfigIfTerminalOrIdle()`, not after. A `.saved` completion in
+  /// `clearContextConfigIfTerminalOrIdle()`, not after. `.saved` is written only
+  /// once the pending row is durable. A `.saved` completion in
   /// particular cannot be built until a durable row exists to point at, so its
   /// producer lands with the storage path rather than with the cancel branch.
   ///
@@ -1116,6 +1117,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       switch outcome {
       // #1920: `.asrEmptyDespiteAudio` is hidden. The engine ran and found no
       // words while audio was arriving; that is not an event to announce.
+      // #2087: a cancel that MEANT to keep the take and could not is the one
+      // cancel with something to say. It rides the terminal rather than
+      // preceding it, which is the only way it survives — the planner hides the
+      // overlay for every non-`.complete` activity and cancels pending
+      // warnings, so a notice pushed before this point is already gone.
+      case .cancelled where kernel.escapeRecoveryUnavailable:
+        return .warning(reason: .escapeRecoveryUnavailable)
       case .completed, .cancelled, .discarded, .noSpeech, .asrEmptyDespiteAudio:
         return .hidden
       case .failed(let reason):
@@ -1372,10 +1380,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
     /// Test-only writer for the Escape Recovery slot (#2087).
     ///
-    /// No production writer exists yet. Without this seam the slot's guarantees —
-    /// take-once, cleared on a new session — would ship with no way to fail, and
-    /// an unarmed guard is indistinguishable from a working one. Delete it once a
-    /// real producer can drive the same three tests.
+    /// Production writes through `captureEscapeRecoveryCompletionIfNeeded()`.
+    /// This seam stays because it drives the slot's own guarantees — take-once,
+    /// cleared on a new session — directly, without having to stage a whole
+    /// recovery to reach them.
     // periphery:ignore - test seam
     func putEscapeRecoveryCompletionForTesting(_ completion: EscapeRecoveryCompletion) {
       escapeRecoveryCompletion.put(completion)
@@ -1521,7 +1529,17 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     // `.saved` requires a durably written row to point at. Everything else is a
     // recovery that produced nothing restorable, and must NOT be able to raise
     // a pill — which the enum enforces, since only `.saved` carries a target.
-    guard case .completed = recordingOutcome, let transcript = outcome.transcript else {
+    //
+    // `outcome.historySaved` is the third condition and the one that is easy to
+    // miss: a `.completed` terminal whose pending write THREW still carries a
+    // transcript, so reading the transcript alone would announce `.saved`,
+    // append a row nothing persisted, and offer a pill pointing at a file that
+    // does not exist. `nothingToRestoreReason` already maps `.completed` to
+    // `.saveFailed` for exactly this case; before this condition existed,
+    // nothing could reach that arm.
+    guard case .completed = recordingOutcome, outcome.historySaved,
+      let transcript = outcome.transcript
+    else {
       escapeRecoveryCompletion.put(
         .nothingToRestore(Self.nothingToRestoreReason(for: recordingOutcome)))
       return

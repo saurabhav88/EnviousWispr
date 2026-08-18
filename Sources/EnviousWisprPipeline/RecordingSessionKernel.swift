@@ -304,10 +304,18 @@ final class RecordingSessionKernel {
   /// funnel: a recovery that never finishes — the app quits, the decode dies —
   /// must still be counted as having been attempted, or the completion rate is
   /// measured against a denominator that quietly excludes its own failures.
-  /// #2087 Q4: shows the user that a recovery they had switched ON did not
-  /// happen. A seam rather than a direct overlay call because the kernel owns
-  /// no UI and `DictationNarrator` in AppKit authors every sentence.
-  private let escapeRecoveryUnavailableNotice: @MainActor () -> Void
+  /// #2087 Q4: this take had Escape Recovery switched ON and could not keep it.
+  ///
+  /// A LATCH the driver projects, not a notice this object pushes. An earlier
+  /// draft called an injected `overlay.show` here, one line before
+  /// `finishTerminal(.cancelled)`; the terminal's own state observation then
+  /// planned `.showOverlay(.hidden)` and `.cancelPendingWarning`, so the
+  /// sentence was replaced before it could be read. Ordering is no defence,
+  /// because that observation runs in a `Task` and wins from either side.
+  ///
+  /// Session-scoped and cleared in `resetSessionState()`, like every other fact
+  /// about the take that is finishing.
+  private(set) var escapeRecoveryUnavailable = false
   private let escapeRecoveryStartedTelemetry:
     @MainActor (
       _ asrBackend: String, _ polishProvider: String, _ recordingDurationMs: Int,
@@ -918,7 +926,6 @@ final class RecordingSessionKernel {
     escapeRecoveryStartedTelemetry: @escaping @MainActor (String, String, Int, String) -> Void = {
       _, _, _, _ in
     },
-    escapeRecoveryUnavailableNotice: @escaping @MainActor () -> Void = {},
     engineMutationScope: EngineMutationScope,
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
@@ -964,7 +971,6 @@ final class RecordingSessionKernel {
     self.deliver = deliver
     self.prepareEscapeRecovery = prepareEscapeRecovery
     self.escapeRecoveryStartedTelemetry = escapeRecoveryStartedTelemetry
-    self.escapeRecoveryUnavailableNotice = escapeRecoveryUnavailableNotice
     self.engineMutationScope = engineMutationScope
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks
@@ -1186,11 +1192,10 @@ final class RecordingSessionKernel {
   /// `delivering(.finalizing(_))` it is ignored — the safe point is inviolable
   /// (PR-1 §B.1.4 invariant 5); elsewhere ignored (#1548 D1).
   func cancel(origin: RecordingCancelOrigin = .systemOrFault) {
-    // #2087 chunk 2: provenance is latched INERTLY inside each accepting arm.
-    // Nothing branches on it yet. Chunk 7 adds the branch and chunk 12 is what
-    // makes the branch reachable — two gates, not one. The trigger is latched
-    // here rather than only on the driver so that adding the branch is a pure
-    // addition and needs no new plumbing.
+    // #2087: provenance is latched inside each accepting arm rather than at the
+    // top, so acceptance is decided in one place. The recording-exit branch
+    // later requires BOTH the frozen setting and `.user(.shortcut)`; latching
+    // here keeps that decision a pure read with no plumbing of its own.
     switch state {
     case .live:
       latchCancelOrigin(origin)
@@ -1685,7 +1690,7 @@ final class RecordingSessionKernel {
           // is expecting a recovery, so saying nothing lets them believe one
           // happened. Still fails closed to the ordinary destructive cancel
           // below — the notice explains the outcome, it does not change it.
-          escapeRecoveryUnavailableNotice()
+          escapeRecoveryUnavailable = true
           finishTerminal(.cancelled, sid: sid)
           return
         }
@@ -4236,6 +4241,9 @@ final class RecordingSessionKernel {
     // the next session inherit an abandonment the user never requested, and the
     // abandonment checks would then conclude it `.cancelled` mid-decode.
     finalizationDisposition = .ordinary
+    // #2087: likewise the unavailable latch, or the next ordinary cancel would
+    // display a failure belonging to a take that already ended.
+    escapeRecoveryUnavailable = false
     recordingExitContinuation = nil
     pendingRecordingExit = nil
     recordingExitLatched = false
@@ -4708,16 +4716,28 @@ final class RecordingSessionKernel {
     /// #1548 D1 test seam — set the FSM state directly to one of the 5 cases
     /// (no legality check), for consumer-mapping tests that need a specific
     /// in-flight state without driving the forward path.
-    /// #2087 test seam — enter a disposition the production path cannot reach yet.
+    /// #2087 test seam — enter a disposition without driving a whole recovery.
     ///
-    /// The arm that would set `.escapeRecovery` also has to change where a cancel
-    /// ROUTES (into the stop tail instead of straight to `.cancelled`), and that
-    /// routing change is the activation chunk 12 owns. Setting the disposition
-    /// without it would leave the session concluding immediately, so abandonment
-    /// would still be unreachable and every check site would ship unexercised.
-    /// This seam is what lets the five decode-return checks be shown to work.
+    /// The production setter is the cancel arm, and it is exercised end to end by
+    /// `EscapeRecoveryActivationTests`. This seam exists for the consumers of the
+    /// disposition — the five decode-return abandonment checks, and the driver's
+    /// completion capture — which each need a session already IN a disposition
+    /// and would otherwise have to stage a full recording to reach one.
     func testSetFinalizationDisposition(_ disposition: FinalizationDisposition) {
       finalizationDisposition = disposition
+      bump()
+    }
+
+    /// #2087 test seam — stage the "could not keep this recording" latch.
+    ///
+    /// Its production setter is the marker-failure arm of the cancel branch,
+    /// covered by `EscapeRecoveryActivationTests`. This seam is for the OTHER
+    /// half: the driver projects the latch into an overlay intent, and that
+    /// projection is what the user actually sees. Asserting the latch alone
+    /// would pass with the projection deleted, which is the difference between a
+    /// flag being set and a person being told.
+    func testSetEscapeRecoveryUnavailable(_ value: Bool) {
+      escapeRecoveryUnavailable = value
       bump()
     }
 

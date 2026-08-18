@@ -289,6 +289,38 @@ import os
     // #1167: a clean save marks the outcome saved and clears any prior error.
     #expect(outcome.historySaved)
     #expect(outcome.historySaveError == nil)
+    // #2087 control for the recovery case below: an ordinary dictation carries
+    // no recovery stamp, so the row is permanent History with no clock on it.
+    #expect(saved.transcript?.escapeRecoveredAt == nil)
+  }
+
+  /// #2087. The stamp is what makes a kept row a KEPT row.
+  ///
+  /// Everything a user sees about a held recovery is derived from
+  /// `escapeRecoveredAt`: the Kept badge, the countdown, the read-time expiry,
+  /// its exclusion from search and from their dictation count. Without it the
+  /// take is written as ordinary permanent History — a dictation they cancelled,
+  /// sitting in their list forever with nothing marking where it came from and
+  /// no clock to remove it.
+  ///
+  /// The stamp is the moment of the KEYPRESS, carried on the disposition, not a
+  /// fresh `Date()` read here: reading the clock at storage time would silently
+  /// hand back the minutes a long transcription spent, which is exactly the part
+  /// of the 24-hour promise most likely to matter on the takes people cancel.
+  @Test("store stamps a kept recovery with the moment the user pressed cancel")
+  func storeStampsAKeptRecovery() async throws {
+    let outcome = KernelFinalizationOutcome()
+    outcome.rawText = "kept text"
+    let pressedAt = Date(timeIntervalSince1970: 1_700_000_000)
+    let saved = SavedTranscriptBox()
+    let wiring = makeWiring(
+      outcome: outcome, save: { transcript, _ in saved.transcript = transcript })
+
+    try await wiring.store("kept text", UUID(), .escapeRecovery(triggeredAt: pressedAt))
+
+    #expect(
+      saved.transcript?.escapeRecoveredAt == pressedAt,
+      "the 24-hour window starts when the user pressed cancel, not when ASR finished")
   }
 
   @Test(
@@ -352,6 +384,27 @@ import os
     let wiring = makeWiring(context: context, deliverPaste: { _ in Self.deliveredResult })
     let outcome = await wiring.deliver("hello", .ordinary)
     #expect(outcome == .pasted)
+  }
+
+  /// #2087. The kept take is HELD, not delivered, and the report must say so.
+  ///
+  /// `.clipboardOnly` is the wrong answer twice over: it is a lie about where
+  /// the text went, and it can raise the clipboard-fallback overlay, which tells
+  /// the user to press paste for something that was never put on their
+  /// clipboard. Auto-paste is deliberately ON here — the point is that the
+  /// disposition overrules it, so a fixture with paste off would pass whether or
+  /// not the branch exists.
+  @Test("deliver reports suppressed for an Escape Recovery, whatever auto-paste says")
+  func deliverSuppressesAKeptRecovery() async {
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let wiring = makeWiring(context: context, deliverPaste: { _ in Self.deliveredResult })
+
+    let outcome = await wiring.deliver("hello", .escapeRecovery(triggeredAt: Date()))
+
+    #expect(
+      outcome == .suppressed,
+      "the user pressed cancel: nothing is pasted and nothing touches the clipboard")
   }
 
   @Test("deliver reports clipboardOnly when the cascade fell back")
