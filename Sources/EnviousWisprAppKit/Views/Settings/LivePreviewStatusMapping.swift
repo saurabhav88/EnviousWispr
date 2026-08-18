@@ -65,7 +65,9 @@ enum LivePreviewStatusMapping {
     }
 
     switch engine {
-    case .apple: return apple(supported: appleSupported, active: active)
+    case .apple:
+      return apple(
+        supported: appleSupported, active: active, universalIsAnOption: universalExists)
     case .universal:
       return universal(
         exists: universalExists, state: universalState, heartIsStreaming: heartIsStreaming)
@@ -74,8 +76,13 @@ enum LivePreviewStatusMapping {
 
   // MARK: - Apple
 
+  /// `universalIsAnOption` exists ONLY so the unsupported-language advice can
+  /// stop recommending an engine that may not be composable in this build. Being
+  /// on Apple and supported says nothing about the other engine.
   private static func apple(
-    supported: Bool, active: LivePreviewPacksModel.ActiveLanguage?
+    supported: Bool,
+    active: LivePreviewPacksModel.ActiveLanguage?,
+    universalIsAnOption: Bool
   ) -> Summary {
     guard supported else {
       return Summary(
@@ -121,7 +128,9 @@ enum LivePreviewStatusMapping {
       return Summary(
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusUnsupportedLanguageLabel, tone: .needsSetup),
-        detail: LivePreviewSettingsCopy.statusUnsupportedLanguageDetail)
+        detail: universalIsAnOption
+          ? LivePreviewSettingsCopy.statusUnsupportedLanguageDetail
+          : LivePreviewSettingsCopy.statusUnsupportedLanguageDetailNoAlternative)
     case .unsupportedSystem:
       // The same fact as the `supported` guard above, reached through the
       // resolver instead of the static check. Answered identically rather than

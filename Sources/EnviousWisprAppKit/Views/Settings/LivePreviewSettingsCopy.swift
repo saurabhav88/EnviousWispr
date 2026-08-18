@@ -209,7 +209,12 @@ enum LivePreviewSettingsCopy {
   static let statusActiveDetail = "Ready to show your words while you speak."
 
   static let statusOffLabel = "Live Preview is off"
-  static let statusOffDetail = "Switch it on to see your words while you speak."
+  /// **Deliberately promises nothing about what happens next.** The off state is
+  /// checked BEFORE any engine detail, so switching on can land straight on
+  /// "needs a download" or a missing language pack. An earlier draft said
+  /// "switch it on to see your words while you speak", which is a promise this
+  /// card cannot keep for every user who reads it.
+  static let statusOffDetail = "Switch it on and this card will show whether anything else is needed."
 
   static let statusUnavailableLabel = "Not available on this Mac"
   static let statusUnavailableDetail =
@@ -228,8 +233,16 @@ enum LivePreviewSettingsCopy {
   static let statusNeedsLanguageDetail = "Download it in the list below and the preview starts working."
 
   static let statusUnsupportedLanguageLabel = "Apple can't preview this language"
+  /// **Two details, because the advice is only true when the other engine
+  /// exists.** This state is reached with Apple selected and supported, which
+  /// says nothing about whether the universal engine is composable in this
+  /// build. Recommending it unconditionally would point a user at a card that
+  /// cannot help them. Found by enumerating the class after two review rounds,
+  /// not by either round.
   static let statusUnsupportedLanguageDetail =
     "Dictation still works normally. Try the Universal engine instead."
+  static let statusUnsupportedLanguageDetailNoAlternative =
+    "Dictation still works normally. Only the on-screen preview is unavailable for it."
 
   static let statusNeedsDownloadLabel = "Needs a download"
   static let statusNeedsDownloadDetail = "Get the Universal engine from the card below."

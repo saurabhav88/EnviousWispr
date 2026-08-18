@@ -162,6 +162,39 @@ struct LivePreviewStatusMappingTests {
     #expect(s.chip.tone == .needsSetup)
   }
 
+  /// **Found by enumerating the class, not by either review round.** This state
+  /// is reached with Apple selected and supported, which says nothing about
+  /// whether the universal engine exists in this build. Recommending it
+  /// unconditionally points a user at a card that cannot help them.
+  @Test("The unsupported-language advice only offers Universal when Universal exists")
+  func unsupportedLanguageAdviceRespectsWhatIsAvailable() {
+    let withAlternative = summary(
+      engine: .apple, universalExists: true, active: .unsupportedLanguage)
+    let without = summary(
+      engine: .apple, universalExists: false, active: .unsupportedLanguage)
+
+    #expect(withAlternative.detail != without.detail)
+    #expect(withAlternative.detail.contains("Universal"))
+    #expect(!without.detail.contains("Universal"))
+    // The LABEL is the same fact either way; only the remedy differs.
+    #expect(withAlternative.chip.label == without.chip.label)
+  }
+
+  /// The off state is evaluated BEFORE any engine detail, so switching on can
+  /// land straight on "needs a download". A detail promising words is a promise
+  /// this card cannot keep for every reader.
+  @Test("The off state promises nothing about what switching on will show")
+  func offStateMakesNoPromise() {
+    let off = summary(isEnabled: false, engine: .universal, universalState: .notReady)
+    let d = off.detail.lowercased()
+    let promises: [String] = ["see your words", "show your words", "your words will"]
+    for promise in promises {
+      #expect(d.contains(promise) == false, "the off state promises words: \(off.detail)")
+    }
+    // Positive control: it still says something actionable rather than nothing.
+    #expect(d.contains("switch it on"))
+  }
+
   @Test("An unsupported language and an unsupported system are different answers")
   func languageAndSystemAreDistinct() {
     let language = summary(engine: .apple, active: .unsupportedLanguage)
