@@ -71,6 +71,30 @@ else
   bad "key path-independence" "same lockfile, different path, different key — the cache would never hit"
 fi
 
+# THE SDK VERSION MUST BE IN THE KEY. A seed carries toolchain-shaped artifacts,
+# so serving one across an SDK change is exactly the stale-cache failure the
+# composite key exists to prevent. Named by the chunk gate as a mutation that
+# survived all 29 assertions: deleting the SDK line left every test green,
+# because nothing varied it. `xcrun` is stubbed rather than the SDK changed.
+xcrun() { printf 'stubbed-sdk-99.9\n'; }
+K_SDK="$(ew_seed_key "$ROOT")"
+unset -f xcrun
+if [ "$K_SDK" != "$KEY" ]; then
+  ok "key changes when the macOS SDK version changes"
+else
+  bad "key/SDK" "SDK version is not in the key — a seed would survive an Xcode upgrade"
+fi
+
+# Likewise the Xcode version itself.
+xcodebuild() { printf 'Xcode 99.9\nBuild version ZZZ\n'; }
+K_XC="$(ew_seed_key "$ROOT")"
+unset -f xcodebuild
+if [ "$K_XC" != "$KEY" ]; then
+  ok "key changes when the Xcode version changes"
+else
+  bad "key/Xcode" "Xcode version is not in the key"
+fi
+
 # --- consume with NO snapshot: must not create anything ------------------------
 DD1="$TMPROOT/dd1"
 out="$(ew_seed_consume "$ROOT" "$DD1" 2>&1)"
@@ -144,6 +168,19 @@ else
 fi
 printf '{"pins":[]}\n' > "$ROOT/Package.resolved"
 
+# Consume stages then renames, so no `.SourcePackages.seed.*` may survive. A
+# direct copy into the final target would let an interrupted run leave a partial
+# tree that the next run ACCEPTS — silent corruption.
+seed_staging=0
+for _s in "$TMPROOT"/dd3/.SourcePackages.seed.*; do
+  [ -e "$_s" ] && seed_staging=1
+done
+if [ "$seed_staging" -eq 0 ]; then
+  ok "consume leaves no staging directory behind"
+else
+  bad "consume staging" "staging survived"
+fi
+
 # --- a held lock makes consume a cache MISS, never a failure -------------------
 ew_seed_lock_acquire "$KEY" >/dev/null 2>&1
 DD7="$TMPROOT/dd7"
@@ -166,8 +203,8 @@ else
 fi
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 15 ]; then
-  printf 'ERROR: expected at least 15 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 18 ]; then
+  printf 'ERROR: expected at least 18 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1

@@ -31,6 +31,11 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # ONE cleanup handler, releasing every seed lock this process owns. A second
 # `trap EXIT` would silently REPLACE this one rather than adding to it.
 trap 'ew_seed_release_all' EXIT
+# bash exits on a signal WITHOUT running the EXIT trap, which would strand a
+# seed lock. Converting each signal into a normal exit makes EXIT run.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 DERIVED_DATA="$PROJECT_ROOT/.derivedData/Dev"
 BUILT_APP="$DERIVED_DATA/Build/Products/Dev/EnviousWispr Local.app"
 APP_PATH="$PROJECT_ROOT/build/EnviousWispr Local.app"
@@ -106,6 +111,7 @@ xcodebuild build \
   -configuration Dev \
   -derivedDataPath "$DERIVED_DATA" \
   -destination 'generic/platform=macOS' \
+  -onlyUsePackageVersionsFromResolvedFile \
   ARCHS=arm64 \
   ONLY_ACTIVE_ARCH=YES \
   VALID_ARCHS=arm64

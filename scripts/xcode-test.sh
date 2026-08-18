@@ -22,6 +22,11 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=scripts/lib/spm-seed.sh
 . "$PROJECT_ROOT/scripts/lib/spm-seed.sh"
 trap 'ew_seed_release_all' EXIT
+# bash exits on a signal WITHOUT running the EXIT trap, which would strand a
+# seed lock. Converting each signal into a normal exit makes EXIT run.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 DERIVED_DATA="${DERIVED_DATA_PATH:-$PROJECT_ROOT/.derivedData/Test}"
 PROJECT="EnviousWispr.xcodeproj"
 DEBUG_SCHEME="EnviousWispr"
@@ -61,6 +66,7 @@ run_lane() {  # $1=scheme  $2=config  $3=logfile  $4...=extra build settings
     -configuration "$config" \
     -derivedDataPath "$DERIVED_DATA" \
     -destination "$DEST" \
+    -onlyUsePackageVersionsFromResolvedFile \
     ARCHS=arm64 \
     VALID_ARCHS=arm64 \
     ONLY_ACTIVE_ARCH=YES \

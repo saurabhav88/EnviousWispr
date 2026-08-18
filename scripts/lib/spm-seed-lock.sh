@@ -115,10 +115,22 @@ ew_seed_lock_is_reclaimable() {
   pid="$(sed -n 's/^pid=//p' "$owner" 2>/dev/null | head -1)"
   started="$(sed -n 's/^started=//p' "$owner" 2>/dev/null | head -1)"
 
-  # A future checkout wrote this. Refuse rather than guess at its shape.
-  [ "$version" = "$EW_SEED_LOCK_VERSION" ] || return 1
-  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
-  [ -n "$started" ] || return 1
+  # A future checkout wrote this, or the record is malformed. Refuse rather than
+  # guess — but SAY SO. An aged lock we decline to judge will sit forever, and
+  # silent refusal is indistinguishable from "there was nothing to do".
+  if [ "$version" != "$EW_SEED_LOCK_VERSION" ]; then
+    echo "seed-lock: $key held by unknown protocol version '$version'; leaving it alone" >&2
+    return 1
+  fi
+  case "$pid" in
+    ''|*[!0-9]*)
+      echo "seed-lock: $key has a malformed owner record; leaving it alone" >&2
+      return 1 ;;
+  esac
+  if [ -z "$started" ]; then
+    echo "seed-lock: $key owner record has no start identity; leaving it alone" >&2
+    return 1
+  fi
 
   now="$(ew_seed_process_identity "$pid")"
   [ -n "$now" ] || return 0            # PID gone entirely: provably dead

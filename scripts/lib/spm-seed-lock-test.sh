@@ -127,19 +127,33 @@ mk_lock() { # <key> <owner-file-contents>
 mk_lock unknownver "version=99
 pid=$DEAD_PID
 started=Mon Jan  1 00:00:00 2020"
-if ew_seed_lock_is_reclaimable unknownver 60; then
-  bad "unknown protocol version" "reclaimed a lock written by a version we do not implement"
-else
+warn_out="$(ew_seed_lock_is_reclaimable unknownver 60 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ]; then
   ok "an UNKNOWN protocol version fails closed (a newer checkout wrote it)"
+else
+  bad "unknown protocol version" "reclaimed a lock written by a version we do not implement"
+fi
+# It must also SAY SO. An aged lock we decline to judge sits forever, and silent
+# refusal is indistinguishable from "there was nothing to do".
+if printf '%s' "$warn_out" | grep -q "unknown protocol version"; then
+  ok "an unknown-version refusal is ANNOUNCED, not silent"
+else
+  bad "unknown-version warning" "refused silently: '$warn_out'"
 fi
 
 mk_lock malformed "pid=notanumber
 version=$EW_SEED_LOCK_VERSION
 started=x"
-if ew_seed_lock_is_reclaimable malformed 60; then
-  bad "malformed pid" "reclaimed a lock with an unparseable pid"
-else
+warn_out="$(ew_seed_lock_is_reclaimable malformed 60 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ]; then
   ok "a MALFORMED owner record fails closed"
+else
+  bad "malformed pid" "reclaimed a lock with an unparseable pid"
+fi
+if printf '%s' "$warn_out" | grep -q "malformed owner record"; then
+  ok "a malformed-record refusal is ANNOUNCED, not silent"
+else
+  bad "malformed warning" "refused silently: '$warn_out'"
 fi
 
 mkdir -p "$EW_SEED_ROOT/.locks/noowner"
@@ -157,8 +171,8 @@ else
 fi
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 14 ]; then
-  printf 'ERROR: expected at least 14 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 16 ]; then
+  printf 'ERROR: expected at least 16 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1

@@ -77,7 +77,7 @@ ew_seed_is_complete() {
 # Clones a snapshot into an ABSENT target. Prints what it did and why; a silent
 # fast path is indistinguishable from a broken one.
 ew_seed_consume() {
-  local root="$1" dd="$2" key snap target
+  local root="$1" dd="$2" key snap target tmp
   target="$dd/SourcePackages"
 
   # Never overwrite an existing tree: xcodebuild owns it once it exists.
@@ -107,19 +107,27 @@ ew_seed_consume() {
     return 0
   fi
 
+  # Stage then rename, exactly as publish does. Copying DIRECTLY into the final
+  # target is unsafe: an interrupted `cp -Rc` (SIGTERM under bash 3.2 exits 143
+  # WITHOUT running an EXIT trap) leaves a partial `SourcePackages`, and the
+  # early-return above would then ACCEPT it on the next run — silent corruption
+  # that surfaces as a mystery build failure. A staging name nobody looks for
+  # cannot be mistaken for a resolved tree.
   mkdir -p "$dd" 2>/dev/null || true
-  if cp -Rc "$snap" "$target" 2>/dev/null && ew_seed_is_complete "$target"; then
+  tmp="$dd/.SourcePackages.seed.$$"
+  rm -rf "$tmp" 2>/dev/null || true
+  if cp -Rc "$snap" "$tmp" 2>/dev/null && ew_seed_is_complete "$tmp" \
+     && [ ! -e "$target" ] && mv -f -- "$tmp" "$target" 2>/dev/null; then
     ew_seed_lock_release "$key"
     echo "==> Seeded packages from snapshot ${key:0:12} (copy-on-write)"
     return 0
   fi
 
-  # Partial clone: remove it. A half-populated SourcePackages is worse than none,
-  # because xcodebuild would try to use it. `cp -Rc` fails with ENOTSUP/EXDEV off
-  # APFS or across volumes — preflighted by outcome, never inferred from duration.
-  rm -rf "$target" 2>/dev/null || true
+  # `cp -Rc` fails with ENOTSUP/EXDEV off APFS or across volumes — judged by
+  # outcome, never inferred from duration.
+  rm -rf "$tmp" 2>/dev/null || true
   ew_seed_lock_release "$key"
-  echo "==> Resolving packages (seed clone failed; removed partial copy)"
+  echo "==> Resolving packages (seed clone unavailable; removed partial staging copy)"
   return 0
 }
 
