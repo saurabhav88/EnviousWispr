@@ -97,6 +97,20 @@ enum LivePreviewStatusMapping {
 
     switch active {
     case .ready:
+      // **KNOWN LIMIT, recorded rather than papered over (#2164).** `.ready`
+      // means the resolver resolved: the language is supported and its pack is
+      // installed. It does NOT prove `prepare()` will succeed. Locale claims are
+      // machine-wide, capped at five, and survive `SIGKILL` of the process that
+      // took them, so a machine carrying five stale claims can resolve `.ready`
+      // and still fail to open a session (`live-preview.md`
+      // FACT: apple-api-semantics-measured). `LocaleClaims` evicts at the cap,
+      // which is why this is HYPOTHETICAL rather than reproducible, but the
+      // failure is SILENT: the card would say active while the pill stays empty.
+      //
+      // Not fixed here because the honest fix needs a last-prepare-outcome
+      // signal that nothing currently owns, and choosing its owner is a design
+      // decision about the limb boundary, not a line of code. Deliberately NOT
+      // invented under an unattended session.
       return Self.activeSummary
     case .needsDownload(let name):
       return Summary(

@@ -11,7 +11,7 @@ Live Preview shows your words in the recording pill while you are still speaking
 
 **It is only a preview.** The words in the pill are a rough draft from a second, lighter engine. They are thrown away when the recording ends, and they never change a character of the text that gets pasted. That text comes from the main engine, which is more accurate.
 
-Everything about the preview happens on your Mac. Nothing about it is sent anywhere.
+Your voice and preview text stay on your Mac.
 
 ### Turning it on
 
@@ -46,9 +46,13 @@ If you are on macOS 26 and Apple supports your language, use Apple immediately i
 
 ### Which language the preview uses
 
-The preview follows the language you picked for dictation, under **Transcription**. You can change it from the Live Preview page too, using the **Change** button beside the language. That changes your dictation language everywhere, not just the preview.
+This works differently on the two engines, and the difference only matters if your dictation language is set to **Auto**.
 
-If your dictation language is set to **Auto**, the preview has nothing to follow yet. It has to commit to one language before you say your first word, so it goes by your Mac's language instead. Dictation still understands whatever you actually speak. Only the words on screen may come out in the wrong language until you pick one.
+**On Apple**, the preview follows the language you picked for dictation, under **Transcription**. On **Auto** it has nothing to follow yet, because it must commit to one language before you say your first word, so it goes by your Mac's language instead. Dictation still understands whatever you actually speak. Only the words on screen may come out in the wrong language until you pick one. You can change the language from the Live Preview page using the **Change** button beside it, which sets your dictation language everywhere, not just the preview.
+
+**On Universal**, there is nothing to set. The model works out which language you are speaking on its own, so **Auto** is not a problem for it and no Change button appears.
+
+The language section and the **Change** button are shown only when the Apple engine is selected and Live Preview is switched on, because they describe Apple's languages specifically.
 
 ### If you see no words at all
 

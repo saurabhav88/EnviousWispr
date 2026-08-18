@@ -738,6 +738,13 @@ struct EngineCard<Footer: View>: View {
       .buttonStyle(.plain)
       .accessibilityElement(children: .combine)
       .accessibilityLabel(title)
+      // **The explicit label REPLACES the combined children, so without this the
+      // tagline and the unavailability reason are visible and inaudible.** On
+      // pre-macOS-26 systems, or a build missing the universal engine's files,
+      // the card stays selectable and a VoiceOver user is never told why it
+      // cannot be used — they select it and nothing happens. Same defect the
+      // card's own footer separation exists to prevent, one sense over.
+      .accessibilityHint(([tagline] + [unavailability].compactMap { $0 }).joined(separator: " "))
       .accessibilityValue(isSelected ? "Selected" : "")
       .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
 
