@@ -560,7 +560,7 @@ struct LivePreviewSettingsView: View {
       }
       .frame(maxWidth: .infinity, alignment: .leading)
 
-      Text(LivePreviewPackPresentation.source(for: pack))
+      Text(LivePreviewPackPresentation.availability(for: pack))
         .settingsHelperCopy()
         .frame(width: Self.sourceColumnWidth, alignment: .leading)
 

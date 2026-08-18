@@ -235,10 +235,16 @@ enum LivePreviewSettingsCopy {
   static let statusNeedsDownloadDetail = "Get the Universal engine from the card below."
 
   static let statusGettingReadyLabel = "Getting ready"
-  static let statusGettingReadyDetail = "The Universal engine is downloading."
+  /// **State-neutral on purpose.** This label covers downloading, preparing AND
+  /// verifying, and the last two can be pure local work on files already on
+  /// disk. Saying "downloading" there announces a transfer that is not
+  /// happening, which is the same defect `packsLoading` was split out to fix.
+  static let statusGettingReadyDetail = "The Universal engine is being prepared."
 
+  /// The label only. **The DETAIL comes from `ModelDeliveryCopy.message`**,
+  /// because the right remedy depends on the reason: a full disk needs space
+  /// freed, not a connection checked. One owner for that mapping, not two.
   static let statusDownloadFailedLabel = "Download did not finish"
-  static let statusDownloadFailedDetail = "Check your connection and try again below."
 
   static let statusBuildCannotRunLabel = "Can't run that engine"
   static let statusBuildCannotRunDetail =
@@ -274,12 +280,17 @@ enum LivePreviewSettingsCopy {
   // MARK: - Language table (#2154)
 
   static let tableColumnLanguage = "Language"
-  static let tableColumnSource = "Source"
   static let tableColumnStatus = "Status"
 
-  /// Where a language came from. "System" means it arrived with macOS; "Apple"
-  /// means it is one of Apple's downloads. Both are Apple's packs — the column
-  /// answers "do I already have this", which is what the user is scanning for.
-  static let sourceSystem = "System"
-  static let sourceApple = "Apple"
+  /// **Availability, NOT provenance, and the first draft got that wrong.**
+  ///
+  /// The column is computed from `isInstalled`, so downloading a language
+  /// through this very page flipped it from "Apple" to "System" — claiming the
+  /// pack had shipped with macOS when the user had just fetched it from Apple
+  /// thirty seconds earlier. The model carries availability and knows nothing
+  /// about origin, so the honest fix is to label what is actually computed.
+  /// Every one of these is an Apple pack either way.
+  static let tableColumnSource = "Availability"
+  static let sourceSystem = "On this Mac"
+  static let sourceApple = "Available from Apple"
 }

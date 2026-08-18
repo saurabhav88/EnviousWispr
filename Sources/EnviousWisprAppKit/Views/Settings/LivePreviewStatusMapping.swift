@@ -165,11 +165,19 @@ enum LivePreviewStatusMapping {
           label: LivePreviewSettingsCopy.statusGettingReadyLabel, tone: .needsSetup),
         detail: LivePreviewSettingsCopy.statusGettingReadyDetail)
 
-    case .failed:
+    // **The REASON decides the remedy, and a generic one is wrong for most of
+    // them.** An earlier draft said "check your connection and try again" for
+    // every failure, which is actively unhelpful when the real cause is a full
+    // disk (the honest remedy is to free space), a permission refusal, or a
+    // failed integrity check. `ModelDeliveryCopy` already owns that mapping and
+    // already ships per-reason sentences, including the hotel-wifi case; a
+    // second, worse copy of the same decision is the partial port this codebase
+    // keeps paying for.
+    case .failed(let failure):
       return Summary(
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusDownloadFailedLabel, tone: .error),
-        detail: LivePreviewSettingsCopy.statusDownloadFailedDetail)
+        detail: ModelDeliveryCopy.message(reason: failure.reason, detail: failure.detail))
 
     // Both cancel shapes and the never-started case answer the same question —
     // the model is not here — and the CARD below already owns the difference

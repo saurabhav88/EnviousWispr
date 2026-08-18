@@ -202,6 +202,35 @@ struct LivePreviewStatusMappingTests {
     #expect(failed.chip.tone == .error)
   }
 
+  /// **The remedy has to match the reason.** An earlier draft told every failure
+  /// to check its connection, which is actively wrong when the disk is full: the
+  /// user follows working advice for a problem they do not have, and the one
+  /// thing that would fix it goes unsaid. Delegated to `ModelDeliveryCopy`,
+  /// which already owns per-reason sentences, rather than a second copy here.
+  @Test("A failure's detail names the remedy for THAT failure, not a generic one")
+  func failureDetailIsReasonSpecific() {
+    let disk = summary(
+      engine: .universal,
+      universalState: .failed(DeliveryFailure(reason: .insufficientDisk, detail: nil)))
+    let network = summary(
+      engine: .universal,
+      universalState: .failed(DeliveryFailure(reason: .sourceUnreachable, detail: nil)))
+
+    // Different causes must not produce the same sentence. This is the whole
+    // defect: one generic remedy for every reason.
+    #expect(disk.detail != network.detail)
+
+    // And each must be the sentence its owner already ships, so this page and
+    // every other download surface say the same thing about the same failure.
+    #expect(disk.detail == ModelDeliveryCopy.message(reason: .insufficientDisk, detail: nil))
+    #expect(network.detail == ModelDeliveryCopy.message(reason: .sourceUnreachable, detail: nil))
+
+    // Two-way control: the disk case really does talk about space, so an
+    // equality that happened to compare two empty strings could not pass here.
+    #expect(disk.detail.lowercased().contains("space"))
+    #expect(!disk.detail.lowercased().contains("connection"))
+  }
+
   // MARK: - Both halves, every state
 
   /// The detail line is half of what the card says, and it ships from the same

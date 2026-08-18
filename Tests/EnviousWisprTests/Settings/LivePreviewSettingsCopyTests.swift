@@ -63,7 +63,6 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.statusGettingReadyLabel,
       LivePreviewSettingsCopy.statusGettingReadyDetail,
       LivePreviewSettingsCopy.statusDownloadFailedLabel,
-      LivePreviewSettingsCopy.statusDownloadFailedDetail,
       LivePreviewSettingsCopy.statusBuildCannotRunLabel,
       LivePreviewSettingsCopy.statusBuildCannotRunDetail,
       LivePreviewSettingsCopy.pausedForLiveTranscription,

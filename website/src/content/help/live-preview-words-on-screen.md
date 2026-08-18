@@ -42,7 +42,7 @@ The preview needs its own small engine, separate from the one that produces your
 
 **Universal** works on **macOS 14 and later** and covers more languages. It needs one optional **217 MB** download, which only starts when you ask for it. You can remove it again later from the same card to get the space back.
 
-If you are on macOS 26 and your language is already on your Mac, Apple is the simpler choice because there is nothing to download. Otherwise Universal is the one that works.
+If you are on macOS 26 and Apple supports your language, use Apple immediately if its pack is installed, or download that pack from the list below. Choose Universal on older macOS versions, or when Apple does not support your language.
 
 ### Which language the preview uses
 
