@@ -21,18 +21,18 @@ Your voice and preview text stay on your Mac.
 
 **Switch on Show words while I speak.** The card at the top of the page tells you whether the preview is ready, and if it is not, what is missing.
 
-### Live Preview is not Live transcription
+### Live Preview is not Faster Transcription
 
 These are two different settings and it is easy to mix them up.
 
-| | Live Preview | Live transcription |
+| | Live Preview | Faster Transcription |
 |---|---|---|
 | What you see | Words in the recording pill, on screen | Text written into your document |
 | Where it goes | Nowhere. It is discarded when you stop | Straight into whatever you are typing in |
 | Changes your result | No | Yes, it is the result |
 | Where to find it | Settings, Record, Live Preview | Settings, Transcription |
 
-If you want to watch your words appear as you talk without anything being written yet, you want Live Preview. If you want text landing in your document before you finish speaking, you want [Live transcription](/help/live-transcription-streaming-asr/).
+If you want to watch your words appear as you talk without anything being written yet, you want Live Preview. If you want text landing in your document before you finish speaking, you want [Faster Transcription](/help/live-transcription-streaming-asr/).
 
 ### Choosing an engine
 
@@ -52,7 +52,7 @@ This works differently on the two engines, and the difference only matters if yo
 
 **On Universal**, it depends on the same setting. If you have picked a language for dictation, the preview uses that one. If your dictation language is **Auto**, this engine works out the language itself as you speak, so Auto is not a problem for it. Either way the **Change** button is there if the language is wrong.
 
-The list of downloadable languages further down is Apple's, so it only appears with the Apple engine selected. The language row and the **Change** button appear for both engines whenever Live Preview is switched on.
+The list of downloadable languages further down is Apple's, so it only appears with the Apple engine selected. The language row and the **Change** button appear for both engines whenever Live Preview is switched on. The picker lists **Auto-detect** at the top, so you can hand the choice back to the app as easily as you took it.
 
 ### If you see no words at all
 
@@ -64,6 +64,6 @@ Work down this list.
 
 **Check whether the language is downloaded.** On the Apple engine, a language your Mac does not have shows a **Download** button in the language list. Until you download it, there is nothing to show.
 
-**Check that Live transcription is off.** On the Universal engine, the preview steps aside while Live transcription is running, so your main dictation keeps its full speed. The status card says so when this is why.
+**Check that Faster Transcription is off.** On the Universal engine, the preview steps aside while Faster Transcription is running, so your main dictation keeps its full speed. The status card says so when this is why.
 
 Your dictation is unaffected in every one of these cases. An empty preview never means a lost recording.

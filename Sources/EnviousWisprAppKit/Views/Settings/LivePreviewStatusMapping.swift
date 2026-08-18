@@ -253,19 +253,19 @@ enum LivePreviewStatusMapping {
     // `WhisperPreviewEngineResolver` refuses with `.heartIsStreaming` before it
     // asks whether the model is admitted, deliberately: concurrent decode was
     // measured costing the heart 1.50x, and a display limb must never contend
-    // with transcription (#2108 Gate C). So with Live transcription running,
+    // with transcription (#2108 Gate C). So with Faster Transcription running,
     // this preview will not start whatever the download says.
     //
     // The order is copied from the resolver rather than chosen for
     // actionability. Showing "needs a download" here would be equally TRUE and
     // would let the chip say the preview is one download away when turning off
-    // Live transcription is also required — a status that disagrees with what
+    // Faster Transcription is also required — a status that disagrees with what
     // pressing record actually does. A user who turns streaming off then sees
     // the download need, which is a correct sequence of answers.
     if heartIsStreaming {
       return Summary(
         chip: ProviderStatus(
-          label: LivePreviewSettingsCopy.pausedForLiveTranscription, tone: .needsSetup),
+          label: LivePreviewSettingsCopy.pausedForFasterTranscription, tone: .needsSetup),
         detail: LivePreviewSettingsCopy.statusPausedDetail)
     }
 

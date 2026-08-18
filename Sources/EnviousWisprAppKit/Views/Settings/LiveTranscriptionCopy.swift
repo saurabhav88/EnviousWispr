@@ -1,7 +1,7 @@
 import EnviousWisprCore
 import Foundation
 
-/// #1337: canonical copy for the "Live transcription" setting and its in-app help panel.
+/// #1337: canonical copy for the "Faster Transcription" setting and its in-app help panel.
 ///
 /// Mirrors `SpokenPunctuationCopy` (#1794) in shape and intent: one place owning every
 /// user-facing string, with `LiveTranscriptionCopyTests` freezing them so a change is a
@@ -40,26 +40,38 @@ import Foundation
 ///
 /// Brand rule: no em-dashes or en-dashes in user-facing copy.
 enum LiveTranscriptionCopy {
-  /// #1988 considered renaming this ("Live transcription" promises something this
-  /// setting has never done, and a real user hit exactly that) and MEASURED the
-  /// cost first: the phrase appears 30 times across the app, three live website
-  /// pages, and a published help article whose TITLE and URL slug are the name
-  /// itself. That is a public-URL decision, not a copy tweak, so it is not bundled
-  /// into a feature PR. Tracked on #1988 Part 1.
+  /// **RENAMED from "Live transcription" by #2155 (founder, 2026-08-18).** The old
+  /// name promised something this setting has never done — a real user switched it
+  /// on expecting words on screen while speaking, saw nothing, and asked whether the
+  /// feature was broken. What it actually changes is WHEN the text lands, which is a
+  /// speed property, not a visibility one. The feature that shows words while you
+  /// speak is Live Preview.
   ///
-  /// What #1988 shipped instead costs nothing and solves the confusion it would
-  /// have caused: the new preview setting avoids the word "live" entirely, and both
-  /// descriptions below now say plainly that this toggle changes nothing you can
-  /// see while recording.
-  static let toggleLabel = "Live transcription"
-  static let helpButtonAccessibilityLabel = "What does Live transcription change?"
+  /// **The web addresses did NOT change and that was deliberate.** People search
+  /// "live transcription mac" because that is the category's name in the world, not
+  /// because it is what our toggle says; the two were never required to match.
+  /// `/blog/live-transcription-that-keeps-up-with-you` and
+  /// `/help/live-transcription-streaming-asr/` keep their slugs, the blog keeps its
+  /// title and keywords, and the help article keeps the old name as a search keyword
+  /// plus an alias sentence. Renaming a URL that exists to rank is expensive and slow
+  /// to recover; renaming a control is not.
+  ///
+  /// **What moved with it, because an instruction naming a control is FALSE the
+  /// moment the control is renamed:** every string here, the Live Preview page's two
+  /// cross-feature explanations, and the help-centre sentences telling a reader to
+  /// switch it on or off. What did NOT move: `WhatsNewContent`'s shipped release note
+  /// (a historical record — see the note there), the two comments quoting the original
+  /// user report, and `ParakeetStreamingSentryError`'s diagnostic strings, which would
+  /// change Sentry grouping and fire new-issue alerts for no user benefit.
+  static let toggleLabel = "Faster Transcription"
+  static let helpButtonAccessibilityLabel = "What does Faster Transcription change?"
 
   /// Shown under the toggle only when WhisperKit is selected AND the language is
   /// Auto-detect, because streaming must commit to one language up front and a bad early
   /// guess poisons the whole dictation (#1276). Lives here rather than inline so all of
   /// this toggle's user-facing strings have one home.
   static let autoLanguageFootnote =
-    "Live transcription needs a selected language. With Auto-detect, EnviousWispr uses "
+    "Faster Transcription needs a selected language. With Auto-detect, EnviousWispr uses "
     + "clean batch transcription for accuracy."
 
   /// One measured comparison row. `off` and `on` are display copy for the two settings.
@@ -116,7 +128,7 @@ enum LiveTranscriptionCopy {
     + "you can notice on most dictations, and it can drop your last few words."
 
   static let parakeet = Panel(
-    title: "What Live transcription changes",
+    title: "What Faster Transcription changes",
     speedHeading: "Speed",
     speedBody:
       "On dictations under a minute, both settings finish at about the same moment. The "
@@ -161,7 +173,7 @@ enum LiveTranscriptionCopy {
     + "recordings, and it needs a language selected."
 
   static let whisperKit = Panel(
-    title: "What Live transcription changes",
+    title: "What Faster Transcription changes",
     speedHeading: "Speed",
     speedBody:
       "On short dictations you will not notice a difference. On long ones it helps clearly: "
