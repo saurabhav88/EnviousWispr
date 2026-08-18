@@ -61,6 +61,36 @@ ew_seed_key() {
 
 ew_seed_dir() { printf '%s\n' "$EW_SEED_ROOT/$1/SourcePackages"; }
 
+# Move $1 to $2, but NEVER nest inside it.
+#
+# `[ ! -e "$dst" ] && mv "$src" "$dst"` is racy: if $dst appears between the test
+# and the rename, `mv` moves $src INSIDE $dst, producing a nested half-valid tree
+# that still passes a presence check. The window is small and real — another
+# invocation that could not get the lock takes the slow path, runs xcodebuild, and
+# xcodebuild creates the target.
+#
+# The reviewer proposed `renameatx_np` with RENAME_EXCL through a Python ctypes
+# call. Rejected as the FIX while adopting the FINDING: this function's entire
+# contract is that it can never fail a build, and a ctypes call into a
+# platform-specific libc symbol adds more failure surface than the race it closes
+# (a missing or broken `python3` would turn a cache miss into an error path).
+#
+# Instead: attempt the rename, then VERIFY it did not nest, and undo if it did.
+# Detection is exact — nesting puts $src's basename inside $dst — and the repair
+# leaves the other process's target untouched, which is correct because it owns it.
+ew_seed_move_or_undo() {
+  local src="$1" dst="$2" nested
+  [ -d "$src" ] || return 1
+  mv -f -- "$src" "$dst" 2>/dev/null || return 1
+  nested="$dst/$(basename "$src")"
+  if [ -e "$nested" ]; then
+    # We lost the race: $dst already existed and we landed inside it. Back out.
+    mv -f -- "$nested" "$src" 2>/dev/null || rm -rf "$nested" 2>/dev/null || true
+    return 1
+  fi
+  return 0
+}
+
 # A snapshot is usable only if it looks completely resolved. These are necessary
 # conditions, not sufficient ones — which is exactly why publication is atomic:
 # a reader must never be able to observe a partial tree in the first place.
@@ -116,8 +146,9 @@ ew_seed_consume() {
   mkdir -p "$dd" 2>/dev/null || true
   tmp="$dd/.SourcePackages.seed.$$"
   rm -rf "$tmp" 2>/dev/null || true
+  ew_seed_track_temp "$tmp"
   if cp -Rc "$snap" "$tmp" 2>/dev/null && ew_seed_is_complete "$tmp" \
-     && [ ! -e "$target" ] && mv -f -- "$tmp" "$target" 2>/dev/null; then
+     && ew_seed_move_or_undo "$tmp" "$target"; then
     ew_seed_lock_release "$key"
     echo "==> Seeded packages from snapshot ${key:0:12} (copy-on-write)"
     return 0
@@ -159,12 +190,13 @@ ew_seed_publish() {
   mkdir -p "$EW_SEED_ROOT/$key" 2>/dev/null || { ew_seed_lock_release "$key"; return 0; }
   tmp="$EW_SEED_ROOT/$key/.staging.$$"
   rm -rf "$tmp" 2>/dev/null || true
+  ew_seed_track_temp "$tmp"
 
   if cp -Rc "$src" "$tmp" 2>/dev/null && ew_seed_is_complete "$tmp"; then
     # Same-filesystem rename is atomic, so a reader sees a complete snapshot or
     # nothing. Atomicity is not mutual exclusion, which is what the lock and the
     # re-check above provide.
-    if [ ! -e "$snap" ] && mv -f -- "$tmp" "$snap" 2>/dev/null; then
+    if ew_seed_move_or_undo "$tmp" "$snap"; then
       ew_seed_lock_release "$key"
       echo "==> Published package seed snapshot ${key:0:12}"
       return 0

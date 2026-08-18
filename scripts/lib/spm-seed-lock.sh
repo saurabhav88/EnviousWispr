@@ -44,6 +44,13 @@ EW_SEED_ROOT="${EW_SEED_ROOT:-$HOME/Library/Caches/EnviousWispr/spm-seed}"
 # script would lose its existing global-lock cleanup.
 EW_SEED_HELD_LOCKS=()
 
+# Staging directories this process created. Registered with the SAME cleanup
+# handler as the locks: a TERM that releases the lock but leaves a staging copy
+# has only half-cleaned, and the leftover has no local reclaimer (a SIGKILL
+# leaves it with no handler at all — purge sweeps those, but only under the lock).
+EW_SEED_TEMP_DIRS=()
+ew_seed_track_temp() { EW_SEED_TEMP_DIRS[${#EW_SEED_TEMP_DIRS[@]}]="$1"; }
+
 # --- ownership identity ------------------------------------------------------
 # A PID alone is not an identity: PIDs are recycled, so an aged lock whose PID was
 # reused looks alive, and one whose PID is gone might be a different process with
@@ -89,6 +96,12 @@ ew_seed_lock_release() {
 
 ew_seed_release_all() {
   local d
+  # Staging FIRST, then locks. Releasing the lock before removing the staging
+  # copy would let another process claim the key while our debris is still there.
+  for d in ${EW_SEED_TEMP_DIRS[@]+"${EW_SEED_TEMP_DIRS[@]}"}; do
+    rm -rf "$d" 2>/dev/null || true
+  done
+  EW_SEED_TEMP_DIRS=()
   for d in ${EW_SEED_HELD_LOCKS[@]+"${EW_SEED_HELD_LOCKS[@]}"}; do
     rm -rf "$d" 2>/dev/null || true
   done

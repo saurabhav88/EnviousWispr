@@ -202,9 +202,55 @@ else
   bad "never fail a build" "consume=$rc_c publish=$rc_p"
 fi
 
+# --- THE NESTING RACE ---------------------------------------------------------
+# `[ ! -e "$dst" ] && mv` is racy: if $dst appears between the test and the
+# rename, `mv` moves $src INSIDE $dst and produces a nested half-valid tree that
+# still passes a presence check. Simulated directly by pre-creating $dst.
+RACE="$TMPROOT/race"; mkdir -p "$RACE/src" "$RACE/dst"
+printf 'staged\n' > "$RACE/src/marker"
+printf 'THEIRS\n' > "$RACE/dst/marker"
+if ew_seed_move_or_undo "$RACE/src" "$RACE/dst"; then
+  bad "nesting race" "reported success moving into an existing directory"
+else
+  ok "move REFUSES when the destination already exists (would have nested)"
+fi
+if [ ! -e "$RACE/dst/src" ]; then
+  ok "no nested directory is left inside the destination"
+else
+  bad "nesting cleanup" "left $RACE/dst/src behind"
+fi
+if [ "$(cat "$RACE/dst/marker" 2>/dev/null)" = "THEIRS" ]; then
+  ok "the other process's destination is left untouched (it owns it)"
+else
+  bad "destination integrity" "clobbered the winner's directory"
+fi
+
+# The positive twin: an ABSENT destination must still succeed, or the guard above
+# is just a function that always refuses.
+RACE2="$TMPROOT/race2"; mkdir -p "$RACE2/src"
+printf 'staged\n' > "$RACE2/src/marker"
+if ew_seed_move_or_undo "$RACE2/src" "$RACE2/dst" && [ -f "$RACE2/dst/marker" ] && [ ! -e "$RACE2/src" ]; then
+  ok "move SUCCEEDS into an absent destination (the twin)"
+else
+  bad "move positive case" "failed to move into an absent destination"
+fi
+
+# --- staging is cleaned by the SAME handler as the locks ----------------------
+# A TERM that releases the lock but leaves a staging copy has half-cleaned.
+STAGE="$TMPROOT/stagecheck"; mkdir -p "$STAGE"
+ew_seed_track_temp "$STAGE/.SourcePackages.seed.999"
+mkdir -p "$STAGE/.SourcePackages.seed.999"
+ew_seed_lock_acquire "stagekey" >/dev/null 2>&1
+ew_seed_release_all
+if [ ! -e "$STAGE/.SourcePackages.seed.999" ]; then
+  ok "release_all removes tracked staging directories, not just locks"
+else
+  bad "staging cleanup" "staging survived release_all"
+fi
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
-if [ "$((PASS + FAIL))" -lt 18 ]; then
-  printf 'ERROR: expected at least 18 assertions, ran %s\n' "$((PASS + FAIL))"
+if [ "$((PASS + FAIL))" -lt 23 ]; then
+  printf 'ERROR: expected at least 23 assertions, ran %s\n' "$((PASS + FAIL))"
   exit 1
 fi
 [ "$FAIL" -eq 0 ] || exit 1
