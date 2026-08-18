@@ -70,10 +70,30 @@ SENTENCE = ("The quick brown fox jumps over the lazy dog "
 results = []
 
 
+class Aborted(Exception):
+    """The run cannot produce a meaningful verdict, so it stops.
+
+    Raised rather than pressing on, because the assertions after a missing
+    recording all pass for the wrong reason: nothing was kept because nothing
+    was said, and the target field is empty because nothing was ever going to
+    fill it. A summary reading 5/9 when four of the five are vacuous is worse
+    than no run at all -- it reads as evidence.
+    """
+
+
+def record(name, status, detail=""):
+    results.append((name, status, detail))
+    print(f"  {status}  {name}{('  :: ' + detail) if detail else ''}")
+
+
 def check(name, ok, detail=""):
-    results.append((name, ok, detail))
-    print(f"  {'PASS' if ok else 'FAIL'}  {name}{('  :: ' + detail) if detail else ''}")
+    record(name, "PASS" if ok else "FAIL", detail)
     return ok
+
+
+def skip(name, detail=""):
+    """Not run, and never counted as passed."""
+    record(name, "SKIP", detail)
 
 
 def wait_for(what, predicate, deadline=45.0, poll=0.25):
@@ -171,6 +191,58 @@ def app_is_running():
         capture_output=True).returncode == 0
 
 
+def in_flight(base):
+    """Is a dictation running right now, per the app's own log?
+
+    Ordered, not counted: whichever of the two markers appears LAST decides.
+    Counting would be thrown by a rotated file that holds a terminal whose start
+    it no longer carries, and would then report a live recording forever.
+    """
+    last = None
+    for line in log_since(base).splitlines():
+        if "Recording started" in line:
+            last = "start"
+        elif "dictation_terminal" in line:
+            last = "terminal"
+    return last == "start"
+
+
+def ensure_stopped(base, why="", grace=0.0):
+    """Leave no dictation running. Called on EVERY exit path, failures included.
+
+    This is the fix for the 2026-08-18 leak, and the placement is the whole
+    point: the stop has to happen on the path where the harness is already
+    confused about what the app is doing. That is precisely the path that
+    leaked, because the old code returned from it immediately.
+
+    `grace` is for the one case where "no recording" cannot be trusted yet: the
+    start signal timed out, so a take may be about to appear. Everywhere else it
+    is 0, because waiting for a start that is not coming would add a pause and a
+    "no signal" line to every clean run -- noise that trains the reader to skim
+    exactly the output that reports a leak.
+
+    The cancel key is pressed rather than the record key: it ends the take
+    whichever branch the setting selects, and with Escape Recovery ON it is the
+    branch under test anyway. It is only bound to `lctrl` while this run's
+    rebind stands, so this must run BEFORE the settings are restored.
+    """
+    if not app_is_running():
+        return True
+    if not in_flight(base) and grace > 0:
+        # A start can arrive after the wait for it gave up -- that is the leak.
+        wait_for("a late recording start", lambda: in_flight(base), deadline=grace)
+    if not in_flight(base):
+        return True
+    print(f"    (stopping a live recording{(': ' + why) if why else ''})")
+    for _ in range(2):
+        si.hold_key("lctrl", 0.12)
+        if wait_for("the recording to stop", lambda: not in_flight(base), deadline=30.0):
+            return True
+    print("    !! a recording is STILL live and the cancel key is not reaching it.")
+    print("    !! quitting the app below is the remaining stop.")
+    return False
+
+
 def restart_app():
     """Restart, waiting on the app's OWN readiness line rather than a guess."""
     subprocess.run(["pkill", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
@@ -197,17 +269,28 @@ def new_textedit_doc(name):
 
 
 def dictate_then_cancel(base):
-    """Lock hands-free so the take survives the PTT debounce, speak, then cancel."""
+    """Lock hands-free so the take survives the PTT debounce, speak, then cancel.
+
+    Returns "ok", "no-start", or "no-terminal" -- three outcomes, not a bool,
+    because they call for different things. A missed START aborts the phase: no
+    recording means no assertion below it means anything. A missed TERMINAL is
+    a real finding about the product AND a live recording to clean up.
+    """
     si.hold_key("ropt", 0.05)
     time.sleep(0.09)  # settle: the double-press chain window is 500ms; this is the gap
     si.hold_key("ropt", 0.05)
     if not wait_for("recording to start",
                     lambda: "Recording started" in log_since(base), deadline=20.0):
-        return False
+        ensure_stopped(base, "the start signal never arrived, so the take may be late",
+                       grace=5.0)
+        return "no-start"
     subprocess.run(["afplay", w.tts(SENTENCE, engine="say")], timeout=60)
     si.hold_key("lctrl", 0.12)
-    return wait_for("the session to reach a terminal",
-                    lambda: "dictation_terminal" in log_since(base), deadline=60.0)
+    if not wait_for("the session to reach a terminal",
+                    lambda: "dictation_terminal" in log_since(base), deadline=60.0):
+        ensure_stopped(base, "the cancel did not conclude the session")
+        return "no-terminal"
+    return "ok"
 
 
 def main():
@@ -220,6 +303,14 @@ def main():
         print("Unlock the screen and run again.")
         return 2
 
+    # A dictation left live by an earlier run would be stopped by the first
+    # restart below, but it would also mean somebody is mid-recording right now
+    # -- say so and refuse, rather than quitting the app under them.
+    if app_is_running() and in_flight(max(0, log_length() - 400)):
+        print("REFUSING TO RUN: a dictation is live in the dev app right now.")
+        print("Stopping it here would end a recording this run did not start.")
+        return 2
+
     # Captured BEFORE anything is written, so the `finally` restores rather
     # than resets. A developer running this must not lose their own shortcut.
     before = snapshot(("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled"))
@@ -228,6 +319,12 @@ def main():
     field_a = new_textedit_doc("field-a")
     field_b = new_textedit_doc("field-b")
     print(f"targets: A={field_a}  B={field_b}\n")
+
+    # Bound before the try: the `finally` reads both, and an exception raised
+    # before the first phase would otherwise fail INSIDE the cleanup -- losing
+    # the settings restore, which is the one thing that must never be skipped.
+    base = log_length()
+    aborted = None
 
     try:
         # ---- OFF path first: the promise that covers everyone -------------
@@ -244,9 +341,12 @@ def main():
 
         base = log_length()
         focus(field_a)
-        reached = dictate_then_cancel(base)
+        status = dictate_then_cancel(base)
         off = log_since(base)
-        check("off: the session concluded", reached)
+        check("off: the session concluded", status == "ok",
+              "" if status == "ok" else status)
+        if status != "ok":
+            raise Aborted(f"the OFF phase never completed a recording ({status})")
         check("off: the take is CANCELLED", "terminal cancelled" in off,
               "the disposition never leaves .ordinary with the setting off")
         check("off: nothing was kept", "escape recovery: keeping this take" not in off)
@@ -259,9 +359,12 @@ def main():
 
         base = log_length()
         focus(field_a)
-        reached = dictate_then_cancel(base)
+        status = dictate_then_cancel(base)
         on = log_since(base)
-        check("on: the session concluded", reached)
+        check("on: the session concluded", status == "ok",
+              "" if status == "ok" else status)
+        if status != "ok":
+            raise Aborted(f"the ON phase never completed a recording ({status})")
         kept = check("on: the recovery branch fired",
                      "escape recovery: keeping this take" in on)
         check("on: delivery was SUPPRESSED, not clipboard-only",
@@ -273,7 +376,8 @@ def main():
         # ---- The item nothing else can cover: §11.1 item 3 -----------------
         print("\n[3] Paste with focus MOVED — the item no unit test can reach")
         if not kept:
-            check("retarget: skipped", False, "no recovery to restore")
+            skip("retarget: the paste with focus moved",
+                 "nothing was kept, so there is no recovery to restore")
         else:
             focus(field_b)
             w.connect()
@@ -291,18 +395,37 @@ def main():
             check("retarget: field B was NOT written", b_text == "",
                   f"B={b_text[:60]!r} — focus moved, so a naive paste lands here")
 
+    except Aborted as stop:
+        aborted = str(stop)
+
     finally:
+        # Order matters: the stop presses the cancel key, which is only bound to
+        # `lctrl` until `restore` puts the real binding back.
+        ensure_stopped(base, "cleaning up before restoring settings")
         print("\n[restore] putting every setting back to what it was")
         restore(before)
         subprocess.run(["pkill", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
                        check=False, capture_output=True)
 
-    failed = [n for n, ok, _ in results if not ok]
+    passed = [n for n, s, _ in results if s == "PASS"]
+    failed = [n for n, s, _ in results if s == "FAIL"]
+    skipped = [n for n, s, _ in results if s == "SKIP"]
     print("\n" + "=" * 60)
-    print(f"{len(results) - len(failed)}/{len(results)} passed")
+    print(f"{len(passed)}/{len(results)} passed, "
+          f"{len(failed)} failed, {len(skipped)} not run")
     for n in failed:
         print(f"  FAILED: {n}")
+    for n in skipped:
+        print(f"  NOT RUN: {n}")
+    if aborted:
+        # Said in full rather than implied by a number, because the number is
+        # what misled the last reader of this script.
+        print(f"\n  RUN ABORTED: {aborted}")
+        print("  This is NOT a partial pass. The remaining items were never")
+        print("  exercised, and no verdict about the feature follows from it.")
     print("=" * 60)
+    if aborted:
+        return 2
     return 1 if failed else 0
 
 
