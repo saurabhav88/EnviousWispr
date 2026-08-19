@@ -195,13 +195,36 @@ def restore(before):
 
     Deleting unconditionally would silently reset a developer's own cancel
     shortcut, which is a destructive tidy-up wearing the word "restore".
+
+    **Goes through `defaults_write` like every other write, and this line is the
+    whole point of the function working at all.** It used to call `subprocess`
+    directly, so it skipped the boolean normalisation that lives there: a value
+    captured as `1` was handed back as `defaults write ... -bool 1`, which exits
+    255. With `check=False` swallowing that, the restore FAILED SILENTLY and the
+    developer's own preference was left at whatever the run had set. Measured
+    2026-08-19 against the founder's `escapeRecoveryEnabled`.
+
+    **`check=False` is kept deliberately, but no longer means "say nothing".** A
+    restore must attempt EVERY key even after one fails, so an exception here
+    would abandon the rest — but a failure that prints nothing is how the
+    original defect stayed invisible. Each key now reports, and the function
+    returns whether everything landed.
     """
+    ok = True
     for key, captured in before.items():
-        if captured is None:
-            defaults_delete(key)
-        else:
-            value, flag = captured
-            subprocess.run(["defaults", "write", DOMAIN, key, flag, value], check=False)
+        try:
+            if captured is None:
+                defaults_delete(key)
+            else:
+                value, flag = captured
+                defaults_write(key, value, kind=flag)
+        except Exception as failure:  # noqa: BLE001 — every key still gets a turn
+            ok = False
+            print(f"    RESTORE FAILED for {key}: {failure}")
+            print(f"    the developer's own {key} is NOT back to what it was")
+    if not ok:
+        print("    !! at least one preference was not restored — check it by hand")
+    return ok
 
 
 def screen_is_locked():
