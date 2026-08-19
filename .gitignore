@@ -197,6 +197,13 @@ scripts/lib/*
 !scripts/emit-output-classifier-golden.py
 # Cross-vendor telemetry join instrument (#1846).
 !scripts/telemetry-join.py
+# Mutation battery (#2156). TRACKED because a battery is only trustworthy if everyone runs the
+# SAME one: its four controls (clean-tree before, cp-based restore, fail-closed on zero executed
+# tests, compile-failure is not a catch) each exist because a hand-rolled run got one of them
+# wrong and reported a perfect score. A gitignored copy would drift per machine, which is how a
+# battery becomes a rubber stamp.
+!scripts/mutation-battery.py
+!scripts/mutation-battery-test.py
 # UAT helpers (per-PR Swift CLIs invoked during Live UAT, e.g. issue #845 keychain verifier)
 !scripts/uat/
 !scripts/uat/**
