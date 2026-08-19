@@ -37,7 +37,7 @@ The change applies to your next recording.
 
 Knowing the sequence helps you work out where a delay or an unexpected change came from. When you finish a recording, EnviousWispr does five things in order.
 
-**Trim the audio.** EnviousWispr takes the audio it recorded and trims the silence at the start and the end.
+**Trim the audio.** EnviousWispr finds the parts of the recording where you were talking and keeps those. In a quiet or normal room that is the same as trimming the silence at the start and the end.
 
 **Transcribe the speech.** Your chosen engine reads the audio and writes out the text.
 

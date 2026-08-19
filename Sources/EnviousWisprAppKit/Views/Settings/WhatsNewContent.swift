@@ -1081,7 +1081,7 @@ enum WhatsNewContent {
       icon: "ear",
       title: "Whispered speech captured",
       description:
-        "Quiet sensitivity mode now correctly captures whispered speech that was previously dropped.",
+        "Improved whispered-speech detection. Very quiet or clipped recordings may still be misheard.",
       version: "1.9.0"
     ),
     Entry(
