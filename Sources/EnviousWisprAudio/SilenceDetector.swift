@@ -116,6 +116,10 @@ public actor SilenceDetector {
   private var currentSpeechStart: Int? = nil
   private var processedSampleCount: Int = 0
 
+  /// #2184 — conditions the copy of each chunk handed to the VAD model, and
+  /// nothing else. Stateful across chunks by design; reset in `reset()`.
+  private var vadInputHighPass = VADInputHighPass()
+
   // SmoothedVAD state
   private var phase: SmoothedVADPhase = .idle
   private var emaSmoothedProbability: Float = 0.0
@@ -208,6 +212,12 @@ public actor SilenceDetector {
     phase = .idle
     emaSmoothedProbability = 0.0
     consecutiveAboveOnset = 0
+    // #2184 — the high-pass is IIR and carries state across chunks on purpose.
+    // A session must not be conditioned on the previous session's tail, and the
+    // warm-engine pre-roll drain means the first chunks of a session arrive as
+    // a batch, so this reset has to happen at session start rather than at the
+    // first live sample.
+    vadInputHighPass.reset()
     prebuffer.removeAll(keepingCapacity: true)
     prebufferWriteIndex = 0
     prebufferFilled = false
@@ -279,10 +289,24 @@ public actor SilenceDetector {
       speechPadding: 0.0
     )
 
+    // #2184 — condition the VAD's copy of the chunk, and only that copy. In a
+    // sustained low-frequency noise field the model reads speech as silence and
+    // its segments trim the buffer the ASR decodes, so the user gets a fluent
+    // transcript missing its opening words. See `VADInputHighPass` for the
+    // measurements and for why the parameter is not the cascade's cutoff.
+    //
+    // Everything else in this function keeps the RAW array on purpose:
+    // `writeToPrebuffer` above (the pre-roll must stay the audio that was
+    // recorded), the energy gate below (the filter removes energy, so gating on
+    // filtered audio would silently raise the soft-speech bar), and the sample
+    // counts (unchanged either way — the filter is length-preserving — but read
+    // from `samples` so a future edit here cannot decouple the two clocks).
+    let conditioned = vadInputHighPass.process(samples)
+
     let result: VadStreamResult
     do {
       result = try await vad.processStreamingChunk(
-        samples,
+        conditioned,
         state: streamState,
         config: segConfig,
         returnSeconds: false,
