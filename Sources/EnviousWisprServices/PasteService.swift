@@ -1442,6 +1442,13 @@ public enum PasteService {
   public enum MenuItemProbeResult {
     case found(AXUIElement)
     case confirmedAbsent
+    /// The bounded traversal reached its depth limit with children it never
+    /// opened. Distinct from `.unreadable` (an AX read FAILED) and from
+    /// `.confirmedAbsent` (we looked everywhere and there is no ⌘V item),
+    /// because this one is our own limit rather than the app's answer — and
+    /// because keeping it separate is what makes the alert-suppression
+    /// projection in #1332 measurable instead of assumed.
+    case depthLimited
     case unreadable
   }
 
@@ -1482,14 +1489,16 @@ public enum PasteService {
   /// (`.attributeUnsupported`/`.noValue`, the normal shape for a leaf item
   /// with no children or no shortcut) — a deeper traversal failure is the same
   /// bug this type exists to fix, one level down (#1435 grounded review r1).
+  ///
+  /// Returns `.depthLimited` when the bound is reached with children still
+  /// unopened. THREE kinds of not-found, deliberately not collapsed: the app
+  /// answered and there is none (`.confirmedAbsent`), a read failed
+  /// (`.unreadable`), or we stopped first (`.depthLimited`). Only the first is
+  /// evidence, and #1332's alert suppression is allowed to rely on it alone.
   @MainActor
   private static func firstPasteItem(in element: AXUIElement, depth: Int) -> MenuItemProbeResult {
     // Descendant handles do NOT inherit an ancestor's messaging timeout.
     _ = AXUIElementSetMessagingTimeout(element, menuProbeAXTimeout)
-
-    // menu bar(0) → menu-bar-item(1) → menu(2) → menu-item(3); allow a little
-    // slack for apps that nest an extra group, but stay bounded.
-    guard depth <= 4 else { return .confirmedAbsent }
 
     var childrenRef: CFTypeRef?
     let childrenRead = AXUIElementCopyAttributeValue(
@@ -1506,7 +1515,21 @@ public enum PasteService {
       return .unreadable
     }
 
+    // menu bar(0) → menu-bar-item(1) → menu(2) → menu-item(3); allow a little
+    // slack for apps that nest an extra group, but stay bounded.
+    //
+    // The bound is read AFTER the children, because the two answers it has to
+    // separate are "nothing left to look at" and "more to look at, and I
+    // stopped". Returning `.confirmedAbsent` for both is a fail-OPEN in the one
+    // function whose job is to tell confirmed from unknown: an app nesting its
+    // Paste command deeper than this would be reported as having none
+    // (#1332, Codex grounded review r2).
+    guard depth <= 4 else {
+      return children.isEmpty ? .confirmedAbsent : .depthLimited
+    }
+
     var encounteredUnreadableBranch = false
+    var encounteredDepthLimit = false
     for child in children {
       _ = AXUIElementSetMessagingTimeout(child, menuProbeAXTimeout)
       var cmdCharRef: CFTypeRef?
@@ -1539,10 +1562,15 @@ public enum PasteService {
       switch firstPasteItem(in: child, depth: depth + 1) {
       case .found(let item): return .found(item)
       case .confirmedAbsent: break
+      case .depthLimited: encounteredDepthLimit = true
       case .unreadable: encounteredUnreadableBranch = true
       }
     }
-    return encounteredUnreadableBranch ? .unreadable : .confirmedAbsent
+    // A failed READ outranks a self-imposed limit: if any branch was unreadable
+    // the whole answer is unknown for the stronger reason, and collapsing the
+    // two would lose that.
+    if encounteredUnreadableBranch { return .unreadable }
+    return encounteredDepthLimit ? .depthLimited : .confirmedAbsent
   }
 
   /// Whether an AX menu item is currently enabled. Apps disable Edit > Paste

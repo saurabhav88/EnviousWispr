@@ -215,6 +215,9 @@ struct PasteTelemetryPayloadTests {
     #expect(
       PasteCascadeExecutor.MenuPasteProbe.unreadable.focusClassLabel
         == "non_text_menu_unreadable")
+    #expect(
+      PasteCascadeExecutor.MenuPasteProbe.depthLimited.focusClassLabel
+        == "non_text_menu_depth_limit")
   }
 
   @Test("unreadable menu probe keeps full alerting (#1435)")

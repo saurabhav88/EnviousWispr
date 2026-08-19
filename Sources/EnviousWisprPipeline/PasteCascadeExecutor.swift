@@ -520,6 +520,11 @@ internal final class PasteCascadeExecutor {
           // Scenario A: no paste target. Leave the payload on the clipboard;
           // Tier 3 overlay follows.
           menuProbe = .noTarget
+        case .depthLimited:
+          // We stopped looking before the tree ran out. Not a confirmed
+          // refusal, and delivery is unaffected — this behaves exactly as
+          // `.unreadable` does here (#1332).
+          menuProbe = .depthLimited
         case .unreadable:
           // Menu bar (or traversal) AX read failed — unknown, not a confirmed
           // refusal (#1435).
@@ -633,12 +638,18 @@ internal final class PasteCascadeExecutor {
     /// An AX read failed somewhere in the probe (menu bar, traversal, or
     /// enabled-state) — unknown, NOT a confirmed refusal (#1435).
     case unreadable
+    /// The traversal hit its own depth bound with menus it never opened —
+    /// unknown, and unknown for a DIFFERENT reason than `.unreadable`: nothing
+    /// failed, we stopped. Kept separate so #1332's suppression projection can
+    /// be measured rather than assumed.
+    case depthLimited
 
     var focusClassLabel: String {
       switch self {
       case .targetEnabled: return "non_text_with_paste_target"
       case .noTarget: return "no_paste_target"
       case .unreadable: return "non_text_menu_unreadable"
+      case .depthLimited: return "non_text_menu_depth_limit"
       }
     }
   }
