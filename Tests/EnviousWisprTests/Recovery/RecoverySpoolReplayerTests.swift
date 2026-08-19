@@ -44,10 +44,15 @@ struct RecoverySpoolReplayerTests {
     var onLoadModel: (() -> Void)?
     /// When set, `transcribe` throws it instead of returning a result.
     var transcribeError: (any Error)?
+    /// #2132: when set, `loadModel` throws it. Distinguishes a LOAD-time refusal
+    /// (terminal — no model will ever be admitted by retrying) from the
+    /// post-load refusal (transient race). The two must not share an outcome.
+    var loadError: (any Error)?
 
     func loadModel() async throws {
-      isModelLoaded = true
       onLoadModel?()
+      if let loadError { throw loadError }
+      isModelLoaded = true
     }
     func unloadModel() async {}
     func setInitialBackendType(_ type: ASRBackendType) { activeBackendType = type }
@@ -674,6 +679,34 @@ struct RecoverySpoolReplayerTests {
       #expect(
         spy.categories == [.recoveryMalformedEscapeMarker],
         "exactly one capture, in its own category — not the decrypt catch-all, not silence")
+    }
+
+    /// #2132 — THE COUNTERPART GUARD, and it protects against the OPPOSITE
+    /// mistake. `WhisperKitBackend.prepare()` throws `ASRError.notReady` when no
+    /// model folder is admitted — deterministic, not transient. Deferring THAT
+    /// would retain the spool and repeat the identical failure every launch
+    /// forever, with no cleanup. Caught by Codex review on the confirming pass;
+    /// the first version of the fix deferred both load and transcribe.
+    ///
+    /// If this goes red because the outcome became `.deferred`, a spool that can
+    /// never be redeemed is being kept forever.
+    @Test("a load-time not-ready is TERMINAL — it will never succeed, so it must not defer")
+    func loadTimeNotReadyStaysUnrecoverable() async throws {
+      let h = Self.makeHarness()
+      let id = "tel-loadnotready-\(UUID().uuidString)"
+      try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
+      h.asr.loadError = ASRError.notReady
+
+      var outcome: RecoveryReplayOutcome?
+      let box = await Self.capturingTelemetry {
+        outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+      }
+
+      #expect(outcome == .failed(.unrecoverable), "no model will ever be admitted by retrying")
+      let e = try #require(box.recoveryEvents().first)
+      #expect(e.stringProps["outcome"] == "failed")
+      #expect(e.stringProps["reason"] == "model_load_failed")
+      #expect(e.stringProps["failure_class"] == "not_ready")
     }
 
     /// #2132 — THE DATA-LOSS GUARD. Measured on the dev machine 2026-08-01 and

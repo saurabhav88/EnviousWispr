@@ -309,14 +309,15 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // Discard hard-resets the engine, which can throw here — that's an abort,
       // not a recovery failure (don't log/emit; the coordinator owns cleanup).
       if isAborted() { return .aborted }
-      let diagnosis = Self.diagnose(error, operation: .modelLoad)
-      if Self.engineWasNeverAvailable(diagnosis) {
-        return deferForUnavailableEngine(
-          spoolStore: spoolStore, id: id, reason: .modelLoadFailed, diagnosis: diagnosis,
-          reconstructedSampleCount: recovered.samples.count)
-      }
+      // #2132: a LOAD-time refusal is TERMINAL, deliberately, and this is the
+      // line Codex review sharpened. `WhisperKitBackend.prepare()` throws
+      // `ASRError.notReady` when no model folder is admitted
+      // (`WhisperKitBackend.swift:223-226`) — a DETERMINISTIC "there is no model
+      // here", not a transient readiness loss. Deferring it would retain the
+      // spool and repeat the identical failure every launch, forever, with no
+      // cleanup. Only the POST-LOAD refusal below is the race this issue fixes.
       return failUnrecoverable(
-        reason: .modelLoadFailed, diagnosis: diagnosis,
+        reason: .modelLoadFailed, diagnosis: Self.diagnose(error, operation: .modelLoad),
         reconstructedSampleCount: recovered.samples.count)
     }
     // Discard during the model load: bail BEFORE the expensive batch transcribe.
@@ -676,6 +677,9 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// load can report success while the backend is not ready and the truth
   /// arrives one call later as an instant refusal. Pinned by
   /// `loadModelSucceedsWhileBackendIsNotReady`.
+  ///
+  /// SCOPE: this is consulted ONLY on the post-load transcription refusal. A
+  /// load-time refusal is terminal — see the `.modelLoadFailed` call site.
   ///
   /// The line drawn here is availability versus verdict: `.notReady`,
   /// `.xpcUnreachable`, `.managerNotOwned` and `.cancelled` all mean the engine
