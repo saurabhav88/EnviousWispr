@@ -1,5 +1,5 @@
 @preconcurrency import AVFoundation
-import EnviousWisprASR
+@testable import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
@@ -676,6 +676,41 @@ struct RecoverySpoolReplayerTests {
         "exactly one capture, in its own category — not the decrypt catch-all, not silence")
     }
 
+    /// #2132 — THE DATA-LOSS GUARD. Measured on the dev machine 2026-08-01 and
+    /// 2026-08-18: a replay failed in the same second it was attempted, with no
+    /// engine activity in between, and the recording was DELETED because an
+    /// instant refusal spent the single permitted attempt. `ASRError.notReady`
+    /// is that refusal — `ParakeetBackend.transcribe`'s entry guard — and
+    /// `loadModelSucceedsWhileBackendIsNotReady` proves the real `ASRManager`
+    /// can reach it after reporting a successful load.
+    ///
+    /// If this test ever goes red because the outcome is `.failed`, a recording
+    /// that was never decoded is being destroyed again.
+    @Test("an engine that was never ready keeps the recording and gives the attempt back")
+    func notReadyEngineDefersInsteadOfDeletingTheRecording() async throws {
+      let h = Self.makeHarness()
+      let id = "tel-notready-\(UUID().uuidString)"
+      try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
+      h.asr.transcribeError = ASRError.notReady
+
+      // ONE replay only: a second call would meet the one-attempt guard and
+      // measure that instead of this fix.
+      var outcome: RecoveryReplayOutcome?
+      let box = await Self.capturingTelemetry {
+        outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+      }
+
+      #expect(
+        outcome == .deferred,
+        "the engine never looked at the audio, so the attempt is not spent")
+      #expect(
+        !h.spoolStore.hasAttemptMarker(for: id),
+        "marker cleared, so the next launch retries instead of abandoning")
+      let e = try #require(box.recoveryEvents().first)
+      #expect(e.stringProps["outcome"] == "deferred")
+      #expect(e.stringProps["failure_class"] == "not_ready")
+    }
+
     @Test("transcribe failure on good audio is a Camp B candidate with a failure class")
     func telemetryTranscribeFailIsCampBCandidate() async throws {
       let h = Self.makeHarness()
@@ -703,8 +738,13 @@ struct RecoverySpoolReplayerTests {
     /// codec/transport cases are NOT "XPC unreachable" — a bare `is
     /// XPCASRTransportError` type-check would have misclassified them,
     /// corrupting recovery telemetry.
+    /// #2132 UPDATE: these now classify as `.xpc_transport` rather than
+    /// `.other`. The protection this test exists for is UNCHANGED and is the
+    /// reason it must not be deleted: a bare `is XPCASRTransportError` check
+    /// would call all six "unreachable", and the assertion below still fails if
+    /// anyone reintroduces that. The expected label is simply more specific now.
     @Test(
-      "the new XPCASRTransportError cases classify as .other, not .xpcUnreachable",
+      "the new XPCASRTransportError cases are transport, never .xpcUnreachable",
       arguments: [
         XPCASRTransportError.requestEncodingFailed("x"),
         .invalidSamplePayload("x"),
@@ -723,7 +763,10 @@ struct RecoverySpoolReplayerTests {
         _ = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
       }
       let e = try #require(box.recoveryEvents().first)
-      #expect(e.stringProps["failure_class"] == "other")
+      #expect(e.stringProps["failure_class"] == "xpc_transport")
+      #expect(
+        e.stringProps["failure_class"] != "xpc_unreachable",
+        "the narrowing regression this test was written for (#1525 PR I-B)")
     }
 
     @Test("deferred (attempt-marker write failed) emits marker_write_failed")

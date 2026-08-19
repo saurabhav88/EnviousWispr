@@ -309,8 +309,13 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // Discard hard-resets the engine, which can throw here — that's an abort,
       // not a recovery failure (don't log/emit; the coordinator owns cleanup).
       if isAborted() { return .aborted }
+      let diagnosis = Self.diagnose(error, operation: .modelLoad)
+      if Self.engineWasNeverAvailable(diagnosis) {
+        return deferForUnavailableEngine(
+          spoolStore: spoolStore, id: id, reason: .modelLoadFailed, diagnosis: diagnosis)
+      }
       return failUnrecoverable(
-        reason: .modelLoadFailed, failureClass: Self.classify(error),
+        reason: .modelLoadFailed, diagnosis: diagnosis,
         reconstructedSampleCount: recovered.samples.count)
     }
     // Discard during the model load: bail BEFORE the expensive batch transcribe.
@@ -322,8 +327,13 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // A Discard-driven engine reset kills the in-flight transcribe and surfaces
       // here as a throw — treat it as an abort (the user discarded), not a failure.
       if isAborted() { return .aborted }
+      let diagnosis = Self.diagnose(error, operation: .transcription)
+      if Self.engineWasNeverAvailable(diagnosis) {
+        return deferForUnavailableEngine(
+          spoolStore: spoolStore, id: id, reason: .transcribeError, diagnosis: diagnosis)
+      }
       return failUnrecoverable(
-        reason: .transcribeError, failureClass: Self.classify(error),
+        reason: .transcribeError, diagnosis: diagnosis,
         reconstructedSampleCount: recovered.samples.count)
     }
     if isAborted() { return .aborted }
@@ -443,7 +453,10 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // second time. One attempt is therefore a property of the file, not a
       // consequence of a deletion succeeding. The coordinator deletes on
       // `.save` (`shouldDeleteAfterReplay`).
-      let failureClass = Self.classify(error)
+      // #2132: storage errors are NOT an ASR vocabulary. `HistorySaveErrorClass`
+      // owns them; this stays `.other` until a separate change routes it there,
+      // which is exactly what the old shared `classify` returned here anyway.
+      let failureClass = RecoveryFailureClass.other
       SentryBreadcrumb.add(
         stage: "recovery", message: "recovered transcript save failed — attempt spent",
         level: .warning, data: ["error": String(describing: error)])
@@ -584,9 +597,14 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   private func failUnrecoverable(
     reason: RecoveryTelemetryReason,
     failureClass: RecoveryFailureClass? = nil,
+    diagnosis: RecoveryFailureDiagnosis? = nil,
     reconstructedSampleCount: Int? = nil
   ) -> RecoveryReplayOutcome {
     let category = Self.category(for: reason)
+    // One value wins: a diagnosis supersedes a bare class, and both may be nil
+    // for a DECISION-driven failure (escape verdict, empty prefix, empty text),
+    // where absence is the signal rather than a gap.
+    let resolvedClass = diagnosis?.failureClass ?? failureClass
     if Self.isCountedNotAlerted(reason) {
       SentryBreadcrumb.add(
         stage: "recovery",
@@ -594,8 +612,15 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
         level: .info,
         data: ["recovery.reason": reason.rawValue])
     } else {
+      // #2132: tags, never `fingerprintDetail` — tags are searchable metadata and
+      // do NOT feed `handledErrorFingerprint`, so grouping is byte-identical and
+      // the measured, pinned descriptors of #1525 PR C keep their history.
+      var tags = ["recovery.reason": reason.rawValue]
+      if let resolvedClass { tags["recovery.failure_class"] = resolvedClass.rawValue }
+      if let identity = diagnosis?.sentryIdentity { tags["recovery.identity"] = identity }
       SentryBreadcrumb.captureError(
-        RecoveryReplayError.failed(reason.rawValue), category: category, stage: "recovery")
+        RecoveryReplayError.failed(reason.rawValue), category: category, stage: "recovery",
+        tags: tags)
     }
     let spoolSeconds = reconstructedSampleCount.map {
       Int((Double($0) / AudioConstants.sampleRate).rounded())
@@ -610,11 +635,16 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // coordinator's own awaited outcome line lands after `replay` returns, and
     // this reason line is enqueued strictly before that.
     let failureReason = reason.rawValue
-    RecoveryLog.line("replay failed: \(failureReason)")
+    // #2132: the CLASS on the local line. Vendor telemetry cannot diagnose the one
+    // user report in front of support; `app.log` is the artifact a user can send.
+    // Bounded vocabulary only — no identifiers, no paths, no descriptions.
+    let classSuffix = resolvedClass.map { " class=\($0.rawValue)" } ?? ""
+    let identitySuffix = diagnosis?.sentryIdentity.map { " identity=\($0)" } ?? ""
+    RecoveryLog.line("replay failed: \(failureReason)\(classSuffix)\(identitySuffix)")
     TelemetryService.shared.recoveryCompleted(
       outcome: "failed",
       reason: reason,
-      failureClass: failureClass,
+      failureClass: resolvedClass,
       audioDecrypted: reconstructedSampleCount != nil ? true : nil,
       campBCandidate: reconstructedSampleCount != nil ? true : nil,
       spoolSeconds: spoolSeconds)
@@ -628,6 +658,76 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// throws, the marker survives and the next-launch guard reads the attempt as
   /// already spent, abandoning before ASR; `RecoveryCoordinator` therefore
   /// treats this id as next-launch-only so a same-launch rescan cannot burn it.
+  /// #2132 — THE ENGINE NEVER LOOKED AT THE AUDIO, SO THE ATTEMPT IS NOT SPENT.
+  ///
+  /// Measured on this machine, 2026-08-01 and 2026-08-18: a replay failed in the
+  /// SAME SECOND it was attempted, with no engine activity logged between
+  /// `attempting replay` and `replay failed`, each preceded by two
+  /// `deferred — the engine gate is held` passes. A healthy replay in the same
+  /// logs takes 1-4 seconds and prints the recovered text. The outcome was
+  /// `.unrecoverable`, which spends the single permitted attempt and has the
+  /// coordinator DELETE the spool — so a recording was destroyed by an engine
+  /// that refused instantly, never having decoded a sample.
+  ///
+  /// The root is upstream and is not fixed here: `ASRManager.loadModel()`
+  /// RECORDS readiness (`isModelLoaded = ready`) rather than requiring it, so a
+  /// load can report success while the backend is not ready and the truth
+  /// arrives one call later as an instant refusal. Pinned by
+  /// `loadModelSucceedsWhileBackendIsNotReady`.
+  ///
+  /// The line drawn here is availability versus verdict: `.notReady`,
+  /// `.xpcUnreachable`, `.managerNotOwned` and `.cancelled` all mean the engine
+  /// was never in a position to try, so this take deserves its attempt back.
+  /// A genuine decode failure (`.transcriptionFailed`, `.parakeetTranscription`)
+  /// or a model that will not load stays unrecoverable — retrying those forever
+  /// would strand a spool no launch can ever redeem.
+  ///
+  /// Mirrors `deferForTransientKeychainFailure` exactly, which is the shipped
+  /// precedent for "transient condition, give the attempt back".
+  private static func engineWasNeverAvailable(_ diagnosis: RecoveryFailureDiagnosis) -> Bool {
+    switch diagnosis {
+    case .classified(let failureClass):
+      switch failureClass {
+      // Deliberately NARROW. These two mean the engine was categorically not
+      // there to ask — the observed production shape, and the one
+      // `loadModelSucceedsWhileBackendIsNotReady` reproduces against the real
+      // manager.
+      case .notReady, .managerNotOwned: return true
+      // `.xpcUnreachable` ALSO never saw the audio and is arguably the same
+      // class, and `camp_b_candidate=true` already marks it retryable. It is
+      // deliberately NOT deferred here: a permanently dead helper would defer
+      // every launch forever, and `telemetryTranscribeFailIsCampBCandidate`
+      // pins its current failure semantics. Widening to it is a separate,
+      // evidenced decision — not a silent side effect of this fix.
+      case .xpcUnreachable, .cancelled, .transcriptionFailed, .whisperKitModelLoad,
+        .parakeetModelLoad, .parakeetTranscription, .xpcTransport, .other:
+        return false
+      }
+    // An error family we do not own says nothing about availability; it ran and
+    // failed. Listed explicitly so a future reader must choose, not inherit.
+    case .unrecognized: return false
+    }
+  }
+
+  /// Give the attempt back and leave the spool on disk for the next launch.
+  private func deferForUnavailableEngine(
+    spoolStore: RecoverySpoolStore, id: String, reason: RecoveryTelemetryReason,
+    diagnosis: RecoveryFailureDiagnosis
+  ) -> RecoveryReplayOutcome {
+    RecoveryLog.line(
+      "replay deferred: \(reason.rawValue) class=\(diagnosis.failureClass.rawValue) "
+        + "— the engine was never available, the attempt is NOT spent")
+    do {
+      try spoolStore.deleteAttemptMarker(for: id)
+      TelemetryService.shared.recoveryCompleted(
+        outcome: "deferred", reason: reason, failureClass: diagnosis.failureClass)
+      return .deferred
+    } catch {
+      TelemetryService.shared.recoveryCompleted(outcome: "deferred", reason: .markerClearFailed)
+      return .deferredMarkerClearFailed
+    }
+  }
+
   private func deferForTransientKeychainFailure(
     spoolStore: RecoverySpoolStore, id: String
   ) -> RecoveryReplayOutcome {
@@ -668,15 +768,52 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// collapses decode causes into one string. `.notReady` is reserved for a Phase 2
   /// in-process producer (`ASRError` is ASR-module-internal, kept isolated per
   /// D-028); an unrecognized error is `.other`.
-  private static func classify(_ error: any Error) -> RecoveryFailureClass {
-    // #1525 PR I-B: narrowed from a bare type-check — the 6 new
-    // codec/transport cases are transport/codec failures, not "XPC
-    // unreachable," and mislabeling them would corrupt recovery telemetry.
-    if let transport = error as? XPCASRTransportError, transport.isServiceUnreachable {
-      return .xpcUnreachable
+  /// Which ASR seam caught the error. Selects the residual identity policy, so
+  /// the choice is made by the compiler rather than by a comment: Core already
+  /// owns DIFFERENT policies per seam and #2132 rev 3 nearly overrode them.
+  private enum RecoveryFailureOperation {
+    case modelLoad
+    case transcription
+  }
+
+  /// One caught error, one derivation. Either we recognised the family or we
+  /// kept its Sentry identity — never both, never neither, and never two
+  /// helpers disagreeing about the same throw.
+  private enum RecoveryFailureDiagnosis {
+    case classified(RecoveryFailureClass)
+    case unrecognized(sentryIdentity: String)
+
+    var failureClass: RecoveryFailureClass {
+      switch self {
+      case .classified(let failureClass): return failureClass
+      case .unrecognized: return .other
+      }
     }
-    if error is ASRLoadSupersededError { return .cancelled }
-    return .other
+    var sentryIdentity: String? {
+      switch self {
+      case .classified: return nil
+      case .unrecognized(let identity): return identity
+      }
+    }
+  }
+
+  /// #2132: replaces the old `classify`, which lived in the wrong module to see
+  /// four of the families it needed and so returned `.other` for 100% of genuine
+  /// failures. Recognition moved to `EnviousWisprASR.recoveryFailureClass(for:)`;
+  /// an unrecognised error keeps its own identity through the boundary
+  /// normalizer FOR ITS SEAM.
+  private static func diagnose(
+    _ error: any Error, operation: RecoveryFailureOperation
+  ) -> RecoveryFailureDiagnosis {
+    if let known = recoveryFailureClass(for: error) { return .classified(known) }
+    let normalized: any Error & StableSentryErrorIdentity
+    switch operation {
+    case .modelLoad:
+      normalized = SentryCaptureBoundaryError.normalizingModelLoadFailure(error)
+    case .transcription:
+      normalized = SentryCaptureBoundaryError.normalizingTranscriptionFailure(error)
+    }
+    return .unrecognized(sentryIdentity: normalized.sentryFingerprintDescriptor)
   }
 
   private static func transcriptionOptions(for settings: RecordingSettingsSnapshot?)

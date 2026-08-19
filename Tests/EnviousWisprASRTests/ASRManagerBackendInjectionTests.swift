@@ -18,6 +18,32 @@ import os
 @MainActor
 struct ASRManagerBackendInjectionTests {
 
+  // MARK: - #2132 readiness contract
+
+  @Test(
+    "loadModel() reports SUCCESS while the backend is not ready — the failure only surfaces at transcribe"
+  )
+  func loadModelSucceedsWhileBackendIsNotReady() async throws {
+    // The shape a real backend lands in when an unload, a cancelled load, or a
+    // refused admission gate wins the race: prepare() returns normally, readiness
+    // does not follow.
+    let parakeet = FakeASRBackend(initiallyReady: false, readyAfterPrepare: false)
+    let manager = ASRManager(engineMutationScope: .alwaysAllowedForTesting, parakeetBackend: parakeet)
+
+    // The defect: this does NOT throw. `loadModel` records readiness
+    // (`isModelLoaded = ready`) instead of requiring it, so every caller that
+    // treats a non-throwing load as "the engine is ready" is wrong.
+    try await manager.loadModel()
+    #expect(manager.isModelLoaded == false, "load reported success but nothing is loaded")
+
+    // ...and the truth only arrives one call later, as an instant refusal with
+    // no work done. In crash recovery that instant refusal spends the single
+    // permitted attempt and the recording is deleted (#2132).
+    await #expect(throws: ASRError.self) {
+      _ = try await manager.transcribe(audioSamples: [0.0], options: .default)
+    }
+  }
+
   // MARK: - switchBackend reset branch
 
   @Test("switchBackend from a loaded state resets isModelLoaded to false")
@@ -294,9 +320,15 @@ final actor FakeASRBackend: ASRBackend {
   private let gated: Bool
   private var gateContinuations: [CheckedContinuation<Void, Never>] = []
 
-  init(initiallyReady: Bool, gated: Bool = false) {
+  /// #2132: when false, `prepare()` completes NORMALLY but leaves `isReady`
+  /// false — the shape a real backend lands in when an unload or a refused
+  /// admission gate wins the race with a load. Default preserves prior behaviour.
+  private let readyAfterPrepare: Bool
+
+  init(initiallyReady: Bool, gated: Bool = false, readyAfterPrepare: Bool = true) {
     self.ready = initiallyReady
     self.gated = gated
+    self.readyAfterPrepare = readyAfterPrepare
   }
 
   // MARK: ASRBackend
@@ -312,7 +344,7 @@ final actor FakeASRBackend: ASRBackend {
         gateContinuations.append(c)
       }
     }
-    ready = true
+    ready = readyAfterPrepare
   }
 
   /// Release ALL parked `gated` `prepare()` calls (supports multiple waiters).
@@ -325,7 +357,12 @@ final actor FakeASRBackend: ASRBackend {
   func transcribe(audioSamples: [Float], options: TranscriptionOptions)
     async throws -> ASRResult
   {
-    fatalError("FakeASRBackend.transcribe is not used by Phase G5 tests")
+    // #2132: mirrors `ParakeetBackend.transcribe`'s entry guard exactly
+    // (`guard isReady ... else { throw ASRError.notReady }`). A double must
+    // refuse what the real tool refuses, or a test proves nothing about it.
+    guard ready else { throw ASRError.notReady }
+    return ASRResult(
+      text: "ok", language: nil, duration: 0, processingTime: 0, backendType: .parakeet)
   }
 
   func unload() async {
