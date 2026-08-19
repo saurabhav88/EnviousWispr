@@ -49,10 +49,16 @@ struct RecoverySpoolReplayerTests {
     /// post-load refusal (transient race). The two must not share an outcome.
     var loadError: (any Error)?
 
+    /// #2207: whether readiness FOLLOWS a successful load. Default true, so every
+    /// pre-existing test keeps its exact behaviour. Set false to reproduce the
+    /// shipped shape this issue fixes — `ASRManager.loadModel()` RECORDS readiness
+    /// rather than requiring it, so a load can return while the engine is not ready.
+    var readyAfterLoad = true
+
     func loadModel() async throws {
       onLoadModel?()
       if let loadError { throw loadError }
-      isModelLoaded = true
+      isModelLoaded = readyAfterLoad
     }
     func unloadModel() async {}
     func setInitialBackendType(_ type: ASRBackendType) { activeBackendType = type }

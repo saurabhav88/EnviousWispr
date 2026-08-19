@@ -31,6 +31,14 @@ enum RecoveryReplayOutcome: Equatable {
   /// rescan) may safely re-check this spool; `RecoveryCoordinator` routes
   /// this into `nextLaunchOnlyRecoveryIDs`.
   case deferredMarkerClearFailed
+
+  /// #2207: a readiness retry was earned but could NOT be persisted — the retry
+  /// marker's durable write failed. Distinct from `.deferredMarkerClearFailed`,
+  /// whose name would be false here: nothing was cleared, and the attempt marker
+  /// is deliberately left standing so the next launch abandons rather than
+  /// granting a retry the budget never recorded. Routed identically by
+  /// `RecoveryCoordinator` — retained, next-launch-only, never deleted.
+  case deferredPersistenceFailed
 }
 
 /// Why a replay `.failed`, carried to `RecoveryCoordinator` so it can apply the
@@ -138,6 +146,14 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.egOneRuntime = egOneRuntime
     self.currentVocabulary = currentVocabulary
   }
+
+  /// #2207 test seam: invoked synchronously the instant the readiness-retry
+  /// marker has durably COMMITTED and before the attempt marker is deleted. Nil
+  /// in production. The commit-before-clear ordering is otherwise unobservable
+  /// from outside, and a test that inferred it from timing would be exactly the
+  /// guessing this repo forbids — a crash in that window must abandon the spool
+  /// rather than mint an uncounted retry, so the ordering is load-bearing.
+  var onReadinessRetryMarkerCommitted: (() -> Void)?
 
   enum RecoveryReplayError: Error {
     case abandonedAfterAttempt
@@ -316,8 +332,18 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // here", not a transient readiness loss. Deferring it would retain the
       // spool and repeat the identical failure every launch, forever, with no
       // cleanup. Only the POST-LOAD refusal below is the race this issue fixes.
+      let diagnosis = Self.diagnose(error, operation: .modelLoad)
+      // #2207: ONE class is transient rather than deterministic — the load
+      // RETURNED and the engine's readiness postcondition was false. That take
+      // deserves its attempt back, exactly once. Everything else at this site
+      // stays terminal, including `.notReady` above.
+      if case .classified(.loadReturnedNotReady) = diagnosis {
+        return attemptReadinessRetry(
+          spoolStore: spoolStore, id: id, diagnosis: diagnosis,
+          reconstructedSampleCount: recovered.samples.count)
+      }
       return failUnrecoverable(
-        reason: .modelLoadFailed, diagnosis: Self.diagnose(error, operation: .modelLoad),
+        reason: .modelLoadFailed, diagnosis: diagnosis,
         reconstructedSampleCount: recovered.samples.count)
     }
     // Discard during the model load: bail BEFORE the expensive batch transcribe.
@@ -601,7 +627,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     reason: RecoveryTelemetryReason,
     failureClass: RecoveryFailureClass? = nil,
     diagnosis: RecoveryFailureDiagnosis? = nil,
-    reconstructedSampleCount: Int? = nil
+    reconstructedSampleCount: Int? = nil,
+    retryDisposition: RecoveryRetryDisposition? = nil
   ) -> RecoveryReplayOutcome {
     let category = Self.category(for: reason)
     // One value wins: a diagnosis supersedes a bare class, and both may be nil
@@ -650,7 +677,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       failureClass: resolvedClass,
       audioDecrypted: reconstructedSampleCount != nil ? true : nil,
       campBCandidate: reconstructedSampleCount != nil ? true : nil,
-      spoolSeconds: spoolSeconds)
+      spoolSeconds: spoolSeconds,
+      retryDisposition: retryDisposition)
     return .failed(.unrecoverable)
   }
 
@@ -705,6 +733,13 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // every launch forever, and `telemetryTranscribeFailIsCampBCandidate`
       // pins its current failure semantics. Widening to it is a separate,
       // evidenced decision — not a silent side effect of this fix.
+      // #2207. Not reachable at THIS call site — the error carrying it is thrown
+      // only by `load`, and the load site routes it to `attemptReadinessRetry`
+      // before reaching here. `true` is nonetheless the honest value: the engine
+      // reported itself unready, so it never looked at the audio. Listed
+      // explicitly because this switch is the build-time gate that forces the
+      // choice rather than letting a new case inherit one.
+      case .loadReturnedNotReady: return true
       case .xpcUnreachable, .cancelled, .transcriptionFailed, .whisperKitModelLoad,
         .parakeetModelLoad, .parakeetTranscription, .xpcTransport, .other:
         return false
@@ -713,6 +748,65 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // failed. Listed explicitly so a future reader must choose, not inherit.
     case .unrecognized: return false
     }
+  }
+
+  /// #2207: the bounded readiness retry, exactly once per spool.
+  ///
+  /// Ordering is the whole safety property: the retry marker COMMITS before the
+  /// attempt marker is cleared, so a crash between them leaves the attempt marker
+  /// standing and the next launch abandons. The reverse order would mint a retry
+  /// nothing recorded, and a permanently unready engine would defer forever —
+  /// re-opening what the bound exists to close.
+  private func attemptReadinessRetry(
+    spoolStore: RecoverySpoolStore, id: String, diagnosis: RecoveryFailureDiagnosis,
+    reconstructedSampleCount: Int
+  ) -> RecoveryReplayOutcome {
+    // Already spent: terminal. This is the bound working, NOT a regression.
+    guard !spoolStore.hasReadinessRetryMarker(for: id) else {
+      return failUnrecoverable(
+        reason: .modelLoadFailed, diagnosis: diagnosis,
+        reconstructedSampleCount: reconstructedSampleCount, retryDisposition: .exhausted)
+    }
+    let spoolSeconds = Int(
+      (Double(reconstructedSampleCount) / AudioConstants.sampleRate).rounded())
+    // Every branch below carries the SAME reconstruction facts: the audio came
+    // back perfectly and the ENGINE was missing. Omitting them emits
+    // `audio_decrypted` ABSENT, which the field contract reads as "nothing came
+    // out of the spool" — the exact inverse, and the #2205 defect.
+    func emitDeferred(reason: RecoveryTelemetryReason, disposition: RecoveryRetryDisposition) {
+      TelemetryService.shared.recoveryCompleted(
+        outcome: "deferred", reason: reason, failureClass: diagnosis.failureClass,
+        audioDecrypted: true, campBCandidate: true, spoolSeconds: spoolSeconds,
+        retryDisposition: disposition)
+    }
+    do {
+      try spoolStore.writeReadinessRetryMarker(for: id)
+    } catch {
+      RecoveryLog.line(
+        "replay deferred: readiness retry could not be persisted — the attempt "
+          + "marker stands, so the next launch abandons rather than retrying")
+      emitDeferred(reason: .markerWriteFailed, disposition: .persistenceFailed)
+      return .deferredPersistenceFailed
+    }
+    onReadinessRetryMarkerCommitted?()
+    do {
+      try spoolStore.deleteAttemptMarker(for: id)
+    } catch {
+      emitDeferred(reason: .markerClearFailed, disposition: .persistenceFailed)
+      return .deferredMarkerClearFailed
+    }
+    // Make the deletion durable, so a power cut cannot resurrect the attempt
+    // marker and abandon a recording we just told telemetry we would retry.
+    // Best-effort DELIBERATELY: the retry budget is already durably recorded, so
+    // a failure here costs at most one retry, never an unbounded loop. Promoting
+    // it to a hard failure would turn a spool we can still redeem into one we
+    // cannot, which is the wrong direction for a limb.
+    try? spoolStore.syncSpoolDirectory()
+    RecoveryLog.line(
+      "replay deferred: model_load_failed class=\(diagnosis.failureClass.rawValue) "
+        + "— the load returned but the engine was not ready; one retry granted")
+    emitDeferred(reason: .modelLoadFailed, disposition: .granted)
+    return .deferred
   }
 
   /// Give the attempt back and leave the spool on disk for the next launch.
@@ -742,7 +836,20 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
         audioDecrypted: true, campBCandidate: true, spoolSeconds: spoolSeconds)
       return .deferred
     } catch {
-      TelemetryService.shared.recoveryCompleted(outcome: "deferred", reason: .markerClearFailed)
+      // #2207: the reconstruction facts belong here too. Emitting bare left a
+      // take whose audio reconstructed perfectly reported with `audio_decrypted`
+      // ABSENT — read as "nothing came out of the spool", the inverse of the
+      // truth and the #2205 defect one branch over.
+      //
+      // NO `retryDisposition` HERE, deliberately. This is the TRANSCRIBE-site
+      // deferral: no readiness retry was involved, no budget was consulted, and
+      // no marker was written. Tagging it `persistence_failed` counted ordinary
+      // transcription deferrals as failed readiness retries and would have
+      // corrupted the exact split the field exists to measure — a metric whose
+      // NAME is a causal claim about a state with more than one producer.
+      TelemetryService.shared.recoveryCompleted(
+        outcome: "deferred", reason: .markerClearFailed, failureClass: diagnosis.failureClass,
+        audioDecrypted: true, campBCandidate: true, spoolSeconds: spoolSeconds)
       return .deferredMarkerClearFailed
     }
   }

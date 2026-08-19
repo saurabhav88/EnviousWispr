@@ -454,10 +454,12 @@ final class RecoveryCoordinator {
       // `discardActiveRecovery` already requested destruction. NOT a claim that
       // no attempt ran — a Discard can land after transcription.
       return false
-    case .deferred, .deferredMarkerClearFailed:
+    case .deferred, .deferredMarkerClearFailed, .deferredPersistenceFailed:
       // ASR never ran, so the attempt is unspent. `.deferredMarkerClearFailed`
       // is the transient-Keychain case #1360 closed — never treat it as a
-      // permanent deletion trigger.
+      // permanent deletion trigger. `.deferredPersistenceFailed` (#2207) is the
+      // same shape: the readiness retry could not be recorded, so the spool is
+      // held rather than destroyed.
       return false
     }
   }
@@ -478,6 +480,8 @@ final class RecoveryCoordinator {
     case .deferred: return "deferred — no attempt ran"
     case .deferredMarkerClearFailed:
       return "deferred, attempt marker not cleared — a new launch re-checks it"
+    case .deferredPersistenceFailed:
+      return "deferred, readiness retry not recorded — a new launch abandons it"
     }
   }
 
@@ -824,7 +828,11 @@ final class RecoveryCoordinator {
       // #1707 Phase 3 (§3.3): a marker-clear failure under either deferred
       // outcome means only a genuinely new launch may safely re-check this id.
       switch outcome {
-      case .deferredMarkerClearFailed:
+      case .deferredMarkerClearFailed, .deferredPersistenceFailed:
+        // #1707 Phase 3, extended by #2207: both mean the bookkeeping did not
+        // complete, so only a genuinely new launch may re-check this id. A
+        // same-launch rescan would re-enter a replay whose budget state is
+        // unknown — the one thing the bound cannot tolerate.
         nextLaunchOnlyRecoveryIDs.insert(id)
       default:
         break
