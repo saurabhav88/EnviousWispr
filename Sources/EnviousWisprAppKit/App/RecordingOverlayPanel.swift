@@ -2717,16 +2717,112 @@ struct RecordingOverlayView: View {
   /// scroll-to-bottom timing into a borderless overlay) and no manual text
   /// measurement.
   private func previewText(_ message: String, dimmed: Bool, lines: Int) -> some View {
+    PreviewWellText(
+      message: message, dimmed: dimmed, lines: lines, usesPreviewLayout: usesPreviewLayout)
+  }
+
+  /// #2203: ONE authority for preview typography. The `Text` and the cap both read
+  /// these, so a change to the type size cannot leave the two disagreeing.
+  ///
+  /// **The previous version's doc comment claimed the cap "tracks the type size"
+  /// and it did not.** It built `NSFont.systemFont(ofSize: 12)` from its own
+  /// hardcoded 12, independent of the `Text`'s own `.font(.system(size: 12))`
+  /// twenty lines away. Two literals that had to agree, with a comment asserting
+  /// they could not drift — which is worse than no comment, because it stops the
+  /// next reader checking.
+  static let previewFontSize: CGFloat = 14
+  static let previewLineSpacing: CGFloat = 4
+
+  /// #2203: how much of the reading well's height the top fade occupies.
+  ///
+  /// Deliberately small. The fade exists to say "there is more above this", not to
+  /// hide a line — at the cap the oldest visible line is still readable, just
+  /// clearly on its way out. A larger value starts costing the user words they
+  /// have not finished reading.
+  static let previewFadeFraction: CGFloat = 0.22
+
+  /// Height of `lines` lines of the preview font, INCLUDING the gaps between them.
+  ///
+  /// **Counting the gaps is not a refinement, it is the difference between five
+  /// lines and four.** SwiftUI adds `lineSpacing` BETWEEN lines, so five lines
+  /// occupy five glyph heights plus four gaps. A cap that counts only the glyphs
+  /// under-measures by 4 x `previewLineSpacing` and clips the fifth line partway.
+  ///
+  /// An exact multiple still matters: the clip lands on a line boundary, so no row
+  /// is cut through the middle of its glyphs.
+  static func previewHeight(lines: Int) -> CGFloat {
+    let font = NSFont.systemFont(ofSize: previewFontSize)
+    let glyphHeight = ceil(font.ascender - font.descender + font.leading)
+    let gaps = max(lines - 1, 0)
+    return glyphHeight * CGFloat(lines) + previewLineSpacing * CGFloat(gaps)
+  }
+
+  /// Five lines, matching the shape the founder tested against Spokenly: the pill
+  /// grows a line at a time up to this, then holds its size and scrolls.
+  static let previewMaxLines = 5
+}
+
+/// #2203: the reading well's text, and the one part of the pill that has to know
+/// whether it is FULL.
+///
+/// Split out of `RecordingOverlayView` only because the fade decision needs
+/// `@State`, and a function returning a view cannot hold one.
+struct PreviewWellText: View {
+  let message: String
+  let dimmed: Bool
+  let lines: Int
+  let usesPreviewLayout: Bool
+
+  /// Whether the well is at its cap, and so whether anything is scrolling off the
+  /// top. Written from a `GeometryReader` in the BACKGROUND of the capped frame,
+  /// which does not participate in layout, and it feeds only the mask, which does
+  /// not either — so it cannot reach the panel-resize loop #2201 settled.
+  /// `RecordingOverlayPreviewSizingTests` is the check on that claim rather than
+  /// this sentence.
+  @State private var wellIsFull = false
+
+  private var cap: CGFloat { RecordingOverlayView.previewHeight(lines: lines) }
+
+  var body: some View {
     Text(message)
-      .font(.system(size: 12))
+      .font(.system(size: RecordingOverlayView.previewFontSize))
+      .lineSpacing(RecordingOverlayView.previewLineSpacing)
       .foregroundStyle(.white.opacity(dimmed ? 0.5 : 0.92))
       .multilineTextAlignment(.leading)
       .fixedSize(horizontal: false, vertical: true)
       .frame(maxWidth: .infinity, alignment: .leading)
       // `maxHeight` CAPS without fixing: below the cap the box is the text's own
       // height, which is what lets the pill still grow a line at a time.
-      .frame(maxHeight: Self.previewHeight(lines: lines), alignment: .bottom)
+      .frame(maxHeight: cap, alignment: .bottom)
+      .background(
+        GeometryReader { geo in
+          Color.clear
+            .onAppear { updateFullness(geo.size.height) }
+            .onChange(of: geo.size.height) { _, height in updateFullness(height) }
+        }
+      )
       .clipped()
+      // #2203: fade the top edge ONLY when something is actually above it.
+      //
+      // **Cloud review caught this applying unconditionally.** The capped frame
+      // takes the TEXT's height while the text is short, so the gradient mapped
+      // onto the first line of a one-line transcript and dimmed words the user
+      // still had to read. A fade means "there is more above this"; saying that
+      // when there is not is worse than not saying it at all.
+      //
+      // Doing it with a mask rather than per-line opacity remains the point:
+      // dimming older LINES needs to know where the text engine broke them, which
+      // is the knowledge this file records as unavailable — a character budget is
+      // wrong by 2x for CJK and wrong again for any proportional font. A gradient
+      // needs no line information and behaves identically in every script, because
+      // older words are higher up by construction.
+      //
+      // KNOWN LIMIT, recorded rather than hidden: a transcript landing at EXACTLY
+      // the cap fades slightly with nothing yet above it. Separating that from a
+      // genuine overflow needs the text's unclipped intrinsic height, which costs a
+      // second layout of the same string for a one-frame cosmetic difference at the
+      // moment the well is about to overflow anyway.
+      .mask(fadeMask)
       // #2202: the well's own inset, replacing what the shared root padding used
       // to give it. **Outside the cap, deliberately.** Padding inserted before
       // `.frame(maxHeight:)` is subtracted from the five-line viewport, so the
@@ -2738,21 +2834,45 @@ struct RecordingOverlayView: View {
       .padding(.bottom, usesPreviewLayout ? 15 : 0)
   }
 
-  /// Height of `lines` lines of the preview font.
-  ///
-  /// Derived from the font's own metrics rather than a literal, so the cap tracks
-  /// the type size instead of drifting silently if it changes. An exact multiple
-  /// of the line height matters: the clip lands on a line boundary, so no row is
-  /// ever cut through the middle of its glyphs. Verified against the render — five
-  /// lines measured 75pt, matching 5 x 15.
-  private static func previewHeight(lines: Int) -> CGFloat {
-    let font = NSFont.systemFont(ofSize: 12)
-    return ceil(font.ascender - font.descender + font.leading) * CGFloat(lines)
+  @ViewBuilder
+  private var fadeMask: some View {
+    if usesPreviewLayout && wellIsFull {
+      LinearGradient(
+        stops: [
+          .init(color: .clear, location: 0),
+          .init(color: .white, location: RecordingOverlayView.previewFadeFraction),
+          .init(color: .white, location: 1),
+        ],
+        startPoint: .top,
+        endPoint: .bottom)
+    } else {
+      Rectangle()
+    }
   }
 
-  /// Five lines, matching the shape the founder tested against Spokenly: the pill
-  /// grows a line at a time up to this, then holds its size and scrolls.
-  private static let previewMaxLines = 5
+  /// The capped frame reports the TEXT's height below the cap and the CAP once the
+  /// text exceeds it, so "is it at the cap" is the overflow signal without
+  /// measuring the string ourselves.
+  private func updateFullness(_ height: CGFloat) {
+    let full = Self.wellIsFull(measuredHeight: height, cap: cap)
+    if full != wellIsFull { wellIsFull = full }
+  }
+
+  /// The fade decision, extracted so it can be asserted directly.
+  ///
+  /// A mask does not participate in layout, so no height test can see whether the
+  /// fade is applied — the same reason `RecordingOverlayPanel`'s inherited-geometry
+  /// arithmetic is pinned as a pure function rather than driven through a panel.
+  /// Cloud review found this applying unconditionally; a decision worth fixing is
+  /// worth pinning.
+  ///
+  /// The half-point tolerance absorbs the rounding between a laid-out frame and a
+  /// computed cap. Without it a well that is full to the pixel reports empty and
+  /// the fade flickers off at exactly the moment it is needed.
+  static func wellIsFull(measuredHeight: CGFloat, cap: CGFloat) -> Bool {
+    measuredHeight >= cap - 0.5
+  }
+
 }
 
 // MARK: - PolishingOverlayView
