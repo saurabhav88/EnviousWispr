@@ -795,6 +795,13 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       emitDeferred(reason: .markerClearFailed, disposition: .persistenceFailed)
       return .deferredMarkerClearFailed
     }
+    // Make the deletion durable, so a power cut cannot resurrect the attempt
+    // marker and abandon a recording we just told telemetry we would retry.
+    // Best-effort DELIBERATELY: the retry budget is already durably recorded, so
+    // a failure here costs at most one retry, never an unbounded loop. Promoting
+    // it to a hard failure would turn a spool we can still redeem into one we
+    // cannot, which is the wrong direction for a limb.
+    try? spoolStore.syncSpoolDirectory()
     RecoveryLog.line(
       "replay deferred: model_load_failed class=\(diagnosis.failureClass.rawValue) "
         + "— the load returned but the engine was not ready; one retry granted")

@@ -269,8 +269,41 @@ public struct RecoverySpoolStore: Sendable {
         } else {
           try fm.moveItem(at: tmpURL, to: url)
         }
+        // The file's own bytes are already fsynced; the RENAME lives in the
+        // containing DIRECTORY, which is a separate durability question.
+        // `audio-recovery-internals.md` records that `writeAttemptMarker` leaves
+        // this unproven. It matters more here, because the whole point of
+        // committing this marker BEFORE clearing the attempt marker is that a
+        // crash in between must find the budget recorded. An unsynced rename can
+        // vanish, which would give back an attempt whose retry nothing recorded.
+        // Fails CLOSED: the throw routes to row C, which retains the attempt.
+        try RecoverySpoolStore.syncDirectory(containing: url)
       },
       cleanupTemp: { tmpURL in try FileManager.default.removeItem(at: tmpURL) })
+  }
+
+  /// `F_FULLFSYNC` the directory holding `url`, so a rename or unlink inside it
+  /// survives power loss. Opened read-only: this syncs directory metadata, and
+  /// nothing writes through this descriptor.
+  static func syncDirectory(containing url: URL) throws {
+    let dir = url.deletingLastPathComponent()
+    let fd = Foundation.open(dir.path, O_RDONLY)
+    guard fd >= 0 else { throw RecoverySpoolStoreError.readinessRetryMarkerWriteFailed(errno) }
+    defer { Foundation.close(fd) }
+    if fcntl(fd, F_FULLFSYNC) == -1 {
+      throw RecoverySpoolStoreError.readinessRetryMarkerWriteFailed(errno)
+    }
+  }
+
+  /// Make a completed attempt-marker deletion durable (#2207). Separate from the
+  /// deletion itself because the two have DIFFERENT failure meanings: a failed
+  /// delete means the attempt was never given back, while a failed sync means it
+  /// was given back and may not survive a power cut. Best-effort at the call
+  /// site, and the reason is the direction of the risk: the retry budget is
+  /// already durably recorded by then, so the worst case is one lost retry
+  /// rather than an unbounded one.
+  public func syncSpoolDirectory() throws {
+    try Self.syncDirectory(containing: directory.appendingPathComponent("x"))
   }
 
   /// Sidecar path for a spool's readiness-retry marker (`<id>.readiness-retry`).
