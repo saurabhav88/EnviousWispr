@@ -2074,12 +2074,52 @@ struct RainbowLevelMeter: View {
   /// same value `RainbowLipsIcon` reads, so this adds no timer and no new source.
   let audioLevel: Float
 
-  /// Height of the strip. Bars are drawn symmetrically about its middle.
-  var height: CGFloat = 16
-  var barWidth: CGFloat = 2.5
-  var spacing: CGFloat = 3
+  /// The parent's poll counter, incremented once per sample whether or not the
+  /// level changed.
+  ///
+  /// **The history cannot be driven by a change in `audioLevel`, and that is not a
+  /// style preference — it is the difference between a waveform that drains and one
+  /// that freezes.** `onChange` fires on a CHANGE, and silence is the one passage
+  /// where consecutive samples are bit-identical, so a level-driven history stops
+  /// scrolling exactly when the user stops talking: the shape of their last words
+  /// sits frozen on screen until they speak again. Reading a strictly-increasing
+  /// tick makes every poll a sample, so a pause scrolls out to the silence floor
+  /// the way a record of volume should.
+  let tick: Int
 
-  /// The brand spectrum, in order. Shared with `RainbowLipsIcon`'s bar table.
+  var height: CGFloat = 16
+  var barWidth: CGFloat = 2
+  var spacing: CGFloat = 1.5
+
+  /// #2216: the last `barCount` levels, oldest first. Bar `i` is a MOMENT, not a
+  /// position on a shape.
+  ///
+  /// **The first version drew every bar from the same instant's level**, scaled by
+  /// a fixed per-bar weight, so all nine could only rise and fall together — a
+  /// level meter in a waveform's clothes. The founder caught it against the
+  /// approved mockup, where each bar ran on its own CSS timer at its own phase and
+  /// therefore only LOOKED like a record of anything. Real audio hands us one
+  /// scalar per tick, so the only honest way to get that picture is to keep the
+  /// scalars.
+  @State private var history: [CGFloat] = []
+
+  /// About 1.2 seconds of history at the parent's 50 ms poll — long enough to read
+  /// as a shape, short enough that it is recognisably what you just said.
+  static let barCount = 24
+
+  /// A bar's minimum share of the strip. Non-zero on purpose: a meter that
+  /// collapses to nothing between words reads as "it stopped hearing me", which is
+  /// the exact anxiety the preview exists to remove.
+  static let silenceFraction: CGFloat = 0.14
+
+  /// Additional share available at full level.
+  static let peakFraction: CGFloat = 0.86
+
+  /// The brand spectrum, sampled across the strip.
+  ///
+  /// **Positional, not per-sample.** The gradient stays still while heights scroll
+  /// through it, which keeps the mark recognisable — colours crawling sideways
+  /// would read as a progress bar rather than as our spectrum.
   static let spectrum: [Color] = [
     Color(red: 1.0, green: 0.165, blue: 0.251),  // #ff2a40 red
     Color(red: 1.0, green: 0.549, blue: 0.0),  // #ff8c00 orange
@@ -2092,55 +2132,99 @@ struct RainbowLevelMeter: View {
     Color(red: 0.541, green: 0.169, blue: 0.886),  // #8a2be2 violet
   ]
 
-  /// Per-bar sensitivity. Centre bars react most, edges least — the same
-  /// weighting `RainbowLipsIcon` uses, so both instruments agree about what the
-  /// same audio looks like.
-  static let sensitivity: [CGFloat] = [0.70, 0.80, 0.90, 0.95, 1.00, 0.95, 0.90, 0.80, 0.70]
+  /// The colour at position `index` of `count`, interpolated across the spectrum so
+  /// the gradient is smooth at any bar count.
+  static func colour(at index: Int, of count: Int) -> Color {
+    guard count > 1 else { return spectrum[0] }
+    let t = CGFloat(min(max(index, 0), count - 1)) / CGFloat(count - 1)
+    let scaled = t * CGFloat(spectrum.count - 1)
+    let lower = Int(scaled)
+    let upper = min(lower + 1, spectrum.count - 1)
+    let frac = scaled - CGFloat(lower)
+    return frac < 0.001
+      ? spectrum[lower] : spectrum[lower].blended(with: spectrum[upper], amount: frac)
+  }
 
-  /// Fraction of the strip a bar occupies at silence. Non-zero on purpose: a
-  /// meter that collapses to nothing between words reads as "it stopped hearing
-  /// me", which is the exact anxiety the preview exists to remove.
-  static let silenceFraction: CGFloat = 0.18
-
-  /// Additional fraction available at full level, for the most sensitive bar.
-  static let peakFraction: CGFloat = 0.82
-
-  /// Fraction of the strip bar `index` fills at `level`.
+  /// Fraction of the strip a sample occupies.
   ///
-  /// `static` and `package`-visible so a test can assert the shape without
-  /// rendering: the property that matters is monotonic in level and clamped at
-  /// both ends, and a Canvas cannot be asked about that.
-  static func fill(index: Int, level: CGFloat) -> CGFloat {
-    let clamped = min(max(level, 0), 1)
-    let weight = sensitivity[min(max(index, 0), sensitivity.count - 1)]
-    return silenceFraction + peakFraction * clamped * weight
+  /// Extracted so a test can assert it without rendering — a `Canvas` cannot be
+  /// asked what it drew.
+  static func fill(level: CGFloat) -> CGFloat {
+    silenceFraction + peakFraction * min(max(level, 0), 1)
+  }
+
+  /// Push a sample onto the history, dropping the oldest once full.
+  ///
+  /// Pure and static so the scrolling behaviour is testable directly: this is the
+  /// whole difference between a record and a level, and it is the part that was
+  /// missing.
+  static func pushed(_ history: [CGFloat], level: CGFloat, capacity: Int = barCount) -> [CGFloat] {
+    guard capacity > 0 else { return [] }
+    // Clamp on the way IN, so a bad sample cannot sit in the buffer for a second
+    // and a bit poisoning every frame it appears in.
+    var next = history + [min(max(level, 0), 1)]
+    if next.count > capacity { next.removeFirst(next.count - capacity) }
+    return next
+  }
+
+  /// The level to draw in each of `count` bars, right-aligned so the newest sample
+  /// is always at the same edge — without this the whole waveform slides sideways
+  /// for the first second of every recording.
+  ///
+  /// Extracted from the `Canvas` so it can be asserted directly: a `Canvas` cannot
+  /// be asked what it drew, and this is the step that turns a buffer into bars.
+  /// Every read is bounds-checked rather than trusting `history` to be the right
+  /// length, because this runs on the heart path and an index slip here is a crash
+  /// in the recording overlay.
+  static func bars(history: [CGFloat], count: Int = barCount) -> [CGFloat] {
+    guard count > 0 else { return [] }
+    let pad = max(0, count - history.count)
+    // A longer-than-expected buffer keeps its NEWEST samples, never its oldest.
+    let offset = max(0, history.count - count)
+    return (0..<count).map { i in
+      let index = i - pad + offset
+      return index >= 0 && index < history.count ? history[index] : 0
+    }
   }
 
   var body: some View {
-    let level = CGFloat(min(max(audioLevel, 0), 1))
     Canvas { context, size in
-      for i in 0..<Self.spectrum.count {
-        let barHeight = size.height * Self.fill(index: i, level: level)
+      let levels = Self.bars(history: history)
+      for i in 0..<Self.barCount {
+        let barHeight = size.height * Self.fill(level: levels[i])
         let x = CGFloat(i) * (barWidth + spacing)
         let rect = CGRect(
-          x: x,
-          y: (size.height - barHeight) / 2,
-          width: barWidth,
-          height: barHeight
-        )
+          x: x, y: (size.height - barHeight) / 2,
+          width: barWidth, height: barHeight)
         context.fill(
           Path(roundedRect: rect, cornerRadius: barWidth / 2),
-          with: .color(Self.spectrum[i]))
+          with: .color(Self.colour(at: i, of: Self.barCount)))
       }
     }
     .frame(width: Self.width(barWidth: barWidth, spacing: spacing), height: height)
+    .onChange(of: tick) { _, _ in
+      history = Self.pushed(history, level: CGFloat(audioLevel))
+    }
     .accessibilityHidden(true)
   }
 
-  /// Total width for nine bars and eight gaps. Derived rather than a literal, so
-  /// the frame cannot drift from what the Canvas draws.
+  /// Total width for `barCount` bars and their gaps. Derived rather than a
+  /// literal, so the frame cannot drift from what the Canvas draws.
   static func width(barWidth: CGFloat, spacing: CGFloat) -> CGFloat {
-    CGFloat(spectrum.count) * barWidth + CGFloat(spectrum.count - 1) * spacing
+    CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * spacing
+  }
+}
+
+extension Color {
+  /// Linear blend towards another colour, for the meter's positional gradient.
+  fileprivate func blended(with other: Color, amount: CGFloat) -> Color {
+    let a = NSColor(self).usingColorSpace(.sRGB) ?? .white
+    let b = NSColor(other).usingColorSpace(.sRGB) ?? .white
+    let t = min(max(amount, 0), 1)
+    return Color(
+      red: a.redComponent + (b.redComponent - a.redComponent) * t,
+      green: a.greenComponent + (b.greenComponent - a.greenComponent) * t,
+      blue: a.blueComponent + (b.blueComponent - a.blueComponent) * t)
   }
 }
 
@@ -2310,7 +2394,8 @@ private struct OverlayCapsuleBackground: View {
       .fill(
         isPreview
           ? PreviewPillPalette.surface
-          : Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82))
+          : Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82)
+      )
       // `strokeBorder` needs an insettable shape, which the type-erased `AnyShape`
       // is not, so the two concrete shapes are named here. Kept as `strokeBorder`
       // rather than switching both to `stroke`: the capsule is shipped UI and its
@@ -2432,6 +2517,11 @@ struct RecordingOverlayView: View {
   /// #1060: transient notice banner shown inside the recording capsule.
   var noticeState: OverlayNoticeState
   @State private var audioLevel: Float = 0
+
+  /// Counts polls, not level changes. #2216: the meter's history needs a sample
+  /// every tick INCLUDING the silent ones, and consecutive silent samples are
+  /// bit-identical, so `audioLevel` alone cannot drive it.
+  @State private var audioTick: Int = 0
   @State private var elapsed: TimeInterval = 0
   @State private var preview: LivePreviewDisplay
 
@@ -2495,7 +2585,7 @@ struct RecordingOverlayView: View {
         .font(.system(size: 13, weight: .semibold, design: .monospaced))
         .foregroundStyle(PreviewPillPalette.timer)
 
-      RainbowLevelMeter(audioLevel: audioLevel)
+      RainbowLevelMeter(audioLevel: audioLevel, tick: audioTick)
 
       Spacer(minLength: 8)
 
@@ -2662,6 +2752,7 @@ struct RecordingOverlayView: View {
     .task {
       while !Task.isCancelled {
         audioLevel = audioLevelProvider()
+        audioTick &+= 1
         elapsed = recordingElapsedProvider() ?? 0
         preview = livePreviewProvider()
         try? await Task.sleep(for: .milliseconds(50))
