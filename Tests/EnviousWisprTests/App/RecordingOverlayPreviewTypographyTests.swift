@@ -174,3 +174,61 @@ struct RecordingOverlayPreviewTypographyTests {
     #expect(short < long, "retracted to \(short)pt from \(long)pt")
   }
 }
+
+/// #2203: when the reading well fades its top edge.
+///
+/// A mask does not participate in layout, so no height measurement can see whether
+/// the fade is applied. The decision is therefore pinned directly — the same shape
+/// `RecordingOverlayPanelInheritedGeometryTests` uses for panel arithmetic.
+///
+/// **Cloud review found the fade applying unconditionally**, so a one-line
+/// transcript had its only line dimmed with nothing above it to scroll away. A
+/// fade means "there is more above this"; saying that when there is not costs the
+/// user legibility on words they still have to read.
+@MainActor
+@Suite(.tags(.productOutcome))
+struct PreviewWellFadeTests {
+
+  init() { _ = NSApplication.shared }
+
+  private static let cap = RecordingOverlayView.previewHeight(lines: 5)
+
+  @Test("a short transcript does not fade")
+  func shortTextDoesNotFade() {
+    let oneLine = RecordingOverlayView.previewHeight(lines: 1)
+    #expect(
+      !PreviewWellText.wellIsFull(measuredHeight: oneLine, cap: Self.cap),
+      "a one-line well reported full, so its only line would be dimmed")
+  }
+
+  @Test("a well below the cap does not fade", arguments: [1, 2, 3, 4])
+  func belowTheCapDoesNotFade(lines: Int) {
+    let height = RecordingOverlayView.previewHeight(lines: lines)
+    #expect(
+      !PreviewWellText.wellIsFull(measuredHeight: height, cap: Self.cap),
+      "\(lines) lines reported full against a five-line cap")
+  }
+
+  @Test("a well at the cap fades")
+  func atTheCapFades() {
+    #expect(PreviewWellText.wellIsFull(measuredHeight: Self.cap, cap: Self.cap))
+  }
+
+  @Test("a well past the cap fades")
+  func pastTheCapFades() {
+    #expect(PreviewWellText.wellIsFull(measuredHeight: Self.cap + 40, cap: Self.cap))
+  }
+
+  /// A laid-out frame and a computed cap can disagree in the last fraction of a
+  /// point. Without tolerance the fade flickers off exactly when it is needed.
+  @Test("sub-point rounding does not switch the fade off")
+  func roundingDoesNotFlicker() {
+    #expect(PreviewWellText.wellIsFull(measuredHeight: Self.cap - 0.25, cap: Self.cap))
+  }
+
+  /// But the tolerance must not be so wide that a genuinely short well fades.
+  @Test("the tolerance is not wide enough to catch a shorter well")
+  func toleranceDoesNotOverreach() {
+    #expect(!PreviewWellText.wellIsFull(measuredHeight: Self.cap - 5, cap: Self.cap))
+  }
+}
