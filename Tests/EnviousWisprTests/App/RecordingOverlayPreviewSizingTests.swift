@@ -206,6 +206,62 @@ struct RecordingOverlayPreviewSizingTests {
     #expect(atCompact == atTall, "with a notice showing: \(atCompact)pt vs \(atTall)pt")
   }
 
+  // MARK: - The acceptance criterion, pinned rather than implied
+
+  /// The chunk's stated criterion is a NUMBER: while preview text, lock state and
+  /// notice state are unchanged, the panel resizes ZERO times.
+  ///
+  /// The other cases here prove height is a function of content, from which this
+  /// follows — but only by an argument, and an argument is not a test. The view is
+  /// re-laid-out on every 50 ms poll whether or not anything changed, so "the same
+  /// content re-rendered reports the same height" is the property `resizeRecordingPanel`
+  /// actually consumes: it compares against the live frame and skips anything
+  /// inside 1pt, so one stable answer means no `setFrame` at all.
+  ///
+  /// Deliberately re-lays out ONE view rather than building several, because
+  /// building a fresh view each time cannot see a height that drifts across
+  /// renders — which is exactly the shape a box that hunts would produce.
+  @Test("re-rendering unchanged content reports one height, not a drifting series")
+  func unchangedContentDoesNotMoveTheHeight() throws {
+    let log = HeightLog()
+    let view = RecordingOverlayView(
+      audioLevelProvider: { 0 },
+      recordingElapsedProvider: { 41 },
+      livePreviewProvider: { .text(Self.threeLines) },
+      onContentHeightChange: { log.record($0) },
+      usesPreviewLayout: true,
+      lockState: OverlayLockState(),
+      noticeState: OverlayNoticeState(),
+      initialPreview: .text(Self.threeLines)
+    )
+    let host = NSHostingView(rootView: view.frame(width: Self.previewWidth))
+    let frame = NSRect(x: 0, y: 0, width: Self.previewWidth, height: 65)
+    let window = NSWindow(
+      contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    host.frame = frame
+
+    // Ten passes stands in for the poll loop. Each one also moves the host to the
+    // height the panel would now be at, which is the feedback the defect rode on:
+    // a view that chases its container reports a new number every pass.
+    for _ in 0..<10 {
+      host.layoutSubtreeIfNeeded()
+      window.displayIfNeeded()
+      if let latest = log.reported.last {
+        host.frame = NSRect(x: 0, y: 0, width: Self.previewWidth, height: latest)
+      }
+    }
+
+    let distinct = Set(log.reported)
+    #expect(
+      distinct.count == 1,
+      """
+      unchanged content reported \(distinct.count) different heights across ten \
+      renders: \(log.reported.map { String(format: "%.0f", $0) }.joined(separator: ", ")). \
+      Every distinct value here is a panel resize the user did not ask for.
+      """)
+  }
+
   // MARK: - The protected capsule
 
   /// The 185pt non-preview capsule is out of scope for #2198 and the founder is
