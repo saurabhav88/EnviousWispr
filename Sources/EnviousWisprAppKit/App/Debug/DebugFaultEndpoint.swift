@@ -245,6 +245,20 @@
         }
         return "OK"
 
+      // #2207 Live UAT. Arms a ONE-SHOT readiness-postcondition failure: the
+      // next `ActiveEngineOperation.load` returns from its real loader and then
+      // reads readiness as false, so the production guard throws
+      // `ASREngineNotReadyAfterLoadError` and crash recovery must RETAIN the
+      // recording and spend one retry instead of deleting it. Staging that race
+      // by hand is impossible — it lives between two adjacent statements.
+      case "force_readiness_lost":
+        ActiveEngineOperation.forceNextReadinessLost = true
+        return "OK"
+
+      case "clear_readiness_lost":
+        ActiveEngineOperation.forceNextReadinessLost = false
+        return "OK"
+
       case "force_xpc_kill":
         guard let asrProxy else { return "ERR no_dependency" }
         asrProxy.forceConnectionTerminationNow()
