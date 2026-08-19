@@ -53,6 +53,10 @@ Drives a REAL dictation, `kill -9`s the app mid-utterance to produce a genuine o
 
 Arming is by ENVIRONMENT (`EW_FORCE_READINESS_LOST=1`), not the socket command, and that is load-bearing: `scanAndRecover()` runs from `applicationDidFinishLaunching()` seconds before a socket command could arrive, so a socket-only arm could never reach the launch replay it exists to fault. `force_readiness_lost` remains registered for same-session wakes. `open` does not pass environment variables, so the scenario execs the bundle binary directly.
 
+Refuses to run rather than guessing when more than one dev instance is present (it SIGKILLs its target, and a wrong pick kills a peer worktree's session) or when any `.ewrec` already exists (`listdir` order is arbitrary, so the run could validate an unrelated recovery and consume the one-shot fault on the wrong spool). Both refusals return `evidence_valid: false`, which fails closed rather than defaulting to a pass.
+
+Uses the strict `{evidence_valid, evidence, assertions}` contract with `recording_survived` and `recovered_to_history` as required assertions, so the negative control actually fails the run. A bare `{"ok": false}` would have printed a failure and exited 0, because `evaluate_trial` treats any result without `evidence_valid` as a passing legacy scenario.
+
 Negative control, demonstrated red/green on PR #2218: make the load-site routing unconditional again (`if false, case .classified(.loadReturnedNotReady)`), rebuild, rerun. The log reads `replay unrecoverable — requesting deletion`, the spool directory empties, and no History row appears. That control reproduced #2207 on demand for the first time; it had previously only been inferred from telemetry.
 
 ### A1_rapid_stop_start (Lane A — timing/cancel)

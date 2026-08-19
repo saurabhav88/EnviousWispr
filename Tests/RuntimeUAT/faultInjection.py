@@ -1009,26 +1009,37 @@ def R1_readiness_lost_after_load(**_) -> dict:
     RECORDS readiness rather than requiring it. Crash recovery believed it,
     transcribed, failed, and DELETED a spool it had successfully saved.
 
-    WHY THIS NEEDS A SEAM AT ALL: the condition lives in the two-statement window
-    between the loader returning and the readiness read. In production it takes an
-    unload, cancel or engine switch landing inside that window, which cannot be
-    staged by hand.
+    WHY THIS NEEDS A SEAM: the condition lives in the two-statement window between
+    the loader returning and the readiness read. In production it takes an unload,
+    cancel or engine switch landing inside that window — not stageable by hand.
 
-    WHY THE ARM IS AN ENV VAR AND NOT THIS SCENARIO'S USUAL `send(...)`:
-    `scanAndRecover()` runs from `applicationDidFinishLaunching()`, seconds before
-    a socket command could arrive, so a socket-only arm can never reach the launch
-    replay it exists to fault. `force_readiness_lost` is still registered for
-    same-session wakes; the launch path needs the environment.
+    WHY THE ARM IS AN ENV VAR: `scanAndRecover()` runs from
+    `applicationDidFinishLaunching()`, seconds before a socket command could
+    arrive, so a socket-only arm can never reach the launch replay it exists to
+    fault. `force_readiness_lost` stays registered for same-session wakes.
 
     THE VERDICT IS THE HISTORY ROW, NOT THE SPOOL DIRECTORY. A checker asserting
     "the spool is still on disk" reports FAILED on a SUCCESSFUL run, because the
     same-session wake redeems the recording within the same second and correctly
     cleans up. Measured 2026-08-19; it cost a scare.
+
+    REFUSES TO RUN rather than guessing, on two axes, because both failure modes
+    are silent and one of them harms other sessions:
+      - more than one dev instance → this scenario SIGKILLs its target, and a
+        `pids[0]` pick would kill a peer worktree's app mid-run and then relaunch
+        a different build than the one under test;
+      - any pre-existing `.ewrec` → `listdir` order is arbitrary, so the run could
+        validate an unrelated recovery and consume the one-shot fault on the wrong
+        spool.
     """
     import json
     import os
     import subprocess
     import threading
+
+    def invalid(reason: str) -> dict:
+        return {"evidence_valid": False, "evidence": {"reason": reason},
+                "assertions": {}}
 
     spool_dir = os.path.expanduser(
         "~/Library/Application Support/EnviousWispr/audio_recovery")
@@ -1037,22 +1048,40 @@ def R1_readiness_lost_after_load(**_) -> dict:
     sentence = ("The readiness retry audit take, one two three four five, "
                 "this recording must survive the crash and be recovered.")
 
-    def dev_pids():
+    def dev_pids() -> list[str]:
         out = subprocess.run(
             ["pgrep", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
             capture_output=True, text=True).stdout.split()
         return [p for p in out if p.strip()]
 
-    pids = dev_pids()
-    if not pids:
-        return {"ok": False, "reason": "no dev app running"}
-    app_path = subprocess.run(
-        ["ps", "-ww", "-o", "command=", "-p", pids[0]],
-        capture_output=True, text=True).stdout.strip()
-    if not app_path:
-        return {"ok": False, "reason": "could not resolve the running bundle"}
+    def ewrec_ids() -> set:
+        if not os.path.isdir(spool_dir):
+            return set()
+        return {f[:-len(".ewrec")] for f in os.listdir(spool_dir)
+                if f.endswith(".ewrec")}
 
-    # 1. A GENUINE orphan: real audio, killed mid-utterance. Never hand-written.
+    # ---- refuse on an ambiguous kill target -------------------------------
+    pids = dev_pids()
+    if len(pids) != 1:
+        return invalid(
+            f"need exactly ONE dev instance to target; found {len(pids)}: {pids}. "
+            "Refusing rather than picking one — this scenario SIGKILLs its target "
+            "and a wrong pick kills another worktree's session.")
+    target_pid = pids[0]
+    app_path = subprocess.run(
+        ["ps", "-ww", "-o", "command=", "-p", target_pid],
+        capture_output=True, text=True).stdout.strip()
+    if not app_path or "EnviousWispr Local.app" not in app_path:
+        return invalid(f"could not resolve pid {target_pid} to a dev bundle")
+
+    # ---- refuse on ambiguous spool identity -------------------------------
+    pre_existing = ewrec_ids()
+    if pre_existing:
+        return invalid(
+            f"{len(pre_existing)} pre-existing spool(s) would make the fault target "
+            f"ambiguous: {sorted(pre_existing)}. Clear or replay them first.")
+
+    # ---- 1. a GENUINE orphan: real audio, killed mid-utterance -------------
     import wispr_eyes
 
     def speak():
@@ -1063,28 +1092,31 @@ def R1_readiness_lost_after_load(**_) -> dict:
 
     threading.Thread(target=speak, daemon=True).start()
     time.sleep(6.0)
-    for pid in dev_pids():
-        subprocess.run(["kill", "-9", pid])
+    subprocess.run(["kill", "-9", target_pid])  # ONLY the verified target
     time.sleep(2.0)
 
-    spools = [f for f in os.listdir(spool_dir) if f.endswith(".ewrec")]
-    if not spools:
-        return {"ok": False, "reason": "no orphan spool produced; nothing to recover"}
-    spool_id = spools[0].removesuffix(".ewrec")
+    created = ewrec_ids() - pre_existing
+    if len(created) != 1:
+        return invalid(
+            f"expected exactly one NEW spool from this run, got {len(created)}: "
+            f"{sorted(created)}")
+    spool_id = created.pop()
 
-    # 2. Relaunch with the fault armed. `open` does not pass environment; exec the
-    #    binary directly.
+    # ---- 2. relaunch with the fault armed ---------------------------------
+    # `open` does not pass environment; exec the bundle binary directly.
     env = dict(os.environ)
     env["EW_FORCE_READINESS_LOST"] = "1"
     env["EW_FAULT_INJECTION"] = "1"
     subprocess.Popen([app_path], env=env,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # 3. The verdict: a History row carrying THIS spool's id, marked recovered.
+    # ---- 3. the verdict: a History row carrying THIS spool's id ------------
     deadline = time.time() + 75
     row = None
     while time.time() < deadline and row is None:
         time.sleep(3)
+        if not os.path.isdir(transcripts):
+            continue
         for name in os.listdir(transcripts):
             if not name.endswith(".json"):
                 continue
@@ -1096,13 +1128,19 @@ def R1_readiness_lost_after_load(**_) -> dict:
                 row = d
                 break
 
-    if row is None:
-        return {"ok": False, "spool": spool_id,
-                "reason": "the recording was never recovered — with the fix reverted "
-                          "this is the #2207 deletion"}
-    if not row.get("isRecovered"):
-        return {"ok": False, "spool": spool_id, "reason": "saved but not marked recovered"}
-    return {"ok": True, "spool": spool_id, "text": (row.get("text") or "")[:60]}
+    survived = row is not None
+    recovered = bool(row and row.get("isRecovered"))
+    return {
+        "evidence_valid": True,
+        "evidence": {"spool": spool_id, "app": app_path,
+                     "text": (row or {}).get("text", "")[:60]},
+        "assertions": {
+            # With the fix reverted BOTH go false: the replay is unrecoverable,
+            # deletion is requested, and no History row ever appears.
+            "recording_survived": survived,
+            "recovered_to_history": recovered,
+        },
+    }
 
 
 @scenario(
@@ -1845,6 +1883,15 @@ def B1_bluetooth_route_flip(*, founder_present: bool = False, **_) -> dict:
 # for THIS build to "pass" the cell in a strict standalone run. A valid-evidence
 # product failure still exits nonzero here; the A/B baseline mode (run_gauntlet.py)
 # is what continues through product failures to build the full scorecard.
+
+
+# Required assertions per scenario under the strict contract. Referenced by
+# `evaluate_trial` since #1317 but never defined until #2207 — every scenario was
+# legacy, so the lookup never executed and the NameError sat latent. R1 is the
+# first adopter.
+_REQUIRED_ASSERTIONS: dict[str, list[str]] = {
+    "R1_readiness_lost_after_load": ["recording_survived", "recovered_to_history"],
+}
 
 
 def evaluate_trial(name: str, inner: dict) -> tuple[bool, str]:
