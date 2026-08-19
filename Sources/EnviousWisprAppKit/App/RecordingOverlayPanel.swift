@@ -2046,6 +2046,102 @@ struct SpectrumWheelIcon: View {
 ///
 /// At silence (level ≈ 0) bars sit at their minimum compressed state (lips closed).
 /// At peak (level = 1.0) center bars reach maximum expansion (lips open/talking).
+/// #2202: the live level meter in the preview pill's header.
+///
+/// **Replaces the lips mark in THIS box only.** The mark stays everywhere else —
+/// the menu bar, the polishing pill, settings. Founder direction, 2026-08-19: it
+/// is a logo doing a meter's job, a square block of nine bars that has to be read
+/// as a picture before it reads as movement, and it occupies the left edge the
+/// timer should own. Nine bars on a baseline say "I can hear you" in a shape
+/// everyone knows from every recorder ever made.
+///
+/// Nine bars, nine brand spectrum colours in order, red through violet — the same
+/// palette and the same order as `RainbowLipsIcon`, so the two read as one family
+/// while the pill transitions between layouts.
+///
+/// **Symmetric about a centre line rather than growing off a floor.** That echoes
+/// the mark it replaces, and it means the meter's visual weight does not shift
+/// down the header as the level drops.
+///
+/// Fixed height in every state, which is load-bearing rather than cosmetic: today
+/// hands-free scales the lips mark to 2x, and that is the single biggest height
+/// jump anywhere in the pill. A meter that occupies one strip whatever the mode is
+/// what lets the header stop changing size between hold-to-talk and hands-free.
+struct RainbowLevelMeter: View {
+  /// Normalised audio level 0.0-1.0, polled every ~50 ms by the parent view. The
+  /// same value `RainbowLipsIcon` reads, so this adds no timer and no new source.
+  let audioLevel: Float
+
+  /// Height of the strip. Bars are drawn symmetrically about its middle.
+  var height: CGFloat = 16
+  var barWidth: CGFloat = 2.5
+  var spacing: CGFloat = 3
+
+  /// The brand spectrum, in order. Shared with `RainbowLipsIcon`'s bar table.
+  static let spectrum: [Color] = [
+    Color(red: 1.0, green: 0.165, blue: 0.251),  // #ff2a40 red
+    Color(red: 1.0, green: 0.549, blue: 0.0),  // #ff8c00 orange
+    Color(red: 1.0, green: 0.843, blue: 0.0),  // #ffd700 gold
+    Color(red: 0.678, green: 1.0, blue: 0.184),  // #adff2f lime
+    Color(red: 0.0, green: 0.98, blue: 0.604),  // #00fa9a spring
+    Color(red: 0.0, green: 1.0, blue: 1.0),  // #00ffff cyan
+    Color(red: 0.118, green: 0.565, blue: 1.0),  // #1e90ff blue
+    Color(red: 0.255, green: 0.412, blue: 0.882),  // #4169e1 royal
+    Color(red: 0.541, green: 0.169, blue: 0.886),  // #8a2be2 violet
+  ]
+
+  /// Per-bar sensitivity. Centre bars react most, edges least — the same
+  /// weighting `RainbowLipsIcon` uses, so both instruments agree about what the
+  /// same audio looks like.
+  static let sensitivity: [CGFloat] = [0.70, 0.80, 0.90, 0.95, 1.00, 0.95, 0.90, 0.80, 0.70]
+
+  /// Fraction of the strip a bar occupies at silence. Non-zero on purpose: a
+  /// meter that collapses to nothing between words reads as "it stopped hearing
+  /// me", which is the exact anxiety the preview exists to remove.
+  static let silenceFraction: CGFloat = 0.18
+
+  /// Additional fraction available at full level, for the most sensitive bar.
+  static let peakFraction: CGFloat = 0.82
+
+  /// Fraction of the strip bar `index` fills at `level`.
+  ///
+  /// `static` and `package`-visible so a test can assert the shape without
+  /// rendering: the property that matters is monotonic in level and clamped at
+  /// both ends, and a Canvas cannot be asked about that.
+  static func fill(index: Int, level: CGFloat) -> CGFloat {
+    let clamped = min(max(level, 0), 1)
+    let weight = sensitivity[min(max(index, 0), sensitivity.count - 1)]
+    return silenceFraction + peakFraction * clamped * weight
+  }
+
+  var body: some View {
+    let level = CGFloat(min(max(audioLevel, 0), 1))
+    Canvas { context, size in
+      for i in 0..<Self.spectrum.count {
+        let barHeight = size.height * Self.fill(index: i, level: level)
+        let x = CGFloat(i) * (barWidth + spacing)
+        let rect = CGRect(
+          x: x,
+          y: (size.height - barHeight) / 2,
+          width: barWidth,
+          height: barHeight
+        )
+        context.fill(
+          Path(roundedRect: rect, cornerRadius: barWidth / 2),
+          with: .color(Self.spectrum[i]))
+      }
+    }
+    .frame(width: Self.width(barWidth: barWidth, spacing: spacing), height: height)
+    .accessibilityHidden(true)
+  }
+
+  /// Total width for nine bars and eight gaps. Derived rather than a literal, so
+  /// the frame cannot drift from what the Canvas draws.
+  static func width(barWidth: CGFloat, spacing: CGFloat) -> CGFloat {
+    CGFloat(spectrum.count) * barWidth + CGFloat(spectrum.count - 1) * spacing
+  }
+}
+
 struct RainbowLipsIcon: View {
   let size: CGFloat
   /// Normalised audio level 0.0-1.0, updated every ~50 ms by the parent view.
