@@ -88,6 +88,45 @@ struct PreviewPillPaletteTests {
       "dark text on the dark surface is \(String(format: "%.1f", ratio)):1, below 4.5:1")
   }
 
+  /// **Every colour that draws TEXT, not just the ones I happened to think of.**
+  ///
+  /// The first version of this suite checked `text` and `notice` and stopped
+  /// there. Cloud review found `modeQuiet` and `textDimmed` sitting at about
+  /// 3.1:1 in light — and `textDimmed` is what renders the `.unavailable`
+  /// message, which is a full sentence the user has to read to learn why the
+  /// preview is not running.
+  ///
+  /// Enumerating the SET rather than picking members is the fix: a colour added
+  /// to the palette and forgotten here now fails, instead of being legible only
+  /// if somebody remembered to add a case.
+  nonisolated static let textColours: [(name: String, colour: Color)] = [
+    ("text", PreviewPillPalette.text),
+    ("textDimmed", PreviewPillPalette.textDimmed),
+    ("timer", PreviewPillPalette.timer),
+    ("modeQuiet", PreviewPillPalette.modeQuiet),
+    ("badgeText", PreviewPillPalette.badgeText),
+    ("notice", PreviewPillPalette.notice),
+  ]
+
+  @Test(
+    "every text colour clears 4.5:1 on the pill surface, in both appearances",
+    arguments: PreviewPillPaletteTests.textColours)
+  func everyTextColourIsLegible(entry: (name: String, colour: Color)) throws {
+    for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+      let surface = try #require(
+        PreviewPillPalette.resolved(PreviewPillPalette.surface, in: appearance))
+      let fg = try #require(PreviewPillPalette.resolved(entry.colour, in: appearance))
+      let ratio = Self.contrastRatio(fg, on: surface)
+      #expect(
+        ratio >= 4.5,
+        """
+        \(entry.name) is \(String(format: "%.2f", ratio)):1 against the pill surface in \
+        \(appearance.rawValue), below the 4.5:1 floor. The pill floats over arbitrary \
+        windows, so it cannot borrow contrast from what is behind it.
+        """)
+    }
+  }
+
   /// The notice is the colour that was hardcoded white and would have been
   /// invisible on a light pill. It carries a cap warning, so it is the one piece
   /// of copy in the box the user must not miss.

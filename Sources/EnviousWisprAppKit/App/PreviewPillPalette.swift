@@ -72,8 +72,15 @@ enum PreviewPillPalette {
     darkRGB: (1.0, 1.0, 1.0, 0.94))
 
   /// The quiet hold-to-talk state word.
+  ///
+  /// **0.60 in light, not the 0.45 that mirrors dark.** Cloud review measured the
+  /// mirrored value at 3.10:1 against the light surface, below the 4.5:1 floor.
+  /// Dark ink losing contrast as it fades toward a near-white ground is not
+  /// symmetric with white text fading toward a near-black one, so a light palette
+  /// built by mirroring dark's alphas is wrong wherever a colour is deliberately
+  /// quiet. 0.60 measures 5.09:1.
   static let modeQuiet = Color.stDynamic(
-    lightRGB: (0.059, 0.039, 0.102, 0.45),
+    lightRGB: (0.059, 0.039, 0.102, 0.60),
     darkRGB: (1.0, 1.0, 1.0, 0.50))
 
   /// The hands-free badge's fill and its text.
@@ -92,8 +99,13 @@ enum PreviewPillPalette {
     darkRGB: (1.0, 1.0, 1.0, 0.97))
 
   /// The dimmed states — "Listening", and the reasons the preview cannot run.
+  ///
+  /// **Dimmed does not mean optional here.** This renders `.unavailable`, which is
+  /// a full sentence explaining WHY the preview is not running — read at exactly
+  /// the moment the user is confused. Cloud review measured the mirrored 0.45 at
+  /// 3.10:1 in light; 0.60 measures 5.09:1.
   static let textDimmed = Color.stDynamic(
-    lightRGB: (0.059, 0.039, 0.102, 0.45),
+    lightRGB: (0.059, 0.039, 0.102, 0.60),
     darkRGB: (1.0, 1.0, 1.0, 0.50))
 
   /// The #1060 notice banner.
