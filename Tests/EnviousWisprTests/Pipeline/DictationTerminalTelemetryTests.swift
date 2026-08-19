@@ -20,6 +20,9 @@ struct DictationTerminalTelemetryTests {
     /// an additive dimension is only safe if the existing population keeps its
     /// value.
     var dispositions: [String?] = []
+    /// #2184. Four nils is the correct row for a take that ended before the
+    /// conditioner ran, so this records absence as data rather than skipping it.
+    var conditionings: [(raw: Int?, filtered: Int?, ratio: Double?, reason: String?)] = []
     var starts: [(takeID: String, backend: String)] = []
   }
 
@@ -35,10 +38,11 @@ struct DictationTerminalTelemetryTests {
       },
       dictationTerminal: {
         takeID, backend, result, reason, kind, effectiveTransport, _, _, _, _, peak, _, _, _,
-        disposition in
+        vadRaw, vadFiltered, vadRatio, vadReason, disposition in
         recorder.terminals.append((takeID, backend, result, reason))
         recorder.attributions.append((kind, peak, effectiveTransport))
         recorder.dispositions.append(disposition)
+        recorder.conditionings.append((vadRaw, vadFiltered, vadRatio, vadReason))
       }
     )
   }
@@ -253,5 +257,41 @@ struct DictationTerminalTelemetryTests {
     #expect(recorder.starts.count == 1)
     #expect(recorder.starts.first?.takeID == "TAKE-A")
     #expect(recorder.starts.first?.backend == "parakeet")
+  }
+
+  // MARK: - #2184 VAD conditioning relay
+
+  /// The sink forwards whatever the snapshot carries, both ways. This proves
+  /// RELAY only: the kernel deciding the value is one link upstream and has its
+  /// own suite, because a mutation at the kernel's construction site survives
+  /// every test on this side of the boundary.
+  @Test("a snapshot's VAD conditioning reaches the terminal row")
+  func vadConditioningReachesTheRow() {
+    let recorder = Recorder()
+    var snap = snapshot(.completed)
+    snap.vadConditioning = KernelVADConditioningTelemetry(
+      rawSampleCount: 48_000, filteredSampleCount: 12_000, conditioningReason: "filtered")
+    makeSink(recorder).emitTerminal(snap)
+
+    let row = try? #require(recorder.conditionings.first)
+    #expect(row?.raw == 48_000)
+    #expect(row?.filtered == 12_000)
+    #expect(row?.ratio == 0.25)
+    #expect(row?.reason == "filtered")
+  }
+
+  /// The absence has to survive too. A take that concluded before conditioning
+  /// must report nothing rather than a manufactured ratio, which would read as
+  /// "the VAD kept everything" about audio the VAD never saw.
+  @Test("a take with no conditioning reports nothing rather than a default")
+  func missingConditioningOmitsRatherThanDefaults() {
+    let recorder = Recorder()
+    makeSink(recorder).emitTerminal(snapshot(.completed))
+
+    let row = try? #require(recorder.conditionings.first)
+    #expect(row?.raw == nil)
+    #expect(row?.filtered == nil)
+    #expect(row?.ratio == nil)
+    #expect(row?.reason == nil)
   }
 }

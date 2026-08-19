@@ -2341,6 +2341,16 @@ final class RecordingSessionKernel {
     // GAP 3 app.log parity: VAD filter ratio log (TP:772-776).
     let rawCount = captureResult.samples.count
     let filteredCount = conditioned.filteredSampleCount
+    // #2184: the ONE queryable record of what the VAD's segments did to this
+    // take, stamped here rather than on the completion payload — the takes this
+    // exists to reveal end at a no-speech or asr-empty terminal, which the
+    // completion path never reaches. Every terminal after this point carries it;
+    // a take that concludes before this line correctly reports nothing.
+    telemetryState.vadConditioning = KernelVADConditioningTelemetry(
+      rawSampleCount: rawCount,
+      filteredSampleCount: filteredCount,
+      conditioningReason: conditioned.conditioningReason
+    )
     Task {
       await AppLogger.shared.log(
         "VAD filtered to \(filteredCount) samples "
@@ -4093,7 +4103,10 @@ final class RecordingSessionKernel {
       // #2087: read from the kernel's own disposition, the same field that
       // decided whether to hold the text. Deriving it here from the outcome
       // would be a second opinion that can disagree with the first.
-      deliveryDisposition: finalizationDisposition.isEscapeRecovery ? .escapeRecovery : .ordinary
+      deliveryDisposition: finalizationDisposition.isEscapeRecovery ? .escapeRecovery : .ordinary,
+      // #2184: COPIED like `signalAttribution` above, never recomputed. Nil for
+      // every take that concluded before the conditioner ran.
+      vadConditioning: telemetryState.vadConditioning
     )
     defer { sessionTerminalTelemetry(terminalSnapshot) }
 

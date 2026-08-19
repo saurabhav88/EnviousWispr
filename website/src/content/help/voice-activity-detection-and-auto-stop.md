@@ -32,7 +32,9 @@ Different pause lengths suit different speaking habits.
 
 ### Automatic trimming
 
-Silence at the beginning and the end of your recording is removed before your speech is transcribed. That trimming happens whether or not you have auto-stop switched on, runs entirely on your Mac, and needs no configuration.
+Before your speech is transcribed, EnviousWispr looks for the parts of the recording where you were talking and sends only those to the engine. In a quiet or normal room that comes to the same thing as removing the silence at the start and the end. It is a stronger claim than that, though: anything the app does not recognise as speech can be left out, wherever it falls in the recording.
+
+That recognition step now works from a copy of your audio with the low rumble taken out, which is most of what a fan, an engine or an air conditioner produces. Your recording and the audio your engine transcribes are untouched. Trimming happens whether or not you have auto-stop switched on, runs entirely on your Mac, and needs no configuration.
 
 ### If it stops at the wrong time
 

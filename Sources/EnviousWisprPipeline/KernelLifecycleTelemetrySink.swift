@@ -79,6 +79,11 @@ final class KernelLifecycleTelemetrySink {
     _ inputSelectionMode: String?, _ wholeBufferRMS: Float?, _ maxWindowRMS: Float?,
     _ peakAudioLevel: Float?, _ durationMs: Int?, _ captureNativeRateHz: Double?,
     _ captureNativeChannelCount: Int?,
+    // #2184: what the VAD's segments did to this take's audio. All four are nil
+    // when the take concluded before the conditioner ran, which is the reading
+    // rather than a gap. Owner: `KernelVADConditioningTelemetry`.
+    _ vadRawSampleCount: Int?, _ vadFilteredSampleCount: Int?,
+    _ vadRetainedRatio: Double?, _ vadConditioningReason: String?,
     // #2087: `ordinary` or `escape_recovery`. An Escape Recovery session
     // concludes `.completed` like any other, so without this the terminal row
     // reports withheld text as a delivered dictation.
@@ -230,7 +235,8 @@ final class KernelLifecycleTelemetrySink {
     dictationTerminal: @escaping DictationTerminalSink = {
       takeID, backend, result, reason, inputDeviceKind, effectiveTransport, selectedTransport,
       inputSelectionMode, wholeBufferRMS, maxWindowRMS, peakAudioLevel, durationMs,
-      captureNativeRateHz, captureNativeChannelCount, deliveryDisposition in
+      captureNativeRateHz, captureNativeChannelCount, vadRawSampleCount, vadFilteredSampleCount,
+      vadRetainedRatio, vadConditioningReason, deliveryDisposition in
       TelemetryService.shared.dictationTerminal(
         takeID: takeID, backend: backend, result: result, reason: reason,
         inputDeviceKind: inputDeviceKind, effectiveTransport: effectiveTransport,
@@ -239,7 +245,11 @@ final class KernelLifecycleTelemetrySink {
         peakAudioLevel: peakAudioLevel, durationMs: durationMs,
         captureNativeRateHz: captureNativeRateHz,
         captureNativeChannelCount: captureNativeChannelCount,
-        deliveryDisposition: deliveryDisposition)
+        deliveryDisposition: deliveryDisposition,
+        vadRawSampleCount: vadRawSampleCount,
+        vadFilteredSampleCount: vadFilteredSampleCount,
+        vadRetainedRatio: vadRetainedRatio,
+        vadConditioningReason: vadConditioningReason)
     },
     captureError: @escaping CaptureErrorSink = { error, category, stage, extra in
       // #2021: promote the groupable capture fields to per-event TAGS. This sink
@@ -356,6 +366,10 @@ final class KernelLifecycleTelemetrySink {
         nil
       }
     let attribution = snapshot.signalAttribution
+    // #2184: read from the SNAPSHOT, never from `telemetryState` — take B may
+    // already be running by the time this renders, and the whole reason the
+    // snapshot exists is that live state cannot answer for a concluded take.
+    let conditioning = snapshot.vadConditioning
     dictationTerminal(
       snapshot.takeID, snapshot.backend, result, reason,
       attribution?.inputDeviceKind, attribution?.effectiveTransport,
@@ -363,6 +377,8 @@ final class KernelLifecycleTelemetrySink {
       attribution?.wholeBufferRMS, attribution?.maxWindowRMS,
       attribution?.peakAudioLevel, attribution?.durationMs,
       attribution?.captureNativeRateHz, attribution?.captureNativeChannelCount,
+      conditioning?.rawSampleCount, conditioning?.filteredSampleCount,
+      conditioning?.retainedRatio, conditioning?.conditioningReason,
       snapshot.deliveryDisposition.rawValue)
   }
 

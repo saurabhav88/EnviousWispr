@@ -1037,7 +1037,17 @@ public final class TelemetryService {
     // `.completed`, so without this the ordinary terminal row would report it as
     // a normal dictation; minting a ninth `result` label would instead break the
     // eight-label vocabulary every existing chart reads.
-    deliveryDisposition: String? = nil
+    deliveryDisposition: String? = nil,
+    // #2184: ADDITIVE and defaulted. All four omit when nil, and nil is the
+    // correct reading rather than a gap — a take that concluded before the
+    // conditioner ran has no conditioning to report. Never defaulted to a
+    // number: a manufactured `1.0` ratio would say "the VAD kept everything"
+    // about a take the VAD never saw, which is the opposite of the finding
+    // this dimension exists to surface.
+    vadRawSampleCount: Int? = nil,
+    vadFilteredSampleCount: Int? = nil,
+    vadRetainedRatio: Double? = nil,
+    vadConditioningReason: String? = nil
   ) {
     let event = "dictation.terminal"
     var props: [String: Any] = [
@@ -1060,6 +1070,10 @@ public final class TelemetryService {
     if let captureNativeChannelCount {
       props["capture_native_channel_count"] = captureNativeChannelCount
     }
+    if let vadRawSampleCount { props["vad_raw_sample_count"] = vadRawSampleCount }
+    if let vadFilteredSampleCount { props["vad_filtered_sample_count"] = vadFilteredSampleCount }
+    if let vadRetainedRatio { props["vad_retained_ratio"] = vadRetainedRatio }
+    if let vadConditioningReason { props["vad_conditioning_reason"] = vadConditioningReason }
     #if DEBUG
       var stringProps: [String: String] = [
         "take_id": takeID, "backend": backend, "result": result,
@@ -1067,17 +1081,21 @@ public final class TelemetryService {
       if let reason { stringProps["reason"] = reason }
       for key in [
         "input_device_kind", "effective_transport", "selected_transport", "input_selection_mode",
-        "delivery_disposition",
+        "delivery_disposition", "vad_conditioning_reason",
       ] {
         if let value = props[key] as? String { stringProps[key] = value }
       }
       var intProps: [String: Int] = [:]
-      for key in ["duration_ms", "capture_native_channel_count"] {
+      for key in [
+        "duration_ms", "capture_native_channel_count", "vad_raw_sample_count",
+        "vad_filtered_sample_count",
+      ] {
         if let value = props[key] as? Int { intProps[key] = value }
       }
       var doubleProps: [String: Double] = [:]
       for key in [
         "whole_buffer_rms", "max_window_rms", "peak_audio_level", "capture_native_rate_hz",
+        "vad_retained_ratio",
       ] {
         if let value = props[key] as? Double { doubleProps[key] = value }
       }
@@ -1101,7 +1119,12 @@ public final class TelemetryService {
         await AppLogger.shared.log(
           "dictation_terminal result=\(result) reason=\(reason ?? "nil") "
             + "take=\(takeID) backend=\(backend) "
-            + "device=\(stringProps["input_device_kind"] ?? "absent") \(energy)",
+            + "device=\(stringProps["input_device_kind"] ?? "absent") \(energy) "
+            // #2184: rendered ABSENT-or-value for the same reason as the energy
+            // triple above. `vad_retained=absent` on a completed take is a
+            // wiring defect; a low value is the finding.
+            + "vad_retained=\(doubleProps["vad_retained_ratio"].map { String($0) } ?? "absent") "
+            + "vad_reason=\(stringProps["vad_conditioning_reason"] ?? "absent")",
           level: .info, category: "Telemetry")
       }
     #endif

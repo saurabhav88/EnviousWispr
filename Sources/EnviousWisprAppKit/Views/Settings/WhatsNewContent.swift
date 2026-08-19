@@ -20,6 +20,34 @@ enum WhatsNewContent {
   static let entries: [Entry] = [
     // MARK: - v2.4.5
 
+    // #2184. Two things are disclosed here rather than one, and the second is
+    // the reason this entry exists at all: conditioning the speech detector's
+    // input also changes when auto-stop fires, in BOTH directions. Measured on
+    // real recordings, two noisy takes stop 28 and 66 seconds sooner (they were
+    // running on long past the end of the sentence) while a third stops 4.4
+    // seconds later and no longer stops at all on the half-second setting. That
+    // is a behaviour change an opted-in user would otherwise meet with no
+    // warning, and auto-stop is off by default, so the people affected are
+    // exactly the people who went looking for it.
+    Entry(
+      id: "noisy-room-dictation",
+      icon: "waveform.badge.exclamationmark",
+      title: "Dictation holds up in a noisy room",
+      description:
+        """
+        A fan, an engine, an air conditioner or a plane cabin used to make EnviousWispr \
+        lose your words, most often the ones you started with. What came back read \
+        perfectly and was missing the beginning, which is the worst way for it to be \
+        wrong. The part of the app that decides where you were speaking now ignores the \
+        low rumble those rooms produce, so your sentence survives them. Nothing about \
+        your recording or the audio being transcribed changed, and quiet rooms behave \
+        exactly as before. If you use auto-stop, expect its timing to move in a noisy \
+        room: it usually stops much sooner than it used to, and on the half-second \
+        setting it can now wait longer or not stop on its own at all.
+        """,
+      version: "2.4.5"
+    ),
+
     // #2154. Existing users have no reason to reopen a settings page they have
     // already configured, so a redesign reaches them only by accident without
     // this. Added to the ALREADY-OPEN 2.4.5 group, which needs no
@@ -1081,7 +1109,7 @@ enum WhatsNewContent {
       icon: "ear",
       title: "Whispered speech captured",
       description:
-        "Quiet sensitivity mode now correctly captures whispered speech that was previously dropped.",
+        "Improved whispered-speech detection. Very quiet or clipped recordings may still be misheard.",
       version: "1.9.0"
     ),
     Entry(

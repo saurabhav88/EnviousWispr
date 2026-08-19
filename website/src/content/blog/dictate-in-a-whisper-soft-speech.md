@@ -13,9 +13,9 @@ keywords:
   - "soft speech voice to text"
 faqs:
   - question: "Can I dictate in a whisper with EnviousWispr?"
-    answer: "Yes. EnviousWispr is built to capture quiet and whispered speech, including soft words at the very start of a sentence that used to get dropped. You can speak in a low voice at night or in a shared office and still get an accurate transcript. It runs on-device on Apple Silicon, so your audio never leaves your Mac."
+    answer: "Yes. EnviousWispr is built to capture quiet and whispered speech, including soft words at the very start of a sentence that used to get dropped. We test this against real whispered recordings on both engines. One case we have not solved yet: a whisper that also contains a sudden loud sound, a knock or a chair scraping, can still come back wrong. It runs on-device on Apple Silicon, so your audio never leaves your Mac."
   - question: "Why did my first word sometimes get cut off before?"
-    answer: "Voice detection trims silence so the transcription engine only hears speech. If your first word was very soft, the old behavior sometimes mistook it for silence and trimmed it away. EnviousWispr now recognizes when a real but quiet opening word is about to be discarded and keeps it, so a soft 'Actually' or 'Overall' stays in your text."
+    answer: "Speech detection decides which parts of your recording reach the transcription engine. If your first word was very soft, the old behavior sometimes read it as silence and left it out. Two things now prevent that: the app recognizes when a real but quiet opening word is about to be discarded and keeps it, so a soft 'Actually' or 'Overall' stays in your text, and the detection itself now works from a copy of your audio with the low rumble stripped out, so a fan or an engine in the room can no longer drown out the decision."
   - question: "Do I need to change a setting to capture quiet speech?"
     answer: "No. This is the default behavior for everyone. There is no whisper mode to turn on and no sensitivity slider to tune. The app handles soft and far-away speech automatically."
   - question: "Is whispered dictation private?"
@@ -30,7 +30,7 @@ EnviousWispr now captures that quiet speech. You can whisper, speak softly, or s
 
 ## Why quiet speech used to disappear
 
-Before any words reach the transcription engine, the app has to answer one question many times a second: is this sound speech, or is it silence? That step matters. It trims the dead air so the engine only works on the parts where you are actually talking, which keeps things fast and keeps stray room noise out of your text.
+Before any words reach the transcription engine, the app has to answer one question many times a second: is this sound speech, or is it not? That step matters. Only the stretches it marks as speech are handed to the engine, which keeps things fast and keeps stray room noise out of your text. It also means the answer has to be right, because a word the app does not recognise as speech is a word the engine never sees.
 
 The trouble is that a whisper sits much closer to silence than a normal speaking voice does. When the bar for "this is speech" was set for ordinary talking, a soft voice fell underneath it. The app heard you, decided it was probably just quiet room noise, and trimmed it away. You got a short transcript, or nothing at all.
 
@@ -38,13 +38,15 @@ The most frustrating version of this was the clipped first word. You would start
 
 ## What changed
 
-Two things, both working underneath without anything for you to configure.
+Three things, all working underneath without anything for you to configure.
 
 First, the app is better at recognizing soft speech as speech. The detection that decides what to keep no longer assumes you are talking at a normal volume, so faint and far-away words make it through instead of being thrown out as noise.
 
 Second, there is a safeguard for that soft opening word. When the app is about to trim what looks like silence from the very start of a recording, it checks whether it is actually about to discard a real, quiet word. If it is, it keeps it. A gentle "Overall" or "Actually" at the top of a thought stays where you said it.
 
-Together, that means the things that used to vanish (a whispered sentence, a soft start, a word spoken while you leaned back in your chair) now stay in your transcript.
+Third, and this one arrived later: the detection now works from a copy of your audio with the low rumble taken out. A running fan, a car engine, an aeroplane cabin and an air conditioner all put out a lot of energy underneath the range a human voice lives in, and that rumble was loud enough to swamp the decision. Speech in those rooms was being read as silence and left out. Your recording is not altered and neither is the audio your engine transcribes; only the copy used for that one decision is.
+
+Together, that means the things that used to vanish (a whispered sentence, a soft start, a word spoken while you leaned back in your chair, a sentence begun next to a running fan) now stay in your transcript.
 
 ## Nothing to turn on
 
@@ -65,9 +67,11 @@ Because all of this runs [on-device on your Mac](/how-it-works/), the quiet stay
 
 We will be candid: this is the kind of improvement that should have been the behavior all along, and for a while it was not. Quiet speech getting dropped was a real gap, and the fix was less about adding a feature and more about the app finally hearing you the way you expected it to. If you tried dictating softly in the past and it let you down, it is worth another try.
 
+One case is still open, and we would rather say so than let you find it. A very quiet recording that also contains a sudden loud sound, a door closing or a chair moving, can still come back as confident text that is not what you said. We have that filed and we are working on it. Everything above was measured against real whispered and noisy recordings on both engines; this one case was measured too, and it has not passed yet.
+
 ## What changes for you
 
-Nothing in the steps. Hold the keybind, speak, release, and the polished text lands in your clipboard or pastes where you are working. What changed is the volume floor. The soft, the distant, and the whispered now make it in.
+Nothing in the steps. Hold the keybind, speak, release, and the polished text lands in your clipboard or pastes where you are working. What changed is the volume floor, and what the room is allowed to be doing while you talk. The soft, the distant, the whispered, and the sentence spoken over a running fan now make it in.
 
 ## Related posts
 

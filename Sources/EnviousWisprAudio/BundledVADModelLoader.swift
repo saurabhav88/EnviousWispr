@@ -16,6 +16,25 @@ enum BundledVADModelLoader {
     case loadFailed(Error)
   }
 
+  /// The Silero build this app ships, **chosen by benchmark and pinned** (#2184).
+  ///
+  /// It is deliberately NOT `FluidAudio.ModelNames.VAD.sileroVad`, which names
+  /// v6.2.1. The two were swept together from threshold 0.05 to 0.85 over 72
+  /// labelled recordings and compared at matched false-alarm rate: **v6.0.0 wins
+  /// at every operating point**, with loud-environment recall of 100/98/86/84/81%
+  /// against v6.2.1's 87/76/64/61/57%. Both bundles declare identical inputs and
+  /// outputs; only the weights differ, and no calibration guidance ships with the
+  /// newer one — its HuggingFace card still documents v6.0.0, the upgrade commit
+  /// is a bare artifact swap, and its `config.json` is `{}`.
+  ///
+  /// So do not "fix" this to track the library constant, and do not add a guard
+  /// asserting the two are equal: that guard would force us onto the measurably
+  /// worse model. `BundledVADModelPinTests` asserts the inverse — that this name
+  /// is the pinned one and that it still differs from the library's. If a future
+  /// FluidAudio release changes the constant again, rerun the sweep before
+  /// following it.
+  static let pinnedModelName = "silero-vad-unified-256ms-v6.0.0"
+
   static func loadModel(in bundle: Bundle) throws -> MLModel {
     // No `subdirectory:` — Tuist's `.folderReference` embeds the referenced
     // folder directly at the top level of `Contents/Resources`, flattening
@@ -26,7 +45,7 @@ enum BundledVADModelLoader {
     // (`CoreMLOutputClassifier.load(resourceURL:)`).
     guard
       let url = bundle.url(
-        forResource: "silero-vad-unified-256ms-v6.0.0", withExtension: "mlmodelc")
+        forResource: pinnedModelName, withExtension: "mlmodelc")
     else {
       throw LoadError.resourceNotFound
     }
