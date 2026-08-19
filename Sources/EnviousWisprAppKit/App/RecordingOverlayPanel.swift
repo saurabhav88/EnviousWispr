@@ -2063,10 +2063,12 @@ struct SpectrumWheelIcon: View {
 /// the mark it replaces, and it means the meter's visual weight does not shift
 /// down the header as the level drops.
 ///
-/// Fixed height in every state, which is load-bearing rather than cosmetic: today
-/// hands-free scales the lips mark to 2x, and that is the single biggest height
-/// jump anywhere in the pill. A meter that occupies one strip whatever the mode is
-/// what lets the header stop changing size between hold-to-talk and hands-free.
+/// Fixed height in every state. This KEEPS a property rather than adding one: the
+/// capsule is already height-neutral across modes, because `scaleEffect` does not
+/// participate in layout (measured — `fittingSize` 95x44 at both 1.0 and 2.0).
+/// The 2x mark overflows its own slot visually and nothing resizes. A meter
+/// occupying one strip avoids reintroducing a real size change where the old
+/// design only ever had an apparent one.
 struct RainbowLevelMeter: View {
   /// Normalised audio level 0.0-1.0, polled every ~50 ms by the parent view. The
   /// same value `RainbowLipsIcon` reads, so this adds no timer and no new source.
@@ -2454,19 +2456,96 @@ struct RecordingOverlayView: View {
     _preview = State(initialValue: initialPreview)
   }
 
-  var body: some View {
-    VStack(spacing: 6) {
-      HStack(spacing: 10) {
-        // Rainbow lips icon — audio-reactive during recording.
-        // Scales to 2x in hands-free (locked) mode.
-        RainbowLipsIcon(size: 24, audioLevel: audioLevel)
-          .scaleEffect(lockState.isLocked ? 2.0 : 1.0)
+  /// #2202: the preview pill's header — timer hard left, live meter beside it,
+  /// recording mode on the right.
+  ///
+  /// **The badge buys CLARITY, not height stability — the first version of this
+  /// comment claimed the wrong thing.** It said the capsule's 2x mark was "the
+  /// single biggest height jump anywhere in the pill". It is not a height jump at
+  /// all: `scaleEffect` is a rendering transform and does not participate in
+  /// layout. Measured — an `HStack` holding a 24pt box reports `fittingSize`
+  /// 95x44 at `scaleEffect(1.0)` and 95x44 at `scaleEffect(2.0)`. The capsule is
+  /// already height-neutral across modes; the 2x mark overflows its own slot
+  /// visually and nothing resizes.
+  ///
+  /// What the badge actually fixes: a size change is a signal you can only read
+  /// by COMPARISON — you notice it only if you saw the other size a moment
+  /// earlier — while a badge naming the mode works the first time you see it.
+  /// This header is height-neutral across modes too, which is a property to KEEP
+  /// rather than one this chunk introduces.
+  ///
+  /// **The timer renders in both modes.** The capsule hides it when locked, which
+  /// is backwards: hands-free is the mode that runs for minutes, so it is the one
+  /// that needs a clock. Founder decision, 2026-08-19.
+  @ViewBuilder
+  private var previewHeader: some View {
+    HStack(spacing: 12) {
+      Text(FormattingConstants.formatDuration(elapsed))
+        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+        .foregroundStyle(.white.opacity(0.94))
 
-        if !lockState.isLocked {
-          Text(FormattingConstants.formatDuration(elapsed))
-            .font(.system(size: 13, weight: .medium, design: .monospaced))
-            .foregroundStyle(.white)
-            .transition(.opacity)
+      RainbowLevelMeter(audioLevel: audioLevel)
+
+      Spacer(minLength: 8)
+
+      if lockState.isLocked {
+        // A filled badge, because the mode it announces persists until the user
+        // presses again. A size change is a weak signal — you only notice it if
+        // you saw the other size a second earlier.
+        HStack(spacing: 6) {
+          Circle()
+            .fill(Color.white.opacity(0.88))
+            .frame(width: 5, height: 5)
+          Text(LivePreviewCopy.handsFreeMode)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(.white.opacity(0.88))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(Color.white.opacity(0.13)))
+        .transition(.opacity)
+      } else {
+        Text(LivePreviewCopy.listeningMode)
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(.white.opacity(0.5))
+          .transition(.opacity)
+      }
+    }
+    .textCase(.uppercase)
+    .padding(.horizontal, 16)
+    .padding(.top, 9)
+    .padding(.bottom, 8)
+    .frame(height: Self.previewHeaderHeight)
+    .overlay(alignment: .bottom) {
+      Rectangle()
+        .fill(Color.white.opacity(0.09))
+        .frame(height: 0.5)
+    }
+  }
+
+  /// Fixed, so the header cannot change height between modes. Read by a test.
+  static let previewHeaderHeight: CGFloat = 34
+
+  var body: some View {
+    // #2202 row 1 of the shared-root table: the capsule wants 6pt between its
+    // stacked pieces; the preview puts a ruled header directly against its
+    // reading well and supplies its own spacing inside each section.
+    VStack(spacing: usesPreviewLayout ? 0 : 6) {
+      if usesPreviewLayout {
+        previewHeader
+      } else {
+        HStack(spacing: 10) {
+          // Rainbow lips icon — audio-reactive during recording.
+          // Scales to 2x in hands-free (locked) mode.
+          RainbowLipsIcon(size: 24, audioLevel: audioLevel)
+            .scaleEffect(lockState.isLocked ? 2.0 : 1.0)
+
+          if !lockState.isLocked {
+            Text(FormattingConstants.formatDuration(elapsed))
+              .font(.system(size: 13, weight: .medium, design: .monospaced))
+              .foregroundStyle(.white)
+              .transition(.opacity)
+          }
         }
       }
 
@@ -2509,8 +2588,14 @@ struct RecordingOverlayView: View {
       value: audioLevel
     )
     .animation(.easeInOut(duration: 0.25), value: noticeState.message)
-    .padding(.horizontal, 14)
-    .padding(.vertical, 10)
+    // #2202 row 8 of the shared-root table. The capsule keeps its uniform inset;
+    // the preview zeroes it and each section supplies its own, because a header
+    // strip over a reading well does not want one rectangle of padding wrapped
+    // around both. Migrated ATOMICALLY with the section padding above and below:
+    // split across two commits, whatever shipped in between would have had no
+    // insets at all.
+    .padding(.horizontal, usesPreviewLayout ? 0 : 14)
+    .padding(.vertical, usesPreviewLayout ? 0 : 10)
     // #2201: the preview pill's height must be a function of what it is SHOWING,
     // never of how tall it happens to be already.
     //
@@ -2578,7 +2663,17 @@ struct RecordingOverlayView: View {
     case .waiting:
       // One line, so the pill starts compact and the growth the user sees is their
       // own words arriving rather than space that was always reserved.
-      previewText(LivePreviewCopy.listening, dimmed: true, lines: 1)
+      //
+      // #2202: in the PREVIEW layout the header already says `Listening`, so
+      // repeating it here would greet a first-time user with the same word twice
+      // in one small box — worse than either alone. The well shows nothing and
+      // the pill stays one header tall until real words arrive. The capsule has
+      // no header, so it keeps the sentence.
+      if usesPreviewLayout {
+        previewText("", dimmed: true, lines: 1)
+      } else {
+        previewText(LivePreviewCopy.listening, dimmed: true, lines: 1)
+      }
     case .unavailable(let reason):
       // Say why rather than sitting blank. A blank preview reads as "it did not
       // hear me", which is the exact anxiety this feature exists to remove. Two
@@ -2622,6 +2717,15 @@ struct RecordingOverlayView: View {
       // height, which is what lets the pill still grow a line at a time.
       .frame(maxHeight: Self.previewHeight(lines: lines), alignment: .bottom)
       .clipped()
+      // #2202: the well's own inset, replacing what the shared root padding used
+      // to give it. **Outside the cap, deliberately.** Padding inserted before
+      // `.frame(maxHeight:)` is subtracted from the five-line viewport, so the
+      // box would clip at four-and-a-bit lines and the founder's five-line rule
+      // would quietly stop holding — a number that looks like it means lines
+      // while meaning something else.
+      .padding(.horizontal, usesPreviewLayout ? 16 : 0)
+      .padding(.top, usesPreviewLayout ? 12 : 0)
+      .padding(.bottom, usesPreviewLayout ? 15 : 0)
   }
 
   /// Height of `lines` lines of the preview font.
