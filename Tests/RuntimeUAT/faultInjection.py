@@ -1129,18 +1129,6 @@ def R1_readiness_lost_after_load(**_) -> dict:
 
     # ---- 2. relaunch with the fault armed ---------------------------------
     # `open` does not pass environment; exec the bundle binary directly.
-    log_path = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
-
-    def log_tail(from_byte: int) -> str:
-        try:
-            with open(log_path, "rb") as fh:
-                fh.seek(from_byte)
-                return fh.read().decode("utf-8", "replace")
-        except OSError:
-            return ""
-
-    log_mark = os.path.getsize(log_path) if os.path.exists(log_path) else 0
-
     env = dict(os.environ)
     env["EW_FORCE_READINESS_LOST"] = "1"
     env["EW_FAULT_INJECTION"] = "1"
@@ -1152,29 +1140,42 @@ def R1_readiness_lost_after_load(**_) -> dict:
     # var not propagated, the seam removed, or the one-shot consumed by an earlier
     # load. Ordinary crash recovery then produces the SAME History row and every
     # assertion below is true while the post-load guard was never exercised.
-    # This is the difference between "the guard worked" and "the guard never ran".
+    #
+    # THE EVIDENCE IS THE MARKER FILE, NOT THE LOG. `AppLogger.log` DISCARDS these
+    # lines unless the persisted "Enable debug mode" setting is on, and nothing in
+    # the fault-injection prerequisites requires it — so a log-based control makes
+    # a correct run report invalid on any machine where that setting happens to be
+    # off, after already killing the app. `<spool>.readiness-retry` is written by
+    # PRODUCTION code and exists only when the readiness retry was granted, so it
+    # is both independent of an optional setting and specific to this code path.
+    retry_marker = os.path.join(spool_dir, f"{spool_id}.readiness-retry")
     fault_deadline = time.time() + 60
     fault_fired = False
     while time.time() < fault_deadline and not fault_fired:
-        time.sleep(2)
-        tail = log_tail(log_mark)
-        if "class=load_returned_not_ready" in tail and "one retry granted" in tail:
+        time.sleep(1)
+        if os.path.exists(retry_marker):
             fault_fired = True
+            break
+        # A terminal replay means the guard is gone and the take died — the
+        # negative control's signature, and there is nothing further to wait for.
+        if not os.path.exists(os.path.join(spool_dir, f"{spool_id}.ewrec")):
+            break
 
     if not fault_fired:
-        tail = log_tail(log_mark)
-        if "replay unrecoverable" in tail or "replay failed" in tail:
-            # The negative control's signature: the guard is gone, the take died.
+        if not os.path.exists(os.path.join(spool_dir, f"{spool_id}.ewrec")):
+            # The spool is GONE: the replay was terminal and deletion was
+            # requested. That is the #2207 data loss, and it is what the negative
+            # control must produce.
             return {"evidence_valid": True,
                     "evidence": {"spool": spool_id,
-                                 "reason": "replay was terminal — the #2207 deletion"},
+                                 "reason": "spool destroyed — the #2207 deletion"},
                     "assertions": {"readiness_fault_fired": True,
                                    "recording_survived": False,
                                    "recovered_to_history": False}}
         return invalid(
-            "the readiness fault never fired: no `class=load_returned_not_ready` "
-            "deferral in the log. The seam did not arm, so nothing was tested. "
-            "Check EW_FORCE_READINESS_LOST reached the process.")
+            f"no readiness-retry marker appeared for {spool_id} and the spool is "
+            "still present: the seam did not arm, so nothing was tested. Check "
+            "EW_FORCE_READINESS_LOST reached the process.")
 
     # ---- 4. TRIGGER the granted retry deterministically ---------------------
     # A granted deferral leaves the spool eligible, but eligibility is not a
