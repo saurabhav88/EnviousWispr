@@ -2718,7 +2718,8 @@ struct RecordingOverlayView: View {
   /// measurement.
   private func previewText(_ message: String, dimmed: Bool, lines: Int) -> some View {
     Text(message)
-      .font(.system(size: 12))
+      .font(.system(size: Self.previewFontSize))
+      .lineSpacing(Self.previewLineSpacing)
       .foregroundStyle(.white.opacity(dimmed ? 0.5 : 0.92))
       .multilineTextAlignment(.leading)
       .fixedSize(horizontal: false, vertical: true)
@@ -2727,6 +2728,34 @@ struct RecordingOverlayView: View {
       // height, which is what lets the pill still grow a line at a time.
       .frame(maxHeight: Self.previewHeight(lines: lines), alignment: .bottom)
       .clipped()
+      // #2203: fade the top edge so overflow reads as SCROLLING rather than as a
+      // line sliced off.
+      //
+      // **This is also how older words dim, and doing it with a mask rather than
+      // per-line opacity is the point.** The obvious implementation — dim the
+      // older lines — needs to know where the text engine broke the lines, which
+      // is exactly the knowledge `previewText`'s doc comment records as
+      // unavailable: a character budget is wrong by a factor of two for CJK and
+      // wrong again for any proportional font. A gradient over the well needs no
+      // line information at all and gives the same result in every script, because
+      // older words are higher up by construction.
+      //
+      // Masking does not participate in layout, so the measured height and the
+      // five-line cap are untouched — verified by the sizing suite, which runs
+      // against this same view.
+      .mask(
+        usesPreviewLayout
+          ? AnyView(
+            LinearGradient(
+              stops: [
+                .init(color: .clear, location: 0),
+                .init(color: .white, location: Self.previewFadeFraction),
+                .init(color: .white, location: 1),
+              ],
+              startPoint: .top,
+              endPoint: .bottom))
+          : AnyView(Rectangle())
+      )
       // #2202: the well's own inset, replacing what the shared root padding used
       // to give it. **Outside the cap, deliberately.** Padding inserted before
       // `.frame(maxHeight:)` is subtracted from the five-line viewport, so the
@@ -2738,21 +2767,45 @@ struct RecordingOverlayView: View {
       .padding(.bottom, usesPreviewLayout ? 15 : 0)
   }
 
-  /// Height of `lines` lines of the preview font.
+  /// #2203: ONE authority for preview typography. The `Text` and the cap both read
+  /// these, so a change to the type size cannot leave the two disagreeing.
   ///
-  /// Derived from the font's own metrics rather than a literal, so the cap tracks
-  /// the type size instead of drifting silently if it changes. An exact multiple
-  /// of the line height matters: the clip lands on a line boundary, so no row is
-  /// ever cut through the middle of its glyphs. Verified against the render — five
-  /// lines measured 75pt, matching 5 x 15.
-  private static func previewHeight(lines: Int) -> CGFloat {
-    let font = NSFont.systemFont(ofSize: 12)
-    return ceil(font.ascender - font.descender + font.leading) * CGFloat(lines)
+  /// **The previous version's doc comment claimed the cap "tracks the type size"
+  /// and it did not.** It built `NSFont.systemFont(ofSize: 12)` from its own
+  /// hardcoded 12, independent of the `Text`'s own `.font(.system(size: 12))`
+  /// twenty lines away. Two literals that had to agree, with a comment asserting
+  /// they could not drift — which is worse than no comment, because it stops the
+  /// next reader checking.
+  static let previewFontSize: CGFloat = 14
+  static let previewLineSpacing: CGFloat = 4
+
+  /// #2203: how much of the reading well's height the top fade occupies.
+  ///
+  /// Deliberately small. The fade exists to say "there is more above this", not to
+  /// hide a line — at the cap the oldest visible line is still readable, just
+  /// clearly on its way out. A larger value starts costing the user words they
+  /// have not finished reading.
+  static let previewFadeFraction: CGFloat = 0.22
+
+  /// Height of `lines` lines of the preview font, INCLUDING the gaps between them.
+  ///
+  /// **Counting the gaps is not a refinement, it is the difference between five
+  /// lines and four.** SwiftUI adds `lineSpacing` BETWEEN lines, so five lines
+  /// occupy five glyph heights plus four gaps. A cap that counts only the glyphs
+  /// under-measures by 4 x `previewLineSpacing` and clips the fifth line partway.
+  ///
+  /// An exact multiple still matters: the clip lands on a line boundary, so no row
+  /// is cut through the middle of its glyphs.
+  static func previewHeight(lines: Int) -> CGFloat {
+    let font = NSFont.systemFont(ofSize: previewFontSize)
+    let glyphHeight = ceil(font.ascender - font.descender + font.leading)
+    let gaps = max(lines - 1, 0)
+    return glyphHeight * CGFloat(lines) + previewLineSpacing * CGFloat(gaps)
   }
 
   /// Five lines, matching the shape the founder tested against Spokenly: the pill
   /// grows a line at a time up to this, then holds its size and scrolls.
-  private static let previewMaxLines = 5
+  static let previewMaxLines = 5
 }
 
 // MARK: - PolishingOverlayView
