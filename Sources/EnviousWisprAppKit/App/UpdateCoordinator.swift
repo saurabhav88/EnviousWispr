@@ -374,16 +374,32 @@ final class UpdateCoordinator {
   /// Banner click. Tags source, persists install attempt, fires telemetry,
   /// flushes PostHog (so the event survives Sparkle's relaunch), then triggers
   /// the install via the service.
+  /// #2197: routed through `triggerGuardedInstall` like the other two entry
+  /// points, rather than calling `service.triggerInstall()` directly.
+  ///
+  /// This closes a hole that PREDATES this issue. #1019 added the
+  /// active-dictation guard so an install could never relaunch the app
+  /// mid-capture, and wired it to the menu item and the notification tap — but
+  /// the banner kept its own direct call, so a banner click has been able to
+  /// relaunch mid-dictation the whole time. The clipboard-cleanup clause would
+  /// have inherited exactly the same gap.
+  ///
+  /// Found by the diff review sweeping the SET of install entry points after
+  /// this change added a new member to the refusal condition; I had swept two of
+  /// three (workflow-process.md RULE: self-review-and-grep-before-codex — an
+  /// entity sweep finds wrong statements, a member sweep finds omissions).
+  ///
+  /// The click telemetry still fires on refusal, because the user DID click and
+  /// a dropped event would misreport banner engagement. Only the install is
+  /// withheld.
   func handleBannerClicked(version: String, isCritical: Bool, secondsVisible: Int) {
-    lastInstallSource = "banner"
-    recordInstallAttempt(version: version, source: "banner")
     TelemetryService.shared.updateBannerClicked(
       version: version,
       isCritical: isCritical,
       secondsVisible: secondsVisible
     )
     TelemetryService.shared.flushTelemetry(reason: .updateInstall)
-    service.triggerInstall()
+    triggerGuardedInstall(source: "banner")
   }
 
   enum InstallAttemptOutcome: Equatable {
