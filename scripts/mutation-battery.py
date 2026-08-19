@@ -477,6 +477,40 @@ class Lane:
         if rc != 0:
             raise Refusal(f"tuist generate failed (rc={rc}); see {self.log_dir/'tuist-generate.log'}")
         self.generated = True
+        self._prepare_packages()
+
+    def _prepare_packages(self):
+        """Run the canonical lane's package preparation, once, before the first suite.
+
+        `xcode-test.sh:85-96` consumes the SwiftPM seed and then RESOLVES with a fallback that discards
+        a damaged `SourcePackages` and retries unseeded. Skipping it means a seed left by an interrupted
+        run — or one carrying another worktree's absolute paths (#2179) — fails the opening baseline
+        against package state the canonical command recovers from. An overnight battery then produces no
+        results at all until someone clears DerivedData by hand, which is the same wasted night the lane
+        timeout exists to prevent.
+
+        Calls the SAME helpers rather than reproducing them: this runner already carries one duplicated
+        invocation and a guard to police it, and #2165 exists to delete both. Sourcing their library
+        adds no second copy to reconcile.
+        """
+        rc, out = run(
+            ["bash", "-c",
+             'set -e; source scripts/lib/spm-seed.sh; '
+             'ew_seed_consume "$PWD" "$1"; '
+             'ew_seed_resolve_or_unseed "$1" '
+             '  xcodebuild -resolvePackageDependencies -project EnviousWispr.xcodeproj '
+             '  -scheme EnviousWispr -derivedDataPath "$1"',
+             "_", str(self.derived_data)],
+            cwd=self.worktree,
+            log_path=self.log_dir / "package-prep.log",
+            timeout=GENERATE_TIMEOUT_SECONDS,
+        )
+        if rc != 0:
+            # Not fatal: the canonical fallback already degrades a damaged clone to a slow unseeded
+            # resolve. If even that failed, the baseline is about to say so with a real build error,
+            # which is a better message than anything guessed here.
+            print(f"    note: package preparation exited {rc}; the baseline will report the real "
+                  f"failure if it matters ({self.log_dir / 'package-prep.log'})")
 
     def build_command(self, suite: str):
         """The invocation this runner issues. Extracted so the self-test can assert it agrees with

@@ -1612,6 +1612,46 @@ elif "timed out after" not in _body:
 else:
     print("  ok  a timeout appends to the lane log rather than overwriting it")
 
+# The canonical lane consumes the SwiftPM seed and resolves with a fallback that discards a damaged
+# SourcePackages (xcode-test.sh:85-96). Skipping it makes the opening baseline fail against package
+# state the canonical command recovers from — an overnight run producing nothing until someone clears
+# DerivedData by hand.
+ran += 1
+_calls = []
+_real_run5 = battery.run
+
+
+def _capture_prep(cmd, cwd, log_path=None, timeout=None):
+    _calls.append(" ".join(str(c) for c in cmd))
+    return 0, ""
+
+
+battery.run = _capture_prep
+try:
+    _l = battery.Lane(Path(tempfile.gettempdir()), Path("/tmp/dd"), Path(tempfile.mkdtemp()))
+    _l.generate_once()
+finally:
+    battery.run = _real_run5
+
+_joined = " || ".join(_calls)
+if "ew_seed_consume" not in _joined or "ew_seed_resolve_or_unseed" not in _joined:
+    failures.append("the canonical package preparation runs before the first suite — it does NOT: "
+                    f"{_calls}")
+elif _calls and "ensure_generated" in _calls[0] and "seed" not in _calls[0]:
+    print("  ok  the canonical package preparation runs before the first suite")
+else:
+    failures.append("the canonical package preparation runs before the first suite — but not AFTER "
+                    f"generation, which is the order the canonical lane uses: {_calls}")
+
+# It must call THEIR helpers, not a reimplementation: this runner already carries one duplicated
+# invocation plus a guard to police it, and #2165 exists to delete both.
+ran += 1
+if "scripts/lib/spm-seed.sh" not in _joined:
+    failures.append("package preparation sources the canonical helper rather than reimplementing it — "
+                    "it does NOT")
+else:
+    print("  ok  package preparation sources the canonical helper rather than reimplementing it")
+
 print()
 if failures:
     print(f"{len(failures)} of {ran} FAILED:")
