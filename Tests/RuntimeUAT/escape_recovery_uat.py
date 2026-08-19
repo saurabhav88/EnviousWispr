@@ -460,7 +460,22 @@ def dictate_then_cancel(base):
         ensure_stopped(base, "the start signal never arrived, so the take may be late",
                        grace=5.0)
         return "no-start"
-    subprocess.run(["afplay", w.tts(SENTENCE, engine="say")], timeout=60)
+    # THE SPEECH HAS TO ACTUALLY PLAY, and this used to fail open.
+    #
+    # `afplay` ran with no `check`, so a missing file, an empty synthesis or a
+    # busy audio device produced NO sound and no complaint. The recorder then
+    # captured silence, the pipeline concluded `noSpeech`, and the run reported
+    # that the recovery branch never fired — a PRODUCT verdict from a harness
+    # that never spoke. Measured by hand 2026-08-19, where it cost two runs and
+    # a wrong diagnosis before the log said `noSpeech`.
+    #
+    # Checked in both directions: the clip must exist and be big enough to be
+    # speech rather than a header, and playback must exit cleanly.
+    clip = w.tts(SENTENCE, engine="say")
+    size = os.path.getsize(clip) if os.path.exists(clip) else 0
+    if size < 8192:
+        raise Aborted(f"the speech clip is missing or too small to be speech ({size} bytes at {clip})")
+    subprocess.run(["afplay", clip], timeout=60, check=True)
     si.hold_key("lctrl", 0.12)
     if not wait_for("the session to reach a terminal",
                     lambda: "dictation_terminal" in log_since(base), deadline=60.0):
