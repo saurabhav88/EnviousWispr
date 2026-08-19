@@ -85,6 +85,34 @@ public enum ClipboardCleanup {
 
   private static var pending: Pending?
 
+  // KNOWN LIMIT, raised by review three times and adjudicated three times, so
+  // the reasoning is here rather than in a review thread nobody will find.
+  //
+  // If the process exits inside the 200 ms window, this task is destroyed and
+  // the user's clipboard keeps our dictated payload instead of their own.
+  //
+  // THAT LOSS IS NOT NEW. There is no `applicationShouldTerminate` in this app
+  // (swept: `AppDelegate` implements only
+  // `applicationShouldTerminateAfterLastWindowClosed`), so `NSApp.terminate` runs
+  // straight through to exit as one synchronous main-thread chain. Today's
+  // INLINE `Task.sleep` in `deliver` is abandoned by that chain in exactly the
+  // same way — a suspended task cannot interleave into it.
+  //
+  // WHAT DOES CHANGE IS LIKELIHOOD, and it is worth saying rather than claiming
+  // strict equality: after this change the session has already finished when the
+  // window opens, so the app looks idle and a user is marginally more likely to
+  // quit inside it.
+  //
+  // Both proposed fixes are worse than the defect. A synchronous flush restores
+  // BEFORE the delay expires, which can pull our payload off the board before the
+  // target app has read the ⌘V we already posted — the wrong-text failure, via a
+  // teardown hook. Deferring termination introduces an app that may not quit, in
+  // an app that has never had a termination hook at all. A lost clipboard entry
+  // is recoverable; neither of those is.
+  //
+  // What IS closed is the only newly-reachable route: an update relaunch, which
+  // `UpdateCoordinator.installRefusedNow` now refuses while cleanup is pending.
+
   // MARK: Test seams
   //
   // Deliberately NOT `#if DEBUG`. A DEBUG-only declaration referenced from a
