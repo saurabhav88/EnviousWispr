@@ -19,20 +19,14 @@ struct PreviewPillPaletteTests {
 
   init() { _ = NSApplication.shared }
 
-  /// Every colour the pill draws. A new one added to the palette and forgotten
-  /// here is the failure this list exists to make loud.
-  nonisolated static let allPillColours: [(name: String, colour: Color)] = [
-    ("surface", PreviewPillPalette.surface),
-    ("border", PreviewPillPalette.border),
-    ("divider", PreviewPillPalette.divider),
-    ("timer", PreviewPillPalette.timer),
-    ("modeQuiet", PreviewPillPalette.modeQuiet),
-    ("badgeFill", PreviewPillPalette.badgeFill),
-    ("badgeText", PreviewPillPalette.badgeText),
-    ("text", PreviewPillPalette.text),
-    ("textDimmed", PreviewPillPalette.textDimmed),
-    ("notice", PreviewPillPalette.notice),
-  ]
+  /// **Read from the palette, never re-listed here.** Three review rounds ran on
+  /// hand-written copies of these lists in this file; each fix pinned one array and
+  /// left a sibling, and the last round found that comparing NAMES cannot catch a
+  /// tuple whose colour reference is wrong. Two files that must agree is the defect,
+  /// so there is now one file and this one reads it.
+  nonisolated static var allPillColours: [(name: String, colour: Color)] {
+    PreviewPillPalette.allColours
+  }
 
   // MARK: - The pair is real
 
@@ -88,35 +82,10 @@ struct PreviewPillPaletteTests {
       "dark text on the dark surface is \(String(format: "%.1f", ratio)):1, below 4.5:1")
   }
 
-  /// **Every colour that draws TEXT, not just the ones I happened to think of.**
-  ///
-  /// The first version of this suite checked `text` and `notice` and stopped
-  /// there. Cloud review found `modeQuiet` and `textDimmed` sitting at about
-  /// 3.1:1 in light — and `textDimmed` is what renders the `.unavailable`
-  /// message, which is a full sentence the user has to read to learn why the
-  /// preview is not running.
-  ///
-  /// Enumerating the SET rather than picking members is the fix: a colour added
-  /// to the palette and forgotten here now fails, instead of being legible only
-  /// if somebody remembered to add a case.
-  /// Colours that do NOT draw text, and so are exempt from the contrast floor.
-  ///
-  /// **This is the list that must be maintained, not the text one** — and that
-  /// inversion is the point. A new colour is a text colour unless someone
-  /// deliberately says otherwise here, so forgetting to update anything makes the
-  /// completeness check fail LOUD rather than pass quietly.
-  nonisolated static let nonTextColours: Set<String> = [
-    "surface", "border", "divider", "badgeFill",
-  ]
-
-  nonisolated static let textColours: [(name: String, colour: Color)] = [
-    ("text", PreviewPillPalette.text),
-    ("textDimmed", PreviewPillPalette.textDimmed),
-    ("timer", PreviewPillPalette.timer),
-    ("modeQuiet", PreviewPillPalette.modeQuiet),
-    ("badgeText", PreviewPillPalette.badgeText),
-    ("notice", PreviewPillPalette.notice),
-  ]
+  /// Read from the palette. See `allPillColours`.
+  nonisolated static var textColours: [(name: String, colour: Color)] {
+    PreviewPillPalette.textColours
+  }
 
   @Test(
     "every text colour clears 4.5:1 on the pill surface, in both appearances",
@@ -156,60 +125,61 @@ struct PreviewPillPaletteTests {
       path: "Sources/EnviousWisprAppKit/App/PreviewPillPalette.swift")
     let source = try String(contentsOf: url, encoding: .utf8)
 
-    let declared = source
-      .split(separator: "\n")
-      .compactMap { line -> String? in
-        guard let r = line.range(of: #"static let \w+ = Color\.stDynamic"#, options: .regularExpression)
-        else { return nil }
-        return String(line[r]).replacingOccurrences(of: "static let ", with: "")
-          .replacingOccurrences(of: " = Color.stDynamic", with: "")
-      }
+    // **Whole-source match, not line-by-line.** Review round 5: a declaration
+    // formatted as `static let futureLabel =` with `Color.stDynamic(...)` on the
+    // NEXT line was silently skipped by a per-line regex, and the ten existing
+    // declarations still cleared the count floor — so a colour could be absent
+    // from every collection while this check passed. That is the same shape as
+    // every other finding on this file: a comparison narrower than the language.
+    let pattern = #"static\s+let\s+(\w+)\s*(?::\s*Color\s*)?=\s*Color\s*\.\s*stDynamic"#
+    let regex = try NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators])
+    let ns = source as NSString
+    let declared = regex
+      .matches(in: source, range: NSRange(location: 0, length: ns.length))
+      .map { ns.substring(with: $0.range(at: 1)) }
 
     // Fail closed: a parse that finds nothing would make every check below vacuous.
     #expect(
       declared.count >= 10,
       "parsed only \(declared.count) colours out of PreviewPillPalette.swift — the reader is wrong, not the palette")
 
-    // BOTH hand-written arrays are pinned to the parsed source, not just the one
-    // review named. `allPillColours` drives the light/dark pairing check and is a
-    // SIBLING of `textColours`: fixing one and leaving the other is the same
-    // defect one level down, which is exactly what happened between the previous
-    // two review rounds.
+    // The palette's own collections must account for every declaration. This is
+    // now the ONLY hand-written mapping in the system, it lives beside the
+    // declarations it lists, and nothing in the test target duplicates it.
     let paired = Set(Self.allPillColours.map(\.name))
     let missingFromPairing = Set(declared).subtracting(paired).sorted()
     #expect(
       missingFromPairing.isEmpty,
       """
-      \(missingFromPairing.joined(separator: ", ")) exist in PreviewPillPalette but are \
-      not in `allPillColours`, so their light and dark values are never compared. A \
-      colour that resolves the same in both themes would ship one theme's paint into \
-      the other and nothing here would notice.
+      \(missingFromPairing.joined(separator: ", ")) are declared in PreviewPillPalette \
+      but absent from `allColours`, so they are never checked for a light/dark pair \
+      or for contrast. A colour resolving the same in both themes would ship one \
+      theme's paint into the other and nothing would notice.
       """)
 
     let stalePairing = paired.subtracting(Set(declared)).sorted()
     #expect(
       stalePairing.isEmpty,
-      "\(stalePairing.joined(separator: ", ")) are in `allPillColours` but no longer declared")
+      "\(stalePairing.joined(separator: ", ")) are in `allColours` but no longer declared")
 
-    let checked = Set(Self.textColours.map(\.name))
-    let accounted = checked.union(Self.nonTextColours)
-    let missing = Set(declared).subtracting(accounted).sorted()
+    // The palette's two collections must PARTITION the declarations: every colour
+    // is text or surface, never both, never neither. `allColours` is their sum, so
+    // the check above already covers "neither" — this covers "both", which would
+    // make a surface colour carry a contrast obligation it cannot meet.
+    let textNames = Set(PreviewPillPalette.textColours.map(\.name))
+    let surfaceNames = Set(PreviewPillPalette.surfaceColours.map(\.name))
+    let inBoth = textNames.intersection(surfaceNames).sorted()
+    #expect(
+      inBoth.isEmpty,
+      "\(inBoth.joined(separator: ", ")) appear in BOTH textColours and surfaceColours")
 
     #expect(
-      missing.isEmpty,
+      textNames.count + surfaceNames.count == Self.allPillColours.count,
       """
-      \(missing.joined(separator: ", ")) exist in PreviewPillPalette but are neither \
-      contrast-checked nor listed as non-text. Add each to `textColours` if it draws \
-      text, or to `nonTextColours` if it does not — silence here is what let the \
-      unreadable dimmed pair ship in the first place.
+      the two collections hold \(textNames.count) + \(surfaceNames.count) names but \
+      allColours has \(Self.allPillColours.count) entries — a duplicate inside one of \
+      them would silently drop a colour from these set comparisons.
       """)
-
-    // And the reverse: a name in the test lists that no longer exists in the
-    // palette means the lists have gone stale against a rename or deletion.
-    let stale = accounted.subtracting(Set(declared)).sorted()
-    #expect(
-      stale.isEmpty,
-      "\(stale.joined(separator: ", ")) are listed here but no longer declared in the palette")
   }
 
   /// The notice is the colour that was hardcoded white and would have been

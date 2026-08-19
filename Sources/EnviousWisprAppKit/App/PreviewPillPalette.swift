@@ -118,6 +118,40 @@ enum PreviewPillPalette {
     lightRGB: (0.059, 0.039, 0.102, 0.88),
     darkRGB: (1.0, 1.0, 1.0, 0.95))
 
+  // MARK: - The canonical collections
+  //
+  // **These live in the PALETTE, not in the test, and that is the structural half
+  // of the fix.** Three review rounds ran on hand-written arrays in the test file
+  // that had to be kept in step with the declarations here; each round pinned one
+  // array and left a sibling. Two files that must agree is the defect. One file
+  // that lists its own members can still be wrong, but it is wrong where the
+  // declaration is, in the reader's eye, rather than three hundred lines away in
+  // another target.
+  //
+  // A colour belongs to exactly one of these. `allColours` is their sum and is
+  // what a test iterates.
+
+  /// Colours that draw TEXT and therefore carry a contrast obligation.
+  static let textColours: [(name: String, colour: Color)] = [
+    ("timer", timer),
+    ("modeQuiet", modeQuiet),
+    ("badgeText", badgeText),
+    ("text", text),
+    ("textDimmed", textDimmed),
+    ("notice", notice),
+  ]
+
+  /// Colours that do not draw text: surfaces, borders, fills.
+  static let surfaceColours: [(name: String, colour: Color)] = [
+    ("surface", surface),
+    ("border", border),
+    ("divider", divider),
+    ("badgeFill", badgeFill),
+  ]
+
+  /// Every colour the pill draws.
+  static let allColours: [(name: String, colour: Color)] = textColours + surfaceColours
+
   // MARK: - Test seam
 
   /// Resolve a pill colour against a named appearance, so a test can assert the
