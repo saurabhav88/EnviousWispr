@@ -194,9 +194,9 @@ enum PillMetrics {
   /// geometry code reasons about that frame as though it were the visible pill.
   /// Any margin inside the panel therefore moves the capsule that far off its
   /// edge, and a bottom recording-to-recovery transition jumps upward by the
-  /// margin — the continuing-presentation contract in
-  /// `.claude/knowledge/pill-position-behavior.md`
-  /// RULE: continuing-panel-vs-fresh-panel.
+  /// margin. That transition is a CONTINUING presentation — the same pill in a
+  /// replaced panel, whose frame is inherited precisely so the visible capsule
+  /// does not move — so a margin makes it move the one time it must not.
   ///
   /// A margin looked necessary because the pill drew its own SwiftUI shadow,
   /// which a tight frame would clip. It does not: `showPanel` sets
