@@ -128,6 +128,26 @@ public enum RecoveryFailureClass: String, Sendable {
   case xpcUnreachable = "xpc_unreachable"
   case cancelled
   case notReady = "not_ready"
+  // #2132: the six below fill a residual that was 100% of genuine recovery
+  // failures (18 events / 30d to 2026-08-19). They are produced by
+  // `recoveryFailureClass(for:)` in `EnviousWisprASR`, which is the only module
+  // that can see the four `internal` error families D-028 keeps isolated.
+  // VERSION FLOOR: installs below the release carrying this keep emitting
+  // `other`, so any query spanning the boundary needs an `app_version`
+  // dimension — `analytics-operations.md` RULE:
+  // enum-backed-properties-carry-retired-vocabularies-split-by-version. Reading
+  // the drop in `other` as a behaviour change is the #1813 defect.
+  // `asr_` prefixed deliberately: `transcription_failed` is ALREADY a
+  // daily-report metric key for a different concept
+  // (`workers/daily-report/test/report.test.js`). Different field, so no
+  // functional collision — but one token meaning two things in a wire
+  // vocabulary is cheap to avoid now and expensive to undo after it ships.
+  case transcriptionFailed = "asr_transcription_failed"
+  case whisperKitModelLoad = "whisperkit_model_load"
+  case parakeetModelLoad = "parakeet_model_load"
+  case parakeetTranscription = "parakeet_transcription"
+  case xpcTransport = "xpc_transport"
+  case managerNotOwned = "manager_not_owned"
   case other
 }
 
