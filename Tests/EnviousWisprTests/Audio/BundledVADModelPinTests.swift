@@ -36,9 +36,9 @@ struct BundledVADModelPinTests {
 
   /// The tell that a dependency bump has moved under us. If this fails, the
   /// library has adopted our build — or we have silently adopted theirs. Rerun
-  /// the sweep in
-  /// `docs/feature-requests/issue-2184-2026-08-18-noise-robust-dictation.md` §2.5
-  /// premise C before changing anything here; do not just delete the assertion.
+  /// the sweep recorded on issue **#2184** before changing anything here; do not
+  /// just delete the assertion. The sweep itself is not in this tree — it lives
+  /// under gitignored `docs/` — so the issue is the address that works.
   @Test("the pin is still a deliberate divergence from the library's default")
   func pinStillDivergesFromTheLibraryDefault() {
     #expect(

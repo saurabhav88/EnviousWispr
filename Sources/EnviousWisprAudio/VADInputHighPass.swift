@@ -31,8 +31,11 @@ import Foundation
 /// worse than both ends (it destroys two loud clips that were intact at 100% and
 /// at today's behaviour). 300 Hz is word-level identical and more aggressive in
 /// the band where soft voices live, so 250 is the conservative point on a
-/// plateau rather than a peak. Do not retune without rerunning the gates in
-/// `docs/feature-requests/issue-2184-2026-08-18-noise-robust-dictation.md` §13.
+/// plateau rather than a peak. Do not retune without rerunning the gates that
+/// justified it. **They are on issue #2184, not in this tree** — the plan and the
+/// frozen measurement receipts live under `docs/`, which is gitignored, so a
+/// path to them is a pointer a reader of this file cannot follow. The issue's
+/// comments carry the corpus, both engines' decodes, and the sweep.
 ///
 /// ## Contract
 ///
