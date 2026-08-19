@@ -153,8 +153,10 @@ struct VADInputConditioningFixtureTests {
   /// `SilenceDetector.prepare`; if either changes, this must change with it or
   /// the suite stops measuring what production does.
   private static func makeRealVadManager() throws -> any StreamingVad {
+    // Read the name from the loader rather than repeating it, so this suite can
+    // never end up measuring a different model from the one production loads.
     let modelURL = RepoRoot.sourceURL(
-      "Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc")
+      "Sources/EnviousWispr/Resources/VAD/\(BundledVADModelLoader.pinnedModelName).mlmodelc")
     guard FileManager.default.fileExists(atPath: modelURL.path) else {
       throw FixtureError.modelMissing(modelURL.path)
     }

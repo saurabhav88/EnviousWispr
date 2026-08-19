@@ -20,7 +20,7 @@ struct BundledVADModelLoaderTests {
       .deletingLastPathComponent()  // EnviousWisprTests/ -> .../Tests/
       .deletingLastPathComponent()  // Tests/ -> repo root
       .appendingPathComponent(
-        "Sources/EnviousWispr/Resources/VAD/silero-vad-unified-256ms-v6.0.0.mlmodelc")
+        "Sources/EnviousWispr/Resources/VAD/\(BundledVADModelLoader.pinnedModelName).mlmodelc")
   }
 
   @Test("loads the model with the pinned FluidAudio VAD compute policy")
@@ -38,7 +38,8 @@ struct BundledVADModelLoaderTests {
 
     try FileManager.default.copyItem(
       at: checkedIn,
-      to: fixtureRoot.appendingPathComponent("silero-vad-unified-256ms-v6.0.0.mlmodelc"))
+      to: fixtureRoot.appendingPathComponent(
+        "\(BundledVADModelLoader.pinnedModelName).mlmodelc"))
 
     let fixtureBundle = try #require(Bundle(path: fixtureRoot.path))
     let model = try BundledVADModelLoader.loadModel(in: fixtureBundle)
