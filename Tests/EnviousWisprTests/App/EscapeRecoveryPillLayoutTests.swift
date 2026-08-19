@@ -126,6 +126,42 @@ struct EscapeRecoveryPillLayoutTests {
     #expect(contrastRatio(PillSpectrum.dark[0], PillSpectrum.lightGround) < 3.0)
   }
 
+  /// **The gap Codex round 1 found, closed structurally.**
+  ///
+  /// The contrast cases measure against `PillSpectrum.darkGround` /
+  /// `lightGround`. If the pill's actual fill is translucent, or simply drifts
+  /// from those constants, every one of those cases keeps passing while
+  /// measuring a ground that is not the one on screen — the guarantee would be
+  /// bought without the cover. This pins the two together.
+  @Test("The ground the contrast cases measure is the ground that renders")
+  func theFillsAreOpaqueAndMatchTheMeasuredGround() {
+    for (fill, ground, name) in [
+      (PillPalette.dark.fill, PillSpectrum.darkGround, "dark"),
+      (PillPalette.light.fill, PillSpectrum.lightGround, "light"),
+    ] {
+      guard let srgb = NSColor(fill).usingColorSpace(.sRGB) else {
+        Issue.record("the \(name) pill fill could not be resolved in sRGB")
+        continue
+      }
+      // Opaque, so nothing the pill floats over can change the ground.
+      #expect(srgb.alphaComponent == 1.0, "the \(name) pill fill is translucent")
+      #expect(abs(Double(srgb.redComponent) - ground.red) < 0.001)
+      #expect(abs(Double(srgb.greenComponent) - ground.green) < 0.001)
+      #expect(abs(Double(srgb.blueComponent) - ground.blue) < 0.001)
+    }
+  }
+
+  @Test("Reduce Motion drops the decoration and keeps the countdown")
+  func reduceMotionRemovesTheBloomOnly() {
+    #expect(RailMotion.showsBloom(reduceMotion: false))
+    #expect(!RailMotion.showsBloom(reduceMotion: true))
+
+    // The rail still ADVANCES under Reduce Motion. Suppressing it would leave
+    // those users no warning at all, and snapping it to full — which a nil
+    // animation does — would claim the three seconds were already spent.
+    #expect(SpectralRail.drawnFraction(for: 0.5) == 0.5)
+  }
+
   @Test("The text is readable on the pill in both themes")
   func bothPalettesKeepTheSentenceLegible() {
     // 4.5:1 is the WCAG floor for body text, and the sentence is the whole

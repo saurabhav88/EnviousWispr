@@ -36,6 +36,7 @@ struct EscapeRecoveryPillView: View {
   static let dwellSeconds: Double = 3.0
 
   @Environment(\.colorScheme) private var colorScheme
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   @State private var dismissTask: Task<Void, Never>?
   /// One-shot. Without it a fast double-click restores twice — and the second
@@ -49,51 +50,17 @@ struct EscapeRecoveryPillView: View {
   private var palette: PillPalette { PillPalette.forScheme(colorScheme) }
 
   var body: some View {
-    HStack(spacing: PillMetrics.midGap) {
-      Text(DictationNarrator.escapeRecoveryPillTitle)
-        .font(.system(size: PillMetrics.titleSize, weight: .medium))
-        .foregroundStyle(palette.text)
-        .lineLimit(1)
-
-      Button(action: {
+    EscapeRecoveryPillFace(
+      progress: progress,
+      palette: palette,
+      showsBloom: RailMotion.showsBloom(reduceMotion: reduceMotion),
+      onPress: {
         guard !acted else { return }
         acted = true
         dismissTask?.cancel()
         onPaste()
-      }) {
-        Text(DictationNarrator.escapeRecoveryPillAction)
-          .font(.system(size: PillMetrics.actionSize, weight: .semibold))
-          .foregroundStyle(palette.actionText)
-          .lineLimit(1)
-          .frame(width: PillMetrics.actionWidth, height: PillMetrics.actionHeight)
-          .background(
-            RoundedRectangle(cornerRadius: PillMetrics.actionRadius, style: .continuous)
-              .fill(isActionHovered ? palette.actionFillHover : palette.actionFill)
-          )
-          .overlay(
-            RoundedRectangle(cornerRadius: PillMetrics.actionRadius, style: .continuous)
-              .strokeBorder(palette.actionRim, lineWidth: 1)
-          )
-          .contentShape(Rectangle())
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel(DictationNarrator.escapeRecoveryPillAction)
-      .onHover { isActionHovered = $0 }
-    }
-    .padding(.leading, PillMetrics.leadInset)
-    .padding(.trailing, PillMetrics.trailInset)
-    // The sentence centres in the WHOLE pill, because the rail is an overlay on
-    // the rim rather than a row in a stack. Putting the bar in the layout steals
-    // height from the bottom and lifts the text above the pill's true middle,
-    // which reads as cramped at the top.
-    .frame(width: PillMetrics.pillWidth, height: PillMetrics.pillHeight)
-    .background(Capsule().fill(palette.fill))
-    .overlay(Capsule().strokeBorder(palette.rim, lineWidth: 1))
-    .overlay(
-      SpectralRail(progress: progress, palette: palette)
-        .padding(PillMetrics.railInset)
     )
-    .shadow(color: palette.shadow, radius: palette.shadowRadius, y: 5)
     .onHover { isHovering in
       if isHovering {
         dismissTask?.cancel()
@@ -135,6 +102,68 @@ struct EscapeRecoveryPillView: View {
       guard !Task.isCancelled, !acted else { return }
       onExpire()
     }
+  }
+}
+
+// MARK: - EscapeRecoveryPillFace
+
+/// The pill as it looks at ONE moment of the countdown.
+///
+/// Split from the stateful wrapper above so the appearance can be rendered at
+/// any `progress` without waiting three seconds to reach it — by a SwiftUI
+/// preview, by a screenshot harness validating the design against its mock, or
+/// by the running app. The wrapper owns the clock; this owns the picture, and
+/// neither can drift from the other because there is only one picture.
+struct EscapeRecoveryPillFace: View {
+  var progress: Double
+  var palette: PillPalette
+  var showsBloom: Bool = true
+  var onPress: () -> Void = {}
+
+  /// Purely visual, so it lives with the picture rather than the clock.
+  @State private var isActionHovered = false
+
+  var body: some View {
+    HStack(spacing: PillMetrics.midGap) {
+      Text(DictationNarrator.escapeRecoveryPillTitle)
+        .font(.system(size: PillMetrics.titleSize, weight: .medium))
+        .foregroundStyle(palette.text)
+        .lineLimit(1)
+
+      Button(action: onPress) {
+        Text(DictationNarrator.escapeRecoveryPillAction)
+          .font(.system(size: PillMetrics.actionSize, weight: .semibold))
+          .foregroundStyle(palette.actionText)
+          .lineLimit(1)
+          .frame(width: PillMetrics.actionWidth, height: PillMetrics.actionHeight)
+          .background(
+            RoundedRectangle(cornerRadius: PillMetrics.actionRadius, style: .continuous)
+              .fill(isActionHovered ? palette.actionFillHover : palette.actionFill)
+          )
+          .overlay(
+            RoundedRectangle(cornerRadius: PillMetrics.actionRadius, style: .continuous)
+              .strokeBorder(palette.actionRim, lineWidth: 1)
+          )
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(DictationNarrator.escapeRecoveryPillAction)
+      .onHover { isActionHovered = $0 }
+    }
+    .padding(.leading, PillMetrics.leadInset)
+    .padding(.trailing, PillMetrics.trailInset)
+    // The sentence centres in the WHOLE pill, because the rail is an overlay on
+    // the rim rather than a row in a stack. Putting the bar in the layout steals
+    // height from the bottom and lifts the text above the pill's true middle,
+    // which reads as cramped at the top.
+    .frame(width: PillMetrics.pillWidth, height: PillMetrics.pillHeight)
+    .background(Capsule().fill(palette.fill))
+    .overlay(Capsule().strokeBorder(palette.rim, lineWidth: 1))
+    .overlay(
+      SpectralRail(progress: progress, palette: palette, showsBloom: showsBloom)
+        .padding(PillMetrics.railInset)
+    )
+    .shadow(color: palette.shadow, radius: palette.shadowRadius, y: 5)
   }
 }
 
@@ -187,6 +216,16 @@ enum PillMetrics {
 /// recording, polishing and language pills are dark in every environment
 /// (`OverlayCapsuleBackground`), so a light Mac shows this one pill differently
 /// from its neighbours until they follow.
+///
+/// **The fills are OPAQUE, and that is a correctness requirement rather than a
+/// taste (Codex review, 2026-08-19).** The other overlay pills are translucent,
+/// but this one carries a measured contrast guarantee: every countdown colour
+/// clears 3:1 against the pill it is drawn on. A translucent fill composites
+/// with whatever the panel happens to float over, so the ground the test
+/// measures stops being the ground that renders — the dark purple rail falls to
+/// about 2.3:1 over white content. Restoring any `.opacity(...)` here silently
+/// voids that guarantee, which is why `PillSpectrum.darkGround` /
+/// `lightGround` and these fills are pinned to each other by a test.
 struct PillPalette {
   var fill: Color
   var rim: Color
@@ -204,7 +243,7 @@ struct PillPalette {
   }
 
   static let dark = PillPalette(
-    fill: Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.90),
+    fill: Color(red: 0.078, green: 0.078, blue: 0.11),
     rim: .white.opacity(0.14),
     text: .white,
     actionFill: .white.opacity(0.16),
@@ -217,7 +256,7 @@ struct PillPalette {
   )
 
   static let light = PillPalette(
-    fill: Color(red: 0.98, green: 0.98, blue: 0.99).opacity(0.94),
+    fill: Color(red: 0.98, green: 0.98, blue: 0.99),
     rim: .black.opacity(0.10),
     text: Color(red: 0.10, green: 0.10, blue: 0.13),
     actionFill: .black.opacity(0.075),
@@ -309,6 +348,24 @@ struct BottomRail: Shape {
   }
 }
 
+/// What Reduce Motion changes about the rail, and what it must NOT change.
+///
+/// **Adopted with a deviation from the review that raised it (Codex round 1,
+/// 2026-08-19).** The proposed fix was
+/// `withAnimation(reduceMotion ? nil : .linear(...))`. A nil animation does not
+/// stop the change, it applies it INSTANTLY — so the rail would jump to full the
+/// moment the pill appeared, telling a Reduce Motion user their three seconds
+/// were already gone. That is the one direction a countdown may not be wrong in,
+/// and it is the same defect the instant-hover-reset comment above describes.
+///
+/// So Reduce Motion drops the DECORATION and keeps the INFORMATION: the bloom
+/// goes, the rail still advances. A 3pt line filling in place is not the
+/// large-scale movement the setting exists to suppress, and suppressing it
+/// outright would leave exactly those users with no warning at all.
+enum RailMotion {
+  static func showsBloom(reduceMotion: Bool) -> Bool { !reduceMotion }
+}
+
 /// The three seconds, drawn along the rim.
 ///
 /// The gradient is painted across the FULL width and then MASKED by the drawn
@@ -319,14 +376,17 @@ struct BottomRail: Shape {
 struct SpectralRail: View {
   var progress: Double
   var palette: PillPalette
+  var showsBloom: Bool = true
   var lineWidth: CGFloat = 3
 
   var body: some View {
     ZStack {
-      spectrum
-        .mask { rail }
-        .blur(radius: 4)
-        .opacity(0.8)
+      if showsBloom {
+        spectrum
+          .mask { rail }
+          .blur(radius: 4)
+          .opacity(0.8)
+      }
       spectrum
         .mask { rail }
     }
