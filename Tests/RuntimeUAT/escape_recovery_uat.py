@@ -265,11 +265,15 @@ def restore(before):
     # keeps turning on.
     for key, captured in before.items():
         now = defaults_read(key)
-        want = None if captured is None else captured[0]
-        got = None if now is None else now[0]
-        if got != want:
+        # The WHOLE tuple, value AND plist type. `defaults_read` returns both and
+        # an earlier version compared only the value, which passes a restore that
+        # changed the TYPE while printing the same text: `escapeRecoveryEnabled`
+        # captured as integer 1 and handed back as boolean true reads "1" either
+        # way. The developer is left with a preference of the wrong type, the app
+        # may read it differently, and the run reports success.
+        if now != captured:
             ok = False
-            print(f"    RESTORE DID NOT TAKE for {key}: wanted {want!r}, reads {got!r}")
+            print(f"    RESTORE DID NOT TAKE for {key}: wanted {captured!r}, reads {now!r}")
     if not ok:
         print("    !! at least one preference was not restored — check it by hand")
     return ok
