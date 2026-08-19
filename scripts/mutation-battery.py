@@ -110,11 +110,19 @@ FAILURE_LINE_RE = re.compile(r"✘ .*")
 #   ✘ Test "display name" recorded an issue at File.swift:12:3: Expectation failed: ...
 #   ✘ Test functionName() recorded an issue ...
 #   ✘ Suite "SuiteName" failed after 0.1 seconds.
-TEST_VERDICT_RE = re.compile(r'^✘\s+Test\s+(?:"(?P<quoted>[^"]*)"|(?P<bare>[A-Za-z_][\w]*)\s*\()')
+# A display name may CONTAIN quotes — Swift Testing prints them unescaped, and this repo has three:
+#   @Test("founder repro: \"Other apps.\" (2 words, punctuation kept) bypasses")
+# so terminating on the first inner quote truncated the identity to `founder repro: `, which then
+# matched nothing and made those tests unusable in a recipe. Terminate on the closing quote that is
+# FOLLOWED BY a verdict verb instead — greedy up to the last one. Cloud review, PR #2158.
+_VERDICT_VERB = r'(?:recorded|passed|failed|skipped)'
+TEST_VERDICT_RE = re.compile(
+    r'^✘\s+Test\s+(?:"(?P<quoted>.*)"\s+' + _VERDICT_VERB + r'|(?P<bare>[A-Za-z_][\w]*)\s*\()')
 # The same identity in the same position, for EITHER outcome — used to enumerate what a clean baseline
 # actually ran, so a recipe naming a test that does not exist is refused before anything is mutated.
 TEST_NAME_ANY_RE = re.compile(
-    r'^[✔✘]\s+Test\s+(?:"(?P<quoted>[^"]*)"|(?P<bare>[A-Za-z_][\w]*)\s*\()', re.MULTILINE)
+    r'^[✔✘]\s+Test\s+(?:"(?P<quoted>.*)"\s+' + _VERDICT_VERB + r'|(?P<bare>[A-Za-z_][\w]*)\s*\()',
+    re.MULTILINE)
 SUITE_VERDICT_RE = re.compile(r'^✘\s+Suite\s')
 COMPILE_ERROR_RE = re.compile(r"^.*?: error: ", re.MULTILINE)
 

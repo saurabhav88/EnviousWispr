@@ -1506,6 +1506,41 @@ if _rc != 2 or "could not read any test names" not in _out:
 else:
     print("  ok  unreadable baseline names refuse the run")
 
+# A display name may CONTAIN quotes; Swift Testing prints them unescaped. Terminating on the first
+# inner quote truncated the identity, so these tests could never be named in a recipe. All three names
+# below are REAL tests in this repo, not invented — the defect was reachable today.
+for _label, _line, _want in [
+    ("a display name with an embedded quoted phrase parses whole",
+     '✘ Test "founder repro: "Other apps." (2 words, punctuation kept) bypasses" recorded an issue at F.swift:1:1',
+     'founder repro: "Other apps." (2 words, punctuation kept) bypasses'),
+    ("a display name ending in a quoted word parses whole",
+     '✔ Test "hardware class is real, never "unknown"" passed after 0.1 seconds.',
+     'hardware class is real, never "unknown"'),
+    ("a quoted default value inside a name parses whole",
+     '✔ Test "lastObservedPhase falls back to protocol default "warmup"" passed after 0.1 seconds.',
+     'lastObservedPhase falls back to protocol default "warmup"'),
+    ("an ordinary name still parses",
+     '✘ Test "an ordinary name" failed after 0.002 seconds with 1 issue.',
+     "an ordinary name"),
+]:
+    ran += 1
+    _got = {m.group("quoted") for m in battery.TEST_NAME_ANY_RE.finditer(_line)
+            if m.group("quoted") is not None}
+    if _got != {_want}:
+        failures.append(f"{_label} — got {_got}, wanted {{{_want!r}}}")
+    else:
+        print(f"  ok  {_label}")
+
+# And the failure-matching regex must agree with the enumerating one, or a name that validates would
+# then fail to match when the row runs.
+ran += 1
+_q = '✘ Test "founder repro: "Other apps." (2 words, punctuation kept) bypasses" recorded an issue'
+if battery.failed_test_identities([_q]) != {'founder repro: "Other apps." (2 words, punctuation kept) bypasses'}:
+    failures.append("both identity readers agree on a quoted name — they do NOT, so a name that "
+                    "validates at load would fail to match when the row runs")
+else:
+    print("  ok  both identity readers agree on a quoted name")
+
 print()
 if failures:
     print(f"{len(failures)} of {ran} FAILED:")
