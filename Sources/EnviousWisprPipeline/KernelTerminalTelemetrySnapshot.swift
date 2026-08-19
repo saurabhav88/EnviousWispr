@@ -41,6 +41,57 @@ struct KernelSignalAttributionTelemetry: Sendable, Equatable {
   let captureNativeChannelCount: Int?
 }
 
+/// #2184 — what the VAD's segments did to this take's audio, frozen at the
+/// conditioner.
+///
+/// The fleet had no signal for this class at all. A take whose speech the VAD
+/// read as silence produces a fluent, confident, short transcript, and the only
+/// place the shape was ever visible was a debug-build log line nobody queries.
+/// Six of the founder's takes lost 42%, 87% and 55% of their audio and not one
+/// of them was countable.
+///
+/// **Stamped immediately after `CapturedAudioConditioner.condition` returns**,
+/// so it is present on every terminal that happens after conditioning —
+/// completion, salvaged completion, ASR-empty-despite-audio, and the post-ASR
+/// no-speech terminals — and absent on the ones that conclude before it. That
+/// absence is the correct reading and is why the field is optional: a take that
+/// never reached the conditioner has no conditioning to report, and defaulting
+/// it would put a fabricated ratio in the denominator of every query.
+///
+/// It is deliberately NOT hung off the completion payload. That path runs only
+/// after a SUCCESSFUL decode, while the zero-output cases this record exists to
+/// reveal take the no-speech and asr-empty terminals instead — so a completion-
+/// only signal would omit precisely the failures it was added for.
+///
+/// Content-free: three counts and one closed-vocabulary label. Never audio,
+/// never transcript.
+struct KernelVADConditioningTelemetry: Sendable, Equatable {
+  /// Samples the capture produced, before any VAD trim.
+  let rawSampleCount: Int
+
+  /// Samples after `SampleFilter`, BEFORE the raw fallback and before padding —
+  /// `ConditionedAudio.filteredSampleCount`. Equal to `rawSampleCount` when the
+  /// filter no-op'd, which is what makes the ratio below readable.
+  let filteredSampleCount: Int
+
+  /// `ConditionedAudio.conditioningReason`: `filtered`, `filteredPaddedToMinimum`,
+  /// `rawFallbackTooAggressive` or `rawSoftOnset`. A closed vocabulary owned by
+  /// that type; do not mint values here.
+  let conditioningReason: String
+
+  /// The fraction of the capture the VAD kept. A population of these is what
+  /// makes the failure countable: an ordinary take sits near 1.0, and the
+  /// aeroplane takes that started this issue sat between 0.07 and 0.43.
+  ///
+  /// **Not an acceptance metric, in either direction.** Seven measured clips
+  /// retain between 13% and 51% of their audio and still deliver 100% of their
+  /// words, and one retains 7% and loses 88%. Read it as a distribution that
+  /// shifts, never as a per-take verdict, and do not build a fallback on it.
+  var retainedRatio: Double {
+    Double(filteredSampleCount) / Double(max(rawSampleCount, 1))
+  }
+}
+
 /// Everything the terminal telemetry path needs, frozen at the moment the take
 /// ended and valid forever after.
 ///
@@ -72,6 +123,12 @@ struct KernelTerminalTelemetrySnapshot: Sendable {
   /// which drives the real kernel and fails if the value is not populated —
   /// added because a mutation hardcoding `.ordinary` survived every other test.
   var deliveryDisposition: DeliveryDisposition = .ordinary
+
+  /// #2184. Nil when the take concluded before conditioning ran. Defaulted so
+  /// every existing construction site is unchanged; the default is honest here
+  /// in a way `deliveryDisposition`'s is not, because "no conditioning happened"
+  /// is exactly what a nil means.
+  var vadConditioning: KernelVADConditioningTelemetry?
 }
 
 /// Whether a terminal row describes a delivered dictation or a held recovery

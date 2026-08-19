@@ -133,6 +133,12 @@ final class KernelTelemetryState {
   /// `nil` if no Phase-2 retry ever started. See `ASRRetryOutcome`.
   var asrRetryOutcome: ASRRetryOutcome?
 
+  /// #2184: what the VAD's segments did to this take's audio, stamped once
+  /// immediately after `CapturedAudioConditioner.condition` returns. Nil until
+  /// then, and nil forever on a take that concluded earlier — which is the
+  /// reading, not a gap. Owner: `KernelVADConditioningTelemetry`.
+  var vadConditioning: KernelVADConditioningTelemetry?
+
   /// `takeID` has NO default on purpose: an accepted session must state its own
   /// identity. A default would let a caller silently start a take with no key.
   func resetForNewSession(takeID: String, polishEnabled: Bool) {
@@ -152,6 +158,7 @@ final class KernelTelemetryState {
     signalAttribution = nil
     asrSalvageOutcome = nil
     asrRetryOutcome = nil
+    vadConditioning = nil
   }
 }
 
