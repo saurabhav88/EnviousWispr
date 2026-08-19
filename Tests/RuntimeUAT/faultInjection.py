@@ -1060,6 +1060,23 @@ def R1_readiness_lost_after_load(**_) -> dict:
         return {f[:-len(".ewrec")] for f in os.listdir(spool_dir)
                 if f.endswith(".ewrec")}
 
+    def history_row(recovery_id: str):
+        """The History entry for this spool, or None. The only signal that
+        SURVIVES a successful retry's cleanup — both the spool and its
+        readiness-retry sidecar are deleted once the recording is saved."""
+        if not os.path.isdir(transcripts):
+            return None
+        for entry in os.listdir(transcripts):
+            if not entry.endswith(".json"):
+                continue
+            try:
+                d = json.load(open(os.path.join(transcripts, entry)))
+            except Exception:
+                continue
+            if d.get("recoverySessionID") == recovery_id:
+                return d
+        return None
+
     # ---- refuse on an ambiguous kill target -------------------------------
     pids = dev_pids()
     if len(pids) != 1:
@@ -1149,6 +1166,7 @@ def R1_readiness_lost_after_load(**_) -> dict:
     # PRODUCTION code and exists only when the readiness retry was granted, so it
     # is both independent of an optional setting and specific to this code path.
     retry_marker = os.path.join(spool_dir, f"{spool_id}.readiness-retry")
+    spool_file = os.path.join(spool_dir, f"{spool_id}.ewrec")
     fault_deadline = time.time() + 60
     fault_fired = False
     while time.time() < fault_deadline and not fault_fired:
@@ -1161,66 +1179,101 @@ def R1_readiness_lost_after_load(**_) -> dict:
         if not os.path.exists(os.path.join(spool_dir, f"{spool_id}.ewrec")):
             break
 
+    def disarm() -> None:
+        """Never leave a faulted app running. `EW_FORCE_READINESS_LOST` is a
+        one-shot, so an armed process that this scenario abandons will consume
+        the fault on its next unrelated engine load, and every later check runs
+        against a deliberately broken app."""
+        try:
+            subprocess.run(["kill", "-9", str(faulted.pid)])
+        except Exception:
+            pass
+        time.sleep(1.0)
+        restart = dict(os.environ)
+        restart.pop("EW_FORCE_READINESS_LOST", None)
+        restart["EW_FAULT_INJECTION"] = "1"
+        subprocess.Popen([app_path], env=restart,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     if not fault_fired:
         if not os.path.exists(os.path.join(spool_dir, f"{spool_id}.ewrec")):
-            # The spool is GONE: the replay was terminal and deletion was
-            # requested. That is the #2207 data loss, and it is what the negative
-            # control must produce.
+            # A vanished spool is NOT proof of deletion. A recovery wake arriving
+            # between the grant and this poll lets a SUCCESSFUL retry delete both
+            # the spool and its marker — observed in this session's first live
+            # run, where the wake redeemed the recording within the same second.
+            # History is the only signal that survives that cleanup.
+            row = history_row(spool_id)
+            if row is not None:
+                disarm()
+                return {"evidence_valid": True,
+                        "evidence": {"spool": spool_id,
+                                     "reason": "retry completed before the poll observed "
+                                               "the marker",
+                                     "text": (row.get("text") or "")[:60]},
+                        "assertions": {"readiness_fault_fired": True,
+                                       "recording_survived": True,
+                                       "recovered_to_history": bool(row.get("isRecovered"))}}
+            # No spool AND no History row: the replay was terminal and deletion
+            # was requested. That is the #2207 data loss the negative control
+            # must produce.
+            disarm()
             return {"evidence_valid": True,
                     "evidence": {"spool": spool_id,
-                                 "reason": "spool destroyed — the #2207 deletion"},
+                                 "reason": "spool destroyed and never recovered — "
+                                           "the #2207 deletion"},
                     "assertions": {"readiness_fault_fired": True,
                                    "recording_survived": False,
                                    "recovered_to_history": False}}
+        disarm()
         return invalid(
             f"no readiness-retry marker appeared for {spool_id} and the spool is "
             "still present: the seam did not arm, so nothing was tested. Check "
             "EW_FORCE_READINESS_LOST reached the process.")
 
-    # ---- 4. TRIGGER the granted retry deterministically ---------------------
-    # A granted deferral leaves the spool eligible, but eligibility is not a
-    # RUN: the coordinator schedules nothing further, and the next pass needs a
-    # wake (a dictation ending, an engine change, a mutation claim releasing) or
-    # a fresh launch. Waiting for one to happen by chance makes this scenario
-    # flaky in the worst direction — a CORRECT build times out with the spool
-    # retained and reports failure. Relaunch instead, WITHOUT the fault, which
-    # guarantees a launch-time `scanAndRecover()`.
-    # Kill ONLY the instance this scenario launched. A `dev_pids()` sweep here
-    # would kill a peer worktree's app that started during the fault-observation
-    # window — the single-target check ran minutes earlier and does not hold now.
-    # This is the same defect the previous review round fixed on the FIRST kill,
-    # reintroduced in the code added for that fix.
-    subprocess.run(["kill", "-9", str(faulted.pid)])
-    time.sleep(2.0)
-    # Drop ONLY the readiness fault. `EW_FAULT_INJECTION` must be re-set: it is
-    # supplied to the original app by its launcher, never exported into this
-    # shell, so `os.environ` does not carry it. Without it the relaunched app has
-    # no debug endpoint or token, and every later `query` or fault scenario fails
-    # until someone rebuilds — a scenario that silently disarms the harness for
-    # everything after it.
-    clean_env = dict(os.environ)
-    clean_env.pop("EW_FORCE_READINESS_LOST", None)
-    clean_env["EW_FAULT_INJECTION"] = "1"
-    subprocess.Popen([app_path], env=clean_env,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # ---- 4. LET the granted retry run; only TRIGGER one if none arrives -----
+    # MEASURED 2026-08-19, and this is the defect a live validation run exposed
+    # that no review round could: killing to "trigger" the retry DESTROYED the
+    # recording, because a same-session wake had ALREADY started it. The log
+    # sequence was `deferred ... keeping` at :10, `scan pass 2 (wake)` at :10,
+    # `attempting replay` at :11, this scenario's kill at :13 — and the next
+    # launch correctly reported `replay abandoned — a prior attempt had already
+    # started — requesting deletion`. The one-attempt guard did exactly its job;
+    # the harness caused the loss.
+    #
+    # So the order is: WAIT for the retry that may already be running, and only
+    # relaunch if none arrives. Both halves are needed — an earlier round found
+    # that waiting alone is flaky, because a wake is not guaranteed when the
+    # warm-up has already settled.
+    row = None
+    natural_deadline = time.time() + 45
+    while time.time() < natural_deadline and row is None:
+        time.sleep(2)
+        row = history_row(spool_id)
+        if row is None and not os.path.exists(spool_file):
+            break  # the spool is gone and unrecovered; stop waiting
+
+    if row is None and os.path.exists(spool_file):
+        # No wake arrived and the spool is still eligible — trigger it. Safe now:
+        # nothing is mid-replay, or the History row above would exist.
+        subprocess.run(["kill", "-9", str(faulted.pid)])
+        time.sleep(2.0)
+        # Drop ONLY the readiness fault. `EW_FAULT_INJECTION` must be re-set: it
+        # is supplied to the original app by its launcher, never exported into
+        # this shell, so `os.environ` does not carry it. Without it the relaunched
+        # app has no debug endpoint, and every later scenario fails until someone
+        # rebuilds.
+        clean_env = dict(os.environ)
+        clean_env.pop("EW_FORCE_READINESS_LOST", None)
+        clean_env["EW_FAULT_INJECTION"] = "1"
+        subprocess.Popen([app_path], env=clean_env,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # ---- 5. the verdict: a History row carrying THIS spool's id -------------
     deadline = time.time() + 75
     row = None
     while time.time() < deadline and row is None:
         time.sleep(3)
-        if not os.path.isdir(transcripts):
-            continue
-        for name in os.listdir(transcripts):
-            if not name.endswith(".json"):
-                continue
-            try:
-                d = json.load(open(os.path.join(transcripts, name)))
-            except Exception:
-                continue
-            if d.get("recoverySessionID") == spool_id:
-                row = d
-                break
+        row = history_row(spool_id)
 
     survived = row is not None
     recovered = bool(row and row.get("isRecovered"))
