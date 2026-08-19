@@ -546,6 +546,9 @@ def main():
     # the settings restore, which is the one thing that must never be skipped.
     base = log_length()
     aborted = None
+    # Assumed FAILED until the restore says otherwise, so a path that never
+    # reaches the cleanup cannot report clean settings by omission.
+    restored = False
 
     try:
         # ---- OFF path first: the promise that covers everyone -------------
@@ -651,7 +654,14 @@ def main():
             print(f"    (cleanup problem, restoring anyway: {cleanup_error})")
         finally:
             print("\n[restore] putting every setting back to what it was")
-            restore(before)
+            # The RESULT is read. `restore` reporting a failure that nothing
+            # consumes is an instrument nobody looks at: the run would print its
+            # normal summary and exit 0 while the developer's real preferences
+            # sat modified. Deliberately NOT raised from this `finally` — that
+            # would swallow whatever exception is already in flight, which is the
+            # very thing the nested try above exists to prevent. It travels as a
+            # flag and lands on the exit status instead.
+            restored = restore(before)
 
     passed = [n for n, s, _ in results if s == "PASS"]
     failed = [n for n, s, _ in results if s == "FAIL"]
@@ -670,6 +680,16 @@ def main():
         print("  This is NOT a partial pass. The remaining items were never")
         print("  exercised, and no verdict about the feature follows from it.")
     print("=" * 60)
+    if not restored:
+        # Loudest line in the summary, and it outranks the test verdicts: a green
+        # run that left the developer's own shortcut rebound is worse than a red
+        # one, because nothing else will ever mention it again.
+        print("\n  SETTINGS NOT RESTORED. Your own preferences may still be")
+        print("  changed by this run. The keys it borrows are cancelKeyCode,")
+        print("  cancelModifiersRaw and escapeRecoveryEnabled in")
+        print(f"  {DOMAIN} — check them before trusting anything above.")
+        print("=" * 60)
+        return 3
     if aborted:
         return 2
     return 1 if failed else 0
