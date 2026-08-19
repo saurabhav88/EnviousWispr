@@ -128,6 +128,59 @@ struct RecordingOverlayPreviewChromeTests {
       """)
   }
 
+  // MARK: - The padding migration left nothing behind
+
+  /// #2202 zeroes the shared root padding for the preview layout and gives each
+  /// section its own. **The notice banner is the third section and it was missed**
+  /// — a two-part edit whose second half failed its safety check aborted the whole
+  /// script before writing, and only the half that was retried landed. Cloud
+  /// review caught it; nothing in this suite did, because every other case used a
+  /// notice-free pill.
+  ///
+  /// The property: a preview pill showing a notice must be TALLER than the same
+  /// pill without one by more than the text itself, which is only true if the
+  /// notice carries an inset. Asserting the padding constant would test the
+  /// constant; asserting the height tests the outcome.
+  @Test("a notice inside the preview pill keeps an inset of its own")
+  func noticeKeepsItsInsetAfterThePaddingMigration() throws {
+    let text = LivePreviewDisplay.text("the quarterly numbers came in")
+    let without = try pillHeight(locked: false, showing: text)
+
+    let log = HeightLog()
+    let noticeState = OverlayNoticeState()
+    noticeState.message = "Recording stops in one minute."
+    let view = RecordingOverlayView(
+      audioLevelProvider: { 0.4 },
+      recordingElapsedProvider: { 127 },
+      livePreviewProvider: { text },
+      onContentHeightChange: { log.record($0) },
+      usesPreviewLayout: true,
+      lockState: OverlayLockState(),
+      noticeState: noticeState,
+      initialPreview: text
+    )
+    let host = NSHostingView(rootView: view.frame(width: Self.previewWidth))
+    let frame = NSRect(x: 0, y: 0, width: Self.previewWidth, height: 65)
+    let window = NSWindow(
+      contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    host.frame = frame
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    let with = try #require(log.reported.last, "the notice pill never reported a height")
+
+    // One line of 11pt notice text is ~14pt. Anything at or below that means the
+    // notice is sitting flush against the pill's bottom edge.
+    let grew = with - without
+    #expect(
+      grew > 20,
+      """
+      adding a notice grew the preview pill by only \(grew)pt, which is about the \
+      text alone. The notice lost its inset when the shared root padding was zeroed \
+      and is flush against the pill's edge.
+      """)
+  }
+
   // MARK: - Copy
 
   @Test("both header words are the ones the design names")

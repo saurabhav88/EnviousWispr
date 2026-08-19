@@ -2561,7 +2561,17 @@ struct RecordingOverlayView: View {
           .foregroundStyle(.white.opacity(0.95))
           .multilineTextAlignment(.center)
           .fixedSize(horizontal: false, vertical: true)
-          .frame(maxWidth: 170)
+          // 170pt suits the 185pt capsule. The preview pill is 400pt wide, so the
+          // same cap would wrap a one-line warning into three inside a box with
+          // room to spare.
+          .frame(maxWidth: usesPreviewLayout ? .infinity : 170)
+          // #2202 row 4 of the shared-root table. The notice is rendered by BOTH
+          // layouts and its ONLY inset came from the shared root padding, which
+          // the preview now zeroes — so without this it sits flush against the
+          // pill's bottom edge. The header and the reading well each received
+          // replacement padding; this is the third section and it was missed.
+          .padding(.horizontal, usesPreviewLayout ? 16 : 0)
+          .padding(.bottom, usesPreviewLayout ? 12 : 0)
           .transition(.opacity)
       }
     }
