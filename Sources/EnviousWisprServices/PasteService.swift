@@ -279,6 +279,9 @@ public enum PasteService {
       _ = AXUIElementCopyAttributeValue(axElement, kAXSubroleAttribute as CFString, &subroleRef)
       let subrole = (subroleRef as? String) ?? "<nil>"
 
+      // One reader for both answers (#1332). The third attribute keeps its own
+      // local read because nothing decides on it; it is diagnostic only.
+      let settability = readAXSettability(of: axElement)
       func settable(_ attr: String) -> Bool {
         var s: DarwinBoolean = false
         let err = AXUIElementIsAttributeSettable(axElement, attr as CFString, &s)
@@ -287,9 +290,149 @@ public enum PasteService {
 
       let msg =
         "AXDiag capture: app=\(bundleId) role=\(role) subrole=\(subrole) "
-        + "valueSettable=\(settable("AXValue")) " + "selTextSettable=\(settable("AXSelectedText")) "
+        + "valueSettable=\(settability.value.rawValue) "
+        + "selTextSettable=\(settability.selectedText.rawValue) "
         + "selRangeSettable=\(settable("AXSelectedTextRange"))"
       await AppLogger.shared.log(msg, level: .info, category: "AXDiag")
+    }
+  }
+
+  /// Whether a foreign app will accept a write to one of its attributes.
+  ///
+  /// THREE states, not a Bool, and that is the whole point. `AXUIElementIsAttributeSettable`
+  /// can fail to answer, and collapsing "it said no" together with "it did not
+  /// say" is what turns a defensive check into a self-inflicted regression:
+  /// Tier 1 is 18x faster than the keyboard route, so treating an unanswered
+  /// query as a refusal would drop apps onto the slow path for a transient AX
+  /// hiccup (#1332).
+  public enum AXSettableState: String, Equatable, Sendable {
+    case settable
+    case notSettable = "not_settable"
+    case unreadable
+  }
+
+  /// Both settability answers, sampled together at one moment.
+  ///
+  /// Kept as a PAIR because the interesting fact is the DISAGREEMENT. Measured
+  /// live on 2026-08-19: iTerm2 reports `AXValue` settable and `AXSelectedText`
+  /// NOT settable, 60 of 60 samples, and Tier 1 has never once succeeded there
+  /// in 944 pastes. WhatsApp and the loginwindow password field answer the same
+  /// way. TextEdit and Chrome answer settable to both, and Tier 1 wins there.
+  public struct AXSettability: Equatable, Sendable {
+    public let value: AXSettableState
+    public let selectedText: AXSettableState
+
+    /// One closed token rather than two fields, so a telemetry consumer can
+    /// group on the combination without joining.
+    public var telemetryValue: String {
+      "value_\(value.rawValue)__selected_text_\(selectedText.rawValue)"
+    }
+  }
+
+  /// The single reader for both answers.
+  ///
+  /// `AXDiag` and the Tier 1 guard used to ask this question separately, with
+  /// different attributes and different collapsing of a failed query. This is
+  /// the consolidation site. Its result is NOT cached across the gap between
+  /// capture and insertion: `AXDiag` samples at capture time and the write
+  /// happens later, so a stored answer would be about a different moment.
+  package static func readAXSettability(of element: AXUIElement) -> AXSettability {
+    func read(_ attribute: CFString) -> AXSettableState {
+      var answer: DarwinBoolean = false
+      guard AXUIElementIsAttributeSettable(element, attribute, &answer) == .success else {
+        return .unreadable
+      }
+      return answer.boolValue ? .settable : .notSettable
+    }
+    return AXSettability(
+      value: read(kAXValueAttribute as CFString),
+      selectedText: read(kAXSelectedTextAttribute as CFString)
+    )
+  }
+
+  /// The reason that corresponds to a classified outcome, so the mapping lives
+  /// in ONE place rather than at each construction site.
+  package static func declineReason(for outcome: AXInsertOutcome) -> AXDeclineReason? {
+    switch outcome {
+    case .verified: return nil
+    case .noMutation: return .noMutation
+    case .unverifiable: return .unverifiable
+    }
+  }
+
+  /// Whether a Tier 1 write must be skipped for this element.
+  ///
+  /// Pure, so the one decision this adds is testable without a live AX element —
+  /// matching the precedent `classifyInsertOutcome`, `dispositionForAXDirect`
+  /// and `classifyPasteFocus` already set in this file, where the AX round trips
+  /// are live-only and the DECISION they feed is the part a test can hold.
+  ///
+  /// Only `.notSettable` refuses. `.unreadable` proceeds, because an unanswered
+  /// query is not a refusal and treating it as one would cost the fast route on
+  /// a transient AX failure.
+  package static func tier1IsRefused(by settability: AXSettability) -> Bool {
+    settability.selectedText == .notSettable
+  }
+
+  /// Why a Tier 1 accessibility write did not deliver.
+  ///
+  /// Tier 1 is 18x faster than the keyboard route (p50 15ms against 267ms) and
+  /// loses 76% of the time even when the caret was read in a real text field —
+  /// 7,295 declines a month, and until #1332 not one of them recorded a cause.
+  /// This is that cause, as a closed set so it can be grouped on.
+  ///
+  /// The `notAttempted*` cases are decided by the CASCADE before this function
+  /// is called, and they are the majority: a reason set covering only this
+  /// function's own exits would be nil for most declines, which is the same
+  /// silent gap it exists to close.
+  public enum AXDeclineReason: String, Equatable, Sendable {
+    case accessibilityDenied = "not_attempted_accessibility_denied"
+    case focusMissing = "not_attempted_focus_missing"
+    case focusNonText = "not_attempted_focus_non_text"
+    case roleUnreadable = "role_unreadable"
+    case roleNotText = "role_not_text"
+    case selectedTextNotSettable = "selected_text_not_settable"
+    case countUnreadableOrInvalid = "count_unreadable_or_invalid"
+    case rangeUnreadable = "range_unreadable"
+    case rangeInvalid = "range_invalid"
+    case beforeImageUnreadableOrIncomplete = "before_image_unreadable_or_incomplete"
+    case focusUnconfirmed = "focus_unconfirmed"
+    case setFailed = "set_failed"
+    case noMutation = "no_mutation"
+    case unverifiable
+  }
+
+  /// What a Tier 1 attempt produced, including the evidence behind it.
+  ///
+  /// Replaces a `(outcome, submitted)` tuple. The decision evidence used to be
+  /// discarded at this return boundary, which is why nothing downstream could
+  /// say why the fast route lost.
+  package struct AXInsertResult: Sendable {
+    package let outcome: AXInsertOutcome
+    package let submitted: PastePayloadKind?
+    package let declineReason: AXDeclineReason?
+    package let settability: AXSettability?
+
+    package init(
+      outcome: AXInsertOutcome,
+      submitted: PastePayloadKind?,
+      declineReason: AXDeclineReason?,
+      settability: AXSettability?
+    ) {
+      self.outcome = outcome
+      self.submitted = submitted
+      self.declineReason = declineReason
+      self.settability = settability
+    }
+
+    /// A decline before any write was attempted. `.noMutation` is the outcome
+    /// in every case, because nothing was mutated — the reason is what tells
+    /// the two dozen ways of getting here apart.
+    static func declined(
+      _ reason: AXDeclineReason, settability: AXSettability? = nil
+    ) -> AXInsertResult {
+      AXInsertResult(
+        outcome: .noMutation, submitted: nil, declineReason: reason, settability: settability)
     }
   }
 
@@ -1151,7 +1294,7 @@ public enum PasteService {
     context: CaretContext? = nil,
     element: AXUIElement,
     requireFocusedElementMatch: Bool = false
-  ) -> (outcome: AXInsertOutcome, submitted: PastePayloadKind?) {
+  ) -> AXInsertResult {
     // Verify the element is a text field or text area.
     var roleRef: CFTypeRef?
     let roleErr = AXUIElementCopyAttributeValue(
@@ -1160,18 +1303,26 @@ public enum PasteService {
       &roleRef
     )
     guard roleErr == .success, let role = roleRef as? String else {
-      return (.noMutation, nil)
+      return .declined(.roleUnreadable)
     }
-    guard textRoles.contains(role) else { return (.noMutation, nil) }
+    guard textRoles.contains(role) else { return .declined(.roleNotText) }
 
-    // Verify the element is writable (not read-only).
-    var settableRef: DarwinBoolean = false
-    let settableErr = AXUIElementIsAttributeSettable(
-      element,
-      kAXValueAttribute as CFString,
-      &settableRef
-    )
-    guard settableErr == .success, settableRef.boolValue else { return (.noMutation, nil) }
+    // Verify the element will accept the write we are about to make.
+    //
+    // The retired check asked about `kAXValueAttribute` while the write below
+    // targets `kAXSelectedTextAttribute`. Those are different questions and real
+    // apps answer them differently: iTerm2 says yes to the first and no to the
+    // second, and then returns `.success` from a write that changes nothing —
+    // measured 225 times out of 225 on 2026-08-19. Tier 1 has never once
+    // succeeded there in 944 production pastes (#1332).
+    //
+    // Only a POSITIVE refusal skips. An unanswerable query proceeds exactly as
+    // before, because collapsing "no" together with "did not say" would drop an
+    // app onto the 18x-slower route for a transient AX failure.
+    let settability = readAXSettability(of: element)
+    if tier1IsRefused(by: settability) {
+      return .declined(.selectedTextNotSettable, settability: settability)
+    }
 
     // Everything needed to verify the result must be readable BEFORE we write.
     // The retired code wrote first and only then discovered it could not read
@@ -1185,9 +1336,11 @@ public enum PasteService {
       &charCountBefore
     )
     guard let countBefore = charCountBefore as? Int, countBefore >= 0 else {
-      return (.noMutation, nil)
+      return .declined(.countUnreadableOrInvalid, settability: settability)
     }
-    guard let rangeBefore = selectedRange(of: element) else { return (.noMutation, nil) }
+    guard let rangeBefore = selectedRange(of: element) else {
+      return .declined(.rangeUnreadable, settability: settability)
+    }
     // A foreign app can report a range that does not fit its own field. Reject
     // rather than compute verification windows from impossible values.
     guard
@@ -1195,7 +1348,7 @@ public enum PasteService {
       rangeBefore.length >= 0,
       rangeBefore.location <= countBefore,
       rangeBefore.length <= countBefore - rangeBefore.location
-    else { return (.noMutation, nil) }
+    else { return .declined(.rangeInvalid, settability: settability) }
 
     // The payload choice, made from the range this function just read rather
     // than from anything the caller measured earlier. A contextual candidate is
@@ -1236,7 +1389,7 @@ public enum PasteService {
     } else {
       // Without a trustworthy before-image, a successful AX call could never be
       // proven harmless. Bail while nothing has been mutated; Tier 2 is safe.
-      return (.noMutation, nil)
+      return .declined(.beforeImageUnreadableOrIncomplete, settability: settability)
     }
 
     // The payload choice, made from the range AND the surrounding text this
@@ -1277,7 +1430,7 @@ public enum PasteService {
           requireFocusedElementMatch: true,
           isFocused: freshFocusedElement(matching: element) != nil)
       else {
-        return (.noMutation, nil)
+        return .declined(.focusUnconfirmed, settability: settability)
       }
     }
 
@@ -1287,7 +1440,7 @@ public enum PasteService {
       kAXSelectedTextAttribute as CFString,
       text as CFTypeRef
     )
-    guard err == .success else { return (.noMutation, nil) }
+    guard err == .success else { return .declined(.setFailed, settability: settability) }
 
     // From here the write may have landed, so every remaining failure is
     // `unverifiable`, never `noMutation`.
@@ -1329,7 +1482,12 @@ public enum PasteService {
     // The write was attempted with this payload, whatever the verification says
     // afterwards — including an outcome later classified `unverifiable`, where
     // the text may already be in the document.
-    return (outcome, payload.kind)
+    return AXInsertResult(
+      outcome: outcome,
+      submitted: payload.kind,
+      declineReason: Self.declineReason(for: outcome),
+      settability: settability
+    )
   }
 
   // MARK: - Tier 2: CGEvent Cmd+V
@@ -1434,9 +1592,21 @@ public enum PasteService {
   /// Distinguishes "read fine, no matching item" from "couldn't read the menu
   /// bar at all" — collapsing both into one `nil` hid a real AX failure behind
   /// the same telemetry label as a genuine no-target refusal (#1435).
+  /// Per-element cap on accessibility messaging while probing a foreign app's
+  /// menu bar. One second, unchanged from what the retired `"AXTimeout"` write
+  /// intended; the difference is that this one takes effect.
+  private static let menuProbeAXTimeout: Float = 1.0
+
   public enum MenuItemProbeResult {
     case found(AXUIElement)
     case confirmedAbsent
+    /// The bounded traversal reached its depth limit with children it never
+    /// opened. Distinct from `.unreadable` (an AX read FAILED) and from
+    /// `.confirmedAbsent` (we looked everywhere and there is no ⌘V item),
+    /// because this one is our own limit rather than the app's answer — and
+    /// because keeping it separate is what makes the alert-suppression
+    /// projection in #1332 measurable instead of assumed.
+    case depthLimited
     case unreadable
   }
 
@@ -1456,7 +1626,13 @@ public enum PasteService {
   public static func findPasteMenuItem(pid: pid_t) -> MenuItemProbeResult {
     let app = AXUIElementCreateApplication(pid)
     // Cap AX round-trips so a misbehaving app can't hang the paste path.
-    AXUIElementSetAttributeValue(app, "AXTimeout" as CFString, Float(1.0) as CFTypeRef)
+    //
+    // `AXUIElementSetMessagingTimeout` is the API for this. The retired line
+    // wrote a non-existent "AXTimeout" ATTRIBUTE and discarded the result, so
+    // the cap this comment promises has never actually been in force — found by
+    // the chunk-1a build review, #1332. The timeout binds ONE element, so every
+    // handle we message has to be bounded, not just this one.
+    _ = AXUIElementSetMessagingTimeout(app, menuProbeAXTimeout)
     var menuBarRef: CFTypeRef?
     guard
       AXUIElementCopyAttributeValue(app, kAXMenuBarAttribute as CFString, &menuBarRef) == .success,
@@ -1471,11 +1647,16 @@ public enum PasteService {
   /// (`.attributeUnsupported`/`.noValue`, the normal shape for a leaf item
   /// with no children or no shortcut) — a deeper traversal failure is the same
   /// bug this type exists to fix, one level down (#1435 grounded review r1).
+  ///
+  /// Returns `.depthLimited` when the bound is reached with children still
+  /// unopened. THREE kinds of not-found, deliberately not collapsed: the app
+  /// answered and there is none (`.confirmedAbsent`), a read failed
+  /// (`.unreadable`), or we stopped first (`.depthLimited`). Only the first is
+  /// evidence, and #1332's alert suppression is allowed to rely on it alone.
   @MainActor
   private static func firstPasteItem(in element: AXUIElement, depth: Int) -> MenuItemProbeResult {
-    // menu bar(0) → menu-bar-item(1) → menu(2) → menu-item(3); allow a little
-    // slack for apps that nest an extra group, but stay bounded.
-    guard depth <= 4 else { return .confirmedAbsent }
+    // Descendant handles do NOT inherit an ancestor's messaging timeout.
+    _ = AXUIElementSetMessagingTimeout(element, menuProbeAXTimeout)
 
     var childrenRef: CFTypeRef?
     let childrenRead = AXUIElementCopyAttributeValue(
@@ -1492,8 +1673,23 @@ public enum PasteService {
       return .unreadable
     }
 
+    // menu bar(0) → menu-bar-item(1) → menu(2) → menu-item(3); allow a little
+    // slack for apps that nest an extra group, but stay bounded.
+    //
+    // The bound is read AFTER the children, because the two answers it has to
+    // separate are "nothing left to look at" and "more to look at, and I
+    // stopped". Returning `.confirmedAbsent` for both is a fail-OPEN in the one
+    // function whose job is to tell confirmed from unknown: an app nesting its
+    // Paste command deeper than this would be reported as having none
+    // (#1332, Codex grounded review r2).
+    guard depth <= 4 else {
+      return children.isEmpty ? .confirmedAbsent : .depthLimited
+    }
+
     var encounteredUnreadableBranch = false
+    var encounteredDepthLimit = false
     for child in children {
+      _ = AXUIElementSetMessagingTimeout(child, menuProbeAXTimeout)
       var cmdCharRef: CFTypeRef?
       let commandRead = AXUIElementCopyAttributeValue(
         child, "AXMenuItemCmdChar" as CFString, &cmdCharRef)
@@ -1524,10 +1720,15 @@ public enum PasteService {
       switch firstPasteItem(in: child, depth: depth + 1) {
       case .found(let item): return .found(item)
       case .confirmedAbsent: break
+      case .depthLimited: encounteredDepthLimit = true
       case .unreadable: encounteredUnreadableBranch = true
       }
     }
-    return encounteredUnreadableBranch ? .unreadable : .confirmedAbsent
+    // A failed READ outranks a self-imposed limit: if any branch was unreadable
+    // the whole answer is unknown for the stronger reason, and collapsing the
+    // two would lose that.
+    if encounteredUnreadableBranch { return .unreadable }
+    return encounteredDepthLimit ? .depthLimited : .confirmedAbsent
   }
 
   /// Whether an AX menu item is currently enabled. Apps disable Edit > Paste

@@ -81,6 +81,10 @@ internal struct PasteDeliveryResult {
   /// no route reached its write (#1785). Records what was SUBMITTED, never
   /// proof of what landed — Tier 2 only proves Cmd+V was posted.
   var submittedPayload: PasteService.PastePayloadKind?
+  /// #1332. Why the Tier 1 fast route did not deliver, and both settability
+  /// answers as one token. Nil when Tier 1 delivered.
+  var axDeclineReason: String?
+  var axSettability: String?
 
   var pasteTierLabel: String {
     if case .clipboardOnlyAccessibilityDenied = outcome {
@@ -311,6 +315,18 @@ internal final class PasteCascadeExecutor {
       targetDiagnostics = .missing
     }
     let canAttemptKeyPaste = classification.canAttemptKeyPaste
+    // Why Tier 1 did not run, decided HERE rather than inside the write. These
+    // are the majority of declines — a reason set covering only the write's own
+    // exits would be nil for most of them (#1332).
+    var axDeclineReason: PasteService.AXDeclineReason? = {
+      if !axTrusted { return .accessibilityDenied }
+      switch classification {
+      case .textField: return nil  // Tier 1 runs; the write reports its own.
+      case .missing: return .focusMissing
+      case .nonText: return .focusNonText
+      }
+    }()
+    var axSettability: PasteService.AXSettability?
     // Which payload was submitted by the route that last attempted a write.
     // Nil until one does. A later route may legitimately overwrite this: Tier 1
     // can attempt a write, PROVE nothing landed, and hand off to Tier 2, whose
@@ -341,6 +357,8 @@ internal final class PasteCascadeExecutor {
         requireFocusedElementMatch: request.targetElementIsRetried)
       let disposition = dispositionForAXDirect(insert.outcome)
       submittedKind = insert.submitted
+      axDeclineReason = insert.declineReason
+      axSettability = insert.settability
       axAllowsRetry = disposition.allowsAutomaticRetry
       switch disposition {
       case .delivered:
@@ -520,9 +538,18 @@ internal final class PasteCascadeExecutor {
           // Scenario A: no paste target. Leave the payload on the clipboard;
           // Tier 3 overlay follows.
           menuProbe = .noTarget
+        case .depthLimited:
+          // We stopped looking before the tree ran out. Not a confirmed
+          // refusal, and delivery is unaffected — this behaves exactly as
+          // `.unreadable` does here (#1332).
+          menuProbe = .depthLimited
         case .unreadable:
           // Menu bar (or traversal) AX read failed — unknown, not a confirmed
-          // refusal (#1435).
+          // refusal (#1435). Since #1332 this ALSO includes the one-second AX
+          // messaging timeout, which was never in force before. A slow or
+          // unknown probe deliberately keeps full alerting rather than becoming
+          // `no_paste_target`, so this branch can raise the alert count on a
+          // slow app even though the change as a whole reduces it.
           menuProbe = .unreadable
         }
       } else {
@@ -617,10 +644,13 @@ internal final class PasteCascadeExecutor {
     }
 
     emitPasteTelemetry(
-      outcome: outcome, tierFailures: tierFailures, focusClass: menuProbe?.focusClassLabel)
+      outcome: outcome, tierFailures: tierFailures, focusClass: menuProbe?.focusClassLabel,
+      axDeclineReason: axDeclineReason?.rawValue,
+      axSettability: axSettability?.telemetryValue)
 
     return PasteDeliveryResult(
-      tier: tier, durationMs: durationMs, outcome: outcome, submittedPayload: submittedKind)
+      tier: tier, durationMs: durationMs, outcome: outcome, submittedPayload: submittedKind,
+      axDeclineReason: axDeclineReason?.rawValue, axSettability: axSettability?.telemetryValue)
   }
 
   /// #729 Tier 2c menu-paste probe outcome. Drives `paste.focus_class`.
@@ -633,12 +663,18 @@ internal final class PasteCascadeExecutor {
     /// An AX read failed somewhere in the probe (menu bar, traversal, or
     /// enabled-state) — unknown, NOT a confirmed refusal (#1435).
     case unreadable
+    /// The traversal hit its own depth bound with menus it never opened —
+    /// unknown, and unknown for a DIFFERENT reason than `.unreadable`: nothing
+    /// failed, we stopped. Kept separate so #1332's suppression projection can
+    /// be measured rather than assumed.
+    case depthLimited
 
     var focusClassLabel: String {
       switch self {
       case .targetEnabled: return "non_text_with_paste_target"
       case .noTarget: return "no_paste_target"
       case .unreadable: return "non_text_menu_unreadable"
+      case .depthLimited: return "non_text_menu_depth_limit"
       }
     }
   }
@@ -673,7 +709,8 @@ internal final class PasteCascadeExecutor {
   /// Fires Sentry captureError for non-delivered outcomes. Owned by the cascade
   /// so overlay UI and telemetry both derive from the same typed outcome.
   private func emitPasteTelemetry(
-    outcome: PasteDeliveryOutcome, tierFailures: [String: String], focusClass: String?
+    outcome: PasteDeliveryOutcome, tierFailures: [String: String], focusClass: String?,
+    axDeclineReason: String? = nil, axSettability: String? = nil
   ) {
     switch outcome {
     case .delivered:
@@ -681,6 +718,8 @@ internal final class PasteCascadeExecutor {
     case .clipboardOnly(let tiers, let focus, let bundle, let accessibilityTrusted, let diagnostics):
       let tierStrings = tiers.map(\.rawValue)
       let extra = Self.clipboardOnlyTelemetryExtra(
+        axDeclineReason: axDeclineReason,
+        axSettability: axSettability,
         tiersAttempted: tierStrings,
         focus: focus,
         targetBundleID: bundle,
@@ -690,7 +729,10 @@ internal final class PasteCascadeExecutor {
         focusClass: focusClass
       )
       if Self.isExpectedNonTextRefusal(
-        focus: focus, roleSource: diagnostics.roleSource, focusClass: focusClass
+        tiersAttempted: tierStrings,
+        focus: focus,
+        focusClass: focusClass,
+        targetBundleID: bundle
       ) {
         SentryBreadcrumb.add(
           stage: "paste",
@@ -714,6 +756,8 @@ internal final class PasteCascadeExecutor {
       // `paste.tier_failures["ax_direct"] == "unverifiable"`.
       let tierStrings = [PasteTier.axDirect.rawValue]
       let extra = Self.clipboardOnlyTelemetryExtra(
+        axDeclineReason: axDeclineReason,
+        axSettability: axSettability,
         tiersAttempted: tierStrings,
         focus: .textField,
         targetBundleID: bundle,
@@ -755,31 +799,61 @@ internal final class PasteCascadeExecutor {
     }
   }
 
-  /// True when the cascade confidently identified the focused target,
-  /// correctly determined it isn't a text field, AND the Tier 2c menu probe
-  /// positively confirmed no real paste target exists — a working-as-intended
-  /// decline, not a failure. False in every other case keeps the existing
-  /// alert-creating path, since anything short of that full confirmation is
-  /// a case that could indicate a real, scaling defect (#1430).
+  /// Whether a clipboard-only outcome is a CONFIRMED correct refusal, and so
+  /// belongs on the counted breadcrumb channel rather than the alerting error
+  /// channel (#1430, narrowed #1332). False in every other case, because
+  /// anything short of full confirmation could be a real, scaling defect.
   ///
-  /// Requires exact confirmation (`focusClass == "no_paste_target"`) rather
-  /// than defaulting an absent probe result to "no target": `canAttemptKeyPaste`
-  /// is always false for `.nonText`, so Tier 2c's menu probe is the ONLY paste
-  /// attempt for non-text targets, and `focusClass` is nil whenever that probe
-  /// never ran or never resolved — activation timeout, a terminated target
-  /// app, or no target app captured at all (Codex code-diff review r2) — none
-  /// of which is a confirmed refusal. `"non_text_with_paste_target"` means the
-  /// probe found a real, enabled paste target and pressing it failed — also a
-  /// real failure, not a refusal (Codex code-diff review r1). Any other/future
-  /// focusClass label fails closed the same way, matching the roleSource
-  /// invariant above.
+  /// Requires exact confirmation (`focusClass == "no_paste_target"`) rather than
+  /// defaulting an absent probe result to "no target": `canAttemptKeyPaste` is
+  /// always false for `.nonText`, so Tier 2c's menu probe is the ONLY paste
+  /// attempt for a non-text target, and `focusClass` is nil whenever that probe
+  /// never ran or never resolved — activation timeout, a terminated target app,
+  /// or no target app captured at all — none of which is a confirmed refusal
+  /// (Codex code-diff review r2, #1430). `"non_text_with_paste_target"` means
+  /// the probe found a real, enabled paste target and pressing it failed, which
+  /// is a real failure rather than a refusal (Codex code-diff review r1). Any
+  /// other or future label fails closed the same way.
+  ///
+  /// `roleSource` was a parameter until #1332 and is deliberately gone rather
+  /// than merely unread. It required the ELEMENT's role to have been captured
+  /// before trusting the MENU probe's answer, which lets one instrument's
+  /// failure suppress the other instrument's positive result. The menu probe is
+  /// independent evidence: since #1435 `no_paste_target` means the app's own
+  /// menu bar was read and its Paste command is confirmed absent or confirmed
+  /// disabled, and since this issue's Chunk 1a a search that merely ran out of
+  /// depth reports `non_text_menu_depth_limit` instead of masquerading as a
+  /// confirmation. Removing the parameter rather than ignoring it turns the
+  /// stale `unrecognizedRoleSourceFailsClosed` test into a compile error rather
+  /// than a test that keeps passing under a comment describing a literal
+  /// nothing reads.
+  ///
+  /// KNOWN RESIDUAL, stated so this is not read as claiming more than it
+  /// proves: a real text target whose role read fails classifies as `.nonText`,
+  /// and if that app ALSO reports its Paste command absent or disabled it is
+  /// silenced here. A failed role read is NO answer rather than a wrong one, so
+  /// the residual needs one independent role-read failure plus a misleading menu
+  /// answer. Chunks 0 and 1a narrow it to that; they do not eliminate it.
   internal static func isExpectedNonTextRefusal(
-    focus: PasteFocusClassification, roleSource: String, focusClass: String?
+    tiersAttempted: [String],
+    focus: PasteFocusClassification,
+    focusClass: String?,
+    targetBundleID: String?
   ) -> Bool {
-    focus == .nonText && roleSource == "captured_target" && focusClass == "no_paste_target"
+    // `paste_failed` should mean a paste we ATTEMPTED that failed. Every real
+    // route appends its tier before trying (ax_direct, cgevent, applescript,
+    // menu_paste), so a non-empty list is proof something was attempted and
+    // this is not a refusal at all.
+    guard tiersAttempted.isEmpty else { return false }
+    // The Mac is locked. There is no session to paste into, and no reading of
+    // the focused element can make one appear.
+    if targetBundleID == "com.apple.loginwindow" { return true }
+    return focus == .nonText && focusClass == "no_paste_target"
   }
 
   internal static func clipboardOnlyTelemetryExtra(
+    axDeclineReason: String? = nil,
+    axSettability: String? = nil,
     tiersAttempted: [String],
     focus: PasteFocusClassification,
     targetBundleID: String?,
@@ -800,6 +874,12 @@ internal final class PasteCascadeExecutor {
       "paste.target_element_role_source": targetDiagnostics.roleSource,
       "paste.target_element_subrole_status": targetDiagnostics.subroleStatus,
     ]
+    // #1332: WHY the fast route declined, and both settability answers as one
+    // token. Genuinely OMITTED when nil rather than sent as a placeholder — a
+    // sentinel string would be indistinguishable from a real value in every
+    // query built on this, and older event shapes must stay unchanged.
+    if let axDeclineReason { extra["paste.ax_decline_reason"] = axDeclineReason }
+    if let axSettability { extra["paste.ax_settability"] = axSettability }
     // #729: present only when the Tier 2c menu probe actually ran (Scenario
     // A/B discriminator). Absent on .textField/.missing and on activation
     // timeout before probing.

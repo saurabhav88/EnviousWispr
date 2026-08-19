@@ -127,83 +127,81 @@ struct PasteTelemetryPayloadTests {
     assertNoContentLikeKeys(noTarget)
   }
 
-  @Test("absent menu probe keeps full alerting, does not default to downgrade (Codex code-diff r2)")
-  func absentMenuProbeKeepsAlerting() {
-    // focusClass is nil whenever Tier 2c's probe never ran or never resolved:
-    // activation timeout, a terminated target app, or no target app captured
-    // at all. None of these confirm "no real target" -- only an explicit
-    // "no_paste_target" result does, so nil must NOT default to a downgrade.
+  /// One decision-boundary table replaces nine per-case tests (#1332). Not a
+  /// generated cross-product — four arguments do not enumerate — so it is
+  /// boundary rows, each ACCEPTED one paired with a near-identical REJECTED one
+  /// so a predicate that stopped classifying anything cannot look clean.
+  ///
+  /// Rows 2 and 11 pin combinations that are NOT reachable today (appending
+  /// `menu_paste` requires an enabled item, and a CGEvent failure becomes
+  /// `.cgEventCreationFailed` and bypasses this predicate). They are kept as
+  /// defence in depth and are deliberately NOT counted as evidence that the
+  /// guard binds reachable behaviour — rows 12 and 13 do that.
+  ///
+  /// What the retired tests protected, and where each now lives:
+  /// absent menu probe -> row 3 · confirmed-no-target downgrades -> row 1 ·
+  /// failed role identification -> row 3 (roleSource is no longer an input) ·
+  /// missing target -> row 8 · text-field focus -> row 9 ·
+  /// unreadable menu probe -> row 5 · unrecognised focusClass -> row 7 ·
+  /// unrecognised roleSource -> removed by the predicate signature, so it is a
+  /// compile error rather than a row · real paste target keeps alerting ->
+  /// rows 4 AND 12, because the real press-failure path always carries the
+  /// `menu_paste` tier that row 4 alone omits.
+  /// #1332 whole-diff review: the code comment claims these are OMITTED when
+  /// nil. A sentinel string would be indistinguishable from a real value in
+  /// every query built on this, so the claim needs a test rather than a comment.
+  @Test("the #1332 diagnostic keys are absent when nil and present when supplied")
+  func diagnosticKeysOmitWhenNil() {
+    let absent = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(
+      tiersAttempted: [], focus: .nonText, targetBundleID: "com.apple.finder",
+      accessibilityTrusted: true, targetDiagnostics: .unavailable, tierFailures: [:])
+    #expect(absent["paste.ax_decline_reason"] == nil)
+    #expect(absent["paste.ax_settability"] == nil)
+
+    let present = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(
+      axDeclineReason: "selected_text_not_settable",
+      axSettability: "value_settable__selected_text_not_settable",
+      tiersAttempted: [], focus: .nonText, targetBundleID: "com.apple.finder",
+      accessibilityTrusted: true, targetDiagnostics: .unavailable, tierFailures: [:])
+    #expect(present["paste.ax_decline_reason"] as? String == "selected_text_not_settable")
     #expect(
-      PasteCascadeExecutor.isExpectedNonTextRefusal(
-        focus: .nonText, roleSource: "captured_target", focusClass: nil
-      ) == false
-    )
+      present["paste.ax_settability"] as? String
+        == "value_settable__selected_text_not_settable")
   }
 
-  @Test("confident non-text refusal with a confirmed-no-target probe downgrades")
-  func confirmedNoTargetProbeDowngrades() {
-    #expect(
-      PasteCascadeExecutor.isExpectedNonTextRefusal(
-        focus: .nonText, roleSource: "captured_target", focusClass: "no_paste_target"
-      ) == true
-    )
-  }
-
-  @Test("menu probe finding a real paste target keeps full alerting (Codex code-diff r1)")
-  func menuProbeFoundRealTargetKeepsAlerting() {
-    // Tier 2c found an enabled Edit > Paste item and pressing it failed
-    // (tierFailures["menu_paste"] == "press_failed") -- a real paste failure,
-    // not a no-target refusal, even though the earlier AX role read said
-    // non-text with high confidence.
-    #expect(
-      PasteCascadeExecutor.isExpectedNonTextRefusal(
-        focus: .nonText, roleSource: "captured_target",
-        focusClass: "non_text_with_paste_target"
-      ) == false
-    )
-  }
-
-  @Test("failed role identification keeps full alerting")
-  func failedRoleIdentificationKeepsAlerting() {
-    #expect(
-      PasteCascadeExecutor.isExpectedNonTextRefusal(
-        focus: .nonText, roleSource: "unavailable", focusClass: nil
-      ) == false
-    )
-  }
-
-  @Test("missing target keeps full alerting regardless of roleSource")
-  func missingTargetKeepsAlerting() {
-    #expect(
-      PasteCascadeExecutor.isExpectedNonTextRefusal(
-        focus: .missing, roleSource: "captured_target", focusClass: nil
-      ) == false
-    )
-  }
-
-  @Test("text field focus keeps full alerting regardless of roleSource")
-  func textFieldFocusKeepsAlerting() {
-    #expect(
-      PasteCascadeExecutor.isExpectedNonTextRefusal(
-        focus: .textField, roleSource: "captured_target", focusClass: nil
-      ) == false
-    )
-  }
-
-  @Test("unrecognized roleSource string fails closed to full alerting")
-  func unrecognizedRoleSourceFailsClosed() {
-    // Guards against an unrelated future rename of the "captured_target"
-    // literal elsewhere silently reopening the false-positive noise (#1430).
-    #expect(
-      PasteCascadeExecutor.isExpectedNonTextRefusal(
-        focus: .nonText, roleSource: "ax_success", focusClass: nil
-      ) == false
-    )
-    #expect(
-      PasteCascadeExecutor.isExpectedNonTextRefusal(
-        focus: .nonText, roleSource: "", focusClass: nil
-      ) == false
-    )
+  @Test("expected-refusal predicate fails closed across documented decision boundaries")
+  func expectedRefusalMatrix() {
+    let cases: [([String], PasteFocusClassification, String?, String?, Bool)] = [
+      ([], .nonText, "no_paste_target", "com.apple.finder", true),
+      (["menu_paste"], .nonText, "no_paste_target", "com.apple.finder", false),
+      ([], .nonText, nil, "com.apple.finder", false),
+      ([], .nonText, "non_text_with_paste_target", "com.apple.finder", false),
+      ([], .nonText, "non_text_menu_unreadable", "com.apple.finder", false),
+      ([], .nonText, "non_text_menu_depth_limit", "com.apple.finder", false),
+      ([], .nonText, "some_future_label", "com.apple.finder", false),
+      ([], .missing, "no_paste_target", "com.apple.finder", false),
+      ([], .textField, "no_paste_target", "com.apple.finder", false),
+      ([], .missing, nil, "com.apple.loginwindow", true),
+      (["cgevent"], .missing, nil, "com.apple.loginwindow", false),
+      // Reachable states the first eleven rows missed (Codex chunk-1b review).
+      // A menu press that FAILED still carries its tier and an enabled-target
+      // label, which is the real shape of the retired real-paste-target test.
+      (["menu_paste"], .nonText, "non_text_with_paste_target", "com.apple.finder", false),
+      // An attempted paste on the LOCK SCREEN: binds the empty-tiers guard's
+      // precedence over the lock-screen acceptance, which nothing else pins.
+      (["applescript"], .missing, nil, "com.apple.loginwindow", false),
+    ]
+    for (tiers, focus, focusClass, bundle, expected) in cases {
+      #expect(
+        PasteCascadeExecutor.isExpectedNonTextRefusal(
+          tiersAttempted: tiers,
+          focus: focus,
+          focusClass: focusClass,
+          targetBundleID: bundle
+        ) == expected,
+        "tiers=\(tiers) focus=\(focus) focusClass=\(focusClass ?? "nil") bundle=\(bundle ?? "nil")"
+      )
+    }
   }
 
   @Test("menu probe outcomes map to stable focus-class labels")
@@ -215,29 +213,12 @@ struct PasteTelemetryPayloadTests {
     #expect(
       PasteCascadeExecutor.MenuPasteProbe.unreadable.focusClassLabel
         == "non_text_menu_unreadable")
+    #expect(
+      PasteCascadeExecutor.MenuPasteProbe.depthLimited.focusClassLabel
+        == "non_text_menu_depth_limit")
   }
 
-  @Test("unreadable menu probe keeps full alerting (#1435)")
-  func unreadableMenuProbeKeepsAlerting() {
-    let focusClass = PasteCascadeExecutor.MenuPasteProbe.unreadable.focusClassLabel
-    #expect(
-      PasteCascadeExecutor.isExpectedNonTextRefusal(
-        focus: .nonText, roleSource: "captured_target", focusClass: focusClass
-      ) == false
-    )
-  }
 
-  @Test("unrecognized focusClass string fails closed to full alerting")
-  func unrecognizedFocusClassFailsClosed() {
-    // Guards the same fail-closed invariant for the focusClass corroboration:
-    // an unrelated future label added to MenuPasteProbe must not silently
-    // reopen the false-positive noise by being mistaken for "no target".
-    #expect(
-      PasteCascadeExecutor.isExpectedNonTextRefusal(
-        focus: .nonText, roleSource: "captured_target", focusClass: "some_future_label"
-      ) == false
-    )
-  }
 
   private func assertNoContentLikeKeys(_ extra: [String: Any]) {
     for key in extra.keys {
