@@ -382,11 +382,10 @@ final class HALDeviceInputSource: AudioInputSource {
   private(set) var captureGeneration: UInt64 = 0
 
   /// #1810: samples this session's activation drained out of the pre-roll ring.
-  /// Reset at the TOP of every `startCapture()` attempt so a throw between the
-  /// reset and the drain leaves a stale count behind for the next session — the
-  /// reset and the write are the same statement's two halves and must stay in
-  /// this order. Protocol doc owns why this is capture policy rather than
-  /// telemetry.
+  /// Cleared at the top of every `startCapture()` attempt that is committed to being
+  /// a NEW session, so a throw between that point and the drain CANNOT leave the
+  /// previous session's count visible to this one's ceiling. Protocol doc owns why
+  /// this is capture policy rather than telemetry.
   private(set) var drainedPreRollSampleCount: Int = 0
 
   nonisolated let captureSourceType: String = "hal_device_input"
@@ -581,8 +580,7 @@ final class HALDeviceInputSource: AudioInputSource {
       preRollGapCount: preRollGapCount,
       lostChunkCount: snap.lostChunks,
       rateDivergenceDetected: formatDivergenceObserved,
-      nativeChannelCount: boundNativeChannelCount,
-      drainedPreRollSampleCount: drainedPreRollSampleCount
+      nativeChannelCount: boundNativeChannelCount
     )
   }
 

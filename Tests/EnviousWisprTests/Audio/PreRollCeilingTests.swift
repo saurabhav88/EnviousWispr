@@ -128,7 +128,7 @@ import Testing
       let base = AudioConstants.minimumTranscriptionSamples
       #expect(manager(drained: -1).allZeroCeilingSamples == base)
       #expect(manager(drained: -8_000).allZeroCeilingSamples == base)
-      #expect(manager(drained: -8_000).drainedPreRollSampleCountForCeiling == 0)
+      #expect(manager(drained: -8_000).drainedPreRollSampleCount == 0)
     }
 
     @Test("no source installed falls back to the shipping bar, never to a shorter one")
@@ -136,6 +136,27 @@ import Testing
       #expect(
         AudioCaptureManager().allZeroCeilingSamples
           == AudioConstants.minimumTranscriptionSamples)
+    }
+
+    /// THE cloud-review finding (PR #2200, P2). `stopCapture()`'s documented
+    /// `activeSource == nil` early return — reachable when an engine interruption is
+    /// followed by the user switching "Keep engine warm" off — used to leave the
+    /// STOP-time reader with no drain at all, reinstating the early abort on exactly
+    /// that path. The manager caches the value, so the drain survives the source
+    /// going away.
+    @Test("#2200 review: the drain survives the source being torn down")
+    func drainSurvivesSourceTeardown() {
+      let manager = AudioCaptureManager()
+      let stub = StubSource()
+      stub.drainedPreRollSampleCount = 8_000
+      manager.installCapturedSourceForTesting(stub, sessionID: 1)
+      #expect(manager.drainedPreRollSampleCount == 8_000)
+      // The source goes away exactly as the warm-engine-off teardown leaves it.
+      manager.tearDownActiveSourceForTesting()
+      #expect(
+        manager.drainedPreRollSampleCount == 8_000,
+        "the stop-time bar silently reverted to the shipping one when the source went away")
+      #expect(manager.allZeroCeilingSamples == AudioConstants.minimumTranscriptionSamples + 8_000)
     }
 
     /// The whole safety argument for shipping this is that it can only ever make the

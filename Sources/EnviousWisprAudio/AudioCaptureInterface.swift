@@ -135,6 +135,19 @@ public protocol AudioCaptureInterface: AnyObject {
   /// STOP-time classification of the same run.
   var zeroSignalRunWasClassifiedReactively: Bool { get }
 
+  /// #1810: samples this session drained out of the pre-roll ring, clamped
+  /// non-negative. Read at STOP so `classifyZeroSignalAtStop` applies the same
+  /// live-capture bar the reactive detector uses.
+  ///
+  /// **Read here rather than off `CaptureResult.metadata`, and that is the fix for a
+  /// cloud-review finding rather than a style choice.** `stopCapture()`'s documented
+  /// `activeSource == nil` early return — reachable when an engine interruption is
+  /// followed by the user switching "Keep engine warm" off — returns samples with NO
+  /// metadata, so a metadata-carried drain silently reverted to 0 on exactly that
+  /// path and reinstated the early abort this change exists to remove. The manager
+  /// caches the value per session, so it survives the source being torn down.
+  var drainedPreRollSampleCount: Int { get }
+
   /// #1578: one forward attempt per refused run. `true` means the observation
   /// was delivered immediately; `false` means the consumer rejected it (stale
   /// session, no active target) and the producer must enqueue the context in
@@ -245,6 +258,13 @@ extension AudioCaptureInterface {
   /// #1578: same reasoning — a conformer with no reactive classifier never
   /// classified the current run, so STOP-time classification stays permitted.
   public var zeroSignalRunWasClassifiedReactively: Bool { false }
+
+  /// #1810: a conformer with no pre-roll ring drained nothing, so the stop-time bar
+  /// is the shipping one. Defaulted — unlike `AudioInputSource`'s undefaulted twin —
+  /// because the fakes conforming HERE genuinely have no ring, whereas a real capture
+  /// SOURCE that drains one and reports nothing is the failure that member exists to
+  /// prevent. Same split the three properties above already make.
+  public var drainedPreRollSampleCount: Int { 0 }
 
   /// #1578: an explicit `get { nil } set {}` pair, NOT the read-only computed
   /// shape the two properties above use. A settable protocol requirement cannot

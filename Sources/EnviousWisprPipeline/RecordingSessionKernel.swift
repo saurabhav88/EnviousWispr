@@ -1950,7 +1950,7 @@ final class RecordingSessionKernel {
     // down (independent of eligibility — the #1520 gap).
     let signalZeroMode = Self.classifyZeroSignalAtStop(
       captureResult.samples,
-      drainedPreRollSampleCount: captureResult.metadata?.drainedPreRollSampleCount ?? 0)
+      drainedPreRollSampleCount: audioCapture.drainedPreRollSampleCount)
 
     // #1317 §3.6 STOP-win row: only when the reactive detector never classified
     // this run (raced by STOP, or the capture was too short to reach its own

@@ -299,6 +299,11 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// `captureSessionCounter`, which persists across teardown, #1543.)
   private var cachedSourceType: String = "unknown"
 
+  /// #1810 twin of `cachedSourceType`: the session's pre-roll drain, snapshotted
+  /// before any teardown path can nil `activeSource`, so the kernel's STOP-time
+  /// classification reads the same number the reactive detector used.
+  private var cachedDrainedPreRollSampleCount: Int = 0
+
   /// Route resolver — decides which source to use based on BT state + user preference.
   private var routeResolver = CaptureRouteResolver()
 
@@ -412,7 +417,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// different from the shipping bar would make every local measurement
   /// incomparable with the fleet, which is the whole reason the override exists.
   var allZeroCeilingSamples: Int {
-    let drained = drainedPreRollSampleCountForCeiling
+    let drained = drainedPreRollSampleCount
     #if DEBUG
       let override = UserDefaults.standard.integer(
         forKey: "EWDebugAllZeroCeilingSamples")
@@ -427,8 +432,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// future conformer can return a negative; a negative would SHRINK the ceiling
   /// and make the abort fire EARLIER, which is the one direction #1810 promises is
   /// impossible. Read through this property, never the source's raw value.
-  var drainedPreRollSampleCountForCeiling: Int {
-    max(0, activeSource?.drainedPreRollSampleCount ?? 0)
+  ///
+  /// Falls back to `cachedDrainedPreRollSampleCount` for the same reason
+  /// `captureSourceType` falls back to `cachedSourceType`: `stopCapture()`'s
+  /// `activeSource == nil` early return, and the `warmEnginePolicy == .off` teardown,
+  /// both leave the STOP-time reader with no source to ask.
+  public var drainedPreRollSampleCount: Int {
+    max(0, activeSource?.drainedPreRollSampleCount ?? cachedDrainedPreRollSampleCount)
   }
 
   /// THE #1788 FIX, and the only transport conditional in it.
@@ -612,6 +622,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
     // Reset per-session reactive dead-air + stall-latch state (#1317 / #1543).
     deadAirDetector = DeadAirStreamingDetector()
+    // #1810: the previous session's drain must not survive into this one's ceiling.
+    cachedDrainedPreRollSampleCount = 0
     // #1578: session start is the ONE place the backlog is cleared without a
     // consumer having taken it — a new session must never inherit the previous
     // one's undelivered refusals.
@@ -708,6 +720,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // Mirror source backend tag so pipeline-layer Sentry extras still resolve
     // after stopCapture tears `activeSource` down synchronously.
     cachedSourceType = source.captureSourceType
+    cachedDrainedPreRollSampleCount = max(0, source.drainedPreRollSampleCount)
     return stream
   }
 
@@ -755,6 +768,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // post-stop Sentry extras still resolve when warmEnginePolicy == .off nils
     // activeSource synchronously (#285).
     cachedSourceType = source.captureSourceType
+    cachedDrainedPreRollSampleCount = max(0, source.drainedPreRollSampleCount)
     // #1434: capture-health snapshot must ALSO precede teardown — with
     // warmEnginePolicy == .off, scheduleWarmEngineTeardown() below destroys
     // the render context this reads from.
@@ -904,7 +918,22 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     ) {
       captureSessionSource = captured
       activeSource = active ?? captured
+      // #1810: mirror the production snapshot. `stopCapture()` caches the drain from
+      // the source BEFORE any teardown path can nil `activeSource`; a seam that
+      // installed a source without it would let a test read a fallback that
+      // production always populates.
+      cachedDrainedPreRollSampleCount = max(0, captured.drainedPreRollSampleCount)
       captureSessionCounter = sessionID
+    }
+
+    /// Test seam (#1810): drop the active source WITHOUT touching the cached
+    /// per-session facts, which is the state `stopCapture()`'s documented
+    /// `activeSource == nil` early return and the `warmEnginePolicy == .off` teardown
+    /// both leave behind. A stub cannot reach it through `stopCapture()`, which needs
+    /// a real device format. Exists so the PR #2200 cloud-review finding has a guard
+    /// rather than a promise.
+    func tearDownActiveSourceForTesting() {
+      activeSource = nil
     }
 
     /// Test seam (#1844): force `resolveSource()` to build its source from

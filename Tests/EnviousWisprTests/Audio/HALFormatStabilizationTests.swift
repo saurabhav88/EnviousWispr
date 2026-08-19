@@ -254,31 +254,6 @@ struct CaptureStopMetadataGapTests {
         .inputTimelineGapCount == 0)
   }
 
-  /// #1810 added a stored property to this struct, and the type's own doc comment
-  /// says a new counter needs a line in `inputTimelineGapCount`. The drain is
-  /// deliberately NOT such a counter: it is audio the stream DELIVERED, not audio it
-  /// lost. Counting it would declare every healthy warm press a lossy timeline and
-  /// turn every wake reading into a `floor`, which is the exact over-reporting the
-  /// zero-output case below already refuses.
-  @Test("#1810: drained pre-roll is delivered audio, never a gap")
-  func drainedPreRollIsNotAGap() {
-    #expect(
-      CaptureStopMetadata(nativeRateHz: 24000, drainedPreRollSampleCount: 8_000)
-        .inputTimelineGapCount == 0)
-    // It is still readable on its own, and clamped on the way in.
-    #expect(
-      CaptureStopMetadata(nativeRateHz: 24000, drainedPreRollSampleCount: 8_000)
-        .drainedPreRollSampleCount == 8_000)
-    #expect(
-      CaptureStopMetadata(nativeRateHz: 24000, drainedPreRollSampleCount: -1)
-        .drainedPreRollSampleCount == 0)
-    // A real lossy edge alongside it still reports exactly its own gap.
-    #expect(
-      CaptureStopMetadata(
-        nativeRateHz: 24000, ringDropCount: 1, drainedPreRollSampleCount: 8_000
-      ).inputTimelineGapCount == 1)
-  }
-
   @Test("a zero-frame converter output is NOT a gap — the input is emitted later")
   func zeroConverterOutputIsNotAGap() {
     // Cloud review r3 named this as a third loss source. It is not one: a priming

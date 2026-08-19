@@ -127,16 +127,6 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
   /// device exposed so a >1-channel population is measurable). Nil when the
   /// source doesn't read a channel count (e.g. proxy-origin stalls).
   public let nativeChannelCount: Int?
-  /// #1810: samples this session's activation drained out of the pre-roll ring
-  /// before any live audio arrived, clamped non-negative at the source.
-  ///
-  /// **NOT an addend of `inputTimelineGapCount`.** Drained pre-roll is audio the
-  /// stream successfully DELIVERED, not audio it lost; adding it there would
-  /// declare every healthy warm press a lossy timeline and turn every wake
-  /// measurement into a `floor`. It travels here because this is already the
-  /// stop-time capture-facts channel and `classifyZeroSignalAtStop` needs it to
-  /// apply the same live-capture bar the reactive detector uses.
-  public let drainedPreRollSampleCount: Int
 
   /// Every way the captured stream can lose frames between the microphone and
   /// the pipeline, summed. THE point of this property is to be the one place
@@ -185,8 +175,7 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     preRollGapCount: Int = 0,
     lostChunkCount: Int = 0,
     rateDivergenceDetected: Bool = false,
-    nativeChannelCount: Int? = nil,
-    drainedPreRollSampleCount: Int = 0
+    nativeChannelCount: Int? = nil
   ) {
     self.nativeRateHz = nativeRateHz
     self.ringDropCount = ringDropCount
@@ -198,7 +187,6 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     self.lostChunkCount = lostChunkCount
     self.rateDivergenceDetected = rateDivergenceDetected
     self.nativeChannelCount = nativeChannelCount
-    self.drainedPreRollSampleCount = max(0, drainedPreRollSampleCount)
   }
 
   /// Counters decode as ABSENT-MEANS-ZERO rather than as required keys, so a stop
@@ -220,8 +208,6 @@ public struct CaptureStopMetadata: Sendable, Codable, Equatable {
     rateDivergenceDetected =
       try c.decodeIfPresent(Bool.self, forKey: .rateDivergenceDetected) ?? false
     nativeChannelCount = try c.decodeIfPresent(Int.self, forKey: .nativeChannelCount)
-    drainedPreRollSampleCount =
-      max(0, try c.decodeIfPresent(Int.self, forKey: .drainedPreRollSampleCount) ?? 0)
   }
 }
 
