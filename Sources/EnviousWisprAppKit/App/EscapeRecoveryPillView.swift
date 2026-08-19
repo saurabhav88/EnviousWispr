@@ -158,7 +158,12 @@ struct EscapeRecoveryPillFace: View {
     // which reads as cramped at the top.
     .frame(width: PillMetrics.pillWidth, height: PillMetrics.pillHeight)
     .background(Capsule().fill(palette.fill))
-    .overlay(Capsule().strokeBorder(palette.rim, lineWidth: 1))
+    // Both overlays sit IN FRONT of the button and are pure decoration, so both
+    // opt out of hit testing. A stroked shape is hit-testable by default and its
+    // stroke region overlaps the pill's rim, which is exactly where a click
+    // aimed just outside the Undo target lands. The rail already opts out inside
+    // `SpectralRail`; this is its twin, and the twin is the one that gets missed.
+    .overlay(Capsule().strokeBorder(palette.rim, lineWidth: 1).allowsHitTesting(false))
     .overlay(
       SpectralRail(progress: progress, palette: palette, showsBloom: showsBloom)
         .padding(PillMetrics.railInset)
