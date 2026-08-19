@@ -147,6 +147,28 @@ struct PasteTelemetryPayloadTests {
   /// compile error rather than a row · real paste target keeps alerting ->
   /// rows 4 AND 12, because the real press-failure path always carries the
   /// `menu_paste` tier that row 4 alone omits.
+  /// #1332 whole-diff review: the code comment claims these are OMITTED when
+  /// nil. A sentinel string would be indistinguishable from a real value in
+  /// every query built on this, so the claim needs a test rather than a comment.
+  @Test("the #1332 diagnostic keys are absent when nil and present when supplied")
+  func diagnosticKeysOmitWhenNil() {
+    let absent = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(
+      tiersAttempted: [], focus: .nonText, targetBundleID: "com.apple.finder",
+      accessibilityTrusted: true, targetDiagnostics: .unavailable, tierFailures: [:])
+    #expect(absent["paste.ax_decline_reason"] == nil)
+    #expect(absent["paste.ax_settability"] == nil)
+
+    let present = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(
+      axDeclineReason: "selected_text_not_settable",
+      axSettability: "value_settable__selected_text_not_settable",
+      tiersAttempted: [], focus: .nonText, targetBundleID: "com.apple.finder",
+      accessibilityTrusted: true, targetDiagnostics: .unavailable, tierFailures: [:])
+    #expect(present["paste.ax_decline_reason"] as? String == "selected_text_not_settable")
+    #expect(
+      present["paste.ax_settability"] as? String
+        == "value_settable__selected_text_not_settable")
+  }
+
   @Test("expected-refusal predicate fails closed across documented decision boundaries")
   func expectedRefusalMatrix() {
     let cases: [([String], PasteFocusClassification, String?, String?, Bool)] = [

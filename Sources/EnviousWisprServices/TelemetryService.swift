@@ -282,6 +282,8 @@ public final class TelemetryService {
           caretCaptureRetryMs: m?.caretCaptureRetryMs,
           repairRules: m?.repairRules,
           payloadKind: m?.pastePayloadKind,
+          axDeclineReason: m?.axDeclineReason,
+          axSettability: m?.axSettability,
           languageResolutionSource: m?.languageResolutionSource,
           languageConfidenceBucket: m?.languageConfidenceBucket,
           casingDeadlinePhase: m?.casingDeadlinePhase,
@@ -2046,6 +2048,10 @@ public final class TelemetryService {
     public let caretCaptureRetryMs: Double?
     public let repairRules: String?
     public let payloadKind: String?
+    /// #1332. Why the Tier 1 route declined, and the settability pair. Both
+    /// omit-when-nil, so every prior shape is unchanged.
+    public let axDeclineReason: String?
+    public let axSettability: String?
     /// #1921. Why the language question got its answer, and how confident. A
     /// closed category and a band, never a language code or a raw score — this
     /// says how the gate behaved without shipping what language each user
@@ -2070,6 +2076,8 @@ public final class TelemetryService {
       caretCaptureRetryMs: Double? = nil,
       repairRules: String? = nil,
       payloadKind: String? = nil,
+      axDeclineReason: String? = nil,
+      axSettability: String? = nil,
       languageResolutionSource: String? = nil,
       languageConfidenceBucket: String? = nil,
       casingDeadlinePhase: String? = nil,
@@ -2087,6 +2095,8 @@ public final class TelemetryService {
       self.caretCaptureRetryMs = caretCaptureRetryMs
       self.repairRules = repairRules
       self.payloadKind = payloadKind
+      self.axDeclineReason = axDeclineReason
+      self.axSettability = axSettability
       self.languageResolutionSource = languageResolutionSource
       self.languageConfidenceBucket = languageConfidenceBucket
       self.casingDeadlinePhase = casingDeadlinePhase
@@ -2110,6 +2120,8 @@ public final class TelemetryService {
       if let caretCaptureRetryMs { out["caret_capture_retry_ms"] = caretCaptureRetryMs }
       if let repairRules { out["repair_rules"] = repairRules }
       if let payloadKind { out["payload_kind"] = payloadKind }
+      if let axDeclineReason { out["ax_decline_reason"] = axDeclineReason }
+      if let axSettability { out["ax_settability"] = axSettability }
       if let languageResolutionSource {
         out["language_resolution_source"] = languageResolutionSource
       }

@@ -63,6 +63,13 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var casingOracleClosuresCompleted: Int?
   public var casingOracleClosureMaxMs: Double?
   public var pastePayloadKind: String?
+  /// - `axDeclineReason`: WHY the Tier 1 accessibility route did not deliver, a
+  ///   closed set. Nil when it did. `not_attempted_*` values are decided before
+  ///   the write is called and are the majority (#1332).
+  /// - `axSettability`: both settability answers as one token, so the
+  ///   DISAGREEMENT between them can be grouped on without a join.
+  public var axDeclineReason: String?
+  public var axSettability: String?
   public var languageResolutionSource: String?
   public var languageConfidenceBucket: String?
   public var targetApp: String?
@@ -184,6 +191,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     caretCaptureRetryMs: Double? = nil,
     repairRules: String? = nil,
     pastePayloadKind: String? = nil,
+    axDeclineReason: String? = nil,
+    axSettability: String? = nil,
     languageResolutionSource: String? = nil,
     languageConfidenceBucket: String? = nil,
     targetApp: String? = nil,
@@ -241,6 +250,8 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.caretCaptureRetryMs = caretCaptureRetryMs
     self.repairRules = repairRules
     self.pastePayloadKind = pastePayloadKind
+    self.axDeclineReason = axDeclineReason
+    self.axSettability = axSettability
     self.languageResolutionSource = languageResolutionSource
     self.languageConfidenceBucket = languageConfidenceBucket
     self.targetApp = targetApp

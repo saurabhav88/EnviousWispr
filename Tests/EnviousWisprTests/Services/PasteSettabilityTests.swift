@@ -63,3 +63,71 @@ struct PasteSettabilityTests {
         == "value_unreadable__selected_text_settable")
   }
 }
+
+/// #1332 Chunk 3. The decline reason is a TELEMETRY CONTRACT: its raw values are
+/// grouped on in PostHog and Sentry, so a rename is a silent data break, not a
+/// refactor. Observability rather than product outcome — when these fail, a
+/// dashboard lies; no user notices.
+@Suite("PasteService.AXDeclineReason", .tags(.observabilityContract))
+struct PasteDeclineReasonTests {
+
+  @Test("a verified write has no decline reason")
+  func verifiedHasNoReason() {
+    #expect(PasteService.declineReason(for: .verified) == nil)
+  }
+
+  @Test("the two non-delivering outcomes map to distinct reasons")
+  func outcomesMapDistinctly() {
+    // These are opposite instructions to the cascade — one authorises a second
+    // paste, the other forbids it — so they must never collapse in the data.
+    #expect(PasteService.declineReason(for: .noMutation) == .noMutation)
+    #expect(PasteService.declineReason(for: .unverifiable) == .unverifiable)
+    #expect(
+      PasteService.declineReason(for: .noMutation)
+        != PasteService.declineReason(for: .unverifiable))
+  }
+
+  @Test("every one of the fourteen raw values is pinned exactly")
+  func rawValuesAreStable() {
+    // Frozen because they are grouped on in PostHog and Sentry, so a rename is a
+    // silent data break rather than a refactor. All fourteen, not a sample: the
+    // earlier version pinned five and would have let a rename of the other nine
+    // through (chunk whole-diff review).
+    //
+    // The `not_attempted_` prefix is load bearing. Those declines happen before
+    // the write is ever called and are the MAJORITY, so a query must separate
+    // them without a join.
+    let expected: [(PasteService.AXDeclineReason, String)] = [
+      (.accessibilityDenied, "not_attempted_accessibility_denied"),
+      (.focusMissing, "not_attempted_focus_missing"),
+      (.focusNonText, "not_attempted_focus_non_text"),
+      (.roleUnreadable, "role_unreadable"),
+      (.roleNotText, "role_not_text"),
+      (.selectedTextNotSettable, "selected_text_not_settable"),
+      (.countUnreadableOrInvalid, "count_unreadable_or_invalid"),
+      (.rangeUnreadable, "range_unreadable"),
+      (.rangeInvalid, "range_invalid"),
+      (.beforeImageUnreadableOrIncomplete, "before_image_unreadable_or_incomplete"),
+      (.focusUnconfirmed, "focus_unconfirmed"),
+      (.setFailed, "set_failed"),
+      (.noMutation, "no_mutation"),
+      (.unverifiable, "unverifiable"),
+    ]
+    for (reason, rawValue) in expected {
+      #expect(reason.rawValue == rawValue, "raw value drifted for \(reason)")
+    }
+    #expect(expected.count == 14)
+  }
+
+  @Test("no two reasons share a raw value")
+  func rawValuesAreUnique() {
+    // A duplicate would silently merge two causes in every chart built on this.
+    let all: [PasteService.AXDeclineReason] = [
+      .accessibilityDenied, .focusMissing, .focusNonText, .roleUnreadable, .roleNotText,
+      .selectedTextNotSettable, .countUnreadableOrInvalid, .rangeUnreadable, .rangeInvalid,
+      .beforeImageUnreadableOrIncomplete, .focusUnconfirmed, .setFailed, .noMutation, .unverifiable,
+    ]
+    #expect(Set(all.map(\.rawValue)).count == all.count)
+    #expect(all.count == 14)
+  }
+}

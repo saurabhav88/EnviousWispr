@@ -81,6 +81,10 @@ internal struct PasteDeliveryResult {
   /// no route reached its write (#1785). Records what was SUBMITTED, never
   /// proof of what landed — Tier 2 only proves Cmd+V was posted.
   var submittedPayload: PasteService.PastePayloadKind?
+  /// #1332. Why the Tier 1 fast route did not deliver, and both settability
+  /// answers as one token. Nil when Tier 1 delivered.
+  var axDeclineReason: String?
+  var axSettability: String?
 
   var pasteTierLabel: String {
     if case .clipboardOnlyAccessibilityDenied = outcome {
@@ -311,6 +315,18 @@ internal final class PasteCascadeExecutor {
       targetDiagnostics = .missing
     }
     let canAttemptKeyPaste = classification.canAttemptKeyPaste
+    // Why Tier 1 did not run, decided HERE rather than inside the write. These
+    // are the majority of declines — a reason set covering only the write's own
+    // exits would be nil for most of them (#1332).
+    var axDeclineReason: PasteService.AXDeclineReason? = {
+      if !axTrusted { return .accessibilityDenied }
+      switch classification {
+      case .textField: return nil  // Tier 1 runs; the write reports its own.
+      case .missing: return .focusMissing
+      case .nonText: return .focusNonText
+      }
+    }()
+    var axSettability: PasteService.AXSettability?
     // Which payload was submitted by the route that last attempted a write.
     // Nil until one does. A later route may legitimately overwrite this: Tier 1
     // can attempt a write, PROVE nothing landed, and hand off to Tier 2, whose
@@ -341,6 +357,8 @@ internal final class PasteCascadeExecutor {
         requireFocusedElementMatch: request.targetElementIsRetried)
       let disposition = dispositionForAXDirect(insert.outcome)
       submittedKind = insert.submitted
+      axDeclineReason = insert.declineReason
+      axSettability = insert.settability
       axAllowsRetry = disposition.allowsAutomaticRetry
       switch disposition {
       case .delivered:
@@ -527,7 +545,11 @@ internal final class PasteCascadeExecutor {
           menuProbe = .depthLimited
         case .unreadable:
           // Menu bar (or traversal) AX read failed — unknown, not a confirmed
-          // refusal (#1435).
+          // refusal (#1435). Since #1332 this ALSO includes the one-second AX
+          // messaging timeout, which was never in force before. A slow or
+          // unknown probe deliberately keeps full alerting rather than becoming
+          // `no_paste_target`, so this branch can raise the alert count on a
+          // slow app even though the change as a whole reduces it.
           menuProbe = .unreadable
         }
       } else {
@@ -622,10 +644,13 @@ internal final class PasteCascadeExecutor {
     }
 
     emitPasteTelemetry(
-      outcome: outcome, tierFailures: tierFailures, focusClass: menuProbe?.focusClassLabel)
+      outcome: outcome, tierFailures: tierFailures, focusClass: menuProbe?.focusClassLabel,
+      axDeclineReason: axDeclineReason?.rawValue,
+      axSettability: axSettability?.telemetryValue)
 
     return PasteDeliveryResult(
-      tier: tier, durationMs: durationMs, outcome: outcome, submittedPayload: submittedKind)
+      tier: tier, durationMs: durationMs, outcome: outcome, submittedPayload: submittedKind,
+      axDeclineReason: axDeclineReason?.rawValue, axSettability: axSettability?.telemetryValue)
   }
 
   /// #729 Tier 2c menu-paste probe outcome. Drives `paste.focus_class`.
@@ -684,7 +709,8 @@ internal final class PasteCascadeExecutor {
   /// Fires Sentry captureError for non-delivered outcomes. Owned by the cascade
   /// so overlay UI and telemetry both derive from the same typed outcome.
   private func emitPasteTelemetry(
-    outcome: PasteDeliveryOutcome, tierFailures: [String: String], focusClass: String?
+    outcome: PasteDeliveryOutcome, tierFailures: [String: String], focusClass: String?,
+    axDeclineReason: String? = nil, axSettability: String? = nil
   ) {
     switch outcome {
     case .delivered:
@@ -692,6 +718,8 @@ internal final class PasteCascadeExecutor {
     case .clipboardOnly(let tiers, let focus, let bundle, let accessibilityTrusted, let diagnostics):
       let tierStrings = tiers.map(\.rawValue)
       let extra = Self.clipboardOnlyTelemetryExtra(
+        axDeclineReason: axDeclineReason,
+        axSettability: axSettability,
         tiersAttempted: tierStrings,
         focus: focus,
         targetBundleID: bundle,
@@ -728,6 +756,8 @@ internal final class PasteCascadeExecutor {
       // `paste.tier_failures["ax_direct"] == "unverifiable"`.
       let tierStrings = [PasteTier.axDirect.rawValue]
       let extra = Self.clipboardOnlyTelemetryExtra(
+        axDeclineReason: axDeclineReason,
+        axSettability: axSettability,
         tiersAttempted: tierStrings,
         focus: .textField,
         targetBundleID: bundle,
@@ -822,6 +852,8 @@ internal final class PasteCascadeExecutor {
   }
 
   internal static func clipboardOnlyTelemetryExtra(
+    axDeclineReason: String? = nil,
+    axSettability: String? = nil,
     tiersAttempted: [String],
     focus: PasteFocusClassification,
     targetBundleID: String?,
@@ -842,6 +874,12 @@ internal final class PasteCascadeExecutor {
       "paste.target_element_role_source": targetDiagnostics.roleSource,
       "paste.target_element_subrole_status": targetDiagnostics.subroleStatus,
     ]
+    // #1332: WHY the fast route declined, and both settability answers as one
+    // token. Genuinely OMITTED when nil rather than sent as a placeholder — a
+    // sentinel string would be indistinguishable from a real value in every
+    // query built on this, and older event shapes must stay unchanged.
+    if let axDeclineReason { extra["paste.ax_decline_reason"] = axDeclineReason }
+    if let axSettability { extra["paste.ax_settability"] = axSettability }
     // #729: present only when the Tier 2c menu probe actually ran (Scenario
     // A/B discriminator). Absent on .textField/.missing and on activation
     // timeout before probing.

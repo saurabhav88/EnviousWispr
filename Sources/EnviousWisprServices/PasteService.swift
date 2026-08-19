@@ -350,6 +350,16 @@ public enum PasteService {
     )
   }
 
+  /// The reason that corresponds to a classified outcome, so the mapping lives
+  /// in ONE place rather than at each construction site.
+  package static func declineReason(for outcome: AXInsertOutcome) -> AXDeclineReason? {
+    switch outcome {
+    case .verified: return nil
+    case .noMutation: return .noMutation
+    case .unverifiable: return .unverifiable
+    }
+  }
+
   /// Whether a Tier 1 write must be skipped for this element.
   ///
   /// Pure, so the one decision this adds is testable without a live AX element —
@@ -362,6 +372,68 @@ public enum PasteService {
   /// a transient AX failure.
   package static func tier1IsRefused(by settability: AXSettability) -> Bool {
     settability.selectedText == .notSettable
+  }
+
+  /// Why a Tier 1 accessibility write did not deliver.
+  ///
+  /// Tier 1 is 18x faster than the keyboard route (p50 15ms against 267ms) and
+  /// loses 76% of the time even when the caret was read in a real text field —
+  /// 7,295 declines a month, and until #1332 not one of them recorded a cause.
+  /// This is that cause, as a closed set so it can be grouped on.
+  ///
+  /// The `notAttempted*` cases are decided by the CASCADE before this function
+  /// is called, and they are the majority: a reason set covering only this
+  /// function's own exits would be nil for most declines, which is the same
+  /// silent gap it exists to close.
+  public enum AXDeclineReason: String, Equatable, Sendable {
+    case accessibilityDenied = "not_attempted_accessibility_denied"
+    case focusMissing = "not_attempted_focus_missing"
+    case focusNonText = "not_attempted_focus_non_text"
+    case roleUnreadable = "role_unreadable"
+    case roleNotText = "role_not_text"
+    case selectedTextNotSettable = "selected_text_not_settable"
+    case countUnreadableOrInvalid = "count_unreadable_or_invalid"
+    case rangeUnreadable = "range_unreadable"
+    case rangeInvalid = "range_invalid"
+    case beforeImageUnreadableOrIncomplete = "before_image_unreadable_or_incomplete"
+    case focusUnconfirmed = "focus_unconfirmed"
+    case setFailed = "set_failed"
+    case noMutation = "no_mutation"
+    case unverifiable
+  }
+
+  /// What a Tier 1 attempt produced, including the evidence behind it.
+  ///
+  /// Replaces a `(outcome, submitted)` tuple. The decision evidence used to be
+  /// discarded at this return boundary, which is why nothing downstream could
+  /// say why the fast route lost.
+  package struct AXInsertResult: Sendable {
+    package let outcome: AXInsertOutcome
+    package let submitted: PastePayloadKind?
+    package let declineReason: AXDeclineReason?
+    package let settability: AXSettability?
+
+    package init(
+      outcome: AXInsertOutcome,
+      submitted: PastePayloadKind?,
+      declineReason: AXDeclineReason?,
+      settability: AXSettability?
+    ) {
+      self.outcome = outcome
+      self.submitted = submitted
+      self.declineReason = declineReason
+      self.settability = settability
+    }
+
+    /// A decline before any write was attempted. `.noMutation` is the outcome
+    /// in every case, because nothing was mutated — the reason is what tells
+    /// the two dozen ways of getting here apart.
+    static func declined(
+      _ reason: AXDeclineReason, settability: AXSettability? = nil
+    ) -> AXInsertResult {
+      AXInsertResult(
+        outcome: .noMutation, submitted: nil, declineReason: reason, settability: settability)
+    }
   }
 
   /// Outcome of a Tier 1 Accessibility insertion attempt.
@@ -1222,7 +1294,7 @@ public enum PasteService {
     context: CaretContext? = nil,
     element: AXUIElement,
     requireFocusedElementMatch: Bool = false
-  ) -> (outcome: AXInsertOutcome, submitted: PastePayloadKind?) {
+  ) -> AXInsertResult {
     // Verify the element is a text field or text area.
     var roleRef: CFTypeRef?
     let roleErr = AXUIElementCopyAttributeValue(
@@ -1231,9 +1303,9 @@ public enum PasteService {
       &roleRef
     )
     guard roleErr == .success, let role = roleRef as? String else {
-      return (.noMutation, nil)
+      return .declined(.roleUnreadable)
     }
-    guard textRoles.contains(role) else { return (.noMutation, nil) }
+    guard textRoles.contains(role) else { return .declined(.roleNotText) }
 
     // Verify the element will accept the write we are about to make.
     //
@@ -1248,7 +1320,9 @@ public enum PasteService {
     // before, because collapsing "no" together with "did not say" would drop an
     // app onto the 18x-slower route for a transient AX failure.
     let settability = readAXSettability(of: element)
-    if tier1IsRefused(by: settability) { return (.noMutation, nil) }
+    if tier1IsRefused(by: settability) {
+      return .declined(.selectedTextNotSettable, settability: settability)
+    }
 
     // Everything needed to verify the result must be readable BEFORE we write.
     // The retired code wrote first and only then discovered it could not read
@@ -1262,9 +1336,11 @@ public enum PasteService {
       &charCountBefore
     )
     guard let countBefore = charCountBefore as? Int, countBefore >= 0 else {
-      return (.noMutation, nil)
+      return .declined(.countUnreadableOrInvalid, settability: settability)
     }
-    guard let rangeBefore = selectedRange(of: element) else { return (.noMutation, nil) }
+    guard let rangeBefore = selectedRange(of: element) else {
+      return .declined(.rangeUnreadable, settability: settability)
+    }
     // A foreign app can report a range that does not fit its own field. Reject
     // rather than compute verification windows from impossible values.
     guard
@@ -1272,7 +1348,7 @@ public enum PasteService {
       rangeBefore.length >= 0,
       rangeBefore.location <= countBefore,
       rangeBefore.length <= countBefore - rangeBefore.location
-    else { return (.noMutation, nil) }
+    else { return .declined(.rangeInvalid, settability: settability) }
 
     // The payload choice, made from the range this function just read rather
     // than from anything the caller measured earlier. A contextual candidate is
@@ -1313,7 +1389,7 @@ public enum PasteService {
     } else {
       // Without a trustworthy before-image, a successful AX call could never be
       // proven harmless. Bail while nothing has been mutated; Tier 2 is safe.
-      return (.noMutation, nil)
+      return .declined(.beforeImageUnreadableOrIncomplete, settability: settability)
     }
 
     // The payload choice, made from the range AND the surrounding text this
@@ -1354,7 +1430,7 @@ public enum PasteService {
           requireFocusedElementMatch: true,
           isFocused: freshFocusedElement(matching: element) != nil)
       else {
-        return (.noMutation, nil)
+        return .declined(.focusUnconfirmed, settability: settability)
       }
     }
 
@@ -1364,7 +1440,7 @@ public enum PasteService {
       kAXSelectedTextAttribute as CFString,
       text as CFTypeRef
     )
-    guard err == .success else { return (.noMutation, nil) }
+    guard err == .success else { return .declined(.setFailed, settability: settability) }
 
     // From here the write may have landed, so every remaining failure is
     // `unverifiable`, never `noMutation`.
@@ -1406,7 +1482,12 @@ public enum PasteService {
     // The write was attempted with this payload, whatever the verification says
     // afterwards — including an outcome later classified `unverifiable`, where
     // the text may already be in the document.
-    return (outcome, payload.kind)
+    return AXInsertResult(
+      outcome: outcome,
+      submitted: payload.kind,
+      declineReason: Self.declineReason(for: outcome),
+      settability: settability
+    )
   }
 
   // MARK: - Tier 2: CGEvent Cmd+V

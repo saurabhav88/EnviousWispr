@@ -1130,6 +1130,8 @@ struct KernelFinalizationWiring {
       caretCaptureRetryMs: outcome.caretCaptureRetryMs,
       repairRules: outcome.repairRules,
       pastePayloadKind: outcome.pasteResult?.submittedPayload?.rawValue,
+      axDeclineReason: outcome.pasteResult?.axDeclineReason,
+      axSettability: outcome.pasteResult?.axSettability,
       // #1921: carried through unchanged. Each hop transports exactly what the
       // previous one produced — no normalising, no substituting a default —
       // because a value that is quietly rewritten in transit is worse than one
