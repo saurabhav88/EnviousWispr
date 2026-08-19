@@ -178,11 +178,17 @@ public enum PasteService {
   ///     our own paste write. Pass this value so we can detect if a clipboard
   ///     manager has modified the board before the restore fires.
   ///   - pasteboard: Defaults to the user's clipboard. Tests pass an isolated board.
+  /// - Returns: whether the board was actually written. `false` means the guard
+  ///   declined because something else claimed the board first, which is a normal
+  ///   outcome and not an error. Added for #2197: once the restore runs off the
+  ///   awaited delivery path, "did it apply" stops being observable from the
+  ///   caller's control flow, so the only way to log or test it is to return it.
+  @discardableResult
   public static func restoreClipboard(
     _ snapshot: ClipboardSnapshot,
     changeCountAfterPaste: Int,
     on pasteboard: NSPasteboard = .general
-  ) {
+  ) -> Bool {
     // Read once, up front. The unstructured logging `Task` below then captures
     // an `Int` instead of the `NSPasteboard` reference, and the number it
     // reports is the one the guard actually decided on rather than whatever the
@@ -199,14 +205,14 @@ public enum PasteService {
           level: .verbose, category: "PasteService"
         )
       }
-      return
+      return false
     }
 
     // Prior clipboard was empty — restore to empty by clearing our own paste
     // text off the board, rather than leaving it behind (#729 Codex diff review).
     guard !snapshot.items.isEmpty else {
       pasteboard.clearContents()
-      return
+      return true
     }
 
     pasteboard.clearContents()
@@ -218,6 +224,7 @@ public enum PasteService {
       return pbItem
     }
     pasteboard.writeObjects(pbItems)
+    return true
   }
 
   // MARK: - Tier 1: AX Direct Insertion

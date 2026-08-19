@@ -466,14 +466,25 @@ import Testing
   /// their own. Comments on both #2109 additions were folded to their code lines
   /// first, so the growth is one line of wiring and no prose. Same deterministic
   /// rule: actual 1351 + ~2, rounded up to nearest 5.
+  ///
+  /// RAISED 1355 → 1360 for #2197 (2026-08-19). Three lines: wiring
+  /// `clipboardCleanupPendingProvider` at the composition root, beside the
+  /// `dictationActiveProvider` it extends. It has to live here because this is
+  /// the composition root — the coordinator reads process-wide state through a
+  /// closure rather than importing Pipeline, which is the same shape as the
+  /// provider above it, and a closure nothing assigns is a guard that never
+  /// fires. Prose was folded FIRST, per the precedent above: the original six
+  /// lines became one comment line plus two of wiring, and the full rationale
+  /// lives on the property's own doc comment in `UpdateCoordinator`. Same
+  /// deterministic rule: actual 1356 + ~2, rounded up to nearest 5.
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1355,
+      lineCount <= 1360,
       """
-      WisprBootstrapper line count exceeded: \(lineCount) > 1355. \
+      WisprBootstrapper line count exceeded: \(lineCount) > 1360. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

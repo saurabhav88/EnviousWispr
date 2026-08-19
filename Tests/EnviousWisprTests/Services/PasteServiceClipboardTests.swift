@@ -154,3 +154,42 @@ struct PasteServiceClipboardTests {
     pasteboard.setString(text, forType: .string)
   }
 }
+
+/// Observability Contract: `restoreClipboard`'s return value is what the cleanup
+/// log line reports. When it lies, a diagnosis reads the wrong outcome.
+@Suite("restoreClipboard reports whether it applied (#2197)", .tags(.observabilityContract))
+struct RestoreClipboardResultTests {
+
+  @Test("True when the board was ours to write")
+  func trueWhenApplied() {
+    let pb = NSPasteboard.withUniqueName()
+    PasteService.copyToClipboard("user clipboard", to: pb)
+    let snapshot = PasteService.saveClipboard(from: pb)
+    PasteService.copyToClipboard("our payload", to: pb)
+    #expect(
+      PasteService.restoreClipboard(snapshot, changeCountAfterPaste: pb.changeCount, on: pb)
+        == true)
+  }
+
+  @Test("False when the guard declined")
+  func falseWhenDeclined() {
+    let pb = NSPasteboard.withUniqueName()
+    PasteService.copyToClipboard("user clipboard", to: pb)
+    let snapshot = PasteService.saveClipboard(from: pb)
+    PasteService.copyToClipboard("our payload", to: pb)
+    let stale = pb.changeCount
+    PasteService.copyToClipboard("someone else", to: pb)
+    #expect(PasteService.restoreClipboard(snapshot, changeCountAfterPaste: stale, on: pb) == false)
+  }
+
+  @Test("True for an empty prior clipboard, which is restored by clearing")
+  func trueWhenPriorWasEmpty() {
+    let pb = NSPasteboard.withUniqueName()
+    let snapshot = PasteService.saveClipboard(from: pb)
+    PasteService.copyToClipboard("our payload", to: pb)
+    #expect(
+      PasteService.restoreClipboard(snapshot, changeCountAfterPaste: pb.changeCount, on: pb)
+        == true)
+    #expect(pb.string(forType: .string) == nil)
+  }
+}

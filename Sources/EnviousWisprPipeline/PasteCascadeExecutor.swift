@@ -406,7 +406,7 @@ internal final class PasteCascadeExecutor {
         // proven gap — taken because it costs one moved line.
         let snapshot: ClipboardSnapshot? =
           request.restoreClipboardAfterPaste
-          ? PasteService.saveClipboard()
+          ? ClipboardCleanup.snapshotForDelivery()
           : nil
         submittedKind = payload.kind
         let dispatchResult = PasteService.pasteToActiveApp(payload.text)
@@ -424,9 +424,10 @@ internal final class PasteCascadeExecutor {
           )
         }
         if let snapshot {
-          try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-          PasteService.restoreClipboard(
-            snapshot, changeCountAfterPaste: dispatchResult.changeCount)
+          // Scheduled, not awaited (#2197). The delay and the guard are
+          // unchanged; the dictation just stops queueing behind them.
+          ClipboardCleanup.scheduleRestore(
+            snapshot, changeCountAfterPaste: dispatchResult.changeCount, tier: tier)
         }
       } else {
         // Activation timed out. Record it as a distinct failure stage so
@@ -440,7 +441,11 @@ internal final class PasteCascadeExecutor {
         tiersAttempted.append(.appleScript)
         _ = PasteService.forceActivateApp(pid: app.processIdentifier)
         app.activate()
-        try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
+        // Not a clipboard delay — this waits for the activation to settle before
+        // the payload is chosen. It shared `clipboardRestoreDelayMs` by accident
+        // of history; #2197 gave it its own name so an edit to one cannot
+        // silently retune the other.
+        try? await Task.sleep(for: .milliseconds(TimingConstants.activationSettleBeforePasteMs))
         let payload = PasteService.payloadAtCommitBoundary(
           legacy: request.legacyText,
           repaired: request.repairedText,
@@ -452,7 +457,7 @@ internal final class PasteCascadeExecutor {
         // Same ordering as Tier 2: snapshot after the re-check, before the write.
         let snapshot: ClipboardSnapshot? =
           request.restoreClipboardAfterPaste
-          ? PasteService.saveClipboard()
+          ? ClipboardCleanup.snapshotForDelivery()
           : nil
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)
@@ -464,8 +469,8 @@ internal final class PasteCascadeExecutor {
           emitTierFailureBreadcrumb(stage: "applescript", reason: "refused", bundleId: bundleId)
         }
         if let snapshot {
-          try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-          PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCount)
+          ClipboardCleanup.scheduleRestore(
+            snapshot, changeCountAfterPaste: changeCount, tier: tier)
         }
       }
     }
@@ -489,7 +494,7 @@ internal final class PasteCascadeExecutor {
         // Put our text on the clipboard BEFORE probing enabled-state: apps grey
         // out Paste when the clipboard is empty/incompatible (#729 Codex r1).
         let snapshot: ClipboardSnapshot? =
-          request.restoreClipboardAfterPaste ? PasteService.saveClipboard() : nil
+          request.restoreClipboardAfterPaste ? ClipboardCleanup.snapshotForDelivery() : nil
         // Selected through the same owner as every other route. A container
         // target should never HAVE a candidate — the context reader refuses any
         // role that is not a text role — but this route asks the same question
@@ -516,8 +521,8 @@ internal final class PasteCascadeExecutor {
               tier = .menuPaste
               // Restore the user's prior clipboard after the paste lands.
               if let snapshot {
-                try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-                PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCount)
+                ClipboardCleanup.scheduleRestore(
+                  snapshot, changeCountAfterPaste: changeCount, tier: tier)
               }
             } else {
               // Enabled but AXPress failed. Leave the payload on the clipboard
@@ -589,20 +594,17 @@ internal final class PasteCascadeExecutor {
       fellBackToClipboardOnly: false)
     {
       // A clipboard route delivered contextual text and nothing else is going to
-      // clear it. Wait first, for the same reason the restore path waits: the
+      // clear it. The wait exists for the same reason the restore path waits: the
       // Cmd+V we posted is read by the target app asynchronously, and replacing
       // the clipboard underneath it would deliver today's payload instead of the
       // one we just chose — silently undoing the feature at the last step.
-      try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-      // ...and during that wait the user, or their clipboard manager, may have
-      // copied something. Rewriting unconditionally would destroy it. Same guard
-      // `restoreClipboard` has always applied: only touch the board if it still
-      // holds exactly what this route put there.
-      if clipboardUntouchedSinceSubmit(
-        submitted: submittedClipboardChangeCount,
-        current: NSPasteboard.general.changeCount)
-      {
-        PasteService.copyToClipboard(request.legacyText)
+      //
+      // Scheduled rather than awaited (#2197). The freshness guard still runs
+      // AFTER the wait, inside the scheduled body, because the POLICY question
+      // was answered here and the FRESHNESS question can only be answered later.
+      if let submitted = submittedClipboardChangeCount {
+        ClipboardCleanup.scheduleLegacyRewrite(
+          legacyText: request.legacyText, submittedChangeCount: submitted, tier: tier)
       }
     }
 

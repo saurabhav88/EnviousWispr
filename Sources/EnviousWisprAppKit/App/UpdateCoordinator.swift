@@ -62,6 +62,19 @@ final class UpdateCoordinator {
   /// app mid-capture. Wired in `WisprBootstrapper` to `LiveRecordingState`.
   var dictationActiveProvider: (() -> Bool)?
 
+  /// #2197: reads whether clipboard cleanup is still outstanding.
+  ///
+  /// Since #2197 the clipboard restore runs just after a dictation finishes
+  /// rather than inside it, so there is now a ~200 ms window where the session
+  /// is over — and `dictationActiveProvider` therefore reports false — while the
+  /// user's clipboard has not been handed back yet. A Sparkle install relaunches
+  /// the app, which would take the process down inside that window and lose it.
+  ///
+  /// Declining to START an install for 200 ms is a strictly smaller refusal than
+  /// the mid-dictation one already shipping beside it. Wired in
+  /// `WisprBootstrapper` to `ClipboardCleanup.hasPending`.
+  var clipboardCleanupPendingProvider: (() -> Bool)?
+
   /// #1019: when the last update-check cycle FINISHED having reached the feed
   /// (update found, none found, or user-cancelled install). Nil until the first
   /// such outcome. A genuine network/parse failure does NOT update this, so the
@@ -266,7 +279,9 @@ final class UpdateCoordinator {
   }
 
   private func triggerGuardedInstall(source: String) {
-    guard !(dictationActiveProvider?() ?? false) else { return }
+    guard !(dictationActiveProvider?() ?? false),
+      !(clipboardCleanupPendingProvider?() ?? false)
+    else { return }
     // #1029: only install when an update is actually available. With the tap
     // delegate now active on every launch, a tap on a STALE delivered
     // notification (its version already installed, pending state cleared by

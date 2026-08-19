@@ -322,8 +322,25 @@ public enum RecoveryConstants {
 // MARK: - Timing Constants
 
 public enum TimingConstants {
-  /// Delay before clipboard restoration after paste.
+  /// How long the target app is given to read our payload before the clipboard
+  /// is tidied up.
+  ///
+  /// Since #2197 this is awaited OFF the delivery path, in `ClipboardCleanup`,
+  /// so it no longer delays the dictation's own completion. The value is
+  /// deliberately unchanged: measured app read times are 2-38 ms, but that is a
+  /// measurement of the fastest Mac we own, and a fixed number here has to be
+  /// safe for the slowest one. Once the wait costs the user nothing there is
+  /// nothing to buy by shortening it.
   public static let clipboardRestoreDelayMs: Int = 200
+
+  /// How long to let an app settle after activating it, before choosing the
+  /// payload to paste into it.
+  ///
+  /// Same value as `clipboardRestoreDelayMs` and unrelated to it — this one
+  /// shared that constant by accident of history until #2197. Separated so that
+  /// retuning a clipboard delay cannot silently retune an activation delay
+  /// nobody measured.
+  public static let activationSettleBeforePasteMs: Int = 200
 
   /// Delay after hiding the app before simulating paste (ms).
   public static let appHideBeforePasteDelayMs: Int = 300
