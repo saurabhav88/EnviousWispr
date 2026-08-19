@@ -840,10 +840,16 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // take whose audio reconstructed perfectly reported with `audio_decrypted`
       // ABSENT — read as "nothing came out of the spool", the inverse of the
       // truth and the #2205 defect one branch over.
+      //
+      // NO `retryDisposition` HERE, deliberately. This is the TRANSCRIBE-site
+      // deferral: no readiness retry was involved, no budget was consulted, and
+      // no marker was written. Tagging it `persistence_failed` counted ordinary
+      // transcription deferrals as failed readiness retries and would have
+      // corrupted the exact split the field exists to measure — a metric whose
+      // NAME is a causal claim about a state with more than one producer.
       TelemetryService.shared.recoveryCompleted(
         outcome: "deferred", reason: .markerClearFailed, failureClass: diagnosis.failureClass,
-        audioDecrypted: true, campBCandidate: true, spoolSeconds: spoolSeconds,
-        retryDisposition: .persistenceFailed)
+        audioDecrypted: true, campBCandidate: true, spoolSeconds: spoolSeconds)
       return .deferredMarkerClearFailed
     }
   }

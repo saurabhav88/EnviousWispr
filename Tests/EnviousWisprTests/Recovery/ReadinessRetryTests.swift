@@ -422,6 +422,30 @@ struct ReadinessRetryRecoveryTests {
     #expect(e.stringProps["retry_disposition"] == "persistence_failed")
   }
 
+  /// The field must appear ONLY on the bounded readiness retry. Codex found it
+  /// leaking onto the transcribe-site deferral, where no budget is consulted and
+  /// no marker is written — which would have counted ordinary transcription
+  /// deferrals as failed readiness retries and corrupted the very split the
+  /// field exists to measure.
+  @Test("an unrelated deferral carries no retry disposition")
+  func transcribeSiteDeferralDoesNotClaimAReadinessRetry() async throws {
+    let h = try Fixture.make()
+    h.asr.transcribeError = ASRError.notReady  // the TRANSCRIBE site, not the load site
+
+    var outcome: RecoveryReplayOutcome?
+    let box = await Fixture.capturingTelemetry {
+      outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+    }
+
+    #expect(outcome == .deferred, "unchanged #2205 behaviour")
+    let e = try #require(box.recoveryEvents().first)
+    #expect(e.stringProps["failure_class"] == "not_ready")
+    #expect(
+      e.stringProps["retry_disposition"] == nil,
+      "no readiness retry happened here, so claiming one falsifies the dashboard")
+    #expect(!h.store.hasReadinessRetryMarker(for: h.id), "and no budget was spent")
+  }
+
   /// Spool deletion must ATTEMPT every readiness-retry artifact, and keep
   /// attempting the others when one fails — the store's cleanup is best-effort
   /// by design, so this asserts attempts, never guarantees.
