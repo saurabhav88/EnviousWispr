@@ -278,10 +278,19 @@ final class UpdateCoordinator {
     triggerGuardedInstall(source: "notification")
   }
 
+  /// Whether an install must be refused right now.
+  ///
+  /// ONE authority, read by both the guard below and the menu's `installEnabled`
+  /// (#2197). They were briefly separate, and the menu rendered an ENABLED
+  /// Install item that this guard then silently swallowed — found in diff review.
+  /// Anything that can refuse an install belongs here, not in a second copy of
+  /// the condition.
+  var installRefusedNow: Bool {
+    (dictationActiveProvider?() ?? false) || (clipboardCleanupPendingProvider?() ?? false)
+  }
+
   private func triggerGuardedInstall(source: String) {
-    guard !(dictationActiveProvider?() ?? false),
-      !(clipboardCleanupPendingProvider?() ?? false)
-    else { return }
+    guard !installRefusedNow else { return }
     // #1029: only install when an update is actually available. With the tap
     // delegate now active on every launch, a tap on a STALE delivered
     // notification (its version already installed, pending state cleared by

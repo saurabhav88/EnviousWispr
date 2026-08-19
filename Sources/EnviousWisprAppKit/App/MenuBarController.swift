@@ -1,6 +1,5 @@
 import AppKit
 import EnviousWisprCore
-import EnviousWisprPipeline
 import EnviousWisprServices
 import Foundation
 
@@ -288,12 +287,13 @@ final class MenuBarController: NSObject {
       }
       return nil
     }()
-    // #2197: `installEnabled` below must agree with what
-    // `UpdateCoordinator.triggerGuardedInstall` will actually DO. That guard
-    // refuses during dictation AND during the ~200 ms clipboard cleanup window
-    // that now follows one; reading only the first would render an ENABLED
-    // Install item that silently does nothing when clicked.
-    let installRefused = liveRecordingState.isDictationActive || ClipboardCleanup.hasPending
+    // #2197: ask the coordinator whether an install is refused rather than
+    // re-deriving the condition here. Recomputing it locally is what produced an
+    // ENABLED Install item the guard then silently swallowed, and reading it from
+    // the owner also keeps this file free of a Pipeline import it has no business
+    // holding — the architecture guard that refused that import was right.
+    let installRefused =
+      sparkleUpdateController.updateCoordinator?.installRefusedNow ?? false
 
     return MenuBarViewState(
       pipelineState: liveRecordingState.pipelineState,
