@@ -16,7 +16,7 @@ EnviousWispr relies on a double tap of your keybind to lock the recording in pla
 
 **Tap, then tap again.** Start your recording with a normal press of your keybind, then press it a second time within half a second, before you let go.
 
-The on-screen bar grows to confirm that recording is locked on. If the bar does not change, the second press came too late, and the recording ends as usual when you release the key. Try the double tap a little quicker.
+The on-screen bar changes to confirm that recording is locked on. If it does not change, the second press came too late, and the recording ends as usual when you release the key. Try the double tap a little quicker.
 
 ### Stopping recording
 

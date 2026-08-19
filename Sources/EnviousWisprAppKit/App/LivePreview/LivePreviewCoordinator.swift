@@ -900,7 +900,19 @@ enum LivePreviewCopy {
   /// can include downloading an Apple speech model.
   static let preparing = "Getting the preview ready..."
   /// Shown in the pill while the preview is running but has not heard words yet.
+  ///
+  /// **Rendered by the CAPSULE layout only since #2202.** The preview pill's
+  /// header carries `listeningMode` instead, and showing both would greet a
+  /// first-time user with the same word twice in one small box.
   static let listening = "Listening..."
+  /// #2202: the preview header's state, hold-to-talk. Quiet and grey — you are
+  /// holding a key, it ends when you let go, and the state barely needs saying.
+  static let listeningMode = "Listening"
+  /// #2202: the preview header's state, hands-free. Carried on a filled badge
+  /// because this mode persists until the user presses again, and a size change
+  /// is a weak signal — you only notice it if you saw the other size a second
+  /// earlier.
+  static let handsFreeMode = "Hands-free"
   /// #2108. The universal preview model has not been downloaded. Names the
   /// action rather than the fault: nothing is broken, the user has simply not
   /// chosen to download it yet.
