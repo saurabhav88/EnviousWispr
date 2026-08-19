@@ -1119,8 +1119,8 @@ def R1_readiness_lost_after_load(**_) -> dict:
     env = dict(os.environ)
     env["EW_FORCE_READINESS_LOST"] = "1"
     env["EW_FAULT_INJECTION"] = "1"
-    subprocess.Popen([app_path], env=env,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    faulted = subprocess.Popen([app_path], env=env,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # ---- 3. POSITIVE CONTROL: prove the fault actually FIRED ----------------
     # Without this the scenario passes when the seam never armed at all — the env
@@ -1159,11 +1159,22 @@ def R1_readiness_lost_after_load(**_) -> dict:
     # flaky in the worst direction — a CORRECT build times out with the spool
     # retained and reports failure. Relaunch instead, WITHOUT the fault, which
     # guarantees a launch-time `scanAndRecover()`.
-    for pid in dev_pids():
-        subprocess.run(["kill", "-9", pid])
+    # Kill ONLY the instance this scenario launched. A `dev_pids()` sweep here
+    # would kill a peer worktree's app that started during the fault-observation
+    # window — the single-target check ran minutes earlier and does not hold now.
+    # This is the same defect the previous review round fixed on the FIRST kill,
+    # reintroduced in the code added for that fix.
+    subprocess.run(["kill", "-9", str(faulted.pid)])
     time.sleep(2.0)
+    # Drop ONLY the readiness fault. `EW_FAULT_INJECTION` must be re-set: it is
+    # supplied to the original app by its launcher, never exported into this
+    # shell, so `os.environ` does not carry it. Without it the relaunched app has
+    # no debug endpoint or token, and every later `query` or fault scenario fails
+    # until someone rebuilds — a scenario that silently disarms the harness for
+    # everything after it.
     clean_env = dict(os.environ)
     clean_env.pop("EW_FORCE_READINESS_LOST", None)
+    clean_env["EW_FAULT_INJECTION"] = "1"
     subprocess.Popen([app_path], env=clean_env,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
