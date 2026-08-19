@@ -1104,13 +1104,70 @@ def R1_readiness_lost_after_load(**_) -> dict:
 
     # ---- 2. relaunch with the fault armed ---------------------------------
     # `open` does not pass environment; exec the bundle binary directly.
+    log_path = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
+
+    def log_tail(from_byte: int) -> str:
+        try:
+            with open(log_path, "rb") as fh:
+                fh.seek(from_byte)
+                return fh.read().decode("utf-8", "replace")
+        except OSError:
+            return ""
+
+    log_mark = os.path.getsize(log_path) if os.path.exists(log_path) else 0
+
     env = dict(os.environ)
     env["EW_FORCE_READINESS_LOST"] = "1"
     env["EW_FAULT_INJECTION"] = "1"
     subprocess.Popen([app_path], env=env,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # ---- 3. the verdict: a History row carrying THIS spool's id ------------
+    # ---- 3. POSITIVE CONTROL: prove the fault actually FIRED ----------------
+    # Without this the scenario passes when the seam never armed at all — the env
+    # var not propagated, the seam removed, or the one-shot consumed by an earlier
+    # load. Ordinary crash recovery then produces the SAME History row and every
+    # assertion below is true while the post-load guard was never exercised.
+    # This is the difference between "the guard worked" and "the guard never ran".
+    fault_deadline = time.time() + 60
+    fault_fired = False
+    while time.time() < fault_deadline and not fault_fired:
+        time.sleep(2)
+        tail = log_tail(log_mark)
+        if "class=load_returned_not_ready" in tail and "one retry granted" in tail:
+            fault_fired = True
+
+    if not fault_fired:
+        tail = log_tail(log_mark)
+        if "replay unrecoverable" in tail or "replay failed" in tail:
+            # The negative control's signature: the guard is gone, the take died.
+            return {"evidence_valid": True,
+                    "evidence": {"spool": spool_id,
+                                 "reason": "replay was terminal — the #2207 deletion"},
+                    "assertions": {"readiness_fault_fired": True,
+                                   "recording_survived": False,
+                                   "recovered_to_history": False}}
+        return invalid(
+            "the readiness fault never fired: no `class=load_returned_not_ready` "
+            "deferral in the log. The seam did not arm, so nothing was tested. "
+            "Check EW_FORCE_READINESS_LOST reached the process.")
+
+    # ---- 4. TRIGGER the granted retry deterministically ---------------------
+    # A granted deferral leaves the spool eligible, but eligibility is not a
+    # RUN: the coordinator schedules nothing further, and the next pass needs a
+    # wake (a dictation ending, an engine change, a mutation claim releasing) or
+    # a fresh launch. Waiting for one to happen by chance makes this scenario
+    # flaky in the worst direction — a CORRECT build times out with the spool
+    # retained and reports failure. Relaunch instead, WITHOUT the fault, which
+    # guarantees a launch-time `scanAndRecover()`.
+    for pid in dev_pids():
+        subprocess.run(["kill", "-9", pid])
+    time.sleep(2.0)
+    clean_env = dict(os.environ)
+    clean_env.pop("EW_FORCE_READINESS_LOST", None)
+    subprocess.Popen([app_path], env=clean_env,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # ---- 5. the verdict: a History row carrying THIS spool's id -------------
     deadline = time.time() + 75
     row = None
     while time.time() < deadline and row is None:
@@ -1135,6 +1192,9 @@ def R1_readiness_lost_after_load(**_) -> dict:
         "evidence": {"spool": spool_id, "app": app_path,
                      "text": (row or {}).get("text", "")[:60]},
         "assertions": {
+            # The positive control: without it the two below pass on a build
+            # where the guard never ran at all.
+            "readiness_fault_fired": fault_fired,
             # With the fix reverted BOTH go false: the replay is unrecoverable,
             # deletion is requested, and no History row ever appears.
             "recording_survived": survived,
@@ -1890,7 +1950,9 @@ def B1_bluetooth_route_flip(*, founder_present: bool = False, **_) -> dict:
 # legacy, so the lookup never executed and the NameError sat latent. R1 is the
 # first adopter.
 _REQUIRED_ASSERTIONS: dict[str, list[str]] = {
-    "R1_readiness_lost_after_load": ["recording_survived", "recovered_to_history"],
+    "R1_readiness_lost_after_load": [
+        "readiness_fault_fired", "recording_survived", "recovered_to_history",
+    ],
 }
 
 

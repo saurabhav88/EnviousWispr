@@ -57,6 +57,10 @@ Refuses to run rather than guessing when more than one dev instance is present (
 
 Uses the strict `{evidence_valid, evidence, assertions}` contract with `recording_survived` and `recovered_to_history` as required assertions, so the negative control actually fails the run. A bare `{"ok": false}` would have printed a failure and exited 0, because `evaluate_trial` treats any result without `evidence_valid` as a passing legacy scenario.
 
+**Carries a POSITIVE control, and it is the assertion that matters most.** The scenario waits for `class=load_returned_not_ready` plus `one retry granted` in `app.log` before accepting any recovery. Without it, a build where the fault never armed — env var not propagated, seam removed, one-shot consumed by an earlier load — produces the SAME History row through ordinary crash recovery and every other assertion passes while the guard under test never ran.
+
+**Triggers the granted retry explicitly rather than waiting for one.** A granted deferral leaves the spool ELIGIBLE, which is not the same as scheduled: the coordinator queues nothing further, and the next pass needs a wake or a fresh launch. Waiting for one to arrive by chance makes the scenario flaky in the worst direction, where a CORRECT build times out and reports failure. The scenario relaunches without the fault, which guarantees a launch-time `scanAndRecover()`.
+
 Negative control, demonstrated red/green on PR #2218: make the load-site routing unconditional again (`if false, case .classified(.loadReturnedNotReady)`), rebuild, rerun. The log reads `replay unrecoverable — requesting deletion`, the spool directory empties, and no History row appears. That control reproduced #2207 on demand for the first time; it had previously only been inferred from telemetry.
 
 ### A1_rapid_stop_start (Lane A — timing/cancel)
