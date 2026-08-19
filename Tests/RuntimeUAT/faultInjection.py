@@ -1091,15 +1091,40 @@ def R1_readiness_lost_after_load(**_) -> dict:
             pass  # the app dies underneath it; that is the point
 
     threading.Thread(target=speak, daemon=True).start()
-    time.sleep(6.0)
+
+    # SYNCHRONISE ON THE SPOOL APPEARING, never on elapsed time. A fixed sleep
+    # measures from THREAD STARTUP, and `record_tts` has to generate TTS first —
+    # its OpenAI request alone permits 15s. A 6s timer therefore expired before
+    # recording had begun on any slow generation, killing the app with no orphan
+    # created, returning `evidence_valid: false`, and leaving the dev app stopped.
+    # The spool file IS the signal that capture started; that is what to wait for.
+    # (testing-philosophy.md RULE: never-guess-when-the-subject-is-finished — the
+    # same defect at the harness level.)
+    spool_deadline = time.time() + 45
+    created: set = set()
+    while time.time() < spool_deadline and not created:
+        time.sleep(0.5)
+        created = ewrec_ids() - pre_existing
+
+    if not created:
+        return invalid(
+            "no spool appeared within 45s — recording never started, so there is "
+            "nothing to crash. Check TTS generation and the PTT binding.")
+    if len(created) != 1:
+        return invalid(
+            f"expected exactly one NEW spool, got {len(created)}: {sorted(created)}")
+
+    # Real audio must reach the spool, or the replay recovers an empty prefix and
+    # the verdict says nothing about the readiness guard.
+    time.sleep(3.0)
     subprocess.run(["kill", "-9", target_pid])  # ONLY the verified target
     time.sleep(2.0)
 
-    created = ewrec_ids() - pre_existing
-    if len(created) != 1:
+    still_there = ewrec_ids() - pre_existing
+    if created != still_there:
         return invalid(
-            f"expected exactly one NEW spool from this run, got {len(created)}: "
-            f"{sorted(created)}")
+            f"the spool set changed across the crash: {sorted(created)} -> "
+            f"{sorted(still_there)}")
     spool_id = created.pop()
 
     # ---- 2. relaunch with the fault armed ---------------------------------
