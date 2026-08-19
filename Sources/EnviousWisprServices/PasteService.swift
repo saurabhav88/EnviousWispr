@@ -1434,6 +1434,11 @@ public enum PasteService {
   /// Distinguishes "read fine, no matching item" from "couldn't read the menu
   /// bar at all" — collapsing both into one `nil` hid a real AX failure behind
   /// the same telemetry label as a genuine no-target refusal (#1435).
+  /// Per-element cap on accessibility messaging while probing a foreign app's
+  /// menu bar. One second, unchanged from what the retired `"AXTimeout"` write
+  /// intended; the difference is that this one takes effect.
+  private static let menuProbeAXTimeout: Float = 1.0
+
   public enum MenuItemProbeResult {
     case found(AXUIElement)
     case confirmedAbsent
@@ -1456,7 +1461,13 @@ public enum PasteService {
   public static func findPasteMenuItem(pid: pid_t) -> MenuItemProbeResult {
     let app = AXUIElementCreateApplication(pid)
     // Cap AX round-trips so a misbehaving app can't hang the paste path.
-    AXUIElementSetAttributeValue(app, "AXTimeout" as CFString, Float(1.0) as CFTypeRef)
+    //
+    // `AXUIElementSetMessagingTimeout` is the API for this. The retired line
+    // wrote a non-existent "AXTimeout" ATTRIBUTE and discarded the result, so
+    // the cap this comment promises has never actually been in force — found by
+    // the chunk-1a build review, #1332. The timeout binds ONE element, so every
+    // handle we message has to be bounded, not just this one.
+    _ = AXUIElementSetMessagingTimeout(app, menuProbeAXTimeout)
     var menuBarRef: CFTypeRef?
     guard
       AXUIElementCopyAttributeValue(app, kAXMenuBarAttribute as CFString, &menuBarRef) == .success,
@@ -1473,6 +1484,9 @@ public enum PasteService {
   /// bug this type exists to fix, one level down (#1435 grounded review r1).
   @MainActor
   private static func firstPasteItem(in element: AXUIElement, depth: Int) -> MenuItemProbeResult {
+    // Descendant handles do NOT inherit an ancestor's messaging timeout.
+    _ = AXUIElementSetMessagingTimeout(element, menuProbeAXTimeout)
+
     // menu bar(0) → menu-bar-item(1) → menu(2) → menu-item(3); allow a little
     // slack for apps that nest an extra group, but stay bounded.
     guard depth <= 4 else { return .confirmedAbsent }
@@ -1494,6 +1508,7 @@ public enum PasteService {
 
     var encounteredUnreadableBranch = false
     for child in children {
+      _ = AXUIElementSetMessagingTimeout(child, menuProbeAXTimeout)
       var cmdCharRef: CFTypeRef?
       let commandRead = AXUIElementCopyAttributeValue(
         child, "AXMenuItemCmdChar" as CFString, &cmdCharRef)
