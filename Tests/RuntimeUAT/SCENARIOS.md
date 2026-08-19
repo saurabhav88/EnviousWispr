@@ -31,6 +31,7 @@ run_scenario("A3_asr_xpc_kill")
 |---|---|---|
 | Real OS-level audio interruption (BT codec switch, Zoom mic-grab, device sleep/wake) | See `docs/LANE_B_AUDIO_TESTS.md` (HITL only — not synthetic-viable, see `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt`) | hardware/HITL |
 | Dictation lost (or pipeline stuck) after ASR service crash | A3_asr_xpc_kill | xpc |
+| A recording saved by crash recovery is silently DELETED instead of recovered | R1_readiness_lost_after_load | recovery |
 | Cancel mid-record leaks task / state | A2_force_cancel | timing |
 | Rapid stop/start corrupts state | A1_rapid_stop_start | timing |
 | Live setting toggle doesn't apply mid-record | A6_settings_storm | settings |
@@ -42,6 +43,17 @@ run_scenario("A3_asr_xpc_kill")
 | Dead/zombie mic delivers all-zero audio (#1317, FIXED) | bench moved OFFLINE -> `docs/bench-offline/` (gitignored) | dead-mic |
 
 ## Index by scenario name
+
+### R1_readiness_lost_after_load (Lane R — recovery)
+Backends: parakeet. Budget: 90s. Mechanism: recovery.
+
+Drives a REAL dictation, `kill -9`s the app mid-utterance to produce a genuine orphan spool, then relaunches with the readiness postcondition faulted. The engine's load returns normally and reports itself unready — the #2207 condition, which lives in the two-statement window between the loader returning and the readiness read and therefore cannot be staged by hand.
+
+**Verdict: a History row carrying THAT spool's `recoverySessionID` with `isRecovered: true`.** Deliberately NOT "the spool is still on disk" — the same-session wake redeems the recording within the same second and correctly cleans up, so a disk check reports FAILED on a SUCCESSFUL run. That checker defect cost a scare on 2026-08-19 and is why the verdict is the outcome rather than an intermediate state.
+
+Arming is by ENVIRONMENT (`EW_FORCE_READINESS_LOST=1`), not the socket command, and that is load-bearing: `scanAndRecover()` runs from `applicationDidFinishLaunching()` seconds before a socket command could arrive, so a socket-only arm could never reach the launch replay it exists to fault. `force_readiness_lost` remains registered for same-session wakes. `open` does not pass environment variables, so the scenario execs the bundle binary directly.
+
+Negative control, demonstrated red/green on PR #2218: make the load-site routing unconditional again (`if false, case .classified(.loadReturnedNotReady)`), rebuild, rerun. The log reads `replay unrecoverable — requesting deletion`, the spool directory empties, and no History row appears. That control reproduced #2207 on demand for the first time; it had previously only been inferred from telemetry.
 
 ### A1_rapid_stop_start (Lane A — timing/cancel)
 Backends: both. Budget: 3s. Mechanism: timing.

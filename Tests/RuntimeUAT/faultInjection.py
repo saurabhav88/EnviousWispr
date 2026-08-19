@@ -982,6 +982,131 @@ def _normalize_tokens(text: str) -> set:
 
 @scenario(
     ScenarioMeta(
+        name="R1_readiness_lost_after_load",
+        lane="R",
+        family="recovery",
+        backends=["parakeet"],
+        runtime_budget_seconds=90.0,
+        founder_required=False,
+        negative_control=(
+            "In RecoverySpoolReplayer.replay, make the load-site routing "
+            "unconditional again (`if false, case .classified(.loadReturnedNotReady)`), "
+            "rebuild and rerun: the log reads `replay unrecoverable — requesting "
+            "deletion`, the spool directory empties, and this scenario FAILS. "
+            "Demonstrated red/green at PR time on #2218."
+        ),
+        description=(
+            "#2207: a load that returns while the engine is unready must DEFER and "
+            "keep the recording, never delete it"
+        ),
+    )
+)
+def R1_readiness_lost_after_load(**_) -> dict:
+    """Crash a real dictation, then replay it against a faulted readiness check.
+
+    THE PRODUCTION DEFECT (#2207): `ActiveEngineOperation.load` used to mean "the
+    load call returned", not "the engine is ready" — `ASRManager.loadModel()`
+    RECORDS readiness rather than requiring it. Crash recovery believed it,
+    transcribed, failed, and DELETED a spool it had successfully saved.
+
+    WHY THIS NEEDS A SEAM AT ALL: the condition lives in the two-statement window
+    between the loader returning and the readiness read. In production it takes an
+    unload, cancel or engine switch landing inside that window, which cannot be
+    staged by hand.
+
+    WHY THE ARM IS AN ENV VAR AND NOT THIS SCENARIO'S USUAL `send(...)`:
+    `scanAndRecover()` runs from `applicationDidFinishLaunching()`, seconds before
+    a socket command could arrive, so a socket-only arm can never reach the launch
+    replay it exists to fault. `force_readiness_lost` is still registered for
+    same-session wakes; the launch path needs the environment.
+
+    THE VERDICT IS THE HISTORY ROW, NOT THE SPOOL DIRECTORY. A checker asserting
+    "the spool is still on disk" reports FAILED on a SUCCESSFUL run, because the
+    same-session wake redeems the recording within the same second and correctly
+    cleans up. Measured 2026-08-19; it cost a scare.
+    """
+    import json
+    import os
+    import subprocess
+    import threading
+
+    spool_dir = os.path.expanduser(
+        "~/Library/Application Support/EnviousWispr/audio_recovery")
+    transcripts = os.path.expanduser(
+        "~/Library/Application Support/EnviousWispr/transcripts")
+    sentence = ("The readiness retry audit take, one two three four five, "
+                "this recording must survive the crash and be recovered.")
+
+    def dev_pids():
+        out = subprocess.run(
+            ["pgrep", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
+            capture_output=True, text=True).stdout.split()
+        return [p for p in out if p.strip()]
+
+    pids = dev_pids()
+    if not pids:
+        return {"ok": False, "reason": "no dev app running"}
+    app_path = subprocess.run(
+        ["ps", "-ww", "-o", "command=", "-p", pids[0]],
+        capture_output=True, text=True).stdout.strip()
+    if not app_path:
+        return {"ok": False, "reason": "could not resolve the running bundle"}
+
+    # 1. A GENUINE orphan: real audio, killed mid-utterance. Never hand-written.
+    import wispr_eyes
+
+    def speak():
+        try:
+            wispr_eyes.record_tts(sentence=sentence, wait=2.0)
+        except Exception:
+            pass  # the app dies underneath it; that is the point
+
+    threading.Thread(target=speak, daemon=True).start()
+    time.sleep(6.0)
+    for pid in dev_pids():
+        subprocess.run(["kill", "-9", pid])
+    time.sleep(2.0)
+
+    spools = [f for f in os.listdir(spool_dir) if f.endswith(".ewrec")]
+    if not spools:
+        return {"ok": False, "reason": "no orphan spool produced; nothing to recover"}
+    spool_id = spools[0].removesuffix(".ewrec")
+
+    # 2. Relaunch with the fault armed. `open` does not pass environment; exec the
+    #    binary directly.
+    env = dict(os.environ)
+    env["EW_FORCE_READINESS_LOST"] = "1"
+    env["EW_FAULT_INJECTION"] = "1"
+    subprocess.Popen([app_path], env=env,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # 3. The verdict: a History row carrying THIS spool's id, marked recovered.
+    deadline = time.time() + 75
+    row = None
+    while time.time() < deadline and row is None:
+        time.sleep(3)
+        for name in os.listdir(transcripts):
+            if not name.endswith(".json"):
+                continue
+            try:
+                d = json.load(open(os.path.join(transcripts, name)))
+            except Exception:
+                continue
+            if d.get("recoverySessionID") == spool_id:
+                row = d
+                break
+
+    if row is None:
+        return {"ok": False, "spool": spool_id,
+                "reason": "the recording was never recovered — with the fix reverted "
+                          "this is the #2207 deletion"}
+    if not row.get("isRecovered"):
+        return {"ok": False, "spool": spool_id, "reason": "saved but not marked recovered"}
+    return {"ok": True, "spool": spool_id, "text": (row.get("text") or "")[:60]}
+
+
+@scenario(
+    ScenarioMeta(
         name="A1_rapid_stop_start",
         lane="A",
         family="timing",
