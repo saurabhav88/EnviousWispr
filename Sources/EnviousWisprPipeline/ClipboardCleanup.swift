@@ -15,6 +15,28 @@ import EnviousWisprServices
 /// clipboard comes back at the same wall-clock moment it always did. What
 /// changes is that the dictation no longer waits for it.
 ///
+/// **DO NOT REPLACE THIS WITH "DETECT WHEN THE APP HAS READ IT". It was built,
+/// measured, and refused.** The obvious improvement is to stop waiting a fixed
+/// period and instead learn the moment the target app reads the pasteboard —
+/// macOS offers exactly that, via lazy provision: declare a type with an owner
+/// and `pasteboard(_:provideDataForType:)` fires when a client asks for the
+/// bytes. The mechanism works. Apps read in 2.0-38 ms, exactly one read per
+/// paste, and lazily provided text does paste correctly.
+///
+/// It is unusable because **the callback proves SOMEONE read the board, never
+/// WHO.** A clipboard manager reads it the same way the target app does, both
+/// are other processes, and the promise is one-shot — whoever reads first spends
+/// the signal. Restoring on a stolen read puts the user's PREVIOUS clipboard
+/// into their document instead of their dictation, on the one path that must
+/// never fail.
+///
+/// Timing cannot separate them, and that was measured rather than assumed:
+/// thefts land at 0.0 ms and 3.2 ms after the keystroke, against a fastest
+/// genuine app read of 2.0 ms. The distributions overlap, so no threshold
+/// exists. (The probe and the full write-up live outside the repo — `docs/` and
+/// `.claude/` are gitignored — which is why the conclusion is recorded HERE, in
+/// the file someone would edit while re-deriving it.)
+///
 /// **The one new thing is pending work, and it needs its own bookkeeping.**
 /// Cleanup can still be outstanding after `deliver` has returned, which creates
 /// states that could not previously exist. The plan enumerates them
