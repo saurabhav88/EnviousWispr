@@ -493,7 +493,22 @@ class Lane:
         invocation and a guard to police it, and #2165 exists to delete both. Sourcing their library
         adds no second copy to reconcile.
         """
-        rc, out = run(
+        try:
+            rc, out = self._run_package_prep()
+        except subprocess.TimeoutExpired:
+            raise _LaneTimedOut(
+                f"package preparation did not finish within {GENERATE_TIMEOUT_SECONDS}s. Its process "
+                f"group was killed; see {self.log_dir / 'package-prep.log'}"
+            )
+        if rc != 0:
+            # Not fatal: the canonical fallback already degrades a damaged clone to a slow unseeded
+            # resolve. If even that failed, the baseline is about to say so with a real build error,
+            # which is a better message than anything guessed here.
+            print(f"    note: package preparation exited {rc}; the baseline will report the real "
+                  f"failure if it matters ({self.log_dir / 'package-prep.log'})")
+
+    def _run_package_prep(self):
+        return run(
             ["bash", "-c",
              'set -e; source scripts/lib/spm-seed.sh; '
              'ew_seed_consume "$PWD" "$1"; '
@@ -505,12 +520,6 @@ class Lane:
             log_path=self.log_dir / "package-prep.log",
             timeout=GENERATE_TIMEOUT_SECONDS,
         )
-        if rc != 0:
-            # Not fatal: the canonical fallback already degrades a damaged clone to a slow unseeded
-            # resolve. If even that failed, the baseline is about to say so with a real build error,
-            # which is a better message than anything guessed here.
-            print(f"    note: package preparation exited {rc}; the baseline will report the real "
-                  f"failure if it matters ({self.log_dir / 'package-prep.log'})")
 
     def build_command(self, suite: str):
         """The invocation this runner issues. Extracted so the self-test can assert it agrees with
@@ -622,9 +631,25 @@ def check_canonical_settings(worktree: Path):
         )
 
 
+class _ProbeFailed(Exception):
+    """The dev-app probe could not answer. NOT the same as answering 'none running'."""
+
+
 def dev_app_pids(worktree: Path):
-    """Live pids, for the per-row recheck. Preflight raises; a mid-run appearance fails only that row."""
+    """Live pids, for the per-row recheck. Preflight raises; a mid-run appearance fails only that row.
+
+    `pgrep` exits 0 for a match, 1 for NO MATCH, and 2 or more when the probe itself failed — a bad
+    pattern, for instance. Folding that third answer into "none running" is fail-OPEN on a guard whose
+    entire job is to stop a corrupted log scoring as a mutant CAUGHT: the battery would proceed
+    believing the machine is clear when it does not know. Three-valued tool, two-valued caller.
+    """
     rc, out = run(["pgrep", "-f", DEV_APP_PATTERN], cwd=worktree)
+    if rc > 1:
+        raise _ProbeFailed(
+            f"the dev-app probe failed (pgrep exited {rc}). It cannot be read as 'no dev app is "
+            f"running' — that is the probe's third answer, not its second. Pattern: "
+            f"{DEV_APP_PATTERN!r}"
+        )
     return out.split() if rc == 0 and out.strip() else []
 
 
@@ -633,8 +658,12 @@ def check_no_dev_app(worktree: Path):
     if DEV_APP_PATTERN != "EnviousWispr Local.app/Contents/MacOS/EnviousWispr":
         print(f"NOTE: dev-app check is using a non-default pattern: {DEV_APP_PATTERN!r}",
               file=sys.stderr)
-    rc, out = run(["pgrep", "-f", DEV_APP_PATTERN], cwd=worktree)
-    if rc == 0 and out.strip():
+    try:
+        running = dev_app_pids(worktree)
+    except _ProbeFailed as exc:
+        raise Refusal(str(exc))
+    if running:
+        out = " ".join(running)
         raise Refusal(
             "A dev app is running. Its writes to ~/Library/Logs/EnviousWispr/app.log corrupt the\n"
             "AppLogger tests, and those failures score as mutants CAUGHT when nothing detected the\n"

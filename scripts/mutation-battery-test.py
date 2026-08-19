@@ -1652,6 +1652,61 @@ if "scripts/lib/spm-seed.sh" not in _joined:
 else:
     print("  ok  package preparation sources the canonical helper rather than reimplementing it")
 
+# `pgrep` exits 0 for a match, 1 for NO MATCH, and 2+ when the probe itself failed. Folding that third
+# answer into "none running" is fail-OPEN on a guard whose whole job is to stop a corrupted log scoring
+# as a mutant CAUGHT — the battery would proceed believing the machine is clear when it does not know.
+for _label, _rc, _want_refusal in [
+    ("a failed dev-app probe refuses rather than reading as clear", 2, True),
+    ("no match from the dev-app probe proceeds normally", 1, False),
+]:
+    ran += 1
+    _real_run6 = battery.run
+    battery.run = lambda cmd, cwd, log_path=None, timeout=None, _r=_rc: (_r, "")
+    _neutralised2 = battery.check_no_dev_app
+    battery.check_no_dev_app = _REAL_CHECK_NO_DEV_APP
+    try:
+        _REAL_CHECK_NO_DEV_APP(Path("."))
+        _got = False
+    except battery.Refusal as exc:
+        _got = "probe failed" in str(exc)
+    except Exception as exc:
+        _got = False
+        failures.append(f"{_label} — raised {type(exc).__name__} instead of Refusal")
+    finally:
+        battery.run = _real_run6
+        battery.check_no_dev_app = _neutralised2
+    if _got != _want_refusal:
+        failures.append(f"{_label}: refused={_got}, wanted {_want_refusal}")
+    else:
+        print(f"  ok  {_label}")
+
+# Every bounded call converts its timeout into a controlled error. The generation call did; the package
+# preparation added in the same commit did not, so it propagated raw.
+ran += 1
+_real_prep = battery.Lane._run_package_prep
+
+
+def _prep_timeout(self):
+    raise battery.subprocess.TimeoutExpired("prep", 1)
+
+
+battery.Lane._run_package_prep = _prep_timeout
+_real_run7 = battery.run
+battery.run = lambda cmd, cwd, log_path=None, timeout=None: (0, "")
+try:
+    _l2 = battery.Lane(Path(tempfile.gettempdir()), Path("/tmp/dd"), Path(tempfile.mkdtemp()))
+    try:
+        _l2.generate_once()
+        failures.append("a package-preparation timeout becomes a lane error — it did not raise at all")
+    except battery._LaneTimedOut:
+        print("  ok  a package-preparation timeout becomes a lane error")
+    except battery.subprocess.TimeoutExpired:
+        failures.append("a package-preparation timeout becomes a lane error — it propagated RAW, so "
+                        "the row loop cannot turn it into a controlled ERROR")
+finally:
+    battery.Lane._run_package_prep = _real_prep
+    battery.run = _real_run7
+
 print()
 if failures:
     print(f"{len(failures)} of {ran} FAILED:")
