@@ -912,6 +912,7 @@ final class RecordingOverlayPanel {
       wasManuallyDragged = true
     }
 
+    let previousHeight = panel.frame.height
     var frame = panel.frame
     if activePanelPosition == .bottom {
       frame.size.height = target
@@ -922,6 +923,27 @@ final class RecordingOverlayPanel {
     }
     panel.setFrame(frame, display: true)
     if !wasManuallyDragged { lastProgrammaticOrigin = frame.origin }
+
+    // #2201: every ACCEPTED resize, so "the box holds still" has a receipt an
+    // instrument can read. Until now this method logged nothing, which left the
+    // only evidence for a pill that will not stop moving a human watching it —
+    // and no way at all to tell one legitimate resize from forty.
+    //
+    // Deliberately AFTER `setFrame` and after the re-baseline, so it cannot
+    // disturb the drag-latch ordering above: `lastProgrammaticOrigin` is the only
+    // evidence a user drag happened, and the latch has to run before the frame
+    // moves. Reading `previousHeight` from before the mutation costs nothing and
+    // keeps every statement between the latch and `setFrame` untouched.
+    //
+    // No `#if DEBUG` at the call site: `AppLogger.log` is itself DEBUG-gated and
+    // compiles to a no-op in release. Fire-and-forget through a `Task` because
+    // this is a synchronous `@MainActor` method and the logger is an actor —
+    // same shape as `RecoveryLog.swift:64`.
+    Task {
+      await AppLogger.shared.log(
+        "OVERLAY_RESIZE preview height \(Int(previousHeight)) -> \(Int(target))",
+        category: "Overlay")
+    }
   }
 
   /// #1060: flash a transient banner over the LIVE recording pill (a second line
@@ -2157,6 +2179,19 @@ private struct OverlayCapsuleBackground: View {
   var cornerStyle: CornerStyle = .capsule
   @State private var glowOpacity: Double = 0.3
 
+  /// #2201: the preview pill's rainbow hairline holds still instead of breathing
+  /// on a permanent two-second loop.
+  ///
+  /// The loop is a nice touch on the small capsule, which shows for a moment and
+  /// carries no text. On the preview pill it sits under a box that is already
+  /// growing a line at a time while words arrive, and the two movements read as
+  /// one restless object — the founder reported the pill "pulsing", and this is
+  /// the part of that which is not the sizing defect.
+  ///
+  /// Mid-way between the loop's own 0.3 and 0.65 endpoints, so the line is no
+  /// dimmer on average than the one it replaces.
+  private static let steadyPreviewGlow: Double = 0.5
+
   private var shape: AnyShape {
     switch cornerStyle {
     case .capsule: return AnyShape(Capsule())
@@ -2201,11 +2236,16 @@ private struct OverlayCapsuleBackground: View {
           endPoint: .trailing
         )
         .frame(height: 1)
-        .opacity(glowOpacity)
+        .opacity(cornerStyle == .rounded ? Self.steadyPreviewGlow : glowOpacity)
         .padding(.horizontal, 20)
         .offset(y: -1)
       }
       .onAppear {
+        // #2201: only the capsule breathes. Arming a `repeatForever` for the
+        // preview would keep it re-rendering whether or not anything read
+        // `glowOpacity`, and the point of this chunk is that the preview pill
+        // stops moving on its own.
+        guard cornerStyle == .capsule else { return }
         withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
           glowOpacity = 0.65
         }
@@ -2272,15 +2312,51 @@ struct RecordingOverlayView: View {
   /// preview grows. No-op when the preview is off.
   var onContentHeightChange: (CGFloat) -> Void = { _ in }
   /// #1988: whether this pill is the tall preview layout. Passed in rather than
-  /// derived from the display state, which starts `.off` for one 50 ms poll and
-  /// would flash the capsule shape before the first read.
+  /// derived from the display state, which remains `.off` until the polling task
+  /// first runs and would flash the capsule shape before that first read.
+  ///
+  /// #2201: the previous wording said "for one 50 ms poll", which names a duration
+  /// the code does not have — the task reads its providers BEFORE its first sleep,
+  /// so the window is until it is first scheduled, not a fixed 50 ms.
   var usesPreviewLayout: Bool = false
   var lockState: OverlayLockState
   /// #1060: transient notice banner shown inside the recording capsule.
   var noticeState: OverlayNoticeState
   @State private var audioLevel: Float = 0
   @State private var elapsed: TimeInterval = 0
-  @State private var preview: LivePreviewDisplay = .off
+  @State private var preview: LivePreviewDisplay
+
+  /// Seeds `preview` so a size test can measure a KNOWN display state on the
+  /// first layout pass instead of waiting for the 50 ms poll to publish one.
+  ///
+  /// **The seam exists because the alternative is a timed wait, and this view's
+  /// whole defect is about what its height does over time.** `preview` is
+  /// `@State`, so nothing outside can set it; without this a test would have to
+  /// pump a run loop until the polling task happened to run, which is the
+  /// guess-when-the-subject-is-finished shape testing-philosophy.md forbids.
+  ///
+  /// Production never passes it. The poll is the only writer it needs, and it
+  /// overwrites this on the first tick regardless — so a wrong value here cannot
+  /// survive into a real recording, which is what makes the seam cheap.
+  init(
+    audioLevelProvider: @escaping () -> Float,
+    recordingElapsedProvider: @escaping () -> TimeInterval? = { nil },
+    livePreviewProvider: @escaping () -> LivePreviewDisplay,
+    onContentHeightChange: @escaping (CGFloat) -> Void = { _ in },
+    usesPreviewLayout: Bool = false,
+    lockState: OverlayLockState,
+    noticeState: OverlayNoticeState,
+    initialPreview: LivePreviewDisplay = .off
+  ) {
+    self.audioLevelProvider = audioLevelProvider
+    self.recordingElapsedProvider = recordingElapsedProvider
+    self.livePreviewProvider = livePreviewProvider
+    self.onContentHeightChange = onContentHeightChange
+    self.usesPreviewLayout = usesPreviewLayout
+    self.lockState = lockState
+    self.noticeState = noticeState
+    _preview = State(initialValue: initialPreview)
+  }
 
   var body: some View {
     VStack(spacing: 6) {
@@ -2317,10 +2393,54 @@ struct RecordingOverlayView: View {
     .animation(.easeInOut(duration: 0.3), value: lockState.isLocked)
     // Single container animation prevents animation stacking: N per-element
     // modifiers × update rate creates exponential state transitions (gotchas.md).
-    .animation(.easeOut(duration: 0.08), value: audioLevel)
+    //
+    // #2201: the PREVIEW layout selects no animation here. `audioLevel` is
+    // repolled every 50 ms, so this fires ~20 times a second, and a container
+    // animation animates whatever else changed in the same update — including the
+    // preview text, and therefore the capsule's HEIGHT. That turned each genuine
+    // resize into a smoothly animated one and drove `setFrame` once per frame.
+    //
+    // The trigger VALUE is kept rather than deleted, so the non-preview capsule's
+    // animation is visibly untouched in the diff and the two branches sit side by
+    // side. Audio-reactive PAINT is unaffected in both: `RainbowLipsIcon` reads
+    // `audioLevel` directly and redraws without needing this.
+    //
+    // Not a violation of swift-patterns.md RULE: animate-the-container-not-children
+    // — that forbids per-child `.animation(value:)`, and this adds none. The
+    // container keeps its `lockState` and `noticeState` triggers in both layouts.
+    .animation(
+      usesPreviewLayout ? nil : .easeOut(duration: 0.08),
+      value: audioLevel
+    )
     .animation(.easeInOut(duration: 0.25), value: noticeState.message)
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
+    // #2201: the preview pill's height must be a function of what it is SHOWING,
+    // never of how tall it happens to be already.
+    //
+    // Without this the capsule is free to stretch into whatever room the panel
+    // offers, because `previewText`'s `.frame(maxHeight:)` grows to its cap under
+    // a large proposal. The panel is then sized FROM that measurement
+    // (`onContentHeightChange` -> `resizeRecordingPanel`) while the measurement is
+    // taken INSIDE the panel, so the pair has no single solution: measured on the
+    // real view, one line of text reported 65pt in a 65pt panel and 125pt in a
+    // 125pt one. Nothing in the loop pulls the height back down either, so a box
+    // that grew for a long sentence stayed at the cap when the recognizer revised
+    // the sentence shorter.
+    //
+    // `fixedSize` makes the stack report its IDEAL height whatever it is offered,
+    // which is the same question `showPanel(fitToContent:)` asks at creation — so
+    // the two sizing paths finally agree. Growth is unaffected: the ideal height
+    // still tracks the text (65 -> 80 -> 125 across one, three and six-plus lines).
+    //
+    // **Gated, because every modifier on this root is rendered by BOTH layouts.**
+    // The 185pt capsule sits inside a fixed 92pt frame and is out of scope for
+    // #2198; `vertical: false` leaves it exactly as it was.
+    //
+    // **Order is load-bearing:** after both paddings, before both backgrounds. The
+    // measurement is taken on the padded stack, so moving this either side of it
+    // measures a different view than the one that was proven.
+    .fixedSize(horizontal: false, vertical: usesPreviewLayout)
     .background(OverlayCapsuleBackground(cornerStyle: usesPreviewLayout ? .rounded : .capsule))
     // #1988: report the capsule's real height so the panel can follow it. Measured
     // on the capsule rather than computed from a line count, because only the text
