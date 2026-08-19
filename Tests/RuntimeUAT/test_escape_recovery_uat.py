@@ -23,7 +23,13 @@ late take is missed again, which is the old shape exactly.
 """
 import sys, types, pathlib
 
-HERE = "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-escape-recovery/Tests/RuntimeUAT"
+# THIS file's directory, never a hardcoded one. It used to name
+# `EnviousWispr-escape-recovery`, a worktree that has since been deleted, and the
+# test kept passing only because Python puts a script's own directory on the path
+# anyway. Harmless while that path is absent; a silent wrong-subject test the
+# moment a stale copy exists there, since the import would resolve to ANOTHER
+# checkout's harness while the report named this one.
+HERE = str(pathlib.Path(__file__).resolve().parent)
 sys.path.insert(0, HERE)
 
 # The real ones need PyObjC and a live app; the subject under test is the
@@ -240,6 +246,85 @@ try:
 except uat.Aborted as e:
     ok("control: an app that does exit is fine", False, str(e))
 _sp.run = _real_run
+
+# ---------------------------------------------------------------------------
+# The restore PROPERTY, added 2026-08-19 after four consecutive review findings
+# in one place.
+#
+# Every one of those was a check that verified PART of the outcome and looked
+# like it verified all of it: the exit status but not the value, the value but
+# not the plist type, the write but not whether the app was down to receive it.
+# Adding a fifth clause would have been the same mistake again, so this asserts
+# the WHOLE property instead:
+#
+#     restore(before) returning True implies the domain now equals `before`
+#     for every key it was given — same value, same type, same presence.
+#
+# Swept over the cross-product of starting states and the ways a run can disturb
+# them, rather than over cases someone thought of.
+# ---------------------------------------------------------------------------
+
+def test_restore_property():
+    import importlib, itertools, subprocess
+    import escape_recovery_uat as _stubbed
+
+    # RELOAD FIRST. The rows above replace `defaults_write`, `defaults_delete`
+    # and `defaults_read` with in-memory fakes and never restore them, so a test
+    # written after them measures the stubs rather than the harness — the exact
+    # wrong-subject failure this whole file exists to catch. Caught here by the
+    # property failing 36/36 with "cannot read domain at all" rather than by
+    # anyone noticing the stubs.
+    harness = importlib.reload(_stubbed)
+
+    probe = "com.enviouswispr.propertyprobe"
+    saved_domain, harness.DOMAIN = harness.DOMAIN, probe
+
+    starts = [None, ("1", "-int"), ("1", "-bool"), ("0", "-bool"),
+              ("53", "-int"), ("dark", "-string")]
+    disturbances = {
+        "leave": None,
+        "delete": None,
+        "to-int-1": ("-int", "1"),
+        "to-bool-true": ("-bool", "true"),
+        "to-string-dark": ("-string", "dark"),
+        "to-int-999": ("-int", "999"),
+    }
+
+    def put(state):
+        subprocess.run(["defaults", "delete", probe, "k"], capture_output=True)
+        if state is not None:
+            # Through the harness's own writer: a raw `defaults write ... -bool 1`
+            # exits 255, which is the defect this file now guards. The first
+            # version of this test wrote raw and died on it.
+            harness.defaults_write("k", state[0], kind=state[1])
+
+    harness.defaults_write("bystander", "7", kind="-int")  # keeps the domain readable
+    violations = []
+    try:
+        for start, how in itertools.product(starts, disturbances):
+            put(start)
+            before = {"k": harness.defaults_read("k")}
+            if how == "delete":
+                subprocess.run(["defaults", "delete", probe, "k"], capture_output=True)
+            elif how != "leave":
+                kind, val = disturbances[how]
+                harness.defaults_write("k", val, kind=kind)
+            claimed = harness.restore(before)
+            after = harness.defaults_read("k")
+            if claimed and after != before["k"]:
+                violations.append(("claimed success but differs", start, how, before["k"], after))
+            if not claimed and after == before["k"]:
+                violations.append(("false alarm", start, how, before["k"], after))
+    finally:
+        subprocess.run(["defaults", "delete", probe], capture_output=True)
+        harness.DOMAIN = saved_domain
+
+    ok("restore: a claimed success always means the domain matches what was captured",
+          not violations,
+          "" if not violations else f"{len(violations)} violation(s): {violations[:3]}")
+
+
+test_restore_property()
 
 print("\n" + "=" * 56)
 print(f"{len(fails)} failed" if fails else "all rows passed")
