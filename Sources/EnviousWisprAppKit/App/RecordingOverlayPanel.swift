@@ -2297,9 +2297,20 @@ private struct OverlayCapsuleBackground: View {
     }
   }
 
+  /// #2204: the preview branch follows the appearance setting; the capsule does
+  /// not. This type has EIGHT call sites and only `.rounded` is the preview, so
+  /// every colour here is selected on `cornerStyle` and the `.capsule` values stay
+  /// byte-identical for the polishing pill, the cold-start notice, the distress
+  /// variant and four others — surfaces that ship to everyone, while the preview
+  /// ships OFF by default and is macOS 26+.
+  private var isPreview: Bool { cornerStyle == .rounded }
+
   var body: some View {
     shape
-      .fill(Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82))
+      .fill(
+        isPreview
+          ? PreviewPillPalette.surface
+          : Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82))
       // `strokeBorder` needs an insettable shape, which the type-erased `AnyShape`
       // is not, so the two concrete shapes are named here. Kept as `strokeBorder`
       // rather than switching both to `stroke`: the capsule is shipped UI and its
@@ -2311,7 +2322,7 @@ private struct OverlayCapsuleBackground: View {
             Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
           case .rounded:
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-              .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
+              .strokeBorder(PreviewPillPalette.border, lineWidth: 0.5)
           }
         }
       )
@@ -2482,7 +2493,7 @@ struct RecordingOverlayView: View {
     HStack(spacing: 12) {
       Text(FormattingConstants.formatDuration(elapsed))
         .font(.system(size: 13, weight: .semibold, design: .monospaced))
-        .foregroundStyle(.white.opacity(0.94))
+        .foregroundStyle(PreviewPillPalette.timer)
 
       RainbowLevelMeter(audioLevel: audioLevel)
 
@@ -2494,20 +2505,20 @@ struct RecordingOverlayView: View {
         // you saw the other size a second earlier.
         HStack(spacing: 6) {
           Circle()
-            .fill(Color.white.opacity(0.88))
+            .fill(PreviewPillPalette.badgeText)
             .frame(width: 5, height: 5)
           Text(LivePreviewCopy.handsFreeMode)
         }
         .font(.system(size: 11, weight: .semibold))
-        .foregroundStyle(.white.opacity(0.88))
+        .foregroundStyle(PreviewPillPalette.badgeText)
         .padding(.horizontal, 9)
         .padding(.vertical, 3)
-        .background(Capsule().fill(Color.white.opacity(0.13)))
+        .background(Capsule().fill(PreviewPillPalette.badgeFill))
         .transition(.opacity)
       } else {
         Text(LivePreviewCopy.listeningMode)
           .font(.system(size: 11, weight: .semibold))
-          .foregroundStyle(.white.opacity(0.5))
+          .foregroundStyle(PreviewPillPalette.modeQuiet)
           .transition(.opacity)
       }
     }
@@ -2518,7 +2529,7 @@ struct RecordingOverlayView: View {
     .frame(height: Self.previewHeaderHeight)
     .overlay(alignment: .bottom) {
       Rectangle()
-        .fill(Color.white.opacity(0.09))
+        .fill(PreviewPillPalette.divider)
         .frame(height: 0.5)
     }
   }
@@ -2558,7 +2569,12 @@ struct RecordingOverlayView: View {
       if let notice = noticeState.message {
         Text(notice)
           .font(.system(size: 11, weight: .medium))
-          .foregroundStyle(.white.opacity(0.95))
+          // #2204: the notice is rendered by BOTH layouts from this one `Text`,
+          // and white is invisible on a light pill. Gated rather than made
+          // dynamic, so the capsule's paint is unchanged to the byte.
+          .foregroundStyle(
+            usesPreviewLayout ? PreviewPillPalette.notice : Color.white.opacity(0.95)
+          )
           .multilineTextAlignment(.center)
           .fixedSize(horizontal: false, vertical: true)
           // 170pt suits the 185pt capsule. The preview pill is 400pt wide, so the
@@ -2787,7 +2803,11 @@ struct PreviewWellText: View {
     Text(message)
       .font(.system(size: RecordingOverlayView.previewFontSize))
       .lineSpacing(RecordingOverlayView.previewLineSpacing)
-      .foregroundStyle(.white.opacity(dimmed ? 0.5 : 0.92))
+      .foregroundStyle(
+        usesPreviewLayout
+          ? (dimmed ? PreviewPillPalette.textDimmed : PreviewPillPalette.text)
+          : .white.opacity(dimmed ? 0.5 : 0.92)
+      )
       .multilineTextAlignment(.leading)
       .fixedSize(horizontal: false, vertical: true)
       .frame(maxWidth: .infinity, alignment: .leading)
