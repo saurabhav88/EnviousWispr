@@ -111,6 +111,10 @@ FAILURE_LINE_RE = re.compile(r"✘ .*")
 #   ✘ Test functionName() recorded an issue ...
 #   ✘ Suite "SuiteName" failed after 0.1 seconds.
 TEST_VERDICT_RE = re.compile(r'^✘\s+Test\s+(?:"(?P<quoted>[^"]*)"|(?P<bare>[A-Za-z_][\w]*)\s*\()')
+# The same identity in the same position, for EITHER outcome — used to enumerate what a clean baseline
+# actually ran, so a recipe naming a test that does not exist is refused before anything is mutated.
+TEST_NAME_ANY_RE = re.compile(
+    r'^[✔✘]\s+Test\s+(?:"(?P<quoted>[^"]*)"|(?P<bare>[A-Za-z_][\w]*)\s*\()', re.MULTILINE)
 SUITE_VERDICT_RE = re.compile(r'^✘\s+Suite\s')
 COMPILE_ERROR_RE = re.compile(r"^.*?: error: ", re.MULTILINE)
 
@@ -771,9 +775,30 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
     return rows
 
 
-def baseline(lane: Lane, suites, phase: str):
+def suite_test_names(log_path) -> set:
+    """Every test identity the lane REPORTED, pass or fail.
+
+    Swift Testing prints a line per test outcome; both the ✔ and ✘ forms carry the same identity in
+    the same position, so one pattern reads both. Used to prove a recipe's `expect_fail` names a test
+    that exists before anything is mutated.
+    """
+    try:
+        text = Path(log_path).read_text()
+    except OSError:
+        return set()
+    names = set()
+    for m in TEST_NAME_ANY_RE.finditer(text):
+        names.add(m.group("quoted") if m.group("quoted") is not None else m.group("bare"))
+    return names
+
+
+def baseline(lane: Lane, suites, phase: str, seen_names: dict = None):
     """Every named suite must run at least one test and pass. This is both the clean-tree control and
-    the filter validation: a suite name that does not exist executes zero tests and SUCCEEDS."""
+    the filter validation: a suite name that does not exist executes zero tests and SUCCEEDS.
+
+    When `seen_names` is supplied, records the test identities each suite reported, so `expect_fail`
+    can be checked against reality rather than discovered to match nothing after a mutation.
+    """
     problems = []
     for suite in sorted(suites):
         tag = f"baseline-{phase}-{suite.replace('/', '_')}"
@@ -794,6 +819,8 @@ def baseline(lane: Lane, suites, phase: str):
         elif rc != 0 or failures:
             problems.append(f"{suite}: {len(failures)} failing on an unmutated tree ({log})")
         else:
+            if seen_names is not None:
+                seen_names[suite] = suite_test_names(log)
             print(f"    baseline {phase}: {suite} — {count} tests green in {elapsed:.0f}s")
     return problems
 
@@ -829,6 +856,18 @@ def main(argv=None):
     # unconditional mkdir both breaks that promise and crashes on a read-only checkout. The Lane makes
     # it when a lane is actually about to write a log.
     log_dir = worktree / "build" / "mutation-battery"
+
+    # A --worktree that does not exist crashed with a FileNotFoundError traceback from the first
+    # subprocess, rather than refusing. Found by pointing the tool at a peer's worktree minutes after
+    # it was cleaned up on merge — an ordinary thing to do, and exit 1 is the code reserved for a row
+    # SURVIVING. Same class as every other input failure: it is a bad ARGUMENT, so it is a refusal.
+    if not worktree.is_dir():
+        print(f"\nREFUSED — the battery did not start.\n\n"
+              f"--worktree does not exist: {worktree}\n"
+              f"A merged branch's worktree is removed automatically, so a path that worked earlier in "
+              f"the day can be gone. Point it at a checkout that has the code the recipe names.",
+              file=sys.stderr)
+        return 2
 
     print(f"worktree: {worktree}")
     rc, branch = run(["git", "branch", "--show-current"], cwd=worktree)
@@ -867,7 +906,8 @@ def main(argv=None):
 
     print(f"\n[1/3] baseline on a clean tree — {len(suites)} suite(s)")
     try:
-        problems = baseline(lane, suites, "before")
+        baseline_names = {}
+        problems = baseline(lane, suites, "before", seen_names=baseline_names)
     except Refusal as exc:
         print(f"\nREFUSED — {exc}", file=sys.stderr)
         return 2
@@ -879,6 +919,27 @@ def main(argv=None):
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
         return 1
+
+    # Refuse a recipe whose expect_fail names no test the clean baseline ran. The answer is already in
+    # hand at this point, and the alternative is discovering it as a SURVIVED verdict that blames the
+    # test. A PREFIX is the common case and the message says so, because that is what an author who
+    # wrote against the old substring contract will have.
+    unknown = []
+    for i, row in enumerate(rows, 1):
+        known = baseline_names.get(row["suite"])
+        if not known or row["expect_fail"] in known:
+            continue
+        near = sorted(n for n in known if row["expect_fail"] in n or n in row["expect_fail"])
+        hint = f"\n      did you mean: {near[0]!r}" if near else ""
+        unknown.append(f"row {i}: no test named {row['expect_fail']!r} ran in {row['suite']}{hint}")
+    if unknown:
+        print("\nREFUSED — nothing was mutated.\n", file=sys.stderr)
+        print("A recipe names the test that must go red, and these name a test the clean baseline did "
+              "not run. Matching is on the FULL test name, not a prefix — a recipe written when this "
+              "matched substrings will look like this.\n", file=sys.stderr)
+        for u in unknown:
+            print(f"  - {u}", file=sys.stderr)
+        return 2
 
     if args.dry_run:
         print("\n--dry-run: recipes validated, baseline green, nothing mutated.")

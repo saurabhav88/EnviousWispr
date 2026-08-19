@@ -549,7 +549,7 @@ def drive_row(lane_result, *, expect_verdict, expect_detail, raise_instead=None)
 
         real_lane, real_baseline = battery.Lane, battery.baseline
         battery.Lane = StubLane
-        battery.baseline = lambda lane, suites, phase: []
+        battery.baseline = lambda lane, suites, phase, seen_names=None: []
         buf = io.StringIO()
         try:
             with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
@@ -640,7 +640,7 @@ with _t3.TemporaryDirectory() as td:
             return (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0)
 
     _rl, _rb = battery.Lane, battery.baseline
-    battery.Lane, battery.baseline = _StubLane, (lambda lane, suites, phase: [])
+    battery.Lane, battery.baseline = _StubLane, (lambda lane, suites, phase, seen_names=None: [])
     try:
         import io as _io2, contextlib as _cl2
         with _cl2.redirect_stdout(_io2.StringIO()), _cl2.redirect_stderr(_io2.StringIO()):
@@ -729,7 +729,7 @@ with tempfile.TemporaryDirectory() as td:
             raise battery._LaneTimedOut("the lane ran past 1800s and was killed")
 
     _rl, _rb = battery.Lane, battery.baseline
-    battery.Lane, battery.baseline = _HangingLane, (lambda lane, suites, phase: [])
+    battery.Lane, battery.baseline = _HangingLane, (lambda lane, suites, phase, seen_names=None: [])
     try:
         import io as _io3, contextlib as _cl3
         _buf = _io3.StringIO()
@@ -903,7 +903,7 @@ class _ProbeLane:
 
 
 _rl, _rb = battery.Lane, battery.baseline
-battery.Lane, battery.baseline = _ProbeLane, (lambda lane, suites, phase: [])
+battery.Lane, battery.baseline = _ProbeLane, (lambda lane, suites, phase, seen_names=None: [])
 try:
     with tempfile.TemporaryDirectory() as td:
         tmp = make_tree(Path(td))
@@ -1195,7 +1195,7 @@ with tempfile.TemporaryDirectory() as _td:
             return (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0)
 
     _rl, _rb = battery.Lane, battery.baseline
-    battery.Lane, battery.baseline = _CountingLane, (lambda lane, suites, phase: [])
+    battery.Lane, battery.baseline = _CountingLane, (lambda lane, suites, phase, seen_names=None: [])
     _buf = io.StringIO()
     try:
         with contextlib.redirect_stdout(_buf), contextlib.redirect_stderr(_buf):
@@ -1312,7 +1312,7 @@ _installed_at = []
 _real_sig = battery.signal.signal
 _real_base = battery.baseline
 battery.signal.signal = lambda sig, fn: _installed_at.append("handler")
-battery.baseline = lambda lane, suites, phase: (_installed_at.append(f"baseline-{phase}"), [])[1]
+battery.baseline = lambda lane, suites, phase, seen_names=None: (_installed_at.append(f"baseline-{phase}"), [])[1]
 
 
 class _NullLane:
@@ -1401,6 +1401,46 @@ elif not _seen_mask.get("restored"):
                     "never restored, so the caller's mask was widened")
 else:
     print("  ok  the handled signals are blocked across spawn-and-register")
+
+# `expect_fail` is matched on the FULL test name. A recipe naming a PREFIX used to match nothing, so
+# the row reported SURVIVED and the report said "this test is not the guard" about a test that failed
+# exactly as intended. Measured on a peer's recipe: 3 of 8 rows false-SURVIVED, all prefixes.
+ran += 1
+_log = Path(tempfile.mkdtemp(prefix="ew-battery-names-")) / "l.log"
+_log.write_text(
+    '✔ Test "Availability says On this Mac for what is installed and Available from Apple" passed\n'
+    '✘ Test "A build that cannot run the engine says so, not that a download is needed" recorded\n'
+    "✔ Test bareFunctionName() passed after 0.1 seconds.\n"
+)
+_names = battery.suite_test_names(_log)
+_want = {
+    "Availability says On this Mac for what is installed and Available from Apple",
+    "A build that cannot run the engine says so, not that a download is needed",
+    "bareFunctionName",
+}
+if _names != _want:
+    failures.append(f"the baseline's test names are enumerated from both outcomes — got {_names}")
+else:
+    print("  ok  the baseline's test names are enumerated from both outcomes")
+
+# A prefix must NOT be treated as a match — that is the false-CAUGHT bug this replaced.
+ran += 1
+_prefix = "Availability says On this Mac for what is installed"
+if _prefix in _names:
+    failures.append("a prefix is not a matching test name — it was treated as one")
+else:
+    print("  ok  a prefix is not a matching test name")
+
+# An unreadable log yields no names rather than raising, so the check degrades to not-refusing rather
+# than crashing a run that was otherwise fine.
+ran += 1
+try:
+    if battery.suite_test_names(Path("/nonexistent/nope.log")) != set():
+        failures.append("an unreadable log yields no names — it returned something else")
+    else:
+        print("  ok  an unreadable log yields no names rather than raising")
+except Exception as exc:
+    failures.append(f"an unreadable log yields no names rather than raising — it raised {exc}")
 
 print()
 if failures:
