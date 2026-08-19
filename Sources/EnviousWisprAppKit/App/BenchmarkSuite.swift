@@ -108,6 +108,9 @@ final class BenchmarkSuite {
     guard !isRunning else { return }
     isRunning = true
     pipelineResult = nil
+    // Both entry points clear it. Clearing in `run` alone left a successful
+    // pipeline run rendering the PREVIOUS ASR run's red error beside its result.
+    lastFailure = nil
 
     // #1707 Phase 3 (§3.2, row 23) / #1741 Chunk 5: hold a mutation claim for
     // the FULL load+batch-transcribe duration below — released before the

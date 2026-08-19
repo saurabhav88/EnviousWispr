@@ -47,8 +47,16 @@ extension ASRLoadSupersededError: StableSentryErrorIdentity {
 /// Distinct from `ASRLoadSupersededError`, which means a supersede was detected
 /// INSIDE the load. Conflating them is the #2132 trap: supersession classifies as
 /// `.cancelled`, which recovery treats as terminal and DELETES the recording.
-public struct ASREngineNotReadyAfterLoadError: Error, Equatable {
+public struct ASREngineNotReadyAfterLoadError: Error, LocalizedError, Equatable {
   public init() {}
+
+  /// Rendered to the user by the Diagnostics benchmark, which shows
+  /// `error.localizedDescription`. Without this they would read Foundation's
+  /// generated type-and-domain string. Every sibling error in this module
+  /// already conforms; this one was the outlier.
+  public var errorDescription: String? {
+    "The engine finished loading but was not ready to use."
+  }
 }
 
 /// #1525 PR G. Pinned defensively at introduction rather than retrofitted: this

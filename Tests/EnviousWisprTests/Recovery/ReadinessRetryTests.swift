@@ -94,6 +94,40 @@ struct ReadinessRetryTelemetryContractTests {
     #expect(error.sentrySemanticID == "asr.engine_not_ready_after_load")
   }
 
+  /// Codex diff review found the OTHER entry point never cleared it, so a
+  /// successful pipeline run rendered the previous ASR run's red error beside
+  /// its result. Both entry points are driven here; asserting only `run` would
+  /// have passed against the defect.
+  @Test("both benchmark entry points clear a stale failure")
+  @MainActor
+  func bothBenchmarkEntryPointsClearLastFailure() async {
+    let manager = RecoverySpoolReplayerTests.FakeBatchASR()
+    manager.readyAfterLoad = false
+    let engine = ActiveEngineOperation.live(
+      asrManager: manager, whisperKitBackend: WhisperKitBackend(admittedModelFolder: { nil }))
+    let suite = BenchmarkSuite(engineMutationScope: .alwaysAllowedForTesting)
+
+    await suite.run(using: manager, activeEngine: engine)
+    #expect(suite.lastFailure != nil, "a load that returns unready must SAY so")
+
+    // Now let the engine come good and drive the OTHER entry point.
+    manager.readyAfterLoad = true
+    await suite.runPipelineBenchmark(using: manager, activeEngine: engine)
+    #expect(
+      suite.lastFailure == nil,
+      "a successful run must not leave the previous run's error on screen")
+  }
+
+  /// Codex diff review: without this the Diagnostics row renders Foundation's
+  /// generated type-and-domain string at the user.
+  @Test("the new error reads as plain English, not a type name")
+  func newErrorHasAUserFacingDescription() {
+    let described = ASREngineNotReadyAfterLoadError().localizedDescription
+    #expect(described == "The engine finished loading but was not ready to use.")
+    #expect(!described.contains("ASREngineNotReadyAfterLoad"), "never show the type name")
+    #expect(!described.contains("EnviousWispr"), "never show the module name")
+  }
+
   /// The classifier must not route this through the supersede arm — that maps to
   /// `.cancelled`, which recovery treats as terminal and DELETES the recording.
   @Test("classification routes the new error away from the cancelled arm")
