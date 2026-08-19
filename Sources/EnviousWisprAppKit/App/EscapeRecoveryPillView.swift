@@ -163,7 +163,6 @@ struct EscapeRecoveryPillFace: View {
       SpectralRail(progress: progress, palette: palette, showsBloom: showsBloom)
         .padding(PillMetrics.railInset)
     )
-    .shadow(color: palette.shadow, radius: palette.shadowRadius, y: 5)
   }
 }
 
@@ -183,8 +182,22 @@ enum PillMetrics {
   static let railInset: CGFloat = 1.5
   static let pillHeight: CGFloat = 58
 
-  /// Room for the drop shadow, so the panel never clips it.
-  static let panelMargin: CGFloat = 12
+  /// **The panel is EXACTLY the pill, and that is a placement requirement
+  /// rather than a saving (Codex review round 2, 2026-08-19).**
+  ///
+  /// `showPanel` anchors the PANEL to the configured top or bottom edge, and the
+  /// geometry code reasons about that frame as though it were the visible pill.
+  /// Any margin inside the panel therefore moves the capsule that far off its
+  /// edge, and a bottom recording-to-recovery transition jumps upward by the
+  /// margin — the continuing-presentation contract in
+  /// `.claude/knowledge/pill-position-behavior.md`
+  /// RULE: continuing-panel-vs-fresh-panel.
+  ///
+  /// A margin looked necessary because the pill drew its own SwiftUI shadow,
+  /// which a tight frame would clip. It does not: `showPanel` sets
+  /// `hasShadow = true`, and AppKit draws a window's shadow OUTSIDE its frame.
+  /// The SwiftUI shadow was redundant with it, and paying for it in placement
+  /// was paying twice.
 
   /// The pill sizes itself to the SENTENCE it renders.
   ///
@@ -200,8 +213,8 @@ enum PillMetrics {
     return leadInset + measured + midGap + actionWidth + trailInset + 2
   }()
 
-  static var panelWidth: CGFloat { pillWidth + panelMargin * 2 }
-  static var panelHeight: CGFloat { pillHeight + panelMargin * 2 }
+  static var panelWidth: CGFloat { pillWidth }
+  static var panelHeight: CGFloat { pillHeight }
 }
 
 // MARK: - Palette
@@ -234,8 +247,6 @@ struct PillPalette {
   var actionFillHover: Color
   var actionRim: Color
   var actionText: Color
-  var shadow: Color
-  var shadowRadius: CGFloat
   var spectrum: [Color]
 
   static func forScheme(_ scheme: ColorScheme) -> PillPalette {
@@ -250,8 +261,6 @@ struct PillPalette {
     actionFillHover: .white.opacity(0.26),
     actionRim: .clear,
     actionText: .white,
-    shadow: .black.opacity(0.55),
-    shadowRadius: 14,
     spectrum: PillSpectrum.dark
   )
 
@@ -263,8 +272,6 @@ struct PillPalette {
     actionFillHover: .black.opacity(0.13),
     actionRim: .black.opacity(0.09),
     actionText: Color(red: 0.10, green: 0.10, blue: 0.13),
-    shadow: .black.opacity(0.22),
-    shadowRadius: 16,
     spectrum: PillSpectrum.light
   )
 }

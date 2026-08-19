@@ -52,11 +52,16 @@ struct EscapeRecoveryPillLayoutTests {
     #expect(PillMetrics.pillWidth > shippedWidth)
   }
 
-  @Test("The panel leaves room for the pill and its shadow")
-  func thePanelDoesNotClipThePill() {
-    #expect(PillMetrics.panelWidth > PillMetrics.pillWidth)
-    #expect(PillMetrics.panelHeight > PillMetrics.pillHeight)
-    #expect(PillMetrics.panelMargin > 0)
+  /// **Equality, not headroom, and the direction matters.**
+  ///
+  /// `showPanel` anchors the PANEL to the configured screen edge, so any slack
+  /// inside it moves the visible capsule that far off that edge and makes a
+  /// recording-to-recovery transition jump. The shadow is drawn by the window,
+  /// outside its frame, so no slack is needed to avoid clipping it.
+  @Test("The anchored panel is exactly the visible pill")
+  func thePanelFrameIsThePill() {
+    #expect(PillMetrics.panelWidth == PillMetrics.pillWidth)
+    #expect(PillMetrics.panelHeight == PillMetrics.pillHeight)
   }
 
   @Test("The action is a real target, not a hairline")

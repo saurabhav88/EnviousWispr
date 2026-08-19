@@ -135,6 +135,22 @@ def wait_for(what, predicate, deadline=45.0, poll=0.25):
 
 
 def defaults_write(key, value, kind="-int"):
+    """Write one preference, normalising the one value shape `defaults` refuses.
+
+    `defaults write <dom> <key> -bool 1` EXITS 255. The tool accepts only
+    true/false/yes/no for `-bool`, while `defaults read` PRINTS a boolean back as
+    `1`. So a value round-tripped through a snapshot is in a form the writer
+    rejects, and the failure lands in two places that both matter: applying the
+    ON phase, and — worse — the `finally` that restores the developer's own
+    settings. Observed 2026-08-19: the restore raised here, and the founder's
+    `escapeRecoveryEnabled` was left ABSENT rather than back on.
+
+    Normalising at the single write point covers apply and restore together,
+    which a fix at either call site would not.
+    """
+    if kind in ("-bool", "-boolean"):
+        text = str(value).strip().lower()
+        value = "true" if text in ("1", "true", "yes", "y", "on") else "false"
     subprocess.run(["defaults", "write", DOMAIN, key, kind, str(value)], check=True)
 
 
@@ -481,6 +497,16 @@ def main():
     field_a = new_textedit_doc("field-a")
     field_b = new_textedit_doc("field-b")
     print(f"targets: A={field_a}  B={field_b}")
+
+    # The AX connection has to exist before the oracle control, not only before
+    # the retarget phase below. `verify_can_read` clears the document with
+    # `w.press_key`, and every `w.*` entry point guards on `_ensure_connected`,
+    # so without this the control aborts the whole run with "Not connected" —
+    # BEFORE it has proven anything, and while reporting nothing about the
+    # product. Connecting here rather than inside the control keeps the later
+    # reconnect at the retarget phase meaningful: that one re-attaches after
+    # focus has moved, which is a different thing from attaching at all.
+    w.connect()
 
     # Before any verdict depends on reading a field, prove we CAN read one.
     # Without this the run cannot tell "the feature held the text" from "the
