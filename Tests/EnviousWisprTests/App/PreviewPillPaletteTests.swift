@@ -150,7 +150,7 @@ struct PreviewPillPaletteTests {
   /// is the only authority available — the same mechanism
   /// `LivePreviewSettingsCopyTests.everyCopyPropertyIsCovered` uses, and for the
   /// same reason.
-  @Test("every colour in the palette is either contrast-checked or declared non-text")
+  @Test("every colour in the palette reaches BOTH hand-written arrays")
   func everyPaletteColourIsAccountedFor() throws {
     let url = RepoRoot.url.appending(
       path: "Sources/EnviousWisprAppKit/App/PreviewPillPalette.swift")
@@ -169,6 +169,27 @@ struct PreviewPillPaletteTests {
     #expect(
       declared.count >= 10,
       "parsed only \(declared.count) colours out of PreviewPillPalette.swift — the reader is wrong, not the palette")
+
+    // BOTH hand-written arrays are pinned to the parsed source, not just the one
+    // review named. `allPillColours` drives the light/dark pairing check and is a
+    // SIBLING of `textColours`: fixing one and leaving the other is the same
+    // defect one level down, which is exactly what happened between the previous
+    // two review rounds.
+    let paired = Set(Self.allPillColours.map(\.name))
+    let missingFromPairing = Set(declared).subtracting(paired).sorted()
+    #expect(
+      missingFromPairing.isEmpty,
+      """
+      \(missingFromPairing.joined(separator: ", ")) exist in PreviewPillPalette but are \
+      not in `allPillColours`, so their light and dark values are never compared. A \
+      colour that resolves the same in both themes would ship one theme's paint into \
+      the other and nothing here would notice.
+      """)
+
+    let stalePairing = paired.subtracting(Set(declared)).sorted()
+    #expect(
+      stalePairing.isEmpty,
+      "\(stalePairing.joined(separator: ", ")) are in `allPillColours` but no longer declared")
 
     let checked = Set(Self.textColours.map(\.name))
     let accounted = checked.union(Self.nonTextColours)
