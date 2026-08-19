@@ -701,7 +701,10 @@ internal final class PasteCascadeExecutor {
         focusClass: focusClass
       )
       if Self.isExpectedNonTextRefusal(
-        focus: focus, roleSource: diagnostics.roleSource, focusClass: focusClass
+        tiersAttempted: tierStrings,
+        focus: focus,
+        focusClass: focusClass,
+        targetBundleID: bundle
       ) {
         SentryBreadcrumb.add(
           stage: "paste",
@@ -766,28 +769,56 @@ internal final class PasteCascadeExecutor {
     }
   }
 
-  /// True when the cascade confidently identified the focused target,
-  /// correctly determined it isn't a text field, AND the Tier 2c menu probe
-  /// positively confirmed no real paste target exists — a working-as-intended
-  /// decline, not a failure. False in every other case keeps the existing
-  /// alert-creating path, since anything short of that full confirmation is
-  /// a case that could indicate a real, scaling defect (#1430).
+  /// Whether a clipboard-only outcome is a CONFIRMED correct refusal, and so
+  /// belongs on the counted breadcrumb channel rather than the alerting error
+  /// channel (#1430, narrowed #1332). False in every other case, because
+  /// anything short of full confirmation could be a real, scaling defect.
   ///
-  /// Requires exact confirmation (`focusClass == "no_paste_target"`) rather
-  /// than defaulting an absent probe result to "no target": `canAttemptKeyPaste`
-  /// is always false for `.nonText`, so Tier 2c's menu probe is the ONLY paste
-  /// attempt for non-text targets, and `focusClass` is nil whenever that probe
-  /// never ran or never resolved — activation timeout, a terminated target
-  /// app, or no target app captured at all (Codex code-diff review r2) — none
-  /// of which is a confirmed refusal. `"non_text_with_paste_target"` means the
-  /// probe found a real, enabled paste target and pressing it failed — also a
-  /// real failure, not a refusal (Codex code-diff review r1). Any other/future
-  /// focusClass label fails closed the same way, matching the roleSource
-  /// invariant above.
+  /// Requires exact confirmation (`focusClass == "no_paste_target"`) rather than
+  /// defaulting an absent probe result to "no target": `canAttemptKeyPaste` is
+  /// always false for `.nonText`, so Tier 2c's menu probe is the ONLY paste
+  /// attempt for a non-text target, and `focusClass` is nil whenever that probe
+  /// never ran or never resolved — activation timeout, a terminated target app,
+  /// or no target app captured at all — none of which is a confirmed refusal
+  /// (Codex code-diff review r2, #1430). `"non_text_with_paste_target"` means
+  /// the probe found a real, enabled paste target and pressing it failed, which
+  /// is a real failure rather than a refusal (Codex code-diff review r1). Any
+  /// other or future label fails closed the same way.
+  ///
+  /// `roleSource` was a parameter until #1332 and is deliberately gone rather
+  /// than merely unread. It required the ELEMENT's role to have been captured
+  /// before trusting the MENU probe's answer, which lets one instrument's
+  /// failure suppress the other instrument's positive result. The menu probe is
+  /// independent evidence: since #1435 `no_paste_target` means the app's own
+  /// menu bar was read and its Paste command is confirmed absent or confirmed
+  /// disabled, and since this issue's Chunk 1a a search that merely ran out of
+  /// depth reports `non_text_menu_depth_limit` instead of masquerading as a
+  /// confirmation. Removing the parameter rather than ignoring it turns the
+  /// stale `unrecognizedRoleSourceFailsClosed` test into a compile error rather
+  /// than a test that keeps passing under a comment describing a literal
+  /// nothing reads.
+  ///
+  /// KNOWN RESIDUAL, stated so this is not read as claiming more than it
+  /// proves: a real text target whose role read fails classifies as `.nonText`,
+  /// and if that app ALSO reports its Paste command absent or disabled it is
+  /// silenced here. A failed role read is NO answer rather than a wrong one, so
+  /// the residual needs one independent role-read failure plus a misleading menu
+  /// answer. Chunks 0 and 1a narrow it to that; they do not eliminate it.
   internal static func isExpectedNonTextRefusal(
-    focus: PasteFocusClassification, roleSource: String, focusClass: String?
+    tiersAttempted: [String],
+    focus: PasteFocusClassification,
+    focusClass: String?,
+    targetBundleID: String?
   ) -> Bool {
-    focus == .nonText && roleSource == "captured_target" && focusClass == "no_paste_target"
+    // `paste_failed` should mean a paste we ATTEMPTED that failed. Every real
+    // route appends its tier before trying (ax_direct, cgevent, applescript,
+    // menu_paste), so a non-empty list is proof something was attempted and
+    // this is not a refusal at all.
+    guard tiersAttempted.isEmpty else { return false }
+    // The Mac is locked. There is no session to paste into, and no reading of
+    // the focused element can make one appear.
+    if targetBundleID == "com.apple.loginwindow" { return true }
+    return focus == .nonText && focusClass == "no_paste_target"
   }
 
   internal static func clipboardOnlyTelemetryExtra(
