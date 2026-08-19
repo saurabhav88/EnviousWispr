@@ -99,6 +99,16 @@ struct PreviewPillPaletteTests {
   /// Enumerating the SET rather than picking members is the fix: a colour added
   /// to the palette and forgotten here now fails, instead of being legible only
   /// if somebody remembered to add a case.
+  /// Colours that do NOT draw text, and so are exempt from the contrast floor.
+  ///
+  /// **This is the list that must be maintained, not the text one** — and that
+  /// inversion is the point. A new colour is a text colour unless someone
+  /// deliberately says otherwise here, so forgetting to update anything makes the
+  /// completeness check fail LOUD rather than pass quietly.
+  nonisolated static let nonTextColours: Set<String> = [
+    "surface", "border", "divider", "badgeFill",
+  ]
+
   nonisolated static let textColours: [(name: String, colour: Color)] = [
     ("text", PreviewPillPalette.text),
     ("textDimmed", PreviewPillPalette.textDimmed),
@@ -125,6 +135,60 @@ struct PreviewPillPaletteTests {
         windows, so it cannot borrow contrast from what is behind it.
         """)
     }
+  }
+
+  /// **Every colour the palette declares is either checked for contrast or named
+  /// as a non-text colour. Nothing can be silently omitted.**
+  ///
+  /// Cloud review caught the previous version claiming set-wide protection while
+  /// using a hand-maintained array: a token added to `PreviewPillPalette` and
+  /// forgotten here would leave every contrast test passing, repeating the exact
+  /// omission that missed `modeQuiet` and `textDimmed` in the first place. A list
+  /// I maintain by hand cannot protect against me forgetting to maintain it.
+  ///
+  /// Swift cannot enumerate static members at runtime, so the palette's own source
+  /// is the only authority available — the same mechanism
+  /// `LivePreviewSettingsCopyTests.everyCopyPropertyIsCovered` uses, and for the
+  /// same reason.
+  @Test("every colour in the palette is either contrast-checked or declared non-text")
+  func everyPaletteColourIsAccountedFor() throws {
+    let url = RepoRoot.url.appending(
+      path: "Sources/EnviousWisprAppKit/App/PreviewPillPalette.swift")
+    let source = try String(contentsOf: url, encoding: .utf8)
+
+    let declared = source
+      .split(separator: "\n")
+      .compactMap { line -> String? in
+        guard let r = line.range(of: #"static let \w+ = Color\.stDynamic"#, options: .regularExpression)
+        else { return nil }
+        return String(line[r]).replacingOccurrences(of: "static let ", with: "")
+          .replacingOccurrences(of: " = Color.stDynamic", with: "")
+      }
+
+    // Fail closed: a parse that finds nothing would make every check below vacuous.
+    #expect(
+      declared.count >= 10,
+      "parsed only \(declared.count) colours out of PreviewPillPalette.swift — the reader is wrong, not the palette")
+
+    let checked = Set(Self.textColours.map(\.name))
+    let accounted = checked.union(Self.nonTextColours)
+    let missing = Set(declared).subtracting(accounted).sorted()
+
+    #expect(
+      missing.isEmpty,
+      """
+      \(missing.joined(separator: ", ")) exist in PreviewPillPalette but are neither \
+      contrast-checked nor listed as non-text. Add each to `textColours` if it draws \
+      text, or to `nonTextColours` if it does not — silence here is what let the \
+      unreadable dimmed pair ship in the first place.
+      """)
+
+    // And the reverse: a name in the test lists that no longer exists in the
+    // palette means the lists have gone stale against a rename or deletion.
+    let stale = accounted.subtracting(Set(declared)).sorted()
+    #expect(
+      stale.isEmpty,
+      "\(stale.joined(separator: ", ")) are listed here but no longer declared in the palette")
   }
 
   /// The notice is the colour that was hardcoded white and would have been
