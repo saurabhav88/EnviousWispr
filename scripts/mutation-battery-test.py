@@ -77,6 +77,20 @@ ONLY_ACTIVE = [l for l in CANONICAL_STUB.split("\n") if "ONLY_ACTIVE_ARCH" in l]
 assert ONLY_ACTIVE in CANONICAL_STUB, "the stub line the drift cases edit must exist verbatim"
 
 
+def _stub_baseline(lane, suites, phase, seen_names=None):
+    """Stands in for the real baseline in stubbed-lane cases.
+
+    It MUST populate `seen_names`: the runner refuses when a suite's baseline yielded no test
+    identities, because an empty set means the reader broke rather than the suite being empty. A stub
+    that returned green without names would make every stubbed case hit that refusal — and weakening
+    the check to suit the stub would delete the guard the check exists to be.
+    """
+    if seen_names is not None:
+        for suite in suites:
+            seen_names[suite] = {VALID_ROW["expect_fail"], "some other case"}
+    return []
+
+
 def make_tree(tmp: Path):
     (tmp / "Sources").mkdir(parents=True, exist_ok=True)
     (tmp / "Sources" / "Thing.swift").write_text("let guarded = true\n")
@@ -549,7 +563,7 @@ def drive_row(lane_result, *, expect_verdict, expect_detail, raise_instead=None)
 
         real_lane, real_baseline = battery.Lane, battery.baseline
         battery.Lane = StubLane
-        battery.baseline = lambda lane, suites, phase, seen_names=None: []
+        battery.baseline = _stub_baseline
         buf = io.StringIO()
         try:
             with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
@@ -640,7 +654,7 @@ with _t3.TemporaryDirectory() as td:
             return (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0)
 
     _rl, _rb = battery.Lane, battery.baseline
-    battery.Lane, battery.baseline = _StubLane, (lambda lane, suites, phase, seen_names=None: [])
+    battery.Lane, battery.baseline = _StubLane, (_stub_baseline)
     try:
         import io as _io2, contextlib as _cl2
         with _cl2.redirect_stdout(_io2.StringIO()), _cl2.redirect_stderr(_io2.StringIO()):
@@ -729,7 +743,7 @@ with tempfile.TemporaryDirectory() as td:
             raise battery._LaneTimedOut("the lane ran past 1800s and was killed")
 
     _rl, _rb = battery.Lane, battery.baseline
-    battery.Lane, battery.baseline = _HangingLane, (lambda lane, suites, phase, seen_names=None: [])
+    battery.Lane, battery.baseline = _HangingLane, (_stub_baseline)
     try:
         import io as _io3, contextlib as _cl3
         _buf = _io3.StringIO()
@@ -903,14 +917,19 @@ class _ProbeLane:
 
 
 _rl, _rb = battery.Lane, battery.baseline
-battery.Lane, battery.baseline = _ProbeLane, (lambda lane, suites, phase, seen_names=None: [])
+battery.Lane, battery.baseline = _ProbeLane, (_stub_baseline)
 try:
     with tempfile.TemporaryDirectory() as td:
         tmp = make_tree(Path(td))
         recipes = tmp / "r.json"
         recipes.write_text(json.dumps({"rows": [dict(VALID_ROW)]}))
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            battery.main(["--recipes", str(recipes), "--worktree", str(tmp), "--dry-run"])
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                battery.main(["--recipes", str(recipes), "--worktree", str(tmp), "--dry-run"])
+        except BaseException as _esc:  # noqa: BLE001
+            # Name this case rather than letting the traceback kill the suite. An escape here stops
+            # every LATER case from reporting, so a mutation control reads them all as silent.
+            _seen["escaped"] = type(_esc).__name__
 finally:
     battery.Lane, battery.baseline = _rl, _rb
     if _env_before is None:
@@ -918,7 +937,10 @@ finally:
     else:
         _os_env.environ["DERIVED_DATA_PATH"] = _env_before
 
-if _seen.get("derived") != _probe:
+if _seen.get("escaped"):
+    failures.append("the battery honours DERIVED_DATA_PATH like the canonical lane — the run escaped "
+                    f"as {_seen['escaped']} before it could be checked")
+elif _seen.get("derived") != _probe:
     failures.append("the battery honours DERIVED_DATA_PATH like the canonical lane — it does NOT: "
                     f"used {_seen.get('derived')!r} instead of {_probe!r}")
 else:
@@ -1195,7 +1217,7 @@ with tempfile.TemporaryDirectory() as _td:
             return (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0)
 
     _rl, _rb = battery.Lane, battery.baseline
-    battery.Lane, battery.baseline = _CountingLane, (lambda lane, suites, phase, seen_names=None: [])
+    battery.Lane, battery.baseline = _CountingLane, (_stub_baseline)
     _buf = io.StringIO()
     try:
         with contextlib.redirect_stdout(_buf), contextlib.redirect_stderr(_buf):
@@ -1330,8 +1352,15 @@ try:
         tmp = make_tree(Path(td))
         recipes = tmp / "r.json"
         recipes.write_text(json.dumps({"rows": [dict(VALID_ROW)]}))
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            battery.main(["--recipes", str(recipes), "--worktree", str(tmp), "--dry-run"])
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                battery.main(["--recipes", str(recipes), "--worktree", str(tmp), "--dry-run"])
+        except BaseException as _esc:  # noqa: BLE001
+            # Name this case rather than letting a traceback kill the suite: an escape here
+            # stops every LATER case reporting, so a mutation control reads them as silent.
+            failures.append("cancellation handlers are installed before any lane can start "
+                            f"— the run escaped as {type(_esc).__name__}")
+            _installed_at.append('escaped')
 finally:
     battery.signal.signal = _real_sig
     battery.baseline = _real_base
@@ -1441,6 +1470,41 @@ try:
         print("  ok  an unreadable log yields no names rather than raising")
 except Exception as exc:
     failures.append(f"an unreadable log yields no names rather than raising — it raised {exc}")
+
+# An EMPTY identity set is not a pass. If the log is unreadable, or Swift Testing's output stops
+# matching the pattern, we have no evidence the named test exists — and skipping the check restores
+# exactly the false-SURVIVED it was added to stop. A suite that ran at least one test always prints
+# identity lines, so empty means the READER broke.
+ran += 1
+_real_base2 = battery.baseline
+battery.baseline = lambda lane, suites, phase, seen_names=None: []   # green, but yields NO names
+_rl2, battery.Lane = battery.Lane, type("L", (), {
+    "__init__": lambda self, *a, **k: None,
+    "generate_once": lambda self: None,
+    "run_suite": lambda self, suite, tag: (1, [], True, "log", 0, 1.0),
+})
+try:
+    with tempfile.TemporaryDirectory() as td:
+        tmp = make_tree(Path(td))
+        recipes = tmp / "r.json"
+        recipes.write_text(json.dumps({"rows": [dict(VALID_ROW)]}))
+        _buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(_buf), contextlib.redirect_stderr(_buf):
+                _rc = battery.main(["--recipes", str(recipes), "--worktree", str(tmp)])
+        except BaseException as _esc:  # noqa: BLE001 — escaping IS a way this guard can be broken
+            _rc, _out = -1, f"escaped as {type(_esc).__name__}"
+        else:
+            _out = _buf.getvalue()
+finally:
+    battery.baseline = _real_base2
+    battery.Lane = _rl2
+
+if _rc != 2 or "could not read any test names" not in _out:
+    failures.append("unreadable baseline names refuse the run — they did NOT: "
+                    f"exit {_rc}, output {_out.strip()[:200]}")
+else:
+    print("  ok  unreadable baseline names refuse the run")
 
 print()
 if failures:

@@ -927,7 +927,19 @@ def main(argv=None):
     unknown = []
     for i, row in enumerate(rows, 1):
         known = baseline_names.get(row["suite"])
-        if not known or row["expect_fail"] in known:
+        # An EMPTY identity set is not a pass. It means the log was unreadable, or Swift Testing's
+        # output no longer matches the pattern — in both cases we have no evidence the named test
+        # exists, and skipping the check restores exactly the false-SURVIVED this was added to stop.
+        # A suite that ran at least one test always prints identity lines, so empty means the reader
+        # broke, not that the suite is empty. Fail closed: the whole point of this check.
+        if not known:
+            unknown.append(
+                f"row {i}: could not read any test names from {row['suite']}'s baseline run, so "
+                f"{row['expect_fail']!r} cannot be verified. The suite passed, which means it printed "
+                "test lines and the reader failed — not that the suite is empty."
+            )
+            continue
+        if row["expect_fail"] in known:
             continue
         near = sorted(n for n in known if row["expect_fail"] in n or n in row["expect_fail"])
         hint = f"\n      did you mean: {near[0]!r}" if near else ""
