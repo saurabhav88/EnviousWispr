@@ -279,6 +279,9 @@ public enum PasteService {
       _ = AXUIElementCopyAttributeValue(axElement, kAXSubroleAttribute as CFString, &subroleRef)
       let subrole = (subroleRef as? String) ?? "<nil>"
 
+      // One reader for both answers (#1332). The third attribute keeps its own
+      // local read because nothing decides on it; it is diagnostic only.
+      let settability = readAXSettability(of: axElement)
       func settable(_ attr: String) -> Bool {
         var s: DarwinBoolean = false
         let err = AXUIElementIsAttributeSettable(axElement, attr as CFString, &s)
@@ -287,10 +290,78 @@ public enum PasteService {
 
       let msg =
         "AXDiag capture: app=\(bundleId) role=\(role) subrole=\(subrole) "
-        + "valueSettable=\(settable("AXValue")) " + "selTextSettable=\(settable("AXSelectedText")) "
+        + "valueSettable=\(settability.value.rawValue) "
+        + "selTextSettable=\(settability.selectedText.rawValue) "
         + "selRangeSettable=\(settable("AXSelectedTextRange"))"
       await AppLogger.shared.log(msg, level: .info, category: "AXDiag")
     }
+  }
+
+  /// Whether a foreign app will accept a write to one of its attributes.
+  ///
+  /// THREE states, not a Bool, and that is the whole point. `AXUIElementIsAttributeSettable`
+  /// can fail to answer, and collapsing "it said no" together with "it did not
+  /// say" is what turns a defensive check into a self-inflicted regression:
+  /// Tier 1 is 18x faster than the keyboard route, so treating an unanswered
+  /// query as a refusal would drop apps onto the slow path for a transient AX
+  /// hiccup (#1332).
+  public enum AXSettableState: String, Equatable, Sendable {
+    case settable
+    case notSettable = "not_settable"
+    case unreadable
+  }
+
+  /// Both settability answers, sampled together at one moment.
+  ///
+  /// Kept as a PAIR because the interesting fact is the DISAGREEMENT. Measured
+  /// live on 2026-08-19: iTerm2 reports `AXValue` settable and `AXSelectedText`
+  /// NOT settable, 60 of 60 samples, and Tier 1 has never once succeeded there
+  /// in 944 pastes. WhatsApp and the loginwindow password field answer the same
+  /// way. TextEdit and Chrome answer settable to both, and Tier 1 wins there.
+  public struct AXSettability: Equatable, Sendable {
+    public let value: AXSettableState
+    public let selectedText: AXSettableState
+
+    /// One closed token rather than two fields, so a telemetry consumer can
+    /// group on the combination without joining.
+    public var telemetryValue: String {
+      "value_\(value.rawValue)__selected_text_\(selectedText.rawValue)"
+    }
+  }
+
+  /// The single reader for both answers.
+  ///
+  /// `AXDiag` and the Tier 1 guard used to ask this question separately, with
+  /// different attributes and different collapsing of a failed query. This is
+  /// the consolidation site. Its result is NOT cached across the gap between
+  /// capture and insertion: `AXDiag` samples at capture time and the write
+  /// happens later, so a stored answer would be about a different moment.
+  package static func readAXSettability(of element: AXUIElement) -> AXSettability {
+    func read(_ attribute: CFString) -> AXSettableState {
+      var answer: DarwinBoolean = false
+      guard AXUIElementIsAttributeSettable(element, attribute, &answer) == .success else {
+        return .unreadable
+      }
+      return answer.boolValue ? .settable : .notSettable
+    }
+    return AXSettability(
+      value: read(kAXValueAttribute as CFString),
+      selectedText: read(kAXSelectedTextAttribute as CFString)
+    )
+  }
+
+  /// Whether a Tier 1 write must be skipped for this element.
+  ///
+  /// Pure, so the one decision this adds is testable without a live AX element —
+  /// matching the precedent `classifyInsertOutcome`, `dispositionForAXDirect`
+  /// and `classifyPasteFocus` already set in this file, where the AX round trips
+  /// are live-only and the DECISION they feed is the part a test can hold.
+  ///
+  /// Only `.notSettable` refuses. `.unreadable` proceeds, because an unanswered
+  /// query is not a refusal and treating it as one would cost the fast route on
+  /// a transient AX failure.
+  package static func tier1IsRefused(by settability: AXSettability) -> Bool {
+    settability.selectedText == .notSettable
   }
 
   /// Outcome of a Tier 1 Accessibility insertion attempt.
@@ -1164,14 +1235,20 @@ public enum PasteService {
     }
     guard textRoles.contains(role) else { return (.noMutation, nil) }
 
-    // Verify the element is writable (not read-only).
-    var settableRef: DarwinBoolean = false
-    let settableErr = AXUIElementIsAttributeSettable(
-      element,
-      kAXValueAttribute as CFString,
-      &settableRef
-    )
-    guard settableErr == .success, settableRef.boolValue else { return (.noMutation, nil) }
+    // Verify the element will accept the write we are about to make.
+    //
+    // The retired check asked about `kAXValueAttribute` while the write below
+    // targets `kAXSelectedTextAttribute`. Those are different questions and real
+    // apps answer them differently: iTerm2 says yes to the first and no to the
+    // second, and then returns `.success` from a write that changes nothing —
+    // measured 225 times out of 225 on 2026-08-19. Tier 1 has never once
+    // succeeded there in 944 production pastes (#1332).
+    //
+    // Only a POSITIVE refusal skips. An unanswerable query proceeds exactly as
+    // before, because collapsing "no" together with "did not say" would drop an
+    // app onto the 18x-slower route for a transient AX failure.
+    let settability = readAXSettability(of: element)
+    if tier1IsRefused(by: settability) { return (.noMutation, nil) }
 
     // Everything needed to verify the result must be readable BEFORE we write.
     // The retired code wrote first and only then discovered it could not read
