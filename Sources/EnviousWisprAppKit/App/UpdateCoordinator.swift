@@ -62,6 +62,19 @@ final class UpdateCoordinator {
   /// app mid-capture. Wired in `WisprBootstrapper` to `LiveRecordingState`.
   var dictationActiveProvider: (() -> Bool)?
 
+  /// #2197: reads whether clipboard cleanup is still outstanding.
+  ///
+  /// Since #2197 the clipboard restore runs just after a dictation finishes
+  /// rather than inside it, so there is now a ~200 ms window where the session
+  /// is over — and `dictationActiveProvider` therefore reports false — while the
+  /// user's clipboard has not been handed back yet. A Sparkle install relaunches
+  /// the app, which would take the process down inside that window and lose it.
+  ///
+  /// Declining to START an install for 200 ms is a strictly smaller refusal than
+  /// the mid-dictation one already shipping beside it. Wired in
+  /// `WisprBootstrapper` to `ClipboardCleanup.hasPending`.
+  var clipboardCleanupPendingProvider: (() -> Bool)?
+
   /// #1019: when the last update-check cycle FINISHED having reached the feed
   /// (update found, none found, or user-cancelled install). Nil until the first
   /// such outcome. A genuine network/parse failure does NOT update this, so the
@@ -265,8 +278,19 @@ final class UpdateCoordinator {
     triggerGuardedInstall(source: "notification")
   }
 
+  /// Whether an install must be refused right now.
+  ///
+  /// ONE authority, read by both the guard below and the menu's `installEnabled`
+  /// (#2197). They were briefly separate, and the menu rendered an ENABLED
+  /// Install item that this guard then silently swallowed — found in diff review.
+  /// Anything that can refuse an install belongs here, not in a second copy of
+  /// the condition.
+  var installRefusedNow: Bool {
+    (dictationActiveProvider?() ?? false) || (clipboardCleanupPendingProvider?() ?? false)
+  }
+
   private func triggerGuardedInstall(source: String) {
-    guard !(dictationActiveProvider?() ?? false) else { return }
+    guard !installRefusedNow else { return }
     // #1029: only install when an update is actually available. With the tap
     // delegate now active on every launch, a tap on a STALE delivered
     // notification (its version already installed, pending state cleared by
@@ -350,16 +374,32 @@ final class UpdateCoordinator {
   /// Banner click. Tags source, persists install attempt, fires telemetry,
   /// flushes PostHog (so the event survives Sparkle's relaunch), then triggers
   /// the install via the service.
+  /// #2197: routed through `triggerGuardedInstall` like the other two entry
+  /// points, rather than calling `service.triggerInstall()` directly.
+  ///
+  /// This closes a hole that PREDATES this issue. #1019 added the
+  /// active-dictation guard so an install could never relaunch the app
+  /// mid-capture, and wired it to the menu item and the notification tap — but
+  /// the banner kept its own direct call, so a banner click has been able to
+  /// relaunch mid-dictation the whole time. The clipboard-cleanup clause would
+  /// have inherited exactly the same gap.
+  ///
+  /// Found by the diff review sweeping the SET of install entry points after
+  /// this change added a new member to the refusal condition; I had swept two of
+  /// three (workflow-process.md RULE: self-review-and-grep-before-codex — an
+  /// entity sweep finds wrong statements, a member sweep finds omissions).
+  ///
+  /// The click telemetry still fires on refusal, because the user DID click and
+  /// a dropped event would misreport banner engagement. Only the install is
+  /// withheld.
   func handleBannerClicked(version: String, isCritical: Bool, secondsVisible: Int) {
-    lastInstallSource = "banner"
-    recordInstallAttempt(version: version, source: "banner")
     TelemetryService.shared.updateBannerClicked(
       version: version,
       isCritical: isCritical,
       secondsVisible: secondsVisible
     )
     TelemetryService.shared.flushTelemetry(reason: .updateInstall)
-    service.triggerInstall()
+    triggerGuardedInstall(source: "banner")
   }
 
   enum InstallAttemptOutcome: Equatable {

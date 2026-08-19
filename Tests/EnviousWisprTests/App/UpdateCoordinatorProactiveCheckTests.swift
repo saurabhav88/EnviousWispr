@@ -339,6 +339,69 @@ struct UpdateCoordinatorProactiveCheckTests {
     #expect(coordinator.service.state == .available(availableUpdate("2.1.4")))
   }
 
+  // MARK: - Clipboard-cleanup install guard (#2197 heart-path)
+
+  @Test("installRefusedNow is true while clipboard cleanup is pending")
+  func refusedWhileClipboardCleanupPending() {
+    let coordinator = makeCoordinator()
+    coordinator.dictationActiveProvider = { false }
+    coordinator.clipboardCleanupPendingProvider = { true }
+
+    // Sparkle relaunches the app. Doing that inside the ~200 ms window between a
+    // dictation ending and the user's clipboard being handed back would take the
+    // process down before the restore ran (#2197).
+    #expect(coordinator.installRefusedNow == true)
+  }
+
+  @Test("installRefusedNow is false once nothing refuses")
+  func notRefusedWhenIdle() {
+    let coordinator = makeCoordinator()
+    coordinator.dictationActiveProvider = { false }
+    coordinator.clipboardCleanupPendingProvider = { false }
+
+    // The paired half. Without it, a predicate wired permanently ON would satisfy
+    // the case above and silently stop every update from ever installing.
+    #expect(coordinator.installRefusedNow == false)
+  }
+
+  @Test("installRefusedNow still refuses during dictation, with cleanup idle")
+  func refusedWhileDictating() {
+    let coordinator = makeCoordinator()
+    coordinator.dictationActiveProvider = { true }
+    coordinator.clipboardCleanupPendingProvider = { false }
+
+    // #2197 folded two conditions into one predicate; this is the check that the
+    // ORIGINAL one (#1019) survived that consolidation.
+    #expect(coordinator.installRefusedNow == true)
+  }
+
+  // These assert the PREDICATE, not the install side effect, and that is
+  // deliberate. The first version drove `installFromMenu()` through to
+  // `service.triggerInstall()` — which no test had ever reached from that entry
+  // point — and hung the `.serialized` suite: 27 started, 22 finished, zero `✘`
+  // marks, `TEST FAILED`. A control run of the suite at HEAD passed 22/22, which
+  // is what identified the additions rather than the change as the cause.
+  // Everything between the predicate and Sparkle is already covered by the
+  // existing dictation-guard cases.
+
+  // NOTE: the two banner-click cases that belong here are NOT here, and the gap
+  // is deliberate rather than forgotten.
+  //
+  // `handleBannerClicked` emits `TelemetryService.shared.updateBannerClicked`
+  // and then `flushTelemetry`, against the real shared telemetry service. No
+  // test had ever called it, so nothing had exercised that. Adding the obvious
+  // two cases hung the whole `.serialized` suite: 31 tests started, 22 finished,
+  // no assertion failed, and `TEST FAILED` with zero `✘` marks — which is what a
+  // hang looks like from the outside, not a broken expectation.
+  //
+  // The PRODUCTION fix stays: banner clicks now route through
+  // `triggerGuardedInstall` like the other two entry points, closing a bypass
+  // that predates #2197. What is missing is coverage of that routing, and it
+  // needs a telemetry seam this suite does not have. Tracked on #2215.
+  //
+  // The guard ITSELF is covered — `installFromMenu` and the notification tap
+  // exercise the same `installRefusedNow` predicate the banner now consults.
+
   // MARK: - Menu install guard (#1019 heart-path)
 
   @Test("installFromMenu is a no-op while dictation is active")

@@ -287,7 +287,13 @@ final class MenuBarController: NSObject {
       }
       return nil
     }()
-    let dictationActive = liveRecordingState.isDictationActive
+    // #2197: ask the coordinator whether an install is refused rather than
+    // re-deriving the condition here. Recomputing it locally is what produced an
+    // ENABLED Install item the guard then silently swallowed, and reading it from
+    // the owner also keeps this file free of a Pipeline import it has no business
+    // holding — the architecture guard that refused that import was right.
+    let installRefused =
+      sparkleUpdateController.updateCoordinator?.installRefusedNow ?? false
 
     return MenuBarViewState(
       pipelineState: liveRecordingState.pipelineState,
@@ -300,7 +306,7 @@ final class MenuBarController: NSObject {
       hasUpdater: sparkleUpdateController.hasUpdater,
       updateAvailable: pending != nil,
       updateDisplayVersion: pending?.displayVersion,
-      installEnabled: pending != nil && !dictationActive,
+      installEnabled: pending != nil && !installRefused,
       appearancePreference: settings.appearancePreference
     )
   }

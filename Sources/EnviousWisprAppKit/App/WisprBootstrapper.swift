@@ -1102,6 +1102,9 @@ public final class WisprBootstrapper {
     sparkleUpdateController.updateCoordinator?.dictationActiveProvider = { [weak self] in
       self?.liveRecordingState.isDictationActive ?? false
     }
+    // #2197: same refusal while clipboard cleanup is pending (why: its own doc).
+    sparkleUpdateController.updateCoordinator?
+      .clipboardCleanupPendingProvider = { ClipboardCleanup.hasPending }
     // #1029: install the notification tap delegate eagerly at launch (decoupled
     // from posting) so a tap on an already-delivered "update ready" notification —
     // or a cold launch from it — always routes, even when the once-per-version
