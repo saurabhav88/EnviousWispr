@@ -1541,6 +1541,77 @@ if battery.failed_test_identities([_q]) != {'founder repro: "Other apps." (2 wor
 else:
     print("  ok  both identity readers agree on a quoted name")
 
+# Generation is bounded too. Bounding the TEST call and not the setup before it leaves an unattended
+# run able to park all night one step earlier — the exact failure the lane timeout exists to prevent.
+ran += 1
+_real_run4 = battery.run
+_seen_timeouts = []
+
+
+def _record_timeout(cmd, cwd, log_path=None, timeout=None):
+    _seen_timeouts.append((cmd[0] if cmd else "", timeout))
+    return 0, ""
+
+
+battery.run = _record_timeout
+try:
+    _lane = battery.Lane(Path(tempfile.gettempdir()), Path(tempfile.gettempdir()),
+                         Path(tempfile.mkdtemp()))
+    _lane.generate_once()
+finally:
+    battery.run = _real_run4
+
+if not _seen_timeouts or _seen_timeouts[0][1] is None:
+    failures.append("project generation is bounded by a timeout — it is NOT: "
+                    f"{_seen_timeouts}")
+else:
+    print("  ok  project generation is bounded by a timeout")
+
+# A timeout must APPEND to the lane log, not overwrite it. Overwriting throws away the record of which
+# operation hung, on the one path where that record is the whole point.
+ran += 1
+_dir = Path(tempfile.mkdtemp(prefix="ew-battery-timeoutlog-"))
+_log = _dir / "row.log"
+_real_popen2 = battery.subprocess.Popen
+
+
+class _HangingPopen:
+    def __init__(self, *a, **k):
+        self.pid = _os_env.getpid()
+        self.returncode = None
+
+    def communicate(self, timeout=None):
+        if timeout is not None:
+            raise battery.subprocess.TimeoutExpired("cmd", timeout)
+        return ("captured output that must survive\n", None)
+
+    def kill(self):
+        pass
+
+
+battery.subprocess.Popen = _HangingPopen
+_real_reap2 = battery._reap_active_lane
+battery._reap_active_lane = lambda: True
+try:
+    _log.write_text("EARLIER OUTPUT THAT MUST SURVIVE\n")
+    try:
+        battery.run(["/bin/true"], cwd=str(_dir), log_path=_log, timeout=1)
+    except battery.subprocess.TimeoutExpired:
+        pass
+finally:
+    battery.subprocess.Popen = _real_popen2
+    battery._reap_active_lane = _real_reap2
+
+_body = _log.read_text()
+if "EARLIER OUTPUT THAT MUST SURVIVE" not in _body:
+    failures.append("a timeout appends to the lane log rather than overwriting it — the earlier "
+                    "output was DESTROYED, which is the only record of what hung")
+elif "timed out after" not in _body:
+    failures.append("a timeout appends to the lane log rather than overwriting it — the timeout "
+                    "marker was not written at all")
+else:
+    print("  ok  a timeout appends to the lane log rather than overwriting it")
+
 print()
 if failures:
     print(f"{len(failures)} of {ran} FAILED:")

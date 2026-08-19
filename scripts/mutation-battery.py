@@ -312,6 +312,9 @@ class _RowFailed(Exception):
 # so it leaves a MUTATED TREE behind. The bound is generous: it exists to convert a hang into a row
 # ERROR, not to police a slow suite (validation-discipline.md `hang-guard-vs-latency-bound`).
 LANE_TIMEOUT_SECONDS = 1800
+# Generation is bounded too. It is fast on a warm tree (0.06s when the input hash is unchanged,
+# ~7s cold), so a generous bound still catches a genuine stall without ever firing in normal use.
+GENERATE_TIMEOUT_SECONDS = int(os.environ.get("EW_BATTERY_GENERATE_TIMEOUT", "600"))
 
 
 # The process group of the lane currently running, or None. Registered before the lane starts and
@@ -379,8 +382,11 @@ def run(cmd, cwd, log_path=None, timeout=None):
         except subprocess.TimeoutExpired:
             out = ""
         if log_path is not None:
-            Path(log_path).write_text(
-                (out or "") + f"\n[mutation-battery] timed out after {timeout}s; group killed\n")
+            # APPEND. This used to overwrite what was captured before the timeout, throwing away the
+            # only record of which build or test operation hung — on the one path where it matters.
+            with open(log_path, "a") as fh:
+                fh.write((out or "")
+                         + f"\n[mutation-battery] timed out after {timeout}s; group killed\n")
         raise
     finally:
         _ACTIVE_LANE_PGID = None
@@ -454,11 +460,20 @@ class Lane:
         unreachable by construction rather than by a list someone must remember to extend."""
         if self.generated:
             return
-        rc, out = run(
-            TUIST_GENERATE_ARGV,
-            cwd=self.worktree,
-            log_path=self.log_dir / "tuist-generate.log",
-        )
+        try:
+            rc, out = run(
+                TUIST_GENERATE_ARGV,
+                cwd=self.worktree,
+                log_path=self.log_dir / "tuist-generate.log",
+                timeout=GENERATE_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            raise _LaneTimedOut(
+                f"project generation did not finish within {GENERATE_TIMEOUT_SECONDS}s. The lane "
+                "timeout bounds the TEST call; this bounds the setup before it, so an unattended run "
+                "cannot park overnight in either. Its process group was killed; see "
+                f"{self.log_dir / 'tuist-generate.log'}"
+            )
         if rc != 0:
             raise Refusal(f"tuist generate failed (rc={rc}); see {self.log_dir/'tuist-generate.log'}")
         self.generated = True
