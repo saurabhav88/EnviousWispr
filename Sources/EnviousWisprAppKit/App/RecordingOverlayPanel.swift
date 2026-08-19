@@ -2179,6 +2179,19 @@ private struct OverlayCapsuleBackground: View {
   var cornerStyle: CornerStyle = .capsule
   @State private var glowOpacity: Double = 0.3
 
+  /// #2201: the preview pill's rainbow hairline holds still instead of breathing
+  /// on a permanent two-second loop.
+  ///
+  /// The loop is a nice touch on the small capsule, which shows for a moment and
+  /// carries no text. On the preview pill it sits under a box that is already
+  /// growing a line at a time while words arrive, and the two movements read as
+  /// one restless object — the founder reported the pill "pulsing", and this is
+  /// the part of that which is not the sizing defect.
+  ///
+  /// Mid-way between the loop's own 0.3 and 0.65 endpoints, so the line is no
+  /// dimmer on average than the one it replaces.
+  private static let steadyPreviewGlow: Double = 0.5
+
   private var shape: AnyShape {
     switch cornerStyle {
     case .capsule: return AnyShape(Capsule())
@@ -2223,11 +2236,16 @@ private struct OverlayCapsuleBackground: View {
           endPoint: .trailing
         )
         .frame(height: 1)
-        .opacity(glowOpacity)
+        .opacity(cornerStyle == .rounded ? Self.steadyPreviewGlow : glowOpacity)
         .padding(.horizontal, 20)
         .offset(y: -1)
       }
       .onAppear {
+        // #2201: only the capsule breathes. Arming a `repeatForever` for the
+        // preview would keep it re-rendering whether or not anything read
+        // `glowOpacity`, and the point of this chunk is that the preview pill
+        // stops moving on its own.
+        guard cornerStyle == .capsule else { return }
         withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
           glowOpacity = 0.65
         }
@@ -2375,7 +2393,25 @@ struct RecordingOverlayView: View {
     .animation(.easeInOut(duration: 0.3), value: lockState.isLocked)
     // Single container animation prevents animation stacking: N per-element
     // modifiers × update rate creates exponential state transitions (gotchas.md).
-    .animation(.easeOut(duration: 0.08), value: audioLevel)
+    //
+    // #2201: the PREVIEW layout selects no animation here. `audioLevel` is
+    // repolled every 50 ms, so this fires ~20 times a second, and a container
+    // animation animates whatever else changed in the same update — including the
+    // preview text, and therefore the capsule's HEIGHT. That turned each genuine
+    // resize into a smoothly animated one and drove `setFrame` once per frame.
+    //
+    // The trigger VALUE is kept rather than deleted, so the non-preview capsule's
+    // animation is visibly untouched in the diff and the two branches sit side by
+    // side. Audio-reactive PAINT is unaffected in both: `RainbowLipsIcon` reads
+    // `audioLevel` directly and redraws without needing this.
+    //
+    // Not a violation of swift-patterns.md RULE: animate-the-container-not-children
+    // — that forbids per-child `.animation(value:)`, and this adds none. The
+    // container keeps its `lockState` and `noticeState` triggers in both layouts.
+    .animation(
+      usesPreviewLayout ? nil : .easeOut(duration: 0.08),
+      value: audioLevel
+    )
     .animation(.easeInOut(duration: 0.25), value: noticeState.message)
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
