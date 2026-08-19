@@ -446,6 +446,42 @@ struct ReadinessRetryRecoveryTests {
     #expect(!h.store.hasReadinessRetryMarker(for: h.id), "and no budget was spent")
   }
 
+  /// THE BRANCH THE ROW ABOVE CANNOT REACH, and the reason this test exists
+  /// separately: the leak Codex found was in the marker-clear CATCH, which only
+  /// runs when the clear throws. The success-path test passes whether or not that
+  /// catch is correct, and a mutation control proved exactly that — the leaked
+  /// field survived it. Reaching a function is not reaching its branch.
+  ///
+  /// The clear is forced to fail by making the spool directory read-only at the
+  /// last moment the attempt marker is already written: `onTranscribe` fires
+  /// after the marker write and before the refusal.
+  @Test("an unrelated deferral whose marker clear FAILS also claims no retry")
+  func transcribeSiteClearFailureDoesNotClaimAReadinessRetry() async throws {
+    let h = try Fixture.make()
+    let fm = FileManager.default
+    defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: h.spoolDir.path) }
+
+    h.asr.transcribeError = ASRError.notReady
+    h.asr.onTranscribe = { [dir = h.spoolDir] in
+      try? fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+    }
+
+    var outcome: RecoveryReplayOutcome?
+    let box = await Fixture.capturingTelemetry {
+      outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+    }
+
+    #expect(outcome == .deferredMarkerClearFailed, "the branch under test was REACHED")
+    let e = try #require(box.recoveryEvents().first)
+    #expect(e.stringProps["reason"] == "marker_clear_failed")
+    #expect(
+      e.stringProps["retry_disposition"] == nil,
+      "still no readiness retry here — this is the leak Codex found")
+    // The r2 fix must survive: the audio reconstructed, and saying otherwise is
+    // the #2205 defect.
+    #expect(e.boolProps["audio_decrypted"] == true)
+  }
+
   /// Spool deletion must ATTEMPT every readiness-retry artifact, and keep
   /// attempting the others when one fails — the store's cleanup is best-effort
   /// by design, so this asserts attempts, never guarantees.
