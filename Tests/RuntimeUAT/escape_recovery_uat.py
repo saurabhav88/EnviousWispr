@@ -260,6 +260,16 @@ def restore(before):
             ok = False
             print(f"    RESTORE FAILED for {key}: {failure}")
             print(f"    the developer's own {key} is NOT back to what it was")
+    # Read back what was just written. An exit status of 0 says the command ran,
+    # not that the value is there — the distinction this whole class of defect
+    # keeps turning on.
+    for key, captured in before.items():
+        now = defaults_read(key)
+        want = None if captured is None else captured[0]
+        got = None if now is None else now[0]
+        if got != want:
+            ok = False
+            print(f"    RESTORE DID NOT TAKE for {key}: wanted {want!r}, reads {got!r}")
     if not ok:
         print("    !! at least one preference was not restored — check it by hand")
     return ok
@@ -702,11 +712,19 @@ def main():
         # `finally` before the settings went back, and these are the developer's
         # REAL settings. The stop and the quit are best-effort; the restore is
         # not optional.
+        # Whether the app is CONFIRMED down. A restore written underneath a live
+        # app is a race this harness loses: `SettingsManager` writes its own
+        # values back on quit and wins, so a "successful" restore would be
+        # silently undone minutes later. `stop_app` raises when the process
+        # outlives its deadline, and the handler below only PRINTS that, so
+        # without this flag the restore reported success from exactly that state.
+        app_down = False
         try:
             try:
                 ensure_stopped(base, "cleaning up before quitting")
             finally:
                 stop_app()
+            app_down = True
         except Exception as cleanup_error:  # noqa: BLE001 - reported, never swallowed
             print(f"    (cleanup problem, restoring anyway: {cleanup_error})")
         finally:
@@ -719,6 +737,13 @@ def main():
             # very thing the nested try above exists to prevent. It travels as a
             # flag and lands on the exit status instead.
             restored = restore(before)
+            if not app_down:
+                # Attempted anyway — a restore that might be undone still beats
+                # not trying — but it cannot be REPORTED as done.
+                print("    The app was not confirmed down, so anything written")
+                print("    just now can be overwritten by it on quit. Treating")
+                print("    the restore as UNVERIFIED rather than successful.")
+                restored = False
 
     passed = [n for n, s, _ in results if s == "PASS"]
     failed = [n for n, s, _ in results if s == "FAIL"]
