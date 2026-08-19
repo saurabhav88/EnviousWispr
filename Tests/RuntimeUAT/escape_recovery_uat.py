@@ -154,8 +154,38 @@ def defaults_write(key, value, kind="-int"):
     subprocess.run(["defaults", "write", DOMAIN, key, kind, str(value)], check=True)
 
 
+def domain_is_readable():
+    """Whether `DOMAIN` can be read at all.
+
+    Asked ONCE per restore rather than per key, because it is the question a
+    per-key read-back cannot answer: `defaults read` fails identically for a key
+    that is absent and for a domain that cannot be reached, so on its own
+    "the key is gone" and "I am blind to this domain" are the same answer, and
+    the second would report a successful restore having restored nothing.
+    """
+    return subprocess.run(
+        ["defaults", "read", DOMAIN], capture_output=True).returncode == 0
+
+
 def defaults_delete(key):
+    """Remove one key and report whether it is ACTUALLY gone.
+
+    Verified by reading the key back, NOT by the exit status: `defaults delete`
+    exits 1 for a key that was already absent, which is a SUCCESS here, since
+    restoring an absent key means leaving it absent.
+
+    **Not by stderr either, and that was measured rather than assumed.** An
+    earlier version of this treated the string "does not exist" as the
+    already-absent case. Run on 2026-08-19, `defaults` emits the SAME text —
+    `Domain (X) not found. Defaults have not been changed.` — for a missing key,
+    a missing domain, and an unwritable path alike, so stderr cannot separate
+    them and any rule built on it is a coin flip. Do not reintroduce one.
+
+    The blindness this leaves is handled by `domain_is_readable`, called once by
+    `restore`, rather than pretended away here.
+    """
     subprocess.run(["defaults", "delete", DOMAIN, key], check=False, capture_output=True)
+    return defaults_read(key) is None
 
 
 # `defaults read-type` wording -> the write flag that reproduces it. Restoring
@@ -211,10 +241,18 @@ def restore(before):
     returns whether everything landed.
     """
     ok = True
+    # The blind case, asked once and first: with an unreadable domain every
+    # per-key read-back returns "absent" and the restore would report success
+    # having written nothing.
+    if not domain_is_readable():
+        print(f"    RESTORE IMPOSSIBLE: cannot read {DOMAIN} at all")
+        return False
     for key, captured in before.items():
         try:
             if captured is None:
-                defaults_delete(key)
+                if not defaults_delete(key):
+                    raise RuntimeError(
+                        f"{key} was absent before this run and will not delete now")
             else:
                 value, flag = captured
                 defaults_write(key, value, kind=flag)
@@ -311,6 +349,10 @@ def stop_app():
     running. `SettingsManager` writes its own values back on change, so a write
     made underneath a live app is a race against it, and the app wins on quit.
     """
+    # check=False BY DESIGN and the result is deliberately dropped: `pkill`
+    # exits 1 when nothing matched, which is the ordinary case here — the app
+    # may already be down. The OUTCOME is what matters and it is verified
+    # separately by `app_is_running`, not by this call's status.
     subprocess.run(["pkill", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
                    check=False, capture_output=True)
     if not wait_for("the old instance to exit", lambda: not app_is_running(), deadline=15.0):
