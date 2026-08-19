@@ -1,5 +1,6 @@
 import AppKit
 import EnviousWisprCore
+import EnviousWisprPipeline
 import EnviousWisprServices
 import Foundation
 
@@ -287,7 +288,12 @@ final class MenuBarController: NSObject {
       }
       return nil
     }()
-    let dictationActive = liveRecordingState.isDictationActive
+    // #2197: `installEnabled` below must agree with what
+    // `UpdateCoordinator.triggerGuardedInstall` will actually DO. That guard
+    // refuses during dictation AND during the ~200 ms clipboard cleanup window
+    // that now follows one; reading only the first would render an ENABLED
+    // Install item that silently does nothing when clicked.
+    let installRefused = liveRecordingState.isDictationActive || ClipboardCleanup.hasPending
 
     return MenuBarViewState(
       pipelineState: liveRecordingState.pipelineState,
@@ -300,7 +306,7 @@ final class MenuBarController: NSObject {
       hasUpdater: sparkleUpdateController.hasUpdater,
       updateAvailable: pending != nil,
       updateDisplayVersion: pending?.displayVersion,
-      installEnabled: pending != nil && !dictationActive,
+      installEnabled: pending != nil && !installRefused,
       appearancePreference: settings.appearancePreference
     )
   }

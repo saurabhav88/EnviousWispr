@@ -216,15 +216,19 @@ public enum PasteService {
     }
 
     pasteboard.clearContents()
+    // `setData` can refuse an item, and `writeObjects` can refuse the write.
+    // Both were previously ignored, which was harmless while the caller's own
+    // control flow revealed the outcome — and stops being harmless now that the
+    // only report of it is this function's return value (#2197).
+    var itemsAccepted = true
     let pbItems: [NSPasteboardItem] = snapshot.items.map { itemDict in
       let pbItem = NSPasteboardItem()
-      for (type, data) in itemDict {
-        pbItem.setData(data, forType: type)
+      for (type, data) in itemDict where !pbItem.setData(data, forType: type) {
+        itemsAccepted = false
       }
       return pbItem
     }
-    pasteboard.writeObjects(pbItems)
-    return true
+    return pasteboard.writeObjects(pbItems) && itemsAccepted
   }
 
   // MARK: - Tier 1: AX Direct Insertion
