@@ -40,6 +40,28 @@ protocol AudioInputSource: AnyObject {
   /// Source must cancel any pending watchdog on `stop()` / `deactivateCapture()`.
   var onCaptureStalled: ((CaptureStallContext) -> Void)? { get set }
 
+  /// #1810: how many samples this session's `startCapture()` drained out of the
+  /// pre-roll ring and pushed through `onSamples` before any live audio arrived.
+  /// Zero for a source that keeps no pre-roll, and zero before the first
+  /// `startCapture()` of a session.
+  ///
+  /// **This is a CAPTURE-POLICY input, not telemetry.** The drained batch is fed
+  /// to `DeadAirStreamingDetector` exactly like live audio, so it counts toward
+  /// the all-zero ceiling; without this the "1.0s of silence" bar documented in
+  /// `AudioConstants.minimumTranscriptionSamples` is really 1.0s MINUS whatever
+  /// silent pre-roll was drained, measured at 147-553ms in production.
+  /// `AudioCaptureManager.allZeroCeilingSamples` adds it back.
+  ///
+  /// **Deliberately undefaulted**, same reasoning as the two members below it: a
+  /// no-op default would let a future conformer silently report no pre-roll while
+  /// draining a ring, and the symptom — an abort that fires early — is invisible
+  /// in tests and looks like a dead microphone in the data.
+  ///
+  /// **Callers must clamp with `max(0, …)`.** The type is `Int`, so nothing here
+  /// stops a conformer returning a negative, and a negative would make the abort
+  /// fire EARLIER — the one direction this change promises is impossible.
+  var drainedPreRollSampleCount: Int { get }
+
   /// Monotonic capture-session id. Increments inside `startCapture`.
   /// Zero if no session has started. Used for watchdog generation check +
   /// dedup correlation at the pipeline layer.
