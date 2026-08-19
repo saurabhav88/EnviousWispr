@@ -59,6 +59,7 @@ writes its own values back and wins any race; and the app is quit BEFORE the
 restore, so it cannot overwrite the restored values on the way out.
 """
 import os
+import plistlib
 import subprocess
 import sys
 import time
@@ -199,6 +200,38 @@ _TYPE_FLAG = {
     "float": "-float",
     "string": "-string",
 }
+
+
+def plist_snapshot(keys):
+    """The stored values read INDEPENDENTLY of `defaults_read`, via the plist.
+
+    `defaults_read` goes through `defaults read`, whose output is text and which
+    this harness then `.strip()`s — so a string preference stored as `"  dark  "`
+    comes back as `"dark"`. That loss is invisible to any check whose EXPECTED
+    value came from the same reader: `before` is already stripped, the read-back
+    is stripped identically, and the comparison passes while the developer's
+    actual preference has changed.
+
+    A check's own instrument cannot verify that instrument
+    (validation-discipline.md
+    RULE: a-checks-own-command-is-not-independent-verification-of-that-check).
+    So this reads the domain as a property list and parses it with `plistlib`,
+    which preserves whitespace and native types. Different tool, different
+    parser, different failure modes.
+
+    Returns {key: value} for keys present, omitting absent ones. None when the
+    domain cannot be exported at all, which callers must treat as "cannot tell"
+    rather than "nothing there".
+    """
+    out = subprocess.run(
+        ["defaults", "export", DOMAIN, "-"], capture_output=True)
+    if out.returncode != 0:
+        return None
+    try:
+        whole = plistlib.loads(out.stdout)
+    except Exception:  # noqa: BLE001 — an unparseable export is "cannot tell"
+        return None
+    return {k: whole[k] for k in keys if k in whole}
 
 
 def defaults_read(key):
@@ -586,6 +619,11 @@ def main():
     # Captured BEFORE anything is written, so the `finally` restores rather
     # than resets. A developer running this must not lose their own shortcut.
     before = snapshot(("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled"))
+    # A SECOND capture through a different tool and parser. `before` is what the
+    # restore is built from; this is what it is judged against, so a loss in the
+    # text reader cannot hide inside both sides of the comparison.
+    before_plist = plist_snapshot(
+        ("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled"))
     print(f"prior settings: {before}")
 
     field_a = new_textedit_doc("field-a")
@@ -741,6 +779,21 @@ def main():
             # very thing the nested try above exists to prevent. It travels as a
             # flag and lands on the exit status instead.
             restored = restore(before)
+            # Judged by the INDEPENDENT oracle as well. `restore` verifies with
+            # the same text reader it wrote from, which cannot see a loss that
+            # reader makes on both sides — a padded string is the concrete case.
+            after_plist = plist_snapshot(
+                ("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled"))
+            if before_plist is None or after_plist is None:
+                print("    (could not read the domain as a plist — restore is")
+                print("     UNVERIFIED by the independent oracle)")
+                restored = False
+            elif after_plist != before_plist:
+                for k in sorted(set(before_plist) | set(after_plist)):
+                    if before_plist.get(k) != after_plist.get(k):
+                        print(f"    PLIST MISMATCH for {k}: was "
+                              f"{before_plist.get(k)!r}, now {after_plist.get(k)!r}")
+                restored = False
             if not app_down:
                 # Attempted anyway — a restore that might be undone still beats
                 # not trying — but it cannot be REPORTED as done.
