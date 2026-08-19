@@ -152,6 +152,34 @@ enum PreviewPillPalette {
   /// Every colour the pill draws.
   static let allColours: [(name: String, colour: Color)] = textColours + surfaceColours
 
+  // KNOWN LIMIT, accepted at review round 6 rather than left to be rediscovered.
+  //
+  // **The name in each tuple is a string literal, not a binding to the declaration
+  // it names.** Written as `("textDimmed", text)` by copy-paste, the parsed
+  // declaration `textDimmed` still looks accounted for while the pair and contrast
+  // tests exercise `text` twice and `textDimmed` never.
+  //
+  // It is not closable without reflection, a macro, or code generation. Swift
+  // cannot enumerate static members at runtime, and a lookup-by-name accessor
+  // (`static let surface = entries.first { $0.name == "surface" }!.colour`) trades a
+  // compile-time-visible typo for a force-unwrap that crashes the app, or a silent
+  // fallback colour — both worse than the hole.
+  //
+  // A distinctness check over resolved values would catch it, EXCEPT that
+  // `modeQuiet` and `textDimmed` legitimately hold identical values today, so it
+  // would false-positive on correct code. Changing one of them purely to enable a
+  // test would be the tail wagging the dog.
+  //
+  // What bounds the risk: all ten entries sit in one screenful directly beneath the
+  // declarations they name, so a mismatch is visible where it is written rather
+  // than three hundred lines away in another target — which is what the round-5
+  // restructure bought. The residual failure needs a copy-paste inside that
+  // screenful, and costs one colour going unchecked.
+  //
+  // **Reopen this if a colour is ever added whose values duplicate another's for a
+  // reason other than being the same colour** — at that point the distinctness
+  // check becomes viable and should be preferred to this comment.
+
   // MARK: - Test seam
 
   /// Resolve a pill colour against a named appearance, so a test can assert the
