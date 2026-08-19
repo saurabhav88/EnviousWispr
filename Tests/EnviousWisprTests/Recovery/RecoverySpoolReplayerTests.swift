@@ -709,6 +709,13 @@ struct RecoverySpoolReplayerTests {
       let e = try #require(box.recoveryEvents().first)
       #expect(e.stringProps["outcome"] == "deferred")
       #expect(e.stringProps["failure_class"] == "not_ready")
+      // The audio reconstructed fine; only the engine was missing. Omitting
+      // these would make analytics read the take as "nothing came back out of
+      // the spool" — the inverse of what happened, and the defect Codex review
+      // caught in the first version of this deferral.
+      #expect(e.boolProps["audio_decrypted"] == true)
+      #expect(e.boolProps["camp_b_candidate"] == true)
+      #expect(e.stringProps["spool_seconds_bucket"] != nil)
     }
 
     @Test("transcribe failure on good audio is a Camp B candidate with a failure class")

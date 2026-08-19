@@ -312,7 +312,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       let diagnosis = Self.diagnose(error, operation: .modelLoad)
       if Self.engineWasNeverAvailable(diagnosis) {
         return deferForUnavailableEngine(
-          spoolStore: spoolStore, id: id, reason: .modelLoadFailed, diagnosis: diagnosis)
+          spoolStore: spoolStore, id: id, reason: .modelLoadFailed, diagnosis: diagnosis,
+          reconstructedSampleCount: recovered.samples.count)
       }
       return failUnrecoverable(
         reason: .modelLoadFailed, diagnosis: diagnosis,
@@ -330,7 +331,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       let diagnosis = Self.diagnose(error, operation: .transcription)
       if Self.engineWasNeverAvailable(diagnosis) {
         return deferForUnavailableEngine(
-          spoolStore: spoolStore, id: id, reason: .transcribeError, diagnosis: diagnosis)
+          spoolStore: spoolStore, id: id, reason: .transcribeError, diagnosis: diagnosis,
+          reconstructedSampleCount: recovered.samples.count)
       }
       return failUnrecoverable(
         reason: .transcribeError, diagnosis: diagnosis,
@@ -710,17 +712,30 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   }
 
   /// Give the attempt back and leave the spool on disk for the next launch.
+  /// `reconstructedSampleCount` is REQUIRED, not optional, and that is the point:
+  /// both callers reach here only after reconstruction returned a non-empty
+  /// prefix, and omitting these fields would emit `audio_decrypted` ABSENT —
+  /// which `recoveryCompleted`'s contract reads as "nothing came back out of the
+  /// spool" (audio-recovery-internals.md FACT: recovery-telemetry-fields). That
+  /// is the exact inverse of what happened: the audio reconstructed perfectly and
+  /// the ENGINE was missing. Codex review caught this on the first pass.
   private func deferForUnavailableEngine(
     spoolStore: RecoverySpoolStore, id: String, reason: RecoveryTelemetryReason,
-    diagnosis: RecoveryFailureDiagnosis
+    diagnosis: RecoveryFailureDiagnosis, reconstructedSampleCount: Int
   ) -> RecoveryReplayOutcome {
+    let spoolSeconds = Int(
+      (Double(reconstructedSampleCount) / AudioConstants.sampleRate).rounded())
     RecoveryLog.line(
       "replay deferred: \(reason.rawValue) class=\(diagnosis.failureClass.rawValue) "
         + "— the engine was never available, the attempt is NOT spent")
     do {
       try spoolStore.deleteAttemptMarker(for: id)
       TelemetryService.shared.recoveryCompleted(
-        outcome: "deferred", reason: reason, failureClass: diagnosis.failureClass)
+        outcome: "deferred", reason: reason, failureClass: diagnosis.failureClass,
+        // Same facts the failure path emitted for this take. `camp_b_candidate`
+        // is if anything MORE true here: good audio, and a retry is now real
+        // rather than hypothetical because the attempt was given back.
+        audioDecrypted: true, campBCandidate: true, spoolSeconds: spoolSeconds)
       return .deferred
     } catch {
       TelemetryService.shared.recoveryCompleted(outcome: "deferred", reason: .markerClearFailed)
