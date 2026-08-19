@@ -1649,11 +1649,16 @@ final class RecordingOverlayPanel {
     // has been superseded cannot act on its successor's payload.
     let callbacks = escapeRecoveryCallbacks(
       shownID: payload.transcriptID, paste: onEscapeRecoveryPaste)
+    // Sized from `PillMetrics`, which measures the sentence, rather than from
+    // literals here. Two places holding the same number is how a copy revision
+    // clips the pill in one of them.
     let view = EscapeRecoveryPillView(
       onPaste: callbacks.onPaste, onExpire: callbacks.onExpire
     )
-    .frame(width: 320, height: 56)
-    showPanel(content: view, width: 320, height: 56, inheritedFrame: inheritedFrame)
+    .frame(width: PillMetrics.panelWidth, height: PillMetrics.panelHeight)
+    showPanel(
+      content: view, width: PillMetrics.panelWidth, height: PillMetrics.panelHeight,
+      inheritedFrame: inheritedFrame)
   }
 
   /// Show the passive language-detection chip as a floating panel. Mirrors the
@@ -2445,93 +2450,6 @@ struct PolishingOverlayView: View {
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
     .background(OverlayCapsuleBackground())
-  }
-}
-
-// MARK: - EscapeRecoveryPillView
-
-/// The Escape Recovery pill (#2087): one sentence, one action.
-///
-/// Deliberately NOT a question. The founder chose this over a "Want to paste?"
-/// prompt, and the persona work agreed independently: a prompt demands attention
-/// from someone who by definition is not looking, and the whole feature exists
-/// for the case where the user has already moved on. It never steals focus (the
-/// panel is `.nonactivatingPanel`), never blocks, and never requires dismissal.
-///
-/// History is the real path for most people; this is an accelerator for whoever
-/// happens to be watching. That is why letting it expire costs nothing, and why
-/// the spoken announcement names History rather than only the button.
-///
-/// **The view owns its own dwell**, exactly as `LanguageChipView` does, because
-/// a panel-level timer cannot be paused by a hover only the view can see. Hover
-/// cancels; hover-exit restarts the FULL three seconds rather than resuming the
-/// remainder — matching the shipped chip deliberately, so two overlay pills do
-/// not behave differently under the same gesture.
-struct EscapeRecoveryPillView: View {
-  let onPaste: () -> Void
-  let onExpire: () -> Void
-
-  /// Founder-specified.
-  private static let dwellSeconds: Double = 3.0
-
-  @State private var dismissTask: Task<Void, Never>?
-  /// One-shot. Without it a fast double-click restores twice — and the second
-  /// restore lands after the first has already moved the user's cursor.
-  @State private var acted = false
-
-  var body: some View {
-    HStack(spacing: 10) {
-      Image(systemName: "arrow.uturn.backward.circle.fill")
-        .foregroundStyle(.white.opacity(0.85))
-        .font(.system(size: 18))
-        .accessibilityHidden(true)
-
-      Text(DictationNarrator.escapeRecoveryPillTitle)
-        .font(.system(size: 13, weight: .medium))
-        .foregroundStyle(.white)
-        .lineLimit(1)
-
-      Spacer(minLength: 8)
-
-      Button(action: {
-        guard !acted else { return }
-        acted = true
-        dismissTask?.cancel()
-        onPaste()
-      }) {
-        Text(DictationNarrator.escapeRecoveryPillAction)
-          .font(.system(size: 12, weight: .semibold))
-          .foregroundStyle(.white)
-          .padding(.horizontal, 12)
-          .padding(.vertical, 5)
-          .contentShape(Rectangle())
-          .background(Capsule().fill(.white.opacity(0.18)))
-      }
-      .buttonStyle(.plain)
-      .accessibilityLabel(DictationNarrator.escapeRecoveryPillAction)
-    }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 10)
-    .background(OverlayCapsuleBackground())
-    .onHover { isHovering in
-      if isHovering {
-        dismissTask?.cancel()
-      } else {
-        scheduleExpiry()
-      }
-    }
-    .onAppear { scheduleExpiry() }
-    .onDisappear { dismissTask?.cancel() }
-  }
-
-  private func scheduleExpiry() {
-    guard !acted else { return }
-    dismissTask?.cancel()
-    dismissTask = Task { @MainActor in
-      try? await Task.sleep(for: .seconds(Self.dwellSeconds))
-      guard !Task.isCancelled, !acted else { return }
-      onExpire()
-    }
   }
 }
 

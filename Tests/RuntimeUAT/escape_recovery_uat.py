@@ -59,6 +59,7 @@ writes its own values back and wins any race; and the app is quit BEFORE the
 restore, so it cannot overwrite the restored values on the way out.
 """
 import os
+import plistlib
 import subprocess
 import sys
 import time
@@ -135,11 +136,57 @@ def wait_for(what, predicate, deadline=45.0, poll=0.25):
 
 
 def defaults_write(key, value, kind="-int"):
+    """Write one preference, normalising the one value shape `defaults` refuses.
+
+    `defaults write <dom> <key> -bool 1` EXITS 255. The tool accepts only
+    true/false/yes/no for `-bool`, while `defaults read` PRINTS a boolean back as
+    `1`. So a value round-tripped through a snapshot is in a form the writer
+    rejects, and the failure lands in two places that both matter: applying the
+    ON phase, and — worse — the `finally` that restores the developer's own
+    settings. Observed 2026-08-19: the restore raised here, and the founder's
+    `escapeRecoveryEnabled` was left ABSENT rather than back on.
+
+    Normalising at the single write point covers apply and restore together,
+    which a fix at either call site would not.
+    """
+    if kind in ("-bool", "-boolean"):
+        text = str(value).strip().lower()
+        value = "true" if text in ("1", "true", "yes", "y", "on") else "false"
     subprocess.run(["defaults", "write", DOMAIN, key, kind, str(value)], check=True)
 
 
+def domain_is_readable():
+    """Whether `DOMAIN` can be read at all.
+
+    Asked ONCE per restore rather than per key, because it is the question a
+    per-key read-back cannot answer: `defaults read` fails identically for a key
+    that is absent and for a domain that cannot be reached, so on its own
+    "the key is gone" and "I am blind to this domain" are the same answer, and
+    the second would report a successful restore having restored nothing.
+    """
+    return subprocess.run(
+        ["defaults", "read", DOMAIN], capture_output=True).returncode == 0
+
+
 def defaults_delete(key):
+    """Remove one key and report whether it is ACTUALLY gone.
+
+    Verified by reading the key back, NOT by the exit status: `defaults delete`
+    exits 1 for a key that was already absent, which is a SUCCESS here, since
+    restoring an absent key means leaving it absent.
+
+    **Not by stderr either, and that was measured rather than assumed.** An
+    earlier version of this treated the string "does not exist" as the
+    already-absent case. Run on 2026-08-19, `defaults` emits the SAME text —
+    `Domain (X) not found. Defaults have not been changed.` — for a missing key,
+    a missing domain, and an unwritable path alike, so stderr cannot separate
+    them and any rule built on it is a coin flip. Do not reintroduce one.
+
+    The blindness this leaves is handled by `domain_is_readable`, called once by
+    `restore`, rather than pretended away here.
+    """
     subprocess.run(["defaults", "delete", DOMAIN, key], check=False, capture_output=True)
+    return defaults_read(key) is None
 
 
 # `defaults read-type` wording -> the write flag that reproduces it. Restoring
@@ -153,6 +200,38 @@ _TYPE_FLAG = {
     "float": "-float",
     "string": "-string",
 }
+
+
+def plist_snapshot(keys):
+    """The stored values read INDEPENDENTLY of `defaults_read`, via the plist.
+
+    `defaults_read` goes through `defaults read`, whose output is text and which
+    this harness then `.strip()`s — so a string preference stored as `"  dark  "`
+    comes back as `"dark"`. That loss is invisible to any check whose EXPECTED
+    value came from the same reader: `before` is already stripped, the read-back
+    is stripped identically, and the comparison passes while the developer's
+    actual preference has changed.
+
+    A check's own instrument cannot verify that instrument
+    (validation-discipline.md
+    RULE: a-checks-own-command-is-not-independent-verification-of-that-check).
+    So this reads the domain as a property list and parses it with `plistlib`,
+    which preserves whitespace and native types. Different tool, different
+    parser, different failure modes.
+
+    Returns {key: value} for keys present, omitting absent ones. None when the
+    domain cannot be exported at all, which callers must treat as "cannot tell"
+    rather than "nothing there".
+    """
+    out = subprocess.run(
+        ["defaults", "export", DOMAIN, "-"], capture_output=True)
+    if out.returncode != 0:
+        return None
+    try:
+        whole = plistlib.loads(out.stdout)
+    except Exception:  # noqa: BLE001 — an unparseable export is "cannot tell"
+        return None
+    return {k: whole[k] for k in keys if k in whole}
 
 
 def defaults_read(key):
@@ -179,13 +258,58 @@ def restore(before):
 
     Deleting unconditionally would silently reset a developer's own cancel
     shortcut, which is a destructive tidy-up wearing the word "restore".
+
+    **Goes through `defaults_write` like every other write, and this line is the
+    whole point of the function working at all.** It used to call `subprocess`
+    directly, so it skipped the boolean normalisation that lives there: a value
+    captured as `1` was handed back as `defaults write ... -bool 1`, which exits
+    255. With `check=False` swallowing that, the restore FAILED SILENTLY and the
+    developer's own preference was left at whatever the run had set. Measured
+    2026-08-19 against the founder's `escapeRecoveryEnabled`.
+
+    **`check=False` is kept deliberately, but no longer means "say nothing".** A
+    restore must attempt EVERY key even after one fails, so an exception here
+    would abandon the rest — but a failure that prints nothing is how the
+    original defect stayed invisible. Each key now reports, and the function
+    returns whether everything landed.
     """
+    ok = True
+    # The blind case, asked once and first: with an unreadable domain every
+    # per-key read-back returns "absent" and the restore would report success
+    # having written nothing.
+    if not domain_is_readable():
+        print(f"    RESTORE IMPOSSIBLE: cannot read {DOMAIN} at all")
+        return False
     for key, captured in before.items():
-        if captured is None:
-            defaults_delete(key)
-        else:
-            value, flag = captured
-            subprocess.run(["defaults", "write", DOMAIN, key, flag, value], check=False)
+        try:
+            if captured is None:
+                if not defaults_delete(key):
+                    raise RuntimeError(
+                        f"{key} was absent before this run and will not delete now")
+            else:
+                value, flag = captured
+                defaults_write(key, value, kind=flag)
+        except Exception as failure:  # noqa: BLE001 — every key still gets a turn
+            ok = False
+            print(f"    RESTORE FAILED for {key}: {failure}")
+            print(f"    the developer's own {key} is NOT back to what it was")
+    # Read back what was just written. An exit status of 0 says the command ran,
+    # not that the value is there — the distinction this whole class of defect
+    # keeps turning on.
+    for key, captured in before.items():
+        now = defaults_read(key)
+        # The WHOLE tuple, value AND plist type. `defaults_read` returns both and
+        # an earlier version compared only the value, which passes a restore that
+        # changed the TYPE while printing the same text: `escapeRecoveryEnabled`
+        # captured as integer 1 and handed back as boolean true reads "1" either
+        # way. The developer is left with a preference of the wrong type, the app
+        # may read it differently, and the run reports success.
+        if now != captured:
+            ok = False
+            print(f"    RESTORE DID NOT TAKE for {key}: wanted {captured!r}, reads {now!r}")
+    if not ok:
+        print("    !! at least one preference was not restored — check it by hand")
+    return ok
 
 
 def screen_is_locked():
@@ -272,6 +396,10 @@ def stop_app():
     running. `SettingsManager` writes its own values back on change, so a write
     made underneath a live app is a race against it, and the app wins on quit.
     """
+    # check=False BY DESIGN and the result is deliberately dropped: `pkill`
+    # exits 1 when nothing matched, which is the ordinary case here — the app
+    # may already be down. The OUTCOME is what matters and it is verified
+    # separately by `app_is_running`, not by this call's status.
     subprocess.run(["pkill", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
                    check=False, capture_output=True)
     if not wait_for("the old instance to exit", lambda: not app_is_running(), deadline=15.0):
@@ -421,7 +549,22 @@ def dictate_then_cancel(base):
         ensure_stopped(base, "the start signal never arrived, so the take may be late",
                        grace=5.0)
         return "no-start"
-    subprocess.run(["afplay", w.tts(SENTENCE, engine="say")], timeout=60)
+    # THE SPEECH HAS TO ACTUALLY PLAY, and this used to fail open.
+    #
+    # `afplay` ran with no `check`, so a missing file, an empty synthesis or a
+    # busy audio device produced NO sound and no complaint. The recorder then
+    # captured silence, the pipeline concluded `noSpeech`, and the run reported
+    # that the recovery branch never fired — a PRODUCT verdict from a harness
+    # that never spoke. Measured by hand 2026-08-19, where it cost two runs and
+    # a wrong diagnosis before the log said `noSpeech`.
+    #
+    # Checked in both directions: the clip must exist and be big enough to be
+    # speech rather than a header, and playback must exit cleanly.
+    clip = w.tts(SENTENCE, engine="say")
+    size = os.path.getsize(clip) if os.path.exists(clip) else 0
+    if size < 8192:
+        raise Aborted(f"the speech clip is missing or too small to be speech ({size} bytes at {clip})")
+    subprocess.run(["afplay", clip], timeout=60, check=True)
     si.hold_key("lctrl", 0.12)
     if not wait_for("the session to reach a terminal",
                     lambda: "dictation_terminal" in log_since(base), deadline=60.0):
@@ -476,11 +619,26 @@ def main():
     # Captured BEFORE anything is written, so the `finally` restores rather
     # than resets. A developer running this must not lose their own shortcut.
     before = snapshot(("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled"))
+    # A SECOND capture through a different tool and parser. `before` is what the
+    # restore is built from; this is what it is judged against, so a loss in the
+    # text reader cannot hide inside both sides of the comparison.
+    before_plist = plist_snapshot(
+        ("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled"))
     print(f"prior settings: {before}")
 
     field_a = new_textedit_doc("field-a")
     field_b = new_textedit_doc("field-b")
     print(f"targets: A={field_a}  B={field_b}")
+
+    # The AX connection has to exist before the oracle control, not only before
+    # the retarget phase below. `verify_can_read` clears the document with
+    # `w.press_key`, and every `w.*` entry point guards on `_ensure_connected`,
+    # so without this the control aborts the whole run with "Not connected" —
+    # BEFORE it has proven anything, and while reporting nothing about the
+    # product. Connecting here rather than inside the control keeps the later
+    # reconnect at the retarget phase meaningful: that one re-attaches after
+    # focus has moved, which is a different thing from attaching at all.
+    w.connect()
 
     # Before any verdict depends on reading a field, prove we CAN read one.
     # Without this the run cannot tell "the feature held the text" from "the
@@ -497,6 +655,9 @@ def main():
     # the settings restore, which is the one thing that must never be skipped.
     base = log_length()
     aborted = None
+    # Assumed FAILED until the restore says otherwise, so a path that never
+    # reaches the cleanup cannot report clean settings by omission.
+    restored = False
 
     try:
         # ---- OFF path first: the promise that covers everyone -------------
@@ -593,16 +754,53 @@ def main():
         # `finally` before the settings went back, and these are the developer's
         # REAL settings. The stop and the quit are best-effort; the restore is
         # not optional.
+        # Whether the app is CONFIRMED down. A restore written underneath a live
+        # app is a race this harness loses: `SettingsManager` writes its own
+        # values back on quit and wins, so a "successful" restore would be
+        # silently undone minutes later. `stop_app` raises when the process
+        # outlives its deadline, and the handler below only PRINTS that, so
+        # without this flag the restore reported success from exactly that state.
+        app_down = False
         try:
             try:
                 ensure_stopped(base, "cleaning up before quitting")
             finally:
                 stop_app()
+            app_down = True
         except Exception as cleanup_error:  # noqa: BLE001 - reported, never swallowed
             print(f"    (cleanup problem, restoring anyway: {cleanup_error})")
         finally:
             print("\n[restore] putting every setting back to what it was")
-            restore(before)
+            # The RESULT is read. `restore` reporting a failure that nothing
+            # consumes is an instrument nobody looks at: the run would print its
+            # normal summary and exit 0 while the developer's real preferences
+            # sat modified. Deliberately NOT raised from this `finally` — that
+            # would swallow whatever exception is already in flight, which is the
+            # very thing the nested try above exists to prevent. It travels as a
+            # flag and lands on the exit status instead.
+            restored = restore(before)
+            # Judged by the INDEPENDENT oracle as well. `restore` verifies with
+            # the same text reader it wrote from, which cannot see a loss that
+            # reader makes on both sides — a padded string is the concrete case.
+            after_plist = plist_snapshot(
+                ("cancelKeyCode", "cancelModifiersRaw", "escapeRecoveryEnabled"))
+            if before_plist is None or after_plist is None:
+                print("    (could not read the domain as a plist — restore is")
+                print("     UNVERIFIED by the independent oracle)")
+                restored = False
+            elif after_plist != before_plist:
+                for k in sorted(set(before_plist) | set(after_plist)):
+                    if before_plist.get(k) != after_plist.get(k):
+                        print(f"    PLIST MISMATCH for {k}: was "
+                              f"{before_plist.get(k)!r}, now {after_plist.get(k)!r}")
+                restored = False
+            if not app_down:
+                # Attempted anyway — a restore that might be undone still beats
+                # not trying — but it cannot be REPORTED as done.
+                print("    The app was not confirmed down, so anything written")
+                print("    just now can be overwritten by it on quit. Treating")
+                print("    the restore as UNVERIFIED rather than successful.")
+                restored = False
 
     passed = [n for n, s, _ in results if s == "PASS"]
     failed = [n for n, s, _ in results if s == "FAIL"]
@@ -621,6 +819,16 @@ def main():
         print("  This is NOT a partial pass. The remaining items were never")
         print("  exercised, and no verdict about the feature follows from it.")
     print("=" * 60)
+    if not restored:
+        # Loudest line in the summary, and it outranks the test verdicts: a green
+        # run that left the developer's own shortcut rebound is worse than a red
+        # one, because nothing else will ever mention it again.
+        print("\n  SETTINGS NOT RESTORED. Your own preferences may still be")
+        print("  changed by this run. The keys it borrows are cancelKeyCode,")
+        print("  cancelModifiersRaw and escapeRecoveryEnabled in")
+        print(f"  {DOMAIN} — check them before trusting anything above.")
+        print("=" * 60)
+        return 3
     if aborted:
         return 2
     return 1 if failed else 0
