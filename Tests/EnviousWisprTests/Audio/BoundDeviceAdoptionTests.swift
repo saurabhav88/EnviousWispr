@@ -38,6 +38,10 @@ import Testing
       var onLifecycleSignal: (@Sendable (String) -> Void)?
       var onCaptureStalled: ((CaptureStallContext) -> Void)?
       var captureGeneration: UInt64 = 0
+
+      /// #1810: stubs drain no pre-roll. A stored var rather than a literal so a
+      /// test can set a value — including a negative, to prove the clamp.
+      var drainedPreRollSampleCount: Int = 0
       let captureSourceType = "stub"
       var running = false
       var isCapturing = false

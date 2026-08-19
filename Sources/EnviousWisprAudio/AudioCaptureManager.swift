@@ -405,14 +405,30 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   ///
   /// A non-positive or absent value yields the shipping ceiling, so an
   /// unconfigured DEBUG build cannot behave differently from production.
+  ///
+  /// #1810: the base ceiling is a bar on LIVE capture, and the detector is fed the
+  /// drained pre-roll first, so the drained count is added back here. The override
+  /// gets the same treatment deliberately — a DEBUG bar that meant something
+  /// different from the shipping bar would make every local measurement
+  /// incomparable with the fleet, which is the whole reason the override exists.
   var allZeroCeilingSamples: Int {
+    let drained = drainedPreRollSampleCountForCeiling
     #if DEBUG
       let override = UserDefaults.standard.integer(
         forKey: "EWDebugAllZeroCeilingSamples")
-      if override > 0 { return override }
+      if override > 0 { return override + drained }
     #endif
     return Self.allZeroFromStartCeilingSamples(
-      forEffectiveTransport: currentResolvedRoute?.effective)
+      forEffectiveTransport: currentResolvedRoute?.effective) + drained
+  }
+
+  /// Clamped pre-roll drain for this capture session, and the clamp is the point.
+  /// `AudioInputSource.drainedPreRollSampleCount` is typed `Int`, so a stub or a
+  /// future conformer can return a negative; a negative would SHRINK the ceiling
+  /// and make the abort fire EARLIER, which is the one direction #1810 promises is
+  /// impossible. Read through this property, never the source's raw value.
+  var drainedPreRollSampleCountForCeiling: Int {
+    max(0, activeSource?.drainedPreRollSampleCount ?? 0)
   }
 
   /// THE #1788 FIX, and the only transport conditional in it.
@@ -427,11 +443,15 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// real hardware: `currentResolvedRoute` is `private(set)` with only private
   /// production writers, so a test cannot inject a route through the manager.
   ///
-  /// Scope, deliberately narrow: this governs the MID-TAKE all-zero abort only.
-  /// `RecordingSessionKernel.classifyZeroSignalAtStop` is untouched and keeps 1.0s on
-  /// every transport, so a genuinely dead Bluetooth mic released before 3.0s still
-  /// ends with the same honest failure. `.becameZeroMidCapture` also keeps its own
-  /// threshold — do not "harmonise" the two.
+  /// Scope, deliberately narrow: this governs the MID-TAKE all-zero abort only, and
+  /// it returns a bar on LIVE capture — `allZeroCeilingSamples` adds the drained
+  /// pre-roll back on top (#1810). `RecordingSessionKernel.classifyZeroSignalAtStop`
+  /// still keeps 1.0s on every transport, so a genuinely dead Bluetooth mic released
+  /// before 3.0s ends with the same honest failure; #1810 gave that stop-time bar the
+  /// same pre-roll correction, so both now mean 1.0s of live capture rather than 1.0s
+  /// minus whatever silent pre-roll was drained. `.becameZeroMidCapture` keeps its own
+  /// threshold and takes NO pre-roll correction — it counts a trailing zero suffix, so
+  /// the drain is irrelevant to it. Do not "harmonise" the three.
   nonisolated static func allZeroFromStartCeilingSamples(
     forEffectiveTransport effectiveTransport: String?
   ) -> Int {

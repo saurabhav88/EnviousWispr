@@ -166,7 +166,8 @@ struct RecordingSessionKernelDeadAirFloorTests {
   func classifyZeroSignalAtStopRecognizesQuietPrefix() {
     var samples = [Float](repeating: 0.0013, count: 16_000)
     samples.append(contentsOf: [Float](repeating: 0, count: 16_000))
-    #expect(RecordingSessionKernel.classifyZeroSignalAtStop(samples) == .becameZeroMidCapture)
+    #expect(RecordingSessionKernel.classifyZeroSignalAtStop(samples, drainedPreRollSampleCount: 0)
+        == .becameZeroMidCapture)
   }
 
   @Test(
@@ -231,7 +232,8 @@ struct RecordingSessionKernelDeadAirFloorTests {
     let twoPointFiveSeconds = 40_000  // < 48_000, the new Bluetooth mid-take ceiling
     #expect(twoPointFiveSeconds < AudioConstants.bluetoothAllZeroMidTakeCeilingSamples)
     let allZero = [Float](repeating: 0, count: twoPointFiveSeconds)
-    #expect(RecordingSessionKernel.classifyZeroSignalAtStop(allZero) == .allZeroFromStart)
+    #expect(RecordingSessionKernel.classifyZeroSignalAtStop(allZero, drainedPreRollSampleCount: 0)
+        == .allZeroFromStart)
   }
 
   /// The floor is unchanged too: shorter than 1.0s still classifies as nothing, on
@@ -241,10 +243,66 @@ struct RecordingSessionKernelDeadAirFloorTests {
     let justUnderOneSecond = AudioConstants.minimumTranscriptionSamples - 1
     #expect(
       RecordingSessionKernel.classifyZeroSignalAtStop(
-        [Float](repeating: 0, count: justUnderOneSecond)) == nil)
+        [Float](repeating: 0, count: justUnderOneSecond), drainedPreRollSampleCount: 0) == nil)
     #expect(
       RecordingSessionKernel.classifyZeroSignalAtStop(
-        [Float](repeating: 0, count: AudioConstants.minimumTranscriptionSamples))
+        [Float](repeating: 0, count: AudioConstants.minimumTranscriptionSamples),
+        drainedPreRollSampleCount: 0)
         == .allZeroFromStart)
   }
+  // MARK: - #1810: the stop-time bar is a bar on LIVE capture too
+
+  /// The stop path reads `captureResult.samples`, which INCLUDE the drained
+  /// pre-roll, so it carried the same double-count as the reactive detector.
+  @Test("#1810: an all-zero stop needs 1.0s of LIVE samples, not 1.0s of total samples")
+  func stopTimeAllZeroBarIsLiveCapture() {
+    let base = AudioConstants.minimumTranscriptionSamples
+    let drain = 8_000
+    // Exactly the shipping minimum in TOTAL, but half of it was pre-roll: not yet
+    // enough live capture to call the microphone dead.
+    #expect(
+      RecordingSessionKernel.classifyZeroSignalAtStop(
+        [Float](repeating: 0, count: base), drainedPreRollSampleCount: drain) == nil)
+    // One sample short of the corrected bar.
+    #expect(
+      RecordingSessionKernel.classifyZeroSignalAtStop(
+        [Float](repeating: 0, count: base + drain - 1), drainedPreRollSampleCount: drain) == nil)
+    // The corrected bar: 1.0s of live capture on top of the drain.
+    #expect(
+      RecordingSessionKernel.classifyZeroSignalAtStop(
+        [Float](repeating: 0, count: base + drain), drainedPreRollSampleCount: drain)
+        == .allZeroFromStart)
+  }
+
+  /// A negative drain must not SHORTEN the bar — the one direction #1810 promises
+  /// is impossible.
+  @Test("#1810: a negative drain is clamped and cannot make the stop verdict earlier")
+  func stopTimeNegativeDrainIsClamped() {
+    let base = AudioConstants.minimumTranscriptionSamples
+    #expect(
+      RecordingSessionKernel.classifyZeroSignalAtStop(
+        [Float](repeating: 0, count: base), drainedPreRollSampleCount: -8_000)
+        == .allZeroFromStart)
+    #expect(
+      RecordingSessionKernel.classifyZeroSignalAtStop(
+        [Float](repeating: 0, count: base - 1), drainedPreRollSampleCount: -8_000) == nil)
+  }
+
+  /// THE regression guard for grounded review round 1's finding. `.becameZeroMidCapture`
+  /// counts a TRAILING zero suffix and has nothing to do with the drain, so raising the
+  /// shared top-level guard — the first draft's fix — would have delayed or suppressed
+  /// it. Same input, every drain, same verdict.
+  @Test("#1810: becameZeroMidCapture is unaffected by the drain, at every drain value")
+  func stopTimeMidCaptureIsIndifferentToTheDrain() {
+    // Real signal, then a full 1.0s trailing zero suffix.
+    var samples = [Float](repeating: 0.5, count: 8_000)
+    samples.append(contentsOf: [Float](repeating: 0, count: AudioConstants.minimumTranscriptionSamples))
+    for drain in [-8_000, 0, 1, 4_000, 8_000, 48_000] {
+      #expect(
+        RecordingSessionKernel.classifyZeroSignalAtStop(
+          samples, drainedPreRollSampleCount: drain) == .becameZeroMidCapture,
+        "drain \(drain) changed a trailing-suffix verdict it has nothing to do with")
+    }
+  }
+
 }

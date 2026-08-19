@@ -381,6 +381,14 @@ final class HALDeviceInputSource: AudioInputSource {
   var onCaptureStalled: ((CaptureStallContext) -> Void)?
   private(set) var captureGeneration: UInt64 = 0
 
+  /// #1810: samples this session's activation drained out of the pre-roll ring.
+  /// Reset at the TOP of every `startCapture()` attempt so a throw between the
+  /// reset and the drain leaves a stale count behind for the next session — the
+  /// reset and the write are the same statement's two halves and must stay in
+  /// this order. Protocol doc owns why this is capture policy rather than
+  /// telemetry.
+  private(set) var drainedPreRollSampleCount: Int = 0
+
   nonisolated let captureSourceType: String = "hal_device_input"
 
   private static let stallQueue = DispatchQueue(
@@ -573,7 +581,8 @@ final class HALDeviceInputSource: AudioInputSource {
       preRollGapCount: preRollGapCount,
       lostChunkCount: snap.lostChunks,
       rateDivergenceDetected: formatDivergenceObserved,
-      nativeChannelCount: boundNativeChannelCount
+      nativeChannelCount: boundNativeChannelCount,
+      drainedPreRollSampleCount: drainedPreRollSampleCount
     )
   }
 
@@ -859,6 +868,11 @@ final class HALDeviceInputSource: AudioInputSource {
 
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
     guard !isCapturing else { throw AudioError.alreadyCapturing }
+    // #1810: cleared once this call is committed to being a NEW session — after
+    // the already-capturing guard, which must leave the live session's count
+    // intact, and before every remaining throw, so a failed attempt cannot leave
+    // the previous session's drain count visible to the next one's ceiling.
+    drainedPreRollSampleCount = 0
     guard let fwd = forwarder else {
       throw AudioError.formatCreationFailed(
         source: "HALDeviceInputSource.startCapture.missing_forwarder")
@@ -888,11 +902,21 @@ final class HALDeviceInputSource: AudioInputSource {
       self.streamContinuation = continuation
     }
 
-    _ = fwd.activate(
-      onSamples: self.onSamples,
-      onBuffer: self.onBufferCaptured,
-      continuation: self.streamContinuation,
-      logPrefix: "HALDeviceInputSource"
+    // #1810: `activate` returns the count it just pushed through `onSamples`, and
+    // that batch reaches `DeadAirStreamingDetector` exactly like live audio. The
+    // return value used to be discarded, which is what made the shipped all-zero
+    // bar 1.0s MINUS the drained pre-roll instead of the 1.0s of live capture
+    // `AudioConstants.minimumTranscriptionSamples` documents. Clamped at the
+    // source as well as at the consumer: an unexpected negative must never widen
+    // into an EARLIER abort.
+    drainedPreRollSampleCount = max(
+      0,
+      fwd.activate(
+        onSamples: self.onSamples,
+        onBuffer: self.onBufferCaptured,
+        continuation: self.streamContinuation,
+        logPrefix: "HALDeviceInputSource"
+      )
     )
 
     captureGeneration &+= 1

@@ -1948,7 +1948,9 @@ final class RecordingSessionKernel {
     // independent decisions: the eligibility-gated stamp just below (terminal +
     // telemetry + salvage, unchanged) AND the signal-only source retire further
     // down (independent of eligibility — the #1520 gap).
-    let signalZeroMode = Self.classifyZeroSignalAtStop(captureResult.samples)
+    let signalZeroMode = Self.classifyZeroSignalAtStop(
+      captureResult.samples,
+      drainedPreRollSampleCount: captureResult.metadata?.drainedPreRollSampleCount ?? 0)
 
     // #1317 §3.6 STOP-win row: only when the reactive detector never classified
     // this run (raced by STOP, or the capture was too short to reach its own
@@ -4580,9 +4582,26 @@ final class RecordingSessionKernel {
   /// boundary cases unit-test without a kernel. Sample-shape only — the
   /// caller still runs the §3.0 device-alive/not-muted discriminator before
   /// trusting the result.
-  nonisolated static func classifyZeroSignalAtStop(_ samples: [Float]) -> CaptureStallFailureMode? {
+  /// #1810: `drainedPreRollSampleCount` takes NO default. The stop path is the
+  /// second consumer of the 1.0s bar and it reads the SAME buffer the reactive
+  /// detector does — `captureResult.samples` includes the drained pre-roll — so
+  /// leaving it defaulted would let a call site silently keep the old, short bar
+  /// with nothing at the call site to grep for (validation-discipline.md
+  /// RULE: measure-with-the-real-tool-never-a-simulation, the defaulted-argument
+  /// blind spot). Required, so the compiler enumerates the callers.
+  ///
+  /// The raised minimum applies to the ALL-ZERO branch ONLY. `.becameZeroMidCapture`
+  /// below counts a TRAILING zero suffix, which has nothing to do with how much
+  /// pre-roll was drained; raising the shared top-level guard would delay or
+  /// suppress it, which grounded review round 1 caught in this change's first draft.
+  nonisolated static func classifyZeroSignalAtStop(
+    _ samples: [Float], drainedPreRollSampleCount: Int
+  ) -> CaptureStallFailureMode? {
     guard samples.count >= AudioConstants.minimumTranscriptionSamples else { return nil }
-    if samples.allSatisfy({ $0 == 0 }) {
+    if samples.count
+      >= AudioConstants.minimumTranscriptionSamples + max(0, drainedPreRollSampleCount),
+      samples.allSatisfy({ $0 == 0 })
+    {
       return .allZeroFromStart
     }
     let suffixZeroCount = Self.trailingZeroSuffixCount(samples)
