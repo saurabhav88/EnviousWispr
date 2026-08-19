@@ -288,6 +288,12 @@ public enum RecoveryConstants {
   /// for that spool, so it is abandoned rather than retried (the one-attempt
   /// guard). Named `<recoverySessionID>.attempt`.
   public static let attemptFileExtension = "attempt"
+  /// File extension for a per-spool READINESS-RETRY marker (#2207). Presence means
+  /// this spool has already spent its ONE retry for a load that returned while the
+  /// engine was not ready, so a second such refusal is terminal. Written durably
+  /// BEFORE the attempt marker is cleared, so a crash in between abandons the spool
+  /// rather than minting an uncounted retry. Named `<recoverySessionID>.readiness-retry`.
+  public static let readinessRetryFileExtension = "readiness-retry"
   /// File extension for a per-spool ESCAPE RECOVERY marker (#2087). Metadata
   /// only — no audio, no text. Its presence on the next launch tells replay that
   /// this spool belongs to a cancelled-but-kept dictation, so the recovered

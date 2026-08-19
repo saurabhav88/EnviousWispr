@@ -32,6 +32,36 @@ extension ASRLoadSupersededError: StableSentryErrorIdentity {
   public var sentrySemanticID: String { "asr.load_superseded" }
 }
 
+/// Thrown by `ActiveEngineOperation.load` when the load returned NORMALLY and the
+/// engine's own readiness projection is still false (#2207). `ASRManager.loadModel()`
+/// RECORDS readiness rather than requiring it (`ASRManager.swift:175-177`), so a
+/// returning load has never meant "ready"; every caller nonetheless assumed it did.
+///
+/// Semantics: FAILURE, TRANSIENT. It means only "the load returned and the
+/// postcondition was false" — deliberately NOT a claim about WHY. Readiness may
+/// never have arrived, or may have been lost between the load's final internal
+/// generation check and this one. Recovery gives either shape the same bounded
+/// retry, so the distinction would buy nothing and asserting it would be a
+/// causal claim the call site cannot observe.
+///
+/// Distinct from `ASRLoadSupersededError`, which means a supersede was detected
+/// INSIDE the load. Conflating them is the #2132 trap: supersession classifies as
+/// `.cancelled`, which recovery treats as terminal and DELETES the recording.
+public struct ASREngineNotReadyAfterLoadError: Error, Equatable {
+  public init() {}
+}
+
+/// #1525 PR G. Pinned defensively at introduction rather than retrofitted: this
+/// type IS reachable from a Sentry capture path on day one, via the recovery
+/// replayer's unrecoverable branch. NEVER change this string once shipped.
+extension ASREngineNotReadyAfterLoadError: StableSentryErrorIdentity {
+  public var sentryFingerprintDescriptor: String {
+    "EnviousWisprASR.ASREngineNotReadyAfterLoadError#1"
+  }
+
+  public var sentrySemanticID: String { "asr.engine_not_ready_after_load" }
+}
+
 /// Thrown when the ASR manager is asked to load or transcribe on an engine it
 /// does not own (#1386 PR-2: WhisperKit). WhisperKit runs in-process behind its
 /// relocation gate via `WhisperKitEngineAdapter`; the manager and its XPC helper

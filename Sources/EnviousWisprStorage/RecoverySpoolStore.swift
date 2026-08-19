@@ -19,6 +19,13 @@ import Foundation
 public struct RecoverySpoolStore: Sendable {
   private let directory: URL
 
+  /// #2207 injection seam for the readiness-retry marker's three file operations.
+  /// Carried on the INSTANCE rather than passed per call, so a test can reach it
+  /// through the replayer's `makeSpoolStore` closure — rows C and H of the
+  /// transition table are replayer outcomes, and a store-only injection point
+  /// would leave the production path they actually take untested.
+  var readinessRetryFileOps: ReadinessRetryFileOps = .live
+
   public init() {
     directory = AppConstants.appSupportURL
       .appendingPathComponent(RecoveryConstants.spoolDirectoryName, isDirectory: true)
@@ -163,6 +170,9 @@ public struct RecoverySpoolStore: Sendable {
     do { try deleteEscapeMarker(for: recoverySessionID) } catch {
       firstFailure = firstFailure ?? error
     }
+    do { try deleteReadinessRetryMarker(for: recoverySessionID) } catch {
+      firstFailure = firstFailure ?? error
+    }
     if let firstFailure { throw firstFailure }
   }
 
@@ -222,6 +232,98 @@ public struct RecoverySpoolStore: Sendable {
     let url = attemptMarkerURL(for: recoverySessionID)
     do {
       try FileManager.default.removeItem(at: url)
+    } catch let error as CocoaError where error.code == .fileNoSuchFile {
+      return
+    }
+  }
+
+  // MARK: - Readiness-retry marker (#2207)
+
+  /// Injection seam for the retry marker's three file operations, so a test can
+  /// fail the COMMIT and the ensuing CLEANUP independently. Rows C and H of the
+  /// #2207 transition table differ only in whether cleanup was attempted and
+  /// failed, so a single failure switch cannot tell them apart and the row-H
+  /// test would be indistinguishable from row C.
+  struct ReadinessRetryFileOps: Sendable {
+    var writeTemp: @Sendable (URL) throws -> Void
+    var commit: @Sendable (URL, URL) throws -> Void
+    var cleanupTemp: @Sendable (URL) throws -> Void
+
+    static let live = ReadinessRetryFileOps(
+      writeTemp: { tmpURL in
+        let fd = Foundation.open(tmpURL.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
+        guard fd >= 0 else { throw RecoverySpoolStoreError.readinessRetryMarkerWriteFailed(errno) }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        try handle.write(contentsOf: Data([0x31]))
+        if fcntl(fd, F_FULLFSYNC) == -1 {
+          let code = errno
+          try? handle.close()
+          throw RecoverySpoolStoreError.readinessRetryMarkerWriteFailed(code)
+        }
+        try handle.close()
+      },
+      commit: { tmpURL, url in
+        let fm = FileManager.default
+        if fm.fileExists(atPath: url.path) {
+          _ = try fm.replaceItemAt(url, withItemAt: tmpURL)
+        } else {
+          try fm.moveItem(at: tmpURL, to: url)
+        }
+      },
+      cleanupTemp: { tmpURL in try FileManager.default.removeItem(at: tmpURL) })
+  }
+
+  /// Sidecar path for a spool's readiness-retry marker (`<id>.readiness-retry`).
+  private func readinessRetryMarkerURL(for recoverySessionID: String) -> URL {
+    directory.appendingPathComponent(
+      "\(recoverySessionID).\(RecoveryConstants.readinessRetryFileExtension)")
+  }
+
+  private func readinessRetryTempURL(for recoverySessionID: String) -> URL {
+    directory.appendingPathComponent(
+      ".\(recoverySessionID).\(RecoveryConstants.readinessRetryFileExtension).tmp")
+  }
+
+  /// Whether this spool has already spent its one readiness retry (#2207).
+  /// Presence is the whole signal; the file's contents are never read.
+  public func hasReadinessRetryMarker(for recoverySessionID: String) -> Bool {
+    FileManager.default.fileExists(atPath: readinessRetryMarkerURL(for: recoverySessionID).path)
+  }
+
+  /// Durably write the readiness-retry marker, in the same shape as
+  /// `writeAttemptMarker`: temp file, `F_FULLFSYNC`, atomic rename. The caller
+  /// commits this BEFORE clearing the attempt marker, so a crash between the two
+  /// leaves the attempt marker standing and the spool is abandoned rather than
+  /// granted an uncounted retry.
+  public func writeReadinessRetryMarker(for recoverySessionID: String) throws {
+    try writeReadinessRetryMarker(for: recoverySessionID, ops: readinessRetryFileOps)
+  }
+
+  func writeReadinessRetryMarker(
+    for recoverySessionID: String, ops: ReadinessRetryFileOps
+  ) throws {
+    let url = readinessRetryMarkerURL(for: recoverySessionID)
+    let tmpURL = readinessRetryTempURL(for: recoverySessionID)
+    do {
+      try ops.writeTemp(tmpURL)
+      try ops.commit(tmpURL, url)
+    } catch {
+      // Best-effort, and its failure is DELIBERATELY not surfaced over the write
+      // failure: the caller's contract is "the retry was not persisted", which is
+      // true either way, and a surviving temp file is inert (nothing reads it —
+      // only the final marker's presence is ever consulted).
+      try? ops.cleanupTemp(tmpURL)
+      if let storeError = error as? RecoverySpoolStoreError { throw storeError }
+      throw RecoverySpoolStoreError.readinessRetryMarkerWriteFailed(errno)
+    }
+  }
+
+  /// Delete a spool's readiness-retry marker. Idempotent — a missing marker is
+  /// success. The interrupted-write temp goes FIRST, matching `deleteEscapeMarker`.
+  public func deleteReadinessRetryMarker(for recoverySessionID: String) throws {
+    try? FileManager.default.removeItem(at: readinessRetryTempURL(for: recoverySessionID))
+    do {
+      try FileManager.default.removeItem(at: readinessRetryMarkerURL(for: recoverySessionID))
     } catch let error as CocoaError where error.code == .fileNoSuchFile {
       return
     }
@@ -435,6 +537,11 @@ public enum RecoverySpoolStoreError: Error, Equatable {
   /// `errno`). The caller treats this as fail-closed: skip recovering this spool
   /// this launch rather than risk an un-guarded retry.
   case attemptMarkerWriteFailed(Int32)
+  /// The readiness-retry marker could not be written durably (carries `errno`).
+  /// The caller fails CLOSED: it retains the spool WITH its attempt marker, so the
+  /// next launch abandons rather than replaying — never a retry the budget did not
+  /// record, which is the hole the bound exists to close (#2207).
+  case readinessRetryMarkerWriteFailed(Int32)
   /// The Escape Recovery marker could not be written durably (carries `errno`).
   ///
   /// Fail closed at the call site by performing today's ordinary destructive

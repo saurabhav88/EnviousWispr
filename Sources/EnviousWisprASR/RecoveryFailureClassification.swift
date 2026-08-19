@@ -30,6 +30,10 @@ package func recoveryFailureClass(for error: any Error) -> RecoveryFailureClass?
   }
   // Three cancellation vehicles, one actionable class. `KernelDictationDriver`
   // already groups the latter two exactly this way.
+  // BEFORE the supersede arm deliberately: both are post-load conditions, and
+  // classifying this one as `.cancelled` is exactly the #2132 trap — cancelled is
+  // terminal, so the recording would be deleted rather than retried.
+  if error is ASREngineNotReadyAfterLoadError { return .loadReturnedNotReady }
   if error is ASRLoadSupersededError || error is ASRLoadCancelledError
     || error is CancellationError
   {

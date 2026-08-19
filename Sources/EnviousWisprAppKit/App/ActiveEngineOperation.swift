@@ -21,6 +21,13 @@ struct ActiveEngineOperation {
   /// Whether the active engine already has a model resident.
   let isLoaded: () async -> Bool
   /// Load the active engine's model through that engine's own safe door.
+  ///
+  /// POSTCONDITION (#2207): a non-throwing return means THE ENGINE IS READY, not
+  /// merely that the load call returned. It previously meant only the latter —
+  /// `ASRManager.loadModel()` records readiness rather than requiring it
+  /// (`ASRManager.swift:175-177`) — while both callers already assumed the
+  /// stronger meaning. `ASREngineNotReadyAfterLoadError` is thrown when the
+  /// engine's own readiness projection is false after the loader returns.
   let load: () async throws -> Void
   /// Batch-transcribe on the active engine.
   let transcribe:
@@ -37,20 +44,39 @@ struct ActiveEngineOperation {
   /// WhisperKit resolves to the same in-process backend the adapter drives, so
   /// the relocation gate always runs, and the backend's single-flight makes a
   /// recovery load and an adapter warm-up ONE load rather than two models.
+  /// - Parameter afterLoadForTesting: invoked ONLY when non-nil, after the
+  ///   selected loader returns and before the readiness postcondition is read.
+  ///   Optional-and-nil rather than a default no-op closure, so production adds
+  ///   no suspension point at all.
+  ///
+  ///   It exists because the WhisperKit branch cannot produce the postcondition's
+  ///   failure naturally: `prepare()` DELIBERATELY throws superseded when an
+  ///   unload races its warm-up, precisely so it never "reports success while the
+  ///   backend is actually unloaded" (`WhisperKitBackend.swift:386-392`). Without
+  ///   a seam the test would either race a concurrent unload — timing-dependent,
+  ///   which this repo forbids — or substitute a fake loader, which would stop
+  ///   testing this factory at all.
   static func live(
-    asrManager: any ASRManagerInterface, whisperKitBackend: WhisperKitBackend
+    asrManager: any ASRManagerInterface, whisperKitBackend: WhisperKitBackend,
+    afterLoadForTesting: (@MainActor () async -> Void)? = nil
   ) -> ActiveEngineOperation {
-    ActiveEngineOperation(
-      isLoaded: {
-        asrManager.activeBackendType == .whisperKit
-          ? await whisperKitBackend.isReady : asrManager.isModelLoaded
-      },
+    let readiness: @MainActor () async -> Bool = {
+      asrManager.activeBackendType == .whisperKit
+        ? await whisperKitBackend.isReady : asrManager.isModelLoaded
+    }
+    return ActiveEngineOperation(
+      isLoaded: readiness,
       load: {
         if asrManager.activeBackendType == .whisperKit {
           try await whisperKitBackend.prepare()
         } else {
           try await asrManager.loadModel()
         }
+        if let afterLoadForTesting { await afterLoadForTesting() }
+        // The SAME projection `isLoaded` vends, deliberately: a postcondition
+        // read from a different source could disagree with what every caller
+        // then consults, which would trade one false success for another.
+        guard await readiness() else { throw ASREngineNotReadyAfterLoadError() }
       },
       transcribe: { samples, options in
         if asrManager.activeBackendType == .whisperKit {

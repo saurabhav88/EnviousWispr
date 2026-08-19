@@ -124,6 +124,23 @@ public enum EscapeRecoveryPasteResult: String, Sendable, CaseIterable {
 /// narrow (D-030 / plan §3.2): widen only when Phase 2 producer tests prove a new
 /// class stays distinguishable after the ASR XPC wrapper collapses decode errors.
 /// The `NSError` domain/code is the classifier INPUT, never emitted.
+/// Why a `load_returned_not_ready` failure did or did not get its one retry
+/// (#2207). Without this the retry bound is unmeasurable: `outcome` alone cannot
+/// separate a first refusal that was GRANTED a retry from a second that was
+/// terminal, and both persistence-failure branches report `deferred` too.
+public enum RecoveryRetryDisposition: String, Sendable {
+  /// The retry marker committed and the attempt marker cleared. Outcome
+  /// `deferred`, and the spool is genuinely eligible again.
+  case granted
+  /// The retry marker was already present, so this refusal is terminal. Outcome
+  /// `failed`. This is the bound doing its job, NOT a regression.
+  case exhausted
+  /// The retry-marker write or the attempt-marker clear failed. Outcome
+  /// `deferred`, but on the next-launch-only route: the surviving attempt marker
+  /// makes the next launch abandon before any load or transcription.
+  case persistenceFailed = "persistence_failed"
+}
+
 public enum RecoveryFailureClass: String, Sendable {
   case xpcUnreachable = "xpc_unreachable"
   case cancelled
@@ -147,6 +164,12 @@ public enum RecoveryFailureClass: String, Sendable {
   case parakeetModelLoad = "parakeet_model_load"
   case parakeetTranscription = "parakeet_transcription"
   case xpcTransport = "xpc_transport"
+  /// #2207: the engine's load returned NORMALLY and its readiness projection was
+  /// still false. Distinct from `notReady`, which is a DETERMINISTIC refusal at
+  /// the load site with no model admitted — conflating the two restores the #2132
+  /// deletion, because only this one is transient enough to earn a retry. Same
+  /// version floor as the six above.
+  case loadReturnedNotReady = "load_returned_not_ready"
   case managerNotOwned = "manager_not_owned"
   case other
 }
@@ -1642,7 +1665,8 @@ public final class TelemetryService {
     campBCandidate: Bool? = nil,
     recoveredSeconds: Int? = nil,
     spoolSeconds: Int? = nil,
-    polishFellBack: Bool? = nil
+    polishFellBack: Bool? = nil,
+    retryDisposition: RecoveryRetryDisposition? = nil
   ) {
     #if DEBUG
       // Mirror the PostHog property set below by exact production spelling so the
@@ -1650,6 +1674,7 @@ public final class TelemetryService {
       var hookStringProps: [String: String] = ["outcome": outcome]
       if let reason { hookStringProps["reason"] = reason.rawValue }
       if let failureClass { hookStringProps["failure_class"] = failureClass.rawValue }
+      if let retryDisposition { hookStringProps["retry_disposition"] = retryDisposition.rawValue }
       if let recoveredSeconds {
         hookStringProps["recovered_seconds_bucket"] = Self.recoverySecondsBucket(recoveredSeconds)
       }
@@ -1667,6 +1692,7 @@ public final class TelemetryService {
     var properties: [String: Any] = ["outcome": outcome]
     if let reason { properties["reason"] = reason.rawValue }
     if let failureClass { properties["failure_class"] = failureClass.rawValue }
+    if let retryDisposition { properties["retry_disposition"] = retryDisposition.rawValue }
     if let audioDecrypted { properties["audio_decrypted"] = audioDecrypted }
     if let campBCandidate { properties["camp_b_candidate"] = campBCandidate }
     if let recoveredSeconds {

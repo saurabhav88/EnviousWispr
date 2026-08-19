@@ -27,6 +27,14 @@ final class BenchmarkSuite {
   private(set) var results: [Result] = []
   private(set) var pipelineResult: PipelineBenchmarkResult?
   private(set) var isRunning = false
+
+  /// #2207: the last run's failure, retained AFTER `isRunning` goes false.
+  /// `progress` is rendered only while running, so a load failure used to set a
+  /// message and then vanish with the spinner — the benchmark simply stopped,
+  /// with no result and no explanation. That silence is why the postcondition
+  /// mattered here: before it, an unready engine produced BENCHMARK NUMBERS, and
+  /// now it produces a visible failure instead.
+  private(set) var lastFailure: String?
   private(set) var progress: String = ""
 
   /// #1707 Phase 3 (§3.2, rows 23/27) / #1741 Chunk 5 — the mutation-side
@@ -50,7 +58,9 @@ final class BenchmarkSuite {
       try await activeEngine.load()
       return true
     } catch {
-      progress = "Model load failed: \(error.localizedDescription)"
+      let message = "Model load failed: \(error.localizedDescription)"
+      progress = message
+      lastFailure = message
       return false
     }
   }
@@ -60,6 +70,7 @@ final class BenchmarkSuite {
     guard !isRunning else { return }
     isRunning = true
     results = []
+    lastFailure = nil
 
     // #1707 Phase 3 (§3.2, row 23) / #1741 Chunk 5: hold a mutation claim for
     // the FULL load+transcribe duration — a Diagnostics-triggered benchmark

@@ -205,6 +205,16 @@ struct DiagnosticsSettingsView: View {
             }
           }
         } else {
+          // #2207: a failed run leaves nothing else on screen — `progress` is
+          // rendered only while running, so without this the benchmark just
+          // stops. Idle is exactly when the user is looking for the answer.
+          if let failure = diagnostics.benchmark.lastFailure {
+            BrandedRow {
+              Text(failure)
+                .font(.stHelper)
+                .foregroundStyle(.red)
+            }
+          }
           BrandedRow {
             HStack {
               Button("Run ASR Benchmark") {

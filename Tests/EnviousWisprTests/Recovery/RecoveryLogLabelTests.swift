@@ -18,10 +18,24 @@ import Testing
 @MainActor
 @Suite struct RecoveryLogLabelTests {
 
-  /// Every outcome the replayer can return. Written out rather than derived so
-  /// adding a case to `RecoveryReplayOutcome` fails to compile here until it is
-  /// listed — the label switch is exhaustive, but nothing would otherwise force
-  /// this test to cover a new member.
+  /// Forces this file to be updated when `RecoveryReplayOutcome` gains a case.
+  ///
+  /// #2207: the array below previously carried a comment claiming that adding a
+  /// case "fails to compile here until it is listed". It does NOT — an array
+  /// literal is not exhaustive over an enum, so `.deferredPersistenceFailed` was
+  /// added and this file compiled unchanged, silently dropping the new outcome
+  /// from every assertion below. A justification comment that is false is worse
+  /// than none: it stops the next reader checking. This switch is the real
+  /// mechanism the comment described.
+  private static func exhaustivenessWitness(_ outcome: RecoveryReplayOutcome) {
+    switch outcome {
+    case .recovered, .abandoned, .failed, .aborted, .deferred,
+      .deferredMarkerClearFailed, .deferredPersistenceFailed:
+      break
+    }
+  }
+
+  /// Every outcome the replayer can return. Kept in sync by the witness above.
   private static let allOutcomes: [RecoveryReplayOutcome] = [
     .recovered,
     .abandoned,
@@ -30,6 +44,7 @@ import Testing
     .aborted,
     .deferred,
     .deferredMarkerClearFailed,
+    .deferredPersistenceFailed,
   ]
 
   @Test("every outcome reads differently in the log")
@@ -67,7 +82,9 @@ import Testing
     // `shouldDeleteAfterReplay` retains on both deferrals: ASR never ran, so the
     // one attempt is unspent. The label has to carry that, or a reader sees
     // "deferred" and cannot tell whether the recording is still on disk.
-    for outcome: RecoveryReplayOutcome in [.deferred, .deferredMarkerClearFailed] {
+    for outcome: RecoveryReplayOutcome in [
+      .deferred, .deferredMarkerClearFailed, .deferredPersistenceFailed,
+    ] {
       #expect(RecoveryCoordinator.logLabel(outcome).contains("deferred"))
       #expect(RecoveryCoordinator.shouldDeleteAfterReplay(outcome) == false)
     }
