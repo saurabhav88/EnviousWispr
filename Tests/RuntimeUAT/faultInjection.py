@@ -990,6 +990,13 @@ def _normalize_tokens(text: str) -> set:
 # ──────────────────────────── Lane A scenarios ────────────────────────────
 
 
+# Seconds of real speech that must reach the spool before R1 crashes the app.
+# Too short and the replay recovers an empty prefix, legitimately reports
+# `empty_text`, and the scenario blames the readiness guard for correct
+# behaviour. Measured 2026-08-19: a ~5s take produced exactly that.
+_R1_SPEECH_SECONDS = 6.0
+
+
 @scenario(
     ScenarioMeta(
         name="R1_readiness_lost_after_load",
@@ -1045,7 +1052,6 @@ def R1_readiness_lost_after_load(**_) -> dict:
     import json
     import os
     import subprocess
-    import threading
 
     def invalid(reason: str) -> dict:
         return {"evidence_valid": False, "evidence": {"reason": reason},
@@ -1070,14 +1076,27 @@ def R1_readiness_lost_after_load(**_) -> dict:
         return {f[:-len(".ewrec")] for f in os.listdir(spool_dir)
                 if f.endswith(".ewrec")}
 
+    # Snapshot BEFORE anything is recorded: only files that appear after this can
+    # be our row, so the poll never re-decodes an existing History.
+    pre_existing_transcripts = (
+        set(os.listdir(transcripts)) if os.path.isdir(transcripts) else set())
+
     def history_row(recovery_id: str):
         """The History entry for this spool, or None. The only signal that
         SURVIVES a successful retry's cleanup — both the spool and its
-        readiness-retry sidecar are deleted once the recording is saved."""
+        readiness-retry sidecar are deleted once the recording is saved.
+
+        Scans only files created since the snapshot above, and that is a
+        CORRECTNESS property rather than a speed one: this runs inside a 200 ms
+        observation loop, and decoding an entire large History each pass can take
+        longer than the readiness-retry marker EXISTS. The positive control would
+        then be missed and a correct run reported invalid — History size silently
+        stretching the polling interval.
+        """
         if not os.path.isdir(transcripts):
             return None
         for entry in os.listdir(transcripts):
-            if not entry.endswith(".json"):
+            if not entry.endswith(".json") or entry in pre_existing_transcripts:
                 continue
             try:
                 d = json.load(open(os.path.join(transcripts, entry)))
@@ -1164,43 +1183,85 @@ def R1_readiness_lost_after_load(**_) -> dict:
     if launch_age < 20:
         time.sleep(20 - launch_age)
 
+    # ---- 0b. the speaker is part of this instrument -------------------------
+    # `_TTSAudio` drives the app ACOUSTICALLY: it plays a wav and the app hears
+    # it through the microphone. With output muted or turned right down the app
+    # records silence, the replay reports `empty_text` on a correct build, and
+    # the scenario reads that as the #2207 data loss. Report the real
+    # prerequisite instead of misdiagnosing the product.
+    volume = subprocess.run(
+        ["osascript",
+         "-e", "set s to (get volume settings)",
+         "-e", '(output volume of s as text) & "," & (output muted of s as text)'],
+        capture_output=True, text=True)
+    reading = volume.stdout.strip().split(",")
+    if volume.returncode != 0 or len(reading) != 2:
+        return invalid(
+            "could not read the system output volume "
+            f"(rc={volume.returncode}, stdout={volume.stdout.strip()!r}). This "
+            "scenario speaks to the app through the microphone, so it refuses "
+            "rather than run an instrument it cannot verify.")
+    level, muted = reading[0].strip(), reading[1].strip()
+    if muted == "true" or not level.isdigit() or int(level) < 25:
+        return invalid(
+            f"system output is muted={muted} volume={level}: this scenario "
+            "speaks to the app through the microphone, so the take would be "
+            "silent and the replay would correctly report empty text. Unmute "
+            "and raise the output volume above 25, then retry.")
+
     # ---- 1. a GENUINE orphan: real audio, killed mid-utterance -------------
-    import wispr_eyes
-
-    def speak():
-        try:
-            wispr_eyes.record_tts(sentence=sentence, wait=2.0)
-        except Exception:
-            pass  # the app dies underneath it; that is the point
-
-    threading.Thread(target=speak, daemon=True).start()
-
-    # SYNCHRONISE ON THE SPOOL APPEARING, never on elapsed time. A fixed sleep
-    # measures from THREAD STARTUP, and `record_tts` has to generate TTS first —
-    # its OpenAI request alone permits 15s. A 6s timer therefore expired before
-    # recording had begun on any slow generation, killing the app with no orphan
-    # created, returning `evidence_valid: false`, and leaving the dev app stopped.
-    # The spool file IS the signal that capture started; that is what to wait for.
-    # (testing-philosophy.md RULE: never-guess-when-the-subject-is-finished — the
-    # same defect at the harness level.)
-    spool_deadline = time.time() + 45
-    created: set = set()
-    while time.time() < spool_deadline and not created:
-        time.sleep(0.5)
-        created = ewrec_ids() - pre_existing
-
-    if not created:
+    # DRIVEN THE WAY EVERY OTHER SCENARIO IN THIS FILE DRIVES A RECORDING:
+    # `_start_recording_locked()` double-taps into hands-free lock, then
+    # `_TTSAudio` streams real speech for as long as the `with` block runs.
+    # `A3_asr_xpc_kill` is the template.
+    #
+    # The earlier version held the PTT key on a background thread through
+    # `wispr_eyes.record_tts`, and it had two defects that a live run exposed on
+    # 2026-08-19:
+    #   - NOTHING CHECKED THAT RECORDING HAD BEGUN. It inferred capture from a
+    #     spool file appearing, which is downstream and late, so a run where the
+    #     key never took looked exactly like a run that worked.
+    #     `_start_recording_locked` reads the pipeline state back and retries,
+    #     which makes "recording never started" report as itself.
+    #   - THE KEY RELEASE RAN ON THE TTS THREAD'S SCHEDULE, NOT THIS FUNCTION'S.
+    #     A hold ends when the audio ends, so the recording could stop and
+    #     finalize before the crash landed. The crash then captured a fragment,
+    #     the replay legitimately reported `empty_text` and deleted it, and the
+    #     scenario blamed the readiness guard for correct behaviour — a
+    #     confident wrong subject one level above the code under test.
+    # A LOCKED recording ignores key release, so the crash lands where this
+    # function puts it rather than wherever TTS generation happened to finish.
+    if not _start_recording_locked():
         return invalid(
-            "no spool appeared within 45s — recording never started, so there is "
-            "nothing to crash. Check TTS generation and the PTT binding.")
-    if len(created) != 1:
-        return invalid(
-            f"expected exactly one NEW spool, got {len(created)}: {sorted(created)}")
+            "could not enter locked recording, so there is no dictation to "
+            f"crash. Pipeline state: {query_state()}")
 
-    # Real audio must reach the spool, or the replay recovers an empty prefix and
-    # the verdict says nothing about the readiness guard.
-    time.sleep(5.0)
-    subprocess.run(["kill", "-9", target_pid])  # ONLY the verified target
+    with _TTSAudio(sentence):
+        # The spool is written while capture runs, so its appearance is the
+        # signal that the recording reached disk. Poll for it; never assume.
+        spool_deadline = time.time() + 30
+        created: set = set()
+        while time.time() < spool_deadline and not created:
+            time.sleep(0.5)
+            created = ewrec_ids() - pre_existing
+
+        # Both exits below happen BEFORE the crash, so the app is alive and
+        # still recording locked — stop it rather than leaving the founder's
+        # machine capturing his microphone indefinitely.
+        if not created:
+            _stop_recording_locked()
+            return invalid(
+                "recording started but no spool appeared within 30s, so there "
+                "is nothing to crash.")
+        if len(created) != 1:
+            _stop_recording_locked()
+            return invalid(
+                f"expected exactly one NEW spool, got {len(created)}: "
+                f"{sorted(created)}")
+
+        # Real speech must REACH the spool before the crash.
+        time.sleep(_R1_SPEECH_SECONDS)
+        subprocess.run(["kill", "-9", target_pid])  # ONLY the verified target
     time.sleep(2.0)
 
     def relaunch_clean() -> None:
