@@ -53,6 +53,28 @@ struct EscapeRecoveryDiskExpiryTests {
       liveSpoolIDs: spools)
   }
 
+  /// Written from the detached walk and read on the main actor, so it carries
+  /// its own lock rather than relying on the two never overlapping.
+  private final class MainThreadFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Bool?
+    func record(_ isMain: Bool) {
+      lock.lock()
+      defer { lock.unlock() }
+      value = isMain
+    }
+    var wasCalled: Bool {
+      lock.lock()
+      defer { lock.unlock() }
+      return value != nil
+    }
+    var onMain: Bool? {
+      lock.lock()
+      defer { lock.unlock() }
+      return value
+    }
+  }
+
   private final class EventLog {
     var expired: [(ageMs: Int, takeID: String)] = []
   }
@@ -147,6 +169,70 @@ struct EscapeRecoveryDiskExpiryTests {
         """
         #2186: nothing is pending after the user removed the only held row, yet the countdown is \
         still running. It will walk the pending directory every minute for the life of the app.
+        """)
+    }
+
+    @Test("a kept dictation's leftover copy is deleted even when its audio survives")
+    func keptShadowIsDeletedDespiteSurvivingSpool() async throws {
+      let store = makeStore(spools: { ["session-kept"] })
+
+      // The state a half-failed Keep leaves behind: the permanent row written,
+      // the pending copy NOT removed. `promotePending` does exactly this pair
+      // in this order, and its removal is best-effort.
+      let id = UUID()
+      let row = Transcript(
+        id: id, text: "the user pressed Keep on this", recoverySessionID: "session-kept",
+        escapeRecoveredAt: Date().addingTimeInterval(-48 * 3600),
+        escapeRecoveryTakeID: "take-kept")
+      try store.savePending(row)
+      try store.save(row.promotedFromPending())
+
+      let swept = try await store.deleteExpiredPending()
+
+      // Local review, P2. The spool guard exists to stop a row being deleted
+      // while it is the only proof its audio was already recovered — but the
+      // PERMANENT row carries that same proof, so this copy proves nothing and
+      // protects nothing. Retaining it kept the pulse walking the directory
+      // every minute for the life of the app, for a dictation the user KEPT.
+      #expect(
+        swept.retainedForSpool == 0,
+        """
+        #2186: a leftover copy of a KEPT dictation was retained because its audio survives. The \
+        kept row already carries that proof, so this one is litter that is never collected — and \
+        the countdown keeps running against it forever.
+        """)
+      #expect(swept.deletedIDs.contains(id), "it must be swept as the litter it is")
+      #expect(
+        swept.expired.isEmpty,
+        "and NOT reported as expired — the user kept this dictation, nothing lapsed")
+    }
+
+    @Test("the recovery folder is never read on the main thread")
+    func spoolReadHappensOffTheMainActor() async throws {
+      // The production reader does far more than read: it creates the recovery
+      // directory, chmods it, writes metadata, then enumerates and sorts every
+      // spool. On the main actor that is a filesystem stall in front of app
+      // launch and of every retry pulse. Local review, P2.
+      let sawMainThread = MainThreadFlag()
+      let store = makeStore(spools: {
+        sawMainThread.record(Thread.isMainThread)
+        return []
+      })
+      try store.savePending(
+        Transcript(
+          text: "anything, so the walk has a row to consider",
+          escapeRecoveredAt: Date().addingTimeInterval(-48 * 3600),
+          escapeRecoveryTakeID: "take-offmain"))
+
+      _ = try await store.deleteExpiredPending()
+
+      #expect(sawMainThread.wasCalled, "control: the reader ran at all")
+      #expect(
+        sawMainThread.onMain == false,
+        """
+        #2186: the recovery folder was scanned on the main thread. That scan creates a directory, \
+        changes its permissions, writes a file and sorts every recording in it — in front of the \
+        app appearing, and again on every retry.
         """)
     }
 

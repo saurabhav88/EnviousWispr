@@ -236,9 +236,14 @@ public final class TranscriptStore {
       return PendingSweepResult(deletedIDs: [], expired: [])
     }
     let retention = AppConstants.pendingTranscriptRetention
-    // #2186: read ONCE on the main actor, before the detached walk, so the
-    // injected seam does not have to be reachable from inside it.
-    let spoolIDs = liveSpoolIDs()
+    // #2186: the CLOSURE crosses onto the detached walk, never its result.
+    // Local review, P2: calling it here ran the read on the MAIN ACTOR, and the
+    // production implementation does far more than read — it creates the
+    // recovery directory, chmods it, writes metadata, then enumerates and sorts
+    // every spool. That is a filesystem stall in front of app launch and of
+    // every retry pulse, in the one method whose whole design is to keep the
+    // walk off the main actor. `@Sendable` is what makes moving it legal.
+    let readSpoolIDs = liveSpoolIDs
     // The ROOT namespace, so the sweep can tell a genuinely expired row from a
     // shadow left behind by a promotion that already succeeded.
     let root = directory
@@ -254,7 +259,7 @@ public final class TranscriptStore {
       #endif
       return Self.sweepExpired(
         in: dir, permanentDir: root, now: now, retention: retention,
-        spoolIDs: spoolIDs)
+        spoolIDs: readSpoolIDs())
     }
     sweepGeneration &+= 1
     let generation = sweepGeneration
@@ -376,6 +381,15 @@ public final class TranscriptStore {
     let nextLiveDeadline = liveCandidates.compactMap { $0.deadline(retention: retention) }.min()
     var retainedForSpool = 0
     for candidate in candidates where !candidate.isLive {
+      // A permanent twin answers BOTH questions below, so it is asked first.
+      // Local review, P2: with the spool guard ahead of it, a Keep whose shadow
+      // removal failed AND whose spool survived was retained forever — the
+      // permanent row already carries the de-dup key, so the shadow protects
+      // nothing and the pulse walks the directory every minute for the life of
+      // the app. Checked by FILE rather than by loading the row: this runs off
+      // the main actor, and existence is the whole question.
+      let hasPermanentTwin = FileManager.default.fileExists(
+        atPath: permanentDir.appendingPathComponent(candidate.url.lastPathComponent).path)
       // #2186: this row is the only proof its spool was already recovered.
       // Delete it while the spool survives and the next scan replays that spool
       // as a fresh dictation — handing back the take the user CANCELLED. Retain
@@ -384,7 +398,8 @@ public final class TranscriptStore {
       // The enum answers for `.live`/`.expired`; `.invalid` carries no
       // transcript by design, so ask the FILE with the de-dup reader's own
       // permissive decode. Anything that reader would count, this must protect.
-      if let session = candidate.recoverySessionID ?? recoverySessionID(of: candidate.url),
+      if !hasPermanentTwin,
+        let session = candidate.recoverySessionID ?? recoverySessionID(of: candidate.url),
         spoolIDs.map({ $0.contains(session) }) ?? true
       {
         retainedForSpool += 1
@@ -399,14 +414,8 @@ public final class TranscriptStore {
       // expired ratio is the one number this funnel exists to produce, and it
       // would be wrong in the direction that makes the feature look worse.
       //
-      // Deleted (it is litter) and NOT reported (nothing expired). Checked by
-      // FILE rather than by loading the row: this runs off the main actor, and
-      // existence is the whole question.
-      if FileManager.default.fileExists(
-        atPath: permanentDir.appendingPathComponent(
-          candidate.url.lastPathComponent
-        ).path)
-      {
+      // Deleted (it is litter) and NOT reported (nothing expired).
+      if hasPermanentTwin {
         try? fm.removeItem(at: candidate.url)
         if fm.fileExists(atPath: candidate.url.path) {
           unremovable += 1
