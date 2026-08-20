@@ -68,7 +68,12 @@ struct EscapeRecoveryLaunchSweepTests {
   /// names the coordinator many times, so a file-wide search would be satisfied
   /// by construction and could never fail.
   final class LaunchCallCollector: SyntaxVisitor {
-    private(set) var calls: Set<String> = []
+    /// ORDERED, not a set. Round 2 found that the sweep deleting a pending row
+    /// before `scanAndRecover()` reads `allRecoveredSessionIDs()` strips the key
+    /// proving a spool was already recovered, so the scan replays a cancelled
+    /// dictation as a fresh one. Sequence is therefore part of the contract, and
+    /// a set could not express it.
+    private(set) var calls: [String] = []
 
     /// A call that exists only under a compilation condition is not wired for
     /// the shipping build, so it must not count as wired at all.
@@ -80,13 +85,13 @@ struct EscapeRecoveryLaunchSweepTests {
       if let member = node.calledExpression.as(MemberAccessExprSyntax.self),
         let receiver = member.base?.as(DeclReferenceExprSyntax.self)
       {
-        calls.insert("\(receiver.baseName.text).\(member.declName.baseName.text)")
+        calls.append("\(receiver.baseName.text).\(member.declName.baseName.text)")
       }
       return .visitChildren
     }
   }
 
-  static func calls(inFunctionNamed name: String, source: String) -> Set<String>? {
+  static func calls(inFunctionNamed name: String, source: String) -> [String]? {
     final class Finder: SyntaxVisitor {
       let wanted: String
       var body: CodeBlockSyntax?
@@ -124,7 +129,7 @@ struct EscapeRecoveryLaunchSweepTests {
       """
       #2186 control: the neighbouring crash-recovery limb is missing from the parsed launch \
       body, so this guard could not see the launch path at all. Fix the parse before reading \
-      the assertion below. Calls found: \(calls.sorted())
+      the assertion below. Calls found: \(calls)
       """)
 
     #expect(
@@ -135,7 +140,27 @@ struct EscapeRecoveryLaunchSweepTests {
       dictation is removed "the next time you launch it", and the in-app countdown says \
       "Deleted in 23h". Without this call the only sweep is the History view's .task, so a \
       user who never opens History keeps the plaintext of a dictation they cancelled, \
-      indefinitely. Calls found: \(calls.sorted())
+      indefinitely. Calls found: \(calls)
+      """)
+
+    // ORDER, and it is a correctness property rather than tidiness. The scan
+    // de-dupes against `allRecoveredSessionIDs()`, which reads the pending rows
+    // the sweep deletes; a saved row is what proves its spool was already
+    // recovered. Sweep first and that proof can be gone before the scan looks,
+    // so a spool the user CANCELLED is replayed as a fresh dictation — the exact
+    // outcome Escape Recovery exists to prevent.
+    // `#require`, not an `if let`: a missing call must FAIL here rather than
+    // quietly skip the ordering assertion. A guard that can opt itself out is
+    // the vacuity this suite exists to avoid.
+    let scan = try #require(calls.firstIndex(of: "recoveryCoordinator.scanAndRecover"))
+    let sweep = try #require(calls.firstIndex(of: "transcriptCoordinator.sweepExpiredPending"))
+    #expect(
+      scan < sweep,
+      """
+      #2186: the launch sweep must run AFTER the crash-recovery scan has read its \
+      de-duplication ids. Deleting a pending row first strips the proof that its spool was \
+      already recovered, and the scan then replays a cancelled dictation as a new one. \
+      Order found: \(calls)
       """)
   }
 
@@ -163,12 +188,12 @@ struct EscapeRecoveryLaunchSweepTests {
 
     #expect(
       !found.contains("transcriptCoordinator.sweepExpiredPending"),
-      "a commented, quoted or #if-only sweep must not satisfy the launch guard: \(found.sorted())")
+      "a commented, quoted or #if-only sweep must not satisfy the launch guard: \(found)")
     // Paired accepted case in the same fixture, so a walker that simply finds
     // nothing cannot pass this suite.
     #expect(
       found.contains("recoveryCoordinator.scanAndRecover"),
-      "the walker missed a live call in the same body: \(found.sorted())")
+      "the walker missed a live call in the same body: \(found)")
   }
 
   @Test("a real call is still found when it sits inside a Task closure")
