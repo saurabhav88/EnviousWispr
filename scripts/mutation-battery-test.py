@@ -77,7 +77,31 @@ ONLY_ACTIVE = [l for l in CANONICAL_STUB.split("\n") if "ONLY_ACTIVE_ARCH" in l]
 assert ONLY_ACTIVE in CANONICAL_STUB, "the stub line the drift cases edit must exist verbatim"
 
 
-def _stub_baseline(lane, suites, phase, seen_names=None):
+def mk_results(statuses, crashed=None):
+    """Build a `SuiteResults` the way a real bundle read would.
+
+    The stubbed cases drive `classify_row` directly, so they need the real class
+    rather than a dict — a hand-rolled stand-in could accept a shape the real
+    reader never produces, and the case would pass against a reader that cannot.
+    `statuses` maps a bare test name to its result; ids are qualified so the
+    alias index is exercised the same way it is in production.
+    """
+    by_id, aliases = {}, {}
+    for name, result in statuses.items():
+        ident = f"StubSuite/{name}"
+        by_id[ident] = result
+        for spelling in (ident, name):
+            aliases.setdefault(spelling, set()).add(ident)
+    return battery.SuiteResults(by_id, aliases, dict(crashed or {}))
+
+
+# The unmutated tree every stubbed row is graded against: the named guard passing,
+# one unrelated sibling passing. A row's verdict is the DIFF against this.
+def _baseline_results():
+    return mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Passed"})
+
+
+def _stub_baseline(lane, suites, phase, seen_names=None, results_out=None):
     """Stands in for the real baseline in stubbed-lane cases.
 
     It MUST populate `seen_names`: the runner refuses when a suite's baseline yielded no test
@@ -88,6 +112,9 @@ def _stub_baseline(lane, suites, phase, seen_names=None):
     if seen_names is not None:
         for suite in suites:
             seen_names[suite] = {VALID_ROW["expect_fail"], "some other case"}
+    if results_out is not None:
+        for suite in suites:
+            results_out[suite] = _baseline_results()
     return []
 
 
@@ -600,35 +627,57 @@ def check_row(name, lane_result, *, expect_marker, expect_rc, raise_instead=None
 
 # (count, failures, compiled, log, rc, elapsed)
 check_row("the named test failing scores CAUGHT",
-          (5, ["✘ Test \"the guard holds\" recorded an issue"], True, "log", 65, 3.0),
-          expect_marker="ok", expect_rc=0)
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Failed", "some other case": "Passed"})),
+          expect_marker="CAUGHT", expect_rc=0)
 
-check_row("the suite staying green scores SURVIVED, not a pass",
-          (5, [], True, "log", 0, 3.0),
-          expect_marker="SURV", expect_rc=1)
+# THE STATE THE CONSOLE COULD NOT EXPRESS. Nothing changed status, so the mutation
+# never reached anything the suite observes — today that scored identically to a
+# working guard, which is the verdict that sends an overnight session to "fix" a
+# test that is fine.
+check_row("a mutant that changes NOTHING is SURVIVED-UNOBSERVED, not a survivor to fix",
+          (5, [], True, "log", 0, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Passed"})),
+          expect_marker="SURVIVED-UNOBSERVED", expect_rc=1)
 
-check_row("a DIFFERENT test failing is SURVIVED — something else caught it, so this test is not the guard",
-          (5, ["✘ Test \"some other case\" recorded an issue"], True, "log", 65, 3.0),
-          expect_marker="SURV", expect_rc=1)
+check_row("a DIFFERENT test failing is CAUGHT-ELSEWHERE, never evidence about this guard",
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Failed"})),
+          expect_marker="CAUGHT-ELSEWHERE", expect_rc=1)
+
+# A CRASH prints ZERO failure marks, so the console could not see it at all and
+# scored it SURVIVED while saying the lane was green. Both halves were false.
+check_row("a CRASH in the named test is CAUGHT, and the crash is named",
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Failed", "some other case": "Passed"},
+                      crashed={f'StubSuite/{VALID_ROW["expect_fail"]}':
+                               "Crash: xctest at StubSuite.theGuardHolds()"})),
+          expect_marker="crash:", expect_rc=0)
+
+# NOT COVERED HERE, deliberately and stated: "the guard was ALREADY red on the
+# unmutated tree" is INVALID-ROW in `classify_row`, and this harness cannot reach
+# it — `_stub_baseline` always reports the target passing. Reaching it needs a
+# per-case baseline, which is worth doing and is not done. Saying so beats a case
+# that asserts CAUGHT under an INVALID-ROW name.
 
 check_row("zero executed tests is an ERROR, never a survivor and never a catch",
-          (0, [], True, "log", 0, 3.0),
-          expect_marker="ERR", expect_rc=1)
+          (0, [], True, "log", 0, 3.0, None),
+          expect_marker="ERROR", expect_rc=1)
 
 check_row("no test summary at all is an ERROR",
-          (None, [], True, "log", 65, 3.0),
-          expect_marker="ERR", expect_rc=1)
+          (None, [], True, "log", 0, 3.0, None),
+          expect_marker="ERROR", expect_rc=1)
 
 check_row("a mutant that does not compile is an ERROR — a red lane proves nothing if nothing ran",
-          (None, [], False, "log", 65, 3.0),
-          expect_marker="ERR", expect_rc=1)
+          (None, [], False, "log", 65, 3.0, None),
+          expect_marker="ERROR", expect_rc=1)
 
 # The most dangerous defect this tool has had, and it is invisible to a byte comparison. `copy2`
 # restores the original MODIFICATION TIME along with the bytes. Against warm DerivedData, a replacement
 # the SAME SIZE as its anchor therefore leaves a file that is byte-identical AND older than the object
 # compiled from the mutant, so the next row can run mutant code while every check reports clean.
 ran += 1
-_res = drive_row((5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0),
+_res = drive_row((5, [], True, "log", 65, 3.0, None),
                  expect_verdict=None, expect_detail=None)
 # drive_row returns (rc, out, after, during); re-run it capturing the file's mtime instead.
 import tempfile as _t3  # noqa: E402
@@ -651,7 +700,7 @@ with _t3.TemporaryDirectory() as td:
             pass
 
         def run_suite(self, suite, tag):
-            return (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0)
+            return (5, [], True, "log", 65, 3.0, None)
 
     _rl, _rb = battery.Lane, battery.baseline
     battery.Lane, battery.baseline = _StubLane, (_stub_baseline)
@@ -679,7 +728,7 @@ ran += 1
 _real_pids = battery.dev_app_pids
 battery.dev_app_pids = lambda wt: ["99999"]
 try:
-    rc, out, after, during = drive_row((5, [], True, "log", 0, 3.0),
+    rc, out, after, during = drive_row((5, [], True, "log", 0, 3.0, None),
                                        expect_verdict=None, expect_detail=None)
     problems = []
     if "ERR" not in out or "appeared mid-run" not in out:
@@ -712,15 +761,148 @@ if len(_returns) != 1:
     failures.append("the stubbed lane returns the same shape as the real one: Lane.run_suite has "
                     f"{len(_returns)} return statements; the stub assumes exactly 1")
 else:
+    # The stubs hand back a 7-tuple: (count, failures, compiled, log, rc, elapsed, results).
+    # The last slot is the parsed result bundle, and it is what every VERDICT now
+    # reads — a stub that omitted it would grade rows against `None` and score
+    # every one of them an error while looking like a shape mismatch.
+    _STUB_ARITY = 7
     _arity = len([t for t in _returns[0].split(",")])
-    if _arity != 6:
+    if _arity != _STUB_ARITY:
         failures.append(
             "the stubbed lane returns the same shape as the real one: "
-            f"Lane.run_suite now returns {_arity} values, but the stubbed-lane cases hand back 6. "
-            "Update the stub, or every row case is exercising a double that no longer resembles the "
-            "real lane.")
+            f"Lane.run_suite now returns {_arity} values, but the stubbed-lane cases hand back "
+            f"{_STUB_ARITY}. Update the stubs AND this constant together — they are two halves of "
+            "one claim, and moving only one silently retires the check.")
     else:
         print("  ok  the stubbed lane returns the same shape as the real one")
+
+# ---- cloud review r1 on #2246: three findings, each with a case that fails
+# ---- against the pre-fix code.
+
+# P2: a CATCH REQUIRES A FAILURE. Passed -> Skipped is a status CHANGE and is not
+# another guard going red; crediting it would score a disappearance as detection.
+ran += 1
+_base = mk_results({"guard": "Passed", "sibling": "Passed"})
+_mut = mk_results({"guard": "Passed", "sibling": "Skipped"})
+_v, _d = battery.classify_row(_base, _mut, "guard")
+if _v == battery.VERDICT_CAUGHT_ELSEWHERE:
+    failures.append("a skipped sibling is not another guard catching the mutation — it was scored "
+                    "CAUGHT-ELSEWHERE, so a disappearance reads as detection")
+elif _v != battery.VERDICT_SURVIVED:
+    failures.append(f"a skipped sibling is not another guard catching the mutation — got {_v}")
+elif "newly failed" not in _d:
+    failures.append("a skipped sibling is not another guard catching the mutation — the detail does "
+                    "not say nothing newly failed")
+else:
+    print("  ok  a skipped sibling is not another guard catching the mutation")
+
+# The accepted counterpart, so the check above cannot pass by refusing everything.
+ran += 1
+_mut2 = mk_results({"guard": "Passed", "sibling": "Failed"})
+_v2, _ = battery.classify_row(_base, _mut2, "guard")
+if _v2 != battery.VERDICT_CAUGHT_ELSEWHERE:
+    failures.append(f"a sibling that newly FAILS is still CAUGHT-ELSEWHERE — got {_v2}")
+else:
+    print("  ok  a sibling that newly FAILS is still CAUGHT-ELSEWHERE")
+
+# P1b: an unchanged test set has TWO causes and the statuses cannot separate them.
+# The verdict must name both, never assert the recipe is at fault — that reverses
+# the tool's guidance for the ordinary surviving mutant, which is its main subject.
+ran += 1
+_v3, _d3 = battery.classify_row(_base, mk_results({"guard": "Passed", "sibling": "Passed"}), "guard")
+_problems = []
+if _v3 != battery.VERDICT_NOOP:
+    _problems.append(f"verdict {_v3}")
+if "no assertion for what the mutation changed" not in _d3:
+    _problems.append("the detail does not offer the missing-assertion cause")
+if "RECIPE needs re-aiming" not in _d3:
+    _problems.append("the detail does not offer the no-op cause")
+if "cannot separate them" not in _d3:
+    _problems.append("the detail does not say the statuses cannot distinguish the two")
+if _problems:
+    failures.append("an unchanged test set names BOTH causes and asserts neither — "
+                    + "; ".join(_problems))
+else:
+    print("  ok  an unchanged test set names BOTH causes and asserts neither")
+
+# P1a: the row gate is fed from the BUNDLE, so a parameterized identifier resolves.
+# The console has no addressable name for one, so a console-derived gate refused
+# the very recipes #2225 exists to enable — before the verdict path ever ran.
+ran += 1
+_par = mk_results({"egOneUpdatePausedReadsAsNeedingAttention(_:)": "Passed"})
+if "StubSuite/egOneUpdatePausedReadsAsNeedingAttention(_:)" not in set(_par.aliases):
+    failures.append("a parameterized identifier is a legal recipe name — the qualified form is "
+                    "absent from the alias index, so a recipe naming it would be refused")
+elif not _par.resolve("StubSuite/egOneUpdatePausedReadsAsNeedingAttention(_:)"):
+    failures.append("a parameterized identifier is a legal recipe name — it does not resolve")
+else:
+    print("  ok  a parameterized identifier is a legal recipe name")
+
+# ---- cloud review r2 on #2246
+
+# (b) AMBIGUITY ANYWHERE IS AMBIGUITY. With `mutated or baseline`, a name that is
+# ambiguous in the BASELINE resolved to a singleton whenever execution stopped
+# before the second test reached the mutated bundle — so the ambiguity check was
+# skipped exactly when the run was cut short.
+ran += 1
+_amb_base = battery.SuiteResults(
+    {"A/shared": "Passed", "B/shared": "Passed"},
+    {"shared": {"A/shared", "B/shared"}}, {})
+_amb_mut = battery.SuiteResults({"A/shared": "Failed"}, {"shared": {"A/shared"}}, {})
+_v, _d = battery.classify_row(_amb_base, _amb_mut, "shared")
+if _v != battery.VERDICT_INVALID:
+    failures.append("a name ambiguous in the BASELINE stays ambiguous when the mutated run is cut "
+                    f"short — got {_v}, so the row was graded against whichever test happened to run")
+elif "ambiguous" not in _d:
+    failures.append("a name ambiguous in the BASELINE stays ambiguous — the detail does not say so")
+else:
+    print("  ok  a name ambiguous in the BASELINE stays ambiguous")
+
+# The accepted counterpart, so the check above cannot pass by refusing everything.
+ran += 1
+_ok_base = battery.SuiteResults({"A/only": "Passed"}, {"only": {"A/only"}}, {})
+_ok_mut = battery.SuiteResults({"A/only": "Failed"}, {"only": {"A/only"}}, {})
+_v2, _ = battery.classify_row(_ok_base, _ok_mut, "only")
+if _v2 != battery.VERDICT_CAUGHT:
+    failures.append(f"an unambiguous name still resolves and scores CAUGHT — got {_v2}")
+else:
+    print("  ok  an unambiguous name still resolves and scores CAUGHT")
+
+# (a) A STALE BUNDLE MUST STOP THE ROW, NEVER BE READ. `ignore_errors=True` let a
+# bundle that could not be removed survive; xcodebuild then declines to overwrite
+# it and the read returns the PREVIOUS row's results under this row's name.
+ran += 1
+import tempfile as _t9  # noqa: E402
+with _t9.TemporaryDirectory() as _td9:
+    _ld = Path(_td9) / "logs"
+    _ld.mkdir()
+    _l9 = battery.Lane(Path(_td9), Path(_td9) / "dd", _ld)
+    _l9.generated = True
+    _stale = _l9.bundle_path("tag")
+    _stale.mkdir(parents=True)
+    (_stale / "keep").write_text("x")
+    # SIMULATED AT THE SEAM, NOT WITH PERMISSION BITS. The first version chmod'd the
+    # bundle 0o500 to make the removal fail. As root that does not stop `rmtree` at
+    # all, so the removal SUCCEEDS, the row takes the unexpected path, and the
+    # `finally` then chmods a directory that no longer exists — a FileNotFoundError
+    # outside every except clause, aborting the entire self-test rather than failing
+    # one case. A control that depends on privilege proves nothing on half the
+    # machines that run it and takes the others down with it.
+    _real_rmtree9 = battery.shutil.rmtree
+    battery.shutil.rmtree = lambda *a, **k: None   # the removal that did not remove
+    try:
+        _l9.run_suite("EnviousWisprTests/Whatever", "tag")
+        failures.append("a stale result bundle that cannot be removed STOPS the row — it did not; "
+                        "the row would be graded against an earlier run's results")
+    except battery._RowFailed as _e9:
+        if "could not be removed" not in str(_e9):
+            failures.append(f"a stale result bundle stops the row — wrong reason: {_e9}")
+        else:
+            print("  ok  a stale result bundle that cannot be removed STOPS the row")
+    except Exception as _e9:  # noqa: BLE001
+        failures.append(f"a stale result bundle stops the row — raised {type(_e9).__name__}: {_e9}")
+    finally:
+        battery.shutil.rmtree = _real_rmtree9
 
 # A mutation that removes a completion or cancellation path is among the most valuable to write and the
 # most likely to HANG. Unbounded, the unattended battery sits on that row all night and never reaches
@@ -787,7 +969,15 @@ battery.run = _capture
 try:
     _lane = battery.Lane(Path("."), Path("."), Path("."))
     _lane.generated = True  # skip tuist; this case is about the test lane's timeout only
-    _lane.run_suite("EnviousWisprTests/Whatever", "tag")
+    try:
+        _lane.run_suite("EnviousWisprTests/Whatever", "tag")
+    except battery.BundleUnreadable:
+        # EXPECTED AND NOT WHAT IS UNDER TEST. `run` is stubbed, so no lane ran and
+        # no bundle exists; the assertion below is on the timeout kwarg `run_suite`
+        # passed, which has already happened by the time the read is attempted.
+        # Swallowing only this exception keeps the case honest — any other failure
+        # still surfaces.
+        pass
 finally:
     battery.run = _real_run
 
@@ -888,7 +1078,10 @@ ran += 1
 _flagish = {a for a in _cmd if a.startswith("-") and not a.startswith("-only-testing")
             and a not in ("-project", "-scheme", "-configuration", "-derivedDataPath", "-destination")}
 _settings = {a for a in _cmd if "=" in a and a.split("=", 1)[0].isupper()}
-_extra = sorted((_flagish | _settings) - battery.CANONICAL_TOKENS)
+# RUNNER_ONLY_TOKENS is subtracted DELIBERATELY and is not a hole: each member
+# is declared at its definition with the reason it cannot change the build, so a
+# reviewer sees the divergence rather than inferring it from a green guard.
+_extra = sorted((_flagish | _settings) - battery.CANONICAL_TOKENS - battery.RUNNER_ONLY_TOKENS)
 if _extra:
     failures.append("the runner's command carries no setting the drift guard is blind to — it DOES: "
                     + ", ".join(_extra) + " would move unnoticed")
@@ -984,9 +1177,15 @@ for _label, _will_run, _want_refusal in [
 # Swift Testing prints ✘ for a KNOWN issue and the lane still exits 0. A test wrapped in
 # `withKnownIssue` is explicitly configured NOT to go red, so crediting it with detecting a mutation
 # is a false CAUGHT — the direction that fails toward confidence.
-check_row("a known issue on a GREEN lane is SURVIVED, never CAUGHT",
-          (5, ['✘ Test "the guard holds" recorded a known issue'], True, "log", 0, 3.0),
-          expect_marker="SURV", expect_rc=1)
+# A test wrapped in `withKnownIssue` is configured NOT to go red, so its status
+# does not change and the bundle records it as Passed. Under the diff that is a
+# NO-OP verdict, which is both correct and STRONGER than the old "SURVIVED":
+# it says nothing in the suite moved, rather than implying the guard was tested
+# and found wanting.
+check_row("a known issue does not change status, so it is a NO-OP, never CAUGHT",
+          (5, [], True, "log", 0, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Passed"})),
+          expect_marker="SURVIVED-UNOBSERVED", expect_rc=1)
 
 # The exclusion's own case: a RED lane where the ONLY mention of the named test is a known issue. If
 # known-issue lines counted as failures this would score CAUGHT; excluded, the row is correctly not a
@@ -1013,14 +1212,21 @@ else:
 # The accepted counterpart: the same named test on a RED lane is a genuine catch.
 # Through the ROW LOOP, which is where expect_fail is compared. The direct failed_test_identities
 # cases use exact set membership and so cannot detect substring matching returning here.
-check_row("a sibling whose name contains the expected one does not score CAUGHT",
-          (5, ['✘ Test "the guard holds under load" recorded an issue at F.swift:1:1'],
-           True, "log", 65, 3.0),
-          expect_marker="SURV", expect_rc=1)
+# SUBSTRING MATCHING CANNOT RETURN, because the bundle is keyed exactly. The old
+# console path matched `expect_fail` with `in` against a whole ✘ line carrying the
+# display name, the file path AND the message, so a sibling whose name merely
+# CONTAINED the expected one scored CAUGHT. Here the sibling is a different key,
+# so it presents as CAUGHT-ELSEWHERE: something went red, and it was not the guard.
+check_row("a sibling whose name CONTAINS the expected one is not this guard",
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Passed",
+                       VALID_ROW["expect_fail"] + " under load": "Failed"})),
+          expect_marker="CAUGHT-ELSEWHERE", expect_rc=1)
 
-check_row("the same named test on a RED lane is still CAUGHT",
-          (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0),
-          expect_marker="ok", expect_rc=0)
+check_row("the named test itself going red is still CAUGHT",
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Failed", "some other case": "Passed"})),
+          expect_marker="CAUGHT", expect_rc=0)
 
 # A timeout must kill the whole process GROUP. xcodebuild spawns the test runner as a descendant, so
 # killing only the parent leaves a hung mutant test process holding the shared DerivedData and writing
@@ -1214,7 +1420,7 @@ with tempfile.TemporaryDirectory() as _td:
 
         def run_suite(self, suite, tag):
             _lanes.append(tag)
-            return (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0)
+            return (5, [], True, "log", 65, 3.0, None)
 
     _rl, _rb = battery.Lane, battery.baseline
     battery.Lane, battery.baseline = _CountingLane, (_stub_baseline)
@@ -1257,7 +1463,7 @@ def _boom(self, *a, **k):
 try:
     Path.write_text = _boom
     try:
-        _rc, _out, _after, _during = drive_row((5, [], True, "log", 0, 3.0),
+        _rc, _out, _after, _during = drive_row((5, [], True, "log", 0, 3.0, None),
                                                expect_verdict=None, expect_detail=None)
     except BaseException as _esc:   # noqa: BLE001 — an escape IS the defect this case exists for
         _rc, _out = -1, f"escaped as {type(_esc).__name__}"
@@ -1291,7 +1497,7 @@ def _copy_then_fail(src, dst, *a, **k):
 battery.shutil.copy2 = _copy_then_fail
 try:
     try:
-        _rc, _out, _after, _during = drive_row((5, [], True, "log", 0, 3.0),
+        _rc, _out, _after, _during = drive_row((5, [], True, "log", 0, 3.0, None),
                                                expect_verdict=None, expect_detail=None)
     except BaseException as _esc:   # noqa: BLE001 — escaping IS the defect this case exists for
         _rc, _out = -1, f"escaped as {type(_esc).__name__}"
@@ -1334,7 +1540,7 @@ _installed_at = []
 _real_sig = battery.signal.signal
 _real_base = battery.baseline
 battery.signal.signal = lambda sig, fn: _installed_at.append("handler")
-battery.baseline = lambda lane, suites, phase, seen_names=None: (_installed_at.append(f"baseline-{phase}"), [])[1]
+battery.baseline = lambda lane, suites, phase, seen_names=None, results_out=None: (_installed_at.append(f"baseline-{phase}"), [])[1]
 
 
 class _NullLane:
@@ -1477,7 +1683,7 @@ except Exception as exc:
 # identity lines, so empty means the READER broke.
 ran += 1
 _real_base2 = battery.baseline
-battery.baseline = lambda lane, suites, phase, seen_names=None: []   # green, but yields NO names
+battery.baseline = lambda lane, suites, phase, seen_names=None, results_out=None: []   # green, but yields NO names
 _rl2, battery.Lane = battery.Lane, type("L", (), {
     "__init__": lambda self, *a, **k: None,
     "generate_once": lambda self: None,
@@ -1706,6 +1912,206 @@ try:
 finally:
     battery.Lane._run_package_prep = _real_prep
     battery.run = _real_run7
+
+# --- the operator-facing summary ------------------------------------------------
+# Nothing rendered this block before: it was declared inside `main()`, after a full
+# lane, so the self-test could not reach it. `classify_row` had a dozen cases and the
+# text a human acts on had none — which is how "re-aim the RECIPE" survived here for a
+# review round after being removed from the classifier one screen up.
+
+# STRUCTURAL, and the strongest of the three: every verdict the module declares must
+# have an entry. The old `.get(verdict, "")` rendered a BLANK line for an unmapped one,
+# so adding a verdict constant would silently ship a report with no guidance under it.
+# Closed set, enumerated from the module itself rather than a hand-written list, so a
+# verdict added tomorrow is covered without editing this case.
+ran += 1
+# The set is the code's OWN partition, not every constant: `main` computes
+# `bad = [r for r in results if r[0] != VERDICT_CAUGHT]`, so a CATCH never reaches
+# the report and needs no entry. Derived that way rather than by a hand-written
+# exclusion, so a verdict added later is covered without editing this case — the
+# first version quantified over every VERDICT_* and reported CAUGHT as a defect.
+_verdicts = {v for k, v in vars(battery).items()
+             if k.startswith("VERDICT_") and isinstance(v, str)} - {battery.VERDICT_CAUGHT}
+_unmapped = sorted(v for v in _verdicts if v not in battery.WHAT_IT_MEANS)
+if _unmapped:
+    failures.append(f"every declared verdict has operator guidance — {_unmapped} do not, so the "
+                    f"report prints a blank line where the guidance belongs")
+else:
+    print("  ok  every declared verdict has operator guidance")
+
+ran += 1
+try:
+    battery.explain_verdict("NOT-A-VERDICT")
+    failures.append("an unmapped verdict fails loud rather than rendering a blank line — it did "
+                    "not: explain_verdict returned instead of raising")
+except AssertionError:
+    print("  ok  an unmapped verdict fails loud rather than rendering a blank line")
+
+# A verdict whose cause the statuses CANNOT determine must not be handed a single
+# remediation here. `classify_row` says an unchanged test set has two causes and that
+# the statuses cannot separate them; a summary line that picks one contradicts the
+# classifier, and the summary is what gets acted on.
+ran += 1
+_noop = battery.WHAT_IT_MEANS[battery.VERDICT_NOOP]
+_blames_recipe = "recipe" in _noop.lower()
+_blames_test = "test" in _noop.lower()
+if _blames_recipe and not _blames_test:
+    failures.append(f"an undetermined cause is not given a single remediation in the summary — it "
+                    f"is: {battery.VERDICT_NOOP} reads {_noop!r}, prescribing the RECIPE alone, while "
+                    f"classify_row says the statuses cannot say which of two causes it is. The "
+                    f"operator is sent to re-aim a recipe when the TEST may be at fault.")
+else:
+    print("  ok  an undetermined cause is not given a single remediation in the summary")
+
+# PAIRED ACCEPTED CASE, so the check above cannot pass by refusing every summary that
+# mentions a recipe. CAUGHT-ELSEWHERE has ONE cause the statuses do establish — another
+# test went red — and its summary is allowed to say so plainly.
+ran += 1
+_elsewhere = battery.WHAT_IT_MEANS[battery.VERDICT_CAUGHT_ELSEWHERE]
+if "different test caught it" not in _elsewhere:
+    failures.append(f"a verdict whose cause IS established still states it plainly — it does not: "
+                    f"CAUGHT-ELSEWHERE reads {_elsewhere!r}")
+else:
+    print("  ok  a verdict whose cause IS established still states it plainly")
+
+# --- baseline()'s own exception handling ----------------------------------------
+# `baseline` is replaced by `_stub_baseline` in every case that goes near it, so its
+# handlers had never been executed. A nonexistent suite makes xcodebuild SUCCEED with
+# an empty bundle, the read raises, and an uncaught raise printed a traceback instead
+# of the diagnostic written for exactly that case.
+
+
+class _RaisingLane:
+    """A lane whose suite run fails in a named way. Only `run_suite` is reached."""
+
+    def __init__(self, exc):
+        self._exc = exc
+
+    def run_suite(self, suite, tag):
+        raise self._exc
+
+
+class _CleanLane:
+    def run_suite(self, suite, tag):
+        return (5, [], True, Path("/tmp/x.log"), 0, 1.0,
+                battery.SuiteResults({"S/a()": "Passed"}, {"a()": {"S/a()"}}, {}))
+
+
+# CALLED ONCE, GUARDED, and both assertions read the result. The second case used to
+# call `baseline` again with no guard, so under the very mutant these cases exist to
+# catch it raised and took the whole self-test down before the summary printed — and
+# the control then reported WRONG-RED on a mutant case one had detected perfectly. A
+# case that can ABORT the run is worse than one that fails: it destroys every verdict
+# after it, including its own.
+_probs = None
+ran += 1
+try:
+    _probs = battery.baseline(_RaisingLane(battery.BundleUnreadable("zero Test Case nodes")),
+                              ["EnviousWisprTests/Gone"], "before")
+except battery.BundleUnreadable:
+    failures.append("an unreadable result bundle becomes a baseline problem — it did not: the "
+                    "exception ESCAPED baseline, so main prints a traceback instead of the "
+                    "diagnostic written for a nonexistent suite")
+if _probs is None:
+    pass
+elif not _probs:
+    failures.append("an unreadable result bundle becomes a baseline problem — it did not: baseline "
+                    "reported NO problems, so a run against a nonexistent suite would proceed to "
+                    "mutate")
+elif "could not be read" not in _probs[0]:
+    failures.append(f"an unreadable result bundle becomes a baseline problem — recorded, but with "
+                    f"the wrong reason: {_probs[0][:120]}")
+else:
+    print("  ok  an unreadable result bundle becomes a baseline problem")
+
+# The named cause has to survive into the message, because the message is the only
+# thing that sends an operator to the right place — a stale suite name.
+ran += 1
+if not _probs:
+    failures.append("the unreadable-bundle problem names the suite and the likely cause — there was "
+                    "no problem recorded to name anything")
+elif "@Suite" not in _probs[0] or "Gone" not in _probs[0]:
+    failures.append(f"the unreadable-bundle problem names the suite and the likely cause — it does "
+                    f"not: {_probs[0][:160]}")
+else:
+    print("  ok  the unreadable-bundle problem names the suite and the likely cause")
+
+# PAIRED ACCEPTED CASE, so the handler above cannot pass by reporting a problem for
+# everything: a suite that ran and passed produces NO problem.
+ran += 1
+_probs3 = battery.baseline(_CleanLane(), ["EnviousWisprTests/Fine"], "before")
+if _probs3:
+    failures.append(f"a clean suite produces no baseline problem — it produced {_probs3}")
+else:
+    print("  ok  a clean suite produces no baseline problem")
+
+# And the pre-existing timeout path still works, so the new clause did not displace it.
+ran += 1
+_probs4 = battery.baseline(_RaisingLane(battery._LaneTimedOut("timed out at 900s")),
+                           ["EnviousWisprTests/Slow"], "before")
+if not _probs4 or "timed out" not in _probs4[0]:
+    failures.append(f"a lane timeout is still a baseline problem — got {_probs4}")
+else:
+    print("  ok  a lane timeout is still a baseline problem")
+
+# UNREACHABLE IN PRODUCTION, PINNED ANYWAY. A lane that compiles and passes but yields
+# no result bundle cannot happen as the callers stand: that branch requires `compiled`,
+# and `run_suite` returns a SuiteResults whenever it compiled because the reader raises
+# rather than returning None. The branch used to fall back to console-scraped names —
+# the exact defect this branch removed, and console naming cannot see a parameterized
+# test at all. An unreachable branch that WOULD be a defect if reachable is the one
+# nothing can catch: no test, no review, no mutation row can enter it, so it is not
+# wrong today and becomes wrong silently the moment some unrelated change makes it
+# reachable. `baseline` takes its lane, so a fake one reaches it here and holds it.
+class _NoResultsLane:
+    def run_suite(self, suite, tag):
+        return (5, [], True, Path("/tmp/x.log"), 0, 1.0, None)
+
+
+ran += 1
+_seen_nr = {}
+_probs_nr = battery.baseline(_NoResultsLane(), ["EnviousWisprTests/Odd"], "before",
+                             seen_names=_seen_nr)
+if not _probs_nr:
+    failures.append("a compiled lane with no result bundle refuses — it did not: baseline accepted "
+                    "it, and would name tests from console text, which cannot see a parameterized "
+                    "test at all")
+elif _seen_nr:
+    failures.append(f"a compiled lane with no result bundle refuses — it recorded names anyway: "
+                    f"{_seen_nr}")
+else:
+    print("  ok  a compiled lane with no result bundle refuses rather than scraping the console")
+
+# --- a documented return shape must match the code ------------------------------
+# `_STUB_ARITY` above pins run_suite's arity and says to update the stubs and the
+# constant together. It said nothing about the DOCSTRING, so that drifted: it promised
+# a 4-tuple while the function had returned 7 since this branch began, and it was found
+# by an AST check during self-audit rather than by anyone reading it. A docstring is the
+# one artifact with no compiler, so give it a mechanical check instead of an intention.
+# Structural, over the AST — no text patterns, no phrase matching.
+ran += 1
+import ast as _ast_d  # noqa: E402
+import re as _re_d  # noqa: E402
+_tree_d = _ast_d.parse(Path(battery.__file__).read_text())
+_mismatch = []
+for _fn in _ast_d.walk(_tree_d):
+    if not isinstance(_fn, (_ast_d.FunctionDef, _ast_d.AsyncFunctionDef)):
+        continue
+    _doc = _ast_d.get_docstring(_fn)
+    if not _doc:
+        continue
+    _m = _re_d.search(r"\(([^)]*,[^)]*)\)", _doc.splitlines()[0])
+    if not _m:
+        continue
+    _promised = len([p for p in _m.group(1).split(",") if p.strip()])
+    _arities = {len(s.value.elts) for s in _ast_d.walk(_fn)
+                if isinstance(s, _ast_d.Return) and isinstance(s.value, _ast_d.Tuple)}
+    if _arities and _promised not in _arities:
+        _mismatch.append(f"{_fn.name}: docstring promises {_promised}, code returns {sorted(_arities)}")
+if _mismatch:
+    failures.append("a documented return shape matches the code — it does not: " + "; ".join(_mismatch))
+else:
+    print("  ok  a documented return shape matches the code")
 
 print()
 if failures:
