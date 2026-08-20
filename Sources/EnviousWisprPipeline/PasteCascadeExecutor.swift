@@ -262,7 +262,9 @@ internal final class PasteCascadeExecutor {
   /// regression: every tier that triggers a SYSTEM paste goes inert.** Cmd+V, the
   /// AppleScript paste and the menu-item paste are all satisfied by the OS from
   /// `NSPasteboard.general`, so text written anywhere else is written correctly
-  /// and pasted nowhere. Only the clipboard-only fallback is meaningful with a
+  /// and pasted nowhere. That is enforced by `systemPasteCanReachOurText`, which
+  /// SKIPS every system-paste tier rather than letting one run and paste the real
+  /// board's contents. Only the clipboard-only fallback is meaningful with a
   /// board of your choosing, because there the user pastes by hand.
   /// That is the DESIRED behaviour rather than a limitation: a test should not be
   /// pasting into whatever app the developer has frontmost, and production passes
@@ -285,6 +287,34 @@ internal final class PasteCascadeExecutor {
   /// cheap. `PasteService`'s own writers keep their `.general` default: layer 1
   /// is that parameter, layer 2 is this being mandatory.
   private let pasteboard: NSPasteboard
+
+  /// **Whether a SYSTEM PASTE can deliver what this cascade writes.**
+  ///
+  /// Every system-paste route — Cmd+V, AppleScript `keystroke "v"`, and an app's
+  /// own Edit > Paste menu item — is satisfied by the system from
+  /// `NSPasteboard.general`. None of them can be pointed anywhere else. So with
+  /// any other board those routes do not merely fail to deliver our text: they
+  /// deliver whatever the REAL board happens to hold, into the frontmost app.
+  ///
+  /// **This is one precondition rather than a guard per route, and that is the
+  /// point.** Three consecutive review rounds each found a different route
+  /// reaching the general board — the write, then the Cmd+V dispatch, then the
+  /// AppleScript and menu paths with their clipboard snapshot/restore. Guarding
+  /// them one at a time is answering "which routes touch the general board",
+  /// which is a set with a next member. The closed question is this one.
+  ///
+  /// **ONE PREDICATE, TWO GUARD SITES.** Tiers 2 and 2b share a branch; Tier 2c
+  /// (menu paste) is its SIBLING, not a child of it — an earlier version of this
+  /// comment claimed all three were one branch and gated only the first, which
+  /// left the menu route open under a comment saying it was covered. Tier 3 is
+  /// deliberately ungated: it is the plain clipboard write, and the only route
+  /// that delivers anything meaningful when the board is not the general one.
+  ///
+  /// Production passes `.general`, where this is always `true` and the cascade
+  /// behaves exactly as it did before the board became injectable.
+  private var systemPasteCanReachOurText: Bool {
+    pasteboard === NSPasteboard.general
+  }
 
   internal init(pasteboard: NSPasteboard) {
     self.pasteboard = pasteboard
@@ -420,6 +450,7 @@ internal final class PasteCascadeExecutor {
     // `axAllowsRetry` is false only after an unprovable Tier 1 write, and it
     // gates Tier 2b too because 2b lives inside this branch.
     if tier == .clipboardOnly, axAllowsRetry, canAttemptKeyPaste,
+      systemPasteCanReachOurText,
       let app = request.targetApp, !app.isTerminated
     {
       let activation = await activate(app)
@@ -529,6 +560,7 @@ internal final class PasteCascadeExecutor {
     // `.nonText` and Tier 1 only runs on `.textField`, so an unprovable Tier 1
     // write cannot reach here. Adding a guard would service an impossible state.
     if tier == .clipboardOnly, classification == .nonText, axTrusted,
+      systemPasteCanReachOurText,
       let app = request.targetApp, !app.isTerminated
     {
       let activation = await activate(app)
