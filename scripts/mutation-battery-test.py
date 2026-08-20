@@ -65,9 +65,9 @@ run_lane() {
     VALID_ARCHS=arm64 \\
     ONLY_ACTIVE_ARCH=YES \\
     "$@" \\
-    "${TEST_ARGS[@]}" | tee "$PROJECT_ROOT/$log"
+    "${TEST_ARGS[@]}" | tee "$log"
 }
-run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log
+run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log"
 """
 
 # The exact line the two directional drift cases add to or remove from the stub. Derived from the
@@ -241,8 +241,8 @@ check("a canonical lane that no longer generates the project refuses the run",
 check("extra positional build settings on the canonical call site refuse the run",
       [dict(VALID_ROW)], expect_exit=2, expect_text="no longer has",
       extra_files={"scripts/xcode-test.sh": CANONICAL_STUB.replace(
-          'run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log',
-          'run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log ENABLE_TESTABILITY=YES')})
+          'run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log"',
+          'run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log" ENABLE_TESTABILITY=YES')})
 
 check("an unrecognised shell expansion in the invocation refuses the run",
       [dict(VALID_ROW)], expect_exit=2, expect_text="cannot see",
