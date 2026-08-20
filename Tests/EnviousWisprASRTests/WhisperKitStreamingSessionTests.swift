@@ -510,49 +510,12 @@ import Testing
 
     init(loopResult: [TranscriptionResult]) { self.loopResult = loopResult }
 
-    // #2140: ENTRY and EXIT signals the decoder itself fires, so a test parks on
-    // the subject rather than polling or spending a budget. `ranToLimit` is only
-    // final once `transcribe` has RETURNED; reading it before that asserts a
-    // value still being decided, which is what made this suite flake.
-    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
-    private var exitWaiters: [CheckedContinuation<Void, Never>] = []
-    private var hasExited = false
-
-    private func signalEntered() {
-      let waiting = entryWaiters
-      entryWaiters.removeAll()
-      for w in waiting { w.resume() }
-    }
-
-    private func signalExited() {
-      hasExited = true
-      let waiting = exitWaiters
-      exitWaiters.removeAll()
-      for w in waiting { w.resume() }
-    }
-
-    /// Suspends until the loop decode has been entered. Returns immediately if
-    /// it already has, so there is no lost-signal race with a fast decoder.
-    func waitForEntry() async {
-      if entered { return }
-      await withCheckedContinuation { entryWaiters.append($0) }
-    }
-
-    /// Suspends until the loop decode has RETURNED, by any route — abort or
-    /// exhaustion. Only after this is `ranToLimit` a final answer.
-    func waitForExit() async {
-      if hasExited { return }
-      await withCheckedContinuation { exitWaiters.append($0) }
-    }
-
     func transcribe(
       audioArray: [Float], decodeOptions: DecodingOptions?,
       shouldContinueDecoding: (@Sendable () -> Bool)?
     ) async throws -> [TranscriptionResult] {
       entered = true
       wasHandedASignal = shouldContinueDecoding != nil
-      signalEntered()
-      defer { signalExited() }
       guard let keepGoing = shouldContinueDecoding else { return loopResult }
       while polls < Self.limit {
         polls += 1
@@ -580,30 +543,13 @@ import Testing
       requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1))
     await s.start(audioSamplesProvider: fixedProvider([Float](repeating: 0.3, count: 48_000)))
 
-    // #2140: park on the decoder's own ENTRY signal rather than polling. A yield
-    // loop cannot distinguish "not entered yet" from "descheduled", which is the
-    // guessing this suite's flake is made of.
-    await dec.waitForEntry()
+    while !(await dec.entered) { await Task.yield() }
     // CONTROLS, both before the act: the decode really started, and it really was
     // handed a stop signal. Without these, `ranToLimit == false` could mean the
     // decode never ran at all.
     #expect(await dec.wasHandedASignal, "control: the loop decode must receive an abort signal")
 
     await s.cancel()
-
-    // #2140: WAIT FOR THE DECODE TO RETURN before reading `ranToLimit`.
-    //
-    // `ranToLimit` is written only when the loop EXHAUSTS, so reading it while
-    // the decode is still running reads a value that is still being decided —
-    // and it reads `false`, which is a PASS. Locally the cancel wins that race
-    // and the test passes for the right reason; under CI contention the decode
-    // can exhaust first and the test fails, blaming production cancellation for
-    // a budget running out. Parking on the exit signal makes the read final on
-    // every schedule: an abort that is merely LATE still returns via
-    // `!keepGoing()` with `ranToLimit` false, and an abort that never arrives
-    // still exhausts and still fails. The `limit` remains the livelock net it
-    // was always documented to be, rather than the thing the assertion measures.
-    await dec.waitForExit()
 
     #expect(await dec.polls > 0, "control: the decode must have polled before stopping")
     #expect(
