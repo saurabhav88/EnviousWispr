@@ -1118,10 +1118,14 @@ public final class WisprBootstrapper {
 
   public func applicationDidFinishLaunching() {
     appLifecycleCoordinator.runDidFinishLaunching()
-    // #1063 PR2: scan for orphan crash-recovery spools and recover them behind the
-    // blocking "recovering" pill (replaces PR1's purge). Strict limb, single-flight,
-    // one attempt per orphan. No-orphan launch is byte-identical to today.
+    // #1063 PR2: recover orphan crash-recovery spools behind the blocking
+    // "recovering" pill. Strict limb, single-flight, one attempt per orphan.
     Task { await recoveryCoordinator.scanAndRecover() }
+    // #2186: deletion must not depend on a view mounting. Its OWN task, NO
+    // ordering against the scan — the sweep refuses to delete a row whose spool
+    // survives, so it is safe whenever it runs. Chaining it was tried and cloud
+    // review refuted both halves. Bound by `EscapeRecoveryDiskExpiryTests`.
+    Task { await transcriptCoordinator.sweepExpiredPending() }
   }
 
   public func applicationDidBecomeActive() {

@@ -14,9 +14,17 @@ import Foundation
 public final class TranscriptStore {
   private let directory: URL
 
+  /// Which spools are still on disk, or `nil` when that cannot be determined
+  /// (#2186). Injected so the sweep's spool guard is testable and so a test
+  /// store pointed at a temp directory does not read the USER'S real spool
+  /// directory — the production default reaches `AppConstants.appSupportURL`,
+  /// which every test would otherwise share.
+  private let liveSpoolIDs: @Sendable () -> Set<String>?
+
   public init() {
     directory = AppConstants.appSupportURL
       .appendingPathComponent(AppConstants.transcriptsDir, isDirectory: true)
+    liveSpoolIDs = Self.spoolIDsFromDisk
     Self.prepareDirectory(at: directory)
     Self.scheduleMigration(in: directory)
   }
@@ -28,8 +36,15 @@ public final class TranscriptStore {
   // scans `--exclude-tests` so this init appears unused from production;
   // the annotation suppresses that false positive.
   // periphery:ignore
-  internal init(directory: URL) {
+  internal init(
+    directory: URL,
+    liveSpoolIDs: @escaping @Sendable () -> Set<String>? = { [] }
+  ) {
     self.directory = directory
+    // Defaults to EMPTY, not to the disk reader: a test store must never touch
+    // the user's real spool directory, and "no spools" is the state every
+    // existing pending test already assumes.
+    self.liveSpoolIDs = liveSpoolIDs
     Self.prepareDirectory(at: directory)
     Self.scheduleMigration(in: directory)
   }
@@ -221,6 +236,9 @@ public final class TranscriptStore {
       return PendingSweepResult(deletedIDs: [], expired: [])
     }
     let retention = AppConstants.pendingTranscriptRetention
+    // #2186: read ONCE on the main actor, before the detached walk, so the
+    // injected seam does not have to be reachable from inside it.
+    let spoolIDs = liveSpoolIDs()
     // The ROOT namespace, so the sweep can tell a genuinely expired row from a
     // shadow left behind by a promotion that already succeeded.
     let root = directory
@@ -235,7 +253,8 @@ public final class TranscriptStore {
         await gate?()
       #endif
       return Self.sweepExpired(
-        in: dir, permanentDir: root, now: now, retention: retention)
+        in: dir, permanentDir: root, now: now, retention: retention,
+        spoolIDs: spoolIDs)
     }
     sweepGeneration &+= 1
     let generation = sweepGeneration
@@ -280,8 +299,21 @@ public final class TranscriptStore {
   /// `nonisolated` so the walk genuinely leaves the main actor. A detached task
   /// calling back into an isolated method would hop straight back and block
   /// exactly what it was meant to protect.
+  /// The `recoverySessionID`s of every spool still on disk, or `nil` when the
+  /// directory could not be listed (#2186).
+  ///
+  /// `nil` is a THIRD answer and the caller must keep it that way: an unlistable
+  /// directory is not an empty one, and flattening it into `[]` is what would
+  /// delete a row's dedup proof at exactly the moment we cannot see the spool it
+  /// protects. `RecoverySpoolStore` already draws this distinction by throwing.
+  private nonisolated static func spoolIDsFromDisk() -> Set<String>? {
+    guard let ids = try? RecoverySpoolStore().listSpoolSessionIDs() else { return nil }
+    return Set(ids)
+  }
+
   private nonisolated static func sweepExpired(
-    in dir: URL, permanentDir: URL, now: Date, retention: TimeInterval
+    in dir: URL, permanentDir: URL, now: Date, retention: TimeInterval,
+    spoolIDs: Set<String>?
   ) -> PendingSweepResult {
     let fm = FileManager.default
     var reported: [ExpiredPendingRow] = []
@@ -300,10 +332,43 @@ public final class TranscriptStore {
     // the two can never disagree about one directory. Taken before the loop
     // because the loop only visits `!isLive` rows and leaves live ones
     // untouched — there is nothing later that could change this number.
+    // #2186: a pending row is the PROOF that its spool was already recovered —
+    // `allRecoveredSessionIDs()` reads exactly these rows, and its own doc
+    // comment ignores expiry for that reason: "filtering by expiry here would
+    // let a spool whose row aged out get replayed a second time, handing the
+    // user a duplicate dictation exactly 24 hours later."
+    //
+    // So DELETING an expired row while its spool is still on disk is what
+    // resurrects a dictation the user CANCELLED. Cloud review found that as a P1
+    // against an earlier design that ordered the sweep after the recovery scan;
+    // ordering only narrows the window, because the scan can abort before taking
+    // its snapshot and a wedged replay can block the sweep for a whole session.
+    //
+    // Skipping instead removes the hazard STRUCTURALLY: no ordering, no signal,
+    // no waiting. A row whose spool survives is retained until recovery clears
+    // that spool, which is bounded — recovery scans at launch and on wake.
+    //
+    // FAIL CLOSED. `nil` means the spool directory could not be listed, which is
+    // NOT the same as "no spools"; treating it as empty is what would delete the
+    // proof precisely when we cannot see what it protects. Rows carrying no
+    // recovery id are unaffected either way — nothing can replay them.
+
     let liveCandidates = candidates.filter(\.isLive)
     let remainingLive = liveCandidates.count
     let nextLiveDeadline = liveCandidates.compactMap { $0.deadline(retention: retention) }.min()
+    var retainedForSpool = 0
     for candidate in candidates where !candidate.isLive {
+      // #2186: this row is the only proof its spool was already recovered.
+      // Delete it while the spool survives and the next scan replays that spool
+      // as a fresh dictation — handing back the take the user CANCELLED. Retain
+      // instead; recovery clears the spool at launch or on wake, and the row
+      // goes on the pass after that. `nil` (directory unlistable) retains too.
+      if let session = candidate.recoverySessionID,
+        spoolIDs.map({ $0.contains(session) }) ?? true
+      {
+        retainedForSpool += 1
+        continue
+      }
       // A SHADOW, not an expiry (cloud review). `promotePending` writes the
       // permanent row first and removes the pending file second, so a crash or a
       // failed removal in between leaves the stamped copy beside its permanent
@@ -395,7 +460,8 @@ public final class TranscriptStore {
     }
     return PendingSweepResult(
       deletedIDs: deleted, expired: reported, unremovable: unremovable,
-      remainingLive: remainingLive, nextLiveDeadline: nextLiveDeadline)
+      remainingLive: remainingLive, retainedForSpool: retainedForSpool,
+      nextLiveDeadline: nextLiveDeadline)
   }
 
   /// Why a pending file is or is not still offered.
@@ -424,6 +490,14 @@ public final class TranscriptStore {
     var liveTranscript: Transcript? {
       if case .live(_, let transcript) = self { return transcript }
       return nil
+    }
+
+    /// The spool this row proves was already recovered, if it names one (#2186).
+    var recoverySessionID: String? {
+      switch self {
+      case .live(_, let t), .expired(_, let t): return t.recoverySessionID
+      case .invalid: return nil
+      }
     }
 
     /// Non-nil only for a genuinely expired row, which is what makes a false
@@ -726,6 +800,16 @@ public struct PendingSweepResult: Sendable {
   /// short-circuit result has genuinely seen nothing.
   public let remainingLive: Int
 
+  /// Expired rows this walk deliberately KEPT because their spool is still on
+  /// disk, or because the spool directory could not be listed (#2186).
+  ///
+  /// Reported so the caller can keep retrying. Without it the sweep looks
+  /// finished — nothing deleted, nothing unremovable, walk complete — and the
+  /// countdown stops, so the row waits for a relaunch instead of going on the
+  /// pass after recovery clears its spool. That is the same stranded-retry the
+  /// `unremovable` count already exists to prevent, arriving by a second route.
+  public let retainedForSpool: Int
+
   /// When the SOONEST still-live row is due, from this same walk (#2186).
   ///
   /// Carried so a caller can wake exactly when something is due instead of
@@ -737,13 +821,15 @@ public struct PendingSweepResult: Sendable {
 
   public init(
     deletedIDs: Set<UUID>, expired: [ExpiredPendingRow], unremovable: Int = 0,
-    walkComplete: Bool = true, remainingLive: Int = 0, nextLiveDeadline: Date? = nil
+    walkComplete: Bool = true, remainingLive: Int = 0, retainedForSpool: Int = 0,
+    nextLiveDeadline: Date? = nil
   ) {
     self.deletedIDs = deletedIDs
     self.expired = expired
     self.unremovable = unremovable
     self.walkComplete = walkComplete
     self.remainingLive = remainingLive
+    self.retainedForSpool = retainedForSpool
     self.nextLiveDeadline = nextLiveDeadline
   }
 }

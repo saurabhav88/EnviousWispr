@@ -41,10 +41,16 @@ import Testing
 @Suite("Escape Recovery disk expiry (#2186)", .tags(.productOutcome))
 struct EscapeRecoveryDiskExpiryTests {
 
-  private func makeStore() -> TranscriptStore {
+  /// `spools` defaults to EMPTY — never the real disk reader. A test store must
+  /// not read the user's own crash-recovery directory, and "no spools" is the
+  /// state the sibling pending suites already assume.
+  private func makeStore(spools: @escaping @Sendable () -> Set<String>? = { [] })
+    -> TranscriptStore
+  {
     TranscriptStore(
       directory: FileManager.default.temporaryDirectory
-        .appendingPathComponent("ew-2186-\(UUID().uuidString)", isDirectory: true))
+        .appendingPathComponent("ew-2186-\(UUID().uuidString)", isDirectory: true),
+      liveSpoolIDs: spools)
   }
 
   private final class EventLog {
@@ -191,6 +197,91 @@ struct EscapeRecoveryDiskExpiryTests {
         "and the plaintext must actually be gone from disk, not merely hidden")
     }
   #endif
+
+  // MARK: - The spool guard
+  //
+  // A pending row is the PROOF its spool was already recovered —
+  // `allRecoveredSessionIDs()` reads exactly these rows. Delete an expired one
+  // while its spool survives and the next scan replays that spool as a fresh
+  // dictation, handing back the take the user CANCELLED. These three are the
+  // only tests that exercise it: the 19 in `EscapeRecoveryTelemetryTests` set no
+  // `recoverySessionID`, so they pass whatever this rule does.
+
+  @Test("an expired dictation whose audio is still on disk is KEPT, not deleted")
+  func expiredRowWithSurvivingSpoolIsRetained() async throws {
+    let session = UUID().uuidString
+    let store = makeStore(spools: { [session] })
+    let log = EventLog()
+    let coordinator = makeCoordinator(log, store: store)
+
+    try store.savePending(
+      Transcript(
+        text: "cancelled, and its audio has not been cleared yet",
+        recoverySessionID: session,
+        escapeRecoveredAt: Date().addingTimeInterval(
+          -(AppConstants.pendingTranscriptRetention + 3600)),
+        escapeRecoveryTakeID: "take-spool-alive"))
+
+    await coordinator.sweepExpiredPending()
+
+    #expect(
+      log.expired.isEmpty,
+      """
+      #2186: an expired row whose spool SURVIVES must not be swept. Deleting it removes the only \
+      proof that spool was already recovered, so the next crash-recovery scan replays it and \
+      hands the user back a dictation they cancelled.
+      """)
+    #expect(
+      coordinator.hasPendingPulseForTesting,
+      "and the retry must stay armed, or the row waits for a relaunch after recovery clears it")
+  }
+
+  @Test("once the audio is gone the same dictation is deleted")
+  func expiredRowIsSweptOnceSpoolIsCleared() async throws {
+    let session = UUID().uuidString
+    // The paired ACCEPTED case: identical row, identical clock, spool absent.
+    // Without it, a guard that simply never sweeps anything would pass above.
+    let store = makeStore(spools: { [] })
+    let log = EventLog()
+    let coordinator = makeCoordinator(log, store: store)
+
+    try store.savePending(
+      Transcript(
+        text: "cancelled, audio already cleared",
+        recoverySessionID: session,
+        escapeRecoveredAt: Date().addingTimeInterval(
+          -(AppConstants.pendingTranscriptRetention + 3600)),
+        escapeRecoveryTakeID: "take-spool-gone"))
+
+    await coordinator.sweepExpiredPending()
+
+    #expect(log.expired.map(\.takeID) == ["take-spool-gone"])
+    #expect(try await store.loadPending().isEmpty, "and the plaintext is gone from disk")
+  }
+
+  @Test("an unreadable audio folder keeps the dictation rather than guessing")
+  func unreadableSpoolDirectoryRetains() async throws {
+    // `nil` is the THIRD answer — could not determine — and it must not collapse
+    // into "no spools". Collapsing it deletes the dedup proof at exactly the
+    // moment we cannot see what it protects, which is the fail-OPEN direction.
+    let store = makeStore(spools: { nil })
+    let log = EventLog()
+    let coordinator = makeCoordinator(log, store: store)
+
+    try store.savePending(
+      Transcript(
+        text: "cancelled, and we cannot see the audio folder",
+        recoverySessionID: UUID().uuidString,
+        escapeRecoveredAt: Date().addingTimeInterval(
+          -(AppConstants.pendingTranscriptRetention + 3600)),
+        escapeRecoveryTakeID: "take-spools-unknown"))
+
+    await coordinator.sweepExpiredPending()
+
+    #expect(
+      log.expired.isEmpty,
+      "#2186: cannot-determine must fail CLOSED — retain, never delete on a guess")
+  }
 
   @Test("an install with no held dictations leaves the countdown off")
   func emptyStoreLeavesTheCountdownOff() async throws {

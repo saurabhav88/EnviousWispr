@@ -169,6 +169,10 @@ final class TranscriptCoordinator {
   /// `lastSweepIncomplete` keeps the pulse alive on its own.
   private var liveOnDiskPendingCount = 0
 
+  /// Expired rows the last sweep KEPT because their spool survives (#2186).
+  /// A retry owed, not a failure and not a countdown.
+  private var pendingRetainedForSpool = 0
+
   /// Whether the last sweep failed to READ the directory, or threw.
   ///
   /// Separate from the count because it means the opposite of what the count
@@ -186,7 +190,7 @@ final class TranscriptCoordinator {
   /// lapsed row it did not find, so this returns to zero after one pass.
   private var pendingSweepIsDue: Bool {
     lapsedPendingCount > 0 || unremovablePendingCount > 0 || lastSweepIncomplete
-      || liveOnDiskLapsedByNow
+      || liveOnDiskLapsedByNow || pendingRetainedForSpool > 0
   }
 
   /// #2186: a disk row that has crossed its deadline SINCE the last sweep.
@@ -220,7 +224,7 @@ final class TranscriptCoordinator {
   /// pulse alive over a file that is already gone.
   private var pendingPulseHasWork: Bool {
     livePendingCount > 0 || unremovablePendingCount > 0 || lastSweepIncomplete
-      || liveOnDiskPendingCount > 0
+      || liveOnDiskPendingCount > 0 || pendingRetainedForSpool > 0
   }
 
   /// A held row is visible only while `PendingAdmission` calls it live.
@@ -335,6 +339,13 @@ final class TranscriptCoordinator {
         liveOnDiskPendingCount = swept.remainingLive
         nextDiskExpiryDeadline = swept.nextLiveDeadline
       }
+      // #2186: rows the sweep KEPT because their spool is still on disk. Not a
+      // failure and not a live countdown — a retry owed. Without it the sweep
+      // reads as finished (nothing deleted, nothing unremovable, walk complete),
+      // the pulse stops, and the row waits for a relaunch instead of going on
+      // the pass after recovery clears its spool. Same stranded retry the
+      // `unremovable` count already exists to prevent, by a second route.
+      pendingRetainedForSpool = swept.retainedForSpool
       // Evict on EVERY deletion, not only the telemetry-eligible ones. A
       // future-skewed or corrupt row is deleted without a receipt, and leaving
       // it in memory kept `lapsedPendingCount` above zero — so the pulse
