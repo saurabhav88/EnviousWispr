@@ -31,6 +31,7 @@ run_scenario("A3_asr_xpc_kill")
 |---|---|---|
 | Real OS-level audio interruption (BT codec switch, Zoom mic-grab, device sleep/wake) | See `docs/LANE_B_AUDIO_TESTS.md` (HITL only — not synthetic-viable, see `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt`) | hardware/HITL |
 | Dictation lost (or pipeline stuck) after ASR service crash | A3_asr_xpc_kill | xpc |
+| A recording saved by crash recovery is silently DELETED instead of recovered | R1_readiness_lost_after_load | recovery |
 | Cancel mid-record leaks task / state | A2_force_cancel | timing |
 | Rapid stop/start corrupts state | A1_rapid_stop_start | timing |
 | Live setting toggle doesn't apply mid-record | A6_settings_storm | settings |
@@ -42,6 +43,33 @@ run_scenario("A3_asr_xpc_kill")
 | Dead/zombie mic delivers all-zero audio (#1317, FIXED) | bench moved OFFLINE -> `docs/bench-offline/` (gitignored) | dead-mic |
 
 ## Index by scenario name
+
+### R1_readiness_lost_after_load (Lane R — recovery)
+Backends: parakeet. Budget: 300s. Mechanism: recovery.
+
+The budget is large because the run contains a REAL dictation, a crash, a cold model load and a transcription, plus a bounded wait for an in-flight replay to reach a terminal state. An earlier revision advertised 90s while its waits alone permitted more than twice that, which would have made a caller allocating the published budget kill the scenario mid-run.
+
+Drives a REAL dictation, `kill -9`s the app mid-utterance to produce a genuine orphan spool, then relaunches with the readiness postcondition faulted.
+
+**The recording is driven the way every other scenario in this file drives one: `_start_recording_locked()` into hands-free lock, then `_TTSAudio` for the speech.** An earlier revision held the push-to-talk key on a background thread through `wispr_eyes.record_tts`, and both of that shape's defects are worth recording because neither is visible in a passing run. Nothing verified that recording had BEGUN — capture was inferred from a spool file appearing, which is downstream and late, so a run where the key never took produced the same shape as a run that worked. And the key release ran on the TTS thread's schedule rather than the scenario's, so a hold ending when the audio ended could finalize the recording before the crash landed; the replay then legitimately reported `empty_text` and the scenario blamed the readiness guard for correct behaviour. A locked recording ignores key release, so the crash lands where the code puts it. Measured live 2026-08-19.
+
+**It also refuses when system output is muted or below 25.** The instrument is acoustic — it plays a wav and the app hears it through the microphone — so a silent speaker produces a silent take, a correct replay reports empty text, and the scenario would read that as the #2207 data loss. That prerequisite is invisible from the code under test and belongs in the refusal, not in a reader's memory. The engine's load returns normally and reports itself unready — the #2207 condition, which lives in the two-statement window between the loader returning and the readiness read and therefore cannot be staged by hand.
+
+**Verdict: a History row carrying THAT spool's `recoverySessionID` with `isRecovered: true`.** Deliberately NOT "the spool is still on disk" — the same-session wake redeems the recording within the same second and correctly cleans up, so a disk check reports FAILED on a SUCCESSFUL run. That checker defect cost a scare on 2026-08-19 and is why the verdict is the outcome rather than an intermediate state.
+
+Arming is by ENVIRONMENT (`EW_FORCE_READINESS_LOST=1`), not the socket command, and that is load-bearing: `scanAndRecover()` runs from `applicationDidFinishLaunching()` seconds before a socket command could arrive, so a socket-only arm could never reach the launch replay it exists to fault. `force_readiness_lost` remains registered for same-session wakes. `open` does not pass environment variables, so the scenario execs the bundle binary directly.
+
+Refuses to run rather than guessing when more than one dev instance is present (it SIGKILLs its target, and a wrong pick kills a peer worktree's session) or when any `.ewrec` already exists (`listdir` order is arbitrary, so the run could validate an unrelated recovery and consume the one-shot fault on the wrong spool). Both refusals return `evidence_valid: false`, which fails closed rather than defaulting to a pass.
+
+Uses the strict `{evidence_valid, evidence, assertions}` contract with `recording_survived` and `recovered_to_history` as required assertions, so the negative control actually fails the run. A bare `{"ok": false}` would have printed a failure and exited 0, because `evaluate_trial` treats any result without `evidence_valid` as a passing legacy scenario.
+
+**Carries a POSITIVE control, and it is the assertion that matters most.** The scenario polls for the `<spool>.readiness-retry` sidecar — written by PRODUCTION code, and only when the readiness fault fired and a retry was granted — before accepting any recovery. Without it, a build where the fault never armed (env var not propagated, seam removed, one-shot consumed by an earlier load) produces the SAME History row through ordinary crash recovery, and every other assertion passes while the guard under test never ran. `readiness_fault_fired` is set ONLY by observing that marker, never inferred from a recovery; an unobserved marker makes the run INVALID rather than passing.
+
+**It deliberately does NOT read `app.log`.** An earlier revision did, and that made the control depend on the optional "Enable debug mode" preference: `AppLogger.log` discards those lines when it is off, so a correct build reported invalid on any machine where nobody had switched it on. The sidecar is independent of that setting and immune to log rotation.
+
+**Triggers the granted retry explicitly rather than waiting for one.** A granted deferral leaves the spool ELIGIBLE, which is not the same as scheduled: the coordinator queues nothing further, and the next pass needs a wake or a fresh launch. Waiting for one to arrive by chance makes the scenario flaky in the worst direction, where a CORRECT build times out and reports failure. The scenario relaunches without the fault, which guarantees a launch-time `scanAndRecover()`.
+
+Negative control, demonstrated red/green on PR #2218: make the load-site routing unconditional again (`if false, case .classified(.loadReturnedNotReady)`), rebuild, rerun. The log reads `replay unrecoverable — requesting deletion`, the spool directory empties, and no History row appears. That control reproduced #2207 on demand for the first time; it had previously only been inferred from telemetry.
 
 ### A1_rapid_stop_start (Lane A — timing/cancel)
 Backends: both. Budget: 3s. Mechanism: timing.

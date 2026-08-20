@@ -233,7 +233,7 @@ def _app_bundle_path() -> str:
     helper, dev and production alike)."""
     pid = _find_app_pid()
     command = subprocess.check_output(
-        ["ps", "-o", "command=", "-p", str(pid)], text=True
+        ["ps", "-ww", "-o", "command=", "-p", str(pid)], text=True
     ).strip()
     marker = ".app/"
     idx = command.find(marker)
@@ -308,7 +308,7 @@ def _scoped_xpc_service_pids(bundle_path: str) -> list[str]:
             continue
         try:
             command = subprocess.check_output(
-                ["ps", "-o", "command=", "-p", pid], text=True
+                ["ps", "-ww", "-o", "command=", "-p", pid], text=True
             ).strip()
         except subprocess.CalledProcessError:
             continue  # process exited between pgrep and ps — not a match either way
@@ -925,8 +925,18 @@ def _bundle_identifier(bundle_path) -> str:
 
 def _running_app_executable_path(pid: int) -> str:
     """argv[0] of the running app = its executable path (open-launched apps carry
-    the full path). Proves the running PID is the build we hashed."""
-    out = subprocess.check_output(["ps", "-o", "command=", "-p", str(pid)], text=True).strip()
+    the full path). Proves the running PID is the build we hashed.
+
+    `-ww` is REQUIRED, not tidiness: macOS truncates `ps` output to the terminal
+    width, so a bundle under a long worktree path gets clipped BEFORE
+    `.app/Contents/MacOS/EnviousWispr`. The marker search then fails, this
+    returns the truncated string, and callers reject the CORRECT process — a
+    false negative that grows with path length, so it passes on short paths and
+    fails on someone else's checkout. `scripts/lib/launch-check.sh:16-20`
+    documents the same defect and the same fix.
+    """
+    out = subprocess.check_output(
+        ["ps", "-ww", "-o", "command=", "-p", str(pid)], text=True).strip()
     marker = ".app/Contents/MacOS/EnviousWispr"
     idx = out.find(marker)
     return out if idx == -1 else out[: idx + len(marker)]
@@ -978,6 +988,453 @@ def _normalize_tokens(text: str) -> set:
 
 
 # ──────────────────────────── Lane A scenarios ────────────────────────────
+
+
+# Seconds of real speech that must reach the spool before R1 crashes the app.
+# Too short and the replay recovers an empty prefix, legitimately reports
+# `empty_text`, and the scenario blames the readiness guard for correct
+# behaviour. Measured 2026-08-19: a ~5s take produced exactly that.
+_R1_SPEECH_SECONDS = 6.0
+
+
+@scenario(
+    ScenarioMeta(
+        name="R1_readiness_lost_after_load",
+        lane="R",
+        family="recovery",
+        backends=["parakeet"],
+        runtime_budget_seconds=300.0,
+        founder_required=False,
+        negative_control=(
+            "In RecoverySpoolReplayer.replay, make the load-site routing "
+            "unconditional again (`if false, case .classified(.loadReturnedNotReady)`), "
+            "rebuild and rerun: the log reads `replay unrecoverable — requesting "
+            "deletion`, the spool directory empties, and this scenario FAILS. "
+            "Demonstrated red/green at PR time on #2218."
+        ),
+        description=(
+            "#2207: a load that returns while the engine is unready must DEFER and "
+            "keep the recording, never delete it"
+        ),
+    )
+)
+def R1_readiness_lost_after_load(**_) -> dict:
+    """Crash a real dictation, then replay it against a faulted readiness check.
+
+    THE PRODUCTION DEFECT (#2207): `ActiveEngineOperation.load` used to mean "the
+    load call returned", not "the engine is ready" — `ASRManager.loadModel()`
+    RECORDS readiness rather than requiring it. Crash recovery believed it,
+    transcribed, failed, and DELETED a spool it had successfully saved.
+
+    WHY THIS NEEDS A SEAM: the condition lives in the two-statement window between
+    the loader returning and the readiness read. In production it takes an unload,
+    cancel or engine switch landing inside that window — not stageable by hand.
+
+    WHY THE ARM IS AN ENV VAR: `scanAndRecover()` runs from
+    `applicationDidFinishLaunching()`, seconds before a socket command could
+    arrive, so a socket-only arm can never reach the launch replay it exists to
+    fault. `force_readiness_lost` stays registered for same-session wakes.
+
+    THE VERDICT IS THE HISTORY ROW, NOT THE SPOOL DIRECTORY. A checker asserting
+    "the spool is still on disk" reports FAILED on a SUCCESSFUL run, because the
+    same-session wake redeems the recording within the same second and correctly
+    cleans up. Measured 2026-08-19; it cost a scare.
+
+    REFUSES TO RUN rather than guessing, on two axes, because both failure modes
+    are silent and one of them harms other sessions:
+      - more than one dev instance → this scenario SIGKILLs its target, and a
+        `pids[0]` pick would kill a peer worktree's app mid-run and then relaunch
+        a different build than the one under test;
+      - any pre-existing `.ewrec` → `listdir` order is arbitrary, so the run could
+        validate an unrelated recovery and consume the one-shot fault on the wrong
+        spool.
+    """
+    import json
+    import os
+    import subprocess
+
+    def invalid(reason: str) -> dict:
+        return {"evidence_valid": False, "evidence": {"reason": reason},
+                "assertions": {}}
+
+    spool_dir = os.path.expanduser(
+        "~/Library/Application Support/EnviousWispr/audio_recovery")
+    transcripts = os.path.expanduser(
+        "~/Library/Application Support/EnviousWispr/transcripts")
+    sentence = ("The readiness retry audit take, one two three four five, "
+                "this recording must survive the crash and be recovered.")
+
+    def dev_pids() -> list[str]:
+        out = subprocess.run(
+            ["pgrep", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
+            capture_output=True, text=True).stdout.split()
+        return [p for p in out if p.strip()]
+
+    def ewrec_ids() -> set:
+        if not os.path.isdir(spool_dir):
+            return set()
+        return {f[:-len(".ewrec")] for f in os.listdir(spool_dir)
+                if f.endswith(".ewrec")}
+
+    # Snapshot BEFORE anything is recorded: only files that appear after this can
+    # be our row, so the poll never re-decodes an existing History.
+    pre_existing_transcripts = (
+        set(os.listdir(transcripts)) if os.path.isdir(transcripts) else set())
+
+    def history_row(recovery_id: str):
+        """The History entry for this spool, or None. The only signal that
+        SURVIVES a successful retry's cleanup — both the spool and its
+        readiness-retry sidecar are deleted once the recording is saved.
+
+        Scans only files created since the snapshot above, and that is a
+        CORRECTNESS property rather than a speed one: this runs inside a 200 ms
+        observation loop, and decoding an entire large History each pass can take
+        longer than the readiness-retry marker EXISTS. The positive control would
+        then be missed and a correct run reported invalid — History size silently
+        stretching the polling interval.
+        """
+        if not os.path.isdir(transcripts):
+            return None
+        for entry in os.listdir(transcripts):
+            if not entry.endswith(".json") or entry in pre_existing_transcripts:
+                continue
+            try:
+                d = json.load(open(os.path.join(transcripts, entry)))
+            except Exception:
+                continue
+            if d.get("recoverySessionID") == recovery_id:
+                return d
+        return None
+
+    # ---- refuse on an ambiguous kill target -------------------------------
+    pids = dev_pids()
+    if len(pids) != 1:
+        return invalid(
+            f"need exactly ONE dev instance to target; found {len(pids)}: {pids}. "
+            "Refusing rather than picking one — this scenario SIGKILLs its target "
+            "and a wrong pick kills another worktree's session.")
+    target_pid = pids[0]
+    # argv[0], NOT the whole command line: LaunchServices can append arguments,
+    # and passing those to `Popen` as part of the executable name raises
+    # FileNotFoundError AFTER the original app is already dead, leaving the run
+    # with no verdict and no cleanup. `scripts/lib/launch-check.sh:16-20` records
+    # that `ps -o command=` returns argv.
+    app_path = _running_app_executable_path(int(target_pid))
+    if not app_path.endswith("Local.app/Contents/MacOS/EnviousWispr"):
+        return invalid(f"pid {target_pid} is not a dev bundle: {app_path!r}")
+    if not os.path.exists(app_path):
+        return invalid(f"resolved executable does not exist: {app_path!r}")
+
+    # ---- refuse when the feature under test is switched OFF ----------------
+    # `RecoveryCoordinator.makeDirective` returns early when `crashRecoveryEnabled`
+    # is false (`RecoveryCoordinator.swift:200`), so NO `.ewrec` is written and the
+    # spool wait below would time out and blame TTS or the PTT binding — a
+    # confident wrong subject. The setting defaults to enabled only when nothing is
+    # persisted, so a user who deliberately turned it off gets that misdiagnosis.
+    # Report the real prerequisite rather than silently flipping someone's setting.
+    # The SHARED domain, not `.dev`: both builds resolve to `com.enviouswispr.app`
+    # (`SettingsDefaults.swift:20`), and `com.enviouswispr.app.dev` holds only
+    # pre-#923 residue. `ptt_binding.SHARED_DOMAIN` owns this constant and its
+    # comment says plainly "Do not add a fallback to it: reading a stale domain is
+    # what caused #1997" — so this imports that owner rather than keeping a second
+    # copy that can drift.
+    from ptt_binding import SHARED_DOMAIN
+
+    pref = subprocess.run(
+        ["defaults", "read", SHARED_DOMAIN, "crashRecoveryEnabled"],
+        capture_output=True, text=True)
+    if pref.returncode == 0 and pref.stdout.strip() in ("0", "false", "NO"):
+        return invalid(
+            "Crash Recovery is DISABLED in settings, so no spool is ever written "
+            "and this scenario cannot run. Enable it and retry. (A missing key is "
+            "fine: the app defaults to enabled.)")
+
+    # ---- refuse an unsupported active backend ------------------------------
+    # `backends=["parakeet"]` in the metadata is DISPLAY ONLY — `run_scenario()`
+    # does not enforce it. With WhisperKit active the readiness seam and the
+    # History assertions can all still pass, reporting a green R1 while the
+    # documented `ASRManager.loadModel()` path was never exercised. A scenario
+    # that passes without touching its subject is the vacuity this branch exists
+    # to close, so the check belongs here until the runner enforces metadata.
+    backend = subprocess.run(
+        ["defaults", "read", SHARED_DOMAIN, "selectedBackend"],
+        capture_output=True, text=True)
+    active = backend.stdout.strip() if backend.returncode == 0 else "parakeet"
+    if active != "parakeet":
+        return invalid(
+            f"active backend is {active!r}, but this scenario documents "
+            "`backends=[\"parakeet\"]` and exercises `ASRManager.loadModel()`. "
+            "Running it on another engine would pass without testing the "
+            "documented path. Switch to Parakeet and retry.")
+
+    # ---- refuse on ambiguous spool identity -------------------------------
+    pre_existing = ewrec_ids()
+    if pre_existing:
+        return invalid(
+            f"{len(pre_existing)} pre-existing spool(s) would make the fault target "
+            f"ambiguous: {sorted(pre_existing)}. Clear or replay them first.")
+
+    # ---- 0. let the engine WARM before driving speech ----------------------
+    # A dictation driven seconds after launch is captured by a cold engine and can
+    # transcribe to NOTHING. The replay then legitimately reports `empty_text` and
+    # deletes the take, which this scenario would read as the #2207 data loss —
+    # blaming the guard under test for a silent recording. Measured 2026-08-19.
+    launch_age = time.time() - (_proc_start_epoch(int(target_pid)) or 0)
+    if launch_age < 20:
+        time.sleep(20 - launch_age)
+
+    # ---- 0b. the speaker is part of this instrument -------------------------
+    # `_TTSAudio` drives the app ACOUSTICALLY: it plays a wav and the app hears
+    # it through the microphone. With output muted or turned right down the app
+    # records silence, the replay reports `empty_text` on a correct build, and
+    # the scenario reads that as the #2207 data loss. Report the real
+    # prerequisite instead of misdiagnosing the product.
+    volume = subprocess.run(
+        ["osascript",
+         "-e", "set s to (get volume settings)",
+         "-e", '(output volume of s as text) & "," & (output muted of s as text)'],
+        capture_output=True, text=True)
+    reading = volume.stdout.strip().split(",")
+    if volume.returncode != 0 or len(reading) != 2:
+        return invalid(
+            "could not read the system output volume "
+            f"(rc={volume.returncode}, stdout={volume.stdout.strip()!r}). This "
+            "scenario speaks to the app through the microphone, so it refuses "
+            "rather than run an instrument it cannot verify.")
+    level, muted = reading[0].strip(), reading[1].strip()
+    if muted == "true" or not level.isdigit() or int(level) < 25:
+        return invalid(
+            f"system output is muted={muted} volume={level}: this scenario "
+            "speaks to the app through the microphone, so the take would be "
+            "silent and the replay would correctly report empty text. Unmute "
+            "and raise the output volume above 25, then retry.")
+
+    # ---- 1. a GENUINE orphan: real audio, killed mid-utterance -------------
+    # DRIVEN THE WAY EVERY OTHER SCENARIO IN THIS FILE DRIVES A RECORDING:
+    # `_start_recording_locked()` double-taps into hands-free lock, then
+    # `_TTSAudio` streams real speech for as long as the `with` block runs.
+    # `A3_asr_xpc_kill` is the template.
+    #
+    # The earlier version held the PTT key on a background thread through
+    # `wispr_eyes.record_tts`, and it had two defects that a live run exposed on
+    # 2026-08-19:
+    #   - NOTHING CHECKED THAT RECORDING HAD BEGUN. It inferred capture from a
+    #     spool file appearing, which is downstream and late, so a run where the
+    #     key never took looked exactly like a run that worked.
+    #     `_start_recording_locked` reads the pipeline state back and retries,
+    #     which makes "recording never started" report as itself.
+    #   - THE KEY RELEASE RAN ON THE TTS THREAD'S SCHEDULE, NOT THIS FUNCTION'S.
+    #     A hold ends when the audio ends, so the recording could stop and
+    #     finalize before the crash landed. The crash then captured a fragment,
+    #     the replay legitimately reported `empty_text` and deleted it, and the
+    #     scenario blamed the readiness guard for correct behaviour — a
+    #     confident wrong subject one level above the code under test.
+    # A LOCKED recording ignores key release, so the crash lands where this
+    # function puts it rather than wherever TTS generation happened to finish.
+    if not _start_recording_locked():
+        return invalid(
+            "could not enter locked recording, so there is no dictation to "
+            f"crash. Pipeline state: {query_state()}")
+
+    with _TTSAudio(sentence):
+        # The spool is written while capture runs, so its appearance is the
+        # signal that the recording reached disk. Poll for it; never assume.
+        spool_deadline = time.time() + 30
+        created: set = set()
+        while time.time() < spool_deadline and not created:
+            time.sleep(0.5)
+            created = ewrec_ids() - pre_existing
+
+        # Both exits below happen BEFORE the crash, so the app is alive and
+        # still recording locked — stop it rather than leaving the founder's
+        # machine capturing his microphone indefinitely.
+        if not created:
+            _stop_recording_locked()
+            return invalid(
+                "recording started but no spool appeared within 30s, so there "
+                "is nothing to crash.")
+        if len(created) != 1:
+            _stop_recording_locked()
+            return invalid(
+                f"expected exactly one NEW spool, got {len(created)}: "
+                f"{sorted(created)}")
+
+        # Real speech must REACH the spool before the crash.
+        time.sleep(_R1_SPEECH_SECONDS)
+        subprocess.run(["kill", "-9", target_pid])  # ONLY the verified target
+    time.sleep(2.0)
+
+    def relaunch_clean() -> None:
+        """Bring a clean app back up. EVERY exit after the crash must call this:
+        an `invalid` return that leaves the machine with NO app running breaks
+        every subsequent scenario, and the failure surfaces in someone else's run
+        rather than this one."""
+        env_clean = dict(os.environ)
+        env_clean.pop("EW_FORCE_READINESS_LOST", None)
+        env_clean["EW_FAULT_INJECTION"] = "1"
+        subprocess.Popen([app_path], env=env_clean,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def invalid_after_crash(reason: str) -> dict:
+        relaunch_clean()
+        return invalid(reason)
+
+    still_there = ewrec_ids() - pre_existing
+    if created != still_there:
+        # The recording can finish and remove its own spool during the settle,
+        # so this is reachable on a correct build.
+        return invalid_after_crash(
+            f"the spool set changed across the crash: {sorted(created)} -> "
+            f"{sorted(still_there)}")
+    spool_id = created.pop()
+
+    # ---- 2. relaunch with the fault armed ---------------------------------
+    # `open` does not pass environment; exec the bundle binary directly.
+    env = dict(os.environ)
+    env["EW_FORCE_READINESS_LOST"] = "1"
+    env["EW_FAULT_INJECTION"] = "1"
+    faulted = subprocess.Popen([app_path], env=env,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    fault_observed = False
+    retry_marker = os.path.join(spool_dir, f"{spool_id}.readiness-retry")
+    spool_file = os.path.join(spool_dir, f"{spool_id}.ewrec")
+    attempt_marker = os.path.join(spool_dir, f"{spool_id}.attempt")
+
+    def restart_without_fault(wait_for_idle_s: float = 60.0) -> bool:
+        nonlocal faulted, fault_observed
+        """Kill the faulted app and relaunch it clean. Returns False if it refused.
+
+        NEVER kills while `<id>.attempt` exists, and the guard lives HERE rather
+        than at the call sites on purpose: three review rounds found this same
+        hazard at three DIFFERENT callers — the trigger, the outer-deadline
+        cleanup, and the original relaunch — because fixing the site each time
+        only moved it. A replay in progress that is killed makes the next launch
+        classify the recording as abandoned and DELETE it, so the harness
+        manufactures the exact data loss it exists to detect.
+
+        Leaving a faulted app running is the lesser evil and is reported, not
+        silent: `EW_FORCE_READINESS_LOST` is a one-shot, so an abandoned armed
+        process consumes it on its next unrelated engine load.
+        """
+        deadline = time.time() + wait_for_idle_s
+        while os.path.exists(attempt_marker) and time.time() < deadline:
+            # Keep WATCHING for the fault while waiting: the replay being waited
+            # on can reach the readiness failure mid-wait, and a flag captured
+            # before the wait reports a CORRECT run as EVIDENCE INVALID.
+            if os.path.exists(retry_marker):
+                fault_observed = True
+            time.sleep(0.5)
+        if os.path.exists(retry_marker):
+            fault_observed = True
+        if os.path.exists(attempt_marker):
+            return False  # a replay is STILL running; refuse rather than destroy it
+        try:
+            subprocess.run(["kill", "-9", str(faulted.pid)])
+        except Exception:
+            pass
+        time.sleep(1.0)
+        restart = dict(os.environ)
+        restart.pop("EW_FORCE_READINESS_LOST", None)
+        # Must be re-set: the launcher supplies it to the app, never to this
+        # shell, so `os.environ` does not carry it. Without it the relaunched app
+        # has no debug endpoint and every later scenario fails.
+        restart["EW_FAULT_INJECTION"] = "1"
+        # TRACK the replacement. Without this the next call targets a dead
+        # pid and launches a SECOND instance, which makes the following scenario
+        # refuse its now-ambiguous target and leaves two apps contending for the
+        # global hotkey.
+        faulted = subprocess.Popen([app_path], env=restart,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+
+    # ---- 3-5. OBSERVE the four artifacts; never INFER state from a subset ----
+    #
+    # Rewritten after four rounds of patching this section, each fix reopening a
+    # hole the previous one closed. The cause was always the same: inferring a
+    # state from a partial observation. The replay exposes FOUR artifacts, and
+    # every question this scenario asks is answerable from them directly:
+    #
+    #   <id>.ewrec            the recording still exists
+    #   <id>.attempt          a replay is IN PROGRESS (written before the
+    #                         expensive model load and transcription)
+    #   <id>.readiness-retry  the readiness fault fired AND a retry was granted
+    #   History row           the recording was recovered
+    #
+    # Two rules follow, and both were violated by earlier revisions:
+    #
+    # A. `readiness_fault_fired` is set ONLY by observing the marker. It is never
+    #    inferred from a History row: if the fault never armed, ORDINARY recovery
+    #    produces the same row and the same deleted spool, so inferring activation
+    #    from it passes a build where the guard never ran. An unobserved marker
+    #    makes the run INVALID — inconclusive, never a pass.
+    # B. Never relaunch while `<id>.attempt` exists. That marker means a replay is
+    #    active; killing it makes the next launch classify the recording as
+    #    abandoned and DELETE it, so the harness manufactures the exact data-loss
+    #    signature it exists to detect. Measured once already this session.
+
+    def observe() -> dict:
+        return {
+            "spool": os.path.exists(spool_file),
+            "attempt": os.path.exists(attempt_marker),
+            "retry": os.path.exists(retry_marker),
+        }
+
+    row = None
+    # Polled fast: the marker can be deleted by a successful retry within a
+    # second, and a missed observation costs an inconclusive run.
+    deadline = time.time() + 180
+    last_progress = time.time()
+    while time.time() < deadline:
+        st = observe()
+        if st["retry"]:
+            fault_observed = True
+        row = history_row(spool_id)
+        if row is not None:
+            break                      # terminal: recovered
+        if not st["spool"] and not st["attempt"]:
+            break                      # terminal: destroyed
+        if st["attempt"]:
+            last_progress = time.time()  # a replay is running; do not disturb it
+        elif st["retry"] and time.time() - last_progress > 40:
+            # The retry is GRANTED and nothing is replaying — no wake arrived.
+            # Safe to trigger now precisely because `.attempt` is absent.
+            restart_without_fault(wait_for_idle_s=0.0)
+            last_progress = time.time()
+        time.sleep(0.2)
+
+    # Bounded: if a replay is still running at the deadline the app is left
+    # armed rather than killed mid-replay, and that is stated in the evidence
+    # rather than hidden.
+    left_armed = not restart_without_fault(wait_for_idle_s=60.0)
+    # Re-read: that wait can span the completion of an in-flight replay, and the
+    # `row` above predates it. Reporting the stale value would fail a run whose
+    # recording was recovered inside the advertised budget.
+    row = history_row(spool_id) or row
+
+    if not fault_observed:
+        return invalid(
+            f"never observed {spool_id}.readiness-retry, so the readiness guard "
+            "is not proven to have run. A History row alone cannot distinguish "
+            "'the fix worked' from 'the fault never armed and ordinary recovery "
+            "succeeded'. Check EW_FORCE_READINESS_LOST reached the process; if it "
+            "did, the retry may have completed faster than the poll.")
+
+
+    return {
+        "evidence_valid": True,
+        "evidence": {"spool": spool_id, "app": app_path,
+                     "text": (row or {}).get("text", "")[:60],
+                     "left_armed": left_armed},
+        "assertions": {
+            # OBSERVED, never inferred — see rule A above.
+            "readiness_fault_fired": fault_observed,
+            # With the production fix reverted BOTH go false: the replay is
+            # unrecoverable, deletion is requested, and no History row appears.
+            "recording_survived": row is not None,
+            "recovered_to_history": bool(row and row.get("isRecovered")),
+        },
+    }
 
 
 @scenario(
@@ -1720,6 +2177,17 @@ def B1_bluetooth_route_flip(*, founder_present: bool = False, **_) -> dict:
 # for THIS build to "pass" the cell in a strict standalone run. A valid-evidence
 # product failure still exits nonzero here; the A/B baseline mode (run_gauntlet.py)
 # is what continues through product failures to build the full scorecard.
+
+
+# Required assertions per scenario under the strict contract. Referenced by
+# `evaluate_trial` since #1317 but never defined until #2207 — every scenario was
+# legacy, so the lookup never executed and the NameError sat latent. R1 is the
+# first adopter.
+_REQUIRED_ASSERTIONS: dict[str, list[str]] = {
+    "R1_readiness_lost_after_load": [
+        "readiness_fault_fired", "recording_survived", "recovered_to_history",
+    ],
+}
 
 
 def evaluate_trial(name: str, inner: dict) -> tuple[bool, str]:
