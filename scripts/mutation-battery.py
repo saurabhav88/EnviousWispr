@@ -143,6 +143,22 @@ CANONICAL_SCRIPT = "scripts/xcode-test.sh"
 # canonical lane GAINS a build setting, an environment wrapper, or a flag, every fragment it already had
 # is still there, the guard stays green, and the battery quietly measures a differently-configured build
 # than the lane everyone else trusts. Cloud review, PR #2158.
+# FLAGS THIS RUNNER PASSES THAT THE CANONICAL LANE DOES NOT.
+#
+# The drift guard is deliberately two-directional: a battery quietly building
+# something different from the lane everyone trusts is its whole subject. So a
+# flag the runner adds cannot simply be absent from the comparison — it has to
+# be DECLARED, with the reason it is safe, where a reviewer will see it.
+#
+# `-resultBundlePath` qualifies because it changes only what is WRITTEN, never
+# what is built or run: `xcodebuild test` emits an `.xcresult` on every run
+# regardless, and the flag only chooses where. Measured at 4.5s/4.5s with it
+# against 4.6s/4.6s without, 208K per bundle on a 35-test suite.
+#
+# Anything that could alter the BUILD belongs in CANONICAL_TOKENS and in the
+# canonical script, not here. This set is not a general escape hatch.
+RUNNER_ONLY_TOKENS = {"-resultBundlePath"}
+
 CANONICAL_TOKENS = {
     "-project", "-scheme", "-configuration", "-derivedDataPath", "-destination",
     "ARCHS=arm64", "VALID_ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES",
@@ -440,6 +456,221 @@ def failed_test_identities(failure_lines):
     return identities
 
 
+# ---------------------------------------------------------------------------
+# RESULT BUNDLE — the structured verdict, replacing console scraping (#2225,
+# #2227, #2228).
+#
+# `xcodebuild test` writes an `.xcresult` on EVERY run whether or not
+# `-resultBundlePath` is passed; the flag only makes it ADDRESSABLE, and it
+# costs nothing measurable. Three defects are unreachable from the bundle and
+# unavoidable from the console:
+#
+#   #2225  a parameterized test's console verdict has no addressable name. The
+#          bundle gives `nodeIdentifier = Suite/function(_:)`. Measured on
+#          ProviderStatusMappingTests: 35 cases, one parameterized, its two
+#          `Arguments` children carrying results and `nodeIdentifier: None`.
+#   #2227  a CRASH prints ZERO failure marks, so the console cannot see it at
+#          all. The bundle records `result: Failed` with a `Failure Message`
+#          child reading `Crash: xctest at <Suite>.<test>()`.
+#   #2228  xctest interleaves its stderr into the same stream, so a verdict line
+#          need not start at column 0 and line-anchored regexes lose a DIFFERENT
+#          set every run. A JSON field cannot be interleaved.
+#
+# NAME YOUR OWN PATH. The default `<derivedData>/Logs/Test/` accumulates one
+# bundle per run and is shared, so "newest wins" there carries the same
+# concurrent-writer hazard as the fixed log path this repo already documents.
+#
+# FAILS CLOSED. A missing bundle, a tool error, or an unparseable payload RAISES.
+# It never falls back to the console: a half-failed measurer that returns a
+# plausible number is the defect this section exists to remove, and a silent
+# fallback would reintroduce it under a structured name.
+
+BUNDLE_TOOL_TIMEOUT_SECONDS = 120
+
+
+class BundleUnreadable(Exception):
+    """The result bundle could not be read. Never downgraded to a console parse."""
+
+
+class SuiteResults:
+    """Every Test Case in one run, indexed by every name a recipe may legally use.
+
+    `by_id` is the authority: one entry per test, keyed by `nodeIdentifier`
+    (`Suite/function()`), which is unique and stable. `aliases` maps the other
+    spellings a recipe may carry — the display name, the bare function name, and
+    the identifier itself — onto those ids. A recipe naming a display name shared
+    by two suites therefore resolves to TWO ids and is refused as ambiguous
+    rather than silently matching one.
+    """
+
+    def __init__(self, by_id, aliases, crashed):
+        self.by_id = by_id            # nodeIdentifier -> "Passed" | "Failed" | ...
+        self.aliases = aliases        # spelling -> set(nodeIdentifier)
+        self.crashed = crashed        # nodeIdentifier -> crash message
+
+    def __len__(self):
+        return len(self.by_id)
+
+    def resolve(self, spelling: str):
+        """-> set of nodeIdentifiers a recipe's `expect_fail` names. Never a substring match.
+
+        Substring matching is what made the console path credit a sibling whose
+        name merely CONTAINS the expected one; the bundle has exact keys, so the
+        looser form has no reason to exist here.
+        """
+        return set(self.aliases.get(spelling, ()))
+
+    def failed(self):
+        return {i for i, r in self.by_id.items() if r not in ("Passed", "Skipped", "Expected Failure")}
+
+
+def _walk_nodes(node, out_cases):
+    if node.get("nodeType") == "Test Case":
+        out_cases.append(node)
+        # A parameterized case's `Arguments` children carry their own results and
+        # `nodeIdentifier: None`, so they are NOT separately addressable. The
+        # function's own aggregate result is what a recipe can name. Stated as a
+        # chosen limit: per-argument targeting would need a key the bundle does
+        # not provide.
+        return
+    for kid in node.get("children") or ():
+        _walk_nodes(kid, out_cases)
+
+
+def read_result_bundle(bundle: Path) -> "SuiteResults":
+    if not bundle.exists():
+        raise BundleUnreadable(
+            f"no result bundle at {bundle}. `xcodebuild test` writes one on every run, so its "
+            f"absence means the lane did not reach the test phase — check for a compile error.")
+    argv = ["xcrun", "xcresulttool", "get", "test-results", "tests", "--path", str(bundle)]
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True,
+                              timeout=BUNDLE_TOOL_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        raise BundleUnreadable(f"`xcresulttool` ran past {BUNDLE_TOOL_TIMEOUT_SECONDS}s on {bundle}")
+    if proc.returncode != 0:
+        # The deprecated spelling (`get test-report tests`) refuses with a message
+        # naming --legacy. Surface the tool's own words rather than guessing.
+        raise BundleUnreadable(
+            f"`xcresulttool` exited {proc.returncode} on {bundle}:\n{proc.stderr.strip()[:400]}")
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise BundleUnreadable(f"`xcresulttool` output was not JSON ({exc}) for {bundle}")
+
+    roots = payload.get("testNodes")
+    if not isinstance(roots, list):
+        raise BundleUnreadable(f"no `testNodes` array in the bundle payload for {bundle}")
+
+    cases = []
+    for root in roots:
+        _walk_nodes(root, cases)
+    if not cases:
+        raise BundleUnreadable(
+            f"the bundle at {bundle} contains ZERO Test Case nodes. An empty result is not a "
+            f"passing result — a filter that matched nothing looks exactly like this.")
+
+    by_id, aliases, crashed = {}, {}, {}
+    for case in cases:
+        ident = case.get("nodeIdentifier")
+        if not ident:
+            raise BundleUnreadable(
+                f"a Test Case in {bundle} has no nodeIdentifier; the bundle shape has changed and "
+                f"every verdict below it would be unattributable")
+        by_id[ident] = case.get("result")
+        for spelling in (ident, case.get("name"), ident.split("/")[-1]):
+            if spelling:
+                aliases.setdefault(spelling, set()).add(ident)
+        for kid in case.get("children") or ():
+            if kid.get("nodeType") == "Failure Message":
+                text = (kid.get("name") or "")
+                if text.startswith("Crash:"):
+                    crashed[ident] = text
+    return SuiteResults(by_id, aliases, crashed)
+
+
+# --- the row verdict -------------------------------------------------------
+#
+# A DIFF AGAINST THE UNMUTATED BASELINE, not "did the named test go red".
+#
+# The console could afford only the second question, because it yielded one
+# count and a set of failure LINES. The bundle yields the status of EVERY test
+# on a run already being paid for, so the row can finally distinguish a guard
+# doing its job from three things that look identical at the console:
+#
+#   * a mutant that changed nothing (a no-op edit, or a line the named test
+#     never executes) — today scored exactly like a working guard;
+#   * a row whose named test was ALREADY failing, which proves nothing;
+#   * a different test catching the mutation, which is real information and is
+#     not evidence about the named guard.
+#
+# STATED LIMIT, because a verdict that implies more than it proves is the defect
+# class this tool exists to police: this diff is computed inside ONE suite run
+# and cannot see a cause OUTSIDE the process. A test that reddens for an
+# environmental reason — a concurrent writer, a shared resource, a machine
+# state — presents here as a genuine catch. Peer-measured 2026-08-20: a
+# three-arm control whose negative arm failed for exactly that reason, with the
+# mutation real and the test genuinely red. Nothing in this function closes it;
+# only a two-way control on the unmutated tree does.
+
+VERDICT_CAUGHT = "CAUGHT"
+VERDICT_CAUGHT_ELSEWHERE = "CAUGHT-ELSEWHERE"
+VERDICT_SURVIVED = "SURVIVED"
+VERDICT_NOOP = "SURVIVED-NOOP"
+VERDICT_INVALID = "INVALID-ROW"
+
+
+def classify_row(baseline: "SuiteResults", mutated: "SuiteResults", expect_fail: str):
+    """-> (verdict, detail). Never raises on a legitimate result; raises only on a broken premise."""
+    targets = mutated.resolve(expect_fail) or baseline.resolve(expect_fail)
+    if not targets:
+        return VERDICT_INVALID, (
+            f"`{expect_fail}` names no test in this suite. The bundle keys are exact — a display "
+            f"name, a bare function name, or a `Suite/function()` identifier — so a near miss is a "
+            f"wrong recipe rather than a missed match.")
+    if len(targets) > 1:
+        return VERDICT_INVALID, (
+            f"`{expect_fail}` is ambiguous: it names {len(targets)} tests "
+            f"({', '.join(sorted(targets))}). Use the `Suite/function()` identifier.")
+    target = targets.pop()
+
+    base_result = baseline.by_id.get(target)
+    if base_result is None:
+        return VERDICT_INVALID, (
+            f"`{target}` did not run on the unmutated tree, so this row has no baseline to differ "
+            f"from and cannot prove anything.")
+    if base_result not in ("Passed", "Expected Failure"):
+        return VERDICT_INVALID, (
+            f"`{target}` was already {base_result} BEFORE the mutation. A row whose guard is red on "
+            f"a clean tree cannot demonstrate that the guard binds.")
+
+    changed = {
+        i for i in set(baseline.by_id) | set(mutated.by_id)
+        if baseline.by_id.get(i) != mutated.by_id.get(i)
+    }
+    target_failed = target in mutated.failed()
+    crash_note = f" (crash: {mutated.crashed[target]})" if target in mutated.crashed else ""
+
+    if target_failed and changed == {target}:
+        return VERDICT_CAUGHT, f"`{target}` went {base_result} -> {mutated.by_id[target]}{crash_note}"
+    if target_failed:
+        others = sorted(changed - {target})
+        return VERDICT_CAUGHT, (
+            f"`{target}` went {base_result} -> {mutated.by_id[target]}{crash_note}; "
+            f"{len(others)} other test(s) also changed status ({', '.join(others[:5])}"
+            f"{' …' if len(others) > 5 else ''}). The guard fired, and the mutation is not "
+            f"isolated to it.")
+    if not changed:
+        return VERDICT_NOOP, (
+            f"NOT ONE test changed status. The mutation is a no-op, or the named test never "
+            f"executes the mutated line. This is not evidence about `{target}` — it is a fact "
+            f"about the MUTANT, and the recipe needs re-aiming rather than the test tightening.")
+    return VERDICT_CAUGHT_ELSEWHERE, (
+        f"`{target}` stayed {base_result}, but {len(changed)} other test(s) changed status "
+        f"({', '.join(sorted(changed)[:5])}). Something else caught this mutation; that is not "
+        f"evidence that `{target}` is the guard.")
+
+
 class Lane:
     """One filtered Debug test run against warm DerivedData."""
 
@@ -521,7 +752,12 @@ class Lane:
             timeout=GENERATE_TIMEOUT_SECONDS,
         )
 
-    def build_command(self, suite: str):
+    def bundle_path(self, tag: str) -> Path:
+        """Where this row's result bundle lands. `xcodebuild` REFUSES to overwrite an existing
+        bundle, so a re-run of the same tag must start from a clean path."""
+        return self.log_dir / f"{tag}.xcresult"
+
+    def build_command(self, suite: str, tag: str = "lane"):
         """The invocation this runner issues. Extracted so the self-test can assert it agrees with
         CANONICAL_TOKENS — the drift guard compares that constant against the SCRIPT, and nothing
         compared it against the command actually run, so the two could silently disagree."""
@@ -534,6 +770,11 @@ class Lane:
             "-destination", "platform=macOS,arch=arm64",
             "-onlyUsePackageVersionsFromResolvedFile",
             "ARCHS=arm64", "VALID_ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES",
+            # OUR OWN PATH, never the default under `<derivedData>/Logs/Test/`.
+            # That directory accumulates one bundle per run and is shared, so
+            # "newest wins" there carries the same concurrent-writer hazard this
+            # repo already documents for the fixed log path.
+            "-resultBundlePath", str(self.bundle_path(tag)),
             f"-only-testing:{suite}",
         ]
 
@@ -541,7 +782,14 @@ class Lane:
         """Returns (count, failures, compiled, log_path). count is None when no summary was printed."""
         self.generate_once()
         log_path = self.log_dir / f"{tag}.log"
-        cmd = self.build_command(suite)
+        bundle = self.bundle_path(tag)
+        # `xcodebuild` refuses to write into an existing bundle path, and a row
+        # that silently reused a previous row's bundle would grade this mutation
+        # against the LAST one's results — a wrong subject, which is the defect
+        # class this whole change removes.
+        if bundle.exists():
+            shutil.rmtree(bundle, ignore_errors=True)
+        cmd = self.build_command(suite, tag)
         started = time.monotonic()
         try:
             rc, out = run(cmd, cwd=self.worktree, log_path=log_path,
@@ -559,7 +807,14 @@ class Lane:
         count, failures = classify_lane_output(out)
         # A red lane with compiler diagnostics and no test summary never ran the tests.
         compiled = not (count is None and COMPILE_ERROR_RE.search(out) is not None)
-        return count, failures, compiled, log_path, rc, elapsed
+        # THE CONSOLE IS STILL PARSED, FOR EXACTLY ONE THING IT CAN ANSWER AND THE
+        # BUNDLE CANNOT: whether the lane REACHED the test phase. A compile failure
+        # writes no bundle, so `compiled` has to come from the diagnostics. Every
+        # VERDICT below comes from the bundle; this is not a fallback.
+        results = None
+        if compiled:
+            results = read_result_bundle(bundle)
+        return count, failures, compiled, log_path, rc, elapsed, results
 
 
 def check_canonical_settings(worktree: Path):
@@ -878,7 +1133,8 @@ def suite_test_names(log_path) -> set:
     return names
 
 
-def baseline(lane: Lane, suites, phase: str, seen_names: dict = None):
+def baseline(lane: Lane, suites, phase: str, seen_names: dict = None,
+             results_out: dict = None):
     """Every named suite must run at least one test and pass. This is both the clean-tree control and
     the filter validation: a suite name that does not exist executes zero tests and SUCCEEDS.
 
@@ -889,7 +1145,7 @@ def baseline(lane: Lane, suites, phase: str, seen_names: dict = None):
     for suite in sorted(suites):
         tag = f"baseline-{phase}-{suite.replace('/', '_')}"
         try:
-            count, failures, compiled, log, rc, elapsed = lane.run_suite(suite, tag)
+            count, failures, compiled, log, rc, elapsed, suite_results = lane.run_suite(suite, tag)
         except _LaneTimedOut as exc:
             problems.append(f"{suite}: {exc}")
             continue
@@ -907,6 +1163,12 @@ def baseline(lane: Lane, suites, phase: str, seen_names: dict = None):
         else:
             if seen_names is not None:
                 seen_names[suite] = suite_test_names(log)
+            # The UNMUTATED per-test status map. Every row's verdict is a DIFF
+            # against this, so without it a row can only ask "did the named test
+            # go red" — which cannot tell a working guard from a mutation that
+            # changed nothing, nor from a test that was already failing.
+            if results_out is not None and suite_results is not None:
+                results_out[suite] = suite_results
             print(f"    baseline {phase}: {suite} — {count} tests green in {elapsed:.0f}s")
     return problems
 
@@ -993,7 +1255,9 @@ def main(argv=None):
     print(f"\n[1/3] baseline on a clean tree — {len(suites)} suite(s)")
     try:
         baseline_names = {}
-        problems = baseline(lane, suites, "before", seen_names=baseline_names)
+        baseline_results = {}
+        problems = baseline(lane, suites, "before", seen_names=baseline_names,
+                            results_out=baseline_results)
     except Refusal as exc:
         print(f"\nREFUSED — {exc}", file=sys.stderr)
         return 2
@@ -1079,8 +1343,8 @@ def main(argv=None):
                     detail = "mutation did not land on re-read"
                 else:
                     try:
-                        count, failures, compiled, log, rc_run, elapsed = lane.run_suite(
-                            row["suite"], tag)
+                        count, failures, compiled, log, rc_run, elapsed, row_results = (
+                            lane.run_suite(row["suite"], tag))
                     except Exception as exc:  # noqa: BLE001 — any lane failure is this row's problem
                         raise _RowFailed(f"the lane raised {type(exc).__name__}: {exc}") from exc
                     if not compiled:
@@ -1091,30 +1355,18 @@ def main(argv=None):
                             f"suite was renamed and the recipe is stale, or the filter never matched. "
                             f"Read the name off its @Suite declaration, never off the filename ({log})"
                         )
-                    elif rc_run == 0:
-                        # A green lane cannot have caught anything. Reached when the only ✘ lines were
-                        # known issues, which Swift Testing prints while still exiting 0.
-                        verdict = "SURVIVED"
+                    elif row_results is None:
+                        detail = f"the lane produced no result bundle to grade ({log})"
+                    elif row["suite"] not in baseline_results:
                         detail = (
-                            f"{count} tests and the lane exited GREEN with the code broken. Any ✘ here "
-                            f"was a KNOWN issue, which is a test configured not to fail — it cannot "
-                            f"have detected the mutation ({log})"
-                        )
-                    elif row["expect_fail"] in failed_test_identities(failures):
-                        verdict = "CAUGHT"
-                        others = [l for l in failures if row["expect_fail"] not in l]
-                        detail = f"{row['expect_fail']} went red in {elapsed:.0f}s"
-                        if others:
-                            detail += f" (+{len(others)} other failing)"
-                    elif failures:
-                        detail = (
-                            f"suite went red but NOT via {row['expect_fail']} — something else "
-                            f"caught it, so this test is not the guard ({log})"
-                        )
-                        verdict = "SURVIVED"
+                            f"no unmutated baseline was recorded for {row['suite']}, so this row has "
+                            f"nothing to differ from ({log})")
                     else:
-                        verdict = "SURVIVED"
-                        detail = f"{count} tests still green with the code broken ({log})"
+                        # THE VERDICT IS A DIFF, NOT A RED/GREEN READ. See classify_row for why, and
+                        # for the limit it does NOT close.
+                        verdict, detail = classify_row(
+                            baseline_results[row["suite"]], row_results, row["expect_fail"])
+                        detail = f"{detail} — {elapsed:.0f}s ({log})"
         except (_RowFailed, Refusal) as exc:
             detail = str(exc)
         except Exception as exc:  # noqa: BLE001 — any row failure is this row's problem, not the run's
@@ -1155,7 +1407,19 @@ def main(argv=None):
             else:
                 backup.unlink()   # verified byte-identical; on failure the backup is KEPT (above)
             _ACTIVE_RESTORES.pop(target, None)
-        marker = {"CAUGHT": "  ok  ", "SURVIVED": " SURV ", "ERROR": " ERR  "}[verdict]
+        # KEYED BY EVERY VERDICT `classify_row` CAN RETURN. A bare dict lookup on a
+        # verdict it does not know raises KeyError mid-run, which is the right
+        # failure — a marker map that silently defaulted would print a row under a
+        # symbol that means something else. `.get` with a fallback was rejected for
+        # exactly that reason.
+        marker = {
+            VERDICT_CAUGHT: "  ok  ",
+            VERDICT_CAUGHT_ELSEWHERE: " ELSE ",
+            VERDICT_SURVIVED: " SURV ",
+            VERDICT_NOOP: " NOOP ",
+            VERDICT_INVALID: " BADR ",
+            "ERROR": " ERR  ",
+        }[verdict]
         print(f"  [{marker}] row {i}: {row['label']}\n           {detail}")
         results.append((verdict, row["label"], detail))
 
@@ -1167,13 +1431,23 @@ def main(argv=None):
             print(f"  - {p}", file=sys.stderr)
         return 1
 
-    caught = [r for r in results if r[0] == "CAUGHT"]
-    bad = [r for r in results if r[0] != "CAUGHT"]
+    caught = [r for r in results if r[0] == VERDICT_CAUGHT]
+    bad = [r for r in results if r[0] != VERDICT_CAUGHT]
     print(f"\n{'=' * 72}\n{len(caught)}/{len(results)} CAUGHT, baseline green before and after.")
     if bad:
+        # WHAT TO DO ABOUT A ROW DEPENDS ON WHY IT IS NOT A CATCH, and the old
+        # report collapsed every non-catch into "needs work" — which sent an
+        # overnight session to tighten a test when the RECIPE was the problem.
+        WHAT_IT_MEANS = {
+            VERDICT_NOOP: "re-aim the RECIPE: the mutation changed nothing the suite observes",
+            VERDICT_CAUGHT_ELSEWHERE: "a different test caught it; this row says nothing about its own guard",
+            VERDICT_INVALID: "the row cannot prove anything as written",
+            VERDICT_SURVIVED: "the test did not detect the mutation",
+            "ERROR": "the row did not produce a verdict",
+        }
         print(f"\n{len(bad)} row(s) need work:")
         for verdict, label, detail in bad:
-            print(f"  {verdict}: {label}\n    {detail}")
+            print(f"  {verdict}: {label}\n    {WHAT_IT_MEANS.get(verdict, '')}\n    {detail}")
         return 1
     print("\nEvery mutation was detected by the test that claimed to guard it.")
     print("This proves the tests fire on the mutations written here. It does NOT prove they are")

@@ -77,7 +77,31 @@ ONLY_ACTIVE = [l for l in CANONICAL_STUB.split("\n") if "ONLY_ACTIVE_ARCH" in l]
 assert ONLY_ACTIVE in CANONICAL_STUB, "the stub line the drift cases edit must exist verbatim"
 
 
-def _stub_baseline(lane, suites, phase, seen_names=None):
+def mk_results(statuses, crashed=None):
+    """Build a `SuiteResults` the way a real bundle read would.
+
+    The stubbed cases drive `classify_row` directly, so they need the real class
+    rather than a dict — a hand-rolled stand-in could accept a shape the real
+    reader never produces, and the case would pass against a reader that cannot.
+    `statuses` maps a bare test name to its result; ids are qualified so the
+    alias index is exercised the same way it is in production.
+    """
+    by_id, aliases = {}, {}
+    for name, result in statuses.items():
+        ident = f"StubSuite/{name}"
+        by_id[ident] = result
+        for spelling in (ident, name):
+            aliases.setdefault(spelling, set()).add(ident)
+    return battery.SuiteResults(by_id, aliases, dict(crashed or {}))
+
+
+# The unmutated tree every stubbed row is graded against: the named guard passing,
+# one unrelated sibling passing. A row's verdict is the DIFF against this.
+def _baseline_results():
+    return mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Passed"})
+
+
+def _stub_baseline(lane, suites, phase, seen_names=None, results_out=None):
     """Stands in for the real baseline in stubbed-lane cases.
 
     It MUST populate `seen_names`: the runner refuses when a suite's baseline yielded no test
@@ -88,6 +112,9 @@ def _stub_baseline(lane, suites, phase, seen_names=None):
     if seen_names is not None:
         for suite in suites:
             seen_names[suite] = {VALID_ROW["expect_fail"], "some other case"}
+    if results_out is not None:
+        for suite in suites:
+            results_out[suite] = _baseline_results()
     return []
 
 
@@ -600,35 +627,57 @@ def check_row(name, lane_result, *, expect_marker, expect_rc, raise_instead=None
 
 # (count, failures, compiled, log, rc, elapsed)
 check_row("the named test failing scores CAUGHT",
-          (5, ["✘ Test \"the guard holds\" recorded an issue"], True, "log", 65, 3.0),
-          expect_marker="ok", expect_rc=0)
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Failed", "some other case": "Passed"})),
+          expect_marker="CAUGHT", expect_rc=0)
 
-check_row("the suite staying green scores SURVIVED, not a pass",
-          (5, [], True, "log", 0, 3.0),
-          expect_marker="SURV", expect_rc=1)
+# THE STATE THE CONSOLE COULD NOT EXPRESS. Nothing changed status, so the mutation
+# never reached anything the suite observes — today that scored identically to a
+# working guard, which is the verdict that sends an overnight session to "fix" a
+# test that is fine.
+check_row("a mutant that changes NOTHING is SURVIVED-NOOP, not a survivor to fix",
+          (5, [], True, "log", 0, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Passed"})),
+          expect_marker="SURVIVED-NOOP", expect_rc=1)
 
-check_row("a DIFFERENT test failing is SURVIVED — something else caught it, so this test is not the guard",
-          (5, ["✘ Test \"some other case\" recorded an issue"], True, "log", 65, 3.0),
-          expect_marker="SURV", expect_rc=1)
+check_row("a DIFFERENT test failing is CAUGHT-ELSEWHERE, never evidence about this guard",
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Failed"})),
+          expect_marker="CAUGHT-ELSEWHERE", expect_rc=1)
+
+# A CRASH prints ZERO failure marks, so the console could not see it at all and
+# scored it SURVIVED while saying the lane was green. Both halves were false.
+check_row("a CRASH in the named test is CAUGHT, and the crash is named",
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Failed", "some other case": "Passed"},
+                      crashed={f'StubSuite/{VALID_ROW["expect_fail"]}':
+                               "Crash: xctest at StubSuite.theGuardHolds()"})),
+          expect_marker="crash:", expect_rc=0)
+
+# NOT COVERED HERE, deliberately and stated: "the guard was ALREADY red on the
+# unmutated tree" is INVALID-ROW in `classify_row`, and this harness cannot reach
+# it — `_stub_baseline` always reports the target passing. Reaching it needs a
+# per-case baseline, which is worth doing and is not done. Saying so beats a case
+# that asserts CAUGHT under an INVALID-ROW name.
 
 check_row("zero executed tests is an ERROR, never a survivor and never a catch",
-          (0, [], True, "log", 0, 3.0),
-          expect_marker="ERR", expect_rc=1)
+          (0, [], True, "log", 0, 3.0, None),
+          expect_marker="ERROR", expect_rc=1)
 
 check_row("no test summary at all is an ERROR",
-          (None, [], True, "log", 65, 3.0),
-          expect_marker="ERR", expect_rc=1)
+          (None, [], True, "log", 0, 3.0, None),
+          expect_marker="ERROR", expect_rc=1)
 
 check_row("a mutant that does not compile is an ERROR — a red lane proves nothing if nothing ran",
-          (None, [], False, "log", 65, 3.0),
-          expect_marker="ERR", expect_rc=1)
+          (None, [], False, "log", 65, 3.0, None),
+          expect_marker="ERROR", expect_rc=1)
 
 # The most dangerous defect this tool has had, and it is invisible to a byte comparison. `copy2`
 # restores the original MODIFICATION TIME along with the bytes. Against warm DerivedData, a replacement
 # the SAME SIZE as its anchor therefore leaves a file that is byte-identical AND older than the object
 # compiled from the mutant, so the next row can run mutant code while every check reports clean.
 ran += 1
-_res = drive_row((5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0),
+_res = drive_row((5, [], True, "log", 65, 3.0, None),
                  expect_verdict=None, expect_detail=None)
 # drive_row returns (rc, out, after, during); re-run it capturing the file's mtime instead.
 import tempfile as _t3  # noqa: E402
@@ -651,7 +700,7 @@ with _t3.TemporaryDirectory() as td:
             pass
 
         def run_suite(self, suite, tag):
-            return (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0)
+            return (5, [], True, "log", 65, 3.0, None)
 
     _rl, _rb = battery.Lane, battery.baseline
     battery.Lane, battery.baseline = _StubLane, (_stub_baseline)
@@ -679,7 +728,7 @@ ran += 1
 _real_pids = battery.dev_app_pids
 battery.dev_app_pids = lambda wt: ["99999"]
 try:
-    rc, out, after, during = drive_row((5, [], True, "log", 0, 3.0),
+    rc, out, after, during = drive_row((5, [], True, "log", 0, 3.0, None),
                                        expect_verdict=None, expect_detail=None)
     problems = []
     if "ERR" not in out or "appeared mid-run" not in out:
@@ -712,13 +761,18 @@ if len(_returns) != 1:
     failures.append("the stubbed lane returns the same shape as the real one: Lane.run_suite has "
                     f"{len(_returns)} return statements; the stub assumes exactly 1")
 else:
+    # The stubs hand back a 7-tuple: (count, failures, compiled, log, rc, elapsed, results).
+    # The last slot is the parsed result bundle, and it is what every VERDICT now
+    # reads — a stub that omitted it would grade rows against `None` and score
+    # every one of them an error while looking like a shape mismatch.
+    _STUB_ARITY = 7
     _arity = len([t for t in _returns[0].split(",")])
-    if _arity != 6:
+    if _arity != _STUB_ARITY:
         failures.append(
             "the stubbed lane returns the same shape as the real one: "
-            f"Lane.run_suite now returns {_arity} values, but the stubbed-lane cases hand back 6. "
-            "Update the stub, or every row case is exercising a double that no longer resembles the "
-            "real lane.")
+            f"Lane.run_suite now returns {_arity} values, but the stubbed-lane cases hand back "
+            f"{_STUB_ARITY}. Update the stubs AND this constant together — they are two halves of "
+            "one claim, and moving only one silently retires the check.")
     else:
         print("  ok  the stubbed lane returns the same shape as the real one")
 
@@ -787,7 +841,15 @@ battery.run = _capture
 try:
     _lane = battery.Lane(Path("."), Path("."), Path("."))
     _lane.generated = True  # skip tuist; this case is about the test lane's timeout only
-    _lane.run_suite("EnviousWisprTests/Whatever", "tag")
+    try:
+        _lane.run_suite("EnviousWisprTests/Whatever", "tag")
+    except battery.BundleUnreadable:
+        # EXPECTED AND NOT WHAT IS UNDER TEST. `run` is stubbed, so no lane ran and
+        # no bundle exists; the assertion below is on the timeout kwarg `run_suite`
+        # passed, which has already happened by the time the read is attempted.
+        # Swallowing only this exception keeps the case honest — any other failure
+        # still surfaces.
+        pass
 finally:
     battery.run = _real_run
 
@@ -888,7 +950,10 @@ ran += 1
 _flagish = {a for a in _cmd if a.startswith("-") and not a.startswith("-only-testing")
             and a not in ("-project", "-scheme", "-configuration", "-derivedDataPath", "-destination")}
 _settings = {a for a in _cmd if "=" in a and a.split("=", 1)[0].isupper()}
-_extra = sorted((_flagish | _settings) - battery.CANONICAL_TOKENS)
+# RUNNER_ONLY_TOKENS is subtracted DELIBERATELY and is not a hole: each member
+# is declared at its definition with the reason it cannot change the build, so a
+# reviewer sees the divergence rather than inferring it from a green guard.
+_extra = sorted((_flagish | _settings) - battery.CANONICAL_TOKENS - battery.RUNNER_ONLY_TOKENS)
 if _extra:
     failures.append("the runner's command carries no setting the drift guard is blind to — it DOES: "
                     + ", ".join(_extra) + " would move unnoticed")
@@ -984,9 +1049,15 @@ for _label, _will_run, _want_refusal in [
 # Swift Testing prints ✘ for a KNOWN issue and the lane still exits 0. A test wrapped in
 # `withKnownIssue` is explicitly configured NOT to go red, so crediting it with detecting a mutation
 # is a false CAUGHT — the direction that fails toward confidence.
-check_row("a known issue on a GREEN lane is SURVIVED, never CAUGHT",
-          (5, ['✘ Test "the guard holds" recorded a known issue'], True, "log", 0, 3.0),
-          expect_marker="SURV", expect_rc=1)
+# A test wrapped in `withKnownIssue` is configured NOT to go red, so its status
+# does not change and the bundle records it as Passed. Under the diff that is a
+# NO-OP verdict, which is both correct and STRONGER than the old "SURVIVED":
+# it says nothing in the suite moved, rather than implying the guard was tested
+# and found wanting.
+check_row("a known issue does not change status, so it is a NO-OP, never CAUGHT",
+          (5, [], True, "log", 0, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Passed"})),
+          expect_marker="SURVIVED-NOOP", expect_rc=1)
 
 # The exclusion's own case: a RED lane where the ONLY mention of the named test is a known issue. If
 # known-issue lines counted as failures this would score CAUGHT; excluded, the row is correctly not a
@@ -1013,14 +1084,21 @@ else:
 # The accepted counterpart: the same named test on a RED lane is a genuine catch.
 # Through the ROW LOOP, which is where expect_fail is compared. The direct failed_test_identities
 # cases use exact set membership and so cannot detect substring matching returning here.
-check_row("a sibling whose name contains the expected one does not score CAUGHT",
-          (5, ['✘ Test "the guard holds under load" recorded an issue at F.swift:1:1'],
-           True, "log", 65, 3.0),
-          expect_marker="SURV", expect_rc=1)
+# SUBSTRING MATCHING CANNOT RETURN, because the bundle is keyed exactly. The old
+# console path matched `expect_fail` with `in` against a whole ✘ line carrying the
+# display name, the file path AND the message, so a sibling whose name merely
+# CONTAINED the expected one scored CAUGHT. Here the sibling is a different key,
+# so it presents as CAUGHT-ELSEWHERE: something went red, and it was not the guard.
+check_row("a sibling whose name CONTAINS the expected one is not this guard",
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Passed",
+                       VALID_ROW["expect_fail"] + " under load": "Failed"})),
+          expect_marker="CAUGHT-ELSEWHERE", expect_rc=1)
 
-check_row("the same named test on a RED lane is still CAUGHT",
-          (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0),
-          expect_marker="ok", expect_rc=0)
+check_row("the named test itself going red is still CAUGHT",
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Failed", "some other case": "Passed"})),
+          expect_marker="CAUGHT", expect_rc=0)
 
 # A timeout must kill the whole process GROUP. xcodebuild spawns the test runner as a descendant, so
 # killing only the parent leaves a hung mutant test process holding the shared DerivedData and writing
@@ -1214,7 +1292,7 @@ with tempfile.TemporaryDirectory() as _td:
 
         def run_suite(self, suite, tag):
             _lanes.append(tag)
-            return (5, ['✘ Test "the guard holds" recorded an issue'], True, "log", 65, 3.0)
+            return (5, [], True, "log", 65, 3.0, None)
 
     _rl, _rb = battery.Lane, battery.baseline
     battery.Lane, battery.baseline = _CountingLane, (_stub_baseline)
@@ -1257,7 +1335,7 @@ def _boom(self, *a, **k):
 try:
     Path.write_text = _boom
     try:
-        _rc, _out, _after, _during = drive_row((5, [], True, "log", 0, 3.0),
+        _rc, _out, _after, _during = drive_row((5, [], True, "log", 0, 3.0, None),
                                                expect_verdict=None, expect_detail=None)
     except BaseException as _esc:   # noqa: BLE001 — an escape IS the defect this case exists for
         _rc, _out = -1, f"escaped as {type(_esc).__name__}"
@@ -1291,7 +1369,7 @@ def _copy_then_fail(src, dst, *a, **k):
 battery.shutil.copy2 = _copy_then_fail
 try:
     try:
-        _rc, _out, _after, _during = drive_row((5, [], True, "log", 0, 3.0),
+        _rc, _out, _after, _during = drive_row((5, [], True, "log", 0, 3.0, None),
                                                expect_verdict=None, expect_detail=None)
     except BaseException as _esc:   # noqa: BLE001 — escaping IS the defect this case exists for
         _rc, _out = -1, f"escaped as {type(_esc).__name__}"
@@ -1334,7 +1412,7 @@ _installed_at = []
 _real_sig = battery.signal.signal
 _real_base = battery.baseline
 battery.signal.signal = lambda sig, fn: _installed_at.append("handler")
-battery.baseline = lambda lane, suites, phase, seen_names=None: (_installed_at.append(f"baseline-{phase}"), [])[1]
+battery.baseline = lambda lane, suites, phase, seen_names=None, results_out=None: (_installed_at.append(f"baseline-{phase}"), [])[1]
 
 
 class _NullLane:
@@ -1477,7 +1555,7 @@ except Exception as exc:
 # identity lines, so empty means the READER broke.
 ran += 1
 _real_base2 = battery.baseline
-battery.baseline = lambda lane, suites, phase, seen_names=None: []   # green, but yields NO names
+battery.baseline = lambda lane, suites, phase, seen_names=None, results_out=None: []   # green, but yields NO names
 _rl2, battery.Lane = battery.Lane, type("L", (), {
     "__init__": lambda self, *a, **k: None,
     "generate_once": lambda self: None,
