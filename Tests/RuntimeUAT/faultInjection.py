@@ -986,7 +986,7 @@ def _normalize_tokens(text: str) -> set:
         lane="R",
         family="recovery",
         backends=["parakeet"],
-        runtime_budget_seconds=90.0,
+        runtime_budget_seconds=300.0,
         founder_required=False,
         negative_control=(
             "In RecoverySpoolReplayer.replay, make the load-site routing "
@@ -1154,12 +1154,28 @@ def R1_readiness_lost_after_load(**_) -> dict:
 
     retry_marker = os.path.join(spool_dir, f"{spool_id}.readiness-retry")
     spool_file = os.path.join(spool_dir, f"{spool_id}.ewrec")
+    attempt_marker = os.path.join(spool_dir, f"{spool_id}.attempt")
 
-    def disarm() -> None:
-        """Never leave a faulted app running. `EW_FORCE_READINESS_LOST` is a
-        one-shot, so an armed process this scenario abandons consumes the fault on
-        its next unrelated engine load, and every later check silently runs
-        against a deliberately broken app."""
+    def restart_without_fault(wait_for_idle_s: float = 60.0) -> bool:
+        """Kill the faulted app and relaunch it clean. Returns False if it refused.
+
+        NEVER kills while `<id>.attempt` exists, and the guard lives HERE rather
+        than at the call sites on purpose: three review rounds found this same
+        hazard at three DIFFERENT callers — the trigger, the outer-deadline
+        cleanup, and the original relaunch — because fixing the site each time
+        only moved it. A replay in progress that is killed makes the next launch
+        classify the recording as abandoned and DELETE it, so the harness
+        manufactures the exact data loss it exists to detect.
+
+        Leaving a faulted app running is the lesser evil and is reported, not
+        silent: `EW_FORCE_READINESS_LOST` is a one-shot, so an abandoned armed
+        process consumes it on its next unrelated engine load.
+        """
+        deadline = time.time() + wait_for_idle_s
+        while os.path.exists(attempt_marker) and time.time() < deadline:
+            time.sleep(0.5)
+        if os.path.exists(attempt_marker):
+            return False  # a replay is STILL running; refuse rather than destroy it
         try:
             subprocess.run(["kill", "-9", str(faulted.pid)])
         except Exception:
@@ -1167,9 +1183,13 @@ def R1_readiness_lost_after_load(**_) -> dict:
         time.sleep(1.0)
         restart = dict(os.environ)
         restart.pop("EW_FORCE_READINESS_LOST", None)
+        # Must be re-set: the launcher supplies it to the app, never to this
+        # shell, so `os.environ` does not carry it. Without it the relaunched app
+        # has no debug endpoint and every later scenario fails.
         restart["EW_FAULT_INJECTION"] = "1"
         subprocess.Popen([app_path], env=restart,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
 
     # ---- 3-5. OBSERVE the four artifacts; never INFER state from a subset ----
     #
@@ -1195,7 +1215,6 @@ def R1_readiness_lost_after_load(**_) -> dict:
     #    active; killing it makes the next launch classify the recording as
     #    abandoned and DELETE it, so the harness manufactures the exact data-loss
     #    signature it exists to detect. Measured once already this session.
-    attempt_marker = os.path.join(spool_dir, f"{spool_id}.attempt")
 
     def observe() -> dict:
         return {
@@ -1224,21 +1243,14 @@ def R1_readiness_lost_after_load(**_) -> dict:
         elif st["retry"] and time.time() - last_progress > 40:
             # The retry is GRANTED and nothing is replaying — no wake arrived.
             # Safe to trigger now precisely because `.attempt` is absent.
-            subprocess.run(["kill", "-9", str(faulted.pid)])
-            time.sleep(2.0)
-            clean_env = dict(os.environ)
-            clean_env.pop("EW_FORCE_READINESS_LOST", None)
-            # Must be re-set: the launcher supplies it to the app, never to this
-            # shell, so `os.environ` does not carry it. Without it the relaunched
-            # app has no debug endpoint and every later scenario fails.
-            clean_env["EW_FAULT_INJECTION"] = "1"
-            faulted = subprocess.Popen(
-                [app_path], env=clean_env,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            restart_without_fault(wait_for_idle_s=0.0)
             last_progress = time.time()
         time.sleep(0.2)
 
-    disarm()
+    # Bounded: if a replay is still running at the deadline the app is left
+    # armed rather than killed mid-replay, and that is stated in the evidence
+    # rather than hidden.
+    left_armed = not restart_without_fault(wait_for_idle_s=60.0)
 
     if not fault_observed:
         return invalid(
@@ -1252,7 +1264,8 @@ def R1_readiness_lost_after_load(**_) -> dict:
     return {
         "evidence_valid": True,
         "evidence": {"spool": spool_id, "app": app_path,
-                     "text": (row or {}).get("text", "")[:60]},
+                     "text": (row or {}).get("text", "")[:60],
+                     "left_armed": left_armed},
         "assertions": {
             # OBSERVED, never inferred — see rule A above.
             "readiness_fault_fired": fault_observed,

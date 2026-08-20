@@ -45,7 +45,9 @@ run_scenario("A3_asr_xpc_kill")
 ## Index by scenario name
 
 ### R1_readiness_lost_after_load (Lane R — recovery)
-Backends: parakeet. Budget: 90s. Mechanism: recovery.
+Backends: parakeet. Budget: 300s. Mechanism: recovery.
+
+The budget is large because the run contains a REAL dictation, a crash, a cold model load and a transcription, plus a bounded wait for an in-flight replay to reach a terminal state. An earlier revision advertised 90s while its waits alone permitted more than twice that, which would have made a caller allocating the published budget kill the scenario mid-run.
 
 Drives a REAL dictation, `kill -9`s the app mid-utterance to produce a genuine orphan spool, then relaunches with the readiness postcondition faulted. The engine's load returns normally and reports itself unready — the #2207 condition, which lives in the two-statement window between the loader returning and the readiness read and therefore cannot be staged by hand.
 
