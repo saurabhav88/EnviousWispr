@@ -46,8 +46,7 @@ final class TranscriptCoordinator {
   /// is the instrument that decides whether this feature earns its keep.
   private let emitEscapeRecoveryKept: (_ ageMs: Int, _ takeID: String) -> Void
   private let emitEscapeRecoveryExpired: (_ ageMs: Int, _ takeID: String) -> Void
-  private let emitEscapeRecoveryRestoredFromHistory:
-    (_ ageMs: Int, _ takeID: String) -> Void
+  private let emitEscapeRecoveryRestoredFromHistory: (_ ageMs: Int, _ takeID: String) -> Void
   private var loadTask: Task<Void, Never>?
   private var pulseTask: Task<Void, Never>?
 
@@ -153,6 +152,23 @@ final class TranscriptCoordinator {
   /// whether a file is still there.
   private var unremovablePendingCount = 0
 
+  /// Rows still counting down ON DISK, from the last COMPLETE sweep (#2186).
+  ///
+  /// The countdown used to arm only from `livePendingCount`, which reads
+  /// `transcripts`, which only `load()` fills — and `load()`'s one production
+  /// caller is the History view. So a row carried over from a PREVIOUS session
+  /// was invisible to the timer for the entire session: nothing deleted it at
+  /// its moment, and it waited for a relaunch. Founder, 2026-08-20: "As long as
+  /// the application is running, the timer should be ticking… and then it just
+  /// deletes."
+  ///
+  /// Written only when `walkComplete`, because the store's count means nothing
+  /// otherwise — a walk that could not enumerate the directory reports zero,
+  /// which would read as "nothing is counting down" and stop the pulse on the
+  /// one occasion it must keep running. An incomplete walk leaves this ALONE and
+  /// `lastSweepIncomplete` keeps the pulse alive on its own.
+  private var liveOnDiskPendingCount = 0
+
   /// Whether the last sweep failed to READ the directory, or threw.
   ///
   /// Separate from the count because it means the opposite of what the count
@@ -170,7 +186,27 @@ final class TranscriptCoordinator {
   /// lapsed row it did not find, so this returns to zero after one pass.
   private var pendingSweepIsDue: Bool {
     lapsedPendingCount > 0 || unremovablePendingCount > 0 || lastSweepIncomplete
+      || liveOnDiskLapsedByNow
   }
+
+  /// #2186: a disk row that has crossed its deadline SINCE the last sweep.
+  ///
+  /// `lapsedPendingCount` cannot see it — that reads `transcripts`, and a row
+  /// carried over from a previous session is not in memory unless History
+  /// loaded it. Without this the pulse would arm (because live rows exist on
+  /// disk) and then never find anything due, so it would spin until it stopped
+  /// and delete nothing at the moment it was supposed to.
+  ///
+  /// Deliberately time-based rather than a stored flag: the pulse's whole job is
+  /// to notice a deadline passing while nothing else changes, and only a clock
+  /// read can do that. The sweep it triggers is what corrects the count.
+  private var liveOnDiskLapsedByNow: Bool {
+    guard liveOnDiskPendingCount > 0 else { return false }
+    return Date() >= nextDiskExpiryDeadline ?? .distantFuture
+  }
+
+  /// When the soonest disk row is due, from the last complete sweep (#2186).
+  private var nextDiskExpiryDeadline: Date?
 
   /// Whether the pulse has any reason to keep running.
   ///
@@ -184,6 +220,7 @@ final class TranscriptCoordinator {
   /// pulse alive over a file that is already gone.
   private var pendingPulseHasWork: Bool {
     livePendingCount > 0 || unremovablePendingCount > 0 || lastSweepIncomplete
+      || liveOnDiskPendingCount > 0
   }
 
   /// A held row is visible only while `PendingAdmission` calls it live.
@@ -289,6 +326,15 @@ final class TranscriptCoordinator {
       // the pass that just ran, so a file that finally went must stop counting.
       unremovablePendingCount = swept.unremovable
       lastSweepIncomplete = !swept.walkComplete
+      // #2186: DISK truth, and only from a walk that could actually look.
+      // `walkComplete == false` means the store counted nothing, so its zero is
+      // "I could not see" rather than "nothing is counting down" — writing it
+      // here would stop the timer on the one occasion it must keep going.
+      // `lastSweepIncomplete` above already keeps the pulse alive in that case.
+      if swept.walkComplete {
+        liveOnDiskPendingCount = swept.remainingLive
+        nextDiskExpiryDeadline = swept.nextLiveDeadline
+      }
       // Evict on EVERY deletion, not only the telemetry-eligible ones. A
       // future-skewed or corrupt row is deleted without a receipt, and leaving
       // it in memory kept `lapsedPendingCount` above zero — so the pulse
@@ -672,6 +718,21 @@ final class TranscriptCoordinator {
     /// after a sweep rather than keeping the directory walk alive.
     // periphery:ignore - test seam
     var lapsedPendingCountForTesting: Int { lapsedPendingCount }
+
+    /// #2186: the disk deadline the pulse waits for.
+    ///
+    /// A seam rather than a wall-clock wait. The production deadline comes from
+    /// the store's own walk, and a test that made a row expire a fraction of a
+    /// second in the future and let the loop spin until it did would be flaky by
+    /// construction — the same defect `pulseSweepsOnDetection` records having
+    /// already been fixed once in this file.
+    // periphery:ignore - test seam
+    func setDiskExpiryDeadlineForTesting(_ date: Date?) {
+      nextDiskExpiryDeadline = date
+    }
+
+    // periphery:ignore - test seam
+    var liveOnDiskPendingCountForTesting: Int { liveOnDiskPendingCount }
 
     /// Awaits the pulse loop's own completion — a real signal, so a test never
     /// guesses how long the loop needs. Captured before awaiting because the

@@ -296,6 +296,13 @@ public final class TranscriptStore {
       return PendingSweepResult(
         deletedIDs: [], expired: [], unremovable: 0, walkComplete: false)
     }
+    // #2186: counted from the SAME enumeration that decides what to delete, so
+    // the two can never disagree about one directory. Taken before the loop
+    // because the loop only visits `!isLive` rows and leaves live ones
+    // untouched — there is nothing later that could change this number.
+    let liveCandidates = candidates.filter(\.isLive)
+    let remainingLive = liveCandidates.count
+    let nextLiveDeadline = liveCandidates.compactMap { $0.deadline(retention: retention) }.min()
     for candidate in candidates where !candidate.isLive {
       // A SHADOW, not an expiry (cloud review). `promotePending` writes the
       // permanent row first and removes the pending file second, so a crash or a
@@ -311,7 +318,8 @@ public final class TranscriptStore {
       // existence is the whole question.
       if FileManager.default.fileExists(
         atPath: permanentDir.appendingPathComponent(
-          candidate.url.lastPathComponent).path)
+          candidate.url.lastPathComponent
+        ).path)
       {
         try? fm.removeItem(at: candidate.url)
         if fm.fileExists(atPath: candidate.url.path) {
@@ -385,7 +393,9 @@ public final class TranscriptStore {
         if fm.fileExists(atPath: stray.path) { unremovable += 1 }
       }
     }
-    return PendingSweepResult(deletedIDs: deleted, expired: reported, unremovable: unremovable)
+    return PendingSweepResult(
+      deletedIDs: deleted, expired: reported, unremovable: unremovable,
+      remainingLive: remainingLive, nextLiveDeadline: nextLiveDeadline)
   }
 
   /// Why a pending file is or is not still offered.
@@ -427,6 +437,14 @@ public final class TranscriptStore {
     }
 
     var isLive: Bool { liveTranscript != nil }
+
+    /// When this row stops being offered (#2186). Nil unless it is still live
+    /// and carries a stamp, so it can never invent a deadline for a row that
+    /// has no clock.
+    func deadline(retention: TimeInterval) -> Date? {
+      guard let stamped = liveTranscript?.escapeRecoveredAt else { return nil }
+      return stamped.addingTimeInterval(retention)
+    }
   }
 
   /// `nil` means the directory could NOT be read, which is not the same fact as
@@ -691,15 +709,42 @@ public struct PendingSweepResult: Sendable {
   /// False when the directory could not be enumerated. Nothing else about this
   /// result can be trusted as a statement about the directory's contents.
   public let walkComplete: Bool
+  /// Rows still counting down ON DISK when this walk ran (#2186).
+  ///
+  /// DISK truth, deliberately, because the caller's own list is not a substitute
+  /// and that is the defect this exists to close. `TranscriptCoordinator` arms
+  /// its expiry pulse from `livePendingCount`, which reads `transcripts`, which
+  /// only `load()` populates — and `load()`'s sole production caller is the
+  /// History view. So a row carried over from a PREVIOUS session was invisible
+  /// to the countdown for the whole session: nothing deleted it at its moment,
+  /// and it waited for a relaunch.
+  ///
+  /// Meaningless when `walkComplete` is false — a walk that could not enumerate
+  /// the directory counted nothing, and reporting `0` there would read as "no
+  /// rows are counting down" and stop the pulse. Callers must check
+  /// `walkComplete` first; `init` defaults this to `0` only because a
+  /// short-circuit result has genuinely seen nothing.
+  public let remainingLive: Int
+
+  /// When the SOONEST still-live row is due, from this same walk (#2186).
+  ///
+  /// Carried so a caller can wake exactly when something is due instead of
+  /// re-walking the directory on every tick to find out. `remainingLive` alone
+  /// would force that choice: keep the timer running and walk every minute for
+  /// the life of the app, or stop it and miss the deadline. Nil when nothing is
+  /// counting down.
+  public let nextLiveDeadline: Date?
 
   public init(
     deletedIDs: Set<UUID>, expired: [ExpiredPendingRow], unremovable: Int = 0,
-    walkComplete: Bool = true
+    walkComplete: Bool = true, remainingLive: Int = 0, nextLiveDeadline: Date? = nil
   ) {
     self.deletedIDs = deletedIDs
     self.expired = expired
     self.unremovable = unremovable
     self.walkComplete = walkComplete
+    self.remainingLive = remainingLive
+    self.nextLiveDeadline = nextLiveDeadline
   }
 }
 
