@@ -42,8 +42,9 @@ struct ScenarioRunner {
 
     for (index, step) in scenario.steps.enumerated() {
       await apply(step, context: context, stepIndex: index, into: &failures)
-      // Drain the SUT's ready async work to quiescence so the next step
-      // observes a settled FSM (PR-3 plan §3.3). No-op for the stub.
+      // Apply the SUT's ready-work settling heuristic before the next step
+      // (PR-3 plan §3.3). NOT proof every ready task has run — see the #1868 note
+      // below and `KernelRecordingSession.drainReadyWork`. No-op for the stub.
       await context.sut.drainReadyWork()
     }
 
@@ -56,8 +57,8 @@ struct ScenarioRunner {
     // zeroTick contract). Checking before this drain was tried and rejected
     // in PR-3: it strands every `zeroTick`-swept clock-gated scenario in a
     // non-terminal state. `vad.finish()` closes the signal stream so the
-    // kernel's VAD-subscription task exits; the final `drainReadyWork()` lets
-    // the released forward-path work run to its terminal state.
+    // kernel's VAD-subscription task exits; the conclusion-aware branch below is
+    // what lets released forward-path work reach a terminal when one is expected.
     context.clock.drainPending()
     context.vad.finish()
     // #1868: `drainReadyWork` is a QUIESCENCE heuristic, not a completion

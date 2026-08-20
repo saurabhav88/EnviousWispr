@@ -49,9 +49,13 @@ protocol RecordingSessionDriving: AnyObject {
   /// kernel's real start / stop / cancel / reset / preWarm entry points.
   func apply(_ trigger: SessionTrigger) async
 
-  /// Run every ready async task the SUT spawned to quiescence, so the next
-  /// scenario step observes a settled state (PR-3 plan §3.3 — deterministic
-  /// step ordering against a real FSM). No-op for the synchronous stub.
+  /// Apply the SUT's ready-work SETTLING HEURISTIC before the next scenario step
+  /// (PR-3 plan §3.3 — deterministic step ordering against a real FSM). No-op for
+  /// the synchronous stub.
+  ///
+  /// Deliberately not "run every ready task to quiescence": the kernel
+  /// implementation cannot promise that, and `KernelRecordingSession.drainReadyWork`
+  /// states the actual guarantee and its limits. Do not restate them here.
   func drainReadyWork() async
 
   /// Wait for the SUT's own conclusion signal, then drain (#1868).
@@ -122,7 +126,7 @@ final class StubRecordingSession: RecordingSessionDriving {
 // The PR-3 conformer: a TRIVIAL forwarding/observation wrapper around the real
 // `RecordingSessionKernel` (PR-3 plan §3.3). It MAY forward triggers, map the
 // kernel's state onto `FSMState`, read the kernel's observable surface into
-// `SessionEffects`, and drain the kernel's async work to quiescence. It MUST
+// `SessionEffects`, and apply the kernel's ready-work settling heuristic. It MUST
 // NOT implement session policy — session filtering, terminal-state dedup,
 // cancellation ordering, stale-callback dropping, cleanup, or any latch logic
 // are kernel behaviors asserted AGAINST the kernel. Codex code-diff review
@@ -430,8 +434,10 @@ final class KernelRecordingSession: RecordingSessionDriving {
   }
 
   /// Yield until the kernel's `workEpoch` stops advancing — the FSM has settled
-  /// for everything `workEpoch` covers (the kernel bumps it on every transition,
-  /// task resumption, and progress tick). The 64-yield stability requirement is
+  /// for everything `workEpoch` covers, which is the transitions and progress
+  /// ticks the KERNEL explicitly marks. Not every task resumption: a `FakeClock`
+  /// continuation resume bumps nothing, which is why the clock's own window is
+  /// invisible here rather than absorbed. The 64-yield stability requirement is
   /// margin for a ready kernel task that loses the scheduler lottery to
   /// unrelated parallel tests across several yields under MainActor contention —
   /// not a deadline. The 20000-iteration cap is a safety net against a kernel
@@ -449,12 +455,15 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// flakes (the recurring `interleavingSweep` `got recording` failure). So gate
   /// the return on the kernel's own hand-off signal: never declare quiescence
   /// while a delivered recording-exit is still unconsumed. The forward path is a
-  /// ready task on a cooperative serial executor, so it cannot be starved
-  /// forever — the signal clears within a bounded number of yields, well under
-  /// the livelock cap.
+  /// ready task on the MainActor; the livelock cap below REPORTS prolonged
+  /// starvation rather than silently reading it as quiescence. An earlier version
+  /// of this note promised the signal clears "well under the livelock cap" — that
+  /// is not something this code can guarantee, and #1857 exists because the cap
+  /// is reachable.
   ///
-  /// Scope: this gate covers the recording-exit hand-off, the only window the
-  /// observed flakes hit (every recurrence was `got recording`). The same
+  /// Scope: this gate covers ONLY the recording-exit hand-off, behind the
+  /// recurring `interleavingSweep` `got recording` failure. It is not the only
+  /// observed window — A13 below is another, and is not covered. The same
   /// bump-absorption shape exists at other continuations resumed inside a step's
   /// `apply` — `FakeClock.advance(by:)` resuming a sleep, a VAD
   /// `AsyncStream.yield` — and neither is gated here.
@@ -470,10 +479,12 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// `spawn` and the sleep REGISTERING, during which every clock signal reads zero,
   /// including that counter. A gate here cannot see it.
   ///
-  /// So the next signal to reach for depends on the flake: a stale state after an
-  /// `advanceClock` step wants the counter clause added HERE together with a case
-  /// that drives it; A13 itself wants registration tracked, which is a different
-  /// mechanism and is recorded on #1868.
+  /// So the next signal depends on WHICH WINDOW the flake is in, not on which step
+  /// preceded it — A13 is itself a stale-state-after-`advanceClock` failure that
+  /// the counter cannot see, so "it followed an advance" does not pick the fix. A
+  /// case that deliberately opens the resume-to-run window wants the counter
+  /// clause added HERE; A13 wants registration tracked, a different mechanism,
+  /// recorded on #1868.
   func drainReadyWork() async {
     var last = kernel.workEpoch
     var stable = 0

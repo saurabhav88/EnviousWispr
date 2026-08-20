@@ -43,9 +43,11 @@ final class FakeClock {
   /// `continuation.resume()` makes a task READY, never running. `advance(by:)`
   /// removes a waiter from `waiters` BEFORE resuming it, so `hasPendingWaiters`
   /// goes false at exactly the wrong moment — the clock reports that nothing is
-  /// waiting while a resumed sleeper has still not executed a line. A resume also
-  /// bumps `kernel.workEpoch`, which a drain absorbs into its initial `last`, so
-  /// epoch-stability does not cover the window either.
+  /// waiting while a resumed sleeper has still not executed a line. Resuming this
+  /// clock continuation does not itself bump `kernel.workEpoch` — `advance(by:)`
+  /// calls `waiter.resume()` and nothing else — so epoch-stability does not cover
+  /// the window either, for the different reason that the window is invisible to
+  /// it rather than absorbed by it.
   ///
   /// So it is a signal a future drain COULD consume, kept because the window is
   /// real and nothing else names it. What it is not is evidence that any window
