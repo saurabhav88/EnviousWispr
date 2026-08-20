@@ -203,17 +203,42 @@ struct RecordingOverlayPreviewChromeTests {
   /// #2202: the header says `Listening`, so the reading well must not say it too.
   /// A first-time user's very first sight of this feature is the waiting state,
   /// and the same word twice in one small box is worse than either alone.
-  @Test("the waiting state does not repeat the header's word in the well")
-  func waitingDoesNotDuplicateListening() throws {
+  ///
+  /// #2222: THIS COMPARISON USED TO BE `.waiting` AGAINST `.text("")`, WHICH IS
+  /// EQUAL BY CONSTRUCTION — both rendered the same `previewText("")`, so the
+  /// assertion could not fail, while this comment claimed the well "renders
+  /// nothing". It rendered an empty well: 75pt against the header's 34pt.
+  /// The binding comparison is `.off`, which is the only state that genuinely
+  /// draws no well, and it is what "one header tall" has to mean.
+  @Test("the waiting state is header-only in the preview layout")
+  func waitingIsHeaderOnly() throws {
     let waiting = try pillHeight(locked: false, showing: .waiting)
-    let empty = try pillHeight(locked: false, showing: .text(""))
+    let headerOnly = try pillHeight(locked: false, showing: .off)
 
     #expect(
-      waiting == empty,
+      waiting == headerOnly,
       """
-      the waiting state measured \(waiting)pt against \(empty)pt for an empty \
-      preview. In the preview layout the well renders nothing while waiting, \
-      because the header already carries the word.
+      the waiting state measured \(waiting)pt against \(headerOnly)pt for the \
+      header alone. Before any words arrive the preview pill must not reserve a \
+      well, or a normal recording visibly resizes before the user has spoken.
+      """)
+  }
+
+  /// The paired ACCEPTED case, so the fix above cannot be satisfied by emptying
+  /// every layout. The capsule has no header, so it is the one place the waiting
+  /// sentence still has to appear — and a guard that only checks the preview side
+  /// would report clean after silently deleting it.
+  @Test("the capsule still says something while waiting, because it has no header")
+  func capsuleWaitingKeepsItsSentence() throws {
+    let waiting = try pillHeight(locked: false, showing: .waiting, usesPreviewLayout: false)
+    let off = try pillHeight(locked: false, showing: .off, usesPreviewLayout: false)
+
+    #expect(
+      waiting > off,
+      """
+      the capsule's waiting state measured \(waiting)pt against \(off)pt with the \
+      preview off. The capsule draws no header, so removing its waiting sentence \
+      would leave a user with no indication anything is listening.
       """)
   }
 }

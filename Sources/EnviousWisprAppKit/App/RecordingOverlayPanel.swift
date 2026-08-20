@@ -2786,8 +2786,20 @@ struct RecordingOverlayView: View {
       // in one small box — worse than either alone. The well shows nothing and
       // the pill stays one header tall until real words arrive. The capsule has
       // no header, so it keeps the sentence.
+      //
+      // #2222: `EmptyView()`, NOT `previewText("")`. An empty string still built a
+      // `PreviewWellText`, which applies the well's own 12/15pt inset and an empty
+      // `Text`'s line box unconditionally — so the state documented above as "one
+      // header tall" measured 75pt against the header's 34pt, three points short of
+      // a pill with words in it. Every dictation passes through here before the
+      // first word, so every user saw the pill resize before saying anything.
+      //
+      // The inset lives on `PreviewWellText` and is correct for every state that
+      // HAS a well; the defect was asking for a well to hold nothing. Fixed at the
+      // call site rather than by making the shared padding conditional, which would
+      // put an emptiness test inside a view that should not care.
       if usesPreviewLayout {
-        previewText("", dimmed: true, lines: 1)
+        EmptyView()
       } else {
         previewText(LivePreviewCopy.listening, dimmed: true, lines: 1)
       }
