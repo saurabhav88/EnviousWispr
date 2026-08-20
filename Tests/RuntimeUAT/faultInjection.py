@@ -1085,11 +1085,16 @@ def R1_readiness_lost_after_load(**_) -> dict:
             "Refusing rather than picking one — this scenario SIGKILLs its target "
             "and a wrong pick kills another worktree's session.")
     target_pid = pids[0]
-    app_path = subprocess.run(
-        ["ps", "-ww", "-o", "command=", "-p", target_pid],
-        capture_output=True, text=True).stdout.strip()
-    if not app_path or "EnviousWispr Local.app" not in app_path:
-        return invalid(f"could not resolve pid {target_pid} to a dev bundle")
+    # argv[0], NOT the whole command line: LaunchServices can append arguments,
+    # and passing those to `Popen` as part of the executable name raises
+    # FileNotFoundError AFTER the original app is already dead, leaving the run
+    # with no verdict and no cleanup. `scripts/lib/launch-check.sh:16-20` records
+    # that `ps -o command=` returns argv.
+    app_path = _running_app_executable_path(int(target_pid))
+    if not app_path.endswith("Local.app/Contents/MacOS/EnviousWispr"):
+        return invalid(f"pid {target_pid} is not a dev bundle: {app_path!r}")
+    if not os.path.exists(app_path):
+        return invalid(f"resolved executable does not exist: {app_path!r}")
 
     # ---- refuse on ambiguous spool identity -------------------------------
     pre_existing = ewrec_ids()
