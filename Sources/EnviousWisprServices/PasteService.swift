@@ -1531,13 +1531,14 @@ public enum PasteService {
   /// injected seam on `PasteCascadeExecutor` could not cover it — cloud review
   /// found exactly that, and this was the only hard-coded board left in this file.
   ///
-  /// **A NON-GENERAL BOARD MAKES THIS TIER INERT, AND THAT IS CORRECT RATHER THAN
-  /// A BUG TO FIX.** Cmd+V is satisfied by the system from `NSPasteboard.general`,
-  /// so text written anywhere else is not what gets pasted. Production passes
-  /// `.general` and behaves exactly as before; a test that injects its own board
-  /// gets a tier that writes where it was told and pastes nothing — which is the
-  /// desired outcome, because a test should not be typing into whatever app the
-  /// developer has frontmost either.
+  /// **A NON-GENERAL BOARD MAKES THIS TIER INERT, AND THAT IS ENFORCED RATHER THAN
+  /// ASSERTED.** Cmd+V is satisfied by the system from `NSPasteboard.general`, so
+  /// text written anywhere else is not what would get pasted — and the dispatch is
+  /// SKIPPED in that case, returning `.cgEventCreationFailed`. An earlier version
+  /// of this comment claimed inertness while the dispatch still fired
+  /// unconditionally, which was worse than the defect it replaced: it pasted
+  /// whatever the real board held into the frontmost app. Production passes
+  /// `.general`, where the skip is unreachable and behaviour is unchanged.
   public static func pasteToActiveApp(
     _ text: String,
     to pasteboard: NSPasteboard = .general
@@ -1550,6 +1551,30 @@ public enum PasteService {
     pasteboard.setString(text, forType: .string)
     let changeCountAfterWrite = pasteboard.changeCount
     let clipboardWriteSuccess = pasteboard.changeCount != previousChangeCount
+
+    // A BOARD OTHER THAN THE ONE Cmd+V READS MEANS THIS TIER CANNOT PASTE, so it
+    // must not TRY. macOS satisfies Cmd+V from `NSPasteboard.general`; firing it
+    // after writing somewhere else pastes whatever the real board happens to hold
+    // into the frontmost app — stale content, into whatever the developer is
+    // looking at. Cloud review r2 caught the doc comment above claiming this tier
+    // was already inert with a non-general board: the hard-coded write had gone
+    // and the dispatch had not, so "inert" was the property intended and
+    // documented and never the one built.
+    //
+    // Production passes `.general`, where this branch is unreachable.
+    guard pasteboard === NSPasteboard.general else {
+      Task {
+        await AppLogger.shared.log(
+          "Paste attempt: skipped Cmd+V — text was written to a non-general "
+            + "pasteboard, which the system paste cannot read",
+          level: .info, category: "PasteService"
+        )
+      }
+      return .cgEventCreationFailed(
+        accessibilityTrusted: accessibilityTrusted,
+        changeCount: changeCountAfterWrite
+      )
+    }
 
     guard dispatchCmdV() else {
       Task {
