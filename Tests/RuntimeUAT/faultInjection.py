@@ -1106,12 +1106,37 @@ def R1_readiness_lost_after_load(**_) -> dict:
     if not os.path.exists(app_path):
         return invalid(f"resolved executable does not exist: {app_path!r}")
 
+    # ---- refuse when the feature under test is switched OFF ----------------
+    # `RecoveryCoordinator.makeDirective` returns early when `crashRecoveryEnabled`
+    # is false (`RecoveryCoordinator.swift:200`), so NO `.ewrec` is written and the
+    # spool wait below would time out and blame TTS or the PTT binding — a
+    # confident wrong subject. The setting defaults to enabled only when nothing is
+    # persisted, so a user who deliberately turned it off gets that misdiagnosis.
+    # Report the real prerequisite rather than silently flipping someone's setting.
+    pref = subprocess.run(
+        ["defaults", "read", "com.enviouswispr.app.dev", "crashRecoveryEnabled"],
+        capture_output=True, text=True)
+    if pref.returncode == 0 and pref.stdout.strip() in ("0", "false", "NO"):
+        return invalid(
+            "Crash Recovery is DISABLED in settings, so no spool is ever written "
+            "and this scenario cannot run. Enable it and retry. (A missing key is "
+            "fine: the app defaults to enabled.)")
+
     # ---- refuse on ambiguous spool identity -------------------------------
     pre_existing = ewrec_ids()
     if pre_existing:
         return invalid(
             f"{len(pre_existing)} pre-existing spool(s) would make the fault target "
             f"ambiguous: {sorted(pre_existing)}. Clear or replay them first.")
+
+    # ---- 0. let the engine WARM before driving speech ----------------------
+    # A dictation driven seconds after launch is captured by a cold engine and can
+    # transcribe to NOTHING. The replay then legitimately reports `empty_text` and
+    # deletes the take, which this scenario would read as the #2207 data loss —
+    # blaming the guard under test for a silent recording. Measured 2026-08-19.
+    launch_age = time.time() - (_proc_start_epoch(int(target_pid)) or 0)
+    if launch_age < 20:
+        time.sleep(20 - launch_age)
 
     # ---- 1. a GENUINE orphan: real audio, killed mid-utterance -------------
     import wispr_eyes
@@ -1148,7 +1173,7 @@ def R1_readiness_lost_after_load(**_) -> dict:
 
     # Real audio must reach the spool, or the replay recovers an empty prefix and
     # the verdict says nothing about the readiness guard.
-    time.sleep(3.0)
+    time.sleep(5.0)
     subprocess.run(["kill", "-9", target_pid])  # ONLY the verified target
     time.sleep(2.0)
 
@@ -1184,12 +1209,13 @@ def R1_readiness_lost_after_load(**_) -> dict:
     faulted = subprocess.Popen([app_path], env=env,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    fault_observed = False
     retry_marker = os.path.join(spool_dir, f"{spool_id}.readiness-retry")
     spool_file = os.path.join(spool_dir, f"{spool_id}.ewrec")
     attempt_marker = os.path.join(spool_dir, f"{spool_id}.attempt")
 
     def restart_without_fault(wait_for_idle_s: float = 60.0) -> bool:
-        nonlocal faulted
+        nonlocal faulted, fault_observed
         """Kill the faulted app and relaunch it clean. Returns False if it refused.
 
         NEVER kills while `<id>.attempt` exists, and the guard lives HERE rather
@@ -1206,7 +1232,14 @@ def R1_readiness_lost_after_load(**_) -> dict:
         """
         deadline = time.time() + wait_for_idle_s
         while os.path.exists(attempt_marker) and time.time() < deadline:
+            # Keep WATCHING for the fault while waiting: the replay being waited
+            # on can reach the readiness failure mid-wait, and a flag captured
+            # before the wait reports a CORRECT run as EVIDENCE INVALID.
+            if os.path.exists(retry_marker):
+                fault_observed = True
             time.sleep(0.5)
+        if os.path.exists(retry_marker):
+            fault_observed = True
         if os.path.exists(attempt_marker):
             return False  # a replay is STILL running; refuse rather than destroy it
         try:
@@ -1260,7 +1293,6 @@ def R1_readiness_lost_after_load(**_) -> dict:
             "retry": os.path.exists(retry_marker),
         }
 
-    fault_observed = False
     row = None
     # Polled fast: the marker can be deleted by a successful retry within a
     # second, and a missed observation costs an inconclusive run.
