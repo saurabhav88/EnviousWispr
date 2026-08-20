@@ -43,10 +43,14 @@ import Foundation
 /// for suggestions, but an importing user did. That describes what PR-P1 should build, not
 /// what any code does today.
 ///
-/// **Do not confuse it with `AppleIntelligenceAvailabilityReport`**, which is a different,
-/// live type in AppKit with its own coordinator, persistence and settings surface. A sweep
-/// for the shorter name matches the longer one and reports this as thoroughly used, which
-/// is why the boundary above is not pedantry: it is the difference between 2 and 25.
+/// **Do not confuse it with `AppleIntelligenceAvailabilityReport`**, a different and fully
+/// live type declared in THIS SAME MODULE at `AppleIntelligenceDiagnostics.swift:159` and
+/// consumed across four (AppKit's coordinator and settings surface, Services, LLM, Core).
+/// **Same module is what makes the confusion likely rather than remote** — the dead type
+/// and the live one sit in the same target, so nothing about where you are reading tells
+/// you which you have. A sweep for the shorter name matches the longer one and reports this
+/// one as thoroughly used, which is why the boundary above is not pedantry: it is the
+/// difference between 2 and 25.
 package enum AppleIntelligenceAvailability: Sendable, Equatable {
   case available
   case unavailable(reason: AIFailureReason, message: String)
