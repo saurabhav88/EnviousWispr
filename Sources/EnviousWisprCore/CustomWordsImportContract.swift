@@ -29,11 +29,14 @@ import Foundation
 /// **BOTH FILTERS WERE PAID FOR, and the second one is the interesting half.** An earlier
 /// revision claimed 2 while publishing the UNBOUNDED command, so anyone checking the claim
 /// got a much larger number and a reason to disbelieve it. Publishing the bounded command
-/// then made that command return 4, and re-measuring the unbounded one moved it from 27 to
-/// 30 — because writing a command into a comment adds occurrences of the string it counts.
+/// then changed what that command returned, because writing a command into a comment adds
+/// occurrences of the string it counts, and each later revision moved it again.
 /// **A comment that publishes a measurement of the file it lives in perturbs that
-/// measurement by existing, and each revision perturbs it again.** Only a comment-excluded
-/// count is stable enough to write down; publish that, or publish no number.
+/// measurement by existing.** Only a comment-excluded count is stable enough to write
+/// down; publish that, or publish no number. The intermediate readings are deliberately
+/// not quoted here — they are exactly the unreproducible numbers this paragraph warns
+/// against, and a reader who tried to reproduce one would be checking a file that no
+/// longer exists.
 ///
 /// The DESIGN INTENT is why it is not deleted: when enrichment cannot run the import UI
 /// should say so, unlike AI Polish, whose silent skip is deliberate — nobody asked polish
@@ -43,7 +46,7 @@ import Foundation
 /// **Do not confuse it with `AppleIntelligenceAvailabilityReport`**, which is a different,
 /// live type in AppKit with its own coordinator, persistence and settings surface. A sweep
 /// for the shorter name matches the longer one and reports this as thoroughly used, which
-/// is why the boundary above is not pedantry: it is the difference between 2 and 27.
+/// is why the boundary above is not pedantry: it is the difference between 2 and 25.
 package enum AppleIntelligenceAvailability: Sendable, Equatable {
   case available
   case unavailable(reason: AIFailureReason, message: String)
