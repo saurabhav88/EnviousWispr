@@ -2054,6 +2054,65 @@ if not _probs4 or "timed out" not in _probs4[0]:
 else:
     print("  ok  a lane timeout is still a baseline problem")
 
+# UNREACHABLE IN PRODUCTION, PINNED ANYWAY. A lane that compiles and passes but yields
+# no result bundle cannot happen as the callers stand: that branch requires `compiled`,
+# and `run_suite` returns a SuiteResults whenever it compiled because the reader raises
+# rather than returning None. The branch used to fall back to console-scraped names —
+# the exact defect this branch removed, and console naming cannot see a parameterized
+# test at all. An unreachable branch that WOULD be a defect if reachable is the one
+# nothing can catch: no test, no review, no mutation row can enter it, so it is not
+# wrong today and becomes wrong silently the moment some unrelated change makes it
+# reachable. `baseline` takes its lane, so a fake one reaches it here and holds it.
+class _NoResultsLane:
+    def run_suite(self, suite, tag):
+        return (5, [], True, Path("/tmp/x.log"), 0, 1.0, None)
+
+
+ran += 1
+_seen_nr = {}
+_probs_nr = battery.baseline(_NoResultsLane(), ["EnviousWisprTests/Odd"], "before",
+                             seen_names=_seen_nr)
+if not _probs_nr:
+    failures.append("a compiled lane with no result bundle refuses — it did not: baseline accepted "
+                    "it, and would name tests from console text, which cannot see a parameterized "
+                    "test at all")
+elif _seen_nr:
+    failures.append(f"a compiled lane with no result bundle refuses — it recorded names anyway: "
+                    f"{_seen_nr}")
+else:
+    print("  ok  a compiled lane with no result bundle refuses rather than scraping the console")
+
+# --- a documented return shape must match the code ------------------------------
+# `_STUB_ARITY` above pins run_suite's arity and says to update the stubs and the
+# constant together. It said nothing about the DOCSTRING, so that drifted: it promised
+# a 4-tuple while the function had returned 7 since this branch began, and it was found
+# by an AST check during self-audit rather than by anyone reading it. A docstring is the
+# one artifact with no compiler, so give it a mechanical check instead of an intention.
+# Structural, over the AST — no text patterns, no phrase matching.
+ran += 1
+import ast as _ast_d  # noqa: E402
+import re as _re_d  # noqa: E402
+_tree_d = _ast_d.parse(Path(battery.__file__).read_text())
+_mismatch = []
+for _fn in _ast_d.walk(_tree_d):
+    if not isinstance(_fn, (_ast_d.FunctionDef, _ast_d.AsyncFunctionDef)):
+        continue
+    _doc = _ast_d.get_docstring(_fn)
+    if not _doc:
+        continue
+    _m = _re_d.search(r"\(([^)]*,[^)]*)\)", _doc.splitlines()[0])
+    if not _m:
+        continue
+    _promised = len([p for p in _m.group(1).split(",") if p.strip()])
+    _arities = {len(s.value.elts) for s in _ast_d.walk(_fn)
+                if isinstance(s, _ast_d.Return) and isinstance(s.value, _ast_d.Tuple)}
+    if _arities and _promised not in _arities:
+        _mismatch.append(f"{_fn.name}: docstring promises {_promised}, code returns {sorted(_arities)}")
+if _mismatch:
+    failures.append("a documented return shape matches the code — it does not: " + "; ".join(_mismatch))
+else:
+    print("  ok  a documented return shape matches the code")
+
 print()
 if failures:
     print(f"{len(failures)} of {ran} FAILED:")

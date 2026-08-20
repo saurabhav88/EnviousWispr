@@ -850,7 +850,12 @@ class Lane:
         ]
 
     def run_suite(self, suite: str, tag: str):
-        """Returns (count, failures, compiled, log_path). count is None when no summary was printed."""
+        """-> (count, failures, compiled, log_path, rc, elapsed, results).
+
+        `count` is None when no summary was printed; `results` is a SuiteResults, or None when the
+        lane did not compile and so wrote no bundle. Every VERDICT comes from `results`; `count` and
+        `compiled` answer only whether the lane reached the test phase at all.
+        """
         self.generate_once()
         log_path = self.log_dir / f"{tag}.log"
         bundle = self.bundle_path(tag)
@@ -1284,7 +1289,21 @@ def baseline(lane: Lane, suites, phase: str, seen_names: dict = None,
                 if suite_results is not None:
                     seen_names[suite] = set(suite_results.aliases)
                 else:
-                    seen_names[suite] = suite_test_names(log)
+                    # NO CONSOLE FALLBACK. Falling back to `suite_test_names(log)` here
+                    # would reintroduce exactly the defect this branch removed: console
+                    # naming refuses a parameterized recipe before anything is mutated,
+                    # and it would do it SILENTLY, on a run that looks normal.
+                    # Unreachable as the call graph stands — this branch requires
+                    # `compiled`, and `run_suite` returns a SuiteResults whenever it
+                    # compiled, because the reader raises rather than returning None.
+                    # Kept and made loud anyway: "unreachable" is a property of today's
+                    # callers, and this file already carried one comment saying `should
+                    # be unreachable` about something that was not.
+                    problems.append(
+                        f"{suite}: the lane compiled and passed but produced no result bundle, so "
+                        f"the recipe's test names cannot be checked against reality. Refusing rather "
+                        f"than falling back to console-scraped names, which cannot see a "
+                        f"parameterized test at all.")
             # The UNMUTATED per-test status map. Every row's verdict is a DIFF
             # against this, so without it a row can only ask "did the named test
             # go red" — which cannot tell a working guard from a mutation that
