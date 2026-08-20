@@ -1130,6 +1130,24 @@ def R1_readiness_lost_after_load(**_) -> dict:
             "and this scenario cannot run. Enable it and retry. (A missing key is "
             "fine: the app defaults to enabled.)")
 
+    # ---- refuse an unsupported active backend ------------------------------
+    # `backends=["parakeet"]` in the metadata is DISPLAY ONLY — `run_scenario()`
+    # does not enforce it. With WhisperKit active the readiness seam and the
+    # History assertions can all still pass, reporting a green R1 while the
+    # documented `ASRManager.loadModel()` path was never exercised. A scenario
+    # that passes without touching its subject is the vacuity this branch exists
+    # to close, so the check belongs here until the runner enforces metadata.
+    backend = subprocess.run(
+        ["defaults", "read", SHARED_DOMAIN, "selectedBackend"],
+        capture_output=True, text=True)
+    active = backend.stdout.strip() if backend.returncode == 0 else "parakeet"
+    if active != "parakeet":
+        return invalid(
+            f"active backend is {active!r}, but this scenario documents "
+            "`backends=[\"parakeet\"]` and exercises `ASRManager.loadModel()`. "
+            "Running it on another engine would pass without testing the "
+            "documented path. Switch to Parakeet and retry.")
+
     # ---- refuse on ambiguous spool identity -------------------------------
     pre_existing = ewrec_ids()
     if pre_existing:
