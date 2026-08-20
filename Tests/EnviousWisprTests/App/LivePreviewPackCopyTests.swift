@@ -112,6 +112,29 @@ struct LivePreviewPackCopyTests {
     #expect(LivePreviewSettingsCopy.packInstalling.localizedCaseInsensitiveContains("download"))
   }
 
+  /// Is `name` referenced as a WHOLE identifier, rather than merely as the opening characters
+  /// of a longer sibling's name?
+  ///
+  /// **A substring test passes a declaration vacuously whenever a longer sibling is on screen.**
+  /// Measured on PR #2169 head `7cc70be1`: a refactor left four strings referenced only from
+  /// inside the copy file, and this guard reported exactly two of them —
+  /// `universalLockedPaused` and `universalAutoPaused`, the two with no prefix sibling.
+  /// `universalLocked` and `universalAuto` were in the identical situation and passed, because
+  /// `universalLockedHelp` and `universalAutoHelp` were rendered. The guard caught the strings
+  /// that had no sibling and missed the ones that did, which is the defect demonstrating itself
+  /// on a live run.
+  ///
+  /// The trailing `(?![A-Za-z0-9_])` is what makes the match a whole identifier. Underscore is in
+  /// that set even though no declaration uses one today: a Swift identifier may continue with it,
+  /// so excluding it would reintroduce this bug the first time someone writes `packInstalling_v2`.
+  /// The name is regex-escaped rather than interpolated raw, so a future declaration containing a
+  /// metacharacter cannot silently turn this into a different pattern.
+  nonisolated static func isReferenced(_ name: String, in corpus: String) -> Bool {
+    let escaped = NSRegularExpression.escapedPattern(for: name)
+    let pattern = "LivePreviewSettingsCopy\\.\(escaped)(?![A-Za-z0-9_])"
+    return corpus.range(of: pattern, options: .regularExpression) != nil
+  }
+
   /// Every string this page declares must actually reach a screen.
   ///
   /// **Written because one did not.** `packInstallFailed` was declared, referenced by the dash
@@ -153,7 +176,7 @@ struct LivePreviewPackCopyTests {
     #expect(
       corpus.contains("LivePreviewSettingsCopy."), "control: the corpus reached real call sites")
 
-    let unused = declarations.filter { !corpus.contains("LivePreviewSettingsCopy.\($0)") }
+    let unused = declarations.filter { Self.isReferenced($0, in: corpus) == false }
     #expect(
       unused.isEmpty,
       """
@@ -161,6 +184,67 @@ struct LivePreviewPackCopyTests {
       Either wire it into the page or delete it — a string that exists and is never shown reads \
       as done in review and is missing in the product.
       """)
+  }
+
+  /// Two-way control for the matcher above.
+  ///
+  /// **Written because a guard that stops firing is indistinguishable from one that was deleted.**
+  /// The suite's existing `declarations.count > 10` control covers a parse failure and says
+  /// nothing about MATCHING, so without these the tightening could be reverted — or broken by a
+  /// future edit — with every test still green.
+  ///
+  /// Not parameterized on purpose. A named parameterized test prints
+  /// `Test "..." with N test cases passed`, a shape `mutation-battery.py` cannot match, so it can
+  /// never be named as a recipe's `expect_fail` and the overnight battery cannot reach it.
+  @Test("A declaration referenced only as a longer sibling's prefix is not counted as used")
+  func aPrefixSiblingDoesNotSatisfyADeclaration() {
+    let corpus = "Text(LivePreviewSettingsCopy.universalLockedHelp)"
+
+    #expect(
+      Self.isReferenced("universalLockedHelp", in: corpus),
+      "the declaration actually on screen must count as used")
+    #expect(
+      Self.isReferenced("universalLocked", in: corpus) == false,
+      """
+      `universalLocked` is referenced nowhere; only its longer sibling `universalLockedHelp` is. \
+      A substring match reports it used, which is the #2172 defect.
+      """)
+  }
+
+  /// The exact-reference side, in the shapes a call site really takes.
+  ///
+  /// A word-boundary rule that was too strict would be just as wrong as the substring rule, and
+  /// would fail LOUDLY on every real declaration, so each of these is a shape the guard must keep
+  /// accepting.
+  @Test("An exact reference counts as used in every shape a call site takes")
+  func anExactReferenceCountsAsUsed() {
+    #expect(Self.isReferenced("packInstalling", in: "LivePreviewSettingsCopy.packInstalling"))
+    #expect(Self.isReferenced("packInstalling", in: "Text(LivePreviewSettingsCopy.packInstalling)"))
+    #expect(
+      Self.isReferenced(
+        "previewNeedsLanguagePack",
+        in: "LivePreviewSettingsCopy.previewNeedsLanguagePack(\"French\")"),
+      "a func declaration is referenced with an open paren straight after the name")
+    #expect(
+      Self.isReferenced("packInstalling", in: "let s = LivePreviewSettingsCopy.packInstalling\n"),
+      "a reference at end of line still counts")
+    #expect(
+      Self.isReferenced("packInstalling", in: "LivePreviewSettingsCopy.packInstalling.count"),
+      "a property accessed off the string still counts")
+  }
+
+  /// The underscore case, which the issue's proposed pattern would have missed.
+  ///
+  /// `(?![A-Za-z0-9])` alone treats `_` as a boundary, so `packInstalling` would be reported used
+  /// by a reference to `packInstalling_v2`. No declaration uses an underscore today; this pins the
+  /// wider character class so that stays safe when one does.
+  @Test("An underscore continues an identifier, so a longer sibling does not satisfy the shorter")
+  func underscoreDoesNotEndAnIdentifier() {
+    let corpus = "Text(LivePreviewSettingsCopy.packInstalling_v2)"
+    #expect(Self.isReferenced("packInstalling_v2", in: corpus))
+    #expect(
+      Self.isReferenced("packInstalling", in: corpus) == false,
+      "`_` continues a Swift identifier, so this is a different declaration entirely")
   }
 
   /// The pill sentence must keep matching the phrasing the app already uses for a missing model,
