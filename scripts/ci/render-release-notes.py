@@ -130,6 +130,37 @@ def main():
                 file=sys.stderr,
             )
             return 2
+        # PER-ENTRY completeness, not just per-VERSION presence (#2234).
+        #
+        # The count check above catches an entry that DISAPPEARS. It cannot catch one
+        # that quietly EMPTIES: a field this parser cannot read still matches the
+        # regex with a zero-length capture, so the entry parses, the count is right,
+        # and the description is gone. Measured on v2.4.5, whose headline entry was
+        # written as a multiline `"""` literal and rendered as a bare title — while
+        # BOTH existing assertions passed, because sibling entries in the same
+        # version rendered and made the body non-empty.
+        #
+        # Deliberately an OUTCOME check rather than a syntax allow-list. The
+        # protocol's list of prohibited forms has now been wrong twice about which
+        # forms exist (concatenation, then multiline), and a fourth prohibition would
+        # be one more clause on a partial check. "No entry renders empty" holds
+        # whatever syntax the next author reaches for.
+        empty = [
+            f"{e['version']}: {e['title'][:60] or '(no title)'}"
+            for e in entries
+            if not e["desc"].strip() or not e["title"].strip()
+        ]
+        if empty:
+            print(
+                "error: %d entr%s parsed with an empty title or description — the "
+                "field is present in the source but this parser could not read it "
+                "(a multiline, concatenated, interpolated or raw literal). Rewrite it "
+                "as a single direct double-quoted literal:\n  %s"
+                % (len(empty), "y" if len(empty) == 1 else "ies", "\n  ".join(empty)),
+                file=sys.stderr,
+            )
+            return 2
+
         cv = current_content_version()
         if not cv:
             print("error: could not read currentContentVersion", file=sys.stderr)

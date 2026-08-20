@@ -34,17 +34,7 @@ enum WhatsNewContent {
       icon: "waveform.badge.exclamationmark",
       title: "Dictation holds up in a noisy room",
       description:
-        """
-        A fan, an engine, an air conditioner or a plane cabin used to make EnviousWispr \
-        lose your words, most often the ones you started with. What came back read \
-        perfectly and was missing the beginning, which is the worst way for it to be \
-        wrong. The part of the app that decides where you were speaking now ignores the \
-        low rumble those rooms produce, so your sentence survives them. Nothing about \
-        your recording or the audio being transcribed changed, and quiet rooms behave \
-        exactly as before. If you use auto-stop, expect its timing to move in a noisy \
-        room: it usually stops much sooner than it used to, and on the half-second \
-        setting it can now wait longer or not stop on its own at all.
-        """,
+        "A fan, an engine, an air conditioner or a plane cabin used to make EnviousWispr lose your words, most often the ones you started with. What came back read perfectly and was missing the beginning, which is the worst way for it to be wrong. The part of the app that decides where you were speaking now ignores the low rumble those rooms produce, so your sentence survives them. Nothing about your recording or the audio being transcribed changed, and quiet rooms behave exactly as before. If you use auto-stop, expect its timing to move in a noisy room: it usually stops much sooner than it used to, and on the half-second setting it can now wait longer or not stop on its own at all.",
       version: "2.4.5"
     ),
 
