@@ -1142,9 +1142,26 @@ def R1_readiness_lost_after_load(**_) -> dict:
     subprocess.run(["kill", "-9", target_pid])  # ONLY the verified target
     time.sleep(2.0)
 
+    def relaunch_clean() -> None:
+        """Bring a clean app back up. EVERY exit after the crash must call this:
+        an `invalid` return that leaves the machine with NO app running breaks
+        every subsequent scenario, and the failure surfaces in someone else's run
+        rather than this one."""
+        env_clean = dict(os.environ)
+        env_clean.pop("EW_FORCE_READINESS_LOST", None)
+        env_clean["EW_FAULT_INJECTION"] = "1"
+        subprocess.Popen([app_path], env=env_clean,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def invalid_after_crash(reason: str) -> dict:
+        relaunch_clean()
+        return invalid(reason)
+
     still_there = ewrec_ids() - pre_existing
     if created != still_there:
-        return invalid(
+        # The recording can finish and remove its own spool during the settle,
+        # so this is reachable on a correct build.
+        return invalid_after_crash(
             f"the spool set changed across the crash: {sorted(created)} -> "
             f"{sorted(still_there)}")
     spool_id = created.pop()
