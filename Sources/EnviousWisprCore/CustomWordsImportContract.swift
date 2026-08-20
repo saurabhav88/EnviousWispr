@@ -109,16 +109,28 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
 }
 
 /// One notices side-channel for a batch — never a second `warnings` field.
+/// **DECLARED-BUT-UNPRODUCED CASES ARE MARKED. Read the marker before wiring into one (#2048).**
+///
+/// Four of the five cases below describe an enrichment stage that was never built. Their comments
+/// used to assert, in the present tense, that a producer existed — so a reader adding a sixth case
+/// followed them and wired into nothing. `grounding-discipline.md`
+/// RULE: never-hand-a-reviewer-an-unchecked-premise ranks that shape highest-cost because it
+/// retires the check rather than failing it.
+///
+/// `incompatibleSourceEntriesExcluded` is the one that works, and it is the template: produced in
+/// `SmartImportSource`, consumed in `CustomWordsImportFlowModel`, covered by
+/// `SmartImportSourceTests`. A case is live when all three exist.
 package enum CustomWordsImportNotice: Sendable, Equatable {
-  /// Produced by the shared enrichment stage (PR-P1) in the Paste and Upload flows.
+  /// **UNPRODUCED.** Designed for the shared enrichment stage (PR-P1) in the Paste and Upload
+  /// flows; that stage does not exist, and nothing constructs this case.
   case appleIntelligenceUnavailable(AppleIntelligenceAvailability)
-  /// Produced by the shared enrichment stage (PR-P1).
+  /// **UNPRODUCED.** Designed for the shared enrichment stage (PR-P1), which does not exist.
   case suggestionsPartiallyUnavailable(count: Int)
-  /// Produced by the shared enrichment stage when the per-import
-  /// suggestion-call budget is exhausted; `remainingCount` = candidates that
-  /// proceeded without suggestions.
+  /// **UNPRODUCED.** Designed for the shared enrichment stage, for when the per-import
+  /// suggestion-call budget is exhausted; `remainingCount` = candidates that would have proceeded
+  /// without suggestions. That stage does not exist.
   case suggestionBudgetReached(remainingCount: Int)
-  /// Upload-only row-level parse warning.
+  /// **UNPRODUCED.** Designed as an Upload-only row-level parse warning; no parser emits it.
   case fileParseWarning(rowNumber: Int, reason: String)
   /// Smart Import: the source held entries and EVERY one was deliberately
   /// refused — Juno's built-in seed vocabulary, Spokenly's regex rules,
