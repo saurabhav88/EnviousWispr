@@ -475,7 +475,13 @@ public enum KernelDictationDriverFactory {
           try transcriptStore.savePending(transcript)
         }
       },
-      deliverPaste: { request in await PasteCascadeExecutor().deliver(request) },
+      // #2170 — the ONE place the real board is handed to the paste cascade.
+      // Required rather than defaulted so a test can never inherit it by
+      // omission; this is the production wiring, so here it is passed
+      // explicitly. Same shape as the required seam two hundred lines above.
+      deliverPaste: { request in
+        await PasteCascadeExecutor(pasteboard: .general).deliver(request)
+      },
       pasteCompletionRegistry: pasteCompletionRegistry,
       // #950 — share the SAME telemetry state the kernel stamps so the metrics
       // builder reads the tail-trim diagnostic for `asr.completed`.

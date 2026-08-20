@@ -85,12 +85,15 @@ struct ClipboardIsolationFreezeTests {
   /// Types OTHER than `PasteService` whose methods reach the real clipboard, keyed to the methods that
   /// do it.
   ///
-  /// THE SET WAS SCOPED TO ONE TYPE AND THE PROBLEM IS NOT. `PasteCascadeExecutor.deliver` calls
-  /// `PasteService.copyToClipboard(request.legacyText)` with no board on its clipboard-only fallback
-  /// (`PasteCascadeExecutor.swift:543`, and again at `:578`), which is CORRECT for production — that
-  /// path is meant to reach the user's clipboard — and lethal for a test, which reaches it through
-  /// `@testable import` and bypasses the required `KernelFinalizationWiring` seam entirely. Nine
-  /// no-board call sites live in that file.
+  /// THE SET WAS SCOPED TO ONE TYPE AND THE PROBLEM IS NOT. `PasteCascadeExecutor.deliver` reaches
+  /// the clipboard on its fallback tier, which is CORRECT for production — that path is meant to
+  /// reach the user's board — and lethal for a test, which gets there through `@testable import`.
+  ///
+  /// WHAT THIS GUARD CATCHES CHANGED IN #2170, so do not read the paragraph above as current
+  /// mechanism. The executor now takes its pasteboard as a REQUIRED init parameter, so the no-board
+  /// form it was written for does not compile at all and the COMPILER owns that case. What is left
+  /// reachable, and what this scanner is now for, is a test passing `.general` explicitly — a
+  /// deliberate act with a visible token, which is exactly the kind a text scanner can see.
   ///
   /// Re-derive rather than trust this list:
   ///   grep -rn "PasteService\.\(copyToClipboard\|saveClipboard\|restoreClipboard\)" Sources/ \
@@ -98,15 +101,17 @@ struct ClipboardIsolationFreezeTests {
   /// Every hit is a production caller that legitimately wants the user's board; the question this set
   /// answers is which of them a TEST can reach directly.
   ///
-  /// KNOWN LIMIT, and it is why the real fix is elsewhere: this matches a LITERAL type base, so
-  /// `PasteCascadeExecutor().deliver(…)` is caught and a stored `executor.deliver(…)` is not — that
-  /// needs type resolution this suite does not do. The durable fix is to give the executor the same
-  /// injected clipboard seam `KernelFinalizationWiring` already has, which is a production change and
-  /// has its own issue.
+  /// KNOWN LIMIT, unchanged: this matches a LITERAL type base, so an inline construction is caught
+  /// and a stored `executor.deliver(…)` is not — that needs type resolution this suite does not do.
+  /// The durable fix WAS the injected seam this comment used to point at as future work; it landed in
+  /// #2170, and it is what closes the stored-variable hole the scanner cannot reach: a stored
+  /// executor still had to be constructed with a board, and constructing one with `.general` is the
+  /// visible act above.
   /// ENUMERATED, not collected from review reports. Every `NSPasteboard.general` in `Sources/` is:
   ///
   ///   PasteService.pasteToActiveApp                    WRITE   banned above (no board parameter)
-  ///   PasteCascadeExecutor.deliver                     WRITE   here (via a no-board copyToClipboard)
+  ///   PasteCascadeExecutor.deliver                     WRITE   here (only via an EXPLICIT `.general`
+  ///                                                            at construction, since #2170)
   ///   AIAvailabilityCoordinator.copyDiagnosticsToClipboard  WRITE   here
   ///   PasteCascadeExecutor  (changeCount)              READ    harmless; reads clobber nothing
   ///   DiagnosticsSettingsView, OnboardingV2View        WRITE   inside SwiftUI `body`, which a unit

@@ -250,6 +250,30 @@ extension PasteFocusClassification {
 /// that must exist in exactly one place to prevent drift.
 @MainActor
 internal final class PasteCascadeExecutor {
+  /// The pasteboard every clipboard write in this cascade goes to.
+  ///
+  /// REQUIRED, not defaulted, and that is the whole point (#2170). This type is
+  /// reachable from tests through `@testable import`, and the tiers below write
+  /// to it — so a defaulted `.general` would let any test that reaches the
+  /// clipboard tier write the developer's real board by omission, which is the
+  /// hazard this seam exists to remove.
+  ///
+  /// #2146 measured what a DEFAULTED capability costs on this exact surface: a
+  /// name-based sweep for tests writing the real board found 7 sites, and
+  /// flipping the seam's default to fail closed found 9. The two extras
+  /// contained no clipboard token anywhere — they inherited the board by not
+  /// passing one. A capability reached through a defaulted argument has no
+  /// call-site token, so no sweep can enumerate it.
+  ///
+  /// There is exactly one production construction site, so requiring it is
+  /// cheap. `PasteService`'s own writers keep their `.general` default: layer 1
+  /// is that parameter, layer 2 is this being mandatory.
+  private let pasteboard: NSPasteboard
+
+  internal init(pasteboard: NSPasteboard) {
+    self.pasteboard = pasteboard
+  }
+
 
   func deliver(_ request: PasteDeliveryRequest) async -> PasteDeliveryResult {
     let pasteStart = CFAbsoluteTimeGetCurrent()
@@ -460,7 +484,8 @@ internal final class PasteCascadeExecutor {
           ? ClipboardCleanup.snapshotForDelivery()
           : nil
         submittedKind = payload.kind
-        let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)
+        let changeCount = PasteService.copyToClipboardReturningChangeCount(
+          payload.text, to: pasteboard)
         submittedClipboardChangeCount = changeCount
         if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
           tier = .appleScript
@@ -508,7 +533,8 @@ internal final class PasteCascadeExecutor {
           requireCaretUnchanged: request.targetElementIsRetried,
           terminalBudget: request.terminalBudget)
         submittedKind = payload.kind
-        let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)
+        let changeCount = PasteService.copyToClipboardReturningChangeCount(
+          payload.text, to: pasteboard)
         submittedClipboardChangeCount = changeCount
         switch PasteService.findPasteMenuItem(pid: app.processIdentifier) {
         case .found(let menuItem):
@@ -572,7 +598,7 @@ internal final class PasteCascadeExecutor {
     // Tier 2 because a non-text element was focused (PR #220's void-protection
     // path). Nil-element paths reach Tier 2 and log their own tier=cgevent.
     if tier == .clipboardOnly {
-      PasteService.copyToClipboard(request.legacyText)
+      PasteService.copyToClipboard(request.legacyText, to: pasteboard)
       // An earlier route may have SUBMITTED the contextual payload and failed.
       // What the user can now paste by hand is this legacy text, so that is what
       // the record has to say (Codex review r4) — otherwise the field reports a
