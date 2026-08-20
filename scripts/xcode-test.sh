@@ -21,6 +21,8 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$PROJECT_ROOT/scripts/lib/ensure-generated.sh"
 # shellcheck source=scripts/lib/spm-seed.sh
 . "$PROJECT_ROOT/scripts/lib/spm-seed.sh"
+# shellcheck source=scripts/lib/log-dir.sh
+. "$PROJECT_ROOT/scripts/lib/log-dir.sh"
 trap 'ew_seed_release_all' EXIT
 # bash exits on a signal WITHOUT running the EXIT trap, which would strand a
 # seed lock. Converting each signal into a normal exit makes EXIT run.
@@ -34,17 +36,31 @@ RELEASE_SCHEME="EnviousWispr-Release"
 DEST='platform=macOS,arch=arm64'
 FILTER=""
 RUN_RELEASE=0
+# Default keeps every existing invocation byte-identical: `build/` under the
+# worktree, the two filenames unchanged.
+LOG_DIR=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --filter) FILTER="${2:?--filter needs a value}"; shift 2 ;;
     --release) RUN_RELEASE=1; shift ;;
-    *) echo "usage: scripts/xcode-test.sh [--filter TEST] [--release]" >&2; exit 2 ;;
+    # #2165: a per-invocation log directory. `run_lane` SUMS every
+    # `Test run with N test` line in its log, so two runs sharing one fixed path
+    # inflate the count — 10806 observed against a real 5387 — and the guard
+    # below rejects only `n < 1`, so it catches an EMPTY run and passes a DOUBLED
+    # one. A caller running many lanes (a mutation battery, a matrix) needs its
+    # own path per row or its counts are not its own.
+    --log-dir) LOG_DIR="${2:?--log-dir needs a value}"; shift 2 ;;
+    *) echo "usage: scripts/xcode-test.sh [--filter TEST] [--release] [--log-dir DIR]" >&2; exit 2 ;;
   esac
 done
 
 cd "$PROJECT_ROOT"
-mkdir -p "$PROJECT_ROOT/build"   # log dir for `tee` below; absent on a clean checkout
+# Owner: scripts/lib/log-dir.sh, which has its own two-way suite. Creating the
+# directory is deliberately the caller's job — a resolver with a side effect
+# cannot be tested without one.
+LOG_DIR="$(ew_resolve_log_dir "$PROJECT_ROOT" "$LOG_DIR")"
+mkdir -p "$LOG_DIR"   # absent on a clean checkout
 
 # Generate the Xcode project (gitignored, never committed) — only when a
 # generation input actually changed (#2157 chunk C).
@@ -71,10 +87,10 @@ run_lane() {  # $1=scheme  $2=config  $3=logfile  $4...=extra build settings
     VALID_ARCHS=arm64 \
     ONLY_ACTIVE_ARCH=YES \
     "$@" \
-    "${TEST_ARGS[@]}" | tee "$PROJECT_ROOT/$log"
+    "${TEST_ARGS[@]}" | tee "$log"
 
   local n
-  n=$(grep -oE "Test run with [0-9]+ test" "$PROJECT_ROOT/$log" | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
+  n=$(grep -oE "Test run with [0-9]+ test" "$log" | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
   if [ "$n" -lt 1 ]; then
     echo "ERROR: $config lane executed 0 tests (empty/misconfigured bundle)" >&2
     exit 1
@@ -93,8 +109,8 @@ ew_seed_resolve_or_unseed "$DERIVED_DATA" \
     -scheme "$DEBUG_SCHEME" \
     -derivedDataPath "$DERIVED_DATA"
 
-run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log
+run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log"
 ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
 if [ "$RUN_RELEASE" = "1" ]; then
-  run_lane "$RELEASE_SCHEME" Release build/xcode-test-release.log ENABLE_TESTABILITY=YES
+  run_lane "$RELEASE_SCHEME" Release "$LOG_DIR/xcode-test-release.log" ENABLE_TESTABILITY=YES
 fi

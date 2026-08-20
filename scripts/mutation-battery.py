@@ -171,7 +171,7 @@ CANONICAL_ASSIGNMENTS = [
     # The WHOLE line, not a prefix: `run_lane "$DEBUG_SCHEME" Debug build/... ENABLE_TESTABILITY=YES`
     # still starts with the prefix, and those trailing positionals reach xcodebuild through `"$@"`,
     # which the expansion allowlist accepts by name without seeing its contents.
-    'run_lane "$DEBUG_SCHEME" Debug build/xcode-test-debug.log\n',
+    'run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log"\n',
     'ew_ensure_generated "$PROJECT_ROOT"',
 ]
 # Expansions the runner knows the contents of, because CANONICAL_ASSIGNMENTS pins each one. An
