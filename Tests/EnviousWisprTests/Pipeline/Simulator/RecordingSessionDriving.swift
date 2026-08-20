@@ -182,6 +182,8 @@ final class DeadMicTelemetryLog {
 final class KernelRecordingSession: RecordingSessionDriving {
   private let kernel: RecordingSessionKernel
   private let vad: FakeVADSignalSource
+  /// Held so `drainReadyWork` can gate on `unrunResumedWaiters` (#1868).
+  private let clock: FakeClock
   private let limb = LimbInjectionBox()
 
   /// The wrapped kernel — exposed only so the direct FSM-invariant tests can
@@ -271,6 +273,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
     onTerminalSnapshot: @escaping @MainActor (KernelTerminalTelemetrySnapshot) -> Void = { _ in }
   ) {
     self.vad = vad
+    self.clock = clock
     let limb = self.limb
     let telemetryState = self.telemetryState
     let stopTimeTelemetryLog = self.stopTimeTelemetryLog
@@ -453,13 +456,22 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// forever — the signal clears within a bounded number of yields, well under
   /// the livelock cap.
   ///
-  /// Scope: this gate addresses the recording-exit hand-off, the only window the
-  /// observed flakes hit (every recurrence was `got recording`). The same
-  /// bump-absorption shape exists in principle at other continuations resumed
-  /// inside a step's `apply` — `FakeClock.advance(by:)` resuming a `slowLoad` /
-  /// `slowFinalize` sleep, a VAD `AsyncStream.yield` — but none has manifested.
-  /// If a future flake reports a stale `transcribing` / `warmingUp` after an
-  /// `advanceClock` or VAD step, those are the next signals to gate the same way.
+  /// Scope: this gate began as the recording-exit hand-off, the only window the
+  /// flakes observed at the time hit (every recurrence was `got recording`). The
+  /// same bump-absorption shape exists at other continuations resumed inside a
+  /// step's `apply`, and this comment used to say none of them had manifested.
+  ///
+  /// **One since has, exactly where this note predicted it: `FakeClock.advance(by:)`
+  /// resuming a sleep (#1868, scenario A13 losing its wedge terminal to a later
+  /// cancel).** It is gated here on `clock.unrunResumedWaiters`, for the reason no
+  /// existing clock signal could serve: `advance(by:)` REMOVES a waiter from
+  /// `waiters` before resuming it, so `hasPendingWaiters` is already false while
+  /// the sleeper has not executed a line — the one signal a caller would reach for
+  /// goes false at precisely the wrong moment.
+  ///
+  /// The VAD `AsyncStream.yield` continuation is the remaining ungated case and
+  /// has still not manifested. If a future flake reports a stale state after a VAD
+  /// step, that is the next signal to gate the same way.
   func drainReadyWork() async {
     var last = kernel.workEpoch
     var stable = 0
@@ -474,7 +486,11 @@ final class KernelRecordingSession: RecordingSessionDriving {
         stable = 0
         last = now
       }
-      if stable >= 64, !kernel.hasUnconsumedRecordingExit { return }
+      if stable >= 64, !kernel.hasUnconsumedRecordingExit,
+        clock.unrunResumedWaiters == 0
+      {
+        return
+      }
     }
     // #1857: exhausting the livelock net is NOT quiescence. Returning silently
     // made a give-up indistinguishable from a settle, so the caller's terminal
