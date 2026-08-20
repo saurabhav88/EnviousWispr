@@ -838,6 +838,67 @@ elif not _par.resolve("StubSuite/egOneUpdatePausedReadsAsNeedingAttention(_:)"):
 else:
     print("  ok  a parameterized identifier is a legal recipe name")
 
+# ---- cloud review r2 on #2246
+
+# (b) AMBIGUITY ANYWHERE IS AMBIGUITY. With `mutated or baseline`, a name that is
+# ambiguous in the BASELINE resolved to a singleton whenever execution stopped
+# before the second test reached the mutated bundle — so the ambiguity check was
+# skipped exactly when the run was cut short.
+ran += 1
+_amb_base = battery.SuiteResults(
+    {"A/shared": "Passed", "B/shared": "Passed"},
+    {"shared": {"A/shared", "B/shared"}}, {})
+_amb_mut = battery.SuiteResults({"A/shared": "Failed"}, {"shared": {"A/shared"}}, {})
+_v, _d = battery.classify_row(_amb_base, _amb_mut, "shared")
+if _v != battery.VERDICT_INVALID:
+    failures.append("a name ambiguous in the BASELINE stays ambiguous when the mutated run is cut "
+                    f"short — got {_v}, so the row was graded against whichever test happened to run")
+elif "ambiguous" not in _d:
+    failures.append("a name ambiguous in the BASELINE stays ambiguous — the detail does not say so")
+else:
+    print("  ok  a name ambiguous in the BASELINE stays ambiguous")
+
+# The accepted counterpart, so the check above cannot pass by refusing everything.
+ran += 1
+_ok_base = battery.SuiteResults({"A/only": "Passed"}, {"only": {"A/only"}}, {})
+_ok_mut = battery.SuiteResults({"A/only": "Failed"}, {"only": {"A/only"}}, {})
+_v2, _ = battery.classify_row(_ok_base, _ok_mut, "only")
+if _v2 != battery.VERDICT_CAUGHT:
+    failures.append(f"an unambiguous name still resolves and scores CAUGHT — got {_v2}")
+else:
+    print("  ok  an unambiguous name still resolves and scores CAUGHT")
+
+# (a) A STALE BUNDLE MUST STOP THE ROW, NEVER BE READ. `ignore_errors=True` let a
+# bundle that could not be removed survive; xcodebuild then declines to overwrite
+# it and the read returns the PREVIOUS row's results under this row's name.
+ran += 1
+import tempfile as _t9  # noqa: E402
+with _t9.TemporaryDirectory() as _td9:
+    _ld = Path(_td9) / "logs"
+    _ld.mkdir()
+    _l9 = battery.Lane(Path(_td9), Path(_td9) / "dd", _ld)
+    _l9.generated = True
+    _stale = _l9.bundle_path("tag")
+    _stale.mkdir(parents=True)
+    # Make it undeletable so the removal cannot succeed, which is the case
+    # `ignore_errors=True` swallowed.
+    (_stale / "keep").write_text("x")
+    import os as _os9
+    _os9.chmod(_stale, 0o500)
+    try:
+        _l9.run_suite("EnviousWisprTests/Whatever", "tag")
+        failures.append("a stale result bundle that cannot be removed STOPS the row — it did not; "
+                        "the row would be graded against an earlier run's results")
+    except battery._RowFailed as _e9:
+        if "could not be removed" not in str(_e9):
+            failures.append(f"a stale result bundle stops the row — wrong reason: {_e9}")
+        else:
+            print("  ok  a stale result bundle that cannot be removed STOPS the row")
+    except Exception as _e9:  # noqa: BLE001
+        failures.append(f"a stale result bundle stops the row — raised {type(_e9).__name__}: {_e9}")
+    finally:
+        _os9.chmod(_stale, 0o700)
+
 # A mutation that removes a completion or cancellation path is among the most valuable to write and the
 # most likely to HANG. Unbounded, the unattended battery sits on that row all night and never reaches
 # its restore — leaving a mutated tree behind, which is the one outcome worse than a wrong verdict.

@@ -627,7 +627,12 @@ VERDICT_INVALID = "INVALID-ROW"
 
 def classify_row(baseline: "SuiteResults", mutated: "SuiteResults", expect_fail: str):
     """-> (verdict, detail). Never raises on a legitimate result; raises only on a broken premise."""
-    targets = mutated.resolve(expect_fail) or baseline.resolve(expect_fail)
+    # THE UNION, never `mutated or baseline`. With `or`, a name that is ambiguous
+    # in the BASELINE resolves to a singleton whenever execution stopped before
+    # the second test appeared in the mutated bundle — so the ambiguity check is
+    # skipped exactly when the run was cut short, and the row is graded against
+    # whichever of the two happened to run.
+    targets = mutated.resolve(expect_fail) | baseline.resolve(expect_fail)
     if not targets:
         return VERDICT_INVALID, (
             f"`{expect_fail}` names no test in this suite. The bundle keys are exact — a display "
@@ -809,10 +814,24 @@ class Lane:
         # that silently reused a previous row's bundle would grade this mutation
         # against the LAST one's results — a wrong subject, which is the defect
         # class this whole change removes.
+        #
+        # SO THE REMOVAL IS PROVEN, NOT ATTEMPTED. `ignore_errors=True` was here
+        # and permitted exactly what the paragraph above forbids: a bundle that
+        # cannot be deleted stays, xcodebuild declines to overwrite it, and the
+        # read returns the PREVIOUS row's results wearing this row's name. A
+        # comment asserting a mechanism the code does not enforce — in the tool
+        # built to catch that.
         if bundle.exists():
             shutil.rmtree(bundle, ignore_errors=True)
+        if bundle.exists():
+            raise _RowFailed(
+                f"the previous result bundle at {bundle} could not be removed, so xcodebuild would "
+                f"refuse to overwrite it and this row would be graded against the LAST row's "
+                f"results. Remove it by hand and re-run.")
         cmd = self.build_command(suite, tag)
         started = time.monotonic()
+        # `monotonic` cannot be compared against a file mtime; a wall clock can.
+        started_wall = time.time()
         try:
             rc, out = run(cmd, cwd=self.worktree, log_path=log_path,
                           timeout=LANE_TIMEOUT_SECONDS)
@@ -835,6 +854,14 @@ class Lane:
         # VERDICT below comes from the bundle; this is not a fallback.
         results = None
         if compiled:
+            # A bundle predating this lane is the wrong subject, so require one
+            # created after the run began. The removal above should make this
+            # unreachable; it is checked anyway because "should be unreachable"
+            # is what the previous version's comment said too.
+            if bundle.exists() and bundle.stat().st_mtime < started_wall:
+                raise _RowFailed(
+                    f"the result bundle at {bundle} predates this lane, so it belongs to an earlier "
+                    f"run. Grading this row against it would report another mutation's outcome.")
             results = read_result_bundle(bundle)
         return count, failures, compiled, log_path, rc, elapsed, results
 
