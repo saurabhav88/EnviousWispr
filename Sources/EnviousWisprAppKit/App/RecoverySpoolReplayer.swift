@@ -709,12 +709,34 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// SCOPE: this is consulted ONLY on the post-load transcription refusal. A
   /// load-time refusal is terminal — see the `.modelLoadFailed` call site.
   ///
-  /// The line drawn here is availability versus verdict: `.notReady`,
-  /// `.xpcUnreachable`, `.managerNotOwned` and `.cancelled` all mean the engine
-  /// was never in a position to try, so this take deserves its attempt back.
-  /// A genuine decode failure (`.transcriptionFailed`, `.parakeetTranscription`)
-  /// or a model that will not load stays unrecoverable — retrying those forever
-  /// would strand a spool no launch can ever redeem.
+  /// The line drawn here is availability versus verdict: `.notReady` and
+  /// `.managerNotOwned` mean the engine was never in a position to try, so this
+  /// take deserves its attempt back. A genuine decode failure
+  /// (`.transcriptionFailed`, `.parakeetTranscription`) or a model that will not
+  /// load stays unrecoverable — retrying those forever would strand a spool no
+  /// launch can ever redeem.
+  ///
+  /// **`.xpcUnreachable` AND `.cancelled` ARE NOT IN THE DEFER LIST, and this
+  /// sentence used to say they were (#2240).** Both delete. Where each exclusion
+  /// is justified:
+  ///   - `.xpcUnreachable` — the inline note on its own `case` arm below: a
+  ///     permanently dead helper would defer every launch forever. (Named, not
+  ///     located: a line offset written into this comment is invalidated by the
+  ///     comment itself, which is #2237's lesson.)
+  ///   - `.cancelled` — `RecoveryFailureClassification.swift`, at the arm that
+  ///     classifies the three cancellation vehicles. Its comment states the
+  ///     class is terminal and routes `ASREngineNotReadyAfterLoadError` ahead of
+  ///     it precisely so that error does not inherit the deletion.
+  ///
+  /// **Whether `.cancelled` SHOULD be terminal is an open question and is not
+  /// settled by this comment.** All three vehicles mean the engine never decoded
+  /// a sample, which is the criterion stated above, and the existence of
+  /// `.loadReturnedNotReady` as a class that exists to route around this one is
+  /// evidence that at least one member was felt to be wrongly terminal. That is
+  /// a behaviour change on the path that decides whether a recording survives,
+  /// and it inherits the unestablished question of what bounds the number of
+  /// times a spool may be handed its attempt back. Tracked on #2240; this change
+  /// only stops the comment asserting something the code does not do.
   ///
   /// Mirrors `deferForTransientKeychainFailure` exactly, which is the shipped
   /// precedent for "transient condition, give the attempt back".
