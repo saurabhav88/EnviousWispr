@@ -623,8 +623,19 @@ import Testing
     #expect(probe.ensureCount == 0, "a removed model stays removed, with its bytes still present")
   }
 
-  /// The multi-producer distinction. A download the USER started and then cancelled must not
-  /// switch off the automatic path — the settings row's own Cancel reaches the same hook.
+  /// The multi-producer distinction, for the case this test actually stages: a cancel arriving
+  /// with NOTHING in flight. The settings row's own Cancel reaches the same hook as ours, so a
+  /// cancel that is not attributable to us must not switch off the automatic path.
+  ///
+  /// **SCOPE — the NAME is broader than the coverage, and than the code (#2110).** A cancel of a
+  /// download the user started while the coordinator has JOINED it does still write a decline:
+  /// `ModelDeliveryController` single-flights, so `ensureCurrentModel()` joins the user's fetch
+  /// while `automaticUpgradeInFlightCount` is positive, and `.cancel` reads that counter. This
+  /// test does not reach that case and passes today either way. The plan carries the same
+  /// correction (issue-2096 §3.2, amended 2026-08-16); this comment is its twin, and the twin was
+  /// missed. Do not read a green run here as evidence for the joined case, and do not write that
+  /// case against today's behaviour — #2110 has two candidate designs and the test belongs with
+  /// whichever lands.
   @MainActor
   @Test func userInitiatedCancelDoesNotRecordDecline() async throws {
     let root = try makeRoot()
