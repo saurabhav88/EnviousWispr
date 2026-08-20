@@ -709,12 +709,48 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// SCOPE: this is consulted ONLY on the post-load transcription refusal. A
   /// load-time refusal is terminal — see the `.modelLoadFailed` call site.
   ///
-  /// The line drawn here is availability versus verdict: `.notReady`,
-  /// `.xpcUnreachable`, `.managerNotOwned` and `.cancelled` all mean the engine
-  /// was never in a position to try, so this take deserves its attempt back.
-  /// A genuine decode failure (`.transcriptionFailed`, `.parakeetTranscription`)
-  /// or a model that will not load stays unrecoverable — retrying those forever
-  /// would strand a spool no launch can ever redeem.
+  /// The line drawn here is availability versus verdict: `.notReady` and
+  /// `.managerNotOwned` mean the engine was never in a position to try, so this
+  /// take deserves its attempt back. A genuine decode failure
+  /// (`.transcriptionFailed`, `.parakeetTranscription`) or a model that will not
+  /// load stays unrecoverable — retrying those forever would strand a spool no
+  /// launch can ever redeem.
+  ///
+  /// **`.xpcUnreachable` AND `.cancelled` ARE NOT IN THE DEFER LIST, and this
+  /// sentence used to say they were (#2240).** Both delete. Where each exclusion
+  /// is justified:
+  ///   - `.xpcUnreachable` — the inline note on its own `case` arm below: a
+  ///     permanently dead helper would defer every launch forever. (Named, not
+  ///     located: a line offset written into this comment is invalidated by the
+  ///     comment itself, which is #2237's lesson.)
+  ///   - `.cancelled` — `RecoveryFailureClassification.swift`, at the arm that
+  ///     classifies the three cancellation vehicles. Its comment states the
+  ///     class is terminal and routes `ASREngineNotReadyAfterLoadError` ahead of
+  ///     it precisely so that error does not inherit the deletion.
+  ///
+  /// **THE THREE CANCELLATION VEHICLES ARE NOT ALIKE, AND THAT IS WHY THE CLASS
+  /// IS TERMINAL AS A WHOLE.** `ASRLoadSupersededError` is thrown only by
+  /// load/warm guards (`isModelLoaded`, a stale `loadGeneration`, a `.warming`
+  /// state) and `ASRLoadCancelledError` only by a pending LOAD completion, so
+  /// both genuinely mean the engine never reached the audio. **`CancellationError`
+  /// does not:** `ParakeetBackend.transcribe` wraps the `manager.transcribe` call
+  /// and rethrows it, so a cancellation arriving after the decode has started
+  /// lands in the same class. Deferring the class wholesale would hand an attempt
+  /// back to a take the engine had already begun processing.
+  ///
+  /// An earlier draft of this comment claimed all three mean the engine never
+  /// decoded a sample, and used that to argue the class might be wrongly
+  /// terminal. Cloud review refuted it. The mixed membership is an argument FOR
+  /// the current behaviour, and it also explains `.loadReturnedNotReady`: the
+  /// surgical fix was correct precisely because the cancellation class cannot be
+  /// deferred as a unit.
+  ///
+  /// What remains genuinely open is narrower — whether the two LOAD-time vehicles
+  /// deserve separating from `CancellationError` so they can defer. That is a
+  /// behaviour change on the path deciding whether a recording survives, and it
+  /// inherits the unestablished question of what bounds the number of times a
+  /// spool may be handed its attempt back. Tracked on #2240; this change only
+  /// stops the comment asserting something the code does not do.
   ///
   /// Mirrors `deferForTransientKeychainFailure` exactly, which is the shipped
   /// precedent for "transient condition, give the attempt back".
