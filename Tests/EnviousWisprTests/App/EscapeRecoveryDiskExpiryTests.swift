@@ -231,9 +231,16 @@ struct EscapeRecoveryDiskExpiryTests {
       proof that spool was already recovered, so the next crash-recovery scan replays it and \
       hands the user back a dictation they cancelled.
       """)
-    #expect(
-      coordinator.hasPendingPulseForTesting,
-      "and the retry must stay armed, or the row waits for a relaunch after recovery clears it")
+    // DEBUG-only seam, so the assertion is wrapped rather than the test: the
+    // KEEP behaviour above must be proven in BOTH configurations, and only the
+    // retry check needs a hook that does not exist in a Release build. An
+    // unwrapped seam here breaks the Release COMPILE, which a Debug-only run
+    // cannot see (`check-debug-seam-tests.py` is the pre-check for exactly this).
+    #if DEBUG
+      #expect(
+        coordinator.hasPendingPulseForTesting,
+        "and the retry must stay armed, or the row waits for a relaunch after recovery clears it")
+    #endif
   }
 
   @Test("once the audio is gone the same dictation is deleted")
@@ -295,10 +302,12 @@ struct EscapeRecoveryDiskExpiryTests {
     // the app over an empty directory.
     await coordinator.sweepExpiredPending()
 
-    #expect(coordinator.liveOnDiskPendingCountForTesting == 0)
-    #expect(
-      !coordinator.hasPendingPulseForTesting,
-      "nothing is counting down, so nothing should be watching")
+    #if DEBUG
+      #expect(coordinator.liveOnDiskPendingCountForTesting == 0)
+      #expect(
+        !coordinator.hasPendingPulseForTesting,
+        "nothing is counting down, so nothing should be watching")
+    #endif
   }
 
   // NOT COVERED HERE, and named rather than left to be discovered: the
