@@ -114,6 +114,42 @@ struct EscapeRecoveryDiskExpiryTests {
         """)
     }
 
+    @Test("a Keep or Delete stops the countdown instead of walking the directory forever")
+    func removalRefreshesTheDiskCache() async throws {
+      let store = makeStore()
+      let log = EventLog()
+      let coordinator = makeCoordinator(log, store: store)
+
+      let id = UUID()
+      let row = Transcript(
+        id: id, text: "held, then deleted by the user",
+        escapeRecoveredAt: Date().addingTimeInterval(-60),
+        escapeRecoveryTakeID: "take-then-deleted")
+      try store.savePending(row)
+      coordinator.setTranscriptsForTesting([row])
+      await coordinator.sweepExpiredPending()
+      #expect(coordinator.hasPendingPulseForTesting, "control: the countdown is running")
+      #expect(coordinator.liveOnDiskPendingCountForTesting == 1, "control: disk truth cached")
+
+      // The user removes it. `liveOnDiskPendingCount` is a CACHE of the last
+      // sweep and this changes the directory it describes, so stopping on the
+      // stale value leaves the pulse alive with nothing to do — a directory walk
+      // every minute for the life of the app, which is the stranded retry this
+      // file's own comments warn about. Cloud review, P2.
+      coordinator.delete(row)
+      await coordinator.waitForRefreshForTesting()
+
+      #expect(
+        coordinator.liveOnDiskPendingCountForTesting == 0,
+        "the cache must be re-read from disk after a removal, not trusted")
+      #expect(
+        !coordinator.hasPendingPulseForTesting,
+        """
+        #2186: nothing is pending after the user removed the only held row, yet the countdown is \
+        still running. It will walk the pending directory every minute for the life of the app.
+        """)
+    }
+
     @Test("and it is deleted at its moment, still with History never loaded")
     func carriedOverRowIsDeletedAtItsMoment() async throws {
       let store = makeStore()

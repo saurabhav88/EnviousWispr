@@ -486,7 +486,7 @@ final class TranscriptCoordinator {
       if selectedTranscriptID == transcript.id {
         selectedTranscriptID = nil
       }
-      stopPulseIfIdle()
+      refreshDiskStateThenStopIfIdle()
     } catch {
       Task {
         await AppLogger.shared.log(
@@ -579,7 +579,7 @@ final class TranscriptCoordinator {
       }
       guard let index = transcripts.firstIndex(where: { $0.id == transcript.id }) else { return }
       transcripts[index] = transcripts[index].promotedFromPending()
-      stopPulseIfIdle()
+      refreshDiskStateThenStopIfIdle()
     } catch {
       Task {
         await AppLogger.shared.log(
@@ -612,7 +612,7 @@ final class TranscriptCoordinator {
       try store.deleteAll()
       transcripts.removeAll()
       selectedTranscriptID = nil
-      stopPulseIfIdle()
+      refreshDiskStateThenStopIfIdle()
     } catch {
       Task {
         await AppLogger.shared.log(
@@ -707,6 +707,46 @@ final class TranscriptCoordinator {
     pulseTask = nil
   }
 
+  /// #2186: after an action that REMOVES pending files, re-read disk truth
+  /// before deciding the pulse is idle.
+  ///
+  /// `liveOnDiskPendingCount` is a CACHE of the last sweep, and Keep, Delete and
+  /// Delete All all change the directory it describes. Calling `stopPulseIfIdle`
+  /// on the stale value means `pendingPulseHasWork` still sees the removed row,
+  /// so the pulse never stops — a directory walk every minute for the life of
+  /// the app, which is precisely the stranded-retry this file's own comments
+  /// warn about, reintroduced through a cache those comments predate.
+  ///
+  /// A sweep rather than zeroing the count: zeroing is wrong whenever ANOTHER
+  /// pending row is still counting down, and it would stop that row's timer.
+  /// Only the directory knows. The sweep re-arms if work remains, so the stop
+  /// below can then be trusted. Cloud review, P2.
+  private func refreshDiskStateThenStopIfIdle() {
+    // SYNCHRONOUS first, and that is a contract rather than an optimisation:
+    // `Keep stops the pulse once the last held row is gone` asserts the pulse is
+    // gone the instant Keep returns. Making this purely async broke it — the
+    // full lane caught it, this suite did not, because the new tests await the
+    // refresh and the old one does not.
+    //
+    // The cache is INVALIDATED rather than trusted or preserved. It describes a
+    // directory this removal just changed, so keeping it blocks the stop (the
+    // round-2 P2), and believing its old value is what made it stale. Zeroing
+    // can only stop the pulse EARLY; the refresh below re-arms within moments if
+    // another row is still counting down, and only the directory can say.
+    liveOnDiskPendingCount = 0
+    nextDiskExpiryDeadline = nil
+    pendingRetainedForSpool = 0
+    stopPulseIfIdle()
+    refreshTask = Task { [weak self] in
+      await self?.sweepExpiredPending()
+      self?.stopPulseIfIdle()
+    }
+  }
+
+  /// Held so a test can await the refresh rather than guess at a duration —
+  /// a signal the subject itself fires, never a sleep or a yield count.
+  private var refreshTask: Task<Void, Never>?
+
   #if DEBUG
     // periphery:ignore - test seam
     var hasPendingPulseForTesting: Bool { pulseTask != nil }
@@ -744,6 +784,14 @@ final class TranscriptCoordinator {
 
     // periphery:ignore - test seam
     var liveOnDiskPendingCountForTesting: Int { liveOnDiskPendingCount }
+
+    /// Awaits the post-removal disk refresh. Captured before awaiting because
+    /// the task clears nothing but may be replaced by a later removal.
+    // periphery:ignore - test seam
+    func waitForRefreshForTesting() async {
+      let running = refreshTask
+      await running?.value
+    }
 
     /// Awaits the pulse loop's own completion — a real signal, so a test never
     /// guesses how long the loop needs. Captured before awaiting because the
