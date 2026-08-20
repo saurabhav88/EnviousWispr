@@ -347,7 +347,7 @@ struct KernelEngineHookCallSitesTests {
     // Release the cache-warm continuation so preWarm can resume.
     fx.engine.releaseWarmUpFromCacheBlocker()
     _ = await preWarmTask.value
-    // Cancel the in-flight session to settle the kernel.
+    // Cancel the in-flight session, then apply the ready-work heuristic.
     fx.kernel.cancel()
     await fx.wrapper.drainReadyWork()
     // The stale preWarm continuation must not have crashed and must not
