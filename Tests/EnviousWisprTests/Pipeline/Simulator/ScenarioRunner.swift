@@ -57,8 +57,9 @@ struct ScenarioRunner {
     // zeroTick contract). Checking before this drain was tried and rejected
     // in PR-3: it strands every `zeroTick`-swept clock-gated scenario in a
     // non-terminal state. `vad.finish()` closes the signal stream so the
-    // kernel's VAD-subscription task exits; the conclusion-aware branch below is
-    // what lets released forward-path work reach a terminal when one is expected.
+    // kernel's VAD-subscription task exits; when a terminal is expected, the
+    // conclusion-aware branch below WAITS for its publication before checking it.
+    // It waits; it does not make the forward path reach a terminal.
     context.clock.drainPending()
     context.vad.finish()
     // #1868: `drainReadyWork` is a QUIESCENCE heuristic, not a completion

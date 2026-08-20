@@ -54,8 +54,9 @@ protocol RecordingSessionDriving: AnyObject {
   /// the synchronous stub.
   ///
   /// Deliberately not "run every ready task to quiescence": the kernel
-  /// implementation cannot promise that, and `KernelRecordingSession.drainReadyWork`
-  /// states the actual guarantee and its limits. Do not restate them here.
+  /// implementation cannot promise that. See `KernelRecordingSession.drainReadyWork`
+  /// for the heuristic and its known limits. Named, not summarised — a pointer that
+  /// lists what its target says is a claim about the target.
   func drainReadyWork() async
 
   /// Wait for the SUT's own conclusion signal, then drain (#1868).
@@ -433,11 +434,16 @@ final class KernelRecordingSession: RecordingSessionDriving {
     limb.processTextThrows = true
   }
 
-  /// Yield until the kernel's `workEpoch` stops advancing — the FSM has settled
-  /// for everything `workEpoch` covers, which is the transitions and progress
-  /// ticks the KERNEL explicitly marks. Not every task resumption: a `FakeClock`
-  /// continuation resume bumps nothing, which is why the clock's own window is
-  /// invisible here rather than absorbed. The 64-yield stability requirement is
+  /// Watch `workEpoch` for 64 consecutive unchanged samples. This is a SETTLING
+  /// HEURISTIC over the kernel events that explicitly call `bump()`, never proof
+  /// the FSM has settled — an earlier version of this line said "has settled" and
+  /// that is the claim this whole comment exists to retract.
+  ///
+  /// Nor is the covered set enumerable here: `bump()` has many call sites and a
+  /// list written into a comment drifts the first time one is added. What IS true
+  /// by construction is the boundary — it observes what calls `bump()` and nothing
+  /// else. A `FakeClock` continuation resume calls nothing, so the clock's window
+  /// is invisible here rather than absorbed. The 64-yield stability requirement is
   /// margin for a ready kernel task that loses the scheduler lottery to
   /// unrelated parallel tests across several yields under MainActor contention —
   /// not a deadline. The 20000-iteration cap is a safety net against a kernel

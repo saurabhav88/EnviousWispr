@@ -607,9 +607,11 @@ final class RecordingSessionKernel {
   /// direct test reads it (PR-3 plan §3.10).
   private(set) var forbiddenTransitionRejected = false
 
-  /// Monotonic counter bumped on every transition / work resumption. The
-  /// simulator drains kernel work to quiescence by observing this stop
-  /// advancing (PR-3 plan §3.3 — deterministic step ordering).
+  /// Monotonic counter bumped at kernel-defined state and work milestones — the
+  /// sites that call `bump()`, which is the whole of what it observes. The
+  /// simulator samples it as ONE INPUT to a ready-work settling heuristic
+  /// (PR-3 plan §3.3 — deterministic step ordering); it is not a quiescence
+  /// guarantee, and the simulator side documents the limits.
   private(set) var workEpoch: UInt64 = 0
 
   /// The user-visible error category for the concluded session, derived from
@@ -4714,8 +4716,14 @@ final class RecordingSessionKernel {
   }
 
   /// Fire `adapter.cancel()` without blocking the caller (best-effort load /
-  /// finalize cancellation, D6). Bumps `workEpoch` so the simulator's
-  /// quiescence drain accounts for this detached work.
+  /// finalize cancellation, D6). Calls `bump()` at LAUNCH and again after
+  /// `adapter.cancel()` returns.
+  ///
+  /// The launch bump does NOT guarantee the simulator accounts for this work: it
+  /// happens before the detached task runs, so a drain starting afterwards can
+  /// absorb it into its initial sample and see nothing outstanding. That is the
+  /// same bump-absorption shape `hasUnconsumedRecordingExit` exists to gate for
+  /// the recording-exit hand-off.
   private func detachedAdapterCancel() {
     bump()
     Task { @MainActor [weak self] in
