@@ -36,8 +36,14 @@ struct FakeClockTests {
       await clock.sleep(ticks: 3)
       woke.value = true
     }
-    await Task.yield()
+    await clock.waitForRegistrations(1)
     clock.advance(by: 2)
+    // Deliberately still a yield: this one proves a NEGATIVE (the sleeper must
+    // NOT have woken), and no registration signal helps — there is no event to
+    // park on when the correct behaviour is that nothing happens. A yield gives
+    // the sleeper an opportunity it must decline. Weaker than the rest of this
+    // suite and knowingly so; binding it needs a "deadline not yet reached"
+    // signal the clock does not have.
     await Task.yield()
     #expect(woke.value == false, "sleeper must not wake before its deadline")
     clock.advance(by: 1)
@@ -60,7 +66,7 @@ struct FakeClockTests {
       await clock.sleep(ticks: 100)
       woke.value = true
     }
-    await Task.yield()
+    await clock.waitForRegistrations(1)
     #expect(clock.hasPendingWaiters == true)
     clock.drainPending()
     await sleeper.value
@@ -83,7 +89,13 @@ struct FakeClockTests {
       await clock.sleep(ticks: 1)
       woke.value = true
     }
-    await Task.yield()
+    // Park on the clock's own REGISTRATION signal, never on a yield count: a
+    // yield assumes one hop is enough for the sleeper to reach its suspension
+    // point, and under contention `advance(by:)` would then see no waiter,
+    // resume nothing, and leave the sleeper suspended forever. Cloud review
+    // caught that guess in this very suite (PR #2233) — the defect #2143 names,
+    // committed inside the tests fixing it.
+    await clock.waitForRegistrations(1)
     #expect(clock.unrunResumedWaiters == 0, "nothing has been resumed yet")
 
     clock.advance(by: 1)
@@ -105,7 +117,7 @@ struct FakeClockTests {
   func drainPendingResumesAreOutstanding() async {
     let clock = FakeClock()
     let sleeper = Task { @MainActor in await clock.sleep(ticks: 100) }
-    await Task.yield()
+    await clock.waitForRegistrations(1)
     clock.drainPending()
     #expect(
       clock.unrunResumedWaiters == 1,
@@ -129,7 +141,7 @@ struct FakeClockTests {
   func manyWaitersAreAllCounted() async {
     let clock = FakeClock()
     let sleepers = (0..<3).map { _ in Task { @MainActor in await clock.sleep(ticks: 1) } }
-    await Task.yield()
+    await clock.waitForRegistrations(3)
     clock.advance(by: 1)
     #expect(clock.unrunResumedWaiters == 3)
     for s in sleepers { await s.value }

@@ -49,6 +49,33 @@ final class FakeClock {
   /// the non-throwing form, so no cancellation path skips the decrement.
   private(set) var unrunResumedWaiters: Int = 0
 
+  /// Sleepers that have REGISTERED their waiter, counted monotonically — never
+  /// decremented, so it stays a usable signal after a waiter is resumed and
+  /// removed from `waiters`.
+  private(set) var registeredWaiterCount: Int = 0
+
+  private var registrationWaiters: [(needed: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+  /// Suspends until at least `count` sleepers have registered.
+  ///
+  /// Cloud review, PR #2233: a test that yields once and then advances is
+  /// GUESSING that one hop is enough for a freshly-created sleeper to have run
+  /// to its suspension point. Under contention it is not — `advance(by:)` then
+  /// sees no waiter, resumes nothing, and the sleeper suspends forever. That is
+  /// the exact defect #2143 names, committed inside the tests fixing it. This is
+  /// the registration signal the subject fires, so a caller waits on the event
+  /// rather than on a scheduling assumption.
+  func waitForRegistrations(_ count: Int) async {
+    if registeredWaiterCount >= count { return }
+    await withCheckedContinuation { registrationWaiters.append((count, $0)) }
+  }
+
+  private func releaseRegistrationWaiters() {
+    let ready = registrationWaiters.filter { $0.needed <= registeredWaiterCount }
+    registrationWaiters.removeAll { $0.needed <= registeredWaiterCount }
+    for r in ready { r.continuation.resume() }
+  }
+
   init() {}
 
   /// Advance the logical clock by `ticks`, resuming every waiter whose deadline
@@ -77,6 +104,8 @@ final class FakeClock {
     let deadline = now + UInt64(ticks)
     await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
       waiters.append(Waiter(deadline: deadline) { continuation.resume() })
+      registeredWaiterCount += 1
+      releaseRegistrationWaiters()
     }
     // First line that runs in the RESUMED task, which is what this counter
     // means — not the resume, which only made the task ready.
