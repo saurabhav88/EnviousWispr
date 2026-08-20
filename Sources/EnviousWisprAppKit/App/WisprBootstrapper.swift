@@ -1122,6 +1122,33 @@ public final class WisprBootstrapper {
     // blocking "recovering" pill (replaces PR1's purge). Strict limb, single-flight,
     // one attempt per orphan. No-orphan launch is byte-identical to today.
     Task { await recoveryCoordinator.scanAndRecover() }
+    // #2186: delete Escape Recovery rows whose 24-hour window ended, WITHOUT
+    // waiting for the user to open History.
+    //
+    // Three shipped surfaces promise this deletion — `help/escape-recovery.md`
+    // and `help/what-data-is-collected.md` both say a row is removed "while the
+    // app is running, or the next time you launch it", and the in-app countdown
+    // renders "Deleted in 23h" — while the only production caller of
+    // `TranscriptCoordinator.load()`, and so of the sweep, was the History
+    // view's `.task`. The expiry pulse cannot substitute: it arms on
+    // `pendingPulseHasWork`, which reads `transcripts`, which only `load()`
+    // populates. So a user who never opened History never swept, and the
+    // plaintext of a dictation they CANCELLED stayed on disk indefinitely.
+    //
+    // Its own `Task`, not folded into the recovery scan above: the two touch
+    // different namespaces (audio spools vs pending transcripts), so no
+    // ordering is required, and chaining would let a slow orphan replay delay a
+    // deletion the user was promised.
+    //
+    // A limb, exactly like the line above. `sweepExpiredPending()` returns Void
+    // and absorbs its own failures into `unremovablePendingCount` /
+    // `lastSweepIncomplete`, which is also what arms the pulse to retry a file
+    // it could not remove — a retry that previously never came on a
+    // launch-only session. No guard here: `TranscriptStore.deleteExpiredPending`
+    // already coalesces, so a launch racing a History open is safe by
+    // construction. With Escape Recovery off (the default) the pending
+    // directory does not exist and this costs one `fileExists`.
+    Task { await transcriptCoordinator.sweepExpiredPending() }
   }
 
   public func applicationDidBecomeActive() {

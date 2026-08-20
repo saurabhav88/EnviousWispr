@@ -46,8 +46,7 @@ final class TranscriptCoordinator {
   /// is the instrument that decides whether this feature earns its keep.
   private let emitEscapeRecoveryKept: (_ ageMs: Int, _ takeID: String) -> Void
   private let emitEscapeRecoveryExpired: (_ ageMs: Int, _ takeID: String) -> Void
-  private let emitEscapeRecoveryRestoredFromHistory:
-    (_ ageMs: Int, _ takeID: String) -> Void
+  private let emitEscapeRecoveryRestoredFromHistory: (_ ageMs: Int, _ takeID: String) -> Void
   private var loadTask: Task<Void, Never>?
   private var pulseTask: Task<Void, Never>?
 
@@ -362,11 +361,27 @@ final class TranscriptCoordinator {
       // is about to delete. Reclaims disk and produces the `expired` half of the
       // ratio that judges the feature.
       //
-      // Placed here rather than at process launch deliberately: this is the
-      // path that already does History disk I/O, and read-time expiry means an
-      // unswept row is invisible regardless — so the sweep governs disk and
-      // telemetry, never what the user can see. That is also why a missed sweep
-      // is not a user-facing bug.
+      // #2186: this is NO LONGER THE ONLY SWEEP, and the reasoning that made it
+      // the only one was wrong in a way worth keeping written down.
+      //
+      // It used to read: placed here rather than at process launch
+      // deliberately, because this is the path that already does History disk
+      // I/O, and read-time expiry means an unswept row is invisible regardless
+      // — "so a missed sweep is not a user-facing bug."
+      //
+      // That is sound about the UI and silent about the DISK, and three shipped
+      // surfaces promise the disk: `help/escape-recovery.md` and
+      // `help/what-data-is-collected.md` both say a lapsed row is removed
+      // "while the app is running, or the next time you launch it", and the
+      // in-app countdown renders "Deleted in 23h". Hiding is not deleting. A
+      // user who never opened History never swept, so the plaintext of a
+      // dictation they CANCELLED stayed on disk indefinitely.
+      //
+      // `WisprBootstrapper.applicationDidFinishLaunching()` now sweeps too.
+      // This call stays exactly as it is — sweeping BEFORE reading is what
+      // stops the load picking up a row this pass is about to delete, which is
+      // a property of the READ and unrelated to who else sweeps. The store
+      // coalesces, so the two callers cannot double-report one expiry.
       await sweepExpiredPending()
       do {
         let diskRows = try await store.loadAll()
