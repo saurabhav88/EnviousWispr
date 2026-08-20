@@ -139,7 +139,22 @@ struct LivePreviewPackCopyTests {
   /// reintroduced the original #2172 bug. Two comparisons of one concept will always drift; give the
   /// concept an owner instead.
   nonisolated static func continuesIdentifier(_ c: Character) -> Bool {
-    c.isLetter || c.isNumber || c == "_"
+    // Built from the platform's own Unicode general categories rather than a hand-rolled set.
+    // `isLetter || isNumber || == "_"` was the previous shape and cloud review found the hole one
+    // round later: U+203F is Swift-valid connector punctuation and was treated as a boundary, so a
+    // declaration named `pack‿v2` would be scanned as `pack` and then reported USED by its own longer
+    // sibling's reference — the #2172 vacuous pass restored, silently. `_` is itself
+    // `connectorPunctuation`, so this SUBSUMES the old rule rather than bolting a case onto it.
+    c.unicodeScalars.allSatisfy { scalar in
+      switch scalar.properties.generalCategory {
+      case .lowercaseLetter, .uppercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter,
+        .decimalNumber, .letterNumber, .otherNumber,
+        .connectorPunctuation, .nonspacingMark, .spacingMark:
+        return true
+      default:
+        return false
+      }
+    }
   }
 
   /// The declaration name on a `static let`/`static func` line, or nil.
@@ -154,13 +169,25 @@ struct LivePreviewPackCopyTests {
     return name.isEmpty ? nil : name
   }
 
+  /// Is `name` referenced as a WHOLE identifier?
+  ///
+  /// **No regex, deliberately.** The previous version consulted `continuesIdentifier` in the scanner
+  /// and then re-encoded the same set as an ICU character class here — and cloud review found those two
+  /// encodings disagreeing one round after they were consolidated, which is what a rule expressed twice
+  /// always does. Scanning for the literal reference and asking the SHARED predicate about the next
+  /// character leaves exactly one definition and nothing to keep in sync. It also removes the need to
+  /// regex-escape the name at all.
   nonisolated static func isReferenced(_ name: String, in corpus: String) -> Bool {
-    let escaped = NSRegularExpression.escapedPattern(for: name)
-    // `\p{L}` and `\p{N}` are ICU's Unicode letter and number categories, so this lookahead accepts
-    // exactly what `continuesIdentifier` accepts. An ASCII class here is what let an accented sibling
-    // satisfy a shorter name.
-    let pattern = "LivePreviewSettingsCopy\\.\(escaped)(?![\\p{L}\\p{N}_])"
-    return corpus.range(of: pattern, options: .regularExpression) != nil
+    let needle = "LivePreviewSettingsCopy.\(name)"
+    var searchFrom = corpus.startIndex
+    while let hit = corpus.range(of: needle, range: searchFrom..<corpus.endIndex) {
+      // A reference at the very end of the corpus has no following character, so nothing continues it.
+      if hit.upperBound == corpus.endIndex || continuesIdentifier(corpus[hit.upperBound]) == false {
+        return true
+      }
+      searchFrom = hit.upperBound
+    }
+    return false
   }
 
   /// Every string this page declares must actually reach a screen.
@@ -304,6 +331,28 @@ struct LivePreviewPackCopyTests {
       """
       An ASCII-only lookahead treats `é` as a boundary, so the shorter name is satisfied by its longer \
       sibling — the original #2172 defect, in Unicode clothing.
+      """)
+  }
+
+  /// Connector punctuation continues a Swift identifier, and it is not a letter, a number or `_`.
+  ///
+  /// **The input is exotic and the failure is SILENT, which is what earns it a case**
+  /// (testing-philosophy.md RULE: dont-test-what-cannot-happen). Nobody will name a copy constant
+  /// `pack‿v2`. But if they did, a predicate built from `isLetter || isNumber || == "_"` treats U+203F
+  /// as a boundary, so the shorter `pack` is reported USED by the longer name's reference and nothing
+  /// goes red — the original #2172 defect, restored, one round after it was fixed.
+  @Test("Connector punctuation continues an identifier for both the scanner and the matcher")
+  func connectorPunctuationContinuesAnIdentifier() {
+    let declared = Self.declaredName(in: "  static let pack\u{203F}v2 = \"x\"")
+    #expect(declared == "pack\u{203F}v2", "the scanner must not stop at connector punctuation")
+
+    let corpus = "Text(LivePreviewSettingsCopy.pack\u{203F}v2)"
+    #expect(Self.isReferenced("pack\u{203F}v2", in: corpus), "its own reference must match")
+    #expect(
+      Self.isReferenced("pack", in: corpus) == false,
+      """
+      `pack` is referenced nowhere; only `pack‿v2` is. Treating U+203F as a boundary restores the \
+      vacuous pass this whole guard exists to remove, and nothing would go red.
       """)
   }
 
