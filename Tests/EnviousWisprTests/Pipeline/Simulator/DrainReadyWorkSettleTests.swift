@@ -144,10 +144,15 @@ struct DrainReadyWorkSettleTests {
   // MARK: - #1857 — the conclusion wait, and its give-up report
 
   /// The fix for `retryRescuedCompletionSurvivesClipboardFallback`: after a
-  /// `stop`, `drainUntilConcluded()` returns only once the kernel has actually
-  /// published a terminal, so a caller's terminal assertions can never read the
-  /// in-flight `nil` that epoch-quiescence alone allowed.
-  @Test("drainUntilConcluded returns only once the kernel has published a terminal")
+  /// `stop`, `drainUntilConcluded()` waits for the kernel to publish a terminal —
+  /// or records a give-up and returns if its cap is exhausted — so a caller's
+  /// terminal assertions no longer read the in-flight `nil` that epoch-quiescence
+  /// alone allowed.
+  ///
+  /// The NAME below said "returns only once", which the cap path makes false. A
+  /// test name is what later readers cite, so it carries the same burden as the
+  /// comment.
+  @Test("drainUntilConcluded waits for a published terminal, or reports giving up")
   func concludedDrainWaitsForTheTerminal() async {
     // `.batchSuccess` concludes on cooperative scheduling alone. A behavior
     // gated on FakeClock ticks (`.slowFinalize`) would violate the documented

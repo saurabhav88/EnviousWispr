@@ -49,9 +49,14 @@ protocol RecordingSessionDriving: AnyObject {
   /// kernel's real start / stop / cancel / reset / preWarm entry points.
   func apply(_ trigger: SessionTrigger) async
 
-  /// Run every ready async task the SUT spawned to quiescence, so the next
-  /// scenario step observes a settled state (PR-3 plan §3.3 — deterministic
-  /// step ordering against a real FSM). No-op for the synchronous stub.
+  /// Apply the SUT's ready-work SETTLING HEURISTIC before the next scenario step
+  /// (PR-3 plan §3.3 — deterministic step ordering against a real FSM). No-op for
+  /// the synchronous stub.
+  ///
+  /// Deliberately not "run every ready task to quiescence": the kernel
+  /// implementation cannot promise that. See `KernelRecordingSession.drainReadyWork`
+  /// for the heuristic and its known limits. Named, not summarised — a pointer that
+  /// lists what its target says is a claim about the target.
   func drainReadyWork() async
 
   /// Wait for the SUT's own conclusion signal, then drain (#1868).
@@ -122,7 +127,7 @@ final class StubRecordingSession: RecordingSessionDriving {
 // The PR-3 conformer: a TRIVIAL forwarding/observation wrapper around the real
 // `RecordingSessionKernel` (PR-3 plan §3.3). It MAY forward triggers, map the
 // kernel's state onto `FSMState`, read the kernel's observable surface into
-// `SessionEffects`, and drain the kernel's async work to quiescence. It MUST
+// `SessionEffects`, and apply the kernel's ready-work settling heuristic. It MUST
 // NOT implement session policy — session filtering, terminal-state dedup,
 // cancellation ordering, stale-callback dropping, cleanup, or any latch logic
 // are kernel behaviors asserted AGAINST the kernel. Codex code-diff review
@@ -429,9 +434,18 @@ final class KernelRecordingSession: RecordingSessionDriving {
     limb.processTextThrows = true
   }
 
-  /// Yield until the kernel's `workEpoch` stops advancing — the FSM has settled
-  /// for everything `workEpoch` covers (the kernel bumps it on every transition,
-  /// task resumption, and progress tick). The 64-yield stability requirement is
+  /// Watch `workEpoch` for 64 consecutive unchanged samples. This is a SETTLING
+  /// HEURISTIC over the kernel events that explicitly call `bump()`, never proof
+  /// the FSM has settled — an earlier version of this line said "has settled" and
+  /// that is the claim this whole comment exists to retract.
+  ///
+  /// Do not enumerate the covered set here. It IS enumerable — `bump()`'s call
+  /// sites are findable — but a list copied into a comment needs manual
+  /// synchronisation the first time one moves, and nothing enforces that. What is
+  /// true by construction is the boundary: this observes what calls `bump()` and
+  /// nothing else. A `FakeClock` continuation resume does call its continuation,
+  /// and does NOT call `bump()`, so the clock's window is invisible here rather
+  /// than absorbed. The 64-yield stability requirement is
   /// margin for a ready kernel task that loses the scheduler lottery to
   /// unrelated parallel tests across several yields under MainActor contention —
   /// not a deadline. The 20000-iteration cap is a safety net against a kernel
@@ -449,17 +463,36 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// flakes (the recurring `interleavingSweep` `got recording` failure). So gate
   /// the return on the kernel's own hand-off signal: never declare quiescence
   /// while a delivered recording-exit is still unconsumed. The forward path is a
-  /// ready task on a cooperative serial executor, so it cannot be starved
-  /// forever — the signal clears within a bounded number of yields, well under
-  /// the livelock cap.
+  /// ready task on the MainActor; the livelock cap below REPORTS prolonged
+  /// starvation rather than silently reading it as quiescence. An earlier version
+  /// of this note promised the signal clears "well under the livelock cap" — that
+  /// is not something this code can guarantee, and #1857 exists because the cap
+  /// is reachable.
   ///
-  /// Scope: this gate addresses the recording-exit hand-off, the only window the
-  /// observed flakes hit (every recurrence was `got recording`). The same
-  /// bump-absorption shape exists in principle at other continuations resumed
-  /// inside a step's `apply` — `FakeClock.advance(by:)` resuming a `slowLoad` /
-  /// `slowFinalize` sleep, a VAD `AsyncStream.yield` — but none has manifested.
-  /// If a future flake reports a stale `transcribing` / `warmingUp` after an
-  /// `advanceClock` or VAD step, those are the next signals to gate the same way.
+  /// Scope: this gate covers ONLY the recording-exit hand-off, behind the
+  /// recurring `interleavingSweep` `got recording` failure. It is not the only
+  /// observed window — A13 below is another, and is not covered. The same
+  /// bump-absorption shape exists at other continuations resumed inside a step's
+  /// `apply` — `FakeClock.advance(by:)` resuming a sleep, a VAD
+  /// `AsyncStream.yield` — and neither is gated here.
+  ///
+  /// #1868 examined the clock one and deliberately left it OUT, which is worth
+  /// recording because the obvious reading of that issue is that it belongs here.
+  /// Two measurements say otherwise. `FakeClock.unrunResumedWaiters` exists and is
+  /// the signal such a gate would consult — `advance(by:)` removes a waiter before
+  /// resuming it, so `hasPendingWaiters` goes false while the sleeper has not run a
+  /// line — but adding the clause here was measured INERT: no case opens the
+  /// resume-to-run window on purpose, so mutating the clause away reddens nothing.
+  /// And A13 does not lose its terminal in that window at all. It loses it between
+  /// `spawn` and the sleep REGISTERING, during which every clock signal reads zero,
+  /// including that counter. A gate here cannot see it.
+  ///
+  /// So the next signal depends on WHICH WINDOW the flake is in, not on which step
+  /// preceded it — A13 is itself a stale-state-after-`advanceClock` failure that
+  /// the counter cannot see, so "it followed an advance" does not pick the fix. A
+  /// case that deliberately opens the resume-to-run window wants the counter
+  /// clause added HERE; A13 wants registration tracked, a different mechanism,
+  /// recorded on #1868.
   func drainReadyWork() async {
     var last = kernel.workEpoch
     var stable = 0
@@ -483,9 +516,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
     Issue.record(Self.giveUpMessage(kernel: kernel, what: "drainReadyWork", reached: "quiescence"))
   }
 
-  /// Yield until the kernel PUBLISHES a terminal, then drain the remaining ready
-  /// work. #1857: `drainReadyWork` is a quiescence heuristic, not a terminal
-  /// wait. A continuation resumed synchronously inside the triggering step is
+  /// Wait for the kernel to PUBLISH a terminal, then apply the ready-work
+  /// heuristic. On cap exhaustion it records a give-up and returns instead.
+  /// #1857: `drainReadyWork` is a quiescence heuristic, not a terminal wait. A continuation resumed synchronously inside the triggering step is
   /// absorbed into the drain's initial `workEpoch` (the same bump-absorption
   /// shape `hasUnconsumedRecordingExit` gates for the recording-exit hand-off),
   /// so under full-suite MainActor contention the drain can return while the
