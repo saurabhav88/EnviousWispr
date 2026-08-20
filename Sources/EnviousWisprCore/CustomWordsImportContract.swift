@@ -18,10 +18,19 @@ import Foundation
 /// **MEASURE IT WITH `-w` AND WITHOUT COMMENT LINES. Both filters are load-bearing, and
 /// the contrast between the two numbers IS the evidence:**
 ///
+///     NOCOMMENT=':[0-9]+: *(//|\*)'
 ///     /usr/bin/grep -rnw AppleIntelligenceAvailability Sources/ Tests/ \
-///       | /usr/bin/grep -v '///'                                             ->  2
+///       | /usr/bin/grep -vE "$NOCOMMENT"                                     ->  2
 ///     /usr/bin/grep -rn  AppleIntelligenceAvailability Sources/ Tests/ \
-///       | /usr/bin/grep -v '///'                                             -> 25
+///       | /usr/bin/grep -vE "$NOCOMMENT"                                     -> 25
+///
+/// **WHAT THAT FILTER DOES AND DOES NOT DO, because an earlier revision published
+/// `grep -v '///'` and called the result comment-free.** It drops a line whose first
+/// non-space character is `//` or `*`, so doc comments, ordinary comments and the interior
+/// of a conventionally-formatted block comment all go. It does NOT drop a TRAILING comment
+/// on a line of code, and it does not parse Swift. Both counts are the same under either
+/// filter today because no such line exists; the difference is that the earlier one
+/// happened to be right and described itself wrongly.
 ///
 /// **`-w`, not a hand-rolled `[^R]` class.** An earlier revision excluded the neighbour by
 /// its first LETTER, which is a rule about the one sibling that exists today. A future
