@@ -1157,6 +1157,7 @@ def R1_readiness_lost_after_load(**_) -> dict:
     attempt_marker = os.path.join(spool_dir, f"{spool_id}.attempt")
 
     def restart_without_fault(wait_for_idle_s: float = 60.0) -> bool:
+        nonlocal faulted
         """Kill the faulted app and relaunch it clean. Returns False if it refused.
 
         NEVER kills while `<id>.attempt` exists, and the guard lives HERE rather
@@ -1187,8 +1188,12 @@ def R1_readiness_lost_after_load(**_) -> dict:
         # shell, so `os.environ` does not carry it. Without it the relaunched app
         # has no debug endpoint and every later scenario fails.
         restart["EW_FAULT_INJECTION"] = "1"
-        subprocess.Popen([app_path], env=restart,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # TRACK the replacement. Without this the next call targets a dead
+        # pid and launches a SECOND instance, which makes the following scenario
+        # refuse its now-ambiguous target and leaves two apps contending for the
+        # global hotkey.
+        faulted = subprocess.Popen([app_path], env=restart,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
 
     # ---- 3-5. OBSERVE the four artifacts; never INFER state from a subset ----
@@ -1251,6 +1256,10 @@ def R1_readiness_lost_after_load(**_) -> dict:
     # armed rather than killed mid-replay, and that is stated in the evidence
     # rather than hidden.
     left_armed = not restart_without_fault(wait_for_idle_s=60.0)
+    # Re-read: that wait can span the completion of an in-flight replay, and the
+    # `row` above predates it. Reporting the stale value would fail a run whose
+    # recording was recovered inside the advertised budget.
+    row = history_row(spool_id) or row
 
     if not fault_observed:
         return invalid(
