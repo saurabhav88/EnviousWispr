@@ -1113,8 +1113,16 @@ def R1_readiness_lost_after_load(**_) -> dict:
     # confident wrong subject. The setting defaults to enabled only when nothing is
     # persisted, so a user who deliberately turned it off gets that misdiagnosis.
     # Report the real prerequisite rather than silently flipping someone's setting.
+    # The SHARED domain, not `.dev`: both builds resolve to `com.enviouswispr.app`
+    # (`SettingsDefaults.swift:20`), and `com.enviouswispr.app.dev` holds only
+    # pre-#923 residue. `ptt_binding.SHARED_DOMAIN` owns this constant and its
+    # comment says plainly "Do not add a fallback to it: reading a stale domain is
+    # what caused #1997" — so this imports that owner rather than keeping a second
+    # copy that can drift.
+    from ptt_binding import SHARED_DOMAIN
+
     pref = subprocess.run(
-        ["defaults", "read", "com.enviouswispr.app.dev", "crashRecoveryEnabled"],
+        ["defaults", "read", SHARED_DOMAIN, "crashRecoveryEnabled"],
         capture_output=True, text=True)
     if pref.returncode == 0 and pref.stdout.strip() in ("0", "false", "NO"):
         return invalid(
