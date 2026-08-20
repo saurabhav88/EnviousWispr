@@ -12,10 +12,28 @@ import Foundation
 /// Core-level Apple Intelligence availability value for the import flow.
 ///
 /// **UNPRODUCED AND UNCONSUMED.** It is the payload of `.appleIntelligenceUnavailable`
-/// below and shares that case's status exactly: `/usr/bin/grep -rn` for this type across
-/// `Sources/` and `Tests/` returns TWO hits, this declaration and that payload. No
-/// connector returns it and no screen renders it, because the shared enrichment stage
-/// (PR-P1) does not exist.
+/// below and shares that case's status exactly. No connector returns it and no screen
+/// renders it, because the shared enrichment stage (PR-P1) does not exist.
+///
+/// **MEASURE IT WITH A WORD BOUNDARY AND WITHOUT COMMENT LINES. Both filters are
+/// load-bearing, and the contrast between the two numbers IS the evidence:**
+///
+///     BOUND='AppleIntelligenceAvailability\([^R]\|$\)'
+///     /usr/bin/grep -rn "$BOUND" Sources/ Tests/ | /usr/bin/grep -v '///'    ->  2
+///     /usr/bin/grep -rn AppleIntelligenceAvailability Sources/ Tests/ \
+///       | /usr/bin/grep -v '///'                                             -> 25
+///
+/// The 2 are this declaration and that payload. The other 23 are
+/// `AppleIntelligenceAvailabilityReport`, a different and live type — see below.
+///
+/// **BOTH FILTERS WERE PAID FOR, and the second one is the interesting half.** An earlier
+/// revision claimed 2 while publishing the UNBOUNDED command, so anyone checking the claim
+/// got a much larger number and a reason to disbelieve it. Publishing the bounded command
+/// then made that command return 4, and re-measuring the unbounded one moved it from 27 to
+/// 30 — because writing a command into a comment adds occurrences of the string it counts.
+/// **A comment that publishes a measurement of the file it lives in perturbs that
+/// measurement by existing, and each revision perturbs it again.** Only a comment-excluded
+/// count is stable enough to write down; publish that, or publish no number.
 ///
 /// The DESIGN INTENT is why it is not deleted: when enrichment cannot run the import UI
 /// should say so, unlike AI Polish, whose silent skip is deliberate — nobody asked polish
@@ -24,7 +42,8 @@ import Foundation
 ///
 /// **Do not confuse it with `AppleIntelligenceAvailabilityReport`**, which is a different,
 /// live type in AppKit with its own coordinator, persistence and settings surface. A sweep
-/// for the shorter name matches the longer one and reports this as thoroughly used.
+/// for the shorter name matches the longer one and reports this as thoroughly used, which
+/// is why the boundary above is not pedantry: it is the difference between 2 and 27.
 package enum AppleIntelligenceAvailability: Sendable, Equatable {
   case available
   case unavailable(reason: AIFailureReason, message: String)
