@@ -4716,8 +4716,9 @@ final class RecordingSessionKernel {
   }
 
   /// Fire `adapter.cancel()` without blocking the caller (best-effort load /
-  /// finalize cancellation, D6). Calls `bump()` at LAUNCH and again after
-  /// `adapter.cancel()` returns.
+  /// finalize cancellation, D6). Calls `bump()` at LAUNCH; the detached task
+  /// calls it again after `adapter.cancel()` returns IF `self` still exists —
+  /// it captures `self` weakly, so the second bump is conditional.
   ///
   /// The launch bump does NOT guarantee the simulator accounts for this work: it
   /// happens before the detached task runs, so a drain starting afterwards can

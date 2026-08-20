@@ -439,11 +439,13 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// the FSM has settled — an earlier version of this line said "has settled" and
   /// that is the claim this whole comment exists to retract.
   ///
-  /// Nor is the covered set enumerable here: `bump()` has many call sites and a
-  /// list written into a comment drifts the first time one is added. What IS true
-  /// by construction is the boundary — it observes what calls `bump()` and nothing
-  /// else. A `FakeClock` continuation resume calls nothing, so the clock's window
-  /// is invisible here rather than absorbed. The 64-yield stability requirement is
+  /// Do not enumerate the covered set here. It IS enumerable — `bump()`'s call
+  /// sites are findable — but a list copied into a comment needs manual
+  /// synchronisation the first time one moves, and nothing enforces that. What is
+  /// true by construction is the boundary: this observes what calls `bump()` and
+  /// nothing else. A `FakeClock` continuation resume does call its continuation,
+  /// and does NOT call `bump()`, so the clock's window is invisible here rather
+  /// than absorbed. The 64-yield stability requirement is
   /// margin for a ready kernel task that loses the scheduler lottery to
   /// unrelated parallel tests across several yields under MainActor contention —
   /// not a deadline. The 20000-iteration cap is a safety net against a kernel
@@ -514,9 +516,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
     Issue.record(Self.giveUpMessage(kernel: kernel, what: "drainReadyWork", reached: "quiescence"))
   }
 
-  /// Yield until the kernel PUBLISHES a terminal, then drain the remaining ready
-  /// work. #1857: `drainReadyWork` is a quiescence heuristic, not a terminal
-  /// wait. A continuation resumed synchronously inside the triggering step is
+  /// Wait for the kernel to PUBLISH a terminal, then apply the ready-work
+  /// heuristic. On cap exhaustion it records a give-up and returns instead.
+  /// #1857: `drainReadyWork` is a quiescence heuristic, not a terminal wait. A continuation resumed synchronously inside the triggering step is
   /// absorbed into the drain's initial `workEpoch` (the same bump-absorption
   /// shape `hasUnconsumedRecordingExit` gates for the recording-exit hand-off),
   /// so under full-suite MainActor contention the drain can return while the

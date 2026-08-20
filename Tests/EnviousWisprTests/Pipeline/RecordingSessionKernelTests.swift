@@ -43,7 +43,8 @@ import Testing
       return (context, wrapper)
     }
 
-    /// Drive one trigger and settle the kernel.
+    /// Drive one trigger, then apply the requested ready-work or conclusion wait.
+    /// Neither settles the kernel; both are bounded waits that can give up.
     ///
     /// #1857: pass `concluding: true` for a trigger this caller then asserts a
     /// TERMINAL after. Epoch quiescence is a heuristic — a continuation resumed
