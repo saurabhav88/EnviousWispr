@@ -14,9 +14,17 @@ import Foundation
 public final class TranscriptStore {
   private let directory: URL
 
+  /// Which spools are still on disk, or `nil` when that cannot be determined
+  /// (#2186). Injected so the sweep's spool guard is testable and so a test
+  /// store pointed at a temp directory does not read the USER'S real spool
+  /// directory — the production default reaches `AppConstants.appSupportURL`,
+  /// which every test would otherwise share.
+  private let liveSpoolIDs: @Sendable () -> Set<String>?
+
   public init() {
     directory = AppConstants.appSupportURL
       .appendingPathComponent(AppConstants.transcriptsDir, isDirectory: true)
+    liveSpoolIDs = Self.spoolIDsFromDisk
     Self.prepareDirectory(at: directory)
     Self.scheduleMigration(in: directory)
   }
@@ -28,8 +36,15 @@ public final class TranscriptStore {
   // scans `--exclude-tests` so this init appears unused from production;
   // the annotation suppresses that false positive.
   // periphery:ignore
-  internal init(directory: URL) {
+  internal init(
+    directory: URL,
+    liveSpoolIDs: @escaping @Sendable () -> Set<String>? = { [] }
+  ) {
     self.directory = directory
+    // Defaults to EMPTY, not to the disk reader: a test store must never touch
+    // the user's real spool directory, and "no spools" is the state every
+    // existing pending test already assumes.
+    self.liveSpoolIDs = liveSpoolIDs
     Self.prepareDirectory(at: directory)
     Self.scheduleMigration(in: directory)
   }
@@ -221,6 +236,14 @@ public final class TranscriptStore {
       return PendingSweepResult(deletedIDs: [], expired: [])
     }
     let retention = AppConstants.pendingTranscriptRetention
+    // #2186: the CLOSURE crosses onto the detached walk, never its result.
+    // Local review, P2: calling it here ran the read on the MAIN ACTOR, and the
+    // production implementation does far more than read — it creates the
+    // recovery directory, chmods it, writes metadata, then enumerates and sorts
+    // every spool. That is a filesystem stall in front of app launch and of
+    // every retry pulse, in the one method whose whole design is to keep the
+    // walk off the main actor. `@Sendable` is what makes moving it legal.
+    let readSpoolIDs = liveSpoolIDs
     // The ROOT namespace, so the sweep can tell a genuinely expired row from a
     // shadow left behind by a promotion that already succeeded.
     let root = directory
@@ -235,7 +258,8 @@ public final class TranscriptStore {
         await gate?()
       #endif
       return Self.sweepExpired(
-        in: dir, permanentDir: root, now: now, retention: retention)
+        in: dir, permanentDir: root, now: now, retention: retention,
+        spoolIDs: readSpoolIDs())
     }
     sweepGeneration &+= 1
     let generation = sweepGeneration
@@ -280,8 +304,39 @@ public final class TranscriptStore {
   /// `nonisolated` so the walk genuinely leaves the main actor. A detached task
   /// calling back into an isolated method would hop straight back and block
   /// exactly what it was meant to protect.
+  /// The `recoverySessionID`s of every spool still on disk, or `nil` when the
+  /// directory could not be listed (#2186).
+  ///
+  /// `nil` is a THIRD answer and the caller must keep it that way: an unlistable
+  /// directory is not an empty one, and flattening it into `[]` is what would
+  /// delete a row's dedup proof at exactly the moment we cannot see the spool it
+  /// protects. `RecoverySpoolStore` already draws this distinction by throwing.
+  /// The recovery id the DE-DUP READER would see for this file (#2186).
+  ///
+  /// Asks the file with the same permissive decode `decodeAnyPendingIdentities`
+  /// uses, because the sweep's question is that reader's question: would
+  /// deleting this file remove a de-dup key? An `.invalid` candidate carries no
+  /// transcript by design, so the enum cannot answer, and returning `nil` for it
+  /// deleted precisely the rows the reader honours — a future-skewed stamp, a
+  /// missing stamp, a filename mismatch. Each is a real row whose audio was
+  /// already turned into text, and dropping its key replays that spool.
+  ///
+  /// Only reached for `.invalid`; the other cases answer from the enum.
+  private nonisolated static func recoverySessionID(of url: URL) -> String? {
+    guard let data = try? Data(contentsOf: url),
+      let transcript = try? JSONDecoder().decode(Transcript.self, from: data)
+    else { return nil }
+    return transcript.recoverySessionID
+  }
+
+  private nonisolated static func spoolIDsFromDisk() -> Set<String>? {
+    guard let ids = try? RecoverySpoolStore().listSpoolSessionIDs() else { return nil }
+    return Set(ids)
+  }
+
   private nonisolated static func sweepExpired(
-    in dir: URL, permanentDir: URL, now: Date, retention: TimeInterval
+    in dir: URL, permanentDir: URL, now: Date, retention: TimeInterval,
+    spoolIDs: Set<String>?
   ) -> PendingSweepResult {
     let fm = FileManager.default
     var reported: [ExpiredPendingRow] = []
@@ -296,7 +351,60 @@ public final class TranscriptStore {
       return PendingSweepResult(
         deletedIDs: [], expired: [], unremovable: 0, walkComplete: false)
     }
+    // #2186: counted from the SAME enumeration that decides what to delete, so
+    // the two can never disagree about one directory. Taken before the loop
+    // because the loop only visits `!isLive` rows and leaves live ones
+    // untouched — there is nothing later that could change this number.
+    // #2186: a pending row is the PROOF that its spool was already recovered —
+    // `allRecoveredSessionIDs()` reads exactly these rows, and its own doc
+    // comment ignores expiry for that reason: "filtering by expiry here would
+    // let a spool whose row aged out get replayed a second time, handing the
+    // user a duplicate dictation exactly 24 hours later."
+    //
+    // So DELETING an expired row while its spool is still on disk is what
+    // resurrects a dictation the user CANCELLED. Cloud review found that as a P1
+    // against an earlier design that ordered the sweep after the recovery scan;
+    // ordering only narrows the window, because the scan can abort before taking
+    // its snapshot and a wedged replay can block the sweep for a whole session.
+    //
+    // Skipping instead removes the hazard STRUCTURALLY: no ordering, no signal,
+    // no waiting. A row whose spool survives is retained until recovery clears
+    // that spool, which is bounded — recovery scans at launch and on wake.
+    //
+    // FAIL CLOSED. `nil` means the spool directory could not be listed, which is
+    // NOT the same as "no spools"; treating it as empty is what would delete the
+    // proof precisely when we cannot see what it protects. Rows carrying no
+    // recovery id are unaffected either way — nothing can replay them.
+
+    let liveCandidates = candidates.filter(\.isLive)
+    let remainingLive = liveCandidates.count
+    let nextLiveDeadline = liveCandidates.compactMap { $0.deadline(retention: retention) }.min()
+    var retainedForSpool = 0
     for candidate in candidates where !candidate.isLive {
+      // A permanent twin answers BOTH questions below, so it is asked first.
+      // Local review, P2: with the spool guard ahead of it, a Keep whose shadow
+      // removal failed AND whose spool survived was retained forever — the
+      // permanent row already carries the de-dup key, so the shadow protects
+      // nothing and the pulse walks the directory every minute for the life of
+      // the app. Checked by FILE rather than by loading the row: this runs off
+      // the main actor, and existence is the whole question.
+      let hasPermanentTwin = FileManager.default.fileExists(
+        atPath: permanentDir.appendingPathComponent(candidate.url.lastPathComponent).path)
+      // #2186: this row is the only proof its spool was already recovered.
+      // Delete it while the spool survives and the next scan replays that spool
+      // as a fresh dictation — handing back the take the user CANCELLED. Retain
+      // instead; recovery clears the spool at launch or on wake, and the row
+      // goes on the pass after that. `nil` (directory unlistable) retains too.
+      // The enum answers for `.live`/`.expired`; `.invalid` carries no
+      // transcript by design, so ask the FILE with the de-dup reader's own
+      // permissive decode. Anything that reader would count, this must protect.
+      if !hasPermanentTwin,
+        let session = candidate.recoverySessionID ?? recoverySessionID(of: candidate.url),
+        spoolIDs.map({ $0.contains(session) }) ?? true
+      {
+        retainedForSpool += 1
+        continue
+      }
       // A SHADOW, not an expiry (cloud review). `promotePending` writes the
       // permanent row first and removes the pending file second, so a crash or a
       // failed removal in between leaves the stamped copy beside its permanent
@@ -306,13 +414,8 @@ public final class TranscriptStore {
       // expired ratio is the one number this funnel exists to produce, and it
       // would be wrong in the direction that makes the feature look worse.
       //
-      // Deleted (it is litter) and NOT reported (nothing expired). Checked by
-      // FILE rather than by loading the row: this runs off the main actor, and
-      // existence is the whole question.
-      if FileManager.default.fileExists(
-        atPath: permanentDir.appendingPathComponent(
-          candidate.url.lastPathComponent).path)
-      {
+      // Deleted (it is litter) and NOT reported (nothing expired).
+      if hasPermanentTwin {
         try? fm.removeItem(at: candidate.url)
         if fm.fileExists(atPath: candidate.url.path) {
           unremovable += 1
@@ -385,7 +488,10 @@ public final class TranscriptStore {
         if fm.fileExists(atPath: stray.path) { unremovable += 1 }
       }
     }
-    return PendingSweepResult(deletedIDs: deleted, expired: reported, unremovable: unremovable)
+    return PendingSweepResult(
+      deletedIDs: deleted, expired: reported, unremovable: unremovable,
+      remainingLive: remainingLive, retainedForSpool: retainedForSpool,
+      nextLiveDeadline: nextLiveDeadline)
   }
 
   /// Why a pending file is or is not still offered.
@@ -416,6 +522,26 @@ public final class TranscriptStore {
       return nil
     }
 
+    /// The spool this row proves was already recovered, if it names one (#2186).
+    ///
+    /// `.invalid` CANNOT answer from the enum — it carries a URL and no
+    /// transcript, deliberately, so an unreadable file can never present a
+    /// fabricated identity. But `decodeAnyPendingIdentities` counts an invalid
+    /// row's `recoverySessionID` anyway, and says why: *"a row we refuse to count
+    /// here becomes a spool we replay again, which is a duplicate dictation."*
+    ///
+    /// So the sweep must ask the FILE, not this enum, for the invalid case —
+    /// see `recoverySessionID(of:)`. Returning `nil` here made the sweep delete
+    /// exactly the rows whose ids the de-dup reader honours: a future-skewed
+    /// stamp, a missing stamp, or a filename mismatch, each of which is a real
+    /// row whose audio was already transcribed. Cloud review, P1.
+    var recoverySessionID: String? {
+      switch self {
+      case .live(_, let t), .expired(_, let t): return t.recoverySessionID
+      case .invalid: return nil
+      }
+    }
+
     /// Non-nil only for a genuinely expired row, which is what makes a false
     /// `escape_recovery.expired` event structurally impossible.
     var expiredReceipt: ExpiredPendingRow? {
@@ -427,6 +553,14 @@ public final class TranscriptStore {
     }
 
     var isLive: Bool { liveTranscript != nil }
+
+    /// When this row stops being offered (#2186). Nil unless it is still live
+    /// and carries a stamp, so it can never invent a deadline for a row that
+    /// has no clock.
+    func deadline(retention: TimeInterval) -> Date? {
+      guard let stamped = liveTranscript?.escapeRecoveredAt else { return nil }
+      return stamped.addingTimeInterval(retention)
+    }
   }
 
   /// `nil` means the directory could NOT be read, which is not the same fact as
@@ -691,15 +825,54 @@ public struct PendingSweepResult: Sendable {
   /// False when the directory could not be enumerated. Nothing else about this
   /// result can be trusted as a statement about the directory's contents.
   public let walkComplete: Bool
+  /// Rows still counting down ON DISK when this walk ran (#2186).
+  ///
+  /// DISK truth, deliberately, because the caller's own list is not a substitute
+  /// and that is the defect this exists to close. `TranscriptCoordinator` arms
+  /// its expiry pulse from `livePendingCount`, which reads `transcripts`, which
+  /// only `load()` populates — and `load()`'s sole production caller is the
+  /// History view. So a row carried over from a PREVIOUS session was invisible
+  /// to the countdown for the whole session: nothing deleted it at its moment,
+  /// and it waited for a relaunch.
+  ///
+  /// Meaningless when `walkComplete` is false — a walk that could not enumerate
+  /// the directory counted nothing, and reporting `0` there would read as "no
+  /// rows are counting down" and stop the pulse. Callers must check
+  /// `walkComplete` first; `init` defaults this to `0` only because a
+  /// short-circuit result has genuinely seen nothing.
+  public let remainingLive: Int
+
+  /// Expired rows this walk deliberately KEPT because their spool is still on
+  /// disk, or because the spool directory could not be listed (#2186).
+  ///
+  /// Reported so the caller can keep retrying. Without it the sweep looks
+  /// finished — nothing deleted, nothing unremovable, walk complete — and the
+  /// countdown stops, so the row waits for a relaunch instead of going on the
+  /// pass after recovery clears its spool. That is the same stranded-retry the
+  /// `unremovable` count already exists to prevent, arriving by a second route.
+  public let retainedForSpool: Int
+
+  /// When the SOONEST still-live row is due, from this same walk (#2186).
+  ///
+  /// Carried so a caller can wake exactly when something is due instead of
+  /// re-walking the directory on every tick to find out. `remainingLive` alone
+  /// would force that choice: keep the timer running and walk every minute for
+  /// the life of the app, or stop it and miss the deadline. Nil when nothing is
+  /// counting down.
+  public let nextLiveDeadline: Date?
 
   public init(
     deletedIDs: Set<UUID>, expired: [ExpiredPendingRow], unremovable: Int = 0,
-    walkComplete: Bool = true
+    walkComplete: Bool = true, remainingLive: Int = 0, retainedForSpool: Int = 0,
+    nextLiveDeadline: Date? = nil
   ) {
     self.deletedIDs = deletedIDs
     self.expired = expired
     self.unremovable = unremovable
     self.walkComplete = walkComplete
+    self.remainingLive = remainingLive
+    self.retainedForSpool = retainedForSpool
+    self.nextLiveDeadline = nextLiveDeadline
   }
 }
 
