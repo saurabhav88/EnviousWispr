@@ -728,15 +728,29 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   ///     class is terminal and routes `ASREngineNotReadyAfterLoadError` ahead of
   ///     it precisely so that error does not inherit the deletion.
   ///
-  /// **Whether `.cancelled` SHOULD be terminal is an open question and is not
-  /// settled by this comment.** All three vehicles mean the engine never decoded
-  /// a sample, which is the criterion stated above, and the existence of
-  /// `.loadReturnedNotReady` as a class that exists to route around this one is
-  /// evidence that at least one member was felt to be wrongly terminal. That is
-  /// a behaviour change on the path that decides whether a recording survives,
-  /// and it inherits the unestablished question of what bounds the number of
-  /// times a spool may be handed its attempt back. Tracked on #2240; this change
-  /// only stops the comment asserting something the code does not do.
+  /// **THE THREE CANCELLATION VEHICLES ARE NOT ALIKE, AND THAT IS WHY THE CLASS
+  /// IS TERMINAL AS A WHOLE.** `ASRLoadSupersededError` is thrown only by
+  /// load/warm guards (`isModelLoaded`, a stale `loadGeneration`, a `.warming`
+  /// state) and `ASRLoadCancelledError` only by a pending LOAD completion, so
+  /// both genuinely mean the engine never reached the audio. **`CancellationError`
+  /// does not:** `ParakeetBackend.transcribe` wraps the `manager.transcribe` call
+  /// and rethrows it, so a cancellation arriving after the decode has started
+  /// lands in the same class. Deferring the class wholesale would hand an attempt
+  /// back to a take the engine had already begun processing.
+  ///
+  /// An earlier draft of this comment claimed all three mean the engine never
+  /// decoded a sample, and used that to argue the class might be wrongly
+  /// terminal. Cloud review refuted it. The mixed membership is an argument FOR
+  /// the current behaviour, and it also explains `.loadReturnedNotReady`: the
+  /// surgical fix was correct precisely because the cancellation class cannot be
+  /// deferred as a unit.
+  ///
+  /// What remains genuinely open is narrower — whether the two LOAD-time vehicles
+  /// deserve separating from `CancellationError` so they can defer. That is a
+  /// behaviour change on the path deciding whether a recording survives, and it
+  /// inherits the unestablished question of what bounds the number of times a
+  /// spool may be handed its attempt back. Tracked on #2240; this change only
+  /// stops the comment asserting something the code does not do.
   ///
   /// Mirrors `deferForTransientKeychainFailure` exactly, which is the shipped
   /// precedent for "transient condition, give the attempt back".
