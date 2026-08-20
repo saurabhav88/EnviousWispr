@@ -10,9 +10,25 @@ import Foundation
 // Core, and LLM / PostProcessing / AppKit all need these types too.
 
 /// Core-level Apple Intelligence availability value for the import flow.
-/// PR-P1's connector check returns this; the import UI says so honestly when
-/// it is unavailable (unlike AI Polish, whose silent skip is deliberate —
-/// nobody asked polish for suggestions, but an importing user did).
+///
+/// **UNPRODUCED AND UNCONSUMED**, the same status as its only case
+/// `.appleIntelligenceUnavailable` below: it is that case's payload and nothing else. No
+/// connector returns it and no screen renders it, because the shared enrichment stage
+/// (PR-P1) does not exist. To check, apply the live-case test stated at
+/// `CustomWordsImportNotice` — produced, consumed, tested — and look for all three.
+///
+/// **Do not confuse it with `AppleIntelligenceAvailabilityReport`**, a different and fully
+/// live type declared in THIS SAME MODULE at `AppleIntelligenceDiagnostics.swift:159` and
+/// consumed by AppKit, Services, LLM and Core. **Same module is what makes the confusion
+/// likely rather than remote** — nothing about where you are reading tells you which of the
+/// two you have, and a search for the shorter name matches the longer one, so an unanchored
+/// sweep reports this dead type as thoroughly used. Search with a word boundary.
+///
+/// The DESIGN INTENT is why it is not deleted: when enrichment cannot run the import UI
+/// should say so, unlike AI Polish, whose silent skip is deliberate — nobody asked polish
+/// for suggestions, but an importing user did. That describes what PR-P1 should build, not
+/// what any code does today.
+///
 package enum AppleIntelligenceAvailability: Sendable, Equatable {
   case available
   case unavailable(reason: AIFailureReason, message: String)
@@ -42,8 +58,22 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
   package let id: UUID
   package var canonical: String
   package var aliases: CustomWordsImportField<[String]>
-  /// AI-enrichment output (PR-P1). NEVER authoritative: applied only on Add,
-  /// never on Replace, so a machine guess cannot overwrite hand-tuned aliases.
+  /// Enrichment output (PR-P1), and a THIRD status distinct from both the live and the
+  /// unproduced cases in this file: **never populated by any import source, yet fully
+  /// consumed and tested.** The commit path persists it on Add
+  /// (`CustomWordsManager.swift:1237`), the compare engine unions it across duplicate rows,
+  /// `validated()` reaches it by walking `storedValues` rather than naming fields, and
+  /// `suggestedAliasesNeverApplyOnReplace` covers the Replace rule. Every shipped source leaves it empty and three suites assert that.
+  /// So the plumbing is real and only the producer is missing — unlike the notice cases
+  /// below, where nothing exists at all.
+  ///
+  /// **A NAME SWEEP SAYS OTHERWISE, so check the TYPE.** `WordSuggestions.suggestedAliases`
+  /// in `WordSuggestionService` is a different field on a different type, it is live, and it
+  /// feeds the single-word edit sheet. Most hits for this name are that one, which is what
+  /// makes "something produces this" the natural and wrong reading.
+  ///
+  /// NEVER authoritative: applied only on Add, never on Replace, so a machine guess cannot
+  /// overwrite hand-tuned aliases.
   package var suggestedAliases: [String]
   package var category: CustomWordsImportField<WordCategory>
   package var priority: CustomWordsImportField<Int>
@@ -109,16 +139,37 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
 }
 
 /// One notices side-channel for a batch — never a second `warnings` field.
+/// **DECLARED-BUT-UNPRODUCED CASES ARE MARKED. Read the marker before wiring into one (#2048).**
+///
+/// Four cases are unproduced, and they belong to TWO different missing subsystems — do not scope
+/// them as one piece of work:
+///
+///   1. The three ENRICHMENT notices — `appleIntelligenceUnavailable`,
+///      `suggestionsPartiallyUnavailable`, `suggestionBudgetReached` — wait on the shared
+///      enrichment stage (PR-P1). Their comments used to assert in the present tense that this
+///      stage produces them, so a reader followed them and wired into nothing.
+///      `grounding-discipline.md` RULE: never-hand-a-reviewer-an-unchecked-premise ranks that
+///      highest-cost, because it retires the check rather than failing it.
+///   2. `fileParseWarning` is INDEPENDENT of all of that — an upload-parser concern. Its original
+///      comment never claimed an enrichment producer and was not misleading; it is listed here only
+///      because nothing emits it either. Building PR-P1 would not produce it, and building it would
+///      not need PR-P1.
+///
+/// `incompatibleSourceEntriesExcluded` is the one that works, and it is the template: produced in
+/// `SmartImportSource`, consumed in `CustomWordsImportFlowModel`, covered by
+/// `SmartImportSourceTests`. A case is live when all three exist.
 package enum CustomWordsImportNotice: Sendable, Equatable {
-  /// Produced by the shared enrichment stage (PR-P1) in the Paste and Upload flows.
+  /// **UNPRODUCED.** Designed for the shared enrichment stage (PR-P1) in the Paste and Upload
+  /// flows; that stage does not exist, and nothing constructs this case.
   case appleIntelligenceUnavailable(AppleIntelligenceAvailability)
-  /// Produced by the shared enrichment stage (PR-P1).
+  /// **UNPRODUCED.** Designed for the shared enrichment stage (PR-P1), which does not exist.
   case suggestionsPartiallyUnavailable(count: Int)
-  /// Produced by the shared enrichment stage when the per-import
-  /// suggestion-call budget is exhausted; `remainingCount` = candidates that
-  /// proceeded without suggestions.
+  /// **UNPRODUCED.** Designed for the shared enrichment stage, for when the per-import
+  /// suggestion-call budget is exhausted; `remainingCount` = candidates that would have proceeded
+  /// without suggestions. That stage does not exist.
   case suggestionBudgetReached(remainingCount: Int)
-  /// Upload-only row-level parse warning.
+  /// **UNPRODUCED, and NOT an enrichment case.** An Upload-only row-level parse warning, independent
+  /// of PR-P1: no parser emits it, and building the enrichment stage would not change that.
   case fileParseWarning(rowNumber: Int, reason: String)
   /// Smart Import: the source held entries and EVERY one was deliberately
   /// refused — Juno's built-in seed vocabulary, Spokenly's regex rules,
