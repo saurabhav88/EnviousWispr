@@ -880,11 +880,16 @@ with _t9.TemporaryDirectory() as _td9:
     _l9.generated = True
     _stale = _l9.bundle_path("tag")
     _stale.mkdir(parents=True)
-    # Make it undeletable so the removal cannot succeed, which is the case
-    # `ignore_errors=True` swallowed.
     (_stale / "keep").write_text("x")
-    import os as _os9
-    _os9.chmod(_stale, 0o500)
+    # SIMULATED AT THE SEAM, NOT WITH PERMISSION BITS. The first version chmod'd the
+    # bundle 0o500 to make the removal fail. As root that does not stop `rmtree` at
+    # all, so the removal SUCCEEDS, the row takes the unexpected path, and the
+    # `finally` then chmods a directory that no longer exists — a FileNotFoundError
+    # outside every except clause, aborting the entire self-test rather than failing
+    # one case. A control that depends on privilege proves nothing on half the
+    # machines that run it and takes the others down with it.
+    _real_rmtree9 = battery.shutil.rmtree
+    battery.shutil.rmtree = lambda *a, **k: None   # the removal that did not remove
     try:
         _l9.run_suite("EnviousWisprTests/Whatever", "tag")
         failures.append("a stale result bundle that cannot be removed STOPS the row — it did not; "
@@ -897,7 +902,7 @@ with _t9.TemporaryDirectory() as _td9:
     except Exception as _e9:  # noqa: BLE001
         failures.append(f"a stale result bundle stops the row — raised {type(_e9).__name__}: {_e9}")
     finally:
-        _os9.chmod(_stale, 0o700)
+        battery.shutil.rmtree = _real_rmtree9
 
 # A mutation that removes a completion or cancellation path is among the most valuable to write and the
 # most likely to HANG. Unbounded, the unattended battery sits on that row all night and never reaches
@@ -1968,6 +1973,86 @@ if "different test caught it" not in _elsewhere:
                     f"CAUGHT-ELSEWHERE reads {_elsewhere!r}")
 else:
     print("  ok  a verdict whose cause IS established still states it plainly")
+
+# --- baseline()'s own exception handling ----------------------------------------
+# `baseline` is replaced by `_stub_baseline` in every case that goes near it, so its
+# handlers had never been executed. A nonexistent suite makes xcodebuild SUCCEED with
+# an empty bundle, the read raises, and an uncaught raise printed a traceback instead
+# of the diagnostic written for exactly that case.
+
+
+class _RaisingLane:
+    """A lane whose suite run fails in a named way. Only `run_suite` is reached."""
+
+    def __init__(self, exc):
+        self._exc = exc
+
+    def run_suite(self, suite, tag):
+        raise self._exc
+
+
+class _CleanLane:
+    def run_suite(self, suite, tag):
+        return (5, [], True, Path("/tmp/x.log"), 0, 1.0,
+                battery.SuiteResults({"S/a()": "Passed"}, {"a()": {"S/a()"}}, {}))
+
+
+# CALLED ONCE, GUARDED, and both assertions read the result. The second case used to
+# call `baseline` again with no guard, so under the very mutant these cases exist to
+# catch it raised and took the whole self-test down before the summary printed — and
+# the control then reported WRONG-RED on a mutant case one had detected perfectly. A
+# case that can ABORT the run is worse than one that fails: it destroys every verdict
+# after it, including its own.
+_probs = None
+ran += 1
+try:
+    _probs = battery.baseline(_RaisingLane(battery.BundleUnreadable("zero Test Case nodes")),
+                              ["EnviousWisprTests/Gone"], "before")
+except battery.BundleUnreadable:
+    failures.append("an unreadable result bundle becomes a baseline problem — it did not: the "
+                    "exception ESCAPED baseline, so main prints a traceback instead of the "
+                    "diagnostic written for a nonexistent suite")
+if _probs is None:
+    pass
+elif not _probs:
+    failures.append("an unreadable result bundle becomes a baseline problem — it did not: baseline "
+                    "reported NO problems, so a run against a nonexistent suite would proceed to "
+                    "mutate")
+elif "could not be read" not in _probs[0]:
+    failures.append(f"an unreadable result bundle becomes a baseline problem — recorded, but with "
+                    f"the wrong reason: {_probs[0][:120]}")
+else:
+    print("  ok  an unreadable result bundle becomes a baseline problem")
+
+# The named cause has to survive into the message, because the message is the only
+# thing that sends an operator to the right place — a stale suite name.
+ran += 1
+if not _probs:
+    failures.append("the unreadable-bundle problem names the suite and the likely cause — there was "
+                    "no problem recorded to name anything")
+elif "@Suite" not in _probs[0] or "Gone" not in _probs[0]:
+    failures.append(f"the unreadable-bundle problem names the suite and the likely cause — it does "
+                    f"not: {_probs[0][:160]}")
+else:
+    print("  ok  the unreadable-bundle problem names the suite and the likely cause")
+
+# PAIRED ACCEPTED CASE, so the handler above cannot pass by reporting a problem for
+# everything: a suite that ran and passed produces NO problem.
+ran += 1
+_probs3 = battery.baseline(_CleanLane(), ["EnviousWisprTests/Fine"], "before")
+if _probs3:
+    failures.append(f"a clean suite produces no baseline problem — it produced {_probs3}")
+else:
+    print("  ok  a clean suite produces no baseline problem")
+
+# And the pre-existing timeout path still works, so the new clause did not displace it.
+ran += 1
+_probs4 = battery.baseline(_RaisingLane(battery._LaneTimedOut("timed out at 900s")),
+                           ["EnviousWisprTests/Slow"], "before")
+if not _probs4 or "timed out" not in _probs4[0]:
+    failures.append(f"a lane timeout is still a baseline problem — got {_probs4}")
+else:
+    print("  ok  a lane timeout is still a baseline problem")
 
 print()
 if failures:

@@ -1242,9 +1242,28 @@ def baseline(lane: Lane, suites, phase: str, seen_names: dict = None,
         except _LaneTimedOut as exc:
             problems.append(f"{suite}: {exc}")
             continue
+        except BundleUnreadable as exc:
+            # A NONEXISTENT SUITE ARRIVES HERE, NOT AT THE ZERO-TEST BRANCH BELOW, and
+            # that is why this catch matters more than it looks. `xcodebuild` REPORTS
+            # SUCCESS for a filter that matched nothing; the bundle then holds zero
+            # Test Case nodes and the read raises — before `count < 1` is ever
+            # consulted. Uncaught it printed a traceback, so the branch below, whose
+            # own text calls this the worst failure the battery has, was unreachable
+            # for its own primary trigger.
+            # The ROW path already caught this: it wraps `run_suite` in a bare
+            # `except Exception`. Only the baseline was bare, and only the baseline
+            # had no test.
+            problems.append(
+                f"{suite}: the result bundle could not be read — {exc}. The usual cause is a filter "
+                f"naming a suite that does not exist here: renamed, moved to another target, or read "
+                f"off a filename rather than off its @Suite declaration. Nothing was mutated.")
+            continue
         if not compiled:
             problems.append(f"{suite}: did not compile ({log})")
         elif count is None or count < 1:
+            # Reached when the bundle IS readable and the CONSOLE still reported no
+            # tests — a disagreement between the two readers. The nonexistent-suite
+            # case is caught above, at the bundle read.
             problems.append(
                 f"{suite}: executed ZERO tests and REPORTED SUCCESS. Nothing was mutated. The "
                 f"filter names a suite that does not exist here — renamed, moved to another target, "
