@@ -129,9 +129,37 @@ struct LivePreviewPackCopyTests {
   /// so excluding it would reintroduce this bug the first time someone writes `packInstalling_v2`.
   /// The name is regex-escaped rather than interpolated raw, so a future declaration containing a
   /// metacharacter cannot silently turn this into a different pattern.
+  /// What continues a Swift identifier. **ONE definition, consulted by the scanner AND the matcher.**
+  ///
+  /// Cloud review returned two findings on this file and they are the same defect: the two halves
+  /// disagreed about this set, in opposite directions. The scanner used `isLetter || isNumber`, which is
+  /// Unicode-aware and excludes `_`; the matcher used an ASCII `[A-Za-z0-9_]`, which includes it. So
+  /// `packInstalling_v2` was scanned as `packInstalling` and its real reference then rejected — a false
+  /// positive on a live declaration — while an accented sibling slipped past the lookahead and
+  /// reintroduced the original #2172 bug. Two comparisons of one concept will always drift; give the
+  /// concept an owner instead.
+  nonisolated static func continuesIdentifier(_ c: Character) -> Bool {
+    c.isLetter || c.isNumber || c == "_"
+  }
+
+  /// The declaration name on a `static let`/`static func` line, or nil.
+  ///
+  /// Extracted so the SCANNER and the MATCHER can be tested as the pair they are. The unit control
+  /// written with the original fix fed `isReferenced` directly and so could not see them disagree —
+  /// which is exactly how the underscore case shipped.
+  nonisolated static func declaredName(in line: String) -> String? {
+    guard let range = line.range(of: #"static (let|func) "#, options: .regularExpression)
+    else { return nil }
+    let name = String(line[range.upperBound...].prefix(while: continuesIdentifier))
+    return name.isEmpty ? nil : name
+  }
+
   nonisolated static func isReferenced(_ name: String, in corpus: String) -> Bool {
     let escaped = NSRegularExpression.escapedPattern(for: name)
-    let pattern = "LivePreviewSettingsCopy\\.\(escaped)(?![A-Za-z0-9_])"
+    // `\p{L}` and `\p{N}` are ICU's Unicode letter and number categories, so this lookahead accepts
+    // exactly what `continuesIdentifier` accepts. An ASCII class here is what let an accented sibling
+    // satisfy a shorter name.
+    let pattern = "LivePreviewSettingsCopy\\.\(escaped)(?![\\p{L}\\p{N}_])"
     return corpus.range(of: pattern, options: .regularExpression) != nil
   }
 
@@ -151,11 +179,7 @@ struct LivePreviewPackCopyTests {
     let copyFile = settings.appending(path: "LivePreviewSettingsCopy.swift")
     let declarations = try String(contentsOf: copyFile, encoding: .utf8)
       .split(separator: "\n")
-      .compactMap { line -> String? in
-        guard let range = line.range(of: #"static (let|func) "#, options: .regularExpression)
-        else { return nil }
-        return String(line[range.upperBound...].prefix { $0.isLetter || $0.isNumber })
-      }
+      .compactMap { Self.declaredName(in: String($0)) }
     #expect(declarations.count > 10, "control: the copy surface was found and parsed")
 
     // Every source file that could render it — the page itself plus the coordinator that puts
@@ -245,6 +269,42 @@ struct LivePreviewPackCopyTests {
     #expect(
       Self.isReferenced("packInstalling", in: corpus) == false,
       "`_` continues a Swift identifier, so this is a different declaration entirely")
+  }
+
+  /// The scanner and the matcher must agree, in BOTH directions.
+  ///
+  /// **Written because they did not, and the unit control could not see it.** The cases above feed
+  /// `isReferenced` directly, so they exercise the matcher alone; these run a declaration line through
+  /// the SCANNER first and then ask the MATCHER about the result, which is the pair the real guard uses.
+  /// Cloud review on PR #2230 found both directions.
+  @Test("A declaration name with an underscore survives the scanner and matches its own reference")
+  func theScannerAndMatcherAgreeOnUnderscores() {
+    let declared = Self.declaredName(in: "  static let packInstalling_v2 = \"x\"")
+    #expect(declared == "packInstalling_v2", "the scanner must not stop at the underscore")
+
+    let corpus = "Text(LivePreviewSettingsCopy.packInstalling_v2)"
+    #expect(
+      Self.isReferenced(declared ?? "", in: corpus),
+      """
+      A real declaration was reported unused: the scanner truncated the name at `_` and the matcher \
+      then refused the genuine reference. That is a FALSE POSITIVE on live copy, which is worse than \
+      the vacuous pass this guard was tightened to fix.
+      """)
+  }
+
+  @Test("A non-ASCII identifier continuation is a boundary for neither half")
+  func theScannerAndMatcherAgreeOnUnicode() {
+    let declared = Self.declaredName(in: "  static let packInstallingé = \"x\"")
+    #expect(declared == "packInstallingé", "the scanner keeps Unicode letters")
+
+    let corpus = "Text(LivePreviewSettingsCopy.packInstallingé)"
+    #expect(Self.isReferenced("packInstallingé", in: corpus), "its own reference must match")
+    #expect(
+      Self.isReferenced("packInstalling", in: corpus) == false,
+      """
+      An ASCII-only lookahead treats `é` as a boundary, so the shorter name is satisfied by its longer \
+      sibling — the original #2172 defect, in Unicode clothing.
+      """)
   }
 
   /// The pill sentence must keep matching the phrasing the app already uses for a missing model,
