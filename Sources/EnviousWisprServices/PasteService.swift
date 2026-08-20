@@ -1523,11 +1523,28 @@ public enum PasteService {
   /// - Returns: `PasteDispatchResult` telling the caller whether the keystroke
   ///   was posted and exposing the pasteboard change count for clipboard restore.
   @discardableResult
-  public static func pasteToActiveApp(_ text: String) -> PasteDispatchResult {
+  /// Write `text` to `pasteboard` and post Cmd+V to the frontmost app.
+  ///
+  /// The board is a parameter for the same reason every other clipboard entry
+  /// point here takes one (#2146): with `NSPasteboard.general` hard-coded, a test
+  /// reaching this tier writes the developer's real clipboard, and #2170's
+  /// injected seam on `PasteCascadeExecutor` could not cover it — cloud review
+  /// found exactly that, and this was the only hard-coded board left in this file.
+  ///
+  /// **A NON-GENERAL BOARD MAKES THIS TIER INERT, AND THAT IS CORRECT RATHER THAN
+  /// A BUG TO FIX.** Cmd+V is satisfied by the system from `NSPasteboard.general`,
+  /// so text written anywhere else is not what gets pasted. Production passes
+  /// `.general` and behaves exactly as before; a test that injects its own board
+  /// gets a tier that writes where it was told and pastes nothing — which is the
+  /// desired outcome, because a test should not be typing into whatever app the
+  /// developer has frontmost either.
+  public static func pasteToActiveApp(
+    _ text: String,
+    to pasteboard: NSPasteboard = .general
+  ) -> PasteDispatchResult {
     let pasteStart = CFAbsoluteTimeGetCurrent()
     let accessibilityTrusted = AXIsProcessTrusted()
 
-    let pasteboard = NSPasteboard.general
     let previousChangeCount = pasteboard.changeCount
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)

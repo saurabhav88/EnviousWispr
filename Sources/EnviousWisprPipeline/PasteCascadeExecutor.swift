@@ -252,6 +252,22 @@ extension PasteFocusClassification {
 internal final class PasteCascadeExecutor {
   /// The pasteboard every clipboard write in this cascade goes to.
   ///
+  /// EVERY one, verified rather than asserted: an earlier version of this comment
+  /// made that claim while `PasteService.pasteToActiveApp` still hard-coded
+  /// `NSPasteboard.general` internally, so Tier 2 wrote the real board whatever
+  /// this property held. Cloud review found it; `grep -n NSPasteboard.general` on
+  /// `PasteService.swift` now returns one comment and no code.
+  ///
+  /// **WHAT INJECTING A NON-GENERAL BOARD MEANS, so it is not mistaken for a
+  /// regression: every tier that triggers a SYSTEM paste goes inert.** Cmd+V, the
+  /// AppleScript paste and the menu-item paste are all satisfied by the OS from
+  /// `NSPasteboard.general`, so text written anywhere else is written correctly
+  /// and pasted nowhere. Only the clipboard-only fallback is meaningful with a
+  /// board of your choosing, because there the user pastes by hand.
+  /// That is the DESIRED behaviour rather than a limitation: a test should not be
+  /// pasting into whatever app the developer has frontmost, and production passes
+  /// `.general`, where every tier behaves exactly as it always has.
+  ///
   /// REQUIRED, not defaulted, and that is the whole point (#2170). This type is
   /// reachable from tests through `@testable import`, and the tiers below write
   /// to it — so a defaulted `.general` would let any test that reaches the
@@ -433,7 +449,8 @@ internal final class PasteCascadeExecutor {
           ? ClipboardCleanup.snapshotForDelivery()
           : nil
         submittedKind = payload.kind
-        let dispatchResult = PasteService.pasteToActiveApp(payload.text)
+        let dispatchResult = PasteService.pasteToActiveApp(
+          payload.text, to: pasteboard)
         submittedClipboardChangeCount = dispatchResult.changeCount
         switch dispatchResult {
         case .dispatched:

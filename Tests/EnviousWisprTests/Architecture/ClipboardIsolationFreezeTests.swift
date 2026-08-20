@@ -65,22 +65,30 @@ struct ClipboardIsolationFreezeTests {
     "copyToClipboardReturningChangeCount",
     "saveClipboard",
     "restoreClipboard",
+    // Moved here from `boardlessClipboardFunctions` by #2170, which gave it a
+    // board parameter. A boarded call is safe; a bare one still writes the real
+    // clipboard, and the rule below catches exactly that.
+    "pasteToActiveApp",
   ]
 
   /// Entry points with NO board parameter at all, so no call from a test can be made safe.
   ///
-  /// `pasteToActiveApp` reads `NSPasteboard.general` internally (`PasteService.swift:1361`), clears it,
-  /// writes to it, and then dispatches Cmd+V. There is nothing to pass and nothing to isolate, so the
-  /// only correct rule is that no test calls it — including the allowlisted suite, which is why this is
-  /// a separate set rather than another name in the one above.
+  /// **EMPTY as of #2170, and kept with its criterion rather than deleted.** Its only member was
+  /// `pasteToActiveApp`, which hard-coded `NSPasteboard.general` internally — there was nothing to pass
+  /// and nothing to isolate, so the only correct rule was that no test called it at all. It now takes
+  /// the board as a defaulted parameter, so it moves to `clipboardFunctions` above, where the existing
+  /// rule already does the right thing: a call is a violation unless it passes a board.
   ///
-  /// FOUND BY ENUMERATING THE SET, not by matching a spelling: every finding before this one was a
-  /// different way of writing a name the guard already knew, and this was a name it did not know. The
-  /// two failure modes look identical from inside the guard — it reports clean — so a spelling sweep can
-  /// never surface a missing member. Re-derive by listing `PasteService`'s static functions and asking
-  /// which reach `NSPasteboard.general` with no board parameter; that enumeration returns exactly this
-  /// one today, and the only other textual hit is the header comment explaining the seam.
-  private static let boardlessClipboardFunctions: Set<String> = ["pasteToActiveApp"]
+  /// FOUND BY ENUMERATING THE SET, not by matching a spelling: every finding before it was a different
+  /// way of writing a name the guard already knew, and that was a name it did not know. The two failure
+  /// modes look identical from inside the guard — it reports clean — so a spelling sweep can never
+  /// surface a missing member.
+  ///
+  /// Re-derive rather than trust this being empty: list `PasteService`'s static functions and ask which
+  /// reach `NSPasteboard.general` with no board parameter. Today
+  /// `grep -n "NSPasteboard.general" Sources/EnviousWisprServices/PasteService.swift` returns comments
+  /// only. A new member is any entry point added with the board hard-coded.
+  private static let boardlessClipboardFunctions: Set<String> = []
 
   /// Types OTHER than `PasteService` whose methods reach the real clipboard, keyed to the methods that
   /// do it.
@@ -109,7 +117,7 @@ struct ClipboardIsolationFreezeTests {
   /// visible act above.
   /// ENUMERATED, not collected from review reports. Every `NSPasteboard.general` in `Sources/` is:
   ///
-  ///   PasteService.pasteToActiveApp                    WRITE   banned above (no board parameter)
+  ///   PasteService.pasteToActiveApp                    WRITE   boarded since #2170; bare calls banned
   ///   PasteCascadeExecutor.deliver                     WRITE   here (only via an EXPLICIT `.general`
   ///                                                            at construction, since #2170)
   ///   AIAvailabilityCoordinator.copyDiagnosticsToClipboard  WRITE   here
@@ -707,17 +715,27 @@ struct ClipboardIsolationFreezeTests {
     #expect(hits.count == expected, "call: \(call) -> \(hits.map(\.description))")
   }
 
+  // RENAMED AND RE-AIMED BY #2170. `pasteToActiveApp` gained a board parameter, so it is no longer
+  // "an entry point with no board parameter" and the rows below no longer test that property — they
+  // test that a BARE call is still a violation, which is true for a different reason: a bare call takes
+  // the `.general` default and writes the developer's real clipboard.
+  //
+  // The accepted twin is new and is the row that matters now. Without it, moving the function into the
+  // boarded set could have stopped it being classified at all and every rejected row would still pass.
   @Test(
-    "an entry point with no board parameter may not be called at all",
+    "a bare call to a boarded entry point is still banned, and a boarded one is not",
     arguments: [
-      // (source, violations) — banned even in the allowlisted suite, because nothing can be passed.
+      // (source, violations) — a bare call defaults to `.general`, so it is banned even in the
+      // allowlisted suite.
       (#"func f() { _ = PasteService.pasteToActiveApp("fixture") }"#, 1),
       (##"func f() { _ = PasteService.`pasteToActiveApp`("fixture") }"##, 1),
       (#"func f() { _ = EnviousWisprServices.PasteService.pasteToActiveApp("x") }"#, 1),
+      // ACCEPTED TWIN: passing a board is the whole point of the parameter.
+      (#"func f() { _ = PasteService.pasteToActiveApp("x", to: pb) }"#, 0),
       // Safe half: a same-named method on an unrelated type is not ours.
       (#"func f() { _ = Other.pasteToActiveApp("x") }"#, 0),
     ])
-  func aBoardlessEntryPointIsBannedOutright(source: String, expected: Int) {
+  func aBareCallToABoardedEntryPointIsBanned(source: String, expected: Int) {
     let hits = Self.violations(inSource: source, file: "PasteServiceClipboardTests.swift")
     #expect(hits.count == expected, "source: \(source) -> \(hits.map(\.description))")
   }
