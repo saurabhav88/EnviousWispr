@@ -79,8 +79,13 @@ struct FakeClockTests {
   /// The whole point of `unrunResumedWaiters`, and the reason no existing signal
   /// covers this window: `advance(by:)` REMOVES a waiter from `waiters` before
   /// resuming it, so `hasPendingWaiters` is already false while the sleeper has
-  /// not executed a line. A drain consulting only that signal declares
-  /// quiescence mid-handoff, which is the #1868 flake.
+  /// not executed a line. A drain consulting only that signal would declare
+  /// quiescence mid-handoff.
+  ///
+  /// That is a real window and this suite is the only thing that observes it —
+  /// no drain consults this counter. It is deliberately NOT the #1868 flake,
+  /// which an earlier version of this comment claimed: A13 loses its terminal
+  /// between `spawn` and the sleep REGISTERING, where this counter reads zero.
   @Test("a resumed sleeper is still outstanding until its task actually runs")
   func resumedWaiterIsOutstandingUntilItRuns() async {
     let clock = FakeClock()

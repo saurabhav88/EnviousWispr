@@ -29,17 +29,29 @@ final class FakeClock {
   /// clock moved only on explicit advancement.
   private(set) var explicitAdvanceCount: Int = 0
 
-  /// Waiters whose continuation has been RESUMED but whose task has not yet
-  /// RUN — the signal `drainReadyWork` gates on so it cannot declare quiescence
-  /// across that window (#1868).
+  /// Waiters whose continuation has been RESUMED but whose task has not yet RUN.
   ///
+  /// **NO DRAIN CONSUMES THIS. It is read only by its own tests (#1868).** A gate
+  /// on it was written, measured inert, and removed; the reasoning is at
+  /// `KernelRecordingSession.drainReadyWork`, which gates on
+  /// `kernel.hasUnconsumedRecordingExit` alone. Said first and in full because
+  /// the earlier version of this comment claimed the drain gated on it, and a
+  /// reader investigating A13 would have concluded the resumed-task window was
+  /// already protected.
+  ///
+  /// What it expresses, which nothing else in this clock can:
   /// `continuation.resume()` makes a task READY, never running. `advance(by:)`
   /// removes a waiter from `waiters` BEFORE resuming it, so `hasPendingWaiters`
-  /// goes false at exactly the wrong moment: the clock reports that nothing is
-  /// waiting while a resumed sleeper has still not executed a line. Meanwhile
-  /// the resume already bumped `kernel.workEpoch`, which the drain absorbs into
-  /// its initial `last`, so epoch-stability offers no protection either. This
-  /// counter is the one signal that stays true across the whole window.
+  /// goes false at exactly the wrong moment — the clock reports that nothing is
+  /// waiting while a resumed sleeper has still not executed a line. A resume also
+  /// bumps `kernel.workEpoch`, which a drain absorbs into its initial `last`, so
+  /// epoch-stability does not cover the window either.
+  ///
+  /// So it is a signal a future drain COULD consume, kept because the window is
+  /// real and nothing else names it. What it is not is evidence that any window
+  /// is currently guarded, and A13 in particular is not: that flake is lost
+  /// between `spawn` and the sleep REGISTERING, where this counter reads zero.
+  /// `registeredWaiterCount` below is the signal that window needs.
   ///
   /// Incremented at BOTH resume sites and decremented by the resumed task
   /// itself, on the first line that runs after its `await`. `sleep(ticks:)`
