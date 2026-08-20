@@ -10,9 +10,21 @@ import Foundation
 // Core, and LLM / PostProcessing / AppKit all need these types too.
 
 /// Core-level Apple Intelligence availability value for the import flow.
-/// PR-P1's connector check returns this; the import UI says so honestly when
-/// it is unavailable (unlike AI Polish, whose silent skip is deliberate —
-/// nobody asked polish for suggestions, but an importing user did).
+///
+/// **UNPRODUCED AND UNCONSUMED.** It is the payload of `.appleIntelligenceUnavailable`
+/// below and shares that case's status exactly: `/usr/bin/grep -rn` for this type across
+/// `Sources/` and `Tests/` returns TWO hits, this declaration and that payload. No
+/// connector returns it and no screen renders it, because the shared enrichment stage
+/// (PR-P1) does not exist.
+///
+/// The DESIGN INTENT is why it is not deleted: when enrichment cannot run the import UI
+/// should say so, unlike AI Polish, whose silent skip is deliberate — nobody asked polish
+/// for suggestions, but an importing user did. That describes what PR-P1 should build, not
+/// what any code does today.
+///
+/// **Do not confuse it with `AppleIntelligenceAvailabilityReport`**, which is a different,
+/// live type in AppKit with its own coordinator, persistence and settings surface. A sweep
+/// for the shorter name matches the longer one and reports this as thoroughly used.
 package enum AppleIntelligenceAvailability: Sendable, Equatable {
   case available
   case unavailable(reason: AIFailureReason, message: String)
@@ -42,8 +54,22 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
   package let id: UUID
   package var canonical: String
   package var aliases: CustomWordsImportField<[String]>
-  /// AI-enrichment output (PR-P1). NEVER authoritative: applied only on Add,
-  /// never on Replace, so a machine guess cannot overwrite hand-tuned aliases.
+  /// Enrichment output (PR-P1), and a THIRD status distinct from both the live and the
+  /// unproduced cases in this file: **never populated by any import source, yet fully
+  /// consumed and tested.** The commit path persists it on Add
+  /// (`CustomWordsManager.swift:1237`), the compare engine unions it across duplicate rows,
+  /// `allImportableStrings` validates it, and `suggestedAliasesNeverApplyOnReplace` covers
+  /// the Replace rule. Every shipped source leaves it empty and three suites assert that.
+  /// So the plumbing is real and only the producer is missing — unlike the notice cases
+  /// below, where nothing exists at all.
+  ///
+  /// **A NAME SWEEP SAYS OTHERWISE, so check the TYPE.** `WordSuggestions.suggestedAliases`
+  /// in `WordSuggestionService` is a different field on a different type, it is live, and it
+  /// feeds the single-word edit sheet. Most hits for this name are that one, which is what
+  /// makes "something produces this" the natural and wrong reading.
+  ///
+  /// NEVER authoritative: applied only on Add, never on Replace, so a machine guess cannot
+  /// overwrite hand-tuned aliases.
   package var suggestedAliases: [String]
   package var category: CustomWordsImportField<WordCategory>
   package var priority: CustomWordsImportField<Int>
