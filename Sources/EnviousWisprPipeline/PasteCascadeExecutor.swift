@@ -250,6 +250,76 @@ extension PasteFocusClassification {
 /// that must exist in exactly one place to prevent drift.
 @MainActor
 internal final class PasteCascadeExecutor {
+  /// The pasteboard every clipboard write in this cascade goes to.
+  ///
+  /// EVERY one, verified rather than asserted: an earlier version of this comment
+  /// made that claim while `PasteService.pasteToActiveApp` still hard-coded
+  /// `NSPasteboard.general` internally, so Tier 2 wrote the real board whatever
+  /// this property held. Cloud review found it; `grep -n NSPasteboard.general` on
+  /// `PasteService.swift` now returns one comment and no code.
+  ///
+  /// **WHAT INJECTING A NON-GENERAL BOARD MEANS, so it is not mistaken for a
+  /// regression: every tier that triggers a SYSTEM paste goes inert.** Cmd+V, the
+  /// AppleScript paste and the menu-item paste are all satisfied by the OS from
+  /// `NSPasteboard.general`, so text written anywhere else is written correctly
+  /// and pasted nowhere. That is enforced by `systemPasteCanReachOurText`, which
+  /// SKIPS every system-paste tier rather than letting one run and paste the real
+  /// board's contents. Only the clipboard-only fallback is meaningful with a
+  /// board of your choosing, because there the user pastes by hand.
+  /// That is the DESIRED behaviour rather than a limitation: a test should not be
+  /// pasting into whatever app the developer has frontmost, and production passes
+  /// `.general`, where every tier behaves exactly as it always has.
+  ///
+  /// REQUIRED, not defaulted, and that is the whole point (#2170). This type is
+  /// reachable from tests through `@testable import`, and the tiers below write
+  /// to it — so a defaulted `.general` would let any test that reaches the
+  /// clipboard tier write the developer's real board by omission, which is the
+  /// hazard this seam exists to remove.
+  ///
+  /// #2146 measured what a DEFAULTED capability costs on this exact surface: a
+  /// name-based sweep for tests writing the real board found 7 sites, and
+  /// flipping the seam's default to fail closed found 9. The two extras
+  /// contained no clipboard token anywhere — they inherited the board by not
+  /// passing one. A capability reached through a defaulted argument has no
+  /// call-site token, so no sweep can enumerate it.
+  ///
+  /// There is exactly one production construction site, so requiring it is
+  /// cheap. `PasteService`'s own writers keep their `.general` default: layer 1
+  /// is that parameter, layer 2 is this being mandatory.
+  private let pasteboard: NSPasteboard
+
+  /// **Whether a SYSTEM PASTE can deliver what this cascade writes.**
+  ///
+  /// Every system-paste route — Cmd+V, AppleScript `keystroke "v"`, and an app's
+  /// own Edit > Paste menu item — is satisfied by the system from
+  /// `NSPasteboard.general`. None of them can be pointed anywhere else. So with
+  /// any other board those routes do not merely fail to deliver our text: they
+  /// deliver whatever the REAL board happens to hold, into the frontmost app.
+  ///
+  /// **This is one precondition rather than a guard per route, and that is the
+  /// point.** Three consecutive review rounds each found a different route
+  /// reaching the general board — the write, then the Cmd+V dispatch, then the
+  /// AppleScript and menu paths with their clipboard snapshot/restore. Guarding
+  /// them one at a time is answering "which routes touch the general board",
+  /// which is a set with a next member. The closed question is this one.
+  ///
+  /// **ONE PREDICATE, TWO GUARD SITES.** Tiers 2 and 2b share a branch; Tier 2c
+  /// (menu paste) is its SIBLING, not a child of it — an earlier version of this
+  /// comment claimed all three were one branch and gated only the first, which
+  /// left the menu route open under a comment saying it was covered. Tier 3 is
+  /// deliberately ungated: it is the plain clipboard write, and the only route
+  /// that delivers anything meaningful when the board is not the general one.
+  ///
+  /// Production passes `.general`, where this is always `true` and the cascade
+  /// behaves exactly as it did before the board became injectable.
+  private var systemPasteCanReachOurText: Bool {
+    pasteboard === NSPasteboard.general
+  }
+
+  internal init(pasteboard: NSPasteboard) {
+    self.pasteboard = pasteboard
+  }
+
 
   func deliver(_ request: PasteDeliveryRequest) async -> PasteDeliveryResult {
     let pasteStart = CFAbsoluteTimeGetCurrent()
@@ -380,6 +450,7 @@ internal final class PasteCascadeExecutor {
     // `axAllowsRetry` is false only after an unprovable Tier 1 write, and it
     // gates Tier 2b too because 2b lives inside this branch.
     if tier == .clipboardOnly, axAllowsRetry, canAttemptKeyPaste,
+      systemPasteCanReachOurText,
       let app = request.targetApp, !app.isTerminated
     {
       let activation = await activate(app)
@@ -409,7 +480,8 @@ internal final class PasteCascadeExecutor {
           ? ClipboardCleanup.snapshotForDelivery()
           : nil
         submittedKind = payload.kind
-        let dispatchResult = PasteService.pasteToActiveApp(payload.text)
+        let dispatchResult = PasteService.pasteToActiveApp(
+          payload.text, to: pasteboard)
         submittedClipboardChangeCount = dispatchResult.changeCount
         switch dispatchResult {
         case .dispatched:
@@ -460,7 +532,8 @@ internal final class PasteCascadeExecutor {
           ? ClipboardCleanup.snapshotForDelivery()
           : nil
         submittedKind = payload.kind
-        let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)
+        let changeCount = PasteService.copyToClipboardReturningChangeCount(
+          payload.text, to: pasteboard)
         submittedClipboardChangeCount = changeCount
         if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
           tier = .appleScript
@@ -487,6 +560,7 @@ internal final class PasteCascadeExecutor {
     // `.nonText` and Tier 1 only runs on `.textField`, so an unprovable Tier 1
     // write cannot reach here. Adding a guard would service an impossible state.
     if tier == .clipboardOnly, classification == .nonText, axTrusted,
+      systemPasteCanReachOurText,
       let app = request.targetApp, !app.isTerminated
     {
       let activation = await activate(app)
@@ -508,7 +582,8 @@ internal final class PasteCascadeExecutor {
           requireCaretUnchanged: request.targetElementIsRetried,
           terminalBudget: request.terminalBudget)
         submittedKind = payload.kind
-        let changeCount = PasteService.copyToClipboardReturningChangeCount(payload.text)
+        let changeCount = PasteService.copyToClipboardReturningChangeCount(
+          payload.text, to: pasteboard)
         submittedClipboardChangeCount = changeCount
         switch PasteService.findPasteMenuItem(pid: app.processIdentifier) {
         case .found(let menuItem):
@@ -572,7 +647,7 @@ internal final class PasteCascadeExecutor {
     // Tier 2 because a non-text element was focused (PR #220's void-protection
     // path). Nil-element paths reach Tier 2 and log their own tier=cgevent.
     if tier == .clipboardOnly {
-      PasteService.copyToClipboard(request.legacyText)
+      PasteService.copyToClipboard(request.legacyText, to: pasteboard)
       // An earlier route may have SUBMITTED the contextual payload and failed.
       // What the user can now paste by hand is this legacy text, so that is what
       // the record has to say (Codex review r4) — otherwise the field reports a
