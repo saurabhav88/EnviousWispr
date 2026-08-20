@@ -58,8 +58,8 @@ package struct CustomWordsImportCandidate: Identifiable, Sendable, Hashable {
   /// unproduced cases in this file: **never populated by any import source, yet fully
   /// consumed and tested.** The commit path persists it on Add
   /// (`CustomWordsManager.swift:1237`), the compare engine unions it across duplicate rows,
-  /// `allImportableStrings` validates it, and `suggestedAliasesNeverApplyOnReplace` covers
-  /// the Replace rule. Every shipped source leaves it empty and three suites assert that.
+  /// `validated()` reaches it by walking `storedValues` rather than naming fields, and
+  /// `suggestedAliasesNeverApplyOnReplace` covers the Replace rule. Every shipped source leaves it empty and three suites assert that.
   /// So the plumbing is real and only the producer is missing — unlike the notice cases
   /// below, where nothing exists at all.
   ///
