@@ -11,62 +11,24 @@ import Foundation
 
 /// Core-level Apple Intelligence availability value for the import flow.
 ///
-/// **UNPRODUCED AND UNCONSUMED.** It is the payload of `.appleIntelligenceUnavailable`
-/// below and shares that case's status exactly. No connector returns it and no screen
-/// renders it, because the shared enrichment stage (PR-P1) does not exist.
+/// **UNPRODUCED AND UNCONSUMED**, the same status as its only case
+/// `.appleIntelligenceUnavailable` below: it is that case's payload and nothing else. No
+/// connector returns it and no screen renders it, because the shared enrichment stage
+/// (PR-P1) does not exist. To check, apply the live-case test stated at
+/// `CustomWordsImportNotice` — produced, consumed, tested — and look for all three.
 ///
-/// **MEASURE IT WITH `-w` AND WITHOUT COMMENT LINES. Both filters are load-bearing, and
-/// the contrast between the two numbers IS the evidence:**
-///
-///     NOCOMMENT=':[0-9]+: *(//|\*)'
-///     /usr/bin/grep -rnw AppleIntelligenceAvailability Sources/ Tests/ \
-///       | /usr/bin/grep -vE "$NOCOMMENT"                                     ->  2
-///     /usr/bin/grep -rn  AppleIntelligenceAvailability Sources/ Tests/ \
-///       | /usr/bin/grep -vE "$NOCOMMENT"                                     -> 25
-///
-/// **WHAT THAT FILTER DOES AND DOES NOT DO, because an earlier revision published
-/// `grep -v '///'` and called the result comment-free.** It drops a line whose first
-/// non-space character is `//` or `*`, so doc comments, ordinary comments and the interior
-/// of a conventionally-formatted block comment all go. It does NOT drop a TRAILING comment
-/// on a line of code, and it does not parse Swift. Both counts are the same under either
-/// filter today because no such line exists; the difference is that the earlier one
-/// happened to be right and described itself wrongly.
-///
-/// **`-w`, not a hand-rolled `[^R]` class.** An earlier revision excluded the neighbour by
-/// its first LETTER, which is a rule about the one sibling that exists today. A future
-/// sibling named AppleIntelligenceAvailabilityStatus (deliberately unbackticked: no such
-/// type exists) satisfies `[^R]` and would have been counted as this type, silently
-/// breaking the number above. Measured both ways on a probe line — the hand-rolled class
-/// matches it, `-w` does not.
-///
-/// The 2 are this declaration and that payload. The other 23 are
-/// `AppleIntelligenceAvailabilityReport`, a different and live type — see below.
-///
-/// **BOTH FILTERS WERE PAID FOR, and the second one is the interesting half.** An earlier
-/// revision claimed 2 while publishing the UNBOUNDED command, so anyone checking the claim
-/// got a much larger number and a reason to disbelieve it. Publishing the bounded command
-/// then changed what that command returned, because writing a command into a comment adds
-/// occurrences of the string it counts, and each later revision moved it again.
-/// **A comment that publishes a measurement of the file it lives in perturbs that
-/// measurement by existing.** Only a comment-excluded count is stable enough to write
-/// down; publish that, or publish no number. The intermediate readings are deliberately
-/// not quoted here — they are exactly the unreproducible numbers this paragraph warns
-/// against, and a reader who tried to reproduce one would be checking a file that no
-/// longer exists.
+/// **Do not confuse it with `AppleIntelligenceAvailabilityReport`**, a different and fully
+/// live type declared in THIS SAME MODULE at `AppleIntelligenceDiagnostics.swift:159` and
+/// consumed by AppKit, Services, LLM and Core. **Same module is what makes the confusion
+/// likely rather than remote** — nothing about where you are reading tells you which of the
+/// two you have, and a search for the shorter name matches the longer one, so an unanchored
+/// sweep reports this dead type as thoroughly used. Search with a word boundary.
 ///
 /// The DESIGN INTENT is why it is not deleted: when enrichment cannot run the import UI
 /// should say so, unlike AI Polish, whose silent skip is deliberate — nobody asked polish
 /// for suggestions, but an importing user did. That describes what PR-P1 should build, not
 /// what any code does today.
 ///
-/// **Do not confuse it with `AppleIntelligenceAvailabilityReport`**, a different and fully
-/// live type declared in THIS SAME MODULE at `AppleIntelligenceDiagnostics.swift:159` and
-/// consumed across four (AppKit's coordinator and settings surface, Services, LLM, Core).
-/// **Same module is what makes the confusion likely rather than remote** — the dead type
-/// and the live one sit in the same target, so nothing about where you are reading tells
-/// you which you have. A sweep for the shorter name matches the longer one and reports this
-/// one as thoroughly used, which is why the boundary above is not pedantry: it is the
-/// difference between 2 and 25.
 package enum AppleIntelligenceAvailability: Sendable, Equatable {
   case available
   case unavailable(reason: AIFailureReason, message: String)
