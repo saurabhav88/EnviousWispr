@@ -150,8 +150,13 @@ struct LivePreviewPackCopyTests {
   nonisolated static func declaredName(in line: String) -> String? {
     guard let range = line.range(of: #"static (let|func) "#, options: .regularExpression)
     else { return nil }
-    let name = String(
+    let raw = String(
       line[range.upperBound...].prefix(while: { declarationNameTerminators.contains($0) == false }))
+    // SPELLING is normalised HERE, once. A backtick-escaped declaration —
+    // `static let `repeat` = "…"` — names the same member as an unescaped one, and the compiler
+    // treats the two as identical, so a reader that kept the backticks would look for a reference
+    // nobody writes. Backticks are Swift's only identifier escape, so this closes the axis.
+    let name = raw.trimmingCharacters(in: CharacterSet(charactersIn: "`"))
     return name.isEmpty ? nil : name
   }
 
@@ -171,16 +176,23 @@ struct LivePreviewPackCopyTests {
   ) -> Bool {
     let prefix = "LivePreviewSettingsCopy."
     let longerSiblings = siblings.filter { $0 != declaration && $0.hasPrefix(declaration) }
-    let needle = prefix + declaration
 
-    var searchFrom = corpus.startIndex
-    while let hit = corpus.range(of: needle, range: searchFrom..<corpus.endIndex) {
-      let shadowed = longerSiblings.contains { sibling in
-        corpus.range(of: prefix + sibling, range: hit.lowerBound..<corpus.endIndex)?.lowerBound
-          == hit.lowerBound
+    // A reference to a backtick-escaped member compiles written EITHER way, so both spellings of the
+    // one name are searched. Two renderings of the same thing, not two things.
+    func spellings(_ name: String) -> [String] { [prefix + name, prefix + "`" + name + "`"] }
+
+    for needle in spellings(declaration) {
+      var searchFrom = corpus.startIndex
+      while let hit = corpus.range(of: needle, range: searchFrom..<corpus.endIndex) {
+        let shadowed = longerSiblings.contains { sibling in
+          spellings(sibling).contains { longer in
+            corpus.range(of: longer, range: hit.lowerBound..<corpus.endIndex)?.lowerBound
+              == hit.lowerBound
+          }
+        }
+        if shadowed == false { return true }
+        searchFrom = corpus.index(after: hit.lowerBound)
       }
-      if shadowed == false { return true }
-      searchFrom = corpus.index(after: hit.lowerBound)
     }
     return false
   }
@@ -366,6 +378,31 @@ struct LivePreviewPackCopyTests {
       `pack` is referenced nowhere; only `pack‿v2` is. Treating U+203F as a boundary restores the \
       vacuous pass this whole guard exists to remove, and nothing would go red.
       """)
+  }
+
+  /// A backtick-escaped declaration names the same member as an unescaped one.
+  ///
+  /// **SPELLING, not meaning** — the distinction testing-philosophy.md's axes table draws, where
+  /// "backtick-escaped identifier" is the first spelling row because it already cost
+  /// `TestInventoryFreezeTests` a review round. `default`, `repeat` and `for` are ordinary words for
+  /// UI copy, so this is not a far-fetched input even though none exists today.
+  @Test("A backtick-escaped declaration is found by its ordinary reference")
+  func backtickEscapedDeclarationsAreNormalised() {
+    #expect(
+      Self.declaredName(in: "  static let `repeat` = \"Try again\"") == "repeat",
+      "the backticks are a SPELLING of the name, not part of it")
+
+    // Swift accepts the reference written either way; both must count.
+    #expect(
+      Self.isReferenced(
+        "repeat", in: "Text(LivePreviewSettingsCopy.repeat)", siblings: ["repeat"]))
+    #expect(
+      Self.isReferenced(
+        "repeat", in: "Text(LivePreviewSettingsCopy.`repeat`)", siblings: ["repeat"]))
+    #expect(
+      Self.isReferenced("repeat", in: "Text(LivePreviewSettingsCopy.other)", siblings: ["repeat"])
+        == false,
+      "and it is still not satisfied by an unrelated reference")
   }
 
   /// The pill sentence must keep matching the phrasing the app already uses for a missing model,
