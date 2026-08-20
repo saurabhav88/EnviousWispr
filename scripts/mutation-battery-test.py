@@ -1908,6 +1908,67 @@ finally:
     battery.Lane._run_package_prep = _real_prep
     battery.run = _real_run7
 
+# --- the operator-facing summary ------------------------------------------------
+# Nothing rendered this block before: it was declared inside `main()`, after a full
+# lane, so the self-test could not reach it. `classify_row` had a dozen cases and the
+# text a human acts on had none — which is how "re-aim the RECIPE" survived here for a
+# review round after being removed from the classifier one screen up.
+
+# STRUCTURAL, and the strongest of the three: every verdict the module declares must
+# have an entry. The old `.get(verdict, "")` rendered a BLANK line for an unmapped one,
+# so adding a verdict constant would silently ship a report with no guidance under it.
+# Closed set, enumerated from the module itself rather than a hand-written list, so a
+# verdict added tomorrow is covered without editing this case.
+ran += 1
+# The set is the code's OWN partition, not every constant: `main` computes
+# `bad = [r for r in results if r[0] != VERDICT_CAUGHT]`, so a CATCH never reaches
+# the report and needs no entry. Derived that way rather than by a hand-written
+# exclusion, so a verdict added later is covered without editing this case — the
+# first version quantified over every VERDICT_* and reported CAUGHT as a defect.
+_verdicts = {v for k, v in vars(battery).items()
+             if k.startswith("VERDICT_") and isinstance(v, str)} - {battery.VERDICT_CAUGHT}
+_unmapped = sorted(v for v in _verdicts if v not in battery.WHAT_IT_MEANS)
+if _unmapped:
+    failures.append(f"every declared verdict has operator guidance — {_unmapped} do not, so the "
+                    f"report prints a blank line where the guidance belongs")
+else:
+    print("  ok  every declared verdict has operator guidance")
+
+ran += 1
+try:
+    battery.explain_verdict("NOT-A-VERDICT")
+    failures.append("an unmapped verdict fails loud rather than rendering a blank line — it did "
+                    "not: explain_verdict returned instead of raising")
+except AssertionError:
+    print("  ok  an unmapped verdict fails loud rather than rendering a blank line")
+
+# A verdict whose cause the statuses CANNOT determine must not be handed a single
+# remediation here. `classify_row` says an unchanged test set has two causes and that
+# the statuses cannot separate them; a summary line that picks one contradicts the
+# classifier, and the summary is what gets acted on.
+ran += 1
+_noop = battery.WHAT_IT_MEANS[battery.VERDICT_NOOP]
+_blames_recipe = "recipe" in _noop.lower()
+_blames_test = "test" in _noop.lower()
+if _blames_recipe and not _blames_test:
+    failures.append(f"an undetermined cause is not given a single remediation in the summary — it "
+                    f"is: {battery.VERDICT_NOOP} reads {_noop!r}, prescribing the RECIPE alone, while "
+                    f"classify_row says the statuses cannot say which of two causes it is. The "
+                    f"operator is sent to re-aim a recipe when the TEST may be at fault.")
+else:
+    print("  ok  an undetermined cause is not given a single remediation in the summary")
+
+# PAIRED ACCEPTED CASE, so the check above cannot pass by refusing every summary that
+# mentions a recipe. CAUGHT-ELSEWHERE has ONE cause the statuses do establish — another
+# test went red — and its summary is allowed to say so plainly.
+ran += 1
+_elsewhere = battery.WHAT_IT_MEANS[battery.VERDICT_CAUGHT_ELSEWHERE]
+if "different test caught it" not in _elsewhere:
+    failures.append(f"a verdict whose cause IS established still states it plainly — it does not: "
+                    f"CAUGHT-ELSEWHERE reads {_elsewhere!r}")
+else:
+    print("  ok  a verdict whose cause IS established still states it plainly")
+
 print()
 if failures:
     print(f"{len(failures)} of {ran} FAILED:")

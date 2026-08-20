@@ -55,10 +55,16 @@ RECIPE FORMAT (JSON; the same block that goes in the `test-hardening` issue body
           "anchor":      "exact source text, must occur EXACTLY once",
           "replacement": "exact replacement text",
           "suite":       "EnviousWisprTests/FooTests",   // optional if suite_default is set
-          "expect_fail": "the test that must go red"     // substring-matched against failure lines
+          "expect_fail": "theGuard()"                    // FULL name, never a prefix: see below
         }
       ]
     }
+
+    `expect_fail` NAMES A TEST AND IS MATCHED EXACTLY — it is not a substring of the
+    failure line. Any one of the three spellings the result bundle carries will do:
+    the `Suite/function()` identifier, the bare `function()`, or the display name in
+    `@Test("...")`. A parameterized test keeps its `(_:)`. A prefix is refused before
+    anything is mutated, with the full name it was probably meant to be.
 
 USAGE
     scripts/mutation-battery.py --from-issue 2156        # the overnight form: recipe from the issue
@@ -623,6 +629,44 @@ VERDICT_SURVIVED = "SURVIVED"
 # recipe precisely when the TEST was at fault.
 VERDICT_NOOP = "SURVIVED-UNOBSERVED"
 VERDICT_INVALID = "INVALID-ROW"
+
+
+# WHAT TO DO ABOUT A ROW DEPENDS ON WHY IT IS NOT A CATCH, and the old report
+# collapsed every non-catch into "needs work" — which sent an overnight session to
+# tighten a test when the RECIPE was the problem.
+#
+# MODULE LEVEL SO IT CAN BE TESTED. It lived inside `main()`, reachable only after a
+# full lane, so nothing rendered it and the self-test could not see it. That is why
+# the categorical "re-aim the RECIPE" claim survived HERE for a whole review round
+# after being removed from `classify_row`: the classifier is heavily covered and the
+# text the operator actually acts on had no coverage at all.
+#
+# A VERDICT WHOSE CAUSE THE STATUSES CANNOT DETERMINE MUST NOT BE GIVEN A SINGLE
+# REMEDIATION HERE. `classify_row` owns that judgement; a second sentence of guidance
+# is a second owner, and it is the one that drifted.
+WHAT_IT_MEANS = {
+    VERDICT_NOOP: "no test changed status; the two causes, and how to tell them apart, are below",
+    VERDICT_CAUGHT_ELSEWHERE: "a different test caught it; this row says nothing about its own guard",
+    VERDICT_INVALID: "the row cannot prove anything as written",
+    VERDICT_SURVIVED: "the test did not detect the mutation",
+    "ERROR": "the row did not produce a verdict",
+}
+
+
+def explain_verdict(verdict):
+    """-> the one-line meaning shown beneath a non-catch row.
+
+    FAILS LOUD on an unmapped verdict. `WHAT_IT_MEANS.get(verdict, "")` rendered a
+    BLANK line for one, so adding a verdict constant would have silently produced a
+    report with no explanation under it — an empty string reading as an answer, which
+    is the defect class this whole tool exists to police.
+    """
+    try:
+        return WHAT_IT_MEANS[verdict]
+    except KeyError:
+        raise AssertionError(
+            f"verdict {verdict!r} has no entry in WHAT_IT_MEANS, so the report would print a blank "
+            f"line where the operator's guidance belongs. Add one when adding a verdict.")
 
 
 def classify_row(baseline: "SuiteResults", mutated: "SuiteResults", expect_fail: str):
@@ -1494,19 +1538,9 @@ def main(argv=None):
     bad = [r for r in results if r[0] != VERDICT_CAUGHT]
     print(f"\n{'=' * 72}\n{len(caught)}/{len(results)} CAUGHT, baseline green before and after.")
     if bad:
-        # WHAT TO DO ABOUT A ROW DEPENDS ON WHY IT IS NOT A CATCH, and the old
-        # report collapsed every non-catch into "needs work" — which sent an
-        # overnight session to tighten a test when the RECIPE was the problem.
-        WHAT_IT_MEANS = {
-            VERDICT_NOOP: "re-aim the RECIPE: the mutation changed nothing the suite observes",
-            VERDICT_CAUGHT_ELSEWHERE: "a different test caught it; this row says nothing about its own guard",
-            VERDICT_INVALID: "the row cannot prove anything as written",
-            VERDICT_SURVIVED: "the test did not detect the mutation",
-            "ERROR": "the row did not produce a verdict",
-        }
         print(f"\n{len(bad)} row(s) need work:")
         for verdict, label, detail in bad:
-            print(f"  {verdict}: {label}\n    {WHAT_IT_MEANS.get(verdict, '')}\n    {detail}")
+            print(f"  {verdict}: {label}\n    {explain_verdict(verdict)}\n    {detail}")
         return 1
     print("\nEvery mutation was detected by the test that claimed to guard it.")
     print("This proves the tests fire on the mutations written here. It does NOT prove they are")
