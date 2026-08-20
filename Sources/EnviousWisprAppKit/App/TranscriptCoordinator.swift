@@ -324,18 +324,38 @@ final class TranscriptCoordinator {
     // layer would defeat both halves — `await` resuming before the work was
     // done, and a row that lapsed DURING the in-flight sweep never being
     // re-examined by the later clock that can see it.
+    // Captured BEFORE the await, so a removal that lands while this walk is in
+    // flight makes the walk stale by construction rather than by timing.
+    let generation = diskStateGeneration
     do {
       let swept = try await store.deleteExpiredPending(now: now)
+      #if DEBUG
+        // The ONE window this guard exists for: the walk has finished and has
+        // not yet written its result. A Live removal here is what makes the
+        // result stale, and it cannot be staged from outside — the two tasks
+        // resume in whatever order the runtime picks, so a test that raced them
+        // would prove nothing on the run where it happened to win.
+        onSweepWalkFinishedForTesting?()
+      #endif
+      // The four fields below DESCRIBE the directory, and this walk looked at a
+      // directory a later removal has since changed — so its whole picture is
+      // superseded, not merely its count. Applying any part of it writes a state
+      // that never existed. The deletions and telemetry beneath this block are
+      // FACTS about files that really went, so they are recorded either way, and
+      // the newer walk arms the pulse from the state it actually finds.
+      let describesCurrentDirectory = generation == diskStateGeneration
       // Replaced, never accumulated: this is the state of the directory after
       // the pass that just ran, so a file that finally went must stop counting.
-      unremovablePendingCount = swept.unremovable
-      lastSweepIncomplete = !swept.walkComplete
+      if describesCurrentDirectory {
+        unremovablePendingCount = swept.unremovable
+        lastSweepIncomplete = !swept.walkComplete
+      }
       // #2186: DISK truth, and only from a walk that could actually look.
       // `walkComplete == false` means the store counted nothing, so its zero is
       // "I could not see" rather than "nothing is counting down" — writing it
       // here would stop the timer on the one occasion it must keep going.
       // `lastSweepIncomplete` above already keeps the pulse alive in that case.
-      if swept.walkComplete {
+      if swept.walkComplete, describesCurrentDirectory {
         liveOnDiskPendingCount = swept.remainingLive
         nextDiskExpiryDeadline = swept.nextLiveDeadline
       }
@@ -345,7 +365,9 @@ final class TranscriptCoordinator {
       // the pulse stops, and the row waits for a relaunch instead of going on
       // the pass after recovery clears its spool. Same stranded retry the
       // `unremovable` count already exists to prevent, by a second route.
-      pendingRetainedForSpool = swept.retainedForSpool
+      if describesCurrentDirectory {
+        pendingRetainedForSpool = swept.retainedForSpool
+      }
       // Evict on EVERY deletion, not only the telemetry-eligible ones. A
       // future-skewed or corrupt row is deleted without a receipt, and leaving
       // it in memory kept `lapsedPendingCount` above zero — so the pulse
@@ -394,7 +416,14 @@ final class TranscriptCoordinator {
     } catch {
       // A sweep that THREW measured nothing, so it must not read as a finished
       // one — same reasoning as an unreadable directory, one layer out.
-      lastSweepIncomplete = true
+      //
+      // Gated with the success path for one reason: a superseded FAILURE landing
+      // after a newer walk succeeded would mark the directory unread when it had
+      // just been read. `startPulseIfNeeded` below is unconditional, so a genuine
+      // failure still leaves a retry armed either way.
+      if generation == diskStateGeneration {
+        lastSweepIncomplete = true
+      }
       startPulseIfNeeded()
       // History is a limb, not the heart. A failed sweep leaves rows the
       // read-time filter already hides.
@@ -733,15 +762,44 @@ final class TranscriptCoordinator {
     // round-2 P2), and believing its old value is what made it stale. Zeroing
     // can only stop the pulse EARLY; the refresh below re-arms within moments if
     // another row is still counting down, and only the directory can say.
-    liveOnDiskPendingCount = 0
-    nextDiskExpiryDeadline = nil
-    pendingRetainedForSpool = 0
+    invalidateDiskState()
     stopPulseIfIdle()
     refreshTask = Task { [weak self] in
       await self?.sweepExpiredPending()
       self?.stopPulseIfIdle()
     }
   }
+
+  /// Drops what this coordinator believes about the pending directory, and
+  /// supersedes any walk already in flight over it.
+  ///
+  /// Both halves belong to one removal and are why this is a function rather
+  /// than four assignments at the call site: zeroing without bumping leaves an
+  /// older walk free to write its stale picture back, and bumping without
+  /// zeroing leaves the removed row counting until the refresh lands.
+  private func invalidateDiskState() {
+    liveOnDiskPendingCount = 0
+    nextDiskExpiryDeadline = nil
+    pendingRetainedForSpool = 0
+    diskStateGeneration &+= 1
+  }
+
+  /// Bumped by every pending REMOVAL, and read by `sweepExpiredPending` across
+  /// its one `await`, so a walk that started before a removal cannot write its
+  /// picture of the directory over a newer one's.
+  ///
+  /// Cloud review, P2: the store serialises the walks, but each sweep writes its
+  /// result back on the main actor AFTER resuming, and resumptions are not
+  /// ordered — so without this, two quick removals can let the first walk's
+  /// stale count land on top of the second walk's empty one and strand the pulse
+  /// until a row that no longer exists reaches its former deadline.
+  ///
+  /// A generation rather than cancellation: the walk itself is still doing real
+  /// work — it deletes files and its deletions must be recorded whoever wins —
+  /// and only the four fields DESCRIBING the directory go stale. Those four are
+  /// gated together rather than one at a time; they are one snapshot, and a
+  /// partial application is a directory state that never existed.
+  private var diskStateGeneration = 0
 
   /// Held so a test can await the refresh rather than guess at a duration —
   /// a signal the subject itself fires, never a sleep or a yield count.
@@ -784,6 +842,22 @@ final class TranscriptCoordinator {
 
     // periphery:ignore - test seam
     var liveOnDiskPendingCountForTesting: Int { liveOnDiskPendingCount }
+
+    /// Fired once the pending walk has finished and BEFORE its result is
+    /// written back — the only window in which a removal can make that result
+    /// stale. A seam rather than a raced pair of tasks: the two resume in an
+    /// order the runtime picks, so a racing test proves nothing on the run where
+    /// it happens to win.
+    // periphery:ignore - test seam
+    var onSweepWalkFinishedForTesting: (@MainActor () -> Void)?
+
+    /// What a removal does to this coordinator's picture of the directory, with
+    /// the refresh it would also arm left off — so a test can put a removal in
+    /// the window above without a second walk racing in to correct the answer.
+    // periphery:ignore - test seam
+    func simulateRemovalDuringWalkForTesting() {
+      invalidateDiskState()
+    }
 
     /// Awaits the post-removal disk refresh. Captured before awaiting because
     /// the task clears nothing but may be replaced by a later removal.

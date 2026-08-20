@@ -150,6 +150,94 @@ struct EscapeRecoveryDiskExpiryTests {
         """)
     }
 
+    @Test("a removal re-reads the directory instead of assuming it is now empty")
+    func removalRearmsAnotherRowStillOnDisk() async throws {
+      let store = makeStore()
+      let log = EventLog()
+      let coordinator = makeCoordinator(log, store: store)
+
+      // The row the user is about to remove: in memory AND on disk.
+      let removed = Transcript(
+        id: UUID(), text: "the one the user deletes",
+        escapeRecoveredAt: Date().addingTimeInterval(-60),
+        escapeRecoveryTakeID: "take-removed")
+      // The row this test exists for: on disk ONLY, still counting down. That is
+      // a dictation held from a previous session with History never opened, so
+      // nothing in `transcripts` knows it exists.
+      try store.savePending(removed)
+      try store.savePending(
+        Transcript(
+          text: "carried over, nobody has looked at it",
+          escapeRecoveredAt: Date().addingTimeInterval(-120),
+          escapeRecoveryTakeID: "take-carried-over"))
+      coordinator.setTranscriptsForTesting([removed])
+      await coordinator.sweepExpiredPending()
+      #expect(coordinator.liveOnDiskPendingCountForTesting == 2, "control: both rows counted")
+
+      coordinator.delete(removed)
+      await coordinator.waitForRefreshForTesting()
+
+      // Zeroing the cache is what lets the pulse stop, and it is only ever
+      // provisional — the directory decides. A removal that zeroed and never
+      // looked again would be indistinguishable from this on the single-row
+      // case, which is why that case cannot bind the re-read.
+      #expect(
+        coordinator.liveOnDiskPendingCountForTesting == 1,
+        """
+        #2186: after removing one held row the app assumed the directory was empty. A dictation \
+        cancelled in an earlier session is still on disk and still counting down, and nothing is \
+        watching its deadline any more.
+        """)
+      #expect(
+        coordinator.hasPendingPulseForTesting,
+        "and the countdown that row needs has stopped, so it survives to the next launch")
+    }
+
+    @Test("a walk overtaken by a removal does not write its stale count back")
+    func supersededWalkDoesNotWriteItsResult() async throws {
+      let store = makeStore()
+      let log = EventLog()
+      let coordinator = makeCoordinator(log, store: store)
+
+      let id = UUID()
+      let row = Transcript(
+        id: id, text: "still counting down while a walk is in flight",
+        escapeRecoveredAt: Date().addingTimeInterval(-60),
+        escapeRecoveryTakeID: "take-superseded")
+      try store.savePending(row)
+      coordinator.setTranscriptsForTesting([row])
+
+      // The removal lands in the ONE window that matters: the walk has finished
+      // and counted this row, and has not yet written that count back. In the
+      // app the two arrive as separate tasks whose main-actor resumptions are
+      // unordered, so this is staged through the subject's own seam rather than
+      // raced — a race would pass on the runs where it happened to win, which is
+      // indistinguishable from a guard that works.
+      //
+      // One-shot: cleared before it acts, or the walk it arms re-enters here.
+      coordinator.onSweepWalkFinishedForTesting = { [weak coordinator] in
+        coordinator?.onSweepWalkFinishedForTesting = nil
+        coordinator?.simulateRemovalDuringWalkForTesting()
+      }
+      await coordinator.sweepExpiredPending()
+
+      #expect(
+        coordinator.liveOnDiskPendingCountForTesting == 0,
+        """
+        #2186 cloud review P2: a walk that finished BEFORE the user's removal wrote its count back \
+        anyway. That count describes a directory that no longer exists, so the countdown stays \
+        armed until a row that is already deleted reaches its former deadline.
+        """)
+
+      // Deliberately NOT asserting the pulse is stopped here, and the reason is
+      // the finding rather than a caveat: this scenario supersedes a walk, it
+      // does not remove the row, so the row is still live in memory and the
+      // pulse is correctly armed for it. Asserting a stop would pass only
+      // because a DIFFERENT input was broken. The removal-and-stop outcome is
+      // owned by `removalRefreshesTheDiskCache` above, which drives the real
+      // `delete` path end to end.
+    }
+
     @Test("and it is deleted at its moment, still with History never loaded")
     func carriedOverRowIsDeletedAtItsMoment() async throws {
       let store = makeStore()
