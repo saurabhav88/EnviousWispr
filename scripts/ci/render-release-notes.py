@@ -88,6 +88,35 @@ def render(entries, version):
     return rendered or None
 
 
+def empty_fields(entries):
+    """Entries whose title or description parsed EMPTY, as `version: title` strings.
+
+    A field this parser cannot read still MATCHES its regex with a zero-length capture,
+    so the entry parses, the count check is satisfied, and the text is gone. Measured on
+    v2.4.5 (#2234), whose headline entry was a multiline literal and rendered as a bare
+    title while both existing assertions passed.
+
+    An OUTCOME check rather than a syntax allow-list: the protocol's list of prohibited
+    forms has been wrong twice about which forms exist, and "no entry renders empty"
+    holds whatever syntax the next author reaches for.
+    """
+    return [
+        f"{e['version']}: {e['title'][:60] or '(no title)'}"
+        for e in entries
+        if not e["desc"].strip() or not e["title"].strip()
+    ]
+
+
+def empty_fields_message(empty):
+    return (
+        "error: %d entr%s parsed with an empty title or description — the field is "
+        "present in the source but this parser could not read it (a multiline, "
+        "concatenated, interpolated or raw literal). Rewrite it as a single direct "
+        "double-quoted literal:\n  %s"
+        % (len(empty), "y" if len(empty) == 1 else "ies", "\n  ".join(empty))
+    )
+
+
 def current_content_version():
     try:
         with open(CONSTANTS_SWIFT, encoding="utf-8") as fh:
@@ -130,6 +159,15 @@ def main():
                 file=sys.stderr,
             )
             return 2
+        # PER-ENTRY completeness, not just per-VERSION presence (#2234).
+        # Shared with the RENDER path below — cloud review r1 P2: this check only
+        # protected `--self-test`, which runs weekly, while the release workflow
+        # invokes `--version`, which would still have emitted a bare-title bullet.
+        empty = empty_fields(entries)
+        if empty:
+            print(empty_fields_message(empty), file=sys.stderr)
+            return 2
+
         cv = current_content_version()
         if not cv:
             print("error: could not read currentContentVersion", file=sys.stderr)
@@ -150,6 +188,27 @@ def main():
 
     if not args.version:
         print("error: --version is required", file=sys.stderr)
+        return 2
+
+    # The SAME completeness check on the PUBLISH path, not only in `--self-test`
+    # (cloud review r1 P2 on PR #2235). `--self-test` runs weekly via
+    # `ci-drift-check`; `.github/workflows/release.yml` renders with `--version`,
+    # so a guard living only in the self-test would let a bare-title bullet ship
+    # for up to a week — which is exactly how #2234 reached a release branch.
+    #
+    # FAILING HERE IS THE SAFE DIRECTION, and the workflow is already built for
+    # it: that step is `continue-on-error: true` and its own comment says the
+    # publish job "falls back to GitHub's auto-generated notes, so this step can
+    # never block a release or ship it with a blank body". So a refusal costs an
+    # auto-generated note plus a `::warning::`, where the alternative is
+    # publishing a headline with no text under it.
+    #
+    # Scoped to the entries being RENDERED: an unrelated older entry that has
+    # rotted must not block today's release.
+    for_version = [e for e in entries if e["version"] == args.version]
+    empty = empty_fields(for_version)
+    if empty:
+        print(empty_fields_message(empty), file=sys.stderr)
         return 2
 
     body = render(entries, args.version)
