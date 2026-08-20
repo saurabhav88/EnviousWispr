@@ -4,111 +4,220 @@ import Testing
 
 @testable import EnviousWisprAppKit
 
-/// #2202: the live level meter that replaces the lips mark in the preview pill's
-/// header.
+/// #2216: the meter shows a RECORD of volume over time, not one level drawn nine
+/// times.
 ///
-/// A `Canvas` cannot be asked what it drew, so the geometry decision is extracted
-/// as a static function and pinned here — the same shape
-/// `RecordingOverlayPanelInheritedGeometryTests` uses for panel arithmetic, and
-/// for the same reason.
+/// **What the first version got wrong, and why no test caught it.** Every bar was
+/// computed from the same instant's `audioLevel` scaled by a fixed per-bar weight,
+/// so the bars could only rise and fall together in a static symmetric shape. The
+/// old suite asserted the properties that design HAD — louder is taller, nothing
+/// overflows, the centre outreacts the edges — and every one passed. None of them
+/// asked the question that mattered: **can two bars ever differ for a reason other
+/// than their index?** Under the old design the answer was no, and the tests could
+/// not see it because they never showed the meter two different moments.
 ///
-/// What these protect, stated so a later reader does not have to infer it: the
-/// meter is the ONLY thing in the new header that moves, so if it stops responding
-/// to the voice the pill silently becomes a static graphic that claims to be
-/// listening. That is a product outcome, not a drift guard.
+/// So the cases here are about the history, which is the whole difference between
+/// a record and a level.
 @MainActor
 @Suite(.tags(.productOutcome))
 struct RainbowLevelMeterTests {
 
   init() { _ = NSApplication.shared }
 
-  @Test("silence still shows bars, because an empty meter reads as not hearing you")
-  func silenceIsNotEmpty() {
-    for i in 0..<RainbowLevelMeter.spectrum.count {
-      let fill = RainbowLevelMeter.fill(index: i, level: 0)
-      #expect(fill > 0, "bar \(i) vanished at silence")
-      #expect(
-        fill == RainbowLevelMeter.silenceFraction,
-        "bar \(i) filled \(fill) at silence, not the resting \(RainbowLevelMeter.silenceFraction)")
+  // MARK: - The history is a record
+
+  @Test("a sample lands at the newest end and the buffer keeps its order")
+  func samplesArriveInOrder() {
+    var h: [CGFloat] = []
+    for level in [0.1, 0.5, 0.9] as [CGFloat] {
+      h = RainbowLevelMeter.pushed(h, level: level, capacity: 5)
     }
+    #expect(h == [0.1, 0.5, 0.9], "got \(h) — the buffer is not preserving arrival order")
   }
 
-  @Test("louder is taller, for every bar")
-  func fillIsMonotonicInLevel() {
-    for i in 0..<RainbowLevelMeter.spectrum.count {
-      var previous = RainbowLevelMeter.fill(index: i, level: 0)
-      for step in 1...10 {
-        let level = CGFloat(step) / 10
-        let current = RainbowLevelMeter.fill(index: i, level: level)
-        #expect(
-          current > previous,
-          "bar \(i) did not grow from level \(level - 0.1) to \(level): \(previous) -> \(current)")
-        previous = current
-      }
+  @Test("the oldest sample falls off once the buffer is full")
+  func oldestFallsOff() {
+    var h: [CGFloat] = []
+    for level in [0.1, 0.2, 0.3, 0.4] as [CGFloat] {
+      h = RainbowLevelMeter.pushed(h, level: level, capacity: 3)
     }
+    #expect(h == [0.2, 0.3, 0.4], "got \(h) — expected the first sample to be dropped")
   }
 
-  @Test("no bar overflows its strip at full level")
-  func fillNeverExceedsTheStrip() {
-    for i in 0..<RainbowLevelMeter.spectrum.count {
-      let fill = RainbowLevelMeter.fill(index: i, level: 1)
-      #expect(fill <= 1, "bar \(i) filled \(fill) of the strip, which would clip")
+  @Test("the buffer never exceeds its capacity")
+  func capacityIsRespected() {
+    var h: [CGFloat] = []
+    for i in 0..<200 {
+      h = RainbowLevelMeter.pushed(h, level: CGFloat(i % 10) / 10, capacity: 24)
     }
+    #expect(h.count == 24, "buffer grew to \(h.count)")
   }
 
-  /// The audio level arrives from a live capture path. A meter that trusts it is
-  /// one bad sample away from drawing outside its own frame, and
-  /// `RainbowLipsIcon` already clamps for exactly this reason.
-  @Test(
-    "out-of-range levels are clamped rather than trusted",
-    arguments: [-99.0, -0.5, 1.5, 99.0] as [CGFloat])
-  func hostileLevelsAreClamped(level: CGFloat) {
-    let atFloor = RainbowLevelMeter.fill(index: 4, level: 0)
-    let atCeiling = RainbowLevelMeter.fill(index: 4, level: 1)
-    let got = RainbowLevelMeter.fill(index: 4, level: level)
-    #expect(got >= atFloor, "level \(level) drew below the resting height")
-    #expect(got <= atCeiling, "level \(level) drew above full")
-  }
-
-  @Test("an out-of-range bar index cannot crash the pill")
-  func hostileIndexIsClamped() {
-    // The pill is on the recording path's display side; an index error here must
-    // degrade rather than trap.
-    #expect(RainbowLevelMeter.fill(index: -1, level: 0.5) > 0)
-    #expect(RainbowLevelMeter.fill(index: 99, level: 0.5) > 0)
-  }
-
-  @Test("the centre bar reacts more than the edges, like the mark it replaces")
-  func centreIsMoreSensitiveThanTheEdges() {
-    let centre = RainbowLevelMeter.fill(index: 4, level: 1)
-    let edge = RainbowLevelMeter.fill(index: 0, level: 1)
+  /// **The case the old design could not pass.** Two different moments must be
+  /// able to produce two different bars. Under a single-level meter every bar is
+  /// the same number times a constant, so this is impossible by construction.
+  @Test("bars differ because the audio differed, not because of their position")
+  func barsRecordDistinctMoments() {
+    var h: [CGFloat] = []
+    for level in [0.0, 1.0, 0.0, 1.0, 0.0] as [CGFloat] {
+      h = RainbowLevelMeter.pushed(h, level: level, capacity: 5)
+    }
+    let fills = h.map { RainbowLevelMeter.fill(level: $0) }
     #expect(
-      centre > edge,
+      Set(fills).count == 2,
       """
-      centre filled \(centre) and edge \(edge) at full level — the meter is flat, \
-      which loses the shape that makes it read as a voice
+      an alternating loud/quiet passage produced \(Set(fills).count) distinct bar \
+      heights: \(fills). A record of volume must show the alternation; a meter \
+      driven by one instant cannot.
       """)
   }
 
-  @Test("nine bars carry the nine brand spectrum colours in order")
-  func spectrumIsTheBrandOrder() {
-    #expect(RainbowLevelMeter.spectrum.count == 9)
-    #expect(RainbowLevelMeter.sensitivity.count == RainbowLevelMeter.spectrum.count)
+  /// The inverse, and it is what makes the case above meaningful: a steady tone
+  /// must produce a FLAT line. The old design produced its fixed centre-weighted
+  /// shape for any input at all, so it could not tell these two passages apart.
+  @Test("a steady tone reads flat")
+  func steadyToneIsFlat() {
+    var h: [CGFloat] = []
+    for _ in 0..<10 { h = RainbowLevelMeter.pushed(h, level: 0.6, capacity: 6) }
+    let fills = Set(h.map { RainbowLevelMeter.fill(level: $0) })
+    #expect(fills.count == 1, "a constant level produced \(fills.count) heights: \(fills)")
   }
 
-  /// The frame and the drawing derive from one expression, so a change to bar
-  /// width or spacing cannot leave the Canvas drawing outside the frame it was
-  /// given — the shape of defect that produced clipped glyphs in the preview text
-  /// before #1988 settled on measured layout.
-  @Test("declared width matches what nine bars and eight gaps actually need")
-  func widthMatchesTheDrawing() {
-    let barWidth: CGFloat = 2.5
-    let spacing: CGFloat = 3
-    let declared = RainbowLevelMeter.width(barWidth: barWidth, spacing: spacing)
-    let lastBarRightEdge =
-      CGFloat(RainbowLevelMeter.spectrum.count - 1) * (barWidth + spacing) + barWidth
+  /// **A pause must DRAIN the waveform, not freeze it**, and this is the case that
+  /// sent the history to a poll counter rather than to `audioLevel`.
+  ///
+  /// `onChange` fires on a CHANGE. Silence is the one passage where consecutive
+  /// samples are bit-identical, so a level-driven history stops taking samples
+  /// exactly when the user stops talking — leaving the shape of their last words
+  /// frozen on screen until they speak again, which reads as the app having hung.
+  @Test("a pause scrolls the last words out and settles on the silence floor")
+  func silenceDrainsTheWaveform() {
+    var h: [CGFloat] = []
+    for level in [0.9, 0.8, 1.0, 0.7] as [CGFloat] {
+      h = RainbowLevelMeter.pushed(h, level: level)
+    }
+    for _ in 0..<RainbowLevelMeter.barCount {
+      h = RainbowLevelMeter.pushed(h, level: 0)
+    }
+    let heights = Set(RainbowLevelMeter.bars(history: h).map { RainbowLevelMeter.fill(level: $0) })
     #expect(
-      declared == lastBarRightEdge,
-      "frame is \(declared)pt but the last bar ends at \(lastBarRightEdge)pt")
+      heights == [RainbowLevelMeter.silenceFraction],
+      """
+      after a full buffer of silence the meter still shows \(heights.count) heights: \
+      \(heights). The loud passage never scrolled off, so the waveform is frozen \
+      rather than draining.
+      """)
+  }
+
+  // MARK: - Turning the buffer into bars
+
+  @Test("a partial buffer is right-aligned, so the newest sample never moves")
+  func partialBufferIsRightAligned() {
+    let h: [CGFloat] = [0.4, 0.9]
+    let bars = RainbowLevelMeter.bars(history: h, count: 5)
+    #expect(
+      bars == [0, 0, 0, 0.4, 0.9], "got \(bars) — the newest sample is not at the right edge")
+  }
+
+  @Test("the newest sample sits at the same edge whether the buffer is partial or full")
+  func newestSampleHoldsItsEdge() {
+    let partial = RainbowLevelMeter.bars(history: [0.4, 0.9], count: 5)
+    let full = RainbowLevelMeter.bars(history: [0.1, 0.2, 0.3, 0.4, 0.9], count: 5)
+    #expect(
+      partial.last == full.last,
+      "newest sample moved from \(String(describing: full.last)) to \(String(describing: partial.last)) as the buffer filled"
+    )
+  }
+
+  /// The heart path draws this every frame, so an index slip is a crash in the
+  /// recording overlay rather than a wrong pixel.
+  @Test("an over-long buffer keeps its newest samples and cannot read out of bounds")
+  func overLongBufferIsSafe() {
+    let h: [CGFloat] = (0..<100).map { CGFloat($0) / 100 }
+    let bars = RainbowLevelMeter.bars(history: h, count: 4)
+    #expect(bars == [0.96, 0.97, 0.98, 0.99], "got \(bars) — expected the four newest samples")
+  }
+
+  @Test("an empty buffer draws the silence floor rather than crashing")
+  func emptyBufferIsSafe() {
+    let bars = RainbowLevelMeter.bars(history: [], count: 3)
+    #expect(bars == [0, 0, 0])
+  }
+
+  @Test("a zero bar count produces no bars")
+  func zeroBarCountIsSafe() {
+    #expect(RainbowLevelMeter.bars(history: [0.5], count: 0).isEmpty)
+  }
+
+  @Test("the drawing always has exactly one level per bar")
+  func barsMatchTheBarCount() {
+    #expect(RainbowLevelMeter.bars(history: [0.5]).count == RainbowLevelMeter.barCount)
+  }
+
+  // MARK: - Hostile input
+
+  /// The level arrives from a live capture path. A bad sample must not sit in the
+  /// buffer for a second and a bit, poisoning every frame it appears in — so the
+  /// clamp is on the way IN, not at draw time.
+  @Test(
+    "out-of-range samples are clamped before entering the buffer",
+    arguments: [-99.0, -0.5, 1.5, 99.0] as [CGFloat])
+  func hostileSamplesAreClampedOnEntry(level: CGFloat) {
+    let h = RainbowLevelMeter.pushed([], level: level, capacity: 4)
+    let v = h.first ?? -1
+    #expect(v >= 0 && v <= 1, "level \(level) entered the buffer as \(v)")
+  }
+
+  @Test("a zero capacity cannot produce a negative removeFirst")
+  func zeroCapacityIsSafe() {
+    #expect(RainbowLevelMeter.pushed([0.5], level: 0.5, capacity: 0).isEmpty)
+  }
+
+  // MARK: - Drawing
+
+  @Test("silence still shows a bar, because an empty meter reads as not hearing you")
+  func silenceIsNotEmpty() {
+    #expect(RainbowLevelMeter.fill(level: 0) == RainbowLevelMeter.silenceFraction)
+    #expect(RainbowLevelMeter.fill(level: 0) > 0)
+  }
+
+  @Test("louder is taller, and full level does not overflow the strip")
+  func fillIsMonotonicAndBounded() {
+    var previous = RainbowLevelMeter.fill(level: 0)
+    for step in 1...10 {
+      let current = RainbowLevelMeter.fill(level: CGFloat(step) / 10)
+      #expect(current > previous, "level \(CGFloat(step) / 10) was not taller than the step before")
+      previous = current
+    }
+    #expect(RainbowLevelMeter.fill(level: 1) <= 1, "full level overflows the strip")
+  }
+
+  /// The gradient is positional, so it must span the spectrum regardless of how
+  /// many bars there are — the bar count changed in this issue and would have
+  /// silently truncated a hardcoded mapping.
+  @Test("the positional gradient spans the spectrum at the shipped bar count")
+  func gradientSpansTheSpectrum() {
+    let first = RainbowLevelMeter.colour(at: 0, of: RainbowLevelMeter.barCount)
+    let last = RainbowLevelMeter.colour(
+      at: RainbowLevelMeter.barCount - 1, of: RainbowLevelMeter.barCount)
+    #expect(first == RainbowLevelMeter.spectrum.first)
+    #expect(last == RainbowLevelMeter.spectrum.last)
+  }
+
+  @Test("a single-bar meter does not divide by zero")
+  func singleBarGradientIsSafe() {
+    #expect(RainbowLevelMeter.colour(at: 0, of: 1) == RainbowLevelMeter.spectrum[0])
+  }
+
+  /// The frame and the drawing derive from one expression, so the Canvas cannot
+  /// draw outside the frame it was given.
+  @Test("declared width matches what the bars and gaps actually need")
+  func widthMatchesTheDrawing() {
+    let barWidth: CGFloat = 2
+    let spacing: CGFloat = 1.5
+    let declared = RainbowLevelMeter.width(barWidth: barWidth, spacing: spacing)
+    let lastEdge =
+      CGFloat(RainbowLevelMeter.barCount - 1) * (barWidth + spacing) + barWidth
+    #expect(declared == lastEdge, "frame is \(declared)pt but the last bar ends at \(lastEdge)pt")
   }
 }
