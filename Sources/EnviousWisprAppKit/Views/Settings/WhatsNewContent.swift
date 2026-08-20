@@ -33,7 +33,7 @@ enum WhatsNewContent {
       icon: "arrow.uturn.backward.circle",
       title: "Cancelled dictations are now recoverable!",
       description:
-        "Pressing your cancel keybind used to discard your recording instantly. Turn on Escape Recovery, and your dictation is preserved instead. The app finishes transcribing and polishing, then displays a small pill offering a Paste button for three seconds, staying visible as long as your pointer rests on it. If you let it fade, the text waits in your History for 24 hours, where a Keep button makes it permanent. Only the text transcript is retained, never the audio. Escape Recovery is disabled by default. You can enable it in the Keybinds settings menu.",
+        "Pressing your cancel keybind used to discard your recording instantly. Turn on Escape Recovery, and your dictation is preserved instead. The app finishes transcribing and polishing, then displays a small pill offering an Undo button for three seconds, staying visible as long as your pointer rests on it. If you let it fade, the text waits in your History for 24 hours, where a Keep button makes it permanent. Only the text transcript is retained, never the audio. Escape Recovery is disabled by default. You can enable it in the Keybinds settings menu.",
       version: "2.4.5"
     ),
 
@@ -47,7 +47,7 @@ enum WhatsNewContent {
       icon: "eye",
       title: "You asked for this: see your words as you speak",
       description:
-        "This is the one you have been asking for. The recording pill now shows your words as you speak them. The box starts compact and grows to five lines, then scrolls so the newest thing you said is always in view, and the pill has been rebuilt around it with a live meter, a cleaner header and the hands-free timer back where you can see it. Choose the engine that suits your Mac: Apple's is built into macOS 26 and needs no download, or take the universal one, a 217 MB download that runs on macOS 14 and later and covers far more languages. You pick your language on the Live Preview page, and you can switch the whole thing on or off whenever you like. Your finished text is as good as ever: when you stop, Parakeet or WhisperKit transcribes the whole recording from the very first word, then your custom words and polish run on top. So there is no need to let the preview catch up before you stop talking. Everything you said is already captured.",
+        "This is the one you have been asking for. The recording pill now shows your words as you speak them. The box starts compact and grows to five lines, then scrolls so the newest thing you said is always in view, and the pill has been rebuilt around it with a live meter, a cleaner header and the hands-free timer back where you can see it. Choose the engine that suits your Mac: Apple's is built into macOS 26 and needs no preview model, though some languages ask macOS for a language pack first, or take the universal one, a 217 MB download that runs on macOS 14 and later and covers far more languages. You pick your language on the Live Preview page, and you can switch the whole thing on or off whenever you like. Your finished text is as good as ever: when you stop, Parakeet or WhisperKit transcribes the whole recording from the very first word, then your custom words and polish run on top. So there is no need to let the preview catch up before you stop talking. Everything you said is already captured.",
       version: "2.4.5"
     ),
 
@@ -122,7 +122,7 @@ enum WhatsNewContent {
       icon: "mic.badge.xmark",
       title: "If dictation was recording silence, that is fixed",
       description:
-        "If your Mac's default microphone was a virtual one, the kind that Krisp, Loopback, BlackHole, an aggregate device or a meeting app installs, EnviousWispr took it at its word and recorded digital silence. Not quieter audio, nothing at all, every single time. Across the four releases we have data for, not one dictation on a device like that ever succeeded. The app now reads what the device actually is before binding to it and passes over the ones that cannot hand it real audio. If you tried EnviousWispr, got nothing back, and assumed it was broken: it was, and it is worth another go.",
+        "If your Mac's default microphone was a virtual one, the kind that Krisp, Loopback, BlackHole, an aggregate device or a meeting app installs, EnviousWispr took it at its word and recorded digital silence. Not quieter audio, nothing at all, every single time. Across the four releases we have data for, not one dictation on a device like that ever succeeded. The app now reads what the device actually is before binding to it, and picks a real microphone over one of these whenever you have one. If a virtual device is genuinely the only input on your Mac, it is still used, because refusing it would leave you with nothing to record with at all. If you tried EnviousWispr, got nothing back, and assumed it was broken: it was, and it is worth another go.",
       version: "2.4.5"
     ),
 
