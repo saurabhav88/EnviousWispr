@@ -266,6 +266,37 @@ struct EscapeRecoveryDiskExpiryTests {
     #expect(try await store.loadPending().isEmpty, "and the plaintext is gone from disk")
   }
 
+  @Test("an INVALID row whose audio survives is kept too — its id still de-dupes")
+  func invalidRowWithSurvivingSpoolIsRetained() async throws {
+    let session = UUID().uuidString
+    let store = makeStore(spools: { [session] })
+    let log = EventLog()
+    let coordinator = makeCoordinator(log, store: store)
+
+    // A FUTURE-skewed stamp makes this `.invalid` — it carries no transcript in
+    // the sweep's enum, so the enum cannot report its recovery id. But
+    // `decodeAnyPendingIdentities` counts an invalid row's id anyway, on the
+    // stated grounds that "a row we refuse to count here becomes a spool we
+    // replay again". Deleting it therefore strips a live de-dup key.
+    // Cloud review found this; the first version of the guard swept it.
+    try store.savePending(
+      Transcript(
+        text: "clock-skewed, but its audio was already transcribed",
+        recoverySessionID: session,
+        escapeRecoveredAt: Date().addingTimeInterval(86_400 * 30),
+        escapeRecoveryTakeID: "take-invalid-spool-alive"))
+
+    await coordinator.sweepExpiredPending()
+
+    #expect(
+      try await !store.pendingRecoverySessionIDs().isEmpty,
+      """
+      #2186: the sweep deleted an INVALID pending row whose spool is still on disk. Its \
+      recoverySessionID is de-dup proof that `allRecoveredSessionIDs()` honours, so removing \
+      the file makes the next scan replay that spool and hand back a cancelled dictation.
+      """)
+  }
+
   @Test("an unreadable audio folder keeps the dictation rather than guessing")
   func unreadableSpoolDirectoryRetains() async throws {
     // `nil` is the THIRD answer — could not determine — and it must not collapse

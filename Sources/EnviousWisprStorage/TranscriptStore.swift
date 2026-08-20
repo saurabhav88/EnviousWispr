@@ -306,6 +306,24 @@ public final class TranscriptStore {
   /// directory is not an empty one, and flattening it into `[]` is what would
   /// delete a row's dedup proof at exactly the moment we cannot see the spool it
   /// protects. `RecoverySpoolStore` already draws this distinction by throwing.
+  /// The recovery id the DE-DUP READER would see for this file (#2186).
+  ///
+  /// Asks the file with the same permissive decode `decodeAnyPendingIdentities`
+  /// uses, because the sweep's question is that reader's question: would
+  /// deleting this file remove a de-dup key? An `.invalid` candidate carries no
+  /// transcript by design, so the enum cannot answer, and returning `nil` for it
+  /// deleted precisely the rows the reader honours — a future-skewed stamp, a
+  /// missing stamp, a filename mismatch. Each is a real row whose audio was
+  /// already turned into text, and dropping its key replays that spool.
+  ///
+  /// Only reached for `.invalid`; the other cases answer from the enum.
+  private nonisolated static func recoverySessionID(of url: URL) -> String? {
+    guard let data = try? Data(contentsOf: url),
+      let transcript = try? JSONDecoder().decode(Transcript.self, from: data)
+    else { return nil }
+    return transcript.recoverySessionID
+  }
+
   private nonisolated static func spoolIDsFromDisk() -> Set<String>? {
     guard let ids = try? RecoverySpoolStore().listSpoolSessionIDs() else { return nil }
     return Set(ids)
@@ -363,7 +381,10 @@ public final class TranscriptStore {
       // as a fresh dictation — handing back the take the user CANCELLED. Retain
       // instead; recovery clears the spool at launch or on wake, and the row
       // goes on the pass after that. `nil` (directory unlistable) retains too.
-      if let session = candidate.recoverySessionID,
+      // The enum answers for `.live`/`.expired`; `.invalid` carries no
+      // transcript by design, so ask the FILE with the de-dup reader's own
+      // permissive decode. Anything that reader would count, this must protect.
+      if let session = candidate.recoverySessionID ?? recoverySessionID(of: candidate.url),
         spoolIDs.map({ $0.contains(session) }) ?? true
       {
         retainedForSpool += 1
@@ -493,6 +514,18 @@ public final class TranscriptStore {
     }
 
     /// The spool this row proves was already recovered, if it names one (#2186).
+    ///
+    /// `.invalid` CANNOT answer from the enum — it carries a URL and no
+    /// transcript, deliberately, so an unreadable file can never present a
+    /// fabricated identity. But `decodeAnyPendingIdentities` counts an invalid
+    /// row's `recoverySessionID` anyway, and says why: *"a row we refuse to count
+    /// here becomes a spool we replay again, which is a duplicate dictation."*
+    ///
+    /// So the sweep must ask the FILE, not this enum, for the invalid case —
+    /// see `recoverySessionID(of:)`. Returning `nil` here made the sweep delete
+    /// exactly the rows whose ids the de-dup reader honours: a future-skewed
+    /// stamp, a missing stamp, or a filename mismatch, each of which is a real
+    /// row whose audio was already transcribed. Cloud review, P1.
     var recoverySessionID: String? {
       switch self {
       case .live(_, let t), .expired(_, let t): return t.recoverySessionID
