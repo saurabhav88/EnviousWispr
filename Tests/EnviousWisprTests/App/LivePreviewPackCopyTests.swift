@@ -129,33 +129,18 @@ struct LivePreviewPackCopyTests {
   /// so excluding it would reintroduce this bug the first time someone writes `packInstalling_v2`.
   /// The name is regex-escaped rather than interpolated raw, so a future declaration containing a
   /// metacharacter cannot silently turn this into a different pattern.
-  /// What continues a Swift identifier. **ONE definition, consulted by the scanner AND the matcher.**
+  /// The characters that END a Swift declaration name.
   ///
-  /// Cloud review returned two findings on this file and they are the same defect: the two halves
-  /// disagreed about this set, in opposite directions. The scanner used `isLetter || isNumber`, which is
-  /// Unicode-aware and excludes `_`; the matcher used an ASCII `[A-Za-z0-9_]`, which includes it. So
-  /// `packInstalling_v2` was scanned as `packInstalling` and its real reference then rejected — a false
-  /// positive on a live declaration — while an accented sibling slipped past the lookahead and
-  /// reintroduced the original #2172 bug. Two comparisons of one concept will always drift; give the
-  /// concept an owner instead.
-  nonisolated static func continuesIdentifier(_ c: Character) -> Bool {
-    // Built from the platform's own Unicode general categories rather than a hand-rolled set.
-    // `isLetter || isNumber || == "_"` was the previous shape and cloud review found the hole one
-    // round later: U+203F is Swift-valid connector punctuation and was treated as a boundary, so a
-    // declaration named `pack‿v2` would be scanned as `pack` and then reported USED by its own longer
-    // sibling's reference — the #2172 vacuous pass restored, silently. `_` is itself
-    // `connectorPunctuation`, so this SUBSUMES the old rule rather than bolting a case onto it.
-    c.unicodeScalars.allSatisfy { scalar in
-      switch scalar.properties.generalCategory {
-      case .lowercaseLetter, .uppercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter,
-        .decimalNumber, .letterNumber, .otherNumber,
-        .connectorPunctuation, .nonspacingMark, .spacingMark:
-        return true
-      default:
-        return false
-      }
-    }
-  }
+  /// **This is the CLOSED question, and asking the open one cost three review rounds.** The previous
+  /// versions asked "what CONTINUES an identifier" — first `[A-Za-z0-9_]`, then Unicode letters and
+  /// numbers, then a list of general categories — and cloud review found a gap in each: `_`, then
+  /// U+203F, then `🔒`/`·`/`¨`/U+2060. Swift's identifier grammar is large and versioned, so every
+  /// approximation of it has a next counterexample; a terminator set does not, because the grammar
+  /// REQUIRES one of these after a declaration name.
+  nonisolated static let declarationNameTerminators: Set<Character> = [
+    " ", "\t", ":", "=", "(", "<",
+  ]
+
 
   /// The declaration name on a `static let`/`static func` line, or nil.
   ///
@@ -165,27 +150,37 @@ struct LivePreviewPackCopyTests {
   nonisolated static func declaredName(in line: String) -> String? {
     guard let range = line.range(of: #"static (let|func) "#, options: .regularExpression)
     else { return nil }
-    let name = String(line[range.upperBound...].prefix(while: continuesIdentifier))
+    let name = String(
+      line[range.upperBound...].prefix(while: { declarationNameTerminators.contains($0) == false }))
     return name.isEmpty ? nil : name
   }
 
-  /// Is `name` referenced as a WHOLE identifier?
+  /// Is `declaration` referenced, as itself rather than as the opening of a longer DECLARED sibling?
   ///
-  /// **No regex, deliberately.** The previous version consulted `continuesIdentifier` in the scanner
-  /// and then re-encoded the same set as an ICU character class here — and cloud review found those two
-  /// encodings disagreeing one round after they were consolidated, which is what a rule expressed twice
-  /// always does. Scanning for the literal reference and asking the SHARED predicate about the next
-  /// character leaves exactly one definition and nothing to keep in sync. It also removes the need to
-  /// regex-escape the name at all.
-  nonisolated static func isReferenced(_ name: String, in corpus: String) -> Bool {
-    let needle = "LivePreviewSettingsCopy.\(name)"
+  /// **Closed-world, so there is no character to classify.** `siblings` is the full declaration list
+  /// this suite reads out of the copy file, which is the finite authority on what names exist. An
+  /// occurrence of `LivePreviewSettingsCopy.<declaration>` is a genuine use unless some LONGER declared
+  /// name also matches at that same position — and because the corpus is compiling Swift, every
+  /// `LivePreviewSettingsCopy.X` reference names a real member, so those are the only two possibilities.
+  ///
+  /// Three review rounds went into character classes before this: `[A-Za-z0-9_]`, then Unicode letters
+  /// and numbers, then general categories, each with a next counterexample. The set of DECLARATIONS has
+  /// no next counterexample, because it is enumerated rather than described.
+  nonisolated static func isReferenced(
+    _ declaration: String, in corpus: String, siblings: [String]
+  ) -> Bool {
+    let prefix = "LivePreviewSettingsCopy."
+    let longerSiblings = siblings.filter { $0 != declaration && $0.hasPrefix(declaration) }
+    let needle = prefix + declaration
+
     var searchFrom = corpus.startIndex
     while let hit = corpus.range(of: needle, range: searchFrom..<corpus.endIndex) {
-      // A reference at the very end of the corpus has no following character, so nothing continues it.
-      if hit.upperBound == corpus.endIndex || continuesIdentifier(corpus[hit.upperBound]) == false {
-        return true
+      let shadowed = longerSiblings.contains { sibling in
+        corpus.range(of: prefix + sibling, range: hit.lowerBound..<corpus.endIndex)?.lowerBound
+          == hit.lowerBound
       }
-      searchFrom = hit.upperBound
+      if shadowed == false { return true }
+      searchFrom = corpus.index(after: hit.lowerBound)
     }
     return false
   }
@@ -227,7 +222,9 @@ struct LivePreviewPackCopyTests {
     #expect(
       corpus.contains("LivePreviewSettingsCopy."), "control: the corpus reached real call sites")
 
-    let unused = declarations.filter { Self.isReferenced($0, in: corpus) == false }
+    let unused = declarations.filter {
+      Self.isReferenced($0, in: corpus, siblings: declarations) == false
+    }
     #expect(
       unused.isEmpty,
       """
@@ -250,12 +247,13 @@ struct LivePreviewPackCopyTests {
   @Test("A declaration referenced only as a longer sibling's prefix is not counted as used")
   func aPrefixSiblingDoesNotSatisfyADeclaration() {
     let corpus = "Text(LivePreviewSettingsCopy.universalLockedHelp)"
+    let declared = ["universalLocked", "universalLockedHelp"]
 
     #expect(
-      Self.isReferenced("universalLockedHelp", in: corpus),
+      Self.isReferenced("universalLockedHelp", in: corpus, siblings: declared),
       "the declaration actually on screen must count as used")
     #expect(
-      Self.isReferenced("universalLocked", in: corpus) == false,
+      Self.isReferenced("universalLocked", in: corpus, siblings: declared) == false,
       """
       `universalLocked` is referenced nowhere; only its longer sibling `universalLockedHelp` is. \
       A substring match reports it used, which is the #2172 defect.
@@ -269,18 +267,25 @@ struct LivePreviewPackCopyTests {
   /// accepting.
   @Test("An exact reference counts as used in every shape a call site takes")
   func anExactReferenceCountsAsUsed() {
-    #expect(Self.isReferenced("packInstalling", in: "LivePreviewSettingsCopy.packInstalling"))
-    #expect(Self.isReferenced("packInstalling", in: "Text(LivePreviewSettingsCopy.packInstalling)"))
+    let declared = ["packInstalling", "previewNeedsLanguagePack"]
+    #expect(
+      Self.isReferenced("packInstalling", in: "LivePreviewSettingsCopy.packInstalling", siblings: declared))
+    #expect(
+      Self.isReferenced(
+        "packInstalling", in: "Text(LivePreviewSettingsCopy.packInstalling)", siblings: declared))
     #expect(
       Self.isReferenced(
         "previewNeedsLanguagePack",
-        in: "LivePreviewSettingsCopy.previewNeedsLanguagePack(\"French\")"),
+        in: "LivePreviewSettingsCopy.previewNeedsLanguagePack(\"French\")",
+        siblings: declared),
       "a func declaration is referenced with an open paren straight after the name")
     #expect(
-      Self.isReferenced("packInstalling", in: "let s = LivePreviewSettingsCopy.packInstalling\n"),
+      Self.isReferenced(
+        "packInstalling", in: "let s = LivePreviewSettingsCopy.packInstalling\n", siblings: declared),
       "a reference at end of line still counts")
     #expect(
-      Self.isReferenced("packInstalling", in: "LivePreviewSettingsCopy.packInstalling.count"),
+      Self.isReferenced(
+        "packInstalling", in: "LivePreviewSettingsCopy.packInstalling.count", siblings: declared),
       "a property accessed off the string still counts")
   }
 
@@ -292,9 +297,10 @@ struct LivePreviewPackCopyTests {
   @Test("An underscore continues an identifier, so a longer sibling does not satisfy the shorter")
   func underscoreDoesNotEndAnIdentifier() {
     let corpus = "Text(LivePreviewSettingsCopy.packInstalling_v2)"
-    #expect(Self.isReferenced("packInstalling_v2", in: corpus))
+    let declared = ["packInstalling", "packInstalling_v2"]
+    #expect(Self.isReferenced("packInstalling_v2", in: corpus, siblings: declared))
     #expect(
-      Self.isReferenced("packInstalling", in: corpus) == false,
+      Self.isReferenced("packInstalling", in: corpus, siblings: declared) == false,
       "`_` continues a Swift identifier, so this is a different declaration entirely")
   }
 
@@ -311,7 +317,7 @@ struct LivePreviewPackCopyTests {
 
     let corpus = "Text(LivePreviewSettingsCopy.packInstalling_v2)"
     #expect(
-      Self.isReferenced(declared ?? "", in: corpus),
+      Self.isReferenced(declared ?? "", in: corpus, siblings: ["packInstalling", "packInstalling_v2"]),
       """
       A real declaration was reported unused: the scanner truncated the name at `_` and the matcher \
       then refused the genuine reference. That is a FALSE POSITIVE on live copy, which is worse than \
@@ -325,9 +331,12 @@ struct LivePreviewPackCopyTests {
     #expect(declared == "packInstallingé", "the scanner keeps Unicode letters")
 
     let corpus = "Text(LivePreviewSettingsCopy.packInstallingé)"
-    #expect(Self.isReferenced("packInstallingé", in: corpus), "its own reference must match")
+    let siblings = ["packInstalling", "packInstallingé"]
     #expect(
-      Self.isReferenced("packInstalling", in: corpus) == false,
+      Self.isReferenced("packInstallingé", in: corpus, siblings: siblings),
+      "its own reference must match")
+    #expect(
+      Self.isReferenced("packInstalling", in: corpus, siblings: siblings) == false,
       """
       An ASCII-only lookahead treats `é` as a boundary, so the shorter name is satisfied by its longer \
       sibling — the original #2172 defect, in Unicode clothing.
@@ -347,9 +356,12 @@ struct LivePreviewPackCopyTests {
     #expect(declared == "pack\u{203F}v2", "the scanner must not stop at connector punctuation")
 
     let corpus = "Text(LivePreviewSettingsCopy.pack\u{203F}v2)"
-    #expect(Self.isReferenced("pack\u{203F}v2", in: corpus), "its own reference must match")
+    let siblings = ["pack", "pack\u{203F}v2"]
     #expect(
-      Self.isReferenced("pack", in: corpus) == false,
+      Self.isReferenced("pack\u{203F}v2", in: corpus, siblings: siblings),
+      "its own reference must match")
+    #expect(
+      Self.isReferenced("pack", in: corpus, siblings: siblings) == false,
       """
       `pack` is referenced nowhere; only `pack‿v2` is. Treating U+203F as a boundary restores the \
       vacuous pass this whole guard exists to remove, and nothing would go red.
