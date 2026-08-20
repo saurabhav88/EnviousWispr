@@ -1152,37 +1152,13 @@ def R1_readiness_lost_after_load(**_) -> dict:
     faulted = subprocess.Popen([app_path], env=env,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # ---- 3. POSITIVE CONTROL: prove the fault actually FIRED ----------------
-    # Without this the scenario passes when the seam never armed at all — the env
-    # var not propagated, the seam removed, or the one-shot consumed by an earlier
-    # load. Ordinary crash recovery then produces the SAME History row and every
-    # assertion below is true while the post-load guard was never exercised.
-    #
-    # THE EVIDENCE IS THE MARKER FILE, NOT THE LOG. `AppLogger.log` DISCARDS these
-    # lines unless the persisted "Enable debug mode" setting is on, and nothing in
-    # the fault-injection prerequisites requires it — so a log-based control makes
-    # a correct run report invalid on any machine where that setting happens to be
-    # off, after already killing the app. `<spool>.readiness-retry` is written by
-    # PRODUCTION code and exists only when the readiness retry was granted, so it
-    # is both independent of an optional setting and specific to this code path.
     retry_marker = os.path.join(spool_dir, f"{spool_id}.readiness-retry")
     spool_file = os.path.join(spool_dir, f"{spool_id}.ewrec")
-    fault_deadline = time.time() + 60
-    fault_fired = False
-    while time.time() < fault_deadline and not fault_fired:
-        time.sleep(1)
-        if os.path.exists(retry_marker):
-            fault_fired = True
-            break
-        # A terminal replay means the guard is gone and the take died — the
-        # negative control's signature, and there is nothing further to wait for.
-        if not os.path.exists(os.path.join(spool_dir, f"{spool_id}.ewrec")):
-            break
 
     def disarm() -> None:
         """Never leave a faulted app running. `EW_FORCE_READINESS_LOST` is a
-        one-shot, so an armed process that this scenario abandons will consume
-        the fault on its next unrelated engine load, and every later check runs
+        one-shot, so an armed process this scenario abandons consumes the fault on
+        its next unrelated engine load, and every later check silently runs
         against a deliberately broken app."""
         try:
             subprocess.run(["kill", "-9", str(faulted.pid)])
@@ -1195,100 +1171,95 @@ def R1_readiness_lost_after_load(**_) -> dict:
         subprocess.Popen([app_path], env=restart,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    if not fault_fired:
-        if not os.path.exists(os.path.join(spool_dir, f"{spool_id}.ewrec")):
-            # A vanished spool is NOT proof of deletion. A recovery wake arriving
-            # between the grant and this poll lets a SUCCESSFUL retry delete both
-            # the spool and its marker — observed in this session's first live
-            # run, where the wake redeemed the recording within the same second.
-            # History is the only signal that survives that cleanup.
-            row = history_row(spool_id)
-            if row is not None:
-                disarm()
-                return {"evidence_valid": True,
-                        "evidence": {"spool": spool_id,
-                                     "reason": "retry completed before the poll observed "
-                                               "the marker",
-                                     "text": (row.get("text") or "")[:60]},
-                        "assertions": {"readiness_fault_fired": True,
-                                       "recording_survived": True,
-                                       "recovered_to_history": bool(row.get("isRecovered"))}}
-            # No spool AND no History row: the replay was terminal and deletion
-            # was requested. That is the #2207 data loss the negative control
-            # must produce.
-            disarm()
-            return {"evidence_valid": True,
-                    "evidence": {"spool": spool_id,
-                                 "reason": "spool destroyed and never recovered — "
-                                           "the #2207 deletion"},
-                    "assertions": {"readiness_fault_fired": True,
-                                   "recording_survived": False,
-                                   "recovered_to_history": False}}
-        disarm()
-        return invalid(
-            f"no readiness-retry marker appeared for {spool_id} and the spool is "
-            "still present: the seam did not arm, so nothing was tested. Check "
-            "EW_FORCE_READINESS_LOST reached the process.")
-
-    # ---- 4. LET the granted retry run; only TRIGGER one if none arrives -----
-    # MEASURED 2026-08-19, and this is the defect a live validation run exposed
-    # that no review round could: killing to "trigger" the retry DESTROYED the
-    # recording, because a same-session wake had ALREADY started it. The log
-    # sequence was `deferred ... keeping` at :10, `scan pass 2 (wake)` at :10,
-    # `attempting replay` at :11, this scenario's kill at :13 — and the next
-    # launch correctly reported `replay abandoned — a prior attempt had already
-    # started — requesting deletion`. The one-attempt guard did exactly its job;
-    # the harness caused the loss.
+    # ---- 3-5. OBSERVE the four artifacts; never INFER state from a subset ----
     #
-    # So the order is: WAIT for the retry that may already be running, and only
-    # relaunch if none arrives. Both halves are needed — an earlier round found
-    # that waiting alone is flaky, because a wake is not guaranteed when the
-    # warm-up has already settled.
+    # Rewritten after four rounds of patching this section, each fix reopening a
+    # hole the previous one closed. The cause was always the same: inferring a
+    # state from a partial observation. The replay exposes FOUR artifacts, and
+    # every question this scenario asks is answerable from them directly:
+    #
+    #   <id>.ewrec            the recording still exists
+    #   <id>.attempt          a replay is IN PROGRESS (written before the
+    #                         expensive model load and transcription)
+    #   <id>.readiness-retry  the readiness fault fired AND a retry was granted
+    #   History row           the recording was recovered
+    #
+    # Two rules follow, and both were violated by earlier revisions:
+    #
+    # A. `readiness_fault_fired` is set ONLY by observing the marker. It is never
+    #    inferred from a History row: if the fault never armed, ORDINARY recovery
+    #    produces the same row and the same deleted spool, so inferring activation
+    #    from it passes a build where the guard never ran. An unobserved marker
+    #    makes the run INVALID — inconclusive, never a pass.
+    # B. Never relaunch while `<id>.attempt` exists. That marker means a replay is
+    #    active; killing it makes the next launch classify the recording as
+    #    abandoned and DELETE it, so the harness manufactures the exact data-loss
+    #    signature it exists to detect. Measured once already this session.
+    attempt_marker = os.path.join(spool_dir, f"{spool_id}.attempt")
+
+    def observe() -> dict:
+        return {
+            "spool": os.path.exists(spool_file),
+            "attempt": os.path.exists(attempt_marker),
+            "retry": os.path.exists(retry_marker),
+        }
+
+    fault_observed = False
     row = None
-    natural_deadline = time.time() + 45
-    while time.time() < natural_deadline and row is None:
-        time.sleep(2)
+    # Polled fast: the marker can be deleted by a successful retry within a
+    # second, and a missed observation costs an inconclusive run.
+    deadline = time.time() + 180
+    last_progress = time.time()
+    while time.time() < deadline:
+        st = observe()
+        if st["retry"]:
+            fault_observed = True
         row = history_row(spool_id)
-        if row is None and not os.path.exists(spool_file):
-            break  # the spool is gone and unrecovered; stop waiting
+        if row is not None:
+            break                      # terminal: recovered
+        if not st["spool"] and not st["attempt"]:
+            break                      # terminal: destroyed
+        if st["attempt"]:
+            last_progress = time.time()  # a replay is running; do not disturb it
+        elif st["retry"] and time.time() - last_progress > 40:
+            # The retry is GRANTED and nothing is replaying — no wake arrived.
+            # Safe to trigger now precisely because `.attempt` is absent.
+            subprocess.run(["kill", "-9", str(faulted.pid)])
+            time.sleep(2.0)
+            clean_env = dict(os.environ)
+            clean_env.pop("EW_FORCE_READINESS_LOST", None)
+            # Must be re-set: the launcher supplies it to the app, never to this
+            # shell, so `os.environ` does not carry it. Without it the relaunched
+            # app has no debug endpoint and every later scenario fails.
+            clean_env["EW_FAULT_INJECTION"] = "1"
+            faulted = subprocess.Popen(
+                [app_path], env=clean_env,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            last_progress = time.time()
+        time.sleep(0.2)
 
-    if row is None and os.path.exists(spool_file):
-        # No wake arrived and the spool is still eligible — trigger it. Safe now:
-        # nothing is mid-replay, or the History row above would exist.
-        subprocess.run(["kill", "-9", str(faulted.pid)])
-        time.sleep(2.0)
-        # Drop ONLY the readiness fault. `EW_FAULT_INJECTION` must be re-set: it
-        # is supplied to the original app by its launcher, never exported into
-        # this shell, so `os.environ` does not carry it. Without it the relaunched
-        # app has no debug endpoint, and every later scenario fails until someone
-        # rebuilds.
-        clean_env = dict(os.environ)
-        clean_env.pop("EW_FORCE_READINESS_LOST", None)
-        clean_env["EW_FAULT_INJECTION"] = "1"
-        subprocess.Popen([app_path], env=clean_env,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    disarm()
 
-    # ---- 5. the verdict: a History row carrying THIS spool's id -------------
-    deadline = time.time() + 75
-    row = None
-    while time.time() < deadline and row is None:
-        time.sleep(3)
-        row = history_row(spool_id)
+    if not fault_observed:
+        return invalid(
+            f"never observed {spool_id}.readiness-retry, so the readiness guard "
+            "is not proven to have run. A History row alone cannot distinguish "
+            "'the fix worked' from 'the fault never armed and ordinary recovery "
+            "succeeded'. Check EW_FORCE_READINESS_LOST reached the process; if it "
+            "did, the retry may have completed faster than the poll.")
 
-    survived = row is not None
-    recovered = bool(row and row.get("isRecovered"))
+
     return {
         "evidence_valid": True,
         "evidence": {"spool": spool_id, "app": app_path,
                      "text": (row or {}).get("text", "")[:60]},
         "assertions": {
-            # The positive control: without it the two below pass on a build
-            # where the guard never ran at all.
-            "readiness_fault_fired": fault_fired,
-            # With the fix reverted BOTH go false: the replay is unrecoverable,
-            # deletion is requested, and no History row ever appears.
-            "recording_survived": survived,
-            "recovered_to_history": recovered,
+            # OBSERVED, never inferred — see rule A above.
+            "readiness_fault_fired": fault_observed,
+            # With the production fix reverted BOTH go false: the replay is
+            # unrecoverable, deletion is requested, and no History row appears.
+            "recording_survived": row is not None,
+            "recovered_to_history": bool(row and row.get("isRecovered")),
         },
     }
 
