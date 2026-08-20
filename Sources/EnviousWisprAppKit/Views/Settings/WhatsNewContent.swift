@@ -19,53 +19,126 @@ enum WhatsNewContent {
 
   static let entries: [Entry] = [
     // MARK: - v2.4.5
+    //
+    // Order is the hierarchy (whats-new-protocol.md RULE: whats-new-content-rules):
+    // headline feature first, then supporting features, then fixes, then the
+    // one collected entry. Founder read and edited every title in this group on
+    // 2026-08-20; do not reorder without him.
 
-    // #2184. Two things are disclosed here rather than one, and the second is
-    // the reason this entry exists at all: conditioning the speech detector's
-    // input also changes when auto-stop fires, in BOTH directions. Measured on
-    // real recordings, two noisy takes stop 28 and 66 seconds sooner (they were
-    // running on long past the end of the sentence) while a third stops 4.4
-    // seconds later and no longer stops at all on the half-second setting. That
-    // is a behaviour change an opted-in user would otherwise meet with no
-    // warning, and auto-stop is off by default, so the people affected are
-    // exactly the people who went looking for it.
+    // #2087. Founder's title and body. "Are now recoverable" states a
+    // CAPABILITY rather than promising we will do it, which is what keeps the
+    // header true for the majority who never switch the feature on.
     Entry(
-      id: "noisy-room-dictation",
-      icon: "waveform.badge.exclamationmark",
-      title: "Dictation holds up in a noisy room",
+      id: "escape-recovery-cancelled-dictations",
+      icon: "arrow.uturn.backward.circle",
+      title: "Cancelled dictations are now recoverable!",
       description:
-        "A fan, an engine, an air conditioner or a plane cabin used to make EnviousWispr lose your words, most often the ones you started with. What came back read perfectly and was missing the beginning, which is the worst way for it to be wrong. The part of the app that decides where you were speaking now ignores the low rumble those rooms produce, so your sentence survives them. Nothing about your recording or the audio being transcribed changed, and quiet rooms behave exactly as before. If you use auto-stop, expect its timing to move in a noisy room: it usually stops much sooner than it used to, and on the half-second setting it can now wait longer or not stop on its own at all.",
+        "Pressing your cancel keybind used to discard your recording instantly. Turn on Escape Recovery, and your dictation is preserved instead. The app finishes transcribing and polishing, then displays a small pill offering an Undo button for three seconds, staying visible as long as your pointer rests on it. If you let it fade, the text waits in your History for 24 hours, where a Keep button makes it permanent. Only the text transcript is retained, never the audio. Escape Recovery is disabled by default. You can enable it in the Keybinds settings menu.",
       version: "2.4.5"
     ),
 
-    // #2154. Existing users have no reason to reopen a settings page they have
-    // already configured, so a redesign reaches them only by accident without
-    // this. Added to the ALREADY-OPEN 2.4.5 group, which needs no
-    // `WhatsNewConstants` bump — bumping there would invent a release.
+    // #2059, #2113, #2137, #2198. Deliberately positive per founder direction
+    // 2026-08-20: lead with the ask being met, do not enumerate what the
+    // feature declines to do. The closing sentence is the one he called out as
+    // important — a lagging preview costs the user nothing, because the pasted
+    // text is decoded from the whole recording after the stop.
     Entry(
-      id: "live-preview-settings-show-what-is-ready",
-      icon: "text.viewfinder",
-      title: "Live Preview settings now show what is ready",
+      id: "live-preview-words-while-you-speak",
+      icon: "eye",
+      title: "You asked for this: see your words as you speak",
       description:
-        "The Live Preview page now tells you at a glance whether the feature is off, ready, waiting for a download, or unavailable for the language you picked, instead of leaving you to work it out from the settings below. You can change the dictation language from the same page, and every language available to the preview is now one table you can scan and search rather than two separate lists. The preview still never changes the text that gets pasted.",
+        "This is the one you have been asking for. The recording pill now shows your words as you speak them. The box starts compact and grows to five lines, then scrolls so the newest thing you said is always in view, and the pill has been rebuilt around it with a live meter, a cleaner header and the hands-free timer back where you can see it. Choose the engine that suits your Mac: Apple's is built into macOS 26 and needs no preview model, though some languages ask macOS for a language pack first, or take the universal one, a 217 MB download that runs on macOS 14 and later and covers far more languages. You pick your language on the Live Preview page, and you can switch the whole thing on or off whenever you like. Your finished text is as good as ever: when you stop, Parakeet or WhisperKit transcribes the whole recording from the very first word, then your custom words and polish run on top. So there is no need to let the preview catch up before you stop talking. Everything you said is already captured.",
       version: "2.4.5"
     ),
 
+    // #2044. Scoped to Parakeet on the founder's correction: WhisperKit always
+    // honoured the picker, so "works on both engines" would have read as though
+    // both gained something. The promise is also held to what the mechanism
+    // does — the filter partitions by SCRIPT, so it suppresses foreign
+    // alphabets and cannot separate two languages that share one.
     Entry(
-      id: "eg1-improved-corrections-and-lists",
+      id: "parakeet-language-selection",
+      icon: "character.bubble",
+      title: "Language selection now available on Parakeet",
+      description:
+        "If you dictate in a language other than English, telling the app which language you speak now actually does something on Parakeet, the engine most people dictate with. It could not before: Parakeet has no language detection and no way of being told, so it worked purely from the sounds. Setting your language narrows what it produces to your own alphabet, so a German dictation stops coming back with stray Greek or Cyrillic characters in it. It cannot separate languages that share an alphabet, so it will not tell German from Dutch. If you use WhisperKit you could already set this, and nothing changes for you.",
+      version: "2.4.5"
+    ),
+
+    // #2051, #2054. Eight names read off the shipped source list. "Without
+    // changing them" is load-bearing and true: the obvious read-only approach
+    // was rejected during the build because it modified one app's files.
+    Entry(
+      id: "smart-import-five-more-apps",
+      icon: "square.and.arrow.down",
+      title: "Bring your words across from five more dictation apps",
+      description:
+        "Switching from another dictation app used to mean retyping your vocabulary one word at a time. EnviousWispr can now read custom words out of Vox, TypeWhisper, Spokenly, Juno and Handy, on top of FluidVoice, Superwhisper and Wispr Flow. Eight apps in all. It reads their files without changing them, and shows you every word it found before anything joins your library.",
+      version: "2.4.5"
+    ),
+
+    // #2096, #2106, #2124. Figures read off the campaign record, not the issue
+    // summary. The "fewer critical errors" result is deliberately ABSENT: the
+    // record marks it suggestive rather than established, because the arms were
+    // graded in separate runs and the gap sits inside that noise.
+    Entry(
+      id: "eg1-retrained-on-weakest-spots",
       icon: "sparkles",
-      title: "EG-1 is better at changes of mind and spoken lists",
+      title: "EG-1 has been retrained on its two weakest spots",
       description:
-        "The built-in AI cleanup model has been retrained. When you change your mind mid-sentence, saying something like \"send it to Marcus, sorry, to Priya\", it now keeps what you meant and drops what you took back. When you announce a list out loud, you get a list instead of one long line. You do not need to change how you dictate, and EG-1 still runs entirely on your Mac. If you already use it, the new version downloads on its own in the background the next time you open the app, and dictation keeps working while it does. You can pause that download and pick it up later from AI Polish settings, which also now shows which version you are on.",
+        "We spent this cycle retraining our built-in AI cleanup on the two things it was worst at, and both moved a long way. When you announce a list out loud, EG-1 used to hand you one long line almost every time: in our testing it built a real list under 1% of the time, and it now does it 83% of the time. When you change your mind mid-sentence, saying something like \"send it to Marcus, sorry, to Priya\", it keeps what you meant and drops what you took back 78% of the time, up from 71%, which puts it level with the frontier cloud models we measure ourselves against. It is also around 14% faster than the version it replaces. Those figures come from our own testing, on cases the model never trained on. Nothing changes about how you dictate. If you already use EG-1 the new version updates itself in the background the next time you open the app, with dictation working normally throughout, and you can pause that download and pick it up later from AI Polish settings, which now also shows which version you are on.",
       version: "2.4.5"
     ),
 
+    // #2111. "OpenAI's newer models" is deliberate scoping, not vagueness: the
+    // measured arm was a newer model, and on the shipped older default the new
+    // prompt does not improve things (#2112, open). A blanket "OpenAI got
+    // better" would be untrue for part of the audience reading it.
+    Entry(
+      id: "cloud-polish-prompt-v7",
+      icon: "cloud",
+      title: "Cloud AI polish got a better set of instructions",
+      description:
+        "If you bring your own OpenAI, Claude or Gemini key, we rewrote the instructions we send along with your dictation, and it is the biggest gain we have measured on the cloud path. On our benchmark Claude went from 80% to 88%, OpenAI's newer models from 88% to 94%, and Gemini from 88% to 91%, with critical errors down by a third to a half across all three. Spoken lists moved furthest: on OpenAI, announcing a list out loud produced a real list 57% of the time before and 93% of the time now. New Gemini setups also start on 3.7 Flash, which scored highest of the three Gemini models we tested and costs about 29% less to run than the one it replaces. Nothing changes about how you dictate, and if you have already picked a model we leave your choice exactly as it is.",
+      version: "2.4.5"
+    ),
+
+    // #2027, #1998. Founder retitled this on 2026-08-20; body unchanged.
     Entry(
       id: "ollama-model-recommendations-from-tests",
       icon: "checkmark.seal",
-      title: "Local AI model recommendations now come from our tests",
+      title: "Revised Ollama recommendations",
       description:
         "Ollama model labels used to be based on model size, which did not show how well they cleaned up dictation. They now reflect our own cleanup tests and explain what went wrong. New Ollama setups now start with qwen2.5:3b, the best result among the local models we offer. There is also a new option, qwen3:0.6b, which earned a Recommended label from a download about a quarter the size, so a small download no longer means poor cleanup. Models that produced no acceptable result ask before downloading.",
+      version: "2.4.5"
+    ),
+
+    // #2025. "Not one ever succeeded" is the measured production figure across
+    // 2.4.0-2.4.4: 14 stall events on virtual transports, ZERO successful
+    // takes. The closing sentence is the point of the entry — this is the only
+    // note in the release that can reach somebody who already gave up on us.
+    Entry(
+      id: "virtual-microphone-silence-fixed",
+      icon: "mic.badge.xmark",
+      title: "If dictation was recording silence, that is fixed",
+      description:
+        "If your Mac's default microphone was a virtual one, the kind that Krisp, Loopback, BlackHole, an aggregate device or a meeting app installs, EnviousWispr took it at its word and recorded digital silence. Not quieter audio, nothing at all, every single time. Across the four releases we have data for, not one dictation on a device like that ever succeeded. The app now reads what the device actually is before binding to it, and picks a real microphone over one of these whenever you have one. If a virtual device is genuinely the only input on your Mac, it is still used, because refusing it would leave you with nothing to record with at all. If you tried EnviousWispr, got nothing back, and assumed it was broken: it was, and it is worth another go.",
+      version: "2.4.5"
+    ),
+
+    // #2181, #2174, #2192, #2197, #2032, #2200, #2076, #1999, #2001, #2006.
+    // A COLLECTED entry, permitted by whats-new-protocol.md
+    // RULE: whats-new-content-rules only when it is LAST, every other entry is
+    // specifically titled, and the title is written fresh. "Fixes you should
+    // never notice" is spent on v2.4.4; this title is likewise now spent and
+    // must NOT be reused. Its members are visible improvements rather than
+    // invisible ones, so the title deliberately does not claim invisibility.
+    Entry(
+      id: "smaller-wins-2-4-5",
+      icon: "wrench.and.screwdriver",
+      title: "The smaller wins",
+      description:
+        "A handful of smaller improvements. The Shortcuts page is now called Keybinds, and everywhere that used to say \"hotkey\" now says \"keybind\", so one thing has one name. Live transcription is now called Faster Transcription, because changing when your text lands is what it actually does. Noisy rooms no longer eat the start of your sentence, though if you use auto-stop its timing will move in those rooms: usually stopping sooner, and on the half-second setting sometimes waiting longer or not stopping on its own at all. Pasting is around four times quicker, down from roughly 265 milliseconds to under 60 in most apps, because your dictation no longer waits on the clipboard handover before counting itself done. Dictating into a terminal no longer quietly gives up part way through a session, where the only cure used to be quitting and reopening the app. Recordings are no longer cut short as though nothing was heard, which could happen when a quiet opening ate the app's patience before you had really started. Dragging a pill no longer leaves a ghost copy of it stranded on screen. Changing your dictation keybind can no longer set a recording going by accident. A single modifier key now works as your cancel keybind, where before it would save and display and then quietly do nothing. And if you run EnviousWispr straight from your Downloads folder, its offer to move itself into Applications now actually works.",
       version: "2.4.5"
     ),
 
