@@ -15,13 +15,20 @@ import Foundation
 /// below and shares that case's status exactly. No connector returns it and no screen
 /// renders it, because the shared enrichment stage (PR-P1) does not exist.
 ///
-/// **MEASURE IT WITH A WORD BOUNDARY AND WITHOUT COMMENT LINES. Both filters are
-/// load-bearing, and the contrast between the two numbers IS the evidence:**
+/// **MEASURE IT WITH `-w` AND WITHOUT COMMENT LINES. Both filters are load-bearing, and
+/// the contrast between the two numbers IS the evidence:**
 ///
-///     BOUND='AppleIntelligenceAvailability\([^R]\|$\)'
-///     /usr/bin/grep -rn "$BOUND" Sources/ Tests/ | /usr/bin/grep -v '///'    ->  2
-///     /usr/bin/grep -rn AppleIntelligenceAvailability Sources/ Tests/ \
+///     /usr/bin/grep -rnw AppleIntelligenceAvailability Sources/ Tests/ \
+///       | /usr/bin/grep -v '///'                                             ->  2
+///     /usr/bin/grep -rn  AppleIntelligenceAvailability Sources/ Tests/ \
 ///       | /usr/bin/grep -v '///'                                             -> 25
+///
+/// **`-w`, not a hand-rolled `[^R]` class.** An earlier revision excluded the neighbour by
+/// its first LETTER, which is a rule about the one sibling that exists today. A future
+/// sibling named AppleIntelligenceAvailabilityStatus (deliberately unbackticked: no such
+/// type exists) satisfies `[^R]` and would have been counted as this type, silently
+/// breaking the number above. Measured both ways on a probe line — the hand-rolled class
+/// matches it, `-w` does not.
 ///
 /// The 2 are this declaration and that payload. The other 23 are
 /// `AppleIntelligenceAvailabilityReport`, a different and live type — see below.
