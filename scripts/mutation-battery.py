@@ -616,7 +616,12 @@ def read_result_bundle(bundle: Path) -> "SuiteResults":
 VERDICT_CAUGHT = "CAUGHT"
 VERDICT_CAUGHT_ELSEWHERE = "CAUGHT-ELSEWHERE"
 VERDICT_SURVIVED = "SURVIVED"
-VERDICT_NOOP = "SURVIVED-NOOP"
+# NOT "SURVIVED-NOOP". An unchanged test set has TWO causes and result statuses
+# cannot tell them apart: the mutant was a no-op or unreachable, or it executed
+# and changed behaviour NO ASSERTION COVERS — the ordinary surviving mutant this
+# whole tool exists to surface. Naming the first told operators to re-aim the
+# recipe precisely when the TEST was at fault.
+VERDICT_NOOP = "SURVIVED-UNOBSERVED"
 VERDICT_INVALID = "INVALID-ROW"
 
 
@@ -648,6 +653,11 @@ def classify_row(baseline: "SuiteResults", mutated: "SuiteResults", expect_fail:
         i for i in set(baseline.by_id) | set(mutated.by_id)
         if baseline.by_id.get(i) != mutated.by_id.get(i)
     }
+    # A CATCH REQUIRES A FAILURE, NOT MERELY A DIFFERENCE. Passed -> Skipped, or a
+    # test vanishing because execution stopped early, is a status change and is
+    # not another guard going red. Keying "something else caught it" on any
+    # difference credits a disappearance as detection.
+    newly_failed = mutated.failed() - baseline.failed()
     target_failed = target in mutated.failed()
     crash_note = f" (crash: {mutated.crashed[target]})" if target in mutated.crashed else ""
 
@@ -662,13 +672,25 @@ def classify_row(baseline: "SuiteResults", mutated: "SuiteResults", expect_fail:
             f"isolated to it.")
     if not changed:
         return VERDICT_NOOP, (
-            f"NOT ONE test changed status. The mutation is a no-op, or the named test never "
-            f"executes the mutated line. This is not evidence about `{target}` — it is a fact "
-            f"about the MUTANT, and the recipe needs re-aiming rather than the test tightening.")
-    return VERDICT_CAUGHT_ELSEWHERE, (
-        f"`{target}` stayed {base_result}, but {len(changed)} other test(s) changed status "
-        f"({', '.join(sorted(changed)[:5])}). Something else caught this mutation; that is not "
-        f"evidence that `{target}` is the guard.")
+            f"NOT ONE test changed status. Two causes produce this and the statuses cannot "
+            f"separate them: (1) the suite has no assertion for what the mutation changed — an "
+            f"ordinary surviving mutant, and `{target}` needs tightening; (2) the mutation was a "
+            f"no-op, or `{target}` never executes that line — the RECIPE needs re-aiming. Read the "
+            f"mutated line and ask whether the named test can reach it before deciding which.")
+    others_failed = sorted(newly_failed - {target})
+    if others_failed:
+        return VERDICT_CAUGHT_ELSEWHERE, (
+            f"`{target}` stayed {base_result}, but {len(others_failed)} other test(s) newly FAILED "
+            f"({', '.join(others_failed[:5])}). Something else caught this mutation; that is not "
+            f"evidence that `{target}` is the guard.")
+    # Statuses moved, but nothing newly failed — a test was skipped, or vanished
+    # because execution stopped early. That is not a catch by anyone, and calling
+    # it one would credit a disappearance as detection.
+    return VERDICT_SURVIVED, (
+        f"`{target}` stayed {base_result} and NOTHING newly failed, though {len(changed)} test(s) "
+        f"changed status ({', '.join(sorted(changed)[:5])}) — skipped, or absent from the mutated "
+        f"run. No guard went red, so the mutation was not detected; check whether the run was cut "
+        f"short before reading this as a weak test.")
 
 
 class Lane:
@@ -1162,7 +1184,17 @@ def baseline(lane: Lane, suites, phase: str, seen_names: dict = None,
             problems.append(f"{suite}: {len(failures)} failing on an unmutated tree ({log})")
         else:
             if seen_names is not None:
-                seen_names[suite] = suite_test_names(log)
+                # FROM THE BUNDLE, NOT THE CONSOLE. This set gates every row BEFORE
+                # any mutation runs, so a console-derived set refuses a recipe the
+                # verdict path would have resolved perfectly — which left #2225
+                # fixed in the verdict and broken in validation, the half that runs
+                # first. `aliases` carries every legal spelling: the display name,
+                # the bare function name, and the `Suite/function()` identifier,
+                # which is the only addressable identity a parameterized test has.
+                if suite_results is not None:
+                    seen_names[suite] = set(suite_results.aliases)
+                else:
+                    seen_names[suite] = suite_test_names(log)
             # The UNMUTATED per-test status map. Every row's verdict is a DIFF
             # against this, so without it a row can only ask "did the named test
             # go red" — which cannot tell a working guard from a mutation that

@@ -635,10 +635,10 @@ check_row("the named test failing scores CAUGHT",
 # never reached anything the suite observes — today that scored identically to a
 # working guard, which is the verdict that sends an overnight session to "fix" a
 # test that is fine.
-check_row("a mutant that changes NOTHING is SURVIVED-NOOP, not a survivor to fix",
+check_row("a mutant that changes NOTHING is SURVIVED-UNOBSERVED, not a survivor to fix",
           (5, [], True, "log", 0, 3.0,
            mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Passed"})),
-          expect_marker="SURVIVED-NOOP", expect_rc=1)
+          expect_marker="SURVIVED-UNOBSERVED", expect_rc=1)
 
 check_row("a DIFFERENT test failing is CAUGHT-ELSEWHERE, never evidence about this guard",
           (5, [], True, "log", 65, 3.0,
@@ -775,6 +775,68 @@ else:
             "one claim, and moving only one silently retires the check.")
     else:
         print("  ok  the stubbed lane returns the same shape as the real one")
+
+# ---- cloud review r1 on #2246: three findings, each with a case that fails
+# ---- against the pre-fix code.
+
+# P2: a CATCH REQUIRES A FAILURE. Passed -> Skipped is a status CHANGE and is not
+# another guard going red; crediting it would score a disappearance as detection.
+ran += 1
+_base = mk_results({"guard": "Passed", "sibling": "Passed"})
+_mut = mk_results({"guard": "Passed", "sibling": "Skipped"})
+_v, _d = battery.classify_row(_base, _mut, "guard")
+if _v == battery.VERDICT_CAUGHT_ELSEWHERE:
+    failures.append("a skipped sibling is not another guard catching the mutation — it was scored "
+                    "CAUGHT-ELSEWHERE, so a disappearance reads as detection")
+elif _v != battery.VERDICT_SURVIVED:
+    failures.append(f"a skipped sibling is not another guard catching the mutation — got {_v}")
+elif "newly failed" not in _d:
+    failures.append("a skipped sibling is not another guard catching the mutation — the detail does "
+                    "not say nothing newly failed")
+else:
+    print("  ok  a skipped sibling is not another guard catching the mutation")
+
+# The accepted counterpart, so the check above cannot pass by refusing everything.
+ran += 1
+_mut2 = mk_results({"guard": "Passed", "sibling": "Failed"})
+_v2, _ = battery.classify_row(_base, _mut2, "guard")
+if _v2 != battery.VERDICT_CAUGHT_ELSEWHERE:
+    failures.append(f"a sibling that newly FAILS is still CAUGHT-ELSEWHERE — got {_v2}")
+else:
+    print("  ok  a sibling that newly FAILS is still CAUGHT-ELSEWHERE")
+
+# P1b: an unchanged test set has TWO causes and the statuses cannot separate them.
+# The verdict must name both, never assert the recipe is at fault — that reverses
+# the tool's guidance for the ordinary surviving mutant, which is its main subject.
+ran += 1
+_v3, _d3 = battery.classify_row(_base, mk_results({"guard": "Passed", "sibling": "Passed"}), "guard")
+_problems = []
+if _v3 != battery.VERDICT_NOOP:
+    _problems.append(f"verdict {_v3}")
+if "no assertion for what the mutation changed" not in _d3:
+    _problems.append("the detail does not offer the missing-assertion cause")
+if "RECIPE needs re-aiming" not in _d3:
+    _problems.append("the detail does not offer the no-op cause")
+if "cannot separate them" not in _d3:
+    _problems.append("the detail does not say the statuses cannot distinguish the two")
+if _problems:
+    failures.append("an unchanged test set names BOTH causes and asserts neither — "
+                    + "; ".join(_problems))
+else:
+    print("  ok  an unchanged test set names BOTH causes and asserts neither")
+
+# P1a: the row gate is fed from the BUNDLE, so a parameterized identifier resolves.
+# The console has no addressable name for one, so a console-derived gate refused
+# the very recipes #2225 exists to enable — before the verdict path ever ran.
+ran += 1
+_par = mk_results({"egOneUpdatePausedReadsAsNeedingAttention(_:)": "Passed"})
+if "StubSuite/egOneUpdatePausedReadsAsNeedingAttention(_:)" not in set(_par.aliases):
+    failures.append("a parameterized identifier is a legal recipe name — the qualified form is "
+                    "absent from the alias index, so a recipe naming it would be refused")
+elif not _par.resolve("StubSuite/egOneUpdatePausedReadsAsNeedingAttention(_:)"):
+    failures.append("a parameterized identifier is a legal recipe name — it does not resolve")
+else:
+    print("  ok  a parameterized identifier is a legal recipe name")
 
 # A mutation that removes a completion or cancellation path is among the most valuable to write and the
 # most likely to HANG. Unbounded, the unattended battery sits on that row all night and never reaches
@@ -1057,7 +1119,7 @@ for _label, _will_run, _want_refusal in [
 check_row("a known issue does not change status, so it is a NO-OP, never CAUGHT",
           (5, [], True, "log", 0, 3.0,
            mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Passed"})),
-          expect_marker="SURVIVED-NOOP", expect_rc=1)
+          expect_marker="SURVIVED-UNOBSERVED", expect_rc=1)
 
 # The exclusion's own case: a RED lane where the ONLY mention of the named test is a known issue. If
 # known-issue lines counted as failures this would score CAUGHT; excluded, the row is correctly not a
