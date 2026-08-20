@@ -233,7 +233,7 @@ def _app_bundle_path() -> str:
     helper, dev and production alike)."""
     pid = _find_app_pid()
     command = subprocess.check_output(
-        ["ps", "-o", "command=", "-p", str(pid)], text=True
+        ["ps", "-ww", "-o", "command=", "-p", str(pid)], text=True
     ).strip()
     marker = ".app/"
     idx = command.find(marker)
@@ -308,7 +308,7 @@ def _scoped_xpc_service_pids(bundle_path: str) -> list[str]:
             continue
         try:
             command = subprocess.check_output(
-                ["ps", "-o", "command=", "-p", pid], text=True
+                ["ps", "-ww", "-o", "command=", "-p", pid], text=True
             ).strip()
         except subprocess.CalledProcessError:
             continue  # process exited between pgrep and ps — not a match either way
@@ -925,8 +925,18 @@ def _bundle_identifier(bundle_path) -> str:
 
 def _running_app_executable_path(pid: int) -> str:
     """argv[0] of the running app = its executable path (open-launched apps carry
-    the full path). Proves the running PID is the build we hashed."""
-    out = subprocess.check_output(["ps", "-o", "command=", "-p", str(pid)], text=True).strip()
+    the full path). Proves the running PID is the build we hashed.
+
+    `-ww` is REQUIRED, not tidiness: macOS truncates `ps` output to the terminal
+    width, so a bundle under a long worktree path gets clipped BEFORE
+    `.app/Contents/MacOS/EnviousWispr`. The marker search then fails, this
+    returns the truncated string, and callers reject the CORRECT process — a
+    false negative that grows with path length, so it passes on short paths and
+    fails on someone else's checkout. `scripts/lib/launch-check.sh:16-20`
+    documents the same defect and the same fix.
+    """
+    out = subprocess.check_output(
+        ["ps", "-ww", "-o", "command=", "-p", str(pid)], text=True).strip()
     marker = ".app/Contents/MacOS/EnviousWispr"
     idx = out.find(marker)
     return out if idx == -1 else out[: idx + len(marker)]
