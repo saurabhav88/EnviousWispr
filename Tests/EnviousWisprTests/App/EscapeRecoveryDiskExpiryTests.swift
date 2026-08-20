@@ -169,7 +169,7 @@ struct EscapeRecoveryDiskExpiryTests {
       // leaves the LIVE one on disk beside the expired one — `remainingLive`
       // never reaches zero, `pendingPulseHasWork` never goes false, and the loop
       // spins forever against a gate that no longer sleeps. Caught as a hung
-      // `xctest` at 5m31s with no compiler running: a livelock, not a slow build.
+      // xctest process at 5m31s with no compiler running: a livelock, not a slow build.
       let id = UUID()
       try store.savePending(
         Transcript(
@@ -189,7 +189,7 @@ struct EscapeRecoveryDiskExpiryTests {
       // counting down, which only happens if the sweep deletes the row. Break
       // the sweep — which is exactly what the mutation battery does — and the
       // gate returns instantly forever, so the test SPINS instead of failing.
-      // Measured: a hung `xctest` at 5m48s on a suite that passes in 0.005s.
+      // Measured: a hung xctest process at 5m48s on a suite that passes in 0.005s.
       //
       // So the cap fires LOUDLY and names itself, per this repo's rule that an
       // exhausted budget must never be mistaken for a settle.
@@ -271,7 +271,7 @@ struct EscapeRecoveryDiskExpiryTests {
     // KEEP behaviour above must be proven in BOTH configurations, and only the
     // retry check needs a hook that does not exist in a Release build. An
     // unwrapped seam here breaks the Release COMPILE, which a Debug-only run
-    // cannot see (`check-debug-seam-tests.py` is the pre-check for exactly this).
+    // cannot see.
     #if DEBUG
       #expect(
         coordinator.hasPendingPulseForTesting,
