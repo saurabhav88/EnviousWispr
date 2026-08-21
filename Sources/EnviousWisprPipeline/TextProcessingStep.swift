@@ -7,7 +7,10 @@ public struct TextProcessingContext: Sendable {
   public var text: String
   /// Optional polished/enhanced version of the text.
   public var polishedText: String?
-  /// Detected language from ASR.
+  /// The user's locked dictation language, or nil on Auto-detect. NOT a
+  /// per-utterance ASR detection — populated from the frozen session config's
+  /// locked language code (or nil), the same source
+  /// `InverseTextNormalizationStep`'s language gate reads (issue #2259).
   public let language: String?
   /// #1846: which dictation this text belongs to, frozen by `TextProcessingRunner`
   /// at the start of the chain. Observation-only: never persisted, never `Codable`,

@@ -17,8 +17,10 @@ public enum TextLexicalContent {
   /// scalar (a letter or digit). "uh" → false; "OK" / "1988" / "I" → true;
   /// "..." → false; "uh OK" → true.
   @MainActor
-  public static func hasLexicalContentAfterRemovingFillers(_ text: String) -> Bool {
-    let stripped = FillerRemovalStep.removingFillers(from: text)
+  public static func hasLexicalContentAfterRemovingFillers(_ text: String, language: String?)
+    -> Bool
+  {
+    let stripped = FillerRemovalStep.removingFillers(from: text, language: language)
     return stripped.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) }
   }
 }

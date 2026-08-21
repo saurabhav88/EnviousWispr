@@ -188,4 +188,13 @@ public struct DictationSessionConfig: Sendable {
     self.recoveryPayload = recoveryPayload
     self.escapeRecoveryEnabled = escapeRecoveryEnabled
   }
+
+  /// The user's locked dictation language, or nil on Auto-detect. Single authority
+  /// for "what language is THIS dictation locked to" — every reader of
+  /// `languageMode` that wants the locked code, not the mode itself, uses this
+  /// so the extraction cannot drift between call sites (issue #2259).
+  public var lockedLanguageCode: String? {
+    if case .locked(let code) = languageMode { return code }
+    return nil
+  }
 }

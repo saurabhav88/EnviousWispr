@@ -69,4 +69,14 @@ struct DictationSessionConfigTests {
     sourceFlag = false
     #expect(config.autoCopyToClipboard == true)
   }
+
+  @Test(
+    "lockedLanguageCode: locked returns the code, auto returns nil (issue #2259 shared authority)"
+  )
+  func testLockedLanguageCode() {
+    let locked = DictationSessionConfig.testDefault(languageMode: .locked("de"))
+    #expect(locked.lockedLanguageCode == "de")
+    let auto = DictationSessionConfig.testDefault(languageMode: .auto)
+    #expect(auto.lockedLanguageCode == nil)
+  }
 }
