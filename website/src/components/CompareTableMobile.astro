@@ -79,7 +79,19 @@
     apply();
   }
 
-  // Rotating a phone can cross the breakpoint; rows already handled are
-  // skipped by the duoReady guard.
-  PHONE.addEventListener('change', apply);
+  // Leaving the breakpoint has to UNDO the work, not just stop doing it.
+  // The desktop table is a real <table> again and the clamp CSS is inside the
+  // media query, so a leftover toggle would render as an unstyled button in
+  // the middle of a cell. Rotating a phone crosses this boundary (390 -> 844).
+  function teardown() {
+    document.querySelectorAll<HTMLElement>('.compare-table--duo tbody tr').forEach((row) => {
+      row.querySelectorAll('.duo-toggle').forEach((button) => button.remove());
+      row.classList.remove('duo-clamped', 'duo-open');
+      delete row.dataset.duoReady;
+    });
+    // The .duo-text wrappers stay. They are inert outside the media query and
+    // wrapContents reuses them, so re-entering the breakpoint does not rewrap.
+  }
+
+  PHONE.addEventListener('change', () => (PHONE.matches ? apply() : teardown()));
 </script>

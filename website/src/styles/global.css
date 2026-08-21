@@ -297,17 +297,24 @@ body::after {
   .compare-table-wrap:has(.compare-table.compare-table--duo) { overflow: visible; }
 
   .compare-table.compare-table--duo { min-width: 0; display: block; }
-  .compare-table.compare-table--duo thead,
   .compare-table.compare-table--duo tbody { display: block; }
 
-  /* Product names, pinned. 64px is .nav-inner's height. */
-  .compare-table.compare-table--duo thead tr {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+  /* Product names, pinned. 64px is .nav-inner's height.
+     The sticky element must be the THEAD, not the header row: a sticky box
+     cannot leave its containing block, and the row's containing block is the
+     thead, which is exactly one row tall — so sticking the row pins it to a
+     box it already fills and it scrolls away with the table. The thead's own
+     containing block is the (display: block) table, which spans every row. */
+  .compare-table.compare-table--duo thead {
+    display: block;
     position: sticky;
     top: 64px;
     z-index: 2;
     background: #fff;
+  }
+  .compare-table.compare-table--duo thead tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
   .compare-table.compare-table--duo thead th {
     width: auto;
