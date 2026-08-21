@@ -31,6 +31,24 @@ enum OverlayEvent: Equatable {
   case expiryFired(PresentationID)
 }
 
+/// What the director should do to the single armed expiry.
+///
+/// **Three states, because two cannot express the difference between "leave the
+/// timer alone" and "cancel it".** Round 2 used an optional `armExpiry` where
+/// `nil` meant both, which is this repo's own three-valued-tool-read-by-a-
+/// two-valued-caller shape: reading `nil` as cancel makes every stale or no-op
+/// event kill a live timer, and reading it as unchanged leaves a hovered pill's
+/// timer running so hover-pause does nothing at all. Cloud review named it, and
+/// it is exactly the hazard I had flagged as my own least-confident change.
+enum OverlayExpiryCommand: Equatable {
+  /// Leave whatever is armed alone. The correct answer for every dropped stale
+  /// event, which is most of them.
+  case unchanged
+  /// Disarm and arm nothing: the presentation went away, or hover paused it.
+  case cancel
+  case arm(id: PresentationID, seconds: Double)
+}
+
 /// What the director must do to make reality match the reducer's decision.
 ///
 /// A PLAN, not a mutation: the reducer returns it and the director performs it.
@@ -44,30 +62,27 @@ struct OverlayPlan: Equatable {
   /// False means the plan is a no-op for the window — an event arrived that the
   /// reducer deliberately ignored.
   let didChange: Bool
-  /// The single expiry the director should arm, replacing any previous one.
-  /// `nil` means disarm and arm nothing.
-  let armExpiry: (id: PresentationID, seconds: Double)?
+  /// What to do with the single armed expiry.
+  let expiryCommand: OverlayExpiryCommand
   /// An action the director should forward to the feature that owns it. The
   /// director holds exactly ONE active binding, so this is at most one.
   let deliverAction: OverlayAction?
 
   static func == (a: OverlayPlan, b: OverlayPlan) -> Bool {
     a.presentation == b.presentation && a.didChange == b.didChange
-      && a.armExpiry?.id == b.armExpiry?.id && a.armExpiry?.seconds == b.armExpiry?.seconds
-      && a.deliverAction == b.deliverAction
+      && a.expiryCommand == b.expiryCommand && a.deliverAction == b.deliverAction
   }
 
-  static let noChange = OverlayPlan(
-    presentation: nil, didChange: false, armExpiry: nil, deliverAction: nil)
+  static let noChange = OverlayPlan(presentation: nil, didChange: false)
 
   init(
     presentation: OverlayPresentation?, didChange: Bool,
-    armExpiry: (id: PresentationID, seconds: Double)? = nil,
+    expiryCommand: OverlayExpiryCommand = .unchanged,
     deliverAction: OverlayAction? = nil
   ) {
     self.presentation = presentation
     self.didChange = didChange
-    self.armExpiry = armExpiry
+    self.expiryCommand = expiryCommand
     self.deliverAction = deliverAction
   }
 }
@@ -147,12 +162,14 @@ struct OverlayReducer {
       // is a genuine no-op and must not make the host re-apply nothing.
       let wasOccupied = state.current != nil
       state.set(current: nil, pipelineIntent: intent, isHovered: false)
-      return OverlayPlan(presentation: nil, didChange: wasOccupied)
+      return OverlayPlan(
+        presentation: nil, didChange: wasOccupied,
+        expiryCommand: wasOccupied ? .cancel : .unchanged)
     }
 
     state.set(current: presentation, pipelineIntent: intent, isHovered: false)
     return OverlayPlan(
-      presentation: presentation, didChange: true, armExpiry: Self.arm(presentation))
+      presentation: presentation, didChange: true, expiryCommand: Self.command(for: presentation))
   }
 
   // MARK: - Features
@@ -167,7 +184,7 @@ struct OverlayReducer {
     let presentation = Self.presentation(for: request, id: makeID())
     state.set(current: presentation, isHovered: false)
     return OverlayPlan(
-      presentation: presentation, didChange: true, armExpiry: Self.arm(presentation))
+      presentation: presentation, didChange: true, expiryCommand: Self.command(for: presentation))
   }
 
   // MARK: - In-panel notice
@@ -223,10 +240,14 @@ struct OverlayReducer {
     // Leaving re-arms from FULL rather than resuming the remainder, matching
     // both shipped hover-pausing pills (`EscapeRecoveryPillView.swift:21`,
     // `LanguageChipView`).
+    // Hover-enter CANCELS the armed timer; leaving re-arms from FULL rather than
+    // resuming the remainder, matching both shipped hover-pausing pills
+    // (`EscapeRecoveryPillView.swift:21`, `LanguageChipView`).
     return hovering
-      ? .noChange
+      ? OverlayPlan(presentation: current, didChange: false, expiryCommand: .cancel)
       : OverlayPlan(
-        presentation: current, didChange: false, armExpiry: (id: current.id, seconds: seconds))
+        presentation: current, didChange: false,
+        expiryCommand: .arm(id: current.id, seconds: seconds))
   }
 
   private mutating func reduceExpiry(_ id: PresentationID) -> OverlayPlan {
@@ -246,14 +267,18 @@ struct OverlayReducer {
     // session — the arbitration rule this reducer exists to state, failing open
     // in the direction nothing would ever report.
     state.set(current: nil, pipelineIntent: .hidden, isHovered: false)
-    return OverlayPlan(presentation: nil, didChange: true)
+    return OverlayPlan(presentation: nil, didChange: true, expiryCommand: .cancel)
   }
 
   // MARK: - Intent and request to presentation
 
-  private static func arm(_ p: OverlayPresentation) -> (id: PresentationID, seconds: Double)? {
-    guard case .after(let seconds, _) = p.expiry else { return nil }
-    return (id: p.id, seconds: seconds)
+  /// A new occupant always replaces the armed expiry: `.arm` when it has a
+  /// dwell, `.cancel` when it is persistent. Never `.unchanged` — leaving the
+  /// previous occupant's timer running is how a stale dismissal reaches a live
+  /// pill, which is the whole defect `PresentationID` exists to close.
+  private static func command(for p: OverlayPresentation) -> OverlayExpiryCommand {
+    guard case .after(let seconds, _) = p.expiry else { return .cancel }
+    return .arm(id: p.id, seconds: seconds)
   }
 
   /// The shipped widths and dwells, gathered.
@@ -285,67 +310,71 @@ struct OverlayReducer {
       // content-sized variant.
       return OverlayPresentation(
         id: id, content: .recording(audioLevel: level, isLocked: false, notice: nil),
-        expiry: .untilReplaced, requestedWidth: 185, reservesFixedHeight: 92)
+        expiry: .untilReplaced, requestedWidth: .fixed(185), reservesFixedHeight: 92)
 
     case .processing(let phase):
-      return notice(id: id, text: DictationNarrator.copy(for: phase), width: 230)  // :1262
+      // `PolishingOverlayView` pins no width and `:1262` passes `fitToContent: true`,
+      // so the `230` at that call site is DISCARDED and the real width is the
+      // view's `fittingSize`. Carrying the literal would have looked right.
+      return notice(id: id, text: DictationNarrator.copy(for: phase), width: .measured)
 
     case .clipboardFallback:
       // `:1262` via `transitionToPolishingNow`, dwell from
       // `scheduleAutoDismiss`'s own default (`:1048`).
       return notice(
-        id: id, text: DictationNarrator.clipboardFallbackText, width: 230,
+        // Routes through the same `PolishingOverlayView` path, so also measured.
+        id: id, text: DictationNarrator.clipboardFallbackText, width: .measured,
         expiry: .after(seconds: 2.5))
 
     case .accessibilityToast:
       return notice(
-        id: id, text: DictationNarrator.accessibilityToastText, width: 300,  // :1035
+        id: id, text: DictationNarrator.accessibilityToastText, width: .fixed(300),  // :1035
         expiry: .after(seconds: 6), isMultiline: true,  // :1039
         action: (label: "Grant", action: .grantAccessibility))
 
     case .warning(let reason):
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: 280,  // :1189
+        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
         expiry: .after(seconds: 2.5), severity: .warning)  // NotificationStyle 2.5
 
     case .error(let reason):
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: 280,  // :1189
+        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
         expiry: .after(seconds: 3), severity: .error)  // NotificationStyle 3.0
 
     case .advisory(let reason):
       // #1891: deliberately NOT `.error`. Multiline, and a dwell long enough
       // to read the sentence.
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: 360,  // advisoryWidth :1207
+        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(360),  // advisoryWidth :1207
         expiry: .after(seconds: 8), isMultiline: true)  // NotificationStyle 8.0
 
     case .interruption(let reason):
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: 280,  // :1189
+        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
         expiry: .after(seconds: 2), severity: .distress)  // NotificationStyle 2.0
 
     case .passiveChip(let payload):
       return OverlayPresentation(
         id: id, content: .languageChip(payload: payload),
-        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: 340)  // :1721
+        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: .fixed(340))  // :1721
 
     case .cachingModel(let engineLabel):
       return notice(
         id: id, text: DictationNarrator.coldStartTitle,
         secondary: DictationNarrator.coldStartSubtitle(engineLabel: engineLabel),
-        width: 300,  // :641
+        width: .fixed(300),  // :641
         expiry: .after(seconds: 2))  // :642
 
     case .engineReady:
       return notice(
-        id: id, text: DictationNarrator.readyTitle, width: 240,  // :656
+        id: id, text: DictationNarrator.readyTitle, width: .fixed(240),  // :656
         expiry: .after(seconds: 1.5))  // :657
 
     case .recoveringLastRecording:
       return notice(
         id: id, text: DictationNarrator.recoveryTitle, secondary: DictationNarrator.recoverySubtitle,
-        width: 320,  // :688
+        width: .fixed(320),  // :688
         // `:689` gives it a 6-second dwell. The first version said `.untilReplaced`,
         // which would have left the recovery pill on screen forever.
         expiry: .after(seconds: 6), isMultiline: true,
@@ -354,7 +383,7 @@ struct OverlayReducer {
     case .recoverySucceeded:
       return notice(
         id: id, text: DictationNarrator.recoverySucceededTitle,
-        secondary: DictationNarrator.recoverySucceededSubtitle, width: 300,  // :674
+        secondary: DictationNarrator.recoverySucceededSubtitle, width: .fixed(300),  // :674
         expiry: .after(seconds: 3))  // :675
 
     case .bluetoothAwareness:
@@ -363,7 +392,7 @@ struct OverlayReducer {
         // PERSISTENT until something replaces it. The first version gave it a
         // 6-second dwell, which would have made it vanish on its own.
         id: id, content: .bluetoothAwareness, expiry: .untilReplaced,
-        requestedWidth: 320)
+        requestedWidth: .fixed(320))
 
     case .escapeRecovery(let transcriptID):
       return OverlayPresentation(
@@ -374,7 +403,7 @@ struct OverlayReducer {
         // expiry, that reason is gone and this becomes an ordinary hover-pausing
         // expiry; C4 removes the view-owned task.
         id: id, content: .escapeRecovery(transcriptID: transcriptID),
-        expiry: .after(seconds: 3, pausesOnHover: true), requestedWidth: nil)
+        expiry: .after(seconds: 3, pausesOnHover: true), requestedWidth: .measured)
     }
   }
 
@@ -385,15 +414,17 @@ struct OverlayReducer {
     case .importStatus(let message):
       return OverlayPresentation(
         id: id, content: .notice(NoticeModel(text: message, isMultiline: true)),
-        expiry: .after(seconds: 3), requestedWidth: 320)  // :1105, :1148
+        // `ImportStatusOverlayView` uses `.frame(maxWidth: 280)` — a BOUND, not a
+        // width — under `fitToContent`, so this is measured too.
+        expiry: .after(seconds: 3), requestedWidth: .measured)  // :1105, :1148
     case .bluetoothAwareness:
       return OverlayPresentation(
         id: id, content: .bluetoothAwareness, expiry: .untilReplaced,
-        requestedWidth: 320)  // :1790 — persistent
+        requestedWidth: .fixed(320))  // :1790 — persistent
     case .passiveChip(let payload):
       return OverlayPresentation(
         id: id, content: .languageChip(payload: payload),
-        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: 340)  // :1721
+        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: .fixed(340))  // :1721
     case .accessibilityToast:
       return OverlayPresentation(
         id: id,
@@ -401,12 +432,12 @@ struct OverlayReducer {
           NoticeModel(
             text: DictationNarrator.accessibilityToastText, isMultiline: true,
             action: (label: "Grant", action: .grantAccessibility))),
-        expiry: .after(seconds: 6), requestedWidth: 300)  // :1035, :1039
+        expiry: .after(seconds: 6), requestedWidth: .fixed(300))  // :1035, :1039
     }
   }
 
   private static func notice(
-    id: PresentationID, text: String, secondary: String? = nil, width: CGFloat?,
+    id: PresentationID, text: String, secondary: String? = nil, width: OverlayWidth,
     expiry: OverlayExpiry = .untilReplaced, severity: NoticeModel.Severity = .neutral,
     isMultiline: Bool = false, action: (label: String, action: OverlayAction)? = nil
   ) -> OverlayPresentation {

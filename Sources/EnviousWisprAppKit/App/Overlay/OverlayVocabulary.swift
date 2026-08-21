@@ -118,6 +118,13 @@ enum OverlayAction: Equatable, Sendable {
 
 // MARK: - What ends up on screen
 
+/// How a presentation's width is decided. `.measured` means the render model
+/// computes it; nothing may substitute a default for it.
+enum OverlayWidth: Equatable, Sendable {
+  case fixed(CGFloat)
+  case measured
+}
+
 /// How long a presentation lives without further input.
 enum OverlayExpiry: Equatable, Sendable {
   /// Stays until something replaces it. Recording and processing are persistent.
@@ -202,17 +209,29 @@ struct OverlayPresentation: Equatable, Sendable {
   let id: PresentationID
   let content: OverlayContent
   let expiry: OverlayExpiry
-  /// The width the presentation asks for, or `nil` when the presentation
-  /// MEASURES its own width and no literal is correct.
+  /// How the presentation's width is decided.
   ///
-  /// Escape Recovery is the `nil` case and it is not an edge case being tidied
-  /// away: `PillMetrics.pillWidth` is computed from the title font's text
-  /// metrics at runtime (`EscapeRecoveryPillView.swift:214`), so any number
-  /// written here would be a plausible-looking literal that silently disagrees
-  /// with the shipped pill on a different system font or a localised title. The
-  /// first version of this table carried `320` for it. C3's measurement model
-  /// resolves `nil`; nothing may substitute a default.
-  let requestedWidth: CGFloat?
+  /// **Two rounds of review were needed to get this shape right, and the reason
+  /// generalises: a literal that the shipped code IGNORES looks exactly like a
+  /// literal it uses.** Round 1 carried a number for every kind. Round 2 made
+  /// the field optional with Escape Recovery as the only `nil`. Both were wrong
+  /// in the same direction — `showPanel(fitToContent:)` sizes the panel from the
+  /// view's own `fittingSize` and DISCARDS the `width` argument entirely
+  /// (`RecordingOverlayPanel.swift:1430-1435`), so any row whose view does not
+  /// pin its own width is measured no matter what number sits at the call site.
+  ///
+  /// The test is not "did the call site pass a width" but **"does the VIEW pin
+  /// one"**:
+  /// - `PolishingOverlayView` pins nothing → processing and clipboard fallback
+  ///   are `.measured`, and their `230` is dead at the call site.
+  /// - `ImportStatusOverlayView` uses `.frame(maxWidth: 280)` → `.measured`; a
+  ///   max is a bound, not a width.
+  /// - `BluetoothAwarenessCardView` has `.frame(width: 320)` of its own
+  ///   (`:58`, `:119`) → `.fixed(320)` even though the call passes
+  ///   `fitToContent: true`.
+  /// - Escape Recovery's `PillMetrics.pillWidth` is computed from the title
+  ///   font's text metrics at runtime → `.measured`, and no literal is correct.
+  let requestedWidth: OverlayWidth
   /// True when this presentation must reserve a fixed interaction frame rather
   /// than shrink to its content. **Only the non-preview recording pill sets
   /// this**, and its 92-point frame is deliberate: it reserves room for the
@@ -223,7 +242,7 @@ struct OverlayPresentation: Equatable, Sendable {
 
   init(
     id: PresentationID, content: OverlayContent, expiry: OverlayExpiry,
-    requestedWidth: CGFloat?, reservesFixedHeight: CGFloat? = nil
+    requestedWidth: OverlayWidth, reservesFixedHeight: CGFloat? = nil
   ) {
     self.id = id
     self.content = content

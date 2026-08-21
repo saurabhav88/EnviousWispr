@@ -201,13 +201,16 @@ struct OverlayReducerTests {
     _ = r.reduce(.pipeline(.passiveChip(payload: payload)))
     let id = try! #require(r.state.current?.id)
 
-    #expect(r.reduce(.hoverChanged(id, true)).armExpiry == nil)
+    #expect(r.reduce(.hoverChanged(id, true)).expiryCommand == .cancel,
+      "hover-enter did not cancel the armed timer, so hover-pause does nothing")
     // While hovered, the timer firing must not dismiss it.
     #expect(r.reduce(.expiryFired(id)).didChange == false)
     #expect(r.state.current?.id == id)
 
     let leaving = r.reduce(.hoverChanged(id, false))
-    #expect(leaving.armExpiry?.id == id, "leaving a hovered chip did not re-arm its dismissal")
+    #expect(
+      leaving.expiryCommand == .arm(id: id, seconds: 6),
+      "leaving a hovered chip did not re-arm its dismissal")
   }
 
   // MARK: - No-ops
@@ -245,6 +248,7 @@ struct OverlayReducerTests {
     var r = Self.makeReducer()
     _ = r.reduce(.pipeline(.recording(audioLevel: 0.1)))
     #expect(r.state.current?.reservesFixedHeight == 92)
+    #expect(r.state.current?.requestedWidth == .fixed(185))
 
     _ = r.reduce(.pipeline(.hidden))
     _ = r.reduce(.pipeline(.clipboardFallback))
@@ -303,5 +307,44 @@ struct OverlayReducerTests {
 
     #expect(plan.didChange, "a hover kept a non-pausable notice on screen indefinitely")
     #expect(r.state.current == nil)
+  }
+
+  /// A width the shipped code DISCARDS must not be carried as a literal.
+  /// `showPanel(fitToContent:)` sizes from the view's own `fittingSize` and
+  /// ignores the `width` argument (`RecordingOverlayPanel.swift:1430-1435`), so
+  /// a row whose view pins no width is `.measured` however plausible the number
+  /// at its call site looks. Two review rounds were spent on this exact shape.
+  @Test(
+    "a presentation whose view does not pin a width is measured, not a literal",
+    arguments: [
+      OverlayIntent.processing(phase: .transcribing),
+      .clipboardFallback,
+    ])
+  func viewSizedPresentationsAreMeasured(intent: OverlayIntent) {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(intent))
+    #expect(r.state.current?.requestedWidth == .measured)
+  }
+
+  /// The paired case, or the guard above is satisfied by making everything
+  /// measured. `BluetoothAwarenessCardView` pins `.frame(width: 320)` of its own
+  /// (`:58`, `:119`), so it stays fixed despite `fitToContent: true` at the call
+  /// site — the call-site flag is not the discriminator, the VIEW is.
+  @Test("a presentation whose view pins its own width stays fixed")
+  func viewPinnedPresentationsStayFixed() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(.bluetoothAwareness))
+    #expect(r.state.current?.requestedWidth == .fixed(320))
+  }
+
+  /// A new occupant must never inherit the previous one's timer. `.unchanged`
+  /// here would leave a dismissal armed for a pill that is gone, which is the
+  /// stale-dismissal defect one level up from the id check.
+  @Test("a persistent presentation cancels the previous occupant's timer")
+  func persistentPresentationCancelsTheArmedTimer() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(.warning(reason: .polishFailed)))
+    let plan = r.reduce(.pipeline(.recording(audioLevel: 0.3)))
+    #expect(plan.expiryCommand == .cancel)
   }
 }

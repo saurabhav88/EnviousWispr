@@ -120,10 +120,17 @@ struct OverlayPlacementState: Equatable {
   /// it, so a Space change that also moves the pill's context moves the pill.
   /// The first version rejected a different screen, which would have stranded
   /// the pill on the old one.
-  func repositionedFrameForSpaceChange(
+  mutating func repositionedFrameForSpaceChange(
     currentFrame: CGRect, on screen: ScreenGeometry
   ) -> CGRect? {
     guard case .automatic(let position, _) = anchor, position == .bottom else { return nil }
+    // **Take ownership of the resolved screen even when the frame does not
+    // move.** The earlier version returned a frame for the new screen while the
+    // anchor still named the old one, so `isUserAnchored(on:)` and every later
+    // decision keyed on the stale id. Two displays with identical coordinates
+    // expose it precisely BECAUSE the geometry check returns nil — nothing
+    // moves, and the ownership silently never transfers.
+    anchor = .automatic(position, screen.id)
 
     // Shipped `:381` recentres X here rather than preserving it. That is NOT the
     // #2195 defect wearing a different hat: this path only ever runs for an

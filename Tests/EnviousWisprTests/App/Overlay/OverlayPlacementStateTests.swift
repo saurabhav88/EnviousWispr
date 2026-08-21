@@ -235,4 +235,32 @@ struct OverlayPlacementStateTests {
     #expect(next.maxY == live.maxY)
     #expect(next.origin.x == live.origin.x)
   }
+
+  /// Ownership must transfer even when the frame does NOT move — two displays
+  /// with identical coordinates expose it precisely because the geometry check
+  /// returns nil, so nothing moves and the anchor silently keeps naming the old
+  /// screen. Cloud review found it; the earlier version returned a frame for the
+  /// new screen while still anchored to the old one.
+  @Test("a space change takes ownership of the resolved screen even when nothing moves")
+  func spaceChangeTakesScreenOwnershipWithoutMoving() {
+    var placement = OverlayPlacementState()
+    placement.beginFresh(at: .bottom, screen: Self.screen)
+    let twin = ScreenGeometry(
+      id: ScreenID(rawValue: 7),
+      frame: Self.screen.frame, visibleFrame: Self.screen.visibleFrame)
+    let live = CGRect(
+      x: Self.screen.visibleFrame.midX - 92.5, y: 85, width: 185, height: 44)
+
+    #expect(
+      placement.repositionedFrameForSpaceChange(currentFrame: live, on: twin) == nil,
+      "identical geometry should not move the pill")
+    // Assert the ANCHOR, not a round-trip through `userDidMove`. The first
+    // version of this test did the latter, which asserts only that
+    // `userDidMove` stores the screen it is handed — trivially true, and true
+    // on the broken code too. A vacuous guard written while fixing a vacuity
+    // finding, which is the shape this repo keeps recording.
+    #expect(
+      placement.anchor == .automatic(.bottom, ScreenID(rawValue: 7)),
+      "the anchor never transferred to the resolved screen")
+  }
 }
