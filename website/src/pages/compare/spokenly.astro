@@ -1,0 +1,761 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "EnviousWispr vs Spokenly: Free, Open Source Mac Dictation",
+  "description": "Compare EnviousWispr and Spokenly, two free, on-device Mac dictation apps. EnviousWispr is open source; Spokenly is proprietary but free.",
+  "url": `${siteUrl}/compare/spokenly/`,
+  "image": `${siteUrl}/og-image.png`,
+  "datePublished": "2026-08-21T21:00:00Z",
+  "dateModified": "2026-08-21T21:00:00Z",
+  "author": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": `${siteUrl}/authors/saurabh-vaish/`,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+  },
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Comparisons",
+      "item": `${siteUrl}/compare/`,
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "EnviousWispr vs Spokenly",
+      "item": `${siteUrl}/compare/spokenly/`,
+    },
+  ],
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr free, like Spokenly?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Spokenly's free tier includes unlimited local transcription and lets you bring your own API key for cloud AI, with no time limit or word cap. Its Pro tier, around $9.99 a month, adds Spokenly's own managed cloud transcription so you do not need your own key. EnviousWispr has no paid tier of any kind."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is EnviousWispr different from Spokenly?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The clearest difference is source code: EnviousWispr is open source under GPLv3, so anyone can read exactly what it does. Spokenly is free but proprietary, by its own admission not open source and not on GitHub. Spokenly in turn is more feature-rich in places: it runs on macOS, Windows, Linux, and iOS, its Modes system lets you save different AI Instructions and providers per app, and its Agentic Actions can search the web, hand off to an AI assistant, or run a Shortcut after transcribing. EnviousWispr is macOS only and does not have an equivalent to Agentic Actions."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Spokenly open source?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Spokenly's own site states plainly that it is not open source and not available on GitHub, while noting it is free to use. EnviousWispr is open source under GPLv3, so the code that runs on your Mac can be read, built, and audited by anyone."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Spokenly have AI cleanup like EnviousWispr's EG-1?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, through its Modes system. A mode carries its own AI Instructions, transcription model, and AI provider, and instructions can drive translation, cleanup, and formatting. We could not confirm from Spokenly's public documentation whether its default mode ships with cleanup instructions already configured. EG-1 is purpose-built for dictation cleanup, ships with the app, needs no prompt to write, and runs on the same hotkey as transcription."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use EnviousWispr completely offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I import my Spokenly custom words into EnviousWispr?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Spokenly, without changing Spokenly's own files, and shows you every word it found before anything joins your library. Spokenly can also store find-and-replace rules written as patterns; those are skipped, since a pattern is not a word. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, TypeWhisper, Juno, and Vox."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Spokenly run on Windows or iOS?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, natively on macOS, Windows, Linux, and iOS. EnviousWispr is macOS only, on Apple Silicon."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What is Spokenly's MCP integration for?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Spokenly includes an MCP server that lets developer tools like Claude Code, Cursor, and Codex use it as a voice input tool. EnviousWispr does not offer an MCP integration; it works as an ordinary system-wide dictation tool in any text field, including a terminal running one of those same coding agents."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I switch from Spokenly to EnviousWispr easily?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Spokenly custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS."
+      }
+    }
+  ]
+});
+---
+
+<BaseLayout
+  title="Spokenly vs EnviousWispr: Free Mac Dictation, One Open Source"
+  description="Compare Spokenly and EnviousWispr, two free, on-device Mac dictation apps. EnviousWispr is open source under GPLv3; Spokenly is free but proprietary."
+  activePage="compare"
+  ogImage="/og-image.png"
+  canonicalPath="/compare/spokenly/"
+  ogType="article"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+/* ── Page Header ── */
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+.compare-table {
+  width: 100%; border-collapse: collapse; font-size: 15px;
+  min-width: 640px;
+}
+.compare-table thead th {
+  padding: 20px 24px; font-size: 16px; font-weight: 700;
+  text-align: left; border-bottom: 2px solid var(--border-hover);
+  background: rgba(248,245,255,0.5);
+}
+.compare-table thead th:first-child { width: 34%; }
+.compare-table thead th:nth-child(2) {
+  background: rgba(124,58,237,0.06);
+  color: var(--accent);
+}
+.compare-table tbody td {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  vertical-align: top; line-height: 1.55;
+}
+.compare-table tbody tr:last-child td { border-bottom: none; }
+.compare-table tbody td:first-child {
+  font-weight: 600; color: var(--text);
+}
+.compare-table tbody td:nth-child(2) {
+  background: rgba(124,58,237,0.02);
+}
+.compare-table tbody td:nth-child(3) {
+  color: var(--text-2);
+}
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── Deep Dive ── */
+.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.deep-dive-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 36px 32px;
+  position: relative; overflow: hidden;
+}
+.deep-dive-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
+.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
+.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
+.deep-dive-body p { margin-bottom: 12px; }
+.deep-dive-body p:last-child { margin-bottom: 0; }
+.deep-dive-detail {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
+  font-size: 13px; color: var(--text-2); line-height: 1.6;
+}
+.deep-dive-detail strong { color: var(--text); }
+@media (max-width: 900px) {
+  .deep-dive-grid { grid-template-columns: 1fr; }
+}
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<!-- Page Header -->
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge reveal">
+      <span class="vs-brand accent">EnviousWispr</span>
+      <span class="vs-circle">VS</span>
+      <span class="vs-brand">Spokenly</span>
+    </div>
+    <h1 class="reveal">Free like Spokenly. Open source, which Spokenly isn't.</h1>
+    <p class="page-header-sub reveal">Spokenly's free tier is genuinely generous: unlimited local transcription, bring your own cloud key, no word cap. The difference is the code. Spokenly says plainly that it is not open source and not on GitHub. EnviousWispr is, under GPLv3, so anyone can read exactly what runs on their Mac.</p>
+    <div class="hero-pills reveal">
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Free, no paid tier at all
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Open source, code you can read
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        0.61s median latency
+      </span>
+    </div>
+    <div class="hero-cta reveal">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+  </div>
+</header>
+
+<!-- Side-by-Side Table -->
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Side by Side</div>
+      <h2 class="section-title">Feature comparison</h2>
+      <p class="section-sub">An honest look at how the two tools stack up across the dimensions that matter most.</p>
+    </div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th scope="col"></th>
+            <th scope="col">EnviousWispr</th>
+            <th scope="col">Spokenly</th>
+          </tr>
+        </thead>
+        <!-- Evidence: Spokenly claims verified against spokenly.app, spokenly.app/open-source,
+             spokenly.app/docs, and spokenly.app/docs/modes on 2026-08-21.
+             Sources:
+               - spokenly.app/open-source (accessed 2026-08-21): "Spokenly is not open source and is not
+                 available on GitHub. But it is free to use." No license applies to Spokenly's own code.
+               - spokenly.app (accessed 2026-08-21): Free tier is unlimited local transcription plus
+                 bring-your-own-key cloud transcription, no time cap or word cap; Pro ~$9.99/mo unlocks
+                 Spokenly's own managed cloud transcription and hosted AI (not required). Platforms: macOS,
+                 iOS, Windows, Linux. 100+ languages with automatic detection. Local Only Mode blocks all
+                 network requests.
+               - spokenly.app/docs/modes (accessed 2026-08-21): a Mode is a saved dictation profile with
+                 its own AI Instructions, transcription model, AI provider, and output style; Agentic
+                 Actions (macOS only, set per mode) can search the web, hand off to an AI assistant, open
+                 or quit apps, or run a Shortcut after transcribing.
+               - spokenly.app/docs (accessed 2026-08-21): mentions an MCP integration for developer tools
+                 (Claude Code, Cursor, Codex) to use Spokenly as a voice input tool.
+             Confidence: source-verified from Spokenly's own site and docs. We could NOT confirm whether
+             Spokenly's default Mode ships with cleanup AI Instructions pre-configured, or whether it has a
+             live/streaming preview or cancelled-dictation recovery; this page does not assert either way
+             where unconfirmed. Spokenly was not tested firsthand. Last verified: 2026-08-21. -->
+        <tbody>
+          <tr>
+            <td>Price</td>
+            <td><span class="table-highlight">Free. No paid tier at all.</span></td>
+            <td>Free (unlimited local, bring your own cloud key). Pro ~$9.99/mo adds managed cloud, not required.</td>
+          </tr>
+          <tr>
+            <td>Account required</td>
+            <td><span class="table-check">No</span></td>
+            <td>Not specified for the free tier</td>
+          </tr>
+          <tr>
+            <td>Source code</td>
+            <td><span class="table-highlight"><a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Open source</a></span> (GPLv3)</td>
+            <td><span class="table-cross">Not open source</span>, by Spokenly's own statement</td>
+          </tr>
+          <tr>
+            <td>Speech engines</td>
+            <td><span class="table-highlight">Parakeet TDT v3 + WhisperKit</span>, switch in Settings</td>
+            <td>Parakeet, Whisper, and Apple Speech Analyzer options</td>
+          </tr>
+          <tr>
+            <td>AI cleanup (after transcription)</td>
+            <td><span class="table-highlight">EG-1</span>, purpose-built and measured, ships ready</td>
+            <td>Modes with AI Instructions: configurable, per-mode provider and prompt</td>
+          </tr>
+          <tr>
+            <td>Needs a prompt to be written</td>
+            <td><span class="table-check">No</span></td>
+            <td>Not confirmed either way from public documentation</td>
+          </tr>
+          <tr>
+            <td>Voice-triggered actions (web search, open apps, run Shortcuts)</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, Agentic Actions, macOS only, set per mode</td>
+          </tr>
+          <tr>
+            <td>Developer tool integration (MCP)</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, for Claude Code, Cursor, and Codex</td>
+          </tr>
+          <tr>
+            <td>Recover a cancelled dictation</td>
+            <td><span class="table-highlight">Yes</span> (Escape Recovery, opt-in, keybind/triple-press cancel only)</td>
+            <td>Not documented</td>
+          </tr>
+          <tr>
+            <td>Custom vocabulary</td>
+            <td><span class="table-check">Yes</span> (imports from 8 other apps, Spokenly included)</td>
+            <td><span class="table-check">Yes</span>, including find-and-replace patterns</td>
+          </tr>
+          <tr>
+            <td>Transcription latency</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td>Not published</td>
+          </tr>
+          <tr>
+            <td>Platform support</td>
+            <td>macOS (Apple Silicon only)</td>
+            <td><span class="table-check">macOS, Windows, Linux, iOS</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Spokenly claims sourced from spokenly.app, spokenly.app/open-source, and spokenly.app/docs. Spokenly was not tested firsthand. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <div style="text-align: center; margin-top: 28px;">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Why EnviousWispr -->
+<section class="section" aria-label="Advantages">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill green">Why EnviousWispr</div>
+      <h2 class="section-title">Free is not the wedge here. Open source is</h2>
+      <p class="section-sub">Spokenly's free tier is genuinely good. Here is what actually separates the two apps.</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📖</div>
+        <div class="advantage-title">Code you can actually read</div>
+        <p class="advantage-desc">Every line of EnviousWispr is on GitHub under GPLv3. Verify what it does with your microphone, your text, and your custom words. Spokenly's own site states it is not open source and not on GitHub, so you take its privacy claims on trust rather than being able to check them.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🧹</div>
+        <div class="advantage-title">A model built and measured for one job</div>
+        <p class="advantage-desc">EG-1 ships fine-tuned specifically for dictation cleanup and runs on the same hotkey as transcription, with no prompt to write. Spokenly's Modes system can carry its own provider, prompt, and output style per mode; we could not confirm from public documentation whether the default mode ships with cleanup instructions already configured.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">↩️</div>
+        <div class="advantage-title">Undo an accidental cancel</div>
+        <p class="advantage-desc">Escape Recovery keeps a dictation you cancel with your keybind or a triple press, instead of discarding it instantly. Off by default; you choose to turn it on. We found no equivalent documented for Spokenly.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">⚡</div>
+        <div class="advantage-title">0.61s median latency</div>
+        <p class="advantage-desc">Measured in production on Apple Silicon Macs. Parakeet TDT runs on the Neural Engine specifically tuned for fast, accurate dictation, so text appears almost instantly after you stop talking.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🌍</div>
+        <div class="advantage-title">Filler-word removal that respects other languages</div>
+        <p class="advantage-desc">Built-in filler-word removal runs before AI polish, and it is language-aware: with your language locked to German, Dutch, Danish, or Norwegian in Settings, it keeps real words like "er" and "um" instead of stripping them as English filler.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📥</div>
+        <div class="advantage-title">Bring your words across from Spokenly</div>
+        <p class="advantage-desc">Smart Import reads your custom vocabulary straight out of Spokenly's own files, without changing them, and shows you every word before anything joins your library. No retyping.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy Deep Dive -->
+<section class="section" aria-label="Privacy Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill cyan">Privacy</div>
+      <h2 class="section-title">Where does your voice go?</h2>
+      <p class="section-sub">Both apps can process your voice on your Mac. The difference is how much of that you can verify yourself. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+    </div>
+    <div class="privacy-split">
+      <div class="privacy-card ew reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          EnviousWispr
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is processed on-device: the Apple Neural Engine for Parakeet, the Apple GPU for WhisperKit, depending on which you've selected. Nothing is uploaded.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>AI polish runs locally by default (EG-1 or Apple Intelligence). If you choose a cloud provider instead, your transcript, custom words, and the app you're dictating into are sent, with your own key. Audio is never sent, either way.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Polished text is pasted and saved to your local History, on your Mac only. Every step of this is in the public source code.</div>
+        </div>
+      </div>
+      <div class="privacy-card wf reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Spokenly
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is transcribed with your chosen engine, on-device by default; Local Only Mode blocks all network requests entirely.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>If your active Mode uses a cloud AI provider, your transcript is sent there with your own key, or through Spokenly's managed cloud on the Pro tier.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Text is pasted into the app you were working in. Spokenly's own claims about this flow cannot be independently verified in source code, since it is closed source.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Speed Section -->
+<section class="section" aria-label="Speed">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill amber">Speed</div>
+      <h2 class="section-title">Parakeet TDT: built for speed</h2>
+      <p class="section-sub">EnviousWispr uses NVIDIA Parakeet TDT v3, a multilingual ASR model covering 25 European languages that runs natively on the Apple Neural Engine. No network dependency, no server queues.</p>
+    </div>
+    <div class="speed-stats">
+      <div class="speed-card reveal">
+        <div class="speed-value">0.61s</div>
+        <div class="speed-label">Median transcription</div>
+        <div class="speed-detail">From end of speech to raw text</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">1.65s</div>
+        <div class="speed-label">With AI polish</div>
+        <div class="speed-detail">EG-1 or Apple, on-device</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">0ms</div>
+        <div class="speed-label">Network overhead</div>
+        <div class="speed-detail">Immune to bad Wi-Fi</div>
+      </div>
+    </div>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings. Spokenly does not publish comparable latency figures.</p>
+  </div>
+</section>
+
+<!-- Deep Dive: Technical Advantages -->
+<section class="section" aria-label="Technical Deep Dives">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Under the Hood</div>
+      <h2 class="section-title">Trust by inspection, or trust by claim</h2>
+      <p class="section-sub">Both apps make real privacy promises. Only one of them lets you check.</p>
+    </div>
+    <div class="deep-dive-grid">
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🔍</div>
+        <div class="deep-dive-title">What "open source" actually buys you</div>
+        <div class="deep-dive-body">
+          <p>Spokenly's site makes real, specific privacy claims: local transcription options, a Local Only Mode that blocks network requests, bring-your-own-key cloud. We have no reason to doubt them. But because Spokenly is not open source, none of those claims can be checked against the code that actually runs on your Mac. You are trusting the company's word.</p>
+          <p>EnviousWispr's entire codebase is public under GPLv3. Every claim on this page, what gets sent where, when, and under what condition, can be verified by reading the source or asking someone who has. That is the whole difference this page is built around.</p>
+          <div class="deep-dive-detail">
+            <strong>Why it matters:</strong> If open source specifically matters to you, this is the one dimension where the two apps are not close. If it does not, Spokenly's feature set is genuinely broader in several places.
+          </div>
+        </div>
+      </div>
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🧩</div>
+        <div class="deep-dive-title">A dictation tool, or a voice-driven automation layer</div>
+        <div class="deep-dive-body">
+          <p>Spokenly's Modes and Agentic Actions turn it into more than dictation: switch profiles per app, and let a spoken command search the web, open an app, or run a Shortcut. Its MCP integration lets coding agents like Claude Code or Cursor use it as a voice input tool directly.</p>
+          <p>EnviousWispr does one thing: it turns your speech into clean, finished text wherever your cursor is, every time, the same way. If you want the broader automation layer, Spokenly covers ground we do not attempt.</p>
+          <div class="deep-dive-detail">
+            <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Fair Acknowledgment -->
+<section class="section" aria-label="Where Spokenly Wins">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Being Honest</div>
+      <h2 class="section-title">Choose Spokenly if any of this matters more to you</h2>
+      <p class="section-sub">Spokenly's feature set is broader than ours in real, specific ways. It may be the better fit here:</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🖥️</div>
+        <div class="advantage-title">You need more than macOS</div>
+        <p class="advantage-desc">Spokenly runs on macOS, Windows, Linux, and iOS. EnviousWispr is macOS only. If your dictation needs to follow you across every device you own, Spokenly already does that.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎬</div>
+        <div class="advantage-title">You want voice-triggered actions</div>
+        <p class="advantage-desc">Agentic Actions can search the web, open an app, or run a Shortcut right after transcribing. We do not offer an equivalent; EnviousWispr produces text and nothing more.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">💻</div>
+        <div class="advantage-title">You want it wired into a coding agent</div>
+        <p class="advantage-desc">Spokenly's MCP integration lets Claude Code, Cursor, and Codex use it directly as a voice tool. If that specific developer workflow matters to you, Spokenly has it and we do not.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎚️</div>
+        <div class="advantage-title">You want per-app AI profiles</div>
+        <p class="advantage-desc">Modes let you save a different provider, prompt, and output style for different apps, switching automatically. EnviousWispr's polish setting is one setup that applies everywhere.</p>
+      </div>
+    </div>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want Windows or iOS support, voice-triggered automation, or a coding-agent integration, Spokenly is a strong pick. If you want dictation whose code you can actually read, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">FAQ</div>
+      <h2 class="section-title">Common questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr free, like Spokenly?</div>
+        <p class="faq-a">Yes. Spokenly's free tier includes unlimited local transcription and lets you bring your own API key for cloud AI, with no time limit or word cap. Its Pro tier, around $9.99 a month, adds Spokenly's own managed cloud transcription so you do not need your own key. EnviousWispr has no paid tier of any kind.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">How is EnviousWispr different from Spokenly?</div>
+        <p class="faq-a">The clearest difference is source code: EnviousWispr is open source under GPLv3, so anyone can read exactly what it does. Spokenly is free but proprietary, by its own admission not open source and not on GitHub. Spokenly in turn is more feature-rich in places: it runs on macOS, Windows, Linux, and iOS, its Modes system lets you save different AI Instructions and providers per app, and its Agentic Actions can search the web, hand off to an AI assistant, or run a Shortcut after transcribing. EnviousWispr is macOS only and does not have an equivalent to Agentic Actions.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is Spokenly open source?</div>
+        <p class="faq-a">No. Spokenly's own site states plainly that it is not open source and not available on GitHub, while noting it is free to use. EnviousWispr is open source under GPLv3, so the code that runs on your Mac can be read, built, and audited by anyone.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does Spokenly have AI cleanup like EnviousWispr's EG-1?</div>
+        <p class="faq-a">Yes, through its Modes system. A mode carries its own AI Instructions, transcription model, and AI provider, and instructions can drive translation, cleanup, and formatting. We could not confirm from Spokenly's public documentation whether its default mode ships with cleanup instructions already configured. EG-1 is purpose-built for dictation cleanup, ships with the app, needs no prompt to write, and runs on the same hotkey as transcription.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I use EnviousWispr completely offline?</div>
+        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I import my Spokenly custom words into EnviousWispr?</div>
+        <p class="faq-a">Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Spokenly, without changing Spokenly's own files, and shows you every word it found before anything joins your library. Spokenly can also store find-and-replace rules written as patterns; those are skipped, since a pattern is not a word. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, TypeWhisper, Juno, and Vox.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does Spokenly run on Windows or iOS?</div>
+        <p class="faq-a">Yes, natively on macOS, Windows, Linux, and iOS. EnviousWispr is macOS only, on Apple Silicon.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What is Spokenly's MCP integration for?</div>
+        <p class="faq-a">Spokenly includes an MCP server that lets developer tools like Claude Code, Cursor, and Codex use it as a voice input tool. EnviousWispr does not offer an MCP integration; it works as an ordinary system-wide dictation tool in any text field, including a terminal running one of those same coding agents.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I switch from Spokenly to EnviousWispr easily?</div>
+        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Spokenly custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Related Comparisons -->
+<section class="section" aria-label="Related Comparisons" style="padding-top: 0;">
+  <div class="container">
+    <p style="font-size: 14px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Compare with other tools</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <a href="/compare/handy/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Handy</a>
+      <a href="/compare/fluidvoice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs FluidVoice</a>
+      <a href="/compare/juno/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Juno</a>
+      <a href="/compare/typewhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs TypeWhisper</a>
+      <a href="/compare/wisprflow/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs WisprFlow</a>
+      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Superwhisper</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Free. Open source. Nothing to take on trust.</h2>
+    <p class="reveal">Free to download. No account required. Every line of code is public.</p>
+    <div class="cta-actions reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="/" class="back-link">Back to Home</a>
+    </div>
+  </div>
+</section>
+
+</BaseLayout>

@@ -1,0 +1,762 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "EnviousWispr vs TypeWhisper: Free, Open Source Mac Dictation",
+  "description": "Compare EnviousWispr and TypeWhisper, two free, GPLv3, on-device Mac dictation apps with different approaches to AI cleanup and engine choice.",
+  "url": `${siteUrl}/compare/typewhisper/`,
+  "image": `${siteUrl}/og-image.png`,
+  "datePublished": "2026-08-21T20:00:00Z",
+  "dateModified": "2026-08-21T20:00:00Z",
+  "author": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": `${siteUrl}/authors/saurabh-vaish/`,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+  },
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Comparisons",
+      "item": `${siteUrl}/compare/`,
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "EnviousWispr vs TypeWhisper",
+      "item": `${siteUrl}/compare/typewhisper/`,
+    },
+  ],
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr free, like TypeWhisper?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. TypeWhisper's core app is free and open source under GPLv3, the same license we use, with core dictation, its speech engines, and its Workflows automation system all included at no cost. TypeWhisper also sells a Commercial license, starting around 5 EUR a month, that unlocks Cloud Folder Sync and Automatic Correction Learning and lets a business use it under non-GPL terms. EnviousWispr has no paid tier at all."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is EnviousWispr different from TypeWhisper?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Both are GPLv3, free at the core, and run on-device. TypeWhisper offers the widest engine choice we found in any competitor: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines on Windows, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and WhisperKit, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does TypeWhisper have AI cleanup like EnviousWispr's EG-1?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM (its changelog references OpenAI and Groq) for cleanup, translation, or formatting, plus a separate Dictionary Autocorrection feature reserved for its paid Commercial license. We could not confirm from TypeWhisper's public documentation whether a working cleanup workflow is pre-configured out of the box or needs to be set up. EG-1 is purpose-built for dictation cleanup, ships with the app, and needs no setup or prompt writing."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use EnviousWispr completely offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr open source like TypeWhisper?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, and under the same license. Both EnviousWispr and TypeWhisper's core app are licensed under the GNU General Public License v3 (GPLv3). TypeWhisper also offers a paid Commercial license for organizations that need non-GPL terms; EnviousWispr has no such tier and no non-GPL option."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I import my TypeWhisper custom words into EnviousWispr?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of TypeWhisper, without changing TypeWhisper's own files, and shows you every word it found before anything joins your library. Entries you switched off in TypeWhisper are skipped rather than imported, and per-word case sensitivity comes across for the entries that do; TypeWhisper's match-strictness setting does not. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, Spokenly, Juno, and Vox."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does TypeWhisper run on Windows?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, with its own dedicated Windows build, separate from the macOS app but sharing most of its features. EnviousWispr is macOS only, on Apple Silicon."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which speech engines does each app use?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, plus ONNX-based engines on Windows, with cloud engines available through add-ons."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I switch from TypeWhisper to EnviousWispr easily?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your TypeWhisper custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS."
+      }
+    }
+  ]
+});
+---
+
+<BaseLayout
+  title="TypeWhisper vs EnviousWispr: Free Mac Dictation, Both GPLv3"
+  description="Compare TypeWhisper and EnviousWispr, two free, GPLv3, on-device Mac dictation apps. TypeWhisper offers the widest engine choice; EnviousWispr ships a measured, purpose-built polish model."
+  activePage="compare"
+  ogImage="/og-image.png"
+  canonicalPath="/compare/typewhisper/"
+  ogType="article"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+/* ── Page Header ── */
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+.compare-table {
+  width: 100%; border-collapse: collapse; font-size: 15px;
+  min-width: 640px;
+}
+.compare-table thead th {
+  padding: 20px 24px; font-size: 16px; font-weight: 700;
+  text-align: left; border-bottom: 2px solid var(--border-hover);
+  background: rgba(248,245,255,0.5);
+}
+.compare-table thead th:first-child { width: 34%; }
+.compare-table thead th:nth-child(2) {
+  background: rgba(124,58,237,0.06);
+  color: var(--accent);
+}
+.compare-table tbody td {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  vertical-align: top; line-height: 1.55;
+}
+.compare-table tbody tr:last-child td { border-bottom: none; }
+.compare-table tbody td:first-child {
+  font-weight: 600; color: var(--text);
+}
+.compare-table tbody td:nth-child(2) {
+  background: rgba(124,58,237,0.02);
+}
+.compare-table tbody td:nth-child(3) {
+  color: var(--text-2);
+}
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── Deep Dive ── */
+.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.deep-dive-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 36px 32px;
+  position: relative; overflow: hidden;
+}
+.deep-dive-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
+.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
+.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
+.deep-dive-body p { margin-bottom: 12px; }
+.deep-dive-body p:last-child { margin-bottom: 0; }
+.deep-dive-detail {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
+  font-size: 13px; color: var(--text-2); line-height: 1.6;
+}
+.deep-dive-detail strong { color: var(--text); }
+@media (max-width: 900px) {
+  .deep-dive-grid { grid-template-columns: 1fr; }
+}
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<!-- Page Header -->
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge reveal">
+      <span class="vs-brand accent">EnviousWispr</span>
+      <span class="vs-circle">VS</span>
+      <span class="vs-brand">TypeWhisper</span>
+    </div>
+    <h1 class="reveal">Free and open source, like TypeWhisper. Ours needs no setup.</h1>
+    <p class="page-header-sub reveal">TypeWhisper's core app is GPLv3, the same license we use, and its free tier is genuinely generous: seven speech engines, Windows and Mac, and a build-your-own cleanup system called Workflows. EnviousWispr offers two engines, switched manually in Settings, and ships EG-1, a model built and measured specifically for dictation, with nothing to configure.</p>
+    <div class="hero-pills reveal">
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Free, no paid tier at all
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        No prompt to write, ever
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        0.61s median latency
+      </span>
+    </div>
+    <div class="hero-cta reveal">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+  </div>
+</header>
+
+<!-- Side-by-Side Table -->
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Side by Side</div>
+      <h2 class="section-title">Feature comparison</h2>
+      <p class="section-sub">An honest look at how the two tools stack up across the dimensions that matter most.</p>
+    </div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th scope="col"></th>
+            <th scope="col">EnviousWispr</th>
+            <th scope="col">TypeWhisper</th>
+          </tr>
+        </thead>
+        <!-- Evidence: TypeWhisper claims verified against typewhisper.com, typewhisper.com/en/pricing,
+             typewhisper.com/en/changelog, github.com/TypeWhisper/typewhisper-mac (GitHub API), and our
+             own Smart Import adapter (Sources/EnviousWisprPostProcessing/SmartImportSource.swift) on
+             2026-08-21.
+             Sources:
+               - typewhisper.com (accessed 2026-08-21): free core under GPLv3, engines (WhisperKit,
+                 Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech on Mac; ONNX-based on
+                 Windows; cloud engines via add-ons), Workflows (configurable LLM cleanup/translation/
+                 formatting, referenced providers include OpenAI and Groq), Dictionary Autocorrection
+                 (Commercial-tier only, learns from confident single-word user edits), live preview engine
+                 override (changelog entry, macOS v1.6.0-daily.20260729).
+               - typewhisper.com/en/pricing (accessed 2026-08-21): Free/GPLv3 core; Commercial Individual
+                 from EUR 5/mo or EUR 99 one-time (Cloud Folder Sync, Automatic Correction Learning,
+                 non-GPL terms, up to 3 devices); Team from EUR 19/mo; Enterprise from EUR 99/mo.
+               - github.com/TypeWhisper/typewhisper-mac (GitHub API, accessed 2026-08-21): GPLv3 license,
+                 1,717 stars.
+             Confidence: source-verified from TypeWhisper's own site, pricing page, changelog, and GitHub
+             repo. We could NOT confirm from public documentation whether a Workflow ships pre-configured
+             for cleanup out of the box, or requires the user to build one; this page does not assert
+             either way. TypeWhisper was not tested firsthand. Last verified: 2026-08-21. -->
+        <tbody>
+          <tr>
+            <td>Price (core app)</td>
+            <td><span class="table-highlight">Free. No paid tier at all.</span></td>
+            <td>Free (GPLv3). Paid Commercial license from EUR 5/mo unlocks non-GPL terms, Cloud Folder Sync, and Automatic Correction Learning.</td>
+          </tr>
+          <tr>
+            <td>Account required</td>
+            <td><span class="table-check">No</span></td>
+            <td><span class="table-check">No</span></td>
+          </tr>
+          <tr>
+            <td>Source code</td>
+            <td><span class="table-highlight"><a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Open source</a></span> (GPLv3)</td>
+            <td>Open source (GPLv3, core)</td>
+          </tr>
+          <tr>
+            <td>Speech engines</td>
+            <td><span class="table-highlight">Parakeet TDT v3 + WhisperKit</span>, switch in Settings</td>
+            <td><span class="table-check">Seven options</span>: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, plus ONNX-based engines on Windows</td>
+          </tr>
+          <tr>
+            <td>AI cleanup (after transcription)</td>
+            <td><span class="table-highlight">EG-1</span>, purpose-built and measured, ships ready</td>
+            <td>Workflows: configurable, sends your transcript through an LLM you set up (OpenAI, Groq referenced)</td>
+          </tr>
+          <tr>
+            <td>Needs a prompt to be written</td>
+            <td><span class="table-check">No</span></td>
+            <td>Not confirmed either way from public documentation</td>
+          </tr>
+          <tr>
+            <td>Learns your corrections automatically</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, Dictionary Autocorrection, Commercial license only</td>
+          </tr>
+          <tr>
+            <td>Live preview while speaking</td>
+            <td><span class="table-check">Yes</span>, off by default</td>
+            <td><span class="table-check">Yes</span>, live preview engine override</td>
+          </tr>
+          <tr>
+            <td>Recover a cancelled dictation</td>
+            <td><span class="table-highlight">Yes</span> (Escape Recovery, opt-in, keybind/triple-press cancel only)</td>
+            <td>Not documented</td>
+          </tr>
+          <tr>
+            <td>Custom vocabulary</td>
+            <td><span class="table-check">Yes</span> (imports from 8 other apps, TypeWhisper included)</td>
+            <td><span class="table-check">Yes</span>, with per-word case sensitivity and enable/disable state</td>
+          </tr>
+          <tr>
+            <td>Transcription latency</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td>Not published</td>
+          </tr>
+          <tr>
+            <td>Platform support</td>
+            <td>macOS (Apple Silicon only)</td>
+            <td><span class="table-check">macOS and Windows</span>, dedicated builds for each</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">TypeWhisper claims sourced from typewhisper.com, its pricing page, its changelog, and the GitHub API. TypeWhisper was not tested firsthand. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <div style="text-align: center; margin-top: 28px;">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Why EnviousWispr -->
+<section class="section" aria-label="Advantages">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill green">Why EnviousWispr</div>
+      <h2 class="section-title">Both are free and GPLv3. Here is what EnviousWispr adds</h2>
+      <p class="section-sub">TypeWhisper's free tier is unusually generous. This is what separates the two apps beyond that.</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🧹</div>
+        <div class="advantage-title">Nothing to configure</div>
+        <p class="advantage-desc">EG-1 ships fine-tuned specifically for dictation cleanup and runs on the same hotkey as transcription, with no prompt to write. TypeWhisper's Workflows are genuinely flexible, and can send your transcript through a provider like OpenAI or Groq; we could not confirm from public documentation whether a working cleanup Workflow ships pre-configured or needs to be built.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📊</div>
+        <div class="advantage-title">Cleanup we measure and publish</div>
+        <p class="advantage-desc">EG-1 builds a real bulleted list out of a spoken list 83% of the time, up from under 1% before it was tuned, and correctly keeps only what you meant when you self-correct mid-sentence 78% of the time. We found no equivalent published benchmark for a TypeWhisper Workflow, since results depend on which provider and prompt you set up.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">↩️</div>
+        <div class="advantage-title">Undo an accidental cancel</div>
+        <p class="advantage-desc">Escape Recovery keeps a dictation you cancel with your keybind or a triple press, instead of discarding it instantly. Off by default; you choose to turn it on. We found no equivalent documented for TypeWhisper.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">💵</div>
+        <div class="advantage-title">No paid tier, period</div>
+        <p class="advantage-desc">TypeWhisper's GPLv3 core is free, but Cloud Folder Sync, Automatic Correction Learning, and non-GPL terms sit behind a Commercial license starting around EUR 5/mo. EnviousWispr has no paid tier of any kind.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🌍</div>
+        <div class="advantage-title">Filler-word removal that respects other languages</div>
+        <p class="advantage-desc">Built-in filler-word removal runs before AI polish, and it is language-aware: with your language locked to German, Dutch, Danish, or Norwegian in Settings, it keeps real words like "er" and "um" instead of stripping them as English filler.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📥</div>
+        <div class="advantage-title">Bring your words across from TypeWhisper</div>
+        <p class="advantage-desc">Smart Import reads your custom vocabulary straight out of TypeWhisper's own files, without changing them, and shows you every word before anything joins your library. No retyping.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy Deep Dive -->
+<section class="section" aria-label="Privacy Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill cyan">Privacy</div>
+      <h2 class="section-title">Where does your voice go?</h2>
+      <p class="section-sub">Both apps process your voice on your Mac by default. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+    </div>
+    <div class="privacy-split">
+      <div class="privacy-card ew reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          EnviousWispr
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is processed on-device: the Apple Neural Engine for Parakeet, the Apple GPU for WhisperKit, depending on which you've selected. Nothing is uploaded.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>AI polish runs locally by default (EG-1 or Apple Intelligence). If you choose a cloud provider instead, your transcript, custom words, and the app you're dictating into are sent, with your own key. Audio is never sent, either way.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Polished text is pasted and saved to your local History, on your Mac only. Audio is discarded.</div>
+        </div>
+      </div>
+      <div class="privacy-card wf reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          TypeWhisper
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's or PC's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is transcribed on-device with your chosen engine, one of seven on offer.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>If you have configured a Workflow with a cloud provider, your transcript is sent there with your own key. Local-only engines and workflows keep everything on your machine.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Text is pasted into the app you were working in.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Speed Section -->
+<section class="section" aria-label="Speed">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill amber">Speed</div>
+      <h2 class="section-title">Parakeet TDT: built for speed</h2>
+      <p class="section-sub">EnviousWispr uses NVIDIA Parakeet TDT v3, a multilingual ASR model covering 25 European languages that runs natively on the Apple Neural Engine. No network dependency, no server queues.</p>
+    </div>
+    <div class="speed-stats">
+      <div class="speed-card reveal">
+        <div class="speed-value">0.61s</div>
+        <div class="speed-label">Median transcription</div>
+        <div class="speed-detail">From end of speech to raw text</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">1.65s</div>
+        <div class="speed-label">With AI polish</div>
+        <div class="speed-detail">EG-1 or Apple, on-device</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">0ms</div>
+        <div class="speed-label">Network overhead</div>
+        <div class="speed-detail">Immune to bad Wi-Fi</div>
+      </div>
+    </div>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings. TypeWhisper does not publish comparable latency figures.</p>
+  </div>
+</section>
+
+<!-- Deep Dive: Technical Advantages -->
+<section class="section" aria-label="Technical Deep Dives">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Under the Hood</div>
+      <h2 class="section-title">A toolkit, or a finished tool</h2>
+      <p class="section-sub">TypeWhisper gives you the pieces to build the dictation setup you want. EnviousWispr hands you one that already works.</p>
+    </div>
+    <div class="deep-dive-grid">
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🔀</div>
+        <div class="deep-dive-title">Seven engines, or two you switch between</div>
+        <div class="deep-dive-body">
+          <p>TypeWhisper's engine list is the widest we found in any dictation app: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, with ONNX-based engines added on Windows. If you want to compare engines directly, or you have a strong preference for one, that choice is real.</p>
+          <p>EnviousWispr runs two: Parakeet TDT v3 for the 25 languages it covers best, WhisperKit for the rest. There is no larger menu; you switch between the two in Settings, Transcription.</p>
+          <div class="deep-dive-detail">
+            <strong>Why it matters:</strong> Power users and anyone who wants a specific model, or Windows support, get more from TypeWhisper today. Anyone who wants one setup that already works gets that from EnviousWispr.
+          </div>
+        </div>
+      </div>
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🧩</div>
+        <div class="deep-dive-title">A configurable automation system, versus a model we tuned</div>
+        <div class="deep-dive-body">
+          <p>TypeWhisper's Workflows are a genuine automation system: cleanup, translation, extraction, and formatting steps, referencing providers like OpenAI and Groq in its own changelog, included free. That flexibility is real. We could not confirm from public documentation whether a working cleanup Workflow is ready by default or needs to be configured first.</p>
+          <p>EG-1 is a single model, fine-tuned by us specifically for the problem of turning spoken dictation into clean text, shipped with the app, with results we measure and publish. It runs on the same hotkey as transcription with nothing to configure.</p>
+          <div class="deep-dive-detail">
+            <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Fair Acknowledgment -->
+<section class="section" aria-label="Where TypeWhisper Wins">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Being Honest</div>
+      <h2 class="section-title">Choose TypeWhisper if any of this matters more to you</h2>
+      <p class="section-sub">TypeWhisper's free tier is unusually generous, and its flexibility is real. It may be the better fit here:</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🖥️</div>
+        <div class="advantage-title">You need Windows</div>
+        <p class="advantage-desc">TypeWhisper has a dedicated Windows build. EnviousWispr is macOS only.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎚️</div>
+        <div class="advantage-title">You want to choose your own speech engine</div>
+        <p class="advantage-desc">Seven engines to pick from, including specialized ones like Qwen3 ASR and IBM Granite Speech. EnviousWispr offers two, switched manually in Settings.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🧠</div>
+        <div class="advantage-title">You want automatic correction learning</div>
+        <p class="advantage-desc">TypeWhisper's Commercial license adds Dictionary Autocorrection, which learns from your confident manual edits and applies them going forward. We do not offer an equivalent.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🧩</div>
+        <div class="advantage-title">You want to build your own cleanup pipeline</div>
+        <p class="advantage-desc">Workflows let you wire up your own provider, prompt, and automation steps, including translation and app-specific behavior. If that flexibility is what you are after, EG-1's single tuned model will not give it to you.</p>
+      </div>
+    </div>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want the widest engine choice, need Windows, or want the flexibility to build your own cleanup workflow, TypeWhisper is a strong pick. If you want a purpose-built polish model with a published, measured track record, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">FAQ</div>
+      <h2 class="section-title">Common questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr free, like TypeWhisper?</div>
+        <p class="faq-a">Yes. TypeWhisper's core app is free and open source under GPLv3, the same license we use, with core dictation, its speech engines, and its Workflows automation system all included at no cost. TypeWhisper also sells a Commercial license, starting around 5 EUR a month, that unlocks Cloud Folder Sync and Automatic Correction Learning and lets a business use it under non-GPL terms. EnviousWispr has no paid tier at all.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">How is EnviousWispr different from TypeWhisper?</div>
+        <p class="faq-a">Both are GPLv3, free at the core, and run on-device. TypeWhisper offers the widest engine choice we found in any competitor: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines on Windows, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and WhisperKit, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does TypeWhisper have AI cleanup like EnviousWispr's EG-1?</div>
+        <p class="faq-a">TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM (its changelog references OpenAI and Groq) for cleanup, translation, or formatting, plus a separate Dictionary Autocorrection feature reserved for its paid Commercial license. We could not confirm from TypeWhisper's public documentation whether a working cleanup workflow is pre-configured out of the box or needs to be set up. EG-1 is purpose-built for dictation cleanup, ships with the app, and needs no setup or prompt writing.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I use EnviousWispr completely offline?</div>
+        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr open source like TypeWhisper?</div>
+        <p class="faq-a">Yes, and under the same license. Both EnviousWispr and TypeWhisper's core app are licensed under the GNU General Public License v3 (GPLv3). TypeWhisper also offers a paid Commercial license for organizations that need non-GPL terms; EnviousWispr has no such tier and no non-GPL option.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I import my TypeWhisper custom words into EnviousWispr?</div>
+        <p class="faq-a">Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of TypeWhisper, without changing TypeWhisper's own files, and shows you every word it found before anything joins your library. Entries you switched off in TypeWhisper are skipped rather than imported, and per-word case sensitivity comes across for the entries that do; TypeWhisper's match-strictness setting does not. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, Spokenly, Juno, and Vox.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does TypeWhisper run on Windows?</div>
+        <p class="faq-a">Yes, with its own dedicated Windows build, separate from the macOS app but sharing most of its features. EnviousWispr is macOS only, on Apple Silicon.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Which speech engines does each app use?</div>
+        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, plus ONNX-based engines on Windows, with cloud engines available through add-ons.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I switch from TypeWhisper to EnviousWispr easily?</div>
+        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your TypeWhisper custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Related Comparisons -->
+<section class="section" aria-label="Related Comparisons" style="padding-top: 0;">
+  <div class="container">
+    <p style="font-size: 14px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Compare with other tools</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <a href="/compare/handy/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Handy</a>
+      <a href="/compare/fluidvoice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs FluidVoice</a>
+      <a href="/compare/juno/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Juno</a>
+      <a href="/compare/spokenly/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Spokenly</a>
+      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Superwhisper</a>
+      <a href="/compare/voiceink/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs VoiceInk</a>
+      <a href="/compare/wisprflow/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs WisprFlow</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Free, GPLv3, and nothing to configure.</h2>
+    <p class="reveal">Free to download. No account required, no paid tier, no workflow to build.</p>
+    <div class="cta-actions reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="/" class="back-link">Back to Home</a>
+    </div>
+  </div>
+</section>
+
+</BaseLayout>
