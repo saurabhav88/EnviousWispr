@@ -70,6 +70,8 @@ cd "$PROJECT_ROOT"
 # cannot be tested without one.
 LOG_DIR="$(ew_resolve_log_dir "$PROJECT_ROOT" "$LOG_DIR")"
 mkdir -p "$LOG_DIR"   # absent on a clean checkout
+APP_LOG_DIR="$LOG_DIR/app-logger"
+mkdir -p "$APP_LOG_DIR"
 
 # Generate the Xcode project (gitignored, never committed) — only when a
 # generation input actually changed (#2157 chunk C).
@@ -87,7 +89,10 @@ RESULT_BUNDLE_ARGS=()
 run_lane() {  # $1=scheme  $2=config  $3=logfile  $4...=extra build settings
   local scheme="$1" config="$2" log="$3"; shift 3
   set -o pipefail
-  xcodebuild test \
+  # Xcode forwards TEST_RUNNER_* variables to the test process after removing
+  # the prefix. This keeps AppLogger tests away from the running dev app's
+  # ~/Library/Logs/EnviousWispr/app.log (#2279).
+  TEST_RUNNER_EW_APP_LOG_DIRECTORY="$APP_LOG_DIR" xcodebuild test \
     -project "$PROJECT" \
     -scheme "$scheme" \
     -configuration "$config" \

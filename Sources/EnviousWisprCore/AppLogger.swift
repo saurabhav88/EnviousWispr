@@ -41,10 +41,13 @@ public actor AppLogger {
     private let maxFileSize: Int = 10 * 1024 * 1024
     private let maxFileCount: Int = 5
 
-    private var logDirectory: URL {
-      let lib = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-      return lib.appendingPathComponent("Logs/EnviousWispr", isDirectory: true)
-    }
+    /// Test lanes receive a private directory through Xcode's `TEST_RUNNER_`
+    /// environment forwarding. Normal app launches have no override and keep
+    /// writing to the user's standard debug-log directory.
+    private let logDirectory = AppLogger.resolveLogDirectory(
+      environment: ProcessInfo.processInfo.environment,
+      libraryDirectory: FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+    )
     private var currentLogURL: URL { logDirectory.appendingPathComponent("app.log") }
     private var fileHandle: FileHandle?
 
@@ -148,6 +151,17 @@ public actor AppLogger {
   }
 
   #if DEBUG
+    package static func resolveLogDirectory(
+      environment: [String: String], libraryDirectory: URL
+    ) -> URL {
+      if let override = environment["EW_APP_LOG_DIRECTORY"],
+        !override.isEmpty,
+        (override as NSString).isAbsolutePath
+      {
+        return URL(fileURLWithPath: override, isDirectory: true).standardizedFileURL
+      }
+      return libraryDirectory.appendingPathComponent("Logs/EnviousWispr", isDirectory: true)
+    }
 
     // MARK: - File management (debug-only)
 

@@ -31,11 +31,9 @@ THE CONTROLS, none of which are optional — each exists because a real run got 
        mutation is registered outside the try/finally and restored from a signal handler.
     7. THE LANE IS BOUNDED. A mutation that removes a completion or cancellation path can hang the
        suite; unbounded, the battery parks all night and never restores. A timeout is a row ERROR.
-    8. NO DEV APP MAY BE RUNNING. Concurrent writes to the app log corrupt the AppLogger tests, and
-       those failures score as mutants CAUGHT when nothing detected the sabotage (#2080) — it fails
-       toward CONFIDENCE, so it is a refusal rather than a warning.
-    9. THE CANONICAL BUILD SETTINGS MUST NOT HAVE DRIFTED. This runner reproduces `xcode-test.sh`'s
-       invocation rather than calling it; the guard is the price, and #2165 is the plan to delete both.
+    8. TEST LOGS ARE PRIVATE TO EACH LANE. The canonical entry point gives the test process its own
+       AppLogger directory, so a running dev app cannot corrupt a test receipt and falsely score a
+       mutant as CAUGHT (#2279).
 
 WHAT IT CANNOT DO, stated so nobody reads a green report as more than it is
     A battery only ever tries the mutations its author imagined. It proves a test fires on the shapes
@@ -92,21 +90,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-
-# The dev app writes to ~/Library/Logs/EnviousWispr/app.log. AppLogger tests write a marker there and
-# read it back; a second concurrent writer breaks UTF-8 boundaries, the read returns empty, and ~6
-# tests fail on a diff that touches no logging code (#2080). Inside a battery that scores as a mutant
-# CAUGHT when nothing detected the sabotage — it fails toward CONFIDENCE, which is the direction
-# nothing prompts you to check. So this is a refusal, not a warning.
-# Overridable ONLY so the self-test is not machine-wide. The check is a `pgrep` across the whole box,
-# so without a seam every case in the suite fails whenever ANY session has a dev app open — which
-# happened mid-run the night this was written, and produced a suite that half passed and half refused.
-# The DEFAULT is the real pattern, so an unset environment is the safe one; the override can only make
-# the check look at something else, never skip it, and it announces itself when used. Contrast #2145,
-# where a convenience DEFAULT silently reconnected an injected seam to production — the direction
-# matters more than the presence of a seam.
-DEV_APP_PATTERN = os.environ.get(
-    "EW_BATTERY_DEV_APP_PATTERN", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr")
 
 TEST_COUNT_RE = re.compile(r"Test run with (\d+) test")
 # Swift Testing prints ✘ for a KNOWN issue too, and the lane still exits 0. A test wrapped in
@@ -780,59 +763,8 @@ def check_canonical_entrypoint(worktree: Path):
         )
 
 
-class _ProbeFailed(Exception):
-    """The dev-app probe could not answer. NOT the same as answering 'none running'."""
-
-
-def dev_app_pids(worktree: Path):
-    """Live pids, for the per-row recheck. Preflight raises; a mid-run appearance fails only that row.
-
-    `pgrep` exits 0 for a match, 1 for NO MATCH, and 2 or more when the probe itself failed — a bad
-    pattern, for instance. Folding that third answer into "none running" is fail-OPEN on a guard whose
-    entire job is to stop a corrupted log scoring as a mutant CAUGHT: the battery would proceed
-    believing the machine is clear when it does not know. Three-valued tool, two-valued caller.
-    """
-    rc, out = run(["pgrep", "-f", DEV_APP_PATTERN], cwd=worktree)
-    if rc > 1:
-        raise _ProbeFailed(
-            f"the dev-app probe failed (pgrep exited {rc}). It cannot be read as 'no dev app is "
-            f"running' — that is the probe's third answer, not its second. Pattern: "
-            f"{DEV_APP_PATTERN!r}"
-        )
-    return out.split() if rc == 0 and out.strip() else []
-
-
-def check_no_dev_app(worktree: Path):
-    """Its own function so the self-test can drive it directly rather than through every case."""
-    if DEV_APP_PATTERN != "EnviousWispr Local.app/Contents/MacOS/EnviousWispr":
-        print(f"NOTE: dev-app check is using a non-default pattern: {DEV_APP_PATTERN!r}",
-              file=sys.stderr)
-    try:
-        running = dev_app_pids(worktree)
-    except _ProbeFailed as exc:
-        raise Refusal(str(exc))
-    if running:
-        out = " ".join(running)
-        raise Refusal(
-            "A dev app is running. Its writes to ~/Library/Logs/EnviousWispr/app.log corrupt the\n"
-            "AppLogger tests, and those failures score as mutants CAUGHT when nothing detected the\n"
-            "sabotage (#2080). Stop every dev instance across ALL worktrees and re-run.\n"
-            f"  pids: {' '.join(out.split())}"
-        )
-
-
-def preflight(worktree: Path, *, will_run_tests: bool = True):
-    """`will_run_tests=False` for --validate-only, which runs no lane and mutates nothing.
-
-    The dev-app refusal exists because concurrent app-log writes corrupt the AppLogger tests and score
-    as mutants CAUGHT (#2080). That reasoning is entirely about RUNNING tests, so applying it to a
-    validation pass refuses a read-only check for a condition that cannot affect it — measured the first
-    time a peer's UAT app blocked a recipe validation that touches nothing. Scope a guard to the
-    situation its reasoning covers; a guard that refuses more than its reason supports trains bypasses.
-    """
+def preflight(worktree: Path):
     check_canonical_entrypoint(worktree)
-    if will_run_tests:
-        check_no_dev_app(worktree)
     # Case-insensitive: the preflight glob is case-SENSITIVE but the default APFS volume is not, so a
     # `.MUTBAK` would be invisible here and then silently overwritten and unlinked by a row.
     leftovers = [q for q in worktree.rglob("*") if q.suffix.lower() == ".mutbak"]
@@ -1225,7 +1157,7 @@ def main(argv=None):
     print(f"branch:   {branch.strip()} @ {head.strip()[:12]}")
 
     try:
-        preflight(worktree, will_run_tests=not args.validate_only)
+        preflight(worktree)
         if args.from_issue is not None:
             print(f"recipe:   issue #{args.from_issue}")
             rows = load_recipes(None, worktree, raw=recipes_from_issue(args.from_issue, worktree))
@@ -1316,19 +1248,6 @@ def main(argv=None):
         tag = f"row{i:02d}"
         backup = backup_path(worktree, tag, target)
         verdict, detail = "ERROR", "did not run"
-        # Preflight is a SNAPSHOT and a battery is long — an overnight run is the whole point of this
-        # tool. A dev app that starts after preflight and stops before the closing baseline corrupts
-        # the AppLogger tests only DURING a mutant, producing a false CAUGHT: the sabotage is credited
-        # with a failure something else caused. That fails toward CONFIDENCE, so it is rechecked per
-        # row rather than once. Cloud review, PR #2158.
-        intruders = dev_app_pids(worktree)
-        if intruders:
-            detail = (f"a dev app appeared mid-run (pids {' '.join(intruders)}) — its app.log writes "
-                      f"corrupt the AppLogger tests, which scores as CAUGHT when nothing detected the "
-                      f"sabotage. Stop it and re-run this row.")
-            print(f"  [ ERR  ] row {i}: {row['label']}\n           {detail}")
-            results.append(("ERROR", row["label"], detail))
-            continue
         backup.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(target, backup)
         _ACTIVE_RESTORES[target] = backup

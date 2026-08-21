@@ -30,18 +30,9 @@ VALID_ROW = {
 failures = []
 ran = 0
 
-# A pattern that matches no process. The dev-app check is a machine-wide `pgrep`, so without this the
-# whole suite fails whenever any session has a dev app open — which is a property of the box, not of
-# the code under test. The real check gets its own two-way case below, driven directly.
 import os as _os_env  # noqa: E402
 
-NEUTRAL_PATTERN = "ew-battery-self-test-matches-nothing"
-NEUTRAL_ENV = dict(_os_env.environ, EW_BATTERY_DEV_APP_PATTERN=NEUTRAL_PATTERN)
-# Set it in THIS process too, before the module is imported below. The subprocess cases get NEUTRAL_ENV
-# explicitly; the in-process cases read the module's own DEV_APP_PATTERN, which is resolved at import.
-# Without this the stubbed-lane rows fail whenever any session on the box has a dev app open — measured
-# exactly that way when a peer took the slot mid-suite.
-_os_env.environ["EW_BATTERY_DEV_APP_PATTERN"] = NEUTRAL_PATTERN
+NEUTRAL_ENV = dict(_os_env.environ)
 
 
 # A runnable entry point is the only preflight contract: the battery delegates every build setting to it.
@@ -305,10 +296,6 @@ import importlib.util  # noqa: E402
 _spec = importlib.util.spec_from_file_location("battery", BATTERY)
 battery = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(battery)
-# Same reason as NEUTRAL_ENV, for the in-process cases: the dev-app check is about the machine, and
-# every case that is not ABOUT it should not consult it. Its own case restores this and drives it.
-_REAL_CHECK_NO_DEV_APP = battery.check_no_dev_app
-battery.check_no_dev_app = lambda worktree: None
 
 
 def check_fence(name, body, *, expect_blocks):
@@ -626,29 +613,6 @@ with _t3.TemporaryDirectory() as td:
     else:
         print("  ok  a restored file is stamped NOW, so the next build cannot reuse mutant objects")
 
-# Preflight is a snapshot; an overnight battery is long. A dev app that starts after preflight and
-# stops before the closing baseline corrupts the AppLogger tests only DURING a mutant, which credits
-# the sabotage with a failure something else caused — a false CAUGHT, failing toward confidence.
-ran += 1
-_real_pids = battery.dev_app_pids
-battery.dev_app_pids = lambda wt: ["99999"]
-try:
-    rc, out, after, during = drive_row((5, [], True, "log", 0, 3.0, None),
-                                       expect_verdict=None, expect_detail=None)
-    problems = []
-    if "ERR" not in out or "appeared mid-run" not in out:
-        problems.append(f"row should ERROR naming the intruder; got: {out.strip()[:200]}")
-    if rc != 1:
-        problems.append(f"exit {rc}, wanted 1")
-    if after != ORIGINAL:
-        problems.append(f"file not restored: {after!r}")
-    if problems:
-        failures.append("a dev app appearing mid-run fails that row: " + "; ".join(problems))
-    else:
-        print("  ok  a dev app appearing mid-run fails that row")
-finally:
-    battery.dev_app_pids = _real_pids
-
 check_row("the file is restored even when the lane raises mid-row",
           None, expect_marker="ERR", expect_rc=1, raise_instead=RuntimeError("lane exploded"))
 
@@ -950,28 +914,6 @@ finally:
     for s_, h in _prev.items():
         _sig.signal(s_, h)
 
-# The dev-app check itself, driven directly. A concurrent dev app corrupts the AppLogger tests, and
-# those failures score as mutants CAUGHT when nothing detected the sabotage (#2080) — it fails toward
-# CONFIDENCE, so it is a refusal rather than a warning, and it needs to be proven both ways.
-for _label, _rc, _out, _want in [
-    ("a running dev app refuses the whole run", 0, "43962\n", True),
-    ("no dev app lets the run proceed", 1, "", False),
-]:
-    ran += 1
-    _real_run2 = battery.run
-    battery.run = lambda cmd, cwd, log_path=None, timeout=None, _r=_rc, _o=_out: (_r, _o)
-    try:
-        _REAL_CHECK_NO_DEV_APP(Path("."))
-        _refused = False
-    except battery.Refusal as exc:
-        _refused = "A dev app is running" in str(exc)
-    finally:
-        battery.run = _real_run2
-    if _refused != _want:
-        failures.append(f"{_label}: refused={_refused}, wanted {_want}")
-    else:
-        print(f"  ok  {_label}")
-
 # The runner invokes the executable command and gives it the filtered suite, isolated log directory,
 # result-bundle path, and derived-data environment instead of owning a second xcodebuild argument list.
 ran += 1
@@ -1033,41 +975,6 @@ elif _seen.get("derived") != _probe:
                     f"used {_seen.get('derived')!r} instead of {_probe!r}")
 else:
     print("  ok  the battery honours DERIVED_DATA_PATH like the canonical lane")
-
-# The dev-app refusal exists because concurrent app-log writes corrupt the AppLogger tests. That
-# reasoning is entirely about RUNNING tests, so a validation pass — which runs no lane and mutates
-# nothing — must not be refused for a condition that cannot affect it. Measured when a peer's UAT app
-# blocked a read-only recipe check.
-for _label, _will_run, _want_refusal in [
-    ("a run that WILL execute tests still refuses while a dev app is up", True, True),
-    ("a validate-only pass is NOT refused for a dev app it cannot be affected by", False, False),
-]:
-    ran += 1
-    _real_run3 = battery.run
-    # Report a live dev app whatever is asked, so the only variable is whether preflight consults it.
-    battery.run = lambda cmd, cwd, log_path=None, timeout=None: (0, "43962\n")
-    _real_canon = battery.check_canonical_entrypoint
-    battery.check_canonical_entrypoint = lambda wt: None
-    # The suite neutralises check_no_dev_app globally (line ~347) so unrelated cases do not depend on
-    # what else is running on the box. This case is ABOUT that check, so put the real one back.
-    _neutralised = battery.check_no_dev_app
-    battery.check_no_dev_app = _REAL_CHECK_NO_DEV_APP
-    try:
-        with tempfile.TemporaryDirectory() as td:
-            _tmp = make_tree(Path(td))
-            try:
-                battery.preflight(_tmp, will_run_tests=_will_run)
-                _got = False
-            except battery.Refusal as exc:
-                _got = "A dev app is running" in str(exc)
-    finally:
-        battery.run = _real_run3
-        battery.check_canonical_entrypoint = _real_canon
-        battery.check_no_dev_app = _neutralised
-    if _got != _want_refusal:
-        failures.append(f"{_label}: refused={_got}, wanted {_want_refusal}")
-    else:
-        print(f"  ok  {_label}")
 
 # Swift Testing prints ✘ for a KNOWN issue and the lane still exits 0. A test wrapped in
 # `withKnownIssue` is explicitly configured NOT to go red, so crediting it with detecting a mutation
@@ -1716,34 +1623,6 @@ elif "timed out after" not in _body:
                     "marker was not written at all")
 else:
     print("  ok  a timeout appends to the lane log rather than overwriting it")
-
-# `pgrep` exits 0 for a match, 1 for NO MATCH, and 2+ when the probe itself failed. Folding that third
-# answer into "none running" is fail-OPEN on a guard whose whole job is to stop a corrupted log scoring
-# as a mutant CAUGHT — the battery would proceed believing the machine is clear when it does not know.
-for _label, _rc, _want_refusal in [
-    ("a failed dev-app probe refuses rather than reading as clear", 2, True),
-    ("no match from the dev-app probe proceeds normally", 1, False),
-]:
-    ran += 1
-    _real_run6 = battery.run
-    battery.run = lambda cmd, cwd, log_path=None, timeout=None, _r=_rc: (_r, "")
-    _neutralised2 = battery.check_no_dev_app
-    battery.check_no_dev_app = _REAL_CHECK_NO_DEV_APP
-    try:
-        _REAL_CHECK_NO_DEV_APP(Path("."))
-        _got = False
-    except battery.Refusal as exc:
-        _got = "probe failed" in str(exc)
-    except Exception as exc:
-        _got = False
-        failures.append(f"{_label} — raised {type(exc).__name__} instead of Refusal")
-    finally:
-        battery.run = _real_run6
-        battery.check_no_dev_app = _neutralised2
-    if _got != _want_refusal:
-        failures.append(f"{_label}: refused={_got}, wanted {_want_refusal}")
-    else:
-        print(f"  ok  {_label}")
 
 # --- the operator-facing summary ------------------------------------------------
 # Nothing rendered this block before: it was declared inside `main()`, after a full
