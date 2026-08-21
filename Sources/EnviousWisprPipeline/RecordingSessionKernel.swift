@@ -3063,7 +3063,8 @@ final class RecordingSessionKernel {
       telemetryState.transcriptionFailureError = error
       processed = KernelFinalizationWiring.emptyOutputRecoveryFloor(
         deterministicText: "",
-        rawASR: asrText
+        rawASR: asrText,
+        language: sessionConfig?.lockedLanguageCode
       )
     }
     guard isCurrent(sid) else { return }
@@ -4345,12 +4346,7 @@ final class RecordingSessionKernel {
     -> TranscriptionOptions
   {
     var options = TranscriptionOptions()
-    switch config.languageMode {
-    case .auto:
-      options.language = nil
-    case .locked(let code):
-      options.language = code
-    }
+    options.language = config.lockedLanguageCode
     return options
   }
 

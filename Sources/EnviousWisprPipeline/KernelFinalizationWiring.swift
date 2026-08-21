@@ -357,10 +357,7 @@ struct KernelFinalizationWiring {
       // wire above.
       steps.inverseTextNormalization.backendSupportsLID =
         adapter.capabilities.supportsLanguageDetection
-      let language: String? = {
-        if case .locked(let code) = context.config?.languageMode { return code }
-        return nil
-      }()
+      let language: String? = context.config?.lockedLanguageCode
       let start = CFAbsoluteTimeGetCurrent()
       // #145: ITN runs BEFORE polish so it doubles as the raw-fallback floor —
       // polish-rejected/disabled both deliver the post-ITN text.
@@ -440,7 +437,8 @@ struct KernelFinalizationWiring {
       if !(ctx.polishedText ?? ctx.text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         return ctx.polishedText ?? ctx.text  // unchanged happy path
       }
-      let floor = Self.emptyOutputRecoveryFloor(deterministicText: ctx.text, rawASR: raw)
+      let floor = Self.emptyOutputRecoveryFloor(
+        deterministicText: ctx.text, rawASR: raw, language: language)
       if !floor.isEmpty {
         outcome.rawText = floor
         outcome.polishedText = nil  // the "" polish never persists; History == clipboard
@@ -676,10 +674,7 @@ struct KernelFinalizationWiring {
         // built to prevent (cloud review, PR #1802).
         // Every `@MainActor` input, snapshotted BEFORE the `@Sendable` deadline
         // operation, which cannot reach a `@MainActor` seam.
-        let lockedLanguageCode: String? = {
-          if case .locked(let code) = context.config?.languageMode { return code }
-          return nil
-        }()
+        let lockedLanguageCode: String? = context.config?.lockedLanguageCode
         let engineDetectsLanguage = adapter.capabilities.supportsLanguageDetection
         let engineReportedLanguage = adapter.lastResult?.language
         // The caret windows we already read. A short mid-sentence continuation
@@ -1070,10 +1065,12 @@ struct KernelFinalizationWiring {
   /// floor is never desired (founder directive 2026-07-11). Pure + `@MainActor`
   /// (the filler classifier reads the shared regex). Tested parametrically.
   @MainActor
-  static func emptyOutputRecoveryFloor(deterministicText: String, rawASR: String) -> String {
+  static func emptyOutputRecoveryFloor(
+    deterministicText: String, rawASR: String, language: String?
+  ) -> String {
     let deterministicFloor = deterministicText.trimmingCharacters(in: .whitespacesAndNewlines)
     if !deterministicFloor.isEmpty { return deterministicFloor }
-    if TextLexicalContent.hasLexicalContentAfterRemovingFillers(rawASR) {
+    if TextLexicalContent.hasLexicalContentAfterRemovingFillers(rawASR, language: language) {
       return rawASR.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     return ""

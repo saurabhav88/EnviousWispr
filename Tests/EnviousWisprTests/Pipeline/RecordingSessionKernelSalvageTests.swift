@@ -48,7 +48,8 @@ struct ExhaustedRetrySpoolDeletionTests {
     #expect(deletesRecoverySpool(.failed(.asrFailed)))
   }
 
-  @Test("a retry left at .attempted (timeout/cancel) deletes as plain .failed (#1755 founder override)")
+  @Test(
+    "a retry left at .attempted (timeout/cancel) deletes as plain .failed (#1755 founder override)")
   func attemptedOnlyRetryDeletesAsFailed() {
     // `.attempted` remains the honest diagnostic that no decode conclusion
     // was accepted; the founder's Gate 2 decision makes it delete anyway —
@@ -218,6 +219,30 @@ struct ExhaustedRetrySpoolDeletionTests {
       }
     }
 
+    /// Issue #2259: the SAME throw path, locked to German, with raw ASR that is
+    /// a bare filler token in English but a real German pronoun. Pre-fix this
+    /// caller passed no language to `emptyOutputRecoveryFloor`, so "Er" would
+    /// have been misread as pure filler and dropped to `.noSpeech` exactly like
+    /// the English "uh" case above. Fixed, it must behave like the LEXICAL
+    /// case: stored and delivered once.
+    @Test("a processText throw with German raw ASR (\"Er\") stores and delivers it, not no-speech")
+    func processTextThrowGermanLoneWordDelivers() async {
+      let (context, wrapper) = makeWrapper(behavior: .batchSuccess(text: "Er"))
+      wrapper.sessionConfigForTesting = .testDefault(languageMode: .locked("de"))
+      wrapper.testProcessTextThrows()
+      let kernel = wrapper.testKernel
+
+      await startRecording(context)
+      await context.sut.apply(.stop)
+      await wrapper.drainUntilConcluded()
+
+      #expect(wrapper.storedTexts == ["Er"], "storage receives the German raw ASR, not dropped")
+      #expect(context.paste.pasteAttempts == ["Er"])
+      #expect(kernel.deliveredTranscript == "Er")
+      #expect(kernel.recordingOutcome == .completed)
+      #expect(kernel.recordingOutcome != .noSpeech(.emptyAfterProcessing))
+    }
+
     // MARK: 1c. #1755 chunk 4 — #1709 salvage-cancelled breadcrumb (exact cell only)
 
     /// ONE synchronous MainActor test with no suspension points: the
@@ -227,7 +252,9 @@ struct ExhaustedRetrySpoolDeletionTests {
     /// real protection — a previously installed delegate survives; a truly
     /// concurrent writer to the same global could still race it, which this
     /// test cannot prevent.
-    @Test("the .asr + .cancelled floor cell emits exactly one asr_salvage_cancelled breadcrumb; siblings stay silent")
+    @Test(
+      "the .asr + .cancelled floor cell emits exactly one asr_salvage_cancelled breadcrumb; siblings stay silent"
+    )
     func asrSalvageCancelledBreadcrumbExactCellOnly() {
       nonisolated(unsafe) var matches: [[String: String]] = []
       let prior = SentryBreadcrumb.breadcrumbDelegate

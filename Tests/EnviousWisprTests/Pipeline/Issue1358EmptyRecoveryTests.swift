@@ -49,7 +49,20 @@ struct Issue1358EmptyRecoveryTests {
       ("1988", true), ("8", true), ("uh OK", true), ("hello there", true),
     ])
   func lexicalClassifier(input: String, expected: Bool) {
-    #expect(TextLexicalContent.hasLexicalContentAfterRemovingFillers(input) == expected)
+    #expect(
+      TextLexicalContent.hasLexicalContentAfterRemovingFillers(input, language: nil) == expected)
+  }
+
+  @Test(
+    "hasLexicalContentAfterRemovingFillers: a lone German pronoun is lexical content, not pure filler (#2259)"
+  )
+  func lexicalClassifierGermanLoneWord() {
+    // Pre-fix, "Er" alone would have been classified as no lexical content
+    // (the unconditional filler regex strips it) and dropped to `.noSpeech`.
+    #expect(TextLexicalContent.hasLexicalContentAfterRemovingFillers("Er", language: "de") == true)
+    #expect(TextLexicalContent.hasLexicalContentAfterRemovingFillers("Um", language: "de") == true)
+    // Untabled language: unchanged behavior, still pure filler.
+    #expect(TextLexicalContent.hasLexicalContentAfterRemovingFillers("Er", language: "fr") == false)
   }
 
   // MARK: emptyOutputRecoveryFloor (the pure floor decision)
@@ -70,7 +83,7 @@ struct Issue1358EmptyRecoveryTests {
   func recoveryFloor(deterministicText: String, rawASR: String, expectedFloor: String) {
     #expect(
       KernelFinalizationWiring.emptyOutputRecoveryFloor(
-        deterministicText: deterministicText, rawASR: rawASR) == expectedFloor)
+        deterministicText: deterministicText, rawASR: rawASR, language: nil) == expectedFloor)
   }
 
   @Test(
@@ -79,12 +92,27 @@ struct Issue1358EmptyRecoveryTests {
     // The classifier never reads `fillerRemovalEnabled`; a bare filler is never
     // floored even when a NON-filler step emptied the deterministic text.
     #expect(
-      KernelFinalizationWiring.emptyOutputRecoveryFloor(deterministicText: "", rawASR: "uh") == ""
+      KernelFinalizationWiring.emptyOutputRecoveryFloor(
+        deterministicText: "", rawASR: "uh", language: nil) == ""
     )
     // A real word emptied by a step IS recovered.
     #expect(
-      KernelFinalizationWiring.emptyOutputRecoveryFloor(deterministicText: "", rawASR: "hello")
+      KernelFinalizationWiring.emptyOutputRecoveryFloor(
+        deterministicText: "", rawASR: "hello", language: nil)
         == "hello")
+  }
+
+  @Test(
+    "the raw floor is language-aware: a German pronoun is not floored away as filler (#2259)")
+  func rawFloorGermanLoneWordRecovered() {
+    #expect(
+      KernelFinalizationWiring.emptyOutputRecoveryFloor(
+        deterministicText: "", rawASR: "Er", language: "de") == "Er"
+    )
+    #expect(
+      KernelFinalizationWiring.emptyOutputRecoveryFloor(
+        deterministicText: "", rawASR: "Er", language: nil) == ""
+    )
   }
 
   // MARK: Wiring integration — polish returns empty (finding 3)
@@ -103,7 +131,8 @@ struct Issue1358EmptyRecoveryTests {
     steps.llmPolish.llmProvider = .openAI
     steps.llmPolish.llmModel = "gpt-4o-mini"
     steps.llmPolish.makePolisher = { _, _, _ in EmptyPolisher() }
-    let wiring = makeWiring(outcome: outcome, steps: steps, save: { transcript, _ in saved.transcript = transcript })
+    let wiring = makeWiring(
+      outcome: outcome, steps: steps, save: { transcript, _ in saved.transcript = transcript })
 
     let input = "please clean up this sentence now"
     let result = try await wiring.processText(input) {}
