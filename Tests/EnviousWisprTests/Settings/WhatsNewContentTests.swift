@@ -11,6 +11,68 @@ import Testing
 @Suite("What's New content")
 struct WhatsNewContentTests {
 
+  private struct ReleaseNoteEntry: Codable, Equatable, Sendable {
+    let title: String
+    let desc: String
+    let version: String
+  }
+
+  private enum ReleaseNoteDrift: Error {
+    case rendererFailed(String)
+    case parsedValuesDiffer(
+      index: Int, parsed: ReleaseNoteEntry?, compiled: ReleaseNoteEntry?)
+  }
+
+  private static var repoRoot: URL {
+    URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()  // Settings
+      .deletingLastPathComponent()  // EnviousWisprTests
+      .deletingLastPathComponent()  // Tests
+      .deletingLastPathComponent()  // repo root
+  }
+
+  private static func parsedReleaseNoteEntries(from swiftFile: URL) throws -> [ReleaseNoteEntry] {
+    let process = Process()
+    let output = Pipe()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = [
+      "python3",
+      repoRoot.appendingPathComponent("scripts/ci/render-release-notes.py").path,
+      "--swift-file", swiftFile.path,
+      "--dump-json",
+    ]
+    process.standardOutput = output
+    process.standardError = output
+
+    try process.run()
+    // Drain while the child runs so a future verbose parser failure cannot fill
+    // a pipe and deadlock before `waitUntilExit`.
+    let data = output.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+      let message = String(data: data, encoding: .utf8) ?? ""
+      throw ReleaseNoteDrift.rendererFailed(message)
+    }
+    return try JSONDecoder().decode([ReleaseNoteEntry].self, from: data)
+  }
+
+  private static func requireRendererEquivalence(
+    swiftFile: URL, compiledEntries: [ReleaseNoteEntry]
+  ) throws {
+    let parsedEntries = try parsedReleaseNoteEntries(from: swiftFile)
+    guard parsedEntries == compiledEntries else {
+      let index = (0..<max(parsedEntries.count, compiledEntries.count)).first {
+        parsedEntries.indices.contains($0) && compiledEntries.indices.contains($0)
+          ? parsedEntries[$0] != compiledEntries[$0]
+          : true
+      } ?? 0
+      throw ReleaseNoteDrift.parsedValuesDiffer(
+        index: index,
+        parsed: parsedEntries.indices.contains(index) ? parsedEntries[index] : nil,
+        compiled: compiledEntries.indices.contains(index) ? compiledEntries[index] : nil)
+    }
+  }
+
   // MARK: - Grouping preserves every entry
 
   @Test("entriesByVersion drops no entry")
@@ -71,6 +133,53 @@ struct WhatsNewContentTests {
   }
 
   // MARK: - Release gate
+
+  /// #2105: the renderer reads source text while the app reads compiled Swift.
+  /// Counts and non-empty strings both passed when concatenation truncated a
+  /// public release note and interpolation emitted raw Swift syntax. Compare the
+  /// actual values on both sides instead, in source order.
+  @Test("GitHub release notes parse exactly what the app compiles")
+  func releaseNoteRendererMatchesCompiledValues() throws {
+    let swiftFile = Self.repoRoot.appendingPathComponent(
+      "Sources/EnviousWisprAppKit/Views/Settings/WhatsNewContent.swift")
+    let compiled = WhatsNewContent.entries.map {
+      ReleaseNoteEntry(title: $0.title, desc: $0.description, version: $0.version)
+    }
+    try Self.requireRendererEquivalence(swiftFile: swiftFile, compiledEntries: compiled)
+  }
+
+  /// Two-way control for the comparison itself. Both forms still parse as one
+  /// non-empty entry, so the old count and completeness checks pass. Only the
+  /// parsed-versus-compiled value check rejects them.
+  @Test("the renderer comparison rejects shortened or unresolved descriptions")
+  func releaseNoteRendererMutationControl() throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-2105-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let expected = [ReleaseNoteEntry(title: "Headline", desc: "First second", version: "9.9.9")]
+    for (name, description) in [
+      ("concatenated", #""First " + "second""#),
+      ("interpolated", #""First \(word)""#),
+    ] {
+      let fixture = directory.appendingPathComponent("\(name).swift")
+      try """
+      Entry(
+        title: "Headline",
+        description: \(description),
+        version: "9.9.9"
+      )
+      """.write(to: fixture, atomically: true, encoding: .utf8)
+
+      #expect(
+        throws: ReleaseNoteDrift.self,
+        "\(name) must disagree with the compiled value even though it still parses"
+      ) {
+        try Self.requireRendererEquivalence(swiftFile: fixture, compiledEntries: expected)
+      }
+    }
+  }
 
   /// whats-new-protocol.md RULE: whats-new-release-gate — every release ships notes.
   /// Previously this was only checked by a weekly CI job; now a release that bumps

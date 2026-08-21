@@ -30,6 +30,7 @@ Usage:
 """
 import argparse
 import collections
+import json
 import os
 import re
 import sys
@@ -133,12 +134,22 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument(
+        "--dump-json",
+        action="store_true",
+        help="emit parsed entry values for the compiled-value Swift test",
+    )
     args = ap.parse_args()
 
     entries = parse_entries(args.swift_file)
     if not entries:
         print("error: parsed 0 entries from What's New source", file=sys.stderr)
         return 2
+
+    if args.dump_json:
+        json.dump(entries, sys.stdout, ensure_ascii=False, separators=(",", ":"))
+        sys.stdout.write("\n")
+        return 0
 
     if args.list:
         versions = sorted({e["version"] for e in entries}, key=version_key, reverse=True)
