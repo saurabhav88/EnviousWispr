@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/google-docs-voice-typing/`,
   "image": `${siteUrl}/images/og/google-docs-voice-typing.png`,
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-05-15T18:30:48Z",
+  "dateModified": "2026-08-21T00:00:00Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -307,7 +307,7 @@ const breadcrumbJsonLd = JSON.stringify({
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
 
@@ -335,11 +335,12 @@ const breadcrumbJsonLd = JSON.stringify({
                - Browser: Chrome, Edge, and Safari on desktop (support.google.com/docs/answer/4492226, accessed 2026-04-04)
                - Cloud processing: Requires internet, audio sent to Google servers (support.google.com/docs/answer/4492226, accessed 2026-04-04)
                - App scope: Google Docs and Google Slides only (support.google.com/docs/answer/4492226, accessed 2026-04-04)
-               - Languages: ~100 languages supported (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - Languages: over 100 languages and regional variants supported (support.google.com/docs/answer/4492226, accessed 2026-08-21)
                - Voice commands: English only, formatting and editing commands (support.google.com/docs/answer/4492226, accessed 2026-04-04)
                - Auto-punctuation: limited; users must say most punctuation marks (support.google.com/docs/answer/4492226, accessed 2026-04-04)
                - Custom vocabulary: not supported (support.google.com/docs/answer/4492226, accessed 2026-04-04)
                - Accessibility: keyboard-free input within Google Docs (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - Speech engine: Google does not name a specific backend; the browser controls the speech-to-text service (support.google.com/docs/answer/4492226, accessed 2026-08-21)
              Firsthand testing: Google Docs Voice Typing was not tested firsthand for this comparison.
              All claims are source-verified from official Google support pages. -->
         <tbody>
@@ -411,7 +412,7 @@ const breadcrumbJsonLd = JSON.stringify({
           <tr>
             <td>Languages</td>
             <td>25 European (Parakeet), 90+ via WhisperKit</td>
-            <td>~100 languages</td>
+            <td>100+ languages and regional variants</td>
           </tr>
           <tr>
             <td>Platform</td>
@@ -431,7 +432,7 @@ const breadcrumbJsonLd = JSON.stringify({
           <tr>
             <td>Speech engines</td>
             <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (on-device)</td>
-            <td>Google Cloud Speech API</td>
+            <td>Browser-based (Google does not name the backend)</td>
           </tr>
           <tr>
             <td>Source code</td>
@@ -446,7 +447,7 @@ const breadcrumbJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Google Docs Voice Typing claims source-verified from <a href="https://support.google.com/docs/answer/4492226" style="color: var(--text-3); text-decoration: underline;">support.google.com/docs/answer/4492226</a> as of April 2026; not firsthand-tested. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Table expanded with 18 comparison rows covering app scope, AI features, privacy, and platform differences. Competitor claims last verified: 2026-04-04.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Google Docs Voice Typing claims source-verified from <a href="https://support.google.com/docs/answer/4492226" style="color: var(--text-3); text-decoration: underline;">support.google.com/docs/answer/4492226</a> as of August 2026; not firsthand-tested. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Table expanded with 18 comparison rows covering app scope, AI features, privacy, and platform differences. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -653,8 +654,8 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌐</div>
-        <div class="advantage-title">~100 languages out of the box</div>
-        <p class="advantage-desc">Google supports roughly 100 languages for voice typing with no extra configuration. EnviousWispr's primary engine (Parakeet) covers 25 European languages; WhisperKit supports 90+ but with varying accuracy.</p>
+        <div class="advantage-title">100+ languages out of the box</div>
+        <p class="advantage-desc">Google supports over 100 languages and regional variants for voice typing with no extra configuration. EnviousWispr's primary engine (Parakeet) covers 25 European languages; WhisperKit supports 90+ but with varying accuracy.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If your workflow lives entirely inside Google Docs, their voice typing is a solid choice. If you need dictation across your whole Mac, in any app, with AI polish and privacy, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>.</p>
