@@ -87,7 +87,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can I switch from WisprFlow easily?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS."
+        "text": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the 2-minute getting started guide."
       }
     },
     {
@@ -103,7 +103,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does EnviousWispr use the cloud at all?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider (OpenAI, Gemini, or Claude), only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation."
+        "text": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider (OpenAI, Gemini, or Claude), only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation. The choice is yours."
       }
     },
     {
@@ -119,7 +119,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Is EnviousWispr open source?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub."
+        "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome."
       }
     },
     {
@@ -143,7 +143,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can I add custom words for names, brands, or jargon?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. EnviousWispr has a custom vocabulary system with fuzzy matching that catches pronunciation variants. You can add words with aliases, and the vocabulary is also fed into the AI polish prompt for double-layer correction."
+        "text": "Yes. EnviousWispr has a custom vocabulary system with fuzzy matching that catches pronunciation variants. You can add words with aliases, and on macOS 26+, Apple Intelligence can automatically suggest how the speech engine might mishear your terms. The vocabulary is also fed into the AI polish prompt for double-layer correction."
       }
     }
   ]
@@ -405,8 +405,9 @@ const faqJsonLd = JSON.stringify({
             <th scope="col">WisprFlow</th>
           </tr>
         </thead>
-        <!-- Evidence: WisprFlow claims verified against wisprflow.ai on 2026-04-04, re-verified 2026-08-21.
-             Confidence: source-verified from public website pages.
+        <!-- Evidence: WisprFlow claims verified against wisprflow.ai on 2026-04-04, re-verified 2026-08-21,
+             plus the installed app opened directly on 2026-08-21.
+             Confidence: source-verified from public website pages and the installed app.
              Sources:
                - Pricing: wisprflow.ai/pricing (re-verified 2026-08-21) — Free basic (2,000 words/week), Pro $15/mo monthly or $12/mo annual. Unchanged since April.
                - Account: wisprflow.ai signup flow requires email (accessed 2026-04-04)
@@ -414,9 +415,15 @@ const faqJsonLd = JSON.stringify({
                - Features: wisprflow.ai/features (re-verified 2026-08-21) — dictionary, snippets, tones, filler removal, backtrack, auto-punctuation, whisper mode, command mode (Pro, voice-driven editing/rewriting), 100+ languages, syntax awareness
                - Accessibility: wisprflow.ai/accessibility (accessed 2026-04-04) — hands-free dictation focus
                - Platforms: Mac, Windows, iPhone, Android (re-verified 2026-08-21) — a Mac-only meeting notetaker has since shipped; other platforms "coming soon"
-             Firsthand testing: WisprFlow was not tested firsthand for this comparison.
+               - App opened directly (2026-08-21): Settings confirms a "Vibe coding" section: variable
+                 recognition for VS Code/Cursor/Windsurf and automatic file tagging in Cursor/Windsurf chat
+                 (e.g. `index.tsx`). Confirmed the dictionary is genuinely auto-learning with team sharing,
+                 as already stated on this page. Connectors/MCP tabs are exclusively for the separate
+                 Notetaker meeting-notes feature, explicitly not dictation ("The Wispr MCP does not have
+                 access to your dictations"), so they are out of scope for this page.
+             Word-limit words-remaining counter and free-tier cap independently confirmed live in-app.
              EnviousWispr latency (0.61s / 1.65s) re-measured from production PostHog data, 30-day trailing median, 2026-08-21.
-             All claims are source-verified from official pages. -->
+             All claims are source-verified from official pages and the installed app. -->
         <tbody>
           <tr>
             <td>Price</td>
@@ -729,7 +736,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎨</div>
         <div class="advantage-title">You want more features today</div>
-        <p class="advantage-desc">WisprFlow has a broader feature set: voice command mode for editing, snippet shortcuts, per-app tone adjustment, whisper mode, backtrack correction, and team collaboration tools. EnviousWispr is catching up, but WisprFlow is ahead on features right now.</p>
+        <p class="advantage-desc">WisprFlow has a broader feature set: voice command mode for editing, snippet shortcuts, per-app tone adjustment, whisper mode, backtrack correction, team collaboration tools, and coding-editor awareness that recognizes variable names in VS Code, Cursor, or Windsurf and auto-tags files in Cursor and Windsurf chat. EnviousWispr is catching up, but WisprFlow is ahead on features right now.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🏢</div>
