@@ -74,17 +74,12 @@ struct TestInventoryFreezeTests {
     /// Deliberately NOT the baseline key: a branch label embeds an `#if` CONDITION, so editing that
     /// condition would silently make every suite under it look new.
     let identity: String
+    let branches: [String]
     let classes: [TestClass]
     let testCount: Int
     let boundaryCount: Int
 
     var key: String { "\(file)\t\(qualifiedName)" }
-
-    func declaring(_ classes: [TestClass]) -> SuiteRecord {
-      SuiteRecord(
-        file: file, name: name, qualifiedName: qualifiedName, identity: identity, classes: classes,
-        testCount: testCount, boundaryCount: boundaryCount)
-    }
   }
 
   /// One file's parse. Tags are collected separately from tests because the type that CARRIES the tag
@@ -92,6 +87,18 @@ struct TestInventoryFreezeTests {
   private struct ParseState {
     var records: [SuiteRecord] = []
     var tagCarriers: [String: Set<TestClass>] = [:]
+    var boundaryCarriers: Set<BoundaryCarrier> = []
+  }
+
+  private struct BoundaryCarrier: Hashable {
+    let qualifiedName: String
+    let branches: [String]
+
+    func applies(to record: SuiteRecord) -> Bool {
+      record.branches.starts(with: branches)
+        && (record.qualifiedName == qualifiedName
+          || record.qualifiedName.hasPrefix(qualifiedName + "."))
+    }
   }
 
   // MARK: - Parsing
@@ -132,10 +139,20 @@ struct TestInventoryFreezeTests {
     var state = ParseState()
     collect(from: tree.statements.map(\.item), file: file, scope: Scope(), into: &state)
     return state.records.map { record in
-      guard record.classes.isEmpty, let carried = state.tagCarriers[record.identity] else {
-        return record
-      }
-      return record.declaring(TestClass.allCases.filter { carried.contains($0) })
+      let classes =
+        if record.classes.isEmpty, let carried = state.tagCarriers[record.identity] {
+          TestClass.allCases.filter { carried.contains($0) }
+        } else {
+          record.classes
+        }
+      let boundaryCount =
+        state.boundaryCarriers.contains { $0.applies(to: record) }
+        ? record.testCount : record.boundaryCount
+      return SuiteRecord(
+        file: record.file, name: record.name, qualifiedName: record.qualifiedName,
+        identity: record.identity, branches: record.branches, classes: classes,
+        testCount: record.testCount,
+        boundaryCount: boundaryCount)
     }
   }
 
@@ -217,6 +234,10 @@ struct TestInventoryFreezeTests {
     // Registered whether or not this declaration holds tests: a tag on a bodiless `@Suite struct S {}`
     // exists precisely so the tests in `extension S` can find it.
     if !classes.isEmpty { state.tagCarriers[identity, default: []].formUnion(classes) }
+    if declared.contains(TestClass.realBoundaryTag) {
+      state.boundaryCarriers.insert(
+        BoundaryCarrier(qualifiedName: qualifiedName, branches: scope.branches))
+    }
 
     var directTests = 0
     var directBoundary = 0
@@ -228,7 +249,8 @@ struct TestInventoryFreezeTests {
       state.records.append(
         SuiteRecord(
           file: file, name: named.name, qualifiedName: qualifiedName, identity: identity,
-          classes: classes, testCount: directTests, boundaryCount: directBoundary))
+          branches: scope.branches, classes: classes, testCount: directTests,
+          boundaryCount: directBoundary))
     }
   }
 
@@ -873,6 +895,39 @@ struct TestInventoryFreezeTests {
       }
       """)
     #expect(try #require(commented.first).boundaryCount == 0, "a comment faked a boundary receipt")
+  }
+
+  @Test("a suite realBoundary tag applies to every test, including tests in an extension")
+  func suiteRealBoundaryIsInherited() throws {
+    let records = Self.parse(
+      """
+      @Suite(.tags(.productOutcome, .realBoundary)) struct S {
+        @Test func direct() {}
+      }
+      extension S {
+        @Test func extended() {}
+        @Test(.tags(.realBoundary)) func explicitlyTaggedToo() {}
+        struct Nested {
+          @Test func nested() {}
+        }
+      }
+      @Suite(.tags(.productOutcome)) struct Neighbour {
+        struct Nested {
+          @Test func staysUnclassifiedAsBoundary() {}
+        }
+      }
+      """)
+    let recordsForS = records.filter {
+      $0.qualifiedName == "S" || $0.qualifiedName.hasPrefix("S.")
+    }
+    #expect(recordsForS.reduce(0) { $0 + $1.testCount } == 4)
+    #expect(
+      recordsForS.reduce(0) { $0 + $1.boundaryCount } == 4,
+      "a suite trait must count direct, extended, nested and explicitly tagged members once")
+    #expect(
+      records.filter { $0.qualifiedName.hasPrefix("Neighbour.") }
+        .reduce(0) { $0 + $1.boundaryCount } == 0,
+      "a recursive suite trait must not leak into a neighbouring type")
   }
 
   @Test("two class tags on one suite are reported, not silently resolved")
