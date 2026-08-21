@@ -247,6 +247,12 @@ struct OverlayWindowHostTests {
 
     #expect(h.panelForTesting == nil, "an unsizable presentation created a zero-sized window")
     #expect(h.panelConstructionCount == 0)
+    // A retained panel makes `panel != nil` useless as a success signal, and the
+    // shipped import-status owner depends on exactly that check (`:1108-1110`).
+    #expect(
+      h.present(empty, width: .measured, fixedHeight: nil, isFresh: true, position: .bottom)
+        == false,
+      "a refused presentation reported success — the slot owner would claim it")
   }
 
   /// A morph must actually swap the content. Nothing else in this suite would
@@ -322,6 +328,15 @@ struct OverlayWindowHostTests {
     #expect(abs(panel.frame.midY - before.midY) <= 0.5, "the centre moved")
   }
 
+  /// **Component-contract guard, NOT product evidence.** Asked directly whether
+  /// this pairing is reachable, cloud review answered no: no current production
+  /// path produces a measured width with a fixed height, since a faithful
+  /// wiring yields either `fitToContent -> (.measured, nil)` or fixed
+  /// dimensions, and the only reserved height belongs to the fixed-width
+  /// recording pill. It is kept because `present` deliberately exposes the two
+  /// axes independently, so the contract is real even where no caller uses it —
+  /// but it must never be cited as coverage of a shipped behaviour.
+  ///
   /// **The one combination that separates the two sizing predicates.**
   ///
   /// `currentWasContentSized` keys on HEIGHT. The earlier predicate ORed the

@@ -85,17 +85,28 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
   /// existing on-screen pill. It is the caller's fact, not something to infer
   /// from whether a panel happens to exist: a panel retained but hidden is not
   /// a continuation.
+  /// Returns whether the presentation actually reached the screen.
+  ///
+  /// **A retained panel makes `panel != nil` useless as a success signal, and
+  /// one shipped caller depends on exactly that.** `showImportStatusNow` guards
+  /// `self.panel != nil` before claiming the slot, because `showPanel` can
+  /// no-op when no screen is available — "never claim false ownership of a slot
+  /// with no actual panel" (`RecordingOverlayPanel.swift:1108-1110`). Once the
+  /// panel outlives every presentation that check is ALWAYS true, so it would
+  /// claim ownership of a show that never happened. Cloud review caught this
+  /// before the wiring chunk was written.
+  @discardableResult
   func present(
     _ view: NSView, width: OverlayWidth, fixedHeight: CGFloat?, isFresh: Bool,
     position: OverlayPillPosition
-  ) {
+  ) -> Bool {
     // **Resolve the size BEFORE taking the panel.** A presentation that cannot be
     // sized must not create or move a window: a zero-sized panel is an invisible
     // pill that reports success, and the earlier fallback only covered ONE of
     // `fittingSize` and the frame being zero. Both zero still produced it.
     guard let screen = screens().current(),
       let size = resolvedSize(for: view, width: width, fixedHeight: fixedHeight)
-    else { return }
+    else { return false }
     let panel = ensurePanel()
 
     let continuity: OverlayContinuity
@@ -121,6 +132,7 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
     let frame = placement.frame(for: size, continuity: continuity, environment: screen)
     withProgrammaticMove { panel.setFrame(frame, display: true) }
     panel.orderFrontRegardless()
+    return true
   }
 
   /// Resize the CURRENT occupant without treating it as a new presentation.
