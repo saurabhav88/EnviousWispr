@@ -940,10 +940,40 @@ public struct WordCorrector: Sendable {
       // computed first, with non-pack results checked before either pack
       // result is accepted.
       let unpeeledExact = exactSingleWordMatch(core: core, coreLower: coreLower, lookups: lookups)
+      // The token already IS a registered canonical, byte-for-byte -- the
+      // strongest "leave this alone" signal available. Stop the whole
+      // single-word retry here rather than falling through to the peeled
+      // attempt, which could otherwise replace already-correct text with an
+      // unrelated match (Codex review, PR for #2281, finding P2 round 9).
+      if case .alreadyCorrect = unpeeledExact { return token }
+
+      var unpeeledMatch: (canonical: String, isPack: Bool)?
+      if case .replace(let canonical, let isPack) = unpeeledExact {
+        unpeeledMatch = (canonical, isPack)
+      }
+
       let peeledExact =
         matchCoreEligible
         ? exactSingleWordMatch(core: matchCore, coreLower: matchCoreLower, lookups: lookups)
-        : nil
+        : ExactSingleWordOutcome.noMatch
+      var peeledMatch: (canonical: String, isPack: Bool)?
+      if case .replace(let canonical, let isPack) = peeledExact {
+        peeledMatch = (canonical, isPack)
+      }
+      // `.alreadyCorrect` on the PEELED form means the bare part was
+      // already spelled right, so the untouched original token (bare part
+      // + its existing suffix) is already the correct output -- but that
+      // conclusion is only valid if nothing else is allowed to override it
+      // afterward. An earlier version of this comment claimed the "falls
+      // through to the final `return token`" path made this automatic; it
+      // does not, because `peeledMatch` staying nil here is indistinguishable
+      // from `.noMatch`, so a LOWER-authority pack exact match (or even a
+      // fuzzy match) found afterward could still win and replace text that
+      // was already correct (local Codex sweep of PR #2298's cloud
+      // findings, same day: canonical "GitHub" + pack alias "github.com" ->
+      // "Wrong" turned input "GitHub.com" into "Wrong" instead of leaving
+      // it alone). Stop here, exactly like the unpeeled case above.
+      if case .alreadyCorrect = peeledExact { return token }
 
       func acceptExact(unpeeled: Bool, _ match: (canonical: String, isPack: Bool)) -> String {
         appendReplacement(forCanonical: match.canonical)
@@ -955,16 +985,16 @@ public struct WordCorrector: Sendable {
         return unpeeled ? prefix + match.canonical + suffix : reattached(match.canonical)
       }
 
-      if let match = unpeeledExact, !match.isPack {
+      if let match = unpeeledMatch, !match.isPack {
         return acceptExact(unpeeled: true, match)
       }
-      if let match = peeledExact, !match.isPack {
+      if let match = peeledMatch, !match.isPack {
         return acceptExact(unpeeled: false, match)
       }
-      if let match = unpeeledExact {
+      if let match = unpeeledMatch {
         return acceptExact(unpeeled: true, match)
       }
-      if let match = peeledExact {
+      if let match = peeledMatch {
         return acceptExact(unpeeled: false, match)
       }
 
@@ -1045,10 +1075,28 @@ public struct WordCorrector: Sendable {
   /// review, PR for #2281, finding P1 round 7: see the call site in
   /// `correct(using:)` for why the caller needs to see both before
   /// choosing).
+  /// Three outcomes, not two, because the caller must react differently to
+  /// "nothing registered for this key" than to "something IS registered and
+  /// this token already IS that canonical" (Codex review, PR for #2281,
+  /// finding P2 round 9): collapsing both into `nil` let the peeled attempt
+  /// run even when the UNPEELED token was already letter-for-letter a real
+  /// canonical -- e.g. core exactly equals canonical "GitHub.com", so no
+  /// correction is needed at all, but an unrelated alias "github" (the
+  /// peeled bare form) mapping to some OTHER canonical could still win,
+  /// replacing text that was already correct. Exact self-identity is the
+  /// strongest possible "leave this alone" signal there is; it must stop
+  /// the whole single-word retry, not merely this one attempt.
+  private enum ExactSingleWordOutcome {
+    case replace(canonical: String, isPack: Bool)
+    case alreadyCorrect
+    case noMatch
+  }
+
   private func exactSingleWordMatch(
     core: String, coreLower: String, lookups: Lookups
-  ) -> (canonical: String, isPack: Bool)? {
-    guard let canonical = lookups.singleAliasMap[coreLower], core != canonical else { return nil }
+  ) -> ExactSingleWordOutcome {
+    guard let canonical = lookups.singleAliasMap[coreLower] else { return .noMatch }
+    guard core != canonical else { return .alreadyCorrect }
     // Authority comes from the matched KEY (`coreLower`), never from the
     // resulting canonical TEXT (Codex review, PR for #2281, finding P2
     // round 8): `canonicalToWord[canonical]` answers "who owns this
@@ -1060,7 +1108,7 @@ public struct WordCorrector: Sendable {
     // (already the authority for exactly that construction) tells us
     // whether THIS key's mapping came from a non-pack term, unambiguously.
     let isPack = !lookups.nonPackExactKeys.contains(coreLower)
-    return (canonical, isPack)
+    return .replace(canonical: canonical, isPack: isPack)
   }
 
   /// Pass 4-5 alone (non-pack fuzzy: aliases + canonical self-entries, then
@@ -1503,7 +1551,21 @@ public struct WordCorrector: Sendable {
   /// `xn--` prefix alone, and nothing that isn't real punycode happens to
   /// start with it.
   private static func isPlausibleTLDLabel(_ label: Substring) -> Bool {
-    if label.allSatisfy({ $0.isLetter }) { return true }
+    label.allSatisfy({ $0.isLetter }) || Self.isPunycodeTLDLabel(label)
+  }
+
+  /// The punycode-shape half of `isPlausibleTLDLabel`, factored out so
+  /// `isDomainShaped` can require it WITHOUT also admitting arbitrary
+  /// all-letters labels ("js", "academy", ...) the way the peel trigger
+  /// does -- those two questions need different bars for the reasons
+  /// `knownDedupTLDs`'s own doc comment gives (Codex review, PR for #2281,
+  /// finding P2 round 9: a canonical whose domain is itself an
+  /// internationalized name, written in its ASCII punycode form, was not
+  /// recognized as domain-shaped at all -- `splitDomainSuffix` peeled it
+  /// correctly, but the DEDUP check that decides whether to suppress a
+  /// mismatched reattach only consulted the curated real-word TLD list,
+  /// which can never contain an `xn--...` string).
+  private static func isPunycodeTLDLabel(_ label: Substring) -> Bool {
     let lower = label.lowercased()
     guard lower.hasPrefix("xn--") else { return false }
     let rest = lower.dropFirst(4)
@@ -1563,11 +1625,35 @@ public struct WordCorrector: Sendable {
   /// True when `s` itself ends in a REAL domain-shaped suffix -- used to
   /// decide whether a saved alias/canonical is a domain in its own right,
   /// in which case a peeled suffix must never be appended to it a second
-  /// time (Codex review, PR for #2281, finding P2 rounds 2-4, 6).
+  /// time (Codex review, PR for #2281, finding P2 rounds 2-4, 6, 9). A
+  /// punycode label (an internationalized domain's ASCII form) counts even
+  /// though it can never appear in `knownDedupTLDs` -- that list holds
+  /// real WORDS, and no curated word list can contain every possible
+  /// `xn--...` string, but the `xn--` shape itself is unambiguous evidence
+  /// on its own (round 9).
+  ///
+  /// A NATIVE-SCRIPT internationalized label (a real ccTLD written in its
+  /// own Unicode form, never converted to punycode -- ".рф" as literal
+  /// Cyrillic, not ".xn--p1ai") also counts, for a reason the curated-list
+  /// exclusion for "Node.js" does NOT apply to here (local Codex sweep of
+  /// PR #2298's cloud findings, same day): the false-positive risk that
+  /// keeps this function from accepting "any all-letters label" is
+  /// specifically an ENGLISH product-name risk (".js", ".io" as common
+  /// English computing suffixes on real brand names). No ordinary English
+  /// or Latin-script brand name coincidentally ends in a run of Cyrillic,
+  /// CJK, or Arabic-script characters, so accepting "all-letters AND
+  /// contains at least one non-ASCII character" here carries none of that
+  /// risk while closing the gap for any real IDN this app cannot curate by
+  /// string (there is no bounded list of "real internationalized domains"
+  /// any more than there is of ASCII ones).
   private static func isDomainShaped(_ s: String) -> Bool {
     guard let split = Self.splitDomainSuffix(s) else { return false }
-    let lastLabel = split.suffix.split(separator: ".").last?.lowercased() ?? ""
-    return Self.knownDedupTLDs.contains(lastLabel)
+    guard let lastLabelSub = split.suffix.split(separator: ".").last else { return false }
+    if Self.isPunycodeTLDLabel(lastLabelSub) { return true }
+    if lastLabelSub.allSatisfy({ $0.isLetter }), lastLabelSub.contains(where: { !$0.isASCII }) {
+      return true
+    }
+    return Self.knownDedupTLDs.contains(lastLabelSub.lowercased())
   }
 
   private func stripPunctuation(_ token: String) -> String {

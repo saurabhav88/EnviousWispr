@@ -450,4 +450,66 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "EnviousWispr.xn--p1ai")
     #expect(result.replacements == 1)
   }
+
+  // MARK: Cloud Codex review (PR #2298) findings -- an already-correct
+  // unpeeled exact match must stop the whole retry, and the dedup check
+  // must recognize punycode canonicals it did not curate by string.
+
+  @Test("An already-correct unpeeled exact match is never overridden by an unrelated peeled match")
+  func alreadyCorrectUnpeeledNeverOverriddenByPeeled() {
+    // Cloud review, P2: core "GitHub.com" is ALREADY exactly a registered
+    // canonical, so no correction is needed -- but an unrelated alias
+    // "github" (the peeled bare form) mapping to a DIFFERENT canonical
+    // ("Other") could still win if the peeled attempt were tried anyway.
+    let githubDomain = CustomWord(canonical: "GitHub.com", aliases: [])
+    let githubBare = CustomWord(canonical: "Other", aliases: ["github"])
+    let result = corrected("GitHub.com", [githubDomain, githubBare])
+    #expect(result.text == "GitHub.com")
+    #expect(result.replacements == 0)
+  }
+
+  @Test("A canonical that IS a punycode domain suppresses a mismatched reattach")
+  func punycodeCanonicalSuppressesMismatchedReattach() {
+    // Cloud review, P2: `isDomainShaped` only checked the curated real-word
+    // TLD list, which can never contain an "xn--..." string, so a bare
+    // alias whose canonical is an internationalized domain in its ASCII
+    // form ("xn--e1afmkfd.xn--p1ai") was never recognized as domain-shaped
+    // -- "primer.org" would have produced a duplicated suffix.
+    let word = CustomWord(canonical: "xn--e1afmkfd.xn--p1ai", aliases: ["primer"])
+    let result = corrected("primer.org", [word])
+    #expect(result.text == "xn--e1afmkfd.xn--p1ai")
+    #expect(result.replacements == 1)
+  }
+
+  // MARK: Local Codex sweep (same day, same PR) of the cloud review's own
+  // findings -- a peeled already-correct exact match needed the same
+  // short-circuit as the unpeeled one, and a NATIVE-script (not punycode)
+  // internationalized TLD needed dedup recognition too.
+
+  @Test("A peeled already-correct exact match is never overridden by a pack exact match")
+  func peeledAlreadyCorrectExactNeverOverriddenByPack() {
+    // Local Codex sweep: the peeled bare form "GitHub" is already exactly
+    // the user's own canonical -- no correction needed at all -- but a
+    // pack alias "github.com" -> "Wrong" (a lower-authority, unrelated
+    // match) could still win if peeled .alreadyCorrect were silently
+    // dropped the way it originally was.
+    let userCanonical = CustomWord(canonical: "GitHub", aliases: [])
+    let packDomain = CustomWord(canonical: "Wrong", aliases: ["github.com"], source: .pack)
+    let result = corrected("GitHub.com", [userCanonical, packDomain])
+    #expect(result.text == "GitHub.com")
+    #expect(result.replacements == 0)
+  }
+
+  @Test("A canonical that IS a native-script (non-punycode) IDN suppresses a mismatched reattach")
+  func nativeScriptIDNCanonicalSuppressesMismatchedReattach() {
+    // Local Codex sweep: `isDomainShaped`'s punycode fix (round 9) only
+    // covered the ASCII "xn--..." encoding. A canonical that is itself an
+    // internationalized domain written in its OWN native Unicode script
+    // (".рф" as literal Cyrillic, never converted to punycode) still
+    // failed dedup and would have produced "пример.рф.org".
+    let word = CustomWord(canonical: "пример.рф", aliases: ["primer"])
+    let result = corrected("primer.org", [word])
+    #expect(result.text == "пример.рф")
+    #expect(result.replacements == 1)
+  }
 }
