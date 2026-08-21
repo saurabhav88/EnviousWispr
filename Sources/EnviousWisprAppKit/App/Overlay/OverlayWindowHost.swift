@@ -89,10 +89,15 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
     _ view: NSView, width: OverlayWidth, fixedHeight: CGFloat?, isFresh: Bool,
     position: OverlayPillPosition
   ) {
-    guard let screen = screens().current() else { return }
+    // **Resolve the size BEFORE taking the panel.** A presentation that cannot be
+    // sized must not create or move a window: a zero-sized panel is an invisible
+    // pill that reports success, and the earlier fallback only covered ONE of
+    // `fittingSize` and the frame being zero. Both zero still produced it.
+    guard let screen = screens().current(),
+      let size = resolvedSize(for: view, width: width, fixedHeight: fixedHeight)
+    else { return }
     let panel = ensurePanel()
 
-    let size = resolvedSize(for: view, width: width, fixedHeight: fixedHeight)
     let continuity: OverlayContinuity
     if isFresh || !panel.isVisible {
       placement.beginFresh(at: position, screen: screen)
@@ -105,7 +110,13 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
 
     view.frame = NSRect(origin: .zero, size: size)
     panel.contentView = view
-    currentWasContentSized = width == .measured || fixedHeight == nil
+    // **Keys on HEIGHT, not width.** The Top continuing rule re-anchors a
+    // content-sized outgoing panel by its top edge and a fixed one by its
+    // centre — a VERTICAL decision, so a measured WIDTH has no bearing on it.
+    // The first predicate ORed the two axes together and would have picked the
+    // wrong branch for any measured-width, fixed-height pill. It mirrors the
+    // shipped `activePanelIsContentSized = fitToContent` (`:1543`).
+    currentWasContentSized = fixedHeight == nil
 
     let frame = placement.frame(for: size, continuity: continuity, environment: screen)
     withProgrammaticMove { panel.setFrame(frame, display: true) }
@@ -172,8 +183,10 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
     return p
   }
 
+  /// `nil` when the presentation cannot be sized, which the caller must treat as
+  /// "do not present" rather than as a zero.
   private func resolvedSize(for view: NSView, width: OverlayWidth, fixedHeight: CGFloat?)
-    -> CGSize
+    -> CGSize?
   {
     // **`fittingSize` can be zero, and a zero-sized panel is an INVISIBLE pill
     // that reports success.** A plain `NSView` with no constraints returns
@@ -193,7 +206,11 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
     case .fixed(let value): w = value
     case .measured: w = measuredWidth
     }
-    return CGSize(width: w, height: fixedHeight ?? measuredHeight)
+    let size = CGSize(width: w, height: fixedHeight ?? measuredHeight)
+    // Both `fittingSize` and the frame can be zero — an unlaid-out view has
+    // neither. Refuse rather than present nothing.
+    guard size.width > 0, size.height > 0 else { return nil }
+    return size
   }
 
   private func withProgrammaticMove(_ body: () -> Void) {

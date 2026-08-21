@@ -33,9 +33,23 @@ struct OverlayWindowHostTests {
     OverlayWindowHost(screens: { OverlayScreenResolver { screen } })
   }
 
-  private static func view(width: CGFloat, height: CGFloat) -> NSView {
-    let v = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
-    v.setFrameSize(NSSize(width: width, height: height))
+  /// A view whose FRAME and FITTING size are independently settable.
+  ///
+  /// **The earlier fixture made every value coincide**, so no test could tell a
+  /// `.fixed` width from a fitting size from a frame fallback — three different
+  /// code paths producing one indistinguishable number. Cloud review named it;
+  /// a plain `NSView` also reports `fittingSize == .zero`, which is what made
+  /// the coincidence invisible.
+  private final class SizedView: NSView {
+    var fitting: NSSize = .zero
+    override var intrinsicContentSize: NSSize { fitting }
+  }
+
+  private static func view(
+    width: CGFloat, height: CGFloat, fitting: NSSize? = nil
+  ) -> SizedView {
+    let v = SizedView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+    v.fitting = fitting ?? .zero
     return v
   }
 
@@ -197,6 +211,145 @@ struct OverlayWindowHostTests {
     #expect(
       closed == false,
       "the panel was CLOSED rather than ordered out — every rebuild this change removes comes from that")
+  }
+
+  /// **Three sizing paths, three DIFFERENT numbers**, so each is separable.
+  @Test("fixed, fitting and frame-fallback widths are told apart")
+  func sizingPathsAreDistinguishable() throws {
+    // fixed 300, fitting 211, frame 150 — no two alike.
+    let h = Self.host()
+    let v = Self.view(width: 150, height: 40, fitting: NSSize(width: 211, height: 58))
+
+    h.present(v, width: .fixed(300), fixedHeight: nil, isFresh: true, position: .bottom)
+    let panel = try #require(h.panelForTesting)
+    #expect(panel.frame.width == 300, "a fixed width was not honoured")
+    #expect(panel.frame.height == 58, "height did not come from the fitting size")
+
+    h.present(
+      Self.view(width: 150, height: 40, fitting: NSSize(width: 211, height: 58)),
+      width: .measured, fixedHeight: nil, isFresh: true, position: .bottom)
+    #expect(panel.frame.width == 211, "a measured width did not come from the fitting size")
+
+    // Fitting size zero: the frame is the only remaining truth.
+    h.present(
+      Self.view(width: 150, height: 40), width: .measured, fixedHeight: nil, isFresh: true,
+      position: .bottom)
+    #expect(panel.frame.width == 150, "the frame fallback did not apply")
+  }
+
+  /// A presentation that cannot be sized must not present. A zero-sized panel is
+  /// an invisible pill that reports success — the failure nothing would report.
+  @Test("a presentation that cannot be sized is refused, not shown at zero")
+  func unsizablePresentationIsRefused() {
+    let h = Self.host()
+    let empty = Self.view(width: 0, height: 0)
+    h.present(empty, width: .measured, fixedHeight: nil, isFresh: true, position: .bottom)
+
+    #expect(h.panelForTesting == nil, "an unsizable presentation created a zero-sized window")
+    #expect(h.panelConstructionCount == 0)
+  }
+
+  /// A morph must actually swap the content. Nothing else in this suite would
+  /// notice a host that resized the panel and left the old view in it.
+  @Test("morphing replaces the panel's content view")
+  func morphReplacesContent() throws {
+    let h = Self.host()
+    h.present(
+      Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
+      position: .bottom)
+    let panel = try #require(h.panelForTesting)
+
+    let replacement = Self.view(width: 320, height: 120)
+    h.present(replacement, width: .fixed(320), fixedHeight: nil, isFresh: false, position: .bottom)
+
+    #expect(panel.contentView === replacement, "the panel kept the previous presentation's view")
+  }
+
+  /// **The copied panel configuration is pinned.** Removing the floating level,
+  /// all-Spaces behaviour, movability or the shadow would otherwise leave every
+  /// test green while changing what the user sees: a pill behind other windows,
+  /// one that vanishes on a Space swipe, or one that cannot be dragged.
+  @Test("the panel's shipped configuration is unchanged")
+  func panelConfigurationIsPinned() throws {
+    let h = Self.host()
+    h.present(
+      Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
+      position: .bottom)
+    let panel = try #require(h.panelForTesting)
+
+    #expect(panel.level == .floating)
+    #expect(panel.collectionBehavior == [.canJoinAllSpaces, .fullScreenAuxiliary])
+    #expect(panel.isMovableByWindowBackground)
+    #expect(panel.hasShadow)
+    #expect(panel.isOpaque == false)
+    #expect(panel.isReleasedWhenClosed == false, "a released panel cannot be retained")
+    #expect(panel.styleMask.contains(.borderless))
+    #expect(panel.styleMask.contains(.nonactivatingPanel))
+  }
+
+  /// Top continuity through the HOST, not just the placement value: a
+  /// content-sized outgoing pill re-anchors by its top edge, a fixed-height one
+  /// by its centre. Nothing at host level distinguished these.
+  @Test("Top continuity re-anchors by top edge when the outgoing pill was content-sized")
+  func topContinuityContentSized() throws {
+    let h = Self.host()
+    h.present(
+      Self.view(width: 185, height: 44, fitting: NSSize(width: 185, height: 44)),
+      width: .fixed(185), fixedHeight: nil, isFresh: true, position: .top)
+    let panel = try #require(h.panelForTesting)
+    let before = panel.frame
+
+    h.present(
+      Self.view(width: 185, height: 92, fitting: NSSize(width: 185, height: 92)),
+      width: .fixed(185), fixedHeight: nil, isFresh: false, position: .top)
+
+    #expect(abs(panel.frame.maxY - before.maxY) <= 0.5, "the top edge moved")
+  }
+
+  @Test("Top continuity re-anchors by centre when the outgoing pill had a fixed height")
+  func topContinuityFixedHeight() throws {
+    let h = Self.host()
+    h.present(
+      Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
+      position: .top)
+    let panel = try #require(h.panelForTesting)
+    let before = panel.frame
+
+    h.present(
+      Self.view(width: 185, height: 44, fitting: NSSize(width: 185, height: 44)),
+      width: .fixed(185), fixedHeight: nil, isFresh: false, position: .top)
+
+    #expect(abs(panel.frame.midY - before.midY) <= 0.5, "the centre moved")
+  }
+
+  /// **The one combination that separates the two sizing predicates.**
+  ///
+  /// `currentWasContentSized` keys on HEIGHT. The earlier predicate ORed the
+  /// axes — `width == .measured || fixedHeight == nil` — which agrees with the
+  /// correct one everywhere EXCEPT a measured width with a fixed height. Without
+  /// this case the fix is real and completely unguarded: a mutant restoring the
+  /// old predicate stays green.
+  ///
+  /// A measured-width, fixed-height pill is content-sized HORIZONTALLY and fixed
+  /// VERTICALLY, so Top continuity must re-anchor it by its CENTRE.
+  @Test("a measured width with a fixed height is not content-sized vertically")
+  func measuredWidthWithFixedHeightIsNotContentSized() throws {
+    let h = Self.host()
+    h.present(
+      Self.view(width: 150, height: 40, fitting: NSSize(width: 211, height: 58)),
+      width: .measured, fixedHeight: 92, isFresh: true, position: .top)
+    let panel = try #require(h.panelForTesting)
+    #expect(panel.frame.width == 211)
+    #expect(panel.frame.height == 92)
+    let before = panel.frame
+
+    h.present(
+      Self.view(width: 185, height: 44, fitting: NSSize(width: 185, height: 44)),
+      width: .fixed(185), fixedHeight: nil, isFresh: false, position: .top)
+
+    #expect(
+      abs(panel.frame.midY - before.midY) <= 0.5,
+      "re-anchored by top edge — the outgoing pill's fixed HEIGHT makes it centre-anchored")
   }
 
   /// A `.measured` width must come from the view, and no default may stand in
