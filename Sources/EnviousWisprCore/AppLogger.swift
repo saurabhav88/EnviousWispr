@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import OSLog
 
@@ -170,10 +171,23 @@ public actor AppLogger {
       let dir = logDirectory
       try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
       if !FileManager.default.fileExists(atPath: currentLogURL.path) {
-        FileManager.default.createFile(atPath: currentLogURL.path, contents: nil)
+        _ = FileManager.default.createFile(atPath: currentLogURL.path, contents: nil)
       }
-      fileHandle = try? FileHandle(forWritingTo: currentLogURL)
-      fileHandle?.seekToEndOfFile()
+      fileHandle = Self.openAppendFileHandle(at: currentLogURL)
+    }
+
+    /// Open every process's handle with kernel-enforced append semantics.
+    ///
+    /// `FileHandle(forWritingTo:)` plus one `seekToEndOfFile()` leaves each
+    /// process with an independent offset. Later writes can overwrite bytes a
+    /// different process appended in the meantime. `O_APPEND` moves the offset
+    /// to the current end atomically for every write, so main-app and XPC lines
+    /// cannot silently replace one another (#2159). Rotation still needs the
+    /// separate cross-process lock tracked by that issue.
+    package static func openAppendFileHandle(at url: URL) -> FileHandle? {
+      let descriptor = Darwin.open(url.path, O_WRONLY | O_APPEND | O_CLOEXEC)
+      guard descriptor >= 0 else { return nil }
+      return FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
     }
 
     /// Single renderer for both the live path and the #1361 flush, so a format
