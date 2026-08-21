@@ -127,7 +127,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does EnviousWispr clip the first word like other dictation apps?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "No. EnviousWispr uses a continuous pre-roll audio buffer that captures the 500 milliseconds before you press the keybind. Even if you start speaking the instant you press the key, the first word is captured."
+        "text": "Rarely. While the microphone is warm, EnviousWispr's pre-roll audio buffer keeps the 500 milliseconds before you press the keybind, so the first word is captured even if you start speaking the instant you press the key. On a cold start there is no earlier audio to draw on, and the first word or two can still be lost."
       }
     },
     {
@@ -480,7 +480,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Writing style control</td>
-            <td>Voice-preserving AI polish across five engines (EG-1, Apple Intelligence, Ollama, OpenAI, Gemini).</td>
+            <td>Voice-preserving AI polish across six engines (EG-1, Ollama on-device; Apple Intelligence on-device, macOS 26+; OpenAI, Gemini, Claude with your own key).</td>
             <td>Auto-adjusts tone per app (English, desktop only).</td>
           </tr>
           <tr>
@@ -495,7 +495,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>First-word capture</td>
-            <td><span class="table-check">Never clips.</span> A 500ms pre-roll buffer captures audio before recording officially starts.</td>
+            <td><span class="table-check">Yes,</span> while the mic is warm. A 500ms pre-roll buffer captures audio before recording officially starts; a cold start can still clip.</td>
             <td>Not specified</td>
           </tr>
           <tr>
@@ -505,7 +505,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Clipboard preservation</td>
-            <td><span class="table-check">Yes.</span> Saves and restores your clipboard after every paste.</td>
+            <td><span class="table-check">Yes,</span> when enabled and no other app changes the clipboard first.</td>
             <td>Not specified</td>
           </tr>
           <tr>
@@ -578,7 +578,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔑</div>
         <div class="advantage-title">Your choice of AI polish</div>
-        <p class="advantage-desc">EG-1, Apple Intelligence, and Ollama run entirely on-device. Want cloud speed? Bring your own OpenAI or Gemini key. You control which services touch your text, if any.</p>
+        <p class="advantage-desc">EG-1 and Ollama run entirely on-device, and so does Apple Intelligence on macOS 26+. Want cloud speed? Bring your own OpenAI, Gemini, or Claude key. You control which services touch your text, if any.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📖</div>
@@ -689,10 +689,10 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-title">Your text always lands where it should</div>
         <div class="deep-dive-body">
           <p>Cloud dictation has a timing problem. While your audio uploads, transcribes, and returns, you might switch apps, click a different field, or start reading something else. When the text finally arrives, it can paste into the wrong place or overwrite your clipboard.</p>
-          <p>EnviousWispr captures which app and which text field had focus when you started recording. After transcription, it re-activates that exact app and inserts text directly via the Accessibility API. If direct insertion fails, it falls back to simulated Cmd+V, then to AppleScript. Your clipboard is saved before the operation and restored after.</p>
+          <p>EnviousWispr captures which app and which text field had focus when you started recording. After transcription, it re-activates that exact app and inserts text directly via the Accessibility API. If direct insertion fails, it falls back to an ordinary paste, then to the app's own Edit &gt; Paste menu. If all three fail, your text stays on the clipboard so you can paste it yourself.</p>
           <p>The result: text goes where you intended, every time, without trashing what you had copied.</p>
           <div class="deep-dive-detail">
-            <strong>How it works:</strong> Three-tier paste system (AX direct insertion, CGEvent Cmd+V, AppleScript fallback) with full clipboard snapshot and restoration. Target app reactivation uses Accessibility API force-activation to bypass macOS background process restrictions.
+            <strong>How it works:</strong> Three delivery attempts in order (direct insertion, ordinary paste, app's Edit &gt; Paste menu), then clipboard-only if all fail, with clipboard snapshot and restoration on the paste-based routes. Target app reactivation uses Accessibility API force-activation to bypass macOS background process restrictions.
           </div>
         </div>
       </div>
@@ -783,7 +783,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr clip the first word like other dictation apps?</div>
-        <p class="faq-a">No. EnviousWispr uses a continuous pre-roll audio buffer that captures the 500 milliseconds before you press the keybind. Even if you start speaking the instant you press the key, the first word is captured. This is a hardware-level solution, not a software workaround.</p>
+        <p class="faq-a">Rarely. While the microphone is warm, EnviousWispr's pre-roll audio buffer keeps the 500 milliseconds before you press the keybind, so the first word is captured even if you start speaking the instant you press the key. On a cold start there is no earlier audio to draw on, and the first word or two can still be lost.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What happens to my clipboard when EnviousWispr pastes text?</div>
