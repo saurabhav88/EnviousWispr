@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/otter-ai/`,
   "image": `${siteUrl}/images/og/otter-ai.png`,
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-05-15T18:30:48Z",
+  "dateModified": "2026-08-21T13:11:11Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -143,7 +143,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Is Otter.ai free?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Otter has a free tier with 300 minutes per month and a 30-minute per-conversation limit. Beyond that, Pro is $8.49/month (billed annually) and Business is $19.99/month. EnviousWispr is completely free with no usage limits, no subscription tiers, and no account required."
+        "text": "Otter has a free tier with 300 minutes per month and a 30-minute per-conversation limit. Beyond that, Pro is $8.33/month (billed annually) and Business is $19.99/month. EnviousWispr is completely free with no usage limits, no subscription tiers, and no account required."
       }
     },
   ]
@@ -373,7 +373,7 @@ const faqJsonLd = JSON.stringify({
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.43s median latency
+        0.61s median latency
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -382,7 +382,7 @@ const faqJsonLd = JSON.stringify({
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
 
@@ -406,7 +406,7 @@ const faqJsonLd = JSON.stringify({
         <!-- Evidence: Otter.ai claims verified against otter.ai and otter.ai/pricing on 2026-04-03.
              Confidence: source-verified from public website.
              Sources:
-               - Pricing: otter.ai/pricing (accessed 2026-04-03)  -  Free 300 min/mo, Pro $8.49/mo annual, Business $19.99/mo
+               - Pricing: otter.ai/pricing (re-verified 2026-08-21)  -  Free 300 min/mo, Pro $8.33/mo annual, Business $19.99/mo
                - Platforms: otter.ai  -  Web, iOS, Android, Chrome extension (accessed 2026-04-03)
                - Processing: Cloud-only, no on-device option (accessed 2026-04-03)
                - Features: Meeting transcription, speaker diarization, AI summaries, Zoom/Meet/Teams integration, search across transcripts, collaboration (accessed 2026-04-03)
@@ -421,7 +421,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Price</td>
             <td><span class="table-highlight">Free. No subscription.</span></td>
-            <td>Free tier (300 min/mo, 30 min max); Pro $8.49/mo (annual); Business $19.99/mo*</td>
+            <td>Free tier (300 min/mo, 30 min max); Pro $8.33/mo (annual); Business $19.99/mo*</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -471,11 +471,11 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Native Mac desktop app</td>
             <td><span class="table-check">Yes</span> - native macOS menu bar app</td>
-            <td><span class="table-cross">No</span> - web app and Chrome extension on desktop</td>
+            <td><span class="table-check">Yes,</span> a native Otter Desktop app for Mac and Windows (bot-free recording), alongside the web app and Chrome extension</td>
           </tr>
           <tr>
             <td>AI polish / AI features</td>
-            <td><span class="table-highlight">EG-1, Apple Intelligence,</span> or Ollama on-device; OpenAI/Gemini with your key</td>
+            <td><span class="table-highlight">EG-1, Ollama</span> on-device, <span class="table-highlight">Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key</td>
             <td>AI summaries, action items, chat with transcripts (cloud)</td>
           </tr>
           <tr>
@@ -485,7 +485,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Clipboard preservation</td>
-            <td><span class="table-check">Yes</span> - saves and restores your clipboard after pasting</td>
+            <td><span class="table-check">Yes,</span> when enabled and no other app changes the clipboard first</td>
             <td>N/A - no paste-into-app workflow</td>
           </tr>
           <tr>
@@ -501,7 +501,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Platforms</td>
             <td>macOS (Apple Silicon)</td>
-            <td>Web, iOS, Android, Chrome extension</td>
+            <td>Web, iOS, Android, Chrome extension, Desktop app (Mac &amp; Windows)</td>
           </tr>
           <tr>
             <td>Source code</td>
@@ -510,7 +510,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
             <td>Near real-time (depends on network and server load)</td>
           </tr>
           <tr>
@@ -526,7 +526,7 @@ const faqJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Otter.ai's public pricing and feature pages as of April 2026. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Otter.ai claims source-verified from otter.ai and otter.ai/pricing; not firsthand-tested. Competitor claims last verified: 2026-04-04.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Otter.ai's public pricing and feature pages last checked August 2026. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Otter.ai claims source-verified from otter.ai and otter.ai/pricing; not firsthand-tested. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -548,7 +548,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">$0</div>
         <div class="advantage-title">Free with no caps</div>
-        <p class="advantage-desc">No 300-minute monthly limit. No 30-minute session cap. No paid tiers. Download and dictate as much as you want. Otter's free plan limits you to 300 minutes per month, and Pro costs $8.49/mo billed annually.</p>
+        <p class="advantage-desc">No 300-minute monthly limit. No 30-minute session cap. No paid tiers. Download and dictate as much as you want. Otter's free plan limits you to 300 minutes per month, and Pro costs $8.33/mo billed annually.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔒</div>
@@ -646,12 +646,12 @@ const faqJsonLd = JSON.stringify({
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.43s</div>
+        <div class="speed-value">0.61s</div>
         <div class="speed-label">Median transcription</div>
         <div class="speed-detail">From end of speech to raw text</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.5s</div>
+        <div class="speed-value">1.65s</div>
         <div class="speed-label">With AI polish</div>
         <div class="speed-detail">EG-1 or Apple, on-device</div>
       </div>
@@ -749,7 +749,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">⏱️</div>
         <div class="advantage-title">Long-form recording</div>
-        <p class="advantage-desc">Otter handles hour-long meetings and lectures. EnviousWispr is optimized for short dictation bursts of one to two minutes.</p>
+        <p class="advantage-desc">Otter handles hour-long meetings and lectures. EnviousWispr can handle sessions up to 60 minutes, but has no meeting-specific features: no live notes, no speaker identification, no summarization.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you need meeting transcription, use Otter. If you want to type by speaking into any text field on your Mac, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. Many people use both.</p>
@@ -806,7 +806,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is Otter.ai free?</div>
-        <p class="faq-a">Otter has a free tier with 300 minutes per month and a 30-minute per-conversation limit. Beyond that, Pro is $8.49/month (billed annually) and Business is $19.99/month. EnviousWispr is completely free with no usage limits, no subscription tiers, and no account required.</p>
+        <p class="faq-a">Otter has a free tier with 300 minutes per month and a 30-minute per-conversation limit. Beyond that, Pro is $8.33/month (billed annually) and Business is $19.99/month. EnviousWispr is completely free with no usage limits, no subscription tiers, and no account required.</p>
       </div>
     </div>
   </div>

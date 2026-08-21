@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/notta/`,
   "image": `${siteUrl}/images/og/notta.png`,
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-05-15T18:30:48Z",
+  "dateModified": "2026-08-21T13:11:11Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -111,7 +111,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does Notta have a free plan?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. Notta offers a free tier with 120 minutes of transcription per month and limited features. Their Pro plan is $8.17/mo billed annually ($13.99/mo monthly). EnviousWispr is free with no usage limits."
+        "text": "Yes. Notta offers a free tier with 120 minutes of transcription per month and limited features. Their Pro plan is $8.17/mo billed annually ($13.33/mo monthly). EnviousWispr is free with no usage limits."
       }
     },
     {
@@ -362,7 +362,7 @@ const faqJsonLd = JSON.stringify({
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.43s median latency
+        0.61s median latency
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -371,7 +371,7 @@ const faqJsonLd = JSON.stringify({
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
 
@@ -395,13 +395,13 @@ const faqJsonLd = JSON.stringify({
         <!-- Evidence: Notta claims verified against notta.ai on 2026-04-04.
              Confidence: source-verified from public website and pricing page.
              Sources:
-               - Pricing: notta.ai/en/pricing (accessed 2026-04-04)  -  Free 120 min/mo, Pro $8.17/mo annual ($15/mo monthly), Business $16.67/mo
+               - Pricing: notta.ai/en/pricing (re-verified 2026-08-21)  -  Free 120 min/mo, Pro $8.17/mo annual ($13.33/mo monthly), Business $16.67/mo
                - Platforms: notta.ai (accessed 2026-04-04)  -  Web, iOS, Android, Chrome, Mac, Windows
                - Cloud processing: notta.ai  -  all transcription is cloud-based
                - Meeting features: notta.ai  -  bot joins Zoom/Meet/Teams/Webex, speaker ID, AI summaries
                - Languages: notta.ai  -  58 languages, transcript translation
                - Accuracy: notta.ai  -  98.86% accuracy (per Notta) claimed
-               - Custom vocabulary: Business plan only ($16.67/mo)
+               - Custom vocabulary: available from Pro up (3 entries), Business (200), Enterprise (1,000); not Business-exclusive
                - No real-time dictation into external apps: transcripts stay in Notta's interface
              Firsthand testing: Notta was not tested firsthand for this comparison.
              All claims are source-verified from official pages.
@@ -449,7 +449,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
             <td>Near real-time (cloud-dependent)</td>
           </tr>
           <tr>
@@ -459,22 +459,22 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">EG-1, Apple Intelligence,</span> or Ollama on-device; OpenAI/Gemini with your own key</td>
+            <td><span class="table-highlight">EG-1, Ollama</span> on-device, <span class="table-highlight">Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key</td>
             <td>AI summaries and action items from meetings</td>
           </tr>
           <tr>
             <td>Offline AI polish</td>
-            <td><span class="table-check">Yes</span> - EG-1, Apple Intelligence, or Ollama run locally</td>
+            <td><span class="table-check">Yes</span> - EG-1, Ollama, or Apple Intelligence (macOS 26+) run locally</td>
             <td><span class="table-cross">No</span> - AI features require cloud</td>
           </tr>
           <tr>
             <td>Custom vocabulary</td>
             <td><span class="table-check">Yes</span> (custom words with phonetic hints)</td>
-            <td>Custom vocabulary on Business plan ($16.67/mo)</td>
+            <td>Custom vocabulary from Pro up (3 entries; 200 on Business, 1,000 on Enterprise)</td>
           </tr>
           <tr>
             <td>Clipboard preservation</td>
-            <td><span class="table-check">Yes</span> - saves and restores your clipboard around paste</td>
+            <td><span class="table-check">Yes,</span> when enabled and no other app changes the clipboard first</td>
             <td>N/A (transcripts stay in Notta's interface)</td>
           </tr>
           <tr>
@@ -494,7 +494,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Languages</td>
-            <td>25 European (Parakeet), 90+ via WhisperKit</td>
+            <td>25 European (Parakeet), 99 languages via WhisperKit</td>
             <td>58 languages, transcript translation</td>
           </tr>
           <tr>
@@ -510,7 +510,7 @@ const faqJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Notta's public pricing page (notta.ai/en/pricing) as of April 2026. Pro price shown is annual billing; monthly is $15/mo. Business plan at $16.67/mo includes custom vocabulary. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Notta claims source-verified from notta.ai; not firsthand-tested. Competitor claims last verified: 2026-04-04.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Notta's public pricing page (notta.ai/en/pricing), re-verified 2026-08-21. Pro price shown is annual billing; monthly is $13.33/mo. Custom vocabulary is available from Pro up, not Business-exclusive. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Notta claims source-verified from notta.ai; not firsthand-tested. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -542,7 +542,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
         <div class="advantage-title">Instant text output</div>
-        <p class="advantage-desc">0.43s median from end-of-speech to text in your cursor. No waiting for cloud processing, no network dependency. Dictate an email, a Slack message, a doc paragraph, and it appears immediately.</p>
+        <p class="advantage-desc">0.61s median from end-of-speech to text in your cursor. No waiting for cloud processing, no network dependency. Dictate an email, a Slack message, a doc paragraph, and it appears immediately.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🚫</div>
@@ -630,12 +630,12 @@ const faqJsonLd = JSON.stringify({
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.43s</div>
+        <div class="speed-value">0.61s</div>
         <div class="speed-label">Median transcription</div>
         <div class="speed-detail">From end of speech to raw text</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.5s</div>
+        <div class="speed-value">1.65s</div>
         <div class="speed-label">With AI polish</div>
         <div class="speed-detail">EG-1 or Apple, on-device</div>
       </div>
@@ -759,7 +759,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Notta have a free plan?</div>
-        <p class="faq-a">Yes. Notta offers a free tier with 120 minutes of transcription per month and limited features. Their Pro plan is $8.17/mo billed annually ($13.99/mo monthly). EnviousWispr is free with no usage limits.</p>
+        <p class="faq-a">Yes. Notta offers a free tier with 120 minutes of transcription per month and limited features. Their Pro plan is $8.17/mo billed annually ($13.33/mo monthly). EnviousWispr is free with no usage limits.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>

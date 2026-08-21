@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/google-docs-voice-typing/`,
   "image": `${siteUrl}/images/og/google-docs-voice-typing.png`,
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-05-15T18:30:48Z",
+  "dateModified": "2026-08-21T13:11:11Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -37,7 +37,7 @@ const faqJsonLd = JSON.stringify({
     { "@type": "Question", "name": "Can I dictate outside Google Docs for free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. EnviousWispr is free, with no subscription, no usage limits, and no account required. Download and start dictating in any app on your Mac." } },
     { "@type": "Question", "name": "Does EnviousWispr work offline?", "acceptedAnswer": { "@type": "Answer", "text": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider." } },
     { "@type": "Question", "name": "Does Google Docs voice typing send my audio to the cloud?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Google Docs voice typing requires an internet connection and processes your audio on Google's servers. EnviousWispr processes audio entirely on your Mac using the Apple Silicon Neural Engine." } },
-    { "@type": "Question", "name": "Does EnviousWispr have voice commands like Google Docs?", "acceptedAnswer": { "@type": "Answer", "text": "Not yet. Google Docs supports voice commands (select, format, navigate) in English. EnviousWispr focuses on fast, accurate transcription with AI polish. Voice commands may come in a future release." } },
+    { "@type": "Question", "name": "Does EnviousWispr have voice commands like Google Docs?", "acceptedAnswer": { "@type": "Answer", "text": "Not the same kind. Google Docs supports voice commands for select, format, and navigate in English. EnviousWispr supports spoken punctuation and emoji, but has no voice commands for app navigation or editing." } },
     { "@type": "Question", "name": "What Mac do I need?", "acceptedAnswer": { "@type": "Answer", "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast." } },
     { "@type": "Question", "name": "Can EnviousWispr remove filler words?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. EnviousWispr automatically removes um, uh, like, and other filler words. Google Docs voice typing transcribes everything as spoken, including fillers." } },
     { "@type": "Question", "name": "Is EnviousWispr open source?", "acceptedAnswer": { "@type": "Answer", "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub. Contributions are welcome." } },
@@ -298,7 +298,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.43s median latency
+        0.61s median latency
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -307,7 +307,7 @@ const breadcrumbJsonLd = JSON.stringify({
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
 
@@ -335,11 +335,12 @@ const breadcrumbJsonLd = JSON.stringify({
                - Browser: Chrome, Edge, and Safari on desktop (support.google.com/docs/answer/4492226, accessed 2026-04-04)
                - Cloud processing: Requires internet, audio sent to Google servers (support.google.com/docs/answer/4492226, accessed 2026-04-04)
                - App scope: Google Docs and Google Slides only (support.google.com/docs/answer/4492226, accessed 2026-04-04)
-               - Languages: ~100 languages supported (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - Languages: over 100 languages and regional variants supported (support.google.com/docs/answer/4492226, accessed 2026-08-21)
                - Voice commands: English only, formatting and editing commands (support.google.com/docs/answer/4492226, accessed 2026-04-04)
                - Auto-punctuation: limited; users must say most punctuation marks (support.google.com/docs/answer/4492226, accessed 2026-04-04)
                - Custom vocabulary: not supported (support.google.com/docs/answer/4492226, accessed 2026-04-04)
                - Accessibility: keyboard-free input within Google Docs (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - Speech engine: Google does not name a specific backend; the browser controls the speech-to-text service (support.google.com/docs/answer/4492226, accessed 2026-08-21)
              Firsthand testing: Google Docs Voice Typing was not tested firsthand for this comparison.
              All claims are source-verified from official Google support pages. -->
         <tbody>
@@ -370,12 +371,12 @@ const breadcrumbJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">EG-1, Apple Intelligence,</span> or Ollama on-device; OpenAI/Gemini with your own key</td>
+            <td><span class="table-highlight">EG-1, Ollama</span> on-device, <span class="table-highlight">Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key</td>
             <td><span class="table-cross">None</span></td>
           </tr>
           <tr>
             <td>Offline AI polish</td>
-            <td><span class="table-check">Yes</span> (EG-1, Apple Intelligence, or a local Ollama model)</td>
+            <td><span class="table-check">Yes</span> (EG-1, Ollama, or Apple Intelligence on macOS 26+)</td>
             <td><span class="table-cross">No.</span> Entire tool requires internet.</td>
           </tr>
           <tr>
@@ -395,12 +396,12 @@ const breadcrumbJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>First-word capture</td>
-            <td><span class="table-check">Yes.</span> VAD + buffered audio captures from the first syllable.</td>
+            <td><span class="table-check">Yes,</span> while the mic is warm (500ms pre-roll buffer); a cold start can still clip</td>
             <td>Can miss the first word if recognition takes a moment to start.</td>
           </tr>
           <tr>
             <td>Clipboard preservation</td>
-            <td><span class="table-check">Yes.</span> Clipboard saved before paste and restored after.</td>
+            <td><span class="table-check">Yes,</span> when enabled and no other app changes the clipboard first.</td>
             <td>N/A. Text is inserted directly into Google Docs.</td>
           </tr>
           <tr>
@@ -410,8 +411,8 @@ const breadcrumbJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Languages</td>
-            <td>25 European (Parakeet), 90+ via WhisperKit</td>
-            <td>~100 languages</td>
+            <td>25 European (Parakeet), 99 languages via WhisperKit</td>
+            <td>100+ languages and regional variants</td>
           </tr>
           <tr>
             <td>Platform</td>
@@ -431,7 +432,7 @@ const breadcrumbJsonLd = JSON.stringify({
           <tr>
             <td>Speech engines</td>
             <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (on-device)</td>
-            <td>Google Cloud Speech API</td>
+            <td>Browser-based (Google does not name the backend)</td>
           </tr>
           <tr>
             <td>Source code</td>
@@ -440,13 +441,13 @@ const breadcrumbJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
             <td>Depends on network + Google server load</td>
           </tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Google Docs Voice Typing claims source-verified from <a href="https://support.google.com/docs/answer/4492226" style="color: var(--text-3); text-decoration: underline;">support.google.com/docs/answer/4492226</a> as of April 2026; not firsthand-tested. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Table expanded with 18 comparison rows covering app scope, AI features, privacy, and platform differences. Competitor claims last verified: 2026-04-04.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Google Docs Voice Typing claims source-verified from <a href="https://support.google.com/docs/answer/4492226" style="color: var(--text-3); text-decoration: underline;">support.google.com/docs/answer/4492226</a> as of August 2026; not firsthand-tested. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Table expanded with 18 comparison rows covering app scope, AI features, privacy, and platform differences. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -483,7 +484,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">✨</div>
         <div class="advantage-title">AI polish and cleanup</div>
-        <p class="advantage-desc">EnviousWispr removes filler words, fixes grammar, and polishes your text with AI. Use EG-1 or Apple Intelligence on-device, or bring your own API key. Google's voice typing gives you raw dictation only.</p>
+        <p class="advantage-desc">EnviousWispr removes filler words, fixes grammar, and polishes your text with AI. Use EG-1 or Ollama on-device (or Apple Intelligence on macOS 26+), or bring your own OpenAI, Gemini, or Claude API key. Google's voice typing gives you raw dictation only.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📝</div>
@@ -493,7 +494,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
         <div class="advantage-title">Fast local transcription</div>
-        <p class="advantage-desc">Median time to text is 0.43s on Apple Silicon. No network round-trips, no server queues. Immune to bad Wi-Fi, unlike cloud-dependent dictation.</p>
+        <p class="advantage-desc">Median time to text is 0.61s on Apple Silicon. No network round-trips, no server queues. Immune to bad Wi-Fi, unlike cloud-dependent dictation.</p>
       </div>
     </div>
   </div>
@@ -573,7 +574,7 @@ const breadcrumbJsonLd = JSON.stringify({
           <p>EnviousWispr is a system-wide dictation tool. Hold a keybind, speak, and the transcribed text is pasted directly into whatever text field has focus. It works in every macOS application: native apps, Electron apps, web browsers, terminals, IDEs, messaging tools. There is no copy-paste detour.</p>
           <p>For people who write in many apps throughout the day, this is the core difference. Dictation should follow you across your workflow, not lock you into one browser tab.</p>
           <div class="deep-dive-detail">
-            <strong>How it works:</strong> EnviousWispr captures the frontmost app and text field at recording start. After transcription, it re-activates that exact app and inserts text via the Accessibility API. If direct insertion fails, it falls back to simulated Cmd+V, then to AppleScript. Your clipboard is saved before the operation and restored after.
+            <strong>How it works:</strong> EnviousWispr captures the frontmost app and text field at recording start. After transcription, it re-activates that exact app and tries direct insertion via the Accessibility API first, without touching your clipboard. If that fails it falls back to an ordinary paste, then to the app's own Edit &gt; Paste menu. If all three fail, your text stays on the clipboard so you can paste it yourself. When restoration is enabled (on by default), your prior clipboard contents are put back after a clipboard-based paste.
           </div>
         </div>
       </div>
@@ -582,10 +583,10 @@ const breadcrumbJsonLd = JSON.stringify({
         <div class="deep-dive-title">Privacy: on-device vs cloud</div>
         <div class="deep-dive-body">
           <p>Google Docs Voice Typing requires a constant internet connection. Your audio is streamed to Google's servers, processed by their speech recognition API, and the text result is sent back. Google's <a href="https://policies.google.com/privacy" style="color: var(--accent); text-decoration: underline;">privacy policy</a> governs how that audio data is handled.</p>
-          <p>EnviousWispr processes audio entirely on your Mac using the Apple Silicon Neural Engine. The audio buffer never leaves your device. After transcription, the audio is discarded. If you use on-device AI polish (EG-1, Apple Intelligence, or Ollama), the entire pipeline is local. No audio or text is uploaded anywhere.</p>
-          <p>If you opt into a cloud LLM for polish (OpenAI, Gemini), only the text transcript is sent, never the audio, and you provide your own API key. You control the relationship with the provider directly.</p>
+          <p>EnviousWispr processes audio entirely on your Mac using the Apple Silicon Neural Engine. The audio buffer never leaves your device. After transcription, the audio is discarded. If you use on-device AI polish (EG-1, Ollama, or Apple Intelligence on macOS 26+), the entire pipeline is local. No audio or text is uploaded anywhere.</p>
+          <p>If you opt into a cloud LLM for polish (OpenAI, Gemini, or Claude), only the text transcript is sent, never the audio, and you provide your own API key. You control the relationship with the provider directly.</p>
           <div class="deep-dive-detail">
-            <strong>Privacy by architecture:</strong> EnviousWispr does not have a server. There is no account system, no cloud backend, and no telemetry on your dictated content. The app sends anonymous usage analytics (PostHog) and crash reports (Sentry), but your actual text and audio never leave your machine.
+            <strong>Privacy by architecture:</strong> EnviousWispr does not have a server. There is no account system, no cloud backend, and no telemetry on your dictated content. The app sends anonymous usage analytics (PostHog) and crash reports (Sentry). Your audio never leaves your Mac; your text stays local too, unless you opt into cloud polish, in which case only the transcript goes directly to your chosen provider under your own API key.
           </div>
         </div>
       </div>
@@ -603,14 +604,14 @@ const breadcrumbJsonLd = JSON.stringify({
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.43s</div>
+        <div class="speed-value">0.61s</div>
         <div class="speed-label">Median transcription</div>
         <div class="speed-detail">From end of speech to raw text</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.5s</div>
+        <div class="speed-value">1.65s</div>
         <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-detail">EG-1 or Apple, on-device; scales with dictation length</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
@@ -649,12 +650,12 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🗣️</div>
         <div class="advantage-title">Voice commands for formatting</div>
-        <p class="advantage-desc">Say "bold", "italic", "new line", "select all", or "undo" while dictating in Google Docs. These formatting commands (English only) let you edit hands-free inside the document. EnviousWispr does not have voice commands yet.</p>
+        <p class="advantage-desc">Say "bold", "italic", "new line", "select all", or "undo" while dictating in Google Docs. These formatting commands (English only) let you edit hands-free inside the document. EnviousWispr supports spoken punctuation and emoji, but has no voice commands for app navigation or editing.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌐</div>
-        <div class="advantage-title">~100 languages out of the box</div>
-        <p class="advantage-desc">Google supports roughly 100 languages for voice typing with no extra configuration. EnviousWispr's primary engine (Parakeet) covers 25 European languages; WhisperKit supports 90+ but with varying accuracy.</p>
+        <div class="advantage-title">100+ languages out of the box</div>
+        <p class="advantage-desc">Google supports over 100 languages and regional variants for voice typing with no extra configuration. EnviousWispr's primary engine (Parakeet) covers 25 European languages; WhisperKit supports 99 but with varying accuracy.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If your workflow lives entirely inside Google Docs, their voice typing is a solid choice. If you need dictation across your whole Mac, in any app, with AI polish and privacy, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>.</p>
@@ -687,7 +688,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr have voice commands like Google Docs?</div>
-        <p class="faq-a">Not yet. Google Docs supports voice commands (select, format, navigate) in English. EnviousWispr focuses on fast, accurate transcription with AI polish. Voice commands may come in a future release.</p>
+        <p class="faq-a">Not the same kind. Google Docs supports voice commands for select, format, and navigate in English. EnviousWispr supports spoken punctuation and emoji, but has no voice commands for app navigation or editing.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What Mac do I need?</div>

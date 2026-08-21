@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/apple-dictation/`,
   "image": `${siteUrl}/images/og/apple-dictation.png`,
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-06-13T01:09:39Z",
+  "dateModified": "2026-08-21T13:11:11Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -79,7 +79,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Why does Apple Dictation stop listening after 30 seconds?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Apple Dictation has a built-in inactivity timeout. If you pause speaking for too long, it stops. EnviousWispr has no timeout, so you can pause to think and continue dictating without restarting."
+        "text": "Apple Dictation has a built-in inactivity timeout. If you pause speaking for too long, it stops. EnviousWispr has no inactivity timeout, so you can pause to think and continue dictating without restarting. Each recording does have a generous one-hour cap."
       }
     },
     {
@@ -103,7 +103,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does EnviousWispr work offline?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Transcription runs entirely on-device after a one-time model download. AI polish can also run locally via EG-1, Apple Intelligence, or Ollama. No internet required for the full pipeline."
+        "text": "Transcription runs entirely on-device after a one-time model download. AI polish can also run locally via EG-1, Ollama, or Apple Intelligence (macOS 26+). No internet required for the full pipeline."
       }
     },
     {
@@ -119,7 +119,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can EnviousWispr remove filler words from dictation?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. When AI polish is enabled, filler words like um, uh, you know, and like are stripped automatically. Apple Dictation transcribes them as-is."
+        "text": "Yes. EnviousWispr removes spoken noises like um, uh, and hmm automatically, on a fixed local list that works even with AI polish off. AI polish defaults to Apple Intelligence, which needs macOS 26+; on macOS 14-25 it silently falls back to the same deterministic cleanup unless you switch to EG-1, Ollama, or a cloud key. When AI polish does run, it goes further and also removes false starts and repeated words. Apple Dictation transcribes filler as-is."
       }
     },
     {
@@ -127,7 +127,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does EnviousWispr support voice commands like Apple Dictation?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "No. Apple Dictation supports voice commands such as new paragraph, comma, and emoji names. EnviousWispr does not process voice commands during recording. Instead, AI polish handles punctuation, paragraph breaks, and formatting automatically based on context."
+        "text": "Not the same way. Apple Dictation supports voice commands such as new paragraph, comma, and emoji names as its main punctuation method. EnviousWispr supports spoken emoji (on by default) and spoken punctuation (opt-in, since AI polish already handles most punctuation automatically), but has no voice commands for app navigation or editing."
       }
     },
     {
@@ -382,7 +382,7 @@ const faqJsonLd = JSON.stringify({
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
 
@@ -440,17 +440,17 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Timeout</td>
-            <td><span class="table-highlight">No timeout.</span> Handles 1-2 minute dictation bursts.</td>
+            <td><span class="table-highlight">No inactivity timeout.</span> Handles long dictation sessions, up to a 60-minute cap per recording.</td>
             <td>Stops after ~30s of silence</td>
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">EG-1, Apple Intelligence,</span> Ollama (on-device), or BYO OpenAI/Gemini key</td>
+            <td><span class="table-highlight">EG-1, Ollama</span> (on-device), <span class="table-highlight">Apple Intelligence</span> (on-device, macOS 26+), or BYO OpenAI/Gemini/Claude key</td>
             <td><span class="table-cross">None</span></td>
           </tr>
           <tr>
             <td>Filler word removal</td>
-            <td><span class="table-check">Yes</span>, automatic via AI polish</td>
+            <td><span class="table-check">Yes</span>, fixed local list runs even with AI polish off; AI polish removes more</td>
             <td><span class="table-cross">No</span> (transcribes "um", "uh" faithfully)</td>
           </tr>
           <tr>
@@ -465,7 +465,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Transcription speed</td>
-            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
             <td>Real-time streaming (words appear as you speak)</td>
           </tr>
           <tr>
@@ -475,22 +475,22 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>First-word capture</td>
-            <td><span class="table-check">Yes</span> (always-listening VAD, no warm-up gap)</td>
+            <td><span class="table-check">Yes</span>, while the microphone is warm (500ms pre-roll buffer)</td>
             <td>Can miss the first word while the mic activates</td>
           </tr>
           <tr>
             <td>Punctuation</td>
-            <td>Auto-punctuation + AI polish reformats</td>
+            <td>Auto-punctuation + AI polish reformats; spoken punctuation available as an opt-in</td>
             <td>Auto-punctuation, emoji dictation, voice commands</td>
           </tr>
           <tr>
             <td>Voice commands</td>
-            <td><span class="table-cross">Not supported</span></td>
+            <td>Spoken emoji (on by default) and spoken punctuation (opt-in); no app navigation or editing commands</td>
             <td><span class="table-highlight">"New paragraph", "comma", "smiley face"</span></td>
           </tr>
           <tr>
             <td>Clipboard preservation</td>
-            <td><span class="table-check">Yes</span> (saves and restores clipboard around paste)</td>
+            <td><span class="table-check">Yes,</span> when enabled and no other app changes the clipboard first</td>
             <td><span class="table-cross">No</span> (inserts directly at cursor)</td>
           </tr>
           <tr>
@@ -505,7 +505,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Language support</td>
-            <td>25 European (Parakeet), 90+ via WhisperKit</td>
+            <td>25 European (Parakeet), 99 languages via WhisperKit</td>
             <td>Dozens of locales</td>
           </tr>
           <tr>
@@ -531,7 +531,7 @@ const faqJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">EnviousWispr latency from production PostHog data (environment=production) on Apple Silicon Macs. Apple Dictation accuracy from published third-party benchmarks. Apple Dictation features verified against Apple Support documentation and firsthand testing on macOS 15. Last verified: April 2026.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">EnviousWispr latency from production PostHog data (environment=production) on Apple Silicon Macs. Apple Dictation accuracy from published third-party benchmarks. Apple Dictation features verified against Apple Support documentation and firsthand testing on macOS 15. Last verified: August 2026.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -553,7 +553,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🧠</div>
         <div class="advantage-title">AI polish cleans your words</div>
-        <p class="advantage-desc">Apple Dictation gives you raw transcription. EnviousWispr pipes text through <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">AI polish</a> to remove filler words, fix grammar, and format paragraphs. Choose EG-1, Apple Intelligence, Ollama, or your own OpenAI/Gemini key.</p>
+        <p class="advantage-desc">Apple Dictation gives you raw transcription. EnviousWispr pipes text through <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">AI polish</a> to remove filler words, fix grammar, and format paragraphs. Choose EG-1, Ollama, Apple Intelligence (macOS 26+), or your own OpenAI, Gemini, or Claude key.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📖</div>
@@ -563,12 +563,12 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">⏱️</div>
         <div class="advantage-title">No 30-second timeout</div>
-        <p class="advantage-desc">Apple Dictation stops listening after roughly 30 seconds of inactivity. EnviousWispr has no timeout. Dictate a full paragraph, pause to think, keep going. Designed for 1-2 minute bursts without interruption.</p>
+        <p class="advantage-desc">Apple Dictation stops listening after roughly 30 seconds of inactivity. EnviousWispr has no timeout. Dictate a full paragraph, pause to think, keep going. Sessions can run up to 60 minutes without cutting you off.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
-        <div class="advantage-title">0.43s to finished text</div>
-        <p class="advantage-desc">Median time from end of speech to text in clipboard: 0.43 seconds without polish, 1.5 seconds with AI polish. Processed locally on the <a href="https://developer.apple.com/machine-learning/core-ml/" style="color: var(--accent); text-decoration: underline;">Neural Engine</a>. No network dependency.</p>
+        <div class="advantage-title">0.61s to finished text</div>
+        <p class="advantage-desc">Median time from end of speech to transcribed text: 0.61 seconds. Processed locally on the <a href="https://developer.apple.com/machine-learning/core-ml/" style="color: var(--accent); text-decoration: underline;">Neural Engine</a>, no network dependency. AI polish, when enabled, adds variable time on top that scales with how much you dictated.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔇</div>
@@ -594,14 +594,14 @@ const faqJsonLd = JSON.stringify({
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.43s</div>
+        <div class="speed-value">0.61s</div>
         <div class="speed-label">Median transcription</div>
         <div class="speed-detail">From end of speech to raw text</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.5s</div>
+        <div class="speed-value">1.65s</div>
         <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-detail">EG-1 or Apple, on-device; scales with dictation length</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0s</div>
@@ -639,7 +639,7 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-title">AI polish transforms raw speech</div>
         <div class="deep-dive-body">
           <p>Apple Dictation gives you exactly what you said, including every "um," "uh," "you know," and false start. For quick one-liners, that is fine. For anything longer, you end up editing the transcript to make it readable.</p>
-          <p>EnviousWispr pipes transcription through an AI polish step that removes filler words, fixes grammar, formats paragraphs, and adjusts tone. You can choose EG-1 (our own on-device model), Apple Intelligence (fully on-device), Ollama (local open-source models), or bring your own OpenAI or Gemini API key.</p>
+          <p>EnviousWispr pipes transcription through an AI polish step that removes filler words, fixes grammar, formats paragraphs, and adjusts tone. You can choose EG-1 (our own on-device model), Ollama (local open-source models), Apple Intelligence (on-device, requires macOS 26+), or bring your own OpenAI, Gemini, or Claude API key.</p>
           <p>The polish layer includes hallucination safeguards: short transcripts bypass the LLM entirely, output length is validated against input length, and preamble artifacts ("Certainly! Here is...") are stripped automatically. Your dictated text is wrapped in XML tags with explicit instructions to polish, not answer or rewrite.</p>
           <div class="deep-dive-detail">
             <strong>How it works:</strong> Context-aware prompts include the target app name, detected language, and ASR error patterns. Sandwich framing wraps the transcript in &lt;transcript&gt; tags to prevent prompt injection. Output exceeding 3x input length is rejected as probable hallucination, falling back to raw text.
@@ -672,7 +672,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🗣️</div>
         <div class="advantage-title">Voice commands for formatting</div>
-        <p class="advantage-desc">Say "new paragraph," "comma," "exclamation mark," or even "smiley face" and Apple Dictation inserts the right character. EnviousWispr does not support voice commands for punctuation or formatting.</p>
+        <p class="advantage-desc">Say "new paragraph," "comma," "exclamation mark," or even "smiley face" and Apple Dictation inserts the right character. EnviousWispr supports spoken punctuation (off by default) and spoken emoji, on by default, said as the name followed by the word "emoji" (say "smiley face emoji"), but has no voice commands for app navigation or editing.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
@@ -707,7 +707,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Why does Apple Dictation stop listening after 30 seconds?</div>
-        <p class="faq-a">Apple Dictation has a built-in inactivity timeout. If you pause speaking for too long, it stops. EnviousWispr has no timeout, so you can pause to think and continue dictating without restarting.</p>
+        <p class="faq-a">Apple Dictation has a built-in inactivity timeout. If you pause speaking for too long, it stops. EnviousWispr has no inactivity timeout, so you can pause to think and continue dictating without restarting. Each recording does have a generous one-hour cap.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr replace Apple Dictation?</div>
@@ -719,7 +719,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr work offline?</div>
-        <p class="faq-a">Transcription runs entirely on-device after a one-time model download. AI polish can also run locally via EG-1, Apple Intelligence, or Ollama. No internet required for the full pipeline.</p>
+        <p class="faq-a">Transcription runs entirely on-device after a one-time model download. AI polish can also run locally via EG-1, Ollama, or Apple Intelligence (macOS 26+). No internet required for the full pipeline.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How accurate is EnviousWispr compared to Apple Dictation?</div>
@@ -727,11 +727,11 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can EnviousWispr remove filler words from dictation?</div>
-        <p class="faq-a">Yes. When AI polish is enabled, filler words like "um," "uh," "you know," and "like" are stripped automatically. Apple Dictation transcribes them as-is. If you dictate longer passages, filler removal makes a noticeable difference in readability.</p>
+        <p class="faq-a">Yes. EnviousWispr removes spoken noises like "um," "uh," and "hmm" automatically, on a fixed local list that runs even with AI polish switched off. AI polish defaults to Apple Intelligence, which needs macOS 26+; below that it silently falls back to the same deterministic cleanup unless you switch to EG-1, Ollama, or a cloud key. When AI polish does run, it goes further and also removes false starts and repeated words. Apple Dictation transcribes them as-is. If you dictate longer passages, filler removal makes a noticeable difference in readability.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr support voice commands like Apple Dictation?</div>
-        <p class="faq-a">No. Apple Dictation supports voice commands such as "new paragraph," "comma," and emoji names. EnviousWispr does not process voice commands during recording. Instead, AI polish handles punctuation, paragraph breaks, and formatting automatically based on context.</p>
+        <p class="faq-a">Not the same way. Apple Dictation supports voice commands such as "new paragraph," "comma," and emoji names as its main punctuation method. EnviousWispr supports spoken emoji (on by default) and spoken punctuation (opt-in, since AI polish already handles most punctuation automatically), but has no voice commands for app navigation or editing.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What Mac do I need?</div>

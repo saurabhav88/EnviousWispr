@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/dragon/`,
   "image": `${siteUrl}/images/og/dragon.png`,
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-08-20T20:29:25Z",
+  "dateModified": "2026-08-21T13:11:11Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -103,7 +103,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does EnviousWispr work offline?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Transcription runs entirely on-device and works without internet after the initial model download. AI polish can also run offline using EG-1, Apple Intelligence, or a local Ollama model."
+        "text": "Transcription runs entirely on-device and works without internet after the initial model download. AI polish can also run offline using EG-1, a local Ollama model, or Apple Intelligence (macOS 26+)."
       }
     },
     {
@@ -383,7 +383,7 @@ const faqJsonLd = JSON.stringify({
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.43s median latency
+        0.61s median latency
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -416,8 +416,10 @@ const faqJsonLd = JSON.stringify({
         <!-- Evidence: Dragon claims verified against nuance.com, Microsoft product pages, and archived documentation.
              Confidence: source-verified from public websites and archived product listings.
              Sources:
-               - Pricing: nuance.com/dragon.html (accessed 2026-04-03) - Dragon Professional ~$699 one-time
-               - Mac discontinuation: Nuance announcement (2018), confirmed no Mac version available (accessed 2026-04-03)
+               - Pricing: dragon.nuance.com's own product page no longer lists a price and directs buyers to
+                 contact sales (accessed 2026-08-21); Dragon Professional v16 at ~$699 one-time is confirmed
+                 by third-party retailers (SoftwareAdvice, GetApp, accessed 2026-08-21)
+               - Mac discontinuation: Nuance announcement (2018), confirmed no Mac version available (accessed 2026-08-21)
                - Consumer version: Dragon Home discontinued; only Professional Individual remains (accessed 2026-04-03)
                - Microsoft acquisition: Microsoft completed Nuance acquisition March 2022 (public record)
                - On-device processing: Dragon processes locally after installation (product documentation)
@@ -427,7 +429,8 @@ const faqJsonLd = JSON.stringify({
                - Medical/legal editions: Dragon Medical One, Dragon Legal Individual exist as specialized products (nuance.com)
                - Accuracy claim: Nuance markets "up to 99% recognition accuracy" (product page, accessed 2026-04-03)
              Firsthand testing: Dragon was not tested firsthand for this comparison.
-             All claims are source-verified from official pages and public records. Last verified: 2026-04-04. -->
+             All claims are source-verified from official pages, third-party retail trackers, and public records.
+             Last verified: 2026-08-21. -->
         <tbody>
           <tr>
             <td>Price</td>
@@ -461,12 +464,12 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Offline AI polish</td>
-            <td><span class="table-highlight">Yes.</span> EG-1, Apple Intelligence, or local Ollama models.</td>
+            <td><span class="table-highlight">Yes.</span> EG-1, local Ollama models, or Apple Intelligence (macOS 26+).</td>
             <td><span class="table-cross">No AI polish at all</span></td>
           </tr>
           <tr>
             <td>AI polish / LLM providers</td>
-            <td><span class="table-highlight">5 providers:</span> EG-1, Apple Intelligence, Ollama, OpenAI, Gemini</td>
+            <td><span class="table-highlight">6 providers:</span> EG-1, Ollama, Apple Intelligence (macOS 26+), OpenAI, Gemini, Claude</td>
             <td><span class="table-cross">None</span></td>
           </tr>
           <tr>
@@ -491,12 +494,12 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Voice commands</td>
-            <td><span class="table-cross">Not supported</span></td>
+            <td>Spoken punctuation and emoji only; no navigation, editing, or macros</td>
             <td><span class="table-check">Yes.</span> Edit by voice, navigate, format, custom macros.</td>
           </tr>
           <tr>
             <td>First-word capture</td>
-            <td><span class="table-check">Yes.</span> VAD detects speech onset; no clipping.</td>
+            <td><span class="table-check">Yes,</span> while the mic is warm (500ms pre-roll buffer); a cold start can still clip</td>
             <td><span class="table-check">Yes.</span> Always-listening mode with wake word.</td>
           </tr>
           <tr>
@@ -511,7 +514,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Clipboard preservation</td>
-            <td><span class="table-check">Yes.</span> Clipboard saved and restored after paste.</td>
+            <td><span class="table-check">Yes,</span> when enabled and no other app changes the clipboard first.</td>
             <td>Not applicable (types directly, does not use clipboard)</td>
           </tr>
           <tr>
@@ -531,7 +534,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
             <td>Near-instant (local processing, but older engine)</td>
           </tr>
           <tr>
@@ -547,7 +550,7 @@ const faqJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Dragon Professional Individual pricing from <a href="https://www.nuance.com/dragon.html" style="color: var(--text-3); text-decoration: underline;">nuance.com</a> as of April 2026. Consumer Dragon Home has been discontinued. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Dragon claims source-verified from official Nuance pages and product documentation; not firsthand-tested. Competitor claims last verified: 2026-04-04.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Dragon Professional Individual pricing of ~$699 one-time confirmed by third-party retailers (SoftwareAdvice, GetApp) as of August 2026; <a href="https://dragon.nuance.com/en-us/dragon-professional" style="color: var(--text-3); text-decoration: underline;">Nuance's own product page</a> no longer lists a price and directs buyers to contact sales. Consumer Dragon Home has been discontinued. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Dragon claims source-verified from official Nuance pages and product documentation; not firsthand-tested. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -579,7 +582,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">✨</div>
         <div class="advantage-title">AI polish built in</div>
-        <p class="advantage-desc">Dragon gives you a raw transcript. EnviousWispr can clean up filler words, fix punctuation, and restructure sentences using EG-1, Apple Intelligence, or a local Ollama model. No extra software, no cloud dependency unless you choose it.</p>
+        <p class="advantage-desc">Dragon gives you a raw transcript. EnviousWispr can clean up filler words, fix punctuation, and restructure sentences using EG-1, a local Ollama model, or Apple Intelligence (macOS 26+). No extra software, no cloud dependency unless you choose it.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
@@ -624,7 +627,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>AI polish cleans up the transcript. Runs on-device with EG-1, Apple Intelligence, or Ollama, or with your own cloud API key if you choose.</div>
+          <div>AI polish cleans up the transcript. Runs on-device with EG-1, Ollama, or Apple Intelligence (macOS 26+), or with your own cloud API key if you choose.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
@@ -683,7 +686,7 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-title">Modern AI polish, not just raw transcript</div>
         <div class="deep-dive-body">
           <p>Dragon gives you a transcript and expects you to fix it. It has no concept of LLM-based post-processing. Dragon was built in an era before large language models existed, and Nuance has not retrofitted this capability.</p>
-          <p>EnviousWispr integrates five polish engines for Smart Polish: EG-1 (our own on-device model), Apple Intelligence (fully on-device), Ollama (local models like Qwen or Gemma), and cloud options via OpenAI or Gemini if you bring your own API key. The polish step removes filler words, fixes punctuation, restructures awkward phrasings, and adapts to the app you are dictating into.</p>
+          <p>EnviousWispr integrates six polish engines for Smart Polish: EG-1 (our own on-device model), Ollama (local models like Qwen or Gemma), Apple Intelligence (on-device, macOS 26+), and cloud options via OpenAI, Gemini, or Claude if you bring your own API key. The polish step removes filler words, fixes punctuation, restructures awkward phrasings, and adapts to the app you are dictating into.</p>
           <p>The system is context-aware. Dictating into Slack? The polish keeps it conversational. Writing an email? It formalizes. And all cloud providers only receive the text transcript, never your audio.</p>
           <div class="deep-dive-detail">
             <strong>Technical detail:</strong> Smart Polish uses sandwich prompt framing with XML-tagged transcript boundaries to prevent hallucination. Output validation rejects responses longer than 3x the input. Short transcripts (3 words or fewer) bypass the LLM entirely. Preamble stripping removes "Certainly!" artifacts automatically.
@@ -704,14 +707,14 @@ const faqJsonLd = JSON.stringify({
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.43s</div>
+        <div class="speed-value">0.61s</div>
         <div class="speed-label">Median transcription</div>
         <div class="speed-detail">From end of speech to raw text</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.5s</div>
+        <div class="speed-value">1.65s</div>
         <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-detail">EG-1 or Apple, on-device; scales with dictation length</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0s</div>
@@ -788,7 +791,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr work offline?</div>
-        <p class="faq-a">Transcription runs entirely on-device and works without internet after the initial model download. AI polish can also run offline using EG-1, Apple Intelligence, or a local Ollama model. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">getting started guide</a> for setup.</p>
+        <p class="faq-a">Transcription runs entirely on-device and works without internet after the initial model download. AI polish can also run offline using EG-1, a local Ollama model, or Apple Intelligence (macOS 26+). See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">getting started guide</a> for setup.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can EnviousWispr do voice commands like Dragon?</div>
@@ -856,7 +859,7 @@ const faqJsonLd = JSON.stringify({
 <footer style="padding: 24px 0 48px; text-align: center;">
   <div class="container">
     <p style="font-size: 11px; color: var(--text-3); max-width: 640px; margin: 0 auto; line-height: 1.65;">
-      <strong>Methodology:</strong> Dragon claims were sourced from <a href="https://www.nuance.com/dragon.html" style="color: var(--text-3); text-decoration: underline;">nuance.com</a>, Microsoft product announcements, archived product pages, and official product documentation. Dragon was not firsthand-tested for this comparison. Where Dragon has genuine strengths (voice commands, medical/legal editions, adaptive accuracy), we say so. EnviousWispr performance data comes from production PostHog analytics on Apple Silicon Macs. All competitor claims were last verified on 2026-04-04. If you spot an error, please <a href="https://github.com/saurabhav88/EnviousWispr/issues" style="color: var(--text-3); text-decoration: underline;">open an issue</a>.
+      <strong>Methodology:</strong> Dragon claims were sourced from <a href="https://dragon.nuance.com/en-us/dragon-professional" style="color: var(--text-3); text-decoration: underline;">nuance.com</a>, Microsoft product announcements, archived product pages, official product documentation, and third-party retail trackers for pricing. Dragon was not firsthand-tested for this comparison. Where Dragon has genuine strengths (voice commands, medical/legal editions, adaptive accuracy), we say so. EnviousWispr performance data comes from production PostHog analytics on Apple Silicon Macs. All competitor claims were last verified on 2026-08-21. If you spot an error, please <a href="https://github.com/saurabhav88/EnviousWispr/issues" style="color: var(--text-3); text-decoration: underline;">open an issue</a>.
     </p>
   </div>
 </footer>

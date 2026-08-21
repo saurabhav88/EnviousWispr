@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/superwhisper/`,
   "image": `${siteUrl}/images/og/superwhisper.png`,
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-05-15T18:30:48Z",
+  "dateModified": "2026-08-21T13:11:11Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -63,7 +63,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Is there a free alternative to Superwhisper?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and WhisperKit for 90+."
+        "text": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and WhisperKit for 99."
       }
     },
     {
@@ -95,7 +95,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does Superwhisper have offline AI polish?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Superwhisper's transcription works offline via Whisper. However, their AI polish features appear to require cloud connectivity. EnviousWispr's EG-1, Apple Intelligence, and Ollama integrations run entirely on your Mac."
+        "text": "Superwhisper's transcription works offline via Whisper. However, their AI polish features appear to require cloud connectivity. EnviousWispr's EG-1 and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+."
       }
     },
     {
@@ -367,7 +367,7 @@ const faqJsonLd = JSON.stringify({
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.43s median latency
+        0.61s median latency
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -376,7 +376,7 @@ const faqJsonLd = JSON.stringify({
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
 
@@ -397,18 +397,19 @@ const faqJsonLd = JSON.stringify({
             <th scope="col">Superwhisper</th>
           </tr>
         </thead>
-        <!-- Evidence: Superwhisper claims verified against superwhisper.com on 2026-04-04.
+        <!-- Evidence: Superwhisper claims verified against superwhisper.com on 2026-04-04, re-verified 2026-08-21.
              Sources:
-               - superwhisper.com homepage (accessed 2026-04-04): features, pricing tiers, AI model list, writing modes, custom vocabulary, meeting transcription, iOS app, offline mode, 100+ languages
-               - superwhisper.com (accessed 2026-04-04): Pro ~$8.49/mo, Lifetime option available, free tier with 15-min trial
+               - superwhisper.com homepage (re-verified 2026-08-21): features, pricing tiers, AI model list, writing modes, custom vocabulary, meeting transcription, iOS app, offline mode, 100+ languages. Now also Windows.
+               - superwhisper.com pricing (re-verified 2026-08-21): Free tier is now UNLIMITED (no time limit, no word cap) but restricted to smaller AI models; the April "15-min trial" framing is gone. Pro ~$8.49/mo ($84.99/yr), Lifetime $249.99 one-time. New Enterprise tier (SOC 2 Type II, custom pricing).
              Confidence: source-verified from public website. Superwhisper was not tested firsthand.
-             Features marked "Not specified" were not found on superwhisper.com as of 2026-04-04.
-             Last verified: 2026-04-04. -->
+             Features marked "Not specified" were not found on superwhisper.com as of 2026-08-21.
+             EnviousWispr latency (0.61s / 1.65s) and language count (99 via WhisperKit) re-measured 2026-08-21.
+             Last verified: 2026-08-21. -->
         <tbody>
           <tr>
             <td>Price</td>
             <td><span class="table-highlight">Free to use. No subscription, no word limits.</span></td>
-            <td>Free tier (15-min trial); Pro ~$8.49/mo; Lifetime purchase available*</td>
+            <td>Free tier (unlimited, smaller AI models); Pro ~$8.49/mo; Lifetime purchase available*</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -437,7 +438,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">EG-1, Apple Intelligence, or Ollama on-device;</span> OpenAI/Gemini with your own key</td>
+            <td><span class="table-highlight">EG-1, Ollama on-device, Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key</td>
             <td>Cloud AI via GPT-5, Claude, Llama 4, Grok, Gemini, Ministral (requires Pro)</td>
           </tr>
           <tr>
@@ -447,7 +448,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
             <td>Not published</td>
           </tr>
           <tr>
@@ -477,7 +478,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Clipboard preservation</td>
-            <td><span class="table-check">Yes</span> (clipboard saved before paste, restored after)</td>
+            <td><span class="table-check">Yes,</span> when enabled and no other app changes the clipboard first</td>
             <td>Automatic pasting; clipboard preservation not specified</td>
           </tr>
           <tr>
@@ -492,12 +493,12 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Meeting transcription</td>
-            <td><span class="table-cross">No</span> (built for 1-2 minute dictation)</td>
+            <td><span class="table-cross">No</span> (no live notes or speaker diarization)</td>
             <td><span class="table-check">Yes</span> (live meeting recording with automatic notes)</td>
           </tr>
           <tr>
             <td>Multi-language</td>
-            <td>25 European (Parakeet), 90+ via WhisperKit</td>
+            <td>25 European (Parakeet), 99 languages via WhisperKit</td>
             <td>100+ languages with translation to English</td>
           </tr>
           <tr>
@@ -528,7 +529,7 @@ const faqJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Superwhisper's public website (superwhisper.com) as of April 2026. Pricing: free tier, Pro ~$8.49/mo (yearly discount available), lifetime purchase option. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Superwhisper features source-verified from superwhisper.com; not firsthand-tested. Competitor claims last verified: 2026-04-04.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Superwhisper's public website (superwhisper.com), last checked August 2026. Pricing: free tier (now unlimited, restricted to smaller AI models), Pro ~$8.49/mo (yearly discount available), lifetime purchase option. EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. Superwhisper features source-verified from superwhisper.com; not firsthand-tested. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -555,11 +556,11 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🧠</div>
         <div class="advantage-title">Parakeet TDT, not just Whisper</div>
-        <p class="advantage-desc">Superwhisper uses Whisper for on-device transcription. EnviousWispr runs <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">NVIDIA Parakeet TDT</a> as its primary engine, covering 25 European languages with strong accuracy on English dictation. WhisperKit is available as a fallback for 90+ languages. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
+        <p class="advantage-desc">Superwhisper uses Whisper for on-device transcription. EnviousWispr runs <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">NVIDIA Parakeet TDT</a> as its primary engine, covering 25 European languages with strong accuracy on English dictation. WhisperKit is available as a fallback for 99 languages. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
-        <div class="advantage-title">0.43s median latency</div>
+        <div class="advantage-title">0.61s median latency</div>
         <p class="advantage-desc">Measured in production on Apple Silicon Macs. Text appears almost instantly after you stop speaking. No waiting for model warm-up or network round-trips.</p>
       </div>
       <div class="advantage-card reveal">
@@ -570,7 +571,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔑</div>
         <div class="advantage-title">Your choice of AI polish</div>
-        <p class="advantage-desc">EG-1, Apple Intelligence, and Ollama run entirely on-device. Want cloud speed? Bring your own OpenAI or Gemini key. You control which services touch your text. Superwhisper's cloud AI requires a Pro subscription.</p>
+        <p class="advantage-desc">EG-1 and Ollama run entirely on-device, and so does Apple Intelligence on macOS 26+. Want cloud speed? Bring your own OpenAI, Gemini, or Claude key. You control which services touch your text. Superwhisper's cloud AI requires a Pro subscription.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📖</div>
@@ -605,7 +606,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>AI polish runs locally (EG-1, Apple Intelligence, or Ollama) or with your own API key. If you use a cloud provider, only the text transcript is sent; you control the key.</div>
+          <div>AI polish runs locally (EG-1, Ollama, or Apple Intelligence on macOS 26+) or with your own API key. If you use a cloud provider, only the text transcript is sent; you control the key.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
@@ -648,12 +649,12 @@ const faqJsonLd = JSON.stringify({
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.43s</div>
+        <div class="speed-value">0.61s</div>
         <div class="speed-label">Median transcription</div>
         <div class="speed-detail">From end of speech to raw text</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.5s</div>
+        <div class="speed-value">1.65s</div>
         <div class="speed-label">With AI polish</div>
         <div class="speed-detail">EG-1 or Apple, on-device</div>
       </div>
@@ -716,7 +717,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎙</div>
         <div class="advantage-title">You need meeting transcription</div>
-        <p class="advantage-desc">Superwhisper supports live meeting recording and automatic note generation. EnviousWispr is built for short dictation (1-2 minutes), not meeting-length recording. If transcribing meetings is your primary use case, Superwhisper handles it today.</p>
+        <p class="advantage-desc">Superwhisper supports live meeting recording and automatic note generation. EnviousWispr can record sessions up to 60 minutes, but has no meeting-specific features: no live notes, no speaker diarization, no summarization. If transcribing meetings is your primary use case, Superwhisper handles it today.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📱</div>
@@ -758,7 +759,7 @@ const faqJsonLd = JSON.stringify({
     <div class="faq-list">
       <div class="faq-item reveal">
         <div class="faq-q">Is there a free alternative to Superwhisper?</div>
-        <p class="faq-a">Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and WhisperKit for 90+.</p>
+        <p class="faq-a">Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for 25 European languages and WhisperKit for 99.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from Superwhisper?</div>
@@ -770,11 +771,11 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
-        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud AI providers like OpenAI or Gemini are optional and require your own API key.</p>
+        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud AI providers like OpenAI, Gemini, or Claude are optional and require your own API key.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Superwhisper have offline AI polish?</div>
-        <p class="faq-a">Superwhisper's transcription works offline via Whisper. However, their AI polish features (writing modes powered by GPT, Claude, Llama, etc.) appear to require cloud connectivity. Their website does not specify an offline AI polish option. EnviousWispr's EG-1, Apple Intelligence, and Ollama integrations run entirely on your Mac.</p>
+        <p class="faq-a">Superwhisper's transcription works offline via Whisper. However, their AI polish features (writing modes powered by GPT, Claude, Llama, etc.) appear to require cloud connectivity. Their website does not specify an offline AI polish option. EnviousWispr's EG-1 and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr really free?</div>
