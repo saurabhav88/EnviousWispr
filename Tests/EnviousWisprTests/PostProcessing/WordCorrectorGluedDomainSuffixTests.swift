@@ -52,13 +52,19 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.replacements == 1)
   }
 
-  @Test("An UNRECOGNIZED trailing suffix is left as part of the match, unchanged shape")
-  func unrecognizedSuffixIsNotTreatedAsATLD() {
-    // ".zzz" is not in the closed TLD list this fix reuses, so the token is
-    // handled exactly as before this fix -- no special-casing invented for
-    // strings that merely look domain-shaped.
+  @Test("A suffix outside the recognized-TLD list ALSO survives (Codex round 3)")
+  func suffixOutsideTheAllowlistAlsoSurvives() {
+    // Superseded by Codex review round 3, P1: the peel trigger used to be
+    // `recognizedTLDs` itself, so ".zzz" -- not in that ten-item list --
+    // stayed unpeeled and fuzzy matching swallowed it exactly like the
+    // original bug. The trigger is now any letter/digit/hyphen run after a
+    // dot, so this survives too. `suffixOutsideAllowlistStillSurvives`
+    // below covers the same shape for real-looking TLDs; this pins a
+    // clearly-not-a-TLD string to prove the trigger isn't secretly still an
+    // allowlist under a different name.
     let result = corrected("Enviousvisper.zzz")
-    #expect(result.text != "EnviousWispr.zzz")
+    #expect(result.text == "EnviousWispr.zzz")
+    #expect(result.replacements == 1)
   }
 
   @Test("A fuzzy (near-miss spelling) match ALSO keeps a glued TLD")
@@ -151,6 +157,52 @@ struct WordCorrectorGluedDomainSuffixTests {
     // retry path, where "githab" DOES exact-match. Blindly reattaching the
     // peeled ".com" would produce "GitHub.com.com".
     let result = corrected("githab.com", [Self.gitHubBareAlias])
+    #expect(result.text == "GitHub.com")
+    #expect(result.replacements == 1)
+  }
+
+  // MARK: Codex review round 3 findings -- the peel trigger, the reattach
+  // dedup, and the domain-shaped fuzzy path all needed to widen past the
+  // narrow ten-TLD allowlist.
+
+  @Test("A glued suffix OUTSIDE the recognized-TLD allowlist still survives correction")
+  func suffixOutsideAllowlistStillSurvives() {
+    // Codex review round 3, P1: the peel trigger was `recognizedTLDs`
+    // itself, so a suffix like ".us" (not in that ten-item list) left the
+    // token unpeeled, and fuzzy matching swallowed it exactly like the
+    // original bug. The trigger no longer depends on that allowlist.
+    for tld in ["us", "uk", "tech", "info"] {
+      let result = corrected("Enviousvisper.\(tld)")
+      #expect(result.text == "EnviousWispr.\(tld)", "'.\(tld)' should survive, allowlist or not")
+      #expect(result.replacements == 1)
+    }
+  }
+
+  private static let gitHubDomainAliasNearMiss = CustomWord(
+    canonical: "GitHub.com", aliases: ["githab.com"], category: .brand)
+
+  @Test("A near-miss (fuzzy) spelling of a domain-shaped alias still matches unpeeled")
+  func fuzzyMatchOnDomainShapedAliasStillWorks() {
+    // Codex review round 3, P1: peeling ALWAYS before matching broke fuzzy
+    // correction for a domain-valued alias. "githib.com" is a one-letter
+    // near miss of the alias "githab.com" -- comparing the whole glued
+    // strings (both carrying ".com") scores high; peeling first strips the
+    // TLD from only the INPUT side and the match is lost.
+    let result = corrected("githib.com", [Self.gitHubDomainAliasNearMiss])
+    #expect(result.text == "GitHub.com")
+    #expect(result.replacements == 1)
+  }
+
+  @Test(
+    "A peeled suffix that DIFFERS from the matched canonical's own TLD is still dropped, not appended"
+  )
+  func mismatchedPeeledSuffixStillDroppedNotAppended() {
+    // Codex review round 3, P2: the dedup check only compared the peeled
+    // suffix against the SAME suffix on the canonical. Canonical
+    // "GitHub.com" matched via bare alias "githab", with input carrying a
+    // DIFFERENT recognized TLD (".org"), still produced "GitHub.com.org".
+    // The canonical is domain-shaped at all, so its own TLD wins outright.
+    let result = corrected("githab.org", [Self.gitHubBareAlias])
     #expect(result.text == "GitHub.com")
     #expect(result.replacements == 1)
   }

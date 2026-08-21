@@ -895,35 +895,43 @@ public struct WordCorrector: Sendable {
         return token
       }
 
-      // Pass 3, tried on the token exactly as ASR emitted it, BEFORE any TLD
-      // peeling. A saved custom word or alias can itself be a domain
-      // ("GitHub.com" canonical, "githab.com" alias), and this is the only
-      // pass safe to try unpeeled: exact string equality can never
-      // coincidentally consume a glued TLD (Codex review, PR for #2281,
-      // finding P1).
-      if let canonical = singleAliasMap[coreLower], core != canonical {
-        appendReplacement(forCanonical: canonical)
-        #if DEBUG
-          Self.logger.debug("WordCorrector: type=alias source='\(core)' target='\(canonical)'")
-        #endif
+      // Step 1: exact match (always) + fuzzy match RESTRICTED to
+      // domain-shaped candidates (`isDomainShaped`), both tried against the
+      // token exactly as ASR emitted it, before any peeling. Exact equality
+      // can never coincidentally consume a glued TLD, so it is always safe
+      // unpeeled (Codex review, PR for #2281, finding P1 round 1). Fuzzy
+      // scoring CAN cross threshold against a glued suffix -- but only when
+      // the CANDIDATE it's compared against is itself bare. A candidate that
+      // is ALSO domain-shaped ("githab.com" alias for canonical
+      // "GitHub.com") makes the comparison apples-to-apples (both sides
+      // carry a TLD), so a near-miss like "githib.com" still needs to try
+      // this unpeeled -- peeling first would strip the TLD from only one
+      // side and lose the match entirely (Codex review, PR for #2281,
+      // finding P1 round 3).
+      if let canonical = matchSingleWordPasses(
+        core: core, coreLower: coreLower, lookups: lookups,
+        appendReplacement: { appendReplacement(forCanonical: $0) }, fuzzyDomainShapedOnly: true)
+      {
         return prefix + canonical + suffix
       }
 
-      // Every other pass (fuzzy Pass 4/5, pack tier) runs on a TLD-peeled core
-      // whenever a recognized TLD is glued to the end -- never on the raw
-      // glued token. Fuzzy SCORING, unlike exact equality, can cross
-      // threshold against the whole glued string too (measured live for
-      // several TLDs while building this fix: trying fuzzy on the unpeeled
-      // token first reproduced the original bug for org/net/ai/me/io/app),
-      // so this is not an optional refinement -- it is what makes the fix
-      // correct for every fuzzy-matched brand, not only exact ones.
+      // Step 2: peel a plausible glued suffix and retry every pass
+      // (exact + fuzzy + pack) against the bare core. The peel trigger is
+      // deliberately NOT limited to `recognizedTLDs` -- fuzzy scoring can
+      // silently swallow any glued suffix that survives edge-punctuation
+      // stripping, not only the ten TLDs that set recognizes as URL
+      // evidence, so narrowing this trigger to that set left ".us"/".uk"/
+      // ".tech" etc. unprotected (Codex review, PR for #2281, finding P1
+      // round 3). If nothing matches the peeled core either, the untouched
+      // original token is returned below, so a permissive trigger costs
+      // nothing when the suffix isn't actually a domain.
       var matchCore = core
-      var peeledTLD = ""
+      var peeledSuffix = ""
       if let lastDot = core.lastIndex(of: "."), lastDot > core.startIndex {
-        let tail = core[core.index(after: lastDot)...].lowercased()
-        if Self.recognizedTLDs.contains(tail) {
+        let tail = core[core.index(after: lastDot)...]
+        if !tail.isEmpty, tail.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) {
           matchCore = String(core[core.startIndex..<lastDot])
-          peeledTLD = String(core[lastDot...])
+          peeledSuffix = String(core[lastDot...])
         }
       }
       let matchCoreLower = matchCore.lowercased()
@@ -931,18 +939,18 @@ public struct WordCorrector: Sendable {
         return token
       }
       if let canonical = matchSingleWordPasses(
-        core: matchCore, coreLower: matchCoreLower,
-        lookups: lookups, appendReplacement: { appendReplacement(forCanonical: $0) })
+        core: matchCore, coreLower: matchCoreLower, lookups: lookups,
+        appendReplacement: { appendReplacement(forCanonical: $0) }, fuzzyDomainShapedOnly: false)
       {
-        // Codex review, PR for #2281, finding P2 (round 2): a saved
+        // Codex review, PR for #2281, finding P2 (rounds 2 and 3): a saved
         // CANONICAL can itself be a domain ("GitHub.com") even when its
-        // alias is the bare word ("githab") -- blindly re-appending the
-        // peeled TLD to that canonical would produce "GitHub.com.com".
-        // Reattach it only when the matched canonical does not already end
-        // with it.
-        let reattach =
-          peeledTLD.isEmpty || canonical.lowercased().hasSuffix(peeledTLD.lowercased())
-          ? "" : peeledTLD
+        // alias is the bare word ("githab") -- reattaching the peeled
+        // suffix to a canonical that is ALREADY domain-shaped would produce
+        // something like "GitHub.com.org". Suppress the reattach whenever
+        // the matched canonical is domain-shaped AT ALL, not only when it
+        // happens to end with the SAME suffix that was peeled: the
+        // canonical fully specifies its own domain either way.
+        let reattach = peeledSuffix.isEmpty || Self.isDomainShaped(canonical) ? "" : peeledSuffix
         return prefix + canonical + reattach + suffix
       }
 
@@ -955,13 +963,22 @@ public struct WordCorrector: Sendable {
   /// Passes 3-5 (plus the pack tier), factored out of `correct(using:)` so the
   /// single-word matcher can be run TWICE per token: once against the token as
   /// ASR emitted it, and -- only if that produced no match -- once more
-  /// against a TLD-peeled core (see the call site in `correct(using:)`).
+  /// against a peeled core (see the two call sites in `correct(using:)`).
   /// Returns the bare matched CANONICAL, never prefix/suffix-assembled --
   /// the caller reattaches those, since only the caller knows whether a
-  /// peeled TLD needs deduplicating against the canonical it matched.
+  /// peeled suffix needs deduplicating against the canonical it matched.
+  ///
+  /// `fuzzyDomainShapedOnly` gates ONLY the fuzzy passes (4/5 + pack): Pass 3
+  /// (exact) always considers every alias, domain-shaped or not, because
+  /// exact equality can never coincidentally consume a glued suffix the way
+  /// fuzzy scoring can. The unpeeled call site passes `true` (fuzzy is only
+  /// safe unpeeled when comparing against an equally domain-shaped
+  /// candidate); the peeled call site passes `false` (the ordinary,
+  /// unrestricted pool, exactly as before this parameter existed).
   private func matchSingleWordPasses(
     core: String, coreLower: String,
-    lookups: Lookups, appendReplacement: (String) -> Void
+    lookups: Lookups, appendReplacement: (String) -> Void,
+    fuzzyDomainShapedOnly: Bool
   ) -> String? {
     let singleAliasMap = lookups.singleAliasMap
     let singleFuzzyCandidates = lookups.singleFuzzyCandidates
@@ -1000,6 +1017,9 @@ public struct WordCorrector: Sendable {
     for entry in singleFuzzyCandidates {
       let surface = entry.surface
       let canonical = entry.canonical
+      if fuzzyDomainShapedOnly, !Self.isDomainShaped(surface), !Self.isDomainShaped(canonical) {
+        continue
+      }
       // Length-ratio pruning: skip if lengths differ too much for threshold
       let surfLen = surface.count
       let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
@@ -1056,6 +1076,7 @@ public struct WordCorrector: Sendable {
     bestMatch = ""
 
     for (idx, targetLower) in lowercasedCanonicals.enumerated() {
+      if fuzzyDomainShapedOnly, !Self.isDomainShaped(targetLower) { continue }
       let targetLen = targetLower.count
       let lenRatio = Double(min(coreLen, targetLen)) / Double(max(coreLen, targetLen))
       if lenRatio < 0.5 { continue }
@@ -1127,6 +1148,11 @@ public struct WordCorrector: Sendable {
       var pSecond = 0.0
       var pMatch = ""
       for entry in packSingleFuzzyCandidates {
+        if fuzzyDomainShapedOnly, !Self.isDomainShaped(entry.surface),
+          !Self.isDomainShaped(entry.canonical)
+        {
+          continue
+        }
         let surfLen = entry.surface.count
         let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
         if lenRatio < 0.5 { continue }
@@ -1169,6 +1195,7 @@ public struct WordCorrector: Sendable {
       var pSecond = 0.0
       var pMatch = ""
       for (idx, targetLower) in packLowercasedCanonicals.enumerated() {
+        if fuzzyDomainShapedOnly, !Self.isDomainShaped(targetLower) { continue }
         let targetLen = targetLower.count
         let lenRatio = Double(min(coreLen, targetLen)) / Double(max(coreLen, targetLen))
         if lenRatio < 0.5 { continue }
@@ -1293,14 +1320,38 @@ public struct WordCorrector: Sendable {
   /// (`lowerRiskURLTLDAlt` + `commonWordURLTLDAlt`), reused rather than
   /// redefined so both parts of the pipeline agree on what "looks like a
   /// domain" means — a closed, already-vetted set, never a fresh guess
-  /// (`matcher-set-adversarial-tests`). Read only by the single-word retry in
-  /// `correct(using:)` -- NOT by `splitPunctuation` itself, so Pass 0/1/2
-  /// compound matching still treats a glued domain as one opaque unit, exactly
-  /// as before this fix (Codex review, PR for #2281, finding P2: peeling a TLD
-  /// inside the shared helper let an internal token's ".com" get silently
-  /// consumed by an accidental cross-token compound match).
+  /// (`matcher-set-adversarial-tests`).
+  ///
+  /// Scope, narrowed by Codex review round 3: this set decides whether a
+  /// saved ALIAS/CANONICAL counts as domain-shaped (`isDomainShaped(_:)`
+  /// below) -- a controlled, curated surface where reusing the vetted TLD
+  /// list is correct. It does NOT decide whether a dotted suffix on the
+  /// INPUT is worth trying to peel: that trigger is deliberately broader
+  /// (see the single-word retry in `correct(using:)`), because fuzzy scoring
+  /// can silently swallow ANY glued suffix, not only the ten TLDs here --
+  /// `Enviousvisper.us` was still corrected to `EnviousWispr` (dropping
+  /// ".us") when the peel trigger was this same narrow list.
+  /// Read only by the single-word retry -- NOT by `splitPunctuation` itself,
+  /// so Pass 0/1/2 compound matching still treats a glued domain as one
+  /// opaque unit, exactly as before this fix (Codex review, PR for #2281,
+  /// finding P2: peeling inside the shared helper let an internal token's
+  /// ".com" get silently consumed by an accidental cross-token compound
+  /// match).
   private static let recognizedTLDs: Set<String> = Set(
     InverseTextNormalizer.urlTLDAlt.components(separatedBy: "|"))
+
+  /// True when `s` itself ends in a recognized TLD -- used to decide whether
+  /// a saved alias/canonical is a domain in its own right, in which case a
+  /// peeled suffix must never be appended to it a second time (Codex review,
+  /// PR for #2281, finding P2 round 3: a bare alias "githab" mapped to
+  /// canonical "GitHub.com" turned input "githab.org" into "GitHub.com.org"
+  /// when the dedup check only compared against the SAME TLD that was
+  /// peeled, rather than asking whether the canonical is a domain at all).
+  private static func isDomainShaped(_ s: String) -> Bool {
+    guard let lastDot = s.lastIndex(of: "."), lastDot > s.startIndex else { return false }
+    let tail = s[s.index(after: lastDot)...].lowercased()
+    return Self.recognizedTLDs.contains(tail)
+  }
 
   private func stripPunctuation(_ token: String) -> String {
     splitPunctuation(token).core
