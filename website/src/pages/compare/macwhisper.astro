@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/macwhisper/`,
   "image": `${siteUrl}/images/og/macwhisper.png`,
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-05-15T18:30:48Z",
+  "dateModified": "2026-08-21T13:11:11Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -87,7 +87,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can I use MacWhisper for dictation?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "MacWhisper has a real-time transcription mode, but its primary design is file-based transcription. EnviousWispr's entire pipeline is optimized for dictation latency, with keybind activation, VAD, and direct clipboard paste delivering text in under a second."
+        "text": "MacWhisper has a real-time transcription mode, but its primary design is file-based transcription. EnviousWispr's pipeline is optimized for dictation latency: transcription lands in well under a second, and optional AI polish adds variable time on top that scales with how much you said."
       }
     },
     {
@@ -143,7 +143,7 @@ const faqJsonLd = JSON.stringify({
       "name": "What happens to my clipboard when EnviousWispr pastes text?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "EnviousWispr saves your clipboard contents before pasting dictated text and restores them afterward. Whatever you had copied before dictating will still be on your clipboard when you press Cmd+V next."
+        "text": "When clipboard restoration is on (the default), EnviousWispr saves your clipboard contents before a clipboard-based paste and restores them afterward, unless another app changes the clipboard in between. Direct text insertion never touches your clipboard at all."
       }
     },
   ]
@@ -153,7 +153,7 @@ const faqJsonLd = JSON.stringify({
 
 <BaseLayout
   title="EnviousWispr vs MacWhisper: Dictation vs Transcription"
-  description="Compare EnviousWispr vs MacWhisper. Free real-time dictation with 0.43s latency vs file transcription and subtitle export. On-device, no subscription."
+  description="Compare EnviousWispr vs MacWhisper. Free real-time dictation with 0.61s latency vs file transcription and subtitle export. On-device, no subscription."
   activePage="compare"
   ogImage="/images/og/macwhisper.png"
   ogType="article"
@@ -373,7 +373,7 @@ const faqJsonLd = JSON.stringify({
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.43s median latency
+        0.61s median latency
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -382,7 +382,7 @@ const faqJsonLd = JSON.stringify({
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
 
@@ -407,7 +407,7 @@ const faqJsonLd = JSON.stringify({
              macwhisper.com, and App Store listing on 2026-04-04.
              Confidence: source-verified from public Gumroad page, product website, and App Store.
              Sources:
-               - Pricing: Gumroad (Pro ~$73 one-time), App Store ($29.99/yr or $99.99 lifetime, AI Assistant $9.99/mo)
+               - Pricing: Gumroad (Pro ~$69/€59 one-time, accessed 2026-08-21), App Store ($29.99/yr or $99.99 lifetime, AI Assistant $9.99/mo)
                - Features: goodsnooze.gumroad.com/l/macwhisper feature list, macwhisper.com
                - Architecture: on-device Whisper models, optional cloud for AI Assistant
              Firsthand testing: MacWhisper was not tested firsthand for this comparison.
@@ -435,7 +435,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Dictation latency</td>
-            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td><span class="table-highlight">0.61s median</span> transcription; AI polish adds variable time that scales with length</td>
             <td>Not optimized for real-time input latency</td>
           </tr>
           <tr>
@@ -455,7 +455,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">EG-1, Apple Intelligence,</span> or Ollama on-device; OpenAI/Gemini with your own key</td>
+            <td><span class="table-highlight">EG-1, Ollama</span> on-device, <span class="table-highlight">Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key</td>
             <td>AI Assistant add-on ($9.99/mo), cloud-based</td>
           </tr>
           <tr>
@@ -470,7 +470,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Clipboard preservation</td>
-            <td><span class="table-check">Yes</span> (saves and restores your clipboard around paste)</td>
+            <td><span class="table-check">Yes,</span> when enabled and no other app changes the clipboard first</td>
             <td>N/A (no paste workflow)</td>
           </tr>
           <tr>
@@ -511,7 +511,7 @@ const faqJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*MacWhisper pricing from Gumroad and App Store listings as of April 2026. EnviousWispr latency from production PostHog data on Apple Silicon Macs. MacWhisper claims source-verified from goodsnooze.gumroad.com and macwhisper.com; not firsthand-tested. Competitor claims last verified: 2026-04-04.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*MacWhisper pricing from Gumroad and App Store listings as of August 2026. EnviousWispr latency from production PostHog data on Apple Silicon Macs. MacWhisper claims source-verified from goodsnooze.gumroad.com and macwhisper.com; not firsthand-tested. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -538,7 +538,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
         <div class="advantage-title">Sub-second dictation</div>
-        <p class="advantage-desc">0.43s median from end of speech to text in your active app. Purpose-built pipeline with VAD, Parakeet TDT, and direct clipboard paste. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>. MacWhisper's real-time mode is secondary to its file transcription focus.</p>
+        <p class="advantage-desc">0.61s median from end of speech to text in your active app. Purpose-built pipeline with VAD, Parakeet TDT, and direct clipboard paste. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>. MacWhisper's real-time mode is secondary to its file transcription focus.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎯</div>
@@ -631,12 +631,12 @@ const faqJsonLd = JSON.stringify({
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.43s</div>
+        <div class="speed-value">0.61s</div>
         <div class="speed-label">Median transcription</div>
         <div class="speed-detail">From end of speech to raw text</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.5s</div>
+        <div class="speed-value">1.65s</div>
         <div class="speed-label">With AI polish</div>
         <div class="speed-detail">EG-1 or Apple, on-device</div>
       </div>
@@ -667,7 +667,7 @@ const faqJsonLd = JSON.stringify({
           <p>EnviousWispr works in real time. You hold a keybind, speak, and release. In the background, a pre-roll audio buffer captures your first words before you even press the key. The ASR model stays warm in memory, so there is no cold-start delay. Speech detection sends only the parts where you were talking to the model. Text is pasted directly into whatever app had focus.</p>
           <p>The difference is not just speed. It is the entire interaction model. You never leave your document, never switch apps, never copy-paste. Your voice becomes an input method, not a separate step.</p>
           <div class="deep-dive-detail">
-            <strong>How it works:</strong> Pre-roll buffer captures 300ms of audio before keybind press so first words are never lost. Parakeet TDT model stays loaded in memory for instant inference. Speech detection keeps the stretches where you were talking and sends only those to the model. Three-tier paste system (AX direct insertion, CGEvent Cmd+V, AppleScript fallback) delivers text to the active field with clipboard preservation.
+            <strong>How it works:</strong> Pre-roll buffer captures 500ms of audio before keybind press so first words are never lost. Parakeet TDT model stays loaded in memory for instant inference. Speech detection keeps the stretches where you were talking and sends only those to the model. Three-tier paste system (AX direct insertion, CGEvent Cmd+V, AppleScript fallback) delivers text to the active field with clipboard preservation.
           </div>
         </div>
       </div>
@@ -724,7 +724,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">💰</div>
         <div class="advantage-title">You prefer a one-time purchase</div>
-        <p class="advantage-desc">MacWhisper Pro is a one-time purchase (~$73 via Gumroad). No ongoing costs for core features. EnviousWispr is free, but if you value the commercial support model, MacWhisper offers it.</p>
+        <p class="advantage-desc">MacWhisper Pro is a one-time purchase (~$69/€59 via Gumroad). No ongoing costs for core features. EnviousWispr is free, but if you value the commercial support model, MacWhisper offers it.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If your primary need is typing by voice with sub-second latency, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. If you need file transcription, subtitles, or speaker diarization, MacWhisper is a solid choice.</p>
