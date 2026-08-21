@@ -34,7 +34,7 @@ const faqJsonLd = JSON.stringify({
   "@type": "FAQPage",
   "mainEntity": [
     { "@type": "Question", "name": "Is there a free alternative to Willow Voice?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account, no word limits, and no subscription required. It works offline and keeps your audio on your device." } },
-    { "@type": "Question", "name": "Is EnviousWispr really free with no limits?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier is capped at 20 Scribe uses per week and limited to its weaker model. EnviousWispr has no such restriction." } },
+    { "@type": "Question", "name": "Is EnviousWispr really free with no limits?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier is unlimited on its weaker model, but its premium Scribe feature is capped at 20 uses per week. EnviousWispr has no such restriction." } },
     { "@type": "Question", "name": "Does Willow Voice work offline?", "acceptedAnswer": { "@type": "Answer", "text": "Willow Voice is cloud-based and requires an internet connection for transcription. EnviousWispr was built on-device from the start. Parakeet TDT and WhisperKit run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency." } },
     { "@type": "Question", "name": "Does EnviousWispr work offline?", "acceptedAnswer": { "@type": "Answer", "text": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider." } },
     { "@type": "Question", "name": "Will my audio be used for training?", "acceptedAnswer": { "@type": "Answer", "text": "No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else." } },
@@ -665,7 +665,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr really free with no limits?</div>
-        <p class="faq-a">Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier is capped at 20 Scribe uses per week and limited to its weaker model. EnviousWispr has no such restriction. The source code is open source on GitHub under the GPLv3 license.</p>
+        <p class="faq-a">Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier is unlimited on its weaker model, but its premium Scribe feature is capped at 20 uses per week. EnviousWispr has no such restriction. The source code is open source on GitHub under the GPLv3 license.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Willow Voice work offline?</div>
