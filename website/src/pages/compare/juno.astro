@@ -87,7 +87,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does Juno have AI cleanup like EnviousWispr's EG-1?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes, and like EG-1, it runs on-device with no prompt for you to write. Juno's own site states dictation is processed on your Mac, removing filler words and false starts automatically. The main difference is scope: EG-1 is purpose-built for cleaning up dictation and its performance is something we measure and publish. Juno's cleanup is part of a broader voice-assistant pipeline that also handles rewriting and app actions, and we found no published benchmark for it."
+        "text": "Yes, and like EG-1, it runs on-device with no prompt for you to write. Opening Juno's own model manager shows the pieces: Whisper Large V3 Turbo transcribes, a small Qwen3 0.6B model handles live correction as you speak, and a larger Qwen3 4B Instruct model does smart formatting afterward, both separate downloads from transcription itself. The main difference is scope: EG-1 is purpose-built for cleaning up dictation and its performance is something we measure and publish. Juno's cleanup is part of a broader voice-assistant pipeline that also handles rewriting and app actions, and we found no published benchmark for it."
       }
     },
     {
@@ -397,8 +397,8 @@ const faqJsonLd = JSON.stringify({
           </tr>
         </thead>
         <!-- Evidence: Juno claims verified against usejuno.co and github.com/Cassini-Research/Juno
-             (GitHub API) on 2026-08-21, plus local Info.plist inspection of the installed app
-             (bundle id com.juno.shell) on the same date.
+             (GitHub API), local Info.plist inspection, and the installed app opened directly, all on
+             2026-08-21.
              Sources:
                - usejuno.co (accessed 2026-08-21): "Built for M2 or newer Apple Silicon Macs on macOS 15
                  Sequoia or newer with at least 24 GB RAM." Free forever, no paid tier, no usage cap, no
@@ -412,9 +412,13 @@ const faqJsonLd = JSON.stringify({
                  OPTIONAL "Listen for Juno" wake-mode setting distinct from the default session-based
                  activation described on the marketing site, and Calendar/Reminders/Notes automation
                  permissions matching the site's description.
-             Confidence: source-verified from Juno's own site, GitHub repo, and a local install's
-             Info.plist. Juno was not run or tested firsthand for this page beyond that plist inspection.
-             Last verified: 2026-08-21. -->
+               - Juno opened directly on 2026-08-21: its Settings model manager names four downloadable
+                 models by role: Live captions and High-quality transcription both use Whisper Large V3
+                 Turbo, Live correction uses Qwen3 0.6B (4-bit), Smart formatting uses Qwen3 4B Instruct
+                 2507 (4-bit). The two cleanup models are separate downloads from the transcription models
+                 and were not installed by default on this machine.
+             Confidence: source-verified from Juno's own site, GitHub repo, a local install's Info.plist,
+             and the installed app opened directly. Last verified: 2026-08-21. -->
         <tbody>
           <tr>
             <td>Price</td>
@@ -449,7 +453,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>AI polish (cleanup after transcription)</td>
             <td><span class="table-highlight">EG-1</span> (measured, purpose-built for dictation), Apple Intelligence, Ollama, or your own key</td>
-            <td><span class="table-check">Yes</span>, on-device, part of a broader voice-assistant pipeline; no published benchmark</td>
+            <td><span class="table-check">Yes</span>, on-device: Qwen3 0.6B for live correction, Qwen3 4B Instruct for smart formatting, both separate downloads; no published benchmark</td>
           </tr>
           <tr>
             <td>Needs a prompt to be written</td>
@@ -489,7 +493,7 @@ const faqJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Juno claims sourced from usejuno.co, github.com/Cassini-Research/Juno (GitHub API), and a local install's Info.plist. Juno was not run firsthand for this page. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Juno claims sourced from usejuno.co, github.com/Cassini-Research/Juno (GitHub API), a local install's Info.plist, and the installed app opened directly. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -719,7 +723,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Juno have AI cleanup like EnviousWispr's EG-1?</div>
-        <p class="faq-a">Yes, and like EG-1, it runs on-device with no prompt for you to write. Juno's own site states dictation is processed on your Mac, removing filler words and false starts automatically. The main difference is scope: EG-1 is purpose-built for cleaning up dictation and its performance is something we measure and publish. Juno's cleanup is part of a broader voice-assistant pipeline that also handles rewriting and app actions, and we found no published benchmark for it.</p>
+        <p class="faq-a">Yes, and like EG-1, it runs on-device with no prompt for you to write. Opening Juno's own model manager shows the pieces: Whisper Large V3 Turbo transcribes, a small Qwen3 0.6B model handles live correction as you speak, and a larger Qwen3 4B Instruct model does smart formatting afterward, both separate downloads from transcription itself. The main difference is scope: EG-1 is purpose-built for cleaning up dictation and its performance is something we measure and publish. Juno's cleanup is part of a broader voice-assistant pipeline that also handles rewriting and app actions, and we found no published benchmark for it.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
