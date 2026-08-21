@@ -79,9 +79,11 @@ struct EscapeRecoveryPillLayoutTests {
   @Test("The rail is already visible the instant the pill appears")
   func theRailShowsASparkAtZero() {
     // At t=0 an untrimmed rail draws nothing, and the pill arrives looking like
-    // its rim is broken.
+    // its rim is broken. The spark must also stay unmistakably near the start;
+    // a large floor makes a fresh three-second offer look almost expired.
     #expect(SpectralRail.drawnFraction(for: 0) > 0)
     #expect(SpectralRail.drawnFraction(for: 0) == SpectralRail.minimumSpark)
+    #expect(SpectralRail.minimumSpark < 0.1)
   }
 
   @Test("The rail never asks for more path than exists")
@@ -97,7 +99,9 @@ struct EscapeRecoveryPillLayoutTests {
     let samples = stride(from: 0.0, through: 1.0, by: 0.1).map {
       SpectralRail.drawnFraction(for: $0)
     }
-    #expect(zip(samples, samples.dropFirst()).allSatisfy { $0 <= $1 })
+    // Non-strict monotonicity allowed a rail pinned at 95% for almost the whole
+    // dwell. Every tenth of the timer must visibly advance the countdown.
+    #expect(zip(samples, samples.dropFirst()).allSatisfy { $0 < $1 })
   }
 
   // MARK: - Legibility in both themes
