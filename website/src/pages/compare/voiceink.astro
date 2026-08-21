@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/voiceink/`,
   "image": `${siteUrl}/images/og/voiceink.png`,
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-06-13T01:39:38Z",
+  "dateModified": "2026-08-21T13:11:11Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -63,7 +63,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Is EnviousWispr really free compared to VoiceInk?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. EnviousWispr has no purchase price, no subscription, and no usage limits. VoiceInk charges a one-time fee starting at $39.99."
+        "text": "Yes. EnviousWispr has no purchase price, no subscription, and no usage limits. VoiceInk charges a one-time fee starting at $29 (Solo tier)."
       }
     },
     {
@@ -71,7 +71,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Both are on-device. Why does the speech engine matter?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet TDT, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.43s median latency for English. VoiceInk uses whisper.cpp, a solid engine, but Parakeet is purpose-built for fast English transcription."
+        "text": "Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet TDT, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.61s median latency for English. VoiceInk uses whisper.cpp, a solid engine, but Parakeet is purpose-built for fast English transcription."
       }
     },
     {
@@ -79,7 +79,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does EnviousWispr support languages other than English?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. Parakeet TDT covers 25 European languages. For wider coverage, EnviousWispr switches to WhisperKit, which supports 90+ languages. VoiceInk supports 100+ languages through whisper.cpp."
+        "text": "Yes. Parakeet TDT covers 25 European languages. For wider coverage, EnviousWispr switches to WhisperKit, which supports 99 languages. VoiceInk supports 100+ languages through whisper.cpp."
       }
     },
     {
@@ -103,7 +103,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Which app is better for non-English languages?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "VoiceInk supports 100+ languages through whisper.cpp and may have an edge in multilingual breadth. EnviousWispr supports 90+ languages via WhisperKit. For English specifically, EnviousWispr is faster thanks to Parakeet TDT."
+        "text": "VoiceInk supports 100+ languages through whisper.cpp and may have an edge in multilingual breadth. EnviousWispr supports 99 languages via WhisperKit. For English specifically, EnviousWispr is faster thanks to Parakeet TDT."
       }
     },
     {
@@ -361,11 +361,11 @@ const faqJsonLd = JSON.stringify({
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        Free vs $39.99
+        Free vs $29+
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.43s median latency
+        0.61s median latency
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -374,7 +374,7 @@ const faqJsonLd = JSON.stringify({
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
 
@@ -398,7 +398,7 @@ const faqJsonLd = JSON.stringify({
         <!-- Evidence: VoiceInk claims verified against tryvoiceink.com and github.com/Beingpax/VoiceInk on 2026-04-04.
              Confidence: source-verified from public website and GitHub repository.
              Sources:
-               - Pricing: tryvoiceink.com (accessed 2026-04-04) - Pro $39.99, one-time purchase
+               - Pricing: tryvoiceink.com (re-verified 2026-08-21) - restructured 2026-08-01 to three lifetime tiers: Solo $29 (1 Mac), Personal $49 (2 Macs), Extended $69 (3 Macs)
                - On-device: tryvoiceink.com features page - fully on-device, no internet required
                - Speech engine: whisper.cpp (stated on website and GitHub)
                - Languages: 100+ languages (stated on website)
@@ -414,7 +414,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Price</td>
             <td><span class="table-highlight">Free. No payment ever.</span></td>
-            <td>$39.99 one-time*</td>
+            <td>Solo $29 / Personal $49 / Extended $69, one-time*</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -498,7 +498,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Multi-language</td>
-            <td>25 European (Parakeet), 90+ via WhisperKit</td>
+            <td>25 European (Parakeet), 99 languages via WhisperKit</td>
             <td>100+ languages</td>
           </tr>
           <tr>
@@ -518,7 +518,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
             <td>Depends on model size and hardware</td>
           </tr>
           <tr>
@@ -534,7 +534,7 @@ const faqJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*VoiceInk pricing: $39.99 one-time (Pro). Based on tryvoiceink.com as of April 2026. EnviousWispr latency from production PostHog data on Apple Silicon Macs. VoiceInk claims source-verified from tryvoiceink.com and GitHub; not firsthand-tested. Competitor claims last verified: 2026-04-04.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*VoiceInk pricing restructured 2026-08-01: Solo $29 (1 Mac), Personal $49 (2 Macs, most popular), Extended $69 (3 Macs), all one-time/lifetime, no subscription. Re-verified live against tryvoiceink.com. EnviousWispr latency from production PostHog data on Apple Silicon Macs. VoiceInk claims source-verified from tryvoiceink.com and GitHub; not firsthand-tested. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -556,12 +556,12 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">$0</div>
         <div class="advantage-title">Completely free</div>
-        <p class="advantage-desc">No tiers, no license keys, no payment. VoiceInk charges $39.99 for a one-time purchase. EnviousWispr costs nothing.</p>
+        <p class="advantage-desc">No tiers, no license keys, no payment. VoiceInk charges a one-time fee starting at $29 (Solo tier, 1 Mac). EnviousWispr costs nothing.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#9889;</div>
         <div class="advantage-title">Faster English transcription</div>
-        <p class="advantage-desc">Parakeet TDT covers 25 European languages and runs on Apple's Neural Engine. 0.43s median latency. WhisperKit handles 90+ languages when you need wider coverage.</p>
+        <p class="advantage-desc">Parakeet TDT covers 25 European languages and runs on Apple's Neural Engine. 0.61s median latency. WhisperKit handles 99 languages when you need wider coverage.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#129504;</div>
@@ -654,12 +654,12 @@ const faqJsonLd = JSON.stringify({
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.43s</div>
+        <div class="speed-value">0.61s</div>
         <div class="speed-label">Median transcription</div>
         <div class="speed-detail">Parakeet TDT on Apple Silicon</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.5s</div>
+        <div class="speed-value">1.65s</div>
         <div class="speed-label">With AI polish</div>
         <div class="speed-detail">EG-1 or Apple, on-device</div>
       </div>
@@ -722,7 +722,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#128176;</div>
         <div class="advantage-title">One-time purchase, no updates to worry about</div>
-        <p class="advantage-desc">VoiceInk is a one-time $39.99 purchase. You pay once and own it. EnviousWispr is free today, but as a younger project its long-term model is still evolving. If you prefer the certainty of a single purchase, VoiceInk is straightforward.</p>
+        <p class="advantage-desc">VoiceInk is a one-time purchase, from $29 for one Mac up to $69 for three. You pay once and own it. EnviousWispr is free today, but as a younger project its long-term model is still evolving. If you prefer the certainty of a single purchase, VoiceInk is straightforward.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#127919;</div>
@@ -742,7 +742,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#127758;</div>
         <div class="advantage-title">Broader multilingual support</div>
-        <p class="advantage-desc">VoiceInk supports 100+ languages through whisper.cpp and has been tuned for multilingual workflows. EnviousWispr supports 90+ via WhisperKit, and Parakeet TDT (the fast engine) covers 25 European languages. If you dictate heavily in non-European languages, VoiceInk may be more polished for that use case.</p>
+        <p class="advantage-desc">VoiceInk supports 100+ languages through whisper.cpp and has been tuned for multilingual workflows. EnviousWispr supports 99 via WhisperKit, and Parakeet TDT (the fast engine) covers 25 European languages. If you dictate heavily in non-European languages, VoiceInk may be more polished for that use case.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#9201;</div>
@@ -750,7 +750,7 @@ const faqJsonLd = JSON.stringify({
         <p class="advantage-desc">VoiceInk has a straightforward download-and-go experience. EnviousWispr requires granting Accessibility permissions and downloading an ASR model on first launch. Both are fast, but VoiceInk may feel quicker to get started with.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you primarily dictate in English and want the fastest transcription at zero cost, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. If VoiceInk's per-app settings or screen context awareness are important to your workflow, it is worth the $39.99.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you primarily dictate in English and want the fastest transcription at zero cost, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. If VoiceInk's per-app settings or screen context awareness are important to your workflow, it is worth the price.</p>
   </div>
 </section>
 
@@ -764,15 +764,15 @@ const faqJsonLd = JSON.stringify({
     <div class="faq-list">
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr really free compared to VoiceInk?</div>
-        <p class="faq-a">Yes. EnviousWispr has no purchase price, no subscription, and no usage limits. VoiceInk charges a one-time fee of $39.99.</p>
+        <p class="faq-a">Yes. EnviousWispr has no purchase price, no subscription, and no usage limits. VoiceInk charges a one-time fee starting at $29 (Solo tier).</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Both are on-device. Why does the speech engine matter?</div>
-        <p class="faq-a">Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet TDT, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.43s median latency for English. VoiceInk uses whisper.cpp, a solid engine, but Parakeet is purpose-built for fast English transcription.</p>
+        <p class="faq-a">Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet TDT, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.61s median latency for English. VoiceInk uses whisper.cpp, a solid engine, but Parakeet is purpose-built for fast English transcription.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr support languages other than English?</div>
-        <p class="faq-a">Yes. Parakeet TDT covers 25 European languages. For wider coverage, EnviousWispr switches to WhisperKit, which supports 90+ languages. VoiceInk supports 100+ languages through whisper.cpp.</p>
+        <p class="faq-a">Yes. Parakeet TDT covers 25 European languages. For wider coverage, EnviousWispr switches to WhisperKit, which supports 99 languages. VoiceInk supports 100+ languages through whisper.cpp.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How does custom vocabulary compare between the two apps?</div>
@@ -784,7 +784,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which app is better for non-English languages?</div>
-        <p class="faq-a">VoiceInk supports 100+ languages through whisper.cpp and has been optimized for multilingual use. EnviousWispr supports 90+ via WhisperKit, and its fastest engine (Parakeet TDT) covers 25 European languages. For languages outside those, VoiceInk may have an edge in breadth and tuning.</p>
+        <p class="faq-a">VoiceInk supports 100+ languages through whisper.cpp and has been optimized for multilingual use. EnviousWispr supports 99 via WhisperKit, and its fastest engine (Parakeet TDT) covers 25 European languages. For languages outside those, VoiceInk may have an edge in breadth and tuning.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does VoiceInk have AI text enhancement?</div>
