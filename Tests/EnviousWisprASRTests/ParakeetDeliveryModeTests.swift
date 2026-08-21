@@ -12,16 +12,15 @@ import Testing
   /// Cache-only arms FluidAudio's own offline switch (`ModelHub.offlineMode`
   /// since #1981); the legacy mode resets it explicitly — flipping the
   /// delivery flag works without a service restart (declared invariant, plan §3).
-  @Test func offlineModeFollowsCacheOnlyDeterministically() {
-    let original = ModelHub.offlineMode
-    defer { ModelHub.offlineMode = original }
+  @Test func offlineModeFollowsCacheOnlyDeterministically() async {
+    await withParakeetOfflineModeExclusion {
+      ParakeetBackend.configureOfflineMode(cacheOnly: true)
+      #expect(ModelHub.offlineMode)
 
-    ParakeetBackend.configureOfflineMode(cacheOnly: true)
-    #expect(ModelHub.offlineMode)
-
-    // Legacy-after-cache-only: the reset is explicit, not leftover state.
-    ParakeetBackend.configureOfflineMode(cacheOnly: false)
-    #expect(!ModelHub.offlineMode)
+      // Legacy-after-cache-only: the reset is explicit, not leftover state.
+      ParakeetBackend.configureOfflineMode(cacheOnly: false)
+      #expect(!ModelHub.offlineMode)
+    }
   }
 
   /// #1981 chunk 2: the vendor-progress → app-callback mapping, exercised
