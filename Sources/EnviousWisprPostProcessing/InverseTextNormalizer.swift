@@ -174,9 +174,12 @@ public struct InverseTextNormalizer: Sendable {
   // "learn more@startup.ai" and "find it at docs dot xyz" into "find it@docs.xyz". Kept
   // identical to the pre-#2257 list; the new TLDs are URL-only.
   static let emailTLDAlt = #"com|org|io|co|dev|me|net|edu|gov"#
-  // A domain label: starts with a letter, may contain digits/hyphens, never ENDS on a
-  // hyphen (a trailing "-" is not a valid label).
-  static let urlHostLabelPat = #"[a-z](?:[a-z0-9-]*[a-z0-9])?"#
+  // A domain label: may start with a letter OR digit (cloud Codex review, PR #2265 —
+  // "3m.com", "1password.com" are real domains excluded by a letter-only start), may
+  // contain digits/hyphens, never ENDS on a hyphen (a trailing "-" is not a valid
+  // label). A leading digit alone is not TLD-shaped ("3" is never a supported TLD), so
+  // this cannot turn an ordinary number into a false host on its own.
+  static let urlHostLabelPat = #"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"#
   // NOT `\b`-terminated (local Codex review, round 15): a trailing `\b` forces a
   // segment ending in "-" to backtrack and drop the hyphen to find a word boundary
   // ("docs-" before " slash next" has no boundary between "-" and the following

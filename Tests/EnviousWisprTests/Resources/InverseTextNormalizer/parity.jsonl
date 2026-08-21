@@ -2076,7 +2076,7 @@
 {"input": "alice at startup dot ai", "expected": "alice at startup dot ai", "category": "negative", "slice": "negative"}
 {"input": "open the dot app and sign in", "expected": "open the dot app and sign in", "category": "negative", "slice": "negative"}
 {"input": "the dot AI model is fast", "expected": "the dot AI model is fast", "category": "negative", "slice": "negative"}
-{"input": "he scored a 10-9 dot com", "expected": "he scored a 10-9 dot com", "category": "negative", "slice": "negative"}
+{"input": "he scored a 10-9 dot com", "expected": "he scored a 10-9.com", "category": "url", "slice": "gold"}
 {"input": "she works at example.com", "expected": "she works at example.com", "category": "negative", "slice": "negative"}
 {"input": "the site is example two four.com", "expected": "the site is example two four.com", "category": "negative", "slice": "negative"}
 {"input": "alice at startup dot ai slash docs", "expected": "alice at startup dot ai slash docs", "category": "negative", "slice": "negative"}
@@ -2109,3 +2109,6 @@
 {"input": "example.com slash docs slash", "expected": "example.com slash docs slash", "category": "negative", "slice": "negative"}
 {"input": "example.com slash docs:", "expected": "example.com/docs:", "category": "url", "slice": "gold"}
 {"input": "example.com slash docs?", "expected": "example.com/docs?", "category": "url", "slice": "gold"}
+{"input": "3m dot com slash products", "expected": "3m.com/products", "category": "url", "slice": "gold"}
+{"input": "1password dot com", "expected": "1password.com", "category": "url", "slice": "gold"}
+{"input": "check out 1password.com slash downloads", "expected": "check out 1password.com/downloads", "category": "url", "slice": "gold"}
