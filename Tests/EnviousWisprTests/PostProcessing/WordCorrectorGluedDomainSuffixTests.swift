@@ -415,4 +415,39 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "UserChoice.com")
     #expect(result.replacements == 1)
   }
+
+  // MARK: Codex review round 8 findings -- exact-match authority must key
+  // off the matched KEY, not the resulting canonical TEXT, and a punycode
+  // TLD label is a real, valid domain suffix despite containing digits
+  // and hyphens.
+
+  @Test("Non-pack exact still outranks pack exact when both happen to share a canonical")
+  func nonPackExactOutranksPackExactEvenWithSharedCanonical() {
+    // Codex review round 8, P1: attributing authority via
+    // canonicalToWord[canonical] breaks when a pack alias and an unrelated
+    // user word happen to share the same canonical TEXT ("Shared") -- the
+    // pack-owned exact match gets misattributed as non-pack because the
+    // user's OTHER word claimed that canonical string first. The user's
+    // real "githib" -> "UserChoice" alias must still win.
+    let packWord = CustomWord(
+      canonical: "Shared", aliases: ["githib.com"], category: .brand, source: .pack)
+    let userSharedCanonical = CustomWord(
+      canonical: "Shared", aliases: [], category: .brand, source: .user)
+    let userChoice = CustomWord(
+      canonical: "UserChoice", aliases: ["githib"], category: .brand, source: .user)
+    let result = corrected("githib.com", [packWord, userSharedCanonical, userChoice])
+    #expect(result.text == "UserChoice.com")
+    #expect(result.replacements == 1)
+  }
+
+  @Test("A punycode (internationalized) TLD is peeled and reattached correctly")
+  func punycodeTLDIsPeeledAndReattachedCorrectly() {
+    // Codex review round 8, P2: an internationalized domain's ASCII form
+    // always carries its TLD as "xn--" + alphanumerics/hyphens (Russia's
+    // .рф is .xn--p1ai). The all-letters-only rule that excludes version
+    // numbers and IPs also excluded this real, valid domain suffix.
+    let result = corrected("Enviousvisper.xn--p1ai")
+    #expect(result.text == "EnviousWispr.xn--p1ai")
+    #expect(result.replacements == 1)
+  }
 }

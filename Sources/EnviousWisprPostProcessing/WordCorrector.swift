@@ -1049,7 +1049,17 @@ public struct WordCorrector: Sendable {
     core: String, coreLower: String, lookups: Lookups
   ) -> (canonical: String, isPack: Bool)? {
     guard let canonical = lookups.singleAliasMap[coreLower], core != canonical else { return nil }
-    let isPack = lookups.canonicalToWord[canonical.lowercased()]?.source == .pack
+    // Authority comes from the matched KEY (`coreLower`), never from the
+    // resulting canonical TEXT (Codex review, PR for #2281, finding P2
+    // round 8): `canonicalToWord[canonical]` answers "who owns this
+    // canonical STRING", which breaks when a pack alias and a user word
+    // happen to share the same canonical text -- a pack alias "githib.com"
+    // -> "Shared" would then be misattributed to the USER'S "Shared" word
+    // and wrongly treated as non-pack. `singleAliasMap` is constructed so
+    // non-pack always wins on a KEY collision, so `nonPackExactKeys`
+    // (already the authority for exactly that construction) tells us
+    // whether THIS key's mapping came from a non-pack term, unambiguously.
+    let isPack = !lookups.nonPackExactKeys.contains(coreLower)
     return (canonical, isPack)
   }
 
@@ -1475,11 +1485,29 @@ public struct WordCorrector: Sendable {
     }
     let labels = tail.split(separator: ".", omittingEmptySubsequences: false)
     guard labels.allSatisfy({ !$0.isEmpty }), let lastLabel = labels.last,
-      lastLabel.allSatisfy({ $0.isLetter })
+      Self.isPlausibleTLDLabel(lastLabel)
     else {
       return nil
     }
     return (String(s[s.startIndex..<firstDot]), String(s[firstDot...]))
+  }
+
+  /// True for an all-letters label (the ordinary case), OR a punycode
+  /// A-label -- the ASCII-only form DNS actually carries for an
+  /// internationalized TLD, always written as `xn--` followed by
+  /// alphanumerics and hyphens (Russia's `.рф` is `.xn--p1ai`, e.g.). Real
+  /// TLDs are never purely numeric or mixed-alphanumeric OUTSIDE this one
+  /// prefixed shape, so accepting punycode here does not reopen the
+  /// version-string/IP exclusions (Codex review, PR for #2281, finding P2
+  /// round 8): "xn--p1ai" and "v1" are structurally distinguishable by the
+  /// `xn--` prefix alone, and nothing that isn't real punycode happens to
+  /// start with it.
+  private static func isPlausibleTLDLabel(_ label: Substring) -> Bool {
+    if label.allSatisfy({ $0.isLetter }) { return true }
+    let lower = label.lowercased()
+    guard lower.hasPrefix("xn--") else { return false }
+    let rest = lower.dropFirst(4)
+    return !rest.isEmpty && rest.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" })
   }
 
   /// A curated (not exhaustive) set of real TLDs, deliberately much broader
