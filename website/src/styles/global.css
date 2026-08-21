@@ -218,22 +218,202 @@ body::after {
   .reveal { opacity: 1; transform: none; }
 }
 
-/* #538 on-page SEO: pin the first (feature-label) column of compare tables on phones
-   so labels stay visible while swiping to the competitor column. Adds only NEW sticky
-   properties on the first cell; does not override the per-page scoped wrapper rules.
-   Applies to all .compare-table users (11 /compare/<competitor>/ pages + the /compare/ hub). */
+/* ── Head-to-head comparison table ──────────────────────────────────────────
+   One owner for every two-product /compare/ page. These rules used to be
+   pasted into each page's scoped <style>, where Astro compiled them to
+   `.compare-table[data-astro-cid-…]` and they outranked anything global.css
+   could say, which is why the phone layout below could not take effect.
+   The multi-column hub and roundup keep their own scoped tables.
+   ───────────────────────────────────────────────────────────────────────── */
+.compare-table--duo {
+  width: 100%; border-collapse: collapse; font-size: 15px;
+  min-width: 640px;
+}
+.compare-table--duo thead th {
+  padding: 20px 24px; font-size: 16px; font-weight: 700;
+  text-align: left; border-bottom: 2px solid var(--border-hover);
+  background: rgba(248,245,255,0.5);
+}
+.compare-table--duo thead th:first-child { width: 34%; }
+.compare-table--duo thead th:nth-child(2) {
+  background: rgba(124,58,237,0.06);
+  color: var(--accent);
+}
+.compare-table--duo tbody td {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  vertical-align: top; line-height: 1.55;
+}
+.compare-table--duo tbody tr:last-child td { border-bottom: none; }
+.compare-table--duo tbody td:first-child {
+  font-weight: 600; color: var(--text);
+}
+.compare-table--duo tbody td:nth-child(2) {
+  background: rgba(124,58,237,0.02);
+}
+.compare-table--duo tbody td:nth-child(3) {
+  color: var(--text-2);
+}
+
+/* ── Compare tables on phones ─────────────────────────────────────────────
+   Two shapes of compare table exist and they need opposite treatments.
+
+   TWO-PRODUCT tables (`.compare-table--duo`) switch to a label-band layout:
+   the row label moves ABOVE its two value cells instead of holding a third
+   column, so each product gets half the width instead of the label taking
+   most of it. Nothing scrolls sideways, and the two product names pin below
+   the nav so the reader never loses which side they are reading.
+
+   MULTI-COLUMN tables (the /compare/ hub, the roundup) cannot fit their
+   columns on a phone at any density, so they keep the frozen first column
+   and horizontal scroll from #538. The label band does not generalise to
+   them: it assumes exactly two value cells per row.
+
+   Which pages are which is a property of the markup, not of a list kept
+   here — read it off the tree:
+     grep -rl 'compare-table--duo' src/pages/
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Multi-column only. A duo table has no scrolling column to pin a label
+   against, and this rule's opaque background would paint over the band. */
 @media (max-width: 600px) {
-  .compare-table thead th:first-child,
-  .compare-table tbody td:first-child {
+  .compare-table:not(.compare-table--duo) thead th:first-child,
+  .compare-table:not(.compare-table--duo) tbody td:first-child {
     position: sticky;
     left: 0;
     z-index: 2;
-    /* Opaque so the scrolling competitor column doesn't ghost through the pinned
-       first column. Some pages set a translucent scoped bg on these first cells
-       (header `thead th` on competitor pages; body `td:first-child` on the /compare/ hub),
-       and Astro boosts scoped-selector specificity, so a targeted !important is the
-       correct tool to keep a sticky-overlay background opaque everywhere. */
+    /* Opaque so the scrolling competitor columns do not ghost through the
+       pinned first column. Some pages set a translucent scoped background on
+       these first cells, so a targeted !important keeps the overlay opaque
+       everywhere. */
     background: #fff !important;
   }
-  .compare-table thead th:first-child { z-index: 3; }
+  .compare-table:not(.compare-table--duo) thead th:first-child { z-index: 3; }
+}
+
+@media (max-width: 700px) {
+  /* The wrapper is a horizontal scroll container, which also makes it the
+     scrollport for position:sticky. A duo table has nothing to scroll to, so
+     releasing it here is what lets the header stick to the viewport. */
+  .compare-table-wrap:has(.compare-table.compare-table--duo) { overflow: visible; }
+
+  .compare-table.compare-table--duo { min-width: 0; display: block; }
+  .compare-table.compare-table--duo tbody { display: block; }
+
+  /* Product names, pinned. 64px is .nav-inner's height.
+     The sticky element must be the THEAD, not the header row: a sticky box
+     cannot leave its containing block, and the row's containing block is the
+     thead, which is exactly one row tall — so sticking the row pins it to a
+     box it already fills and it scrolls away with the table. The thead's own
+     containing block is the (display: block) table, which spans every row. */
+  .compare-table.compare-table--duo thead {
+    display: block;
+    position: sticky;
+    top: 64px;
+    z-index: 2;
+    background: #fff;
+  }
+  .compare-table.compare-table--duo thead tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .compare-table.compare-table--duo thead th {
+    width: auto;
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+  /* The label column's header is empty by design; it has no band to name. */
+  .compare-table.compare-table--duo thead th:first-child { display: none; }
+
+  .compare-table.compare-table--duo tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    /* Cells size to their own content. Stretching them would make a clamped
+       cell as tall as its unclamped neighbour, and the extra height shows a
+       sliced fourth line below the ellipsis. */
+    align-items: start;
+    border-bottom: 1px solid var(--border-hover);
+    /* Ours-tint and the column divider are painted on the ROW, not the cell,
+       so they still span the full row height once the cells stop stretching. */
+    background: linear-gradient(
+      to right,
+      rgba(124,58,237,0.035) 0 calc(50% - 0.5px),
+      var(--border-hover) calc(50% - 0.5px) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px)
+    );
+  }
+  .compare-table.compare-table--duo tbody tr:last-child { border-bottom: none; }
+
+  .compare-table.compare-table--duo tbody td {
+    padding: 10px 14px 12px;
+    border-bottom: none;
+    font-size: 14.5px;
+  }
+
+  /* The label band: full width, above the pair. */
+  .compare-table.compare-table--duo tbody td:first-child {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 14px 7px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    background: var(--surface);
+  }
+
+  /* Desktop paints these on the cell; on the row grid that is the row's job. */
+  .compare-table.compare-table--duo tbody td:nth-child(2) {
+    background: none;
+    border-right: none;
+  }
+
+  /* Progressive disclosure. `.duo-clamped` is applied by CompareTableMobile
+     only to rows it MEASURED as overflowing, so a row whose answers already
+     fit is never given a toggle. With JS off nothing is wrapped or clamped
+     and the full text shows, which is the pre-existing behaviour.
+
+     The clamp is on the inner `.duo-text`, never on the cell: a `td` here is
+     a grid item, grid items are blockified, and blockification turns
+     `-webkit-box` into `flow-root` — which silently drops the clamp while
+     leaving `overflow: hidden` to slice the next line through the padding. */
+  .compare-table.compare-table--duo tbody tr.duo-clamped .duo-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+  }
+  .compare-table.compare-table--duo tbody tr.duo-open .duo-text {
+    display: block;
+    -webkit-line-clamp: none;
+    line-clamp: none;
+    overflow: visible;
+  }
+
+  .compare-table.compare-table--duo .duo-toggle {
+    flex: none;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: none;
+    border: 0;
+    padding: 2px 0 2px 10px;
+    margin: -2px 0;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .compare-table.compare-table--duo .duo-toggle:hover { color: var(--accent-hover); }
+  .compare-table.compare-table--duo .duo-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
 }
