@@ -97,11 +97,9 @@ struct ClipboardIsolationFreezeTests {
   /// the clipboard on its fallback tier, which is CORRECT for production — that path is meant to
   /// reach the user's board — and lethal for a test, which gets there through `@testable import`.
   ///
-  /// WHAT THIS GUARD CATCHES CHANGED IN #2170, so do not read the paragraph above as current
-  /// mechanism. The executor now takes its pasteboard as a REQUIRED init parameter, so the no-board
-  /// form it was written for does not compile at all and the COMPILER owns that case. What is left
-  /// reachable, and what this scanner is now for, is a test passing `.general` explicitly — a
-  /// deliberate act with a visible token, which is exactly the kind a text scanner can see.
+  /// `PasteCascadeExecutor` is deliberately NOT in this inventory after #2170. Its required
+  /// pasteboard parameter makes an isolated construction safe; the constructor-specific rule below
+  /// refuses only a value that directly spells `.general`.
   ///
   /// Re-derive rather than trust this list:
   ///   grep -rn "PasteService\.\(copyToClipboard\|saveClipboard\|restoreClipboard\)" Sources/ \
@@ -109,17 +107,14 @@ struct ClipboardIsolationFreezeTests {
   /// Every hit is a production caller that legitimately wants the user's board; the question this set
   /// answers is which of them a TEST can reach directly.
   ///
-  /// KNOWN LIMIT, unchanged: this matches a LITERAL type base, so an inline construction is caught
-  /// and a stored `executor.deliver(…)` is not — that needs type resolution this suite does not do.
-  /// The durable fix WAS the injected seam this comment used to point at as future work; it landed in
-  /// #2170, and it is what closes the stored-variable hole the scanner cannot reach: a stored
-  /// executor still had to be constructed with a board, and constructing one with `.general` is the
-  /// visible act above.
+  /// KNOWN LIMIT, stated rather than hidden: a helper-returned or dynamically-aliased board needs
+  /// type/data-flow analysis and is outside this syntax-only guard. A local value directly assigned
+  /// `NSPasteboard.general` is still caught by the direct-access rule above; `withUniqueName()` and an
+  /// ordinary board variable are accepted.
   /// ENUMERATED, not collected from review reports. Every `NSPasteboard.general` in `Sources/` is:
   ///
   ///   PasteService.pasteToActiveApp                    WRITE   boarded since #2170; bare calls banned
-  ///   PasteCascadeExecutor.deliver                     WRITE   here (only via an EXPLICIT `.general`
-  ///                                                            at construction, since #2170)
+  ///   PasteCascadeExecutor                             WRITE   constructor argument is checked below
   ///   AIAvailabilityCoordinator.copyDiagnosticsToClipboard  WRITE   here
   ///   PasteCascadeExecutor  (changeCount)              READ    harmless; reads clobber nothing
   ///   DiagnosticsSettingsView, OnboardingV2View        WRITE   inside SwiftUI `body`, which a unit
@@ -130,7 +125,6 @@ struct ClipboardIsolationFreezeTests {
   /// done, which is the lesson: **a missing member and a clean file are the same observation from
   /// inside a guard**, so the set has to be derived rather than accumulated.
   private static let boardReachingTypes: [String: Set<String>] = [
-    "PasteCascadeExecutor": ["deliver"],
     "AIAvailabilityCoordinator": ["copyDiagnosticsToClipboard"],
   ]
 
@@ -248,6 +242,44 @@ struct ClipboardIsolationFreezeTests {
       return nil
     }
 
+    /// Finds an implicit `.general` anywhere inside an argument. A bare member nested in a ternary or
+    /// another expression still evaluates to the process-global board on that path; inspecting only the
+    /// argument's outer node would silently accept it.
+    private final class ImplicitGlobalPasteboardVisitor: SyntaxVisitor {
+      var found = false
+
+      // A helper's argument can have its own `.general` enum case while returning an isolated board.
+      // Following through the call would require data-flow analysis; this syntax-only guard owns only
+      // values written directly into the executor's `pasteboard:` argument.
+      override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+        .skipChildren
+      }
+
+      override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
+        if node.base == nil, ClipboardVisitor.identifierText(node.declName.baseName) == "general" {
+          found = true
+        }
+        return .visitChildren
+      }
+    }
+
+    private static func containsImplicitGlobalPasteboard(_ expression: ExprSyntax) -> Bool {
+      let visitor = ImplicitGlobalPasteboardVisitor(viewMode: .sourceAccurate)
+      visitor.walk(expression)
+      return visitor.found
+    }
+
+    /// The type constructed by either `T(...)` or `T.init(...)`.
+    private static func constructorTypeName(of callee: ExprSyntax) -> String? {
+      let callee = unwrapped(callee)
+      if let member = callee.as(MemberAccessExprSyntax.self),
+        identifierText(member.declName.baseName) == "init"
+      {
+        return trailingName(of: member.base)
+      }
+      return trailingName(of: callee)
+    }
+
     /// Direct access to the process-global board, in any test file.
     ///
     /// Node-based, so `let pb = NSPasteboard\n  .general` is ONE member-access
@@ -352,6 +384,24 @@ struct ClipboardIsolationFreezeTests {
     }
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+      // #2242. The executor's required board injection made its TYPE safe: a test using a uniquely
+      // named board cannot reach the user's clipboard. The dangerous value is `.general`, so inspect
+      // that one labelled argument rather than banning every construction (which forced safe tests to
+      // hide the executor in a local variable and made equivalent code classify differently).
+      if Self.constructorTypeName(of: node.calledExpression) == "PasteCascadeExecutor" {
+        let reachesGlobalBoard = node.arguments.contains { argument in
+          argument.label.map { Self.identifierText($0) } == "pasteboard"
+            && Self.containsImplicitGlobalPasteboard(argument.expression)
+        }
+        if reachesGlobalBoard {
+          violations.append(
+            Violation(
+              file: file, line: line(node),
+              reason: "PasteCascadeExecutor is constructed with `.general`, the developer's real clipboard"))
+        }
+        return .visitChildren
+      }
+
       // Unwrap here too. The rule is "what does the compiler treat as transparent", and it has to hold
       // at EVERY expression this visitor inspects — `(executor.deliver)(request)` is the same call, and
       // applying the rule at three sites and not the other two is how the class comes back.
@@ -457,6 +507,68 @@ struct ClipboardIsolationFreezeTests {
       isAllowlisted: (file as NSString).lastPathComponent == allowlistedFile)
     visitor.walk(tree)
     return visitor.violations
+  }
+
+  private final class SystemPasteTierVisitor: SyntaxVisitor {
+    var gates: [Bool] = []
+    var predicateUsesGeneralBoardIdentity = false
+
+    override func visit(_ node: IfExprSyntax) -> SyntaxVisitorContinueKind {
+      if hasClipboardOnlyTierCondition(node.conditions) {
+        gates.append(hasPositiveSystemPasteGate(node.conditions))
+      }
+      return .visitChildren
+    }
+
+    override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
+      guard node.bindings.contains(where: { binding in
+        guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self) else { return false }
+        return identifier.identifier.text == "systemPasteCanReachOurText"
+      }) else { return .visitChildren }
+
+      let tokens = Array(node.tokens(viewMode: .sourceAccurate).map(\.text))
+      guard let openingBrace = tokens.firstIndex(of: "{"), let closingBrace = tokens.lastIndex(of: "}"),
+        openingBrace < closingBrace
+      else { return .visitChildren }
+      predicateUsesGeneralBoardIdentity = Array(tokens[(openingBrace + 1)..<closingBrace])
+        == ["pasteboard", "===", "NSPasteboard", ".", "general"]
+      return .visitChildren
+    }
+
+    /// Comments are trivia rather than tokens. Comparing complete condition-token lists therefore
+    /// selects the production `tier == .clipboardOnly` branch without allowing a comment, `!=`, or an
+    /// unrelated equality elsewhere in the condition to look equivalent.
+    private func hasClipboardOnlyTierCondition(_ conditions: ConditionElementListSyntax) -> Bool {
+      conditions.contains { element in
+        guard case .expression(let expression) = element.condition else { return false }
+        return Array(expression.tokens(viewMode: .sourceAccurate).map(\.text))
+          == ["tier", "==", ".", "clipboardOnly"]
+      }
+    }
+
+    /// A system-paste gate is safe only as its own positive conjunction. Negation and disjunction can
+    /// re-enable a system paste while the injected board is isolated, so they must not satisfy this
+    /// structural invariant.
+    private func hasPositiveSystemPasteGate(_ conditions: ConditionElementListSyntax) -> Bool {
+      conditions.contains { element in
+        guard case .expression(let expression) = element.condition else { return false }
+        return Array(expression.tokens(viewMode: .sourceAccurate).map(\.text))
+          == ["systemPasteCanReachOurText"]
+      }
+    }
+  }
+
+  static func systemPasteTierGates(inSource source: String) -> [Bool] {
+    systemPasteTierInspection(inSource: source).gates
+  }
+
+  static func systemPasteTierInspection(inSource source: String) -> (
+    gates: [Bool], predicateUsesGeneralBoardIdentity: Bool
+  ) {
+    let tree = Parser.parse(source: source)
+    let visitor = SystemPasteTierVisitor(viewMode: .sourceAccurate)
+    visitor.walk(tree)
+    return (visitor.gates, visitor.predicateUsesGeneralBoardIdentity)
   }
 
   private static func scanTests() throws -> (violations: [Violation], filesScanned: Int) {
@@ -743,19 +855,11 @@ struct ClipboardIsolationFreezeTests {
   @Test(
     "a board-reaching method on another type is banned too",
     arguments: [
-      (#"func f() async { _ = await PasteCascadeExecutor().deliver(request) }"#, 1),
-      (#"func f() async { _ = await EnviousWisprPipeline.PasteCascadeExecutor().deliver(r) }"#, 1),
-      // Every transparent wrapper, at every position this visitor inspects.
-      (#"func f() async { _ = await PasteCascadeExecutor.init().deliver(request) }"#, 1),
-      (#"func f() async { _ = await (PasteCascadeExecutor.init)().deliver(request) }"#, 1),
-      (#"func f() async { _ = await (PasteCascadeExecutor()).deliver(request) }"#, 1),
-      (#"func f() async { _ = await PasteCascadeExecutor.self.init().deliver(request) }"#, 1),
       (#"func f() { AIAvailabilityCoordinator().copyDiagnosticsToClipboard() }"#, 1),
       (#"func f() { NSPasteboard.self.general.clearContents() }"#, 1),
       (#"func f() { (.general as NSPasteboard).clearContents() }"#, 1),
       (#"func f() { (PasteService.self as PasteService.Type).copyToClipboard("x") }"#, 1),
       // Safe halves: a different method on that type, and `deliver` on anything else.
-      (#"func f() { _ = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(x) }"#, 0),
       (#"func f() async { _ = await wiring.deliver("hello") }"#, 0),
       (#"func f() async { _ = await pasteSink.deliver(request) }"#, 0),
       (#"func f() { AIAvailabilityCoordinator().refresh() }"#, 0),
@@ -764,6 +868,86 @@ struct ClipboardIsolationFreezeTests {
   func aBoardReachingMethodOnAnotherTypeIsBanned(source: String, expected: Int) {
     let hits = Self.violations(inSource: source, file: "Some.swift")
     #expect(hits.count == expected, "source: \(source) -> \(hits.map(\.description))")
+  }
+
+  /// #2242. The constructor's board VALUE, not its type, decides whether a test can reach the
+  /// developer's clipboard. Each rejected spelling has a safe twin so removing the old type ban
+  /// cannot look green merely because this visitor stopped classifying constructors at all.
+  @Test(
+    "PasteCascadeExecutor accepts an isolated board and refuses the real one",
+    arguments: [
+      (#"PasteCascadeExecutor(pasteboard: .general)"#, 1),
+      (#"EnviousWisprPipeline.PasteCascadeExecutor(pasteboard: .general)"#, 1),
+      (#"PasteCascadeExecutor(pasteboard: NSPasteboard.general)"#, 1),
+      (##"PasteCascadeExecutor(pasteboard: `NSPasteboard`.general)"##, 1),
+      (#"PasteCascadeExecutor(pasteboard: NSPasteboard.self.general)"#, 1),
+      (#"PasteCascadeExecutor(pasteboard: (.general))"#, 1),
+      (#"PasteCascadeExecutor(pasteboard: flag ? .general : board)"#, 1),
+      (#"PasteCascadeExecutor.init(pasteboard: .general)"#, 1),
+      (#"PasteCascadeExecutor.self.init(pasteboard: .general)"#, 1),
+      (#"PasteCascadeExecutor(pasteboard: NSPasteboard.withUniqueName())"#, 0),
+      (#"PasteCascadeExecutor(pasteboard: board)"#, 0),
+      (#"PasteCascadeExecutor(pasteboard: flag ? board : uniqueBoard)"#, 0),
+      (#"PasteCascadeExecutor(pasteboard: makeBoard(mode: .general))"#, 0),
+      (#"let board = NSPasteboard.general; PasteCascadeExecutor(pasteboard: board)"#, 1),
+    ])
+  func pasteCascadeExecutorChecksItsPasteboardArgument(source: String, expected: Int) {
+    let hits = Self.violations(inSource: "func f() { \(source) }", file: "Some.swift")
+    #expect(hits.count == expected, "source: \(source) -> \(hits.map(\.description))")
+  }
+
+  @Test("system-paste tiers are gated, while clipboard-only remains available to isolated tests")
+  func systemPasteTiersRequireTheGeneralBoard() throws {
+    let source = try String(
+      contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprPipeline/PasteCascadeExecutor.swift"),
+      encoding: .utf8)
+    let inspection = Self.systemPasteTierInspection(inSource: source)
+    let gates = inspection.gates
+
+    #expect(gates.count == 3, "expected Tier 2/2b, Tier 2c, and Tier 3; found \(gates.count)")
+    #expect(
+      gates == [true, true, false],
+      "Tier 2/2b and Tier 2c must require the general board; Tier 3 intentionally writes an isolated board")
+    #expect(
+      inspection.predicateUsesGeneralBoardIdentity,
+      "system-paste tiers are safe only when the predicate means pasteboard === NSPasteboard.general")
+  }
+
+  @Test("a comment cannot impersonate a missing system-paste gate")
+  func systemPasteGateCheckIgnoresComments() {
+    let gates = Self.systemPasteTierGates(inSource: """
+      func f() {
+        if tier == .clipboardOnly, /* systemPasteCanReachOurText */ let app = targetApp {}
+        if tier == .clipboardOnly, systemPasteCanReachOurText {}
+        if tier == .clipboardOnly {}
+      }
+      """)
+    #expect(gates == [false, true, false], "comments must not satisfy a deleted predicate")
+  }
+
+  @Test("only a positive standalone system-paste condition satisfies the tier gate")
+  func systemPasteGateCheckRejectsUnsafeConditionForms() {
+    let gates = Self.systemPasteTierGates(inSource: """
+      func f() {
+        if tier != .clipboardOnly, classification == .nonText, systemPasteCanReachOurText {}
+        if tier == .clipboardOnly, !systemPasteCanReachOurText {}
+        if tier == .clipboardOnly, systemPasteCanReachOurText || testingOverride {}
+        if tier == .clipboardOnly, systemPasteCanReachOurText {}
+      }
+      """)
+    #expect(gates == [false, false, true], "only an exact positive gate may protect a clipboard-only tier")
+  }
+
+  @Test("the system-paste predicate is exactly the injected-board identity check")
+  func systemPastePredicateRequiresTheGeneralBoardIdentity() {
+    let safe = Self.systemPasteTierInspection(inSource: """
+      private var systemPasteCanReachOurText: Bool { pasteboard === NSPasteboard.general }
+      """)
+    let unsafe = Self.systemPasteTierInspection(inSource: """
+      private var systemPasteCanReachOurText: Bool { true }
+      """)
+    #expect(safe.predicateUsesGeneralBoardIdentity)
+    #expect(!unsafe.predicateUsesGeneralBoardIdentity)
   }
 
   @Test(
