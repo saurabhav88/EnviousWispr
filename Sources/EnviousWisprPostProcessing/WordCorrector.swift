@@ -906,9 +906,13 @@ public struct WordCorrector: Sendable {
       // when the suffix isn't actually a domain.
       var matchCore = core
       var peeledSuffix = ""
+      let hasPeelableSuffix: Bool
       if let split = Self.splitDomainSuffix(core) {
         matchCore = split.bare
         peeledSuffix = split.suffix
+        hasPeelableSuffix = true
+      } else {
+        hasPeelableSuffix = false
       }
       let matchCoreLower = matchCore.lowercased()
       let matchCoreEligible =
@@ -957,9 +961,19 @@ public struct WordCorrector: Sendable {
       // is ALSO domain-shaped makes the raw comparison apples-to-apples, so
       // a near-miss like "githib.com" needs to try this unpeeled (finding
       // P1 round 3).
-      if let canonical = nonPackFuzzySingleWordMatch(
-        core: core, coreLower: coreLower, lookups: lookups,
-        appendReplacement: { appendReplacement(forCanonical: $0) }, domainShapedOnly: true)
+      //
+      // Step 3 only runs when the token ITSELF has a peelable suffix (Codex
+      // review round 5, P1): without that guard it ran even for an ordinary
+      // no-dot word, comparing it against domain-shaped candidates it has
+      // no business being compared against and letting a weaker
+      // domain-shaped match preempt the correct bare candidate reachable
+      // only at step 4 -- "enviouswhisper" scoring against
+      // "enviouswhisper.com" purely because the strings share a long
+      // prefix, with no dot in the input at all.
+      if hasPeelableSuffix,
+        let canonical = nonPackFuzzySingleWordMatch(
+          core: core, coreLower: coreLower, lookups: lookups,
+          appendReplacement: { appendReplacement(forCanonical: $0) }, domainShapedOnly: true)
       {
         return prefix + canonical + suffix
       }
@@ -971,13 +985,15 @@ public struct WordCorrector: Sendable {
         return reattached(canonical)
       }
 
-      // Step 5 + 6: pack fuzzy, the same unpeeled-then-peeled shape, only
+      // Step 5 + 6: pack fuzzy, the same unpeeled-then-peeled shape (step 5
+      // gated on `hasPeelableSuffix` for the same reason step 3 is), only
       // reached once every higher-authority attempt above has missed. Step
       // 4's peeled non-pack fuzzy fixes the originally reported bug for a
       // bare (non-domain-shaped) alias.
-      if let canonical = packFuzzySingleWordMatch(
-        core: core, coreLower: coreLower, lookups: lookups,
-        appendReplacement: { appendReplacement(forCanonical: $0) }, domainShapedOnly: true)
+      if hasPeelableSuffix,
+        let canonical = packFuzzySingleWordMatch(
+          core: core, coreLower: coreLower, lookups: lookups,
+          appendReplacement: { appendReplacement(forCanonical: $0) }, domainShapedOnly: true)
       {
         return prefix + canonical + suffix
       }
@@ -1409,16 +1425,30 @@ public struct WordCorrector: Sendable {
   /// `urlTLDAlt` asserts semantic meaning ("this specific string IS a
   /// TLD"), which is the right bar for a POSITIVE identification (deciding
   /// spoken text represents a real URL). Here the bar is lower and
-  /// symmetric: "is this worth trying as a suffix", never asserted as fact
-  /// -- if peeling produces no match on either side, the untouched original
-  /// token is returned, so a wrong guess costs nothing. A purely structural
-  /// check generalizes to every user's vocabulary rather than the ten TLDs
-  /// this app happens to vet for URL recognition elsewhere.
+  /// symmetric: "is this worth trying as a suffix", never asserted as fact.
+  /// It is not free to be wrong, though (Codex review round 5, P2 --
+  /// correcting an earlier version of this comment that claimed it was): a
+  /// peeled bare form can coincidentally EXACT-match a real, unrelated
+  /// alias, so an over-permissive trigger produces a real wrong correction,
+  /// not merely a harmless miss -- alias "v1" turned input "v1.2" into
+  /// "VersionOne.2" before this guard existed. The one exclusion this
+  /// function makes is therefore load-bearing: a real TLD label is never
+  /// purely numeric (ICANN requires at least one non-digit character), so
+  /// an all-digit final label marks a version number, decimal, or IP-like
+  /// token rather than a domain. A purely structural check otherwise
+  /// generalizes to every user's vocabulary rather than the ten TLDs this
+  /// app happens to vet for URL recognition elsewhere.
   private static func splitDomainSuffix(_ s: String) -> (bare: String, suffix: String)? {
     guard let firstDot = s.firstIndex(of: "."), firstDot > s.startIndex else { return nil }
     let tail = s[s.index(after: firstDot)...]
     guard !tail.isEmpty, tail.first != ".", tail.last != ".",
       tail.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "." })
+    else {
+      return nil
+    }
+    let labels = tail.split(separator: ".", omittingEmptySubsequences: false)
+    guard labels.allSatisfy({ !$0.isEmpty }), let lastLabel = labels.last,
+      !lastLabel.allSatisfy({ $0.isNumber })
     else {
       return nil
     }

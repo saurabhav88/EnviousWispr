@@ -307,4 +307,58 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "GitHub.co.uk")
     #expect(result.replacements == 1)
   }
+
+  // MARK: Codex review round 5 findings -- the domain-restricted fuzzy pass
+  // must not run at all for a token with no dot, and a numeric-only tail is
+  // never a domain suffix.
+
+  private static let enviousWisprCloseNeighbors = CustomWord(
+    canonical: "Right",
+    aliases: ["enviouswhispr"],
+    category: .brand)
+  private static let enviousWisprDomainDistractor = CustomWord(
+    canonical: "Wrong.com",
+    aliases: ["enviouswhisper.com"],
+    category: .brand)
+
+  @Test("An ordinary no-dot token never runs the domain-restricted fuzzy pass at all")
+  func ordinaryNoDotTokenSkipsDomainRestrictedFuzzy() {
+    // Codex review round 5, P1: the domain-restricted fuzzy pass used to run
+    // unconditionally, even for a token with no dot at all -- comparing it
+    // against domain-shaped candidates it has no business being compared
+    // against. "enviouswhisper" (no dot) could score against the
+    // domain-shaped "enviouswhisper.com" candidate purely on shared prefix
+    // length, preempting the correct bare candidate "enviouswhispr" that
+    // only step 4 (peeled, unrestricted -- a no-op here since there's
+    // nothing to peel) would otherwise have found.
+    let result = corrected(
+      "enviouswhisper",
+      [Self.enviousWisprCloseNeighbors, Self.enviousWisprDomainDistractor])
+    #expect(result.text == "Right")
+    #expect(result.replacements == 1)
+  }
+
+  private static let versionOneAlias = CustomWord(canonical: "VersionOne", aliases: ["v1"])
+
+  @Test("A numeric-only tail is never treated as a domain suffix")
+  func numericOnlyTailIsNeverADomainSuffix() {
+    // Codex review round 5, P2: a real TLD label is never purely numeric.
+    // Without this exclusion, "v1.2" (an ordinary version number) peeled to
+    // bare "v1", exact-matched an unrelated alias "v1", and produced
+    // "VersionOne.2" -- correcting text that was never a domain at all.
+    let result = corrected("v1.2", [Self.versionOneAlias])
+    #expect(result.text == "v1.2")
+    #expect(result.replacements == 0)
+  }
+
+  @Test("An IP-shaped token is never treated as a domain suffix")
+  func ipShapedTokenIsNeverADomainSuffix() {
+    // Same root as the version-number case: every label of an IPv4-style
+    // token is numeric, so the LAST label check alone is what excludes it
+    // (an IP is not glued to a real custom word in practice, but nothing
+    // here should coincidentally rewrite one).
+    let result = corrected("192.168.1.1", [Self.versionOneAlias])
+    #expect(result.text == "192.168.1.1")
+    #expect(result.replacements == 0)
+  }
 }
