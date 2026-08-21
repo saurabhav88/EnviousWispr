@@ -206,4 +206,54 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "GitHub.com")
     #expect(result.replacements == 1)
   }
+
+  // MARK: Codex review round 4 findings -- exact/user precedence over a
+  // fuzzy/pack match reachable only by peeling, and the same narrow-
+  // allowlist inconsistency in the dedup check itself.
+
+  private static let githibExactUserAlias = CustomWord(
+    canonical: "GitHub Issue Board", aliases: ["githib"], category: .brand, source: .user)
+  private static let githabDomainPackAlias = CustomWord(
+    canonical: "GitHub.com", aliases: ["githab.com"], category: .brand, source: .pack)
+
+  @Test("A user's own exact alias, reachable only by peeling, still outranks a fuzzy pack match")
+  func exactUserAliasOutranksFuzzyPackMatch() {
+    // Codex review round 4, P1: the unpeeled domain-restricted FUZZY pass
+    // ran before the PEELED exact pass, so a fuzzy pack-tier hit on the raw
+    // token ("githib.com" scored against pack alias "githab.com") could
+    // preempt the user's own exact alias "githib", which only becomes
+    // reachable once the ".com" is peeled off. Exact always beats fuzzy,
+    // and user always beats pack -- both must hold regardless of whether
+    // peeling is involved.
+    let result = corrected(
+      "githib.com", [Self.githibExactUserAlias, Self.githabDomainPackAlias])
+    #expect(result.text == "GitHub Issue Board.com")
+    #expect(result.replacements == 1)
+  }
+
+  private static let gitHubUnusualTLDBareAlias = CustomWord(
+    canonical: "GitHub.us", aliases: ["githab"], category: .brand)
+
+  @Test("Dedup recognizes a saved domain using a TLD outside the old allowlist too")
+  func dedupRecognizesDomainCanonicalOutsideAllowlist() {
+    // Codex review round 4, P2: `isDomainShaped` still used the narrow
+    // ten-item TLD list even after the PEEL trigger was widened past it, so
+    // a saved canonical like "GitHub.us" (".us" not in that list) was not
+    // recognized as domain-shaped -- "githab.org" through this alias
+    // produced "GitHub.us.org" instead of trusting the canonical's own TLD.
+    let result = corrected("githab.org", [Self.gitHubUnusualTLDBareAlias])
+    #expect(result.text == "GitHub.us")
+    #expect(result.replacements == 1)
+  }
+
+  @Test("A near-miss of a domain-shaped alias using a TLD outside the old allowlist still matches")
+  func fuzzyDomainMatchOutsideAllowlistStillWorks() {
+    // Codex review round 4, P2, other half: the raw domain-restricted fuzzy
+    // pass (round 3, P1) is gated by the same `isDomainShaped` check, so a
+    // domain-shaped alias using an unusual TLD was invisible to it too.
+    let alias = CustomWord(canonical: "GitHub.us", aliases: ["githab.us"], category: .brand)
+    let result = corrected("githib.us", [alias])
+    #expect(result.text == "GitHub.us")
+    #expect(result.replacements == 1)
+  }
 }
