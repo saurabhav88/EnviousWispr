@@ -81,6 +81,8 @@ EXIT CODES
 
 import argparse
 import filecmp
+import fcntl
+import functools
 import json
 import os
 import re
@@ -133,89 +135,7 @@ SUITE_VERDICT_RE = re.compile(r'^✘\s+Suite\s')
 COMPILE_ERROR_RE = re.compile(r"^.*?: error: ", re.MULTILINE)
 
 
-# The canonical logic-test entry point is scripts/xcode-test.sh (tools-and-apps.md
-# RULE: xcode-test-entrypoint). This runner deliberately does NOT shell out to it, for two reasons:
-# that script tees to a FIXED log path and SUMS every "Test run with N test" line it finds, so two
-# lanes writing it produce an inflated count; and it runs `tuist generate` unconditionally, 6.7s of
-# byte-identical output per row. Both are correct for a one-shot run and wrong for a battery.
-#
-# The cost of that deviation is TWO SOURCES OF TRUTH for the build settings, so it is paid for with a
-# fail-closed drift guard: if the canonical script's settings stop matching the ones below, the battery
-# REFUSES rather than quietly measuring a differently-configured build. Reconcile deliberately; do not
-# silence it.
 CANONICAL_SCRIPT = "scripts/xcode-test.sh"
-# The exact token set of the canonical `xcodebuild test` invocation, compared BOTH WAYS. A
-# presence-only check is one-directional and therefore blind in the direction that matters most: if the
-# canonical lane GAINS a build setting, an environment wrapper, or a flag, every fragment it already had
-# is still there, the guard stays green, and the battery quietly measures a differently-configured build
-# than the lane everyone else trusts. Cloud review, PR #2158.
-# FLAGS THIS RUNNER PASSES THAT THE CANONICAL LANE DOES NOT.
-#
-# The drift guard is deliberately two-directional: a battery quietly building
-# something different from the lane everyone trusts is its whole subject. So a
-# flag the runner adds cannot simply be absent from the comparison — it has to
-# be DECLARED, with the reason it is safe, where a reviewer will see it.
-#
-# `-resultBundlePath` qualifies because it changes only what is WRITTEN, never
-# what is built or run: `xcodebuild test` emits an `.xcresult` on every run
-# regardless, and the flag only chooses where. Measured at 4.5s/4.5s with it
-# against 4.6s/4.6s without, 208K per bundle on a 35-test suite.
-#
-# Anything that could alter the BUILD belongs in CANONICAL_TOKENS and in the
-# canonical script, not here. This set is not a general escape hatch.
-RUNNER_ONLY_TOKENS = {"-resultBundlePath"}
-
-CANONICAL_TOKENS = {
-    "-project", "-scheme", "-configuration", "-derivedDataPath", "-destination",
-    "ARCHS=arm64", "VALID_ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES",
-    "-onlyUsePackageVersionsFromResolvedFile",
-}
-# Values that are shell expansions in the invocation and literals here, so they cannot be compared as
-# tokens. Two review rounds each found ONE more of these, so rather than wait for a third the axes were
-# enumerated exhaustively: every input that decides WHAT gets built and WHERE. Each line below is a
-# literal that must appear in the canonical script verbatim.
-#
-#   what project      -> PROJECT
-#   what scheme       -> DEBUG_SCHEME, and the CALL SITE that passes it (a scheme can be right while the
-#                        call passes the other one)
-#   what config       -> the call site again; `Lane.run_suite` hardcodes Debug, so a call site changed to
-#                        Release diverges while `run_lane` itself is untouched
-#   where it lands    -> DERIVED_DATA's default, which this runner reproduces as .derivedData/Test
-#   what destination  -> DEST
-#   how it filters    -> TEST_ARGS
-#   what generates it -> the pinned tuist version, which this runner invokes directly
-CANONICAL_ASSIGNMENTS = [
-    'PROJECT="EnviousWispr.xcodeproj"',
-    'DEBUG_SCHEME="EnviousWispr"',
-    "DEST='platform=macOS,arch=arm64'",
-    'TEST_ARGS=(-only-testing:"$FILTER")',
-    'DERIVED_DATA="${DERIVED_DATA_PATH:-$PROJECT_ROOT/.derivedData/Test}"',
-    # The WHOLE line, not a prefix: `run_lane "$DEBUG_SCHEME" Debug build/... ENABLE_TESTABILITY=YES`
-    # still starts with the prefix, and those trailing positionals reach xcodebuild through `"$@"`,
-    # which the expansion allowlist accepts by name without seeing its contents.
-    'run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log"\n',
-    'ew_ensure_generated "$PROJECT_ROOT"',
-]
-# Expansions the runner knows the contents of, because CANONICAL_ASSIGNMENTS pins each one. An
-# expansion NOT in this set hides arguments the runner cannot see, so it is a refusal rather than a
-# token to skip — the difference between "I checked and it matches" and "I could not look".
-# The expansions the canonical invocation must pass, IN ORDER. A set membership test accepted a lane
-# that had DELETED `"${TEST_ARGS[@]}"` — it would stop filtering to one suite and run everything — and
-# accepted `"$scheme"` and `"$config"` swapped, which builds a different configuration. An argument
-# list is defined by its order, so the comparison has to be ordered too. Cloud review, PR #2158.
-CANONICAL_EXPANSION_SEQUENCE = [
-    '"$PROJECT"', '"$scheme"', '"$config"', '"$DERIVED_DATA"', '"$DEST"', '"$@"', '"${TEST_ARGS[@]}"',
-]
-CANONICAL_EXPANSIONS = {
-    '"$PROJECT"', '"$scheme"', '"$config"', '"$DERIVED_DATA"', '"$DEST"',
-    '"$@"', '"${TEST_ARGS[@]}"',
-}
-INVOCATION_RE = re.compile(r"xcodebuild test\s*\\\n(.*?)\|\s*tee", re.DOTALL)
-# Whatever sits between the start of the line and `xcodebuild` — an env prefix, a wrapper, a different
-# toolchain via DEVELOPER_DIR. Required to be EMPTY rather than enumerated: the runner invokes
-# xcodebuild with its ambient environment, so any prefix means the canonical lane and the battery build
-# differently, and there is no list of prefixes worth maintaining.
-INVOCATION_PREFIX_RE = re.compile(r"^([^\n]*?)xcodebuild test\s*\\", re.MULTILINE)
 # WHAT A RECIPE MAY MUTATE — an ALLOW-list, deliberately, and the second attempt at this.
 #
 # Review round 6 found a recipe could target a Tuist input; the fix denied those by name. Round 7 then
@@ -230,30 +150,42 @@ INVOCATION_PREFIX_RE = re.compile(r"^([^\n]*?)xcodebuild test\s*\\", re.MULTILIN
 #                  only that breaking a test breaks it, while the report claims a PRODUCTION mutation
 #                  was detected — a false CAUGHT, the exact vacuity this tool exists to prevent.
 #   Project.swift, Workspace.swift, Tuist.swift, Package.swift, Tuist/**
-#                  the project is generated FROM these and `generate_once` reuses one project for every
-#                  row, so xcodebuild keeps consuming the baseline's `.xcodeproj` and the row reports
-#                  SURVIVED about a mutant the build never saw.
+#                  changing project inputs is outside a production-code mutation's scope; the canonical
+#                  test command owns generation and project configuration.
 #   scripts/**     including this runner: a battery mutating its own harness reports on itself.
 #   workers/**, website/**
 #                  real code, but nothing an `xcodebuild test` lane executes, so every row reports
 #                  SURVIVED regardless of the test's quality.
 MUTABLE_ROOTS = ("Sources/",)
-# One definition, so the drift guard above and the call below cannot disagree about the version.
-# #2178 moved generation into `scripts/lib/ensure-generated.sh`, which skips `tuist generate` unless an
-# input hash changed (6.7s -> 0.06s, project.pbxproj byte-identical). Invoked through the script's own
-# helper rather than reproducing the pin, so the version lives in exactly one place — the duplication
-# this runner is stuck with is the INVOCATION, and it should not grow a second copy of the toolchain
-# pin as well.
-TUIST_GENERATE_ARGV = ["bash", "-c",
-                       'source scripts/lib/ensure-generated.sh && ew_ensure_generated "$PWD"']
-
-
 # A row's restore lives in a `finally`, and Python's DEFAULT action for SIGTERM does not run it: the
 # process dies where it stands, leaving the production file MUTATED and a .mutbak beside it. That is the
 # worst state this tool can leave behind, and an overnight battery is exactly the thing someone cancels
 # — a terminal closing, a session ending, a job being killed. So the restore is also registered here,
 # outside the try/finally, and runs from the signal handler.
 _ACTIVE_RESTORES = {}
+
+
+def _prune_empty_backup_parents(backup: Path, worktree: Path):
+    """Remove only empty backup directories after a verified restore."""
+    root = worktree / "build" / "mutation-battery" / "backups"
+    parent = backup.parent
+    while parent != root:
+        try:
+            parent.rmdir()
+        except OSError:
+            return
+        parent = parent.parent
+    try:
+        root.rmdir()
+    except OSError:
+        pass
+
+
+def backup_path(worktree: Path, tag: str, target: Path) -> Path:
+    """Keep backups outside Sources/ so a mutation cannot change project inputs."""
+    relative_target = target.resolve().relative_to(worktree.resolve())
+    return (worktree / "build" / "mutation-battery" / "backups" / tag
+            / relative_target.with_suffix(relative_target.suffix + ".mutbak"))
 
 
 def _restore_active(reason: str):
@@ -334,9 +266,6 @@ class _RowFailed(Exception):
 # so it leaves a MUTATED TREE behind. The bound is generous: it exists to convert a hang into a row
 # ERROR, not to police a slow suite (validation-discipline.md `hang-guard-vs-latency-bound`).
 LANE_TIMEOUT_SECONDS = 1800
-# Generation is bounded too. It is fast on a warm tree (0.06s when the input hash is unchanged,
-# ~7s cold), so a generous bound still catches a genuine stall without ever firing in normal use.
-GENERATE_TIMEOUT_SECONDS = int(os.environ.get("EW_BATTERY_GENERATE_TIMEOUT", "600"))
 
 
 # The process group of the lane currently running, or None. Registered before the lane starts and
@@ -347,22 +276,38 @@ GENERATE_TIMEOUT_SECONDS = int(os.environ.get("EW_BATTERY_GENERATE_TIMEOUT", "60
 _HANDLED_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT)
 
 _ACTIVE_LANE_PGID = None
+_ACTIVE_LANE_PROC = None
+GRACEFUL_TERMINATION_SECONDS = 10
 
 
 def _reap_active_lane():
-    """Kill the live lane's process group if there is one. Safe to call more than once."""
-    global _ACTIVE_LANE_PGID
-    pgid, _ACTIVE_LANE_PGID = _ACTIVE_LANE_PGID, None
+    """Ask the live canonical lane to exit, then force-kill only if it ignores the request."""
+    global _ACTIVE_LANE_PGID, _ACTIVE_LANE_PROC
+    pgid, proc = _ACTIVE_LANE_PGID, _ACTIVE_LANE_PROC
+    _ACTIVE_LANE_PGID = None
+    _ACTIVE_LANE_PROC = None
     if pgid is None:
         return False
     try:
-        os.killpg(pgid, signal.SIGKILL)
-        return True
+        # xcode-test.sh translates TERM into a normal exit, which runs its EXIT trap and releases any
+        # SwiftPM seed lock. SIGKILL here skips that cleanup and strands every other worktree on a
+        # cache miss, so it is a bounded fallback only.
+        os.killpg(pgid, signal.SIGTERM)
     except (ProcessLookupError, PermissionError):
         return False
+    if proc is None:
+        return True
+    try:
+        proc.wait(timeout=GRACEFUL_TERMINATION_SECONDS)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    return True
 
 
-def run(cmd, cwd, log_path=None, timeout=None):
+def run(cmd, cwd, log_path=None, timeout=None, env=None):
     """Run a command, optionally teeing to a per-row log. Never the shared fixed log path.
 
     On timeout this kills the whole PROCESS GROUP, not just the direct child. `xcodebuild` spawns the
@@ -371,7 +316,7 @@ def run(cmd, cwd, log_path=None, timeout=None):
     their verdicts long after the source has been restored. The battery would look like it recovered.
     Cloud review, PR #2158.
     """
-    global _ACTIVE_LANE_PGID
+    global _ACTIVE_LANE_PGID, _ACTIVE_LANE_PROC
     # BLOCK the handled signals across spawn-and-register. `Popen` creates the child in its own session
     # BEFORE the pgid is stored, so a signal landing in that window sees `_ACTIVE_LANE_PGID` as None,
     # re-raises, and leaves an isolated tuist/xcodebuild group running after the battery exits. The
@@ -382,7 +327,9 @@ def run(cmd, cwd, log_path=None, timeout=None):
         proc = subprocess.Popen(
             cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             start_new_session=True,   # its own process group, so the kills below reach descendants
+            env=env,
         )
+        _ACTIVE_LANE_PROC = proc
         try:
             _ACTIVE_LANE_PGID = os.getpgid(proc.pid)
         except ProcessLookupError:
@@ -394,9 +341,8 @@ def run(cmd, cwd, log_path=None, timeout=None):
         out, _ = proc.communicate(timeout=timeout)
         rc = proc.returncode
     except subprocess.TimeoutExpired:
-        # Kill the GROUP, then re-raise. The raise is the existing contract — the row loop turns it into
-        # a row ERROR with a timeout-specific message — and changing it here would have quietly widened
-        # a bug fix into a behaviour change. Only the cleanup was wrong.
+        # End the GROUP, then re-raise. The canonical script gets a bounded TERM window to release its
+        # seed lock before the fallback kill, while the row keeps the existing timeout-as-ERROR contract.
         if not _reap_active_lane():
             proc.kill()
         try:
@@ -408,10 +354,11 @@ def run(cmd, cwd, log_path=None, timeout=None):
             # only record of which build or test operation hung — on the one path where it matters.
             with open(log_path, "a") as fh:
                 fh.write((out or "")
-                         + f"\n[mutation-battery] timed out after {timeout}s; group killed\n")
+                         + f"\n[mutation-battery] timed out after {timeout}s; group terminated\n")
         raise
     finally:
         _ACTIVE_LANE_PGID = None
+        _ACTIVE_LANE_PROC = None
     if log_path is not None:
         Path(log_path).write_text(out or "")
     return rc, out or ""
@@ -743,111 +690,29 @@ def classify_row(baseline: "SuiteResults", mutated: "SuiteResults", expect_fail:
 
 
 class Lane:
-    """One filtered Debug test run against warm DerivedData."""
+    """One filtered Debug test run through the canonical test entry point."""
 
     def __init__(self, worktree: Path, derived_data: Path, log_dir: Path):
         self.worktree = worktree
         self.derived_data = derived_data
         self.log_dir = log_dir
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.generated = False
-
-    def generate_once(self):
-        """`tuist generate` output is byte-identical on a warm tree (measured 6.7s, M5 Max) so it is
-        pure per-row overhead. Generate once.
-
-        Safe ONLY because a mutation changes file CONTENT and never the project's SHAPE. That is a real
-        precondition, not a remark, and `MUTABLE_ROOTS` above is what enforces it: recipes may only
-        target production Swift under Sources/, so the files the project is generated FROM are
-        unreachable by construction rather than by a list someone must remember to extend."""
-        if self.generated:
-            return
-        try:
-            rc, out = run(
-                TUIST_GENERATE_ARGV,
-                cwd=self.worktree,
-                log_path=self.log_dir / "tuist-generate.log",
-                timeout=GENERATE_TIMEOUT_SECONDS,
-            )
-        except subprocess.TimeoutExpired:
-            raise _LaneTimedOut(
-                f"project generation did not finish within {GENERATE_TIMEOUT_SECONDS}s. The lane "
-                "timeout bounds the TEST call; this bounds the setup before it, so an unattended run "
-                "cannot park overnight in either. Its process group was killed; see "
-                f"{self.log_dir / 'tuist-generate.log'}"
-            )
-        if rc != 0:
-            raise Refusal(f"tuist generate failed (rc={rc}); see {self.log_dir/'tuist-generate.log'}")
-        self.generated = True
-        self._prepare_packages()
-
-    def _prepare_packages(self):
-        """Run the canonical lane's package preparation, once, before the first suite.
-
-        `xcode-test.sh:85-96` consumes the SwiftPM seed and then RESOLVES with a fallback that discards
-        a damaged `SourcePackages` and retries unseeded. Skipping it means a seed left by an interrupted
-        run — or one carrying another worktree's absolute paths (#2179) — fails the opening baseline
-        against package state the canonical command recovers from. An overnight battery then produces no
-        results at all until someone clears DerivedData by hand, which is the same wasted night the lane
-        timeout exists to prevent.
-
-        Calls the SAME helpers rather than reproducing them: this runner already carries one duplicated
-        invocation and a guard to police it, and #2165 exists to delete both. Sourcing their library
-        adds no second copy to reconcile.
-        """
-        try:
-            rc, out = self._run_package_prep()
-        except subprocess.TimeoutExpired:
-            raise _LaneTimedOut(
-                f"package preparation did not finish within {GENERATE_TIMEOUT_SECONDS}s. Its process "
-                f"group was killed; see {self.log_dir / 'package-prep.log'}"
-            )
-        if rc != 0:
-            # Not fatal: the canonical fallback already degrades a damaged clone to a slow unseeded
-            # resolve. If even that failed, the baseline is about to say so with a real build error,
-            # which is a better message than anything guessed here.
-            print(f"    note: package preparation exited {rc}; the baseline will report the real "
-                  f"failure if it matters ({self.log_dir / 'package-prep.log'})")
-
-    def _run_package_prep(self):
-        return run(
-            ["bash", "-c",
-             'set -e; source scripts/lib/spm-seed.sh; '
-             'ew_seed_consume "$PWD" "$1"; '
-             'ew_seed_resolve_or_unseed "$1" '
-             '  xcodebuild -resolvePackageDependencies -project EnviousWispr.xcodeproj '
-             '  -scheme EnviousWispr -derivedDataPath "$1"',
-             "_", str(self.derived_data)],
-            cwd=self.worktree,
-            log_path=self.log_dir / "package-prep.log",
-            timeout=GENERATE_TIMEOUT_SECONDS,
-        )
 
     def bundle_path(self, tag: str) -> Path:
-        """Where this row's result bundle lands. `xcodebuild` REFUSES to overwrite an existing
-        bundle, so a re-run of the same tag must start from a clean path."""
-        return self.log_dir / f"{tag}.xcresult"
+        return self.log_dir / tag / "result.xcresult"
 
-    def build_command(self, suite: str, tag: str = "lane"):
-        """The invocation this runner issues. Extracted so the self-test can assert it agrees with
-        CANONICAL_TOKENS — the drift guard compares that constant against the SCRIPT, and nothing
-        compared it against the command actually run, so the two could silently disagree."""
-        return [
-            "xcodebuild", "test",
-            "-project", "EnviousWispr.xcodeproj",
-            "-scheme", "EnviousWispr",
-            "-configuration", "Debug",
-            "-derivedDataPath", str(self.derived_data),
-            "-destination", "platform=macOS,arch=arm64",
-            "-onlyUsePackageVersionsFromResolvedFile",
-            "ARCHS=arm64", "VALID_ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES",
-            # OUR OWN PATH, never the default under `<derivedData>/Logs/Test/`.
-            # That directory accumulates one bundle per run and is shared, so
-            # "newest wins" there carries the same concurrent-writer hazard this
-            # repo already documents for the fixed log path.
-            "-resultBundlePath", str(self.bundle_path(tag)),
-            f"-only-testing:{suite}",
-        ]
+    def debug_log_path(self, tag: str) -> Path:
+        return self.log_dir / tag / "xcode-test-debug.log"
+
+    @staticmethod
+    def _remove_previous(path: Path, label: str):
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)
+        if path.exists() or path.is_symlink():
+            raise _RowFailed(f"the previous {label} at {path} could not be removed. Remove it by hand "
+                             "before re-running; a row must never read another row's receipt.")
 
     def run_suite(self, suite: str, tag: str):
         """-> (count, failures, compiled, log_path, rc, elapsed, results).
@@ -856,37 +721,30 @@ class Lane:
         lane did not compile and so wrote no bundle. Every VERDICT comes from `results`; `count` and
         `compiled` answer only whether the lane reached the test phase at all.
         """
-        self.generate_once()
-        log_path = self.log_dir / f"{tag}.log"
+        row_dir = self.log_dir / tag
+        row_dir.mkdir(parents=True, exist_ok=True)
+        log_path = self.debug_log_path(tag)
         bundle = self.bundle_path(tag)
-        # `xcodebuild` refuses to write into an existing bundle path, and a row
-        # that silently reused a previous row's bundle would grade this mutation
-        # against the LAST one's results — a wrong subject, which is the defect
-        # class this whole change removes.
-        #
-        # SO THE REMOVAL IS PROVEN, NOT ATTEMPTED. `ignore_errors=True` was here
-        # and permitted exactly what the paragraph above forbids: a bundle that
-        # cannot be deleted stays, xcodebuild declines to overwrite it, and the
-        # read returns the PREVIOUS row's results wearing this row's name. A
-        # comment asserting a mechanism the code does not enforce — in the tool
-        # built to catch that.
-        if bundle.exists():
-            shutil.rmtree(bundle, ignore_errors=True)
-        if bundle.exists():
-            raise _RowFailed(
-                f"the previous result bundle at {bundle} could not be removed, so xcodebuild would "
-                f"refuse to overwrite it and this row would be graded against the LAST row's "
-                f"results. Remove it by hand and re-run.")
-        cmd = self.build_command(suite, tag)
+        self._remove_previous(log_path, "canonical Debug log")
+        self._remove_previous(bundle, "result bundle")
+        command_log = row_dir / "invocation.log"
+        self._remove_previous(command_log, "invocation log")
+        cmd = [
+            str(self.worktree / CANONICAL_SCRIPT),
+            "--filter", suite,
+            "--log-dir", str(row_dir),
+            "--result-bundle-path", str(bundle),
+        ]
+        child_env = dict(os.environ, DERIVED_DATA_PATH=str(self.derived_data))
         started = time.monotonic()
         # `monotonic` cannot be compared against a file mtime; a wall clock can.
         started_wall = time.time()
         try:
-            rc, out = run(cmd, cwd=self.worktree, log_path=log_path,
-                          timeout=LANE_TIMEOUT_SECONDS)
+            rc, out = run(cmd, cwd=self.worktree, log_path=command_log,
+                          timeout=LANE_TIMEOUT_SECONDS, env=child_env)
         except subprocess.TimeoutExpired:
             elapsed = time.monotonic() - started
-            Path(log_path).write_text(
+            Path(command_log).write_text(
                 f"lane exceeded {LANE_TIMEOUT_SECONDS}s and was killed after {elapsed:.0f}s\n")
             raise _LaneTimedOut(
                 f"the lane ran past {LANE_TIMEOUT_SECONDS}s and was killed. A mutation that removes a "
@@ -894,19 +752,16 @@ class Lane:
                 f"catch ({log_path})")
         elapsed = time.monotonic() - started
 
+        if not log_path.exists() or log_path.stat().st_mtime < started_wall:
+            raise _RowFailed(
+                f"the canonical Debug log was not created by this lane ({log_path}). The script failed "
+                f"during setup, before there is a test receipt to grade; see {command_log}.")
+
         count, failures = classify_lane_output(out)
         # A red lane with compiler diagnostics and no test summary never ran the tests.
         compiled = not (count is None and COMPILE_ERROR_RE.search(out) is not None)
-        # THE CONSOLE IS STILL PARSED, FOR EXACTLY ONE THING IT CAN ANSWER AND THE
-        # BUNDLE CANNOT: whether the lane REACHED the test phase. A compile failure
-        # writes no bundle, so `compiled` has to come from the diagnostics. Every
-        # VERDICT below comes from the bundle; this is not a fallback.
         results = None
         if compiled:
-            # A bundle predating this lane is the wrong subject, so require one
-            # created after the run began. The removal above should make this
-            # unreachable; it is checked anyway because "should be unreachable"
-            # is what the previous version's comment said too.
             if bundle.exists() and bundle.stat().st_mtime < started_wall:
                 raise _RowFailed(
                     f"the result bundle at {bundle} predates this lane, so it belongs to an earlier "
@@ -915,72 +770,13 @@ class Lane:
         return count, failures, compiled, log_path, rc, elapsed, results
 
 
-def check_canonical_settings(worktree: Path):
-    """Fail closed if scripts/xcode-test.sh has drifted from the flags this runner reproduces."""
+def check_canonical_entrypoint(worktree: Path):
+    """The battery cannot grade a lane unless the canonical entry point is runnable."""
     canonical = worktree / CANONICAL_SCRIPT
-    if not canonical.is_file():
+    if canonical.is_symlink() or not canonical.is_file() or not os.access(canonical, os.X_OK):
         raise Refusal(
-            f"{CANONICAL_SCRIPT} is missing. This runner reproduces its build settings, so it cannot "
-            "confirm it is building the same thing the canonical entry point builds."
-        )
-    text = canonical.read_text()
-
-    missing_assignments = [frag for frag in CANONICAL_ASSIGNMENTS if frag not in text]
-
-    match = INVOCATION_RE.search(text)
-    if not match:
-        raise Refusal(
-            f"could not find the `xcodebuild test ... | tee` invocation in {CANONICAL_SCRIPT}. The "
-            "runner reproduces that command, so it cannot confirm it still matches. Fail closed."
-        )
-    # Literal flags and build settings are compared as tokens, both ways. Shell EXPANSIONS cannot be
-    # compared that way, so they are allowlisted instead: each one in CANONICAL_EXPANSIONS has its
-    # contents pinned by CANONICAL_ASSIGNMENTS above, and an expansion outside that set hides arguments
-    # this runner cannot see. Silently dropping them was the round-3 defect — indirection read as
-    # absence.
-    prefix_match = INVOCATION_PREFIX_RE.search(text)
-    invocation_prefix = (prefix_match.group(1).strip() if prefix_match else "")
-
-    raw_tokens = [tok for tok in match.group(1).split() if tok != "\\"]
-    expansions = [tok for tok in raw_tokens if "$" in tok]
-    unknown_expansions = sorted(set(expansions) - CANONICAL_EXPANSIONS)
-    expansion_sequence = expansions if expansions != CANONICAL_EXPANSION_SEQUENCE else None
-    found = {tok for tok in raw_tokens if "$" not in tok}
-    missing_tokens = sorted(CANONICAL_TOKENS - found)
-    extra_tokens = sorted(found - CANONICAL_TOKENS)
-
-    if (missing_assignments or missing_tokens or extra_tokens or unknown_expansions
-            or invocation_prefix or expansion_sequence is not None):
-        lines = []
-        if missing_assignments:
-            lines.append("  settings the runner expects and the script no longer has:")
-            lines += [f"    - {m}" for m in missing_assignments]
-        if missing_tokens:
-            lines.append("  invocation tokens the runner expects and the script no longer passes:")
-            lines += [f"    - {m}" for m in missing_tokens]
-        if expansion_sequence is not None:
-            lines.append("  the invocation's shell expansions are not the ones this runner "
-                         "reproduces, in order:")
-            lines.append(f"    expected: {CANONICAL_EXPANSION_SEQUENCE}")
-            lines.append(f"    found:    {expansion_sequence}")
-        if extra_tokens:
-            lines.append("  tokens the script now passes and the runner does NOT reproduce:")
-            lines += [f"    + {m}" for m in extra_tokens]
-        if unknown_expansions:
-            lines.append("  shell expansions whose contents this runner cannot see, so it cannot know")
-            lines.append("  whether it reproduces them:")
-            lines += [f"    ? {m}" for m in unknown_expansions]
-        if invocation_prefix:
-            lines.append("  something now runs BEFORE xcodebuild, so the canonical lane may use a")
-            lines.append("  different environment or toolchain than this runner's ambient one:")
-            lines.append(f"    ! {invocation_prefix}")
-        raise Refusal(
-            f"{CANONICAL_SCRIPT} has drifted from what this runner reproduces, so the battery would "
-            "measure a differently-configured build than the canonical lane:\n"
-            + "\n".join(lines)
-            + "\n\nReconcile CANONICAL_TOKENS / CANONICAL_ASSIGNMENTS / CANONICAL_EXPANSIONS and "
-            "the Lane class with the script, deliberately. Do not delete the guard to make this go "
-            "away."
+            f"{CANONICAL_SCRIPT} must be a regular executable file. The battery runs that command "
+            "directly so it cannot make its own copy of the build settings."
         )
 
 
@@ -1034,7 +830,7 @@ def preflight(worktree: Path, *, will_run_tests: bool = True):
     time a peer's UAT app blocked a recipe validation that touches nothing. Scope a guard to the
     situation its reasoning covers; a guard that refuses more than its reason supports trains bypasses.
     """
-    check_canonical_settings(worktree)
+    check_canonical_entrypoint(worktree)
     if will_run_tests:
         check_no_dev_app(worktree)
     # Case-insensitive: the preflight glob is case-SENSITIVE but the default APFS volume is not, so a
@@ -1046,6 +842,15 @@ def preflight(worktree: Path, *, will_run_tests: bool = True):
             "restore. Investigate before mutating anything else:\n  "
             + "\n  ".join(str(p) for p in leftovers)
         )
+    backup_root = worktree / "build" / "mutation-battery" / "backups"
+    if backup_root.exists():
+        backup_leftovers = [p for p in backup_root.rglob("*") if p.is_file() or p.is_symlink()]
+        if backup_leftovers:
+            raise Refusal(
+                "The dedicated backup directory still has files from an earlier battery. Investigate "
+                "before mutating anything else:\n  "
+                + "\n  ".join(str(p) for p in backup_leftovers)
+            )
 
 
 FENCE_RE = re.compile(r"```json\s*\n(.*?)```", re.DOTALL)
@@ -1247,6 +1052,14 @@ def baseline(lane: Lane, suites, phase: str, seen_names: dict = None,
         except _LaneTimedOut as exc:
             problems.append(f"{suite}: {exc}")
             continue
+        except _RowFailed as exc:
+            # The canonical script can fail before Xcode reaches the test lane
+            # (generation, package resolution, or its own setup). In that case it
+            # creates no fresh Debug log, and `run_suite` deliberately refuses to
+            # grade the missing receipt. A clean-tree control must report that as a
+            # baseline problem instead of letting the whole battery traceback.
+            problems.append(f"{suite}: {exc}")
+            continue
         except BundleUnreadable as exc:
             # A NONEXISTENT SUITE ARRIVES HERE, NOT AT THE ZERO-TEST BRANCH BELOW, and
             # that is why this catch matters more than it looks. `xcodebuild` REPORTS
@@ -1314,11 +1127,54 @@ def baseline(lane: Lane, suites, phase: str, seen_names: dict = None,
     return problems
 
 
+_BATTERY_LOCK_FD = None
+
+
+def acquire_battery_lock(worktree: Path):
+    """Refuse a second writer before it can inspect or create mutation state."""
+    global _BATTERY_LOCK_FD
+    lock_path = worktree / "build" / "mutation-battery" / "battery.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = lock_path.open("a+")
+    try:
+        fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        fd.close()
+        raise Refusal(
+            f"another mutation battery already owns {lock_path}. Wait for that run to finish rather "
+            "than treating its in-flight backup as stale state."
+        )
+    _BATTERY_LOCK_FD = fd
+
+
+def release_battery_lock():
+    global _BATTERY_LOCK_FD
+    if _BATTERY_LOCK_FD is None:
+        return
+    try:
+        fcntl.flock(_BATTERY_LOCK_FD.fileno(), fcntl.LOCK_UN)
+    finally:
+        _BATTERY_LOCK_FD.close()
+        _BATTERY_LOCK_FD = None
+
+
+def release_battery_lock_on_return(fn):
+    """Keep the lock across every normal return and exception from a CLI run."""
+    @functools.wraps(fn)
+    def wrapped(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            release_battery_lock()
+    return wrapped
+
+
 def main_for_test(recipes: Path, worktree: Path):
     """Entry point for the self-test's stubbed-lane cases. Same code path as the CLI."""
     return main(["--recipes", str(recipes), "--worktree", str(worktree)])
 
 
+@release_battery_lock_on_return
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
@@ -1336,10 +1192,8 @@ def main(argv=None):
                  "silently do less than the other flag promises.")
 
     worktree = (args.worktree or Path(__file__).resolve().parent.parent).resolve()
-    # The canonical lane reads DERIVED_DATA_PATH with the same default (xcode-test.sh:19). The drift
-    # guard only compares that assignment's TEXT, so a battery ignoring the override would run against
-    # the shared warm cache while an operator believed it was isolated — colliding with another lane,
-    # or reusing different incremental artifacts. Cloud review, PR #2158.
+    # Match the canonical lane's DerivedData override so the battery's isolated child lane never falls
+    # back to another checkout's shared cache.
     derived = Path(os.environ.get("DERIVED_DATA_PATH") or (worktree / ".derivedData" / "Test"))
     # NOT created here: --validate-only is documented as running nothing and touching nothing, and an
     # unconditional mkdir both breaks that promise and crashes on a read-only checkout. The Lane makes
@@ -1357,6 +1211,13 @@ def main(argv=None):
               f"the day can be gone. Point it at a checkout that has the code the recipe names.",
               file=sys.stderr)
         return 2
+
+    if not args.validate_only:
+        try:
+            acquire_battery_lock(worktree)
+        except Refusal as exc:
+            print(f"\nREFUSED — the battery did not start.\n\n{exc}", file=sys.stderr)
+            return 2
 
     print(f"worktree: {worktree}")
     rc, branch = run(["git", "branch", "--show-current"], cwd=worktree)
@@ -1452,8 +1313,8 @@ def main(argv=None):
     results = []
     for i, row in enumerate(rows, 1):
         target = Path(row["_resolved"])
-        backup = target.with_suffix(target.suffix + ".mutbak")
         tag = f"row{i:02d}"
+        backup = backup_path(worktree, tag, target)
         verdict, detail = "ERROR", "did not run"
         # Preflight is a SNAPSHOT and a battery is long — an overnight run is the whole point of this
         # tool. A dev app that starts after preflight and stops before the closing baseline corrupts
@@ -1468,6 +1329,7 @@ def main(argv=None):
             print(f"  [ ERR  ] row {i}: {row['label']}\n           {detail}")
             results.append(("ERROR", row["label"], detail))
             continue
+        backup.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(target, backup)
         _ACTIVE_RESTORES[target] = backup
         try:
@@ -1547,6 +1409,7 @@ def main(argv=None):
                 return 1
             else:
                 backup.unlink()   # verified byte-identical; on failure the backup is KEPT (above)
+                _prune_empty_backup_parents(backup, worktree)
             _ACTIVE_RESTORES.pop(target, None)
         # KEYED BY EVERY VERDICT `classify_row` CAN RETURN. A bare dict lookup on a
         # verdict it does not know raises KeyError mid-run, which is the right
