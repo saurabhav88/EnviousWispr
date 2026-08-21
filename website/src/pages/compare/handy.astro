@@ -7,7 +7,7 @@ const articleJsonLd = JSON.stringify({
   "@context": "https://schema.org",
   "@type": "Article",
   "headline": "EnviousWispr vs Handy: Free, Open Source Mac Dictation",
-  "description": "Compare EnviousWispr and Handy, two free, open source, on-device Mac dictation apps. Both can run AI cleanup; EnviousWispr's never asks you to pick a provider and shares one hotkey with transcription.",
+  "description": "Compare EnviousWispr and Handy, two free, open source, on-device Mac dictation apps. Both can run AI cleanup; EnviousWispr's runs on the same hotkey as transcription and never needs a second one.",
   "url": `${siteUrl}/compare/handy/`,
   "image": `${siteUrl}/og-image.png`,
   "datePublished": "2026-08-21T16:00:00Z",
@@ -71,7 +71,7 @@ const faqJsonLd = JSON.stringify({
       "name": "How is EnviousWispr different from Handy?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Both transcribe on-device with no cloud dependency for speech recognition, and both can run AI cleanup afterward. The difference is how that cleanup works. EnviousWispr's polish never asks you to pick a provider: on macOS 26+, Apple Intelligence handles cleanup automatically from the first launch, no download needed. On earlier versions, deterministic cleanup (removing filler words, fixing punctuation, formatting numbers) still runs automatically, and EG-1, our own model, adds the harder cases like formatting spoken lists after a one-time 2.9GB download. EnviousWispr also adds a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy's cleanup, called Post-Processing, is genuinely capable, supporting more cloud providers than we do (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, or Apple Intelligence), and it now ships a ready-made default prompt, so you are not required to write your own. But it is off until you turn it on, always asks you to pick a provider first, and fires on a separate dedicated hotkey from plain transcription. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only."
+        "text": "Both transcribe on-device with no cloud dependency for speech recognition, and both can run AI cleanup afterward. The difference is how that cleanup works. EnviousWispr's polish runs on the same hotkey as transcription, automatically once it is on, and never needs a second hotkey: on macOS 26+, Apple Intelligence handles cleanup with zero setup from the first launch; on earlier versions, deterministic cleanup (removing filler words, fixing punctuation, formatting numbers) still runs automatically, and EG-1, our own model, adds the harder cases like formatting spoken lists once you pick it, no account or API key, after a one-time 2.9GB download. EnviousWispr also adds a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy's cleanup, called Post-Processing, is genuinely capable, supporting more cloud providers than we do (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, or Apple Intelligence), and it now ships a ready-made default prompt, so you are not required to write your own. But it is off until you turn it on, always asks you to pick a provider first, and fires on a separate dedicated hotkey from plain transcription. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only."
       }
     },
     {
@@ -79,7 +79,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does Handy have AI cleanup or polish?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes, it does. Handy's Post-Processing feature sends your transcript to a provider of your choice (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, Apple Intelligence on-device, or a local server) along with a prompt. Handy ships one ready-made default prompt, called Improve Transcriptions, so you don't have to write your own to get started, though you can edit it or add your own. The feature is off until you turn it on, and it fires on a separate dedicated hotkey from plain transcription, so you choose per recording whether to use it. EnviousWispr's polish never asks you to pick a provider or write a prompt, and runs on the same hotkey as transcription: on macOS 26+ that's Apple Intelligence from the first launch, and on earlier versions EG-1, our own model already fine-tuned for dictation cleanup, is one setting away."
+        "text": "Yes, it does. Handy's Post-Processing feature sends your transcript to a provider of your choice (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, Apple Intelligence on-device, or a local server) along with a prompt. Handy ships one ready-made default prompt, called Improve Transcriptions, so you don't have to write your own to get started, though you can edit it or add your own. The feature is off until you turn it on, and it fires on a separate dedicated hotkey from plain transcription, so you choose per recording whether to use it. EnviousWispr's polish runs on the same hotkey as transcription and needs no prompt to write: on macOS 26+ that's Apple Intelligence with zero setup from the first launch, and on earlier versions EG-1, our own model already fine-tuned for dictation cleanup, is one setting away with no account or API key needed."
       }
     },
     {
@@ -353,8 +353,8 @@ const faqJsonLd = JSON.stringify({
       <span class="vs-circle">VS</span>
       <span class="vs-brand">Handy</span>
     </div>
-    <h1 class="reveal">Free and open source, like Handy. Ours never asks you to pick a provider.</h1>
-    <p class="page-header-sub reveal">Both can clean up your dictation with AI. EnviousWispr's polish runs on the same hotkey as transcription and never asks you to choose a provider: Apple Intelligence handles it automatically on macOS 26+, and our own EG-1 model is one setting away on earlier versions. Handy's cleanup is real too, and now ships a ready-made prompt, but it is off until you turn it on, always asks you to pick a provider, and only fires on a second, separate hotkey.</p>
+    <h1 class="reveal">Free and open source, like Handy. Ours never needs a second hotkey.</h1>
+    <p class="page-header-sub reveal">Both can clean up your dictation with AI. EnviousWispr's polish runs on the same hotkey as transcription, automatically once enabled: Apple Intelligence handles it with zero setup on macOS 26+, and on earlier versions our own EG-1 model, no account or API key needed, is one setting away. Handy's cleanup is real too, and now ships a ready-made prompt, but it is off until you turn it on, always asks you to pick a provider, and only fires on a second, separate hotkey.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -362,7 +362,7 @@ const faqJsonLd = JSON.stringify({
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-        No provider to pick, one hotkey
+        Same hotkey, never a second one
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -465,9 +465,9 @@ const faqJsonLd = JSON.stringify({
             <td><span class="table-check">Yes</span>: OpenAI, Anthropic, OpenRouter, Groq, Cerebras, or Z.AI with your own key, Apple Intelligence on-device, or a local server</td>
           </tr>
           <tr>
-            <td>Needs a provider chosen for cleanup</td>
-            <td><span class="table-highlight">No, never</span>: Apple Intelligence works automatically on macOS 26+ with no download; EG-1 is one setting away on earlier versions</td>
-            <td><span class="table-cross">Yes</span>: off until you turn it on, and you always pick a provider before it runs</td>
+            <td>Works with zero setup on a fresh install</td>
+            <td><span class="table-highlight">Yes, on macOS 26+</span>: Apple Intelligence is the default, no download or provider choice needed. On macOS 14-25, deterministic cleanup still runs automatically; AI-level polish needs picking EG-1, no account or API key required, just a one-time 2.9GB download</td>
+            <td><span class="table-cross">No</span>: off until you turn it on, and you always pick a provider before it runs, on every macOS version</td>
           </tr>
           <tr>
             <td>Needs a prompt to be written</td>
@@ -563,8 +563,8 @@ const faqJsonLd = JSON.stringify({
     <div class="advantages-grid">
       <div class="advantage-card reveal">
         <div class="advantage-icon">🧹</div>
-        <div class="advantage-title">Never asks you to pick a provider</div>
-        <p class="advantage-desc">Polish runs on the same hotkey as transcription and never makes you choose a provider. On macOS 26+, Apple Intelligence runs the moment you install, no download needed. On earlier versions, deterministic cleanup (filler words, punctuation, numbers) still runs automatically from the first launch, and EG-1, our own model fine-tuned for dictation, is one setting away for the harder cases: a one-time 2.9GB download, no provider to pick. Handy's cleanup is real and now ships a ready-made prompt too, but it is off until you turn it on, always asks you to pick a provider first, and fires on a second, separate hotkey.</p>
+        <div class="advantage-title">Never needs a second hotkey</div>
+        <p class="advantage-desc">Polish runs on the same hotkey as transcription, automatically once it is on. On macOS 26+, Apple Intelligence runs the moment you install, no download or setup needed. On earlier versions, deterministic cleanup (filler words, punctuation, numbers) still runs automatically from the first launch, and EG-1, our own model fine-tuned for dictation, is one setting away for the harder cases: a one-time 2.9GB download, no account or API key. Handy's cleanup is real and now ships a ready-made prompt too, but it is off until you turn it on, always asks you to pick a provider first, and fires on a second, separate hotkey.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">👀</div>
@@ -706,7 +706,7 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-title">A model built for this, versus a model you configure</div>
         <div class="deep-dive-body">
           <p>Handy's Post-Processing feature is real: a dedicated hotkey sends your transcript to a provider of your choosing, OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, Apple Intelligence on-device, or a local server, along with a prompt. It ships one ready-made prompt out of the box, called Improve Transcriptions, so you are not required to write your own to get started; you can also edit it or add your own. The feature itself is off until you turn it on and pick a provider, and it fires on a separate hotkey from plain transcription. Whether it turns a rambling sentence into a real list, or reliably keeps the right half of a self-correction, depends on which prompt and provider you end up using.</p>
-          <p>EnviousWispr's polish runs on the same hotkey as transcription, with no provider or prompt to set up, ever. Deterministic filler and number cleanup runs first and always, automatic and aware of your language, on any supported macOS version. EG-1, our own model fine-tuned specifically for dictation, then handles the harder cases: turning a spoken list into a real one, keeping only what you meant when you talk yourself into a correction mid-sentence. That LLM step is guarded against hallucination: short transcripts skip the model entirely, and output beyond roughly three times the input's length (with a floor around 200 characters, so a short dictation isn't flagged the instant polish adds a sentence) is rejected as probable fabrication and the raw transcript is used instead.</p>
+          <p>EnviousWispr's polish runs on the same hotkey as transcription, automatically once it is on, and never needs a second hotkey the way Handy's does. Deterministic filler and number cleanup runs first and always, automatic and aware of your language, on any supported macOS version. EG-1, our own model fine-tuned specifically for dictation, then handles the harder cases: turning a spoken list into a real one, keeping only what you meant when you talk yourself into a correction mid-sentence. That LLM step is guarded against hallucination: short transcripts skip the model entirely, and output beyond roughly three times the input's length (with a floor around 200 characters, so a short dictation isn't flagged the instant polish adds a sentence) is rejected as probable fabrication and the raw transcript is used instead.</p>
           <p>In our own testing on the latest release, EG-1 builds a real bulleted list out of a spoken list 83% of the time (up from under 1%), and correctly keeps only what you meant when you self-correct mid-sentence 78% of the time. That is a measured result from a model built and tested for this one job. Handy's cleanup quality with its default prompt, or your own, has not been benchmarked publicly, and will vary further if you write your own instructions or switch providers.</p>
           <div class="deep-dive-detail">
             <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
@@ -775,11 +775,11 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from Handy?</div>
-        <p class="faq-a">Both transcribe on-device with no cloud dependency for speech recognition, and both can run AI cleanup afterward. The difference is how that cleanup works. EnviousWispr's polish never asks you to pick a provider: on macOS 26+, Apple Intelligence handles cleanup automatically from the first launch, no download needed. On earlier versions, deterministic cleanup (removing filler words, fixing punctuation, formatting numbers) still runs automatically, and EG-1, our own model, adds the harder cases like formatting spoken lists after a one-time 2.9GB download. EnviousWispr also adds a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy's cleanup, called Post-Processing, is genuinely capable, supporting more cloud providers than we do (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, or Apple Intelligence), and it now ships a ready-made default prompt, so you are not required to write your own. But it is off until you turn it on, always asks you to pick a provider first, and fires on a separate dedicated hotkey from plain transcription. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only.</p>
+        <p class="faq-a">Both transcribe on-device with no cloud dependency for speech recognition, and both can run AI cleanup afterward. The difference is how that cleanup works. EnviousWispr's polish runs on the same hotkey as transcription, automatically once it is on, and never needs a second hotkey: on macOS 26+, Apple Intelligence handles cleanup with zero setup from the first launch; on earlier versions, deterministic cleanup (removing filler words, fixing punctuation, formatting numbers) still runs automatically, and EG-1, our own model, adds the harder cases like formatting spoken lists once you pick it, no account or API key, after a one-time 2.9GB download. EnviousWispr also adds a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy's cleanup, called Post-Processing, is genuinely capable, supporting more cloud providers than we do (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, or Apple Intelligence), and it now ships a ready-made default prompt, so you are not required to write your own. But it is off until you turn it on, always asks you to pick a provider first, and fires on a separate dedicated hotkey from plain transcription. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Handy have AI cleanup or polish?</div>
-        <p class="faq-a">Yes, it does. Handy's Post-Processing feature sends your transcript to a provider of your choice (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, Apple Intelligence on-device, or a local server) along with a prompt. Handy ships one ready-made default prompt, called Improve Transcriptions, so you don't have to write your own to get started, though you can edit it or add your own. The feature is off until you turn it on, and it fires on a separate dedicated hotkey from plain transcription, so you choose per recording whether to use it. EnviousWispr's polish never asks you to pick a provider or write a prompt, and runs on the same hotkey as transcription: on macOS 26+ that's Apple Intelligence from the first launch, and on earlier versions EG-1, our own model already fine-tuned for dictation cleanup, is one setting away.</p>
+        <p class="faq-a">Yes, it does. Handy's Post-Processing feature sends your transcript to a provider of your choice (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, Apple Intelligence on-device, or a local server) along with a prompt. Handy ships one ready-made default prompt, called Improve Transcriptions, so you don't have to write your own to get started, though you can edit it or add your own. The feature is off until you turn it on, and it fires on a separate dedicated hotkey from plain transcription, so you choose per recording whether to use it. EnviousWispr's polish runs on the same hotkey as transcription and needs no prompt to write: on macOS 26+ that's Apple Intelligence with zero setup from the first launch, and on earlier versions EG-1, our own model already fine-tuned for dictation cleanup, is one setting away with no account or API key needed.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
@@ -836,8 +836,8 @@ const faqJsonLd = JSON.stringify({
 <!-- CTA -->
 <section class="cta-section" aria-label="Download CTA">
   <div class="container">
-    <h2 class="reveal">Free and open source. No provider to pick, ever.</h2>
-    <p class="reveal">Free to download. No account required. AI polish runs on your one hotkey with no provider or prompt to set up, automatic on macOS 26+ and one setting away everywhere else.</p>
+    <h2 class="reveal">Free and open source. Never a second hotkey.</h2>
+    <p class="reveal">Free to download. No account required. AI polish runs on your one hotkey, automatic on macOS 26+ and one setting away everywhere else.</p>
     <div class="cta-actions reveal">
       <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
