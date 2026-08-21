@@ -135,7 +135,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does VoiceInk have AI text enhancement?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. VoiceInk offers AI formatting through system prompts with LLM providers. EnviousWispr supports 5 AI polish engines including EG-1 (our own on-device model), Apple Intelligence (fully on-device), Ollama (on-device), and cloud providers with your own API key, plus built-in hallucination safeguards."
+        "text": "Yes. VoiceInk offers AI formatting through system prompts with LLM providers. EnviousWispr supports 6 AI polish engines including EG-1 (our own on-device model), Ollama (on-device), Apple Intelligence (on-device, macOS 26+), and cloud providers (OpenAI, Gemini, Claude) with your own API key, plus built-in hallucination safeguards."
       }
     }
   ]
@@ -439,11 +439,11 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Speech engines</td>
             <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a></td>
-            <td><a href="https://github.com/ggerganov/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a>, Parakeet (FluidAudio), or Cohere Transcribe, user-selectable</td>
+            <td><a href="https://github.com/ggml-org/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a>, Parakeet (FluidAudio), or Cohere Transcribe, user-selectable</td>
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">5 providers:</span> EG-1, Apple Intelligence, Ollama (all three on-device), OpenAI, Gemini (BYO key)</td>
+            <td><span class="table-highlight">6 providers:</span> EG-1, Ollama (on-device), Apple Intelligence (on-device, macOS 26+), OpenAI, Gemini, Claude (BYO key)</td>
             <td>AI formatting via system prompts with LLM providers</td>
           </tr>
           <tr>
@@ -566,7 +566,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#129504;</div>
         <div class="advantage-title">5 on-device + cloud polish engines</div>
-        <p class="advantage-desc">EG-1, Apple Intelligence, and Ollama run fully on-device with no API key. Or bring your own OpenAI or Gemini key. VoiceInk offers AI formatting through system prompts with cloud LLMs.</p>
+        <p class="advantage-desc">EG-1 and Ollama run fully on-device with no API key, and so does Apple Intelligence on macOS 26+. Or bring your own OpenAI, Gemini, or Claude key. VoiceInk offers AI formatting through system prompts with cloud LLMs.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#128295;</div>
@@ -780,7 +780,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What is AI polish and does VoiceInk have it?</div>
-        <p class="faq-a">AI polish is a post-transcription step that fixes grammar, removes filler words, and formats your text using a language model. EnviousWispr supports EG-1, Apple Intelligence, Ollama (all on-device), and cloud providers with your own API key. VoiceInk offers AI formatting through system prompts with cloud LLM providers.</p>
+        <p class="faq-a">AI polish is a post-transcription step that fixes grammar, removes filler words, and formats your text using a language model. EnviousWispr supports EG-1, Ollama, and Apple Intelligence (all on-device, Apple Intelligence needs macOS 26+), and cloud providers (OpenAI, Gemini, Claude) with your own API key. VoiceInk offers AI formatting through system prompts with cloud LLM providers.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which app is better for non-English languages?</div>
@@ -788,7 +788,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does VoiceInk have AI text enhancement?</div>
-        <p class="faq-a">Yes. VoiceInk offers AI formatting through system prompts with LLM providers. EnviousWispr supports 5 AI polish engines including EG-1 (our own on-device model), Apple Intelligence (fully on-device), Ollama (on-device), OpenAI, and Gemini, plus built-in hallucination safeguards that reject fabricated output.</p>
+        <p class="faq-a">Yes. VoiceInk offers AI formatting through system prompts with LLM providers. EnviousWispr supports 6 AI polish engines including EG-1 (our own on-device model), Ollama (on-device), Apple Intelligence (on-device, macOS 26+), OpenAI, Gemini, and Claude, plus built-in hallucination safeguards that reject fabricated output.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from VoiceInk easily?</div>
@@ -800,7 +800,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is there a free alternative to VoiceInk?</div>
-        <p class="faq-a">Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet TDT for fast English transcription and includes an AI polish pipeline with 5 providers. No account or payment required.</p>
+        <p class="faq-a">Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet TDT for fast English transcription and includes an AI polish pipeline with 6 providers. No account or payment required.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>
