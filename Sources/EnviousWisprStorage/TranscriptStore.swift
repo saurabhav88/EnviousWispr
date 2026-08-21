@@ -329,6 +329,24 @@ public final class TranscriptStore {
     return transcript.recoverySessionID
   }
 
+  /// A pending row is a shadow only when the permanent row names the same
+  /// transcript and the same recovery session. A matching filename alone is
+  /// not identity: a corrupt pending filename can collide with an unrelated
+  /// permanent row, and deleting it would discard the de-dup proof for its
+  /// still-live spool (#2256).
+  private nonisolated static func hasPermanentTwin(
+    for candidate: PendingCandidate, in permanentDir: URL
+  ) -> Bool {
+    guard
+      let pendingData = try? Data(contentsOf: candidate.url),
+      let pending = try? JSONDecoder().decode(Transcript.self, from: pendingData),
+      let permanentData = try? Data(
+        contentsOf: permanentDir.appendingPathComponent(candidate.url.lastPathComponent)),
+      let permanent = try? JSONDecoder().decode(Transcript.self, from: permanentData)
+    else { return false }
+    return pending.id == permanent.id && pending.recoverySessionID == permanent.recoverySessionID
+  }
+
   private nonisolated static func spoolIDsFromDisk() -> Set<String>? {
     guard let ids = try? RecoverySpoolStore().listSpoolSessionIDs() else { return nil }
     return Set(ids)
@@ -376,20 +394,31 @@ public final class TranscriptStore {
     // proof precisely when we cannot see what it protects. Rows carrying no
     // recovery id are unaffected either way — nothing can replay them.
 
-    let liveCandidates = candidates.filter(\.isLive)
+    // A successful Keep writes the permanent row before it best-effort removes
+    // the pending one. Clear any true shadows before taking the live count: a
+    // leftover live copy must neither be re-offered nor keep the pulse walking
+    // the directory until its original deadline (#2256).
+    var sweepCandidates: [PendingCandidate] = []
+    var survivingLiveShadows: [PendingCandidate] = []
+    for candidate in candidates {
+      guard hasPermanentTwin(for: candidate, in: permanentDir) else {
+        sweepCandidates.append(candidate)
+        continue
+      }
+      try? fm.removeItem(at: candidate.url)
+      if fm.fileExists(atPath: candidate.url.path) {
+        unremovable += 1
+        if candidate.isLive { survivingLiveShadows.append(candidate) }
+      } else if let id = UUID(uuidString: candidate.url.deletingPathExtension().lastPathComponent) {
+        deleted.insert(id)
+      }
+    }
+    var liveCandidates = sweepCandidates.filter(\.isLive)
+    liveCandidates.append(contentsOf: survivingLiveShadows)
     let remainingLive = liveCandidates.count
     let nextLiveDeadline = liveCandidates.compactMap { $0.deadline(retention: retention) }.min()
     var retainedForSpool = 0
-    for candidate in candidates where !candidate.isLive {
-      // A permanent twin answers BOTH questions below, so it is asked first.
-      // Local review, P2: with the spool guard ahead of it, a Keep whose shadow
-      // removal failed AND whose spool survived was retained forever — the
-      // permanent row already carries the de-dup key, so the shadow protects
-      // nothing and the pulse walks the directory every minute for the life of
-      // the app. Checked by FILE rather than by loading the row: this runs off
-      // the main actor, and existence is the whole question.
-      let hasPermanentTwin = FileManager.default.fileExists(
-        atPath: permanentDir.appendingPathComponent(candidate.url.lastPathComponent).path)
+    for candidate in sweepCandidates where !candidate.isLive {
       // #2186: this row is the only proof its spool was already recovered.
       // Delete it while the spool survives and the next scan replays that spool
       // as a fresh dictation — handing back the take the user CANCELLED. Retain
@@ -398,32 +427,10 @@ public final class TranscriptStore {
       // The enum answers for `.live`/`.expired`; `.invalid` carries no
       // transcript by design, so ask the FILE with the de-dup reader's own
       // permissive decode. Anything that reader would count, this must protect.
-      if !hasPermanentTwin,
-        let session = candidate.recoverySessionID ?? recoverySessionID(of: candidate.url),
+      if let session = candidate.recoverySessionID ?? recoverySessionID(of: candidate.url),
         spoolIDs.map({ $0.contains(session) }) ?? true
       {
         retainedForSpool += 1
-        continue
-      }
-      // A SHADOW, not an expiry (cloud review). `promotePending` writes the
-      // permanent row first and removes the pending file second, so a crash or a
-      // failed removal in between leaves the stamped copy beside its permanent
-      // twin. Twenty-four hours later this loop would see a stamped row past its
-      // window and emit `escape_recovery.expired` for a dictation the user
-      // pressed KEEP on — the text is safe either way, but the kept-versus-
-      // expired ratio is the one number this funnel exists to produce, and it
-      // would be wrong in the direction that makes the feature look worse.
-      //
-      // Deleted (it is litter) and NOT reported (nothing expired).
-      if hasPermanentTwin {
-        try? fm.removeItem(at: candidate.url)
-        if fm.fileExists(atPath: candidate.url.path) {
-          unremovable += 1
-        } else if let id = UUID(
-          uuidString: candidate.url.deletingPathExtension().lastPathComponent)
-        {
-          deleted.insert(id)
-        }
         continue
       }
       // `removeItem`, NOT `unlink`. A corrupt entry can be a DIRECTORY named

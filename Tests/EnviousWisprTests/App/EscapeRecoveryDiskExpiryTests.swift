@@ -47,10 +47,17 @@ struct EscapeRecoveryDiskExpiryTests {
   private func makeStore(spools: @escaping @Sendable () -> Set<String>? = { [] })
     -> TranscriptStore
   {
-    TranscriptStore(
-      directory: FileManager.default.temporaryDirectory
-        .appendingPathComponent("ew-2186-\(UUID().uuidString)", isDirectory: true),
-      liveSpoolIDs: spools)
+    makeStoreWithDirectory(spools: spools).store
+  }
+
+  private func makeStoreWithDirectory(
+    spools: @escaping @Sendable () -> Set<String>? = { [] }
+  ) -> (store: TranscriptStore, directory: URL) {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-2186-\(UUID().uuidString)", isDirectory: true)
+    return (
+      TranscriptStore(directory: directory, liveSpoolIDs: spools),
+      directory)
   }
 
   /// Written from the detached walk and read on the main actor, so it carries
@@ -172,8 +179,8 @@ struct EscapeRecoveryDiskExpiryTests {
         """)
     }
 
-    @Test("a kept dictation's leftover copy is deleted even when its audio survives")
-    func keptShadowIsDeletedDespiteSurvivingSpool() async throws {
+    @Test("a kept live dictation's leftover copy is deleted before it can re-arm the pulse")
+    func keptLiveShadowIsDeletedDespiteSurvivingSpool() async throws {
       let store = makeStore(spools: { ["session-kept"] })
 
       // The state a half-failed Keep leaves behind: the permanent row written,
@@ -182,7 +189,7 @@ struct EscapeRecoveryDiskExpiryTests {
       let id = UUID()
       let row = Transcript(
         id: id, text: "the user pressed Keep on this", recoverySessionID: "session-kept",
-        escapeRecoveredAt: Date().addingTimeInterval(-48 * 3600),
+        escapeRecoveredAt: Date().addingTimeInterval(-60),
         escapeRecoveryTakeID: "take-kept")
       try store.savePending(row)
       try store.save(row.promotedFromPending())
@@ -202,6 +209,9 @@ struct EscapeRecoveryDiskExpiryTests {
         the countdown keeps running against it forever.
         """)
       #expect(swept.deletedIDs.contains(id), "it must be swept as the litter it is")
+      #expect(
+        swept.remainingLive == 0 && swept.nextLiveDeadline == nil,
+        "a kept live shadow must not be re-offered or keep the expiry pulse armed")
       #expect(
         swept.expired.isEmpty,
         "and NOT reported as expired — the user kept this dictation, nothing lapsed")
@@ -504,6 +514,46 @@ struct EscapeRecoveryDiskExpiryTests {
       #2186: the sweep deleted an INVALID pending row whose spool is still on disk. Its \
       recoverySessionID is de-dup proof that `allRecoveredSessionIDs()` honours, so removing \
       the file makes the next scan replay that spool and hand back a cancelled dictation.
+      """)
+  }
+
+  @Test("a filename collision with an unrelated permanent row keeps the invalid row's spool proof")
+  func invalidFilenameCollisionDoesNotBypassSpoolGuard() async throws {
+    let session = UUID().uuidString
+    let fixture = makeStoreWithDirectory(spools: { [session] })
+    let store = fixture.store
+    let pendingID = UUID()
+    let unrelatedPermanentID = UUID()
+    let pending = Transcript(
+      id: pendingID,
+      text: "cancelled audio still needs its de-dup proof",
+      recoverySessionID: session,
+      escapeRecoveredAt: Date().addingTimeInterval(
+        -(AppConstants.pendingTranscriptRetention + 3600)),
+      escapeRecoveryTakeID: "take-filename-collision")
+    try store.savePending(pending)
+    try store.save(
+      Transcript(
+        id: unrelatedPermanentID,
+        text: "a different dictation that happened to take this filename",
+        recoverySessionID: UUID().uuidString))
+
+    // Pending file A decodes as transcript B. A permanent A exists, but it is
+    // unrelated: treating filename equality as a permanent twin would skip the
+    // spool guard and delete B's recovery-session de-dup proof.
+    let pendingDir = fixture.directory.appendingPathComponent(AppConstants.pendingTranscriptsDir)
+    let original = pendingDir.appendingPathComponent("\(pendingID.uuidString).json")
+    let collidingName = pendingDir.appendingPathComponent("\(unrelatedPermanentID.uuidString).json")
+    try FileManager.default.moveItem(at: original, to: collidingName)
+
+    let swept = try await store.deleteExpiredPending()
+
+    #expect(swept.retainedForSpool == 1)
+    #expect(
+      try await store.pendingRecoverySessionIDs().contains(session),
+      """
+      #2256: a filename collision must not erase the invalid row's recovery-session key. The next \
+      scan would otherwise replay the surviving cancelled-audio spool as a duplicate dictation.
       """)
   }
 
