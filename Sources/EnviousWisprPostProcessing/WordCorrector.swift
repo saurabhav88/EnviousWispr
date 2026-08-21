@@ -918,36 +918,54 @@ public struct WordCorrector: Sendable {
       let matchCoreEligible =
         !Self.emojiTriggerReservedWords.contains(matchCoreLower) && matchCore.count >= 2
 
-      // Step 1 + 2: EXACT match to completion -- unpeeled, then peeled --
-      // before any fuzzy pass runs at all. Exact equality always outranks
-      // fuzzy scoring and always respects the user/pack tiering baked into
-      // `singleAliasMap`, and that must hold even for a domain-shaped
-      // token: a fuzzy match found via the unpeeled domain-restricted pass
-      // (step 3) could otherwise preempt the user's OWN exact alias,
-      // reachable only by peeling first (Codex review, PR for #2281,
-      // finding P1 round 4).
-      if let canonical = exactSingleWordMatch(
-        core: core, coreLower: coreLower, lookups: lookups,
-        appendReplacement: { appendReplacement(forCanonical: $0) })
-      {
-        return prefix + canonical + suffix
-      }
-      if matchCoreEligible,
-        let canonical = exactSingleWordMatch(
-          core: matchCore, coreLower: matchCoreLower, lookups: lookups,
-          appendReplacement: { appendReplacement(forCanonical: $0) })
-      {
-        let reattach = peeledSuffix.isEmpty || Self.isDomainShaped(canonical) ? "" : peeledSuffix
-        return prefix + canonical + reattach + suffix
-      }
-
-      // A peeled suffix, once a fuzzy match is found, is reattached UNLESS
-      // the matched canonical is itself domain-shaped -- it already fully
+      // A peeled suffix, once a match is found, is reattached UNLESS the
+      // matched canonical is itself domain-shaped -- it already fully
       // specifies its own domain, whatever suffix the user actually said
       // (Codex review, PR for #2281, finding P2, rounds 2-4).
       func reattached(_ canonical: String) -> String {
         let reattach = peeledSuffix.isEmpty || Self.isDomainShaped(canonical) ? "" : peeledSuffix
         return prefix + canonical + reattach + suffix
+      }
+
+      // Step 1 + 2: EXACT match to completion -- unpeeled, then peeled --
+      // before any fuzzy pass runs at all, AND non-pack outranks pack
+      // across that same boundary. Exact equality always outranks fuzzy
+      // scoring (finding P1 round 4). Within exact itself, "non-pack always
+      // wins over pack" must ALSO hold across the peel boundary: an
+      // unpeeled key can resolve to a pack alias while the peeled key
+      // resolves to the user's own alias (pack "githib.com", user
+      // "githib") -- accepting the unpeeled pack match immediately would
+      // preempt the higher-authority user match one step away (Codex
+      // review, PR for #2281, finding P1 round 7). So both attempts are
+      // computed first, with non-pack results checked before either pack
+      // result is accepted.
+      let unpeeledExact = exactSingleWordMatch(core: core, coreLower: coreLower, lookups: lookups)
+      let peeledExact =
+        matchCoreEligible
+        ? exactSingleWordMatch(core: matchCore, coreLower: matchCoreLower, lookups: lookups)
+        : nil
+
+      func acceptExact(unpeeled: Bool, _ match: (canonical: String, isPack: Bool)) -> String {
+        appendReplacement(forCanonical: match.canonical)
+        #if DEBUG
+          Self.logger.debug(
+            "WordCorrector: type=alias source='\(unpeeled ? core : matchCore)' target='\(match.canonical)'"
+          )
+        #endif
+        return unpeeled ? prefix + match.canonical + suffix : reattached(match.canonical)
+      }
+
+      if let match = unpeeledExact, !match.isPack {
+        return acceptExact(unpeeled: true, match)
+      }
+      if let match = peeledExact, !match.isPack {
+        return acceptExact(unpeeled: false, match)
+      }
+      if let match = unpeeledExact {
+        return acceptExact(unpeeled: true, match)
+      }
+      if let match = peeledExact {
+        return acceptExact(unpeeled: false, match)
       }
 
       // Step 3 + 4: non-pack FUZZY to completion -- unpeeled (restricted to
@@ -1020,16 +1038,19 @@ public struct WordCorrector: Sendable {
   /// found via the unpeeled domain-restricted pass could otherwise preempt
   /// the user's own exact alias, reachable only by peeling first (Codex
   /// review, PR for #2281, finding P1 round 4).
+  /// Returns the matched canonical AND whether it came from a pack term,
+  /// but does NOT call `appendReplacement` or log -- the caller decides
+  /// which of potentially several candidate exact matches (unpeeled vs
+  /// peeled) actually wins before committing that side effect (Codex
+  /// review, PR for #2281, finding P1 round 7: see the call site in
+  /// `correct(using:)` for why the caller needs to see both before
+  /// choosing).
   private func exactSingleWordMatch(
-    core: String, coreLower: String,
-    lookups: Lookups, appendReplacement: (String) -> Void
-  ) -> String? {
+    core: String, coreLower: String, lookups: Lookups
+  ) -> (canonical: String, isPack: Bool)? {
     guard let canonical = lookups.singleAliasMap[coreLower], core != canonical else { return nil }
-    appendReplacement(canonical)
-    #if DEBUG
-      Self.logger.debug("WordCorrector: type=alias source='\(core)' target='\(canonical)'")
-    #endif
-    return canonical
+    let isPack = lookups.canonicalToWord[canonical.lowercased()]?.source == .pack
+    return (canonical, isPack)
   }
 
   /// Pass 4-5 alone (non-pack fuzzy: aliases + canonical self-entries, then

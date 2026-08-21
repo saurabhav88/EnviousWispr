@@ -395,4 +395,24 @@ struct WordCorrectorGluedDomainSuffixTests {
       #expect(result.replacements == 0)
     }
   }
+
+  // MARK: Codex review round 7, P1 -- non-pack exact must outrank pack
+  // exact even across the peel boundary, not only within one attempt.
+
+  @Test(
+    "A user's own bare exact alias, reachable only by peeling, still outranks a pack exact domain match"
+  )
+  func userBareExactOutranksPackExactDomainAcrossPeelBoundary() {
+    // "githib.com" is registered as a PACK-sourced exact alias; "githib"
+    // (bare) is registered as the USER's own exact alias. Accepting the
+    // unpeeled pack match immediately -- before even trying the peeled
+    // form -- would preempt the higher-authority user match one step away.
+    let packWord = CustomWord(
+      canonical: "PackDomain.com", aliases: ["githib.com"], category: .brand, source: .pack)
+    let userWord = CustomWord(
+      canonical: "UserChoice", aliases: ["githib"], category: .brand, source: .user)
+    let result = corrected("githib.com", [packWord, userWord])
+    #expect(result.text == "UserChoice.com")
+    #expect(result.replacements == 1)
+  }
 }
