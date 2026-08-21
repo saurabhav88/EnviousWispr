@@ -1,0 +1,782 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "EnviousWispr vs Juno: Free Mac Dictation, Runs on More Macs",
+  "description": "Compare EnviousWispr and Juno, two free, open source, on-device Mac dictation tools. Juno needs an M2 Mac with 24GB RAM; EnviousWispr runs on M1 and up.",
+  "url": `${siteUrl}/compare/juno/`,
+  "image": `${siteUrl}/og-image.png`,
+  "datePublished": "2026-08-21T19:00:00Z",
+  "dateModified": "2026-08-21T19:00:00Z",
+  "author": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": `${siteUrl}/authors/saurabh-vaish/`,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+  },
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Comparisons",
+      "item": `${siteUrl}/compare/`,
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "EnviousWispr vs Juno",
+      "item": `${siteUrl}/compare/juno/`,
+    },
+  ],
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr free, like Juno?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Both EnviousWispr and Juno are completely free, with no subscription, no usage cap, and no account required. Both are also open source: EnviousWispr under GPLv3, Juno under MIT."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What Mac do I need for each app?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "This is the biggest practical difference. Juno's own site states it needs an M2 or newer Apple Silicon Mac, macOS 15 Sequoia or later, and at least 24GB of RAM. EnviousWispr runs on any Apple Silicon Mac (M1 or later) on macOS 14 Sonoma or later, with no published RAM minimum. If you own an M1 Mac, or a Mac with 16GB of RAM, or you have not updated to macOS 15, EnviousWispr works there and Juno's own stated requirements say it will not."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Juno just a dictation app, or something more?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Something more. Juno can create Apple Notes, Reminders, and Calendar entries from a spoken command like \"Hey Juno, remind me tomorrow at 9 to send the deck,\" and it can rewrite selected or recent text on request, such as \"make this warmer\" or \"shorter bullets.\" EnviousWispr is a dictation tool: it turns your speech into clean text wherever your cursor is, and does not create Notes, Reminders, or Calendar entries on its own."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Juno have AI cleanup like EnviousWispr's EG-1?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, and like EG-1, it runs on-device with no prompt for you to write. Juno's own site states dictation is processed on your Mac, removing filler words and false starts automatically. The main difference is scope: EG-1 is purpose-built for cleaning up dictation and its performance is something we measure and publish. Juno's cleanup is part of a broader voice-assistant pipeline that also handles rewriting and app actions, and we found no published benchmark for it."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use EnviousWispr completely offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr open source like Juno?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, though under a different license. EnviousWispr is licensed under the GNU General Public License v3 (GPLv3), a copyleft license: a distributed derivative must also be open under GPLv3. Juno is licensed under the MIT license, a more permissive license that lets anyone fold the code into a closed-source or commercial product. Both are genuinely open source."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I import my Juno custom words into EnviousWispr?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Juno, without changing Juno's own files, and shows you every word it found before anything joins your library. Juno ships with roughly 400 built-in terms of its own; only the words you added are imported, so your list stays yours. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, TypeWhisper, Spokenly, and Vox."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Juno support Intel Macs or older Apple Silicon?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No, per Juno's own stated requirements: M2 or newer only. EnviousWispr supports every Apple Silicon Mac starting with the original M1."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I recover a dictation I cancelled by accident with Juno?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "We found no documentation of a recovery or undo feature for a cancelled Juno dictation. EnviousWispr has Escape Recovery, an opt-in feature that can keep a dictation you cancel with your keybind or a triple press instead of discarding it instantly, and offers an Undo button afterward."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I switch from Juno to EnviousWispr easily?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Juno custom words across in one pass. There is no other data to migrate for dictation purposes, though Juno's Notes, Reminders, and Calendar actions have no equivalent in EnviousWispr, since we are a dictation tool rather than a voice assistant. Both apps work in any text field on macOS."
+      }
+    }
+  ]
+});
+---
+
+<BaseLayout
+  title="Juno vs EnviousWispr: Free Mac Dictation on More Macs"
+  description="Compare Juno and EnviousWispr, two free, open source, on-device Mac dictation tools. Juno needs an M2 Mac with 24GB RAM; EnviousWispr runs on any M1 Mac and up."
+  activePage="compare"
+  ogImage="/og-image.png"
+  canonicalPath="/compare/juno/"
+  ogType="article"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+/* ── Page Header ── */
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+.compare-table {
+  width: 100%; border-collapse: collapse; font-size: 15px;
+  min-width: 640px;
+}
+.compare-table thead th {
+  padding: 20px 24px; font-size: 16px; font-weight: 700;
+  text-align: left; border-bottom: 2px solid var(--border-hover);
+  background: rgba(248,245,255,0.5);
+}
+.compare-table thead th:first-child { width: 34%; }
+.compare-table thead th:nth-child(2) {
+  background: rgba(124,58,237,0.06);
+  color: var(--accent);
+}
+.compare-table tbody td {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  vertical-align: top; line-height: 1.55;
+}
+.compare-table tbody tr:last-child td { border-bottom: none; }
+.compare-table tbody td:first-child {
+  font-weight: 600; color: var(--text);
+}
+.compare-table tbody td:nth-child(2) {
+  background: rgba(124,58,237,0.02);
+}
+.compare-table tbody td:nth-child(3) {
+  color: var(--text-2);
+}
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── Deep Dive ── */
+.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.deep-dive-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 36px 32px;
+  position: relative; overflow: hidden;
+}
+.deep-dive-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
+.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
+.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
+.deep-dive-body p { margin-bottom: 12px; }
+.deep-dive-body p:last-child { margin-bottom: 0; }
+.deep-dive-detail {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
+  font-size: 13px; color: var(--text-2); line-height: 1.6;
+}
+.deep-dive-detail strong { color: var(--text); }
+@media (max-width: 900px) {
+  .deep-dive-grid { grid-template-columns: 1fr; }
+}
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<!-- Page Header -->
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge reveal">
+      <span class="vs-brand accent">EnviousWispr</span>
+      <span class="vs-circle">VS</span>
+      <span class="vs-brand">Juno</span>
+    </div>
+    <h1 class="reveal">Free and open source, like Juno. Runs on the Mac you already have.</h1>
+    <p class="page-header-sub reveal">Juno's own site asks for an M2 Mac or newer, macOS 15, and 24GB of RAM. EnviousWispr runs on any Apple Silicon Mac starting with the original M1, on macOS 14 and later. Both are free, and both clean up your dictation on-device with no prompt to write.</p>
+    <div class="hero-pills reveal">
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Free, no subscription
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Works from the M1, no RAM minimum
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        0.61s median latency
+      </span>
+    </div>
+    <div class="hero-cta reveal">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+  </div>
+</header>
+
+<!-- Side-by-Side Table -->
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Side by Side</div>
+      <h2 class="section-title">Feature comparison</h2>
+      <p class="section-sub">An honest look at how the two tools stack up across the dimensions that matter most.</p>
+    </div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th scope="col"></th>
+            <th scope="col">EnviousWispr</th>
+            <th scope="col">Juno</th>
+          </tr>
+        </thead>
+        <!-- Evidence: Juno claims verified against usejuno.co and github.com/Cassini-Research/Juno
+             (GitHub API) on 2026-08-21, plus local Info.plist inspection of the installed app
+             (bundle id com.juno.shell) on the same date.
+             Sources:
+               - usejuno.co (accessed 2026-08-21): "Built for M2 or newer Apple Silicon Macs on macOS 15
+                 Sequoia or newer with at least 24 GB RAM." Free forever, no paid tier, no usage cap, no
+                 account. Live HUD transcript while dictating (live preview). On-device processing;
+                 network only for model downloads/updates. Voice-triggered actions for Apple Notes,
+                 Reminders, and Calendar via a "Hey Juno" command phrase spoken during an active session,
+                 not an always-on wake word by default. No cancelled-dictation recovery documented.
+               - github.com/Cassini-Research/Juno (GitHub API, accessed 2026-08-21): MIT license, 68 stars,
+                 no published releases found via the API.
+               - Local Info.plist (accessed 2026-08-21): confirms Accessibility permission use, an
+                 OPTIONAL "Listen for Juno" wake-mode setting distinct from the default session-based
+                 activation described on the marketing site, and Calendar/Reminders/Notes automation
+                 permissions matching the site's description.
+             Confidence: source-verified from Juno's own site, GitHub repo, and a local install's
+             Info.plist. Juno was not run or tested firsthand for this page beyond that plist inspection.
+             Last verified: 2026-08-21. -->
+        <tbody>
+          <tr>
+            <td>Price</td>
+            <td><span class="table-highlight">Free. No subscription.</span></td>
+            <td>Free. No subscription, no usage cap.</td>
+          </tr>
+          <tr>
+            <td>Account required</td>
+            <td><span class="table-check">No</span></td>
+            <td><span class="table-check">No</span></td>
+          </tr>
+          <tr>
+            <td>Source code</td>
+            <td><span class="table-highlight"><a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Open source</a></span> (GPLv3)</td>
+            <td>Open source (MIT)</td>
+          </tr>
+          <tr>
+            <td>Minimum Mac</td>
+            <td><span class="table-highlight">Apple Silicon M1 or later</span></td>
+            <td>Apple Silicon M2 or later</td>
+          </tr>
+          <tr>
+            <td>Minimum macOS</td>
+            <td><span class="table-highlight">14 Sonoma</span></td>
+            <td>15 Sequoia</td>
+          </tr>
+          <tr>
+            <td>Minimum RAM</td>
+            <td><span class="table-highlight">None published</span></td>
+            <td>24GB, stated on Juno's own site</td>
+          </tr>
+          <tr>
+            <td>AI polish (cleanup after transcription)</td>
+            <td><span class="table-highlight">EG-1</span> (measured, purpose-built for dictation), Apple Intelligence, Ollama, or your own key</td>
+            <td><span class="table-check">Yes</span>, on-device, part of a broader voice-assistant pipeline; no published benchmark</td>
+          </tr>
+          <tr>
+            <td>Needs a prompt to be written</td>
+            <td><span class="table-check">No</span></td>
+            <td><span class="table-check">No</span></td>
+          </tr>
+          <tr>
+            <td>Creates Notes, Reminders, or Calendar entries by voice</td>
+            <td><span class="table-cross">No</span>, dictation only</td>
+            <td><span class="table-check">Yes</span>, via a "Hey Juno" command during a session</td>
+          </tr>
+          <tr>
+            <td>Live preview while speaking</td>
+            <td><span class="table-check">Yes</span>, off by default</td>
+            <td><span class="table-check">Yes</span>, Live HUD transcript</td>
+          </tr>
+          <tr>
+            <td>Recover a cancelled dictation</td>
+            <td><span class="table-highlight">Yes</span> (Escape Recovery, opt-in, keybind/triple-press cancel only)</td>
+            <td>Not documented</td>
+          </tr>
+          <tr>
+            <td>Custom vocabulary</td>
+            <td><span class="table-check">Yes</span> (imports from 8 other apps, Juno included)</td>
+            <td><span class="table-check">Yes</span>, ships with roughly 400 seed terms of its own</td>
+          </tr>
+          <tr>
+            <td>Transcription latency</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td>Not published</td>
+          </tr>
+          <tr>
+            <td>Platform support</td>
+            <td>macOS (Apple Silicon, M1 and up)</td>
+            <td>macOS (Apple Silicon, M2 and up)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Juno claims sourced from usejuno.co, github.com/Cassini-Research/Juno (GitHub API), and a local install's Info.plist. Juno was not run firsthand for this page. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <div style="text-align: center; margin-top: 28px;">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Why EnviousWispr -->
+<section class="section" aria-label="Advantages">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill green">Why EnviousWispr</div>
+      <h2 class="section-title">Both are free and open source. Here is what EnviousWispr adds</h2>
+      <p class="section-sub">Juno asks for a newer Mac than we do. Beyond that, here is what else separates the two.</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">💻</div>
+        <div class="advantage-title">Runs on the M1</div>
+        <p class="advantage-desc">Juno's own site states it needs an M2 or newer Mac. EnviousWispr supports every Apple Silicon Mac, starting with the original M1 from 2020. If you have not upgraded, EnviousWispr still works for you.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🧮</div>
+        <div class="advantage-title">No RAM minimum</div>
+        <p class="advantage-desc">Juno's site states a 24GB RAM requirement. We publish no RAM minimum for EnviousWispr. If your Mac has 8GB or 16GB, that is not a barrier here.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">↩️</div>
+        <div class="advantage-title">Undo an accidental cancel</div>
+        <p class="advantage-desc">Escape Recovery keeps a dictation you cancel with your keybind or a triple press, instead of discarding it instantly. Off by default; you choose to turn it on. We found no equivalent documented for Juno.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎯</div>
+        <div class="advantage-title">Built specifically for dictation, and measured</div>
+        <p class="advantage-desc">EG-1 is fine-tuned for one job, cleaning up dictation, and we publish the numbers: it builds a real list out of a spoken one 83% of the time, up from under 1%. Juno's cleanup sits inside a broader assistant pipeline that also handles rewriting and app actions, and we found no equivalent published benchmark.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🌍</div>
+        <div class="advantage-title">Filler-word removal that respects other languages</div>
+        <p class="advantage-desc">Built-in filler-word removal runs before AI polish, and it is language-aware: with your language locked to German, Dutch, Danish, or Norwegian in Settings, it keeps real words like "er" and "um" instead of stripping them as English filler.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📥</div>
+        <div class="advantage-title">Bring your words across from Juno</div>
+        <p class="advantage-desc">Smart Import reads your custom vocabulary straight out of Juno's own files, without changing them, and shows you every word before anything joins your library. Juno's roughly 400 built-in seed terms are not imported, only the ones you actually added.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy Deep Dive -->
+<section class="section" aria-label="Privacy Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill cyan">Privacy</div>
+      <h2 class="section-title">Where does your voice go?</h2>
+      <p class="section-sub">Both apps process your voice on your Mac by default. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+    </div>
+    <div class="privacy-split">
+      <div class="privacy-card ew reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          EnviousWispr
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is processed by the Neural Engine on your Apple Silicon chip. Nothing is uploaded.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>AI polish runs locally by default (EG-1 or Apple Intelligence). If you choose a cloud provider instead, your transcript, custom words, and the app you're dictating into are sent, with your own key. Audio is never sent, either way.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Polished text is pasted and saved to your local History, on your Mac only. Audio is discarded.</div>
+        </div>
+      </div>
+      <div class="privacy-card wf reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Juno
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You start a session with a shortcut and speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Speech is processed on your Mac. Juno's site states network access is used only for model downloads and updates.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>Cleanup and any voice-triggered action (a Note, a Reminder, a Calendar entry) run on-device.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Text is inserted where you were working, or the requested action is carried out.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Speed Section -->
+<section class="section" aria-label="Speed">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill amber">Speed</div>
+      <h2 class="section-title">Parakeet TDT: built for speed</h2>
+      <p class="section-sub">EnviousWispr uses NVIDIA Parakeet TDT v3, a multilingual ASR model covering 25 European languages that runs natively on the Apple Neural Engine. No network dependency, no server queues.</p>
+    </div>
+    <div class="speed-stats">
+      <div class="speed-card reveal">
+        <div class="speed-value">0.61s</div>
+        <div class="speed-label">Median transcription</div>
+        <div class="speed-detail">From end of speech to raw text</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">1.65s</div>
+        <div class="speed-label">With AI polish</div>
+        <div class="speed-detail">EG-1 or Apple, on-device</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">0ms</div>
+        <div class="speed-label">Network overhead</div>
+        <div class="speed-detail">Immune to bad Wi-Fi</div>
+      </div>
+    </div>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings. Juno does not publish comparable latency figures.</p>
+  </div>
+</section>
+
+<!-- Deep Dive: Technical Advantages -->
+<section class="section" aria-label="Technical Deep Dives">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Under the Hood</div>
+      <h2 class="section-title">A dictation tool, and a voice assistant</h2>
+      <p class="section-sub">The two projects are aimed at slightly different jobs, and the requirements each one asks of your Mac reflect that.</p>
+    </div>
+    <div class="deep-dive-grid">
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🖥️</div>
+        <div class="deep-dive-title">Why the hardware bar is different</div>
+        <div class="deep-dive-body">
+          <p>Juno's stated 24GB RAM and M2-or-newer requirement is not an arbitrary line. Its pipeline runs cleanup, rewriting, and voice-command interpretation for app actions, all locally, which is a heavier local workload than transcription and cleanup alone.</p>
+          <p>EnviousWispr is built around one job: turning your speech into clean, finished text wherever your cursor is. That narrower scope is why it runs comfortably on an M1 with no published RAM floor. Neither approach is wrong; they are optimized for different things.</p>
+          <div class="deep-dive-detail">
+            <strong>Why it matters:</strong> If your Mac does not meet Juno's stated bar, or you specifically want a tool that does one job well rather than several, that points toward EnviousWispr.
+          </div>
+        </div>
+      </div>
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🎙️</div>
+        <div class="deep-dive-title">Dictation vs a voice layer for your Mac</div>
+        <div class="deep-dive-body">
+          <p>Juno describes itself as a voice layer for writing, rewriting, and taking actions. Say "Hey Juno" during a session and it can create a Note, set a Reminder, or add a Calendar entry, on top of cleaning up ordinary dictation.</p>
+          <p>EnviousWispr does not create Notes, Reminders, or Calendar entries. It dictates: speech becomes text, cleaned up and pasted where you were working, every time, the same way. If you want a broader assistant, Juno covers ground we do not. If you want a dictation tool and nothing more to learn, that is what EnviousWispr is built to be.</p>
+          <div class="deep-dive-detail">
+            <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Fair Acknowledgment -->
+<section class="section" aria-label="Where Juno Wins">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Being Honest</div>
+      <h2 class="section-title">Choose Juno if any of this matters more to you</h2>
+      <p class="section-sub">Juno does real things EnviousWispr does not, on the hardware it supports. It may be the better fit here:</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📝</div>
+        <div class="advantage-title">You want voice-triggered actions</div>
+        <p class="advantage-desc">Creating a Note, Reminder, or Calendar entry by saying "Hey Juno" is a real capability EnviousWispr does not have. If you want your voice to do more than produce text, Juno covers that ground.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">✏️</div>
+        <div class="advantage-title">You want to rewrite text by voice command</div>
+        <p class="advantage-desc">Selecting text and asking Juno to make it "warmer" or turn it into "shorter bullets" is a feature we do not offer. Our polish cleans up what you just dictated; it does not rewrite text you select afterward on command.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🪪</div>
+        <div class="advantage-title">You want a more permissive license</div>
+        <p class="advantage-desc">Juno is MIT licensed, which lets anyone fold the code into a closed-source or commercial product without releasing their changes. EnviousWispr's GPLv3 is copyleft: derivative works you distribute must also be open under GPLv3.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🖥️</div>
+        <div class="advantage-title">You already have a newer, well-equipped Mac</div>
+        <p class="advantage-desc">If you are running an M2 or later with 24GB of RAM or more, Juno's hardware requirement is not a barrier for you at all, and its broader feature set may be worth the newer bar it sets.</p>
+      </div>
+    </div>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want voice-triggered Notes and Reminders, or rewriting selected text by spoken command, and your Mac meets Juno's requirements, Juno is a strong pick. If you want dictation that runs on an M1 with no RAM minimum, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">FAQ</div>
+      <h2 class="section-title">Common questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr free, like Juno?</div>
+        <p class="faq-a">Yes. Both EnviousWispr and Juno are completely free, with no subscription, no usage cap, and no account required. Both are also open source: EnviousWispr under GPLv3, Juno under MIT.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What Mac do I need for each app?</div>
+        <p class="faq-a">This is the biggest practical difference. Juno's own site states it needs an M2 or newer Apple Silicon Mac, macOS 15 Sequoia or later, and at least 24GB of RAM. EnviousWispr runs on any Apple Silicon Mac (M1 or later) on macOS 14 Sonoma or later, with no published RAM minimum. If you own an M1 Mac, or a Mac with 16GB of RAM, or you have not updated to macOS 15, EnviousWispr works there and Juno's own stated requirements say it will not.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is Juno just a dictation app, or something more?</div>
+        <p class="faq-a">Something more. Juno can create Apple Notes, Reminders, and Calendar entries from a spoken command like "Hey Juno, remind me tomorrow at 9 to send the deck," and it can rewrite selected or recent text on request, such as "make this warmer" or "shorter bullets." EnviousWispr is a dictation tool: it turns your speech into clean text wherever your cursor is, and does not create Notes, Reminders, or Calendar entries on its own.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does Juno have AI cleanup like EnviousWispr's EG-1?</div>
+        <p class="faq-a">Yes, and like EG-1, it runs on-device with no prompt for you to write. Juno's own site states dictation is processed on your Mac, removing filler words and false starts automatically. The main difference is scope: EG-1 is purpose-built for cleaning up dictation and its performance is something we measure and publish. Juno's cleanup is part of a broader voice-assistant pipeline that also handles rewriting and app actions, and we found no published benchmark for it.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I use EnviousWispr completely offline?</div>
+        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr open source like Juno?</div>
+        <p class="faq-a">Yes, though under a different license. EnviousWispr is licensed under the GNU General Public License v3 (GPLv3), a copyleft license: a distributed derivative must also be open under GPLv3. Juno is licensed under the MIT license, a more permissive license that lets anyone fold the code into a closed-source or commercial product. Both are genuinely open source.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I import my Juno custom words into EnviousWispr?</div>
+        <p class="faq-a">Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Juno, without changing Juno's own files, and shows you every word it found before anything joins your library. Juno ships with roughly 400 built-in terms of its own; only the words you added are imported, so your list stays yours. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, TypeWhisper, Spokenly, and Vox.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does Juno support Intel Macs or older Apple Silicon?</div>
+        <p class="faq-a">No, per Juno's own stated requirements: M2 or newer only. EnviousWispr supports every Apple Silicon Mac starting with the original M1.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I recover a dictation I cancelled by accident with Juno?</div>
+        <p class="faq-a">We found no documentation of a recovery or undo feature for a cancelled Juno dictation. EnviousWispr has Escape Recovery, an opt-in feature that can keep a dictation you cancel with your keybind or a triple press instead of discarding it instantly, and offers an Undo button afterward.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I switch from Juno to EnviousWispr easily?</div>
+        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Juno custom words across in one pass. There is no other data to migrate for dictation purposes, though Juno's Notes, Reminders, and Calendar actions have no equivalent in EnviousWispr, since we are a dictation tool rather than a voice assistant. Both apps work in any text field on macOS.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Related Comparisons -->
+<section class="section" aria-label="Related Comparisons" style="padding-top: 0;">
+  <div class="container">
+    <p style="font-size: 14px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Compare with other tools</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <a href="/compare/handy/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Handy</a>
+      <a href="/compare/fluidvoice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs FluidVoice</a>
+      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Superwhisper</a>
+      <a href="/compare/voiceink/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs VoiceInk</a>
+      <a href="/compare/wisprflow/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs WisprFlow</a>
+      <a href="/compare/apple-dictation/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Apple Dictation</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Free and open source. Runs on the Mac you already have.</h2>
+    <p class="reveal">Free to download. No account required. Works on Apple Silicon from the M1, no RAM minimum.</p>
+    <div class="cta-actions reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="/" class="back-link">Back to Home</a>
+    </div>
+  </div>
+</section>
+
+</BaseLayout>

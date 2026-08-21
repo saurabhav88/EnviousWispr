@@ -36,6 +36,7 @@ const onDeviceApps = [
   { name: "Willow Voice", slug: "willow-voice", angle: "Cloud-first subscription vs free on-device alternative" },
   { name: "Handy", slug: "handy", angle: "Both free and open source; ours needs no prompt to write" },
   { name: "FluidVoice", slug: "fluidvoice", angle: "Both GPLv3 with a tuned AI model; different macOS support" },
+  { name: "Juno", slug: "juno", angle: "Free and open source; ours runs on older, lighter Macs" },
 ];
 
 const legacyDev = [
@@ -48,7 +49,7 @@ const allComparisons = [...cloudTools, ...onDeviceApps, ...legacyDev];
 const itemListJsonLd = JSON.stringify({
   "@context": "https://schema.org",
   "@type": "ItemList",
-  "name": "Compare 13 Mac Dictation Apps with Free EnviousWispr",
+  "name": "Compare 14 Mac Dictation Apps with Free EnviousWispr",
   "description": "Side-by-side comparisons of EnviousWispr against the major Mac dictation apps.",
   "itemListElement": allComparisons.map((tool, idx) => ({
     "@type": "ListItem",
@@ -60,8 +61,8 @@ const itemListJsonLd = JSON.stringify({
 ---
 
 <BaseLayout
-  title="Compare 13 Mac Dictation Apps with Free EnviousWispr"
-  description="Browse 13 head-to-head comparisons of free EnviousWispr and Mac dictation apps. Compare price, privacy, offline use, languages, and everyday workflow."
+  title="Compare 14 Mac Dictation Apps with Free EnviousWispr"
+  description="Browse 14 head-to-head comparisons of free EnviousWispr and Mac dictation apps. Compare price, privacy, offline use, languages, and everyday workflow."
   activePage="compare"
   canonicalPath="/compare/"
 >
@@ -183,14 +184,14 @@ const itemListJsonLd = JSON.stringify({
 
 <div class="compare-hero">
   <div class="container">
-    <h1>Compare free EnviousWispr with 13 Mac dictation apps</h1>
-    <p>Honest, side-by-side breakdowns of EnviousWispr against the 13 major Mac dictation apps people actually use.</p>
+    <h1>Compare free EnviousWispr with 14 Mac dictation apps</h1>
+    <p>Honest, side-by-side breakdowns of EnviousWispr against the 14 major Mac dictation apps people actually use.</p>
     <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="compare-hero-cta" data-download-source="compare-hero">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Download EnviousWispr Free
     </a>
     <span class="compare-hero-cta-sub">macOS 14+, Apple Silicon. No account. Works offline.</span>
-    <p class="compare-intro">Mac dictation tools split into three groups: cloud-based services that send your audio to a server (<a href="/compare/wisprflow/">WisprFlow</a>, <a href="/compare/otter-ai/">Otter.ai</a>, <a href="/compare/notta/">Notta</a>, <a href="/compare/google-docs-voice-typing/">Google Docs Voice Typing</a>), on-device apps that keep audio local (<a href="/compare/superwhisper/">Superwhisper</a>, <a href="/compare/macwhisper/">MacWhisper</a>, <a href="/compare/voiceink/">VoiceInk</a>, <a href="/compare/willow-voice/">Willow Voice</a>, <a href="/compare/handy/">Handy</a>, <a href="/compare/fluidvoice/">FluidVoice</a>), and legacy or developer-focused tools (<a href="/compare/dragon/">Dragon</a>, <a href="/compare/apple-dictation/">Apple Dictation</a>, <a href="/compare/whisper-cpp/">whisper.cpp</a>). Pricing ranges from free to $144 a year. Each comparison below covers price, accuracy, latency, privacy architecture, and the specific use case the tool fits best, so you can pick the right one without trying all 13.</p>
+    <p class="compare-intro">Mac dictation tools split into three groups: cloud-based services that send your audio to a server (<a href="/compare/wisprflow/">WisprFlow</a>, <a href="/compare/otter-ai/">Otter.ai</a>, <a href="/compare/notta/">Notta</a>, <a href="/compare/google-docs-voice-typing/">Google Docs Voice Typing</a>), on-device apps that keep audio local (<a href="/compare/superwhisper/">Superwhisper</a>, <a href="/compare/macwhisper/">MacWhisper</a>, <a href="/compare/voiceink/">VoiceInk</a>, <a href="/compare/willow-voice/">Willow Voice</a>, <a href="/compare/handy/">Handy</a>, <a href="/compare/fluidvoice/">FluidVoice</a>, <a href="/compare/juno/">Juno</a>), and legacy or developer-focused tools (<a href="/compare/dragon/">Dragon</a>, <a href="/compare/apple-dictation/">Apple Dictation</a>, <a href="/compare/whisper-cpp/">whisper.cpp</a>). Pricing ranges from free to $144 a year. Each comparison below covers price, accuracy, latency, privacy architecture, and the specific use case the tool fits best, so you can pick the right one without trying all 14.</p>
     <p class="compare-intro" style="margin-top: 16px;">Want a recommendation rather than a directory? See our guide to the <a href="/compare/best-dictation-apps-for-mac/">best dictation apps for Mac by use case</a>.</p>
   </div>
 </div>
