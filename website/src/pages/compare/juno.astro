@@ -79,7 +79,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Is Juno just a dictation app, or something more?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Something more. Juno can create Apple Notes, Reminders, and Calendar entries from a spoken command like \"Hey Juno, remind me tomorrow at 9 to send the deck,\" and it can rewrite selected or recent text on request, such as \"make this warmer\" or \"shorter bullets.\" EnviousWispr is a dictation tool: it turns your speech into clean text wherever your cursor is, and does not create Notes, Reminders, or Calendar entries on its own."
+        "text": "Something more. Juno can create Notes, Reminders, and one-shot alarms from Voice Actions after you say Hey Juno. Its separate Voice Commands for rewriting text do not need a wake phrase while dictating. It can also learn from clear corrections, expand snippets, and apply a different Style per app. EnviousWispr focuses on turning speech into clean text wherever your cursor is."
       }
     },
     {
@@ -135,7 +135,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can I switch from Juno to EnviousWispr easily?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Juno custom words across in one pass. There is no other data to migrate for dictation purposes, though Juno's Notes, Reminders, and Calendar actions have no equivalent in EnviousWispr, since we are a dictation tool rather than a voice assistant. Both apps work in any text field on macOS."
+        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Juno custom words across in one pass. There is no other data to migrate for dictation purposes, though Juno's Notes, Reminders, and alarm actions have no equivalent in EnviousWispr, since we are a dictation tool rather than a voice assistant. Both apps work in any text field on macOS."
       }
     }
   ]
@@ -377,20 +377,20 @@ const faqJsonLd = JSON.stringify({
                - usejuno.co (accessed 2026-08-21): "Built for M2 or newer Apple Silicon Macs on macOS 15
                  Sequoia or newer with at least 24 GB RAM." Free forever, no paid tier, no usage cap, no
                  account. Live HUD transcript while dictating (live preview). On-device processing;
-                 network only for model downloads/updates. Voice-triggered actions for Apple Notes,
-                 Reminders, and Calendar via a "Hey Juno" command phrase spoken during an active session,
-                 not an always-on wake word by default. No cancelled-dictation recovery documented.
+                 network only for model downloads/updates. No cancelled-dictation recovery documented.
                - github.com/Cassini-Research/Juno (GitHub API, accessed 2026-08-21): MIT license, 68 stars,
                  no published releases found via the API.
-               - Local Info.plist (accessed 2026-08-21): confirms Accessibility permission use, an
-                 OPTIONAL "Listen for Juno" wake-mode setting distinct from the default session-based
-                 activation described on the marketing site, and Calendar/Reminders/Notes automation
-                 permissions matching the site's description.
+               - Local Info.plist (accessed 2026-08-21): confirms Accessibility permission use and local
+                 automation permissions.
                - Juno opened directly on 2026-08-21: its Settings model manager names four downloadable
                  models by role: Live captions and High-quality transcription both use Whisper Large V3
                  Turbo, Live correction uses Qwen3 0.6B (4-bit), Smart formatting uses Qwen3 4B Instruct
                  2507 (4-bit). The two cleanup models are separate downloads from the transcription models
-                 and were not installed by default on this machine.
+                 and were not installed by default on this machine. The live app also showed Voice Actions
+                 for Notes, Reminders, and alarms that start with "Hey Juno"; separate Voice Commands that
+                 need no wake phrase during dictation;
+                 selected-text Writer commands; correction learning; snippets and replacements; Styles;
+                 and per-app writing rules.
              Confidence: source-verified from Juno's own site, GitHub repo, a local install's Info.plist,
              and the installed app opened directly. Last verified: 2026-08-21. -->
         <tbody>
@@ -435,9 +435,9 @@ const faqJsonLd = JSON.stringify({
             <td><span class="table-check">No</span></td>
           </tr>
           <tr>
-            <td>Creates Notes, Reminders, or Calendar entries by voice</td>
+            <td>Creates Notes, Reminders, or alarms by voice</td>
             <td><span class="table-cross">No</span>, dictation only</td>
-            <td><span class="table-check">Yes</span>, via a "Hey Juno" command during a session</td>
+            <td><span class="table-check">Yes</span>; start the Voice Action with "Hey Juno" after dictation begins</td>
           </tr>
           <tr>
             <td>Live preview while speaking</td>
@@ -452,7 +452,22 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Custom vocabulary</td>
             <td><span class="table-check">Yes</span> (imports from 8 other apps, Juno included)</td>
-            <td><span class="table-check">Yes</span>, ships with roughly 400 seed terms of its own</td>
+            <td><span class="table-check">Yes</span>, with automatic learning from clear edits</td>
+          </tr>
+          <tr>
+            <td>Snippets and direct replacements</td>
+            <td><span class="table-cross">No snippet expansion</span></td>
+            <td><span class="table-check">Yes</span>, both are built in</td>
+          </tr>
+          <tr>
+            <td>Selected-text writing commands</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, including shorter, longer, clearer, formal, casual, lists, translation, and replace</td>
+          </tr>
+          <tr>
+            <td>Per-app writing behavior</td>
+            <td>App context helps polish the current dictation</td>
+            <td><span class="table-check">Yes</span>, choose a Style and privacy behavior for each app</td>
           </tr>
           <tr>
             <td>Transcription latency</td>
@@ -566,7 +581,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>Cleanup and any voice-triggered action (a Note, a Reminder, a Calendar entry) run on-device.</div>
+          <div>Cleanup and voice actions for Notes, Reminders, and alarms run on-device.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
@@ -630,8 +645,8 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-icon">🎙️</div>
         <div class="deep-dive-title">Dictation vs a voice layer for your Mac</div>
         <div class="deep-dive-body">
-          <p>Juno describes itself as a voice layer for writing, rewriting, and taking actions. Say "Hey Juno" during a session and it can create a Note, set a Reminder, or add a Calendar entry, on top of cleaning up ordinary dictation.</p>
-          <p>EnviousWispr does not create Notes, Reminders, or Calendar entries. It dictates: speech becomes text, cleaned up and pasted where you were working, every time, the same way. If you want a broader assistant, Juno covers ground we do not. If you want a dictation tool and nothing more to learn, that is what EnviousWispr is built to be.</p>
+          <p>Juno is a local voice layer for writing, rewriting, and taking actions. After dictation begins, Voice Actions for creating a Note, setting a Reminder, or adding a one-shot alarm start with "Hey Juno." Its separate Voice Commands and Writer commands can rewrite text without a wake phrase.</p>
+          <p>EnviousWispr does not create Notes, Reminders, or alarms. It turns speech into text and pastes it where you were working. If you want a broader local assistant, Juno covers ground we do not.</p>
           <div class="deep-dive-detail">
             <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
           </div>
@@ -653,7 +668,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">📝</div>
         <div class="advantage-title">You want voice-triggered actions</div>
-        <p class="advantage-desc">Creating a Note, Reminder, or Calendar entry by saying "Hey Juno" is a real capability EnviousWispr does not have. If you want your voice to do more than produce text, Juno covers that ground.</p>
+        <p class="advantage-desc">Creating a Note, Reminder, or alarm during dictation is a real capability EnviousWispr does not have. Start those Voice Actions with "Hey Juno" after dictation begins.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">✏️</div>
@@ -693,7 +708,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is Juno just a dictation app, or something more?</div>
-        <p class="faq-a">Something more. Juno can create Apple Notes, Reminders, and Calendar entries from a spoken command like "Hey Juno, remind me tomorrow at 9 to send the deck," and it can rewrite selected or recent text on request, such as "make this warmer" or "shorter bullets." EnviousWispr is a dictation tool: it turns your speech into clean text wherever your cursor is, and does not create Notes, Reminders, or Calendar entries on its own.</p>
+        <p class="faq-a">Something more. Juno can create Notes, Reminders, and one-shot alarms from Voice Actions after you say Hey Juno. Its separate Voice Commands for rewriting text do not need a wake phrase while dictating. It can also learn from clear corrections, expand snippets, and apply a different Style per app. EnviousWispr focuses on turning speech into clean text wherever your cursor is.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Juno have AI cleanup like EnviousWispr's EG-1?</div>
@@ -721,7 +736,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from Juno to EnviousWispr easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Juno custom words across in one pass. There is no other data to migrate for dictation purposes, though Juno's Notes, Reminders, and Calendar actions have no equivalent in EnviousWispr, since we are a dictation tool rather than a voice assistant. Both apps work in any text field on macOS.</p>
+        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Juno custom words across in one pass. There is no other data to migrate for dictation purposes, though Juno's Notes, Reminders, and alarm actions have no equivalent in EnviousWispr, since we are a dictation tool rather than a voice assistant. Both apps work in any text field on macOS.</p>
       </div>
     </div>
   </div>

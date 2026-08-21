@@ -119,7 +119,7 @@ const faqJsonLd = JSON.stringify({
       "name": "What is Spokenly's MCP integration for?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Spokenly includes an MCP server that lets developer tools like Claude Code, Cursor, and Codex use it as a voice input tool. EnviousWispr does not offer an MCP integration; it works as an ordinary system-wide dictation tool in any text field, including a terminal running one of those same coding agents."
+        "text": "Spokenly exposes an MCP tool named ask_user_dictation. Claude Code or Codex can call it when the agent needs an answer, and the person can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation."
       }
     },
     {
@@ -378,10 +378,12 @@ const faqJsonLd = JSON.stringify({
                  or quit apps, or run a Shortcut after transcribing.
                - spokenly.app/docs (accessed 2026-08-21): mentions an MCP integration for developer tools
                  (Claude Code, Cursor, Codex) to use Spokenly as a voice input tool.
-             Confidence: source-verified from Spokenly's own site and docs. We could NOT confirm whether
-             Spokenly's default Mode ships with cleanup AI Instructions pre-configured, or whether it has a
-             live/streaming preview or cancelled-dictation recovery; this page does not assert either way
-             where unconfirmed. Spokenly was not tested firsthand. Last verified: 2026-08-21. -->
+             - Spokenly 2.26.0 (507), opened directly on 2026-08-21: confirmed six local speech choices,
+               sixteen bring-your-own API providers, managed online models, file transcription, Local Only
+               Mode, advanced context inputs, per-mode model controls, and coding-agent setup pages exposing
+               the ask_user_dictation MCP tool.
+             Confidence: source-verified and firsthand-tested. Cancelled-dictation recovery was not found.
+             Last verified: 2026-08-21. -->
         <tbody>
           <tr>
             <td>Price</td>
@@ -401,7 +403,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Speech engines</td>
             <td><span class="table-highlight">Parakeet TDT v3 + WhisperKit</span>, switch in Settings</td>
-            <td>Parakeet, Whisper, and Apple Speech Analyzer options</td>
+            <td><span class="table-check">Broad choice</span>: six local options, sixteen bring-your-own API providers, plus managed online models</td>
           </tr>
           <tr>
             <td>AI cleanup (after transcription)</td>
@@ -421,7 +423,22 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Developer tool integration (MCP)</td>
             <td><span class="table-cross">No</span></td>
-            <td><span class="table-check">Yes</span>, for Claude Code, Cursor, and Codex</td>
+            <td><span class="table-check">Yes</span>: Claude Code or Codex can call <code>ask_user_dictation</code> and receive a spoken answer</td>
+          </tr>
+          <tr>
+            <td>Advanced context for a Mode</td>
+            <td>Current app and custom words inform polish</td>
+            <td><span class="table-check">Screen text, clipboard, app, selection, browser URL, and scripts</span>, with per-mode model, reasoning, and temperature controls</td>
+          </tr>
+          <tr>
+            <td>File transcription</td>
+            <td><span class="table-cross">No</span>, live dictation only</td>
+            <td><span class="table-check">Yes</span>, common audio and video formats plus direct recording</td>
+          </tr>
+          <tr>
+            <td>Local-only lock</td>
+            <td>Choose local transcription and local polish</td>
+            <td><span class="table-check">Yes</span>, Local Only Mode blocks network requests</td>
           </tr>
           <tr>
             <td>Recover a cancelled dictation</td>
@@ -446,7 +463,7 @@ const faqJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Spokenly claims sourced from spokenly.app, spokenly.app/open-source, and spokenly.app/docs. Spokenly was not tested firsthand. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Spokenly claims sourced from spokenly.app, spokenly.app/open-source, spokenly.app/docs, and Spokenly 2.26.0 opened directly. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -609,7 +626,7 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-icon">🧩</div>
         <div class="deep-dive-title">A dictation tool, or a voice-driven automation layer</div>
         <div class="deep-dive-body">
-          <p>Spokenly's Modes and Agentic Actions turn it into more than dictation: switch profiles per app, and let a spoken command search the web, open an app, or run a Shortcut. Its MCP integration lets coding agents like Claude Code or Cursor use it as a voice input tool directly.</p>
+          <p>Spokenly's Modes and Agentic Actions turn it into more than dictation: switch profiles per app, and let a spoken command search the web, open an app, or run a Shortcut. Its MCP tool gives Claude Code or Codex a specific way to ask a question and receive your spoken answer.</p>
           <p>EnviousWispr does one thing: it turns your speech into clean, finished text wherever your cursor is, every time, the same way. If you want the broader automation layer, Spokenly covers ground we do not attempt.</p>
           <div class="deep-dive-detail">
             <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
@@ -642,7 +659,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">💻</div>
         <div class="advantage-title">You want it wired into a coding agent</div>
-        <p class="advantage-desc">Spokenly's MCP integration lets Claude Code, Cursor, and Codex use it directly as a voice tool. If that specific developer workflow matters to you, Spokenly has it and we do not.</p>
+        <p class="advantage-desc">Spokenly exposes <code>ask_user_dictation</code>, so Claude Code or Codex can ask you a question and receive your spoken answer. If that agent-response workflow matters to you, Spokenly has it and we do not.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎚️</div>
@@ -692,7 +709,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What is Spokenly's MCP integration for?</div>
-        <p class="faq-a">Spokenly includes an MCP server that lets developer tools like Claude Code, Cursor, and Codex use it as a voice input tool. EnviousWispr does not offer an MCP integration; it works as an ordinary system-wide dictation tool in any text field, including a terminal running one of those same coding agents.</p>
+        <p class="faq-a">Spokenly exposes an MCP tool named <code>ask_user_dictation</code>. Claude Code or Codex can call it when the agent needs an answer, and you can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from Spokenly to EnviousWispr easily?</div>

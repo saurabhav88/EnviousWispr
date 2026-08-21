@@ -71,7 +71,7 @@ const faqJsonLd = JSON.stringify({
       "name": "How is EnviousWispr different from TypeWhisper?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Both are GPLv3, free at the core, and run on-device. TypeWhisper offers the widest engine choice we found in any competitor: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines on Windows, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and WhisperKit, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only."
+        "text": "Both are GPLv3, free at the core, and run on-device. TypeWhisper offers seven engine options across Mac and Windows: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and WhisperKit, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only."
       }
     },
     {
@@ -79,7 +79,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does TypeWhisper have AI cleanup like EnviousWispr's EG-1?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM (its changelog references OpenAI and Groq) for cleanup, translation, or formatting, plus a separate Dictionary Autocorrection feature reserved for its paid Commercial license. We could not confirm from TypeWhisper's public documentation whether a working cleanup workflow is pre-configured out of the box or needs to be set up. EG-1 is purpose-built for dictation cleanup, ships with the app, and needs no setup or prompt writing."
+        "text": "TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM for cleanup, translation, or formatting. The installed 1.6.0 build also contains ready-made actions for lists, email, meeting notes, translation, JSON, and more. A separate Dictionary Autocorrection feature for paid Commercial licenses learns from confident edits. EG-1 is purpose-built for dictation cleanup and ships ready inside EnviousWispr."
       }
     },
     {
@@ -136,7 +136,7 @@ const faqJsonLd = JSON.stringify({
 
 <BaseLayout
   title="TypeWhisper vs EnviousWispr: Free Mac Dictation, Both GPLv3"
-  description="Compare TypeWhisper and EnviousWispr, two free, GPLv3, on-device Mac dictation apps. TypeWhisper offers the widest engine choice; EnviousWispr ships a measured, purpose-built polish model."
+  description="Compare TypeWhisper and EnviousWispr, two free, GPLv3, on-device Mac dictation apps. TypeWhisper offers seven engine options across Mac and Windows; EnviousWispr ships a measured, purpose-built polish model."
   activePage="compare"
   ogImage="/og-image.png"
   canonicalPath="/compare/typewhisper/"
@@ -378,10 +378,12 @@ const faqJsonLd = JSON.stringify({
                  non-GPL terms, up to 3 devices); Team from EUR 19/mo; Enterprise from EUR 99/mo.
                - github.com/TypeWhisper/typewhisper-mac (GitHub API, accessed 2026-08-21): GPLv3 license,
                  1,717 stars.
-             Confidence: source-verified from TypeWhisper's own site, pricing page, changelog, and GitHub
-             repo. We could NOT confirm from public documentation whether a Workflow ships pre-configured
-             for cleanup out of the box, or requires the user to build one; this page does not assert
-             either way. TypeWhisper was not tested firsthand. Last verified: 2026-08-21. -->
+             - Installed TypeWhisper 1.6.0 bundle inspected on 2026-08-21: confirmed preset actions for
+               Action Items, Create Table, email drafting, list formatting, JSON, Meeting Notes, Reply, and
+               Translate, plus Recorder, Watch Folder, meeting automation, plugins, snippets, and user-owned
+               iCloud or folder sync surfaces. The live window could not be captured, so exact labels and
+               defaults remain source-verified rather than firsthand-tested.
+             Confidence: source-verified plus installed-bundle-inspected. Last verified: 2026-08-21. -->
         <tbody>
           <tr>
             <td>Price (core app)</td>
@@ -411,7 +413,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Needs a prompt to be written</td>
             <td><span class="table-check">No</span></td>
-            <td>Not confirmed either way from public documentation</td>
+            <td><span class="table-check">No for common tasks</span>: the installed build includes presets for lists, email, meeting notes, translation, JSON, and more; custom Workflows remain configurable</td>
           </tr>
           <tr>
             <td>Learns your corrections automatically</td>
@@ -443,10 +445,30 @@ const faqJsonLd = JSON.stringify({
             <td>macOS (Apple Silicon only)</td>
             <td><span class="table-check">macOS and Windows</span>, dedicated builds for each</td>
           </tr>
+          <tr>
+            <td>System-audio recorder</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, microphone, system audio, or both, with mixed or separate tracks</td>
+          </tr>
+          <tr>
+            <td>Watched-folder transcription</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, automatic transcription and text or subtitle export</td>
+          </tr>
+          <tr>
+            <td>Meeting automation</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, calendar reminders or automatic recording when a matching meeting starts</td>
+          </tr>
+          <tr>
+            <td>Dictionary and snippet sync</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, with a Commercial license, through a private iCloud container or a user-chosen synced folder</td>
+          </tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">TypeWhisper claims sourced from typewhisper.com, its pricing page, its changelog, and the GitHub API. TypeWhisper was not tested firsthand. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">TypeWhisper claims sourced from typewhisper.com, its pricing page, its changelog, the GitHub API, and the installed TypeWhisper 1.6.0 bundle. The live window could not be captured, so exact UI labels were not firsthand-tested. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -468,7 +490,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🧹</div>
         <div class="advantage-title">Nothing to configure</div>
-        <p class="advantage-desc">EG-1 ships fine-tuned specifically for dictation cleanup and runs on the same hotkey as transcription, with no prompt to write. TypeWhisper's Workflows are genuinely flexible, and can send your transcript through a provider like OpenAI or Groq; we could not confirm from public documentation whether a working cleanup Workflow ships pre-configured or needs to be built.</p>
+        <p class="advantage-desc">EG-1 is fine-tuned specifically for dictation cleanup and runs on the same hotkey as transcription. TypeWhisper's Workflows are more flexible, and the installed build includes ready-made actions for common writing tasks alongside custom workflows.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📊</div>
@@ -598,7 +620,7 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-icon">🔀</div>
         <div class="deep-dive-title">Seven engines, or two you switch between</div>
         <div class="deep-dive-body">
-          <p>TypeWhisper's engine list is the widest we found in any dictation app: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, with ONNX-based engines added on Windows. If you want to compare engines directly, or you have a strong preference for one, that choice is real.</p>
+          <p>TypeWhisper offers seven engine options across Mac and Windows: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines. If you want to compare these engines directly, or you have a strong preference for one, that choice is real.</p>
           <p>EnviousWispr runs two: Parakeet TDT v3 for the 25 languages it covers best, WhisperKit for the rest. There is no larger menu; you switch between the two in Settings, Transcription.</p>
           <div class="deep-dive-detail">
             <strong>Why it matters:</strong> Power users and anyone who wants a specific model, or Windows support, get more from TypeWhisper today. Anyone who wants one setup that already works gets that from EnviousWispr.
@@ -609,7 +631,7 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-icon">🧩</div>
         <div class="deep-dive-title">A configurable automation system, versus a model we tuned</div>
         <div class="deep-dive-body">
-          <p>TypeWhisper's Workflows are a genuine automation system: cleanup, translation, extraction, and formatting steps, referencing providers like OpenAI and Groq in its own changelog, included free. That flexibility is real. We could not confirm from public documentation whether a working cleanup Workflow is ready by default or needs to be configured first.</p>
+          <p>TypeWhisper's Workflows are a genuine automation system: cleanup, translation, extraction, and formatting steps, referencing providers like OpenAI and Groq in its own changelog. The installed build also includes presets for Action Items, Create Table, email drafting, lists, JSON, Meeting Notes, Reply, and Translate.</p>
           <p>EG-1 is a single model, fine-tuned by us specifically for the problem of turning spoken dictation into clean text, shipped with the app, with results we measure and publish. It runs on the same hotkey as transcription with nothing to configure.</p>
           <div class="deep-dive-detail">
             <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
@@ -650,7 +672,7 @@ const faqJsonLd = JSON.stringify({
         <p class="advantage-desc">Workflows let you wire up your own provider, prompt, and automation steps, including translation and app-specific behavior. If that flexibility is what you are after, EG-1's single tuned model will not give it to you.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want the widest engine choice, need Windows, or want the flexibility to build your own cleanup workflow, TypeWhisper is a strong pick. If you want a purpose-built polish model with a published, measured track record, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want TypeWhisper's seven engine options, need Windows, or want the flexibility to build your own cleanup workflow, TypeWhisper is a strong pick. If you want a purpose-built polish model with a published, measured track record, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
   </div>
 </section>
 
@@ -668,11 +690,11 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from TypeWhisper?</div>
-        <p class="faq-a">Both are GPLv3, free at the core, and run on-device. TypeWhisper offers the widest engine choice we found in any competitor: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines on Windows, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and WhisperKit, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only.</p>
+        <p class="faq-a">Both are GPLv3, free at the core, and run on-device. TypeWhisper offers seven engine options across Mac and Windows: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and WhisperKit, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does TypeWhisper have AI cleanup like EnviousWispr's EG-1?</div>
-        <p class="faq-a">TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM (its changelog references OpenAI and Groq) for cleanup, translation, or formatting, plus a separate Dictionary Autocorrection feature reserved for its paid Commercial license. We could not confirm from TypeWhisper's public documentation whether a working cleanup workflow is pre-configured out of the box or needs to be set up. EG-1 is purpose-built for dictation cleanup, ships with the app, and needs no setup or prompt writing.</p>
+        <p class="faq-a">TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM for cleanup, translation, or formatting. The installed 1.6.0 build also contains ready-made actions for lists, email, meeting notes, translation, JSON, and more. A separate Dictionary Autocorrection feature for paid Commercial licenses learns from confident edits. EG-1 is purpose-built for dictation cleanup and ships ready inside EnviousWispr.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>

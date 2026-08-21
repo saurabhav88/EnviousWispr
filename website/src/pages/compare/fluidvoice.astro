@@ -71,7 +71,7 @@ const faqJsonLd = JSON.stringify({
       "name": "How is EnviousWispr different from FluidVoice?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation, so this is not a case where one app has polish and the other does not. The differences are elsewhere. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice offers a choice of five transcription engines (Nemotron, Parakeet, Cohere, Whisper, and Apple Speech); EnviousWispr offers two, Parakeet TDT and WhisperKit, switched manually in Settings. EnviousWispr adds Escape Recovery, which can keep a dictation you cancel by accident, something not documented on FluidVoice's side."
+        "text": "Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice 1.6.9 showed 14 speech-model choices across Apple Speech, Cohere, Nemotron, Parakeet, and Whisper; EnviousWispr offers Parakeet TDT and WhisperKit. FluidVoice also has deeper prompt routing, spoken formatting, file transcription, and Command Mode. EnviousWispr keeps setup smaller and adds Escape Recovery for a dictation cancelled by accident."
       }
     },
     {
@@ -79,7 +79,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does FluidVoice have AI polish like EnviousWispr's EG-1?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. FluidVoice ships its own model, called Fluid Intelligence or Fluid-1, fine-tuned specifically for cleaning up dictation, the same way our EG-1 is. Neither app asks you to write your own prompt; both ship a working default. The main difference is disclosure: EG-1's license and its base model (a fine-tune of Qwen3-4B-Instruct-2507) are published in our repository. FluidVoice's Fluid-1 runtime and model are not part of its GPLv3 app code and are not publicly documented in the same way."
+        "text": "Yes. FluidVoice ships Fluid Intelligence, also called Fluid-1, and a working default prompt. It also supports OpenAI, Anthropic, xAI, Groq, Cerebras, Google, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints, with reusable prompt profiles and app overrides. EnviousWispr offers a smaller provider list and its own EG-1 model with published license and base-model details."
       }
     },
     {
@@ -119,7 +119,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Which speech engines does each app use?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages, switched manually under Settings, Transcription. FluidVoice offers a choice of five: Nemotron (40 languages), Parakeet (25 languages), Cohere (14 languages), Whisper (99 languages), and Apple Speech (your Mac's installed languages), and you choose which one to use."
+        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages, switched manually under Settings, Transcription. FluidVoice 1.6.9 showed 14 choices: two Apple speech options, one Cohere model, three Parakeet models, two Nemotron models, and six Whisper sizes."
       }
     },
     {
@@ -391,7 +391,9 @@ const faqJsonLd = JSON.stringify({
                  downloads a real local model (~1.54GB, Apple Silicon tag, no API key) rather than calling a
                  cloud API, so the existing "on-device" claim for it holds.
              Confidence: source-verified from FluidVoice's own GitHub repo, prior internal teardown, and the
-             installed app opened directly. Last verified: 2026-08-21. -->
+             installed app opened directly. The live app exposed 14 speech choices, 10 named AI providers
+             plus a custom endpoint, editable prompt profiles, spoken formatting, Train by Voice,
+             Command Mode, and configurable direct or clipboard insertion. Last verified: 2026-08-21. -->
         <tbody>
           <tr>
             <td>Price</td>
@@ -416,17 +418,17 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Speech engines</td>
             <td><span class="table-highlight">Parakeet TDT v3 + WhisperKit</span>, switch in Settings</td>
-            <td><span class="table-check">Choice of five</span>: Nemotron, Parakeet, Cohere, Whisper, or Apple Speech</td>
+            <td><span class="table-check">14 visible choices</span> across Apple Speech, Cohere, Nemotron, Parakeet, and Whisper</td>
           </tr>
           <tr>
             <td>AI polish (cleanup after transcription)</td>
             <td><span class="table-highlight">EG-1</span> (our own tuned model), Apple Intelligence, Ollama, or your own OpenAI, Claude, or Gemini key</td>
-            <td><span class="table-check">Fluid-1</span> (their own tuned model), included at no cost, about 3.5GB download</td>
+            <td><span class="table-check">Fluid-1 plus broad provider choice</span>: OpenAI, Anthropic, xAI, Groq, Cerebras, Google, OpenRouter, Ollama, LM Studio, or a custom endpoint</td>
           </tr>
           <tr>
             <td>Needs a prompt to be written</td>
             <td><span class="table-check">No</span>: EG-1 and Apple Intelligence ship with a working default</td>
-            <td><span class="table-check">No</span>: Fluid-1 ships with its own fixed prompt too</td>
+            <td><span class="table-check">No</span>: a working default ships with the app, and prompt profiles can be edited or routed by app</td>
           </tr>
           <tr>
             <td>AI polish model's license disclosed</td>
@@ -446,7 +448,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Custom vocabulary</td>
             <td><span class="table-check">Yes</span> (names, terms, jargon; imports from 8 other apps, FluidVoice included)</td>
-            <td><span class="table-check">Yes</span> (custom vocabulary file, with alias support per term)</td>
+            <td><span class="table-check">Yes</span> (aliases, import/export, auto-learning, and Train by Voice)</td>
           </tr>
           <tr>
             <td>Transcription latency</td>
@@ -466,7 +468,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Text lands in the right app</td>
             <td><span class="table-check">Yes</span> (target app reactivation via Accessibility API, three-tier paste fallback)</td>
-            <td>Not specified</td>
+            <td><span class="table-check">Yes</span> (direct insertion or clipboard paste, configurable)</td>
           </tr>
         </tbody>
       </table>
@@ -570,7 +572,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>Fluid-1, their own tuned model, runs the polish pass on-device, using a fixed prompt they ship rather than one you write.</div>
+          <div>Fluid-1, their own tuned model, can run the polish pass on-device with the working default prompt or an editable prompt profile.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
@@ -621,12 +623,12 @@ const faqJsonLd = JSON.stringify({
     <div class="deep-dive-grid">
       <div class="deep-dive-card reveal">
         <div class="deep-dive-icon">🔀</div>
-        <div class="deep-dive-title">Two engines to switch between, or five to choose from</div>
+        <div class="deep-dive-title">Two engines to switch between, or fourteen models to choose from</div>
         <div class="deep-dive-body">
-          <p>FluidVoice gives you a real menu: Nemotron, Parakeet, Cohere, Whisper, or Apple Speech, each with its own language coverage and speed profile. If you want to hand-tune which engine handles which language, that flexibility is real and it is one of the clearest reasons to pick FluidVoice.</p>
+          <p>FluidVoice 1.6.9 showed fourteen choices across Apple Speech, Cohere, Nemotron, Parakeet, and Whisper. The list includes streaming, multilingual, small, and large options with different speed and language trade-offs.</p>
           <p>EnviousWispr keeps it to two: Parakeet TDT v3 for the 25 languages it covers best, and WhisperKit filling in the other 74, switched manually under Settings, Transcription. There is no larger menu; the app is built around this one pairing.</p>
           <div class="deep-dive-detail">
-            <strong>Why it matters:</strong> Power users who want to compare engines directly, or who need a specific one of FluidVoice's five, get more choice there today. Anyone who wants one setup that already works gets that from EnviousWispr.
+            <strong>Why it matters:</strong> Power users who want to compare engines directly get much more choice in FluidVoice. Anyone who wants a smaller setup gets that from EnviousWispr.
           </div>
         </div>
       </div>
@@ -657,7 +659,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎚️</div>
         <div class="advantage-title">You want a wider menu of transcription engines</div>
-        <p class="advantage-desc">Nemotron, Parakeet, Cohere, Whisper, or Apple Speech, FluidVoice lets you pick from five. EnviousWispr offers two, Parakeet and WhisperKit, switched manually in Settings, which is simpler but leaves less to tune.</p>
+        <p class="advantage-desc">FluidVoice 1.6.9 showed fourteen speech-model choices across five families. EnviousWispr offers Parakeet and WhisperKit, which is simpler but leaves much less to tune.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">💻</div>
@@ -680,7 +682,7 @@ const faqJsonLd = JSON.stringify({
         <p class="advantage-desc">FluidVoice can transcribe an existing audio or video file you drag in, WAV, MP3, M4A, OGG, MP4, and more, useful for a meeting recording made elsewhere. EnviousWispr only transcribes what you dictate live; it has no file-upload transcription today.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want a choice of five transcription engines, run an Intel Mac, want to follow a project expanding across platforms, or need to transcribe an existing recording, FluidVoice is a strong pick. If you want the same idea, a model tuned for dictation with no prompt to write, on a wider range of macOS versions, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want fourteen speech-model choices, deep prompt routing, an Intel Mac path, or file transcription, FluidVoice is a strong pick. If you want a smaller setup with a tuned default model on more macOS versions, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
   </div>
 </section>
 
@@ -698,11 +700,11 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from FluidVoice?</div>
-        <p class="faq-a">Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation, so this is not a case where one app has polish and the other does not. The differences are elsewhere. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice offers a choice of five transcription engines (Nemotron, Parakeet, Cohere, Whisper, and Apple Speech); EnviousWispr offers two, Parakeet TDT and WhisperKit, switched manually in Settings. EnviousWispr adds Escape Recovery, which can keep a dictation you cancel by accident, something not documented on FluidVoice's side.</p>
+        <p class="faq-a">Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice 1.6.9 showed fourteen speech-model choices across Apple Speech, Cohere, Nemotron, Parakeet, and Whisper. It also has deeper prompt routing, spoken formatting, file transcription, and Command Mode. EnviousWispr keeps setup smaller and adds Escape Recovery.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does FluidVoice have AI polish like EnviousWispr's EG-1?</div>
-        <p class="faq-a">Yes. FluidVoice ships its own model, called Fluid Intelligence or Fluid-1, fine-tuned specifically for cleaning up dictation, the same way our EG-1 is. Neither app asks you to write your own prompt; both ship a working default. The main difference is disclosure: EG-1's license and its base model (a fine-tune of Qwen3-4B-Instruct-2507) are published in our repository. FluidVoice's Fluid-1 runtime and model are not part of its GPLv3 app code and are not publicly documented in the same way.</p>
+        <p class="faq-a">Yes. FluidVoice ships Fluid Intelligence, also called Fluid-1, and a working default prompt. It also supports OpenAI, Anthropic, xAI, Groq, Cerebras, Google, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints, with reusable prompt profiles and app overrides. EnviousWispr offers a smaller provider list and its own EG-1 model with published license and base-model details.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
@@ -722,7 +724,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages, switched manually under Settings, Transcription. FluidVoice offers a choice of five: Nemotron (40 languages), Parakeet (25 languages), Cohere (14 languages), Whisper (99 languages), and Apple Speech (your Mac's installed languages), and you choose which one to use.</p>
+        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages. FluidVoice 1.6.9 showed fourteen choices: two Apple speech options, one Cohere model, three Parakeet models, two Nemotron models, and six Whisper sizes.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does FluidVoice run on Windows or iOS?</div>
