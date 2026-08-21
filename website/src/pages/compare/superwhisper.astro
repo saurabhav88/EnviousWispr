@@ -71,7 +71,7 @@ const faqJsonLd = JSON.stringify({
       "name": "How is EnviousWispr different from Superwhisper?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Both are Mac-native and run on-device. The key differences: EnviousWispr is free (Superwhisper Pro costs ~$8.49/mo), uses dual ASR engines (Parakeet TDT for speed and English accuracy, WhisperKit for wider language coverage), and is open source (GPLv3) on GitHub. Superwhisper has meeting transcription, an iOS app, Windows support, and more writing modes."
+        "text": "Both are Mac-native and run on-device. The key differences: EnviousWispr is free (Superwhisper Pro costs ~$8.49/mo), uses dual ASR engines (Parakeet TDT for speed and English accuracy, WhisperKit for wider language coverage), and is open source (GPLv3) on GitHub. Superwhisper has meeting transcription, an iOS app, Windows support, and more writing modes that EnviousWispr does not offer yet."
       }
     },
     {
@@ -79,7 +79,7 @@ const faqJsonLd = JSON.stringify({
       "name": "How does EnviousWispr compare to Superwhisper for accuracy?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "EnviousWispr uses NVIDIA Parakeet TDT v3, which covers 25 European languages at roughly 110x real-time on the Neural Engine. For languages outside those 25, both apps use Whisper-based engines with comparable accuracy."
+        "text": "EnviousWispr uses NVIDIA Parakeet TDT v3, which covers 25 European languages at roughly 110x real-time on the Neural Engine. For languages outside those 25, both apps use Whisper-based engines with comparable accuracy. Superwhisper offers more Whisper model size choices, which lets you trade speed for accuracy on older hardware."
       }
     },
     {
@@ -87,7 +87,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can I use EnviousWispr completely offline?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model."
+        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud AI providers like OpenAI, Gemini, or Claude are optional and require your own API key."
       }
     },
     {
@@ -95,7 +95,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does Superwhisper have offline AI polish?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Superwhisper's transcription works offline via Whisper. However, their AI polish features appear to require cloud connectivity. EnviousWispr's EG-1 and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+."
+        "text": "Superwhisper's transcription works offline via Whisper, and it now has an on-device polish option too: a Local mode powered by S1-mini, their own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition, and it is a lighter cleanup pass than their cloud writing modes (Formal, Casual, Legal, Chat), which still need GPT, Claude, or Llama. EnviousWispr's EG-1 and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+."
       }
     },
     {
@@ -111,7 +111,7 @@ const faqJsonLd = JSON.stringify({
       "name": "What is Parakeet TDT?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Parakeet TDT is a multilingual speech recognition model from NVIDIA covering 25 European languages. It is purpose-built for accurate, fast transcription and runs on the Apple Neural Engine at ~110x real-time."
+        "text": "Parakeet TDT is a multilingual speech recognition model from NVIDIA covering 25 European languages. It is purpose-built for accurate, fast transcription and runs on the Apple Neural Engine at ~110x real-time. It delivers stronger English accuracy than Whisper for dictation use cases."
       }
     },
     {
@@ -119,7 +119,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can I switch from Superwhisper easily?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS."
+        "text": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the 2-minute getting started guide."
       }
     },
     {
@@ -135,7 +135,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Is EnviousWispr open source?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub."
+        "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome."
       }
     }
   ]
@@ -397,12 +397,21 @@ const faqJsonLd = JSON.stringify({
             <th scope="col">Superwhisper</th>
           </tr>
         </thead>
-        <!-- Evidence: Superwhisper claims verified against superwhisper.com on 2026-04-04, re-verified 2026-08-21.
+        <!-- Evidence: Superwhisper claims verified against superwhisper.com on 2026-04-04, re-verified 2026-08-21,
+             plus the installed app opened directly and a public web search, both on 2026-08-21.
              Sources:
                - superwhisper.com homepage (re-verified 2026-08-21): features, pricing tiers, AI model list, writing modes, custom vocabulary, meeting transcription, iOS app, offline mode, 100+ languages. Now also Windows.
                - superwhisper.com pricing (re-verified 2026-08-21): Free tier is now UNLIMITED (no time limit, no word cap) but restricted to smaller AI models; the April "15-min trial" framing is gone. Pro ~$8.49/mo ($84.99/yr), Lifetime $249.99 one-time. New Enterprise tier (SOC 2 Type II, custom pricing).
-             Confidence: source-verified from public website. Superwhisper was not tested firsthand.
-             Features marked "Not specified" were not found on superwhisper.com as of 2026-08-21.
+               - superwhisper opened directly (2026-08-21): its Modes screen offers "Go Local with S1-mini,"
+                 a Local mode described in-app as "powered by Cohere Transcribe and S1-mini. Your audio and
+                 transcripts stay on your Mac." Corroborated externally (X/@superwhisper announcement,
+                 MarkTechPost, both accessed 2026-08-21): S1-mini is a real, newly released 0.6B open-weights
+                 on-device model, ~462MB quantized, that cleans fillers/punctuation/numbers from a transcript;
+                 described as experimental, and narrower than the cloud-backed writing modes (Formal, Casual,
+                 Legal, Chat), which still route through GPT/Claude/Llama.
+             Confidence: source-verified from the public website, the installed app opened directly, and an
+             independent public source for S1-mini. Features marked "Not specified" were not found on
+             superwhisper.com or in the app as of 2026-08-21.
              EnviousWispr latency (0.61s / 1.65s) and language count (99 via WhisperKit) re-measured 2026-08-21.
              Last verified: 2026-08-21. -->
         <tbody>
@@ -444,7 +453,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Offline AI polish</td>
             <td><span class="table-check">Yes</span> (EG-1, Apple Intelligence, or Ollama, fully on-device)</td>
-            <td>Not specified (cloud AI models listed require internet)</td>
+            <td><span class="table-check">Yes</span>, for basic cleanup: Local mode with S1-mini (experimental, 0.6B, on-device); full writing modes still need GPT, Claude, or Llama over the internet</td>
           </tr>
           <tr>
             <td>Transcription latency</td>
@@ -529,7 +538,7 @@ const faqJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Superwhisper's public website (superwhisper.com), last checked August 2026. Pricing: free tier (now unlimited, restricted to smaller AI models), Pro ~$8.49/mo (yearly discount available), lifetime purchase option. EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. Superwhisper features source-verified from superwhisper.com; not firsthand-tested. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Superwhisper's public website (superwhisper.com), last checked August 2026. Pricing: free tier (now unlimited, restricted to smaller AI models), Pro ~$8.49/mo (yearly discount available), lifetime purchase option. EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. Superwhisper features source-verified from superwhisper.com, the installed app opened directly, and independent public sources for S1-mini. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -775,7 +784,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Superwhisper have offline AI polish?</div>
-        <p class="faq-a">Superwhisper's transcription works offline via Whisper. However, their AI polish features (writing modes powered by GPT, Claude, Llama, etc.) appear to require cloud connectivity. Their website does not specify an offline AI polish option. EnviousWispr's EG-1 and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+.</p>
+        <p class="faq-a">Superwhisper's transcription works offline via Whisper, and it now has an on-device polish option too: a Local mode powered by S1-mini, their own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition, and it is a lighter cleanup pass than their cloud writing modes (Formal, Casual, Legal, Chat), which still need GPT, Claude, or Llama. EnviousWispr's EG-1 and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr really free?</div>
