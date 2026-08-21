@@ -110,10 +110,14 @@ struct SpokenPunctuationToggleTests {
   /// gate leaked; an empty set means the test went vacuous.
   ///
   /// The pinned set is derived from a real run, never predicted. It contains the
-  /// punctuation-category rows that actually carry a trigger, plus three `url` rows whose
-  /// degenerate spelled-out input ("h t t p colon slash slash ...") happens to hit the
-  /// `colon` rule. Those three are NOT real URL handling — the URL rule matches
-  /// `host dot tld` and is untouched by this change.
+  /// punctuation-category rows that actually carry a trigger, plus five `url` rows whose
+  /// input happens to also carry a punctuation trigger word: three degenerate
+  /// spelled-out rows ("h t t p colon slash slash ...") that hit the `colon` rule, and
+  /// two `#2257` guard-fixture rows (a spoken protocol prefix, and a spoken query
+  /// continuation) whose "colon"/"question mark" also happen to be real punctuation
+  /// triggers. None of the five is real URL handling changing with the toggle — the URL
+  /// rules themselves are untouched by `spokenPunctuation`; the applyPunct pass beside
+  /// them is what moves.
   @Test("Toggle changes exactly the pinned corpus rows and no others")
   func corpusIsolation() throws {
     let rows = try InverseTextNormalizerParityTests.loadRows()
@@ -133,14 +137,16 @@ struct SpokenPunctuationToggleTests {
 
     let urlDivergent = divergent.filter { $0.category == "url" }
     let urlSample = urlDivergent.prefix(5).map { $0.input.debugDescription }.joined(separator: ", ")
-    #expect(
-      urlDivergent.count == 3,
-      "expected exactly the 3 degenerate spelled-out url rows, got \(urlDivergent.count): \(urlSample)"
-    )
+    let countMessage =
+      "expected exactly the 5 pinned url rows (3 degenerate colon spellouts + 2 #2257 guard "
+      + "fixtures), got \(urlDivergent.count): \(urlSample)"
+    #expect(urlDivergent.count == 5, "\(countMessage)")
     for row in urlDivergent {
+      let reasonMessage =
+        "a url row diverged for a reason other than colon/question mark: "
+        + "\(row.input.debugDescription)"
       #expect(
-        row.input.contains("colon"),
-        "a url row diverged for a reason other than the colon rule: \(row.input.debugDescription)")
+        row.input.contains("colon") || row.input.contains("question mark"), "\(reasonMessage)")
     }
   }
 

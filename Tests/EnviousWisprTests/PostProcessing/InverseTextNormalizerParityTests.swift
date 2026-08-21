@@ -82,6 +82,17 @@ struct InverseTextNormalizerParityTests {
     "ninety seven quadrillion eight hundred eight trillion two hundred sixty four billion "
       + "seven hundred seventy two million seven hundred ninety two thousand five",
     "point five o six dollars",
+    // #2257: urls(_:)'s trailing-continuation guard matches the spoken word "question
+    // mark"; once spokenPunctuation converts it to a literal "?" on the first pass, the
+    // guard's own signal is gone (round 16 deliberately dropped the tight-symbol form
+    // of this guard — see followedByUnsupportedContinuation's own comment for why) and
+    // the second pass converts the path it had deliberately left alone. Not a
+    // corruption either pass — the second-pass output is strictly MORE normalized, not
+    // wrong — but not a fixed point. The protocol-prefix guard's sibling case (a
+    // "colon" materializing the same way) is genuinely idempotent as of round 14: that
+    // guard DOES recognize the materialized ":" on the second pass too, so it stays
+    // OUT of this list on purpose (round 16 P3) rather than hiding its own coverage.
+    "example.com slash search question mark q equals test",
   ]
 
   // MARK: - Primary: byte-for-byte parity with the Python oracle

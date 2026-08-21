@@ -153,6 +153,58 @@ public struct InverseTextNormalizer: Sendable {
   static let ordScaleAlt = alt(Array(ordScale.keys))
   static let cardRun = #"(?:"# + numwordAlt + #")(?:\s+(?:"# + numwordAlt + #"))*"#
 
+  // MARK: - URL/email TLDs and host/path shapes (#2257)
+  // `ai`/`app`/`xyz` are ordinary words/notation ("open the dot app", "I use X dot XYZ
+  // coordinates", "plot the X dot XYZ slash Y coordinates" — local Codex review). A
+  // required path does NOT reliably disambiguate them from technical notation, so
+  // `urls(_:)`'s spoken-form pass excludes them entirely; they convert only via the
+  // joined-host pass, where the recognizer has already committed to a literal "." —
+  // independent, stronger evidence of domain intent a path alone is not. Residual risk:
+  // if the recognizer ALSO happens to pre-join non-URL notation this way, there is no
+  // further text-level signal to tell them apart post-join — an accepted limit of
+  // supporting these three TLDs at all, not something a narrower regex can fix.
+  static let lowerRiskURLTLDAlt = #"com|org|io|co|dev|me|net"#
+  static let commonWordURLTLDAlt = #"ai|app|xyz"#
+  static let urlTLDAlt = lowerRiskURLTLDAlt + "|" + commonWordURLTLDAlt
+  // Deliberately NOT derived from urlTLDAlt (#2257, local Codex review round 2):
+  // emails(_:)'s "name at domain dot tld" pattern has no path requirement to disambiguate
+  // it the way urls(_:) does, so ANY newly-added TLD widens "at <domain> dot <tld>" — a
+  // common way to describe a URL out loud, not an email — into a false email conversion.
+  // Measured: adding just ai/app/xyz turned "learn more at startup dot ai" into
+  // "learn more@startup.ai" and "find it at docs dot xyz" into "find it@docs.xyz". Kept
+  // identical to the pre-#2257 list; the new TLDs are URL-only.
+  static let emailTLDAlt = #"com|org|io|co|dev|me|net|edu|gov"#
+  // A domain label: starts with a letter, may contain digits/hyphens, never ENDS on a
+  // hyphen (a trailing "-" is not a valid label).
+  static let urlHostLabelPat = #"[a-z](?:[a-z0-9-]*[a-z0-9])?"#
+  // NOT `\b`-terminated (local Codex review, round 15): a trailing `\b` forces a
+  // segment ending in "-" to backtrack and drop the hyphen to find a word boundary
+  // ("docs-" before " slash next" has no boundary between "-" and the following
+  // space, both non-word characters), truncating the segment AND aborting the rest of
+  // the path's repetition — "example.com slash docs- slash next" became the
+  // half-formed "example.com/docs- slash next" instead of converting the whole path.
+  // A `\b` here was originally added to stop a regex-EMBEDDED lookahead from
+  // backtracking into a match (see the guard functions below); since those guards
+  // moved into the callback, nothing after this class needs the boundary anymore.
+  static let urlPathSegmentPat = #"[a-z0-9-]+"#
+  // A closed set of spoken words that name URL-syntax characters this file does not
+  // otherwise convert inside a host/path (local Codex review, round 13, generalizing
+  // rounds 11-12's single-word point fixes into one bounded set rather than adding
+  // another trigger word each round): a match adjacent to one of these, on either
+  // side, means the recognizer's segmentation is incomplete or the phrase continues in
+  // a shape this file does not support — refuse the whole match rather than partially
+  // convert it. `question mark` is the one of these ALREADY meaningful as punctuation
+  // elsewhere in this file (`punct`, below); the rest are simply common English words
+  // that happen to double as URL-syntax names, so they carry no special meaning
+  // outside this adjacency check.
+  // `slash` included (local Codex review, round 16): a DANGLING trailing "slash" with
+  // no segment after it ("example.com slash docs slash") is not consumed by the path
+  // pattern at all — a real, distinct signal from the other connector words, but the
+  // same "incomplete, refuse rather than partially convert" shape.
+  static let urlSyntaxConnectorWordsAlt =
+    #"dot|dash|hyphen|underscore|colon|question\s+mark|equals|ampersand|percent|tilde|hash|pound"#
+    + #"|slash"#
+
   // MARK: - Public entry point
 
   /// - Parameter spokenPunctuation: gates ONLY the nine bare spoken-punctuation
@@ -620,24 +672,190 @@ public struct InverseTextNormalizer: Sendable {
   private func emails(_ t: String) -> String {
     let pat =
       #"\b(?<name>[a-z][a-z0-9_]*)\s+at\s+(?<dom>[a-z][a-z0-9-]*)\s+dot\s+"#
-      + #"(?<tld>com|org|io|co|dev|me|net|edu|gov)\b"#
+      + #"(?<tld>"# + Self.emailTLDAlt + #")\b"#
     return reSub(pat, t) { m in
       let name = (m.g("name") ?? "").replacingOccurrences(of: " ", with: "")
       return "\(name)@\(m.g("dom") ?? "").\(m.g("tld") ?? "")"
     }
   }
 
+  /// Two independent passes over two different recognizer shapes for the same spoken
+  /// URL (#2257, #2049/#2050 — Parakeet v3 sometimes leaves "dot"/"slash" as literal
+  /// words and sometimes pre-joins the host into `word.tld` before ITN ever runs; which
+  /// one happens is inconsistent even between near-identical dictations, so both entry
+  /// points are needed). `emails(_:)` runs first, so any domain it already converted to
+  /// `name@host.tld` is excluded here via a negative lookbehind on `@` — a trailing
+  /// "slash word" after an email is NOT a URL path.
   private func urls(_ t: String) -> String {
-    let pat =
-      #"\b(?<host>[a-z]+)\s+dot\s+(?<tld>com|org|io|co|dev|me|net)\b"#
-      + #"(?<path>(?:\s+slash\s+[a-z]+)*)"#
-    return reSub(pat, t) { m in
-      var s = "\(m.g("host") ?? "").\(m.g("tld") ?? "")"
-      if let path = m.g("path"), !path.isEmpty {
-        for p in allMatches(#"slash\s+([a-z]+)"#, path) { s += "/" + p }
+    func withPath(_ base: String, _ path: String?) -> String {
+      var s = base
+      if let path, !path.isEmpty {
+        for seg in allMatches(#"slash\s+("# + Self.urlPathSegmentPat + #")"#, path) {
+          s += "/" + seg
+        }
       }
       return s
     }
+
+    // Guards checked in the CALLBACK, not the regex (local Codex review, confirming
+    // round): a partial conversion is worse than none — it looks broken rather than
+    // merely unconverted — but a lookbehind/lookahead expressing that is evaluated at
+    // every position the regex ATTEMPTS a match, not just where one succeeds, and
+    // measured 189ms on a 50k-char no-URL dictation (vs ~95ms without). A callback
+    // check runs once per ACTUAL match, which is rare in ordinary prose by construction.
+    // Un-owned protocol/query syntax stay explicit non-goals (see the plan) — these
+    // guards exist only to refuse the match, never to add protocol/query support.
+    func precededByProtocolPrefix(_ m: Match) -> Bool {
+      let start = m.result.range.location
+      guard start > 0 else { return false }
+      let windowLen = min(start, 30)
+      let window = m.ns.substring(with: NSRange(location: start - windowLen, length: windowLen))
+      // "colon slash slash" immediately before the match is a spoken protocol prefix
+      // ("https colon slash slash example.com..."); converting only the host/path and
+      // leaving the protocol as dangling literal words is worse than not converting.
+      // Also matches an already-materialized ":" (local Codex review, round 14): the
+      // recognizer can insert real punctuation on its own, independent of the
+      // spokenPunctuation feature — "https: slash slash example.com..." is the same
+      // incomplete-protocol shape wearing the symbol instead of the word.
+      return firstMatch(#"(?:colon|:)\s{0,4}slash\s{0,4}slash\s{0,4}$"#, window) != nil
+    }
+    func precededByUnresolvedConnector(_ m: Match) -> Bool {
+      let start = m.result.range.location
+      guard start > 0 else { return false }
+      let windowLen = min(start, 20)
+      let window = m.ns.substring(with: NSRange(location: start - windowLen, length: windowLen))
+      // "www dot example.com slash docs" (the "www" prefix stayed spoken while the
+      // recognizer joined "example.com") or "my dash site.com slash docs" (the same
+      // shape "dash" support couldn't fix in the spoken pass — see the TLD note above —
+      // arriving here instead): converting only the joined suffix leaves the unresolved
+      // prefix as dangling literal words, which is the same "worse than unconverted"
+      // shape the other guards exist for. The bare symbol alternative (tight, no
+      // whitespace) covers the recognizer materializing it directly — "sub.example dot
+      // com" isn't the only mixed shape; ".example dot com" (a stray leading dot) is
+      // the same idea one character over.
+      return firstMatch(
+        #"(?:\b(?:"# + Self.urlSyntaxConnectorWordsAlt + #")\s{1,4}|[._:?=&%~#-])$"#, window
+      ) != nil
+    }
+    func followedByUnsupportedContinuation(_ m: Match) -> Bool {
+      let end = m.result.range.location + m.result.range.length
+      let remaining = m.ns.length - end
+      guard remaining > 0 else { return false }
+      let windowLen = min(remaining, 20)
+      let window = m.ns.substring(with: NSRange(location: end, length: windowLen))
+      // "example.com slash docs dot html" or "...slash user underscore settings" (or a
+      // dangling "example.com slash docs slash" with nothing after the final slash):
+      // the path match stops at the first unsupported segment, and converting only the
+      // prefix it did match produces the same half-formed shape the protocol/query
+      // guards exist for.
+      //
+      // Deliberately WORD-ONLY, not tight-symbol (round 14 added a tight-symbol form,
+      // round 16 found it regressed the opposite direction): an already-materialized
+      // "?" or ":" immediately after a path is far more often ordinary SENTENCE
+      // punctuation ("did you check example.com/docs?") than a real query continuation
+      // — round 14's own motivating case needed "?" to be followed by more lowercase
+      // query text to distinguish the two, which the "." exclusion added the same round
+      // already showed is the harder-to-get-right side of this trade. A spoken WORD
+      // form ("question mark", "colon") is a much less ambiguous signal of genuine
+      // intent than the recognizer's own auto-inserted terminal punctuation, so it
+      // stays; the tight-symbol form does not.
+      return firstMatch(
+        #"^\s+(?:"# + Self.urlSyntaxConnectorWordsAlt + #")\b"#, window
+      ) != nil
+    }
+    // A single "@" is the fixed-length exclusion already baked into both patterns
+    // below via `(?<![@a-z0-9.-])`; this handles the recognizer emitting it with
+    // surrounding whitespace ("alice @ example.com slash unsubscribe") instead of
+    // tight against the domain.
+    func precededBySpacedAtSign(_ m: Match) -> Bool {
+      let start = m.result.range.location
+      guard start > 0 else { return false }
+      let windowLen = min(start, 6)
+      let window = m.ns.substring(with: NSRange(location: start - windowLen, length: windowLen))
+      return firstMatch(#"@\s{1,4}$"#, window) != nil
+    }
+
+    // Pass 1: recognizer left "dot"/"slash" as literal spoken words, but MAY have
+    // pre-joined a leading subdomain prefix onto the host ("www.example dot com" —
+    // the same recognizer inconsistency pass 2 exists for). The host captures that
+    // whole optional prefix chain, matched from its true start, so the exclusion
+    // lookbehind only needs to check ONE fixed position — mirroring pass 2 exactly.
+    // Excluding "@"/"."/another host char there closes the mixed-email case
+    // ("alice@sub.example dot ai slash unsubscribe" has no valid start position: "sub"
+    // is preceded by "@", "example" by "."), while still matching a legitimate
+    // pre-joined URL prefix like "www." (preceded only by whitespace).
+    // `ai`/`app`/`xyz` are deliberately absent here (unlike the joined-host pass below):
+    // a required path does NOT disambiguate them from ordinary technical notation —
+    // "look inside the dot app slash Contents slash MacOS folder" and "plot the X dot
+    // XYZ slash Y coordinates" both have a spoken "dot <TLD>" AND a following "slash
+    // word" without being URLs at all. The recognizer already having committed to a
+    // literal "." (the joined-host pass's trigger) is independent, stronger evidence of
+    // domain intent that a path alone is not.
+    let spokenPat =
+      #"(?<![@a-z0-9.-])\b(?<host>(?:"# + Self.urlHostLabelPat + #"\.)*"#
+      + Self.urlHostLabelPat + #")\s+dot\s+(?<tld>"# + Self.lowerRiskURLTLDAlt + #")\b"#
+      + #"(?<path>(?:\s+slash\s+"# + Self.urlPathSegmentPat + #")*)"#
+    var result = reSub(spokenPat, t) { m in
+      // followedByUnsupportedContinuation only applies once a path is actually being
+      // converted: with an EMPTY path (this pass's is optional, `*`), the host.tld
+      // conversion is already complete, so a word immediately after is unrelated
+      // surrounding prose, not a truncated path — checking it here regressed the
+      // pre-existing "h t t p colon slash slash w w w dot ... n e w s dot com dot s m"
+      // shape, where "s.com" converts and "dot s m" that follows is unconnected text.
+      let hasPath = !(m.g("path") ?? "").isEmpty
+      guard
+        !precededByProtocolPrefix(m), !precededByUnresolvedConnector(m),
+        !precededBySpacedAtSign(m), !(hasPath && followedByUnsupportedContinuation(m))
+      else { return nil }
+      return withPath("\(m.g("host") ?? "").\(m.g("tld") ?? "")", m.g("path"))
+    }
+
+    // Pass 2: recognizer already pre-joined the host into `word.tld`; only a trailing
+    // "slash word" is still spoken and needs converting. Requires >=1 path segment so a
+    // bare already-correct "example.com" mid-sentence is left untouched.
+    let joinedPat =
+      // Matches the WHOLE dotted host chain (any subdomain labels + the final label) from
+      // its true start, so a single fixed-length negative lookbehind is enough to exclude
+      // an email — a variable-length lookbehind evaluated at every word boundary measured
+      // 397ms on a 50k-char no-URL dictation (vs 76ms before this change); this form
+      // measured 81ms, back near baseline. An email with a subdomain
+      // ("alice@sub.example.com") has no valid start position for this match: every label
+      // boundary inside it is preceded by "@" or ".", both excluded.
+      //
+      // A second exclusion — not preceded by a spoken "at " — matches an existing
+      // precedent rather than inventing a new one: emails(_:) ALREADY treats any
+      // "word at word dot tld" as an email unconditionally, whether or not that's what
+      // the speaker meant ("check the report at example dot com slash budget" already
+      // becomes "report@example.com slash budget", pre-#2257, unrelated TLD). When the
+      // recognizer instead pre-joins that same domain into a literal ".", the "at" word
+      // survives as ordinary text and this pass must not treat it differently — otherwise
+      // "bob at example.com slash unsubscribe" becomes "bob at example.com/unsubscribe"
+      // where the spoken-word form of the identical phrase would have kept it an email.
+      // `\s{1,4}` (bounded, not `\s+`) keeps this a cheap lookbehind — repeated whitespace
+      // reaching here is already rare since FillerRemovalStep collapses `\s{2,}` earlier
+      // in the pipeline whenever filler removal is on (its default), but a bounded check
+      // covers a user who has turned that off at negligible extra cost.
+      //
+      // The "at " exclusion applies ONLY to lowerRiskURLTLDAlt, not to ai/app/xyz: those
+      // three are deliberately absent from emailTLDAlt entirely (see above), so "at
+      // <domain>.(ai|app|xyz)" can never be misread as an email in the first place —
+      // excluding it here would just leave a real URL unconverted for no reason
+      // ("find it at docs.xyz slash page" must still become "find it at docs.xyz/page").
+      #"(?<![@a-z0-9.-])(?:(?<!\bat\s{1,4})(?<domain>(?:"# + Self.urlHostLabelPat + #"\.)*"#
+      + Self.urlHostLabelPat + #"\.(?:"# + Self.lowerRiskURLTLDAlt + #"))"#
+      + #"|(?<domain2>(?:"# + Self.urlHostLabelPat + #"\.)*"# + Self.urlHostLabelPat
+      + #"\.(?:"# + Self.commonWordURLTLDAlt + #")))"#
+      + #"(?<path>(?:\s+slash\s+"# + Self.urlPathSegmentPat + #")+)"#
+    result = reSub(joinedPat, result) { m in
+      guard
+        !precededByProtocolPrefix(m), !precededByUnresolvedConnector(m),
+        !precededBySpacedAtSign(m), !followedByUnsupportedContinuation(m)
+      else { return nil }
+      let domain = m.g("domain") ?? m.g("domain2") ?? ""
+      return withPath(domain, m.g("path"))
+    }
+
+    return result
   }
 
   private func decimals(_ t0: String) -> String {
