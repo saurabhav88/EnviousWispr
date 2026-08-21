@@ -108,6 +108,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
   private let whisperKit: any WhisperKitTranscribing
   private let baseDecodingOptions: DecodingOptions
   private let cadence: Duration
+  private let onCancelLoopAbortRequestedForTesting: (@Sendable () -> Void)?
 
   /// Set the moment a terminal arrives, and read from INSIDE the decoder's
   /// per-token callback — which is why it is a lock rather than actor state.
@@ -316,7 +317,8 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     conditionOnPriorText: Bool = false,
     localAgreement: Bool = false,
     onHypothesis: (@Sendable (String) -> Void)? = nil,
-    hypothesisRetentionLimit: Int? = nil
+    hypothesisRetentionLimit: Int? = nil,
+    onCancelLoopAbortRequestedForTesting: (@Sendable () -> Void)? = nil
   ) {
     self.whisperKit = whisperKit
     self.baseDecodingOptions = decodingOptions
@@ -326,6 +328,7 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     self.localAgreement = localAgreement
     self.onHypothesis = onHypothesis
     self.hypothesisRetentionLimit = hypothesisRetentionLimit
+    self.onCancelLoopAbortRequestedForTesting = onCancelLoopAbortRequestedForTesting
   }
 
   // MARK: WhisperKitIncrementalSession
@@ -596,6 +599,9 @@ package actor WhisperKitStreamingSession: WhisperKitIncrementalSession {
     // this the preview's last cycle keeps running against the authoritative
     // decode the user is waiting on.
     loopDecodeAborted.withLock { $0 = true }
+    // Subject-fired test seam: unlike a yield count, this proves cancel has
+    // executed the write above before a decoder control is released (#2140).
+    onCancelLoopAbortRequestedForTesting?()
     let loop = loopTask
     loopTask?.cancel()
     loopTask = nil
