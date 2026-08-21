@@ -232,6 +232,19 @@ struct NoticeModel: Equatable, Sendable {
 /// What the retained hosting view renders. One of these occupies the slot at a
 /// time; there is no second slot and no parallel channel.
 enum OverlayContent: Equatable, Sendable {
+  /// **`audioLevel` is a SNAPSHOT and the shipped path is a PULL.**
+  /// `show(intent:audioLevelProvider:recordingElapsedProvider:isRecordingLocked:)`
+  /// (`RecordingOverlayPanel.swift:499-502`) hands the panel two CLOSURES that
+  /// the view calls per frame, plus the initial lock. The reducer models the
+  /// lock (persistent, in `OverlayState`) and carries a level snapshot, but it
+  /// deliberately does NOT own per-frame providers — a value type invoked from a
+  /// render loop is the wrong home for them.
+  ///
+  /// **C3 obligation, recorded rather than left implicit:** `OverlayRenderModel`
+  /// retains BOTH the audio-level and the recording-elapsed provider for the
+  /// rendered recording's lifetime. `recordingElapsedProvider` has no
+  /// representation anywhere in C2 and must not be forgotten because nothing
+  /// here names it — which is precisely why it is named here.
   case recording(audioLevel: Float, isLocked: Bool, notice: InPanelNotice?)
   case notice(NoticeModel)
   case languageChip(payload: LanguageChipPayload)

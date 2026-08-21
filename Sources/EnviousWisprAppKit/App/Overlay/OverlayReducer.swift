@@ -113,13 +113,25 @@ struct OverlayState: Equatable {
   /// True while the pointer is inside the current presentation. A hovered
   /// presentation does not expire.
   private(set) var isHovered = false
+  /// Hands-free lock, which OUTLIVES any one presentation.
+  ///
+  /// Shipped `updateLockState` (`:1601-1604`) sets the shared `OverlayLockState`
+  /// unconditionally with no recording guard, and `show(...)` takes an
+  /// `isRecordingLocked:` argument (`:502`) so a pill is born locked rather than
+  /// rendering unlocked and morphing a frame later. The first model held
+  /// `isLocked` only inside the presentation and always started it `false`,
+  /// which loses both: a lock set between dictations was dropped, and a locked
+  /// start would have flashed unlocked.
+  private(set) var isLocked = false
 
   fileprivate mutating func set(
-    current: OverlayPresentation?, pipelineIntent: OverlayIntent? = nil, isHovered: Bool? = nil
+    current: OverlayPresentation?, pipelineIntent: OverlayIntent? = nil, isHovered: Bool? = nil,
+    isLocked: Bool? = nil
   ) {
     self.current = current
     if let pipelineIntent { self.pipelineIntent = pipelineIntent }
     if let isHovered { self.isHovered = isHovered }
+    if let isLocked { self.isLocked = isLocked }
   }
 }
 
@@ -172,7 +184,7 @@ struct OverlayReducer {
       return OverlayPlan(presentation: updated, didChange: true)
     }
 
-    guard let presentation = Self.presentation(for: intent, id: makeID()) else {
+    guard var presentation = Self.presentation(for: intent, id: makeID()) else {
       // `.hidden`, and anything with no presentation, empties the slot.
       // `didChange` is read BEFORE the mutation: emptying an already-empty slot
       // is a genuine no-op and must not make the host re-apply nothing.
@@ -185,6 +197,16 @@ struct OverlayReducer {
         effects: wasRecording ? [.recordingIntentChanged(false)] : [])
     }
 
+    // Born locked if the lock is on. `show(...isRecordingLocked:)` (`:502`)
+    // exists precisely so this is applied in the SAME transaction rather than
+    // rendered unlocked and morphed a frame later.
+    if case .recording(let level, _, let notice) = presentation.content, state.isLocked {
+      presentation = OverlayPresentation(
+        id: presentation.id,
+        content: .recording(audioLevel: level, isLocked: true, notice: notice),
+        expiry: presentation.expiry, requestedWidth: presentation.requestedWidth,
+        reservesFixedHeight: presentation.reservesFixedHeight)
+    }
     let wasRecording = Self.isRecording(state.current)
     let isRecording = Self.isRecording(presentation)
     state.set(current: presentation, pipelineIntent: intent, isHovered: false)
@@ -214,20 +236,30 @@ struct OverlayReducer {
     return false
   }
 
-  /// Hands-free lock morphs the LIVE recording pill and does nothing otherwise,
-  /// matching `updateLockState`'s own guard (`:1601`).
+  /// Hands-free lock.
+  ///
+  /// **The flag is recorded whether or not a pill is showing**, because shipped
+  /// `updateLockState` (`:1601-1604`) has NO recording guard — it sets the
+  /// shared `OverlayLockState` unconditionally, and the next pill is then born
+  /// locked through `show(...isRecordingLocked:)`. An earlier version of this
+  /// comment claimed the shipped method guards on recording; it does not, and
+  /// asserting a mechanism the code lacks is worse than saying nothing.
+  /// Only the MORPH is conditional.
   private mutating func reduceLockState(_ locked: Bool) -> OverlayPlan {
+    guard state.isLocked != locked else { return .noChange }
     guard let current = state.current,
-      case .recording(let level, let wasLocked, let notice) = current.content,
-      wasLocked != locked
-    else { return .noChange }
+      case .recording(let level, _, let notice) = current.content
+    else {
+      state.set(current: state.current, isLocked: locked)
+      return .noChange
+    }
 
     let updated = OverlayPresentation(
       id: current.id,
       content: .recording(audioLevel: level, isLocked: locked, notice: notice),
       expiry: current.expiry, requestedWidth: current.requestedWidth,
       reservesFixedHeight: current.reservesFixedHeight)
-    state.set(current: updated)
+    state.set(current: updated, isLocked: locked)
     return OverlayPlan(presentation: updated, didChange: true)
   }
 

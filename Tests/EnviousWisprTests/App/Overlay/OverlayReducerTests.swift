@@ -416,10 +416,40 @@ struct OverlayReducerTests {
     #expect(r.reduce(.lockStateChanged(true)).didChange == false)
   }
 
-  @Test("a lock change with no recording pill is a no-op")
-  func lockWithoutRecordingIsIgnored() {
+  @Test("a lock change with no recording pill draws nothing but is remembered")
+  func lockWithoutRecordingIsRemembered() {
     var r = Self.makeReducer()
+    // Shipped `updateLockState` (`:1601-1604`) has NO recording guard.
     #expect(r.reduce(.lockStateChanged(true)).didChange == false)
+    #expect(r.state.isLocked, "the lock was dropped because no pill was showing")
+  }
+
+  /// `show(...isRecordingLocked:)` (`:502`) exists so a pill is BORN locked. The
+  /// first model always started `isLocked: false`, so a locked start would have
+  /// rendered unlocked for a frame and then morphed.
+  @Test("a recording pill that starts while locked is born locked")
+  func recordingIsBornLocked() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.lockStateChanged(true))
+
+    let plan = r.reduce(.pipeline(.recording(audioLevel: 0.3)))
+
+    guard case .recording(_, let locked, _)? = plan.presentation?.content else {
+      Issue.record("expected a recording pill")
+      return
+    }
+    #expect(locked, "the pill rendered unlocked despite the lock being on")
+  }
+
+  @Test("a recording pill that starts unlocked is not born locked")
+  func recordingIsNotBornLockedByDefault() {
+    var r = Self.makeReducer()
+    let plan = r.reduce(.pipeline(.recording(audioLevel: 0.3)))
+    guard case .recording(_, let locked, _)? = plan.presentation?.content else {
+      Issue.record("expected a recording pill")
+      return
+    }
+    #expect(locked == false)
   }
 
   /// `BluetoothAwarenessPresenter` emits `.dismissed/.gotIt` versus
