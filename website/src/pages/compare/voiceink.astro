@@ -71,7 +71,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Both are on-device. Why does the speech engine matter?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet TDT by default, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.61s median latency for English. VoiceInk also now offers Parakeet (via FluidAudio) and Cohere Transcribe alongside whisper.cpp as selectable engines, so this is no longer a Parakeet-vs-whisper.cpp distinction; EnviousWispr's default routing between Parakeet and WhisperKit is tuned for you rather than user-selected."
+        "text": "Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet TDT by default, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.61s median latency for English. VoiceInk also now offers Parakeet (via FluidAudio) and Cohere Transcribe alongside whisper.cpp as selectable engines, so this is no longer a Parakeet-vs-whisper.cpp distinction; EnviousWispr defaults to Parakeet and lets you switch to WhisperKit in Settings when you need broader language coverage, the same manual-switch shape as VoiceInk's own engine picker."
       }
     },
     {
@@ -571,7 +571,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#128295;</div>
         <div class="advantage-title">Dual speech engines</div>
-        <p class="advantage-desc">Parakeet TDT for speed on English. WhisperKit for multilingual coverage. Two engines, one app, automatic routing. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>. VoiceInk offers whisper.cpp, Parakeet, and Cohere Transcribe, but you pick the engine yourself rather than having it routed for you.</p>
+        <p class="advantage-desc">Parakeet TDT for speed on English by default. Switch to WhisperKit in Settings for multilingual coverage. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>. VoiceInk offers whisper.cpp, Parakeet, and Cohere Transcribe, also a manual pick between engines in its own settings.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">&#128218;</div>
@@ -768,7 +768,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Both are on-device. Why does the speech engine matter?</div>
-        <p class="faq-a">Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet TDT by default, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.61s median latency for English. VoiceInk also now offers Parakeet (via FluidAudio) and Cohere Transcribe alongside whisper.cpp as selectable engines, so this is no longer a Parakeet-vs-whisper.cpp distinction; EnviousWispr's default routing between Parakeet and WhisperKit is tuned for you rather than user-selected.</p>
+        <p class="faq-a">Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet TDT by default, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.61s median latency for English. VoiceInk also now offers Parakeet (via FluidAudio) and Cohere Transcribe alongside whisper.cpp as selectable engines, so this is no longer a Parakeet-vs-whisper.cpp distinction; EnviousWispr defaults to Parakeet and lets you switch to WhisperKit in Settings when you need broader language coverage, the same manual-switch shape as VoiceInk's own engine picker.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr support languages other than English?</div>
