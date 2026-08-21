@@ -1431,13 +1431,19 @@ public struct WordCorrector: Sendable {
   /// peeled bare form can coincidentally EXACT-match a real, unrelated
   /// alias, so an over-permissive trigger produces a real wrong correction,
   /// not merely a harmless miss -- alias "v1" turned input "v1.2" into
-  /// "VersionOne.2" before this guard existed. The one exclusion this
-  /// function makes is therefore load-bearing: a real TLD label is never
-  /// purely numeric (ICANN requires at least one non-digit character), so
-  /// an all-digit final label marks a version number, decimal, or IP-like
-  /// token rather than a domain. A purely structural check otherwise
-  /// generalizes to every user's vocabulary rather than the ten TLDs this
-  /// app happens to vet for URL recognition elsewhere.
+  /// "VersionOne.2" before a first guard existed, and a looser
+  /// "not all-digit" version of that guard still let "v1.2beta" and
+  /// "v1.2.3rc1" through (Codex review round 6, P2: a rejected label needs
+  /// to catch ALPHANUMERIC version/build tails, not only purely-numeric
+  /// ones). The exclusion this function makes is therefore the strictest
+  /// one that still matches real DNS policy rather than an arbitrary
+  /// tightening: a real TLD label is ALL LETTERS -- current ICANN policy
+  /// bars digits and hyphens from the TLD position entirely (unlike an
+  /// ordinary hostname label, which permits both) -- so a final label
+  /// carrying so much as one digit marks a version number, decimal, or
+  /// IP-like token rather than a domain. A purely structural check
+  /// otherwise generalizes to every user's vocabulary rather than the ten
+  /// TLDs this app happens to vet for URL recognition elsewhere.
   private static func splitDomainSuffix(_ s: String) -> (bare: String, suffix: String)? {
     guard let firstDot = s.firstIndex(of: "."), firstDot > s.startIndex else { return nil }
     let tail = s[s.index(after: firstDot)...]
@@ -1448,19 +1454,55 @@ public struct WordCorrector: Sendable {
     }
     let labels = tail.split(separator: ".", omittingEmptySubsequences: false)
     guard labels.allSatisfy({ !$0.isEmpty }), let lastLabel = labels.last,
-      !lastLabel.allSatisfy({ $0.isNumber })
+      lastLabel.allSatisfy({ $0.isLetter })
     else {
       return nil
     }
     return (String(s[s.startIndex..<firstDot]), String(s[firstDot...]))
   }
 
-  /// True when `s` itself ends in a domain-shaped suffix -- used to decide
-  /// whether a saved alias/canonical is a domain in its own right, in which
-  /// case a peeled suffix must never be appended to it a second time (Codex
-  /// review, PR for #2281, finding P2 rounds 2-4).
+  /// A curated (not exhaustive) set of real TLDs, deliberately much broader
+  /// than `InverseTextNormalizer.urlTLDAlt`'s original ten entries so common
+  /// ccTLDs (`.us`, `.uk`, `.jp`, ...) are covered, but still a REAL,
+  /// vetted list rather than "any letters after a dot". Read ONLY by
+  /// `isDomainShaped` -- never by `splitDomainSuffix`'s peel trigger, which
+  /// stays purely structural on purpose (see that function's doc comment).
+  ///
+  /// Why two different bars for what looks like the same question (Codex
+  /// review round 6, P1): "is this worth TRYING to peel" tolerates being
+  /// wrong for free -- nothing matches, the untouched token comes back.
+  /// "Should a peeled suffix be SUPPRESSED because the matched canonical is
+  /// already a domain" does not: a purely structural check here means any
+  /// dotted brand name with a plausible-looking suffix -- "Node.js",
+  /// "D3.js", "Vue.js", "Chart.js" are all real, common product names in
+  /// exactly this shape -- gets misclassified as a domain and silently
+  /// swallows a suffix the user actually said ("nodejs.com" -> "Node.js").
+  /// A real TLD list is the only mechanical way to tell "GitHub.com" (a
+  /// domain) from "Node.js" (a product name that happens to end in a
+  /// dot-suffix): both are ALL-LETTERS after the dot, so no structural rule
+  /// -- however tightened -- can separate them.
+  private static let knownDedupTLDs: Set<String> = [
+    "com", "org", "net", "edu", "gov", "mil", "int", "info", "biz", "name",
+    "pro", "coop", "museum", "aero", "jobs", "mobi", "travel", "tel", "asia", "cat", "xxx",
+    "io", "co", "dev", "app", "xyz", "me", "tv", "cc", "ai", "tech",
+    "online", "site", "store", "shop", "cloud", "live", "life", "world", "media", "news",
+    "agency", "studio", "design", "digital", "email", "expert", "guide", "help",
+    "network", "software", "systems", "tools", "works", "so",
+    "us", "uk", "ca", "au", "de", "fr", "jp", "cn", "in", "br",
+    "ru", "es", "it", "nl", "se", "no", "dk", "fi", "pl", "ch",
+    "at", "be", "pt", "gr", "ie", "nz", "sg", "hk", "tw", "kr",
+    "mx", "ar", "za", "il", "ae", "sa", "tr", "id", "my", "th",
+    "ph", "vn", "eu", "uy", "cl", "pe", "ec", "ve", "cr",
+  ]
+
+  /// True when `s` itself ends in a REAL domain-shaped suffix -- used to
+  /// decide whether a saved alias/canonical is a domain in its own right,
+  /// in which case a peeled suffix must never be appended to it a second
+  /// time (Codex review, PR for #2281, finding P2 rounds 2-4, 6).
   private static func isDomainShaped(_ s: String) -> Bool {
-    Self.splitDomainSuffix(s) != nil
+    guard let split = Self.splitDomainSuffix(s) else { return false }
+    let lastLabel = split.suffix.split(separator: ".").last?.lowercased() ?? ""
+    return Self.knownDedupTLDs.contains(lastLabel)
   }
 
   private func stripPunctuation(_ token: String) -> String {

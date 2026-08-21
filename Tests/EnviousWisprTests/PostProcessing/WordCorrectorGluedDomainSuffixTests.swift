@@ -361,4 +361,38 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "192.168.1.1")
     #expect(result.replacements == 0)
   }
+
+  // MARK: Codex review round 6 findings -- a dotted PRODUCT name is not a
+  // domain even though it structurally looks like one, and an alphanumeric
+  // version/build tail is not a domain suffix either.
+
+  private static let nodeJSAlias = CustomWord(canonical: "Node.js", aliases: ["nodejs"])
+
+  @Test("A dotted product-name canonical does NOT suppress a real glued TLD")
+  func dottedProductNameCanonicalDoesNotSuppressGluedTLD() {
+    // Codex review round 6, P1: "Node.js" is a real, common product name
+    // that happens to end in a dot-suffix ("D3.js", "Vue.js", "Chart.js"
+    // are the same shape), but it is not a domain. The old purely
+    // structural `isDomainShaped` treated any all-letters tail as a domain
+    // and suppressed the user's own glued ".com", producing "Node.js"
+    // instead of "Node.js.com". Only a REAL TLD suppresses the reattach.
+    let result = corrected("nodejs.com", [Self.nodeJSAlias])
+    #expect(result.text == "Node.js.com")
+    #expect(result.replacements == 1)
+  }
+
+  @Test("An alphanumeric version/build tail is never treated as a domain suffix")
+  func alphanumericVersionTailIsNeverADomainSuffix() {
+    // Codex review round 6, P2: the round-5 fix excluded only PURELY
+    // numeric tails, so "v1.2beta" and "v1.2.3rc1" -- ordinary version/
+    // build strings with letters mixed in -- still slipped through and
+    // rewrote to "VersionOne.2beta" / "VersionOne.2.3rc1". A real TLD
+    // label is ALL LETTERS (current ICANN policy bars digits from the TLD
+    // position entirely), so any digit in the final label now excludes it.
+    for input in ["v1.2beta", "v1.2.3rc1", "v1.0", "v1.2rc"] {
+      let result = corrected(input, [Self.versionOneAlias])
+      #expect(result.text == input, "'\(input)' must stay unchanged, got '\(result.text)'")
+      #expect(result.replacements == 0)
+    }
+  }
 }
