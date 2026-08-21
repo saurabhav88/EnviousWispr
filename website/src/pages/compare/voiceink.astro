@@ -424,12 +424,12 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Audio processing</td>
             <td><span class="table-highlight">On-device</span> (Apple Silicon)</td>
-            <td>On-device (whisper.cpp)</td>
+            <td>On-device with whisper.cpp or Parakeet; Cohere Transcribe is a cloud option</td>
           </tr>
           <tr>
             <td>Audio leaves your Mac</td>
             <td><span class="table-check">Never.</span> If you enable cloud AI polish, only the text transcript is sent.</td>
-            <td><span class="table-check">Never.</span> Fully offline capable.</td>
+            <td>Not with whisper.cpp or Parakeet. Selecting Cohere Transcribe likely sends audio to Cohere's API.</td>
           </tr>
           <tr>
             <td>Works offline</td>
@@ -483,7 +483,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Clipboard preservation</td>
-            <td><span class="table-check">Yes</span> (clipboard saved before paste, restored after)</td>
+            <td><span class="table-check">Yes,</span> when enabled and no other app changes the clipboard first</td>
             <td>Not documented</td>
           </tr>
           <tr>
@@ -649,8 +649,8 @@ const faqJsonLd = JSON.stringify({
   <div class="container">
     <div class="section-head reveal">
       <div class="section-label-pill amber">Speed</div>
-      <h2 class="section-title">Parakeet TDT vs whisper.cpp</h2>
-      <p class="section-sub">Both run on-device, but the engine matters. Parakeet TDT is a CTC-Transducer model optimized for Apple's Neural Engine. It is measurably faster for English transcription.</p>
+      <h2 class="section-title">Tuned default vs pick-your-own</h2>
+      <p class="section-sub">Both apps can run Parakeet on-device now, but the setup differs. EnviousWispr defaults to Parakeet TDT, tuned for Apple's Neural Engine, so you get the speed without configuring anything. VoiceInk offers Parakeet, whisper.cpp, and Cohere Transcribe as options you choose yourself.</p>
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
