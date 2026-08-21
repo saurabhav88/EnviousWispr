@@ -165,7 +165,12 @@ struct OverlayPlacementStateTests {
       currentFrame: live, on: Self.fullScreened)
 
     #expect(moved?.origin.y == 0)
-    #expect(moved?.origin.x == 300, "the space-change re-anchor also moved the pill sideways")
+    // Shipped `:381` RECENTRES on this path. An earlier version of this test
+    // asserted the x was preserved, which encoded my own invented behaviour
+    // rather than the shipped rule. It is not the #2195 defect: this path runs
+    // only for an `.automatic` anchor, which is centred by definition, and it
+    // returns early for a pill the user moved.
+    #expect(moved?.origin.x == Self.fullScreened.visibleFrame.midX - 92.5)
   }
 
   @Test("a Top pill does not re-anchor on a space change")
@@ -190,16 +195,44 @@ struct OverlayPlacementStateTests {
     #expect(placement.isUserAnchored(on: Self.screen.id))
   }
 
-  @Test("a space change on a DIFFERENT screen leaves this pill alone")
-  func otherScreenSpaceChangeIsIgnored() {
+  /// **Inverted after review.** An earlier version asserted a different screen
+  /// was ignored, which would have stranded the pill on the old display.
+  /// Shipped `:376-378` re-resolves the target screen every time — mouse-
+  /// containing, then main, then first — and re-anchors onto it.
+  @Test("a Bottom pill follows the resolved target screen")
+  func spaceChangeFollowsTheTargetScreen() {
     var placement = OverlayPlacementState()
     placement.beginFresh(at: .bottom, screen: Self.screen)
     let other = ScreenGeometry(
       id: ScreenID(rawValue: 2),
       frame: CGRect(x: 1512, y: 0, width: 1920, height: 1080),
-      visibleFrame: CGRect(x: 1512, y: 85, width: 1920, height: 960),
-      hasFullScreenSpace: true)
+      visibleFrame: CGRect(x: 1512, y: 85, width: 1920, height: 960))
     let live = CGRect(x: 300, y: 85, width: 185, height: 44)
-    #expect(placement.repositionedFrameForSpaceChange(currentFrame: live, on: other) == nil)
+
+    let moved = placement.repositionedFrameForSpaceChange(currentFrame: live, on: other)
+
+    #expect(moved?.origin.x == other.visibleFrame.midX - 92.5, "the pill was stranded")
+    #expect(moved?.origin.y == 85)
+  }
+
+  @Test("a dragged Top pill keeps its Top edge for re-anchoring")
+  func draggedPillKeepsItsEdge() {
+    // The anchor used to drop the edge, so a dragged TOP pill fell through to
+    // the Bottom continuing rule and stopped re-anchoring by top edge or centre.
+    var placement = OverlayPlacementState()
+    placement.beginFresh(at: .top, screen: Self.screen)
+    placement.userDidMove(to: CGPoint(x: 300, y: 700), screen: Self.screen)
+    let live = CGRect(x: 300, y: 700, width: 185, height: 44)
+
+    let next = placement.frame(
+      for: CGSize(width: 185, height: 92),
+      continuity: .continuing(
+        currentFrame: live, anchoredScreen: Self.screen.id, outgoingWasContentSized: true),
+      environment: Self.screen)
+
+    // Top rule, content-sized: preserve the TOP edge. The Bottom rule would have
+    // preserved the bottom origin instead, moving the pill down by 48 points.
+    #expect(next.maxY == live.maxY)
+    #expect(next.origin.x == live.origin.x)
   }
 }

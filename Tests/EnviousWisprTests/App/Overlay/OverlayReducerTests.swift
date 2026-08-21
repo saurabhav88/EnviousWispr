@@ -74,6 +74,9 @@ struct OverlayReducerTests {
       OverlayRequest.importStatus(message: "x"),
       .bluetoothAwareness,
       .accessibilityToast,
+      .passiveChip(
+        payload: LanguageChipPayload(
+          lang: "es", displayName: "Spanish", state: .askToLock, generation: 1)),
     ])
   func everyFeatureObeysTheRule(request: OverlayRequest) {
     // The defect this guards is not one feature getting it wrong; it is the four
@@ -226,13 +229,19 @@ struct OverlayReducerTests {
 
   // MARK: - The reserved interaction frame
 
-  @Test("only the recording pill reserves a fixed height")
+  @Test("only the NON-PREVIEW recording pill reserves a fixed height")
   func onlyRecordingReservesAFixedFrame() {
     // #1060: the 92-point recording frame is deliberate — it holds the normal
     // 185x44, the locked 120x64 and the in-panel notice expansion without
     // resizing on every morph. This migration does NOT make every kind
     // content-sized, and asserting that here is what stops a later chunk
     // "simplifying" it away.
+    //
+    // Scoped to NON-PREVIEW deliberately. With Live Preview on, the shipped
+    // path is content-sized (`RecordingOverlayPanel.swift:855-861`), so the
+    // earlier unscoped name claimed more than the code does. The reducer cannot
+    // yet tell the two apart — the preview flag is a provider the director owns
+    // — so C3 adds that branch and this test gains its pair.
     var r = Self.makeReducer()
     _ = r.reduce(.pipeline(.recording(audioLevel: 0.1)))
     #expect(r.state.current?.reservesFixedHeight == 92)
@@ -240,5 +249,59 @@ struct OverlayReducerTests {
     _ = r.reduce(.pipeline(.hidden))
     _ = r.reduce(.pipeline(.clipboardFallback))
     #expect(r.state.current?.reservesFixedHeight == nil)
+  }
+
+  // MARK: - Regressions cloud review found in the first version of this chunk
+
+  /// **The expensive one.** Shipped `hide()` sets `currentIntent = .hidden`
+  /// (`RecordingOverlayPanel.swift:1912`, `:1924`), so once a notice
+  /// auto-dismisses the pipeline is idle and features may take the slot again.
+  /// The first reducer left `pipelineIntent` at `.warning` forever, so EVERY
+  /// feature pill was blocked for the rest of the session after any pipeline
+  /// notice — the arbitration rule this reducer exists to state, failing in the
+  /// direction nothing would ever report.
+  @Test("a feature can take the slot again after a pipeline notice expires")
+  func pipelineReturnsToIdleWhenItsNoticeExpires() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(.warning(reason: .polishFailed)))
+    let id = try! #require(r.state.current?.id)
+    _ = r.reduce(.expiryFired(id))
+
+    #expect(
+      r.reduce(.featureRequest(.importStatus(message: "Imported 12 words"))).didChange,
+      "features stayed blocked after a pipeline notice expired")
+  }
+
+  /// A `.untilReplaced` presentation has no timer, so an expiry naming it is by
+  /// definition stale. The first version dismissed it, which would close the
+  /// recording pill mid-dictation.
+  @Test("an expiry cannot dismiss a presentation that has no timer")
+  func expiryCannotDismissAPersistentPresentation() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(.recording(audioLevel: 0.4)))
+    let id = try! #require(r.state.current?.id)
+
+    let plan = r.reduce(.expiryFired(id))
+
+    #expect(plan.didChange == false)
+    #expect(r.state.current?.id == id, "a stray expiry closed the live recording pill")
+  }
+
+  /// Hover must not suppress the expiry of a notice that is not hover-pausable.
+  /// The first version recorded hover unconditionally and only then checked
+  /// `pausesOnHover`, so a stray pointer over an ordinary notice left it on
+  /// screen until something replaced it. No existing test reached it because
+  /// every hover case in this suite used a pausable kind.
+  @Test("hovering a non-pausable notice does not stop it expiring")
+  func hoverDoesNotPauseAnOrdinaryNotice() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(.error(reason: .asrFailed)))
+    let id = try! #require(r.state.current?.id)
+
+    _ = r.reduce(.hoverChanged(id, true))
+    let plan = r.reduce(.expiryFired(id))
+
+    #expect(plan.didChange, "a hover kept a non-pausable notice on screen indefinitely")
+    #expect(r.state.current == nil)
   }
 }

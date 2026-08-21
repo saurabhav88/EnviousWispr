@@ -202,9 +202,17 @@ struct OverlayPresentation: Equatable, Sendable {
   let id: PresentationID
   let content: OverlayContent
   let expiry: OverlayExpiry
-  /// The width the presentation asks for. Height is measured from content
-  /// except where a kind pins it — see `OverlayPlacementState`.
-  let requestedWidth: CGFloat
+  /// The width the presentation asks for, or `nil` when the presentation
+  /// MEASURES its own width and no literal is correct.
+  ///
+  /// Escape Recovery is the `nil` case and it is not an edge case being tidied
+  /// away: `PillMetrics.pillWidth` is computed from the title font's text
+  /// metrics at runtime (`EscapeRecoveryPillView.swift:214`), so any number
+  /// written here would be a plausible-looking literal that silently disagrees
+  /// with the shipped pill on a different system font or a localised title. The
+  /// first version of this table carried `320` for it. C3's measurement model
+  /// resolves `nil`; nothing may substitute a default.
+  let requestedWidth: CGFloat?
   /// True when this presentation must reserve a fixed interaction frame rather
   /// than shrink to its content. **Only the non-preview recording pill sets
   /// this**, and its 92-point frame is deliberate: it reserves room for the
@@ -215,7 +223,7 @@ struct OverlayPresentation: Equatable, Sendable {
 
   init(
     id: PresentationID, content: OverlayContent, expiry: OverlayExpiry,
-    requestedWidth: CGFloat, reservesFixedHeight: CGFloat? = nil
+    requestedWidth: CGFloat?, reservesFixedHeight: CGFloat? = nil
   ) {
     self.id = id
     self.content = content

@@ -24,7 +24,11 @@ struct OverlayPlacementState: Equatable {
   /// deliberately not used.
   enum Anchor: Equatable {
     case automatic(OverlayPillPosition, ScreenID)
-    case user(CGPoint, ScreenID)
+    /// Carries the edge the pill was created with. The first version dropped it,
+    /// so a dragged pill lost its Top/Bottom provenance and every continuing
+    /// transition fell through to the Bottom rule — silently changing how a
+    /// dragged Top pill re-anchors. Cloud review found it.
+    case user(CGPoint, OverlayPillPosition, ScreenID)
   }
 
   private(set) var anchor: Anchor?
@@ -45,12 +49,12 @@ struct OverlayPlacementState: Equatable {
   }
 
   mutating func userDidMove(to origin: CGPoint, screen: ScreenGeometry) {
-    anchor = .user(origin, screen.id)
+    anchor = .user(origin, anchorPosition, screen.id)
   }
 
   /// True when the pill is where the user put it, on this screen.
   func isUserAnchored(on screen: ScreenID) -> Bool {
-    if case .user(_, let anchored) = anchor { return anchored == screen }
+    if case .user(_, _, let anchored) = anchor { return anchored == screen }
     return false
   }
 
@@ -110,30 +114,48 @@ struct OverlayPlacementState: Equatable {
   /// (`RecordingOverlayPanel.swift:354-395`, measured 2026-07-17).
   ///
   /// A user-dragged pill is left alone: the user's position outranks our rule.
+  /// `screen` is the CURRENT target screen the caller resolved, not the screen
+  /// the pill was anchored to. Shipped `:376-378` re-resolves the target every
+  /// time (mouse-containing screen, then main, then first) and re-anchors onto
+  /// it, so a Space change that also moves the pill's context moves the pill.
+  /// The first version rejected a different screen, which would have stranded
+  /// the pill on the old one.
   func repositionedFrameForSpaceChange(
     currentFrame: CGRect, on screen: ScreenGeometry
   ) -> CGRect? {
-    guard case .automatic(let position, let anchoredScreen) = anchor,
-      position == .bottom, anchoredScreen == screen.id
-    else { return nil }
+    guard case .automatic(let position, _) = anchor, position == .bottom else { return nil }
 
+    // Shipped `:381` recentres X here rather than preserving it. That is NOT the
+    // #2195 defect wearing a different hat: this path only ever runs for an
+    // `.automatic` anchor, which is centred by definition, and the guard above
+    // returns early for a pill the user moved. Preserving X, as the first
+    // version did, is indistinguishable on the same screen and WRONG when the
+    // target screen changed.
+    let x = screen.visibleFrame.midX - currentFrame.width / 2
     let requestedY = Self.freshOriginY(for: .bottom, on: screen)
-    guard abs(requestedY - currentFrame.origin.y) > 0.5 else { return nil }
-    return CGRect(
-      x: currentFrame.origin.x,
-      y: Self.clampedOriginY(requestedY: requestedY, height: currentFrame.height, on: screen),
-      width: currentFrame.width, height: currentFrame.height)
+    let y = Self.clampedOriginY(
+      requestedY: requestedY, height: currentFrame.height, on: screen)
+    guard abs(x - currentFrame.origin.x) > 0.5 || abs(y - currentFrame.origin.y) > 0.5 else {
+      return nil
+    }
+    return CGRect(x: x, y: y, width: currentFrame.width, height: currentFrame.height)
   }
 
   // MARK: - Rules
 
+  /// The edge this pill was created with, whether or not the user has since
+  /// moved it. The first version returned `.bottom` for a `.user` anchor on the
+  /// argument that a dragged pill preserves its own origin anyway — which is
+  /// true of the BOTTOM branch and false of the Top one, where a dragged Top
+  /// pill would have stopped re-anchoring by top-edge or centre. That is the
+  /// shape of argument this repo keeps recording: correct about the case in
+  /// front of you, silently wrong about its twin.
   private var anchorPosition: OverlayPillPosition {
-    if case .automatic(let position, _) = anchor { return position }
-    // A user-anchored pill preserves its own origin on a continuing
-    // presentation, so the Top/Bottom re-anchor rule never applies to it; the
-    // value here only selects which continuing branch runs, and Bottom's
-    // "preserve the origin" is the correct behaviour for a dragged pill.
-    return .bottom
+    switch anchor {
+    case .automatic(let position, _): return position
+    case .user(_, let position, _): return position
+    case nil: return .bottom
+    }
   }
 
   /// Ported from `computeRequestedY` (`RecordingOverlayPanel.swift:398-413`).

@@ -210,22 +210,42 @@ struct OverlayReducer {
 
   private mutating func reduceHover(_ id: PresentationID, _ hovering: Bool) -> OverlayPlan {
     guard isCurrent(id), let current = state.current else { return .noChange }
-    state.set(current: current, isHovered: hovering)
-    // Hover pauses expiry; leaving re-arms it from full.
-    guard case .after(let seconds, let pausesOnHover) = current.expiry, pausesOnHover else {
+    // **Only a hover-PAUSABLE presentation records hover at all.** The first
+    // version set `isHovered` unconditionally and only then checked
+    // `pausesOnHover`, so a stray hover over an ordinary notice suppressed its
+    // expiry permanently — it would sit on screen until something replaced it.
+    // Cloud review found it; no test reached it because every hover case in the
+    // suite used a pausable kind.
+    guard case .after(let seconds, true) = current.expiry, state.isHovered != hovering else {
       return .noChange
     }
+    state.set(current: current, isHovered: hovering)
+    // Leaving re-arms from FULL rather than resuming the remainder, matching
+    // both shipped hover-pausing pills (`EscapeRecoveryPillView.swift:21`,
+    // `LanguageChipView`).
     return hovering
-      ? OverlayPlan(presentation: current, didChange: false)
+      ? .noChange
       : OverlayPlan(
         presentation: current, didChange: false, armExpiry: (id: current.id, seconds: seconds))
   }
 
   private mutating func reduceExpiry(_ id: PresentationID) -> OverlayPlan {
-    guard isCurrent(id) else { return .noChange }
+    guard isCurrent(id), let current = state.current else { return .noChange }
+    // A `.untilReplaced` presentation has no timer, so an expiry naming it is
+    // by definition stale — a timer armed for a PREVIOUS occupant that happened
+    // to reuse this id, or a caller bug. The first version dismissed it, which
+    // would silently close the recording pill mid-dictation.
+    guard case .after = current.expiry else { return .noChange }
     // A hovered presentation does not expire. Re-arming happens on hover exit.
     guard !state.isHovered else { return .noChange }
-    state.set(current: nil, isHovered: false)
+    // **The pipeline returns to idle, and the first version did not do this.**
+    // Shipped `hide()` sets `currentIntent = .hidden` (`:1912`, `:1924`), so
+    // once a warning or error notice auto-dismisses the pipeline is idle again
+    // and features may take the slot. Without it, `pipelineIntent` stayed at
+    // `.warning` forever and EVERY feature pill was blocked for the rest of the
+    // session — the arbitration rule this reducer exists to state, failing open
+    // in the direction nothing would ever report.
+    state.set(current: nil, pipelineIntent: .hidden, isHovered: false)
     return OverlayPlan(presentation: nil, didChange: true)
   }
 
@@ -236,9 +256,14 @@ struct OverlayReducer {
     return (id: p.id, seconds: seconds)
   }
 
-  /// The shipped widths and dwells, gathered. Values are carried over from the
-  /// panel's own `transitionTo*` methods rather than chosen here; C4 is where
-  /// each is checked against its origin call site.
+  /// The shipped widths and dwells, gathered.
+  ///
+  /// **Every value here was MEASURED at its shipped call site, and the first
+  /// version of this table was not.** It was written from the design and
+  /// described in the commit as "carried over", which was false: eleven of the
+  /// fifteen widths and six of the dwells were wrong. Cloud review caught it by
+  /// opening the panel and reading them. The sites are cited per row so the next
+  /// reader can re-check rather than trust this sentence.
   private static func presentation(for intent: OverlayIntent, id: PresentationID)
     -> OverlayPresentation?
   {
@@ -247,87 +272,109 @@ struct OverlayReducer {
       return nil
 
     case .recording(let level):
-      // The ONLY kind that reserves a fixed interaction frame. 92 points is
-      // deliberate: it holds the normal 185x44, the locked 120x64 and the
-      // #1060 in-panel notice expansion without resizing on every morph.
+      // `:878` — the NON-PREVIEW recording pill, and only it, reserves a fixed
+      // 92-point interaction frame: it holds the normal 185x44, the locked
+      // 120x64 and the #1060 notice expansion without resizing on every morph.
+      //
+      // **This is NOT universal, and the first version of this table claimed it
+      // was.** With Live Preview on, `:855-861` takes a different branch —
+      // `fitToContent: true`, content-sized from the first frame so it does not
+      // visibly snap. Whether preview is on is a provider the DIRECTOR owns, so
+      // the reducer cannot decide it here. C3 obligation, recorded rather than
+      // guessed: the director supplies the preview flag and this branch gains a
+      // content-sized variant.
       return OverlayPresentation(
         id: id, content: .recording(audioLevel: level, isLocked: false, notice: nil),
         expiry: .untilReplaced, requestedWidth: 185, reservesFixedHeight: 92)
 
     case .processing(let phase):
-      return notice(id: id, text: DictationNarrator.copy(for: phase), width: 185)
+      return notice(id: id, text: DictationNarrator.copy(for: phase), width: 230)  // :1262
 
     case .clipboardFallback:
+      // `:1262` via `transitionToPolishingNow`, dwell from
+      // `scheduleAutoDismiss`'s own default (`:1048`).
       return notice(
-        id: id, text: DictationNarrator.clipboardFallbackText, width: 260,
-        expiry: .after(seconds: 3))
+        id: id, text: DictationNarrator.clipboardFallbackText, width: 230,
+        expiry: .after(seconds: 2.5))
 
     case .accessibilityToast:
       return notice(
-        id: id, text: DictationNarrator.accessibilityToastText, width: 320,
-        expiry: .after(seconds: 6), isMultiline: true,
+        id: id, text: DictationNarrator.accessibilityToastText, width: 300,  // :1035
+        expiry: .after(seconds: 6), isMultiline: true,  // :1039
         action: (label: "Grant", action: .grantAccessibility))
 
     case .warning(let reason):
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: 260,
-        expiry: .after(seconds: 2.5), severity: .warning)
+        id: id, text: DictationNarrator.copy(for: reason), width: 280,  // :1189
+        expiry: .after(seconds: 2.5), severity: .warning)  // NotificationStyle 2.5
 
     case .error(let reason):
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: 260,
-        expiry: .after(seconds: 3), severity: .error)
+        id: id, text: DictationNarrator.copy(for: reason), width: 280,  // :1189
+        expiry: .after(seconds: 3), severity: .error)  // NotificationStyle 3.0
 
     case .advisory(let reason):
       // #1891: deliberately NOT `.error`. Multiline, and a dwell long enough
       // to read the sentence.
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: 320,
-        expiry: .after(seconds: 6), isMultiline: true)
+        id: id, text: DictationNarrator.copy(for: reason), width: 360,  // advisoryWidth :1207
+        expiry: .after(seconds: 8), isMultiline: true)  // NotificationStyle 8.0
 
     case .interruption(let reason):
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: 260,
-        expiry: .after(seconds: 2), severity: .distress)
+        id: id, text: DictationNarrator.copy(for: reason), width: 280,  // :1189
+        expiry: .after(seconds: 2), severity: .distress)  // NotificationStyle 2.0
 
     case .passiveChip(let payload):
       return OverlayPresentation(
         id: id, content: .languageChip(payload: payload),
-        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: 320)
+        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: 340)  // :1721
 
     case .cachingModel(let engineLabel):
       return notice(
         id: id, text: DictationNarrator.coldStartTitle,
-        secondary: DictationNarrator.coldStartSubtitle(engineLabel: engineLabel), width: 260,
-        expiry: .after(seconds: 2))
+        secondary: DictationNarrator.coldStartSubtitle(engineLabel: engineLabel),
+        width: 300,  // :641
+        expiry: .after(seconds: 2))  // :642
 
     case .engineReady:
       return notice(
-        id: id, text: DictationNarrator.readyTitle, width: 260,
-        expiry: .after(seconds: 1.5))
+        id: id, text: DictationNarrator.readyTitle, width: 240,  // :656
+        expiry: .after(seconds: 1.5))  // :657
 
     case .recoveringLastRecording:
       return notice(
         id: id, text: DictationNarrator.recoveryTitle, secondary: DictationNarrator.recoverySubtitle,
-        width: 320,
-        expiry: .untilReplaced, isMultiline: true,
+        width: 320,  // :688
+        // `:689` gives it a 6-second dwell. The first version said `.untilReplaced`,
+        // which would have left the recovery pill on screen forever.
+        expiry: .after(seconds: 6), isMultiline: true,
         action: (label: "Discard", action: .discardRecovery))
 
     case .recoverySucceeded:
       return notice(
         id: id, text: DictationNarrator.recoverySucceededTitle,
-        secondary: DictationNarrator.recoverySucceededSubtitle, width: 260,
-        expiry: .after(seconds: 2))
+        secondary: DictationNarrator.recoverySucceededSubtitle, width: 300,  // :674
+        expiry: .after(seconds: 3))  // :675
 
     case .bluetoothAwareness:
       return OverlayPresentation(
-        id: id, content: .bluetoothAwareness, expiry: .after(seconds: 6, pausesOnHover: true),
+        // `:1790` calls `showPanel` with NO `scheduleAutoDismiss`: the card is
+        // PERSISTENT until something replaces it. The first version gave it a
+        // 6-second dwell, which would have made it vanish on its own.
+        id: id, content: .bluetoothAwareness, expiry: .untilReplaced,
         requestedWidth: 320)
 
     case .escapeRecovery(let transcriptID):
       return OverlayPresentation(
+        // `EscapeRecoveryPillView.dwellSeconds = 3.0`, hover-pausable. The VIEW
+        // owns this dwell today because a panel-level timer cannot be paused by
+        // a hover only the view sees — the two would race and the hover would
+        // appear to do nothing (`:1627`). Once the director owns the single
+        // expiry, that reason is gone and this becomes an ordinary hover-pausing
+        // expiry; C4 removes the view-owned task.
         id: id, content: .escapeRecovery(transcriptID: transcriptID),
-        expiry: .untilReplaced, requestedWidth: 320)
+        expiry: .after(seconds: 3, pausesOnHover: true), requestedWidth: nil)
     }
   }
 
@@ -338,15 +385,15 @@ struct OverlayReducer {
     case .importStatus(let message):
       return OverlayPresentation(
         id: id, content: .notice(NoticeModel(text: message, isMultiline: true)),
-        expiry: .after(seconds: 4), requestedWidth: 320)
+        expiry: .after(seconds: 3), requestedWidth: 320)  // :1105, :1148
     case .bluetoothAwareness:
       return OverlayPresentation(
-        id: id, content: .bluetoothAwareness, expiry: .after(seconds: 6, pausesOnHover: true),
-        requestedWidth: 320)
+        id: id, content: .bluetoothAwareness, expiry: .untilReplaced,
+        requestedWidth: 320)  // :1790 — persistent
     case .passiveChip(let payload):
       return OverlayPresentation(
         id: id, content: .languageChip(payload: payload),
-        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: 320)
+        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: 340)  // :1721
     case .accessibilityToast:
       return OverlayPresentation(
         id: id,
@@ -354,12 +401,12 @@ struct OverlayReducer {
           NoticeModel(
             text: DictationNarrator.accessibilityToastText, isMultiline: true,
             action: (label: "Grant", action: .grantAccessibility))),
-        expiry: .after(seconds: 6), requestedWidth: 320)
+        expiry: .after(seconds: 6), requestedWidth: 300)  // :1035, :1039
     }
   }
 
   private static func notice(
-    id: PresentationID, text: String, secondary: String? = nil, width: CGFloat,
+    id: PresentationID, text: String, secondary: String? = nil, width: CGFloat?,
     expiry: OverlayExpiry = .untilReplaced, severity: NoticeModel.Severity = .neutral,
     isMultiline: Bool = false, action: (label: String, action: OverlayAction)? = nil
   ) -> OverlayPresentation {
