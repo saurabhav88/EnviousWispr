@@ -499,8 +499,8 @@ const faqJsonLd = JSON.stringify({
             <td>Not specified</td>
           </tr>
           <tr>
-            <td>GPU acceleration</td>
-            <td>Apple Neural Engine (Apple Silicon only)</td>
+            <td>Where transcription runs</td>
+            <td>Apple Neural Engine (Parakeet) or Apple GPU (WhisperKit), Apple Silicon only</td>
             <td><span class="table-check">Yes</span> (Whisper models, on Intel/AMD/NVIDIA GPUs on Windows and Linux)</td>
           </tr>
           <tr>
@@ -599,7 +599,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is processed by the Neural Engine on your Apple Silicon chip. Nothing is uploaded.</div>
+          <div>Audio is processed on-device: the Apple Neural Engine for Parakeet, the Apple GPU for WhisperKit, depending on which you've selected. Nothing is uploaded.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -804,6 +804,7 @@ const faqJsonLd = JSON.stringify({
     <div style="display: flex; flex-wrap: wrap; gap: 10px;">
       <a href="/compare/fluidvoice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs FluidVoice</a>
       <a href="/compare/juno/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Juno</a>
+      <a href="/compare/typewhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs TypeWhisper</a>
       <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Superwhisper</a>
       <a href="/compare/voiceink/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs VoiceInk</a>
       <a href="/compare/macwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs MacWhisper</a>

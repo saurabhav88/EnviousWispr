@@ -6,12 +6,12 @@ const siteUrl = 'https://enviouswispr.com';
 const articleJsonLd = JSON.stringify({
   "@context": "https://schema.org",
   "@type": "Article",
-  "headline": "EnviousWispr vs FluidVoice: Free, Open Source Mac Dictation",
-  "description": "Compare EnviousWispr and FluidVoice, two free, GPLv3, on-device Mac dictation apps, each with a custom-tuned AI polish model.",
-  "url": `${siteUrl}/compare/fluidvoice/`,
+  "headline": "EnviousWispr vs TypeWhisper: Free, Open Source Mac Dictation",
+  "description": "Compare EnviousWispr and TypeWhisper, two free, GPLv3, on-device Mac dictation apps with different approaches to AI cleanup and engine choice.",
+  "url": `${siteUrl}/compare/typewhisper/`,
   "image": `${siteUrl}/og-image.png`,
-  "datePublished": "2026-08-21T18:00:00Z",
-  "dateModified": "2026-08-21T18:00:00Z",
+  "datePublished": "2026-08-21T20:00:00Z",
+  "dateModified": "2026-08-21T20:00:00Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -48,8 +48,8 @@ const breadcrumbJsonLd = JSON.stringify({
     {
       "@type": "ListItem",
       "position": 3,
-      "name": "EnviousWispr vs FluidVoice",
-      "item": `${siteUrl}/compare/fluidvoice/`,
+      "name": "EnviousWispr vs TypeWhisper",
+      "item": `${siteUrl}/compare/typewhisper/`,
     },
   ],
 });
@@ -60,26 +60,26 @@ const faqJsonLd = JSON.stringify({
   "mainEntity": [
     {
       "@type": "Question",
-      "name": "Is EnviousWispr free, like FluidVoice?",
+      "name": "Is EnviousWispr free, like TypeWhisper?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. Both EnviousWispr and FluidVoice are completely free, with no subscription and no account required. Both are also open source under the same license, GPLv3, so you can read the code that runs on your Mac."
+        "text": "Yes. TypeWhisper's core app is free and open source under GPLv3, the same license we use, with core dictation, its speech engines, and its Workflows automation system all included at no cost. TypeWhisper also sells a Commercial license, starting around 5 EUR a month, that unlocks Cloud Folder Sync and Automatic Correction Learning and lets a business use it under non-GPL terms. EnviousWispr has no paid tier at all."
       }
     },
     {
       "@type": "Question",
-      "name": "How is EnviousWispr different from FluidVoice?",
+      "name": "How is EnviousWispr different from TypeWhisper?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation, so this is not a case where one app has polish and the other does not. The differences are elsewhere. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice offers a choice of five transcription engines (Nemotron, Parakeet, Cohere, Whisper, and Apple Speech); EnviousWispr offers two, Parakeet TDT and WhisperKit, switched manually in Settings. EnviousWispr adds Escape Recovery, which can keep a dictation you cancel by accident, something not documented on FluidVoice's side."
+        "text": "Both are GPLv3, free at the core, and run on-device. TypeWhisper offers the widest engine choice we found in any competitor: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines on Windows, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and WhisperKit, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only."
       }
     },
     {
       "@type": "Question",
-      "name": "Does FluidVoice have AI polish like EnviousWispr's EG-1?",
+      "name": "Does TypeWhisper have AI cleanup like EnviousWispr's EG-1?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. FluidVoice ships its own model, called Fluid Intelligence or Fluid-1, fine-tuned specifically for cleaning up dictation, the same way our EG-1 is. Neither app asks you to write your own prompt; both ship a working default. The main difference is disclosure: EG-1's license and its base model (a fine-tune of Qwen3-4B-Instruct-2507) are published in our repository. FluidVoice's Fluid-1 runtime and model are not part of its GPLv3 app code and are not publicly documented in the same way."
+        "text": "TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM (its changelog references OpenAI and Groq) for cleanup, translation, or formatting, plus a separate Dictionary Autocorrection feature reserved for its paid Commercial license. We could not confirm from TypeWhisper's public documentation whether a working cleanup workflow is pre-configured out of the box or needs to be set up. EG-1 is purpose-built for dictation cleanup, ships with the app, and needs no setup or prompt writing."
       }
     },
     {
@@ -92,26 +92,26 @@ const faqJsonLd = JSON.stringify({
     },
     {
       "@type": "Question",
-      "name": "Is EnviousWispr open source like FluidVoice?",
+      "name": "Is EnviousWispr open source like TypeWhisper?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes, and under the exact same license. Both EnviousWispr and FluidVoice's app code are licensed under the GNU General Public License v3 (GPLv3), an OSI-approved copyleft license. In both cases, the polish model itself sits outside that license under its own separate terms: our EG-1 under the EG-1 Community Model License, and FluidVoice's Fluid-1 under terms it has not published in the same place as its app code."
+        "text": "Yes, and under the same license. Both EnviousWispr and TypeWhisper's core app are licensed under the GNU General Public License v3 (GPLv3). TypeWhisper also offers a paid Commercial license for organizations that need non-GPL terms; EnviousWispr has no such tier and no non-GPL option."
       }
     },
     {
       "@type": "Question",
-      "name": "Can I import my FluidVoice custom words into EnviousWispr?",
+      "name": "Can I import my TypeWhisper custom words into EnviousWispr?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of FluidVoice, without changing FluidVoice's own files, and shows you every word it found before anything joins your library. It also imports from Wispr Flow, Superwhisper, Handy, TypeWhisper, Spokenly, Juno, and Vox."
+        "text": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of TypeWhisper, without changing TypeWhisper's own files, and shows you every word it found before anything joins your library. Entries you switched off in TypeWhisper stay off, and per-word case sensitivity comes across; TypeWhisper's match-strictness setting does not. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, Spokenly, Juno, and Vox."
       }
     },
     {
       "@type": "Question",
-      "name": "What macOS version do I need for each app?",
+      "name": "Does TypeWhisper run on Windows?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "EnviousWispr needs macOS 14 Sonoma or later. FluidVoice needs macOS 15 Sequoia or later, one version newer. Both need Apple Silicon for their primary engines, though FluidVoice also supports Intel Macs through its Whisper option."
+        "text": "Yes, with its own dedicated Windows build, separate from the macOS app but sharing most of its features. EnviousWispr is macOS only, on Apple Silicon."
       }
     },
     {
@@ -119,23 +119,15 @@ const faqJsonLd = JSON.stringify({
       "name": "Which speech engines does each app use?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages, switched manually under Settings, Transcription. FluidVoice offers a choice of five: Nemotron (40 languages), Parakeet (25 languages), Cohere (14 languages), Whisper (99 languages), and Apple Speech (your Mac's installed languages), and you choose which one to use."
+        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, plus ONNX-based engines on Windows, with cloud engines available through add-ons."
       }
     },
     {
       "@type": "Question",
-      "name": "Does FluidVoice run on Windows or iOS?",
+      "name": "Can I switch from TypeWhisper to EnviousWispr easily?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Not yet. FluidVoice is macOS only today. Its own GitHub repository states Windows and iOS support is planned but not shipped as of August 2026. EnviousWispr is also macOS only, on Apple Silicon specifically."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I switch from FluidVoice to EnviousWispr easily?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your FluidVoice custom words across in one pass. There is no other data to migrate. Both apps work in any text field on macOS, so nothing about your workflow has to change."
+        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your TypeWhisper custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS."
       }
     }
   ]
@@ -143,11 +135,11 @@ const faqJsonLd = JSON.stringify({
 ---
 
 <BaseLayout
-  title="FluidVoice vs EnviousWispr: Free Mac Dictation, Both GPLv3"
-  description="Compare FluidVoice and EnviousWispr, two free, GPLv3, on-device Mac dictation apps, each with a custom-tuned AI polish model. See where the real differences are."
+  title="TypeWhisper vs EnviousWispr: Free Mac Dictation, Both GPLv3"
+  description="Compare TypeWhisper and EnviousWispr, two free, GPLv3, on-device Mac dictation apps. TypeWhisper offers the widest engine choice; EnviousWispr ships a measured, purpose-built polish model."
   activePage="compare"
   ogImage="/og-image.png"
-  canonicalPath="/compare/fluidvoice/"
+  canonicalPath="/compare/typewhisper/"
   ogType="article"
 >
   <Fragment slot="head">
@@ -351,18 +343,18 @@ const faqJsonLd = JSON.stringify({
     <div class="vs-badge reveal">
       <span class="vs-brand accent">EnviousWispr</span>
       <span class="vs-circle">VS</span>
-      <span class="vs-brand">FluidVoice</span>
+      <span class="vs-brand">TypeWhisper</span>
     </div>
-    <h1 class="reveal">Free, GPLv3, and each with its own tuned AI model.</h1>
-    <p class="page-header-sub reveal">FluidVoice is the rare case where both sides ship a custom AI model built specifically for cleaning up dictation. This page is about where the two apps genuinely differ: macOS version support, engine choice, and what happens if you cancel by accident.</p>
+    <h1 class="reveal">Free and open source, like TypeWhisper. Ours needs no setup.</h1>
+    <p class="page-header-sub reveal">TypeWhisper's core app is GPLv3, the same license we use, and its free tier is genuinely generous: seven speech engines, Windows and Mac, and a build-your-own cleanup system called Workflows. EnviousWispr picks two engines for you and ships EG-1, a model built and measured specifically for dictation, with nothing to configure.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        Free, no subscription
+        Free, no paid tier at all
       </span>
       <span class="hero-pill">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        macOS 14+, one version wider
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        No prompt to write, ever
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -393,31 +385,34 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <th scope="col"></th>
             <th scope="col">EnviousWispr</th>
-            <th scope="col">FluidVoice</th>
+            <th scope="col">TypeWhisper</th>
           </tr>
         </thead>
-        <!-- Evidence: FluidVoice claims verified against github.com/altic-dev/FluidVoice (README, repo
-             description) and the GitHub API on 2026-08-21.
+        <!-- Evidence: TypeWhisper claims verified against typewhisper.com, typewhisper.com/en/pricing,
+             typewhisper.com/en/changelog, github.com/TypeWhisper/typewhisper-mac (GitHub API), and our
+             own Smart Import adapter (Sources/EnviousWisprPostProcessing/SmartImportSource.swift) on
+             2026-08-21.
              Sources:
-               - github.com/altic-dev/FluidVoice (accessed 2026-08-21): GPLv3 license (as of 2026-02-23),
-                 10,767 stars, latest release v1.6.9 (2026-08-18), macOS 15.0 (Sequoia) or later required,
-                 Apple Silicon primary with Intel supported via Whisper models, "Windows pre-build available"
-                 and "iOS ... on the way" (not yet shipped as of 2026-08-21), engines: Nemotron (40
-                 languages), Parakeet (25 languages), Cohere (14 languages), Whisper (99 languages), Apple
-                 Speech (system languages), real-time transcription overlay (live preview), Fluid Intelligence
-                 (Fluid-1) AI polish model included free, about 3.5GB download, no cancelled-dictation
-                 recovery documented.
-               - Internal prior research (.claude/knowledge/competitor-fluidvoice.md, 2026-06-23 teardown):
-                 Fluid-1 is a fine-tuned Gemma-based model with a FIXED shipped prompt extracted from the
-                 app binary, not a prompt the user writes; the Fluid-1 runtime and weights are not part of
-                 the GPLv3-licensed app code and are not documented under a public license the way EG-1 is.
-             Confidence: source-verified from FluidVoice's own GitHub repo and prior internal teardown.
-             FluidVoice was not freshly tested firsthand for this page. Last verified: 2026-08-21. -->
+               - typewhisper.com (accessed 2026-08-21): free core under GPLv3, engines (WhisperKit,
+                 Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech on Mac; ONNX-based on
+                 Windows; cloud engines via add-ons), Workflows (configurable LLM cleanup/translation/
+                 formatting, referenced providers include OpenAI and Groq), Dictionary Autocorrection
+                 (Commercial-tier only, learns from confident single-word user edits), live preview engine
+                 override (changelog entry, macOS v1.6.0-daily.20260729).
+               - typewhisper.com/en/pricing (accessed 2026-08-21): Free/GPLv3 core; Commercial Individual
+                 from EUR 5/mo or EUR 99 one-time (Cloud Folder Sync, Automatic Correction Learning,
+                 non-GPL terms, up to 3 devices); Team from EUR 19/mo; Enterprise from EUR 99/mo.
+               - github.com/TypeWhisper/typewhisper-mac (GitHub API, accessed 2026-08-21): GPLv3 license,
+                 1,717 stars.
+             Confidence: source-verified from TypeWhisper's own site, pricing page, changelog, and GitHub
+             repo. We could NOT confirm from public documentation whether a Workflow ships pre-configured
+             for cleanup out of the box, or requires the user to build one; this page does not assert
+             either way. TypeWhisper was not tested firsthand. Last verified: 2026-08-21. -->
         <tbody>
           <tr>
-            <td>Price</td>
-            <td><span class="table-highlight">Free. No subscription.</span></td>
-            <td>Free. No subscription.</td>
+            <td>Price (core app)</td>
+            <td><span class="table-highlight">Free. No paid tier at all.</span></td>
+            <td>Free (GPLv3). Paid Commercial license from EUR 5/mo unlocks non-GPL terms, Cloud Folder Sync, and Automatic Correction Learning.</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -427,37 +422,32 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Source code</td>
             <td><span class="table-highlight"><a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Open source</a></span> (GPLv3)</td>
-            <td>Open source (GPLv3)</td>
-          </tr>
-          <tr>
-            <td>macOS required</td>
-            <td><span class="table-highlight">14 Sonoma or later</span></td>
-            <td>15 Sequoia or later</td>
+            <td>Open source (GPLv3, core)</td>
           </tr>
           <tr>
             <td>Speech engines</td>
             <td><span class="table-highlight">Parakeet TDT v3 + WhisperKit</span>, switch in Settings</td>
-            <td><span class="table-check">Choice of five</span>: Nemotron, Parakeet, Cohere, Whisper, or Apple Speech</td>
+            <td><span class="table-check">Seven options</span>: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, plus ONNX-based engines on Windows</td>
           </tr>
           <tr>
-            <td>AI polish (cleanup after transcription)</td>
-            <td><span class="table-highlight">EG-1</span> (our own tuned model), Apple Intelligence, Ollama, or your own OpenAI, Claude, or Gemini key</td>
-            <td><span class="table-check">Fluid-1</span> (their own tuned model), included at no cost, about 3.5GB download</td>
+            <td>AI cleanup (after transcription)</td>
+            <td><span class="table-highlight">EG-1</span>, purpose-built and measured, ships ready</td>
+            <td>Workflows: configurable, sends your transcript through an LLM you set up (OpenAI, Groq referenced)</td>
           </tr>
           <tr>
             <td>Needs a prompt to be written</td>
-            <td><span class="table-check">No</span>: EG-1 and Apple Intelligence ship with a working default</td>
-            <td><span class="table-check">No</span>: Fluid-1 ships with its own fixed prompt too</td>
+            <td><span class="table-check">No</span></td>
+            <td>Not confirmed either way from public documentation</td>
           </tr>
           <tr>
-            <td>AI polish model's license disclosed</td>
-            <td><span class="table-highlight">Yes</span>: EG-1 Community Model License, published, base model named (Qwen3-4B-Instruct-2507)</td>
-            <td>Not published in the app's own repository as of 2026-08-21</td>
+            <td>Learns your corrections automatically</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, Dictionary Autocorrection, Commercial license only</td>
           </tr>
           <tr>
             <td>Live preview while speaking</td>
             <td><span class="table-check">Yes</span>, off by default</td>
-            <td><span class="table-check">Yes</span>, real-time transcription overlay</td>
+            <td><span class="table-check">Yes</span>, live preview engine override</td>
           </tr>
           <tr>
             <td>Recover a cancelled dictation</td>
@@ -466,8 +456,8 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Custom vocabulary</td>
-            <td><span class="table-check">Yes</span> (names, terms, jargon; imports from 8 other apps, FluidVoice included)</td>
-            <td><span class="table-check">Yes</span> (custom vocabulary file, with alias support per term)</td>
+            <td><span class="table-check">Yes</span> (imports from 8 other apps, TypeWhisper included)</td>
+            <td><span class="table-check">Yes</span>, with per-word case sensitivity and enable/disable state</td>
           </tr>
           <tr>
             <td>Transcription latency</td>
@@ -475,24 +465,14 @@ const faqJsonLd = JSON.stringify({
             <td>Not published</td>
           </tr>
           <tr>
-            <td>Platform support today</td>
+            <td>Platform support</td>
             <td>macOS (Apple Silicon only)</td>
-            <td>macOS (Apple Silicon + Intel via Whisper). Windows and iOS announced, not yet shipped.</td>
-          </tr>
-          <tr>
-            <td>Multi-language</td>
-            <td>25 European (Parakeet), 99 via WhisperKit</td>
-            <td>Up to 99 via Whisper; 40 via Nemotron, 25 via Parakeet, 14 via Cohere, depending on engine chosen</td>
-          </tr>
-          <tr>
-            <td>Text lands in the right app</td>
-            <td><span class="table-check">Yes</span> (target app reactivation via Accessibility API, three-tier paste fallback)</td>
-            <td>Not specified</td>
+            <td><span class="table-check">macOS and Windows</span>, dedicated builds for each</td>
           </tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">FluidVoice claims sourced from github.com/altic-dev/FluidVoice (README, repo description) and the GitHub API, plus prior internal research (2026-06-23). FluidVoice was not tested firsthand for this page. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">TypeWhisper claims sourced from typewhisper.com, its pricing page, its changelog, and the GitHub API. TypeWhisper was not tested firsthand. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -507,29 +487,29 @@ const faqJsonLd = JSON.stringify({
   <div class="container">
     <div class="section-head reveal">
       <div class="section-label-pill green">Why EnviousWispr</div>
-      <h2 class="section-title">Both ship a tuned AI model. Here is what else EnviousWispr adds</h2>
-      <p class="section-sub">FluidVoice built something genuinely impressive in Fluid-1, a model tuned for the exact problem we tuned EG-1 for. This is what separates the two apps around that shared idea.</p>
+      <h2 class="section-title">Both are free and GPLv3. Here is what EnviousWispr adds</h2>
+      <p class="section-sub">TypeWhisper's free tier is unusually generous. This is what separates the two apps beyond that.</p>
     </div>
     <div class="advantages-grid">
       <div class="advantage-card reveal">
-        <div class="advantage-icon">🖥️</div>
-        <div class="advantage-title">Works on an older Mac</div>
-        <p class="advantage-desc">EnviousWispr runs on macOS 14 Sonoma and later. FluidVoice needs macOS 15 Sequoia or later, one version newer. If you have not updated yet, EnviousWispr still works for you.</p>
+        <div class="advantage-icon">🧹</div>
+        <div class="advantage-title">Nothing to configure</div>
+        <p class="advantage-desc">EG-1 ships fine-tuned specifically for dictation cleanup and runs on the same hotkey as transcription. TypeWhisper's Workflows are genuinely flexible, but they are a system you build: pick a provider, write or adapt a workflow, and set it up before you get cleanup.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📊</div>
+        <div class="advantage-title">Cleanup we measure and publish</div>
+        <p class="advantage-desc">EG-1 builds a real bulleted list out of a spoken list 83% of the time, up from under 1% before it was tuned, and correctly keeps only what you meant when you self-correct mid-sentence 78% of the time. We found no equivalent published benchmark for a TypeWhisper Workflow, since results depend on which provider and prompt you set up.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">↩️</div>
         <div class="advantage-title">Undo an accidental cancel</div>
-        <p class="advantage-desc">Escape Recovery keeps a dictation you cancel with your keybind or a triple press, instead of discarding it instantly. Off by default; you choose to turn it on. We found no equivalent documented for FluidVoice.</p>
+        <p class="advantage-desc">Escape Recovery keeps a dictation you cancel with your keybind or a triple press, instead of discarding it instantly. Off by default; you choose to turn it on. We found no equivalent documented for TypeWhisper.</p>
       </div>
       <div class="advantage-card reveal">
-        <div class="advantage-icon">📜</div>
-        <div class="advantage-title">Our polish model's license is public</div>
-        <p class="advantage-desc">EG-1 ships under a published EG-1 Community Model License, and we name its base model, a fine-tune of Qwen3-4B-Instruct-2507. FluidVoice's Fluid-1 model and runtime are not part of its GPLv3 app repository and we found no equivalent public license for the model itself.</p>
-      </div>
-      <div class="advantage-card reveal">
-        <div class="advantage-icon">⚡</div>
-        <div class="advantage-title">0.61s median latency</div>
-        <p class="advantage-desc">Measured in production on Apple Silicon Macs. Parakeet TDT runs on the Neural Engine specifically tuned for fast, accurate dictation, so text appears almost instantly after you stop talking.</p>
+        <div class="advantage-icon">💵</div>
+        <div class="advantage-title">No paid tier, period</div>
+        <p class="advantage-desc">TypeWhisper's GPLv3 core is free, but Cloud Folder Sync, Automatic Correction Learning, and non-GPL terms sit behind a Commercial license starting around EUR 5/mo. EnviousWispr has no paid tier of any kind.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
@@ -538,8 +518,8 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📥</div>
-        <div class="advantage-title">Bring your words across from FluidVoice</div>
-        <p class="advantage-desc">Smart Import reads your custom vocabulary straight out of FluidVoice's own files, without changing them, and shows you every word before anything joins your library. No retyping.</p>
+        <div class="advantage-title">Bring your words across from TypeWhisper</div>
+        <p class="advantage-desc">Smart Import reads your custom vocabulary straight out of TypeWhisper's own files, without changing them, and shows you every word before anything joins your library. No retyping.</p>
       </div>
     </div>
   </div>
@@ -573,25 +553,25 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
-          <div>Polished text is pasted and saved to your local History, on your Mac only. Audio is discarded. Nothing about your content is logged or sent to Envious Labs.</div>
+          <div>Polished text is pasted and saved to your local History, on your Mac only. Audio is discarded.</div>
         </div>
       </div>
       <div class="privacy-card wf reveal">
         <div class="privacy-card-label">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-          FluidVoice
+          TypeWhisper
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">1</div>
-          <div>You speak into your Mac's microphone.</div>
+          <div>You speak into your Mac's or PC's microphone.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is transcribed on-device with your chosen engine (Nemotron, Parakeet, Cohere, Whisper, or Apple Speech).</div>
+          <div>Audio is transcribed on-device with your chosen engine, one of seven on offer.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>Fluid-1, their own tuned model, runs the polish pass on-device, using a fixed prompt they ship rather than one you write.</div>
+          <div>If you have configured a Workflow with a cloud provider, your transcript is sent there with your own key. Local-only engines and workflows keep everything on your machine.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
@@ -627,7 +607,7 @@ const faqJsonLd = JSON.stringify({
         <div class="speed-detail">Immune to bad Wi-Fi</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings. FluidVoice does not publish comparable latency figures.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings. TypeWhisper does not publish comparable latency figures.</p>
   </div>
 </section>
 
@@ -636,29 +616,29 @@ const faqJsonLd = JSON.stringify({
   <div class="container">
     <div class="section-head reveal">
       <div class="section-label-pill">Under the Hood</div>
-      <h2 class="section-title">Two tuned models, two different disclosures</h2>
-      <p class="section-sub">Both apps solved the same problem: a general-purpose transcript needs cleanup a raw ASR model cannot do on its own. The difference is what each project tells you about how.</p>
+      <h2 class="section-title">A toolkit, or a finished tool</h2>
+      <p class="section-sub">TypeWhisper gives you the pieces to build the dictation setup you want. EnviousWispr hands you one that already works.</p>
     </div>
     <div class="deep-dive-grid">
       <div class="deep-dive-card reveal">
         <div class="deep-dive-icon">🔀</div>
-        <div class="deep-dive-title">Two engines to switch between, or five to choose from</div>
+        <div class="deep-dive-title">Seven engines, or two you switch between</div>
         <div class="deep-dive-body">
-          <p>FluidVoice gives you a real menu: Nemotron, Parakeet, Cohere, Whisper, or Apple Speech, each with its own language coverage and speed profile. If you want to hand-tune which engine handles which language, that flexibility is real and it is one of the clearest reasons to pick FluidVoice.</p>
-          <p>EnviousWispr keeps it to two: Parakeet TDT v3 for the 25 languages it covers best, and WhisperKit filling in the other 74, switched manually under Settings, Transcription. There is no larger menu; the app is built around this one pairing.</p>
+          <p>TypeWhisper's engine list is the widest we found in any dictation app: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, with ONNX-based engines added on Windows. If you want to compare engines directly, or you have a strong preference for one, that choice is real.</p>
+          <p>EnviousWispr runs two: Parakeet TDT v3 for the 25 languages it covers best, WhisperKit for the rest. There is no larger menu; you switch between the two in Settings, Transcription.</p>
           <div class="deep-dive-detail">
-            <strong>Why it matters:</strong> Power users who want to compare engines directly, or who need a specific one of FluidVoice's five, get more choice there today. Anyone who wants one setup that already works gets that from EnviousWispr.
+            <strong>Why it matters:</strong> Power users and anyone who wants a specific model, or Windows support, get more from TypeWhisper today. Anyone who wants one setup that already works gets that from EnviousWispr.
           </div>
         </div>
       </div>
       <div class="deep-dive-card reveal">
-        <div class="deep-dive-icon">📋</div>
-        <div class="deep-dive-title">Same idea, different paper trail</div>
+        <div class="deep-dive-icon">🧩</div>
+        <div class="deep-dive-title">Workflows you build, versus a model we tuned</div>
         <div class="deep-dive-body">
-          <p>Fluid-1 is a genuine achievement: a model fine-tuned specifically for turning rough dictation into clean text, shipped free with the app, no prompt required. EG-1 exists for the same reason and works the same way. Neither app makes you write your own cleanup instructions.</p>
-          <p>Where they differ is disclosure. Our README names EG-1's base model, states its license terms, and explains what you can and cannot do with it. FluidVoice's app code is GPLv3, but the Fluid-1 runtime and weights sit outside that repository, and we could not find a published license or model card for it as of this writing. That may simply mean it has not been written yet, not that it does not exist; we welcome a correction if one is published.</p>
+          <p>TypeWhisper's Workflows are a genuine automation system: cleanup, translation, extraction, and formatting steps you configure, referencing providers like OpenAI and Groq in its own changelog. That is real power for someone willing to set it up, and its free tier includes it.</p>
+          <p>EG-1 is a single model, fine-tuned by us specifically for the problem of turning spoken dictation into clean text, shipped with the app, with results we measure and publish. It runs on the same hotkey as transcription with nothing to configure.</p>
           <div class="deep-dive-detail">
-            <strong>Why it matters:</strong> If you care about knowing exactly what model is processing your words and under what terms, that information is public for EG-1 today. For Fluid-1, it was not something we could find.
+            <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
           </div>
         </div>
       </div>
@@ -667,36 +647,36 @@ const faqJsonLd = JSON.stringify({
 </section>
 
 <!-- Fair Acknowledgment -->
-<section class="section" aria-label="Where FluidVoice Wins">
+<section class="section" aria-label="Where TypeWhisper Wins">
   <div class="container">
     <div class="section-head reveal">
       <div class="section-label-pill">Being Honest</div>
-      <h2 class="section-title">Choose FluidVoice if any of this matters more to you</h2>
-      <p class="section-sub">FluidVoice is a genuinely capable, free, open source project with real technical ambition. It may be the better fit here:</p>
+      <h2 class="section-title">Choose TypeWhisper if any of this matters more to you</h2>
+      <p class="section-sub">TypeWhisper's free tier is unusually generous, and its flexibility is real. It may be the better fit here:</p>
     </div>
     <div class="advantages-grid">
       <div class="advantage-card reveal">
+        <div class="advantage-icon">🖥️</div>
+        <div class="advantage-title">You need Windows</div>
+        <p class="advantage-desc">TypeWhisper has a dedicated Windows build. EnviousWispr is macOS only.</p>
+      </div>
+      <div class="advantage-card reveal">
         <div class="advantage-icon">🎚️</div>
-        <div class="advantage-title">You want to choose your own transcription engine</div>
-        <p class="advantage-desc">Nemotron, Parakeet, Cohere, Whisper, or Apple Speech, FluidVoice lets you pick. EnviousWispr chooses between Parakeet and WhisperKit for you, which is simpler but leaves less to tune.</p>
+        <div class="advantage-title">You want to choose your own speech engine</div>
+        <p class="advantage-desc">Seven engines to pick from, including specialized ones like Qwen3 ASR and IBM Granite Speech. EnviousWispr offers two, switched manually in Settings.</p>
       </div>
       <div class="advantage-card reveal">
-        <div class="advantage-icon">💻</div>
-        <div class="advantage-title">You have an Intel Mac</div>
-        <p class="advantage-desc">FluidVoice's Whisper option supports Intel Macs. EnviousWispr requires Apple Silicon.</p>
+        <div class="advantage-icon">🧠</div>
+        <div class="advantage-title">You want automatic correction learning</div>
+        <p class="advantage-desc">TypeWhisper's Commercial license adds Dictionary Autocorrection, which learns from your confident manual edits and applies them going forward. We do not offer an equivalent.</p>
       </div>
       <div class="advantage-card reveal">
-        <div class="advantage-icon">👥</div>
-        <div class="advantage-title">You value an established community</div>
-        <p class="advantage-desc">FluidVoice has over 10,000 stars on GitHub as of August 2026, well ahead of our own repository, along with an active following that grew quickly after launch.</p>
-      </div>
-      <div class="advantage-card reveal">
-        <div class="advantage-icon">🚀</div>
-        <div class="advantage-title">You want to follow a project expanding to more platforms</div>
-        <p class="advantage-desc">FluidVoice has announced Windows and iOS support is coming. Neither has shipped yet, but if that roadmap matters to you, it is public and moving.</p>
+        <div class="advantage-icon">🧩</div>
+        <div class="advantage-title">You want to build your own cleanup pipeline</div>
+        <p class="advantage-desc">Workflows let you wire up your own provider, prompt, and automation steps, including translation and app-specific behavior. If that flexibility is what you are after, EG-1's single tuned model will not give it to you.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want a choice of five transcription engines, run an Intel Mac, or want to follow a project expanding across platforms, FluidVoice is a strong pick. If you want the same idea, a model tuned for dictation with no prompt to write, on a wider range of macOS versions, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want the widest engine choice, need Windows, or want to build your own cleanup workflow, TypeWhisper is a strong pick. If you want cleanup that already works with nothing to set up, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
   </div>
 </section>
 
@@ -709,44 +689,40 @@ const faqJsonLd = JSON.stringify({
     </div>
     <div class="faq-list">
       <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr free, like FluidVoice?</div>
-        <p class="faq-a">Yes. Both EnviousWispr and FluidVoice are completely free, with no subscription and no account required. Both are also open source under the same license, GPLv3, so you can read the code that runs on your Mac.</p>
+        <div class="faq-q">Is EnviousWispr free, like TypeWhisper?</div>
+        <p class="faq-a">Yes. TypeWhisper's core app is free and open source under GPLv3, the same license we use, with core dictation, its speech engines, and its Workflows automation system all included at no cost. TypeWhisper also sells a Commercial license, starting around 5 EUR a month, that unlocks Cloud Folder Sync and Automatic Correction Learning and lets a business use it under non-GPL terms. EnviousWispr has no paid tier at all.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">How is EnviousWispr different from FluidVoice?</div>
-        <p class="faq-a">Both are Mac-native, on-device, GPLv3, and ship a custom AI model tuned specifically for cleaning up dictation, so this is not a case where one app has polish and the other does not. The differences are elsewhere. EnviousWispr supports macOS 14 Sonoma and later; FluidVoice needs macOS 15 Sequoia or later. FluidVoice offers a choice of five transcription engines (Nemotron, Parakeet, Cohere, Whisper, and Apple Speech); EnviousWispr offers two, Parakeet TDT and WhisperKit, switched manually in Settings. EnviousWispr adds Escape Recovery, which can keep a dictation you cancel by accident, something not documented on FluidVoice's side.</p>
+        <div class="faq-q">How is EnviousWispr different from TypeWhisper?</div>
+        <p class="faq-a">Both are GPLv3, free at the core, and run on-device. TypeWhisper offers the widest engine choice we found in any competitor: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines on Windows, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and WhisperKit, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">Does FluidVoice have AI polish like EnviousWispr's EG-1?</div>
-        <p class="faq-a">Yes. FluidVoice ships its own model, called Fluid Intelligence or Fluid-1, fine-tuned specifically for cleaning up dictation, the same way our EG-1 is. Neither app asks you to write your own prompt; both ship a working default. The main difference is disclosure: EG-1's license and its base model (a fine-tune of Qwen3-4B-Instruct-2507) are published in our repository. FluidVoice's Fluid-1 runtime and model are not part of its GPLv3 app code and are not publicly documented in the same way.</p>
+        <div class="faq-q">Does TypeWhisper have AI cleanup like EnviousWispr's EG-1?</div>
+        <p class="faq-a">TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM (its changelog references OpenAI and Groq) for cleanup, translation, or formatting, plus a separate Dictionary Autocorrection feature reserved for its paid Commercial license. We could not confirm from TypeWhisper's public documentation whether a working cleanup workflow is pre-configured out of the box or needs to be set up. EG-1 is purpose-built for dictation cleanup, ships with the app, and needs no setup or prompt writing.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
         <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr open source like FluidVoice?</div>
-        <p class="faq-a">Yes, and under the exact same license. Both EnviousWispr and FluidVoice's app code are licensed under the GNU General Public License v3 (GPLv3), an OSI-approved copyleft license. In both cases, the polish model itself sits outside that license under its own separate terms: our EG-1 under the EG-1 Community Model License, and FluidVoice's Fluid-1 under terms it has not published in the same place as its app code.</p>
+        <div class="faq-q">Is EnviousWispr open source like TypeWhisper?</div>
+        <p class="faq-a">Yes, and under the same license. Both EnviousWispr and TypeWhisper's core app are licensed under the GNU General Public License v3 (GPLv3). TypeWhisper also offers a paid Commercial license for organizations that need non-GPL terms; EnviousWispr has no such tier and no non-GPL option.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">Can I import my FluidVoice custom words into EnviousWispr?</div>
-        <p class="faq-a">Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of FluidVoice, without changing FluidVoice's own files, and shows you every word it found before anything joins your library. It also imports from Wispr Flow, Superwhisper, Handy, TypeWhisper, Spokenly, Juno, and Vox.</p>
+        <div class="faq-q">Can I import my TypeWhisper custom words into EnviousWispr?</div>
+        <p class="faq-a">Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of TypeWhisper, without changing TypeWhisper's own files, and shows you every word it found before anything joins your library. Entries you switched off in TypeWhisper stay off, and per-word case sensitivity comes across; TypeWhisper's match-strictness setting does not. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, Spokenly, Juno, and Vox.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">What macOS version do I need for each app?</div>
-        <p class="faq-a">EnviousWispr needs macOS 14 Sonoma or later. FluidVoice needs macOS 15 Sequoia or later, one version newer. Both need Apple Silicon for their primary engines, though FluidVoice also supports Intel Macs through its Whisper option.</p>
+        <div class="faq-q">Does TypeWhisper run on Windows?</div>
+        <p class="faq-a">Yes, with its own dedicated Windows build, separate from the macOS app but sharing most of its features. EnviousWispr is macOS only, on Apple Silicon.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages, switched manually under Settings, Transcription. FluidVoice offers a choice of five: Nemotron (40 languages), Parakeet (25 languages), Cohere (14 languages), Whisper (99 languages), and Apple Speech (your Mac's installed languages), and you choose which one to use.</p>
+        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, plus ONNX-based engines on Windows, with cloud engines available through add-ons.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">Does FluidVoice run on Windows or iOS?</div>
-        <p class="faq-a">Not yet. FluidVoice is macOS only today. Its own GitHub repository states Windows and iOS support is planned but not shipped as of August 2026. EnviousWispr is also macOS only, on Apple Silicon specifically.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I switch from FluidVoice to EnviousWispr easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your FluidVoice custom words across in one pass. There is no other data to migrate. Both apps work in any text field on macOS, so nothing about your workflow has to change.</p>
+        <div class="faq-q">Can I switch from TypeWhisper to EnviousWispr easily?</div>
+        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your TypeWhisper custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS.</p>
       </div>
     </div>
   </div>
@@ -758,13 +734,11 @@ const faqJsonLd = JSON.stringify({
     <p style="font-size: 14px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Compare with other tools</p>
     <div style="display: flex; flex-wrap: wrap; gap: 10px;">
       <a href="/compare/handy/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Handy</a>
+      <a href="/compare/fluidvoice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs FluidVoice</a>
       <a href="/compare/juno/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Juno</a>
-      <a href="/compare/typewhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs TypeWhisper</a>
       <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Superwhisper</a>
       <a href="/compare/voiceink/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs VoiceInk</a>
-      <a href="/compare/macwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs MacWhisper</a>
       <a href="/compare/wisprflow/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs WisprFlow</a>
-      <a href="/compare/willow-voice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Willow Voice</a>
     </div>
   </div>
 </section>
@@ -772,8 +746,8 @@ const faqJsonLd = JSON.stringify({
 <!-- CTA -->
 <section class="cta-section" aria-label="Download CTA">
   <div class="container">
-    <h2 class="reveal">Free, GPLv3, and it runs on more Macs.</h2>
-    <p class="reveal">Free to download. No account required. A tuned AI model with a published license, on macOS 14 and later.</p>
+    <h2 class="reveal">Free, GPLv3, and nothing to configure.</h2>
+    <p class="reveal">Free to download. No account required, no paid tier, no workflow to build.</p>
     <div class="cta-actions reveal">
       <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
