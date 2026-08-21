@@ -23,6 +23,10 @@ enum OverlayEvent: Equatable {
   case featureRequest(OverlayRequest)
   /// A notice that morphs a LIVE recording pill rather than replacing it.
   case inPanelNotice(RecordingNoticeReason, dismissAfter: Double?)
+  /// Hands-free lock engaged or released. `updateLockState` (`:1601`) today; it
+  /// morphs the live recording pill and does nothing otherwise. The first model
+  /// carried `isLocked` on the presentation with no event able to change it.
+  case lockStateChanged(Bool)
   /// The user pressed something on the presentation identified by this id.
   case action(PresentationID, OverlayAction)
   /// Hover began or ended on the presentation identified by this id.
@@ -58,19 +62,27 @@ enum OverlayExpiryCommand: Equatable {
 struct OverlayPlan: Equatable {
   /// What should occupy the slot now. `nil` means the slot is empty.
   let presentation: OverlayPresentation?
-  /// True when the slot's occupant CHANGED, so the host must apply new content.
-  /// False means the plan is a no-op for the window — an event arrived that the
-  /// reducer deliberately ignored.
+  /// True when the host must apply `presentation`.
+  ///
+  /// False leaves the window's content unchanged; it does NOT mean the plan is
+  /// empty. Expiry commands, delivered actions and effects all remain operative
+  /// on a `didChange == false` plan — a hover cancels a timer without touching
+  /// a pixel. The first version's comment said "the reducer deliberately ignored
+  /// this event", which stopped being true the moment hover and action plans
+  /// began carrying commands.
   let didChange: Bool
   /// What to do with the single armed expiry.
   let expiryCommand: OverlayExpiryCommand
   /// An action the director should forward to the feature that owns it. The
   /// director holds exactly ONE active binding, so this is at most one.
   let deliverAction: OverlayAction?
+  /// Side effects for feature owners that keep their own state. Usually empty.
+  let effects: [OverlayEffect]
 
   static func == (a: OverlayPlan, b: OverlayPlan) -> Bool {
     a.presentation == b.presentation && a.didChange == b.didChange
       && a.expiryCommand == b.expiryCommand && a.deliverAction == b.deliverAction
+      && a.effects == b.effects
   }
 
   static let noChange = OverlayPlan(presentation: nil, didChange: false)
@@ -78,12 +90,14 @@ struct OverlayPlan: Equatable {
   init(
     presentation: OverlayPresentation?, didChange: Bool,
     expiryCommand: OverlayExpiryCommand = .unchanged,
-    deliverAction: OverlayAction? = nil
+    deliverAction: OverlayAction? = nil,
+    effects: [OverlayEffect] = []
   ) {
     self.presentation = presentation
     self.didChange = didChange
     self.expiryCommand = expiryCommand
     self.deliverAction = deliverAction
+    self.effects = effects
   }
 }
 
@@ -127,6 +141,8 @@ struct OverlayReducer {
       return reduceFeature(request)
     case .inPanelNotice(let reason, let dismissAfter):
       return reduceInPanelNotice(reason, dismissAfter: dismissAfter)
+    case .lockStateChanged(let locked):
+      return reduceLockState(locked)
     case .action(let id, let action):
       return reduceAction(id, action)
     case .hoverChanged(let id, let hovering):
@@ -161,15 +177,21 @@ struct OverlayReducer {
       // `didChange` is read BEFORE the mutation: emptying an already-empty slot
       // is a genuine no-op and must not make the host re-apply nothing.
       let wasOccupied = state.current != nil
+      let wasRecording = Self.isRecording(state.current)
       state.set(current: nil, pipelineIntent: intent, isHovered: false)
       return OverlayPlan(
         presentation: nil, didChange: wasOccupied,
-        expiryCommand: wasOccupied ? .cancel : .unchanged)
+        expiryCommand: wasOccupied ? .cancel : .unchanged,
+        effects: wasRecording ? [.recordingIntentChanged(false)] : [])
     }
 
+    let wasRecording = Self.isRecording(state.current)
+    let isRecording = Self.isRecording(presentation)
     state.set(current: presentation, pipelineIntent: intent, isHovered: false)
     return OverlayPlan(
-      presentation: presentation, didChange: true, expiryCommand: Self.command(for: presentation))
+      presentation: presentation, didChange: true,
+      expiryCommand: Self.command(for: presentation),
+      effects: wasRecording == isRecording ? [] : [.recordingIntentChanged(isRecording)])
   }
 
   // MARK: - Features
@@ -185,6 +207,28 @@ struct OverlayReducer {
     state.set(current: presentation, isHovered: false)
     return OverlayPlan(
       presentation: presentation, didChange: true, expiryCommand: Self.command(for: presentation))
+  }
+
+  private static func isRecording(_ p: OverlayPresentation?) -> Bool {
+    if case .recording? = p?.content { return true }
+    return false
+  }
+
+  /// Hands-free lock morphs the LIVE recording pill and does nothing otherwise,
+  /// matching `updateLockState`'s own guard (`:1601`).
+  private mutating func reduceLockState(_ locked: Bool) -> OverlayPlan {
+    guard let current = state.current,
+      case .recording(let level, let wasLocked, let notice) = current.content,
+      wasLocked != locked
+    else { return .noChange }
+
+    let updated = OverlayPresentation(
+      id: current.id,
+      content: .recording(audioLevel: level, isLocked: locked, notice: notice),
+      expiry: current.expiry, requestedWidth: current.requestedWidth,
+      reservesFixedHeight: current.reservesFixedHeight)
+    state.set(current: updated)
+    return OverlayPlan(presentation: updated, didChange: true)
   }
 
   // MARK: - In-panel notice
@@ -259,6 +303,21 @@ struct OverlayReducer {
     guard case .after = current.expiry else { return .noChange }
     // A hovered presentation does not expire. Re-arming happens on hover exit.
     guard !state.isHovered else { return .noChange }
+    // A feature that keeps its OWN copy of this presentation must be told, or
+    // clearing the slot leaves its state stale — `currentChip` survives, and the
+    // escape-recovery payload is never released. Enumerated from the panel's
+    // handler fields rather than found one at a time.
+    var effects: [OverlayEffect] = []
+    switch current.content {
+    case .languageChip(let payload):
+      effects.append(.languageChipAutoDismissed(generation: payload.generation))
+    case .escapeRecovery(let transcriptID):
+      effects.append(.escapeRecoveryExpired(transcriptID: transcriptID))
+    case .recording:
+      effects.append(.recordingIntentChanged(false))
+    case .notice, .bluetoothAwareness:
+      break
+    }
     // **The pipeline returns to idle, and the first version did not do this.**
     // Shipped `hide()` sets `currentIntent = .hidden` (`:1912`, `:1924`), so
     // once a warning or error notice auto-dismisses the pipeline is idle again
@@ -267,7 +326,8 @@ struct OverlayReducer {
     // session — the arbitration rule this reducer exists to state, failing open
     // in the direction nothing would ever report.
     state.set(current: nil, pipelineIntent: .hidden, isHovered: false)
-    return OverlayPlan(presentation: nil, didChange: true, expiryCommand: .cancel)
+    return OverlayPlan(
+      presentation: nil, didChange: true, expiryCommand: .cancel, effects: effects)
   }
 
   // MARK: - Intent and request to presentation

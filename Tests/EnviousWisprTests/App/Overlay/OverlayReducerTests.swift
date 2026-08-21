@@ -347,4 +347,111 @@ struct OverlayReducerTests {
     let plan = r.reduce(.pipeline(.recording(audioLevel: 0.3)))
     #expect(plan.expiryCommand == .cancel)
   }
+
+  // MARK: - Facts a bare enum case would have thrown away
+
+  /// `LanguageSuggestionPresenter.currentChip` (`:46`) is cleared by a
+  /// GENERATION-GATED call (`:279-281`), so an expiry that says only "the slot is
+  /// empty" leaves the presenter holding a chip forever.
+  @Test("an auto-dismissed language chip tells its owner, with the generation")
+  func chipExpiryNotifiesItsOwner() {
+    var r = Self.makeReducer()
+    let payload = LanguageChipPayload(
+      lang: "fr", displayName: "French", state: .askToLock, generation: 42)
+    _ = r.reduce(.pipeline(.passiveChip(payload: payload)))
+    let id = try! #require(r.state.current?.id)
+
+    let plan = r.reduce(.expiryFired(id))
+
+    #expect(plan.effects.contains(.languageChipAutoDismissed(generation: 42)))
+  }
+
+  /// The escape-recovery payload is taken by transcript id
+  /// (`RecordingOverlayPanel.swift:137`), a one-shot take. If the pill expires
+  /// unpressed, the owner must drop it.
+  @Test("an expired escape-recovery pill releases its payload")
+  func escapeRecoveryExpiryReleasesThePayload() {
+    var r = Self.makeReducer()
+    let transcript = UUID()
+    _ = r.reduce(.pipeline(.escapeRecovery(transcriptID: transcript)))
+    let id = try! #require(r.state.current?.id)
+
+    let plan = r.reduce(.expiryFired(id))
+
+    #expect(plan.effects.contains(.escapeRecoveryExpired(transcriptID: transcript)))
+  }
+
+  /// `setRecordingIntentObserver` (`:469`) had no representation at all in the
+  /// first model — not a wrong value, an absent one.
+  @Test("the recording intent observer is told when recording starts and stops")
+  func recordingIntentIsObservable() {
+    var r = Self.makeReducer()
+    #expect(
+      r.reduce(.pipeline(.recording(audioLevel: 0.2))).effects
+        == [.recordingIntentChanged(true)])
+    // A metering update is not a start: it must not re-notify.
+    #expect(r.reduce(.pipeline(.recording(audioLevel: 0.9))).effects.isEmpty)
+    #expect(r.reduce(.pipeline(.hidden)).effects == [.recordingIntentChanged(false)])
+  }
+
+  /// `updateLockState` (`:1601`) morphs the live recording pill and does nothing
+  /// otherwise. The first model carried `isLocked` with no event able to set it.
+  @Test("hands-free lock morphs the live recording pill")
+  func lockMorphsTheRecordingPill() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(.recording(audioLevel: 0.5)))
+    let id = try! #require(r.state.current?.id)
+
+    let plan = r.reduce(.lockStateChanged(true))
+
+    #expect(plan.didChange)
+    #expect(plan.presentation?.id == id, "locking replaced the pill instead of morphing it")
+    guard case .recording(let level, let locked, _)? = plan.presentation?.content else {
+      Issue.record("expected the recording pill to survive locking")
+      return
+    }
+    #expect(locked)
+    #expect(level == 0.5, "locking discarded the live audio level")
+    // Idempotent: the same state again is not a change.
+    #expect(r.reduce(.lockStateChanged(true)).didChange == false)
+  }
+
+  @Test("a lock change with no recording pill is a no-op")
+  func lockWithoutRecordingIsIgnored() {
+    var r = Self.makeReducer()
+    #expect(r.reduce(.lockStateChanged(true)).didChange == false)
+  }
+
+  /// `BluetoothAwarenessPresenter` emits `.dismissed/.gotIt` versus
+  /// `.dismissed/.closed` (`:193-196`). Collapsing them into one action would
+  /// have made the dashboard unable to tell "I understand" from "go away".
+  @Test("acknowledging and closing the Bluetooth card stay distinct")
+  func bluetoothDismissalsStayDistinct() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(.bluetoothAwareness))
+    let id = try! #require(r.state.current?.id)
+
+    #expect(
+      r.reduce(.action(id, .acknowledgeBluetoothAwareness)).deliverAction
+        == .acknowledgeBluetoothAwareness)
+    #expect(
+      r.reduce(.action(id, .closeBluetoothAwareness)).deliverAction
+        == .closeBluetoothAwareness)
+    #expect(OverlayAction.acknowledgeBluetoothAwareness != .closeBluetoothAwareness)
+  }
+
+  /// `onEscapeRecoveryPaste` takes the payload, and the panel looks it up by id
+  /// with a one-shot take. A bare `.pasteEscapeRecovery` would have delivered
+  /// "the user pressed Undo" with nothing to undo.
+  @Test("the Undo action carries the transcript it undoes")
+  func undoCarriesItsTranscript() {
+    var r = Self.makeReducer()
+    let transcript = UUID()
+    _ = r.reduce(.pipeline(.escapeRecovery(transcriptID: transcript)))
+    let id = try! #require(r.state.current?.id)
+
+    #expect(
+      r.reduce(.action(id, .pasteEscapeRecovery(transcriptID: transcript))).deliverAction
+        == .pasteEscapeRecovery(transcriptID: transcript))
+  }
 }

@@ -105,15 +105,65 @@ enum OverlayRequest: Equatable, Sendable {
 /// binding for the current presentation, rather than the eight
 /// `set*Handler` closure fields the panel keeps alive for the app's lifetime
 /// whether or not the pill that uses them is showing.
+/// **Every case here is a button the shipped pill offers, and every case carries
+/// the fact its handler needs.** Three rounds of review each found one place
+/// where a bare enum case had thrown away something the feature depends on, so
+/// the whole surface was then enumerated at once rather than waiting for a
+/// fourth. The panel's own handler fields are the authority
+/// (`RecordingOverlayPanel.swift:84-229`); each row below names the field it
+/// replaces.
 enum OverlayAction: Equatable, Sendable {
+  /// `grantHandler` (`:84`).
   case grantAccessibility
+  /// `discardRecoveryHandler` (`:93`).
   case discardRecovery
-  case pasteEscapeRecovery
+  /// `onEscapeRecoveryPaste` (`:115`), which takes the `CancelUndoPayload`.
+  ///
+  /// **Carries the transcript id, and the first version did not.** The panel
+  /// holds the payload itself and looks it up with
+  /// `takeEscapeRecoveryPayload(matching:)` (`:137`) — a one-shot take, so the
+  /// id is what makes the hand-off safe against a stale press. A bare case
+  /// would have delivered "the user pressed Undo" with nothing to undo.
+  case pasteEscapeRecovery(transcriptID: UUID)
+  /// `passiveChipLockHandler` (`:98`).
   case lockLanguage
+  /// `passiveChipDismissHandler` (`:99`).
   case dismissChip
-  case openLanguageSettings
-  case dismissBluetoothAwareness
+  /// `bluetoothAwarenessGotItHandler` (`:227`).
+  ///
+  /// **Distinct from `closeBluetoothAwareness`, and collapsing them lost real
+  /// telemetry.** `BluetoothAwarenessPresenter` emits `.dismissed/.gotIt` versus
+  /// `.dismissed/.closed` (`:193-196`): acknowledging the card and closing it
+  /// are different user answers and the dashboard reads them apart.
+  case acknowledgeBluetoothAwareness
+  /// `bluetoothAwarenessCloseHandler` (`:228`).
+  case closeBluetoothAwareness
+  /// `bluetoothAwarenessAdjustSettingsHandler` (`:229`).
   case openBluetoothSettings
+}
+
+/// A side effect the director must forward to a feature owner, beyond changing
+/// what is on screen.
+///
+/// **These exist because a feature keeps state the overlay does not own, and
+/// clearing only the overlay's copy leaves the feature's stale.**
+/// `LanguageSuggestionPresenter.currentChip` (`:46`) is cleared by a
+/// generation-gated call (`:279-281`), and the escape-recovery payload is taken
+/// by transcript id — neither is reachable from "the slot is now empty".
+///
+/// An array rather than a field per occasion: a single `expiryEffect` would have
+/// needed a sibling the moment the recording-intent observer was wired, and
+/// accreting one field per occasion is how the type this migration deletes grew
+/// its 33 stored properties. Usually empty; at most a couple, emitted in order.
+enum OverlayEffect: Equatable, Sendable {
+  /// `passiveChipAutoDismissHandler` (`:222`), which takes the generation.
+  case languageChipAutoDismissed(generation: UInt64)
+  /// The escape-recovery pill went away without the user pressing Undo, so the
+  /// owner must drop the payload it is holding.
+  case escapeRecoveryExpired(transcriptID: UUID)
+  /// `setRecordingIntentObserver` (`:469`). Fires when the recording pill
+  /// arrives or leaves. Nothing in the first model expressed it at all.
+  case recordingIntentChanged(Bool)
 }
 
 // MARK: - What ends up on screen
