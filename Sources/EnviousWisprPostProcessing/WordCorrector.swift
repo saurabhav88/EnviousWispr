@@ -918,23 +918,32 @@ public struct WordCorrector: Sendable {
       // so this is not an optional refinement -- it is what makes the fix
       // correct for every fuzzy-matched brand, not only exact ones.
       var matchCore = core
-      var matchSuffix = suffix
+      var peeledTLD = ""
       if let lastDot = core.lastIndex(of: "."), lastDot > core.startIndex {
         let tail = core[core.index(after: lastDot)...].lowercased()
         if Self.recognizedTLDs.contains(tail) {
           matchCore = String(core[core.startIndex..<lastDot])
-          matchSuffix = String(core[lastDot...]) + suffix
+          peeledTLD = String(core[lastDot...])
         }
       }
       let matchCoreLower = matchCore.lowercased()
       guard !Self.emojiTriggerReservedWords.contains(matchCoreLower), matchCore.count >= 2 else {
         return token
       }
-      if let matched = matchSingleWordPasses(
-        prefix: prefix, core: matchCore, coreLower: matchCoreLower, suffix: matchSuffix,
+      if let canonical = matchSingleWordPasses(
+        core: matchCore, coreLower: matchCoreLower,
         lookups: lookups, appendReplacement: { appendReplacement(forCanonical: $0) })
       {
-        return matched
+        // Codex review, PR for #2281, finding P2 (round 2): a saved
+        // CANONICAL can itself be a domain ("GitHub.com") even when its
+        // alias is the bare word ("githab") -- blindly re-appending the
+        // peeled TLD to that canonical would produce "GitHub.com.com".
+        // Reattach it only when the matched canonical does not already end
+        // with it.
+        let reattach =
+          peeledTLD.isEmpty || canonical.lowercased().hasSuffix(peeledTLD.lowercased())
+          ? "" : peeledTLD
+        return prefix + canonical + reattach + suffix
       }
 
       return token
@@ -947,10 +956,11 @@ public struct WordCorrector: Sendable {
   /// single-word matcher can be run TWICE per token: once against the token as
   /// ASR emitted it, and -- only if that produced no match -- once more
   /// against a TLD-peeled core (see the call site in `correct(using:)`).
-  /// `nil` means "no pass matched"; every accept path returns the final
-  /// `prefix + canonical + suffix` string, exactly as the inline closure did.
+  /// Returns the bare matched CANONICAL, never prefix/suffix-assembled --
+  /// the caller reattaches those, since only the caller knows whether a
+  /// peeled TLD needs deduplicating against the canonical it matched.
   private func matchSingleWordPasses(
-    prefix: String, core: String, coreLower: String, suffix: String,
+    core: String, coreLower: String,
     lookups: Lookups, appendReplacement: (String) -> Void
   ) -> String? {
     let singleAliasMap = lookups.singleAliasMap
@@ -969,7 +979,7 @@ public struct WordCorrector: Sendable {
       #if DEBUG
         Self.logger.debug("WordCorrector: type=alias source='\(core)' target='\(canonical)'")
       #endif
-      return prefix + canonical + suffix
+      return canonical
     }
 
     // Skip fuzzy for very short tokens
@@ -1022,7 +1032,7 @@ public struct WordCorrector: Sendable {
           "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3))"
         )
       #endif
-      return prefix + bestMatch + suffix
+      return bestMatch
     } else if bestScore > 0 {
       #if DEBUG
         let pass4Margin = bestScore - secondBest
@@ -1076,7 +1086,7 @@ public struct WordCorrector: Sendable {
           "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3))"
         )
       #endif
-      return prefix + bestMatch + suffix
+      return bestMatch
     } else if bestScore > 0 {
       #if DEBUG
         let pass5Margin = bestScore - secondBest
@@ -1148,7 +1158,7 @@ public struct WordCorrector: Sendable {
               "WordCorrector: type=pack-alias-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
             )
           #endif
-          return prefix + pMatch + suffix
+          return pMatch
         }
       }
     }
@@ -1189,7 +1199,7 @@ public struct WordCorrector: Sendable {
               "WordCorrector: type=pack-canonical-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
             )
           #endif
-          return prefix + pMatch + suffix
+          return pMatch
         }
       }
     }

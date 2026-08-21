@@ -139,4 +139,19 @@ struct WordCorrectorGluedDomainSuffixTests {
       #expect(result.replacements == 1, "TLD '\(tld)' should still count as one replacement")
     }
   }
+
+  private static let gitHubBareAlias = CustomWord(
+    canonical: "GitHub.com", aliases: ["githab"], category: .brand)
+
+  @Test("A peeled TLD is not duplicated when the matched canonical already carries it")
+  func peeledTLDNotDuplicatedWhenCanonicalAlreadyHasIt() {
+    // Codex review round 2: canonical "GitHub.com" already IS a domain, but
+    // its alias "githab" is bare. "githab.com" misses the (unpeeled) exact
+    // Pass 3 -- the alias has no ".com" -- so it falls into the peel-and-
+    // retry path, where "githab" DOES exact-match. Blindly reattaching the
+    // peeled ".com" would produce "GitHub.com.com".
+    let result = corrected("githab.com", [Self.gitHubBareAlias])
+    #expect(result.text == "GitHub.com")
+    #expect(result.replacements == 1)
+  }
 }
