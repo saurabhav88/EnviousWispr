@@ -46,14 +46,21 @@ public enum CursorInsertionRepair {
     /// the refusal in `prepare`.
     public let isScreenDerived: Bool
 
+    /// Whether the caret sits in a recognized browser's URL/address bar
+    /// (#2258). The narrow POLICY fact this repair needs — a space anywhere
+    /// in that field blocks pressing Enter to navigate — never the
+    /// accessibility evidence behind it, which stays in Services.
+    public let isURLBarField: Bool
+
     public init(
       left: String, right: String, leftReachesDocumentStart: Bool = false,
-      isScreenDerived: Bool = false
+      isScreenDerived: Bool = false, isURLBarField: Bool = false
     ) {
       self.left = left
       self.right = right
       self.leftReachesDocumentStart = leftReachesDocumentStart
       self.isScreenDerived = isScreenDerived
+      self.isURLBarField = isURLBarField
     }
   }
 
@@ -141,6 +148,10 @@ public enum CursorInsertionRepair {
     /// Thai, Lao, Burmese, Khmer). A space at either end of the insertion is a
     /// visible defect in those scripts, not a separator.
     case unsegmentedScript = "unsegmented_script"
+    /// A recognized browser's URL/address bar (#2258). A space anywhere in
+    /// that field blocks pressing Enter to navigate, so this is checked
+    /// before what follows the caret rather than as one more case of it.
+    case browserAddressBar = "browser_address_bar"
   }
 
   /// One decision the repair took, for tests and privacy-safe telemetry.
@@ -492,6 +503,16 @@ public enum CursorInsertionRepair {
   /// Today's delivery-stage rule, absorbed verbatim from
   /// the retired `PasteService.appendTrailingSpace`, which is now deleted — this
   /// is the single owner of the rule.
+  ///
+  /// Deliberately CONTEXT-FREE, including for a URL bar (#2258, cloud review
+  /// r3): this is the fallback `payloadAtCommitBoundary`/`accessibilityWritePayload`
+  /// reach for when a revalidation at the FINAL commit boundary finds the
+  /// destination may no longer be what it was when `repair` ran — trusting a
+  /// space omitted for a URL bar that has since scrolled out of focus would
+  /// silently corrupt an ordinary field's text instead. The URL-bar exception
+  /// lives ONLY in the candidate `repair` offers (`.trailingSpaceSkipped` in
+  /// `contextualPayload`), which Services re-verifies is still the live
+  /// destination before ever committing it.
   static func legacyPayload(_ text: String) -> String {
     text.hasSuffix(" ") ? text : text + " "
   }
@@ -507,7 +528,9 @@ public enum CursorInsertionRepair {
   ) -> (String, [AppliedRule]) {
     var out = text
     var rules: [AppliedRule] = []
-    guard !text.isEmpty else { return (legacyPayload(text), rules) }
+    guard !text.isEmpty else {
+      return (legacyPayload(text), rules)
+    }
 
     let left = leftAnchor(of: context.left)
     let right = rightAnchor(of: context.right)
@@ -530,6 +553,19 @@ public enum CursorInsertionRepair {
     // not typing a space, then dictating — is user-controlled and already how
     // the app behaves next to a period, which users understand because they
     // caused it.
+    // Rule 1 is DELIBERATELY untouched by the URL-bar flag (#2258, and this
+    // is the settled answer after two review rounds pulled in opposite
+    // directions). Round 1 asked for a leading-space exception too, reasoning
+    // from a URL continuation ("github.com/|" then "issues" should join with
+    // no space). Round 2 then found that suppressing it unconditionally
+    // corrupts an address bar SEARCH query the same way: "best|" then
+    // "restaurants" becomes "bestrestaurants" rather than "best restaurants"
+    // — a browser's address bar is both a URL field and a search field, and
+    // plain left-context text cannot tell which one a continuation is
+    // extending. Merging two dictated words with no separator is worse than
+    // leaving one avoidable space in the narrower URL-continuation case,
+    // which is not a regression — it is exactly today's pre-#2258 behavior.
+    // Scoped to the TRAILING space only, matching the issue's own "Ask".
     if !context.isScreenDerived, language.usesWordSpacing, let anchor = left.character,
       !left.crossedSpace, !left.isOpener,
       let firstCharacter = out.first, !firstCharacter.isWhitespace
@@ -628,7 +664,15 @@ public enum CursorInsertionRepair {
     }
 
     // Rule 3: a trailing space, unless what follows makes it wrong.
-    if !language.usesWordSpacing {
+    //
+    // The URL-bar check comes FIRST and unconditionally, ahead of the
+    // right-anchor checks below (#2258): a space anywhere in a browser's
+    // address bar blocks pressing Enter to navigate, whatever character
+    // happens to sit to the right of the caret. `legacyPayload` carries the
+    // same exception, since a refusal earlier in `repair` falls back to it.
+    if context.isURLBarField {
+      rules.append(.trailingSpaceSkipped(.browserAddressBar))
+    } else if !language.usesWordSpacing {
       rules.append(.trailingSpaceSkipped(.unsegmentedScript))
     } else if let anchor = right {
       if anchor.isWhitespace {

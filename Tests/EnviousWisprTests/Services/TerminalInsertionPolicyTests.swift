@@ -461,4 +461,72 @@ struct TerminalInsertionPolicyTests {
     #expect(!seamCalled, "requireCaretUnchanged defaults to false and must not invoke the seam")
   }
 
+  // MARK: - #2258 URL bar: forced revalidation at the commit boundary
+
+  private func browserAddressBarContext(left: String, right: String = "")
+    -> PasteService.CaretContext
+  {
+    PasteService.CaretContext(
+      leftWindow: left, rightWindow: right,
+      selectionLocation: left.utf16.count, selectionLength: 0,
+      leftReachesDocumentStart: true,
+      isBrowserAddressBar: true)
+  }
+
+  @Test("A URL-bar candidate IS forced through revalidation, even though it deletes no text")
+  func urlBarCandidateIsForcedThroughRevalidation() {
+    // Cloud review, PR #2272: activating the target app (Tier 2) can move
+    // focus away from the URL bar `repair` read, and `legacy` is
+    // deliberately never URL-bar-aware — so trusting a spacing-only
+    // candidate here without revalidation risks a stale suppression landing
+    // in a field that is no longer the address bar.
+    let payload = PasteService.payloadAtCommitBoundary(
+      legacy: "github.com ",
+      repaired: "github.com",
+      context: browserAddressBarContext(left: ""),
+      element: AXUIElementCreateSystemWide(),
+      candidateDeletesDictatedText: false,
+      caretUnchangedCheck: { _, _, _ in false })
+
+    #expect(payload.kind == .legacy, "a URL-bar candidate must be re-verified before commit")
+    #expect(payload.text == "github.com ", "the safe fallback keeps its trailing space")
+  }
+
+  @Test("A URL-bar candidate commits once revalidation confirms the caret is unchanged")
+  func urlBarCandidateCommitsWhenConfirmedUnchanged() {
+    let payload = PasteService.payloadAtCommitBoundary(
+      legacy: "github.com ",
+      repaired: "github.com",
+      context: browserAddressBarContext(left: ""),
+      element: AXUIElementCreateSystemWide(),
+      candidateDeletesDictatedText: false,
+      caretUnchangedCheck: { _, _, _ in true })
+
+    #expect(payload.kind == .repaired)
+    #expect(payload.text == "github.com")
+  }
+
+  @Test("An ordinary, non-URL-bar spacing-only candidate is NOT forced through revalidation")
+  func ordinaryCandidateSkipsForcedRevalidation() {
+    // Two-way control: the new trigger is scoped to `isBrowserAddressBar`,
+    // not to every spacing decision. Same shape as
+    // `casingCandidateSkipsTheReread` above, with the seam instrumented to
+    // prove it is never even called (the real check would refuse in a test
+    // process, which would make this pass for the wrong reason).
+    var seamCalled = false
+    let payload = PasteService.payloadAtCommitBoundary(
+      legacy: "github.com ",
+      repaired: "github.com",
+      context: terminalContext(line: "typing a plain sentence"),
+      element: AXUIElementCreateSystemWide(),
+      candidateDeletesDictatedText: false,
+      caretUnchangedCheck: { _, _, _ in
+        seamCalled = true
+        return false
+      })
+
+    #expect(payload.kind == .repaired)
+    #expect(!seamCalled, "an ordinary candidate must not pay for the URL-bar revalidation")
+  }
+
 }

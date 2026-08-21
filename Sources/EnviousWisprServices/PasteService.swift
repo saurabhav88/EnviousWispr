@@ -606,7 +606,16 @@ public enum PasteService {
       caretUnchanged
   ) -> (text: String, kind: PastePayloadKind) {
     guard let repaired, let context, let element else { return (legacy, .legacy) }
-    guard candidateDeletesDictatedText || requireCaretUnchanged else {
+    // A URL-bar candidate is ALSO forced through revalidation (#2258, cloud
+    // review r3), even though it never deletes dictated text: activating the
+    // target app can move focus (the comment at every call site of this
+    // function already says so), and a space omitted for a URL bar that is no
+    // longer the destination would silently reach an ordinary field missing
+    // the separator it was dictated with. `legacy` is safe either way — it
+    // is deliberately never URL-bar-aware (see `legacyPayload`'s own doc
+    // comment) — so falling back to it here costs nothing extra to guard.
+    guard candidateDeletesDictatedText || requireCaretUnchanged || context.isBrowserAddressBar
+    else {
       return (repaired, .repaired)
     }
     guard caretUnchangedCheck(element, context, terminalBudget)
@@ -683,12 +692,18 @@ public enum PasteService {
     /// DELETES a dictated word.
     package let leftReachesDocumentStart: Bool
 
+    /// Whether the focused element is a recognized browser's URL/address bar
+    /// (#2258), per `BrowserAddressBarDetector`. Always `false` for a
+    /// terminal-derived context — a terminal is never a browser.
+    package let isBrowserAddressBar: Bool
+
     /// Whether this context was derived from a terminal screen.
     package var isScreenDerived: Bool { terminalEvidence != nil }
 
     package init(
       leftWindow: String, rightWindow: String, selectionLocation: Int, selectionLength: Int,
-      leftReachesDocumentStart: Bool, terminalEvidence: TerminalEvidence? = nil
+      leftReachesDocumentStart: Bool, terminalEvidence: TerminalEvidence? = nil,
+      isBrowserAddressBar: Bool = false
     ) {
       self.leftWindow = leftWindow
       self.rightWindow = rightWindow
@@ -696,6 +711,7 @@ public enum PasteService {
       self.selectionLength = selectionLength
       self.leftReachesDocumentStart = leftReachesDocumentStart
       self.terminalEvidence = terminalEvidence
+      self.isBrowserAddressBar = isBrowserAddressBar
     }
   }
 
@@ -1201,14 +1217,136 @@ public enum PasteService {
 
     guard let range = bounded("range", { selectedRange(of: fresh) }) else { return nil }
 
-    return assembleCaretContext(
-      characterCount: characterCount,
-      selectionLocation: range.location,
-      selectionLength: range.length,
-      window: window,
-      readRange: { location, length in
-        bounded("range_read", { string(of: fresh, at: location, length: length) })
-      })
+    guard
+      let assembled = assembleCaretContext(
+        characterCount: characterCount,
+        selectionLocation: range.location,
+        selectionLength: range.length,
+        window: window,
+        readRange: { location, length in
+          bounded("range_read", { string(of: fresh, at: location, length: length) })
+        })
+    else { return nil }
+
+    let isBrowserAddressBar = bounded(
+      "browser_address_bar", { browserAddressBarSignature(of: fresh) })
+    guard isBrowserAddressBar else { return assembled }
+    return CaretContext(
+      leftWindow: assembled.leftWindow, rightWindow: assembled.rightWindow,
+      selectionLocation: assembled.selectionLocation, selectionLength: assembled.selectionLength,
+      leftReachesDocumentStart: assembled.leftReachesDocumentStart,
+      terminalEvidence: assembled.terminalEvidence, isBrowserAddressBar: true)
+  }
+
+  /// A PID→bundle-ID lookup on the SAME element already in hand (never a
+  /// second focused-element round trip), THEN — only for a recognized
+  /// browser — exactly one AX attribute read, the one that browser's own
+  /// family actually exposes. #2258; signature owned by
+  /// `BrowserAddressBarDetector`.
+  ///
+  /// The bundle-ID check costs no accessibility call at all, so it runs
+  /// FIRST (Codex review r1): every AX attribute read here can carry up to
+  /// the element's 0.5-second messaging timeout on failure, and this runs on
+  /// every smart-insertion paste, in every app, not only in a browser — an
+  /// unrecognized app must never pay for a read whose answer cannot matter.
+  ///
+  /// The signature ALONE is not enough (cloud review, PR #2272): `AXDOMClassList`
+  /// mirrors the rendered page's own HTML `class` attribute for a DOM element, so
+  /// an ordinary — or deliberately adversarial — web page could name one of its
+  /// own fields `OmniboxViewViews` and pass the suffix check outright. Measured
+  /// live 2026-08-21: a real page field's AX ancestor chain reaches `AXWebArea`
+  /// (Google's search box, depth 7); the real omnibox's chain never does, because
+  /// it is native browser chrome, never rendered page content — page HTML cannot
+  /// remove a wrapper Chromium itself inserts around everything it renders. So a
+  /// signature match is trusted only once the ancestor chain is POSITIVELY
+  /// verified clean of `AXWebArea`.
+  private static func browserAddressBarSignature(of element: AXUIElement) -> Bool {
+    var pid: pid_t = 0
+    guard AXUIElementGetPid(element, &pid) == .success else { return false }
+    let bundleIdentifier = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier
+    guard let family = BrowserAddressBarDetector.family(forBundleIdentifier: bundleIdentifier)
+    else { return false }
+
+    let signatureMatches: Bool
+    switch family {
+    case .safari:
+      var identifierRef: CFTypeRef?
+      let axIdentifier: String? =
+        AXUIElementCopyAttributeValue(element, kAXIdentifierAttribute as CFString, &identifierRef)
+          == .success
+        ? identifierRef as? String : nil
+      signatureMatches = BrowserAddressBarDetector.matches(
+        bundleIdentifier: bundleIdentifier, axIdentifier: axIdentifier, axDOMClassList: nil)
+    case .chromium:
+      var domClassRef: CFTypeRef?
+      let axDOMClassList: [String]? =
+        AXUIElementCopyAttributeValue(element, "AXDOMClassList" as CFString, &domClassRef)
+          == .success
+        ? domClassRef as? [String] : nil
+      signatureMatches = BrowserAddressBarDetector.matches(
+        bundleIdentifier: bundleIdentifier, axIdentifier: nil, axDOMClassList: axDOMClassList)
+    }
+    guard signatureMatches else { return false }
+    return ancestorChainVerifiedFreeOfWebArea(element)
+  }
+
+  /// Whether `element`'s AX ancestor chain can be POSITIVELY VERIFIED clean of
+  /// any `AXWebArea` — the wrapper both Chromium and WebKit insert around every
+  /// rendered page. Its presence means the element is PAGE CONTENT, never
+  /// native browser chrome, whatever its own reported signature claims.
+  ///
+  /// FAILS CLOSED, deliberately positive-framed rather than the inverted
+  /// `hasWebAreaAncestor` this replaced (cloud review r2, PR #2272): that
+  /// version returned `false` on BOTH "found a web area" and "a read failed
+  /// partway up the chain", and the caller NEGATED it — so an incomplete walk
+  /// was silently TRUSTED, exactly backwards from the fail-closed design the
+  /// comment claimed. This version returns `true` in exactly one case: every
+  /// read up the chain succeeded, none was `AXWebArea`, and the chain reached
+  /// a REAL, verified end. Every other outcome — a role read failing, a
+  /// parent read failing for any reason other than "this object genuinely has
+  /// no parent", or the bound running out before reaching a verified end — is
+  /// UNVERIFIED and returns `false`, refusing the match.
+  ///
+  /// "Genuinely has no parent" is `.attributeUnsupported` specifically, not
+  /// any failure — measured live 2026-08-21 walking the real omnibox's whole
+  /// chain to `AXApplication`, where `AXParent` fails with exactly that code
+  /// (`-25205`). Any OTHER error (a stale element, a timed-out IPC call) means
+  /// the walk was cut short, not that it reached the top, and must not be
+  /// read as verification — the existing `.attributeUnsupported`/`.noValue`
+  /// idiom in `firstPasteItem` above draws the same distinction one type over.
+  private static func ancestorChainVerifiedFreeOfWebArea(
+    _ element: AXUIElement, maxDepth: Int = 10
+  ) -> Bool {
+    var current = element
+    var depth = 0
+    while depth < maxDepth {
+      var roleRef: CFTypeRef?
+      guard
+        AXUIElementCopyAttributeValue(current, kAXRoleAttribute as CFString, &roleRef) == .success,
+        let role = roleRef as? String
+      else { return false }
+      if role == "AXWebArea" { return false }
+
+      var parentRef: CFTypeRef?
+      let parentRead = AXUIElementCopyAttributeValue(
+        current, kAXParentAttribute as CFString, &parentRef)
+      if parentRead == .attributeUnsupported || parentRead == .noValue {
+        // A missing parent is only proof of reaching the TOP when the current
+        // element genuinely IS the application root (cloud review r3, PR
+        // #2272): otherwise an intermediate element reporting the same two
+        // codes — for whatever reason, including a page-content quirk — would
+        // be read as "verified clean" without ever having been checked past
+        // this point. `role` is already in hand from this same iteration.
+        return role == "AXApplication"
+      }
+      guard parentRead == .success, let parentRef,
+        CFGetTypeID(parentRef) == AXUIElementGetTypeID()
+      else { return false }
+      // swift-format-ignore: NeverForceUnwrap — guarded by the CFGetTypeID check above.
+      current = (parentRef as! AXUIElement)
+      depth += 1
+    }
+    return false
   }
 
   /// Exact UTF-16 code-unit identity.
