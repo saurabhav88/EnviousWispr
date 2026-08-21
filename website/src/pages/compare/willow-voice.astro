@@ -43,7 +43,7 @@ const faqJsonLd = JSON.stringify({
     { "@type": "Question", "name": "Does EnviousWispr use the cloud at all?", "acceptedAnswer": { "@type": "Answer", "text": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider, only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation." } },
     { "@type": "Question", "name": "Is EnviousWispr open source?", "acceptedAnswer": { "@type": "Answer", "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub. Contributions are welcome." } },
     { "@type": "Question", "name": "How does EnviousWispr handle filler words like um and uh?", "acceptedAnswer": { "@type": "Answer", "text": "EnviousWispr automatically strips filler words from transcripts before they reach your text field. This happens at the post-processing stage, before AI polish, so even without an LLM enabled your text comes out clean." } },
-    { "@type": "Question", "name": "What happens to my clipboard when EnviousWispr pastes text?", "acceptedAnswer": { "@type": "Answer", "text": "EnviousWispr saves your clipboard contents before pasting transcribed text, then restores them afterward. Whatever you had copied before dictating is still there when you press Cmd+V next." } },
+    { "@type": "Question", "name": "What happens to my clipboard when EnviousWispr pastes text?", "acceptedAnswer": { "@type": "Answer", "text": "When clipboard restoration is on (the default), EnviousWispr saves your clipboard contents before a clipboard-based paste and restores them afterward, unless another app changes the clipboard in between. Direct text insertion never touches your clipboard at all." } },
   ]
 });
 
@@ -392,12 +392,12 @@ const breadcrumbJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Writing style control</td>
-            <td><span class="table-check">Yes</span> (five AI providers: EG-1, Apple Intelligence, Ollama, OpenAI, Gemini; voice-preserving polish)</td>
+            <td><span class="table-check">Yes</span> (six AI providers: EG-1, Ollama, Apple Intelligence on macOS 26+, OpenAI, Gemini, Claude; voice-preserving polish)</td>
             <td><span class="table-check">Yes</span> (style matching, AI mode)</td>
           </tr>
           <tr>
             <td>Clipboard preservation</td>
-            <td><span class="table-check">Yes</span> (clipboard saved before paste, restored after)</td>
+            <td><span class="table-check">Yes,</span> when enabled and no other app changes the clipboard first</td>
             <td><span class="table-muted">Not specified</span></td>
           </tr>
           <tr>
@@ -485,7 +485,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔑</div>
         <div class="advantage-title">Your choice of AI polish</div>
-        <p class="advantage-desc">EG-1, Apple Intelligence, and Ollama run entirely on-device. Want cloud speed? Bring your own OpenAI or Gemini key. You control which services touch your text, if any.</p>
+        <p class="advantage-desc">EG-1 and Ollama run entirely on-device, and so does Apple Intelligence on macOS 26+. Want cloud speed? Bring your own OpenAI, Gemini, or Claude key. You control which services touch your text, if any.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📖</div>
@@ -510,9 +510,9 @@ const breadcrumbJsonLd = JSON.stringify({
         <div class="deep-dive-title">Your text always lands where it should</div>
         <div class="deep-dive-body">
           <p>Cloud dictation has a timing problem. While your audio uploads, transcribes, and returns, you might switch apps, click a different field, or start reading something else. When the text finally arrives, it can paste into the wrong place or overwrite your clipboard.</p>
-          <p>EnviousWispr captures which app and which text field had focus when you started recording. After transcription, it re-activates that exact app and inserts text directly via the Accessibility API. If direct insertion fails, it falls back to simulated Cmd+V, then to AppleScript. Your clipboard is saved before the operation and restored after.</p>
+          <p>EnviousWispr captures which app and which text field had focus when you started recording. After transcription, it re-activates that exact app and inserts text directly via the Accessibility API. If direct insertion fails, it falls back to an ordinary paste, then to the app's own Edit &gt; Paste menu. If all three fail, your text stays on the clipboard so you can paste it yourself.</p>
           <div class="deep-dive-detail">
-            <strong>How it works:</strong> Three-tier paste system (AX direct insertion, CGEvent Cmd+V, AppleScript fallback) with full clipboard snapshot and restoration. Target app reactivation uses Accessibility API force-activation to bypass macOS background process restrictions.
+            <strong>How it works:</strong> Three delivery attempts in order (direct insertion, ordinary paste, app's Edit &gt; Paste menu), then clipboard-only if all fail, with clipboard snapshot and restoration on the paste-based routes. Target app reactivation uses Accessibility API force-activation to bypass macOS background process restrictions.
           </div>
         </div>
       </div>
@@ -689,7 +689,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr use the cloud at all?</div>
-        <p class="faq-a">Transcription is always on-device. If you choose to enable AI polish with a cloud provider (OpenAI, Gemini), only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation. The choice is yours.</p>
+        <p class="faq-a">Transcription is always on-device. If you choose to enable AI polish with a cloud provider (OpenAI, Gemini, or Claude), only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation. The choice is yours.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>
@@ -701,7 +701,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What happens to my clipboard when EnviousWispr pastes text?</div>
-        <p class="faq-a">EnviousWispr saves your clipboard contents before pasting transcribed text, then restores them afterward. Whatever you had copied before dictating is still there when you press Cmd+V next.</p>
+        <p class="faq-a">When clipboard restoration is on (the default), EnviousWispr saves your clipboard contents before a clipboard-based paste and restores them afterward, unless another app changes the clipboard in between. Direct text insertion never touches your clipboard at all.</p>
       </div>
     </div>
   </div>
