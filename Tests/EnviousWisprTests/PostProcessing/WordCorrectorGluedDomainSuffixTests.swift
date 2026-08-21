@@ -256,4 +256,55 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "GitHub.us")
     #expect(result.replacements == 1)
   }
+
+  // MARK: Not a US-only fix. Founder correction (2026-08-21): this app is
+  // used internationally, so the domain-suffix shape has to work for
+  // accented, non-Latin-script, and multi-part (ccTLD + SLD) domains too --
+  // not only plain ASCII words glued to ".com".
+
+  @Test("A single-word ACCENTED brand keeps a glued TLD")
+  func accentedSingleWordBrandKeepsGluedTLD() {
+    let word = CustomWord(canonical: "Café", aliases: ["cafeh"], category: .brand)
+    let result = corrected("cafeh.com", [word])
+    #expect(result.text == "Café.com")
+    #expect(result.replacements == 1)
+  }
+
+  @Test("A CYRILLIC brand corrects a near-miss and keeps a glued TLD")
+  func cyrillicBrandCorrectsFuzzyMissAndKeepsGluedTLD() {
+    let word = CustomWord(canonical: "Привет", aliases: ["привет"], category: .brand)
+    let result = corrected("привед.com", [word])
+    #expect(result.text == "Привет.com")
+    #expect(result.replacements == 1)
+  }
+
+  @Test(
+    "A two-part ccTLD (.co.jp, .co.uk, .com.au) is peeled and reattached whole, not just its last label"
+  )
+  func twoPartCcTLDPeeledAsOneUnit() {
+    // Common everyday domain shape outside the US -- Japan (.co.jp), the UK
+    // (.co.uk), Australia (.com.au). Peeling only the LAST label (the
+    // original design) left "GitHub.co" behind and lost ".jp" outright, or
+    // failed to match a bare alias at all because the leftover ".co" was
+    // still noise on the comparison.
+    let jp = CustomWord(canonical: "任天堂", aliases: ["にんてんどう"], category: .brand)
+    #expect(corrected("にんてんどう.co.jp", [jp]).text == "任天堂.co.jp")
+
+    let uk = CustomWord(canonical: "GitHub", aliases: ["githab"], category: .brand)
+    #expect(corrected("githab.co.uk", [uk]).text == "GitHub.co.uk")
+
+    let au = CustomWord(canonical: "EnviousWispr", aliases: ["Enviousvisper"], category: .brand)
+    #expect(corrected("Enviousvisper.com.au", [au]).text == "EnviousWispr.com.au")
+  }
+
+  @Test("A canonical that is ITSELF a two-part ccTLD domain suppresses reattach correctly")
+  func canonicalItselfTwoPartCcTLDSuppressesReattach() {
+    // The dedup check (finding P2) must recognize "GitHub.co.uk" as
+    // domain-shaped just as readily as "GitHub.com", so a mismatched
+    // peeled suffix is still dropped rather than appended.
+    let word = CustomWord(canonical: "GitHub.co.uk", aliases: ["githab"], category: .brand)
+    let result = corrected("githab.org", [word])
+    #expect(result.text == "GitHub.co.uk")
+    #expect(result.replacements == 1)
+  }
 }

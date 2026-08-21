@@ -937,41 +937,56 @@ public struct WordCorrector: Sendable {
         return prefix + canonical + reattach + suffix
       }
 
-      // Step 3: fuzzy match RESTRICTED to domain-shaped candidates
-      // (`isDomainShaped`), tried against the token exactly as ASR emitted
-      // it, before peeling. Fuzzy scoring CAN cross threshold against a
-      // glued suffix -- but only when the CANDIDATE it's compared against
-      // is itself bare. A candidate that is ALSO domain-shaped ("githab.com"
-      // alias for canonical "GitHub.com") makes the comparison
-      // apples-to-apples (both sides carry a suffix), so a near-miss like
-      // "githib.com" still needs to try this unpeeled -- peeling first
-      // would strip the suffix from only one side and lose the match
-      // entirely (Codex review, PR for #2281, finding P1 round 3).
-      if let canonical = fuzzySingleWordPasses(
+      // A peeled suffix, once a fuzzy match is found, is reattached UNLESS
+      // the matched canonical is itself domain-shaped -- it already fully
+      // specifies its own domain, whatever suffix the user actually said
+      // (Codex review, PR for #2281, finding P2, rounds 2-4).
+      func reattached(_ canonical: String) -> String {
+        let reattach = peeledSuffix.isEmpty || Self.isDomainShaped(canonical) ? "" : peeledSuffix
+        return prefix + canonical + reattach + suffix
+      }
+
+      // Step 3 + 4: non-pack FUZZY to completion -- unpeeled (restricted to
+      // domain-shaped candidates), then peeled (unrestricted) -- before the
+      // pack tier gets a turn at all, so "non-pack always wins over pack"
+      // holds across the peel boundary too, not only within one attempt
+      // (Codex review, PR for #2281; same shape as finding P1 round 4, one
+      // tier down). Step 3's domain restriction is necessary because fuzzy
+      // scoring CAN cross threshold against a glued suffix, but only when
+      // the CANDIDATE compared against is itself bare -- a candidate that
+      // is ALSO domain-shaped makes the raw comparison apples-to-apples, so
+      // a near-miss like "githib.com" needs to try this unpeeled (finding
+      // P1 round 3).
+      if let canonical = nonPackFuzzySingleWordMatch(
         core: core, coreLower: coreLower, lookups: lookups,
         appendReplacement: { appendReplacement(forCanonical: $0) }, domainShapedOnly: true)
       {
         return prefix + canonical + suffix
       }
-
-      // Step 4: fuzzy (+ pack) against the peeled core, the ordinary
-      // unrestricted pool -- the fallback that fixes the originally
-      // reported bug for a bare (non-domain-shaped) alias.
       if matchCoreEligible,
-        let canonical = fuzzySingleWordPasses(
+        let canonical = nonPackFuzzySingleWordMatch(
           core: matchCore, coreLower: matchCoreLower, lookups: lookups,
           appendReplacement: { appendReplacement(forCanonical: $0) }, domainShapedOnly: false)
       {
-        // Codex review, PR for #2281, finding P2 (rounds 2, 3, 4): a saved
-        // CANONICAL can itself be a domain ("GitHub.com") even when its
-        // alias is the bare word ("githab") -- reattaching the peeled
-        // suffix to a canonical that is ALREADY domain-shaped would produce
-        // something like "GitHub.com.org". Suppress the reattach whenever
-        // the matched canonical is domain-shaped AT ALL, not only when it
-        // happens to end with the SAME suffix that was peeled: the
-        // canonical fully specifies its own domain either way.
-        let reattach = peeledSuffix.isEmpty || Self.isDomainShaped(canonical) ? "" : peeledSuffix
-        return prefix + canonical + reattach + suffix
+        return reattached(canonical)
+      }
+
+      // Step 5 + 6: pack fuzzy, the same unpeeled-then-peeled shape, only
+      // reached once every higher-authority attempt above has missed. Step
+      // 4's peeled non-pack fuzzy fixes the originally reported bug for a
+      // bare (non-domain-shaped) alias.
+      if let canonical = packFuzzySingleWordMatch(
+        core: core, coreLower: coreLower, lookups: lookups,
+        appendReplacement: { appendReplacement(forCanonical: $0) }, domainShapedOnly: true)
+      {
+        return prefix + canonical + suffix
+      }
+      if matchCoreEligible,
+        let canonical = packFuzzySingleWordMatch(
+          core: matchCore, coreLower: matchCoreLower, lookups: lookups,
+          appendReplacement: { appendReplacement(forCanonical: $0) }, domainShapedOnly: false)
+      {
+        return reattached(canonical)
       }
 
       return token
@@ -1001,21 +1016,24 @@ public struct WordCorrector: Sendable {
     return canonical
   }
 
-  /// Passes 4-5 (plus the pack tier), factored out of `correct(using:)` so the
-  /// single-word matcher can be run TWICE per token: once against the token as
-  /// ASR emitted it, and -- only if exact matching (both unpeeled and peeled)
-  /// produced no match -- once more against a peeled core (see the call
-  /// sites in `correct(using:)`). Returns the bare matched CANONICAL, never
-  /// prefix/suffix-assembled -- the caller reattaches those, since only the
-  /// caller knows whether a peeled suffix needs deduplicating against the
-  /// canonical it matched.
+  /// Pass 4-5 alone (non-pack fuzzy: aliases + canonical self-entries, then
+  /// canonicals as fallback). Split from the pack tier so the outer
+  /// single-word retry can run the FULL non-pack fuzzy tier -- unpeeled,
+  /// then peeled -- before the pack tier gets a turn at all, the same way
+  /// exact already runs to completion before any fuzzy pass. Without this
+  /// split, a pack-tier fuzzy hit reachable unpeeled (domain-restricted)
+  /// could preempt a non-pack fuzzy hit reachable only by peeling -- the
+  /// identical shape of precedence violation Codex review round 4 found one
+  /// tier up (exact vs. fuzzy), and "non-pack always wins over pack" is
+  /// exactly as absolute an invariant in this file as "exact always wins
+  /// over fuzzy" is.
   ///
-  /// `domainShapedOnly` gates every fuzzy loop here: the unpeeled call site
-  /// passes `true` (fuzzy is only safe unpeeled when comparing against an
-  /// equally domain-shaped candidate -- both sides then carry a suffix, so
-  /// nothing is silently swallowed); the peeled call site passes `false`
-  /// (the ordinary, unrestricted pool).
-  private func fuzzySingleWordPasses(
+  /// `domainShapedOnly` gates both loops: the unpeeled call site passes
+  /// `true` (fuzzy is only safe unpeeled when comparing against an equally
+  /// domain-shaped candidate -- both sides then carry a suffix, so nothing
+  /// is silently swallowed); the peeled call site passes `false` (the
+  /// ordinary, unrestricted pool).
+  private func nonPackFuzzySingleWordMatch(
     core: String, coreLower: String,
     lookups: Lookups, appendReplacement: (String) -> Void,
     domainShapedOnly: Bool
@@ -1024,10 +1042,6 @@ public struct WordCorrector: Sendable {
     let canonicalToWord = lookups.canonicalToWord
     let lowercasedCanonicals = lookups.lowercasedCanonicals
     let canonicals = lookups.canonicals
-    let packSingleFuzzyCandidates = lookups.packSingleFuzzyCandidates
-    let packCanonicals = lookups.packCanonicals
-    let packLowercasedCanonicals = lookups.packLowercasedCanonicals
-    let nonPackExactKeys = lookups.nonPackExactKeys
 
     // Skip fuzzy for very short tokens
     guard core.count >= 3 else { return nil }
@@ -1155,18 +1169,38 @@ public struct WordCorrector: Sendable {
       #endif
     }
 
-    // #992 PACK FUZZY TIER — LOWER authority. Reached ONLY here, i.e. after
-    // every non-pack fuzzy pass above missed (each accept returns early). This
-    // ordering is what makes "user/builtin always wins" structurally true: any
-    // user/builtin match (Pass 3/4/5) preempts the entire pack tier. Pack
-    // matches additionally clear a stricter bar (packFuzzyThresholdBump) and a
-    // casing guard (a case-only change is never an improvement for the
-    // lowercase pack canonicals). Source is unambiguous: only pack terms are
-    // scored in this tier.
+    return nil
+  }
+
+  /// #992 PACK FUZZY TIER — LOWER authority. Split from the non-pack fuzzy
+  /// passes so the outer single-word retry can call this ONLY after BOTH
+  /// non-pack fuzzy attempts (unpeeled, then peeled) have already missed --
+  /// see `nonPackFuzzySingleWordMatch`'s doc comment for why that ordering,
+  /// not merely "non-pack pool before pack pool within one call", is what
+  /// this tier's whole reason for existing depends on. Pack matches
+  /// additionally clear a stricter bar (`packFuzzyThresholdBump`) and a
+  /// casing guard (a case-only change is never an improvement for the
+  /// lowercase pack canonicals).
+  private func packFuzzySingleWordMatch(
+    core: String, coreLower: String,
+    lookups: Lookups, appendReplacement: (String) -> Void,
+    domainShapedOnly: Bool
+  ) -> String? {
+    let packSingleFuzzyCandidates = lookups.packSingleFuzzyCandidates
+    let packCanonicals = lookups.packCanonicals
+    let packLowercasedCanonicals = lookups.packLowercasedCanonicals
+    let nonPackExactKeys = lookups.nonPackExactKeys
+
+    guard core.count >= 3 else { return nil }
+    let effectiveThreshold =
+      core.count <= Self.shortTokenMaxLength
+      ? Self.shortTokenThreshold
+      : Self.threshold
+    let coreLen = coreLower.count
 
     // #992 precedence guard: if the token is already a recognized non-pack
     // term (user/builtin canonical or alias), it is correct as-is — packs
-    // must not rewrite it. This covers the case where the non-pack tier above
+    // must not rewrite it. This covers the case where non-pack matching
     // produced no replacement precisely because no fix was needed.
     if nonPackExactKeys.contains(coreLower) {
       return nil
@@ -1346,12 +1380,24 @@ public struct WordCorrector: Sendable {
 
   // MARK: - Helpers
 
-  /// Splits `s` at its LAST dot into (bare, suffix) when everything after
-  /// that dot is a non-empty run of letters/digits/hyphens -- a purely
-  /// STRUCTURAL definition of "looks like it ends in a domain suffix",
-  /// deliberately not limited to any curated TLD list. One shared
-  /// definition, used for BOTH questions this fix has to ask: is an INPUT
-  /// token worth peeling, and is a saved ALIAS/CANONICAL domain-shaped.
+  /// Splits `s` at its FIRST dot into (bare, suffix) when everything after
+  /// that dot is a non-empty run of letters/digits/hyphens/dots (with no
+  /// leading, trailing, or doubled dot) -- a purely STRUCTURAL definition of
+  /// "looks like it ends in a domain suffix", deliberately not limited to
+  /// any curated TLD list. One shared definition, used for BOTH questions
+  /// this fix has to ask: is an INPUT token worth peeling, and is a saved
+  /// ALIAS/CANONICAL domain-shaped.
+  ///
+  /// FIRST dot, not last: many countries' everyday domains are two-part
+  /// suffixes -- ".co.jp", ".co.uk", ".com.au", ".co.in" -- not the single
+  /// ".com" this app's own San-Francisco-built URL vetting was written
+  /// around. Peeling only the LAST label left "GitHub.co.jp" reattaching as
+  /// "GitHub.co" with the ".jp" silently eaten, and a bare alias "githab"
+  /// glued to "githab.co.jp" never matched at all, because the leftover
+  /// ".co" was still noise on the comparison. Peeling from the first dot
+  /// takes the WHOLE suffix as one unit, whatever shape it has, which is
+  /// what makes a brand name recoverable in a domain-suffix style this app
+  /// was not built around by default.
   ///
   /// Codex review, PR for #2281, rounds 3-4: an earlier version reused
   /// `InverseTextNormalizer.urlTLDAlt` (the closed, ten-item TLD set
@@ -1369,12 +1415,14 @@ public struct WordCorrector: Sendable {
   /// check generalizes to every user's vocabulary rather than the ten TLDs
   /// this app happens to vet for URL recognition elsewhere.
   private static func splitDomainSuffix(_ s: String) -> (bare: String, suffix: String)? {
-    guard let lastDot = s.lastIndex(of: "."), lastDot > s.startIndex else { return nil }
-    let tail = s[s.index(after: lastDot)...]
-    guard !tail.isEmpty, tail.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else {
+    guard let firstDot = s.firstIndex(of: "."), firstDot > s.startIndex else { return nil }
+    let tail = s[s.index(after: firstDot)...]
+    guard !tail.isEmpty, tail.first != ".", tail.last != ".",
+      tail.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "." })
+    else {
       return nil
     }
-    return (String(s[s.startIndex..<lastDot]), String(s[lastDot...]))
+    return (String(s[s.startIndex..<firstDot]), String(s[firstDot...]))
   }
 
   /// True when `s` itself ends in a domain-shaped suffix -- used to decide
