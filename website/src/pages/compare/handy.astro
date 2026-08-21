@@ -71,7 +71,7 @@ const faqJsonLd = JSON.stringify({
       "name": "How is EnviousWispr different from Handy?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Both transcribe on-device with no cloud dependency for speech recognition. The main difference is what happens after transcription: EnviousWispr runs AI polish (EG-1 on-device, Apple Intelligence, Ollama, or your own OpenAI, Claude, or Gemini key) to remove filler words, fix punctuation, and format spoken lists, plus a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy hands you the raw transcript. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only."
+        "text": "Both transcribe on-device with no cloud dependency for speech recognition. The main difference is what happens after transcription: EnviousWispr runs AI polish (EG-1 on-device, Apple Intelligence, Ollama, or your own OpenAI, Claude, or Gemini key) to detect and remove filler words automatically, fix punctuation, and format spoken lists, plus a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy has no punctuation cleanup or list formatting, though it can strip a fixed list of filler words you configure yourself. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only."
       }
     },
     {
@@ -79,7 +79,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does Handy have AI cleanup or polish?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Not as of August 2026, based on Handy's public documentation. It transcribes your speech with Whisper or Parakeet and pastes the raw result. There is no punctuation cleanup, filler-word removal, or list formatting step. EnviousWispr adds that layer on top of transcription."
+        "text": "Not AI-based cleanup. Handy transcribes your speech with Whisper or Parakeet and pastes the result with no punctuation cleanup and no list formatting. It can strip filler words, but only a fixed list you type in yourself; it does not detect them automatically the way EnviousWispr does, and it has no LLM-based polish step at all."
       }
     },
     {
@@ -354,7 +354,7 @@ const faqJsonLd = JSON.stringify({
       <span class="vs-brand">Handy</span>
     </div>
     <h1 class="reveal">Free and open source, like Handy. Also polished.</h1>
-    <p class="page-header-sub reveal">Both transcribe entirely on your Mac at no cost. The difference is what happens after transcription: EnviousWispr cleans up filler words, fixes punctuation, and formats spoken lists. Handy hands you the raw transcript.</p>
+    <p class="page-header-sub reveal">Both transcribe entirely on your Mac at no cost. The difference is what happens after transcription: EnviousWispr detects and removes filler words automatically, fixes punctuation, and formats spoken lists. Handy leaves punctuation and formatting to you.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -445,13 +445,13 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish (cleanup after transcription)</td>
-            <td><span class="table-highlight">EG-1, Apple Intelligence, or Ollama on-device;</span> OpenAI, Claude, or Gemini with your own key</td>
-            <td><span class="table-cross">Not documented</span> — raw transcript only</td>
+            <td><span class="table-highlight">EG-1, Apple Intelligence, or a local Ollama model on-device;</span> OpenAI, Claude, or Gemini with your own key, or Ollama's hosted models with your Ollama sign-in</td>
+            <td><span class="table-cross">Not documented</span> — no punctuation cleanup or list formatting</td>
           </tr>
           <tr>
             <td>Filler word removal</td>
-            <td><span class="table-check">Yes</span> (built-in, language-aware, runs before AI polish)</td>
-            <td><span class="table-cross">Not documented</span></td>
+            <td><span class="table-check">Yes</span> (built-in, automatic, language-aware, runs before AI polish)</td>
+            <td><span class="table-check">Yes</span> — strips a fixed list of words you configure yourself, not automatic detection</td>
           </tr>
           <tr>
             <td>Turns a spoken list into a real list</td>
@@ -533,7 +533,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🧹</div>
         <div class="advantage-title">AI polish included</div>
-        <p class="advantage-desc">EG-1 (our own on-device model), Apple Intelligence, or Ollama clean up filler words, fix punctuation, and format spoken lists, all on your Mac. Bring your own OpenAI, Claude, or Gemini key for cloud speed. Handy stops at the raw transcript.</p>
+        <p class="advantage-desc">EG-1 (our own on-device model), Apple Intelligence, or a local Ollama model detect and remove filler words automatically, fix punctuation, and format spoken lists, all on your Mac. Bring your own OpenAI, Claude, or Gemini key, or sign in to Ollama's hosted models, for cloud speed. Handy has no punctuation cleanup or list formatting, and its own filler-word removal only strips a list you configure yourself.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">👀</div>
@@ -588,7 +588,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>AI polish runs locally by default (EG-1, Apple Intelligence, or a downloaded Ollama model). If you choose a cloud provider instead — OpenAI, Claude, Gemini, or an Ollama hosted model — with your own key, your transcript, custom words, and the app you're dictating into are sent. Audio is never sent, either way. You control the key.</div>
+          <div>AI polish runs locally by default (EG-1, Apple Intelligence, or a downloaded Ollama model). If you choose a cloud provider instead — your own key for OpenAI, Claude, or Gemini, or your Ollama sign-in for Ollama's hosted models — your transcript, custom words, and the app you're dictating into are sent. Audio is never sent, either way.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
@@ -610,7 +610,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>There is no polish step, so there is nothing further to send anywhere. The raw transcript is the final output.</div>
+          <div>There is no AI polish step, so there is nothing further to send anywhere. The transcript may be trimmed against a filler-word list you configured, but that stays on-device too.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
@@ -674,8 +674,8 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-icon">🧽</div>
         <div class="deep-dive-title">What happens after the transcript</div>
         <div class="deep-dive-body">
-          <p>Handy's job ends at the transcript. Whisper or Parakeet turns your speech into text, and that text is pasted exactly as recognized, filler words and all. For some workflows that is precisely the point: the fewer things that touch your words, the less there is to second-guess.</p>
-          <p>EnviousWispr runs the transcript through a cleanup pass before AI polish: filler words are stripped in a way that is aware of your language, numbers and dates are formatted, and only then does the text optionally reach an on-device or cloud LLM for a final pass. That LLM step is guarded against hallucination: short transcripts skip the model entirely, output that is more than three times longer than the input is rejected as probable fabrication, and the raw transcript is used instead.</p>
+          <p>Handy's job mostly ends at the transcript. Whisper or Parakeet turns your speech into text, and that text is pasted with no punctuation cleanup and no list formatting. It can strip filler words too, but only the ones you type into a list yourself; it does not detect "um" or "uh" on its own the way EnviousWispr does.</p>
+          <p>EnviousWispr's filler removal is automatic and aware of your language, so it does not need a list you maintain, and numbers and dates get formatted the way you would type them. Only then does the text optionally reach an on-device or cloud LLM for a final pass. That LLM step is guarded against hallucination: short transcripts skip the model entirely, output that is more than three times longer than the input is rejected as probable fabrication, and the raw transcript is used instead.</p>
           <p>In our own testing on the latest release, EG-1 builds a real bulleted list out of a spoken list 83% of the time (up from under 1%), and correctly keeps only what you meant when you self-correct mid-sentence 78% of the time.</p>
           <div class="deep-dive-detail">
             <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
@@ -744,11 +744,11 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from Handy?</div>
-        <p class="faq-a">Both transcribe on-device with no cloud dependency for speech recognition. The main difference is what happens after transcription: EnviousWispr runs AI polish (EG-1 on-device, Apple Intelligence, Ollama, or your own OpenAI, Claude, or Gemini key) to remove filler words, fix punctuation, and format spoken lists, plus a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy hands you the raw transcript. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only.</p>
+        <p class="faq-a">Both transcribe on-device with no cloud dependency for speech recognition. The main difference is what happens after transcription: EnviousWispr runs AI polish (EG-1 on-device, Apple Intelligence, Ollama, or your own OpenAI, Claude, or Gemini key) to detect and remove filler words automatically, fix punctuation, and format spoken lists, plus a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy has no punctuation cleanup or list formatting, though it can strip a fixed list of filler words you configure yourself. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Handy have AI cleanup or polish?</div>
-        <p class="faq-a">Not as of August 2026, based on Handy's public documentation. It transcribes your speech with Whisper or Parakeet and pastes the raw result. There is no punctuation cleanup, filler-word removal, or list formatting step. EnviousWispr adds that layer on top of transcription.</p>
+        <p class="faq-a">Not AI-based cleanup. Handy transcribes your speech with Whisper or Parakeet and pastes the result with no punctuation cleanup and no list formatting. It can strip filler words, but only a fixed list you type in yourself; it does not detect them automatically the way EnviousWispr does, and it has no LLM-based polish step at all.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
