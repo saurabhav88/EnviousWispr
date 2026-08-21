@@ -1502,13 +1502,29 @@ public struct WordCorrector: Sendable {
   /// domain) from "Node.js" (a product name that happens to end in a
   /// dot-suffix): both are ALL-LETTERS after the dot, so no structural rule
   /// -- however tightened -- can separate them.
+  /// KNOWN LIMIT, accepted rather than chased further (founder call,
+  /// Codex review round 7, P2): this list is CURATED, not exhaustive --
+  /// ICANN's real root zone has 1,500+ entries, and any hand-picked subset
+  /// will always be missing one (round 7 named "GitHub.academy" as a real
+  /// gTLD this list omits). `matcher-set-adversarial-tests`'s
+  /// generalisation gate is right that a hand-authored set is a prediction
+  /// about users we haven't met -- the two mechanisms that would actually
+  /// close it are bundling a maintained public-suffix authority, or letting
+  /// a word's OWNER mark it as a domain explicitly rather than the app
+  /// guessing from its text -- and both are real feature-sized additions,
+  /// not a fix for this bug. The failure mode this list still has is
+  /// narrow: it needs BOTH a saved word shaped like a domain that ISN'T one
+  /// AND a separately-dictated real domain suffix glued onto its bare
+  /// alias, and (measured against the shipped pack and this founder's own
+  /// live vocabulary while building this fix) zero words anywhere in this
+  /// app are shaped like a domain at all today.
   private static let knownDedupTLDs: Set<String> = [
     "com", "org", "net", "edu", "gov", "mil", "int", "info", "biz", "name",
     "pro", "coop", "museum", "aero", "jobs", "mobi", "travel", "tel", "asia", "cat", "xxx",
     "io", "co", "dev", "app", "xyz", "me", "tv", "cc", "ai", "tech",
     "online", "site", "store", "shop", "cloud", "live", "life", "world", "media", "news",
     "agency", "studio", "design", "digital", "email", "expert", "guide", "help",
-    "network", "software", "systems", "tools", "works", "so",
+    "network", "software", "systems", "tools", "works", "so", "academy",
     "us", "uk", "ca", "au", "de", "fr", "jp", "cn", "in", "br",
     "ru", "es", "it", "nl", "se", "no", "dk", "fi", "pl", "ch",
     "at", "be", "pt", "gr", "ie", "nz", "sg", "hk", "tw", "kr",
