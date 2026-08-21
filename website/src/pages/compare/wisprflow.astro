@@ -135,7 +135,7 @@ const faqJsonLd = JSON.stringify({
       "name": "What happens to my clipboard when EnviousWispr pastes text?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Nothing. EnviousWispr saves your clipboard contents before pasting and restores them after. Whatever you had copied before dictating is still there when it finishes."
+        "text": "Nothing, when clipboard restoration is on (the default). EnviousWispr saves your clipboard contents before a clipboard-based paste and restores them afterward, unless another app changes the clipboard in between. Direct text insertion never touches your clipboard at all."
       }
     },
     {
@@ -787,7 +787,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What happens to my clipboard when EnviousWispr pastes text?</div>
-        <p class="faq-a">Nothing. EnviousWispr saves your clipboard contents before pasting and restores them after. Whatever you had copied before dictating is still there when it finishes. It also detects third-party clipboard managers and avoids interfering with them.</p>
+        <p class="faq-a">Nothing, when clipboard restoration is on (the default). EnviousWispr saves your clipboard contents before a clipboard-based paste and restores them afterward, unless another app changes the clipboard in between. Direct text insertion never touches your clipboard at all.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I add custom words for names, brands, or jargon?</div>
