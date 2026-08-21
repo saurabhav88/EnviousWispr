@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/whisper-cpp/`,
   "image": `${siteUrl}/images/og/whisper-cpp.png`,
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-06-13T01:39:38Z",
+  "dateModified": "2026-08-21T00:00:00Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -35,8 +35,8 @@ const faqJsonLd = JSON.stringify({
   "mainEntity": [
     { "@type": "Question", "name": "Is there a GUI for whisper.cpp on Mac?", "acceptedAnswer": { "@type": "Answer", "text": "whisper.cpp itself is a command-line tool with no GUI. Several third-party apps wrap whisper.cpp with a graphical interface. EnviousWispr uses purpose-built engines (Parakeet TDT, WhisperKit) optimized for Apple Silicon, wrapped in a native Mac app with a hold-to-talk keybind and automatic clipboard pasting." } },
     { "@type": "Question", "name": "Can I use whisper.cpp for live dictation on Mac?", "acceptedAnswer": { "@type": "Answer", "text": "whisper.cpp has a real-time streaming mode, but it outputs to the terminal. There is no keybind, no clipboard integration, and no paste-into-app workflow. EnviousWispr provides the full dictation experience." } },
-    { "@type": "Question", "name": "Does EnviousWispr use whisper.cpp internally?", "acceptedAnswer": { "@type": "Answer", "text": "No. EnviousWispr uses Parakeet TDT (NVIDIA's CTC-based model) and WhisperKit (a Swift-native Whisper implementation via Core ML and the Neural Engine), not whisper.cpp's C/C++ approach." } },
-    { "@type": "Question", "name": "Is EnviousWispr faster than whisper.cpp?", "acceptedAnswer": { "@type": "Answer", "text": "For live dictation on Apple Silicon Macs, EnviousWispr achieves a 0.43s median latency using engines tuned for the Neural Engine. whisper.cpp performance varies widely by model size, hardware, and build flags." } },
+    { "@type": "Question", "name": "Does EnviousWispr use whisper.cpp internally?", "acceptedAnswer": { "@type": "Answer", "text": "No. EnviousWispr uses Parakeet TDT (NVIDIA's transducer-based model) and WhisperKit (a Swift-native Whisper implementation via Core ML and the Neural Engine), not whisper.cpp's C/C++ approach." } },
+    { "@type": "Question", "name": "Is EnviousWispr faster than whisper.cpp?", "acceptedAnswer": { "@type": "Answer", "text": "For live dictation on Apple Silicon Macs, EnviousWispr achieves a 0.61s median latency using engines tuned for the Neural Engine. whisper.cpp performance varies widely by model size, hardware, and build flags." } },
     { "@type": "Question", "name": "Is EnviousWispr open source?", "acceptedAnswer": { "@type": "Answer", "text": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line on GitHub. whisper.cpp is MIT licensed, which is more permissive for derivative works." } },
     { "@type": "Question", "name": "What is the best whisper dictation tool for Mac?", "acceptedAnswer": { "@type": "Answer", "text": "If you want a developer library for scripting and batch processing, whisper.cpp is the standard. If you want a native Mac app with a keybind, AI polish, custom words, and automatic clipboard pasting, EnviousWispr is built for that workflow." } },
     { "@type": "Question", "name": "Can whisper.cpp do AI polish or custom words?", "acceptedAnswer": { "@type": "Answer", "text": "No. whisper.cpp outputs raw transcription. Any post-processing requires additional tools or scripts. EnviousWispr includes AI polish and custom words as built-in features." } },
@@ -284,7 +284,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.43s median latency
+        0.61s median latency
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -314,7 +314,7 @@ const breadcrumbJsonLd = JSON.stringify({
             <th scope="col">whisper.cpp</th>
           </tr>
         </thead>
-        <!-- Evidence: whisper.cpp claims verified against github.com/ggerganov/whisper.cpp on 2026-04-04.
+        <!-- Evidence: whisper.cpp claims verified against github.com/ggml-org/whisper.cpp (repo moved orgs from ggerganov) on 2026-08-21.
              Confidence: source-verified from official GitHub repository and README.
              Sources:
                - License: MIT (GitHub repo license file)
@@ -371,7 +371,7 @@ const breadcrumbJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">5 providers</span>: EG-1, Apple Intelligence, Ollama, OpenAI, Gemini</td>
+            <td><span class="table-highlight">6 providers</span>: EG-1, Ollama, Apple Intelligence (macOS 26+), OpenAI, Gemini, Claude</td>
             <td><span class="table-cross">None</span></td>
           </tr>
           <tr>
@@ -402,11 +402,11 @@ const breadcrumbJsonLd = JSON.stringify({
           <tr>
             <td>Speech engine</td>
             <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (Apple Silicon optimized)</td>
-            <td><a href="https://github.com/ggerganov/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a> (C/C++ port of OpenAI Whisper)</td>
+            <td><a href="https://github.com/ggml-org/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a> (C/C++ port of OpenAI Whisper)</td>
           </tr>
           <tr>
             <td>Multi-language</td>
-            <td>25 European (Parakeet), 90+ via WhisperKit</td>
+            <td>25 European (Parakeet), 99 via WhisperKit</td>
             <td>90+ (OpenAI Whisper models)</td>
           </tr>
           <tr>
@@ -417,17 +417,17 @@ const breadcrumbJsonLd = JSON.stringify({
           <tr>
             <td>Source code</td>
             <td><a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Open source</a> (GPLv3)</td>
-            <td><a href="https://github.com/ggerganov/whisper.cpp" style="color: var(--accent); text-decoration: underline;">Open source</a> (MIT)</td>
+            <td><a href="https://github.com/ggml-org/whisper.cpp" style="color: var(--accent); text-decoration: underline;">Open source</a> (MIT)</td>
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
             <td>Varies by model size and hardware</td>
           </tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">EnviousWispr latency from production PostHog data on Apple Silicon Macs. whisper.cpp claims source-verified from <a href="https://github.com/ggerganov/whisper.cpp" style="color: var(--text-3); text-decoration: underline;">github.com/ggerganov/whisper.cpp</a>; not firsthand-tested. Last verified: 2026-04-04.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. whisper.cpp claims source-verified from <a href="https://github.com/ggml-org/whisper.cpp" style="color: var(--text-3); text-decoration: underline;">github.com/ggml-org/whisper.cpp</a>; not firsthand-tested. Last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -547,14 +547,14 @@ const breadcrumbJsonLd = JSON.stringify({
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.43s</div>
+        <div class="speed-value">0.61s</div>
         <div class="speed-label">Median transcription</div>
         <div class="speed-detail">From end of speech to raw text</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.5s</div>
+        <div class="speed-value">1.65s</div>
         <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-detail">EG-1 or Apple, on-device; scales with dictation length</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0</div>
@@ -582,7 +582,7 @@ const breadcrumbJsonLd = JSON.stringify({
           <p>whisper.cpp gives you raw Whisper output in a terminal. You record audio separately, convert it to the right format, run a command, and read the result from stdout.</p>
           <p>EnviousWispr captures speech, transcribes via Parakeet TDT or WhisperKit, corrects with fuzzy word matching, strips filler words, polishes with AI, and pastes into your active app. One keybind press, one result.</p>
           <div class="deep-dive-detail">
-            <strong>The pipeline:</strong> pre-roll buffer catches early speech, VAD detects voice activity, the warm engine transcribes instantly, custom words fix domain terms, AI polish cleans grammar and punctuation, three-tier paste delivers the text. All of this runs in under 1.5 seconds.
+            <strong>The pipeline:</strong> pre-roll buffer catches early speech, VAD detects voice activity, the warm engine transcribes instantly, custom words fix domain terms, AI polish cleans grammar and punctuation, then the text is delivered to your app. Transcription lands in well under a second; AI polish and delivery add variable time that scales with how much you said.
           </div>
         </div>
       </div>
@@ -591,7 +591,7 @@ const breadcrumbJsonLd = JSON.stringify({
         <div class="deep-dive-title">The workflow that whisper.cpp does not have</div>
         <div class="deep-dive-body">
           <p>Dictation is more than transcription. The details that make it usable as a daily driver are the ones whisper.cpp was never designed to provide.</p>
-          <p>Pre-roll buffer means you never lose the first word. A warm engine means zero cold-start delay. Target app reactivation brings focus back to where you were typing. Clipboard preservation means your copied content survives the paste. Three-tier paste tries Accessibility API first, keyboard shortcut second, clipboard fallback third.</p>
+          <p>While the mic is warm, a pre-roll buffer reduces first-word clipping; a cold start can still lose the first word or two, and a warm engine means no other cold-start delay. Target app reactivation brings focus back to where you were typing. Delivery tries direct insertion first, then an ordinary paste, then the app's own Edit &gt; Paste menu; if all three fail, your text stays on the clipboard so you can paste it yourself. Clipboard restoration, on by default, means your copied content survives a paste-based delivery.</p>
           <div class="deep-dive-detail">
             <strong>Why this matters:</strong> Every one of these features was built because a real user hit a real friction point. whisper.cpp is an excellent transcription engine. EnviousWispr is the product layer that makes transcription disappear into your workflow.
           </div>
@@ -638,7 +638,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
         <div class="advantage-title">You need deep multilingual support</div>
-        <p class="advantage-desc">whisper.cpp supports 90+ languages natively with any Whisper model. EnviousWispr's primary engine (Parakeet) covers 25 European languages, with wider support via WhisperKit as a secondary option.</p>
+        <p class="advantage-desc">whisper.cpp supports 90+ languages natively with any Whisper model. EnviousWispr's primary engine (Parakeet) covers 25 European languages, with 99 languages via WhisperKit as a secondary option.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌐</div>
@@ -646,7 +646,7 @@ const breadcrumbJsonLd = JSON.stringify({
         <p class="advantage-desc">whisper.cpp has bindings for Python, Go, Rust, Ruby, and more. A large community contributes optimizations, model conversions, and integrations. If you want to plug speech recognition into an existing toolchain, whisper.cpp has the broadest ecosystem.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want a ready-to-use Mac dictation app with a keybind, AI polish, and clipboard workflow, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. If you want a developer library, <a href="https://github.com/ggerganov/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a> is excellent.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want a ready-to-use Mac dictation app with a keybind, AI polish, and clipboard workflow, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. If you want a developer library, <a href="https://github.com/ggml-org/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a> is excellent.</p>
   </div>
 </section>
 
@@ -668,11 +668,11 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr use whisper.cpp internally?</div>
-        <p class="faq-a">No. EnviousWispr uses <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (a Swift-native Whisper implementation optimized for Core ML and the Neural Engine) and <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> (NVIDIA's CTC-based model). Both are optimized for Apple Silicon rather than broad hardware compatibility.</p>
+        <p class="faq-a">No. EnviousWispr uses <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (a Swift-native Whisper implementation optimized for Core ML and the Neural Engine) and <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> (NVIDIA's transducer-based model). Both are optimized for Apple Silicon rather than broad hardware compatibility.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr faster than whisper.cpp?</div>
-        <p class="faq-a">For live dictation on Apple Silicon Macs, EnviousWispr achieves a 0.43s median latency using engines tuned for the Neural Engine. whisper.cpp performance varies widely by model size, hardware, and build flags. On the same Mac hardware, Neural Engine-optimized inference is generally faster than CPU or GPU inference for Whisper-class models.</p>
+        <p class="faq-a">For live dictation on Apple Silicon Macs, EnviousWispr achieves a 0.61s median latency using engines tuned for the Neural Engine. whisper.cpp performance varies widely by model size, hardware, and build flags. On the same Mac hardware, Neural Engine-optimized inference is generally faster than CPU or GPU inference for Whisper-class models.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>
@@ -696,7 +696,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr use whisper.cpp under the hood?</div>
-        <p class="faq-a">No. EnviousWispr uses two different engines: <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> (NVIDIA's CTC-based model) and <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (a Swift-native Whisper implementation). WhisperKit runs Whisper models via Core ML and the Neural Engine, which is a different implementation path than whisper.cpp's C/C++ approach. Both are valid ways to run on-device speech recognition, optimized for different goals.</p>
+        <p class="faq-a">No. EnviousWispr uses two different engines: <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> (NVIDIA's transducer-based model) and <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (a Swift-native Whisper implementation). WhisperKit runs Whisper models via Core ML and the Neural Engine, which is a different implementation path than whisper.cpp's C/C++ approach. Both are valid ways to run on-device speech recognition, optimized for different goals.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use whisper.cpp and EnviousWispr together?</div>
