@@ -127,7 +127,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Which speech engines does each app use?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 90+ languages. Handy offers a choice of engines: OpenAI Whisper in several sizes (Small, Medium, Turbo, Large) with GPU acceleration, plus Parakeet V2 and V3. Handy's Whisper option lets you trade speed for accuracy on capable hardware; EnviousWispr picks the right engine for your language automatically."
+        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 90+ languages. Handy offers a choice of engines: OpenAI Whisper in several sizes (Small, Medium, Turbo, Large) with GPU acceleration, plus Parakeet V2 and V3. Handy's Whisper option lets you trade speed for accuracy on capable hardware; EnviousWispr defaults to Parakeet for speed, and switching to WhisperKit for a language it doesn't cover is one setting away, under Settings, Transcription."
       }
     },
     {
@@ -430,12 +430,12 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Model choice</td>
-            <td>One tuned engine per language, chosen automatically</td>
+            <td>Parakeet by default; switch to WhisperKit in Settings for other languages</td>
             <td><span class="table-check">Yes</span> — pick a Whisper size to trade speed for accuracy</td>
           </tr>
           <tr>
             <td>Audio leaves your Mac</td>
-            <td><span class="table-check">Never.</span> If you enable cloud AI polish, only the text transcript is sent.</td>
+            <td><span class="table-check">Never.</span> If you enable cloud AI polish, your transcript, custom words, and the app you're dictating into are sent — never audio.</td>
             <td><span class="table-check">Never.</span> No cloud engine documented.</td>
           </tr>
           <tr>
@@ -588,7 +588,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>AI polish runs locally (EG-1, Apple Intelligence, or Ollama) by default, or with your own API key if you choose a cloud provider. Only the text transcript is sent; you control the key.</div>
+          <div>AI polish runs locally by default (EG-1, Apple Intelligence, or a downloaded Ollama model). If you choose a cloud provider instead — OpenAI, Claude, Gemini, or an Ollama hosted model — with your own key, your transcript, custom words, and the app you're dictating into are sent. Audio is never sent, either way. You control the key.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
@@ -661,12 +661,12 @@ const faqJsonLd = JSON.stringify({
     <div class="deep-dive-grid">
       <div class="deep-dive-card reveal">
         <div class="deep-dive-icon">🔀</div>
-        <div class="deep-dive-title">A menu of models vs two chosen for you</div>
+        <div class="deep-dive-title">A menu of models vs two, tuned for the job</div>
         <div class="deep-dive-body">
           <p>Handy gives you a real menu: Whisper Small through Large with GPU acceleration, Parakeet V2 or V3, and it can auto-discover custom GGUF models you download from Hugging Face. If you run Handy on a Windows machine with a discrete GPU, that flexibility is genuinely useful, and it is one of the clearest reasons to pick Handy over EnviousWispr.</p>
-          <p>EnviousWispr takes the opposite approach: NVIDIA Parakeet TDT v3 for the 25 languages it covers best, and WhisperKit filling in the other 65+. There is no menu, because the app picks the engine that fits your language automatically. The trade-off is fewer knobs, in exchange for one setup that is already tuned.</p>
+          <p>EnviousWispr keeps it to two: Parakeet TDT v3 is the default, tuned for speed and English/European accuracy. If you dictate in a language it doesn't cover, switch to WhisperKit under Settings → Transcription, a one-time toggle plus a roughly 1.5GB download the first time. The choice is manual, not automatic; there just isn't a size ladder to climb.</p>
           <div class="deep-dive-detail">
-            <strong>Why it matters:</strong> Power users who want to tune the speed-versus-accuracy dial themselves, or who need Windows or Linux support, get more from Handy today. Anyone who wants to install once and never think about it again gets that from EnviousWispr.
+            <strong>Why it matters:</strong> Power users who want to tune the speed-versus-accuracy dial themselves, or who need Windows or Linux support, get more from Handy today. Anyone who wants one setting to change instead of four model sizes to compare gets that from EnviousWispr.
           </div>
         </div>
       </div>
@@ -772,7 +772,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 90+ languages. Handy offers a choice of engines: OpenAI Whisper in several sizes (Small, Medium, Turbo, Large) with GPU acceleration, plus Parakeet V2 and V3. Handy's Whisper option lets you trade speed for accuracy on capable hardware; EnviousWispr picks the right engine for your language automatically.</p>
+        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 90+ languages. Handy offers a choice of engines: OpenAI Whisper in several sizes (Small, Medium, Turbo, Large) with GPU acceleration, plus Parakeet V2 and V3. Handy's Whisper option lets you trade speed for accuracy on capable hardware; EnviousWispr defaults to Parakeet for speed, and switching to WhisperKit for a language it doesn't cover is one setting away, under Settings, Transcription.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from Handy to EnviousWispr easily?</div>
