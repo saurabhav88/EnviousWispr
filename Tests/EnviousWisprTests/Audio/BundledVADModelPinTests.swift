@@ -40,10 +40,34 @@ struct BundledVADModelPinTests {
   /// just delete the assertion. The sweep itself is not in this tree — it lives
   /// under gitignored `docs/` — so the issue is the address that works.
   @Test("the pin is still a deliberate divergence from the library's default")
-  func pinStillDivergesFromTheLibraryDefault() {
+  func pinStillDivergesFromTheLibraryDefault() throws {
     #expect(
       BundledVADModelLoader.pinnedModelName != ModelNames.VAD.sileroVad,
       "FluidAudio now names \(ModelNames.VAD.sileroVad); our pin was measured against a different build and the comparison needs redoing"
     )
+
+    // The comparison above protects the deliberate divergence, but a constant
+    // can stay pinned while the loader quietly starts reading another name.
+    // Give the loader a bundle containing only the benchmarked resource. A
+    // malformed model is enough here: reaching CoreML proves lookup selected
+    // that resource; asking for any alias or dependency default fails earlier
+    // as `resourceNotFound`.
+    let fixtureRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent("BundledVADModelPinTests-\(UUID().uuidString)")
+    let pinnedResource = fixtureRoot.appendingPathComponent(
+      "\(BundledVADModelLoader.pinnedModelName).mlmodelc")
+    try FileManager.default.createDirectory(at: pinnedResource, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+    let fixtureBundle = try #require(Bundle(path: fixtureRoot.path))
+
+    do {
+      _ = try BundledVADModelLoader.loadModel(in: fixtureBundle)
+      Issue.record("the malformed model unexpectedly loaded")
+    } catch BundledVADModelLoader.LoadError.resourceNotFound {
+      Issue.record("the loader did not request the benchmarked model resource")
+    } catch BundledVADModelLoader.LoadError.loadFailed {
+      // Expected: the benchmarked resource was resolved, then CoreML rejected
+      // the deliberately empty model directory.
+    }
   }
 }
