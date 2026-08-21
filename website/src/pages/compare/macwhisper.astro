@@ -548,7 +548,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔑</div>
         <div class="advantage-title">Your choice of AI polish</div>
-        <p class="advantage-desc">EG-1, Apple Intelligence, and Ollama run entirely on-device. Want cloud speed? Bring your own OpenAI or Gemini key. MacWhisper's AI Assistant is a separate $9.99/mo subscription.</p>
+        <p class="advantage-desc">EG-1 and Ollama run entirely on-device, and so does Apple Intelligence on macOS 26+. Want cloud speed? Bring your own OpenAI, Gemini, or Claude key. MacWhisper's AI Assistant is a separate $9.99/mo subscription.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📝</div>
@@ -667,7 +667,7 @@ const faqJsonLd = JSON.stringify({
           <p>EnviousWispr works in real time. You hold a keybind, speak, and release. In the background, a pre-roll audio buffer captures your first words before you even press the key. The ASR model stays warm in memory, so there is no cold-start delay. Speech detection sends only the parts where you were talking to the model. Text is pasted directly into whatever app had focus.</p>
           <p>The difference is not just speed. It is the entire interaction model. You never leave your document, never switch apps, never copy-paste. Your voice becomes an input method, not a separate step.</p>
           <div class="deep-dive-detail">
-            <strong>How it works:</strong> Pre-roll buffer captures 500ms of audio before keybind press so first words are never lost. Parakeet TDT model stays loaded in memory for instant inference. Speech detection keeps the stretches where you were talking and sends only those to the model. Three-tier paste system (AX direct insertion, CGEvent Cmd+V, AppleScript fallback) delivers text to the active field with clipboard preservation.
+            <strong>How it works:</strong> While the mic is warm, a 500ms pre-roll buffer reduces first-word clipping; a cold start can still lose the first word or two. Parakeet TDT model stays loaded in memory for instant inference. Speech detection keeps the stretches where you were talking and sends only those to the model. Delivery tries direct insertion, then an ordinary paste, then the app's Edit &gt; Paste menu, falling back to clipboard-only if all three fail, with clipboard preservation on the paste-based routes.
           </div>
         </div>
       </div>
@@ -677,7 +677,7 @@ const faqJsonLd = JSON.stringify({
         <div class="deep-dive-body">
           <p>MacWhisper gives you Whisper output. That is already useful for file transcription, where you can review and edit at your leisure. For real-time dictation, raw ASR output is not good enough. You need text that is ready to use the moment it appears.</p>
           <p>EnviousWispr runs a 6-pass fuzzy word correction pipeline on every transcription. Your custom vocabulary (names, technical terms, acronyms) is matched against the ASR output using phonetic similarity, edit distance, and context-aware scoring. Filler words like "um", "uh", and "you know" are stripped automatically.</p>
-          <p>On top of that, optional AI polish reformats the text for grammar, punctuation, and readability. It runs on-device with EG-1, Apple Intelligence, or Ollama, or via your own OpenAI/Gemini key. The result is polished, ready-to-send text, not a rough transcript that needs manual cleanup.</p>
+          <p>On top of that, optional AI polish reformats the text for grammar, punctuation, and readability. It runs on-device with EG-1, Ollama, or Apple Intelligence (macOS 26+), or via your own OpenAI, Gemini, or Claude key. The result is polished, ready-to-send text, not a rough transcript that needs manual cleanup.</p>
           <div class="deep-dive-detail">
             <strong>How it works:</strong> Post-processing pipeline applies custom word correction (phonetic matching, Levenshtein distance, bigram context), filler removal, and optional LLM polish. AI polish uses sandwich framing with XML tags to prevent hallucination, plus output length validation to reject fabricated responses. Short transcripts bypass LLM entirely.
           </div>
@@ -781,7 +781,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What happens to my clipboard when EnviousWispr pastes text?</div>
-        <p class="faq-a">EnviousWispr saves your clipboard contents before pasting dictated text and restores them afterward. Whatever you had copied before dictating will still be on your clipboard when you press Cmd+V next.</p>
+        <p class="faq-a">When clipboard restoration is on (the default), EnviousWispr saves your clipboard contents before a clipboard-based paste and restores them afterward, unless another app changes the clipboard in between. Direct text insertion never touches your clipboard at all.</p>
       </div>
     </div>
   </div>
