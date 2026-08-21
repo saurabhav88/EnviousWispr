@@ -206,6 +206,41 @@ struct RecordingOverlayPreviewSizingTests {
     #expect(atCompact == atTall, "with a notice showing: \(atCompact)pt vs \(atTall)pt")
   }
 
+  @Test("the notice banner contributes to the measured height")
+  func noticeBannerAddsHeight() throws {
+    let log = HeightLog()
+    let noticeState = OverlayNoticeState()
+    let display = LivePreviewDisplay.text(Self.oneLine)
+    let view = RecordingOverlayView(
+      audioLevelProvider: { 0 },
+      recordingElapsedProvider: { 41 },
+      livePreviewProvider: { display },
+      onContentHeightChange: { log.record($0) },
+      usesPreviewLayout: true,
+      lockState: OverlayLockState(),
+      noticeState: noticeState,
+      initialPreview: display
+    )
+    let frame = NSRect(x: 0, y: 0, width: Self.previewWidth, height: 65)
+    let host = NSHostingView(rootView: view.frame(width: Self.previewWidth))
+    let window = NSWindow(
+      contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    host.frame = frame
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    let withoutNotice = try #require(log.reported.last)
+
+    noticeState.message = "Recording stops in one minute."
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    let withNotice = try #require(log.reported.last)
+
+    #expect(
+      withNotice > withoutNotice,
+      "the notice was present but the measured height stayed at \(withoutNotice)pt")
+  }
+
   // MARK: - The acceptance criterion, pinned rather than implied
 
   /// The chunk's stated criterion is a NUMBER: while preview text, lock state and
