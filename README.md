@@ -104,6 +104,8 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 ## Features
 
 - 🎙️ **Dual ASR engines** with [Parakeet v3](https://github.com/FluidInference/FluidAudio) (NVIDIA NeMo) and [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift) (OpenAI Whisper)
+- 👀 **Live Preview**: watch your words appear in the recording pill while you speak, so you can see it is working without waiting for the paste. Optional, and it never changes the text you get
+- ↩️ **Escape Recovery**: hit your cancel keybind by mistake and get the dictation back. Turn it on and a keybind cancel keeps the text for 24 hours instead of discarding it. The Cancel button in the recording pill still discards on the spot, so you keep one way to mean it. Off by default, and only the text is kept, never the audio
 - ✨ **AI polish that respects your words**: strips filler words and false starts, fixes grammar and punctuation, formats numbers, dates, and URLs, and honors your custom vocabulary, all in your spoken language (never translated or rewritten)
 - 🔒 **Polish that can stay private**: run it fully on-device with EG-1 (our own custom model), Apple Intelligence (macOS 26+), or Ollama, or in the cloud via OpenAI GPT / Google Gemini with your own API key
 - 🌍 **Multilingual with automatic language detection**: speak in any supported language and EnviousWispr detects it, then offers to lock it in for faster, more accurate transcription
@@ -120,12 +122,15 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 
 EnviousWispr ships often. A few of the user-facing improvements from recent releases:
 
-- **Pasting lands in more apps.** Text now reliably reaches apps that previously said "Copied" but never pasted (Word, Excel, Pages, Numbers, OneNote, and others). (v2.1.4)
-- **Vocabulary packs and Contacts import.** Turn on a pack for brands and jargon, or import the names of people you know in one tap, so hard-to-spell names come out right. Your contacts never leave your Mac. (v2.1.3)
-- **No swallowed first word after a break.** After idling, the engine re-wakes in a fraction of a second and captures your words, including the very first one. (v2.1.2 and v2.1.3)
-- **Soft and distant speech captured.** Quiet, whispered, or far-from-the-mic speech is now transcribed instead of dropped. (v2.1.2)
-- **Automatic update checks.** The app looks for new versions on its own, with a clear "Check for Updates" control in Settings. (v2.1.2)
-- **Clearer AI polish errors.** Cloud and local polish failures (OpenAI, Gemini, Ollama) now show a specific, actionable message, and your raw text still arrives.
+- **Recover a dictation you cancelled by mistake.** Turn on Escape Recovery and hitting your cancel keybind keeps the text for 24 hours instead of throwing it away. The Cancel button still discards deliberately. Only the transcript is kept, never the audio. (v2.4.5)
+- **See your words as you speak.** The recording pill can now show what it is hearing, live, with a choice of two preview engines. The text you actually get is unchanged: it is still transcribed from the whole recording when you stop. (v2.4.5)
+- **Dictation no longer records silence on a virtual microphone.** If your Mac's default input was a virtual device (Krisp, Loopback, BlackHole, an aggregate, a meeting app's mic), the app bound it and captured nothing at all. It now prefers a real microphone. (v2.4.5)
+- **EG-1 retrained on its weakest spots.** Announcing a list out loud produces a real list far more often, and changes of mind mid-sentence now land level with a frontier cloud model on our held-out benchmark. It is also about 14% faster. (v2.4.5)
+- **Bring your vocabulary over from another dictation app.** Custom words import from eight other Mac dictation apps, from a file, or from a pasted list, and export to a backup you own. (v2.4.1, expanded in v2.4.5)
+- **Use the Globe key for dictation.** The Globe key, marked Fn on many Macs, works as your keybind. (v2.4.4)
+- **Bluetooth and USB audio properly supported**, with customizable sound cues and your choice of recording pill location. (v2.4.0)
+- **Meet EG-1**, our own on-device polish model, and a full visual refresh of Settings. (v2.3.0)
+- **Dark mode, and recordings up to an hour long.** (v2.2.0)
 
 See the [full release history](https://github.com/saurabhav88/EnviousWispr/releases) for every version.
 
