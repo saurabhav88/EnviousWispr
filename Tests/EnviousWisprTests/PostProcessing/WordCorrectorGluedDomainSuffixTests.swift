@@ -535,24 +535,29 @@ struct WordCorrectorGluedDomainSuffixTests {
 
   @Test("The domain-restricted raw fuzzy pass admits candidates by SURFACE, not canonical")
   func domainRestrictedFuzzyAdmitsBySurfaceNotCanonical() {
-    // Cloud review round 2: the raw (unpeeled) domain-restricted pass
-    // scores `coreLower` against each candidate's SURFACE, but the
-    // admission check used to also let a candidate in when only its
-    // CANONICAL was domain-shaped -- a mismatch between what's admitted
-    // and what's actually compared. Structural fix verified by reading
-    // the code (grep for "domainShapedOnly, !Self.isDomainShaped" shows
-    // both Pass 4 sites now check surface alone); this pins the intended
-    // end-to-end behavior for the shape the review named. Note: this
-    // specific input does not observably distinguish the fixed admission
-    // from the old one, because a domain-shaped matched canonical already
-    // suppresses reattach either way (round 3/4's dedup design) -- the old
-    // bug is only reachable by winning against a DIFFERENT, correct
-    // candidate under raw-vs-peeled scoring noise, which this test does
-    // not attempt to reconstruct.
-    let word = CustomWord(
-      canonical: "SomeLongBrandName.com", aliases: ["someverylongbarealiasnameindeed"])
-    let result = corrected("someverylongbarealiasnameindeed.org", [word])
-    #expect(result.text == "SomeLongBrandName.com")
+    // Round 12 (confirming local sweep): the earlier version of this test
+    // could not distinguish the fixed admission from the old one. This
+    // construction can: a WRONG distractor's own surface is domain-shaped
+    // (via "&.com"), so the old (surface-OR-canonical) admission let it into
+    // the raw pass, where it scores close enough to the raw input to win
+    // outright and print the WRONG canonical. The fixed (surface-only)
+    // admission rejects it, so the peeled attempt runs and correctly favors
+    // the RIGHT candidate.
+    let correct = CustomWord(canonical: "EnviousWispr", aliases: [])
+    let distractor = CustomWord(canonical: "WrongBrand.com", aliases: ["enviouswispertechnology"])
+    let result = corrected("enviouswisper.technology", [correct, distractor])
+    #expect(result.text == "EnviousWispr.technology")
+    #expect(result.replacements == 1)
+  }
+
+  @Test("The domain-restricted raw fuzzy pass admits PACK candidates by SURFACE, not canonical")
+  func domainRestrictedPackFuzzyAdmitsBySurfaceNotCanonical() {
+    // Same construction as above, at the lower-authority pack Pass 4 site.
+    let correct = CustomWord(canonical: "EnviousWispr", aliases: [], source: .pack)
+    let distractor = CustomWord(
+      canonical: "WrongBrand.com", aliases: ["enviouswispertechnology"], source: .pack)
+    let result = corrected("enviouswisper.technology", [correct, distractor])
+    #expect(result.text == "EnviousWispr.technology")
     #expect(result.replacements == 1)
   }
 }
