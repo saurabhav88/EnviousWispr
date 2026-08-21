@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/wisprflow-alternatives/`,
   "image": `${siteUrl}/images/og/wisprflow.png`,
   "datePublished": "2026-05-15T18:30:48Z",
-  "dateModified": "2026-05-15T18:30:48Z",
+  "dateModified": "2026-08-21T00:00:00Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -51,14 +51,14 @@ const alternatives = [
     pros: [
       "Free, no subscription, no account",
       "Audio never leaves your Mac (transcription is fully on-device on Apple Silicon)",
-      "AI polish runs on-device with EG-1 (our own model) or Apple Intelligence; optional BYOK for OpenAI or Gemini",
+      "AI polish runs on-device with EG-1 (our own model) or Ollama, or Apple Intelligence on macOS 26+; optional BYOK for OpenAI, Gemini, or Claude",
       "Works offline on a plane or in a basement",
       "Open source under GPLv3 on GitHub, so you can verify every privacy claim",
     ],
     cons: [
       "macOS 14+ on Apple Silicon only. No Windows, no Linux, no Intel Mac, no iOS/Android",
       "WisprFlow is more feature-rich today: snippets, backtrack, per-app tones, command mode, syntax awareness",
-      "25 European languages by default via Parakeet; 90+ languages available by switching the backend to WhisperKit",
+      "25 European languages by default via Parakeet; 99 languages available by switching the backend to WhisperKit",
     ],
     cta: { label: "Download EnviousWispr Free", href: "https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" },
     deepLink: { label: "Full EnviousWispr vs WisprFlow comparison", href: "/compare/wisprflow/" },
@@ -67,7 +67,7 @@ const alternatives = [
     rank: 2,
     name: "Superwhisper",
     slug: "/compare/superwhisper/",
-    price: "Free trial, then $8.49/mo or $84/yr",
+    price: "Unlimited free tier (smaller models); Pro $8.49/mo or $84.99/yr",
     privacy: "On-device by default",
     bestFor: "Power users who want configurable models and don't mind a subscription.",
     pros: [
@@ -86,7 +86,7 @@ const alternatives = [
     rank: 3,
     name: "VoiceInk",
     slug: "/compare/voiceink/",
-    price: "Free trial; from $25 one-time (open source)",
+    price: "Open source; $29-$69 one-time depending on device count (Solo/Personal/Extended)",
     privacy: "On-device, open-source community fork",
     bestFor: "Open-source-leaning users who want a free, on-device option and are comfortable with a less polished experience than WisprFlow.",
     pros: [
@@ -171,7 +171,7 @@ const alternatives = [
     rank: 8,
     name: "Otter.ai",
     slug: "/compare/otter-ai/",
-    price: "Free tier; Pro $8.49/mo and up",
+    price: "Free tier; Pro $8.33/mo and up (annual)",
     privacy: "Cloud",
     bestFor: "Meeting transcription and team note-sharing, not personal dictation.",
     pros: [
@@ -212,7 +212,7 @@ const faqJsonLd = JSON.stringify({
       "name": "What is the best free alternative to WisprFlow on Mac?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "EnviousWispr is the closest free, on-device equivalent to WisprFlow's real-time push-to-talk dictation on macOS. It runs fully on Apple Silicon, requires no account, and works offline. Superwhisper and VoiceInk are also worth a look. Superwhisper is paid; VoiceInk is free and open source but less polished."
+        "text": "EnviousWispr is the closest free, on-device equivalent to WisprFlow's real-time push-to-talk dictation on macOS. It runs fully on Apple Silicon, requires no account, and works offline. Superwhisper and VoiceInk are also worth a look. Both are paid (Superwhisper by subscription, VoiceInk one-time); VoiceInk is open source but less polished."
       }
     },
     {
