@@ -119,7 +119,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Can EnviousWispr remove filler words from dictation?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. EnviousWispr removes spoken noises like um, uh, and hmm automatically, on a fixed local list that works even with AI polish off. AI polish, on by default, goes further and also removes false starts and repeated words. Apple Dictation transcribes filler as-is."
+        "text": "Yes. EnviousWispr removes spoken noises like um, uh, and hmm automatically, on a fixed local list that works even with AI polish off. AI polish defaults to Apple Intelligence, which needs macOS 26+; on macOS 14-25 it silently falls back to the same deterministic cleanup unless you switch to EG-1, Ollama, or a cloud key. When AI polish does run, it goes further and also removes false starts and repeated words. Apple Dictation transcribes filler as-is."
       }
     },
     {
@@ -672,7 +672,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🗣️</div>
         <div class="advantage-title">Voice commands for formatting</div>
-        <p class="advantage-desc">Say "new paragraph," "comma," "exclamation mark," or even "smiley face" and Apple Dictation inserts the right character. EnviousWispr supports the same for spoken punctuation and emoji (punctuation is off by default, emoji is on), but has no voice commands for app navigation or editing.</p>
+        <p class="advantage-desc">Say "new paragraph," "comma," "exclamation mark," or even "smiley face" and Apple Dictation inserts the right character. EnviousWispr supports spoken punctuation (off by default) and spoken emoji, on by default, said as the name followed by the word "emoji" (say "smiley face emoji"), but has no voice commands for app navigation or editing.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
@@ -727,7 +727,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can EnviousWispr remove filler words from dictation?</div>
-        <p class="faq-a">Yes. EnviousWispr removes spoken noises like "um," "uh," and "hmm" automatically, on a fixed local list that runs even with AI polish switched off. AI polish, on by default, goes further and also removes false starts and repeated words. Apple Dictation transcribes them as-is. If you dictate longer passages, filler removal makes a noticeable difference in readability.</p>
+        <p class="faq-a">Yes. EnviousWispr removes spoken noises like "um," "uh," and "hmm" automatically, on a fixed local list that runs even with AI polish switched off. AI polish defaults to Apple Intelligence, which needs macOS 26+; below that it silently falls back to the same deterministic cleanup unless you switch to EG-1, Ollama, or a cloud key. When AI polish does run, it goes further and also removes false starts and repeated words. Apple Dictation transcribes them as-is. If you dictate longer passages, filler removal makes a noticeable difference in readability.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr support voice commands like Apple Dictation?</div>
