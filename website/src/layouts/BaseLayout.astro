@@ -2,6 +2,7 @@
 import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
 import ScrollReveal from '../components/ScrollReveal.astro';
+import CompareTableMobile from '../components/CompareTableMobile.astro';
 import '../styles/global.css';
 
 interface Props {
@@ -70,6 +71,7 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`
   </main>
   <Footer />
   <ScrollReveal />
+  <CompareTableMobile />
   <!-- PostHog Analytics (deferred until after LCP to avoid contention) -->
   <script>
     let postHogLoaded = false;

@@ -1,0 +1,85 @@
+---
+// Phone-only progressive disclosure for two-product comparison tables.
+//
+// A `.compare-table--duo` row shows both products side by side. Where an
+// answer runs long, the pair is clamped to a few lines and the row's label
+// band gains a toggle, so 23 rows stay scannable and the detail is one tap
+// away. Rows whose answers already fit are left alone.
+//
+// Layout is CSS (global.css, "Compare tables on phones"). This file does the
+// two things a stylesheet cannot: wrap each answer so the clamp has a
+// non-grid-item to act on, and decide WHICH rows overflow, which depends on
+// rendered height. With JS off nothing is wrapped, nothing is clamped, and
+// the full text shows — the behaviour these pages had before.
+---
+
+<script>
+  const PHONE = window.matchMedia('(max-width: 700px)');
+  const LABEL_CLOSED = 'What that means';
+  const LABEL_OPEN = 'Show less';
+
+  // A `td` in this layout is a grid item, and grid items are blockified:
+  // `display: -webkit-box` computes to `flow-root`, so -webkit-line-clamp is
+  // silently dropped. Clamping an inner element sidesteps that.
+  function wrapContents(cell: HTMLElement): HTMLElement {
+    const existing = cell.querySelector<HTMLElement>(':scope > .duo-text');
+    if (existing) return existing;
+    const span = document.createElement('span');
+    span.className = 'duo-text';
+    span.append(...cell.childNodes);
+    cell.appendChild(span);
+    return span;
+  }
+
+  function toggleFor(row: HTMLElement): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'duo-toggle';
+    button.textContent = LABEL_CLOSED;
+    button.setAttribute('aria-expanded', 'false');
+    button.addEventListener('click', () => {
+      const open = row.classList.toggle('duo-open');
+      button.setAttribute('aria-expanded', String(open));
+      button.textContent = open ? LABEL_OPEN : LABEL_CLOSED;
+    });
+    return button;
+  }
+
+  function apply() {
+    if (!PHONE.matches) return;
+
+    document.querySelectorAll<HTMLElement>('.compare-table--duo tbody tr').forEach((row) => {
+      if (row.dataset.duoReady) return;
+      row.dataset.duoReady = '1';
+
+      const label = row.querySelector<HTMLElement>('td:first-child');
+      const values = Array.from(row.querySelectorAll<HTMLElement>('td')).slice(1);
+      if (!label || values.length === 0) return;
+
+      const texts = values.map(wrapContents);
+
+      // Clamp first, then MEASURE whether anything was actually cut off.
+      // A character-count threshold would guess; this asks the layout.
+      row.classList.add('duo-clamped');
+      const truncated = texts.some((text) => text.scrollHeight > text.clientHeight + 1);
+      if (!truncated) {
+        row.classList.remove('duo-clamped');
+        return;
+      }
+
+      label.appendChild(toggleFor(row));
+    });
+  }
+
+  // Fonts change line height, and line height decides what counts as
+  // truncated. Measuring before they load would clamp the wrong rows.
+  if (document.fonts && document.fonts.status !== 'loaded') {
+    document.fonts.ready.then(apply);
+  } else {
+    apply();
+  }
+
+  // Rotating a phone can cross the breakpoint; rows already handled are
+  // skipped by the duoReady guard.
+  PHONE.addEventListener('change', apply);
+</script>
