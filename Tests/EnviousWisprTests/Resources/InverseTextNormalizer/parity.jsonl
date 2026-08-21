@@ -1262,7 +1262,8 @@
 {"input": "What I need you to do is delete the the the release builds that aren't relevant and then open the release build you want me to test.", "expected": "What I need you to do is delete the the the release builds that aren't relevant and then open the release build you want me to test.", "category": "negative", "slice": "negative"}
 {"input": "Back to home.", "expected": "Back to home.", "category": "negative", "slice": "negative"}
 {"input": "It's feedback time.", "expected": "It's feedback time.", "category": "negative", "slice": "negative"}
-{"input": "So I'm logged in right now under app.nbstaging.com slash dashboard.", "expected": "So I'm logged in right now under app.nbstaging.com slash dashboard.", "category": "negative", "slice": "negative"}
+{"input": "So I'm logged in right now under app.nbstaging.com slash dashboard.", "expected": "So I'm logged in right now under app.nbstaging.com/dashboard.", "category": "url", "slice": "gold"}
+{"input": "So I'm logged in right now under app.nbstaging.com/dashboard.", "expected": "So I'm logged in right now under app.nbstaging.com/dashboard.", "category": "url", "slice": "idempotence"}
 {"input": "Well first thing that struck me is that there's no way to edit or delete a listing here. Um Because if I'm creating like test listings, they just forever pollute my listings page on the dashboard.", "expected": "Well first thing that struck me is that there's no way to edit or delete a listing here. Um Because if I'm creating like test listings, they just forever pollute my listings page on the dashboard.", "category": "negative", "slice": "negative"}
 {"input": "I know it's risky deleting these.", "expected": "I know it's risky deleting these.", "category": "negative", "slice": "negative"}
 {"input": "I know it's risky deleting these, so maybe that's a problem for another time.", "expected": "I know it's risky deleting these, so maybe that's a problem for another time.", "category": "negative", "slice": "negative"}
@@ -2062,3 +2063,52 @@
 {"input": "one hundred and second in line", "expected": "102nd in line", "category": "numeric", "slice": "ap_gold"}
 {"input": "a thousandth of a second", "expected": "a thousandth of a second", "category": "numeric", "slice": "ap_gold"}
 {"input": "a five-foot-tall person", "expected": "a 5-foot-tall person", "category": "numeric", "slice": "ap_gold"}
+{"input": "example.com slash blog", "expected": "example.com/blog", "category": "url", "slice": "gold"}
+{"input": "example.com/blog", "expected": "example.com/blog", "category": "url", "slice": "idempotence"}
+{"input": "example dot ai slash docs", "expected": "example dot ai slash docs", "category": "negative", "slice": "negative"}
+{"input": "example.ai/docs", "expected": "example.ai/docs", "category": "url", "slice": "idempotence"}
+{"input": "example dot app slash download", "expected": "example dot app slash download", "category": "negative", "slice": "negative"}
+{"input": "example.app/download", "expected": "example.app/download", "category": "url", "slice": "idempotence"}
+{"input": "docs-2 dot xyz slash page-4", "expected": "docs-2 dot xyz slash page-4", "category": "negative", "slice": "negative"}
+{"input": "docs-2.xyz/page-4", "expected": "docs-2.xyz/page-4", "category": "url", "slice": "idempotence"}
+{"input": "docs-2.xyz slash page-4", "expected": "docs-2.xyz/page-4", "category": "url", "slice": "gold"}
+{"input": "example.io slash docs", "expected": "example.io/docs", "category": "url", "slice": "gold"}
+{"input": "alice at startup dot ai", "expected": "alice at startup dot ai", "category": "negative", "slice": "negative"}
+{"input": "open the dot app and sign in", "expected": "open the dot app and sign in", "category": "negative", "slice": "negative"}
+{"input": "the dot AI model is fast", "expected": "the dot AI model is fast", "category": "negative", "slice": "negative"}
+{"input": "he scored a 10-9 dot com", "expected": "he scored a 10-9.com", "category": "url", "slice": "gold"}
+{"input": "she works at example.com", "expected": "she works at example.com", "category": "negative", "slice": "negative"}
+{"input": "the site is example two four.com", "expected": "the site is example two four.com", "category": "negative", "slice": "negative"}
+{"input": "alice at startup dot ai slash docs", "expected": "alice at startup dot ai slash docs", "category": "negative", "slice": "negative"}
+{"input": "alice@sub.example.com slash docs", "expected": "alice@sub.example.com slash docs", "category": "negative", "slice": "negative"}
+{"input": "alice@a.b.example.com slash docs", "expected": "alice@a.b.example.com slash docs", "category": "negative", "slice": "negative"}
+{"input": "learn more at startup dot ai", "expected": "learn more at startup dot ai", "category": "negative", "slice": "negative"}
+{"input": "find it at docs dot xyz slash page", "expected": "find it at docs dot xyz slash page", "category": "negative", "slice": "negative"}
+{"input": "check it out at cursor dot ai", "expected": "check it out at cursor dot ai", "category": "negative", "slice": "negative"}
+{"input": "docs at company dot xyz", "expected": "docs at company dot xyz", "category": "negative", "slice": "negative"}
+{"input": "bob at example dot com slash unsubscribe", "expected": "bob@example.com slash unsubscribe", "category": "negative", "slice": "negative"}
+{"input": "I use X dot XYZ coordinates", "expected": "I use X dot XYZ coordinates", "category": "negative", "slice": "negative"}
+{"input": "bob at example.com slash unsubscribe", "expected": "bob at example.com slash unsubscribe", "category": "negative", "slice": "negative"}
+{"input": "bob at  example.com slash unsubscribe", "expected": "bob at example.com slash unsubscribe", "category": "negative", "slice": "negative"}
+{"input": "alice@example dot ai slash unsubscribe", "expected": "alice@example dot ai slash unsubscribe", "category": "negative", "slice": "negative"}
+{"input": "alice@sub.example dot ai slash unsubscribe", "expected": "alice@sub.example dot ai slash unsubscribe", "category": "negative", "slice": "negative"}
+{"input": "www.example dot com slash docs", "expected": "www.example.com/docs", "category": "url", "slice": "gold"}
+{"input": "find it at docs.xyz slash page", "expected": "find it at docs.xyz/page", "category": "url", "slice": "gold"}
+{"input": "look inside the dot app slash Contents slash MacOS folder", "expected": "look inside the dot app slash Contents slash MacOS folder", "category": "negative", "slice": "negative"}
+{"input": "plot the X dot XYZ slash Y coordinates", "expected": "plot the X dot XYZ slash Y coordinates", "category": "negative", "slice": "negative"}
+{"input": "https colon slash slash example.com slash docs", "expected": "https: slash slash example.com slash docs", "category": "url", "slice": "negative"}
+{"input": "example.com slash search question mark q equals test", "expected": "example.com slash search? Q equals test", "category": "url", "slice": "negative"}
+{"input": "www dot example.com slash docs", "expected": "www dot example.com slash docs", "category": "url", "slice": "negative"}
+{"input": "my dash site.com slash docs", "expected": "my dash site.com slash docs", "category": "url", "slice": "negative"}
+{"input": "alice @ example.com slash unsubscribe", "expected": "alice @ example.com slash unsubscribe", "category": "negative", "slice": "negative"}
+{"input": "example.com slash docs dot html", "expected": "example.com slash docs dot html", "category": "negative", "slice": "negative"}
+{"input": "example.com slash user underscore settings", "expected": "example.com slash user underscore settings", "category": "negative", "slice": "negative"}
+{"input": "https: slash slash example.com slash docs", "expected": "https: slash slash example.com slash docs", "category": "negative", "slice": "negative"}
+{"input": "example.com slash search? q equals test", "expected": "example.com/search? Q equals test", "category": "url", "slice": "gold"}
+{"input": "example.com slash docs- slash next", "expected": "example.com/docs-/next", "category": "url", "slice": "gold"}
+{"input": "example.com slash docs slash", "expected": "example.com slash docs slash", "category": "negative", "slice": "negative"}
+{"input": "example.com slash docs:", "expected": "example.com/docs:", "category": "url", "slice": "gold"}
+{"input": "example.com slash docs?", "expected": "example.com/docs?", "category": "url", "slice": "gold"}
+{"input": "3m dot com slash products", "expected": "3m.com/products", "category": "url", "slice": "gold"}
+{"input": "1password dot com", "expected": "1password.com", "category": "url", "slice": "gold"}
+{"input": "check out 1password.com slash downloads", "expected": "check out 1password.com/downloads", "category": "url", "slice": "gold"}
