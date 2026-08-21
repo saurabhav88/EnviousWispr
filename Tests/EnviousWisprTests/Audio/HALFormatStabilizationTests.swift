@@ -220,6 +220,33 @@ struct CaptureStopMetadataGapTests {
     #expect(clean.inputTimelineGapCount == 0)
   }
 
+  @Test("#1810: every stop field is classified before it can affect gap accounting")
+  func everyStopFieldIsClassified() {
+    // `drainedPreRollSampleCount` deliberately lives on AudioInputSource, not this
+    // metadata. Drained samples were delivered; counting them as a gap would turn
+    // every healthy warm start into a degraded timeline. Freeze the complete field
+    // set so any future stop fact must be reviewed as either a gap addend or a
+    // documented non-addend instead of entering the calculation unnoticed.
+    let metadata = CaptureStopMetadata(nativeRateHz: 24000)
+    let fields = Set(Mirror(reflecting: metadata).children.compactMap { $0.label })
+
+    #expect(
+      fields
+        == Set([
+          "nativeRateHz",
+          "ringDropCount",
+          "converterErrorCount",
+          "zeroOutputCount",
+          "renderFailureCount",
+          "oversizedSliceCount",
+          "preRollGapCount",
+          "lostChunkCount",
+          "rateDivergenceDetected",
+          "nativeChannelCount",
+        ]))
+    #expect(!fields.contains("drainedPreRollSampleCount"))
+  }
+
   @Test("each lossy edge contributes exactly one gap")
   func everyLossyEdgeCounts() {
     #expect(
