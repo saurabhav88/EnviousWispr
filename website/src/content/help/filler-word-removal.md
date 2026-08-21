@@ -5,7 +5,7 @@ category: "features"
 section: "Text Processing"
 order: 2
 keywords: ["um", "uh", "filler", "filler words", "remove um", "you know", "like", "stop words", "cleaner speech"]
-updated: 2026-08-06
+updated: 2026-08-21
 ---
 EnviousWispr automatically removes spoken noises like "um", "uh", "hmm", and "er" from your dictated text before it reaches your app. This is on by default.
 
@@ -26,6 +26,8 @@ This runs on your Mac against a fixed list of noises, with no AI model involved.
 ### What it leaves alone
 
 EnviousWispr only removes these noises when they stand on their own as separate words. The "um" inside the word "umbrella" is left alone.
+
+Some of these sounds are also real words in other languages. If your language is locked to German, Dutch, Danish, or Norwegian in **Settings → Transcription**, EnviousWispr keeps them instead of removing them: "er" (German for "he"; Dutch for "there"; Danish and Norwegian for "is") and "um" (German for "at [a time]" or "in order to") stay in your dictated text. This only applies when your language is locked; on Auto-detect, the fixed list above still applies to every dictation.
 
 ### If you want more than this
 
