@@ -127,7 +127,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Which speech engines does each app use?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 90+ languages. Handy offers a choice of engines: OpenAI Whisper in several sizes (Small, Medium, Turbo, Large) with GPU acceleration, plus Parakeet V2 and V3. Handy's Whisper option lets you trade speed for accuracy on capable hardware; EnviousWispr defaults to Parakeet for speed, and switching to WhisperKit for a language it doesn't cover is one setting away, under Settings, Transcription."
+        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages. Handy offers a choice of engines: OpenAI Whisper in several sizes (Small, Medium, Turbo, Large) with GPU acceleration, plus Parakeet V2 and V3. Handy's Whisper option lets you trade speed for accuracy on capable hardware; EnviousWispr defaults to Parakeet for speed, and switching to WhisperKit for a language it doesn't cover is one setting away, under Settings, Transcription."
       }
     },
     {
@@ -366,7 +366,7 @@ const faqJsonLd = JSON.stringify({
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.43s median latency
+        0.61s median latency
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -490,7 +490,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
             <td>Not published</td>
           </tr>
           <tr>
@@ -510,7 +510,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Multi-language</td>
-            <td>25 European (Parakeet), 90+ via WhisperKit</td>
+            <td>25 European (Parakeet), 99 via WhisperKit</td>
             <td>Broad via Whisper; automatic detection on Parakeet V3</td>
           </tr>
           <tr>
@@ -562,7 +562,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
-        <div class="advantage-title">0.43s median latency</div>
+        <div class="advantage-title">0.61s median latency</div>
         <p class="advantage-desc">Measured in production on Apple Silicon Macs. Parakeet TDT runs on the Neural Engine specifically tuned for fast, accurate dictation, so text appears almost instantly after you stop talking.</p>
       </div>
       <div class="advantage-card reveal">
@@ -646,12 +646,12 @@ const faqJsonLd = JSON.stringify({
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.43s</div>
+        <div class="speed-value">0.61s</div>
         <div class="speed-label">Median transcription</div>
         <div class="speed-detail">From end of speech to raw text</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.5s</div>
+        <div class="speed-value">1.65s</div>
         <div class="speed-label">With AI polish</div>
         <div class="speed-detail">EG-1 or Apple, on-device</div>
       </div>
@@ -787,7 +787,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 90+ languages. Handy offers a choice of engines: OpenAI Whisper in several sizes (Small, Medium, Turbo, Large) with GPU acceleration, plus Parakeet V2 and V3. Handy's Whisper option lets you trade speed for accuracy on capable hardware; EnviousWispr defaults to Parakeet for speed, and switching to WhisperKit for a language it doesn't cover is one setting away, under Settings, Transcription.</p>
+        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages. Handy offers a choice of engines: OpenAI Whisper in several sizes (Small, Medium, Turbo, Large) with GPU acceleration, plus Parakeet V2 and V3. Handy's Whisper option lets you trade speed for accuracy on capable hardware; EnviousWispr defaults to Parakeet for speed, and switching to WhisperKit for a language it doesn't cover is one setting away, under Settings, Transcription.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from Handy to EnviousWispr easily?</div>
