@@ -47,6 +47,7 @@ final class TranscriptCoordinator {
   private let emitEscapeRecoveryKept: (_ ageMs: Int, _ takeID: String) -> Void
   private let emitEscapeRecoveryExpired: (_ ageMs: Int, _ takeID: String) -> Void
   private let emitEscapeRecoveryRestoredFromHistory: (_ ageMs: Int, _ takeID: String) -> Void
+  private let recordEscapeRecoveryKeep: @MainActor (_ outcome: String, _ takeID: String?) -> Void
   private var loadTask: Task<Void, Never>?
   private var pulseTask: Task<Void, Never>?
 
@@ -258,7 +259,8 @@ final class TranscriptCoordinator {
     pendingPulseSleep: (@Sendable (Duration) async -> Void)? = nil,
     emitEscapeRecoveryKept: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil,
     emitEscapeRecoveryExpired: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil,
-    emitEscapeRecoveryRestoredFromHistory: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil
+    emitEscapeRecoveryRestoredFromHistory: ((_ ageMs: Int, _ takeID: String) -> Void)? = nil,
+    recordEscapeRecoveryKeep: (@MainActor (_ outcome: String, _ takeID: String?) -> Void)? = nil
   ) {
     self.store = store
     self.pendingPulseInterval = pendingPulseInterval
@@ -279,6 +281,7 @@ final class TranscriptCoordinator {
         TelemetryService.shared.escapeRecoveryRestored(
           source: .history, ageMs: ageMs, pasteResult: .pasted, takeID: takeID)
       }
+    self.recordEscapeRecoveryKeep = recordEscapeRecoveryKeep ?? Self.logKeep
   }
 
   /// Report that a HELD recovery was pasted from History (#2087).
@@ -591,7 +594,7 @@ final class TranscriptCoordinator {
         // user pressed Keep, the row lapsed a moment earlier, and nothing
         // anywhere recorded that the press happened. That is precisely the
         // report a support conversation starts from.
-        Self.logKeep(outcome: "refused-not-offerable", takeID: transcript.escapeRecoveryTakeID)
+        recordEscapeRecoveryKeep("refused-not-offerable", transcript.escapeRecoveryTakeID)
         return
       }
       // #2087: only on a CONFIRMED promotion, and only with the persisted take
@@ -599,12 +602,12 @@ final class TranscriptCoordinator {
       // one ratio this funnel exists to measure.
       if let takeID = transcript.escapeRecoveryTakeID, let stamped = transcript.escapeRecoveredAt {
         emitEscapeRecoveryKept(Int(Date().timeIntervalSince(stamped) * 1000), takeID)
-        Self.logKeep(outcome: "kept", takeID: takeID)
+        recordEscapeRecoveryKeep("kept", takeID)
       } else {
         // Promoted, but with nothing to join it to. The user keeps their text
         // either way — this records the bookkeeping gap rather than letting the
         // Keep disappear from the count it belongs in.
-        Self.logKeep(outcome: "kept-unreported", takeID: nil)
+        recordEscapeRecoveryKeep("kept-unreported", nil)
       }
       guard let index = transcripts.firstIndex(where: { $0.id == transcript.id }) else { return }
       transcripts[index] = transcripts[index].promotedFromPending()

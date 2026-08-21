@@ -40,14 +40,15 @@ enum EscapeRecoveryPasteAction {
     restorable: (UUID) -> (text: String, stampedAt: Date, takeID: String?)?,
     report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void,
     retarget: @MainActor (CancelUndoPayload) -> Bool = Self.defaultRetarget,
-    targetHasQuit: (CancelUndoPayload) -> Bool = { $0.targetApp?.isTerminated == true }
+    targetHasQuit: (CancelUndoPayload) -> Bool = { $0.targetApp?.isTerminated == true },
+    recordLog: @MainActor (_ outcome: String, _ ageMs: Int?, _ takeID: String?) -> Void = Self.log
   ) {
     guard let row = restorable(payload.transcriptID) else {
       // Lapsed between render and press. Silent TO THE USER, whose row is
       // already gone from view and who cannot act on the explanation — but no
       // longer silent to us. A press that produced nothing is the single most
       // likely thing a support conversation is about.
-      Self.log(outcome: "no-row", ageMs: nil, takeID: nil)
+      recordLog("no-row", nil, nil)
       return
     }
 
@@ -75,7 +76,8 @@ enum EscapeRecoveryPasteAction {
     // text went to the clipboard instead. Still a restore."
     if targetHasQuit(payload) {
       Self.finish(
-        .clipboardOnly, stampedAt: row.stampedAt, takeID: row.takeID, report: report)
+        .clipboardOnly, stampedAt: row.stampedAt, takeID: row.takeID, report: report,
+        recordLog: recordLog)
       return
     }
 
@@ -91,7 +93,8 @@ enum EscapeRecoveryPasteAction {
     // pastes it themselves, or takes it from History for the next 24 hours.
     guard retarget(payload) else {
       Self.finish(
-        .clipboardOnly, stampedAt: row.stampedAt, takeID: row.takeID, report: report)
+        .clipboardOnly, stampedAt: row.stampedAt, takeID: row.takeID, report: report,
+        recordLog: recordLog)
       return
     }
     // `NSApp?`, not `NSApp`. It is an implicitly-unwrapped optional and is nil
@@ -112,7 +115,9 @@ enum EscapeRecoveryPasteAction {
     // simulated paste gives no completion signal, so a failure value here would
     // be a guess presented as a measurement.
     //
-    Self.finish(.pasted, stampedAt: row.stampedAt, takeID: row.takeID, report: report)
+    Self.finish(
+      .pasted, stampedAt: row.stampedAt, takeID: row.takeID, report: report,
+      recordLog: recordLog)
   }
 
   /// Record the outcome once, on every path, to BOTH channels.
@@ -135,10 +140,11 @@ enum EscapeRecoveryPasteAction {
     _ result: EscapeRecoveryPasteResult,
     stampedAt: Date,
     takeID: String?,
-    report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void
+    report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void,
+    recordLog: @MainActor (_ outcome: String, _ ageMs: Int?, _ takeID: String?) -> Void
   ) {
     let ageMs = Int(Date().timeIntervalSince(stampedAt) * 1000)
-    log(outcome: result.rawValue, ageMs: ageMs, takeID: takeID)
+    recordLog(result.rawValue, ageMs, takeID)
     guard let takeID else { return }
     report(ageMs, result, takeID)
   }
