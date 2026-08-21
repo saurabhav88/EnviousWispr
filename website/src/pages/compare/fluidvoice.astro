@@ -397,7 +397,7 @@ const faqJsonLd = JSON.stringify({
           </tr>
         </thead>
         <!-- Evidence: FluidVoice claims verified against github.com/altic-dev/FluidVoice (README, repo
-             description) and the GitHub API on 2026-08-21.
+             description), the GitHub API, and FluidVoice v1.6.9 opened directly, on 2026-08-21.
              Sources:
                - github.com/altic-dev/FluidVoice (accessed 2026-08-21): GPLv3 license (as of 2026-02-23),
                  10,767 stars, latest release v1.6.9 (2026-08-18), macOS 15.0 (Sequoia) or later required,
@@ -411,8 +411,13 @@ const faqJsonLd = JSON.stringify({
                  Fluid-1 is a fine-tuned Gemma-based model with a FIXED shipped prompt extracted from the
                  app binary, not a prompt the user writes; the Fluid-1 runtime and weights are not part of
                  the GPLv3-licensed app code and are not documented under a public license the way EG-1 is.
-             Confidence: source-verified from FluidVoice's own GitHub repo and prior internal teardown.
-             FluidVoice was not freshly tested firsthand for this page. Last verified: 2026-08-21. -->
+               - FluidVoice v1.6.9, opened directly on 2026-08-21: also has a File Transcription tab that
+                 accepts a dragged-in audio or video file (WAV, MP3, M4A, OGG, MP4, and more) for meeting-style
+                 transcription; EnviousWispr has no equivalent, live dictation only. Its "Cohere" voice engine
+                 downloads a real local model (~1.54GB, Apple Silicon tag, no API key) rather than calling a
+                 cloud API, so the existing "on-device" claim for it holds.
+             Confidence: source-verified from FluidVoice's own GitHub repo, prior internal teardown, and the
+             installed app opened directly. Last verified: 2026-08-21. -->
         <tbody>
           <tr>
             <td>Price</td>
@@ -492,7 +497,7 @@ const faqJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">FluidVoice claims sourced from github.com/altic-dev/FluidVoice (README, repo description) and the GitHub API, plus prior internal research (2026-06-23). FluidVoice was not tested firsthand for this page. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">FluidVoice claims sourced from github.com/altic-dev/FluidVoice (README, repo description), the GitHub API, prior internal research (2026-06-23), and FluidVoice v1.6.9 opened directly. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -695,8 +700,13 @@ const faqJsonLd = JSON.stringify({
         <div class="advantage-title">You want it on Windows too</div>
         <p class="advantage-desc">FluidVoice's own GitHub repository states a Windows pre-build is already available, with iOS support announced but not yet shipped. EnviousWispr is macOS only, with no other platform in the works.</p>
       </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📁</div>
+        <div class="advantage-title">You want to transcribe a recorded file</div>
+        <p class="advantage-desc">FluidVoice can transcribe an existing audio or video file you drag in, WAV, MP3, M4A, OGG, MP4, and more, useful for a meeting recording made elsewhere. EnviousWispr only transcribes what you dictate live; it has no file-upload transcription today.</p>
+      </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want a choice of five transcription engines, run an Intel Mac, or want to follow a project expanding across platforms, FluidVoice is a strong pick. If you want the same idea, a model tuned for dictation with no prompt to write, on a wider range of macOS versions, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want a choice of five transcription engines, run an Intel Mac, want to follow a project expanding across platforms, or need to transcribe an existing recording, FluidVoice is a strong pick. If you want the same idea, a model tuned for dictation with no prompt to write, on a wider range of macOS versions, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
   </div>
 </section>
 
