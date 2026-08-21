@@ -560,4 +560,24 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "EnviousWispr.technology")
     #expect(result.replacements == 1)
   }
+
+  // MARK: Cloud Codex review, round 13 (PR #2298) -- an unpeeled PACK
+  // already-correct match must not outrank a higher-authority PEELED
+  // non-pack replace; "non-pack always wins over pack" applies to "leave it
+  // alone" exactly as it applies to "replace it".
+
+  @Test("A peeled non-pack alias outranks an unpeeled pack self-alias that is already correct")
+  func peeledNonPackReplaceOutranksUnpeeledPackAlreadyCorrect() {
+    // A pack explicitly includes a domain-shaped alias identical to its own
+    // canonical, so the unpeeled attempt on "GitHub.com" resolves to
+    // `.alreadyCorrect(isPack: true)`. A SEPARATE, higher-authority
+    // non-pack alias "github" -> "Other" is only reachable by peeling. The
+    // pack's own "no change needed" answer must not silently outrank it.
+    let packSelfAlias = CustomWord(
+      canonical: "GitHub.com", aliases: ["GitHub.com"], category: .brand, source: .pack)
+    let userAlias = CustomWord(canonical: "Other", aliases: ["github"])
+    let result = corrected("GitHub.com", [packSelfAlias, userAlias])
+    #expect(result.text == "Other.com")
+    #expect(result.replacements == 1)
+  }
 }

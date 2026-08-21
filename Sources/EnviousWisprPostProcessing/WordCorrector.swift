@@ -937,75 +937,57 @@ public struct WordCorrector: Sendable {
       // "githib") -- accepting the unpeeled pack match immediately would
       // preempt the higher-authority user match one step away (Codex
       // review, PR for #2281, finding P1 round 7). So both attempts are
-      // computed first, with non-pack results checked before either pack
-      // result is accepted.
+      // computed first, and priority runs across all FOUR (attempt x
+      // authority) slots in a fixed order: unpeeled non-pack, peeled
+      // non-pack, unpeeled pack, peeled pack.
       let unpeeledExact = exactSingleWordMatch(core: core, coreLower: coreLower, lookups: lookups)
-      // The token already IS a registered canonical, byte-for-byte -- the
-      // strongest "leave this alone" signal available. Stop the whole
-      // single-word retry here rather than falling through to the peeled
-      // attempt, which could otherwise replace already-correct text with an
-      // unrelated match (Codex review, PR for #2281, finding P2 round 9).
-      if case .alreadyCorrect = unpeeledExact { return token }
-
-      var unpeeledMatch: (canonical: String, isPack: Bool)?
-      if case .replace(let canonical, let isPack) = unpeeledExact {
-        unpeeledMatch = (canonical, isPack)
-      }
-
-      func acceptExact(unpeeled: Bool, _ match: (canonical: String, isPack: Bool)) -> String {
-        appendReplacement(forCanonical: match.canonical)
-        #if DEBUG
-          Self.logger.debug(
-            "WordCorrector: type=alias source='\(unpeeled ? core : matchCore)' target='\(match.canonical)'"
-          )
-        #endif
-        return unpeeled ? prefix + match.canonical + suffix : reattached(match.canonical)
-      }
-
-      // An UNPEELED non-pack exact replace is the single highest-priority
-      // outcome in this whole retry -- a deliberate, complete registration
-      // for the token exactly as typed -- so it must win before anything
-      // peeled is even consulted, including a peeled `.alreadyCorrect`
-      // (Codex cloud review, PR #2298, round 11): canonical "GitHub" (a
-      // self-entry the peeled bare form matches exactly) does not get to
-      // override a SEPARATE, deliberately-registered alias "GitHub.com" ->
-      // "Company Portal" just because the peeled half also happens to
-      // resolve to something.
-      if let match = unpeeledMatch, !match.isPack {
-        return acceptExact(unpeeled: true, match)
-      }
-
       let peeledExact =
         matchCoreEligible
         ? exactSingleWordMatch(core: matchCore, coreLower: matchCoreLower, lookups: lookups)
         : ExactSingleWordOutcome.noMatch
-      var peeledMatch: (canonical: String, isPack: Bool)?
-      if case .replace(let canonical, let isPack) = peeledExact {
-        peeledMatch = (canonical, isPack)
-      }
-      // `.alreadyCorrect` on the PEELED form means the bare part was
-      // already spelled right, so the untouched original token (bare part
-      // + its existing suffix) is already the correct output -- but that
-      // conclusion is only valid if nothing HIGHER-priority already claimed
-      // this token, which the unpeeled non-pack check just above already
-      // ruled out. Without a signal of its own, `peeledMatch` staying nil
-      // here would be indistinguishable from `.noMatch`, letting a
-      // LOWER-authority pack exact match (or even a fuzzy match) found
-      // afterward win and replace text that was already correct (local
-      // Codex sweep of PR #2298's cloud findings: canonical "GitHub" + pack
-      // alias "github.com" -> "Wrong" turned input "GitHub.com" into
-      // "Wrong" instead of leaving it alone). Stop here, exactly like the
-      // unpeeled case above -- just one priority level later.
-      if case .alreadyCorrect = peeledExact { return token }
 
-      if let match = peeledMatch, !match.isPack {
-        return acceptExact(unpeeled: false, match)
+      func acceptExact(unpeeled: Bool, canonical: String) -> String {
+        appendReplacement(forCanonical: canonical)
+        #if DEBUG
+          Self.logger.debug(
+            "WordCorrector: type=alias source='\(unpeeled ? core : matchCore)' target='\(canonical)'"
+          )
+        #endif
+        return unpeeled ? prefix + canonical + suffix : reattached(canonical)
       }
-      if let match = unpeeledMatch {
-        return acceptExact(unpeeled: true, match)
+
+      // `.alreadyCorrect` carries its own isPack, exactly like `.replace`,
+      // so it participates in the SAME four-slot priority order rather than
+      // short-circuiting unconditionally the instant either attempt hits
+      // it. A PACK's own self-alias (canonical "GitHub.com", alias
+      // "GitHub.com") being byte-for-byte correct on the unpeeled attempt
+      // does not get to outrank a higher-authority NON-PACK alias reachable
+      // only by peeling ("github" -> "Other") -- "non-pack always wins over
+      // pack" is exactly as absolute for "leave it alone" as it is for
+      // "replace it" (Codex cloud review, PR #2298, round 13). Only a
+      // NON-PACK `.alreadyCorrect` is the unconditional "stop here" signal:
+      // a deliberate user registration confirming the token is already
+      // correct outranks everything else in this retry by construction.
+      //
+      // Slot 1: unpeeled, non-pack.
+      if case .alreadyCorrect(false) = unpeeledExact { return token }
+      if case .replace(let canonical, false) = unpeeledExact {
+        return acceptExact(unpeeled: true, canonical: canonical)
       }
-      if let match = peeledMatch {
-        return acceptExact(unpeeled: false, match)
+      // Slot 2: peeled, non-pack.
+      if case .alreadyCorrect(false) = peeledExact { return token }
+      if case .replace(let canonical, false) = peeledExact {
+        return acceptExact(unpeeled: false, canonical: canonical)
+      }
+      // Slot 3: unpeeled, pack.
+      if case .alreadyCorrect = unpeeledExact { return token }
+      if case .replace(let canonical, _) = unpeeledExact {
+        return acceptExact(unpeeled: true, canonical: canonical)
+      }
+      // Slot 4: peeled, pack.
+      if case .alreadyCorrect = peeledExact { return token }
+      if case .replace(let canonical, _) = peeledExact {
+        return acceptExact(unpeeled: false, canonical: canonical)
       }
 
       // Step 3 + 4: non-pack FUZZY to completion -- unpeeled (restricted to
@@ -1098,7 +1080,12 @@ public struct WordCorrector: Sendable {
   /// the whole single-word retry, not merely this one attempt.
   private enum ExactSingleWordOutcome {
     case replace(canonical: String, isPack: Bool)
-    case alreadyCorrect
+    // Carries isPack too (Codex cloud review, PR #2298, round 13): a pack's
+    // own self-alias being byte-for-byte correct must not outrank a
+    // higher-authority non-pack alias reachable at a lower-priority slot --
+    // "leave it alone" needs the same authority tag "replace it" already
+    // has, or the caller has no way to arbitrate the two.
+    case alreadyCorrect(isPack: Bool)
     case noMatch
   }
 
@@ -1106,7 +1093,6 @@ public struct WordCorrector: Sendable {
     core: String, coreLower: String, lookups: Lookups
   ) -> ExactSingleWordOutcome {
     guard let canonical = lookups.singleAliasMap[coreLower] else { return .noMatch }
-    guard core != canonical else { return .alreadyCorrect }
     // Authority comes from the matched KEY (`coreLower`), never from the
     // resulting canonical TEXT (Codex review, PR for #2281, finding P2
     // round 8): `canonicalToWord[canonical]` answers "who owns this
@@ -1117,7 +1103,10 @@ public struct WordCorrector: Sendable {
     // non-pack always wins on a KEY collision, so `nonPackExactKeys`
     // (already the authority for exactly that construction) tells us
     // whether THIS key's mapping came from a non-pack term, unambiguously.
+    // Computed before the already-correct check too (round 13): "already
+    // correct" needs the same authority tag "replace" gets.
     let isPack = !lookups.nonPackExactKeys.contains(coreLower)
+    guard core != canonical else { return .alreadyCorrect(isPack: isPack) }
     return .replace(canonical: canonical, isPack: isPack)
   }
 
