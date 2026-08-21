@@ -247,6 +247,29 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
     }
   }
 
+  // MARK: - C3b legacy bridge — DELETED IN C4
+
+  /// The retained panel, for `RecordingOverlayPanel`'s weak compatibility alias.
+  ///
+  /// **The host is the SOLE STRONG owner from C3b onward.** The legacy field
+  /// becomes `weak`, so the ten places that read it keep working while none of
+  /// them can keep the window alive or destroy it.
+  var panelForLegacyBridge: NSPanel? { panel }
+
+  /// C3b compatibility only: the legacy transitions each `close()` the panel and
+  /// queue a replacement a run loop later. With one retained window there is
+  /// nothing to close — the queued replacement will morph this same panel — so
+  /// those nine sites call THIS instead.
+  ///
+  /// **Deliberately a no-op with a name, rather than an override of
+  /// `NSPanel.close()`.** Overriding close would make the forbidden operation
+  /// silently succeed, hiding it from the C5 freeze guard and from anyone
+  /// reading the transitions. A named no-op leaves the call site honest: it says
+  /// "a close used to happen here and no longer needs to".
+  ///
+  /// C4 deletes this method together with the transitions that call it.
+  func preserveThroughLegacyReplacement() {}
+
   #if DEBUG
     var placementForTesting: OverlayPlacementState { placement }
     var panelForTesting: NSPanel? { panel }

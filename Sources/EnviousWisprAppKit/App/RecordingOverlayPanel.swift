@@ -33,7 +33,22 @@ final class OverlayNoticeState {
 /// without stealing focus.
 @MainActor
 final class RecordingOverlayPanel {
-  private var panel: NSPanel?
+  /// **Weak compatibility ALIAS from #2292 C3b. `OverlayWindowHost` is the sole
+  /// strong owner.** Ten sites read this field; none of them may keep the window
+  /// alive or destroy it any more. C4 deletes the field with the class.
+  private weak var panel: NSPanel?
+  /// The retained window. One `NSPanel` for the app's lifetime, created lazily
+  /// once and morphed thereafter — the change every other part of #2292 exists
+  /// to enable.
+  private let windowHost = OverlayWindowHost()
+
+  #if DEBUG
+    /// #2292's headline acceptance metric: **1 after a full dictation that
+    /// exercises every transition.** The shipped code would report one per
+    /// panel-replacing transition.
+    // periphery:ignore - test seam
+    var panelConstructionCountForTesting: Int { windowHost.panelConstructionCount }
+  #endif
 
   /// Reactive lock state shared with RecordingOverlayView.
   private let lockState = OverlayLockState()
@@ -748,7 +763,7 @@ final class RecordingOverlayPanel {
     pendingCreateWork = nil
     if let existingPanel {
       CATransaction.flush()
-      existingPanel.close()
+      windowHost.preserveThroughLegacyReplacement()
     }
     generation &+= 1
     let token = generation
@@ -1132,7 +1147,7 @@ final class RecordingOverlayPanel {
     autoDismissTask?.cancel()
     autoDismissTask = nil
     CATransaction.flush()
-    existingPanel.close()
+    windowHost.preserveThroughLegacyReplacement()
     return frame
   }
 
@@ -1223,7 +1238,7 @@ final class RecordingOverlayPanel {
     pendingCreateWork?.cancel()
     pendingCreateWork = nil
     CATransaction.flush()
-    existingPanel.close()
+    windowHost.preserveThroughLegacyReplacement()
 
     generation &+= 1
     let token = generation
@@ -1279,7 +1294,7 @@ final class RecordingOverlayPanel {
     pendingCreateWork?.cancel()
     pendingCreateWork = nil
     CATransaction.flush()
-    existingPanel.close()
+    windowHost.preserveThroughLegacyReplacement()
 
     generation &+= 1
     let token = generation
@@ -1325,7 +1340,7 @@ final class RecordingOverlayPanel {
     pendingCreateWork = nil
     // Flush pending CA frames before closing — same use-after-free guard as hide().
     CATransaction.flush()
-    existingPanel.close()
+    windowHost.preserveThroughLegacyReplacement()
 
     generation &+= 1
     let token = generation
@@ -1376,7 +1391,7 @@ final class RecordingOverlayPanel {
     pendingCreateWork?.cancel()
     pendingCreateWork = nil
     CATransaction.flush()
-    existingPanel.close()
+    windowHost.preserveThroughLegacyReplacement()
 
     generation &+= 1
     let token = generation
@@ -1464,80 +1479,25 @@ final class RecordingOverlayPanel {
     }
     let size = NSRect(x: 0, y: 0, width: resolvedWidth, height: resolvedHeight)
 
-    let p = NSPanel(
-      contentRect: size,
-      styleMask: [.borderless, .nonactivatingPanel],
-      backing: .buffered,
-      defer: false
-    )
-    p.isReleasedWhenClosed = false
-    p.isOpaque = false
-    p.backgroundColor = .clear
-    p.level = .floating
-    p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-    p.isMovableByWindowBackground = true
-    p.hasShadow = true
-
-    hostingView.frame = size
-    p.contentView = hostingView
-
-    let x = targetScreen.visibleFrame.midX - resolvedWidth / 2
-    let requestedY: CGFloat
-    if let inheritedFrame {
-      let inheritedY = inheritedFrame.origin.y
-      // #1341 follow-up: inherited `inheritedFrame` means this panel is
-      // CONTINUING the same on-screen presentation (e.g. recording ->
-      // polishing), not starting a new one — `activePanelPosition` is
-      // deliberately left untouched here. Re-reading `positionProvider()` on
-      // this path was a real bug (Codex grounded review r3, 2026-07-17): a
-      // setting change made while the panel was visible would get picked up
-      // on the NEXT inherited transition, desyncing `activePanelPosition`
-      // from the edge the panel's SwiftUI content is actually aligned for,
-      // and the next Space swipe would then jump the panel to the wrong edge.
-      if activePanelPosition == .top {
-        // clampedOriginY below remains authoritative when the incoming panel is
-        // too tall to fit below the menu bar at the preserved position. Bottom
-        // is unaffected either way: its content is `.bottom`-aligned (#1341) and
-        // the preview grows upward from a fixed bottom edge, so the outgoing
-        // frame's bottom origin already IS the visible bottom in both
-        // geometries, and preserving it unchanged (below) is already correct.
-        requestedY = Self.inheritedTopOriginY(
-          inheritedFrame: inheritedFrame, resolvedHeight: resolvedHeight,
-          outgoingWasContentSized: outgoingWasContentSized)
-      } else {
-        requestedY = inheritedY
-      }
-      // Same reasoning applies to drag detection (Codex grounded review r5,
-      // 2026-07-17): if the outgoing panel's Y no longer matches where WE
-      // last put it, the user dragged it, and that fact must survive into
-      // the new panel object this transition creates — check and latch
-      // `wasManuallyDragged` HERE, before `lastProgrammaticOrigin` gets
-      // rewritten below to the (possibly dragged) inherited position, or the
-      // mismatch that proves the drag happened is gone for good. Unaffected
-      // by the branch above: this always compares the raw bottom origin.
-      if let lastProgrammaticOrigin, abs(inheritedY - lastProgrammaticOrigin.y) > 0.5 {
-        wasManuallyDragged = true
-      }
-    } else {
-      // #1341: fresh appearance only — captures the edge for THIS panel's
-      // lifetime. `repositionForActiveSpaceChange()` reuses it; an inherited
-      // transition above leaves it alone; only a fresh appearance is allowed
-      // to change which edge `activePanelPosition` points at.
-      let position = positionProvider()
-      activePanelPosition = position
-      requestedY = computeRequestedY(on: targetScreen, position: position)
-      // A genuinely NEW presentation starts clean — any earlier drag doesn't
-      // carry over, matching the existing "position resets on next
-      // appearance" contract the settings copy already promises.
-      wasManuallyDragged = false
+    // #2292 C3b: the host owns construction, geometry, ordering and lifetime.
+    // Everything above — the content view, the resolved size, the inherited
+    // frame — is unchanged legacy behaviour handed across the seam.
+    let presented = windowHost.present(
+      hostingView,
+      width: fitToContent ? .measured : .fixed(resolvedWidth),
+      fixedHeight: fitToContent ? nil : resolvedHeight,
+      isFresh: inheritedFrame == nil,
+      position: inheritedFrame == nil ? positionProvider() : (activePanelPosition ?? .bottom))
+    guard presented else {
+      // The host refused — no screen, or an unsizable presentation. Claiming a
+      // panel here is what `showImportStatusNow`'s ownership guard was written
+      // against (`:1108-1110`), and a retained window makes `panel != nil`
+      // useless as that signal.
+      return
     }
-    let panelY = clampedOriginY(
-      requestedY: requestedY, resolvedHeight: resolvedHeight, on: targetScreen)
-    p.setFrameOrigin(NSPoint(x: x, y: panelY))
-    lastProgrammaticOrigin = NSPoint(x: x, y: panelY)
-
-    p.orderFrontRegardless()
-    self.panel = p
+    if inheritedFrame == nil { activePanelPosition = positionProvider() }
+    self.panel = windowHost.panelForLegacyBridge
+    lastProgrammaticOrigin = windowHost.panelForLegacyBridge?.frame.origin
     activePanelIsContentSized = fitToContent
   }
 
@@ -1653,7 +1613,7 @@ final class RecordingOverlayPanel {
     autoDismissTask?.cancel()
     autoDismissTask = nil
     CATransaction.flush()
-    existingPanel.close()
+    windowHost.preserveThroughLegacyReplacement()
     generation &+= 1
     let token = generation
     let work = DispatchWorkItem { [weak self] in
@@ -1737,7 +1697,7 @@ final class RecordingOverlayPanel {
     pendingCreateWork?.cancel()
     pendingCreateWork = nil
     CATransaction.flush()
-    existingPanel.close()
+    windowHost.preserveThroughLegacyReplacement()
 
     generation &+= 1
     let token = generation
@@ -1807,7 +1767,7 @@ final class RecordingOverlayPanel {
     pendingCreateWork?.cancel()
     pendingCreateWork = nil
     CATransaction.flush()
-    existingPanel.close()
+    windowHost.preserveThroughLegacyReplacement()
 
     generation &+= 1
     let token = generation
@@ -1958,8 +1918,16 @@ final class RecordingOverlayPanel {
     //
     // We must flush BEFORE close() (not after), because close() begins view teardown.
     // The local `panelToClose` retain keeps the panel alive through the flush.
+    // The flush stays through C3b: the hosting view is still replaced
+    // asynchronously, so pending CA work must commit while the old view graph is
+    // alive. C4 may drop it once the retained render root is proven and nothing
+    // is destroyed at all.
     CATransaction.flush()
-    panelToClose.close()
+    // **The one genuine hide among ten `close()` calls.** The other nine are
+    // replacements that a retained window makes unnecessary; this one really
+    // means "get off the screen", so it orders out rather than closing.
+    _ = panelToClose
+    windowHost.hide()
   }
 }
 
