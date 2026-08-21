@@ -18,6 +18,9 @@
   const LABEL_CLOSED = 'What that means';
   const LABEL_OPEN = 'Show less';
 
+  const rows = () =>
+    Array.from(document.querySelectorAll<HTMLElement>('.compare-table--duo tbody tr'));
+
   // A `td` in this layout is a grid item, and grid items are blockified:
   // `display: -webkit-box` computes to `flow-root`, so -webkit-line-clamp is
   // silently dropped. Clamping an inner element sidesteps that.
@@ -31,24 +34,30 @@
     return span;
   }
 
+  // One writer for the open/closed state, so the class, the label and the
+  // ARIA state cannot drift apart.
+  function setOpen(row: HTMLElement, open: boolean) {
+    row.classList.toggle('duo-open', open);
+    const button = row.querySelector<HTMLButtonElement>('.duo-toggle');
+    if (!button) return;
+    button.setAttribute('aria-expanded', String(open));
+    button.textContent = open ? LABEL_OPEN : LABEL_CLOSED;
+  }
+
   function toggleFor(row: HTMLElement): HTMLButtonElement {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'duo-toggle';
     button.textContent = LABEL_CLOSED;
     button.setAttribute('aria-expanded', 'false');
-    button.addEventListener('click', () => {
-      const open = row.classList.toggle('duo-open');
-      button.setAttribute('aria-expanded', String(open));
-      button.textContent = open ? LABEL_OPEN : LABEL_CLOSED;
-    });
+    button.addEventListener('click', () => setOpen(row, !row.classList.contains('duo-open')));
     return button;
   }
 
   function apply() {
     if (!PHONE.matches) return;
 
-    document.querySelectorAll<HTMLElement>('.compare-table--duo tbody tr').forEach((row) => {
+    rows().forEach((row) => {
       if (row.dataset.duoReady) return;
       row.dataset.duoReady = '1';
 
@@ -71,6 +80,48 @@
     });
   }
 
+  function teardown() {
+    rows().forEach((row) => {
+      row.querySelectorAll('.duo-toggle').forEach((button) => button.remove());
+      row.classList.remove('duo-clamped', 'duo-open');
+      delete row.dataset.duoReady;
+    });
+    // The .duo-text wrappers stay. They are inert outside the media query and
+    // wrapContents reuses them, so re-measuring does not rewrap.
+  }
+
+  // Whether a row overflows is a function of COLUMN WIDTH, so the trigger has
+  // to be width itself. A breakpoint event is not enough in either direction:
+  // widening past 700 needs a teardown rather than an early return, and two
+  // widths can both be under 700 — an iPhone SE is 375 portrait and 667
+  // landscape, and rotating between them fires no `change` at all while
+  // halving the column width. Rows measured in landscape would stay unclamped
+  // in portrait, which is exactly the case this component exists for.
+  function remeasure() {
+    if (!PHONE.matches) {
+      teardown();
+      return;
+    }
+    const reopen = new Set(rows().filter((row) => row.classList.contains('duo-open')));
+    teardown();
+    apply();
+    reopen.forEach((row) => {
+      if (row.classList.contains('duo-clamped')) setOpen(row, true);
+    });
+  }
+
+  // Width only. iOS fires `resize` when the URL bar collapses during a scroll,
+  // which changes height and nothing else; re-measuring on that would be pure
+  // churn on the one platform this feature is for.
+  let lastWidth = window.innerWidth;
+  let pending = 0;
+  window.addEventListener('resize', () => {
+    if (window.innerWidth === lastWidth) return;
+    lastWidth = window.innerWidth;
+    cancelAnimationFrame(pending);
+    pending = requestAnimationFrame(remeasure);
+  });
+
   // Fonts change line height, and line height decides what counts as
   // truncated. Measuring before they load would clamp the wrong rows.
   if (document.fonts && document.fonts.status !== 'loaded') {
@@ -78,20 +129,4 @@
   } else {
     apply();
   }
-
-  // Leaving the breakpoint has to UNDO the work, not just stop doing it.
-  // The desktop table is a real <table> again and the clamp CSS is inside the
-  // media query, so a leftover toggle would render as an unstyled button in
-  // the middle of a cell. Rotating a phone crosses this boundary (390 -> 844).
-  function teardown() {
-    document.querySelectorAll<HTMLElement>('.compare-table--duo tbody tr').forEach((row) => {
-      row.querySelectorAll('.duo-toggle').forEach((button) => button.remove());
-      row.classList.remove('duo-clamped', 'duo-open');
-      delete row.dataset.duoReady;
-    });
-    // The .duo-text wrappers stay. They are inert outside the media query and
-    // wrapContents reuses them, so re-entering the breakpoint does not rewrap.
-  }
-
-  PHONE.addEventListener('change', () => (PHONE.matches ? apply() : teardown()));
 </script>
