@@ -1010,19 +1010,69 @@ public struct WordCorrector: Sendable {
       // only at step 4 -- "enviouswhisper" scoring against
       // "enviouswhisper.com" purely because the strings share a long
       // prefix, with no dot in the input at all.
-      if hasPeelableSuffix,
-        let canonical = nonPackFuzzySingleWordMatch(
-          core: core, coreLower: coreLower, lookups: lookups,
-          appendReplacement: { appendReplacement(forCanonical: $0) }, domainShapedOnly: true)
-      {
-        return prefix + canonical + suffix
+      // Clearing threshold on the unpeeled (domain-restricted) attempt does
+      // not mean it is the STRONGER match: the peeled attempt can score
+      // higher against the user's actual saved alias while the unpeeled
+      // attempt merely clears the bar against an unrelated domain-shaped
+      // distractor. Compute both before accepting either, and take the
+      // higher score -- a raw candidate scoring 0.91 must not preempt a
+      // peeled candidate scoring 0.97 (Codex cloud review, PR #2298, round
+      // 14). Ties favor unpeeled, consistent with the exact-match tier's
+      // own unpeeled-before-peeled precedence.
+      func acceptFuzzy(unpeeled: Bool, canonical: String) -> String {
+        appendReplacement(forCanonical: canonical)
+        return unpeeled ? prefix + canonical + suffix : reattached(canonical)
       }
-      if matchCoreEligible,
-        let canonical = nonPackFuzzySingleWordMatch(
-          core: matchCore, coreLower: matchCoreLower, lookups: lookups,
-          appendReplacement: { appendReplacement(forCanonical: $0) }, domainShapedOnly: false)
-      {
-        return reattached(canonical)
+      func strongerOf(
+        _ unpeeled: (canonical: String, score: Double)?,
+        _ peeled: (canonical: String, score: Double)?
+      ) -> String? {
+        switch (unpeeled, peeled) {
+        case let (.some(u), .some(p)):
+          return u.score >= p.score
+            ? acceptFuzzy(unpeeled: true, canonical: u.canonical)
+            : acceptFuzzy(unpeeled: false, canonical: p.canonical)
+        case let (.some(u), nil):
+          return acceptFuzzy(unpeeled: true, canonical: u.canonical)
+        case let (nil, .some(p)):
+          return acceptFuzzy(unpeeled: false, canonical: p.canonical)
+        case (nil, nil):
+          return nil
+        }
+      }
+
+      // Step 3 + 4: non-pack FUZZY to completion -- unpeeled (restricted to
+      // domain-shaped candidates), then peeled (unrestricted) -- before the
+      // pack tier gets a turn at all, so "non-pack always wins over pack"
+      // holds across the peel boundary too, not only within one attempt
+      // (Codex review, PR for #2281; same shape as finding P1 round 4, one
+      // tier down). Step 3's domain restriction is necessary because fuzzy
+      // scoring CAN cross threshold against a glued suffix, but only when
+      // the CANDIDATE compared against is itself bare -- a candidate that
+      // is ALSO domain-shaped makes the raw comparison apples-to-apples, so
+      // a near-miss like "githib.com" needs to try this unpeeled (finding
+      // P1 round 3).
+      //
+      // Step 3 only runs when the token ITSELF has a peelable suffix (Codex
+      // review round 5, P1): without that guard it ran even for an ordinary
+      // no-dot word, comparing it against domain-shaped candidates it has
+      // no business being compared against and letting a weaker
+      // domain-shaped match preempt the correct bare candidate reachable
+      // only at step 4 -- "enviouswhisper" scoring against
+      // "enviouswhisper.com" purely because the strings share a long
+      // prefix, with no dot in the input at all.
+      let unpeeledNonPackFuzzy =
+        hasPeelableSuffix
+        ? nonPackFuzzySingleWordMatch(
+          core: core, coreLower: coreLower, lookups: lookups, domainShapedOnly: true)
+        : nil
+      let peeledNonPackFuzzy =
+        matchCoreEligible
+        ? nonPackFuzzySingleWordMatch(
+          core: matchCore, coreLower: matchCoreLower, lookups: lookups, domainShapedOnly: false)
+        : nil
+      if let result = strongerOf(unpeeledNonPackFuzzy, peeledNonPackFuzzy) {
+        return result
       }
 
       // Step 5 + 6: pack fuzzy, the same unpeeled-then-peeled shape (step 5
@@ -1030,19 +1080,18 @@ public struct WordCorrector: Sendable {
       // reached once every higher-authority attempt above has missed. Step
       // 4's peeled non-pack fuzzy fixes the originally reported bug for a
       // bare (non-domain-shaped) alias.
-      if hasPeelableSuffix,
-        let canonical = packFuzzySingleWordMatch(
-          core: core, coreLower: coreLower, lookups: lookups,
-          appendReplacement: { appendReplacement(forCanonical: $0) }, domainShapedOnly: true)
-      {
-        return prefix + canonical + suffix
-      }
-      if matchCoreEligible,
-        let canonical = packFuzzySingleWordMatch(
-          core: matchCore, coreLower: matchCoreLower, lookups: lookups,
-          appendReplacement: { appendReplacement(forCanonical: $0) }, domainShapedOnly: false)
-      {
-        return reattached(canonical)
+      let unpeeledPackFuzzy =
+        hasPeelableSuffix
+        ? packFuzzySingleWordMatch(
+          core: core, coreLower: coreLower, lookups: lookups, domainShapedOnly: true)
+        : nil
+      let peeledPackFuzzy =
+        matchCoreEligible
+        ? packFuzzySingleWordMatch(
+          core: matchCore, coreLower: matchCoreLower, lookups: lookups, domainShapedOnly: false)
+        : nil
+      if let result = strongerOf(unpeeledPackFuzzy, peeledPackFuzzy) {
+        return result
       }
 
       return token
@@ -1129,9 +1178,9 @@ public struct WordCorrector: Sendable {
   /// ordinary, unrestricted pool).
   private func nonPackFuzzySingleWordMatch(
     core: String, coreLower: String,
-    lookups: Lookups, appendReplacement: (String) -> Void,
+    lookups: Lookups,
     domainShapedOnly: Bool
-  ) -> String? {
+  ) -> (canonical: String, score: Double)? {
     let singleFuzzyCandidates = lookups.singleFuzzyCandidates
     let canonicalToWord = lookups.canonicalToWord
     let lowercasedCanonicals = lookups.lowercasedCanonicals
@@ -1192,13 +1241,12 @@ public struct WordCorrector: Sendable {
       bestScore - secondBest >= Self.ambiguityMargin,
       core != bestMatch
     {
-      appendReplacement(bestMatch)
       #if DEBUG
         Self.logger.debug(
           "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3))"
         )
       #endif
-      return bestMatch
+      return (bestMatch, bestScore)
     } else if bestScore > 0 {
       #if DEBUG
         let pass4Margin = bestScore - secondBest
@@ -1247,13 +1295,12 @@ public struct WordCorrector: Sendable {
       bestScore - secondBest >= Self.ambiguityMargin,
       core != bestMatch
     {
-      appendReplacement(bestMatch)
       #if DEBUG
         Self.logger.debug(
           "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3))"
         )
       #endif
-      return bestMatch
+      return (bestMatch, bestScore)
     } else if bestScore > 0 {
       #if DEBUG
         let pass5Margin = bestScore - secondBest
@@ -1285,9 +1332,9 @@ public struct WordCorrector: Sendable {
   /// lowercase pack canonicals).
   private func packFuzzySingleWordMatch(
     core: String, coreLower: String,
-    lookups: Lookups, appendReplacement: (String) -> Void,
+    lookups: Lookups,
     domainShapedOnly: Bool
-  ) -> String? {
+  ) -> (canonical: String, score: Double)? {
     let packSingleFuzzyCandidates = lookups.packSingleFuzzyCandidates
     let packCanonicals = lookups.packCanonicals
     let packLowercasedCanonicals = lookups.packLowercasedCanonicals
@@ -1345,13 +1392,12 @@ public struct WordCorrector: Sendable {
             )
           #endif
         } else {
-          appendReplacement(pMatch)
           #if DEBUG
             Self.logger.debug(
               "WordCorrector: type=pack-alias-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
             )
           #endif
-          return pMatch
+          return (pMatch, pBest)
         }
       }
     }
@@ -1387,13 +1433,12 @@ public struct WordCorrector: Sendable {
             )
           #endif
         } else {
-          appendReplacement(pMatch)
           #if DEBUG
             Self.logger.debug(
               "WordCorrector: type=pack-canonical-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
             )
           #endif
-          return pMatch
+          return (pMatch, pBest)
         }
       }
     }

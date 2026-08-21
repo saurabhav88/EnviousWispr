@@ -580,4 +580,23 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "Other.com")
     #expect(result.replacements == 1)
   }
+
+  // MARK: Cloud Codex review, round 14 (PR #2298) -- the unpeeled
+  // domain-restricted fuzzy pass must not accept the first candidate that
+  // clears threshold; it must be compared against the peeled attempt's
+  // best candidate, and the STRONGER of the two wins.
+
+  @Test("A stronger peeled fuzzy match outranks a weaker unpeeled domain-shaped match")
+  func strongerPeeledFuzzyOutranksWeakerUnpeeledDomainMatch() {
+    // Cloud review's own construction: a domain-shaped distractor scores
+    // ~0.91 against the raw (unpeeled) input, which used to be accepted
+    // outright the instant it cleared threshold. The peeled input scores
+    // ~0.97 against the intended alias -- objectively closer -- but was
+    // never even consulted because the unpeeled attempt already returned.
+    let distractor = CustomWord(canonical: "Wrong.com", aliases: ["internationalplatfozz.com"])
+    let correct = CustomWord(canonical: "Right", aliases: ["internationalplatforn"])
+    let result = corrected("internationalplatform.com", [distractor, correct])
+    #expect(result.text == "Right.com")
+    #expect(result.replacements == 1)
+  }
 }
