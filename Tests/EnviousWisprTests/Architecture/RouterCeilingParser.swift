@@ -105,6 +105,21 @@ enum RouterCeilingParser {
     }.count
   }
 
+  /// The classification-independent count used by architecture ceilings. An
+  /// alias can look like a collaborator while spelling a closure, but it still
+  /// consumes exactly one dependency slot here.
+  static func storedDependencyCount(in body: String) -> Int {
+    collaboratorCount(in: body) + closureInjectedCount(in: body)
+  }
+
+  /// Every parser-visible instance stored property, whether declared with `let`
+  /// or `var`. This is the right counter for a composition-root state ceiling:
+  /// unlike collaborator ceilings, owned mutable state is part of that home's
+  /// size and must consume a slot too.
+  static func storedPropertyCount(in body: String) -> Int {
+    storedBindings(in: body, includeVars: true).count
+  }
+
   /// Non-private `func` declarations declared directly in the class body.
   static func nonPrivateMethodCount(in body: String) -> Int {
     members(in: body).compactMap { $0.as(FunctionDeclSyntax.self) }
@@ -284,13 +299,20 @@ enum RouterCeilingParser {
   /// what the ceiling means rather than a fact about Swift: a type property is
   /// not an injected instance collaborator.
   private static func storedLetBindings(in body: String) -> [StoredLet] {
+    storedBindings(in: body, includeVars: false)
+  }
+
+  private static func storedBindings(in body: String, includeVars: Bool) -> [StoredLet] {
     var result: [StoredLet] = []
     for member in members(in: body) {
       guard let variable = member.as(VariableDeclSyntax.self) else { continue }
-      guard variable.bindingSpecifier.tokenKind == .keyword(.let) else { continue }
+      guard
+        variable.bindingSpecifier.tokenKind == .keyword(.let)
+          || (includeVars && variable.bindingSpecifier.tokenKind == .keyword(.var))
+      else { continue }
       guard !isTypeProperty(variable.modifiers) else { continue }
       for binding in variable.bindings {
-        guard binding.accessorBlock == nil else { continue }
+        guard isStoredProperty(binding) else { continue }
         let isBool = binding.initializer.map { isBooleanLiteral($0.value) } ?? false
         expand(
           pattern: binding.pattern, type: binding.typeAnnotation?.type,
@@ -298,6 +320,17 @@ enum RouterCeilingParser {
       }
     }
     return result
+  }
+
+  private static func isStoredProperty(_ binding: PatternBindingSyntax) -> Bool {
+    guard let accessorBlock = binding.accessorBlock else { return true }
+    guard case .accessors(let accessors) = accessorBlock.accessors else { return false }
+    // `didSet`/`willSet` observe a backing slot; a getter or setter computes the
+    // value instead. Count only the former so a state ceiling cannot be walked
+    // around by adding an observed `var`.
+    return accessors.allSatisfy { accessor in
+      ["didSet", "willSet"].contains(accessor.accessorSpecifier.text)
+    }
   }
 
   /// One `StoredLet` per property a binding actually declares.

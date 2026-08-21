@@ -71,25 +71,7 @@ enum CeilingsTestSupport {
   }
 
   static func countTopLevelLetCollaborators(in body: String) -> Int {
-    var depth = 0
-    var collaborators = 0
-
-    for line in body.split(separator: "\n", omittingEmptySubsequences: false) {
-      let opens = line.filter { $0 == "{" }.count
-      let closes = line.filter { $0 == "}" }.count
-      let depthForThisLine = depth - max(0, closes - opens)
-
-      if depthForThisLine == 0 {
-        let s = String(line)
-        if isCollaboratorLetDeclaration(s) && !isPrimitiveTyped(s) {
-          collaborators += 1
-        }
-      }
-
-      depth += opens - closes
-    }
-
-    return collaborators
+    RouterCeilingParser.storedDependencyCount(in: body)
   }
 
   static func countNonPrivateMethods(in body: String) -> Int {
@@ -133,9 +115,6 @@ enum CeilingsTestSupport {
 
   private static let attrs = #"(@[A-Za-z_][A-Za-z0-9_]*(\([^)]*\))?[[:space:]]+)*"#
 
-  private static let collaboratorLetPattern =
-    #"^[[:space:]]*\#(attrs)(public|internal|private|fileprivate|package|open)?[[:space:]]*let[[:space:]]+[A-Za-z_]"#
-
   private static let privateMethodPattern =
     #"^[[:space:]]*\#(attrs)(private|fileprivate)[[:space:]]+(static[[:space:]]+)?(class[[:space:]]+)?func[[:space:]]+[A-Za-z_]"#
 
@@ -149,23 +128,11 @@ enum CeilingsTestSupport {
   private static let importPattern =
     #"^[[:space:]]*\#(attrs)import[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)\b"#
 
-  private static func isCollaboratorLetDeclaration(_ line: String) -> Bool {
-    line.range(of: collaboratorLetPattern, options: .regularExpression) != nil
-  }
-
   private static func isNonPrivateMethodDeclaration(_ line: String) -> Bool {
     if line.range(of: privateMethodPattern, options: .regularExpression) != nil {
       return false
     }
     return line.range(of: nonPrivateMethodPattern, options: .regularExpression) != nil
-  }
-
-  private static func isPrimitiveTyped(_ line: String) -> Bool {
-    let primitives = [
-      ": Bool", ": Int", ": String", ": Double", ": Float",
-      "Task<", ": ((", "= false", "= true",
-    ]
-    return primitives.contains { line.contains($0) }
   }
 
   private static func firstCapture(in line: String, pattern: String) -> String? {

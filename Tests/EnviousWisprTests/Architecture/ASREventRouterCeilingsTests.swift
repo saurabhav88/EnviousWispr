@@ -28,6 +28,18 @@ import Testing
       """)
   }
 
+  /// The two buckets are individually useful, but an alias can change buckets
+  /// without changing the dependency. Freeze their measured total as well.
+  @Test func totalStoredDependencyCount() throws {
+    let body = try RouterCeilingParser.classBody(named: "ASREventRouter", at: Self.sourcePath)
+    let collaborators = RouterCeilingParser.collaboratorCount(in: body)
+    let closures = RouterCeilingParser.closureInjectedCount(in: body)
+    let total = RouterCeilingParser.storedDependencyCount(in: body)
+    #expect(
+      total <= 3,
+      "ASREventRouter total stored-dependency ceiling exceeded: \(total) > 3 (\(collaborators) collaborators + \(closures) closures).")
+  }
+
   @Test func nonPrivateMethodCount() throws {
     let body = try RouterCeilingParser.classBody(named: "ASREventRouter", at: Self.sourcePath)
     let count = RouterCeilingParser.nonPrivateMethodCount(in: body)

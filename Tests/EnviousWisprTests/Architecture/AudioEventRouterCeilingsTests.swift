@@ -41,6 +41,16 @@ import Testing
       """)
   }
 
+  @Test func totalStoredDependencyCount() throws {
+    let body = try RouterCeilingParser.classBody(named: "AudioEventRouter", at: Self.sourcePath)
+    let collaborators = RouterCeilingParser.collaboratorCount(in: body)
+    let closures = RouterCeilingParser.closureInjectedCount(in: body)
+    let total = RouterCeilingParser.storedDependencyCount(in: body)
+    #expect(
+      total <= 4,
+      "AudioEventRouter total stored-dependency ceiling exceeded: \(total) > 4 (\(collaborators) collaborators + \(closures) closures).")
+  }
+
   @Test func nonPrivateMethodCount() throws {
     let body = try RouterCeilingParser.classBody(named: "AudioEventRouter", at: Self.sourcePath)
     let count = RouterCeilingParser.nonPrivateMethodCount(in: body)

@@ -563,42 +563,7 @@ private func structBodyOfEnviousWisprApp() throws -> String {
 /// Stored properties include those marked with SwiftUI property wrappers
 /// (`@State`, `@NSApplicationDelegateAdaptor`).
 private func countTopLevelStoredProperties(in body: String) -> Int {
-  var depth = 0
-  var count = 0
-  for line in body.split(separator: "\n", omittingEmptySubsequences: false) {
-    let opens = line.filter { $0 == "{" }.count
-    let closes = line.filter { $0 == "}" }.count
-    let depthForThisLine = depth - max(0, closes - opens)
-    if depthForThisLine == 0 {
-      let s = String(line)
-      if isStoredPropertyDeclaration(s) {
-        count += 1
-      }
-    }
-    depth += opens - closes
-  }
-  return count
-}
-
-private let storedPropertyPattern: String = {
-  // Match `let|var <ident>` at the top level, allowing property wrappers
-  // (with optional parenthesized args) and access modifiers in any order
-  // before the declaration keyword.
-  let attrs = #"(@[A-Za-z_][A-Za-z0-9_]*(\([^)]*\))?[[:space:]]+)*"#
-  let access = #"(public|internal|private|fileprivate|package|open)?"#
-  return "^[[:space:]]*\(attrs)\(access)[[:space:]]*(let|var)[[:space:]]+[A-Za-z_]"
-}()
-
-private func isStoredPropertyDeclaration(_ line: String) -> Bool {
-  guard line.range(of: storedPropertyPattern, options: .regularExpression) != nil
-  else { return false }
-  // Exclude computed properties — these have an opening `{` on the same line
-  // as the declaration (e.g. `var body: some Scene {`). Stored properties
-  // never have a trailing `{` on the declaration line.
-  if line.range(of: #"\{[[:space:]]*$"#, options: .regularExpression) != nil {
-    return false
-  }
-  return true
+  RouterCeilingParser.storedPropertyCount(in: body)
 }
 
 /// Counts top-level non-private `func` declarations. The `body` computed
