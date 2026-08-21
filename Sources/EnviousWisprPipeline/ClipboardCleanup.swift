@@ -65,6 +65,13 @@ import EnviousWisprServices
 /// neither should be deleted on the grounds that a test still passes without
 /// it. That is what defence in depth looks like from inside a mutation run, and
 /// it is easy to misread as a vacuous test.
+///
+/// The same is true of both production `task.cancel()` calls below. Removing
+/// either one also leaves the suite green because the identity check refuses the
+/// stale task when it wakes. Cancellation still matters: it abandons superseded
+/// work immediately instead of retaining and waking it later. A green
+/// single-line mutant is evidence of the backstop, not evidence that either
+/// cancellation is dead code (#2215).
 @MainActor
 public enum ClipboardCleanup {
 

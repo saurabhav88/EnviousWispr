@@ -459,6 +459,27 @@ struct ClipboardIsolationFreezeTests {
     return visitor.violations
   }
 
+  private final class SnapshotRoutingVisitor: SyntaxVisitor {
+    private(set) var snapshotCalls = 0
+    private(set) var callsUsingExecutorBoard = 0
+
+    override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+      guard let member = node.calledExpression.as(MemberAccessExprSyntax.self),
+        member.declName.baseName.text == "snapshotForDelivery",
+        member.base?.trimmedDescription == "ClipboardCleanup"
+      else { return .visitChildren }
+
+      snapshotCalls += 1
+      if node.arguments.count == 1, let argument = node.arguments.first,
+        argument.label?.text == "from",
+        argument.expression.trimmedDescription == "pasteboard"
+      {
+        callsUsingExecutorBoard += 1
+      }
+      return .visitChildren
+    }
+  }
+
   private static func scanTests() throws -> (violations: [Violation], filesScanned: Int) {
     let root = RepoRoot.sourceURL("Tests")
     var found: [Violation] = []
@@ -518,6 +539,22 @@ struct ClipboardIsolationFreezeTests {
         - PasteService tests: use `NSPasteboard.withUniqueName()` and pass it
           explicitly via `to:` / `from:` / `on:`.
       """)
+  }
+
+  @Test("every paste route inherits cleanup through the executor's board")
+  func pasteRoutesUseCleanupSnapshot() throws {
+    let url = RepoRoot.sourceURL("Sources/EnviousWisprPipeline/PasteCascadeExecutor.swift")
+    let source = try String(contentsOf: url, encoding: .utf8)
+    let tree = Parser.parse(source: source)
+    let visitor = SnapshotRoutingVisitor(viewMode: .sourceAccurate)
+    visitor.walk(tree)
+
+    #expect(
+      visitor.snapshotCalls == 3,
+      "expected the three clipboard paste routes, found \(visitor.snapshotCalls)")
+    #expect(
+      visitor.callsUsingExecutorBoard == visitor.snapshotCalls,
+      "a paste route bypasses cleanup inheritance or silently defaults to the real clipboard")
   }
 
   // MARK: Two-way controls
