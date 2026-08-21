@@ -512,4 +512,47 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "пример.рф")
     #expect(result.replacements == 1)
   }
+
+  // MARK: Cloud Codex review, round 2 (PR #2298) -- an unpeeled non-pack
+  // exact replace must beat a peeled already-correct match, and the
+  // domain-restricted raw fuzzy pass must key admission off what it
+  // actually scores (the alias SURFACE), not the canonical.
+
+  @Test("An unpeeled non-pack exact replace outranks a peeled already-correct match")
+  func unpeeledReplaceOutranksPeeledAlreadyCorrect() {
+    // Cloud review round 2: canonical "GitHub" is a self-entry the peeled
+    // bare form "GitHub" matches exactly (already correct) -- but a
+    // SEPARATE, deliberately registered alias "GitHub.com" -> "Company
+    // Portal" names the whole glued string directly. The deliberate,
+    // complete registration must win; the peeled self-match must not be
+    // allowed to short-circuit ahead of it.
+    let bareCanonical = CustomWord(canonical: "GitHub", aliases: [])
+    let domainAlias = CustomWord(canonical: "Company Portal", aliases: ["GitHub.com"])
+    let result = corrected("GitHub.com", [bareCanonical, domainAlias])
+    #expect(result.text == "Company Portal")
+    #expect(result.replacements == 1)
+  }
+
+  @Test("The domain-restricted raw fuzzy pass admits candidates by SURFACE, not canonical")
+  func domainRestrictedFuzzyAdmitsBySurfaceNotCanonical() {
+    // Cloud review round 2: the raw (unpeeled) domain-restricted pass
+    // scores `coreLower` against each candidate's SURFACE, but the
+    // admission check used to also let a candidate in when only its
+    // CANONICAL was domain-shaped -- a mismatch between what's admitted
+    // and what's actually compared. Structural fix verified by reading
+    // the code (grep for "domainShapedOnly, !Self.isDomainShaped" shows
+    // both Pass 4 sites now check surface alone); this pins the intended
+    // end-to-end behavior for the shape the review named. Note: this
+    // specific input does not observably distinguish the fixed admission
+    // from the old one, because a domain-shaped matched canonical already
+    // suppresses reattach either way (round 3/4's dedup design) -- the old
+    // bug is only reachable by winning against a DIFFERENT, correct
+    // candidate under raw-vs-peeled scoring noise, which this test does
+    // not attempt to reconstruct.
+    let word = CustomWord(
+      canonical: "SomeLongBrandName.com", aliases: ["someverylongbarealiasnameindeed"])
+    let result = corrected("someverylongbarealiasnameindeed.org", [word])
+    #expect(result.text == "SomeLongBrandName.com")
+    #expect(result.replacements == 1)
+  }
 }

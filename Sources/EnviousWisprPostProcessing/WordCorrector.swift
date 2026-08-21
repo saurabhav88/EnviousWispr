@@ -952,6 +952,29 @@ public struct WordCorrector: Sendable {
         unpeeledMatch = (canonical, isPack)
       }
 
+      func acceptExact(unpeeled: Bool, _ match: (canonical: String, isPack: Bool)) -> String {
+        appendReplacement(forCanonical: match.canonical)
+        #if DEBUG
+          Self.logger.debug(
+            "WordCorrector: type=alias source='\(unpeeled ? core : matchCore)' target='\(match.canonical)'"
+          )
+        #endif
+        return unpeeled ? prefix + match.canonical + suffix : reattached(match.canonical)
+      }
+
+      // An UNPEELED non-pack exact replace is the single highest-priority
+      // outcome in this whole retry -- a deliberate, complete registration
+      // for the token exactly as typed -- so it must win before anything
+      // peeled is even consulted, including a peeled `.alreadyCorrect`
+      // (Codex cloud review, PR #2298, round 11): canonical "GitHub" (a
+      // self-entry the peeled bare form matches exactly) does not get to
+      // override a SEPARATE, deliberately-registered alias "GitHub.com" ->
+      // "Company Portal" just because the peeled half also happens to
+      // resolve to something.
+      if let match = unpeeledMatch, !match.isPack {
+        return acceptExact(unpeeled: true, match)
+      }
+
       let peeledExact =
         matchCoreEligible
         ? exactSingleWordMatch(core: matchCore, coreLower: matchCoreLower, lookups: lookups)
@@ -963,31 +986,18 @@ public struct WordCorrector: Sendable {
       // `.alreadyCorrect` on the PEELED form means the bare part was
       // already spelled right, so the untouched original token (bare part
       // + its existing suffix) is already the correct output -- but that
-      // conclusion is only valid if nothing else is allowed to override it
-      // afterward. An earlier version of this comment claimed the "falls
-      // through to the final `return token`" path made this automatic; it
-      // does not, because `peeledMatch` staying nil here is indistinguishable
-      // from `.noMatch`, so a LOWER-authority pack exact match (or even a
-      // fuzzy match) found afterward could still win and replace text that
-      // was already correct (local Codex sweep of PR #2298's cloud
-      // findings, same day: canonical "GitHub" + pack alias "github.com" ->
-      // "Wrong" turned input "GitHub.com" into "Wrong" instead of leaving
-      // it alone). Stop here, exactly like the unpeeled case above.
+      // conclusion is only valid if nothing HIGHER-priority already claimed
+      // this token, which the unpeeled non-pack check just above already
+      // ruled out. Without a signal of its own, `peeledMatch` staying nil
+      // here would be indistinguishable from `.noMatch`, letting a
+      // LOWER-authority pack exact match (or even a fuzzy match) found
+      // afterward win and replace text that was already correct (local
+      // Codex sweep of PR #2298's cloud findings: canonical "GitHub" + pack
+      // alias "github.com" -> "Wrong" turned input "GitHub.com" into
+      // "Wrong" instead of leaving it alone). Stop here, exactly like the
+      // unpeeled case above -- just one priority level later.
       if case .alreadyCorrect = peeledExact { return token }
 
-      func acceptExact(unpeeled: Bool, _ match: (canonical: String, isPack: Bool)) -> String {
-        appendReplacement(forCanonical: match.canonical)
-        #if DEBUG
-          Self.logger.debug(
-            "WordCorrector: type=alias source='\(unpeeled ? core : matchCore)' target='\(match.canonical)'"
-          )
-        #endif
-        return unpeeled ? prefix + match.canonical + suffix : reattached(match.canonical)
-      }
-
-      if let match = unpeeledMatch, !match.isPack {
-        return acceptExact(unpeeled: true, match)
-      }
       if let match = peeledMatch, !match.isPack {
         return acceptExact(unpeeled: false, match)
       }
@@ -1156,7 +1166,15 @@ public struct WordCorrector: Sendable {
     for entry in singleFuzzyCandidates {
       let surface = entry.surface
       let canonical = entry.canonical
-      if domainShapedOnly, !Self.isDomainShaped(surface), !Self.isDomainShaped(canonical) {
+      // Admission must key off `surface` alone, never `canonical` too: the
+      // comparison two lines below is `coreLower` (the raw, unpeeled input)
+      // against `surface` -- the apples-to-apples reasoning that makes raw
+      // comparison safe only holds when the SURFACE being scored is itself
+      // domain-shaped. Admitting on a domain-shaped CANONICAL with a bare
+      // surface let a long bare alias absorb the glued suffix as scoring
+      // noise, reproducing the original bug through this pass instead
+      // (Codex cloud review, PR #2298, round 11).
+      if domainShapedOnly, !Self.isDomainShaped(surface) {
         continue
       }
       // Length-ratio pruning: skip if lengths differ too much for threshold
@@ -1307,9 +1325,10 @@ public struct WordCorrector: Sendable {
       var pSecond = 0.0
       var pMatch = ""
       for entry in packSingleFuzzyCandidates {
-        if domainShapedOnly, !Self.isDomainShaped(entry.surface),
-          !Self.isDomainShaped(entry.canonical)
-        {
+        // Same fix as the non-pack Pass 4 above: admission keys off the
+        // SURFACE alone, since that is what's actually scored against
+        // `coreLower` below (Codex cloud review, PR #2298, round 11).
+        if domainShapedOnly, !Self.isDomainShaped(entry.surface) {
           continue
         }
         let surfLen = entry.surface.count
