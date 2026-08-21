@@ -24,7 +24,8 @@ import EnviousWisprServices
 package func recoveryFailureClass(for error: any Error) -> RecoveryFailureClass? {
   // ORDER IS LOAD-BEARING: the unreachable-service case must be tested before
   // the general transport case or the shipped `xpc_unreachable` series silently
-  // stops being produced. Pinned by `serviceUnreachableOutranksGeneralTransport`.
+  // stops being produced. Pinned by "transcribe failure on good audio is a Camp B
+  // candidate with a failure class" in RecoverySpoolReplayerTests.
   if let transport = error as? XPCASRTransportError {
     return transport.isServiceUnreachable ? .xpcUnreachable : .xpcTransport
   }
