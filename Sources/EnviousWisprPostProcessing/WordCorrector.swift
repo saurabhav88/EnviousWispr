@@ -895,7 +895,12 @@ public struct WordCorrector: Sendable {
         return token
       }
 
-      // Pass 3: exact single-word alias (includes canonical self-entries)
+      // Pass 3, tried on the token exactly as ASR emitted it, BEFORE any TLD
+      // peeling. A saved custom word or alias can itself be a domain
+      // ("GitHub.com" canonical, "githab.com" alias), and this is the only
+      // pass safe to try unpeeled: exact string equality can never
+      // coincidentally consume a glued TLD (Codex review, PR for #2281,
+      // finding P1).
       if let canonical = singleAliasMap[coreLower], core != canonical {
         appendReplacement(forCanonical: canonical)
         #if DEBUG
@@ -904,232 +909,292 @@ public struct WordCorrector: Sendable {
         return prefix + canonical + suffix
       }
 
-      // Skip fuzzy for very short tokens
-      guard core.count >= 3 else { return token }
-
-      // Determine threshold based on token length
-      let effectiveThreshold =
-        core.count <= Self.shortTokenMaxLength
-        ? Self.shortTokenThreshold
-        : Self.threshold
-
-      // Pass 4: fuzzy single-word against aliases + canonical self-entries
-      let coreLen = coreLower.count
-      var bestScore = 0.0
-      var secondBest = 0.0
-      var bestMatch = ""
-
-      for entry in singleFuzzyCandidates {
-        let surface = entry.surface
-        let canonical = entry.canonical
-        // Length-ratio pruning: skip if lengths differ too much for threshold
-        let surfLen = surface.count
-        let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
-        if lenRatio < 0.5 { continue }
-
-        let s = score(coreLower, against: surface)
-        if s > bestScore {
-          if bestMatch != canonical { secondBest = bestScore }
-          bestScore = s
-          bestMatch = canonical
-        } else if s > secondBest && canonical != bestMatch {
-          secondBest = s
+      // Every other pass (fuzzy Pass 4/5, pack tier) runs on a TLD-peeled core
+      // whenever a recognized TLD is glued to the end -- never on the raw
+      // glued token. Fuzzy SCORING, unlike exact equality, can cross
+      // threshold against the whole glued string too (measured live for
+      // several TLDs while building this fix: trying fuzzy on the unpeeled
+      // token first reproduced the original bug for org/net/ai/me/io/app),
+      // so this is not an optional refinement -- it is what makes the fix
+      // correct for every fuzzy-matched brand, not only exact ones.
+      var matchCore = core
+      var matchSuffix = suffix
+      if let lastDot = core.lastIndex(of: "."), lastDot > core.startIndex {
+        let tail = core[core.index(after: lastDot)...].lowercased()
+        if Self.recognizedTLDs.contains(tail) {
+          matchCore = String(core[core.startIndex..<lastDot])
+          matchSuffix = String(core[lastDot...]) + suffix
         }
       }
-
-      // Phase 2 (#638) §8.2: vocab-size penalty + length-aware adjustment
-      // applied per-candidate. Per-term override wins absolutely if set.
-      let pass4VocabPenalty = Self.largeVocabPenalty(poolSize: singleFuzzyCandidates.count)
-      let pass4LengthAdj = Self.lengthAwareAdjustment(candidateLength: bestMatch.count)
-      let pass4Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
-      let pass4Threshold =
-        pass4Override ?? (effectiveThreshold + pass4VocabPenalty - pass4LengthAdj)
-      if bestScore >= pass4Threshold,
-        bestScore - secondBest >= Self.ambiguityMargin,
-        core != bestMatch
-      {
-        appendReplacement(forCanonical: bestMatch)
-        #if DEBUG
-          Self.logger.debug(
-            "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3))"
-          )
-        #endif
-        return prefix + bestMatch + suffix
-      } else if bestScore > 0 {
-        #if DEBUG
-          let pass4Margin = bestScore - secondBest
-          let reason: String
-          if bestScore < pass4Threshold {
-            reason = "below_threshold"
-          } else if pass4Margin < Self.ambiguityMargin {
-            reason = "below_margin"
-          } else {
-            reason = "same_as_input"
-          }
-          Self.logger.debug(
-            "WordCorrector: REJECT pass=alias-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass4Margin, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3)) reason=\(reason)"
-          )
-        #endif
-      }
-
-      // Pass 5: fuzzy single-word against canonicals as fallback
-      bestScore = 0.0
-      secondBest = 0.0
-      bestMatch = ""
-
-      for (idx, targetLower) in lowercasedCanonicals.enumerated() {
-        let targetLen = targetLower.count
-        let lenRatio = Double(min(coreLen, targetLen)) / Double(max(coreLen, targetLen))
-        if lenRatio < 0.5 { continue }
-
-        let s = score(coreLower, against: targetLower)
-        if s > bestScore {
-          secondBest = bestScore
-          bestScore = s
-          bestMatch = canonicals[idx]
-        } else if s > secondBest {
-          secondBest = s
-        }
-      }
-
-      // Phase 2 (#638) §8.2: same hardening for Pass 5.
-      let pass5VocabPenalty = Self.largeVocabPenalty(poolSize: lowercasedCanonicals.count)
-      let pass5LengthAdj = Self.lengthAwareAdjustment(candidateLength: bestMatch.count)
-      let pass5Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
-      let pass5Threshold =
-        pass5Override ?? (effectiveThreshold + pass5VocabPenalty - pass5LengthAdj)
-      if bestScore >= pass5Threshold,
-        bestScore - secondBest >= Self.ambiguityMargin,
-        core != bestMatch
-      {
-        appendReplacement(forCanonical: bestMatch)
-        #if DEBUG
-          Self.logger.debug(
-            "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3))"
-          )
-        #endif
-        return prefix + bestMatch + suffix
-      } else if bestScore > 0 {
-        #if DEBUG
-          let pass5Margin = bestScore - secondBest
-          let reason: String
-          if bestScore < pass5Threshold {
-            reason = "below_threshold"
-          } else if pass5Margin < Self.ambiguityMargin {
-            reason = "below_margin"
-          } else {
-            reason = "same_as_input"
-          }
-          Self.logger.debug(
-            "WordCorrector: REJECT pass=canonical-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass5Margin, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3)) reason=\(reason)"
-          )
-        #endif
-      }
-
-      // #992 PACK FUZZY TIER — LOWER authority. Reached ONLY here, i.e. after
-      // every non-pack fuzzy pass above missed (each accept returns early). This
-      // ordering is what makes "user/builtin always wins" structurally true: any
-      // user/builtin match (Pass 3/4/5) preempts the entire pack tier. Pack
-      // matches additionally clear a stricter bar (packFuzzyThresholdBump) and a
-      // casing guard (a case-only change is never an improvement for the
-      // lowercase pack canonicals). Source is unambiguous: only pack terms are
-      // scored in this tier.
-
-      // #992 precedence guard: if the token is already a recognized non-pack
-      // term (user/builtin canonical or alias), it is correct as-is — packs
-      // must not rewrite it. This covers the case where the non-pack tier above
-      // produced no replacement precisely because no fix was needed.
-      if nonPackExactKeys.contains(coreLower) {
+      let matchCoreLower = matchCore.lowercased()
+      guard !Self.emojiTriggerReservedWords.contains(matchCoreLower), matchCore.count >= 2 else {
         return token
       }
-
-      // Pack Pass 4: single-word pack aliases.
-      if !packSingleFuzzyCandidates.isEmpty {
-        var pBest = 0.0
-        var pSecond = 0.0
-        var pMatch = ""
-        for entry in packSingleFuzzyCandidates {
-          let surfLen = entry.surface.count
-          let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
-          if lenRatio < 0.5 { continue }
-          let s = score(coreLower, against: entry.surface)
-          if s > pBest {
-            if pMatch != entry.canonical { pSecond = pBest }
-            pBest = s
-            pMatch = entry.canonical
-          } else if s > pSecond && entry.canonical != pMatch {
-            pSecond = s
-          }
-        }
-        let vocabPenalty = Self.largeVocabPenalty(poolSize: packSingleFuzzyCandidates.count)
-        let lengthAdj = Self.lengthAwareAdjustment(candidateLength: pMatch.count)
-        let packThreshold =
-          effectiveThreshold + vocabPenalty - lengthAdj + Self.packFuzzyThresholdBump
-        if pBest >= packThreshold, pBest - pSecond >= Self.ambiguityMargin, core != pMatch {
-          if coreLower == pMatch.lowercased() {
-            // Casing guard: case-only change — suppress, fall through.
-            #if DEBUG
-              Self.logger.debug(
-                "WordCorrector: SUPPRESS pass=pack-alias-fuzzy reason=case_only source='\(core)' target='\(pMatch)'"
-              )
-            #endif
-          } else {
-            appendReplacement(forCanonical: pMatch)
-            #if DEBUG
-              Self.logger.debug(
-                "WordCorrector: type=pack-alias-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
-              )
-            #endif
-            return prefix + pMatch + suffix
-          }
-        }
-      }
-
-      // Pack Pass 5: single-word pack canonicals.
-      if !packLowercasedCanonicals.isEmpty {
-        var pBest = 0.0
-        var pSecond = 0.0
-        var pMatch = ""
-        for (idx, targetLower) in packLowercasedCanonicals.enumerated() {
-          let targetLen = targetLower.count
-          let lenRatio = Double(min(coreLen, targetLen)) / Double(max(coreLen, targetLen))
-          if lenRatio < 0.5 { continue }
-          let s = score(coreLower, against: targetLower)
-          if s > pBest {
-            pSecond = pBest
-            pBest = s
-            pMatch = packCanonicals[idx]
-          } else if s > pSecond {
-            pSecond = s
-          }
-        }
-        let vocabPenalty = Self.largeVocabPenalty(poolSize: packLowercasedCanonicals.count)
-        let lengthAdj = Self.lengthAwareAdjustment(candidateLength: pMatch.count)
-        let packThreshold =
-          effectiveThreshold + vocabPenalty - lengthAdj + Self.packFuzzyThresholdBump
-        if pBest >= packThreshold, pBest - pSecond >= Self.ambiguityMargin, core != pMatch {
-          if coreLower == pMatch.lowercased() {
-            #if DEBUG
-              Self.logger.debug(
-                "WordCorrector: SUPPRESS pass=pack-canonical-fuzzy reason=case_only source='\(core)' target='\(pMatch)'"
-              )
-            #endif
-          } else {
-            appendReplacement(forCanonical: pMatch)
-            #if DEBUG
-              Self.logger.debug(
-                "WordCorrector: type=pack-canonical-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
-              )
-            #endif
-            return prefix + pMatch + suffix
-          }
-        }
+      if let matched = matchSingleWordPasses(
+        prefix: prefix, core: matchCore, coreLower: matchCoreLower, suffix: matchSuffix,
+        lookups: lookups, appendReplacement: { appendReplacement(forCanonical: $0) })
+      {
+        return matched
       }
 
       return token
     }
 
     return (corrected.joined(separator: " "), replacements)
+  }
+
+  /// Passes 3-5 (plus the pack tier), factored out of `correct(using:)` so the
+  /// single-word matcher can be run TWICE per token: once against the token as
+  /// ASR emitted it, and -- only if that produced no match -- once more
+  /// against a TLD-peeled core (see the call site in `correct(using:)`).
+  /// `nil` means "no pass matched"; every accept path returns the final
+  /// `prefix + canonical + suffix` string, exactly as the inline closure did.
+  private func matchSingleWordPasses(
+    prefix: String, core: String, coreLower: String, suffix: String,
+    lookups: Lookups, appendReplacement: (String) -> Void
+  ) -> String? {
+    let singleAliasMap = lookups.singleAliasMap
+    let singleFuzzyCandidates = lookups.singleFuzzyCandidates
+    let canonicalToWord = lookups.canonicalToWord
+    let lowercasedCanonicals = lookups.lowercasedCanonicals
+    let canonicals = lookups.canonicals
+    let packSingleFuzzyCandidates = lookups.packSingleFuzzyCandidates
+    let packCanonicals = lookups.packCanonicals
+    let packLowercasedCanonicals = lookups.packLowercasedCanonicals
+    let nonPackExactKeys = lookups.nonPackExactKeys
+
+    // Pass 3: exact single-word alias (includes canonical self-entries)
+    if let canonical = singleAliasMap[coreLower], core != canonical {
+      appendReplacement(canonical)
+      #if DEBUG
+        Self.logger.debug("WordCorrector: type=alias source='\(core)' target='\(canonical)'")
+      #endif
+      return prefix + canonical + suffix
+    }
+
+    // Skip fuzzy for very short tokens
+    guard core.count >= 3 else { return nil }
+
+    // Determine threshold based on token length
+    let effectiveThreshold =
+      core.count <= Self.shortTokenMaxLength
+      ? Self.shortTokenThreshold
+      : Self.threshold
+
+    // Pass 4: fuzzy single-word against aliases + canonical self-entries
+    let coreLen = coreLower.count
+    var bestScore = 0.0
+    var secondBest = 0.0
+    var bestMatch = ""
+
+    for entry in singleFuzzyCandidates {
+      let surface = entry.surface
+      let canonical = entry.canonical
+      // Length-ratio pruning: skip if lengths differ too much for threshold
+      let surfLen = surface.count
+      let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
+      if lenRatio < 0.5 { continue }
+
+      let s = score(coreLower, against: surface)
+      if s > bestScore {
+        if bestMatch != canonical { secondBest = bestScore }
+        bestScore = s
+        bestMatch = canonical
+      } else if s > secondBest && canonical != bestMatch {
+        secondBest = s
+      }
+    }
+
+    // Phase 2 (#638) §8.2: vocab-size penalty + length-aware adjustment
+    // applied per-candidate. Per-term override wins absolutely if set.
+    let pass4VocabPenalty = Self.largeVocabPenalty(poolSize: singleFuzzyCandidates.count)
+    let pass4LengthAdj = Self.lengthAwareAdjustment(candidateLength: bestMatch.count)
+    let pass4Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
+    let pass4Threshold =
+      pass4Override ?? (effectiveThreshold + pass4VocabPenalty - pass4LengthAdj)
+    if bestScore >= pass4Threshold,
+      bestScore - secondBest >= Self.ambiguityMargin,
+      core != bestMatch
+    {
+      appendReplacement(bestMatch)
+      #if DEBUG
+        Self.logger.debug(
+          "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3))"
+        )
+      #endif
+      return prefix + bestMatch + suffix
+    } else if bestScore > 0 {
+      #if DEBUG
+        let pass4Margin = bestScore - secondBest
+        let reason: String
+        if bestScore < pass4Threshold {
+          reason = "below_threshold"
+        } else if pass4Margin < Self.ambiguityMargin {
+          reason = "below_margin"
+        } else {
+          reason = "same_as_input"
+        }
+        Self.logger.debug(
+          "WordCorrector: REJECT pass=alias-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass4Margin, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3)) reason=\(reason)"
+        )
+      #endif
+    }
+
+    // Pass 5: fuzzy single-word against canonicals as fallback
+    bestScore = 0.0
+    secondBest = 0.0
+    bestMatch = ""
+
+    for (idx, targetLower) in lowercasedCanonicals.enumerated() {
+      let targetLen = targetLower.count
+      let lenRatio = Double(min(coreLen, targetLen)) / Double(max(coreLen, targetLen))
+      if lenRatio < 0.5 { continue }
+
+      let s = score(coreLower, against: targetLower)
+      if s > bestScore {
+        secondBest = bestScore
+        bestScore = s
+        bestMatch = canonicals[idx]
+      } else if s > secondBest {
+        secondBest = s
+      }
+    }
+
+    // Phase 2 (#638) §8.2: same hardening for Pass 5.
+    let pass5VocabPenalty = Self.largeVocabPenalty(poolSize: lowercasedCanonicals.count)
+    let pass5LengthAdj = Self.lengthAwareAdjustment(candidateLength: bestMatch.count)
+    let pass5Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
+    let pass5Threshold =
+      pass5Override ?? (effectiveThreshold + pass5VocabPenalty - pass5LengthAdj)
+    if bestScore >= pass5Threshold,
+      bestScore - secondBest >= Self.ambiguityMargin,
+      core != bestMatch
+    {
+      appendReplacement(bestMatch)
+      #if DEBUG
+        Self.logger.debug(
+          "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3))"
+        )
+      #endif
+      return prefix + bestMatch + suffix
+    } else if bestScore > 0 {
+      #if DEBUG
+        let pass5Margin = bestScore - secondBest
+        let reason: String
+        if bestScore < pass5Threshold {
+          reason = "below_threshold"
+        } else if pass5Margin < Self.ambiguityMargin {
+          reason = "below_margin"
+        } else {
+          reason = "same_as_input"
+        }
+        Self.logger.debug(
+          "WordCorrector: REJECT pass=canonical-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass5Margin, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3)) reason=\(reason)"
+        )
+      #endif
+    }
+
+    // #992 PACK FUZZY TIER — LOWER authority. Reached ONLY here, i.e. after
+    // every non-pack fuzzy pass above missed (each accept returns early). This
+    // ordering is what makes "user/builtin always wins" structurally true: any
+    // user/builtin match (Pass 3/4/5) preempts the entire pack tier. Pack
+    // matches additionally clear a stricter bar (packFuzzyThresholdBump) and a
+    // casing guard (a case-only change is never an improvement for the
+    // lowercase pack canonicals). Source is unambiguous: only pack terms are
+    // scored in this tier.
+
+    // #992 precedence guard: if the token is already a recognized non-pack
+    // term (user/builtin canonical or alias), it is correct as-is — packs
+    // must not rewrite it. This covers the case where the non-pack tier above
+    // produced no replacement precisely because no fix was needed.
+    if nonPackExactKeys.contains(coreLower) {
+      return nil
+    }
+
+    // Pack Pass 4: single-word pack aliases.
+    if !packSingleFuzzyCandidates.isEmpty {
+      var pBest = 0.0
+      var pSecond = 0.0
+      var pMatch = ""
+      for entry in packSingleFuzzyCandidates {
+        let surfLen = entry.surface.count
+        let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
+        if lenRatio < 0.5 { continue }
+        let s = score(coreLower, against: entry.surface)
+        if s > pBest {
+          if pMatch != entry.canonical { pSecond = pBest }
+          pBest = s
+          pMatch = entry.canonical
+        } else if s > pSecond && entry.canonical != pMatch {
+          pSecond = s
+        }
+      }
+      let vocabPenalty = Self.largeVocabPenalty(poolSize: packSingleFuzzyCandidates.count)
+      let lengthAdj = Self.lengthAwareAdjustment(candidateLength: pMatch.count)
+      let packThreshold =
+        effectiveThreshold + vocabPenalty - lengthAdj + Self.packFuzzyThresholdBump
+      if pBest >= packThreshold, pBest - pSecond >= Self.ambiguityMargin, core != pMatch {
+        if coreLower == pMatch.lowercased() {
+          // Casing guard: case-only change — suppress, fall through.
+          #if DEBUG
+            Self.logger.debug(
+              "WordCorrector: SUPPRESS pass=pack-alias-fuzzy reason=case_only source='\(core)' target='\(pMatch)'"
+            )
+          #endif
+        } else {
+          appendReplacement(pMatch)
+          #if DEBUG
+            Self.logger.debug(
+              "WordCorrector: type=pack-alias-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
+            )
+          #endif
+          return prefix + pMatch + suffix
+        }
+      }
+    }
+
+    // Pack Pass 5: single-word pack canonicals.
+    if !packLowercasedCanonicals.isEmpty {
+      var pBest = 0.0
+      var pSecond = 0.0
+      var pMatch = ""
+      for (idx, targetLower) in packLowercasedCanonicals.enumerated() {
+        let targetLen = targetLower.count
+        let lenRatio = Double(min(coreLen, targetLen)) / Double(max(coreLen, targetLen))
+        if lenRatio < 0.5 { continue }
+        let s = score(coreLower, against: targetLower)
+        if s > pBest {
+          pSecond = pBest
+          pBest = s
+          pMatch = packCanonicals[idx]
+        } else if s > pSecond {
+          pSecond = s
+        }
+      }
+      let vocabPenalty = Self.largeVocabPenalty(poolSize: packLowercasedCanonicals.count)
+      let lengthAdj = Self.lengthAwareAdjustment(candidateLength: pMatch.count)
+      let packThreshold =
+        effectiveThreshold + vocabPenalty - lengthAdj + Self.packFuzzyThresholdBump
+      if pBest >= packThreshold, pBest - pSecond >= Self.ambiguityMargin, core != pMatch {
+        if coreLower == pMatch.lowercased() {
+          #if DEBUG
+            Self.logger.debug(
+              "WordCorrector: SUPPRESS pass=pack-canonical-fuzzy reason=case_only source='\(core)' target='\(pMatch)'"
+            )
+          #endif
+        } else {
+          appendReplacement(pMatch)
+          #if DEBUG
+            Self.logger.debug(
+              "WordCorrector: type=pack-canonical-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
+            )
+          #endif
+          return prefix + pMatch + suffix
+        }
+      }
+    }
+
+    return nil
   }
 
   // MARK: - Scoring
@@ -1218,7 +1283,12 @@ public struct WordCorrector: Sendable {
   /// (`lowerRiskURLTLDAlt` + `commonWordURLTLDAlt`), reused rather than
   /// redefined so both parts of the pipeline agree on what "looks like a
   /// domain" means — a closed, already-vetted set, never a fresh guess
-  /// (`matcher-set-adversarial-tests`).
+  /// (`matcher-set-adversarial-tests`). Read only by the single-word retry in
+  /// `correct(using:)` -- NOT by `splitPunctuation` itself, so Pass 0/1/2
+  /// compound matching still treats a glued domain as one opaque unit, exactly
+  /// as before this fix (Codex review, PR for #2281, finding P2: peeling a TLD
+  /// inside the shared helper let an internal token's ".com" get silently
+  /// consumed by an accidental cross-token compound match).
   private static let recognizedTLDs: Set<String> = Set(
     InverseTextNormalizer.urlTLDAlt.components(separatedBy: "|"))
 
@@ -1237,24 +1307,6 @@ public struct WordCorrector: Sendable {
     while let last = core.last, !last.isLetter && !last.isNumber {
       suffix = String(last) + suffix
       core = String(core.dropLast())
-    }
-    // A glued domain suffix ("EnviousWispr.com") is CONTENT, not punctuation
-    // to discard. `InverseTextNormalizer.urls(_:)` already made "word.tld" a
-    // routine, CORRECT shape for a dictated domain (#2257/#2258), so every
-    // matching pass below must not treat the whole glued token as fair game
-    // and silently swallow the TLD along with a fuzzy/exact word match.
-    // Measured live (Saurabh's own dictation, 2026-08-21): "Enviousvisper.com"
-    // corrected to "EnviousWispr" with the ".com" gone entirely, because the
-    // trailing "m" is a letter, so the edge-stripping loops above never even
-    // looked at the "." three characters earlier. Peeling a RECOGNIZED TLD off
-    // into `suffix` here, before any caller ever sees `core`, fixes it at the
-    // one shared root every pass already reads through.
-    if let lastDot = core.lastIndex(of: "."), lastDot > core.startIndex {
-      let tail = core[core.index(after: lastDot)...].lowercased()
-      if Self.recognizedTLDs.contains(tail) {
-        suffix = String(core[lastDot...]) + suffix
-        core = String(core[core.startIndex..<lastDot])
-      }
     }
     return (prefix, core, suffix)
   }

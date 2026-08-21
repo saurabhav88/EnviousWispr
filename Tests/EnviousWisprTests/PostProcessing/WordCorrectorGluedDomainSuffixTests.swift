@@ -96,4 +96,47 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "totallyunrelatedword.com")
     #expect(result.replacements == 0)
   }
+
+  // MARK: Codex review findings (PR for #2281) — a saved alias that IS itself
+  // a domain must not have its TLD peeled off before the exact lookup runs,
+  // and a domain-shaped token must never feed the COMPOUND (multi-token)
+  // passes and lose its TLD there instead.
+
+  private static let gitHubDomainAlias = CustomWord(
+    canonical: "GitHub.com", aliases: ["githab.com"], category: .brand)
+
+  @Test("An exact alias that is ITSELF a domain still matches whole, unpeeled")
+  func exactDomainShapedAliasStillMatches() {
+    let result = corrected("githab.com", [Self.gitHubDomainAlias])
+    #expect(result.text == "GitHub.com")
+    #expect(result.replacements == 1)
+  }
+
+  private static let fooBar = CustomWord(
+    canonical: "FooBar", aliases: ["foobar"], category: .brand)
+
+  @Test(
+    "A domain-shaped token before another word does not feed compound matching and lose its TLD")
+  func domainTokenDoesNotFeedCompoundMatch() {
+    // "foo.com" + "bar" superficially concatenates to "foobar" -- an accident
+    // compound Pass 0 must not act on. Domain-bearing tokens stay opaque to
+    // the compound passes exactly as they were before this fix.
+    let result = corrected("foo.com bar", [Self.fooBar])
+    #expect(result.text == "foo.com bar")
+    #expect(result.replacements == 0)
+  }
+
+  @Test("Every recognized TLD survives a FUZZY (not just exact) single-word match")
+  func everyRecognizedTLDSurvivesFuzzyMatch() {
+    // Regression for the fix's own false start: trying the fuzzy passes on
+    // the unpeeled token FIRST let several TLD lengths cross threshold and
+    // get silently swallowed (org/net/ai/me/io/app all failed before this
+    // was caught and corrected). Re-assert every TLD through the fuzzy path
+    // specifically, using a near-miss spelling rather than the exact alias.
+    for tld in ["com", "org", "io", "co", "dev", "me", "net", "ai", "app", "xyz"] {
+      let result = corrected("EnviousWhisper.\(tld)")
+      #expect(result.text == "EnviousWispr.\(tld)", "TLD '\(tld)' should survive a fuzzy match")
+      #expect(result.replacements == 1, "TLD '\(tld)' should still count as one replacement")
+    }
+  }
 }
