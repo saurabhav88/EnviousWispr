@@ -1214,6 +1214,14 @@ public struct WordCorrector: Sendable {
 
   // MARK: - Helpers
 
+  /// The exact TLD set `InverseTextNormalizer.urls(_:)` treats as URL evidence
+  /// (`lowerRiskURLTLDAlt` + `commonWordURLTLDAlt`), reused rather than
+  /// redefined so both parts of the pipeline agree on what "looks like a
+  /// domain" means — a closed, already-vetted set, never a fresh guess
+  /// (`matcher-set-adversarial-tests`).
+  private static let recognizedTLDs: Set<String> = Set(
+    InverseTextNormalizer.urlTLDAlt.components(separatedBy: "|"))
+
   private func stripPunctuation(_ token: String) -> String {
     splitPunctuation(token).core
   }
@@ -1229,6 +1237,24 @@ public struct WordCorrector: Sendable {
     while let last = core.last, !last.isLetter && !last.isNumber {
       suffix = String(last) + suffix
       core = String(core.dropLast())
+    }
+    // A glued domain suffix ("EnviousWispr.com") is CONTENT, not punctuation
+    // to discard. `InverseTextNormalizer.urls(_:)` already made "word.tld" a
+    // routine, CORRECT shape for a dictated domain (#2257/#2258), so every
+    // matching pass below must not treat the whole glued token as fair game
+    // and silently swallow the TLD along with a fuzzy/exact word match.
+    // Measured live (Saurabh's own dictation, 2026-08-21): "Enviousvisper.com"
+    // corrected to "EnviousWispr" with the ".com" gone entirely, because the
+    // trailing "m" is a letter, so the edge-stripping loops above never even
+    // looked at the "." three characters earlier. Peeling a RECOGNIZED TLD off
+    // into `suffix` here, before any caller ever sees `core`, fixes it at the
+    // one shared root every pass already reads through.
+    if let lastDot = core.lastIndex(of: "."), lastDot > core.startIndex {
+      let tail = core[core.index(after: lastDot)...].lowercased()
+      if Self.recognizedTLDs.contains(tail) {
+        suffix = String(core[lastDot...]) + suffix
+        core = String(core[core.startIndex..<lastDot])
+      }
     }
     return (prefix, core, suffix)
   }
