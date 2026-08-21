@@ -1722,4 +1722,130 @@ struct CursorInsertionRepairTests {
         left: left, right: "", leftReachesDocumentStart: reaches, isScreenDerived: true),
       protectedWords: [], language: "en", oracle: Self.prototypeOracle)
   }
+
+  // MARK: - #2258 URL bar: Rule 1 (leading space) is deliberately UNCHANGED
+
+  @Test(
+    "A URL-bar continuation still gains a leading space — the settled answer after two review rounds"
+  )
+  func urlBarContinuationStillGainsLeadingSpace() {
+    // Round 1 asked for a leading-space exception too, reasoning from a URL
+    // continuation ("github.com/|" then "issues" should join with no space).
+    // Round 2 found that unconditional suppression corrupts a SEARCH
+    // continuation the same way ("best|" then "restaurants" becomes
+    // "bestrestaurants"), because the address bar is both a URL field and a
+    // search field and plain text cannot tell which one is being continued.
+    // Merging two dictated words is worse than one avoidable space, and
+    // leaving Rule 1 alone here is not a regression — it is exactly the
+    // behavior that existed before #2258.
+    let payloads = CursorInsertionRepair.repair(
+      text: "issues",
+      context: CursorInsertionRepair.CaretText(left: "github.com/", right: "", isURLBarField: true),
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
+    #expect(payloads.repairedText == " issues")
+    #expect(payloads.candidateRules.contains(.leadingSpace))
+  }
+
+  @Test("A URL-bar search-query continuation is not corrupted — the case round 2 caught")
+  func urlBarSearchContinuationIsNotMerged() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "restaurants",
+      context: CursorInsertionRepair.CaretText(left: "best", right: "", isURLBarField: true),
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
+    // The separator survives — never "bestrestaurants".
+    #expect(payloads.repairedText == " restaurants")
+    #expect(payloads.candidateRules.contains(.leadingSpace))
+  }
+
+  // MARK: - #2258 URL bar: no trailing space on the CANDIDATE, legacy stays context-free
+
+  @Test("A URL bar's contextual candidate carries no trailing space, empty caret")
+  func urlBarCandidateHasNoTrailingSpace() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "github.com",
+      context: CursorInsertionRepair.CaretText(left: "", right: "", isURLBarField: true),
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
+    #expect(payloads.repairedText == "github.com")
+    #expect(payloads.candidateRules.contains(.trailingSpaceSkipped(.browserAddressBar)))
+    // `legacyText` is DELIBERATELY context-free (cloud review r3, PR #2272):
+    // it is the safe fallback Services reaches for when a commit-boundary
+    // revalidation finds the destination may no longer be the URL bar this
+    // candidate was computed for, so it must never itself carry the
+    // suppression — see `legacyPayload`'s own doc comment.
+    #expect(payloads.legacyText == "github.com ")
+  }
+
+  @Test(
+    "A URL bar suppresses the trailing space regardless of what follows the caret",
+    arguments: ["", " ", ".", "x"])
+  func urlBarSuppressesTrailingSpaceForEveryRightContext(_ right: String) {
+    // The guard must be UNCONDITIONAL — checked ahead of the right-anchor
+    // rules, not merely added as one more case of them. An ordinary field
+    // would append a space for the last two arguments here. `left` ends in a
+    // non-word character (a slash, as after a URL path segment) so a
+    // word-character `right` cannot instead trip the separate mid-word
+    // refusal — that refusal is its own case, in `CursorInsertionRepairTests`
+    // generally, and is orthogonal to this guard.
+    let payloads = CursorInsertionRepair.repair(
+      text: "github.com",
+      context: CursorInsertionRepair.CaretText(left: "/", right: right, isURLBarField: true),
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
+    #expect(payloads.repairedText?.hasSuffix(" ") == false)
+    #expect(payloads.candidateRules.contains(.trailingSpaceSkipped(.browserAddressBar)))
+  }
+
+  @Test(
+    "A URL bar with residual right-side text and no left anchor refuses; legacy is unaffected",
+    arguments: [".", "x"])
+  func urlBarNoLeftAnchorRefusesAndLegacyIsPlain(_ right: String) {
+    // Caret at the very start of the field with existing text after it (e.g.
+    // an autocomplete suggestion) is refused by an earlier, URL-bar-agnostic
+    // guard — `repair`'s own "nothing real to the left, something real to the
+    // right" rule — before Rule 3 is ever reached. There is no candidate to
+    // revalidate here, so `legacyText` is exactly what it always is.
+    let payloads = CursorInsertionRepair.repair(
+      text: "github.com",
+      context: CursorInsertionRepair.CaretText(left: "", right: right, isURLBarField: true),
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
+    #expect(payloads.candidateRules == [.refusedNoLeftAnchor])
+    #expect(payloads.repairedText == nil)
+    #expect(payloads.legacyText == "github.com ")
+  }
+
+  @Test("A URL bar's legacy fallback is plain when the contextual candidate is refused")
+  func urlBarLegacyFallbackIsPlainOnRefusal() {
+    // Caret sits inside a word ("gith|ub.com", both sides real word
+    // characters) — the contextual candidate is refused, so the caller falls
+    // back to `legacyText`, which never carries the URL-bar exception. The
+    // narrower cost this accepts (mid-word caret in a URL bar keeps its
+    // space, same as before #2258) is deliberate — see `legacyPayload`.
+    let payloads = CursorInsertionRepair.repair(
+      text: "-",
+      context: CursorInsertionRepair.CaretText(left: "gith", right: "ub.com", isURLBarField: true),
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
+    #expect(payloads.candidateRules == [.refusedInsideWord])
+    #expect(payloads.repairedText == nil)
+    #expect(payloads.legacyText == "- ")
+  }
+
+  @Test("A non-URL-bar field is unaffected — regression pin")
+  func nonURLBarFieldStillGetsTrailingSpace() {
+    let payloads = CursorInsertionRepair.repair(
+      text: "github.com",
+      context: CursorInsertionRepair.CaretText(left: "", right: "", isURLBarField: false),
+      protectedWords: [], language: "en", oracle: Self.prototypeOracle)
+    #expect(payloads.repairedText == "github.com ")
+    #expect(payloads.candidateRules.contains(.trailingSpace))
+    #expect(payloads.legacyText == "github.com ")
+  }
+
+  @Test("legacyOnly is always context-free, even for a URL-bar caller")
+  func legacyOnlyIsAlwaysPlain() {
+    // The deadline-bypass path (#1946) bypasses `repair` entirely and has no
+    // revalidation opportunity of its own — it inherits the same
+    // context-free contract every other `legacyText` carries.
+    let payloads = CursorInsertionRepair.legacyOnly(
+      text: "github.com", reason: .languageNotSupported)
+    #expect(payloads.legacyText == "github.com ")
+  }
 }

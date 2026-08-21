@@ -659,7 +659,11 @@ struct KernelFinalizationWiring {
             // ONE rendered row, so a payload carrying a line break is refused
             // rather than reasoned about — in a terminal a newline can submit
             // the command.
-            isScreenDerived: $0.isScreenDerived)
+            isScreenDerived: $0.isScreenDerived,
+            // #2258: a space anywhere in a browser's address bar blocks
+            // pressing Enter to navigate. Services already did the AX work;
+            // this is the same policy-fact-only handoff as `isScreenDerived`.
+            isURLBarField: $0.isBrowserAddressBar)
         }
 
         // Resolved from positive evidence, NOT read off the result.
@@ -715,6 +719,8 @@ struct KernelFinalizationWiring {
               // single-claim rule; it exists to leave the closure, not to be read.
               // #1946: named for the DEADLINE, not the oracle — nothing here has
               // consulted one, and the old `.oracleTimedOut` asserted otherwise.
+              // #2258: deliberately plain, never URL-bar-aware — see
+              // `CursorInsertionRepair.legacyPayload`'s own doc comment for why.
               return (
                 CursorInsertionRepair.legacyOnly(text: text, reason: .repairDeadlineMissed),
                 resolution
