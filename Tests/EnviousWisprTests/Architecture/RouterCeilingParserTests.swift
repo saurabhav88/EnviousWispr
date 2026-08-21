@@ -283,6 +283,46 @@ import Testing
     #expect(RouterCeilingParser.collaboratorCount(in: body) == 1)
   }
 
+  @Test func storedPropertyCount_countsLetsAndVarsButExcludesComputedAndTypeProperties() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let alpha: AlphaDep
+          var state: State
+          var observed: ObservedState = .init() { didSet {} }
+          let (first, second): (FirstDep, SecondDep)
+          var computed: AlphaDep { alpha }
+          static let shared: Registry
+        }
+        """)
+    #expect(RouterCeilingParser.storedPropertyCount(in: body) == 5)
+  }
+
+  @Test func storedDependencyCount_includesBothClassificationBuckets() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let collaborator: Collaborator
+          let callback: () -> Void
+          let aliasedCallback: ProgressCallback
+        }
+        """)
+    #expect(RouterCeilingParser.collaboratorCount(in: body) == 2)
+    #expect(RouterCeilingParser.closureInjectedCount(in: body) == 1)
+    #expect(RouterCeilingParser.storedDependencyCount(in: body) == 3)
+  }
+
+  @Test func sharedCeilingSupportCountsDirectClosureDependencies() throws {
+    let body = try classBody(
+      of: """
+        final class Probe {
+          let collaborator: Collaborator
+          let callback: () -> Void
+        }
+        """)
+    #expect(CeilingsTestSupport.countTopLevelLetCollaborators(in: body) == 2)
+  }
+
   @Test func collaboratorCount_excludesPrimitiveLet() throws {
     let body = try classBody(
       of: """

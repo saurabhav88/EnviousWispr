@@ -41,6 +41,17 @@ import Testing
       """)
   }
 
+  @Test func totalStoredDependencyCount() throws {
+    let body = try RouterCeilingParser.classBody(
+      named: "HotkeyController", at: Self.sourcePath)
+    let collaborators = RouterCeilingParser.collaboratorCount(in: body)
+    let closures = RouterCeilingParser.closureInjectedCount(in: body)
+    let total = RouterCeilingParser.storedDependencyCount(in: body)
+    #expect(
+      total <= 4,
+      "HotkeyController total stored-dependency ceiling exceeded: \(total) > 4 (\(collaborators) collaborators + \(closures) closures).")
+  }
+
   @Test func nonPrivateMethodCount() throws {
     let body = try RouterCeilingParser.classBody(
       named: "HotkeyController", at: Self.sourcePath)

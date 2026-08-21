@@ -30,6 +30,17 @@ import Testing
       """)
   }
 
+  @Test func totalStoredDependencyCount() throws {
+    let body = try RouterCeilingParser.classBody(
+      named: "WedgeRecoveryRouter", at: Self.sourcePath)
+    let collaborators = RouterCeilingParser.collaboratorCount(in: body)
+    let closures = RouterCeilingParser.closureInjectedCount(in: body)
+    let total = RouterCeilingParser.storedDependencyCount(in: body)
+    #expect(
+      total <= 5,
+      "WedgeRecoveryRouter total stored-dependency ceiling exceeded: \(total) > 5 (\(collaborators) collaborators + \(closures) closures).")
+  }
+
   @Test func nonPrivateMethodCount() throws {
     let body = try RouterCeilingParser.classBody(
       named: "WedgeRecoveryRouter", at: Self.sourcePath)
