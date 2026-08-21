@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/willow-voice/`,
   "image": `${siteUrl}/images/og/willow-voice.png`,
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-06-13T01:09:39Z",
+  "dateModified": "2026-08-21T13:11:11Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -34,8 +34,8 @@ const faqJsonLd = JSON.stringify({
   "@type": "FAQPage",
   "mainEntity": [
     { "@type": "Question", "name": "Is there a free alternative to Willow Voice?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account, no word limits, and no subscription required. It works offline and keeps your audio on your device." } },
-    { "@type": "Question", "name": "Is EnviousWispr really free with no limits?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier caps you at 2,000 words per week. EnviousWispr has no such restriction." } },
-    { "@type": "Question", "name": "Does Willow Voice work offline?", "acceptedAnswer": { "@type": "Answer", "text": "Willow Voice is cloud-based and requires an internet connection for transcription. EnviousWispr was built on-device from the start. Parakeet TDT and WhisperKit run natively on Apple Silicon, delivering 0.43s median latency without any cloud dependency." } },
+    { "@type": "Question", "name": "Is EnviousWispr really free with no limits?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier is capped at 20 Scribe uses per week and limited to its weaker model. EnviousWispr has no such restriction." } },
+    { "@type": "Question", "name": "Does Willow Voice work offline?", "acceptedAnswer": { "@type": "Answer", "text": "Willow Voice is cloud-based and requires an internet connection for transcription. EnviousWispr was built on-device from the start. Parakeet TDT and WhisperKit run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency." } },
     { "@type": "Question", "name": "Does EnviousWispr work offline?", "acceptedAnswer": { "@type": "Answer", "text": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider." } },
     { "@type": "Question", "name": "Will my audio be used for training?", "acceptedAnswer": { "@type": "Answer", "text": "No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else." } },
     { "@type": "Question", "name": "Can I switch from Willow Voice easily?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Download EnviousWispr, set your keybind, and start dictating. There is no data to migrate. Both apps work in any text field on macOS." } },
@@ -297,7 +297,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.43s median latency
+        0.61s median latency
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -306,7 +306,7 @@ const breadcrumbJsonLd = JSON.stringify({
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
 
@@ -327,22 +327,23 @@ const breadcrumbJsonLd = JSON.stringify({
             <th scope="col">Willow Voice</th>
           </tr>
         </thead>
-        <!-- Evidence: Willow Voice claims verified against willowvoice.com on 2026-04-04.
+        <!-- Evidence: Willow Voice claims verified against willowvoice.com on 2026-04-04, re-verified 2026-08-21.
              Confidence: source-verified from public website and pricing page.
              Sources:
                - Homepage: willowvoice.com (accessed 2026-04-04) - AI editing, style matching, context awareness, voice commands, noise handling, multi-language
-               - Pricing: willowvoice.com/pricing (accessed 2026-04-04) - Free (2,000 words/week), Individual $12/mo annual, Team $10/mo/seat, Enterprise custom
-               - Platforms: willowvoice.com - Mac, Windows, iOS (Android mentioned on pricing page)
+               - Pricing: willowvoice.com/pricing (re-verified 2026-08-21) - Free tier restructured: unlimited but gated to a weaker model (Frontier Mini) plus 20 Scribe uses/week, no more word cap. Pro $15/mo monthly or $12/mo annual (unchanged). New Business tier $35/mo ($28/mo annual) between Pro and Enterprise.
+               - Platforms: willowvoice.com/pricing (re-verified 2026-08-21) - Mac, Windows, iOS available; Android now explicitly "Coming Soon"
                - Cloud processing: willowvoice.com - cloud-based (no offline mode found on site)
-               - Security: willowvoice.com - SOC 2, HIPAA, zero data retention, privacy mode (Enterprise tier)
+               - Security: willowvoice.com - SOC 2, HIPAA, zero data retention, privacy mode (Business/Enterprise tiers)
                - Backing: YC-backed
              Firsthand testing: Willow Voice was not tested firsthand for this comparison.
+             EnviousWispr latency (0.61s / 1.65s) and language count (99 via WhisperKit) re-measured 2026-08-21.
              "Not specified" is used for any feature not explicitly documented on their site. -->
         <tbody>
           <tr>
             <td>Price</td>
             <td><span class="table-highlight">Free to use. No subscription.</span></td>
-            <td>Free tier (2,000 words/week), then $12/mo*</td>
+            <td>Free tier (unlimited, weaker model), then $12/mo*</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -417,17 +418,17 @@ const breadcrumbJsonLd = JSON.stringify({
           <tr>
             <td>Platforms</td>
             <td>macOS only (Apple Silicon)</td>
-            <td>Mac, Windows, iOS, Android</td>
+            <td>Mac, Windows, iOS (Android coming soon)</td>
           </tr>
           <tr>
             <td>Multi-language</td>
-            <td>25 European (Parakeet), 90+ via WhisperKit</td>
+            <td>25 European (Parakeet), 99 languages via WhisperKit</td>
             <td>100+ languages</td>
           </tr>
           <tr>
             <td>Enterprise compliance</td>
             <td>Not applicable (single-user, on-device)</td>
-            <td>SOC 2, HIPAA (Enterprise tier only)</td>
+            <td>SOC 2, HIPAA (Business tier and above)</td>
           </tr>
           <tr>
             <td>Source code</td>
@@ -436,13 +437,13 @@ const breadcrumbJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
             <td>Depends on network + server load</td>
           </tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Willow Voice's public pricing page as of April 2026 ($12/mo billed annually for the Individual plan). EnviousWispr latency from production PostHog data on Apple Silicon Macs. Willow Voice claims source-verified from willowvoice.com; not firsthand-tested. "Not specified" means the feature is not documented on their public site. Competitor claims last verified: 2026-04-04.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Willow Voice's public pricing page, last checked August 2026 ($12/mo billed annually for the Pro plan). EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. Willow Voice claims source-verified from willowvoice.com; not firsthand-tested. "Not specified" means the feature is not documented on their public site. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -464,7 +465,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">$0</div>
         <div class="advantage-title">Free, no caps</div>
-        <p class="advantage-desc">No subscription, no word limits, no freemium tiers. Willow Voice caps its free plan at 2,000 words per week. The paid plan costs $12/mo billed annually, or $144 per year. EnviousWispr is free with no limits.</p>
+        <p class="advantage-desc">No subscription, no word limits, no freemium tiers. Willow Voice limits its free tier to a weaker model and 20 Scribe uses/week. The paid plan costs $12/mo billed annually, or $144 per year. EnviousWispr is free with no limits.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔒</div>
@@ -474,7 +475,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
         <div class="advantage-title">Fast local transcription</div>
-        <p class="advantage-desc">Median time to text is 0.43s on Apple Silicon. With AI polish, 1.5s. No network round-trips, no server queues. Immune to bad Wi-Fi, VPN latency, or cloud outages.</p>
+        <p class="advantage-desc">Median time to text is 0.61s on Apple Silicon. With AI polish, 1.65s. No network round-trips, no server queues. Immune to bad Wi-Fi, VPN latency, or cloud outages.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🚫</div>
@@ -597,12 +598,12 @@ const breadcrumbJsonLd = JSON.stringify({
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.43s</div>
+        <div class="speed-value">0.61s</div>
         <div class="speed-label">Median transcription</div>
         <div class="speed-detail">From end of speech to raw text</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.5s</div>
+        <div class="speed-value">1.65s</div>
         <div class="speed-label">With AI polish</div>
         <div class="speed-detail">EG-1 or Apple, on-device</div>
       </div>
@@ -628,7 +629,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🖥️</div>
         <div class="advantage-title">You need cross-platform support</div>
-        <p class="advantage-desc">Willow Voice runs on Mac, Windows, iOS, and Android. EnviousWispr is macOS only. If you dictate across multiple operating systems, Willow covers all of them.</p>
+        <p class="advantage-desc">Willow Voice runs on Mac, Windows, and iOS, with Android coming soon. EnviousWispr is macOS only. If you dictate across multiple operating systems, Willow covers more of them today.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🏢</div>
@@ -638,7 +639,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
         <div class="advantage-title">You dictate in many languages daily</div>
-        <p class="advantage-desc">Willow Voice supports 100+ languages through its cloud engine with automatic grammar and formatting. EnviousWispr's fast engine (Parakeet) covers 25 European languages with no language setting to pick, and WhisperKit covers 90+ but with higher latency on less common ones.</p>
+        <p class="advantage-desc">Willow Voice supports 100+ languages through its cloud engine with automatic grammar and formatting. EnviousWispr's fast engine (Parakeet) covers 25 European languages with no language setting to pick, and WhisperKit covers 99 but with higher latency on less common ones.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔊</div>
@@ -664,11 +665,11 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr really free with no limits?</div>
-        <p class="faq-a">Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier caps you at 2,000 words per week. EnviousWispr has no such restriction. The source code is open source on GitHub under the GPLv3 license.</p>
+        <p class="faq-a">Yes. No subscription, no usage caps, no word-per-week limits. Willow Voice's free tier is capped at 20 Scribe uses per week and limited to its weaker model. EnviousWispr has no such restriction. The source code is open source on GitHub under the GPLv3 license.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Willow Voice work offline?</div>
-        <p class="faq-a">Willow Voice is cloud-based and requires an internet connection for transcription. EnviousWispr was built on-device from the start. Parakeet TDT and WhisperKit run natively on Apple Silicon, delivering 0.43s median latency without any cloud dependency.</p>
+        <p class="faq-a">Willow Voice is cloud-based and requires an internet connection for transcription. EnviousWispr was built on-device from the start. Parakeet TDT and WhisperKit run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr work offline?</div>
