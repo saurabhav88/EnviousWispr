@@ -1,0 +1,816 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "EnviousWispr vs Handy: Free, Open Source Mac Dictation",
+  "description": "Compare EnviousWispr and Handy, two free, open source, on-device Mac dictation apps. EnviousWispr adds AI polish, Live Preview, and Escape Recovery on top of transcription.",
+  "url": `${siteUrl}/compare/handy/`,
+  "image": `${siteUrl}/og-image.png`,
+  "datePublished": "2026-08-21T16:00:00Z",
+  "dateModified": "2026-08-21T16:00:00Z",
+  "author": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": `${siteUrl}/authors/saurabh-vaish/`,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+  },
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Comparisons",
+      "item": `${siteUrl}/compare/`,
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "EnviousWispr vs Handy",
+      "item": `${siteUrl}/compare/handy/`,
+    },
+  ],
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr free, like Handy?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Both EnviousWispr and Handy are completely free, with no subscription, no word limits, and no account required. Both are also open source, so you can read the code that runs on your Mac."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is EnviousWispr different from Handy?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Both transcribe on-device with no cloud dependency for speech recognition. The main difference is what happens after transcription: EnviousWispr runs AI polish (EG-1 on-device, Apple Intelligence, Ollama, or your own OpenAI, Claude, or Gemini key) to detect and remove filler words automatically, fix punctuation, and format spoken lists, plus a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy has no punctuation cleanup or list formatting, though it can strip a fixed list of filler words you configure yourself. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Handy have AI cleanup or polish?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Not AI-based cleanup. Handy transcribes your speech with Whisper or Parakeet and pastes the result with no punctuation cleanup and no list formatting. It can strip filler words, but only a fixed list you type in yourself; it does not detect them automatically the way EnviousWispr does, and it has no LLM-based polish step at all."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use EnviousWispr completely offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr open source like Handy?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, though under a different license. EnviousWispr is licensed under the GNU General Public License v3 (GPLv3), a copyleft license: anyone can read, build, and modify the code, but a distributed derivative must also be open under GPLv3. Handy is licensed under the MIT license, which is more permissive and lets anyone fold the code into a closed-source or commercial product. Both are genuinely open source; the licenses just make different trade-offs."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I import my Handy custom words into EnviousWispr?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Handy, without changing Handy's own files, and shows you every word it found before anything joins your library. It also imports from Wispr Flow, Superwhisper, FluidVoice, TypeWhisper, Spokenly, Juno, and Vox."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr work on Windows or Linux like Handy?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Not today. EnviousWispr runs on Apple Silicon Macs only (macOS 14 Sonoma or later). Handy supports macOS (Intel and Apple Silicon), Windows, and Linux, which is a real advantage if you need one dictation tool across multiple operating systems."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What Mac do I need for EnviousWispr?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast. Handy also supports Intel Macs, which EnviousWispr does not."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which speech engines does each app use?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 90+ languages. Handy offers a choice of engines: OpenAI Whisper in several sizes (Small, Medium, Turbo, Large) with GPU acceleration, plus Parakeet V2 and V3. Handy's Whisper option lets you trade speed for accuracy on capable hardware; EnviousWispr defaults to Parakeet for speed, and switching to WhisperKit for a language it doesn't cover is one setting away, under Settings, Transcription."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I switch from Handy to EnviousWispr easily?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Handy custom words across in one pass. Handy's own filler-word list, prompts, and tuning settings stay behind, since those are Handy-specific settings rather than words to keep, not a data-loss gap. Both apps work in any text field on macOS, so nothing about your workflow has to change."
+      }
+    }
+  ]
+});
+---
+
+<BaseLayout
+  title="Handy vs EnviousWispr: Free Mac Dictation with AI Polish"
+  description="Compare Handy and EnviousWispr, two free, open source, on-device Mac dictation apps. EnviousWispr adds AI polish, Live Preview, and Escape Recovery on top of transcription."
+  activePage="compare"
+  ogImage="/og-image.png"
+  canonicalPath="/compare/handy/"
+  ogType="article"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+/* ── Page Header ── */
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+.compare-table {
+  width: 100%; border-collapse: collapse; font-size: 15px;
+  min-width: 640px;
+}
+.compare-table thead th {
+  padding: 20px 24px; font-size: 16px; font-weight: 700;
+  text-align: left; border-bottom: 2px solid var(--border-hover);
+  background: rgba(248,245,255,0.5);
+}
+.compare-table thead th:first-child { width: 34%; }
+.compare-table thead th:nth-child(2) {
+  background: rgba(124,58,237,0.06);
+  color: var(--accent);
+}
+.compare-table tbody td {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  vertical-align: top; line-height: 1.55;
+}
+.compare-table tbody tr:last-child td { border-bottom: none; }
+.compare-table tbody td:first-child {
+  font-weight: 600; color: var(--text);
+}
+.compare-table tbody td:nth-child(2) {
+  background: rgba(124,58,237,0.02);
+}
+.compare-table tbody td:nth-child(3) {
+  color: var(--text-2);
+}
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── Deep Dive ── */
+.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.deep-dive-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 36px 32px;
+  position: relative; overflow: hidden;
+}
+.deep-dive-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
+.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
+.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
+.deep-dive-body p { margin-bottom: 12px; }
+.deep-dive-body p:last-child { margin-bottom: 0; }
+.deep-dive-detail {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
+  font-size: 13px; color: var(--text-2); line-height: 1.6;
+}
+.deep-dive-detail strong { color: var(--text); }
+@media (max-width: 900px) {
+  .deep-dive-grid { grid-template-columns: 1fr; }
+}
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<!-- Page Header -->
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge reveal">
+      <span class="vs-brand accent">EnviousWispr</span>
+      <span class="vs-circle">VS</span>
+      <span class="vs-brand">Handy</span>
+    </div>
+    <h1 class="reveal">Free and open source, like Handy. Also polished.</h1>
+    <p class="page-header-sub reveal">Both transcribe entirely on your Mac at no cost. The difference is what happens after transcription: EnviousWispr detects and removes filler words automatically, fixes punctuation, and formats spoken lists. Handy leaves punctuation and formatting to you.</p>
+    <div class="hero-pills reveal">
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Free, no subscription
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        AI polish, on-device or your key
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        0.43s median latency
+      </span>
+    </div>
+    <div class="hero-cta reveal">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+  </div>
+</header>
+
+<!-- Side-by-Side Table -->
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Side by Side</div>
+      <h2 class="section-title">Feature comparison</h2>
+      <p class="section-sub">An honest look at how the two tools stack up across the dimensions that matter most.</p>
+    </div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th scope="col"></th>
+            <th scope="col">EnviousWispr</th>
+            <th scope="col">Handy</th>
+          </tr>
+        </thead>
+        <!-- Evidence: Handy claims verified against handy.computer, github.com/cjpais/Handy (README + Wiki),
+             and the GitHub API on 2026-08-21.
+             Sources:
+               - github.com/cjpais/Handy (accessed 2026-08-21): MIT license, 30,050 stars, latest release
+                 v0.9.5 (2026-08-08), platforms (macOS Intel+Apple Silicon, Windows x64, Linux x64),
+                 engines (Whisper Small/Medium/Turbo/Large with GPU acceleration; Parakeet V2/V3, CPU-optimized,
+                 automatic language detection), custom dictionary via Raycast integration, no cloud engine,
+                 no AI cleanup/polish step, no live preview (paste happens after you release the hotkey).
+             Confidence: source-verified from Handy's own GitHub repo, README, and Wiki. Handy was not tested
+             firsthand. Features marked "Not published" were not found in Handy's public documentation as of
+             2026-08-21. Last verified: 2026-08-21. -->
+        <tbody>
+          <tr>
+            <td>Price</td>
+            <td><span class="table-highlight">Free. No subscription, no word limits.</span></td>
+            <td>Free. No subscription, no word limits.</td>
+          </tr>
+          <tr>
+            <td>Account required</td>
+            <td><span class="table-check">No</span></td>
+            <td><span class="table-check">No</span></td>
+          </tr>
+          <tr>
+            <td>Source code</td>
+            <td><span class="table-highlight"><a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Open source</a></span> (GPLv3, copyleft)</td>
+            <td>Open source (MIT, permissive)</td>
+          </tr>
+          <tr>
+            <td>Speech engines</td>
+            <td><span class="table-highlight"><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT v3</a> + WhisperKit</span> (dual engines, on-device)</td>
+            <td>Whisper (Small/Medium/Turbo/Large, GPU accelerated) + Parakeet V2/V3</td>
+          </tr>
+          <tr>
+            <td>Model choice</td>
+            <td>Parakeet by default; switch to WhisperKit in Settings for other languages</td>
+            <td><span class="table-check">Yes</span> — pick a Whisper size to trade speed for accuracy</td>
+          </tr>
+          <tr>
+            <td>Audio leaves your Mac</td>
+            <td><span class="table-check">Never.</span> If you enable cloud AI polish, your transcript, custom words, and the app you're dictating into are sent — never audio.</td>
+            <td><span class="table-check">Never.</span> No cloud engine documented.</td>
+          </tr>
+          <tr>
+            <td>Works offline</td>
+            <td><span class="table-check">Yes</span> (after models download)</td>
+            <td><span class="table-check">Yes</span> (after models download)</td>
+          </tr>
+          <tr>
+            <td>AI polish (cleanup after transcription)</td>
+            <td><span class="table-highlight">EG-1, Apple Intelligence, or a local Ollama model on-device;</span> OpenAI, Claude, or Gemini with your own key, or Ollama's hosted models with your Ollama sign-in</td>
+            <td><span class="table-cross">Not documented</span> — no punctuation cleanup or list formatting</td>
+          </tr>
+          <tr>
+            <td>Filler word removal</td>
+            <td><span class="table-check">Yes</span> (built-in, automatic, language-aware, runs before AI polish)</td>
+            <td><span class="table-check">Yes</span> — strips a fixed list of words you configure yourself, not automatic detection</td>
+          </tr>
+          <tr>
+            <td>Turns a spoken list into a real list</td>
+            <td><span class="table-check">Yes</span> (EG-1, 83% of the time in our own testing)</td>
+            <td><span class="table-cross">Not documented</span></td>
+          </tr>
+          <tr>
+            <td>Live preview while speaking</td>
+            <td><span class="table-check">Yes</span> — off by default, one setting to turn on</td>
+            <td><span class="table-cross">No</span> — text pastes only after you release the hotkey</td>
+          </tr>
+          <tr>
+            <td>Recover a cancelled dictation</td>
+            <td><span class="table-highlight">Yes</span> (Escape Recovery, opt-in, keybind/triple-press cancel only, 24-hour History)</td>
+            <td><span class="table-cross">Not documented</span></td>
+          </tr>
+          <tr>
+            <td>Custom vocabulary</td>
+            <td><span class="table-check">Yes</span> (names, terms, jargon; imports from 8 other apps, Handy included)</td>
+            <td><span class="table-check">Yes</span> (dictionary management via Raycast integration)</td>
+          </tr>
+          <tr>
+            <td>Transcription latency</td>
+            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td>Not published</td>
+          </tr>
+          <tr>
+            <td>Clipboard preservation</td>
+            <td><span class="table-check">Yes</span> (clipboard saved before paste, restored after)</td>
+            <td>Not specified</td>
+          </tr>
+          <tr>
+            <td>GPU acceleration</td>
+            <td>Apple Neural Engine (Apple Silicon only)</td>
+            <td><span class="table-check">Yes</span> (Whisper models, on Intel/AMD/NVIDIA GPUs on Windows and Linux)</td>
+          </tr>
+          <tr>
+            <td>Custom model support</td>
+            <td><span class="table-cross">No</span> — curated engines only</td>
+            <td><span class="table-check">Yes</span> — auto-discovers custom GGUF models from Hugging Face</td>
+          </tr>
+          <tr>
+            <td>Multi-language</td>
+            <td>25 European (Parakeet), 90+ via WhisperKit</td>
+            <td>Broad via Whisper; automatic detection on Parakeet V3</td>
+          </tr>
+          <tr>
+            <td>Platform support</td>
+            <td>macOS (Apple Silicon only)</td>
+            <td><span class="table-check">macOS (Intel + Apple Silicon), Windows, Linux</span></td>
+          </tr>
+          <tr>
+            <td>Text lands in the right app</td>
+            <td><span class="table-check">Yes</span> (target app reactivation via Accessibility API, three-tier paste fallback)</td>
+            <td>Pastes in the app with focus when you release the hotkey</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Handy claims sourced from handy.computer, github.com/cjpais/Handy (README and Wiki), and the GitHub API. Handy was not tested firsthand. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <div style="text-align: center; margin-top: 28px;">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Why EnviousWispr -->
+<section class="section" aria-label="Advantages">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill green">Why EnviousWispr</div>
+      <h2 class="section-title">Both are free and open source. Here is what EnviousWispr adds</h2>
+      <p class="section-sub">Handy gets the hard part right: fast, private, on-device transcription at no cost. Here is what happens after the transcript, in EnviousWispr's newest release.</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🧹</div>
+        <div class="advantage-title">AI polish included</div>
+        <p class="advantage-desc">EG-1 (our own on-device model), Apple Intelligence, or a local Ollama model detect and remove filler words automatically, fix punctuation, and format spoken lists, all on your Mac. Bring your own OpenAI, Claude, or Gemini key, or sign in to Ollama's hosted models, for cloud speed. Handy has no punctuation cleanup or list formatting, and its own filler-word removal only strips a list you configure yourself.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">👀</div>
+        <div class="advantage-title">See your words as you speak</div>
+        <p class="advantage-desc">Live Preview shows your words in the recording pill while you talk, so you always know you are being heard. It is off by default; turn it on in Settings, Record, Live Preview, and pick an engine — Apple's needs macOS 26, or Universal works from macOS 14 with a one-time 217MB download. Your finished text is still decoded from the whole recording after you stop, so nothing is lost waiting for the preview to catch up.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">↩️</div>
+        <div class="advantage-title">Undo an accidental cancel</div>
+        <p class="advantage-desc">Escape Recovery keeps a dictation you cancel with your keybind or a triple press, instead of discarding it instantly. The app finishes transcribing and polishing, then offers an Undo button, and the text waits in your History for 24 hours if you let it fade. Off by default; you choose to turn it on. The Cancel button in the recording bar always discards immediately, with or without it on.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">⚡</div>
+        <div class="advantage-title">0.43s median latency</div>
+        <p class="advantage-desc">Measured in production on Apple Silicon Macs. Parakeet TDT runs on the Neural Engine specifically tuned for fast, accurate dictation, so text appears almost instantly after you stop talking.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🌍</div>
+        <div class="advantage-title">Filler-word removal that respects other languages</div>
+        <p class="advantage-desc">Built-in filler-word removal runs before AI polish, and it is language-aware: with your language locked to German, Dutch, Danish, or Norwegian in Settings, it keeps real words like "er" and "um" instead of stripping them as English filler.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📥</div>
+        <div class="advantage-title">Bring your words across from Handy</div>
+        <p class="advantage-desc">Smart Import reads your custom vocabulary straight out of Handy's own files, without changing them, and shows you every word before anything joins your library. No retyping.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy Deep Dive -->
+<section class="section" aria-label="Privacy Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill cyan">Privacy</div>
+      <h2 class="section-title">Where does your voice go?</h2>
+      <p class="section-sub">This is the rare comparison where both apps earn full marks by default. The difference only shows up if you choose to turn on an optional feature. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+    </div>
+    <div class="privacy-split">
+      <div class="privacy-card ew reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          EnviousWispr
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is processed by the Neural Engine on your Apple Silicon chip. Nothing is uploaded.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>AI polish runs locally by default (EG-1, Apple Intelligence, or a downloaded Ollama model). If you choose a cloud provider instead — your own key for OpenAI, Claude, or Gemini, or your Ollama sign-in for Ollama's hosted models — your transcript, custom words, and the app you're dictating into are sent. Audio is never sent, either way.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Polished text is pasted and saved to your local History, on your Mac only. Audio is discarded. Nothing about your content is logged or sent to Envious Labs.</div>
+        </div>
+      </div>
+      <div class="privacy-card wf reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Handy
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You hold a hotkey and speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is transcribed on-device via Whisper or Parakeet. No cloud engine is documented.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>There is no AI polish step, so there is nothing further to send anywhere. The transcript may be trimmed against a filler-word list you configured, but that stays on-device too.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Text is pasted into the app that had focus when you released the hotkey.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Speed Section -->
+<section class="section" aria-label="Speed">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill amber">Speed</div>
+      <h2 class="section-title">Parakeet TDT: built for speed</h2>
+      <p class="section-sub">EnviousWispr uses NVIDIA Parakeet TDT v3, a multilingual ASR model covering 25 European languages that runs natively on the Apple Neural Engine. No network dependency, no server queues.</p>
+    </div>
+    <div class="speed-stats">
+      <div class="speed-card reveal">
+        <div class="speed-value">0.43s</div>
+        <div class="speed-label">Median transcription</div>
+        <div class="speed-detail">From end of speech to raw text</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">1.5s</div>
+        <div class="speed-label">With AI polish</div>
+        <div class="speed-detail">EG-1 or Apple, on-device</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">0ms</div>
+        <div class="speed-label">Network overhead</div>
+        <div class="speed-detail">Immune to bad Wi-Fi</div>
+      </div>
+    </div>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings. Handy does not publish comparable latency figures.</p>
+  </div>
+</section>
+
+<!-- Deep Dive: Technical Advantages -->
+<section class="section" aria-label="Technical Deep Dives">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Under the Hood</div>
+      <h2 class="section-title">What the feature table does not show</h2>
+      <p class="section-sub">Both apps solve on-device transcription well. The real difference is in the choices each project made about what to build next.</p>
+    </div>
+    <div class="deep-dive-grid">
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🔀</div>
+        <div class="deep-dive-title">A menu of models vs two, tuned for the job</div>
+        <div class="deep-dive-body">
+          <p>Handy gives you a real menu: Whisper Small through Large with GPU acceleration, Parakeet V2 or V3, and it can auto-discover custom GGUF models you download from Hugging Face. If you run Handy on a Windows machine with a discrete GPU, that flexibility is genuinely useful, and it is one of the clearest reasons to pick Handy over EnviousWispr.</p>
+          <p>EnviousWispr keeps it to two: Parakeet TDT v3 is the default, tuned for speed and English/European accuracy. If you dictate in a language it doesn't cover, switch to WhisperKit under Settings → Transcription, a one-time toggle plus a roughly 1.5GB download the first time. The choice is manual, not automatic; there just isn't a size ladder to climb.</p>
+          <div class="deep-dive-detail">
+            <strong>Why it matters:</strong> Power users who want to tune the speed-versus-accuracy dial themselves, or who need Windows or Linux support, get more from Handy today. Anyone who wants one setting to change instead of four model sizes to compare gets that from EnviousWispr.
+          </div>
+        </div>
+      </div>
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🧽</div>
+        <div class="deep-dive-title">What happens after the transcript</div>
+        <div class="deep-dive-body">
+          <p>Handy's job mostly ends at the transcript. Whisper or Parakeet turns your speech into text, and that text is pasted with no punctuation cleanup and no list formatting. It can strip filler words too, but only the ones you type into a list yourself; it does not detect "um" or "uh" on its own the way EnviousWispr does.</p>
+          <p>EnviousWispr's filler removal is automatic and aware of your language, so it does not need a list you maintain, and numbers and dates get formatted the way you would type them. Only then does the text optionally reach an on-device or cloud LLM for a final pass. That LLM step is guarded against hallucination: short transcripts skip the model entirely, and output beyond roughly three times the input's length (with a floor around 200 characters, so a short dictation isn't flagged the instant polish adds a sentence) is rejected as probable fabrication and the raw transcript is used instead.</p>
+          <p>In our own testing on the latest release, EG-1 builds a real bulleted list out of a spoken list 83% of the time (up from under 1%), and correctly keeps only what you meant when you self-correct mid-sentence 78% of the time.</p>
+          <div class="deep-dive-detail">
+            <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Fair Acknowledgment -->
+<section class="section" aria-label="Where Handy Wins">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Being Honest</div>
+      <h2 class="section-title">Choose Handy if any of this matters more to you</h2>
+      <p class="section-sub">Handy is a genuinely good, free, open source project, and it does some things EnviousWispr does not. It may be the better fit here:</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🖥️</div>
+        <div class="advantage-title">You need Windows or Linux</div>
+        <p class="advantage-desc">Handy runs on macOS (Intel and Apple Silicon), Windows, and Linux from one codebase. EnviousWispr is Apple Silicon Mac only. If your dictation needs to follow you across operating systems, Handy already does that.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎚️</div>
+        <div class="advantage-title">You want to choose your own model</div>
+        <p class="advantage-desc">Handy lets you pick among several Whisper sizes to trade speed for accuracy, and it can load custom GGUF models from Hugging Face. EnviousWispr offers just two, Parakeet or WhisperKit, switched manually in Settings, which is simpler but leaves less to tune.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🪪</div>
+        <div class="advantage-title">You want a more permissive license</div>
+        <p class="advantage-desc">Handy is MIT licensed, which lets anyone fold the code into a closed-source or commercial product without releasing their changes. EnviousWispr's GPLv3 is copyleft: derivative works you distribute must also be open under GPLv3.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">👥</div>
+        <div class="advantage-title">You value an established community</div>
+        <p class="advantage-desc">Handy has over 30,000 stars on GitHub as of August 2026, more than most dictation apps we compare against, us included, along with an active contributor base and issue tracker.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎯</div>
+        <div class="advantage-title">You want zero generative AI, ever</div>
+        <p class="advantage-desc">No LLM ever rewrites Handy's output. Whisper or Parakeet, machine-learning transcription models, produce the text, an optional filler list you configure yourself can trim it, and that is final — nothing is paraphrased or generated. If you want transcription with no generative AI anywhere near your words, that is what Handy gives you by design, not by omission.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">💵</div>
+        <div class="advantage-title">You want zero optional cost, even a hypothetical one</div>
+        <p class="advantage-desc">EnviousWispr's cloud AI polish is opt-in and always your own account — your key for OpenAI, Claude, or Gemini, or your sign-in for Ollama's hosted models — but the option exists. Handy has no cloud step of any kind in its documented architecture, so there is never even a hypothetical bill.</p>
+      </div>
+    </div>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want the simplest possible transcript with nothing rewriting your words, or you need Windows or Linux support, Handy is a strong pick. If you want that transcript turned into finished, ready-to-send text without leaving your Mac, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">FAQ</div>
+      <h2 class="section-title">Common questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr free, like Handy?</div>
+        <p class="faq-a">Yes. Both EnviousWispr and Handy are completely free, with no subscription, no word limits, and no account required. Both are also open source, so you can read the code that runs on your Mac.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">How is EnviousWispr different from Handy?</div>
+        <p class="faq-a">Both transcribe on-device with no cloud dependency for speech recognition. The main difference is what happens after transcription: EnviousWispr runs AI polish (EG-1 on-device, Apple Intelligence, Ollama, or your own OpenAI, Claude, or Gemini key) to detect and remove filler words automatically, fix punctuation, and format spoken lists, plus a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy has no punctuation cleanup or list formatting, though it can strip a fixed list of filler words you configure yourself. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does Handy have AI cleanup or polish?</div>
+        <p class="faq-a">Not AI-based cleanup. Handy transcribes your speech with Whisper or Parakeet and pastes the result with no punctuation cleanup and no list formatting. It can strip filler words, but only a fixed list you type in yourself; it does not detect them automatically the way EnviousWispr does, and it has no LLM-based polish step at all.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I use EnviousWispr completely offline?</div>
+        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr open source like Handy?</div>
+        <p class="faq-a">Yes, though under a different license. EnviousWispr is licensed under the GNU General Public License v3 (GPLv3), a copyleft license: anyone can read, build, and modify the code, but a distributed derivative must also be open under GPLv3. Handy is licensed under the MIT license, which is more permissive and lets anyone fold the code into a closed-source or commercial product. Both are genuinely open source; the licenses just make different trade-offs.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I import my Handy custom words into EnviousWispr?</div>
+        <p class="faq-a">Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Handy, without changing Handy's own files, and shows you every word it found before anything joins your library. It also imports from Wispr Flow, Superwhisper, FluidVoice, TypeWhisper, Spokenly, Juno, and Vox.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does EnviousWispr work on Windows or Linux like Handy?</div>
+        <p class="faq-a">Not today. EnviousWispr runs on Apple Silicon Macs only (macOS 14 Sonoma or later). Handy supports macOS (Intel and Apple Silicon), Windows, and Linux, which is a real advantage if you need one dictation tool across multiple operating systems.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What Mac do I need for EnviousWispr?</div>
+        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast. Handy also supports Intel Macs, which EnviousWispr does not.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Which speech engines does each app use?</div>
+        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 90+ languages. Handy offers a choice of engines: OpenAI Whisper in several sizes (Small, Medium, Turbo, Large) with GPU acceleration, plus Parakeet V2 and V3. Handy's Whisper option lets you trade speed for accuracy on capable hardware; EnviousWispr defaults to Parakeet for speed, and switching to WhisperKit for a language it doesn't cover is one setting away, under Settings, Transcription.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I switch from Handy to EnviousWispr easily?</div>
+        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Handy custom words across in one pass. Handy's own filler-word list, prompts, and tuning settings stay behind, since those are Handy-specific settings rather than words to keep, not a data-loss gap. Both apps work in any text field on macOS, so nothing about your workflow has to change.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Related Comparisons -->
+<section class="section" aria-label="Related Comparisons" style="padding-top: 0;">
+  <div class="container">
+    <p style="font-size: 14px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Compare with other tools</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Superwhisper</a>
+      <a href="/compare/voiceink/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs VoiceInk</a>
+      <a href="/compare/macwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs MacWhisper</a>
+      <a href="/compare/wisprflow/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs WisprFlow</a>
+      <a href="/compare/willow-voice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Willow Voice</a>
+      <a href="/compare/whisper-cpp/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs whisper.cpp</a>
+      <a href="/compare/apple-dictation/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Apple Dictation</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Free and open source. Now with AI polish.</h2>
+    <p class="reveal">Free to download. No account required. On-device transcription plus a cleanup pass Handy doesn't have.</p>
+    <div class="cta-actions reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="/" class="back-link">Back to Home</a>
+    </div>
+  </div>
+</section>
+
+</BaseLayout>
