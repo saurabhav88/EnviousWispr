@@ -5,14 +5,11 @@ import Testing
 
 /// Validates Phase R3 compile-out: `AppLogger` is dev-only, release sinks are dead code.
 ///
-/// In debug builds, enabling debug mode + logging must produce content on disk under
-/// `~/Library/Logs/EnviousWispr/app.log`. In release builds, the same call sequence
+/// In debug builds, enabling debug mode + logging must produce content in the
+/// test lane's private log directory. In release builds, the same call sequence
 /// must NOT emit the marker — the sink machinery is gated behind `#if DEBUG`.
 ///
-/// Tests are non-destructive: each assertion uses a unique-per-run marker token and
-/// inspects the existing log file (or its absence) without deleting or truncating
-/// the developer's real logs. Running the suite locally never wipes
-/// `~/Library/Logs/EnviousWispr/`.
+/// Tests are non-destructive: each assertion uses a unique-per-run marker token.
 @Suite("AppLogger R3 compile-out")
 struct AppLoggerCompileOutTests {
 
@@ -43,6 +40,20 @@ struct AppLoggerCompileOutTests {
 
   #if DEBUG
 
+    @Test("test log override accepts only an absolute path")
+    func testLogOverrideAcceptsOnlyAbsolutePath() {
+      let fallback = URL(fileURLWithPath: "/tmp/ew-library", isDirectory: true)
+      let isolated = AppLogger.resolveLogDirectory(
+        environment: ["EW_APP_LOG_DIRECTORY": "/tmp/ew-tests/logger"],
+        libraryDirectory: fallback)
+      #expect(isolated.path == "/tmp/ew-tests/logger")
+
+      let rejected = AppLogger.resolveLogDirectory(
+        environment: ["EW_APP_LOG_DIRECTORY": "relative/logger"],
+        libraryDirectory: fallback)
+      #expect(rejected == fallback.appendingPathComponent("Logs/EnviousWispr", isDirectory: true))
+    }
+
     @Test("Debug build: log() emits the marker into the file sink")
     func debugBuildEmitsMarkerIntoFileSink() async throws {
       // Three separate suites toggle the AppLogger singleton and Swift Testing
@@ -56,7 +67,20 @@ struct AppLoggerCompileOutTests {
       // Drain in-flight actor work before reading the file.
       _ = await AppLogger.shared.logDirectoryURL()
 
-      let url = Self.expectedLogURL
+      let logDirectory = await AppLogger.shared.logDirectoryURL()
+      let url = logDirectory.appendingPathComponent("app.log")
+      if let configuredDirectory = ProcessInfo.processInfo.environment["EW_APP_LOG_DIRECTORY"] {
+        let configuredURL = URL(fileURLWithPath: configuredDirectory, isDirectory: true)
+          .standardizedFileURL
+        // The canonical test wrapper always takes this branch, keeping a running
+        // developer app and the test process on separate files.
+        #expect(logDirectory == configuredURL)
+        #expect(logDirectory != Self.expectedLogURL.deletingLastPathComponent())
+      } else {
+        // Direct xcodebuild callers, including GitHub CI, intentionally exercise
+        // the normal app fallback instead of requiring a wrapper-only variable.
+        #expect(logDirectory == Self.expectedLogURL.deletingLastPathComponent())
+      }
       #expect(FileManager.default.fileExists(atPath: url.path))
       #expect(Self.fileContains(url, marker: marker))
 

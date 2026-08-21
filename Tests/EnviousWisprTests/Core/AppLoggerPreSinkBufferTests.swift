@@ -10,8 +10,8 @@ import Testing
 /// launch-window `finishFailed` never made it to `app.log` while the identical
 /// call at press-time did.
 ///
-/// `AppLogger` is a process-wide singleton writing to the developer's real log
-/// directory, so every test here restores the prior debug mode and log level,
+/// `AppLogger` is a process-wide singleton, so every test here restores the
+/// prior debug mode and log level,
 /// and resets the latch through the `#if DEBUG` seam so the pre-sink window is
 /// reachable regardless of suite ordering.
 #if DEBUG
@@ -69,10 +69,7 @@ import Testing
 
     /// Reads the live `app.log`. Missing or unreadable reads back as empty, so a
     /// `contains` assertion fails loudly rather than throwing something unrelated.
-    private func readLog() -> String {
-      let url = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("Logs/EnviousWispr", isDirectory: true)
-        .appendingPathComponent("app.log")
+    private func readLog(at url: URL) -> String {
       return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
     }
 
@@ -91,7 +88,8 @@ import Testing
 
         await AppLogger.shared.setDebugMode(true)
 
-        let contents = readLog()
+        let directory = await AppLogger.shared.logDirectoryURL()
+        let contents = readLog(at: directory.appendingPathComponent("app.log"))
         #expect(
           contents.contains(marker),
           "the pre-sink line must reach app.log once the sink opens")
@@ -206,7 +204,8 @@ import Testing
         #expect(held == 500, "the buffer must cap at 500, got \(held)")
 
         await AppLogger.shared.setDebugMode(true)
-        let contents = readLog()
+        let directory = await AppLogger.shared.logDirectoryURL()
+        let contents = readLog(at: directory.appendingPathComponent("app.log"))
         #expect(
           contents.contains("dropped at the 500 cap"),
           "an overflowing buffer must say so rather than silently truncate")
