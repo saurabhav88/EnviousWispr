@@ -6,12 +6,12 @@ const siteUrl = 'https://enviouswispr.com';
 const articleJsonLd = JSON.stringify({
   "@context": "https://schema.org",
   "@type": "Article",
-  "headline": "EnviousWispr vs TypeWhisper: Free, Open Source Mac Dictation",
-  "description": "Compare EnviousWispr and TypeWhisper, two free, GPLv3, on-device Mac dictation apps with different approaches to AI cleanup and engine choice.",
-  "url": `${siteUrl}/compare/typewhisper/`,
+  "headline": "EnviousWispr vs Spokenly: Free, Open Source Mac Dictation",
+  "description": "Compare EnviousWispr and Spokenly, two free, on-device Mac dictation apps. EnviousWispr is open source; Spokenly is proprietary but free.",
+  "url": `${siteUrl}/compare/spokenly/`,
   "image": `${siteUrl}/og-image.png`,
-  "datePublished": "2026-08-21T20:00:00Z",
-  "dateModified": "2026-08-21T20:00:00Z",
+  "datePublished": "2026-08-21T21:00:00Z",
+  "dateModified": "2026-08-21T21:00:00Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -48,8 +48,8 @@ const breadcrumbJsonLd = JSON.stringify({
     {
       "@type": "ListItem",
       "position": 3,
-      "name": "EnviousWispr vs TypeWhisper",
-      "item": `${siteUrl}/compare/typewhisper/`,
+      "name": "EnviousWispr vs Spokenly",
+      "item": `${siteUrl}/compare/spokenly/`,
     },
   ],
 });
@@ -60,26 +60,34 @@ const faqJsonLd = JSON.stringify({
   "mainEntity": [
     {
       "@type": "Question",
-      "name": "Is EnviousWispr free, like TypeWhisper?",
+      "name": "Is EnviousWispr free, like Spokenly?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. TypeWhisper's core app is free and open source under GPLv3, the same license we use, with core dictation, its speech engines, and its Workflows automation system all included at no cost. TypeWhisper also sells a Commercial license, starting around 5 EUR a month, that unlocks Cloud Folder Sync and Automatic Correction Learning and lets a business use it under non-GPL terms. EnviousWispr has no paid tier at all."
+        "text": "Yes. Spokenly's free tier includes unlimited local transcription and lets you bring your own API key for cloud AI, with no time limit or word cap. Its Pro tier, around $9.99 a month, adds Spokenly's own managed cloud transcription so you do not need your own key. EnviousWispr has no paid tier of any kind."
       }
     },
     {
       "@type": "Question",
-      "name": "How is EnviousWispr different from TypeWhisper?",
+      "name": "How is EnviousWispr different from Spokenly?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Both are GPLv3, free at the core, and run on-device. TypeWhisper offers the widest engine choice we found in any competitor: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines on Windows, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and WhisperKit, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only."
+        "text": "The clearest difference is source code: EnviousWispr is open source under GPLv3, so anyone can read exactly what it does. Spokenly is free but proprietary, by its own admission not open source and not on GitHub. Spokenly in turn is more feature-rich in places: it runs on macOS, Windows, Linux, and iOS, its Modes system lets you save different AI Instructions and providers per app, and its Agentic Actions can search the web, hand off to an AI assistant, or run a Shortcut after transcribing. EnviousWispr is macOS only and does not have an equivalent to Agentic Actions."
       }
     },
     {
       "@type": "Question",
-      "name": "Does TypeWhisper have AI cleanup like EnviousWispr's EG-1?",
+      "name": "Is Spokenly open source?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM (its changelog references OpenAI and Groq) for cleanup, translation, or formatting, plus a separate Dictionary Autocorrection feature reserved for its paid Commercial license. We could not confirm from TypeWhisper's public documentation whether a working cleanup workflow is pre-configured out of the box or needs to be set up. EG-1 is purpose-built for dictation cleanup, ships with the app, and needs no setup or prompt writing."
+        "text": "No. Spokenly's own site states plainly that it is not open source and not available on GitHub, while noting it is free to use. EnviousWispr is open source under GPLv3, so the code that runs on your Mac can be read, built, and audited by anyone."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Spokenly have AI cleanup like EnviousWispr's EG-1?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, through its Modes system. A mode carries its own AI Instructions, transcription model, and AI provider, and instructions can drive translation, cleanup, and formatting. We could not confirm from Spokenly's public documentation whether its default mode ships with cleanup instructions already configured. EG-1 is purpose-built for dictation cleanup, ships with the app, needs no prompt to write, and runs on the same hotkey as transcription."
       }
     },
     {
@@ -92,42 +100,34 @@ const faqJsonLd = JSON.stringify({
     },
     {
       "@type": "Question",
-      "name": "Is EnviousWispr open source like TypeWhisper?",
+      "name": "Can I import my Spokenly custom words into EnviousWispr?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes, and under the same license. Both EnviousWispr and TypeWhisper's core app are licensed under the GNU General Public License v3 (GPLv3). TypeWhisper also offers a paid Commercial license for organizations that need non-GPL terms; EnviousWispr has no such tier and no non-GPL option."
+        "text": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Spokenly, without changing Spokenly's own files, and shows you every word it found before anything joins your library. Spokenly can also store find-and-replace rules written as patterns; those are skipped, since a pattern is not a word. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, TypeWhisper, Juno, and Vox."
       }
     },
     {
       "@type": "Question",
-      "name": "Can I import my TypeWhisper custom words into EnviousWispr?",
+      "name": "Does Spokenly run on Windows or iOS?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of TypeWhisper, without changing TypeWhisper's own files, and shows you every word it found before anything joins your library. Entries you switched off in TypeWhisper stay off, and per-word case sensitivity comes across; TypeWhisper's match-strictness setting does not. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, Spokenly, Juno, and Vox."
+        "text": "Yes, natively on macOS, Windows, Linux, and iOS. EnviousWispr is macOS only, on Apple Silicon."
       }
     },
     {
       "@type": "Question",
-      "name": "Does TypeWhisper run on Windows?",
+      "name": "What is Spokenly's MCP integration for?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes, with its own dedicated Windows build, separate from the macOS app but sharing most of its features. EnviousWispr is macOS only, on Apple Silicon."
+        "text": "Spokenly includes an MCP server that lets developer tools like Claude Code, Cursor, and Codex use it as a voice input tool. EnviousWispr does not offer an MCP integration; it works as an ordinary system-wide dictation tool in any text field, including a terminal running one of those same coding agents."
       }
     },
     {
       "@type": "Question",
-      "name": "Which speech engines does each app use?",
+      "name": "Can I switch from Spokenly to EnviousWispr easily?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, plus ONNX-based engines on Windows, with cloud engines available through add-ons."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I switch from TypeWhisper to EnviousWispr easily?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your TypeWhisper custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS."
+        "text": "Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Spokenly custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS."
       }
     }
   ]
@@ -135,11 +135,11 @@ const faqJsonLd = JSON.stringify({
 ---
 
 <BaseLayout
-  title="TypeWhisper vs EnviousWispr: Free Mac Dictation, Both GPLv3"
-  description="Compare TypeWhisper and EnviousWispr, two free, GPLv3, on-device Mac dictation apps. TypeWhisper offers the widest engine choice; EnviousWispr ships a measured, purpose-built polish model."
+  title="Spokenly vs EnviousWispr: Free Mac Dictation, One Open Source"
+  description="Compare Spokenly and EnviousWispr, two free, on-device Mac dictation apps. EnviousWispr is open source under GPLv3; Spokenly is free but proprietary."
   activePage="compare"
   ogImage="/og-image.png"
-  canonicalPath="/compare/typewhisper/"
+  canonicalPath="/compare/spokenly/"
   ogType="article"
 >
   <Fragment slot="head">
@@ -343,18 +343,18 @@ const faqJsonLd = JSON.stringify({
     <div class="vs-badge reveal">
       <span class="vs-brand accent">EnviousWispr</span>
       <span class="vs-circle">VS</span>
-      <span class="vs-brand">TypeWhisper</span>
+      <span class="vs-brand">Spokenly</span>
     </div>
-    <h1 class="reveal">Free and open source, like TypeWhisper. Ours needs no setup.</h1>
-    <p class="page-header-sub reveal">TypeWhisper's core app is GPLv3, the same license we use, and its free tier is genuinely generous: seven speech engines, Windows and Mac, and a build-your-own cleanup system called Workflows. EnviousWispr picks two engines for you and ships EG-1, a model built and measured specifically for dictation, with nothing to configure.</p>
+    <h1 class="reveal">Free like Spokenly. Open source, which Spokenly isn't.</h1>
+    <p class="page-header-sub reveal">Spokenly's free tier is genuinely generous: unlimited local transcription, bring your own cloud key, no word cap. The difference is the code. Spokenly says plainly that it is not open source and not on GitHub. EnviousWispr is, under GPLv3, so anyone can read exactly what runs on their Mac.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
         Free, no paid tier at all
       </span>
       <span class="hero-pill">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-        No prompt to write, ever
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Open source, code you can read
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -385,54 +385,54 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <th scope="col"></th>
             <th scope="col">EnviousWispr</th>
-            <th scope="col">TypeWhisper</th>
+            <th scope="col">Spokenly</th>
           </tr>
         </thead>
-        <!-- Evidence: TypeWhisper claims verified against typewhisper.com, typewhisper.com/en/pricing,
-             typewhisper.com/en/changelog, github.com/TypeWhisper/typewhisper-mac (GitHub API), and our
-             own Smart Import adapter (Sources/EnviousWisprPostProcessing/SmartImportSource.swift) on
-             2026-08-21.
+        <!-- Evidence: Spokenly claims verified against spokenly.app, spokenly.app/open-source,
+             spokenly.app/docs, and spokenly.app/docs/modes on 2026-08-21.
              Sources:
-               - typewhisper.com (accessed 2026-08-21): free core under GPLv3, engines (WhisperKit,
-                 Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech on Mac; ONNX-based on
-                 Windows; cloud engines via add-ons), Workflows (configurable LLM cleanup/translation/
-                 formatting, referenced providers include OpenAI and Groq), Dictionary Autocorrection
-                 (Commercial-tier only, learns from confident single-word user edits), live preview engine
-                 override (changelog entry, macOS v1.6.0-daily.20260729).
-               - typewhisper.com/en/pricing (accessed 2026-08-21): Free/GPLv3 core; Commercial Individual
-                 from EUR 5/mo or EUR 99 one-time (Cloud Folder Sync, Automatic Correction Learning,
-                 non-GPL terms, up to 3 devices); Team from EUR 19/mo; Enterprise from EUR 99/mo.
-               - github.com/TypeWhisper/typewhisper-mac (GitHub API, accessed 2026-08-21): GPLv3 license,
-                 1,717 stars.
-             Confidence: source-verified from TypeWhisper's own site, pricing page, changelog, and GitHub
-             repo. We could NOT confirm from public documentation whether a Workflow ships pre-configured
-             for cleanup out of the box, or requires the user to build one; this page does not assert
-             either way. TypeWhisper was not tested firsthand. Last verified: 2026-08-21. -->
+               - spokenly.app/open-source (accessed 2026-08-21): "Spokenly is not open source and is not
+                 available on GitHub. But it is free to use." No license applies to Spokenly's own code.
+               - spokenly.app (accessed 2026-08-21): Free tier is unlimited local transcription plus
+                 bring-your-own-key cloud transcription, no time cap or word cap; Pro ~$9.99/mo unlocks
+                 Spokenly's own managed cloud transcription and hosted AI (not required). Platforms: macOS,
+                 iOS, Windows, Linux. 100+ languages with automatic detection. Local Only Mode blocks all
+                 network requests.
+               - spokenly.app/docs/modes (accessed 2026-08-21): a Mode is a saved dictation profile with
+                 its own AI Instructions, transcription model, AI provider, and output style; Agentic
+                 Actions (macOS only, set per mode) can search the web, hand off to an AI assistant, open
+                 or quit apps, or run a Shortcut after transcribing.
+               - spokenly.app/docs (accessed 2026-08-21): mentions an MCP integration for developer tools
+                 (Claude Code, Cursor, Codex) to use Spokenly as a voice input tool.
+             Confidence: source-verified from Spokenly's own site and docs. We could NOT confirm whether
+             Spokenly's default Mode ships with cleanup AI Instructions pre-configured, or whether it has a
+             live/streaming preview or cancelled-dictation recovery; this page does not assert either way
+             where unconfirmed. Spokenly was not tested firsthand. Last verified: 2026-08-21. -->
         <tbody>
           <tr>
-            <td>Price (core app)</td>
+            <td>Price</td>
             <td><span class="table-highlight">Free. No paid tier at all.</span></td>
-            <td>Free (GPLv3). Paid Commercial license from EUR 5/mo unlocks non-GPL terms, Cloud Folder Sync, and Automatic Correction Learning.</td>
+            <td>Free (unlimited local, bring your own cloud key). Pro ~$9.99/mo adds managed cloud, not required.</td>
           </tr>
           <tr>
             <td>Account required</td>
             <td><span class="table-check">No</span></td>
-            <td><span class="table-check">No</span></td>
+            <td>Not specified for the free tier</td>
           </tr>
           <tr>
             <td>Source code</td>
             <td><span class="table-highlight"><a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Open source</a></span> (GPLv3)</td>
-            <td>Open source (GPLv3, core)</td>
+            <td><span class="table-cross">Not open source</span>, by Spokenly's own statement</td>
           </tr>
           <tr>
             <td>Speech engines</td>
             <td><span class="table-highlight">Parakeet TDT v3 + WhisperKit</span>, switch in Settings</td>
-            <td><span class="table-check">Seven options</span>: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, plus ONNX-based engines on Windows</td>
+            <td>Parakeet, Whisper, and Apple Speech Analyzer options</td>
           </tr>
           <tr>
             <td>AI cleanup (after transcription)</td>
             <td><span class="table-highlight">EG-1</span>, purpose-built and measured, ships ready</td>
-            <td>Workflows: configurable, sends your transcript through an LLM you set up (OpenAI, Groq referenced)</td>
+            <td>Modes with AI Instructions: configurable, per-mode provider and prompt</td>
           </tr>
           <tr>
             <td>Needs a prompt to be written</td>
@@ -440,14 +440,14 @@ const faqJsonLd = JSON.stringify({
             <td>Not confirmed either way from public documentation</td>
           </tr>
           <tr>
-            <td>Learns your corrections automatically</td>
+            <td>Voice-triggered actions (web search, open apps, run Shortcuts)</td>
             <td><span class="table-cross">No</span></td>
-            <td><span class="table-check">Yes</span>, Dictionary Autocorrection, Commercial license only</td>
+            <td><span class="table-check">Yes</span>, Agentic Actions, macOS only, set per mode</td>
           </tr>
           <tr>
-            <td>Live preview while speaking</td>
-            <td><span class="table-check">Yes</span>, off by default</td>
-            <td><span class="table-check">Yes</span>, live preview engine override</td>
+            <td>Developer tool integration (MCP)</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, for Claude Code, Cursor, and Codex</td>
           </tr>
           <tr>
             <td>Recover a cancelled dictation</td>
@@ -456,8 +456,8 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Custom vocabulary</td>
-            <td><span class="table-check">Yes</span> (imports from 8 other apps, TypeWhisper included)</td>
-            <td><span class="table-check">Yes</span>, with per-word case sensitivity and enable/disable state</td>
+            <td><span class="table-check">Yes</span> (imports from 8 other apps, Spokenly included)</td>
+            <td><span class="table-check">Yes</span>, including find-and-replace patterns</td>
           </tr>
           <tr>
             <td>Transcription latency</td>
@@ -467,12 +467,12 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Platform support</td>
             <td>macOS (Apple Silicon only)</td>
-            <td><span class="table-check">macOS and Windows</span>, dedicated builds for each</td>
+            <td><span class="table-check">macOS, Windows, Linux, iOS</span></td>
           </tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">TypeWhisper claims sourced from typewhisper.com, its pricing page, its changelog, and the GitHub API. TypeWhisper was not tested firsthand. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Spokenly claims sourced from spokenly.app, spokenly.app/open-source, and spokenly.app/docs. Spokenly was not tested firsthand. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -487,29 +487,29 @@ const faqJsonLd = JSON.stringify({
   <div class="container">
     <div class="section-head reveal">
       <div class="section-label-pill green">Why EnviousWispr</div>
-      <h2 class="section-title">Both are free and GPLv3. Here is what EnviousWispr adds</h2>
-      <p class="section-sub">TypeWhisper's free tier is unusually generous. This is what separates the two apps beyond that.</p>
+      <h2 class="section-title">Free is not the wedge here. Open source is</h2>
+      <p class="section-sub">Spokenly's free tier is genuinely good. Here is what actually separates the two apps.</p>
     </div>
     <div class="advantages-grid">
       <div class="advantage-card reveal">
-        <div class="advantage-icon">🧹</div>
-        <div class="advantage-title">Nothing to configure</div>
-        <p class="advantage-desc">EG-1 ships fine-tuned specifically for dictation cleanup and runs on the same hotkey as transcription, with no prompt to write. TypeWhisper's Workflows are genuinely flexible, and can send your transcript through a provider like OpenAI or Groq; we could not confirm from public documentation whether a working cleanup Workflow ships pre-configured or needs to be built.</p>
+        <div class="advantage-icon">📖</div>
+        <div class="advantage-title">Code you can actually read</div>
+        <p class="advantage-desc">Every line of EnviousWispr is on GitHub under GPLv3. Verify what it does with your microphone, your text, and your custom words. Spokenly's own site states it is not open source and not on GitHub, so you take its privacy claims on trust rather than being able to check them.</p>
       </div>
       <div class="advantage-card reveal">
-        <div class="advantage-icon">📊</div>
-        <div class="advantage-title">Cleanup we measure and publish</div>
-        <p class="advantage-desc">EG-1 builds a real bulleted list out of a spoken list 83% of the time, up from under 1% before it was tuned, and correctly keeps only what you meant when you self-correct mid-sentence 78% of the time. We found no equivalent published benchmark for a TypeWhisper Workflow, since results depend on which provider and prompt you set up.</p>
+        <div class="advantage-icon">🧹</div>
+        <div class="advantage-title">Polish that needs no setup</div>
+        <p class="advantage-desc">EG-1 ships fine-tuned specifically for dictation cleanup and runs on the same hotkey as transcription. Spokenly's Modes system is powerful, but it is something you configure: a provider, a prompt, an output style, per mode.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">↩️</div>
         <div class="advantage-title">Undo an accidental cancel</div>
-        <p class="advantage-desc">Escape Recovery keeps a dictation you cancel with your keybind or a triple press, instead of discarding it instantly. Off by default; you choose to turn it on. We found no equivalent documented for TypeWhisper.</p>
+        <p class="advantage-desc">Escape Recovery keeps a dictation you cancel with your keybind or a triple press, instead of discarding it instantly. Off by default; you choose to turn it on. We found no equivalent documented for Spokenly.</p>
       </div>
       <div class="advantage-card reveal">
-        <div class="advantage-icon">💵</div>
-        <div class="advantage-title">No paid tier, period</div>
-        <p class="advantage-desc">TypeWhisper's GPLv3 core is free, but Cloud Folder Sync, Automatic Correction Learning, and non-GPL terms sit behind a Commercial license starting around EUR 5/mo. EnviousWispr has no paid tier of any kind.</p>
+        <div class="advantage-icon">⚡</div>
+        <div class="advantage-title">0.61s median latency</div>
+        <p class="advantage-desc">Measured in production on Apple Silicon Macs. Parakeet TDT runs on the Neural Engine specifically tuned for fast, accurate dictation, so text appears almost instantly after you stop talking.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
@@ -518,8 +518,8 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📥</div>
-        <div class="advantage-title">Bring your words across from TypeWhisper</div>
-        <p class="advantage-desc">Smart Import reads your custom vocabulary straight out of TypeWhisper's own files, without changing them, and shows you every word before anything joins your library. No retyping.</p>
+        <div class="advantage-title">Bring your words across from Spokenly</div>
+        <p class="advantage-desc">Smart Import reads your custom vocabulary straight out of Spokenly's own files, without changing them, and shows you every word before anything joins your library. No retyping.</p>
       </div>
     </div>
   </div>
@@ -531,7 +531,7 @@ const faqJsonLd = JSON.stringify({
     <div class="section-head reveal">
       <div class="section-label-pill cyan">Privacy</div>
       <h2 class="section-title">Where does your voice go?</h2>
-      <p class="section-sub">Both apps process your voice on your Mac by default. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+      <p class="section-sub">Both apps can process your voice on your Mac. The difference is how much of that you can verify yourself. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
     </div>
     <div class="privacy-split">
       <div class="privacy-card ew reveal">
@@ -553,29 +553,29 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
-          <div>Polished text is pasted and saved to your local History, on your Mac only. Audio is discarded.</div>
+          <div>Polished text is pasted and saved to your local History, on your Mac only. Every step of this is in the public source code.</div>
         </div>
       </div>
       <div class="privacy-card wf reveal">
         <div class="privacy-card-label">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-          TypeWhisper
+          Spokenly
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">1</div>
-          <div>You speak into your Mac's or PC's microphone.</div>
+          <div>You speak into your Mac's microphone.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is transcribed on-device with your chosen engine, one of seven on offer.</div>
+          <div>Audio is transcribed with your chosen engine, on-device by default; Local Only Mode blocks all network requests entirely.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
-          <div>If you have configured a Workflow with a cloud provider, your transcript is sent there with your own key. Local-only engines and workflows keep everything on your machine.</div>
+          <div>If your active Mode uses a cloud AI provider, your transcript is sent there with your own key, or through Spokenly's managed cloud on the Pro tier.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
-          <div>Text is pasted into the app you were working in.</div>
+          <div>Text is pasted into the app you were working in. Spokenly's own claims about this flow cannot be independently verified in source code, since it is closed source.</div>
         </div>
       </div>
     </div>
@@ -607,7 +607,7 @@ const faqJsonLd = JSON.stringify({
         <div class="speed-detail">Immune to bad Wi-Fi</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings. TypeWhisper does not publish comparable latency figures.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings. Spokenly does not publish comparable latency figures.</p>
   </div>
 </section>
 
@@ -616,27 +616,27 @@ const faqJsonLd = JSON.stringify({
   <div class="container">
     <div class="section-head reveal">
       <div class="section-label-pill">Under the Hood</div>
-      <h2 class="section-title">A toolkit, or a finished tool</h2>
-      <p class="section-sub">TypeWhisper gives you the pieces to build the dictation setup you want. EnviousWispr hands you one that already works.</p>
+      <h2 class="section-title">Trust by inspection, or trust by claim</h2>
+      <p class="section-sub">Both apps make real privacy promises. Only one of them lets you check.</p>
     </div>
     <div class="deep-dive-grid">
       <div class="deep-dive-card reveal">
-        <div class="deep-dive-icon">🔀</div>
-        <div class="deep-dive-title">Seven engines, or two you switch between</div>
+        <div class="deep-dive-icon">🔍</div>
+        <div class="deep-dive-title">What "open source" actually buys you</div>
         <div class="deep-dive-body">
-          <p>TypeWhisper's engine list is the widest we found in any dictation app: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, with ONNX-based engines added on Windows. If you want to compare engines directly, or you have a strong preference for one, that choice is real.</p>
-          <p>EnviousWispr runs two: Parakeet TDT v3 for the 25 languages it covers best, WhisperKit for the rest. There is no larger menu; you switch between the two in Settings, Transcription.</p>
+          <p>Spokenly's site makes real, specific privacy claims: local transcription options, a Local Only Mode that blocks network requests, bring-your-own-key cloud. We have no reason to doubt them. But because Spokenly is not open source, none of those claims can be checked against the code that actually runs on your Mac. You are trusting the company's word.</p>
+          <p>EnviousWispr's entire codebase is public under GPLv3. Every claim on this page, what gets sent where, when, and under what condition, can be verified by reading the source or asking someone who has. That is the whole difference this page is built around.</p>
           <div class="deep-dive-detail">
-            <strong>Why it matters:</strong> Power users and anyone who wants a specific model, or Windows support, get more from TypeWhisper today. Anyone who wants one setup that already works gets that from EnviousWispr.
+            <strong>Why it matters:</strong> If open source specifically matters to you, this is the one dimension where the two apps are not close. If it does not, Spokenly's feature set is genuinely broader in several places.
           </div>
         </div>
       </div>
       <div class="deep-dive-card reveal">
         <div class="deep-dive-icon">🧩</div>
-        <div class="deep-dive-title">A configurable automation system, versus a model we tuned</div>
+        <div class="deep-dive-title">A dictation tool, or a voice-driven automation layer</div>
         <div class="deep-dive-body">
-          <p>TypeWhisper's Workflows are a genuine automation system: cleanup, translation, extraction, and formatting steps, referencing providers like OpenAI and Groq in its own changelog, included free. That flexibility is real. We could not confirm from public documentation whether a working cleanup Workflow is ready by default or needs to be configured first.</p>
-          <p>EG-1 is a single model, fine-tuned by us specifically for the problem of turning spoken dictation into clean text, shipped with the app, with results we measure and publish. It runs on the same hotkey as transcription with nothing to configure.</p>
+          <p>Spokenly's Modes and Agentic Actions turn it into more than dictation: switch profiles per app, and let a spoken command search the web, open an app, or run a Shortcut. Its MCP integration lets coding agents like Claude Code or Cursor use it as a voice input tool directly.</p>
+          <p>EnviousWispr does one thing: it turns your speech into clean, finished text wherever your cursor is, every time, the same way. If you want the broader automation layer, Spokenly covers ground we do not attempt.</p>
           <div class="deep-dive-detail">
             <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
           </div>
@@ -647,36 +647,36 @@ const faqJsonLd = JSON.stringify({
 </section>
 
 <!-- Fair Acknowledgment -->
-<section class="section" aria-label="Where TypeWhisper Wins">
+<section class="section" aria-label="Where Spokenly Wins">
   <div class="container">
     <div class="section-head reveal">
       <div class="section-label-pill">Being Honest</div>
-      <h2 class="section-title">Choose TypeWhisper if any of this matters more to you</h2>
-      <p class="section-sub">TypeWhisper's free tier is unusually generous, and its flexibility is real. It may be the better fit here:</p>
+      <h2 class="section-title">Choose Spokenly if any of this matters more to you</h2>
+      <p class="section-sub">Spokenly's feature set is broader than ours in real, specific ways. It may be the better fit here:</p>
     </div>
     <div class="advantages-grid">
       <div class="advantage-card reveal">
         <div class="advantage-icon">🖥️</div>
-        <div class="advantage-title">You need Windows</div>
-        <p class="advantage-desc">TypeWhisper has a dedicated Windows build. EnviousWispr is macOS only.</p>
+        <div class="advantage-title">You need more than macOS</div>
+        <p class="advantage-desc">Spokenly runs on macOS, Windows, Linux, and iOS. EnviousWispr is macOS only. If your dictation needs to follow you across every device you own, Spokenly already does that.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎬</div>
+        <div class="advantage-title">You want voice-triggered actions</div>
+        <p class="advantage-desc">Agentic Actions can search the web, open an app, or run a Shortcut right after transcribing. We do not offer an equivalent; EnviousWispr produces text and nothing more.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">💻</div>
+        <div class="advantage-title">You want it wired into a coding agent</div>
+        <p class="advantage-desc">Spokenly's MCP integration lets Claude Code, Cursor, and Codex use it directly as a voice tool. If that specific developer workflow matters to you, Spokenly has it and we do not.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎚️</div>
-        <div class="advantage-title">You want to choose your own speech engine</div>
-        <p class="advantage-desc">Seven engines to pick from, including specialized ones like Qwen3 ASR and IBM Granite Speech. EnviousWispr offers two, switched manually in Settings.</p>
-      </div>
-      <div class="advantage-card reveal">
-        <div class="advantage-icon">🧠</div>
-        <div class="advantage-title">You want automatic correction learning</div>
-        <p class="advantage-desc">TypeWhisper's Commercial license adds Dictionary Autocorrection, which learns from your confident manual edits and applies them going forward. We do not offer an equivalent.</p>
-      </div>
-      <div class="advantage-card reveal">
-        <div class="advantage-icon">🧩</div>
-        <div class="advantage-title">You want to build your own cleanup pipeline</div>
-        <p class="advantage-desc">Workflows let you wire up your own provider, prompt, and automation steps, including translation and app-specific behavior. If that flexibility is what you are after, EG-1's single tuned model will not give it to you.</p>
+        <div class="advantage-title">You want per-app AI profiles</div>
+        <p class="advantage-desc">Modes let you save a different provider, prompt, and output style for different apps, switching automatically. EnviousWispr's polish setting is one setup that applies everywhere.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want the widest engine choice, need Windows, or want the flexibility to build your own cleanup workflow, TypeWhisper is a strong pick. If you want a purpose-built polish model with a published, measured track record, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want Windows or iOS support, voice-triggered automation, or a coding-agent integration, Spokenly is a strong pick. If you want dictation whose code you can actually read, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
   </div>
 </section>
 
@@ -689,40 +689,40 @@ const faqJsonLd = JSON.stringify({
     </div>
     <div class="faq-list">
       <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr free, like TypeWhisper?</div>
-        <p class="faq-a">Yes. TypeWhisper's core app is free and open source under GPLv3, the same license we use, with core dictation, its speech engines, and its Workflows automation system all included at no cost. TypeWhisper also sells a Commercial license, starting around 5 EUR a month, that unlocks Cloud Folder Sync and Automatic Correction Learning and lets a business use it under non-GPL terms. EnviousWispr has no paid tier at all.</p>
+        <div class="faq-q">Is EnviousWispr free, like Spokenly?</div>
+        <p class="faq-a">Yes. Spokenly's free tier includes unlimited local transcription and lets you bring your own API key for cloud AI, with no time limit or word cap. Its Pro tier, around $9.99 a month, adds Spokenly's own managed cloud transcription so you do not need your own key. EnviousWispr has no paid tier of any kind.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">How is EnviousWispr different from TypeWhisper?</div>
-        <p class="faq-a">Both are GPLv3, free at the core, and run on-device. TypeWhisper offers the widest engine choice we found in any competitor: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines on Windows, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet TDT and WhisperKit, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only.</p>
+        <div class="faq-q">How is EnviousWispr different from Spokenly?</div>
+        <p class="faq-a">The clearest difference is source code: EnviousWispr is open source under GPLv3, so anyone can read exactly what it does. Spokenly is free but proprietary, by its own admission not open source and not on GitHub. Spokenly in turn is more feature-rich in places: it runs on macOS, Windows, Linux, and iOS, its Modes system lets you save different AI Instructions and providers per app, and its Agentic Actions can search the web, hand off to an AI assistant, or run a Shortcut after transcribing. EnviousWispr is macOS only and does not have an equivalent to Agentic Actions.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">Does TypeWhisper have AI cleanup like EnviousWispr's EG-1?</div>
-        <p class="faq-a">TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM (its changelog references OpenAI and Groq) for cleanup, translation, or formatting, plus a separate Dictionary Autocorrection feature reserved for its paid Commercial license. We could not confirm from TypeWhisper's public documentation whether a working cleanup workflow is pre-configured out of the box or needs to be set up. EG-1 is purpose-built for dictation cleanup, ships with the app, and needs no setup or prompt writing.</p>
+        <div class="faq-q">Is Spokenly open source?</div>
+        <p class="faq-a">No. Spokenly's own site states plainly that it is not open source and not available on GitHub, while noting it is free to use. EnviousWispr is open source under GPLv3, so the code that runs on your Mac can be read, built, and audited by anyone.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does Spokenly have AI cleanup like EnviousWispr's EG-1?</div>
+        <p class="faq-a">Yes, through its Modes system. A mode carries its own AI Instructions, transcription model, and AI provider, and instructions can drive translation, cleanup, and formatting. We could not confirm from Spokenly's public documentation whether its default mode ships with cleanup instructions already configured. EG-1 is purpose-built for dictation cleanup, ships with the app, needs no prompt to write, and runs on the same hotkey as transcription.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
         <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using EG-1 (our own model, macOS 14+), Apple Intelligence (macOS 26+), or Ollama with a local model. Cloud providers like OpenAI, Claude, or Gemini are optional and require your own API key.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr open source like TypeWhisper?</div>
-        <p class="faq-a">Yes, and under the same license. Both EnviousWispr and TypeWhisper's core app are licensed under the GNU General Public License v3 (GPLv3). TypeWhisper also offers a paid Commercial license for organizations that need non-GPL terms; EnviousWispr has no such tier and no non-GPL option.</p>
+        <div class="faq-q">Can I import my Spokenly custom words into EnviousWispr?</div>
+        <p class="faq-a">Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of Spokenly, without changing Spokenly's own files, and shows you every word it found before anything joins your library. Spokenly can also store find-and-replace rules written as patterns; those are skipped, since a pattern is not a word. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, TypeWhisper, Juno, and Vox.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">Can I import my TypeWhisper custom words into EnviousWispr?</div>
-        <p class="faq-a">Yes. EnviousWispr's Smart Import reads your custom vocabulary directly out of TypeWhisper, without changing TypeWhisper's own files, and shows you every word it found before anything joins your library. Entries you switched off in TypeWhisper stay off, and per-word case sensitivity comes across; TypeWhisper's match-strictness setting does not. It also imports from Wispr Flow, Superwhisper, FluidVoice, Handy, Spokenly, Juno, and Vox.</p>
+        <div class="faq-q">Does Spokenly run on Windows or iOS?</div>
+        <p class="faq-a">Yes, natively on macOS, Windows, Linux, and iOS. EnviousWispr is macOS only, on Apple Silicon.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">Does TypeWhisper run on Windows?</div>
-        <p class="faq-a">Yes, with its own dedicated Windows build, separate from the macOS app but sharing most of its features. EnviousWispr is macOS only, on Apple Silicon.</p>
+        <div class="faq-q">What is Spokenly's MCP integration for?</div>
+        <p class="faq-a">Spokenly includes an MCP server that lets developer tools like Claude Code, Cursor, and Codex use it as a voice input tool. EnviousWispr does not offer an MCP integration; it works as an ordinary system-wide dictation tool in any text field, including a terminal running one of those same coding agents.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, plus ONNX-based engines on Windows, with cloud engines available through add-ons.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I switch from TypeWhisper to EnviousWispr easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your TypeWhisper custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS.</p>
+        <div class="faq-q">Can I switch from Spokenly to EnviousWispr easily?</div>
+        <p class="faq-a">Yes. Download EnviousWispr, set your keybind, and Smart Import can bring your Spokenly custom words across in one pass. There is no other data to migrate for dictation purposes. Both apps work in any text field on macOS.</p>
       </div>
     </div>
   </div>
@@ -736,10 +736,9 @@ const faqJsonLd = JSON.stringify({
       <a href="/compare/handy/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Handy</a>
       <a href="/compare/fluidvoice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs FluidVoice</a>
       <a href="/compare/juno/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Juno</a>
-      <a href="/compare/spokenly/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Spokenly</a>
-      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Superwhisper</a>
-      <a href="/compare/voiceink/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs VoiceInk</a>
+      <a href="/compare/typewhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs TypeWhisper</a>
       <a href="/compare/wisprflow/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs WisprFlow</a>
+      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Superwhisper</a>
     </div>
   </div>
 </section>
@@ -747,8 +746,8 @@ const faqJsonLd = JSON.stringify({
 <!-- CTA -->
 <section class="cta-section" aria-label="Download CTA">
   <div class="container">
-    <h2 class="reveal">Free, GPLv3, and nothing to configure.</h2>
-    <p class="reveal">Free to download. No account required, no paid tier, no workflow to build.</p>
+    <h2 class="reveal">Free. Open source. Nothing to take on trust.</h2>
+    <p class="reveal">Free to download. No account required. Every line of code is public.</p>
     <div class="cta-actions reveal">
       <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
