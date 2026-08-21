@@ -1,0 +1,471 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "EnviousWispr vs Vox: Two Local Dictation Apps Compared",
+  "description": "Compare EnviousWispr and Vox on local transcription, AI cleanup, Voice Modes, pricing, platforms, and everyday paste behavior.",
+  "url": `${siteUrl}/compare/vox/`,
+  "image": `${siteUrl}/og-image.png`,
+  "datePublished": "2026-08-21T19:00:00Z",
+  "dateModified": "2026-08-21T19:00:00Z",
+  "author": { "@type": "Person", "name": "Saurabh Vaish", "url": `${siteUrl}/authors/saurabh-vaish/` },
+  "publisher": { "@type": "Organization", "name": "Envious Labs", "url": siteUrl },
+  "isPartOf": { "@type": "WebSite", "url": siteUrl, "name": "EnviousWispr" },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": siteUrl },
+    { "@type": "ListItem", "position": 2, "name": "Comparisons", "item": `${siteUrl}/compare/` },
+    { "@type": "ListItem", "position": 3, "name": "EnviousWispr vs Vox", "item": `${siteUrl}/compare/vox/` },
+  ],
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr free, like Vox?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr is free for personal and work use under GPLv3. Vox is free for personal use, while work use at a company with more than one person requires a commercial license at $12 per seat monthly or $120 per seat yearly, equivalent to $10 per month. Neither app requires an account for personal dictation."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Do EnviousWispr and Vox both work offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, when using downloaded local models. Vox can transcribe locally and use downloaded Gemma 4 for local cleanup. Vox also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. EnviousWispr can use local EG-1, Apple Intelligence, or downloaded Ollama models, plus optional cloud providers with your own key."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What is VoxNotch?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It is a local task list that sits at the top of the Mac screen. You can add, finish, remove, reorder, and reprioritize tasks by speaking naturally."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Vox have AI cleanup like EnviousWispr's EG-1?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Vox can clean up text locally with a downloaded Gemma 4 model. It also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. Vox's built-in and custom Voice Modes control how cleanup behaves. EnviousWispr offers EG-1, Apple Intelligence, or a downloaded Ollama model locally, plus optional cloud providers with your own key."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Vox open source?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Vox's official FAQ says the team is considering open-sourcing its modes engine. EnviousWispr is open source under GPLv3."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which Macs do EnviousWispr and Vox support?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Both support Apple Silicon Macs starting with M1 on macOS 14 or later. Neither supports Intel Macs. Vox also supports 64-bit Windows 10 and 11, while EnviousWispr is Mac only."
+      }
+    }
+  ]
+});
+---
+
+<BaseLayout
+  title="Vox vs EnviousWispr: Two Local Dictation Apps Compared"
+  description="Compare Vox and EnviousWispr on local transcription, AI cleanup, Voice Modes, pricing, platforms, and everyday paste behavior."
+  activePage="compare"
+  ogImage="/og-image.png"
+  canonicalPath="/compare/vox/"
+  ogType="article"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+/* ── Page Header ── */
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+/* Table rules live in global.css (.compare-table--duo) so this page shares the
+   same desktop and phone layout as every other head-to-head comparison. */
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── Deep Dive ── */
+.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.deep-dive-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 36px 32px;
+  position: relative; overflow: hidden;
+}
+.deep-dive-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
+.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
+.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
+.deep-dive-body p { margin-bottom: 12px; }
+.deep-dive-body p:last-child { margin-bottom: 0; }
+.deep-dive-detail {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
+  font-size: 13px; color: var(--text-2); line-height: 1.6;
+}
+.deep-dive-detail strong { color: var(--text); }
+@media (max-width: 900px) {
+  .deep-dive-grid { grid-template-columns: 1fr; }
+}
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<!-- Page Header -->
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge reveal">
+      <span class="vs-brand accent">EnviousWispr</span>
+      <span class="vs-circle">VS</span>
+      <span class="vs-brand">Vox</span>
+    </div>
+    <h1 class="reveal">Two private dictation apps with different ideas about polish.</h1>
+    <p class="page-header-sub reveal">Both can keep speech and cleanup on your device. EnviousWispr is free and open source for personal or work use. Vox adds editable Voice Modes, Windows support, and a voice-controlled task list; paid work licenses begin at companies with more than one person.</p>
+    <div class="hero-pills reveal">
+      <span class="hero-pill">Both can work offline</span>
+      <span class="hero-pill">Both support M1 and newer</span>
+      <span class="hero-pill">No account for personal use</span>
+    </div>
+    <div class="hero-cta reveal">
+      <a href="/#download" class="btn-primary">Download EnviousWispr Free</a>
+    </div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+  </div>
+</header>
+
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <h2 class="section-title">Feature comparison</h2>
+      <p class="section-sub">The short version: both keep speech recognition local. Cleanup privacy, licensing, modes, platforms, and how the finished text reaches your app are where the choice changes.</p>
+    </div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table compare-table--duo">
+        <thead>
+          <tr><th>Feature</th><th>EnviousWispr</th><th>Vox</th></tr>
+        </thead>
+        <tbody>
+          <!-- Evidence: Vox 1.10.0 was inspected directly on 2026-08-21. Public claims were verified
+               against https://vox.rizenhq.com/ and https://vox.rizenhq.com/teams on 2026-08-21.
+               The installed app, local mode files, and settings file confirmed editable modes, Gemma 4
+               cleanup choices, Parakeet/Whisper speech models, suggested modes, and VoxNotch controls.
+               Confidence: firsthand-tested plus source-verified. -->
+          <tr>
+            <td>Price and license</td>
+            <td><span class="table-highlight">Free for personal and work use</span>; open source under GPLv3</td>
+            <td>Free for personal use and work at a one-person company; larger-company work is $12 per seat monthly or $120 yearly ($10 per month); closed source</td>
+          </tr>
+          <tr>
+            <td>Platforms</td>
+            <td>Apple Silicon Mac, macOS 14+</td>
+            <td><span class="table-check">Mac and Windows</span>; Apple Silicon Mac with macOS 14+, or Windows 10/11</td>
+          </tr>
+          <tr>
+            <td>Speech engines</td>
+            <td>Parakeet TDT v3 and WhisperKit</td>
+            <td>Parakeet and Whisper, with several local model choices</td>
+          </tr>
+          <tr>
+            <td>Audio sent to a server</td>
+            <td><span class="table-check">Never</span></td>
+            <td><span class="table-check">Never</span></td>
+          </tr>
+          <tr>
+            <td>AI cleanup</td>
+            <td>EG-1, Apple Intelligence, or a downloaded Ollama model</td>
+            <td>Downloaded Gemma 4 stays local; Apple Intelligence may use Apple's Private Cloud Compute</td>
+          </tr>
+          <tr>
+            <td>Cloud cleanup</td>
+            <td>Optional OpenAI, Gemini, Claude, or hosted Ollama with your own account or key</td>
+            <td>No third-party provider option; Apple Intelligence may use Apple's Private Cloud Compute</td>
+          </tr>
+          <tr>
+            <td>Writing modes</td>
+            <td>One cleanup pipeline that preserves the dictated tone</td>
+            <td><span class="table-check">Editable Voice Modes</span> for chat, email, notes, code comments, summaries, and custom styles</td>
+          </tr>
+          <tr>
+            <td>App-aware behavior</td>
+            <td>App context helps polish the transcript</td>
+            <td><span class="table-check">Suggested and automatic modes</span> based on the current app</td>
+          </tr>
+          <tr>
+            <td>Finished text</td>
+            <td>Can paste directly or copy to the clipboard</td>
+            <td>Copies to the clipboard by default; the installed settings also expose automatic paste</td>
+          </tr>
+          <tr>
+            <td>Voice task list</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">VoxNotch</span> can add, finish, reorder, reprioritize, and remove local tasks by voice on Mac</td>
+          </tr>
+          <tr>
+            <td>Custom vocabulary</td>
+            <td><span class="table-check">Yes</span>, with aliases and Smart Import from other apps</td>
+            <td><span class="table-check">Yes</span>, a local personal dictionary</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Vox claims were checked in Vox 1.10.0 and on <a href="https://vox.rizenhq.com/" target="_blank" rel="noopener" style="color: var(--text-3); text-decoration: underline;">Vox's official site</a>. Pricing was checked on its <a href="https://vox.rizenhq.com/teams" target="_blank" rel="noopener" style="color: var(--text-3); text-decoration: underline;">official Teams page</a>. Competitor claims last verified: 2026-08-21.</p>
+  </div>
+</section>
+
+<section class="section" style="padding-top: 24px;">
+  <div class="container">
+    <div class="section-head reveal">
+      <h2 class="section-title">What both apps get right</h2>
+      <p class="section-sub">Choosing local dictation no longer means giving up cleaned-up text.</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🔒</div>
+        <div class="advantage-title">Speech stays local</div>
+        <p class="advantage-desc">Both transcribe on your device. Neither needs to upload your recording for ordinary dictation.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">✨</div>
+        <div class="advantage-title">Cleanup can stay local</div>
+        <p class="advantage-desc">Both can remove fillers, fix punctuation, and shape the result with an on-device writing model.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">✈️</div>
+        <div class="advantage-title">Works without internet</div>
+        <p class="advantage-desc">After model downloads finish, either app can handle the full dictation path offline when a local cleanup model is selected.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-label="Where each app fits">
+  <div class="container">
+    <div class="section-head reveal">
+      <h2 class="section-title">The clearest reasons to choose each one</h2>
+    </div>
+    <div class="deep-dive-grid">
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🟣</div>
+        <div class="deep-dive-title">Choose EnviousWispr for a smaller, open workflow</div>
+        <div class="deep-dive-body">
+          <p>EnviousWispr is free for personal and work use, and the app is open source under GPLv3. It can paste directly where you were writing, recover an accidental cancellation, and import custom words from other dictation apps.</p>
+          <p>You can keep polish local or bring your own cloud provider. That gives you a simple default without closing off model choice later.</p>
+        </div>
+      </div>
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🎛️</div>
+        <div class="deep-dive-title">Choose Vox for modes, Windows, and VoxNotch</div>
+        <div class="deep-dive-body">
+          <p>Vox gives each writing context its own editable prompt. It can suggest a mode for the current app, and its built-in choices cover chat, email, notes, code comments, summaries, and more.</p>
+          <p>VoxNotch is a separate local task surface controlled by natural speech. Vox also runs on Windows, which EnviousWispr does not.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container">
+    <div class="section-head reveal"><h2 class="section-title">Frequently asked questions</h2></div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr free, like Vox?</div>
+        <p class="faq-a">EnviousWispr is free for personal and work use under GPLv3. Vox is free for personal use, while work use at a company with more than one person requires a commercial license at $12 per seat monthly or $120 per seat yearly, equivalent to $10 per month. Neither app requires an account for personal dictation.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Do EnviousWispr and Vox both work offline?</div>
+        <p class="faq-a">Yes, when using downloaded local models. Vox can transcribe locally and use downloaded Gemma 4 for local cleanup. Vox also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. EnviousWispr can use local EG-1, Apple Intelligence, or downloaded Ollama models, plus optional cloud providers with your own key.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does Vox have AI cleanup like EnviousWispr's EG-1?</div>
+        <p class="faq-a">Yes. Vox can clean up text locally with a downloaded Gemma 4 model. It also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. Vox's built-in and custom Voice Modes control how cleanup behaves. EnviousWispr offers EG-1, Apple Intelligence, or a downloaded Ollama model locally, plus optional cloud providers with your own key.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What is VoxNotch?</div>
+        <p class="faq-a">It is a local task list that sits at the top of the Mac screen. You can add, finish, remove, reorder, and reprioritize tasks by speaking naturally.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is Vox open source?</div>
+        <p class="faq-a">No. Vox's official FAQ says the team is considering open-sourcing its modes engine. EnviousWispr is open source under GPLv3.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Which Macs do EnviousWispr and Vox support?</div>
+        <p class="faq-a">Both support Apple Silicon Macs starting with M1 on macOS 14 or later. Neither supports Intel Macs. Vox also supports 64-bit Windows 10 and 11, while EnviousWispr is Mac only.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-label="Related Comparisons" style="padding-top: 0;">
+  <div class="container" style="text-align: center;">
+    <p style="font-size: 13px; color: var(--text-3); margin-bottom: 14px;">Compare more on-device dictation apps:</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
+      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Superwhisper</a>
+      <a href="/compare/fluidvoice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs FluidVoice</a>
+      <a href="/compare/juno/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Juno</a>
+      <a href="/compare/handy/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Handy</a>
+    </div>
+  </div>
+</section>
+
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Want the free, open-source option?</h2>
+    <p class="reveal">No account. No subscription. Your audio stays on your Mac.</p>
+    <div class="cta-actions reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">Download EnviousWispr Free</a>
+      <a href="/compare/" class="back-link">See all comparisons</a>
+    </div>
+  </div>
+</section>
+
+</BaseLayout>

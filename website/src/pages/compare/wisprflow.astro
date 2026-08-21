@@ -392,9 +392,10 @@ const faqJsonLd = JSON.stringify({
                - App opened directly (2026-08-21): Settings confirms a "Vibe coding" section: variable
                  recognition for VS Code/Cursor/Windsurf and automatic file tagging in Cursor/Windsurf chat
                  (e.g. `index.tsx`). Confirmed the dictionary is genuinely auto-learning with team sharing,
-                 as already stated on this page. Connectors/MCP tabs are exclusively for the separate
-                 Notetaker meeting-notes feature, explicitly not dictation ("The Wispr MCP does not have
-                 access to your dictations"), so they are out of scope for this page.
+                 as already stated on this page. The live app also showed Notetaker, Insights, personal and
+                 team snippets, category Styles, three Auto Cleanup levels, Transforms, Scratchpad, Calendar
+                 and Slack connectors, and an MCP surface for meeting notes. The MCP page explicitly excludes
+                 ordinary dictations.
              Word-limit words-remaining counter and free-tier cap independently confirmed live in-app.
              EnviousWispr latency (0.61s / 1.65s) re-measured from production PostHog data, 30-day trailing median, 2026-08-21.
              All claims are source-verified from official pages and the installed app. -->
@@ -475,6 +476,26 @@ const faqJsonLd = JSON.stringify({
             <td><span class="table-check">Yes</span> (Pro only). Edit and rewrite with voice commands.</td>
           </tr>
           <tr>
+            <td>Meeting notetaker</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, with live transcript, speaker labels, shared notes, imports, and questions over meetings</td>
+          </tr>
+          <tr>
+            <td>Post-dictation transforms and scratchpad</td>
+            <td><span class="table-cross">No dedicated workspace</span></td>
+            <td><span class="table-check">Yes</span>, reusable Transforms plus a multi-tab rich-text Scratchpad</td>
+          </tr>
+          <tr>
+            <td>Usage insights</td>
+            <td>Basic word and time-saved statistics</td>
+            <td><span class="table-check">Detailed</span>: speed, words, corrections, dictionary fixes, app/task breakdown, streaks, and a local Voice Profile</td>
+          </tr>
+          <tr>
+            <td>MCP and connectors</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Meeting notes only</span>: MCP excludes ordinary dictations; Google Calendar and Slack connectors support Notetaker workflows</td>
+          </tr>
+          <tr>
             <td>First-word capture</td>
             <td><span class="table-check">Yes,</span> while the mic is warm. A 500ms pre-roll buffer captures audio before recording officially starts; a cold start can still clip.</td>
             <td>Not specified</td>
@@ -517,7 +538,7 @@ const faqJsonLd = JSON.stringify({
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*WisprFlow pricing and features verified from wisprflow.ai/pricing and wisprflow.ai/features, last checked August 2026. Pro is $15/mo billed monthly or $12/mo billed annually. EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. WisprFlow was not firsthand-tested. "Not specified" means the feature is not documented on WisprFlow's public pages. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*WisprFlow pricing and features verified from wisprflow.ai/pricing, wisprflow.ai/features, and Wispr Flow 1.6.606 opened directly. Pro is $15/mo billed monthly or $12/mo billed annually. EnviousWispr latency comes from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -710,7 +731,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎨</div>
         <div class="advantage-title">You want more features today</div>
-        <p class="advantage-desc">WisprFlow has a broader feature set: voice command mode for editing, snippet shortcuts, per-app tone adjustment, whisper mode, backtrack correction, team collaboration tools, and coding-editor awareness that recognizes variable names in VS Code, Cursor, or Windsurf and auto-tags files in Cursor and Windsurf chat. EnviousWispr is catching up, but WisprFlow is ahead on features right now.</p>
+        <p class="advantage-desc">WisprFlow has a broader feature set: Notetaker, shared dictionary and snippets, Transforms, Scratchpad, Insights, app-category Styles, voice command editing, backtrack, team tools, and coding-editor awareness. EnviousWispr is catching up, but WisprFlow is ahead on features right now.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🏢</div>

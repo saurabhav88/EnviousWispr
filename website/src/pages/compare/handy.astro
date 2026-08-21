@@ -127,7 +127,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Which speech engines does each app use?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages. Handy offers a choice of engines: OpenAI Whisper in several sizes (Small, Medium, Turbo, Large) with GPU acceleration, plus Parakeet V2 and V3. Handy's Whisper option lets you trade speed for accuracy on capable hardware; EnviousWispr defaults to Parakeet for speed, and switching to WhisperKit for a language it doesn't cover is one setting away, under Settings, Transcription."
+        "text": "EnviousWispr runs NVIDIA Parakeet TDT v3 and WhisperKit. Handy 0.9.5 showed dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR."
       }
     },
     {
@@ -376,14 +376,14 @@ const faqJsonLd = JSON.stringify({
              Sources:
                - github.com/cjpais/Handy (accessed 2026-08-21): MIT license, 30,050 stars, latest release
                  v0.9.5 (2026-08-08), platforms (macOS Intel+Apple Silicon, Windows x64, Linux x64),
-                 engines (Whisper Small/Medium/Turbo/Large with GPU acceleration; Parakeet V2/V3, CPU-optimized,
-                 automatic language detection), custom dictionary via Raycast integration, no cloud
-                 transcription engine.
+                 cross-platform support and local transcription. The live 0.9.5 model catalog was materially
+                 broader than the older README list.
                - handy.computer/docs/post-processing (accessed 2026-08-21): a Post-Processing feature exists,
                  triggered by a SEPARATE dedicated hotkey from plain transcription (the regular hotkey always
                  gives plain output). Providers: OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI (all
                  cloud, bring your own API key), Apple Intelligence (on-device, Apple Silicon, macOS 26+), and
-                 any OpenAI-compatible local server.
+                 any OpenAI-compatible local server. The installed app also exposed Custom and AWS Bedrock
+                 through Mantle.
                - Handy v0.9.5, opened directly on 2026-08-21: Post-Processing is off by default
                  (src-tauri/src/settings.rs, default_post_process_enabled() = false) and its provider defaults
                  to OpenAI, not Apple Intelligence. It ships one ready-made prompt out of the box, named
@@ -396,7 +396,9 @@ const faqJsonLd = JSON.stringify({
                  with Parakeet, which does not support streaming.
              Confidence: source-verified from Handy's own site, GitHub repo and source code, and confirmed
              by opening the installed app directly. Features marked "Not published" or "Not documented" were
-             not found in Handy's public documentation as of 2026-08-21. Last verified: 2026-08-21. -->
+             not found in Handy's public documentation as of 2026-08-21. The live app also confirmed built-in
+             custom words, explicit clipboard behavior, model unloading, and CPU/Apple GPU controls.
+             Last verified: 2026-08-21. -->
         <tbody>
           <tr>
             <td>Price</td>
@@ -416,12 +418,12 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Speech engines</td>
             <td><span class="table-highlight"><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT v3</a> + WhisperKit</span> (dual engines, on-device)</td>
-            <td>Whisper (Small/Medium/Turbo/Large, GPU accelerated) + Parakeet V2/V3</td>
+            <td><span class="table-check">Dozens of local choices</span> across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR</td>
           </tr>
           <tr>
             <td>Model choice</td>
             <td>Parakeet by default; switch to WhisperKit in Settings for other languages</td>
-            <td><span class="table-check">Yes</span>: pick a Whisper size to trade speed for accuracy</td>
+            <td><span class="table-check">Extensive</span>: filter the downloadable catalog by language, streaming, translation, and model family</td>
           </tr>
           <tr>
             <td>Audio leaves your Mac</td>
@@ -436,7 +438,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>AI polish (cleanup after transcription)</td>
             <td><span class="table-highlight">EG-1, Apple Intelligence, or a local Ollama model on-device;</span> OpenAI, Claude, or Gemini with your own key, or Ollama's hosted models with your Ollama sign-in</td>
-            <td><span class="table-check">Yes</span>: OpenAI, Anthropic, OpenRouter, Groq, Cerebras, or Z.AI with your own key, Apple Intelligence on-device, or a local server</td>
+            <td><span class="table-check">Yes</span>: OpenAI, OpenRouter, Anthropic, Groq, Cerebras, Apple Intelligence, Custom, Z.AI, or AWS Bedrock through Mantle</td>
           </tr>
           <tr>
             <td>Default provider needs a download or an API key</td>
@@ -456,12 +458,12 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Filler word removal</td>
             <td><span class="table-check">Yes</span> (built-in, automatic, language-aware, runs before AI polish)</td>
-            <td><span class="table-check">Yes</span>: strips a fixed list of words you configure yourself, not automatic detection</td>
+            <td>Handled by the shipped Post Process prompt when that separate workflow is used</td>
           </tr>
           <tr>
             <td>Turns a spoken list into a real list, no prompt needed</td>
             <td><span class="table-check">Yes</span> (EG-1, 83% of the time in our own testing)</td>
-            <td>Possible if you write a prompt for it; not a built-in behavior</td>
+            <td>Depends on the selected prompt and provider; custom prompts are supported</td>
           </tr>
           <tr>
             <td>Live preview while speaking</td>
@@ -476,7 +478,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Custom vocabulary</td>
             <td><span class="table-check">Yes</span> (names, terms, jargon; imports from 8 other apps, Handy included)</td>
-            <td><span class="table-check">Yes</span> (dictionary management via Raycast integration)</td>
+            <td><span class="table-check">Yes</span> (built into Advanced settings; Raycast integration also exists)</td>
           </tr>
           <tr>
             <td>Transcription latency</td>
@@ -486,7 +488,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Clipboard preservation</td>
             <td><span class="table-check">Yes</span> (clipboard saved before paste, restored after)</td>
-            <td>Not specified</td>
+            <td><span class="table-check">Configurable</span>: leave the clipboard untouched or keep a transcript copy; paste with Command-V or choose no paste</td>
           </tr>
           <tr>
             <td>Where transcription runs</td>
@@ -708,7 +710,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎚️</div>
         <div class="advantage-title">You want to choose your own model</div>
-        <p class="advantage-desc">Handy lets you pick among several Whisper sizes to trade speed for accuracy, and it can load custom GGUF models from Hugging Face. EnviousWispr offers just two, Parakeet or WhisperKit, switched manually in Settings, which is simpler but leaves less to tune.</p>
+        <p class="advantage-desc">Handy's live catalog covered more than a dozen model families, with filters for language, streaming, and translation. EnviousWispr offers Parakeet or WhisperKit, which is simpler but leaves far less to tune.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🪪</div>
@@ -723,7 +725,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎯</div>
         <div class="advantage-title">You want more cloud providers to choose from</div>
-        <p class="advantage-desc">Handy's Post-Processing supports OpenAI, Anthropic, OpenRouter, Groq, Cerebras, and Z.AI, six cloud options beside Apple Intelligence and a local server. EnviousWispr's cloud polish covers OpenAI, Claude, and Gemini. If the specific model you want to plug in is not one of our three, Handy's list is longer.</p>
+        <p class="advantage-desc">Handy's Post Process list includes OpenAI, OpenRouter, Anthropic, Groq, Cerebras, Apple Intelligence, Custom, Z.AI, and AWS Bedrock through Mantle. EnviousWispr's cloud polish covers OpenAI, Claude, Gemini, and hosted Ollama. Handy's provider menu is wider.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎧</div>
@@ -731,7 +733,7 @@ const faqJsonLd = JSON.stringify({
         <p class="advantage-desc">Handy's History keeps an audio player alongside every saved entry, so you can play back what you actually said. EnviousWispr discards audio after every dictation by design, even in History, so this is not something we offer.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want to customize your own cleanup prompt and pick from a wider list of cloud providers, or you need Windows or Linux support, Handy is a strong pick. If you want cleanup that works the moment you turn it on, no provider or prompt required, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want a large local model catalog, detailed hardware controls, or Windows and Linux support, Handy is a strong pick. If you want a smaller curated setup with one hotkey for dictation and cleanup, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
   </div>
 </section>
 
@@ -777,7 +779,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for 99 languages. Handy offers a choice of engines: OpenAI Whisper in several sizes (Small, Medium, Turbo, Large) with GPU acceleration, plus Parakeet V2 and V3. Handy's Whisper option lets you trade speed for accuracy on capable hardware; EnviousWispr defaults to Parakeet for speed, and switching to WhisperKit for a language it doesn't cover is one setting away, under Settings, Transcription.</p>
+        <p class="faq-a">EnviousWispr runs NVIDIA Parakeet TDT v3 and WhisperKit. Handy 0.9.5 showed dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from Handy to EnviousWispr easily?</div>

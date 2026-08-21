@@ -71,7 +71,7 @@ const faqJsonLd = JSON.stringify({
       "name": "How is EnviousWispr different from Superwhisper?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Both are Mac-native and run on-device. The key differences: EnviousWispr is free (Superwhisper Pro costs ~$8.49/mo), uses dual ASR engines (Parakeet TDT for speed and English accuracy, WhisperKit for wider language coverage), and is open source (GPLv3) on GitHub. Superwhisper has meeting transcription, an iOS app, Windows support, and more writing modes that EnviousWispr does not offer yet."
+        "text": "Both are Mac-native and offer on-device transcription. EnviousWispr is free, uses two curated local engines, and is open source under GPLv3. Superwhisper offers a much larger library of local and cloud speech models, plus meeting transcription, an iOS app, Windows support, and more writing modes. Superwhisper Pro costs about $8.49 per month."
       }
     },
     {
@@ -79,7 +79,7 @@ const faqJsonLd = JSON.stringify({
       "name": "How does EnviousWispr compare to Superwhisper for accuracy?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "EnviousWispr uses NVIDIA Parakeet TDT v3, which covers 25 European languages at roughly 110x real-time on the Neural Engine. For languages outside those 25, both apps use Whisper-based engines with comparable accuracy. Superwhisper offers more Whisper model size choices, which lets you trade speed for accuracy on older hardware."
+        "text": "EnviousWispr uses NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for wider language coverage. Superwhisper offers a large searchable library of local and cloud speech models, including Cohere Transcribe, Parakeet realtime, and its Nano, Fast, Standard, Pro, and Ultra choices. Superwhisper gives you more models to compare, while EnviousWispr keeps the choice to two curated local engines."
       }
     },
     {
@@ -95,7 +95,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does Superwhisper have offline AI polish?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Superwhisper's transcription works offline via Whisper, and it now has an on-device polish option too: a Local mode powered by S1-mini, their own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition, and it is a lighter cleanup pass than their cloud writing modes (Formal, Casual, Legal, Chat), which still need GPT, Claude, or Llama. EnviousWispr's EG-1 and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+."
+        "text": "Superwhisper can transcribe offline with a downloaded local speech model, and it now has an on-device polish option too: a Local mode powered by S1-mini, its own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition and a lighter cleanup pass than the cloud writing modes, which still need an internet connection. EnviousWispr's EG-1 and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+."
       }
     },
     {
@@ -329,7 +329,7 @@ const faqJsonLd = JSON.stringify({
       <span class="vs-brand">Superwhisper</span>
     </div>
     <h1 class="reveal">The free Superwhisper alternative for Mac</h1>
-    <p class="page-header-sub reveal">Both are Mac-native and on-device. The difference: EnviousWispr is free, and uses Parakeet TDT for better English accuracy alongside WhisperKit.</p>
+    <p class="page-header-sub reveal">Both are Mac-native and offer on-device transcription. EnviousWispr is free with two curated local engines; Superwhisper offers a much larger library of local and cloud speech models.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -382,7 +382,11 @@ const faqJsonLd = JSON.stringify({
                  MarkTechPost, both accessed 2026-08-21): S1-mini is a real, newly released 0.6B open-weights
                  on-device model, ~462MB quantized, that cleans fillers/punctuation/numbers from a transcript;
                  described as experimental, and narrower than the cloud-backed writing modes (Formal, Casual,
-                 Legal, Chat), which still route through GPT/Claude/Llama.
+                 Legal, Chat), which still route through GPT/Claude/Llama. The live Models library also showed
+                 Cohere Transcribe, Parakeet realtime, Superwhisper Nano/Fast/Standard/Pro/Ultra speech choices,
+                 multiple writing-model families, provider filters, favorites, and local/cloud attributes.
+                 Mode settings exposed system-audio capture and speaker identification. Advanced Configuration
+                 exposed Claude Code and Codex agent plugins.
              Confidence: source-verified from the public website, the installed app opened directly, and an
              independent public source for S1-mini. Features marked "Not specified" were not found on
              superwhisper.com or in the app as of 2026-08-21.
@@ -402,22 +406,22 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Speech engines</td>
             <td><span class="table-highlight"><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a></span> (dual engines, on-device)</td>
-            <td>Whisper (on-device, multiple model sizes)</td>
+            <td><span class="table-check">Large searchable library</span>: local and cloud speech choices including Cohere Transcribe, Parakeet realtime, and Superwhisper Nano/Fast/Standard/Pro/Ultra variants</td>
           </tr>
           <tr>
             <td>Audio processing</td>
             <td><span class="table-highlight">On-device</span> (Apple Neural Engine)</td>
-            <td>On-device (Whisper); optional cloud AI for polish</td>
+            <td>Local or cloud speech model by Mode; local choices keep audio on the Mac</td>
           </tr>
           <tr>
             <td>Audio leaves your Mac</td>
             <td><span class="table-check">Never.</span> Audio stays on your Mac. If you enable cloud AI polish, only the text transcript is sent.</td>
-            <td>Not for transcription. Cloud AI features send text to third-party APIs.</td>
+            <td>Not with a local speech model. Choosing a cloud speech model sends audio to that provider; cloud writing models send transcript text.</td>
           </tr>
           <tr>
             <td>Works offline</td>
             <td><span class="table-check">Yes</span> (after models download)</td>
-            <td><span class="table-check">Yes</span> (on-device Whisper mode)</td>
+            <td><span class="table-check">Yes</span> with a downloaded local speech model</td>
           </tr>
           <tr>
             <td>AI polish</td>
@@ -480,6 +484,16 @@ const faqJsonLd = JSON.stringify({
             <td><span class="table-check">Yes</span> (live meeting recording with automatic notes)</td>
           </tr>
           <tr>
+            <td>System audio and speaker identification</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, configurable per Mode</td>
+          </tr>
+          <tr>
+            <td>Coding-agent plugins</td>
+            <td><span class="table-cross">No dedicated plugin</span></td>
+            <td><span class="table-check">Claude Code and Codex plugins</span> in Advanced Configuration</td>
+          </tr>
+          <tr>
             <td>Multi-language</td>
             <td>25 European (Parakeet), 99 languages via WhisperKit</td>
             <td>100+ languages with translation to English</td>
@@ -538,8 +552,8 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🧠</div>
-        <div class="advantage-title">Parakeet TDT, not just Whisper</div>
-        <p class="advantage-desc">Superwhisper uses Whisper for on-device transcription. EnviousWispr runs <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">NVIDIA Parakeet TDT</a> as its primary engine, covering 25 European languages with strong accuracy on English dictation. WhisperKit is available as a fallback for 99 languages. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
+        <div class="advantage-title">Two curated local engines</div>
+        <p class="advantage-desc">EnviousWispr uses <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3" style="color: var(--accent); text-decoration: underline;">NVIDIA Parakeet TDT</a> for 25 European languages and WhisperKit for wider coverage. Superwhisper gives you a much larger library of local and cloud models to compare. EnviousWispr keeps the choice smaller and entirely local. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
@@ -571,7 +585,7 @@ const faqJsonLd = JSON.stringify({
     <div class="section-head reveal">
       <div class="section-label-pill cyan">Privacy</div>
       <h2 class="section-title">Where does your voice go?</h2>
-      <p class="section-sub">Both apps transcribe on-device. The difference is what happens next. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+      <p class="section-sub">EnviousWispr always transcribes on-device. Superwhisper can use a local or cloud speech model depending on the selected Mode, and both apps offer local and optional cloud cleanup paths. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
     </div>
     <div class="privacy-split">
       <div class="privacy-card ew reveal">
@@ -607,7 +621,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is transcribed on-device via Whisper. So far, similar to EnviousWispr.</div>
+          <div>With a local speech model, audio is transcribed on-device. Choosing a cloud speech model sends audio to that provider for transcription.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -657,18 +671,18 @@ const faqJsonLd = JSON.stringify({
     <div class="section-head reveal">
       <div class="section-label-pill">Under the Hood</div>
       <h2 class="section-title">What the feature table does not show</h2>
-      <p class="section-sub">Both apps do on-device Whisper transcription. The technical differences are in the engines and the post-processing pipeline.</p>
+      <p class="section-sub">Both apps can run speech and cleanup locally. Superwhisper offers a much larger model library; EnviousWispr keeps a curated two-engine setup.</p>
     </div>
     <div class="deep-dive-grid">
       <div class="deep-dive-card reveal">
         <div class="deep-dive-icon">🔀</div>
-        <div class="deep-dive-title">Dual ASR engines vs. Whisper alone</div>
+        <div class="deep-dive-title">Two curated engines vs. a model marketplace</div>
         <div class="deep-dive-body">
-          <p>Superwhisper uses OpenAI Whisper with multiple model sizes (likely tiny through large). It is a proven, broadly capable model that handles 100+ languages well. For multilingual dictation, it is excellent.</p>
+          <p>Superwhisper 2.18.1 has a searchable speech and writing model library. The live app showed local Cohere Transcribe, Parakeet realtime, and Superwhisper-branded Nano, Fast, Standard, Pro, and Ultra choices alongside cloud models.</p>
           <p>EnviousWispr takes a different approach: NVIDIA Parakeet TDT v3, a CTC/TDT hybrid model that runs at ~110x real-time on the Apple Neural Engine. It covers 25 European languages and is tuned for fast, accurate dictation. For languages outside those 25, EnviousWispr falls back to WhisperKit (an Apple Silicon-optimized Whisper implementation).</p>
-          <p>The result is two engines chosen for their strengths: Parakeet for English speed and accuracy, WhisperKit for language breadth. Superwhisper uses one engine for everything.</p>
+          <p>EnviousWispr uses Parakeet TDT v3 for the languages it covers and WhisperKit for broader language support. Superwhisper gives you much more room to compare models, providers, and local or cloud trade-offs.</p>
           <div class="deep-dive-detail">
-            <strong>Why it matters:</strong> Parakeet TDT's ~110x real-time factor means a 30-second dictation transcribes in under 300ms. Whisper large-v3 is accurate but slower. By using the right engine for the right language, EnviousWispr gets both speed and accuracy without compromise.
+            <strong>Why it matters:</strong> Choose Superwhisper if model selection is part of the experience you want. Choose EnviousWispr if you prefer a smaller set of defaults.
           </div>
         </div>
       </div>
@@ -746,11 +760,11 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from Superwhisper?</div>
-        <p class="faq-a">Both are Mac-native and run on-device. The key differences: EnviousWispr is free (Superwhisper Pro costs ~$8.49/mo), uses dual ASR engines (Parakeet TDT for speed and English accuracy, WhisperKit for wider language coverage), and is open source (GPLv3) on GitHub. Superwhisper has meeting transcription, an iOS app, Windows support, and more writing modes that EnviousWispr does not offer yet.</p>
+        <p class="faq-a">Both are Mac-native and offer on-device transcription. EnviousWispr is free, uses two curated local engines, and is open source under GPLv3. Superwhisper offers a much larger library of local and cloud speech models, plus meeting transcription, an iOS app, Windows support, and more writing modes. Superwhisper Pro costs about $8.49 per month.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How does EnviousWispr compare to Superwhisper for accuracy?</div>
-        <p class="faq-a">EnviousWispr uses NVIDIA Parakeet TDT v3, which covers 25 European languages at roughly 110x real-time on the Neural Engine. For languages outside those 25, both apps use Whisper-based engines with comparable accuracy. Superwhisper offers more Whisper model size choices, which lets you trade speed for accuracy on older hardware.</p>
+        <p class="faq-a">EnviousWispr uses NVIDIA Parakeet TDT v3 for 25 European languages and WhisperKit for wider language coverage. Superwhisper offers a large searchable library of local and cloud speech models, including Cohere Transcribe, Parakeet realtime, and its Nano, Fast, Standard, Pro, and Ultra choices. Superwhisper gives you more models to compare, while EnviousWispr keeps the choice to two curated local engines.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
@@ -758,7 +772,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Superwhisper have offline AI polish?</div>
-        <p class="faq-a">Superwhisper's transcription works offline via Whisper, and it now has an on-device polish option too: a Local mode powered by S1-mini, their own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition, and it is a lighter cleanup pass than their cloud writing modes (Formal, Casual, Legal, Chat), which still need GPT, Claude, or Llama. EnviousWispr's EG-1 and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+.</p>
+        <p class="faq-a">Superwhisper can transcribe offline with a downloaded local speech model, and it now has an on-device polish option too: a Local mode powered by S1-mini, its own 0.6B open-weights model that cleans up fillers, punctuation, and numbers without sending anything off your Mac. It is a newer, experimental addition and a lighter cleanup pass than the cloud writing modes, which still need an internet connection. EnviousWispr's EG-1 and Ollama integrations run entirely on your Mac, and so does Apple Intelligence on macOS 26+.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr really free?</div>
