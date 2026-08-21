@@ -70,9 +70,11 @@ struct AppLoggerCompileOutTests {
       let logDirectory = await AppLogger.shared.logDirectoryURL()
       let url = logDirectory.appendingPathComponent("app.log")
       if let configuredDirectory = ProcessInfo.processInfo.environment["EW_APP_LOG_DIRECTORY"] {
+        let configuredURL = URL(fileURLWithPath: configuredDirectory, isDirectory: true)
+          .standardizedFileURL
         // The canonical test wrapper always takes this branch, keeping a running
         // developer app and the test process on separate files.
-        #expect(logDirectory.path == configuredDirectory)
+        #expect(logDirectory == configuredURL)
         #expect(logDirectory != Self.expectedLogURL.deletingLastPathComponent())
       } else {
         // Direct xcodebuild callers, including GitHub CI, intentionally exercise

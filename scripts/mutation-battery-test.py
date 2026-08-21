@@ -1078,7 +1078,8 @@ finally:
 # before falling back to SIGKILL, or another worktree silently loses the shared seed for the rest of the
 # session. Drive both branches without sending a signal to this test process.
 for _label, _waits, _want in [
-    ("a cooperative canonical lane gets TERM and its cleanup window", [], [battery.signal.SIGTERM]),
+    ("a cooperative wrapper still has its descendant group swept after cleanup", [],
+     [battery.signal.SIGTERM, battery.signal.SIGKILL]),
     ("an uncooperative canonical lane gets SIGKILL only after TERM", [battery.subprocess.TimeoutExpired("x", 1)],
      [battery.signal.SIGTERM, battery.signal.SIGKILL]),
 ]:

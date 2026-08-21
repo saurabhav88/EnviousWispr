@@ -264,7 +264,7 @@ GRACEFUL_TERMINATION_SECONDS = 10
 
 
 def _reap_active_lane():
-    """Ask the live canonical lane to exit, then force-kill only if it ignores the request."""
+    """Ask the canonical wrapper to clean up, then guarantee its whole process group is gone."""
     global _ACTIVE_LANE_PGID, _ACTIVE_LANE_PROC
     pgid, proc = _ACTIVE_LANE_PGID, _ACTIVE_LANE_PROC
     _ACTIVE_LANE_PGID = None
@@ -283,10 +283,13 @@ def _reap_active_lane():
     try:
         proc.wait(timeout=GRACEFUL_TERMINATION_SECONDS)
     except subprocess.TimeoutExpired:
-        try:
-            os.killpg(pgid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            pass
+        pass
+    # The wrapper can exit cleanly while a hung test descendant remains in the group. Always sweep the
+    # group after its cleanup window; ProcessLookupError is the normal proof that nothing survived.
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
     return True
 
 
