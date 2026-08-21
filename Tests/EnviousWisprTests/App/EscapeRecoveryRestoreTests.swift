@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprServices
 import EnviousWisprStorage
@@ -183,6 +184,88 @@ struct EscapeRecoveryRestoreTests {
     #expect(
       spy.reports.first?.result == .clipboardOnly,
       "the words stay on the clipboard rather than landing in the wrong field")
+  }
+
+  /// The production retarget has two activation routes because macOS may refuse
+  /// the Accessibility route while the ordinary AppKit activation still works.
+  /// If both fail, it must report failure so `paste` leaves the words safely on
+  /// the clipboard instead of sending Cmd-V to whichever app is frontmost.
+  @Test("the production retarget refuses a captured app when both activation routes fail")
+  func productionRetargetRefusesFailedActivation() {
+    let app = NSRunningApplication.current
+    let payload = CancelUndoPayload(
+      transcriptID: UUID(), targetApp: app, targetElement: nil)
+    var forcedPIDs: [pid_t] = []
+    var fallbackCalls = 0
+
+    let retargeted = EscapeRecoveryPasteAction.retargetWithAccessibility(
+      payload,
+      forceActivate: {
+        forcedPIDs.append($0)
+        return false
+      },
+      activateFallback: { _ in
+        fallbackCalls += 1
+        return false
+      })
+
+    #expect(forcedPIDs == [app.processIdentifier], "the Accessibility route is tried first")
+    #expect(fallbackCalls == 1, "the AppKit fallback is tried when Accessibility is unavailable")
+    #expect(
+      retargeted == false,
+      "a captured app that cannot be reached must not be followed by a paste into another app")
+  }
+
+  /// No target was captured, so Escape Recovery intentionally preserves
+  /// History's behavior and pastes into the user's current focus. This is not
+  /// an activation failure: there is simply no app to return to.
+  @Test("the production retarget permits a restore with no recorded target")
+  func productionRetargetPermitsNoTarget() {
+    let payload = CancelUndoPayload(
+      transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    var activationAttempted = false
+
+    let retargeted = EscapeRecoveryPasteAction.retargetWithAccessibility(
+      payload,
+      forceActivate: { _ in
+        activationAttempted = true
+        return false
+      },
+      activateFallback: { _ in
+        activationAttempted = true
+        return false
+      })
+
+    #expect(activationAttempted == false, "there is no app to activate")
+    #expect(retargeted == true, "the existing no-target behavior is intentional and preserved")
+  }
+
+  @Test("the production retarget refuses a captured field that cannot be focused")
+  func productionRetargetRefusesFailedFieldFocus() {
+    let app = NSRunningApplication.current
+    let element = AXUIElementCreateApplication(app.processIdentifier)
+    let payload = CancelUndoPayload(
+      transcriptID: UUID(), targetApp: app, targetElement: element)
+    var fallbackCalls = 0
+    var focusedElements: [AXUIElement] = []
+
+    let retargeted = EscapeRecoveryPasteAction.retargetWithAccessibility(
+      payload,
+      forceActivate: { _ in true },
+      activateFallback: { _ in
+        fallbackCalls += 1
+        return true
+      },
+      focusElement: {
+        focusedElements.append($0)
+        return false
+      })
+
+    #expect(fallbackCalls == 0, "a successful Accessibility activation does not need AppKit")
+    #expect(focusedElements.count == 1, "the captured field is the decision point after activation")
+    #expect(
+      retargeted == false,
+      "a field that rejects focus must keep the recovery on the clipboard")
   }
 
   // MARK: History's door

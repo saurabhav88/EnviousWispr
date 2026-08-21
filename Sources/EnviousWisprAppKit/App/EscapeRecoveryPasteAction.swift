@@ -39,7 +39,7 @@ enum EscapeRecoveryPasteAction {
     payload: CancelUndoPayload,
     restorable: (UUID) -> (text: String, stampedAt: Date, takeID: String?)?,
     report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void,
-    retarget: @MainActor (CancelUndoPayload) -> Bool = Self.retargetWithAccessibility,
+    retarget: @MainActor (CancelUndoPayload) -> Bool = Self.defaultRetarget,
     targetHasQuit: (CancelUndoPayload) -> Bool = { $0.targetApp?.isTerminated == true }
   ) {
     guard let row = restorable(payload.transcriptID) else {
@@ -202,16 +202,25 @@ enum EscapeRecoveryPasteAction {
   /// was right about History and wrong about the pill: History activates
   /// nothing, so it promises nothing, while returning to the target app is the
   /// entire reason this pill exists.
+  private static func defaultRetarget(_ payload: CancelUndoPayload) -> Bool {
+    retargetWithAccessibility(payload)
+  }
+
   @MainActor
-  static func retargetWithAccessibility(_ payload: CancelUndoPayload) -> Bool {
+  static func retargetWithAccessibility(
+    _ payload: CancelUndoPayload,
+    forceActivate: (pid_t) -> Bool = PasteService.forceActivateApp,
+    activateFallback: (NSRunningApplication) -> Bool = { $0.activate() },
+    focusElement: (AXUIElement) -> Bool = PasteService.focusElement
+  ) -> Bool {
     guard let app = payload.targetApp else { return true }
     // Both routes report. `forceActivateApp` is the AX path macOS 14+ needs for
     // a background process; `activate()` is the fallback when Accessibility is
     // refused, in which case the paste was never going to work anyway.
-    guard PasteService.forceActivateApp(pid: app.processIdentifier) || app.activate() else {
+    guard forceActivate(app.processIdentifier) || activateFallback(app) else {
       return false
     }
     guard let element = payload.targetElement else { return true }
-    return PasteService.focusElement(element)
+    return focusElement(element)
   }
 }
