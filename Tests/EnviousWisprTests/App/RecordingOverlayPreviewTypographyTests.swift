@@ -179,7 +179,8 @@ struct RecordingOverlayPreviewTypographyTests {
 ///
 /// A mask does not participate in layout, so no height measurement can see whether
 /// the fade is applied. The decision is therefore pinned directly — the same shape
-/// `RecordingOverlayPanelInheritedGeometryTests` uses for panel arithmetic.
+/// The decision is pinned directly because a mask does not participate in layout;
+/// unlike window geometry, no runtime measurement can observe it.
 ///
 /// **Cloud review found the fade applying unconditionally**, so a one-line
 /// transcript had its only line dimmed with nothing above it to scroll away. A

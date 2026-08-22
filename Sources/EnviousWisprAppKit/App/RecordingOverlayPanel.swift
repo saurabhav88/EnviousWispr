@@ -266,7 +266,6 @@ final class RecordingOverlayPanel {
   /// rather than sitting inside a taller fixed frame. Maintained by `showPanel`,
   /// read by the inherited-`y` Top transition, which has to preserve a DIFFERENT
   /// edge for the two geometries — see the branch there for why.
-  private var activePanelIsContentSized = false
 
   /// The origin WE last set programmatically. Used only to DETECT a manual
   /// drag (`isMovableByWindowBackground = true`, an existing feature) by
@@ -389,43 +388,6 @@ final class RecordingOverlayPanel {
     // resolved the screen a second time.
     windowHost.repositionForActiveSpaceChange()
     lastProgrammaticOrigin = panel.frame.origin
-  }
-
-  /// Shared Top/Bottom position formula — used both when a panel first
-  /// appears and when `repositionForActiveSpaceChange()` re-anchors a panel
-  /// that is already showing. Takes `position` explicitly (never reads
-  /// `positionProvider()` itself) so callers control whether they want the
-  /// live setting (fresh appearance) or the edge already committed to the
-  /// current panel (Space-change reposition).
-  private func computeRequestedY(on screen: NSScreen, position: OverlayPillPosition) -> CGFloat {
-    switch position {
-    case .top: return screen.visibleFrame.maxY - 60
-    // #1341 follow-up: `visibleFrame` is Dock-reserved space as this
-    // background app sees it — it does NOT shrink when a DIFFERENT app is in
-    // native fullscreen and the Dock is actually hidden from view. Confirmed
-    // empirically (2026-07-17): `visibleFrame` stayed identical between
-    // windowed and fullscreen, leaving an ~85pt unused gap between the pill
-    // and the true screen bottom during fullscreen. When the frontmost app is
-    // genuinely fullscreen on this screen, drop all the way to the true
-    // screen edge instead; otherwise keep the existing Dock-safe flush
-    // position.
-    case .bottom:
-      return isFrontmostAppFullScreen(on: screen) ? screen.frame.minY : screen.visibleFrame.minY
-    }
-  }
-
-  /// #1060 (Codex P2): keep the whole panel within the visible frame. The
-  /// recording pill's frame is tall enough to host the cap-warning banner, and
-  /// positioning by the bottom origin would push the top above the visible
-  /// frame (clipping under the menu bar) on a normal recording start. Clamp so
-  /// the top never exceeds the frame — small panels (≤ the default 60pt
-  /// offset) are unaffected. Shared by fresh appearance and by
-  /// `repositionForActiveSpaceChange()` so the guard can't drift between them.
-  private func clampedOriginY(requestedY: CGFloat, resolvedHeight: CGFloat, on screen: NSScreen)
-    -> CGFloat
-  {
-    let maxOriginY = screen.visibleFrame.maxY - resolvedHeight - 8
-    return min(requestedY, maxOriginY)
   }
 
   // MARK: - Intent-driven API
@@ -931,7 +893,6 @@ final class RecordingOverlayPanel {
     // tolerance — so storing what we ASKED for can differ from what landed by
     // enough to read as a user drag on the very next transition.
     if !wasManuallyDragged { lastProgrammaticOrigin = panel.frame.origin }
-    if !wasManuallyDragged { lastProgrammaticOrigin = frame.origin }
 
     // #2201: every ACCEPTED resize, so "the box holds still" has a receipt an
     // instrument can read. Until now this method logged nothing, which left the
@@ -1401,39 +1362,6 @@ final class RecordingOverlayPanel {
     DispatchQueue.main.async(execute: work)
   }
 
-  /// Where a Top-positioned panel goes when it CONTINUES an existing
-  /// presentation whose frame was a different height (recording -> polishing).
-  ///
-  /// Both branches preserve the same thing — where the VISIBLE pill sits — and
-  /// differ only because the frame relates to that pill differently in the two
-  /// geometries. They agree exactly whenever the heights match, so this can only
-  /// diverge on a transition that actually changes height.
-  ///
-  /// - `outgoingWasContentSized`: the frame hugged its content (`fitToContent`),
-  ///   so the frame IS the visible pill and its TOP edge is the anchor. The
-  ///   #1988 preview grows downward from a fixed top edge
-  ///   (`resizeRecordingPanel`) and can be far taller than what replaces it —
-  ///   five lines of text against a one-line "Polishing..." pill. Preserving the
-  ///   center here would drop that pill by half the height difference.
-  /// - Otherwise: #1650. Content in a FIXED frame is `.center`-aligned inside it
-  ///   (createPanel), so the visible pill's vertical CENTER equals the frame's
-  ///   center regardless of the frame's own height. Preserving that center — not
-  ///   the raw bottom origin — keeps the pill pixel-identical across the 92pt
-  ///   recording frame -> ~44pt polishing pill change, closing the ~24pt drop.
-  ///
-  /// Extracted as a pure function because it is the arithmetic that was wrong,
-  /// and the rest of `showPanel` needs a window server. Tests:
-  /// `RecordingOverlayPanelInheritedGeometryTests`.
-  /// `nonisolated` because it reads no panel state — the inputs are the whole
-  /// story, which is what makes it testable without a window server.
-  nonisolated static func inheritedTopOriginY(
-    inheritedFrame: NSRect, resolvedHeight: CGFloat, outgoingWasContentSized: Bool
-  ) -> CGFloat {
-    outgoingWasContentSized
-      ? inheritedFrame.maxY - resolvedHeight
-      : inheritedFrame.midY - resolvedHeight / 2
-  }
-
   /// Create and show a floating overlay panel with the given SwiftUI content.
   ///
   /// `fitToContent` (#1064): size the panel to the SwiftUI view's own
@@ -1502,63 +1430,7 @@ final class RecordingOverlayPanel {
     // frame to whole points, so the requested value can differ from the applied
     // one by up to a point — and the drag comparison uses a 0.5 tolerance.
     lastProgrammaticOrigin = panel?.frame.origin
-    // Legacy mirror of the host's own `currentWasContentSized`, kept only while
-    // the transitions still read it. C4 deletes it with the class.
-    activePanelIsContentSized = fitToContent
-    activePanelIsContentSized = fitToContent
-  }
 
-  /// #1341: is the CURRENT frontmost app genuinely in native macOS fullscreen
-  /// on `screen`? `NSScreen.visibleFrame` does not answer this for a
-  /// background/accessory app — it keeps reporting the regular-desktop
-  /// Dock reservation regardless of another app's fullscreen state (confirmed
-  /// empirically 2026-07-17; `NSApplication.currentSystemPresentationOptions`
-  /// also does not update for `LSUIElement` apps — a known AppKit limitation).
-  /// The Accessibility attribute on the frontmost app's own focused window is
-  /// the one signal that actually flips correctly, and is available to us
-  /// because EnviousWispr is non-sandboxed and already holds Accessibility
-  /// trust for paste. Gated to `screen == .main` (the screen holding the
-  /// keyboard-focused window) so a fullscreen Space on one display never
-  /// pushes the pill into Dock territory on a different, non-fullscreen
-  /// display.
-  ///
-  /// KNOWN SCOPE BOUNDARY (Codex grounded review, 2026-07-17): without
-  /// Accessibility trust this always returns `false`, so Bottom keeps the
-  /// pre-existing Dock-safe `visibleFrame.minY` position in fullscreen for
-  /// those users — same as before this fix, not worse. EnviousWispr already
-  /// treats an Accessibility-denied user as a first-class supported flow
-  /// (`PasteCascadeExecutor`'s clipboard-only fallback), so this doesn't
-  /// regress anyone; it just doesn't reach that subset yet. The other two
-  /// permission-free signals investigated (`CGWindowListCopyWindowInfo`,
-  /// `NSApplication.currentSystemPresentationOptions`) don't reliably work
-  /// either (see the two paragraphs above and 2026-07-17 session notes) — a
-  /// real permission-independent fix would mean requesting Screen Recording
-  /// access, which is a product scope decision, not something to fold into
-  /// a positioning bug fix.
-  private func isFrontmostAppFullScreen(on screen: NSScreen) -> Bool {
-    guard screen == NSScreen.main, AXIsProcessTrusted(),
-      let frontApp = NSWorkspace.shared.frontmostApplication
-    else { return false }
-    let axApp = AXUIElementCreateApplication(frontApp.processIdentifier)
-    var focusedWindow: AnyObject?
-    guard
-      AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focusedWindow)
-        == .success,
-      let focusedWindow
-    else { return false }
-    // `AXUIElement` is a CFTypeRef-family type: neither `as!` nor `as?` performs
-    // a real dynamic type check here (verified empirically — both silently
-    // "succeed" on a wrong CF type instead of crashing or returning nil), so a
-    // checked cast would only be misleading. `kAXFocusedWindowAttribute` is
-    // documented to always yield an AXUIElement on `.success`; the subsequent
-    // AX call is what actually fails gracefully if that contract is ever broken.
-    let window = focusedWindow as! AXUIElement
-    var fullScreenValue: AnyObject?
-    guard
-      AXUIElementCopyAttributeValue(window, "AXFullScreen" as CFString, &fullScreenValue)
-        == .success
-    else { return false }
-    return (fullScreenValue as? Bool) ?? false
   }
 
   /// Update the lock state reactively. Called by the former root state when
@@ -1916,7 +1788,6 @@ final class RecordingOverlayPanel {
     // unconditionally.
     panel = nil
     activePanelPosition = nil
-    activePanelIsContentSized = false
     lastProgrammaticOrigin = nil
     wasManuallyDragged = false
 
