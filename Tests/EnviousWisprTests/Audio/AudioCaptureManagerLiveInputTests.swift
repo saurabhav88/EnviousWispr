@@ -36,6 +36,11 @@ struct AudioCaptureManagerLiveInputTests {
     }
   }
 
+  private struct StopReceipt: Sendable {
+    let capture: CaptureResult
+    let receipt: Receipt
+  }
+
   /// `.enabled(if:)` is evaluated outside actor isolation during discovery.
   /// Read only existing system facts: do not request permission or mutate the
   /// user's selected input device merely to decide whether this receipt runs.
@@ -88,12 +93,18 @@ struct AudioCaptureManagerLiveInputTests {
     // CoreAudio can legitimately emit a silent startup buffer. Observe a short
     // live window so this receipt measures the device rather than that transient.
     try await Task.sleep(for: .seconds(1))
-    let capture = await manager.stopCapture(sessionID: sessionID)
-    guard let receipt = await Self.waitForReceipt(from: collector) else {
+    let stopAndCollect = Task { @MainActor in
+      let capture = await manager.stopCapture(sessionID: sessionID)
+      return StopReceipt(capture: capture, receipt: await collector.value)
+    }
+    guard let stopped = await Self.waitForStopReceipt(from: stopAndCollect) else {
+      stopAndCollect.cancel()
       collector.cancel()
-      Issue.record("stopCapture did not finish the live microphone stream within two seconds")
+      Issue.record("stopCapture and stream completion exceeded two seconds")
       return
     }
+    let capture = stopped.capture
+    let receipt = stopped.receipt
 
     #expect(receipt.bufferCount > 0, "the real microphone produced no buffer within one second")
     #expect(receipt.frameCount > 0)
@@ -109,15 +120,17 @@ struct AudioCaptureManagerLiveInputTests {
     #expect(!manager.isCapturing, "stopCapture must end the live session")
   }
 
-  private static func waitForReceipt(from collector: Task<Receipt, Never>) async -> Receipt? {
+  private static func waitForStopReceipt(
+    from operation: Task<StopReceipt, Never>
+  ) async -> StopReceipt? {
     let (receipts, continuation) = AsyncStream.makeStream(
-      of: Receipt.self, bufferingPolicy: .bufferingNewest(1))
+      of: StopReceipt.self, bufferingPolicy: .bufferingNewest(1))
     let relay = Task {
-      continuation.yield(await collector.value)
+      continuation.yield(await operation.value)
       continuation.finish()
     }
 
-    let result = await withTaskGroup(of: Receipt?.self) { group in
+    let result = await withTaskGroup(of: StopReceipt?.self) { group in
       group.addTask {
         for await receipt in receipts { return receipt }
         return nil
