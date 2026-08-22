@@ -287,8 +287,24 @@ struct ClipboardIsolationFreezeTests {
           for statement in closure.statements {
             returns.walk(statement)
           }
+        } else if isOptionalValueWrapper(node.calledExpression) {
+          // `Optional(value)!` and `.some(value)!` preserve the wrapped value. Unlike an arbitrary
+          // helper argument, a directly written `.general` here is the pasteboard that reaches the
+          // executor and must remain visible to the guard.
+          for argument in node.arguments {
+            walk(argument.expression)
+          }
         }
         return .skipChildren
+      }
+
+      private func isOptionalValueWrapper(_ callee: ExprSyntax) -> Bool {
+        if ClipboardVisitor.trailingName(of: callee) == "Optional" { return true }
+        guard
+          let member = ClipboardVisitor.unwrapped(callee).as(MemberAccessExprSyntax.self),
+          ClipboardVisitor.identifierText(member.declName.baseName) == "some"
+        else { return false }
+        return member.base == nil || ClipboardVisitor.trailingName(of: member.base) == "Optional"
       }
 
       override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
@@ -1020,6 +1036,9 @@ struct ClipboardIsolationFreezeTests {
       (#"PasteCascadeExecutor(pasteboard: flag ? .general : board)"#, 1),
       (#"PasteCascadeExecutor(pasteboard: { .general }())"#, 1),
       (#"PasteCascadeExecutor(pasteboard: { return .general }())"#, 1),
+      (#"PasteCascadeExecutor(pasteboard: Optional(.general)!)"#, 1),
+      (#"PasteCascadeExecutor(pasteboard: Swift.Optional(.general)!)"#, 1),
+      (#"PasteCascadeExecutor(pasteboard: .some(.general)!)"#, 1),
       (#"PasteCascadeExecutor.init(pasteboard: .general)"#, 1),
       (#"PasteCascadeExecutor.self.init(pasteboard: .general)"#, 1),
       (#"PasteCascadeExecutor()"#, 1),
