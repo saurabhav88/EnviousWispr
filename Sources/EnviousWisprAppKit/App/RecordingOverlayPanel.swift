@@ -368,38 +368,25 @@ final class RecordingOverlayPanel {
   /// place.
   private func repositionForActiveSpaceChange() {
     // Reuses whichever edge THIS panel was actually created with — never
-    // `positionProvider()` live — so a settings change made while the panel
-    // is already visible can't retroactively snap it to the other edge on
-    // the next Space swipe (Codex grounded review, 2026-07-17). Doing so
-    // would also desync the SwiftUI content's baked-in `.frame(alignment:)`
-    // from wherever the window got repositioned to, reintroducing the
-    // recording/polishing misalignment bug this same PR fixed.
-    guard let panel, let position = activePanelPosition, position == .bottom else { return }
-    if wasManuallyDragged { return }
-    // The pill supports drag-to-relocate (`isMovableByWindowBackground`) —
-    // if the panel's live origin no longer matches the spot WE last put it,
-    // the user moved it since, and an automatic Space-change reposition must
-    // not silently undo that (Codex grounded review r4, 2026-07-17). Stays
-    // wherever the user left it for the rest of this presentation; the next
-    // fresh appearance re-anchors normally.
-    if let lastProgrammaticOrigin, !panel.frame.origin.isApproximately(lastProgrammaticOrigin) {
+    // `positionProvider()` live — so a settings change made while the panel is
+    // already visible can't retroactively snap it to the other edge on the next
+    // Space swipe (Codex grounded review, 2026-07-17).
+    guard let panel, activePanelPosition == .bottom, !wasManuallyDragged else { return }
+    // The pill supports drag-to-relocate: if its live origin no longer matches
+    // where WE last put it, the user moved it since, and an automatic
+    // reposition must not silently undo that (Codex grounded review r4,
+    // 2026-07-17). Stays where the user left it for the rest of this
+    // presentation; the next fresh appearance re-anchors normally.
+    if let lastProgrammaticOrigin,
+      !panel.frame.origin.isApproximately(lastProgrammaticOrigin)
+    {
       wasManuallyDragged = true
       return
     }
-    guard
-      let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
-        ?? NSScreen.main
-        ?? NSScreen.screens.first
-    else { return }
-    let resolvedWidth = panel.frame.width
-    let resolvedHeight = panel.frame.height
-    let x = targetScreen.visibleFrame.midX - resolvedWidth / 2
-    // **Through the host.** A direct `setFrame` does not pass through
-    // `withProgrammaticMove`, so `windowDidMove` reads it as the USER dragging
-    // the pill — and the very next transition would then refuse to re-anchor it.
-    // The shipped code could write the frame directly because nothing was
-    // watching; the retained host is.
-    _ = (x, resolvedWidth, resolvedHeight, targetScreen)
+    // **The geometry itself belongs to the host**, which resolves the target
+    // screen and applies the Bottom rule. This method kept its own copy of that
+    // computation after the delegation landed — dead, and worse than dead: it
+    // resolved the screen a second time.
     windowHost.repositionForActiveSpaceChange()
     lastProgrammaticOrigin = panel.frame.origin
   }
@@ -939,6 +926,11 @@ final class RecordingOverlayPanel {
     // Through the host, for the same reason as the Space-change write: a direct
     // `setFrame` would register as a user drag.
     windowHost.resizeCurrentPresentation(to: frame.size)
+    // **Re-baseline from the APPLIED origin, not the requested one.** AppKit
+    // aligns a window frame to whole points, and the drag comparison uses a 0.5
+    // tolerance — so storing what we ASKED for can differ from what landed by
+    // enough to read as a user drag on the very next transition.
+    if !wasManuallyDragged { lastProgrammaticOrigin = panel.frame.origin }
     if !wasManuallyDragged { lastProgrammaticOrigin = frame.origin }
 
     // #2201: every ACCEPTED resize, so "the box holds still" has a receipt an
@@ -1454,32 +1446,12 @@ final class RecordingOverlayPanel {
     content: V, width: CGFloat, height: CGFloat = 44, inheritedFrame: NSRect? = nil,
     fitToContent: Bool = false
   ) {
-    // Guard against the edge case where no screen is available (C3).
-    guard
-      let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
-        ?? NSScreen.main
-        ?? NSScreen.screens.first
-    else { return }
-
-    // Captured before anything below can overwrite it: this describes the panel
-    // being REPLACED, which is what the inherited-`y` transition reasons about.
-    let outgoingWasContentSized = activePanelIsContentSized
-
+    // **Screen resolution and measurement both moved to the host.** This method
+    // kept doing them too, so a content-sized presentation triggered TWO layout
+    // passes on the hosting view and resolved the screen twice per show — a
+    // duplication that is invisible in behaviour and pure waste, of the kind
+    // that survives because the result happens to agree.
     let hostingView = NSHostingView(rootView: content)
-    // Resolve the panel size: content-driven when `fitToContent`, else the
-    // caller's fixed dims. `fittingSize` triggers a layout pass on the hosting
-    // view and returns the SwiftUI content's ideal size.
-    let resolvedWidth: CGFloat
-    let resolvedHeight: CGFloat
-    if fitToContent {
-      let fitting = hostingView.fittingSize
-      resolvedWidth = fitting.width
-      resolvedHeight = fitting.height
-    } else {
-      resolvedWidth = width
-      resolvedHeight = height
-    }
-    let size = NSRect(x: 0, y: 0, width: resolvedWidth, height: resolvedHeight)
 
     // #2292 C3b: the host owns construction, geometry, ordering and lifetime.
     let isFresh = inheritedFrame == nil
@@ -1503,8 +1475,8 @@ final class RecordingOverlayPanel {
 
     let presented = windowHost.present(
       hostingView,
-      width: fitToContent ? .measured : .fixed(resolvedWidth),
-      fixedHeight: fitToContent ? nil : resolvedHeight,
+      width: fitToContent ? .measured : .fixed(width),
+      fixedHeight: fitToContent ? nil : height,
       isFresh: isFresh,
       position: position)
     guard presented else {
@@ -1530,6 +1502,8 @@ final class RecordingOverlayPanel {
     // frame to whole points, so the requested value can differ from the applied
     // one by up to a point — and the drag comparison uses a 0.5 tolerance.
     lastProgrammaticOrigin = panel?.frame.origin
+    // Legacy mirror of the host's own `currentWasContentSized`, kept only while
+    // the transitions still read it. C4 deletes it with the class.
     activePanelIsContentSized = fitToContent
     activePanelIsContentSized = fitToContent
   }

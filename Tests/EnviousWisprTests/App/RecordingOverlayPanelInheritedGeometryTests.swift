@@ -5,6 +5,22 @@ import Testing
 
 /// Pins the Top-position inherited-transition arithmetic (#1988 cloud review).
 ///
+/// > **#2292 C3b: THE FUNCTION THIS PINS IS NO LONGER REACHED IN PRODUCTION.**
+/// > `showPanel` delegates geometry to `OverlayWindowHost`, so
+/// > `inheritedTopOriginY` now has exactly one reference — its own declaration —
+/// > and this suite exercises code nothing runs. **A green result here is not
+/// > evidence that the shipped inherited-transition rule is correct**, which is
+/// > precisely what its name and its passing status suggest.
+/// >
+/// > The LIVE rule is `OverlayPlacementState.frame(for:continuity:environment:)`,
+/// > covered by `OverlayPlacementStateTests` — including the Top content-sized
+/// > versus fixed-height cases this file's arithmetic describes.
+/// >
+/// > Kept rather than deleted because C3b's scope is window LIFETIME; C4 deletes
+/// > the helper with the class and this suite with it. Flagged here because a
+/// > suite that reads as coverage while testing dead code is worse than no suite
+/// > at all — the failure mode is a confident wrong subject, not a gap.
+///
 /// `RecordingOverlayPanel` is real-NSPanel/window-server UI code under the
 /// established runtime-only exemption, so the geometry decision is extracted as
 /// a pure function and pinned here rather than driven through a live panel.

@@ -22,11 +22,13 @@ import Testing
 /// never creates a window at all. Probing the number rather than trusting the
 /// green is the only reason that was found.
 ///
-/// Making it observable meant pumping a run loop, which
-/// `check-test-timing.sh` refuses — correctly. A clock-based wait to observe a
-/// deliberately deferred creation is the harness fighting itself. The runtime
-/// property belongs in Live UAT; what a unit test CAN own is the property that
-/// makes the runtime claim possible, and that is a fact about the source.
+/// Making it observable seemed to need a run-loop pump, which
+/// `check-test-timing.sh` refuses. That was the wrong conclusion and it is
+/// corrected below rather than left standing: a MAIN-QUEUE BARRIER waits on the
+/// subject, not on time, and `OverlayRetainedWindowBehaviourTests` in this file
+/// now proves the legacy API reaches the retained host. **These structural
+/// guards own a different question** — that no OTHER site can construct or close
+/// a window — and Live UAT remains the end-to-end visual proof.
 ///
 /// Reading the source is the only available mechanism, the same reason
 /// `TestInventoryFreezeTests` parses rather than reflects. **It PARSES rather
