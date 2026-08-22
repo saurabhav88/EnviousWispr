@@ -590,9 +590,10 @@ struct WrappingHStack: Layout {
       subviews: subviews
     )
     for (index, position) in result.positions.enumerated() {
+      let size = result.sizes[index]
       subviews[index].place(
         at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y),
-        proposal: .unspecified
+        proposal: ProposedViewSize(width: size.width, height: size.height)
       )
     }
   }
@@ -600,28 +601,32 @@ struct WrappingHStack: Layout {
   private func layout(
     proposal: ProposedViewSize,
     subviews: Subviews
-  ) -> (size: CGSize, positions: [CGPoint]) {
+  ) -> (size: CGSize, positions: [CGPoint], sizes: [CGSize]) {
     let maxWidth = proposal.width ?? .infinity
+    let subviewProposal =
+      proposal.width.map { ProposedViewSize(width: $0, height: nil) } ?? .unspecified
     var positions: [CGPoint] = []
+    var sizes: [CGSize] = []
     var x: CGFloat = 0
     var y: CGFloat = 0
     var rowHeight: CGFloat = 0
     var totalWidth: CGFloat = 0
 
     for subview in subviews {
-      let size = subview.sizeThatFits(.unspecified)
+      let size = subview.sizeThatFits(subviewProposal)
       if x + size.width > maxWidth, x > 0 {
         x = 0
         y += rowHeight + spacing
         rowHeight = 0
       }
       positions.append(CGPoint(x: x, y: y))
+      sizes.append(size)
       rowHeight = max(rowHeight, size.height)
       x += size.width + spacing
       totalWidth = max(totalWidth, x - spacing)
     }
 
-    return (CGSize(width: totalWidth, height: y + rowHeight), positions)
+    return (CGSize(width: totalWidth, height: y + rowHeight), positions, sizes)
   }
 }
 
