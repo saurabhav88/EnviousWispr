@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const siteUrl = 'https://enviouswispr.com';
 
@@ -136,7 +137,7 @@ const faqJsonLd = JSON.stringify({
 
 <BaseLayout
   title="TypeWhisper vs EnviousWispr: Free Mac Dictation, Both GPLv3"
-  description="Compare TypeWhisper and EnviousWispr, two free, GPLv3, on-device Mac dictation apps. TypeWhisper offers seven engine options across Mac and Windows; EnviousWispr ships a measured, purpose-built polish model."
+  description="Compare TypeWhisper and EnviousWispr, two free, GPLv3 Mac dictation apps. We compare local engines, file transcription, workflows, and setup side by side."
   activePage="compare"
   ogImage="/og-image.png"
   canonicalPath="/compare/typewhisper/"
@@ -344,6 +345,10 @@ const faqJsonLd = JSON.stringify({
     <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
+
+<CompareDecisionSummary id="typewhisper-vs-enviouswispr-answer" heading="TypeWhisper or EnviousWispr: which should you choose?">
+  <p>Both apps have free GPLv3 cores and can run Mac dictation locally. Choose TypeWhisper if you want seven speech engines, Windows support, file transcription, or Workflows that connect your own prompts, providers, translation, and automation steps. Choose EnviousWispr if you want two curated speech engines plus a purpose-built polish model that works without building a workflow. TypeWhisper is the stronger toolkit for people who want to configure the pipeline. EnviousWispr is the simpler option for people who want to install the app, choose a hotkey, and get polished text at the cursor with fewer decisions. The meaningful difference is control: TypeWhisper exposes more of the system, while EnviousWispr makes more choices for you. Both can keep ordinary dictation on the Mac.</p>
+</CompareDecisionSummary>
 
 <!-- Side-by-Side Table -->
 <section class="section" aria-label="Feature Comparison">

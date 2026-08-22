@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const siteUrl = 'https://enviouswispr.com';
 
@@ -49,18 +50,18 @@ const faqJsonLd = JSON.stringify({
     },
     {
       "@type": "Question",
-      "name": "What is VoxNotch?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "It is a local task list that sits at the top of the Mac screen. You can add, finish, remove, reorder, and reprioritize tasks by speaking naturally."
-      }
-    },
-    {
-      "@type": "Question",
       "name": "Does Vox have AI cleanup like EnviousWispr's EG-1?",
       "acceptedAnswer": {
         "@type": "Answer",
         "text": "Yes. Vox can clean up text locally with a downloaded Gemma 4 model. It also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. Vox's built-in and custom Voice Modes control how cleanup behaves. EnviousWispr offers EG-1, Apple Intelligence, or a downloaded Ollama model locally, plus optional cloud providers with your own key."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What is VoxNotch?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It is a local task list that sits at the top of the Mac screen. You can add, finish, remove, reorder, and reprioritize tasks by speaking naturally."
       }
     },
     {
@@ -85,7 +86,7 @@ const faqJsonLd = JSON.stringify({
 
 <BaseLayout
   title="Vox vs EnviousWispr: Two Local Dictation Apps Compared"
-  description="Compare Vox and EnviousWispr on local transcription, AI cleanup, Voice Modes, pricing, platforms, and everyday paste behavior."
+  description="Compare Vox and EnviousWispr for local Mac dictation, AI cleanup, Voice Modes, pricing, Windows support, and everyday paste behavior side by side."
   activePage="compare"
   ogImage="/og-image.png"
   canonicalPath="/compare/vox/"
@@ -281,6 +282,10 @@ const faqJsonLd = JSON.stringify({
     <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
+
+<CompareDecisionSummary id="vox-vs-enviouswispr-answer" heading="Vox or EnviousWispr: which should you choose?">
+  <p>Both Vox and EnviousWispr can transcribe speech and clean up text locally on Apple Silicon Macs. Choose Vox if you want editable Voice Modes, automatic app-based mode suggestions, Windows support, or the VoxNotch voice-controlled task list. Choose EnviousWispr if you want free personal and work use, GPLv3 source code, direct paste, Escape Recovery, and the option to use local models or your own cloud provider. Vox is the more mode-driven product; EnviousWispr is the smaller open workflow. For personal use both are free, but Vox requires a paid license for work at companies with more than one person. Choose based on the workflow you will actually use: Vox rewards people who create multiple modes and use tasks, while EnviousWispr keeps dictation and polish in one path.</p>
+</CompareDecisionSummary>
 
 <section class="section" aria-label="Feature Comparison">
   <div class="container">

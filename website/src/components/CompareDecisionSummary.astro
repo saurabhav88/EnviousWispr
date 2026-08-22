@@ -1,0 +1,85 @@
+---
+interface Props {
+  id: string;
+  heading: string;
+}
+
+const { id, heading } = Astro.props;
+---
+
+<section class="decision-summary" aria-labelledby={id}>
+  <div class="container">
+    <div class="decision-card reveal">
+      <p class="decision-label">Quick answer</p>
+      <h2 id={id}>{heading}</h2>
+      <div class="decision-copy"><slot /></div>
+      <p class="decision-links">
+        Still deciding? See the <a href="/compare/best-dictation-apps-for-mac/">best Mac dictation apps by use case</a>
+        {' '}or browse <a href="/compare/">all 17 dictation app comparisons</a>.
+      </p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .decision-summary {
+    padding: 0 0 48px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .decision-card {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 28px 32px;
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.06), rgba(255, 255, 255, 0.94));
+    border: 1px solid rgba(124, 58, 237, 0.16);
+    border-radius: var(--radius-card);
+  }
+
+  .decision-label {
+    margin: 0 0 8px;
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  h2 {
+    margin: 0 0 12px;
+    color: var(--text);
+    font-size: 24px;
+    line-height: 1.25;
+    letter-spacing: -0.6px;
+  }
+
+  .decision-copy,
+  .decision-links {
+    color: var(--text-2);
+    font-size: 16px;
+    line-height: 1.7;
+  }
+
+  .decision-copy :global(p) {
+    margin: 0;
+  }
+
+  .decision-links {
+    margin: 14px 0 0;
+    font-size: 14px;
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  @media (max-width: 600px) {
+    .decision-summary { padding-bottom: 32px; }
+    .decision-card { padding: 22px 20px; }
+    h2 { font-size: 21px; }
+    .decision-copy { font-size: 15px; }
+  }
+</style>

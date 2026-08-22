@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const siteUrl = 'https://enviouswispr.com';
 
@@ -344,6 +345,10 @@ const faqJsonLd = JSON.stringify({
     <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
+
+<CompareDecisionSummary id="spokenly-vs-enviouswispr-answer" heading="Spokenly or EnviousWispr: which should you choose?">
+  <p>Both can provide free local dictation, but they make different tradeoffs. Choose Spokenly if you need Windows, Linux, or iOS, want per-app AI profiles, or need Agentic Actions and coding-agent dictation. Choose EnviousWispr if you want a Mac-only app whose source code is public under GPLv3, with local speech, local polish, direct paste, and Escape Recovery in one workflow. Spokenly is broader and more automation-heavy; EnviousWispr is narrower and inspectable. Spokenly also offers a paid managed-cloud tier, while EnviousWispr has no paid tier or account requirement. For someone who wants dictation on several devices or inside agent workflows, Spokenly offers more reach. For someone who wants to inspect the app and avoid a service relationship, EnviousWispr is the clearer fit.</p>
+</CompareDecisionSummary>
 
 <!-- Side-by-Side Table -->
 <section class="section" aria-label="Feature Comparison">
@@ -709,7 +714,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What is Spokenly's MCP integration for?</div>
-        <p class="faq-a">Spokenly exposes an MCP tool named <code>ask_user_dictation</code>. Claude Code or Codex can call it when the agent needs an answer, and you can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation.</p>
+        <p class="faq-a">Spokenly exposes an MCP tool named <code>ask_user_dictation</code>. Claude Code or Codex can call it when the agent needs an answer, and the person can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from Spokenly to EnviousWispr easily?</div>
