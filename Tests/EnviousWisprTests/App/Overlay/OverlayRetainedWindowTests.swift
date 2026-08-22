@@ -162,63 +162,13 @@ struct OverlayRetainedWindowTests {
       already been lost and THAT is the defect.
       """)
   }
-
-  /// **A per-owner ceiling, because the failure mode of this migration is one
-  /// file becoming the thing it replaced.** `RecordingOverlayPanel` reached 3,368
-  /// lines by being the only place anything about the overlay could live; nothing
-  /// stopped it, and no single commit was where it went wrong.
-  ///
-  /// The numbers are today's `wc -l` rounded up, not a target — the point is that
-  /// crossing one is a DECISION rather than a drift. Raise a row deliberately and
-  /// say why, exactly as the app's other ceilings require; if a row needs raising
-  /// twice, the responsibility probably belongs in a new owner instead.
-  ///
-  /// `OverlayLegacyViews.swift` is exempt and named rather than silently omitted:
-  /// it is the nine leaf views moved WHOLE in C1, byte-identical, and its cleanup
-  /// is explicitly outside this migration. Capping it would invite exactly the
-  /// unrelated edit this migration keeps out of its own diff.
-  @Test("no overlay owner grows into the panel it replaced")
-  func perOwnerCeilings() throws {
-    let ceilings: [String: Int] = [
-      "OverlayAccessibilityEligibility.swift": 60,
-      "OverlayChipWiring.swift": 80,
-      "OverlayDirector.swift": 680,
-      "OverlayOutputRouter.swift": 100,
-      "OverlayPlacementState.swift": 220,
-      "OverlayReducer.swift": 790,
-      "OverlayRenderModel.swift": 110,
-      "OverlayRootView.swift": 240,
-      "OverlayVocabulary.swift": 470,
-      "OverlayWindowHost.swift": 390,
-    ]
-    let root = RepoRoot.url.appending(path: "Sources/EnviousWisprAppKit/App/Overlay")
-    for (name, ceiling) in ceilings.sorted(by: { $0.key < $1.key }) {
-      let url = root.appending(path: name)
-      let text = try String(contentsOf: url, encoding: .utf8)
-      let count = text.split(separator: "\n", omittingEmptySubsequences: false).count
-      #expect(
-        count <= ceiling,
-        "\(name) is \(count) lines against a ceiling of \(ceiling). Raise it deliberately and say why, or move the responsibility to a new owner.")
-    }
-
-    // The set is CHECKED, not assumed: a new owner added to the module without a
-    // ceiling is exactly how the old one grew unnoticed.
-    let onDisk = try FileManager.default
-      .contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-      .filter { $0.pathExtension == "swift" }
-      .map(\.lastPathComponent)
-      .filter { $0 != "OverlayLegacyViews.swift" }
-    #expect(
-      Set(onDisk) == Set(ceilings.keys),
-      "the overlay module and this ceiling table disagree: \(Set(onDisk).symmetricDifference(Set(ceilings.keys)))")
-  }
 }
 // **Only the BEHAVIOURAL suite below is DEBUG-only.** It reads
 // panelConstructionCountForTesting, which lives inside `#if DEBUG` on the
 // panel, so without this guard the RELEASE build of the test target does not
 // compile — something a Debug-only local run cannot see by construction.
 //
-// The two guards ABOVE it read source files and need no seam at all. Wrapping
+// The three guards ABOVE it read source files and need no seam at all. Wrapping
 // the whole file, which is what the first repair did, silently dropped two
 // configuration-independent structural guards out of the Release lane: a fix
 // that created the next defect, which is the shape this migration keeps

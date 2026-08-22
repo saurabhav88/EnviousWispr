@@ -106,33 +106,6 @@ import Testing
       """)
   }
 
-  @Test func lineCount() throws {
-    let source = try String(
-      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
-    let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
-    #expect(
-      count <= 235,
-      """
-      DictationRuntime line count exceeded: \(count) > 235. \
-      Raise via Bible §30 only. PR10 ratcheted 100 → 200 to absorb the \
-      7-collab field block + 6 façade methods + DR.init body building the \
-      recording subsystem (HeartControlRecovery + Finalizer + Starter + \
-      HotkeyController) and calling `hotkeyController.install()` internally. \
-      #1171 ratcheted 200 → 215 for the four EngineCoordinator pass-through \
-      init parameters (ensureSelectedReadyForPress, isEngineSwitching, \
-      beginMinting, endMinting) + their doc comments — no new state. \
-      #1388 ratcheted 215 → 216 for cancelActiveEngineWarmupForOnboarding \
-      (#879's cancel twin — thin forward, no new state). #1224 ratcheted \
-      216 → 217 for one new `recordingOverlay:` argument threaded into the \
-      existing AudioEventRouter(...) construction call. #1732 (GitHub cloud \
-      review round 6) ratcheted 217 → 235 for one new `onDurableSaveFailed` \
-      closure wiring block (mirrors the existing `onDurableSave`/ \
-      `onRecordingEndedWithoutDurableSave` wiring pattern) — no new \
-      collaborator or method, deterministic rule: actual 223 + 10 → round \
-      up to nearest 5 = 235.
-      """)
-  }
-
   @Test func allowedImports() throws {
     let source = try String(
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)

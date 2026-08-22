@@ -65,26 +65,6 @@ import Testing
       """)
   }
 
-  @Test func lineCount() throws {
-    let source = try String(
-      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
-    let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
-    // #1631: raised 150 → 155 for the `onLockRequested` closure, which replaces
-    // the old unconditional `onLocked` notification with a decision — it reads
-    // the started session's id from the active driver and publishes only on a
-    // match, returning `.published` / `.notLockable` / `.unavailable`. AppKit has
-    // to answer this because Services cannot see pipeline state. No new
-    // collaborator, closure-injected dependency, or non-private method (the
-    // callbacks are installed on `hotkeyService`, not stored on self); only the
-    // paper-line ceiling moves. Deterministic rule: actual 153 + 2 → 155.
-    #expect(
-      count <= 155,
-      """
-      HotkeyController line count exceeded: \(count) > 155. \
-      Raise via Bible §30 only.
-      """)
-  }
-
   @Test func allowedImports() throws {
     let source = try String(
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)

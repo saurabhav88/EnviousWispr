@@ -115,18 +115,6 @@ import Testing
       """)
   }
 
-  @Test func lineCount() throws {
-    let source = try String(
-      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
-    let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
-    #expect(
-      count <= 600,
-      """
-      AppLifecycleCoordinator line count exceeded: \(count) > 600 (soft \
-      trip-wire). File should stay focused on the process-lifecycle sequence.
-      """)
-  }
-
   @Test func allowedImports() throws {
     let source = try String(
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)

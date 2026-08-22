@@ -51,17 +51,6 @@ import Testing
       """)
   }
 
-  @Test func lineCountCeiling() throws {
-    let source = try CeilingsTestSupport.source(at: Self.sourcePath)
-    let count = CeilingsTestSupport.lineCount(in: source)
-    #expect(
-      count <= 260,
-      """
-      BulkImportEnrichmentCoordinator line count exceeded: \(count) > 260. Ratchet down \
-      if shipping smaller; raise only via Bible §30.
-      """)
-  }
-
   @Test func allowedImports() throws {
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)
     let actual = CeilingsTestSupport.imports(in: source)

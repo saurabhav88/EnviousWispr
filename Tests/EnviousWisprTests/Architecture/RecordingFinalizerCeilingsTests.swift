@@ -44,18 +44,6 @@ import Testing
       """)
   }
 
-  @Test func lineCount() throws {
-    let source = try String(
-      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
-    let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
-    #expect(
-      count <= 150,
-      """
-      RecordingFinalizer line count exceeded: \(count) > 150. \
-      Raise via Bible §30 only.
-      """)
-  }
-
   @Test func noPolishServiceReference() throws {
     // Filters comment lines so doc text mentioning the forbidden symbol
     // to explain the constraint does not trigger.

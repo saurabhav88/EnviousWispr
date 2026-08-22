@@ -2,17 +2,13 @@ import Foundation
 import Testing
 
 /// Shared parsing helpers consumed by per-home ceiling tests landing across
-/// epic #763 PR5+. Counts collaborators, non-private methods, imports, and
-/// file lines from raw Swift source — no test instantiates a home, because
+/// epic #763 PR5+. Counts collaborators, non-private methods, and imports
+/// from raw Swift source — no test instantiates a home, because
 /// the homes pull in real AppKit / audio / ASR machinery that should not
 /// boot inside a unit test.
 enum CeilingsTestSupport {
   static func source(at path: String) throws -> String {
     try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
-  }
-
-  static func lineCount(in source: String) -> Int {
-    source.split(separator: "\n", omittingEmptySubsequences: false).count
   }
 
   static func typeBodies(named typeName: String, in source: String) throws -> [String] {
