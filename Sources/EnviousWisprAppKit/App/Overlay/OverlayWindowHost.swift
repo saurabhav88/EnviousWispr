@@ -23,24 +23,24 @@ import SwiftUI
 ///
 /// - **One construction across 203 presentations**, including a size morph.
 /// - Hidden with `orderOut`, the panel is absent from `NSApp`'s on-screen count,
-/// absent from `CGWindowListCopyWindowInfo(.optionOnScreenOnly)` — the list
-/// Mission Control and the screenshot path draw from — and absent from a real
-/// screenshot taken while hidden.
+///   absent from `CGWindowListCopyWindowInfo(.optionOnScreenOnly)` — the list
+///   Mission Control and the screenshot path draw from — and absent from a real
+///   screenshot taken while hidden.
 /// - **Memory converges**: flat at 45.0 MB from cycle 126 through 200, a
-/// one-time cost of ~2.7 MB. Ten cycles, which is what the plan specified,
-/// could NOT have shown that — at ten the curve is still rising and
-/// convergence is indistinguishable from a slow leak.
+///   one-time cost of ~2.7 MB. Ten cycles, which is what the plan specified,
+///   could NOT have shown that — at ten the curve is still rising and
+///   convergence is indistinguishable from a slow leak.
 ///
 /// Two constraints came out of it and both are honoured here rather than
 /// rediscovered later:
 ///
 /// - **`occlusionState` is unreliable and is never read.** It reported
-/// `.visible` while `isVisible == false` at five of nine samples, settling
-/// only after an idle beat. A guard built on it would be a confident wrong
-/// answer, not a flake.
+///   `.visible` while `isVisible == false` at five of nine samples, settling
+///   only after an idle beat. A guard built on it would be a confident wrong
+///   answer, not a flake.
 /// - **Right after `orderOut` in a fast cycle the window server may still list
-/// the window, at alpha 0.00.** Invisible, but present. Any test asserting
-/// `onScreen == 0` immediately after hide will flake; assert absent OR alpha 0.
+///   the window, at alpha 0.00.** Invisible, but present. Any test asserting
+///   `onScreen == 0` immediately after hide will flake; assert absent OR alpha 0.
 @MainActor
 final class OverlayWindowHost: NSObject, NSWindowDelegate {
 

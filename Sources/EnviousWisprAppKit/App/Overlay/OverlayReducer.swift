@@ -39,8 +39,7 @@ enum OverlayEvent: Equatable {
 ///
 /// **Three states, because two cannot express the difference between "leave the
 /// timer alone" and "cancel it".** An optional would collapse them:
-/// `nil` meant both, which is this repo's own three-valued-tool-read-by-a-
-/// two-valued-caller shape: reading `nil` as cancel makes every stale or no-op
+/// reading `nil` as cancel makes every stale or no-op
 /// event kill a live timer, and reading it as unchanged leaves a hovered pill's
 /// timer running so hover-pause does nothing at all. Cloud review named it, and
 /// it is exactly the hazard I had flagged as my own least-confident change.
@@ -420,53 +419,53 @@ struct OverlayReducer {
 
     case .accessibilityToast:
       return notice(
-        id: id, text: DictationNarrator.accessibilityToastText, width: .fixed(300), // :1035
-        expiry: .after(seconds: 6), isMultiline: true, // :1039
+        id: id, text: DictationNarrator.accessibilityToastText, width: .fixed(300),  // :1035
+        expiry: .after(seconds: 6), isMultiline: true,  // :1039
         action: (label: "Grant", action: .grantAccessibility))
 
     case .warning(let reason):
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(280), // :1189
-        expiry: .after(seconds: 2.5), severity: .warning) // NotificationStyle 2.5
+        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
+        expiry: .after(seconds: 2.5), severity: .warning)  // NotificationStyle 2.5
 
     case .error(let reason):
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(280), // :1189
-        expiry: .after(seconds: 3), severity: .error) // NotificationStyle 3.0
+        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
+        expiry: .after(seconds: 3), severity: .error)  // NotificationStyle 3.0
 
     case .advisory(let reason):
       // #1891: deliberately NOT `.error`. Multiline, and a dwell long enough
       // to read the sentence.
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(360), // advisoryWidth :1207
-        expiry: .after(seconds: 8), isMultiline: true) // NotificationStyle 8.0
+        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(360),  // advisoryWidth :1207
+        expiry: .after(seconds: 8), isMultiline: true)  // NotificationStyle 8.0
 
     case .interruption(let reason):
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(280), // :1189
-        expiry: .after(seconds: 2), severity: .distress) // NotificationStyle 2.0
+        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
+        expiry: .after(seconds: 2), severity: .distress)  // NotificationStyle 2.0
 
     case .passiveChip(let payload):
       return OverlayPresentation(
         id: id, content: .languageChip(payload: payload),
-        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: .fixed(340)) // :1721
+        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: .fixed(340))  // :1721
 
     case .cachingModel(let engineLabel):
       return notice(
         id: id, text: DictationNarrator.coldStartTitle,
         secondary: DictationNarrator.coldStartSubtitle(engineLabel: engineLabel),
-        width: .fixed(300), // :641
-        expiry: .after(seconds: 2)) // :642
+        width: .fixed(300),  // :641
+        expiry: .after(seconds: 2))  // :642
 
     case .engineReady:
       return notice(
-        id: id, text: DictationNarrator.readyTitle, width: .fixed(240), // :656
-        expiry: .after(seconds: 1.5)) // :657
+        id: id, text: DictationNarrator.readyTitle, width: .fixed(240),  // :656
+        expiry: .after(seconds: 1.5))  // :657
 
     case .recoveringLastRecording:
       return notice(
         id: id, text: DictationNarrator.recoveryTitle, secondary: DictationNarrator.recoverySubtitle,
-        width: .fixed(320), // :688
+        width: .fixed(320),  // :688
         // that site gives it a 6-second dwell. The first version said `.untilReplaced`,
         // which would have left the recovery pill on screen forever.
         expiry: .after(seconds: 6), isMultiline: true,
@@ -475,8 +474,8 @@ struct OverlayReducer {
     case .recoverySucceeded:
       return notice(
         id: id, text: DictationNarrator.recoverySucceededTitle,
-        secondary: DictationNarrator.recoverySucceededSubtitle, width: .fixed(300), // :674
-        expiry: .after(seconds: 3)) // :675
+        secondary: DictationNarrator.recoverySucceededSubtitle, width: .fixed(300),  // :674
+        expiry: .after(seconds: 3))  // :675
 
     case .bluetoothAwareness:
       return OverlayPresentation(
@@ -508,15 +507,15 @@ struct OverlayReducer {
         id: id, content: .notice(NoticeModel(text: message, isMultiline: true)),
         // `ImportStatusOverlayView` uses `.frame(maxWidth: 280)` — a BOUND, not a
         // width — under `fitToContent`, so this is measured too.
-        expiry: .after(seconds: 3), requestedWidth: .measured) // :1105, :1148
+        expiry: .after(seconds: 3), requestedWidth: .measured)  // :1105, :1148
     case .bluetoothAwareness:
       return OverlayPresentation(
         id: id, content: .bluetoothAwareness, expiry: .untilReplaced,
-        requestedWidth: .fixed(320)) // :1790 — persistent
+        requestedWidth: .fixed(320))  // :1790 — persistent
     case .passiveChip(let payload):
       return OverlayPresentation(
         id: id, content: .languageChip(payload: payload),
-        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: .fixed(340)) // :1721
+        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: .fixed(340))  // :1721
     case .accessibilityToast:
       return OverlayPresentation(
         id: id,
@@ -524,7 +523,7 @@ struct OverlayReducer {
           NoticeModel(
             text: DictationNarrator.accessibilityToastText, isMultiline: true,
             action: (label: "Grant", action: .grantAccessibility))),
-        expiry: .after(seconds: 6), requestedWidth: .fixed(300)) // :1035, :1039
+        expiry: .after(seconds: 6), requestedWidth: .fixed(300))  // :1035, :1039
     }
   }
 

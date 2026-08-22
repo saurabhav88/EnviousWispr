@@ -23,7 +23,7 @@ import Testing
 /// green is the only reason that was found.
 ///
 /// Making it observable seemed to need a run-loop pump, which
-/// `check-test-timing.sh` refuses. That was the wrong conclusion and it is
+/// the local test-timing guard rejects the pump. That was the wrong conclusion and it is
 /// corrected below rather than left standing: a MAIN-QUEUE BARRIER waits on the
 /// subject, not on time, and `OverlayRetainedWindowBehaviourTests` in this file
 /// now proves the legacy API reaches the retained host. **These structural
@@ -124,7 +124,7 @@ struct OverlayRetainedWindowTests {
 /// I moved this claim to Live UAT after finding that a synchronous test creates
 /// no window (every `showPanel` is queued with `DispatchQueue.main.async`) and
 /// that observing it seemed to need a run-loop pump, which
-/// `check-test-timing.sh` refuses. Asked directly whether I had talked myself
+/// the local test-timing guard rejects the pump. Asked directly whether I had talked myself
 /// out of a guard I should have written, cloud review said yes and named the
 /// mechanism: **a main-queue barrier is a SIGNAL, not a clock.** Enqueueing a
 /// continuation behind the work under test resumes only after that work has run,

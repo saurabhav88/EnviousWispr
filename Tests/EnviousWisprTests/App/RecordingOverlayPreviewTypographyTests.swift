@@ -177,8 +177,6 @@ struct RecordingOverlayPreviewTypographyTests {
 
 /// #2203: when the reading well fades its top edge.
 ///
-/// A mask does not participate in layout, so no height measurement can see whether
-/// the fade is applied. The decision is therefore pinned directly — the same shape
 /// A mask does not participate in layout, so no height measurement can observe
 /// whether the fade is applied. The decision is therefore pinned directly.
 ///

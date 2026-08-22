@@ -240,10 +240,10 @@ enum OverlayContent: Equatable, Sendable {
   /// deliberately does NOT own per-frame providers — a value type invoked from a
   /// render loop is the wrong home for them.
   ///
-  /// **C3 obligation, recorded rather than left implicit:** the render model
-  /// must retain BOTH the audio-level and the recording-elapsed provider for the
+  /// **Obligation for the chunk that adds the render model, recorded rather
+  /// than left implicit:** it must retain BOTH the audio-level and the recording-elapsed provider for the
   /// rendered recording's lifetime. `recordingElapsedProvider` has no
-  /// representation anywhere in C2 and must not be forgotten because nothing
+  /// representation in this vocabulary at all and must not be forgotten because nothing
   /// here names it — which is precisely why it is named here.
   case recording(audioLevel: Float, isLocked: Bool, notice: InPanelNotice?)
   case notice(NoticeModel)
@@ -286,14 +286,14 @@ struct OverlayPresentation: Equatable, Sendable {
   /// The test is not "did the call site pass a width" but **"does the VIEW pin
   /// one"**:
   /// - `PolishingOverlayView` pins nothing → processing and clipboard fallback
-  /// are `.measured`, and their `230` is dead at the call site.
+  ///   are `.measured`, and their `230` is dead at the call site.
   /// - `ImportStatusOverlayView` uses `.frame(maxWidth: 280)` → `.measured`; a
-  /// max is a bound, not a width.
+  ///   max is a bound, not a width.
   /// - `BluetoothAwarenessCardView` has `.frame(width: 320)` of its own
-  /// → `.fixed(320)` even though the call passes
-  /// `fitToContent: true`.
+  ///   → `.fixed(320)` even though the call passes
+  ///   `fitToContent: true`.
   /// - Escape Recovery's `PillMetrics.pillWidth` is computed from the title
-  /// font's text metrics at runtime → `.measured`, and no literal is correct.
+  ///   font's text metrics at runtime → `.measured`, and no literal is correct.
   let requestedWidth: OverlayWidth
   /// True when this presentation must reserve a fixed interaction frame rather
   /// than shrink to its content. **Only the non-preview recording pill sets
