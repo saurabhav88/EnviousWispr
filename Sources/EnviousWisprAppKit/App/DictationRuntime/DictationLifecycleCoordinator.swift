@@ -469,9 +469,9 @@ final class DictationLifecycleCoordinator {
   /// #1408: the closure bodies live in `PipelineStateChangeHandlerFactory`; this
   /// hands it the coordinator-owned seams they reach back into. #1567: the factory
   /// now forwards typed `RecordingWarningReason` facts and `DictationNarrator`
-  /// owns every user-facing sentence. Extracted rather than grown in place — the
-  /// coordinator sat at its line ceiling, which is exactly the signal that
-  /// ceiling exists to send.
+  /// owns every user-facing sentence. Extracted rather than grown in place: the
+  /// coordinator's job is to SEQUENCE a dictation, and the bodies of every
+  /// per-state reaction are not that.
   private func makeStateChangeHandler(backendLabel: String) -> PipelineStateChangeHandler {
     let driver = backendLabel == "whisperKit" ? whisperKitKernelDriver : kernelDriver
     return PipelineStateChangeHandlerFactory.make(

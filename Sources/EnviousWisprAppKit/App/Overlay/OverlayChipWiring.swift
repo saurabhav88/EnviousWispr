@@ -5,10 +5,10 @@ import Foundation
 
 /// The language chip's buttons, out of the composition root (#2292, C4c).
 ///
-/// **Extracted for the same measured reason `EscapeRecoveryWiring` and
-/// `LivePreviewInstaller` were**: `WisprBootstrapper` carries a line ceiling
-/// whose whole purpose is to stop feature wiring accumulating in it, and this
-/// block was twenty-five lines of it.
+/// **Extracted for the same reason `EscapeRecoveryWiring` and
+/// `LivePreviewInstaller` were**: twenty-five lines of feature wiring do not
+/// belong in the composition root, whose job is to hold the graph rather than
+/// implement the parts.
 ///
 /// What changed beyond the move: these were three fields on the panel, alive for
 /// the app's lifetime whether or not a chip was showing. They are now the

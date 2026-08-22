@@ -6,11 +6,17 @@ import Foundation
 
 /// Composition wiring for Escape Recovery's crash-provenance connector (#2087).
 ///
-/// Extracted rather than inlined in `WisprBootstrapper` because that file's
-/// ceiling caught it, which is exactly what the ceiling is for — #1988 set the
-/// precedent when live-preview wiring hit the same cap and moved to
-/// `LivePreviewInstaller` instead of raising it. The composition root holds
-/// dependencies together; it does not implement features.
+/// Extracted rather than inlined in `WisprBootstrapper`, because the composition
+/// root holds dependencies TOGETHER and does not implement features. #1988 set
+/// the precedent when live-preview wiring moved to `LivePreviewInstaller` for
+/// the same reason.
+///
+/// A line ceiling on the bootstrapper is what originally flagged both, and that
+/// ceiling is gone (#2292 C6, founder decision: size caps get raised rather than
+/// respected, so they measure nothing). The SPLIT is unaffected — it was always
+/// justified by what belongs where, and the cap merely noticed. Recorded as the
+/// design rule it is, so nobody re-inlines this on the reasoning that the thing
+/// which objected no longer exists.
 ///
 /// Deliberately tiny and stateless. It owns no lifecycle, makes no decisions, and
 /// exists so that "which store writes the marker" is answered in one place for
@@ -96,10 +102,10 @@ enum EscapeRecoveryWiring {
 
   /// The pill's Paste action, bound to the coordinator that owns the row.
   ///
-  /// Here rather than inline for the same reason `writer` is: the bootstrapper's
-  /// line ceiling caught it. The ceiling is the mechanism that keeps the
-  /// composition root a place where dependencies MEET rather than a place where
-  /// features are implemented, and it has now caught this feature twice.
+  /// Here rather than inline for the same reason `writer` is: the composition
+  /// root is where dependencies MEET, not where features are implemented. This
+  /// feature has drifted toward that root twice, which is the argument for
+  /// keeping its wiring named and in one place.
   @MainActor
   static func pasteAction(
     coordinator: TranscriptCoordinator,
@@ -137,9 +143,9 @@ enum EscapeRecoveryWiring {
   /// `pillActions`, at the one site that presents it. The name used to say the
   /// side effect out loud; now there is nothing to say.
   ///
-  /// Kept as a named call rather than inlining `writer()` for the measured
-  /// reason it was extracted: the composition root is at its line ceiling, and
-  /// this is where the feature's wiring lives.
+  /// Kept as a named call rather than inlining `writer()` for the reason it was
+  /// extracted: this is where the feature's wiring lives, and the composition
+  /// root is not.
   @MainActor
   static func wire(_ history: TranscriptCoordinator) -> PrepareEscapeRecovery {
     writer()

@@ -4,9 +4,10 @@ import EnviousWisprServices
 import Foundation
 
 /// #879 — the press-on-cold-engine policy, factored off `RecordingStarter` so
-/// the start-path home stays within its method/line ceilings (mirrors
-/// `ASREngineReadiness+ColdStartCohort.swift`, which deliberately lives off
-/// `RecordingStarter` for the same reason).
+/// the start path owns STARTING and not every policy that touches it (mirrors
+/// `ASREngineReadiness+ColdStartCohort.swift`, which lives off `RecordingStarter`
+/// for the same reason). The method-count ceiling still guards that split; the
+/// line ceiling this note also cited was deleted in #2292 C6.
 ///
 /// When the user presses while the active engine is not yet ready (fresh
 /// install, or first launch after a macOS update wiped the compiled-model
@@ -47,8 +48,8 @@ enum ColdPressGuard {
   /// reactive caching pill for the SELECTED engine, then await the EngineCoordinator
   /// driving the selected engine to ready (it owns the single-flight switch + warm),
   /// and announce Ready when it lands. Mints no session — the user re-presses on the
-  /// now-correct engine. Factored here (like `handle`) to keep `RecordingStarter`
-  /// within its line ceiling.
+  /// now-correct engine. Factored here (like `handle`) so `RecordingStarter`
+  /// keeps owning the start path rather than the policies that surround it.
   static func reconcileSelectedBackend(
     overlay: OverlayDirector,
     selectedDriver: KernelDictationDriver,

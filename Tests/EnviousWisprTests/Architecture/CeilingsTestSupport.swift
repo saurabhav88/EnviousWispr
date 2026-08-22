@@ -6,6 +6,25 @@ import Testing
 /// from raw Swift source — no test instantiates a home, because
 /// the homes pull in real AppKit / audio / ASR machinery that should not
 /// boot inside a unit test.
+///
+/// **THERE IS NO LINE COUNT HERE, AND THERE WILL NOT BE ONE AGAIN** (#2292 C6,
+/// founder decision). Twenty-two file-size guards were deleted along with this
+/// file's `lineCount` helper. The evidence against them is in the guards
+/// themselves: one carried its own ratchet history running
+/// 250 → 270 → 310 → 340 → 370 → 385 → 560 → 580 → 615 on a single file. A cap
+/// that is raised every time it is reached is a changelog with a test around it,
+/// and it measures nothing. Architecture is held by planning and regular
+/// refactoring, not by a number.
+///
+/// **What survives here is deliberately a different kind of claim.** Collaborator
+/// and stored-dependency counts, non-private method counts, import allowlists
+/// and the named structural facts assert COUPLING and OWNERSHIP — what a type
+/// may depend on and what it may expose. Those are statements about design and
+/// they fail on a DEFECT rather than on growth.
+///
+/// Several suites in this directory still carry historical "line ceiling X → Y"
+/// notes in their headers. Those are a record of decisions that were made; the
+/// guards they describe are gone. Read them as history, and do not restore one.
 enum CeilingsTestSupport {
   static func source(at path: String) throws -> String {
     try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
