@@ -176,7 +176,7 @@ struct ClipboardIsolationFreezeTests {
     /// argument LABEL. Review found this file normalising one, then two, then three of those, each time
     /// leaving the rest raw, which is how a spelling class survives being "fixed" repeatedly. The rule is
     /// not "normalise the name that was reported"; it is "a name is never compared as raw text".
-    private static func identifierText(_ token: TokenSyntax) -> String {
+    fileprivate static func identifierText(_ token: TokenSyntax) -> String {
       token.identifier?.name ?? token.text
     }
 
@@ -188,7 +188,7 @@ struct ClipboardIsolationFreezeTests {
     /// This is the class this whole PR keeps meeting — a comparison narrower than the language — arriving
     /// as WRAPPING rather than as naming. Ask of any expression check what the compiler considers
     /// transparent.
-    private static func unwrapped(_ expr: ExprSyntax) -> ExprSyntax {
+    fileprivate static func unwrapped(_ expr: ExprSyntax) -> ExprSyntax {
       if let tuple = expr.as(TupleExprSyntax.self), tuple.elements.count == 1,
         let inner = tuple.elements.first?.expression
       {
@@ -208,7 +208,7 @@ struct ClipboardIsolationFreezeTests {
       return expr
     }
 
-    private static func trailingName(of base: ExprSyntax?) -> String? {
+    fileprivate static func trailingName(of base: ExprSyntax?) -> String? {
       // `identifierText` on BOTH halves. Normalising the member name and not the base left
       // `` `NSPasteboard`.general `` unmatched — caught by this suite's own paired row rather than by
       // review, which is the whole reason the rows are generated over the axis instead of hand-picked.
@@ -534,10 +534,13 @@ struct ClipboardIsolationFreezeTests {
     ]
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
-      guard let member = node.calledExpression.as(MemberAccessExprSyntax.self),
+      guard
+        let member = ClipboardVisitor.unwrapped(node.calledExpression).as(
+          MemberAccessExprSyntax.self),
         let base = member.base,
-        Self.systemPasteFunctions.contains(member.declName.baseName.text),
-        Array(base.tokens(viewMode: .sourceAccurate)).last?.text == "PasteService"
+        Self.systemPasteFunctions.contains(
+          ClipboardVisitor.identifierText(member.declName.baseName)),
+        ClipboardVisitor.trailingName(of: base) == "PasteService"
       else { return .visitChildren }
 
       gates.append(isDominatedByPositiveSystemPasteGate(node))
@@ -1023,6 +1026,21 @@ struct ClipboardIsolationFreezeTests {
         }
         """)
     #expect(gates == [false], "the positive condition does not dominate its else body")
+  }
+
+  @Test("wrapped and escaped system-paste calls still require the gate")
+  func systemPasteGateCheckNormalizesCallSpellings() {
+    let gates = Self.systemPasteTierGates(
+      inSource: """
+        func f() {
+          (PasteService.pasteViaAppleScript)(pid: pid)
+          PasteService.`pressMenuItem`(item)
+          if systemPasteCanReachOurText {
+            (PasteService.`pasteToActiveApp`)("x", to: board)
+          }
+        }
+        """)
+    #expect(gates == [false, false, true], "valid Swift wrappers cannot hide a system-paste call")
   }
 
   @Test("a local declaration cannot shadow the verified system-paste predicate")
