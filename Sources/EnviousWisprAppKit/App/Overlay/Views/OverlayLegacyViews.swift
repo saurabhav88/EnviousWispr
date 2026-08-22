@@ -37,7 +37,7 @@ final class OverlayNoticeState {
 
 
 // The overlay's SwiftUI view layer, moved verbatim out of
-// `RecordingOverlayPanel.swift` (#2292, chunk C1). Nothing here changed: same
+// `05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift` (#2292, chunk C1). Nothing here changed: same
 // declarations, same order, same file-private relationships between the view
 // types, which is why they moved as ONE unit rather than one file per feature.
 //
@@ -567,7 +567,7 @@ struct RecordingOverlayView: View {
   let audioLevelProvider: () -> Float
   /// #1393: monotonic elapsed recording time, read from the shared kernel
   /// source of truth instead of a per-view-instance stamp — a panel-recreate
-  /// (e.g. `transitionToRecording`) must not reset the displayed timer.
+  /// (e.g. transitionToRecording) must not reset the displayed timer.
   let recordingElapsedProvider: () -> TimeInterval?
   /// #1988: what the live preview should show. Polled on the same 50 ms loop as
   /// audio level and elapsed time rather than on a publisher, because that loop
@@ -791,7 +791,7 @@ struct RecordingOverlayView: View {
     // Without this the capsule is free to stretch into whatever room the panel
     // offers, because `previewText`'s `.frame(maxHeight:)` grows to its cap under
     // a large proposal. The panel is then sized FROM that measurement
-    // (`onContentHeightChange` -> `resizeRecordingPanel`) while the measurement is
+    // (`onContentHeightChange` -> resizeRecordingPanel) while the measurement is
     // taken INSIDE the panel, so the pair has no single solution: measured on the
     // real view, one line of text reported 65pt in a 65pt panel and 125pt in a
     // 125pt one. Nothing in the loop pulls the height back down either, so a box

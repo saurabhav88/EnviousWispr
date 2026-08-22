@@ -81,7 +81,7 @@ struct EscapeRecoveryPillTests {
   /// **Custody, driven through the DIRECTOR rather than a DEBUG seam.**
   ///
   /// These two used to reach the panel's callbacks through
-  /// `escapeRecoveryCallbacksForTesting`, because `show(...)` trapped in a unit
+  /// escapeRecoveryCallbacksForTesting, because `show(...)` trapped in a unit
   /// context and the real path could not be driven. The director can be driven,
   /// so they now exercise the production route: present, press, observe. That is
   /// strictly better coverage, and it is why they are rewritten rather than
@@ -170,7 +170,7 @@ struct EscapeRecoveryPillTests {
   /// one was aimed at.
   ///
   /// **Driven now, not enumerated.** This used to assert a static intent table
-  /// (`retainsEscapeRecoveryPayload`) because `show(intent:)` trapped in a unit
+  /// (retainsEscapeRecoveryPayload) because `show(intent:)` trapped in a unit
   /// host, so the line that consults the rule was not drivable. The director is,
   /// so the rule is tested through the behaviour instead of through a lookup
   /// table that could drift from the code reading it (#2292).

@@ -43,7 +43,7 @@ enum EscapeRecoveryWiring {
   /// The pill's action handler, for the ONE call that presents it.
   ///
   /// **A binding that arrives WITH the presentation, not a lifetime field.** The
-  /// panel kept `onEscapeRecoveryPaste` alive for the app's life whether or not
+  /// panel kept onEscapeRecoveryPaste alive for the app's life whether or not
   /// a pill was showing; the director holds exactly one active binding, for the
   /// presentation it belongs to, and drops it when the occupant changes.
   ///

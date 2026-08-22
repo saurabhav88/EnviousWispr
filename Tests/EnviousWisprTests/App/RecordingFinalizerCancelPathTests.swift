@@ -100,7 +100,7 @@
     /// The ordering invariant `RecordingStarter`'s post-await wedge guards depend
     /// on: `lastUserStopRequest` must be set BEFORE `userStop()` enters its
     /// suspending dispatch await. The injected dispatch closure reads the timestamp
-    /// at dispatch entry. (The old `userStopMarksTimestampBeforeAwait` read only
+    /// at dispatch entry. (The old userStopMarksTimestampBeforeAwait read only
     /// after the await resolved, so it passed whether the timestamp was set before
     /// or after the await — it could never catch a reordering.)
     @Test(

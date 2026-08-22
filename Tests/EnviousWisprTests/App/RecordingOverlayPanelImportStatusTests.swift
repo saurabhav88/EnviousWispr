@@ -14,7 +14,7 @@
   ///
   /// Retargeted from `RecordingOverlayPanel` to `OverlayDirector` in #2292. The
   /// three properties are unchanged. What changed underneath is that arbitration
-  /// used to be re-derived at every feature — `importStatusOwnsCurrentSlot`,
+  /// used to be re-derived at every feature — importStatusOwnsCurrentSlot,
   /// Bluetooth's `isPresented`, the chip's generation — with nothing holding those
   /// three to the same answer; there is now ONE rule, stated once in the reducer:
   /// a feature may occupy the slot only while the pipeline intent is `.hidden`.

@@ -110,10 +110,10 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
   /// Returns whether the presentation actually reached the screen.
   ///
   /// **A retained panel makes `panel != nil` useless as a success signal, and
-  /// one shipped caller depends on exactly that.** `showImportStatusNow` guards
+  /// one shipped caller depends on exactly that.** showImportStatusNow guards
   /// `self.panel != nil` before claiming the slot, because `showPanel` can
   /// no-op when no screen is available — "never claim false ownership of a slot
-  /// with no actual panel" (`RecordingOverlayPanel.swift`). Once the
+  /// with no actual panel" (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`). Once the
   /// panel outlives every presentation that check is ALWAYS true, so it would
   /// claim ownership of a show that never happened. Cloud review caught this
   /// before the wiring chunk was written.
@@ -205,7 +205,7 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
     #if DEBUG
       panelConstructionCount += 1
     #endif
-    // Configuration copied verbatim from `RecordingOverlayPanel.swift`
+    // Configuration copied verbatim from `05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`
     // so this chunk changes the panel's LIFETIME and nothing about its identity.
     let p = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 185, height: 44),
@@ -265,7 +265,7 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
   ///
   /// **With one retained window this is a direct observation.** The shipped code
   /// can only INFER it, by comparing the outgoing panel's Y against the last
-  /// origin it set (`RecordingOverlayPanel.swift`) — an inference that
+  /// origin it set (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`) — an inference that
   /// exists solely because the panel is destroyed between presentations and the
   /// fact has to survive the rebuild. Nothing survives a rebuild here, because
   /// there is no rebuild.
@@ -292,7 +292,7 @@ struct OverlayScreenResolver {
   let current: () -> ScreenGeometry?
 
   /// Mirrors the shipped target-screen resolution
-  /// (`RecordingOverlayPanel.swift`): the screen under the pointer,
+  /// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`): the screen under the pointer,
   /// then main, then the first attached.
   @MainActor
   static let live = OverlayScreenResolver {
@@ -311,7 +311,7 @@ struct OverlayScreenResolver {
   /// native full screen and the Dock is hidden from view — measured empirically
   /// 2026-07-17, leaving an ~85pt unused gap below the pill.
   ///
-  /// **Ported verbatim from `RecordingOverlayPanel.swift`, not written
+  /// **Ported verbatim from `05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`, not written
   /// from a description of it.** The first version of this method here was
   /// composed from memory and differed in two behaviour-changing ways: it
   /// omitted the `screen == NSScreen.main` guard, so it would have reported full

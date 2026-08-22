@@ -8,7 +8,7 @@ import Foundation
 // Deliberately free of AppKit. It decides; it never draws, never touches a
 // window, and never schedules anything. That is what makes the arbitration
 // rules — which are today spread across a shared `currentIntent` slot, an
-// `importStatusOwnsCurrentSlot` computed property, a Bluetooth `isPresented`
+// importStatusOwnsCurrentSlot computed property, a Bluetooth `isPresented`
 // flag and a passive-chip generation counter — assertable in a plain unit test.
 
 /// Everything that can ask for the overlay slot, in one union.
@@ -23,7 +23,7 @@ enum OverlayEvent: Equatable {
   case featureRequest(OverlayRequest)
   /// A notice that morphs a LIVE recording pill rather than replacing it.
   case inPanelNotice(RecordingNoticeReason, dismissAfter: Double?)
-  /// Hands-free lock engaged or released. `updateLockState` today; it
+  /// Hands-free lock engaged or released. updateLockState today; it
   /// morphs the live recording pill and does nothing otherwise. The first model
   /// carried `isLocked` on the presentation with no event able to change it.
   case lockStateChanged(Bool)
@@ -142,7 +142,7 @@ struct OverlayState: Equatable {
   private(set) var isHovered = false
   /// Hands-free lock, which OUTLIVES any one presentation.
   ///
-  /// Shipped `updateLockState` sets the shared `OverlayLockState`
+  /// Shipped updateLockState sets the shared `OverlayLockState`
   /// unconditionally with no recording guard, and `show(...)` takes an
   /// `isRecordingLocked:` argument so a pill is born locked rather than
   /// rendering unlocked and morphing a frame later. The first model held
@@ -321,7 +321,7 @@ struct OverlayReducer {
   private mutating func reduceFeature(_ request: OverlayRequest) -> OverlayPlan {
     // THE arbitration rule, stated once: a feature may occupy the slot only
     // while the pipeline is idle. Today this is re-derived at each feature
-    // (`importStatusOwnsCurrentSlot`, Bluetooth's `isPresented`, the chip's
+    // (importStatusOwnsCurrentSlot, Bluetooth's `isPresented`, the chip's
     // generation), and nothing holds those three to the same answer.
     guard state.pipelineIntent == .hidden else { return .noChange }
 
@@ -349,7 +349,7 @@ struct OverlayReducer {
   /// Hands-free lock.
   ///
   /// **The flag is recorded whether or not a pill is showing**, because shipped
-  /// `updateLockState` has NO recording guard — it sets the
+  /// updateLockState has NO recording guard — it sets the
   /// shared `OverlayLockState` unconditionally, and the next pill is then born
   /// locked through `show(...isRecordingLocked:)`. An earlier version of this
   /// comment claimed the shipped method guards on recording; it does not, and
@@ -547,7 +547,7 @@ struct OverlayReducer {
         width: .measured)
 
     case .clipboardFallback:
-      // that site via `transitionToPolishingNow`, dwell from
+      // that site via transitionToPolishingNow, dwell from
       // `scheduleAutoDismiss`'s own default.
       return notice(
         // Routes through the same `PolishingOverlayView` path, so also measured.

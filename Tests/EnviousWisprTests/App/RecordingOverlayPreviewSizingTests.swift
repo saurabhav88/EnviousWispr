@@ -250,7 +250,7 @@ struct RecordingOverlayPreviewSizingTests {
   /// The other cases here prove height is a function of content, from which this
   /// follows — but only by an argument, and an argument is not a test. The view is
   /// re-laid-out on every 50 ms poll whether or not anything changed, so "the same
-  /// content re-rendered reports the same height" is the property `resizeRecordingPanel`
+  /// content re-rendered reports the same height" is the property resizeRecordingPanel
   /// actually consumes: it compares against the live frame and skips anything
   /// inside 1pt, so one stable answer means no `setFrame` at all.
   ///

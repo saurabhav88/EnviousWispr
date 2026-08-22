@@ -11,7 +11,7 @@ import Testing
 /// **Drift Guard, and the class matters here.** When this fails we changed our
 /// own code; the user sees nothing at the moment of failure. It must never be
 /// cited as evidence that the pill renders correctly — the behavioural proof is
-/// the §11.1 Live UAT, reading `panelConstructionCountForTesting` after a real
+/// the §11.1 Live UAT, reading panelConstructionCountForTesting after a real
 /// dictation.
 ///
 /// ## Why this is structural rather than behavioural
@@ -116,7 +116,7 @@ struct OverlayRetainedWindowTests {
   }
 }
 // **Only the BEHAVIOURAL suite below is DEBUG-only.** It reads
-// `panelConstructionCountForTesting`, which lives inside `#if DEBUG` on the
+// panelConstructionCountForTesting, which lives inside `#if DEBUG` on the
 // panel, so without this guard the RELEASE build of the test target does not
 // compile — something a Debug-only local run cannot see by construction.
 //

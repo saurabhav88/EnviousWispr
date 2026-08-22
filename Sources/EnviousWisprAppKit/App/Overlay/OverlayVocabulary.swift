@@ -14,8 +14,8 @@ import Foundation
 ///
 /// **This replaces seven independently owned staleness mechanisms**, each of
 /// which answered "is this deferred work still valid" its own way: the panel's
-/// `generation` counter, `noticeDismissWork`, `pendingCreateWork`,
-/// `autoDismissTask`, the drag-retry work item, two view-owned dismiss tasks,
+/// `generation` counter, noticeDismissWork, pendingCreateWork,
+/// autoDismissTask, the drag-retry work item, two view-owned dismiss tasks,
 /// and `LanguageSuggestionPresenter`'s own counter.
 ///
 /// It is an IDENTITY, never an ordering. Nothing may compare two of these for
@@ -87,7 +87,7 @@ enum OverlayContinuity: Equatable, Sendable {
 /// two types is what lets the reducer state the arbitration rule as a fact about
 /// types rather than as a convention: a feature may occupy the slot only while
 /// the pipeline is idle. Today that rule is spelled out separately at every
-/// feature — `importStatusOwnsCurrentSlot` reads
+/// feature — importStatusOwnsCurrentSlot reads
 /// `currentIntent == .hidden && …`, Bluetooth keeps its own `isPresented`
 /// flag, and the passive chip keeps a generation counter — and nothing holds
 /// them to the same answer.
@@ -110,14 +110,14 @@ enum OverlayRequest: Equatable, Sendable {
 /// where a bare enum case had thrown away something the feature depends on, so
 /// the whole surface was then enumerated at once rather than waiting for a
 /// fourth. The panel's own handler fields are the authority
-/// (`RecordingOverlayPanel.swift`); each row below names the field it
+/// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`); each row below names the field it
 /// replaces.
 enum OverlayAction: Equatable, Sendable {
-  /// `grantHandler`.
+  /// grantHandler.
   case grantAccessibility
-  /// `discardRecoveryHandler`.
+  /// discardRecoveryHandler.
   case discardRecovery
-  /// `onEscapeRecoveryPaste`, which takes the `CancelUndoPayload`.
+  /// onEscapeRecoveryPaste, which takes the `CancelUndoPayload`.
   ///
   /// **Carries the transcript id, and the first version did not.** The panel
   /// holds the payload itself and looks it up with
@@ -125,20 +125,20 @@ enum OverlayAction: Equatable, Sendable {
   /// id is what makes the hand-off safe against a stale press. A bare case
   /// would have delivered "the user pressed Undo" with nothing to undo.
   case pasteEscapeRecovery(transcriptID: UUID)
-  /// `passiveChipLockHandler`.
+  /// passiveChipLockHandler.
   case lockLanguage
-  /// `passiveChipDismissHandler`.
+  /// passiveChipDismissHandler.
   case dismissChip
-  /// `bluetoothAwarenessGotItHandler`.
+  /// bluetoothAwarenessGotItHandler.
   ///
   /// **Distinct from `closeBluetoothAwareness`, and collapsing them lost real
   /// telemetry.** `BluetoothAwarenessPresenter` emits `.dismissed/.gotIt` versus
   /// `.dismissed/.closed`: acknowledging the card and closing it
   /// are different user answers and the dashboard reads them apart.
   case acknowledgeBluetoothAwareness
-  /// `bluetoothAwarenessCloseHandler`.
+  /// bluetoothAwarenessCloseHandler.
   case closeBluetoothAwareness
-  /// `bluetoothAwarenessAdjustSettingsHandler`.
+  /// bluetoothAwarenessAdjustSettingsHandler.
   case openBluetoothSettings
 }
 
@@ -156,12 +156,12 @@ enum OverlayAction: Equatable, Sendable {
 /// accreting one field per occasion is how the type this migration deletes grew
 /// its 33 stored properties. Usually empty; at most a couple, emitted in order.
 enum OverlayEffect: Equatable, Sendable {
-  /// `passiveChipAutoDismissHandler`, which takes the generation.
+  /// passiveChipAutoDismissHandler, which takes the generation.
   case languageChipAutoDismissed(generation: UInt64)
   /// The escape-recovery pill went away without the user pressing Undo, so the
   /// owner must drop the payload it is holding.
   case escapeRecoveryExpired(transcriptID: UUID)
-  /// `setRecordingIntentObserver`. Fires when the recording pill
+  /// setRecordingIntentObserver. Fires when the recording pill
   /// arrives or leaves. Nothing in the first model expressed it at all.
   case recordingIntentChanged(Bool)
 }
@@ -192,7 +192,7 @@ struct OverlayAnnouncement: Equatable, Sendable {
 
 /// How the recording pill is composed, which is FIVE decisions and not one.
 ///
-/// The shipped site takes them together from a single `showsPreview` read, and
+/// The shipped site takes them together from a single showsPreview read, and
 /// porting them one at a time is how four of them went missing: the pill was
 /// carrying the compact width at the preview's content height, with no frame, no
 /// alignment, and the preview's own providers live in a pill that does not show a
@@ -344,7 +344,7 @@ struct NoticeModel: Equatable, Sendable {
 enum OverlayContent: Equatable, Sendable {
   /// **`audioLevel` is a SNAPSHOT and the shipped path is a PULL.**
   /// `show(intent:audioLevelProvider:recordingElapsedProvider:isRecordingLocked:)`
-  /// (`RecordingOverlayPanel.swift`) hands the panel two CLOSURES that
+  /// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`) hands the panel two CLOSURES that
   /// the view calls per frame, plus the initial lock. The reducer models the
   /// lock (persistent, in `OverlayState`) and carries a level snapshot, but it
   /// deliberately does NOT own per-frame providers — a value type invoked from a
@@ -390,7 +390,7 @@ struct OverlayPresentation: Equatable, Sendable {
   /// the field optional with Escape Recovery as the only `nil`. Both were wrong
   /// in the same direction — `showPanel(fitToContent:)` sizes the panel from the
   /// view's own `fittingSize` and DISCARDS the `width` argument entirely
-  /// (`RecordingOverlayPanel.swift`), so any row whose view does not
+  /// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`), so any row whose view does not
   /// pin its own width is measured no matter what number sits at the call site.
   ///
   /// The test is not "did the call site pass a width" but **"does the VIEW pin

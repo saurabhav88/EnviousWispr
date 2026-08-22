@@ -20,7 +20,7 @@ extension BluetoothAwarenessPresenter {
     let presenter = BluetoothAwarenessPresenter(
       readCurrentIntent: { [weak overlay] in overlay?.currentIntent ?? .hidden },
       // **The card's three buttons ride WITH the presentation now**, rather than
-      // living in `setBluetoothAwarenessHandlers` for the app's lifetime whether
+      // living in setBluetoothAwarenessHandlers for the app's lifetime whether
       // or not a card is showing.
       //
       // The box exists because the presenter does not: this closure is one of

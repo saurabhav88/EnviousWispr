@@ -33,7 +33,7 @@ struct OverlayPlacementStateTests {
 
   /// **The bug, stated as a test.** The shipped path computes `x` as
   /// `visibleFrame.midX - width / 2` unconditionally
-  /// (`RecordingOverlayPanel.swift`), before it branches on continuity, and
+  /// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`), before it branches on continuity, and
   /// inherits only `y`. So a pill the user dragged left snaps back to
   /// centre the instant its content changes — recording to polishing, for
   /// instance, which happens in every single dictation.

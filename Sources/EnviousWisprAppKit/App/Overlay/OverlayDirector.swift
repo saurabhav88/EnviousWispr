@@ -400,7 +400,7 @@ final class OverlayDirector {
   ) {
     // **Effects run FIRST, then the announcement, then the window** — the
     // shipped order, and it is load-bearing rather than tidy.
-    // `recordingIntentObserver` fired at the top of `show(intent:)`, before the
+    // recordingIntentObserver fired at the top of `show(intent:)`, before the
     // post and before any panel work, so Live Preview has frozen its
     // enabled-for-geometry answer by the time the first frame is sized. Running
     // effects last, which the first version did, can size that frame from the

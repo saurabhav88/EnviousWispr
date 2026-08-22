@@ -15,7 +15,7 @@ struct OverlayPlacementState: Equatable {
   ///
   /// `.user` is reached only by a genuine drag. The shipped code infers that by
   /// comparing the outgoing panel's Y against the last origin it set
-  /// (`RecordingOverlayPanel.swift`) — an inference that exists only
+  /// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`) — an inference that exists only
   /// because the panel is destroyed between presentations and the fact has to
   /// survive the rebuild. With one retained window, `windowDidMove` reports it
   /// directly. The probe run on 2026-08-21 confirmed the callback fires and
@@ -34,7 +34,7 @@ struct OverlayPlacementState: Equatable {
   private(set) var anchor: Anchor?
 
   /// Shipped default: `visibleFrame.maxY - 60` for Top
-  /// (`RecordingOverlayPanel.swift`).
+  /// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`).
   static let topOffsetFromVisibleTop: CGFloat = 60
   /// Shipped clamp margin.
   static let topClampMargin: CGFloat = 8
@@ -64,7 +64,7 @@ struct OverlayPlacementState: Equatable {
   ///
   /// **X is preserved on a continuing presentation.** The shipped path computes
   /// `x` unconditionally as `targetScreen.visibleFrame.midX - resolvedWidth / 2`
-  /// (`RecordingOverlayPanel.swift`) BEFORE it branches on whether the
+  /// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`) BEFORE it branches on whether the
   /// presentation is continuing, and only `y` is inherited. That is
   /// #2195: a pill dragged sideways snaps back to centre the moment its content
   /// changes. Here both axes travel together in `OverlayContinuity`, so the
@@ -112,7 +112,7 @@ struct OverlayPlacementState: Equatable {
   /// space appears, so Top needs no re-anchor. Bottom does, because
   /// `visibleFrame.minY` reserves Dock space this background app still sees
   /// even when the Dock is hidden behind another app's full-screen space
-  /// (`RecordingOverlayPanel.swift`, measured 2026-07-17).
+  /// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`, measured 2026-07-17).
   ///
   /// A user-dragged pill is left alone: the user's position outranks our rule.
   /// `screen` is the CURRENT target screen the caller resolved, not the screen

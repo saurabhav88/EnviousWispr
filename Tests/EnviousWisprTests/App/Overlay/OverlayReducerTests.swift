@@ -15,7 +15,7 @@ import Testing
 /// Every test in this suite runs with no AppKit, no window server, no run loop
 /// and no clock. That is not a convenience — it is the property the reducer was
 /// extracted to have. The rules it encodes are today spread across a shared
-/// `currentIntent` slot, an `importStatusOwnsCurrentSlot` computed property, a
+/// `currentIntent` slot, an importStatusOwnsCurrentSlot computed property, a
 /// Bluetooth `isPresented` flag and a passive-chip generation counter, and
 /// nothing holds those four to the same answer because no test can reach them
 /// together.
@@ -241,7 +241,7 @@ struct OverlayReducerTests {
     // "simplifying" it away.
     //
     // Scoped to NON-PREVIEW deliberately. With Live Preview on, the shipped
-    // path is content-sized (`RecordingOverlayPanel.swift`), so the
+    // path is content-sized (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`), so the
     // earlier unscoped name claimed more than the code does. The reducer cannot
     // yet tell the two apart — the preview flag is a provider the director owns
     // — so C3 adds that branch and this test gains its pair.
@@ -258,7 +258,7 @@ struct OverlayReducerTests {
   // MARK: - Regressions cloud review found in the first version of this chunk
 
   /// **The expensive one.** Shipped `hide()` sets `currentIntent = .hidden`
-  /// (`RecordingOverlayPanel.swift`), so once a notice
+  /// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`), so once a notice
   /// auto-dismisses the pipeline is idle and features may take the slot again.
   /// The first reducer left `pipelineIntent` at `.warning` forever, so EVERY
   /// feature pill was blocked for the rest of the session after any pipeline
@@ -311,7 +311,7 @@ struct OverlayReducerTests {
 
   /// A width the shipped code DISCARDS must not be carried as a literal.
   /// `showPanel(fitToContent:)` sizes from the view's own `fittingSize` and
-  /// ignores the `width` argument (`RecordingOverlayPanel.swift`), so
+  /// ignores the `width` argument (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`), so
   /// a row whose view pins no width is `.measured` however plausible the number
   /// at its call site looks. Two review rounds were spent on this exact shape.
   @Test(
@@ -367,7 +367,7 @@ struct OverlayReducerTests {
   }
 
   /// The escape-recovery payload is taken by transcript id
-  /// (`RecordingOverlayPanel.swift`), a one-shot take. If the pill expires
+  /// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`), a one-shot take. If the pill expires
   /// unpressed, the owner must drop it.
   @Test("an expired escape-recovery pill releases its payload")
   func escapeRecoveryExpiryReleasesThePayload() {
@@ -381,7 +381,7 @@ struct OverlayReducerTests {
     #expect(plan.effects.contains(.escapeRecoveryExpired(transcriptID: transcript)))
   }
 
-  /// `setRecordingIntentObserver` had no representation at all in the
+  /// setRecordingIntentObserver had no representation at all in the
   /// first model — not a wrong value, an absent one.
   @Test("the recording intent observer is told when recording starts and stops")
   func recordingIntentIsObservable() {
@@ -394,7 +394,7 @@ struct OverlayReducerTests {
     #expect(r.reduce(.pipeline(.hidden)).effects == [.recordingIntentChanged(false)])
   }
 
-  /// `updateLockState` morphs the live recording pill and does nothing
+  /// updateLockState morphs the live recording pill and does nothing
   /// otherwise. The first model carried `isLocked` with no event able to set it.
   @Test("hands-free lock morphs the live recording pill")
   func lockMorphsTheRecordingPill() {
@@ -419,7 +419,7 @@ struct OverlayReducerTests {
   @Test("a lock change with no recording pill draws nothing but is remembered")
   func lockWithoutRecordingIsRemembered() {
     var r = Self.makeReducer()
-    // Shipped `updateLockState` has NO recording guard.
+    // Shipped updateLockState has NO recording guard.
     #expect(r.reduce(.lockStateChanged(true)).didChange == false)
     #expect(r.state.isLocked, "the lock was dropped because no pill was showing")
   }
@@ -470,7 +470,7 @@ struct OverlayReducerTests {
     #expect(OverlayAction.acknowledgeBluetoothAwareness != .closeBluetoothAwareness)
   }
 
-  /// `onEscapeRecoveryPaste` takes the payload, and the panel looks it up by id
+  /// onEscapeRecoveryPaste takes the payload, and the panel looks it up by id
   /// with a one-shot take. A bare `.pasteEscapeRecovery` would have delivered
   /// "the user pressed Undo" with nothing to undo.
   @Test("the Undo action carries the transcript it undoes")

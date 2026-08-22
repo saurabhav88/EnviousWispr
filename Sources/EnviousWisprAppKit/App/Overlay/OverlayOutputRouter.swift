@@ -50,7 +50,7 @@ final class OverlayOutputRouter {
   /// the pill.
   ///
   /// **Both were silently unbound by the cutover and review caught it.** Grant
-  /// and Discard were `setGrantHandler` / `setDiscardRecoveryHandler` on the
+  /// and Discard were setGrantHandler / setDiscardRecoveryHandler on the
   /// panel; their setters were deleted with the class and the presenting sites
   /// pass `actions: nil`, so the buttons still rendered and reached nobody. They
   /// are here rather than at a call site because neither has one: an

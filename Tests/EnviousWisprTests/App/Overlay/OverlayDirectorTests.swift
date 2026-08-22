@@ -585,7 +585,7 @@
     }
 
     /// **The two app-level buttons must be BOUND.** Grant and Discard were
-    /// `setGrantHandler` / `setDiscardRecoveryHandler` on the deleted panel;
+    /// setGrantHandler / setDiscardRecoveryHandler on the deleted panel;
     /// their setters went with the class and both presenting sites passed
     /// `actions: nil`, so the buttons rendered and reached nobody. Nothing
     /// failed, which is why a review found it and the suite did not.
@@ -635,7 +635,7 @@
     }
 
     /// **Effects run before the render.** The shipped
-    /// `recordingIntentObserver` fired at the top of `show(intent:)`, before the
+    /// recordingIntentObserver fired at the top of `show(intent:)`, before the
     /// announcement and before any panel work, so Live Preview has frozen its
     /// geometry answer by the time the first frame is sized. Running effects last
     /// can size that frame from the live setting instead.
