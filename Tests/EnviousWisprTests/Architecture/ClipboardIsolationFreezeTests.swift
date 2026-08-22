@@ -598,6 +598,11 @@ struct ClipboardIsolationFreezeTests {
         return .visitChildren
       }
 
+      guard isDirectPasteCascadeExecutorMember(declaration) else {
+        predicateIsShadowed = true
+        return .visitChildren
+      }
+
       let tokens = Array(declaration.tokens(viewMode: .sourceAccurate).map(\.text))
       guard let openingBrace = tokens.firstIndex(of: "{"),
         let closingBrace = tokens.lastIndex(of: "}"),
@@ -614,6 +619,24 @@ struct ClipboardIsolationFreezeTests {
         predicateIsShadowed = true
       }
       return .visitChildren
+    }
+
+    private func isDirectPasteCascadeExecutorMember(_ declaration: VariableDeclSyntax) -> Bool {
+      var ancestor = Syntax(declaration).parent
+      while let current = ancestor {
+        if let classDeclaration = current.as(ClassDeclSyntax.self) {
+          return ClipboardVisitor.identifierText(classDeclaration.name) == "PasteCascadeExecutor"
+        }
+        if current.is(FunctionDeclSyntax.self) || current.is(ClosureExprSyntax.self)
+          || current.is(StructDeclSyntax.self) || current.is(EnumDeclSyntax.self)
+          || current.is(ActorDeclSyntax.self) || current.is(ProtocolDeclSyntax.self)
+          || current.is(ExtensionDeclSyntax.self)
+        {
+          return false
+        }
+        ancestor = current.parent
+      }
+      return false
     }
 
     override func visit(_ node: FunctionParameterSyntax) -> SyntaxVisitorContinueKind {
@@ -1106,13 +1129,15 @@ struct ClipboardIsolationFreezeTests {
   func systemPasteGateCheckRejectsPredicateShadowing() {
     let inspection = Self.systemPasteTierInspection(
       inSource: """
-        var systemPasteCanReachOurText: Bool {
-          pasteboard === NSPasteboard.general
-        }
-        func deliver() {
-          let systemPasteCanReachOurText = true
-          if systemPasteCanReachOurText {
-            PasteService.pasteToActiveApp("x", to: board)
+        final class PasteCascadeExecutor {
+          var systemPasteCanReachOurText: Bool {
+            pasteboard === NSPasteboard.general
+          }
+          func deliver() {
+            let systemPasteCanReachOurText = true
+            if systemPasteCanReachOurText {
+              PasteService.pasteToActiveApp("x", to: board)
+            }
           }
         }
         """)
@@ -1126,22 +1151,24 @@ struct ClipboardIsolationFreezeTests {
   func systemPasteGateCheckRejectsEveryBindingPattern() {
     let inspection = Self.systemPasteTierInspection(
       inSource: """
-        var systemPasteCanReachOurText: Bool {
-          pasteboard === NSPasteboard.general
-        }
-        func deliver(override: Bool?) {
-          let `systemPasteCanReachOurText` = true
-          if systemPasteCanReachOurText {
-            PasteService.pasteToActiveApp("x", to: board)
+        final class PasteCascadeExecutor {
+          var systemPasteCanReachOurText: Bool {
+            pasteboard === NSPasteboard.general
           }
-          if let systemPasteCanReachOurText = override, systemPasteCanReachOurText {
-            PasteService.pasteViaAppleScript(pid: 1)
-          }
-          { [systemPasteCanReachOurText = true] in
+          func deliver(override: Bool?) {
+            let `systemPasteCanReachOurText` = true
             if systemPasteCanReachOurText {
-              PasteService.pressMenuItem(item)
+              PasteService.pasteToActiveApp("x", to: board)
             }
-          }()
+            if let systemPasteCanReachOurText = override, systemPasteCanReachOurText {
+              PasteService.pasteViaAppleScript(pid: 1)
+            }
+            { [systemPasteCanReachOurText = true] in
+              if systemPasteCanReachOurText {
+                PasteService.pressMenuItem(item)
+              }
+            }()
+          }
         }
         """)
     #expect(inspection.gates == [true, true, true])
@@ -1154,12 +1181,14 @@ struct ClipboardIsolationFreezeTests {
   func systemPasteGateCheckRejectsParameterShadowing() {
     let inspection = Self.systemPasteTierInspection(
       inSource: """
-        var systemPasteCanReachOurText: Bool {
-          pasteboard === NSPasteboard.general
-        }
-        func helper(systemPasteCanReachOurText: Bool) {
-          if systemPasteCanReachOurText {
-            PasteService.pasteToActiveApp("x", to: board)
+        final class PasteCascadeExecutor {
+          var systemPasteCanReachOurText: Bool {
+            pasteboard === NSPasteboard.general
+          }
+          func helper(systemPasteCanReachOurText: Bool) {
+            if systemPasteCanReachOurText {
+              PasteService.pasteToActiveApp("x", to: board)
+            }
           }
         }
         """)
@@ -1169,15 +1198,37 @@ struct ClipboardIsolationFreezeTests {
       "a parameter can authorize a paste independently of the verified property")
   }
 
+  @Test("a local computed lookalike is not the executor predicate")
+  func systemPastePredicateMustBeAnExecutorMember() {
+    let inspection = Self.systemPasteTierInspection(
+      inSource: """
+        func deliver() {
+          let pasteboard = NSPasteboard.general
+          var systemPasteCanReachOurText: Bool { pasteboard === NSPasteboard.general }
+          if systemPasteCanReachOurText {
+            PasteService.pasteToActiveApp("x", to: pasteboard)
+          }
+        }
+        """)
+    #expect(inspection.gates == [true])
+    #expect(
+      !inspection.predicateUsesGeneralBoardIdentity,
+      "only PasteCascadeExecutor's stored-board predicate can authorize a system paste")
+  }
+
   @Test("the system-paste predicate is exactly the injected-board identity check")
   func systemPastePredicateRequiresTheGeneralBoardIdentity() {
     let safe = Self.systemPasteTierInspection(
       inSource: """
-        private var systemPasteCanReachOurText: Bool { pasteboard === NSPasteboard.general }
+        final class PasteCascadeExecutor {
+          private var systemPasteCanReachOurText: Bool { pasteboard === NSPasteboard.general }
+        }
         """)
     let unsafe = Self.systemPasteTierInspection(
       inSource: """
-        private var systemPasteCanReachOurText: Bool { true }
+        final class PasteCascadeExecutor {
+          private var systemPasteCanReachOurText: Bool { true }
+        }
         """)
     #expect(safe.predicateUsesGeneralBoardIdentity)
     #expect(!unsafe.predicateUsesGeneralBoardIdentity)
