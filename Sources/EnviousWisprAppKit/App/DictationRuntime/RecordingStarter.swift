@@ -151,7 +151,7 @@ final class RecordingStarter {
   /// press timestamp of this episode for the pairing `recovery.press_unblocked`
   /// telemetry below, and emits the existing `recovery.press_blocked` event.
   private func handleRecoveryPressRefused(backend: ASRBackendType) {
-    recordingOverlay.send(.pipeline(.recoveringLastRecording), actions: nil)
+    recordingOverlay.presentRecoveryNotice()
     signalPendingLiveStart()
     if pendingBlockedPressInfo == nil {
       pendingBlockedPressInfo = (backend.rawValue, ContinuousClock.now)

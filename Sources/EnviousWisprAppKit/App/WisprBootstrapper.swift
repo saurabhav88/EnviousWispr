@@ -109,15 +109,18 @@ public final class WisprBootstrapper {
     // composition root. This is the ONLY KeychainManager that gets `.live`; it carries
     // the sink for the legacy-key-cleanup (Q3.3) + cloud-prewarm (A6) quiet limbs.
     let keychainManager = KeychainManager(telemetrySink: .live)
-    let overlayEffects = OverlayEffectRouter()
+    let overlayOutputs = OverlayOutputRouter()
     let overlayHost = OverlayWindowHost()
     let recordingOverlay = OverlayDirector(
-      host: overlayHost, deliverEffect: { overlayEffects.deliver($0) },
+      host: overlayHost, deliverEffect: { overlayOutputs.deliver($0) },
+      deliverAppAction: { overlayOutputs.deliver($0) },
       position: { settings.overlayPillPosition },
       accessibilityEligibility: OverlayAccessibilityEligibility(
         warningDismissed: { [weak permissions] in
           permissions?.accessibilityWarningDismissed ?? false
         }))
+    overlayOutputs.overlay = recordingOverlay
+    overlayOutputs.permissions = permissions
     let audioDeviceList = AudioDeviceList()
     let inputDevicePreferenceReconciler = InputDevicePreferenceReconciler(settings: settings)
     audioDeviceList.onDevicesChanged = { [weak inputDevicePreferenceReconciler] devices in
@@ -474,7 +477,7 @@ public final class WisprBootstrapper {
     let livePreview = LivePreviewInstaller.install(
       overlay: recordingOverlay, capture: audioCapture, settings: settings,
       settingsSync: settingsSync, modelDelivery: modelDelivery)
-    overlayEffects.livePreview = livePreview
+    overlayOutputs.livePreview = livePreview
 
     // Custom-words propagator wiring (seed → register consumers → install
     // `onWordsChanged`). Phase D (#496). `wireCustomWords` strong-captures the
@@ -597,7 +600,7 @@ public final class WisprBootstrapper {
     // captures `recordingOverlay` through narrow closures.
     let overlay = recordingOverlay
     let languageSuggestionPresenter = LanguageSuggestionPresenter(
-      showOverlay: { [weak overlay, weak overlayEffects, settings] intent in
+      showOverlay: { [weak overlay, weak overlayOutputs, settings] intent in
         // The chip is the one pipeline intent with buttons, so it is the one
         // that carries a binding. Resolved through the router because the
         // presenter this closure belongs to does not exist yet.
@@ -605,7 +608,7 @@ public final class WisprBootstrapper {
           overlay?.send(.pipeline(intent), actions: nil)
           return
         }
-        guard let presenter = overlayEffects?.languageChips else { return }
+        guard let presenter = overlayOutputs?.languageChips else { return }
         overlay?.send(
           .pipeline(intent),
           actions: OverlayChipWiring.actions(presenter: presenter, settings: settings))
@@ -626,7 +629,7 @@ public final class WisprBootstrapper {
       }
     }
 
-    overlayEffects.languageChips = languageSuggestionPresenter
+    overlayOutputs.languageChips = languageSuggestionPresenter
 
     let updateCoordinatorHolder = UpdateCoordinatorHolder()
     let sparkleUpdateController = SparkleUpdateController(holder: updateCoordinatorHolder)
@@ -712,6 +715,7 @@ public final class WisprBootstrapper {
 
     // #1464: after a leftover recording lands in History, post the standalone green
     // success notice (the `.recovered` path was silent before).
+    overlayOutputs.recovery = recoveryCoordinator
     recoveryCoordinator.onRecoverySucceeded = { [weak recordingOverlay] in
       recordingOverlay?.send(.pipeline(.recoverySucceeded), actions: nil)
     }

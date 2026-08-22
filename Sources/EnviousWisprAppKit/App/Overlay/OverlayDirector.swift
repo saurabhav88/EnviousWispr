@@ -52,6 +52,12 @@ final class OverlayDirector {
   /// effects a feature depends on.
   private let deliverEffect: (OverlayEffect) -> Void
 
+  /// The handler for the two buttons that belong to the APP rather than to a
+  /// presentation — Grant and Discard. Required, not defaulted: both were
+  /// silently unbound by the cutover because `actions: nil` compiles, and a
+  /// required dependency is the only version of this a call site cannot forget.
+  private let deliverAppAction: (OverlayAction) -> Void
+
   /// Posting the spoken announcement, injectable so a guard can observe it.
   ///
   /// `NSAccessibility.post` writes to the system and returns nothing, so without
@@ -122,6 +128,7 @@ final class OverlayDirector {
   init(
     host: OverlayWindowHost,
     deliverEffect: @escaping (OverlayEffect) -> Void,
+    deliverAppAction: @escaping (OverlayAction) -> Void = { _ in },
     position: @escaping () -> OverlayPillPosition = { .top },
     model: OverlayRenderModel = OverlayRenderModel(),
     scheduler: OverlayScheduler = .live,
@@ -131,6 +138,7 @@ final class OverlayDirector {
   ) {
     self.host = host
     self.deliverEffect = deliverEffect
+    self.deliverAppAction = deliverAppAction
     self.announce = announce
     self.accessibilityEligibility = accessibilityEligibility
     self.position = position
@@ -152,7 +160,18 @@ final class OverlayDirector {
   /// `BluetoothAwarenessPresenter` only whether it is `.bluetoothAwareness`, so
   /// neither can tell those two apart in any case. Both take it as a closure, so
   /// neither changes at the cutover; only the closure bodies do.
-  var currentIntent: OverlayIntent { reducer.state.pipelineIntent }
+  var currentIntent: OverlayIntent {
+    // **A feature that OCCUPIES the slot has to say so.** `BluetoothAwareness`
+    // is a `.featureRequest`, so it never touches `pipelineIntent` — and
+    // `BluetoothAwarenessPresenter` confirms its own card by asking this for
+    // `.bluetoothAwareness` before it will act on any of its buttons. Returning
+    // the bare pipeline intent left that handshake permanently failing and every
+    // button on the card a no-op, with nothing failing anywhere.
+    if case .bluetoothAwareness? = reducer.state.current?.content {
+      return .bluetoothAwareness
+    }
+    return reducer.state.pipelineIntent
+  }
 
   /// The production announcement, lifted verbatim from the sixteen identical
   /// `NSAccessibility.post` calls the panel makes — same element, same
@@ -316,7 +335,17 @@ final class OverlayDirector {
     apply(
       reducer.reduceAccessibilityNotice(showingToast: { [accessibilityEligibility] in
         accessibilityEligibility.claim()
-      }), actions: nil)
+      }), actions: deliverAppAction)
+  }
+
+  /// The crash-recovery notice, which offers Discard.
+  ///
+  /// A named method rather than a bare `send`, for the same reason
+  /// `presentAccessibilityNotice` is one: its button's handler belongs to the app
+  /// and no call site has it. `RecordingStarter` raises this notice and knows
+  /// nothing about the recovery coordinator.
+  func presentRecoveryNotice() {
+    send(.pipeline(.recoveringLastRecording), actions: deliverAppAction)
   }
 
   /// Empty the slot WITHOUT announcing "Recording complete".
@@ -347,6 +376,16 @@ final class OverlayDirector {
   private func apply(
     _ plan: OverlayPlan, actions: ((OverlayAction) -> Void)? = nil, announcing: Bool = true
   ) {
+    // **Effects run FIRST, then the announcement, then the window** — the
+    // shipped order, and it is load-bearing rather than tidy.
+    // `recordingIntentObserver` fired at the top of `show(intent:)`, before the
+    // post and before any panel work, so Live Preview has frozen its
+    // enabled-for-geometry answer by the time the first frame is sized. Running
+    // effects last, which the first version did, can size that frame from the
+    // live setting instead.
+    for effect in plan.effects {
+      deliverEffect(effect)
+    }
     // **Announced BEFORE the window changes**, which is the shipped order: the
     // panel posts at the top of each `apply(intent:)` arm and draws after.
     if announcing, let announcement = plan.announcement {
@@ -358,13 +397,17 @@ final class OverlayDirector {
     case .cancel:
       armedExpiry?.cancel()
       armedExpiry = nil
-    case .arm(let id, let seconds):
+    case .arm(let id, let seconds, let target):
       armedExpiry?.cancel()
       armedExpiry = schedule.after(seconds) { [weak self] in
         // The id is captured, never re-read: a timer fires for the presentation
         // it was armed for or it is dropped. The reducer's own identity gate
-        // makes a late arrival inert.
-        self?.send(.expiryFired(id), actions: nil)
+        // makes a late arrival inert. The TARGET says what ends — the whole
+        // presentation, or only the #1060 banner inside a live recording.
+        switch target {
+        case .presentation: self?.send(.expiryFired(id), actions: nil)
+        case .inPanelNotice: self?.send(.inPanelNoticeExpiryFired(id), actions: nil)
+        }
       }
     }
 
@@ -428,9 +471,6 @@ final class OverlayDirector {
       }
     }
 
-    for effect in plan.effects {
-      deliverEffect(effect)
-    }
   }
 
   /// **Discharges the obligation `OverlayContent.recording` records**: the

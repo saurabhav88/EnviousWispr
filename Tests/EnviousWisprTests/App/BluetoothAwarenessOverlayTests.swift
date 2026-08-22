@@ -23,7 +23,13 @@
     @Test func recordingSupersedesBluetoothCardSynchronously() {
       let overlay = OverlayTestDouble.headlessDirector()
       overlay.send(.featureRequest(.bluetoothAwareness), actions: nil)
-      #expect(overlay.currentIntent == .hidden, "a feature does not change the PIPELINE intent")
+      // **This asserted `.hidden` and that is what hid the defect.** A feature
+      // does not change the pipeline intent, which is true and was the wrong
+      // question: `BluetoothAwarenessPresenter` asks `currentIntent` for
+      // `.bluetoothAwareness` to confirm its own card before acting on any
+      // button, so reporting hidden left every one of them a no-op. The test
+      // agreed with the code because both were written from the same assumption.
+      #expect(overlay.currentIntent == .bluetoothAwareness)
       guard case .bluetoothAwareness? = overlay.currentPresentationForTesting?.content else {
         Issue.record("the Bluetooth card did not take the slot")
         return

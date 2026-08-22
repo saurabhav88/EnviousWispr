@@ -209,7 +209,7 @@ struct OverlayReducerTests {
 
     let leaving = r.reduce(.hoverChanged(id, false))
     #expect(
-      leaving.expiryCommand == .arm(id: id, seconds: 6),
+      leaving.expiryCommand == .arm(id: id, seconds: 6, target: .presentation),
       "leaving a hovered chip did not re-arm its dismissal")
   }
 
@@ -717,6 +717,85 @@ struct OverlayReducerTests {
     #expect(
       second.announcement == nil,
       "the same intent announced twice, so a VoiceOver user hears it repeatedly")
+  }
+
+  /// **A repeated intent is DROPPED, not merely silenced.** The first cutover
+  /// returned a fresh presentation with a new ID and re-armed the expiry, so a
+  /// duplicate push restarted a notice's dwell and reset SwiftUI identity — the
+  /// #930 flicker arriving through the guard that exists to prevent it.
+  @Test("a repeated non-recording intent changes nothing at all")
+  func repeatedIntentIsACompleteNoOp() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(.warning(reason: .polishFailed)))
+    let first = r.state.current?.id
+
+    let again = r.reduce(.pipeline(.warning(reason: .polishFailed)))
+
+    #expect(again.didChange == false, "a duplicate rebuilt the presentation")
+    #expect(again.expiryCommand == .unchanged, "a duplicate restarted the dwell")
+    #expect(r.state.current?.id == first, "a duplicate reset SwiftUI identity")
+  }
+
+  /// **Import status may only replace ITSELF.** Pipeline idleness alone is not
+  /// the shipped rule: a status pill could otherwise take the slot from the
+  /// Bluetooth card, which the panel refused.
+  @Test("import status cannot take the slot from another feature")
+  func importStatusCannotStealAFeatureSlot() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.featureRequest(.bluetoothAwareness))
+
+    let stolen = r.reduce(.featureRequest(.importStatus(message: "Importing…")))
+
+    #expect(stolen.didChange == false)
+    guard case .bluetoothAwareness? = r.state.current?.content else {
+      Issue.record("import status evicted the Bluetooth card")
+      return
+    }
+
+    // The paired ACCEPTED case: it must still replace its own kind, which is the
+    // race the #1701 pill exists to survive.
+    var live = Self.makeReducer()
+    _ = live.reduce(.featureRequest(.importStatus(message: "Importing…")))
+    let replaced = live.reduce(.featureRequest(.importStatus(message: "Finished.")))
+    #expect(replaced.didChange)
+  }
+
+  /// **#1060's `dismissAfter` is a real dwell and it must be ARMED.** It reached
+  /// the model and was never read, so the "auto-stop unavailable" banner would
+  /// have sat inside the pill until the recording ended.
+  @Test("a timed in-panel notice arms its own dwell and clears itself")
+  func timedInPanelNoticeClears() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(.recording(audioLevel: 0.2)))
+    let id = try! #require(r.state.current?.id)
+
+    let armed = r.reduce(.inPanelNotice(.autoStopUnavailable, dismissAfter: 4.0))
+    #expect(
+      armed.expiryCommand == .arm(id: id, seconds: 4.0, target: .inPanelNotice),
+      "the banner's dwell was never armed, so it would never clear")
+
+    let fired = r.reduce(.inPanelNoticeExpiryFired(id))
+
+    guard case .recording(_, _, let notice)? = r.state.current?.content else {
+      Issue.record("the expiry ended the whole recording instead of the banner")
+      return
+    }
+    #expect(notice == nil, "the banner outlived its dwell")
+    #expect(fired.didChange)
+    #expect(r.state.current?.id == id, "clearing the banner replaced the pill")
+  }
+
+  /// The approaching-cap banner passes NO dwell and is persistent until the
+  /// recording ends. The paired case for the one above: without it, "arm a timer"
+  /// would also be satisfied by arming one for every notice.
+  @Test("an untimed in-panel notice arms nothing")
+  func untimedInPanelNoticeIsPersistent() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(.recording(audioLevel: 0.2)))
+
+    let plan = r.reduce(.inPanelNotice(.approachingCap, dismissAfter: nil))
+
+    #expect(plan.expiryCommand == .cancel, "the persistent cap banner armed a dwell")
   }
 
   @Test("an import-status request renders as import status")

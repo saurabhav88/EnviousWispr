@@ -33,6 +33,8 @@ enum OverlayEvent: Equatable {
   case hoverChanged(PresentationID, Bool)
   /// The expiry armed for this id fired.
   case expiryFired(PresentationID)
+  /// The IN-PANEL NOTICE's dwell armed for this id fired. The pill stays.
+  case inPanelNoticeExpiryFired(PresentationID)
 }
 
 /// What the director should do to the single armed expiry.
@@ -43,13 +45,26 @@ enum OverlayEvent: Equatable {
 /// event kill a live timer, and reading it as unchanged leaves a hovered pill's
 /// timer running so hover-pause does nothing at all. Cloud review named it, and
 /// it is exactly the hazard I had flagged as my own least-confident change.
+/// What the single armed timer is counting down.
+///
+/// **One timer, two things it can end.** A presentation's own dwell and the
+/// #1060 in-panel notice's `dismissAfter` are both "arm a timer for this id",
+/// and without this the director could not tell them apart — so the notice's
+/// timer was never armed at all and `dismissAfter: 4.0` reached the model and
+/// was never read. A dwell that never fires is a banner that stays until the
+/// recording ends.
+enum OverlayExpiryTarget: Equatable, Sendable {
+  case presentation
+  case inPanelNotice
+}
+
 enum OverlayExpiryCommand: Equatable {
   /// Leave whatever is armed alone. The correct answer for every dropped stale
   /// event, which is most of them.
   case unchanged
   /// Disarm and arm nothing: the presentation went away, or hover paused it.
   case cancel
-  case arm(id: PresentationID, seconds: Double)
+  case arm(id: PresentationID, seconds: Double, target: OverlayExpiryTarget)
 }
 
 /// What the director must do to make reality match the reducer's decision.
@@ -173,6 +188,8 @@ struct OverlayReducer {
       return reduceHover(id, hovering)
     case .expiryFired(let id):
       return reduceExpiry(id)
+    case .inPanelNoticeExpiryFired(let id):
+      return reduceInPanelNoticeExpiry(id)
     }
   }
 
@@ -193,6 +210,17 @@ struct OverlayReducer {
     // porting.
     let isNewIntent = state.pipelineIntent != intent
     let announcement = isNewIntent ? Self.announcement(for: intent) : nil
+
+    // **The shipped dedup DROPS a repeated intent, it does not merely silence
+    // it.** The first version returned a fresh presentation with a new ID and
+    // re-armed the expiry, so a duplicate push restarted a notice's dwell and
+    // reset SwiftUI identity — the #930 flicker arriving through the guard that
+    // exists to prevent it. `.hidden` is exempt because emptying an already
+    // empty slot is handled below and must stay a genuine no-op with its own
+    // `didChange` accounting.
+    if !isNewIntent, intent != .hidden, !Self.isRecordingIntent(intent) {
+      return .noChange
+    }
 
     // A live recording pill must keep its identity across audio-level updates,
     // or every metering tick would look like a new presentation and re-arm
@@ -297,6 +325,16 @@ struct OverlayReducer {
     // generation), and nothing holds those three to the same answer.
     guard state.pipelineIntent == .hidden else { return .noChange }
 
+    // **Import status may only replace ITSELF.** Pipeline idleness alone is not
+    // the shipped rule: a status pill could otherwise take the slot from the
+    // Bluetooth card or the language chip, which the panel refused. The other
+    // two features have no such restriction and are unchanged.
+    if case .importStatus = request, let current = state.current {
+      guard case .notice(let notice) = current.content, notice.kind == .importStatus else {
+        return .noChange
+      }
+    }
+
     let presentation = Self.presentation(for: request, id: makeID())
     state.set(current: presentation, isHovered: false)
     return OverlayPlan(
@@ -357,7 +395,31 @@ struct OverlayReducer {
       requestedWidth: current.requestedWidth,
       reservesFixedHeight: current.reservesFixedHeight)
     state.set(current: updated)
-    return OverlayPlan(presentation: updated, didChange: true)
+    // #1060's `dismissAfter` is a real dwell and it must be ARMED. The
+    // approaching-cap banner passes nil and is persistent until the recording
+    // ends; `autoStopUnavailable` passes 4.0 and must clear itself.
+    let expiry: OverlayExpiryCommand =
+      dismissAfter.map { .arm(id: current.id, seconds: $0, target: .inPanelNotice) } ?? .cancel
+    return OverlayPlan(presentation: updated, didChange: true, expiryCommand: expiry)
+  }
+
+  /// The in-panel notice's dwell elapsed: clear the BANNER, keep the pill.
+  ///
+  /// Distinct from `reduceExpiry`, which ends a whole presentation. A recording
+  /// outlives its banner.
+  mutating func reduceInPanelNoticeExpiry(_ id: PresentationID) -> OverlayPlan {
+    guard isCurrent(id), let current = state.current,
+      case .recording(let level, let isLocked, let notice) = current.content, notice != nil
+    else { return .noChange }
+
+    let updated = OverlayPresentation(
+      id: current.id,
+      content: .recording(audioLevel: level, isLocked: isLocked, notice: nil),
+      expiry: current.expiry,
+      requestedWidth: current.requestedWidth,
+      reservesFixedHeight: current.reservesFixedHeight)
+    state.set(current: updated)
+    return OverlayPlan(presentation: updated, didChange: true, expiryCommand: .cancel)
   }
 
   // MARK: - Identity-gated events
@@ -395,7 +457,7 @@ struct OverlayReducer {
       ? OverlayPlan(presentation: current, didChange: false, expiryCommand: .cancel)
       : OverlayPlan(
         presentation: current, didChange: false,
-        expiryCommand: .arm(id: current.id, seconds: seconds))
+        expiryCommand: .arm(id: current.id, seconds: seconds, target: .presentation))
   }
 
   private mutating func reduceExpiry(_ id: PresentationID) -> OverlayPlan {
@@ -442,7 +504,7 @@ struct OverlayReducer {
   /// pill, which is the whole defect `PresentationID` exists to close.
   private static func command(for p: OverlayPresentation) -> OverlayExpiryCommand {
     guard case .after(let seconds, _) = p.expiry else { return .cancel }
-    return .arm(id: p.id, seconds: seconds)
+    return .arm(id: p.id, seconds: seconds, target: .presentation)
   }
 
   /// The shipped widths and dwells, gathered.
@@ -655,6 +717,11 @@ struct OverlayReducer {
       .bluetoothAwareness, .escapeRecovery:
       return .medium(text)
     }
+  }
+
+  private static func isRecordingIntent(_ intent: OverlayIntent) -> Bool {
+    if case .recording = intent { return true }
+    return false
   }
 
   private static func notice(

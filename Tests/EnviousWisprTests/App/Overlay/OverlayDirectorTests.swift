@@ -77,6 +77,15 @@
 
     private final class Sink {
       var effects: [OverlayEffect] = []
+      /// The two buttons whose handler belongs to the APP. Captured so a guard
+      /// can prove they are BOUND — both were silently unbound by the cutover
+      /// and only a cloud review caught it, because an unbound button renders
+      /// perfectly and nothing fails.
+      var appActions: [OverlayAction] = []
+      /// The ORDER outputs left the director in. Effects must precede the
+      /// render, which is the shipped order and is load-bearing for Live
+      /// Preview's first frame.
+      var order: [String] = []
       /// What a screen reader would have been told. Captured rather than
       /// inferred: `NSAccessibility.post` returns nothing, so without this seam
       /// the strongest available assertion is that the code which would have
@@ -95,9 +104,18 @@
       // caller can order the window out when the test ends.
       let host = OverlayWindowHost(screens: { OverlayScreenResolver { screen } })
       let d = OverlayDirector(
-        host: host, deliverEffect: { sink.effects.append($0) }, position: position,
+        host: host,
+        deliverEffect: {
+          sink.effects.append($0)
+          sink.order.append("effect")
+        },
+        deliverAppAction: { sink.appActions.append($0) },
+        position: position,
         scheduler: .manual { armed.work = $0 },
-        announce: { sink.announcements.append($0) },
+        announce: {
+          sink.announcements.append($0)
+          sink.order.append("announce")
+        },
         accessibilityEligibility: OverlayAccessibilityEligibility(
           warningDismissed: warningDismissed))
       hosts.append(host)
@@ -564,6 +582,74 @@
       #expect(
         sink.announcements.map(\.text)
           == [DictationNarrator.announcement(for: .accessibilityToast)])
+    }
+
+    /// **The two app-level buttons must be BOUND.** Grant and Discard were
+    /// `setGrantHandler` / `setDiscardRecoveryHandler` on the deleted panel;
+    /// their setters went with the class and both presenting sites passed
+    /// `actions: nil`, so the buttons rendered and reached nobody. Nothing
+    /// failed, which is why a review found it and the suite did not.
+    @Test("the accessibility toast's Grant button reaches the app")
+    func grantIsBound() {
+      let (d, _, sink) = Self.director()
+      defer { Self.closeAllWindows() }
+
+      d.presentAccessibilityNotice()
+      let id = try! #require(d.currentPresentationForTesting?.id)
+      d.send(.action(id, .grantAccessibility), actions: nil)
+
+      #expect(sink.appActions == [.grantAccessibility], "Grant reached nobody")
+    }
+
+    @Test("the recovery notice's Discard button reaches the app")
+    func discardIsBound() {
+      let (d, _, sink) = Self.director()
+      defer { Self.closeAllWindows() }
+
+      d.presentRecoveryNotice()
+      let id = try! #require(d.currentPresentationForTesting?.id)
+      d.send(.action(id, .discardRecovery), actions: nil)
+
+      #expect(sink.appActions == [.discardRecovery], "Discard reached nobody")
+    }
+
+    /// **A feature that OCCUPIES the slot has to say so.**
+    /// `BluetoothAwarenessPresenter` confirms its own card by asking
+    /// `currentIntent` for `.bluetoothAwareness` before acting on any of its
+    /// buttons. Returning the bare pipeline intent — which a feature never
+    /// changes — left that handshake permanently failing and every button on the
+    /// card a no-op.
+    @Test("a Bluetooth card reports itself as the current intent")
+    func bluetoothCardReportsOwnership() {
+      let (d, _, _) = Self.director()
+      defer { Self.closeAllWindows() }
+
+      d.send(.featureRequest(.bluetoothAwareness), actions: { _ in })
+
+      #expect(
+        d.currentIntent == .bluetoothAwareness,
+        "the card is up and the presenter cannot tell, so its buttons no-op")
+      #expect(
+        d.pipelineIntentForTesting == .hidden,
+        "a feature must not change the PIPELINE intent, which arbitration reads")
+    }
+
+    /// **Effects run before the render.** The shipped
+    /// `recordingIntentObserver` fired at the top of `show(intent:)`, before the
+    /// announcement and before any panel work, so Live Preview has frozen its
+    /// geometry answer by the time the first frame is sized. Running effects last
+    /// can size that frame from the live setting instead.
+    @Test("an effect is delivered before the presentation is announced")
+    func effectsPrecedeTheAnnouncement() {
+      let (d, _, sink) = Self.director()
+      defer { Self.closeAllWindows() }
+
+      Self.record(d)
+
+      #expect(
+        sink.order.first == "effect",
+        "the recording-intent effect arrived after the window was already being drawn")
+      #expect(sink.effects == [.recordingIntentChanged(true)])
     }
 
     /// **A dictation ending announces; a chip dismissal must not.**

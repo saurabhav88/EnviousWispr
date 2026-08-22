@@ -88,7 +88,7 @@ enum LivePreviewInstaller {
     // The recording-intent observer is gone: the director emits
     // `.recordingIntentChanged` as a plan EFFECT, and the composition root's
     // effect sink forwards it here. One channel instead of a bespoke field.
-    
+
     // #2108: switching Live Preview OFF releases its cached engine, and with it a
     // loaded 217 MB model. Wired HERE rather than in `WisprBootstrapper` for the
     // reason this installer exists at all: the composition root carries a line
