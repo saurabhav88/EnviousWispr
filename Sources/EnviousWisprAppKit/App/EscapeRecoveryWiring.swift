@@ -51,15 +51,45 @@ enum EscapeRecoveryWiring {
   /// The action carries the transcript id as a LOOKUP KEY only, and the take is
   /// one-shot — which is what makes a stale Undo press safe: the second press
   /// finds nothing rather than pasting twice.
+  ///
+  /// `paste` is a parameter with a production default for the same reason
+  /// `writer`'s `makeStore` is: without it this composition is untestable by
+  /// construction. The production closure reaches `TelemetryService.shared` and
+  /// the real paste cascade, so the only way to exercise the WRAPPER's own
+  /// contract — dismiss first, forward once — would be to fire real telemetry
+  /// and drive AX against whatever app happened to be frontmost. The seam is one
+  /// argument; a test copy of this closure would be a second definition that
+  /// passes while the real one is broken, which is the shape that let the
+  /// missing dismissal through in the first place.
   @MainActor
   static func pillActions(
-    director: OverlayDirector, coordinator: TranscriptCoordinator
+    director: OverlayDirector,
+    coordinator: TranscriptCoordinator,
+    paste: ((CancelUndoPayload) -> Void)? = nil
   ) -> (OverlayAction) -> Void {
-    let paste = pasteAction(coordinator: coordinator, report: restoreReporter(source: .pill))
+    let paste =
+      paste ?? pasteAction(coordinator: coordinator, report: restoreReporter(source: .pill))
     return { [weak director] action in
       guard case .pasteEscapeRecovery(let transcriptID) = action,
         let payload = director?.takeEscapeRecoveryPayload(matching: transcriptID)
       else { return }
+      // **Finish tearing down OUR offer before handing control outside**, which
+      // is the shipped order and is load-bearing in two directions.
+      //
+      // Forwards: an accepted pill that stays on screen is an offer the user has
+      // already taken. It sits there until its dwell expires, and a second press
+      // does nothing at all, because the one-shot take above has already spent
+      // the payload — a button that looks live and is not.
+      //
+      // Backwards, and this is the half the shipped comment exists to record:
+      // the paste handler may PRESENT ITS OWN OVERLAY. Dismissing after the call
+      // would tear down the pill that handler just put up, so the offer the user
+      // is now looking at would be revoked by the one they just accepted.
+      //
+      // SILENT, matching shipped `hide()` rather than `show(intent: .hidden)`:
+      // the user pressed a button and their text is being restored, so a spoken
+      // "overlay hidden" is noise on top of the outcome they asked for.
+      director?.dismissSilently()
       paste(payload)
     }
   }

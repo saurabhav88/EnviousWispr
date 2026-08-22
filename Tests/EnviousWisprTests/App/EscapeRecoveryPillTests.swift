@@ -118,6 +118,104 @@ struct EscapeRecoveryPillTests {
   }
 
 
+  // MARK: - Pressing Paste takes the offer down with it (#2292 C9)
+
+  /// **An accepted offer must leave the screen**, and the cutover left it up.
+  ///
+  /// `pillActions` consumed the payload and started the restore without
+  /// dismissing anything, so the pill sat there until its dwell expired — an
+  /// offer the user had already taken, with a Paste button that now did nothing
+  /// at all, because the one-shot take had spent the payload. A live-looking
+  /// button that is inert is worse than no button.
+  @Test("pressing Paste takes the pill down")
+  func pressingPasteDismissesTheOffer() {
+    let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
+    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    var pasted: [UUID] = []
+    let actions = Self.pillActions(director: d, onPaste: { pasted.append($0.transcriptID) })
+
+    d.presentEscapeRecovery(payload, actions: actions)
+    // Read off the HOST rather than the director's debug seams, so this case
+    // compiles and runs in the Release lane too. `currentPresentationForTesting`
+    // lives inside `#if DEBUG`, and a Release build that cannot see it fails to
+    // COMPILE with zero failure marks — invisible to a Debug-only run.
+    #expect(host.isShowing, "the pill never went up")
+
+    actions(.pasteEscapeRecovery(transcriptID: payload.transcriptID))
+
+    #expect(pasted == [payload.transcriptID], "the press did not reach the paste handler")
+    #expect(!host.isShowing, "the window still shows a pill the user already accepted")
+  }
+
+  /// **The ORDER is the half a reader would drop**, and the shipped panel
+  /// carries a comment saying why: the paste handler may present its OWN
+  /// overlay. Dismissing after the call tears down the pill that handler just
+  /// put up, so the offer the user is now looking at is revoked by the one they
+  /// just accepted.
+  ///
+  /// Proved by having the handler present something and asserting it SURVIVES.
+  /// Asserting the ordering directly would need a clock; this needs none.
+  @Test("a paste handler that presents its own overlay keeps it")
+  func pasteHandlerOverlaySurvivesTheDismissal() {
+    let (d, _) = OverlayTestDouble.headlessDirectorWithHost()
+    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    let successor = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    let actions = Self.pillActions(
+      director: d, onPaste: { _ in d.presentEscapeRecovery(successor, actions: { _ in }) })
+
+    d.presentEscapeRecovery(payload, actions: actions)
+    actions(.pasteEscapeRecovery(transcriptID: payload.transcriptID))
+
+    #expect(
+      d.takeEscapeRecoveryPayload(matching: successor.transcriptID) != nil,
+      "the dismissal ran AFTER the handler and revoked the offer it had just put up")
+  }
+
+  /// A second press finds nothing and changes nothing. The one-shot take already
+  /// made it safe; this pins that the dismissal did not make it UNsafe by, for
+  /// example, re-presenting or reviving custody.
+  @Test("a second press after Paste is inert")
+  func secondPressIsInert() {
+    let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
+    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    var pasteCount = 0
+    let actions = Self.pillActions(director: d, onPaste: { _ in pasteCount += 1 })
+
+    d.presentEscapeRecovery(payload, actions: actions)
+    actions(.pasteEscapeRecovery(transcriptID: payload.transcriptID))
+    actions(.pasteEscapeRecovery(transcriptID: payload.transcriptID))
+
+    #expect(pasteCount == 1, "the transcript was pasted twice")
+    #expect(!host.isShowing, "the second press brought the pill back")
+  }
+
+  /// The REAL `EscapeRecoveryWiring.pillActions`, with only its outward paste
+  /// call replaced by a probe.
+  ///
+  /// A hand-written copy of that closure would be a second definition of the
+  /// behaviour under test: it would have passed happily while production was
+  /// missing the dismissal, which is the exact defect these cases exist for.
+  /// The seam is production API with a production default, added for this.
+  @MainActor
+  private static func pillActions(
+    director: OverlayDirector, onPaste: @escaping (CancelUndoPayload) -> Void
+  ) -> (OverlayAction) -> Void {
+    EscapeRecoveryWiring.pillActions(
+      director: director,
+      coordinator: TranscriptCoordinator(store: Self.throwawayStore()),
+      paste: onPaste)
+  }
+
+  /// A store in a fresh temp directory. The coordinator is required by the
+  /// production signature and is never consulted here — the probe replaces the
+  /// one call that would reach it — but it must not be pointed at the real
+  /// user's transcript directory to prove that.
+  private static func throwawayStore() -> TranscriptStore {
+    TranscriptStore(
+      directory: FileManager.default.temporaryDirectory
+        .appendingPathComponent("ew-2292-c9-\(UUID().uuidString)", isDirectory: true))
+  }
+
   /// The control. An ordinary completion raises no pill, which is the whole of
   /// this chunk's inertness: nothing constructs the intent until a completion
   /// exists to construct it from.
