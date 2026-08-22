@@ -16,13 +16,26 @@ import SwiftUI
 /// happens to be watching. That is why letting it expire costs nothing, and why
 /// the spoken announcement names History rather than only the button.
 ///
-/// **The view owns its own dwell**, exactly as `LanguageChipView` does, because
-/// a panel-level timer cannot be paused by a hover only the view can see. Hover
-/// cancels; hover-exit restarts the FULL three seconds rather than resuming the
-/// remainder — matching the shipped chip deliberately, so two overlay pills do
-/// not behave differently under the same gesture. The rail is driven from the
-/// SAME two events, so what the user sees and what the timer is doing cannot
-/// drift apart.
+/// **THE DIRECTOR OWNS THE DWELL; THIS VIEW OWNS THE PICTURE OF IT** (#2292).
+///
+/// This paragraph used to say the opposite — that the view owns its own dwell,
+/// because a panel-level timer cannot be paused by a hover only the view can
+/// see. That was true of the shipped panel, which had no single owner of expiry.
+/// It is false here, and leaving it standing invited a maintainer to restore the
+/// removed view timer and recreate the defect below.
+///
+/// `OverlayReducer` arms a hover-pausing three-second expiry and `OverlayDirector`
+/// is the sole thing that dismisses. The rail draws `OverlayDwellWindow`, which
+/// carries the instant the director's clock STARTED, so a late reader animates
+/// the remainder rather than a fresh three seconds.
+///
+/// **Two independent three-second timers ran side by side from the cutover until
+/// cloud review found them** — the director's and this view's — started at
+/// different moments and agreeing only by luck. When they drifted the rail
+/// finished while the pill was still on screen, which reads as an expired offer
+/// the user can still press. Hover still cancels and hover-exit still restarts,
+/// but the director drives both, so what the user sees and what the timer is
+/// doing cannot drift apart.
 ///
 /// **The countdown is the brand line doing a job (founder design 2026-08-18).**
 /// Every other overlay pill carries a static rainbow hairline along its bottom
