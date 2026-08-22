@@ -125,7 +125,7 @@ struct ClipboardIsolationFreezeTests {
   /// done, which is the lesson: **a missing member and a clean file are the same observation from
   /// inside a guard**, so the set has to be derived rather than accumulated.
   private static let boardReachingTypes: [String: Set<String>] = [
-    "AIAvailabilityCoordinator": ["copyDiagnosticsToClipboard"],
+    "AIAvailabilityCoordinator": ["copyDiagnosticsToClipboard"]
   ]
 
   /// Argument labels that name a board explicitly.
@@ -252,7 +252,13 @@ struct ClipboardIsolationFreezeTests {
       // Following through the call would require data-flow analysis; this syntax-only guard owns only
       // values written directly into the executor's `pasteboard:` argument.
       override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
-        .skipChildren
+        // An immediately-invoked closure is not a helper or a data-flow question: its literal result is
+        // written directly in the pasteboard argument. Descend into that closure while continuing to
+        // ignore ordinary helper arguments such as `makeBoard(mode: .general)`.
+        if ClipboardVisitor.unwrapped(node.calledExpression).is(ClosureExprSyntax.self) {
+          return .visitChildren
+        }
+        return .skipChildren
       }
 
       override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
@@ -397,7 +403,9 @@ struct ClipboardIsolationFreezeTests {
           violations.append(
             Violation(
               file: file, line: line(node),
-              reason: "PasteCascadeExecutor is constructed with `.general`, the developer's real clipboard"))
+              reason:
+                "PasteCascadeExecutor is constructed with `.general`, the developer's real clipboard"
+            ))
         }
         return .visitChildren
       }
@@ -405,7 +413,8 @@ struct ClipboardIsolationFreezeTests {
       // Unwrap here too. The rule is "what does the compiler treat as transparent", and it has to hold
       // at EVERY expression this visitor inspects — `(executor.deliver)(request)` is the same call, and
       // applying the rule at three sites and not the other two is how the class comes back.
-      guard let callee = Self.unwrapped(node.calledExpression).as(MemberAccessExprSyntax.self) else {
+      guard let callee = Self.unwrapped(node.calledExpression).as(MemberAccessExprSyntax.self)
+      else {
         return .visitChildren
       }
       let baseName = Self.trailingName(of: callee.base)
@@ -511,39 +520,70 @@ struct ClipboardIsolationFreezeTests {
 
   private final class SystemPasteTierVisitor: SyntaxVisitor {
     var gates: [Bool] = []
-    var predicateUsesGeneralBoardIdentity = false
+    private var validPredicateDefinitions = 0
+    private var predicateIsShadowed = false
 
-    override func visit(_ node: IfExprSyntax) -> SyntaxVisitorContinueKind {
-      if hasClipboardOnlyTierCondition(node.conditions) {
-        gates.append(hasPositiveSystemPasteGate(node.conditions))
-      }
+    var predicateUsesGeneralBoardIdentity: Bool {
+      validPredicateDefinitions == 1 && !predicateIsShadowed
+    }
+
+    private static let systemPasteFunctions: Set<String> = [
+      "pasteToActiveApp",
+      "pasteViaAppleScript",
+      "pressMenuItem",
+    ]
+
+    override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+      guard let member = node.calledExpression.as(MemberAccessExprSyntax.self),
+        let base = member.base,
+        Self.systemPasteFunctions.contains(member.declName.baseName.text),
+        Array(base.tokens(viewMode: .sourceAccurate)).last?.text == "PasteService"
+      else { return .visitChildren }
+
+      gates.append(isDominatedByPositiveSystemPasteGate(node))
       return .visitChildren
     }
 
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
-      guard node.bindings.contains(where: { binding in
-        guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self) else { return false }
-        return identifier.identifier.text == "systemPasteCanReachOurText"
-      }) else { return .visitChildren }
+      guard
+        node.bindings.contains(where: { binding in
+          guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self) else {
+            return false
+          }
+          return identifier.identifier.text == "systemPasteCanReachOurText"
+        })
+      else { return .visitChildren }
 
       let tokens = Array(node.tokens(viewMode: .sourceAccurate).map(\.text))
-      guard let openingBrace = tokens.firstIndex(of: "{"), let closingBrace = tokens.lastIndex(of: "}"),
+      guard let openingBrace = tokens.firstIndex(of: "{"),
+        let closingBrace = tokens.lastIndex(of: "}"),
         openingBrace < closingBrace
-      else { return .visitChildren }
-      predicateUsesGeneralBoardIdentity = Array(tokens[(openingBrace + 1)..<closingBrace])
+      else {
+        predicateIsShadowed = true
+        return .visitChildren
+      }
+      if Array(tokens[(openingBrace + 1)..<closingBrace])
         == ["pasteboard", "===", "NSPasteboard", ".", "general"]
+      {
+        validPredicateDefinitions += 1
+      } else {
+        predicateIsShadowed = true
+      }
       return .visitChildren
     }
 
-    /// Comments are trivia rather than tokens. Comparing complete condition-token lists therefore
-    /// selects the production `tier == .clipboardOnly` branch without allowing a comment, `!=`, or an
-    /// unrelated equality elsewhere in the condition to look equivalent.
-    private func hasClipboardOnlyTierCondition(_ conditions: ConditionElementListSyntax) -> Bool {
-      conditions.contains { element in
-        guard case .expression(let expression) = element.condition else { return false }
-        return Array(expression.tokens(viewMode: .sourceAccurate).map(\.text))
-          == ["tier", "==", ".", "clipboardOnly"]
+    private func isDominatedByPositiveSystemPasteGate(_ call: FunctionCallExprSyntax) -> Bool {
+      var ancestor = Syntax(call).parent
+      while let current = ancestor {
+        if let branch = current.as(IfExprSyntax.self),
+          hasPositiveSystemPasteGate(branch.conditions)
+        {
+          return true
+        }
+        if current.is(FunctionDeclSyntax.self) { return false }
+        ancestor = current.parent
       }
+      return false
     }
 
     /// A system-paste gate is safe only as its own positive conjunction. Negation and disjunction can
@@ -883,6 +923,7 @@ struct ClipboardIsolationFreezeTests {
       (#"PasteCascadeExecutor(pasteboard: NSPasteboard.self.general)"#, 1),
       (#"PasteCascadeExecutor(pasteboard: (.general))"#, 1),
       (#"PasteCascadeExecutor(pasteboard: flag ? .general : board)"#, 1),
+      (#"PasteCascadeExecutor(pasteboard: { .general }())"#, 1),
       (#"PasteCascadeExecutor.init(pasteboard: .general)"#, 1),
       (#"PasteCascadeExecutor.self.init(pasteboard: .general)"#, 1),
       (#"PasteCascadeExecutor(pasteboard: NSPasteboard.withUniqueName())"#, 0),
@@ -896,7 +937,7 @@ struct ClipboardIsolationFreezeTests {
     #expect(hits.count == expected, "source: \(source) -> \(hits.map(\.description))")
   }
 
-  @Test("system-paste tiers are gated, while clipboard-only remains available to isolated tests")
+  @Test("every system-paste call site is gated")
   func systemPasteTiersRequireTheGeneralBoard() throws {
     let source = try String(
       contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprPipeline/PasteCascadeExecutor.swift"),
@@ -904,48 +945,80 @@ struct ClipboardIsolationFreezeTests {
     let inspection = Self.systemPasteTierInspection(inSource: source)
     let gates = inspection.gates
 
-    #expect(gates.count == 3, "expected Tier 2/2b, Tier 2c, and Tier 3; found \(gates.count)")
     #expect(
-      gates == [true, true, false],
-      "Tier 2/2b and Tier 2c must require the general board; Tier 3 intentionally writes an isolated board")
+      gates.count == 3,
+      "expected Cmd+V, AppleScript, and menu-paste call sites; found \(gates.count)")
+    #expect(
+      gates == [true, true, true],
+      "every system-paste call site must be dominated by the general-board predicate")
     #expect(
       inspection.predicateUsesGeneralBoardIdentity,
-      "system-paste tiers are safe only when the predicate means pasteboard === NSPasteboard.general")
+      "system-paste tiers are safe only when the predicate means pasteboard === NSPasteboard.general"
+    )
   }
 
   @Test("a comment cannot impersonate a missing system-paste gate")
   func systemPasteGateCheckIgnoresComments() {
-    let gates = Self.systemPasteTierGates(inSource: """
-      func f() {
-        if tier == .clipboardOnly, /* systemPasteCanReachOurText */ let app = targetApp {}
-        if tier == .clipboardOnly, systemPasteCanReachOurText {}
-        if tier == .clipboardOnly {}
-      }
-      """)
-    #expect(gates == [false, true, false], "comments must not satisfy a deleted predicate")
+    let gates = Self.systemPasteTierGates(
+      inSource: """
+        func f() {
+          if /* systemPasteCanReachOurText */ let app = targetApp {
+            PasteService.pasteToActiveApp("x", to: board)
+          }
+          if systemPasteCanReachOurText {
+            PasteService.pasteViaAppleScript(pid: 1)
+          }
+        }
+        """)
+    #expect(gates == [false, true], "comments must not satisfy a deleted predicate")
   }
 
   @Test("only a positive standalone system-paste condition satisfies the tier gate")
   func systemPasteGateCheckRejectsUnsafeConditionForms() {
-    let gates = Self.systemPasteTierGates(inSource: """
-      func f() {
-        if tier != .clipboardOnly, classification == .nonText, systemPasteCanReachOurText {}
-        if tier == .clipboardOnly, !systemPasteCanReachOurText {}
-        if tier == .clipboardOnly, systemPasteCanReachOurText || testingOverride {}
-        if tier == .clipboardOnly, systemPasteCanReachOurText {}
-      }
-      """)
-    #expect(gates == [false, false, true], "only an exact positive gate may protect a clipboard-only tier")
+    let gates = Self.systemPasteTierGates(
+      inSource: """
+        func f() {
+          if !systemPasteCanReachOurText { PasteService.pasteToActiveApp("a", to: board) }
+          if systemPasteCanReachOurText || testingOverride {
+            PasteService.pasteViaAppleScript(pid: 1)
+          }
+          if systemPasteCanReachOurText { PasteService.pressMenuItem(item) }
+        }
+        """)
+    #expect(
+      gates == [false, false, true], "only an exact positive gate may protect a system-paste call")
+  }
+
+  @Test("a local declaration cannot shadow the verified system-paste predicate")
+  func systemPasteGateCheckRejectsPredicateShadowing() {
+    let inspection = Self.systemPasteTierInspection(
+      inSource: """
+        var systemPasteCanReachOurText: Bool {
+          pasteboard === NSPasteboard.general
+        }
+        func deliver() {
+          let systemPasteCanReachOurText = true
+          if systemPasteCanReachOurText {
+            PasteService.pasteToActiveApp("x", to: board)
+          }
+        }
+        """)
+    #expect(inspection.gates == [true])
+    #expect(
+      !inspection.predicateUsesGeneralBoardIdentity,
+      "a same-named local can make the condition true independently of the verified property")
   }
 
   @Test("the system-paste predicate is exactly the injected-board identity check")
   func systemPastePredicateRequiresTheGeneralBoardIdentity() {
-    let safe = Self.systemPasteTierInspection(inSource: """
-      private var systemPasteCanReachOurText: Bool { pasteboard === NSPasteboard.general }
-      """)
-    let unsafe = Self.systemPasteTierInspection(inSource: """
-      private var systemPasteCanReachOurText: Bool { true }
-      """)
+    let safe = Self.systemPasteTierInspection(
+      inSource: """
+        private var systemPasteCanReachOurText: Bool { pasteboard === NSPasteboard.general }
+        """)
+    let unsafe = Self.systemPasteTierInspection(
+      inSource: """
+        private var systemPasteCanReachOurText: Bool { true }
+        """)
     #expect(safe.predicateUsesGeneralBoardIdentity)
     #expect(!unsafe.predicateUsesGeneralBoardIdentity)
   }
