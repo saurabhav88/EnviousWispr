@@ -117,7 +117,8 @@
           sink.order.append("announce")
         },
         accessibilityEligibility: OverlayAccessibilityEligibility(
-          warningDismissed: warningDismissed))
+          warningDismissed: warningDismissed),
+        deferFirstRender: { $0() })
       hosts.append(host)
       return (d, armed, sink)
     }
@@ -722,7 +723,7 @@
         host: host,
         deliverEffect: { if $0 == .recordingIntentChanged(true) { recordingStarted = true } },
         deliverAppAction: { _ in },
-        announce: { _ in })
+        announce: { _ in }, deferFirstRender: { $0() })
       Self.hosts.append(host)
       defer { Self.closeAllWindows() }
 
@@ -858,6 +859,56 @@
       // only the height still renders a preview pill at under half its size.
       #expect(fixedWidth == 185, "the non-preview recording pill lost its 185-point width")
       #expect(previewWidth == 400, "the Live Preview pill did not take its 400-point width")
+    }
+
+    // MARK: - The first render is deferred one run loop (#2292 C15)
+
+    /// **A crash fix, asserted through the production deferral rather than the
+    /// synchronous double the other cases use.**
+    ///
+    /// `MenuBarController.toggleRecordingAction` reaches the director while the
+    /// status-item menu dismiss animation is still running, and building the
+    /// `NSHostingView` during it causes a re-entrant `NSWindow` layout cycle and
+    /// SIGABRT. The deleted panel deferred every creation with
+    /// `DispatchQueue.main.async` and carried that reason in a comment.
+    ///
+    /// The barrier below is a SIGNAL, not a clock: a continuation enqueued
+    /// behind the deferred work resumes only after it has run, so this waits on
+    /// the subject rather than on time.
+    @Test("the first presentation reaches the window on the NEXT run loop")
+    func firstRenderIsDeferred() async {
+      let host = WindowlessOverlayHost()
+      // The production `deferFirstRender` — the default — is the subject here.
+      let d = OverlayDirector(
+        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in })
+
+      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      #expect(
+        host.presented.isEmpty,
+        "the first presentation reached the window synchronously — this is the menu-dismiss crash")
+
+      await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } }
+
+      #expect(host.presented.count == 1, "the deferred first presentation never arrived")
+      #expect(host.isShowing, "the deferred presentation did not leave the window showing")
+    }
+
+    /// The pair: only the FIRST is deferred. Every later presentation morphs a
+    /// view that already exists, so deferring them all would add a frame of
+    /// latency to every transition for a crash window that has closed.
+    @Test("a later presentation is not deferred")
+    func laterRendersAreSynchronous() async {
+      let host = WindowlessOverlayHost()
+      let d = OverlayDirector(
+        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in })
+      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } }
+
+      d.send(.pipeline(.processing(phase: .transcribing)), actions: nil)
+
+      #expect(
+        host.presented.count == 2,
+        "a later presentation was deferred too, costing a frame on every transition")
     }
 
     // MARK: - A dictation is ONE presentation, however its content changes (#2292 C12)
@@ -1021,7 +1072,8 @@
         host: host,
         deliverEffect: { sink.effects.append($0) },
         deliverAppAction: { sink.appActions.append($0) },
-        announce: { sink.announcements.append($0) })
+        announce: { sink.announcements.append($0) },
+        deferFirstRender: { $0() })
       hosts.append(host)
       return (d, sink)
     }

@@ -96,6 +96,28 @@ final class OverlayDirector {
   /// re-anchor or preserve the live frame, and it is the CALLER's fact.
   private var presentedID: PresentationID?
 
+  /// Whether the hosting view has ever been built. Separate from `presentedID`,
+  /// which is cleared on every hide: the crash window is the FIRST construction
+  /// of the `NSHostingView`, and that happens once for this director's lifetime.
+  /// Keying the deferral on `presentedID == nil` would re-defer after every
+  /// dismissal, which is both unnecessary and a visible frame of latency on a
+  /// pill the user is waiting for.
+  private var hasRenderedOnce = false
+
+  /// How the FIRST render reaches the next run loop.
+  ///
+  /// **A seam, not a branch, and the same shape `scheduler` already uses for
+  /// expiry.** The production value is `DispatchQueue.main.async`, which is the
+  /// crash fix; a synchronous test double lets the forty existing director cases
+  /// keep asserting in one step instead of every one of them becoming `async`
+  /// for a property only one of them is about.
+  ///
+  /// **`Task { @MainActor }` IS NOT A SUBSTITUTE** and the shipped panel says so
+  /// at its own call site: `Task` may execute immediately when already on the
+  /// main actor, which is precisely the case that crashes. Written here because
+  /// this is the line someone will try to modernise.
+  private let deferFirstRender: (@escaping () -> Void) -> Void
+
   private let position: () -> OverlayPillPosition
 
   /// The once-per-session accessibility-toast policy.
@@ -142,8 +164,12 @@ final class OverlayDirector {
     scheduler: OverlayScheduler = .live,
     announce: @escaping @MainActor (OverlayAnnouncement) -> Void = OverlayDirector.postAnnouncement,
     accessibilityEligibility: OverlayAccessibilityEligibility = .init(warningDismissed: { false }),
-    makeID: @escaping () -> PresentationID = { PresentationID() }
+    makeID: @escaping () -> PresentationID = { PresentationID() },
+    deferFirstRender: @escaping (@escaping () -> Void) -> Void = { work in
+      DispatchQueue.main.async(execute: work)
+    }
   ) {
+    self.deferFirstRender = deferFirstRender
     self.host = host
     self.deliverEffect = deliverEffect
     self.deliverAppAction = deliverAppAction
@@ -507,7 +533,15 @@ final class OverlayDirector {
       }
 
       model.presentation = plan.presentation
-      if !render(plan.presentation) {
+      // **The announcement travels WITH the render**, so the deferred first
+      // presentation announces when it lands and a refused one never does.
+      let announceOnSuccess: () -> Void = { [weak self] in
+        guard announcing, let announcement = plan.announcement else { return }
+        self?.announce(announcement)
+      }
+      let outcome = render(plan.presentation, onPresented: announceOnSuccess)
+      if outcome == .deferred { return }
+      if outcome == .refused {
         // **A REFUSED PRESENTATION MUST NOT LEAVE AN OWNER BEHIND.** Clearing
         // `presentedID` and the window says nothing to the reducer, the model,
         // the binding or the armed expiry, all of which still name an occupant
@@ -531,22 +565,16 @@ final class OverlayDirector {
       }
     }
 
-    // **Announced AFTER the window has taken the presentation, and the move is
-    // the point.** The shipped panel posts at the top of each `apply(intent:)`
-    // arm and draws after, which this deliberately no longer mirrors: that order
-    // makes the announcement unconditional, so a presentation the host REFUSES
-    // is still spoken. A VoiceOver user is then told a card appeared that is not
-    // there, and told it in the one situation where they have no other way to
-    // find out — the refusal is silent by design everywhere else.
-    //
-    // Reaching this line means the window accepted the plan, or the plan emptied
-    // the slot, which always succeeds. A refusal returns above and never arrives.
+    // **A plan that changes NOTHING still announces, and that is shipped.**
+    // `show(intent: .hidden)` posts in its arm whether or not a panel existed,
+    // so emptying an already-empty slot is audible. Every plan that DOES change
+    // something announces through `onPresented` above instead, which is what
+    // ties the sentence to the presentation actually reaching the screen.
     //
     // The EFFECT ordering that was load-bearing is untouched: effects still run
     // first, before the geometry read, which is the constraint Live Preview's
-    // first frame actually depends on. Nothing depended on announcing before the
-    // draw; a screen reader is not racing the window server.
-    if announcing, let announcement = plan.announcement {
+    // first frame actually depends on.
+    if !plan.didChange, announcing, let announcement = plan.announcement {
       announce(announcement)
     }
 
@@ -602,13 +630,71 @@ final class OverlayDirector {
   /// Returns `false` ONLY when the host refused a presentation it was asked to
   /// show. Emptying the slot always succeeds, so the caller reads a `false` as
   /// "the occupant this plan installed is not on screen and never will be".
+  /// Three outcomes, because a DEFERRED first render is neither of the other
+  /// two: nothing has been refused yet, and nothing is on screen yet. Collapsing
+  /// it into `true` announced a presentation the host had not accepted — the C8
+  /// defect reopening through the C15 deferral, caught by C8's own case.
+  enum RenderOutcome { case presented, refused, deferred }
+
   @discardableResult
-  private func render(_ presentation: OverlayPresentation?) -> Bool {
+  private func render(
+    _ presentation: OverlayPresentation?, onPresented: @escaping () -> Void = {}
+  ) -> RenderOutcome {
     guard let presentation else {
       presentedID = nil
       host.hide()
-      return true
+      onPresented()
+      return .presented
     }
+    // **THE FIRST PRESENTATION IS DEFERRED ONE RUN LOOP, AND THIS IS A CRASH
+    // FIX RATHER THAN A COMPENSATION.** `MenuBarController.toggleRecordingAction`
+    // reaches here while the status-item MENU DISMISS ANIMATION is still
+    // running, and building the `NSHostingView` during that animation causes a
+    // re-entrant `NSWindow` layout cycle and SIGABRT. The shipped panel carried
+    // that reason in a comment at its `DispatchQueue.main.async`, including the
+    // warning that `Task { @MainActor }` is NOT equivalent because it may run
+    // immediately when already on the main actor — which is exactly the shape
+    // the menu action uses.
+    //
+    // **C5 deleted this on the stated ground that the four rebuild mechanisms
+    // "existed for ONE reason: every transition destroyed the window and built
+    // another". That was true of three of them and FALSE of this one.** The
+    // deferral is about WHEN a hosting view is first constructed, which a
+    // retained window makes rarer and does not make safe. Cloud review caught it
+    // as a P1 after four local rounds passed it.
+    //
+    // ONLY the first: the retained panel means every later presentation morphs a
+    // view that already exists, and the shipped code was synchronous on that
+    // path too. `DispatchQueue.main.async` rather than `Task`, for the reason
+    // above, spelled out so it is not "modernised" back.
+    if !hasRenderedOnce {
+      hasRenderedOnce = true
+      presentedID = presentation.id
+      let deferredID = presentation.id
+      deferFirstRender { [weak self] in
+        guard let self else { return }
+        // Identity gate, not a generation counter: a presentation superseded
+        // while we waited is dropped, and the one that replaced it does its own
+        // render. Same one-shot staleness rule `PresentationID` exists for.
+        guard self.reducer.state.current?.id == deferredID else { return }
+        if self.performRender(presentation) {
+          onPresented()
+        } else {
+          self.rollBackRefusedPresentation()
+        }
+      }
+      return .deferred
+    }
+    if performRender(presentation) {
+      onPresented()
+      return .presented
+    }
+    return .refused
+  }
+
+  /// The synchronous half, so the deferred first call and every later one run
+  /// exactly the same code rather than two copies that can drift.
+  private func performRender(_ presentation: OverlayPresentation) -> Bool {
     // **`isFresh` means NOTHING IS SHOWING, not "a different occupant".** The
     // comment here used to say the opposite and the code matched it, which made
     // every recording -> processing -> warning step a fresh presentation: the

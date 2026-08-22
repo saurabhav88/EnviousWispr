@@ -115,14 +115,27 @@ struct OverlayRetainedWindowTests {
       """)
   }
 
-  /// **The four compensating mechanisms, frozen out by NAME.**
+  /// **The rebuild-compensating mechanisms, frozen out by NAME.**
   ///
-  /// They existed for ONE reason: every overlay transition destroyed the window
-  /// and built another, so the code needed a generation counter to tell a stale
-  /// deferred creation from a live one, a handle on that pending work to cancel
-  /// it, drag deferral so a rebuild did not fight the user's mouse, and a
-  /// `CATransaction` flush to stop the gap between destroy and create rendering
-  /// as a blink. With one retained window there is nothing to compensate for.
+  /// **THIS COMMENT USED TO SAY THEY EXISTED FOR ONE REASON, AND THAT WAS FALSE
+  /// OF `pendingCreateWork`.** Three of them do compensate for rebuilding: drag
+  /// deferral so a rebuild does not fight the user's mouse, a `CATransaction`
+  /// flush so the gap between destroy and create does not render as a blink, and
+  /// a generation counter to tell a stale deferred creation from a live one.
+  /// With one retained window there is nothing there to compensate for.
+  ///
+  /// `pendingCreateWork` was ALSO the vehicle for a crash fix, and the deleted
+  /// panel said so at its own call site: creating an `NSHostingView` while the
+  /// status-item menu dismiss animation runs causes a re-entrant `NSWindow`
+  /// layout cycle and SIGABRT. Deleting it on the "one reason" argument removed
+  /// the crash fix with the compensation, and four local review rounds passed it
+  /// — cloud review caught it as a P1.
+  ///
+  /// **`deferFirstRender` is that fix, restored under a name this guard does not
+  /// ban.** It is not an evasion: the banned name meant per-presentation pending
+  /// creation with a cancel handle, and this defers exactly once for the lifetime
+  /// of a director. Naming it differently is what keeps the guard honest about
+  /// which idea is actually forbidden.
   ///
   /// **Named rather than derived, and that is a real weakness of this guard**:
   /// it cannot recognise the same idea under a different word. It is a tripwire
@@ -218,7 +231,7 @@ struct OverlayRetainedWindowTests {
       let host = OverlayWindowHost()
       let d = OverlayDirector(
         host: host, deliverEffect: { _ in }, deliverAppAction: { _ in },
-        announce: { _ in })
+        announce: { _ in }, deferFirstRender: { $0() })
       defer { host.panelForTesting?.orderOut(nil) }
 
       d.send(.pipeline(.processing(phase: .polishing)), actions: nil)
@@ -247,7 +260,7 @@ struct OverlayRetainedWindowTests {
       let host = OverlayWindowHost()
       let d = OverlayDirector(
         host: host, deliverEffect: { _ in }, deliverAppAction: { _ in },
-        announce: { _ in })
+        announce: { _ in }, deferFirstRender: { $0() })
       defer { host.panelForTesting?.orderOut(nil) }
 
       for _ in 0..<4 {
