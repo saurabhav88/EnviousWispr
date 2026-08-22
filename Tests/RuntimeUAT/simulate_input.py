@@ -293,8 +293,10 @@ def modifier_up(keycode):
 def hold_modifier(keycode, duration=2.0):
     """Press a modifier key, hold for *duration* seconds, then release."""
     modifier_down(keycode)
-    time.sleep(duration)
-    modifier_up(keycode)
+    try:
+        time.sleep(duration)
+    finally:
+        modifier_up(keycode)
 
 
 def scroll(dx=0, dy=0, x=None, y=None):
@@ -343,13 +345,14 @@ def hold_key(key_name, duration=2.0, cmd=False, shift=False, alt=False, ctrl=Fal
     down_event = CGEventCreateKeyboardEvent(None, keycode, True)
     CGEventSetFlags(down_event, flags)
     CGEventPost(kCGHIDEventTap, down_event)
-
-    time.sleep(duration)
-
-    # Key up
-    up_event = CGEventCreateKeyboardEvent(None, keycode, False)
-    CGEventSetFlags(up_event, flags)
-    CGEventPost(kCGHIDEventTap, up_event)
+    try:
+        time.sleep(duration)
+    finally:
+        # Key up must survive an interrupted wait; leaving modifiers or ordinary
+        # keys held changes the user's input after a failed UAT run.
+        up_event = CGEventCreateKeyboardEvent(None, keycode, False)
+        CGEventSetFlags(up_event, flags)
+        CGEventPost(kCGHIDEventTap, up_event)
     time.sleep(DEFAULT_DELAY)
 
 

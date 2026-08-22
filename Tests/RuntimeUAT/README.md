@@ -53,6 +53,18 @@ python3 -c "import sys; sys.path.insert(0, 'Tests/RuntimeUAT'); from wispr_eyes 
 python3 Tests/RuntimeUAT/uat_runner.py run --suite recording
 ```
 
+**Real microphone -> shipped ASR -> TextEdit, exactly once:**
+```bash
+scripts/test-heart-path-delivery.sh
+```
+
+This receipt rebuilds and launches the current worktree's dev app, then takes
+control while it exercises both shipped backends. Run it as a background task
+because it posts CGEvents. It first checks the speaker route and performs the
+canonical silent-room probe; an occupied room stops the run before acoustic
+testing. It has no hosted-runner skip path: unreadable Accessibility state,
+unavailable models, or a missing real delivery fails the run.
+
 The `uat_runner.py run` command **must** be invoked with `run_in_background: true` from Claude Code's Bash tool — foreground execution silently fails. `list` works fine in foreground.
 
 ## How this fits the workflow
