@@ -446,14 +446,14 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       Self.record(d, level: 0.2, preview: false)
-      let atStart = d.hostForTesting.panelForTesting?.frame.width
+      let atStart = d.hostForTesting?.panelForTesting?.frame.width
 
       // The setting flips, and the next tick reports it.
       Self.record(d, level: 0.6, preview: true)
 
       #expect(atStart == 185)
       #expect(
-        d.hostForTesting.panelForTesting?.frame.width == 185,
+        d.hostForTesting?.panelForTesting?.frame.width == 185,
         "a mid-dictation settings change resized the live pill, which is the #930 rebuild flicker")
     }
 
@@ -665,15 +665,24 @@
     /// The probe is the provider itself. It answers true only AFTER the effect
     /// has been delivered, so `usesPreview` is true if and only if the ordering
     /// is right. Asserting the ORDER directly would need a clock; this needs none.
+    ///
+    /// **The host must PRESENT for this probe to survive**, and it did not have
+    /// to before C7. The first version resolved no screen, so the presentation
+    /// was refused -- and the layout it asserts on outlived the refusal only
+    /// because a refused presentation used to leave its owner behind. Reading
+    /// state that should not exist is not a weaker test, it is a test of the
+    /// defect; with the rollback in place the same probe needs a real screen.
     @Test("a recording's effect is delivered before its geometry is resolved")
     func recordingEffectsPrecedeGeometry() {
       var recordingStarted = false
-      let host = OverlayWindowHost(screens: { OverlayScreenResolver { nil } })
+      let host = OverlayWindowHost(screens: { OverlayScreenResolver { Self.screen } })
       let d = OverlayDirector(
         host: host,
         deliverEffect: { if $0 == .recordingIntentChanged(true) { recordingStarted = true } },
         deliverAppAction: { _ in },
         announce: { _ in })
+      Self.hosts.append(host)
+      defer { Self.closeAllWindows() }
 
       d.setLivePreviewProviders(enabled: { recordingStarted }, display: { .off })
       d.presentRecording(
@@ -790,13 +799,13 @@
       let (fixed, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       Self.record(fixed, level: 0.2, preview: false)
-      let reserved = fixed.hostForTesting.panelForTesting?.frame.height
-      let fixedWidth = fixed.hostForTesting.panelForTesting?.frame.width
+      let reserved = fixed.hostForTesting?.panelForTesting?.frame.height
+      let fixedWidth = fixed.hostForTesting?.panelForTesting?.frame.width
 
       let (preview, _, _) = Self.director()
       Self.record(preview, level: 0.2, preview: true)
-      let measured = preview.hostForTesting.panelForTesting?.frame.height
-      let previewWidth = preview.hostForTesting.panelForTesting?.frame.width
+      let measured = preview.hostForTesting?.panelForTesting?.frame.height
+      let previewWidth = preview.hostForTesting?.panelForTesting?.frame.width
 
       #expect(reserved == 92, "the non-preview recording pill lost its reserved 92-point frame")
       #expect(
@@ -807,6 +816,118 @@
       // only the height still renders a preview pill at under half its size.
       #expect(fixedWidth == 185, "the non-preview recording pill lost its 185-point width")
       #expect(previewWidth == 400, "the Live Preview pill did not take its 400-point width")
+    }
+
+    // MARK: - A refused presentation leaves no owner behind (#2292 C7)
+
+    /// A director whose host refuses every presentation until `screenAvailable`
+    /// is flipped.
+    ///
+    /// **The resolver is re-read on every `present`**, which is what makes the
+    /// retry testable: the same director refuses, then succeeds, with nothing
+    /// rebuilt in between. A second director would prove only that a fresh one
+    /// works, which was never in doubt.
+    private static func refusingDirector(_ screenAvailable: @escaping () -> Bool)
+      -> (OverlayDirector, Sink)
+    {
+      let sink = Sink()
+      let host = OverlayWindowHost(
+        screens: { OverlayScreenResolver { screenAvailable() ? screen : nil } })
+      let d = OverlayDirector(
+        host: host,
+        deliverEffect: { sink.effects.append($0) },
+        deliverAppAction: { sink.appActions.append($0) },
+        announce: { sink.announcements.append($0) })
+      hosts.append(host)
+      return (d, sink)
+    }
+
+    /// **Clearing the window is not the same as releasing the slot.**
+    ///
+    /// `OverlayWindowHost.present` refuses on two causes — no screen, and a
+    /// presentation it cannot size — and both leave through the same `guard`, so
+    /// one of them proves the director's half of the contract. The host suite
+    /// owns the pair; this owns what the director does with a `false`.
+    ///
+    /// The first version cleared `presentedID` and hid the window, which reads
+    /// like a rollback and is not one: the reducer, the render model, the
+    /// binding and the armed expiry all still named an occupant that was never
+    /// drawn.
+    @Test("a refused presentation leaves nothing claiming the slot")
+    func refusedPresentationReleasesEverything() {
+      let (d, _) = Self.refusingDirector({ false })
+      defer { Self.closeAllWindows() }
+
+      d.send(.featureRequest(.bluetoothAwareness), actions: { _ in })
+
+      #expect(
+        d.currentIntent == .hidden,
+        "the Bluetooth presenter's handshake confirms a card that is not on screen")
+      #expect(
+        d.currentPresentationForTesting == nil,
+        "the reducer still holds an occupant the host refused")
+      #expect(d.presentedIDForTesting == nil, "the window still claims a presentation")
+      #expect(d.renderModel.presentation == nil, "the render model still publishes it")
+      #expect(!d.hasActiveBindingForTesting, "a handler is bound to a pill nobody can press")
+      #expect(!d.hasArmedExpiryForTesting, "a timer is armed to dismiss something invisible")
+    }
+
+    /// **The dedup guard is what turns a refusal into a PERMANENT failure.**
+    ///
+    /// A repeated intent is dropped as a no-op, by design — it is the guard that
+    /// stops an audio tick re-arming a dwell. But a refusal that leaves
+    /// `pipelineIntent` holding the refused intent makes the retry look like
+    /// that repeat, so the pill never comes back once a screen returns. The
+    /// user-visible shape: unplug the external display mid-dictation, plug it
+    /// back in, and the overlay is gone for the rest of the session.
+    @Test("the same intent presents on retry after a refusal")
+    func refusedIntentRetriesSuccessfully() {
+      var hasScreen = false
+      let (d, _) = Self.refusingDirector({ hasScreen })
+      defer { Self.closeAllWindows() }
+
+      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      #expect(d.currentPresentationForTesting == nil, "the refusal did not take")
+
+      hasScreen = true
+      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+
+      #expect(
+        d.currentPresentationForTesting != nil,
+        "the retry was deduplicated against the intent the refusal left behind")
+      #expect(d.presentedIDForTesting != nil, "the retry never reached the window")
+    }
+
+    /// **A recording's providers are polled ~50 times a second**, so leaving
+    /// them installed for a pill that was refused means a finished dictation's
+    /// closures run behind an empty screen for the rest of the session. Same
+    /// lifetime rule as a replaced recording, arriving through the refusal path
+    /// instead.
+    @Test("a refused recording releases its providers and its lock survives")
+    func refusedRecordingReleasesProviders() {
+      let (d, _) = Self.refusingDirector({ false })
+      defer { Self.closeAllWindows() }
+
+      d.presentRecording(
+        audioLevel: 0.5, audioLevelProvider: { 0.5 }, recordingElapsedProvider: { 3 },
+        isRecordingLocked: true, actions: { _ in })
+
+      #expect(d.currentPresentationForTesting == nil, "the reducer still holds the recording")
+      // Asserted through the providers THEMSELVES rather than a test-only flag:
+      // a cleared model answers 0 and nil, and the installed ones answer 0.5 and
+      // 3, so this reads the thing that would actually still be running.
+      #expect(
+        d.renderModel.audioLevelProvider() == 0,
+        "a refused recording's audio-level provider is still being polled")
+      #expect(
+        d.renderModel.recordingElapsedProvider() == nil,
+        "a refused recording's elapsed provider is still being polled")
+      // **The lock is NOT part of the rollback.** It outlives any one
+      // presentation by design, so a refused frame must not silently unlock a
+      // hands-free session that is still running.
+      #expect(
+        d.isRecordingLockedForTesting,
+        "the rollback unlocked a hands-free recording that never stopped")
     }
   }
 #endif

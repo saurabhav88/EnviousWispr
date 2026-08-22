@@ -41,8 +41,35 @@ import SwiftUI
 /// - **Right after `orderOut` in a fast cycle the window server may still list
 ///   the window, at alpha 0.00.** Invisible, but present. Any test asserting
 ///   `onScreen == 0` immediately after hide will flake; assert absent OR alpha 0.
+/// The three operations `OverlayDirector` performs on a window (#2292, C7).
+///
+/// **Extracted so a test can present SUCCESSFULLY without a window**, which the
+/// director's own suite cannot do any other way. Sixteen suites need a director
+/// only as a dependency, and the double they share used to get its silence by
+/// resolving NO SCREEN -- borrowing a production FAILURE path as a stub. That
+/// worked only while a refused presentation left its state behind; the C7
+/// rollback makes the refusal honest and the borrowed stub stops reporting
+/// anything. A fake that SUCCEEDS is what those tests always meant.
+///
+/// Deliberately three members and no more. Grown to mirror the host it would
+/// stop being a seam and become a second copy of the window, which is the same
+/// accretion this migration exists to reverse.
+///
+/// The real host's refusal semantics are untouched: "no screen" and "cannot be
+/// sized" remain genuine failures in production.
 @MainActor
-final class OverlayWindowHost: NSObject, NSWindowDelegate {
+protocol OverlayWindowHosting: AnyObject {
+  @discardableResult
+  func present(
+    _ view: NSView, width: OverlayWidth, fixedHeight: CGFloat?, isFresh: Bool,
+    position: OverlayPillPosition
+  ) -> Bool
+  func resizeCurrentPresentation(to size: CGSize)
+  func hide()
+}
+
+@MainActor
+final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate {
 
   /// `nil` until the first presentation. Never closed, never released.
   private var panel: NSPanel?

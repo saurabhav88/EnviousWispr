@@ -26,7 +26,7 @@ import Foundation
 final class OverlayDirector {
 
   private var reducer: OverlayReducer
-  private let host: OverlayWindowHost
+  private let host: any OverlayWindowHosting
   private let model: OverlayRenderModel
   private let schedule: OverlayScheduler
 
@@ -134,7 +134,7 @@ final class OverlayDirector {
   }
 
   init(
-    host: OverlayWindowHost,
+    host: any OverlayWindowHosting,
     deliverEffect: @escaping (OverlayEffect) -> Void,
     deliverAppAction: @escaping (OverlayAction) -> Void,
     position: @escaping () -> OverlayPillPosition = { .top },
@@ -384,6 +384,21 @@ final class OverlayDirector {
     apply(reducer.reduce(.pipeline(.hidden)), actions: nil, announcing: false)
   }
 
+  /// Undo a plan whose presentation the host refused.
+  ///
+  /// **`.pipeline(.hidden)` is the right event for a refused FEATURE too**, not
+  /// only for a refused pipeline pill. It empties `state.current` whatever
+  /// occupies it and returns `pipelineIntent` to `.hidden`, which is exactly the
+  /// two pieces of state a refusal leaves lying: the occupant `currentIntent`
+  /// reads, and the intent the dedup guard compares a retry against.
+  ///
+  /// Re-entrant into `apply` by design and it terminates: the hidden plan
+  /// carries no presentation, so `render` takes its early return and cannot
+  /// refuse a second time.
+  private func rollBackRefusedPresentation() {
+    apply(reducer.reduce(.pipeline(.hidden)), actions: nil, announcing: false)
+  }
+
   /// Take the payload for `transcriptID`, once. Returns nil if it was already
   /// taken or if a different transcript now owns the slot.
   func takeEscapeRecoveryPayload(matching transcriptID: UUID) -> CancelUndoPayload? {
@@ -478,7 +493,28 @@ final class OverlayDirector {
       }
 
       model.presentation = plan.presentation
-      render(plan.presentation)
+      if !render(plan.presentation) {
+        // **A REFUSED PRESENTATION MUST NOT LEAVE AN OWNER BEHIND.** Clearing
+        // `presentedID` and the window says nothing to the reducer, the model,
+        // the binding or the armed expiry, all of which still name an occupant
+        // that is not on screen. Two consequences, both shipped defects rather
+        // than theory: `currentIntent` reads `reducer.state.current`, so the
+        // Bluetooth presenter's handshake confirms an invisible card and acts on
+        // its buttons; and `pipelineIntent` still holds the refused intent, so
+        // the dedup guard drops the RETRY as a repeat and the pill never
+        // recovers once a screen comes back.
+        //
+        // Rolled back through the same silent-dismiss path a real dismissal
+        // takes, so "nothing is on screen" has ONE definition rather than a
+        // second, partial one written here. Silent because nothing appeared:
+        // announcing a dismissal for a pill a VoiceOver user was never told
+        // about is a false statement in the other direction.
+        rollBackRefusedPresentation()
+        // Nothing this plan installed survives, so an action addressed to it has
+        // no target. Delivering it would hit the assertion below on a state the
+        // rollback deliberately emptied.
+        return
+      }
     }
 
     if let action = plan.deliverAction {
@@ -529,11 +565,16 @@ final class OverlayDirector {
   /// **The model is set BEFORE this runs**, so the retained root has already
   /// rendered the new content by the time the host measures it — a host that
   /// measured first would size the window to the OUTGOING pill.
-  private func render(_ presentation: OverlayPresentation?) {
+  ///
+  /// Returns `false` ONLY when the host refused a presentation it was asked to
+  /// show. Emptying the slot always succeeds, so the caller reads a `false` as
+  /// "the occupant this plan installed is not on screen and never will be".
+  @discardableResult
+  private func render(_ presentation: OverlayPresentation?) -> Bool {
     guard let presentation else {
       presentedID = nil
       host.hide()
-      return
+      return true
     }
     // `isFresh` is a change of OCCUPANT, not the absence of a window: a morph
     // keeps the live frame, a genuinely new presentation re-anchors.
@@ -565,7 +606,9 @@ final class OverlayDirector {
       // Clear the claim AND take the window down.
       presentedID = nil
       host.hide()
+      return false
     }
+    return true
   }
 
   #if DEBUG
@@ -577,7 +620,11 @@ final class OverlayDirector {
     /// The window the director renders through, so a test can assert on the
     /// FRAME rather than on the argument it passed — the argument is the thing
     /// under test.
-    var hostForTesting: OverlayWindowHost { host }
+    ///
+    /// Optional because the director now takes any `OverlayWindowHosting`: a
+    /// test driving the windowless fake has no frame to assert on, and saying so
+    /// in the type is better than a fake that answers with a plausible one.
+    var hostForTesting: OverlayWindowHost? { host as? OverlayWindowHost }
     /// The LOGICAL intent, which is not always what is drawn: a suppressed
     /// accessibility toast draws the clipboard fallback and the intent stays
     /// `.accessibilityToast`.
