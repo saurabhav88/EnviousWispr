@@ -136,6 +136,14 @@ struct ReadinessRetryTelemetryContractTests {
     #expect(classified == .loadReturnedNotReady)
     #expect(classified != .cancelled, "cancelled is terminal — this is the #2132 trap")
   }
+
+  @Test("model-not-loaded is distinct from terminal XPC transport failures")
+  func modelNotLoadedHasItsOwnRecoveryClass() {
+    #expect(recoveryFailureClass(for: XPCASRTransportError.modelNotLoaded) == .xpcModelNotLoaded)
+    #expect(
+      recoveryFailureClass(for: XPCASRTransportError.requestDecodingFailed("x"))
+        == .xpcTransport)
+  }
 }
 
 // MARK: - The recovery outcome
@@ -311,6 +319,51 @@ struct ReadinessRetryRecoveryTests {
     #expect(e.stringProps["outcome"] == "failed")
     #expect(e.stringProps["retry_disposition"] == "exhausted")
     #expect(e.stringProps["failure_class"] == "load_returned_not_ready")
+  }
+
+  /// #2221. The XPC helper accepted the request but had no model, so the audio
+  /// was never decoded and must survive one bounded retry.
+  @Test("the first XPC model-not-loaded refusal keeps the recording")
+  func firstXPCModelNotLoadedRefusalGetsOneRetry() async throws {
+    let h = try Fixture.make()
+    h.asr.transcribeError = XPCASRTransportError.modelNotLoaded
+
+    var outcome: RecoveryReplayOutcome?
+    let box = await Fixture.capturingTelemetry {
+      outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+    }
+
+    #expect(outcome == .deferred)
+    #expect(h.store.hasReadinessRetryMarker(for: h.id), "the one retry is durably spent")
+    #expect(!h.store.hasAttemptMarker(for: h.id), "a later pass may use the recorded retry")
+    #expect(h.spoolExists, "the user's recording remains on disk")
+    #expect(h.asr.transcribeCallCount == 1, "the helper refused this request")
+
+    let e = try #require(box.recoveryEvents().first)
+    #expect(e.stringProps["outcome"] == "deferred")
+    #expect(e.stringProps["reason"] == "transcribe_error")
+    #expect(e.stringProps["failure_class"] == "xpc_model_not_loaded")
+    #expect(e.stringProps["retry_disposition"] == "granted")
+    #expect(e.boolProps["audio_decrypted"] == true)
+    #expect(e.boolProps["camp_b_candidate"] == true)
+  }
+
+  @Test("a second XPC model-not-loaded refusal is terminal")
+  func repeatedXPCModelNotLoadedRefusalTerminates() async throws {
+    let h = try Fixture.make()
+    h.asr.transcribeError = XPCASRTransportError.modelNotLoaded
+    try h.store.writeReadinessRetryMarker(for: h.id)
+
+    var outcome: RecoveryReplayOutcome?
+    let box = await Fixture.capturingTelemetry {
+      outcome = await h.replayer.replay(recoverySessionID: h.id, isAborted: { false })
+    }
+
+    #expect(outcome == .failed(.unrecoverable), "one retry, then the bound stops")
+    let e = try #require(box.recoveryEvents().first)
+    #expect(e.stringProps["reason"] == "transcribe_error")
+    #expect(e.stringProps["failure_class"] == "xpc_model_not_loaded")
+    #expect(e.stringProps["retry_disposition"] == "exhausted")
   }
 
   /// THE TRAP, specified so it cannot be satisfied trivially. Two independent

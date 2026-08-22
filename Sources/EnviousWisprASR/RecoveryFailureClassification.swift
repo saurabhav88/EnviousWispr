@@ -27,7 +27,13 @@ package func recoveryFailureClass(for error: any Error) -> RecoveryFailureClass?
   // stops being produced. Pinned by "transcribe failure on good audio is a Camp B
   // candidate with a failure class" in RecoverySpoolReplayerTests.
   if let transport = error as? XPCASRTransportError {
-    return transport.isServiceUnreachable ? .xpcUnreachable : .xpcTransport
+    switch transport {
+    case .serviceUnreachable: return .xpcUnreachable
+    case .modelNotLoaded: return .xpcModelNotLoaded
+    case .requestEncodingFailed, .invalidSamplePayload, .requestDecodingFailed,
+      .responseEncodingFailed, .responseDecodingFailed:
+      return .xpcTransport
+    }
   }
   // Three cancellation vehicles, one actionable class. `KernelDictationDriver`
   // already groups the latter two exactly this way.
