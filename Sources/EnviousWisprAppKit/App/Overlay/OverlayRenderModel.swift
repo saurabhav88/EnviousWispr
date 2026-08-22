@@ -41,15 +41,23 @@ final class OverlayRenderModel: ObservableObject {
   /// The capsule reports its measured height so the window can follow it. A
   /// callback rather than a value: it flows the other way.
   private(set) var onContentHeightChange: (CGFloat) -> Void = { _ in }
-  /// Whether the recording pill uses the preview layout, which is content-sized
-  /// rather than the reserved 92-point frame.
-  private(set) var usesPreviewLayout: Bool = false
+  /// Whether the recording pill uses the preview layout — 400 points wide and
+  /// content-sized, rather than 185 in a reserved 92-point frame.
+  ///
+  /// **A PROVIDER, not a snapshot, and the shipped code says why in its own
+  /// words.** `setLivePreviewProviders` takes `enabled` and `display` as two
+  /// closures deliberately: "Reading the SETTING for geometry means the answer
+  /// does not depend on whether the preview coordinator happened to be started
+  /// before this push." A stored `Bool` reintroduces exactly that ordering
+  /// dependency — the pill's size would come from whenever the caller last
+  /// happened to set it rather than from the setting at the moment it is shown.
+  private(set) var usesPreviewLayout: () -> Bool = { false }
 
   func setRecordingProviders(
     audioLevel: @escaping () -> Float,
     recordingElapsed: @escaping () -> TimeInterval?,
     livePreview: @escaping () -> LivePreviewDisplay,
-    usesPreviewLayout: Bool,
+    usesPreviewLayout: @escaping () -> Bool,
     onContentHeightChange: @escaping (CGFloat) -> Void
   ) {
     audioLevelProvider = audioLevel
@@ -68,6 +76,6 @@ final class OverlayRenderModel: ObservableObject {
     recordingElapsedProvider = { nil }
     livePreviewProvider = { .off }
     onContentHeightChange = { _ in }
-    usesPreviewLayout = false
+    usesPreviewLayout = { false }
   }
 }

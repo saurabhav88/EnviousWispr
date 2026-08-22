@@ -323,7 +323,7 @@
       defer { Self.closeAllWindows() }
       d.renderModel.setRecordingProviders(
         audioLevel: { 0.9 }, recordingElapsed: { 12 }, livePreview: { .off },
-        usesPreviewLayout: false, onContentHeightChange: { _ in })
+        usesPreviewLayout: { false }, onContentHeightChange: { _ in })
       d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
 
       d.send(.pipeline(.hidden), actions: nil)
@@ -344,7 +344,7 @@
       defer { Self.closeAllWindows() }
       d.renderModel.setRecordingProviders(
         audioLevel: { 0.9 }, recordingElapsed: { 12 }, livePreview: { .off },
-        usesPreviewLayout: false, onContentHeightChange: { _ in })
+        usesPreviewLayout: { false }, onContentHeightChange: { _ in })
       d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
 
       d.send(.pipeline(.processing(phase: .transcribing)), actions: nil)
@@ -365,7 +365,7 @@
       defer { Self.closeAllWindows() }
       d.renderModel.setRecordingProviders(
         audioLevel: { 0.9 }, recordingElapsed: { 12 }, livePreview: { .off },
-        usesPreviewLayout: false, onContentHeightChange: { _ in })
+        usesPreviewLayout: { false }, onContentHeightChange: { _ in })
       d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
 
       d.send(.pipeline(.recording(audioLevel: 0.7)), actions: nil)
@@ -390,21 +390,28 @@
       defer { Self.closeAllWindows() }
       fixed.renderModel.setRecordingProviders(
         audioLevel: { 0 }, recordingElapsed: { nil }, livePreview: { .off },
-        usesPreviewLayout: false, onContentHeightChange: { _ in })
+        usesPreviewLayout: { false }, onContentHeightChange: { _ in })
       fixed.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
       let reserved = fixed.hostForTesting.panelForTesting?.frame.height
+      let fixedWidth = fixed.hostForTesting.panelForTesting?.frame.width
 
       let (preview, _, _) = Self.director()
       preview.renderModel.setRecordingProviders(
         audioLevel: { 0 }, recordingElapsed: { nil }, livePreview: { .off },
-        usesPreviewLayout: true, onContentHeightChange: { _ in })
+        usesPreviewLayout: { true }, onContentHeightChange: { _ in })
       preview.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
       let measured = preview.hostForTesting.panelForTesting?.frame.height
+      let previewWidth = preview.hostForTesting.panelForTesting?.frame.width
 
       #expect(reserved == 92, "the non-preview recording pill lost its reserved 92-point frame")
       #expect(
         measured != 92,
         "the Live Preview pill took the reserved frame instead of sizing to its content")
+      // **The WIDTH is the half that is easy to miss.** The shipped site reads
+      // `showsPreview ? previewPillWidth : 185` — 400 against 185 — so carrying
+      // only the height still renders a preview pill at under half its size.
+      #expect(fixedWidth == 185, "the non-preview recording pill lost its 185-point width")
+      #expect(previewWidth == 400, "the Live Preview pill did not take its 400-point width")
     }
   }
 #endif

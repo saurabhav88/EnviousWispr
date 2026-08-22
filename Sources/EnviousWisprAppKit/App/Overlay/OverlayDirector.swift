@@ -222,21 +222,37 @@ final class OverlayDirector {
   }
 
   /// **Discharges the obligation `OverlayContent.recording` records**: the
-  /// non-preview recording pill reserves a fixed 92-point interaction frame, and
-  /// the Live Preview variant is content-sized from its first frame so it does
-  /// not visibly snap once the real height is measured.
+  /// non-preview recording pill is 185 points wide in a reserved 92-point
+  /// interaction frame, and the Live Preview variant is 400 wide and
+  /// content-sized from its first frame so it does not visibly snap once the
+  /// real height is measured.
   ///
   /// The DIRECTOR decides it and the reducer cannot, because whether preview is
-  /// on arrives as a provider rather than as an event — putting it in the
-  /// reducer would mean the reducer reading a closure, which stops it being a
-  /// function of its events. Every other presentation takes its own reserved
-  /// height unchanged.
-  private func fixedHeight(for presentation: OverlayPresentation) -> CGFloat? {
-    guard case .recording = presentation.content, model.usesPreviewLayout else {
-      return presentation.reservesFixedHeight
+  /// on arrives as a PROVIDER rather than as an event — putting it in the reducer
+  /// would mean the reducer reading a closure, which stops it being a function of
+  /// its events. Every other presentation takes its own width and reserved height
+  /// unchanged.
+  private func geometry(
+    for presentation: OverlayPresentation
+  ) -> (width: OverlayWidth, fixedHeight: CGFloat?) {
+    guard case .recording = presentation.content, model.usesPreviewLayout() else {
+      return (presentation.requestedWidth, presentation.reservesFixedHeight)
     }
-    return nil
+    // **BOTH axes change, and the width is the one that is easy to miss.** The
+    // shipped site reads `showsPreview ? previewPillWidth : 185` — 400 against
+    // 185 — before it picks the sizing branch, so carrying only the height would
+    // still render a preview pill less than half its intended width.
+    return (.fixed(Self.previewPillWidth), nil)
   }
+
+  /// `RecordingOverlayPanel.previewPillWidth`, duplicated because that one is
+  /// `private static` and cannot be referenced from here.
+  ///
+  /// **A transitional duplicate with a named end**, not a value with two owners:
+  /// the panel is deleted in the cutover and this becomes the only copy. Until
+  /// then the two must agree, and nothing enforces it — so if the panel's width
+  /// changes before the cutover lands, change both.
+  private static let previewPillWidth: CGFloat = 400
 
   /// Push the model's new occupant to the window.
   ///
@@ -253,10 +269,11 @@ final class OverlayDirector {
     // keeps the live frame, a genuinely new presentation re-anchors.
     let isFresh = presentedID != presentation.id
     presentedID = presentation.id
+    let recordingGeometry = geometry(for: presentation)
     let presented = host.present(
       rootHostingView,
-      width: presentation.requestedWidth,
-      fixedHeight: fixedHeight(for: presentation),
+      width: recordingGeometry.width,
+      fixedHeight: recordingGeometry.fixedHeight,
       isFresh: isFresh,
       position: position())
     if !presented {

@@ -90,7 +90,7 @@ struct OverlayRootView: View {
         recordingElapsedProvider: model.recordingElapsedProvider,
         livePreviewProvider: model.livePreviewProvider,
         onContentHeightChange: model.onContentHeightChange,
-        usesPreviewLayout: model.usesPreviewLayout,
+        usesPreviewLayout: model.usesPreviewLayout(),
         lockState: lockState.value,
         noticeState: noticeState.value)
 
