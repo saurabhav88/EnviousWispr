@@ -780,14 +780,14 @@ struct RecoverySpoolReplayerTests {
       #expect(e.stringProps.values.allSatisfy { !$0.contains("serviceUnreachable") })
     }
 
-    /// #1525 PR I-B narrowing-regression: `XPCASRTransportError`'s 6 new
+    /// #1525 PR I-B narrowing-regression: `XPCASRTransportError`'s 5 generic
     /// codec/transport cases are NOT "XPC unreachable" — a bare `is
     /// XPCASRTransportError` type-check would have misclassified them,
     /// corrupting recovery telemetry.
     /// #2132 UPDATE: these now classify as `.xpc_transport` rather than
     /// `.other`. The protection this test exists for is UNCHANGED and is the
     /// reason it must not be deleted: a bare `is XPCASRTransportError` check
-    /// would call all six "unreachable", and the assertion below still fails if
+    /// would call all five "unreachable", and the assertion below still fails if
     /// anyone reintroduces that. The expected label is simply more specific now.
     @Test(
       "the new XPCASRTransportError cases are transport, never .xpcUnreachable",
@@ -795,7 +795,6 @@ struct RecoverySpoolReplayerTests {
         XPCASRTransportError.requestEncodingFailed("x"),
         .invalidSamplePayload("x"),
         .requestDecodingFailed("x"),
-        .modelNotLoaded,
         .responseEncodingFailed("x"),
         .responseDecodingFailed("x"),
       ]

@@ -340,7 +340,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       if case .classified(.loadReturnedNotReady) = diagnosis {
         return attemptReadinessRetry(
           spoolStore: spoolStore, id: id, diagnosis: diagnosis,
-          reconstructedSampleCount: recovered.samples.count)
+          reconstructedSampleCount: recovered.samples.count, reason: .modelLoadFailed)
       }
       return failUnrecoverable(
         reason: .modelLoadFailed, diagnosis: diagnosis,
@@ -356,6 +356,15 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // here as a throw — treat it as an abort (the user discarded), not a failure.
       if isAborted() { return .aborted }
       let diagnosis = Self.diagnose(error, operation: .transcription)
+      // #2221: the helper accepted the request but had no model, so it never
+      // decoded this recovered audio. Give the take the same durable, ONE-time
+      // readiness retry as the post-load race rather than deleting it as a
+      // generic transport failure. The retry marker prevents forever deferral.
+      if case .classified(.xpcModelNotLoaded) = diagnosis {
+        return attemptReadinessRetry(
+          spoolStore: spoolStore, id: id, diagnosis: diagnosis,
+          reconstructedSampleCount: recovered.samples.count, reason: .transcribeError)
+      }
       if Self.engineWasNeverAvailable(diagnosis) {
         return deferForUnavailableEngine(
           spoolStore: spoolStore, id: id, reason: .transcribeError, diagnosis: diagnosis,
@@ -776,6 +785,11 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // explicitly because this switch is the build-time gate that forces the
       // choice rather than letting a new case inherit one.
       case .loadReturnedNotReady: return true
+      // #2221. Also not reachable here: the transcription catch routes this
+      // through the bounded retry before asking this broader helper. Returning
+      // false prevents an accidental future fall-through into the unbounded
+      // unavailable-engine deferral.
+      case .xpcModelNotLoaded: return false
       case .xpcUnreachable, .cancelled, .transcriptionFailed, .whisperKitModelLoad,
         .parakeetModelLoad, .parakeetTranscription, .xpcTransport, .other:
         return false
@@ -795,12 +809,12 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// re-opening what the bound exists to close.
   private func attemptReadinessRetry(
     spoolStore: RecoverySpoolStore, id: String, diagnosis: RecoveryFailureDiagnosis,
-    reconstructedSampleCount: Int
+    reconstructedSampleCount: Int, reason: RecoveryTelemetryReason
   ) -> RecoveryReplayOutcome {
     // Already spent: terminal. This is the bound working, NOT a regression.
     guard !spoolStore.hasReadinessRetryMarker(for: id) else {
       return failUnrecoverable(
-        reason: .modelLoadFailed, diagnosis: diagnosis,
+        reason: reason, diagnosis: diagnosis,
         reconstructedSampleCount: reconstructedSampleCount, retryDisposition: .exhausted)
     }
     let spoolSeconds = Int(
@@ -839,9 +853,9 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // cannot, which is the wrong direction for a limb.
     try? spoolStore.syncSpoolDirectory()
     RecoveryLog.line(
-      "replay deferred: model_load_failed class=\(diagnosis.failureClass.rawValue) "
-        + "— the load returned but the engine was not ready; one retry granted")
-    emitDeferred(reason: .modelLoadFailed, disposition: .granted)
+      "replay deferred: \(reason.rawValue) class=\(diagnosis.failureClass.rawValue) "
+        + "— the engine was unavailable; one readiness retry granted")
+    emitDeferred(reason: reason, disposition: .granted)
     return .deferred
   }
 
