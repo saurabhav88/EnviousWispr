@@ -1035,11 +1035,18 @@ public struct WordCorrector: Sendable {
         case noCandidate
       }
       func strongerOf(
-        _ unpeeled: (canonical: String, score: Double)?,
-        _ peeled: (canonical: String, score: Double)?
+        _ unpeeled: SingleAttemptFuzzyOutcome,
+        _ peeled: SingleAttemptFuzzyOutcome
       ) -> FuzzyTierOutcome {
         switch (unpeeled, peeled) {
-        case let (.some(u), .some(p)):
+        // Either attempt being ambiguous ON ITS OWN (two different
+        // candidates too close together WITHIN that attempt's scan) is
+        // just as terminal as the two attempts' winners being too close to
+        // EACH OTHER below -- round 17 extends round 15's cross-attempt
+        // margin check down into the attempts themselves.
+        case (.ambiguous, _), (_, .ambiguous):
+          return .ambiguous
+        case let (.candidate(uc, us), .candidate(pc, ps)):
           // Each attempt already enforces `ambiguityMargin` WITHIN its own
           // candidate pool, but that says nothing about the margin BETWEEN
           // the two attempts' winners -- two different canonicals scoring
@@ -1048,18 +1055,18 @@ public struct WordCorrector: Sendable {
           // is exactly the "guess when uncertain" this file otherwise never
           // does (Codex cloud review, PR #2298, round 15). Neither attempt
           // is confident enough to override the other.
-          guard u.canonical != p.canonical, abs(u.score - p.score) < Self.ambiguityMargin else {
+          guard uc != pc, abs(us - ps) < Self.ambiguityMargin else {
             return .accepted(
-              u.score >= p.score
-                ? acceptFuzzy(unpeeled: true, canonical: u.canonical)
-                : acceptFuzzy(unpeeled: false, canonical: p.canonical))
+              us >= ps
+                ? acceptFuzzy(unpeeled: true, canonical: uc)
+                : acceptFuzzy(unpeeled: false, canonical: pc))
           }
           return .ambiguous
-        case let (.some(u), nil):
-          return .accepted(acceptFuzzy(unpeeled: true, canonical: u.canonical))
-        case let (nil, .some(p)):
-          return .accepted(acceptFuzzy(unpeeled: false, canonical: p.canonical))
-        case (nil, nil):
+        case let (.candidate(uc, _), .noCandidate):
+          return .accepted(acceptFuzzy(unpeeled: true, canonical: uc))
+        case let (.noCandidate, .candidate(pc, _)):
+          return .accepted(acceptFuzzy(unpeeled: false, canonical: pc))
+        case (.noCandidate, .noCandidate):
           return .noCandidate
         }
       }
@@ -1088,12 +1095,12 @@ public struct WordCorrector: Sendable {
         hasPeelableSuffix
         ? nonPackFuzzySingleWordMatch(
           core: core, coreLower: coreLower, lookups: lookups, domainShapedOnly: true)
-        : nil
+        : .noCandidate
       let peeledNonPackFuzzy =
         matchCoreEligible
         ? nonPackFuzzySingleWordMatch(
           core: matchCore, coreLower: matchCoreLower, lookups: lookups, domainShapedOnly: false)
-        : nil
+        : .noCandidate
       // An ambiguous non-pack tie is terminal, not "try pack next": pack is
       // lower authority and must never get a turn just because non-pack
       // couldn't confidently pick between two of ITS OWN candidates.
@@ -1115,12 +1122,12 @@ public struct WordCorrector: Sendable {
         hasPeelableSuffix
         ? packFuzzySingleWordMatch(
           core: core, coreLower: coreLower, lookups: lookups, domainShapedOnly: true)
-        : nil
+        : .noCandidate
       let peeledPackFuzzy =
         matchCoreEligible
         ? packFuzzySingleWordMatch(
           core: matchCore, coreLower: matchCoreLower, lookups: lookups, domainShapedOnly: false)
-        : nil
+        : .noCandidate
       // Nothing follows the pack tier, so ambiguous and no-candidate both
       // resolve to the same "leave it alone" outcome here.
       if case .accepted(let result) = strongerOf(unpeeledPackFuzzy, peeledPackFuzzy) {
@@ -1209,18 +1216,33 @@ public struct WordCorrector: Sendable {
   /// domain-shaped candidate -- both sides then carry a suffix, so nothing
   /// is silently swallowed); the peeled call site passes `false` (the
   /// ordinary, unrestricted pool).
+  /// A single attempt's fuzzy result must distinguish "genuinely ambiguous"
+  /// from "no candidate scored close at all" (Codex cloud review, PR #2298,
+  /// round 17): collapsing both to the same `nil` let an in-pass ambiguity
+  /// (two DIFFERENT candidates within `ambiguityMargin` of each other) read
+  /// as "this attempt found nothing," which let a lower-authority pack
+  /// match decide a token the non-pack tier had already found genuinely
+  /// uncertain -- the identical shape round 16 fixed one layer up, for the
+  /// cross-attempt (unpeeled vs. peeled) comparison instead of this
+  /// within-attempt one.
+  private enum SingleAttemptFuzzyOutcome {
+    case candidate(canonical: String, score: Double)
+    case ambiguous
+    case noCandidate
+  }
+
   private func nonPackFuzzySingleWordMatch(
     core: String, coreLower: String,
     lookups: Lookups,
     domainShapedOnly: Bool
-  ) -> (canonical: String, score: Double)? {
+  ) -> SingleAttemptFuzzyOutcome {
     let singleFuzzyCandidates = lookups.singleFuzzyCandidates
     let canonicalToWord = lookups.canonicalToWord
     let lowercasedCanonicals = lookups.lowercasedCanonicals
     let canonicals = lookups.canonicals
 
     // Skip fuzzy for very short tokens
-    guard core.count >= 3 else { return nil }
+    guard core.count >= 3 else { return .noCandidate }
 
     // Determine threshold based on token length
     let effectiveThreshold =
@@ -1270,27 +1292,29 @@ public struct WordCorrector: Sendable {
     let pass4Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
     let pass4Threshold =
       pass4Override ?? (effectiveThreshold + pass4VocabPenalty - pass4LengthAdj)
-    if bestScore >= pass4Threshold,
-      bestScore - secondBest >= Self.ambiguityMargin,
-      core != bestMatch
-    {
+    let pass4Margin = bestScore - secondBest
+    if bestScore >= pass4Threshold, pass4Margin >= Self.ambiguityMargin, core != bestMatch {
       #if DEBUG
         Self.logger.debug(
-          "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3))"
+          "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass4Margin, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3))"
         )
       #endif
-      return (bestMatch, bestScore)
+      return .candidate(canonical: bestMatch, score: bestScore)
+    } else if bestScore >= pass4Threshold, pass4Margin < Self.ambiguityMargin {
+      // Score clears the bar but the margin over the runner-up does not --
+      // this is a genuine ambiguity between two DIFFERENT candidates, not
+      // "nothing scored close." Stop here rather than trying Pass 5, whose
+      // canonical pool answers a different question and cannot resolve
+      // THIS ambiguity (round 17).
+      #if DEBUG
+        Self.logger.debug(
+          "WordCorrector: REJECT pass=alias-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass4Margin, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3)) reason=below_margin"
+        )
+      #endif
+      return .ambiguous
     } else if bestScore > 0 {
       #if DEBUG
-        let pass4Margin = bestScore - secondBest
-        let reason: String
-        if bestScore < pass4Threshold {
-          reason = "below_threshold"
-        } else if pass4Margin < Self.ambiguityMargin {
-          reason = "below_margin"
-        } else {
-          reason = "same_as_input"
-        }
+        let reason = bestScore < pass4Threshold ? "below_threshold" : "same_as_input"
         Self.logger.debug(
           "WordCorrector: REJECT pass=alias-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass4Margin, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3)) reason=\(reason)"
         )
@@ -1324,34 +1348,31 @@ public struct WordCorrector: Sendable {
     let pass5Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
     let pass5Threshold =
       pass5Override ?? (effectiveThreshold + pass5VocabPenalty - pass5LengthAdj)
-    if bestScore >= pass5Threshold,
-      bestScore - secondBest >= Self.ambiguityMargin,
-      core != bestMatch
-    {
+    let pass5Margin = bestScore - secondBest
+    if bestScore >= pass5Threshold, pass5Margin >= Self.ambiguityMargin, core != bestMatch {
       #if DEBUG
         Self.logger.debug(
-          "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3))"
+          "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass5Margin, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3))"
         )
       #endif
-      return (bestMatch, bestScore)
+      return .candidate(canonical: bestMatch, score: bestScore)
+    } else if bestScore >= pass5Threshold, pass5Margin < Self.ambiguityMargin {
+      #if DEBUG
+        Self.logger.debug(
+          "WordCorrector: REJECT pass=canonical-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass5Margin, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3)) reason=below_margin"
+        )
+      #endif
+      return .ambiguous
     } else if bestScore > 0 {
       #if DEBUG
-        let pass5Margin = bestScore - secondBest
-        let reason: String
-        if bestScore < pass5Threshold {
-          reason = "below_threshold"
-        } else if pass5Margin < Self.ambiguityMargin {
-          reason = "below_margin"
-        } else {
-          reason = "same_as_input"
-        }
+        let reason = bestScore < pass5Threshold ? "below_threshold" : "same_as_input"
         Self.logger.debug(
           "WordCorrector: REJECT pass=canonical-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass5Margin, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3)) reason=\(reason)"
         )
       #endif
     }
 
-    return nil
+    return .noCandidate
   }
 
   /// #992 PACK FUZZY TIER — LOWER authority. Split from the non-pack fuzzy
@@ -1367,13 +1388,13 @@ public struct WordCorrector: Sendable {
     core: String, coreLower: String,
     lookups: Lookups,
     domainShapedOnly: Bool
-  ) -> (canonical: String, score: Double)? {
+  ) -> SingleAttemptFuzzyOutcome {
     let packSingleFuzzyCandidates = lookups.packSingleFuzzyCandidates
     let packCanonicals = lookups.packCanonicals
     let packLowercasedCanonicals = lookups.packLowercasedCanonicals
     let nonPackExactKeys = lookups.nonPackExactKeys
 
-    guard core.count >= 3 else { return nil }
+    guard core.count >= 3 else { return .noCandidate }
     let effectiveThreshold =
       core.count <= Self.shortTokenMaxLength
       ? Self.shortTokenThreshold
@@ -1385,7 +1406,7 @@ public struct WordCorrector: Sendable {
     // must not rewrite it. This covers the case where non-pack matching
     // produced no replacement precisely because no fix was needed.
     if nonPackExactKeys.contains(coreLower) {
-      return nil
+      return .noCandidate
     }
 
     // Pack Pass 4: single-word pack aliases.
@@ -1416,7 +1437,8 @@ public struct WordCorrector: Sendable {
       let lengthAdj = Self.lengthAwareAdjustment(candidateLength: pMatch.count)
       let packThreshold =
         effectiveThreshold + vocabPenalty - lengthAdj + Self.packFuzzyThresholdBump
-      if pBest >= packThreshold, pBest - pSecond >= Self.ambiguityMargin, core != pMatch {
+      let pMargin = pBest - pSecond
+      if pBest >= packThreshold, pMargin >= Self.ambiguityMargin, core != pMatch {
         if coreLower == pMatch.lowercased() {
           // Casing guard: case-only change — suppress, fall through.
           #if DEBUG
@@ -1427,11 +1449,20 @@ public struct WordCorrector: Sendable {
         } else {
           #if DEBUG
             Self.logger.debug(
-              "WordCorrector: type=pack-alias-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
+              "WordCorrector: type=pack-alias-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pMargin, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
             )
           #endif
-          return (pMatch, pBest)
+          return .candidate(canonical: pMatch, score: pBest)
         }
+      } else if pBest >= packThreshold, pMargin < Self.ambiguityMargin {
+        // Same "genuinely ambiguous, not merely absent" distinction as the
+        // non-pack Pass 4 above (round 17).
+        #if DEBUG
+          Self.logger.debug(
+            "WordCorrector: REJECT pass=pack-alias-fuzzy source='\(core)' best_target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pMargin, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3)) reason=below_margin"
+          )
+        #endif
+        return .ambiguous
       }
     }
 
@@ -1458,7 +1489,8 @@ public struct WordCorrector: Sendable {
       let lengthAdj = Self.lengthAwareAdjustment(candidateLength: pMatch.count)
       let packThreshold =
         effectiveThreshold + vocabPenalty - lengthAdj + Self.packFuzzyThresholdBump
-      if pBest >= packThreshold, pBest - pSecond >= Self.ambiguityMargin, core != pMatch {
+      let pMargin = pBest - pSecond
+      if pBest >= packThreshold, pMargin >= Self.ambiguityMargin, core != pMatch {
         if coreLower == pMatch.lowercased() {
           #if DEBUG
             Self.logger.debug(
@@ -1468,15 +1500,22 @@ public struct WordCorrector: Sendable {
         } else {
           #if DEBUG
             Self.logger.debug(
-              "WordCorrector: type=pack-canonical-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
+              "WordCorrector: type=pack-canonical-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pMargin, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
             )
           #endif
-          return (pMatch, pBest)
+          return .candidate(canonical: pMatch, score: pBest)
         }
+      } else if pBest >= packThreshold, pMargin < Self.ambiguityMargin {
+        #if DEBUG
+          Self.logger.debug(
+            "WordCorrector: REJECT pass=pack-canonical-fuzzy source='\(core)' best_target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pMargin, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3)) reason=below_margin"
+          )
+        #endif
+        return .ambiguous
       }
     }
 
-    return nil
+    return .noCandidate
   }
 
   // MARK: - Scoring

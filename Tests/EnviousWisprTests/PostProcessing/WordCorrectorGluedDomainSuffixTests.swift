@@ -642,4 +642,29 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "internationalplatform.com")
     #expect(result.replacements == 0)
   }
+
+  // MARK: Cloud Codex review, round 17 (PR #2298) -- ambiguity WITHIN a
+  // single attempt's own Pass 4 scan must be distinguishable from "no
+  // candidate at all," the same way round 16 fixed it ACROSS the two
+  // attempts. Both are needed: an ambiguous single attempt must stay
+  // terminal too, never silently falling through to Pass 5 or the pack tier
+  // as if nothing had been found.
+
+  @Test("An in-pass ambiguity within one attempt is terminal and never falls through to pack")
+  func inPassAmbiguityDoesNotFallThroughToPack() {
+    // Cloud review's own construction: two DIFFERENT non-pack aliases both
+    // domain-shaped, both close enough to the unpeeled input to be each
+    // other's near-tied competitors within the SAME Pass 4 scan -- not a
+    // cross-attempt tie, an in-attempt one. A pack alias that would win if
+    // given a turn proves the tier stayed terminal rather than reading the
+    // in-pass ambiguity as "nothing scored."
+    let distractor1 = CustomWord(canonical: "Wrong1", aliases: ["internationalplatforn.com"])
+    let distractor2 = CustomWord(canonical: "Wrong2", aliases: ["internationalplatforx.com"])
+    let packDistractor = CustomWord(
+      canonical: "PackWrong", aliases: ["internationalplatforq.com"], source: .pack)
+    let result = corrected(
+      "internationalplatform.com", [distractor1, distractor2, packDistractor])
+    #expect(result.text == "internationalplatform.com")
+    #expect(result.replacements == 0)
+  }
 }
