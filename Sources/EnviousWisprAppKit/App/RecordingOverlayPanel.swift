@@ -261,41 +261,7 @@ final class RecordingOverlayPanel {
   /// fixed. `nil` when nothing is showing.
   private var activePanelPosition: OverlayPillPosition?
 
-  /// The origin WE last set programmatically. Used only to DETECT a manual
-  /// drag (`isMovableByWindowBackground = true`, an existing feature) by
-  /// comparing against the panel's live origin — `wasManuallyDragged` below
-  /// is the authoritative, sticky record of that fact once detected. `nil`
-  /// when nothing is showing.
-  ///
-  /// **WRITING THIS ERASES THE ONLY EVIDENCE A DRAG HAPPENED, SO EVERY WRITE
-  /// MUST FIRST ASK WHETHER THE LIVE ORIGIN STILL MATCHES.** The drag signal is
-  /// a comparison, not an event: nothing observes the user dragging, so a write
-  /// that re-baselines to wherever the panel now sits makes the drag
-  /// undetectable forever after. This exact bug has been found three times, each
-  /// time at a NEW write site rather than a regression of an old one (Codex
-  /// grounded review r4 and r5, 2026-07-17; cloud review on #1988), which is why
-  /// it is written here as a property of the field instead of a comment at any
-  /// one of them. The three live write sites and how each discharges the
-  /// obligation:
-  /// - `showPanel`'s inherited-`y` capture — latches `wasManuallyDragged` first.
-  /// - `resizeRecordingPanel(toContentHeight:)` — latches first, using the
-  ///   PRE-resize origin (the resize itself moves the origin in Top position).
-  private var lastProgrammaticOrigin: NSPoint?
 
-  /// True once the user has manually dragged the panel during the CURRENT
-  /// presentation. Sticky and carried across inherited-`y` transitions (e.g.
-  /// recording -> polishing) on purpose: those transitions tear down and
-  /// recreate the `NSPanel` object, but from the user's perspective it's the
-  /// same pill continuing, so "I dragged this" must not be forgotten just
-  /// because a new window object got created underneath it. Checked BEFORE the
-  /// `lastProgrammaticOrigin` comparison at the inherited-`y` capture — a
-  /// continuous origin-comparison alone was tried first and broke twice (Codex
-  /// grounded review r4 found the Space-change path re-anchoring over a drag;
-  /// r5 found the SAME root cause one level up, an inherited-`y` transition
-  /// silently re-baselining
-  /// `lastProgrammaticOrigin` to the dragged spot and erasing the signal).
-  /// Reset to `false` only on a genuine fresh appearance (`y == nil`).
-  private var wasManuallyDragged = false
 
 
   init(positionProvider: @escaping () -> OverlayPillPosition = { .top }) {
@@ -778,16 +744,6 @@ final class RecordingOverlayPanel {
     let target = contentHeight.rounded()
     guard target > 0, abs(panel.frame.height - target) >= 1 else { return }
 
-    // Latch a drag BEFORE the frame moves, or the re-baseline at the end of this
-    // method silently erases it — see `lastProgrammaticOrigin`. The comparison
-    // has to happen here rather than after `setFrame` because in Top position
-    // the resize itself moves the origin, which would read as a drag.
-    if !wasManuallyDragged, let lastProgrammaticOrigin,
-      !panel.frame.origin.isApproximately(lastProgrammaticOrigin)
-    {
-      wasManuallyDragged = true
-    }
-
     let previousHeight = panel.frame.height
     var frame = panel.frame
     if activePanelPosition == .bottom {
@@ -800,22 +756,12 @@ final class RecordingOverlayPanel {
     // Through the host, for the same reason as the Space-change write: a direct
     // `setFrame` would register as a user drag.
     windowHost.resizeCurrentPresentation(to: frame.size)
-    // **Re-baseline from the APPLIED origin, not the requested one.** AppKit
-    // aligns a window frame to whole points, and the drag comparison uses a 0.5
-    // tolerance — so storing what we ASKED for can differ from what landed by
-    // enough to read as a user drag on the very next transition.
-    if !wasManuallyDragged { lastProgrammaticOrigin = panel.frame.origin }
 
     // #2201: every ACCEPTED resize, so "the box holds still" has a receipt an
     // instrument can read. Until now this method logged nothing, which left the
     // only evidence for a pill that will not stop moving a human watching it —
     // and no way at all to tell one legitimate resize from forty.
     //
-    // Deliberately AFTER `setFrame` and after the re-baseline, so it cannot
-    // disturb the drag-latch ordering above: `lastProgrammaticOrigin` is the only
-    // evidence a user drag happened, and the latch has to run before the frame
-    // moves. Reading `previousHeight` from before the mutation costs nothing and
-    // keeps every statement between the latch and `setFrame` untouched.
     //
     // No `#if DEBUG` at the call site: `AppLogger.log` is itself DEBUG-gated and
     // compiles to a no-op in release. Fire-and-forget through a `Task` because
@@ -1332,16 +1278,8 @@ final class RecordingOverlayPanel {
     }
     if isFresh {
       activePanelPosition = position
-      // A genuinely NEW presentation starts clean. The shipped fresh branch did
-      // this (`:1532`) and the first C3b wiring DROPPED it, so a drag would have
-      // outlived the presentation it belonged to.
-      wasManuallyDragged = false
     }
     self.panel = windowHost.panelForLegacyBridge
-    // Read BACK rather than reusing the requested origin: AppKit aligns a window
-    // frame to whole points, so the requested value can differ from the applied
-    // one by up to a point — and the drag comparison uses a 0.5 tolerance.
-    lastProgrammaticOrigin = panel?.frame.origin
 
   }
 
@@ -1700,8 +1638,6 @@ final class RecordingOverlayPanel {
     // unconditionally.
     panel = nil
     activePanelPosition = nil
-    lastProgrammaticOrigin = nil
-    wasManuallyDragged = false
 
     // Flush pending CA transactions before releasing the panel.
     // RecordingOverlayView has a running .task loop updating audioLevel every 50ms

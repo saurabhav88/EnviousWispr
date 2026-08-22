@@ -429,6 +429,21 @@ struct OverlayWindowHostTests {
     #expect(
       panel.frame.origin.y == 0,
       "the Space-change notification never reached the host — it is not registered")
+
+    // **A SECOND swipe, and this is the assertion that matters.** The first one
+    // proves only that the host is listening. The host moves the window itself
+    // to re-anchor, and that move fires `windowDidMove` — so if the programmatic
+    // guard did not hold, the host would record its OWN reposition as the user
+    // dragging the pill and refuse to follow Spaces ever again. One swipe cannot
+    // see that; the pill would look correct and then silently stop.
+    geometry = Self.screen
+    NSWorkspace.shared.notificationCenter.post(
+      name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+    RunLoop.main.run(until: Date())  // settle: deliver a posted notification, no polling
+
+    #expect(
+      panel.frame.origin.y == 85,
+      "the first automatic Space move was mistaken for a drag, so the pill stopped following Spaces")
   }
 
   /// A `.measured` width must come from the view, and no default may stand in
