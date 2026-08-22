@@ -260,6 +260,10 @@ struct ClipboardIsolationFreezeTests {
           .skipChildren
         }
 
+        override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+          .skipChildren
+        }
+
         override func visit(_ node: ReturnStmtSyntax) -> SyntaxVisitorContinueKind {
           if let expression = node.expression { inspect(expression) }
           return .skipChildren
@@ -621,6 +625,13 @@ struct ClipboardIsolationFreezeTests {
 
     override func visit(_ node: ClosureParameterSyntax) -> SyntaxVisitorContinueKind {
       if parameterShadowsPredicate(firstName: node.firstName, secondName: node.secondName) {
+        predicateIsShadowed = true
+      }
+      return .visitChildren
+    }
+
+    override func visit(_ node: ClosureCaptureSyntax) -> SyntaxVisitorContinueKind {
+      if ClipboardVisitor.identifierText(node.name) == "systemPasteCanReachOurText" {
         predicateIsShadowed = true
       }
       return .visitChildren
@@ -998,6 +1009,10 @@ struct ClipboardIsolationFreezeTests {
         #"PasteCascadeExecutor(pasteboard: { let mode: Mode = .general; return NSPasteboard.withUniqueName() }())"#,
         0
       ),
+      (
+        #"PasteCascadeExecutor(pasteboard: { func mode() -> Mode { return .general }; return NSPasteboard.withUniqueName() }())"#,
+        0
+      ),
       (#"let board = NSPasteboard.general; PasteCascadeExecutor(pasteboard: board)"#, 1),
     ])
   func pasteCascadeExecutorChecksItsPasteboardArgument(source: String, expected: Int) {
@@ -1122,9 +1137,14 @@ struct ClipboardIsolationFreezeTests {
           if let systemPasteCanReachOurText = override, systemPasteCanReachOurText {
             PasteService.pasteViaAppleScript(pid: 1)
           }
+          { [systemPasteCanReachOurText = true] in
+            if systemPasteCanReachOurText {
+              PasteService.pressMenuItem(item)
+            }
+          }()
         }
         """)
-    #expect(inspection.gates == [true, true])
+    #expect(inspection.gates == [true, true, true])
     #expect(
       !inspection.predicateUsesGeneralBoardIdentity,
       "every binding pattern must preserve the verified predicate's identity")
