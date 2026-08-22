@@ -25,6 +25,9 @@ enum EscapeRecoveryPasteAction {
   ///     restored. **Inert, not merely harmless**: pasting a cached snapshot
   ///     would hand back text the user was told had gone, which is the one thing
   ///     the 24-hour promise forbids.
+  ///   - copyToClipboard: the clipboard write, injected so tests never touch
+  ///     the developer's real clipboard.
+  ///   - dispatchPaste: the Cmd-V dispatch, injected for the same reason.
   ///   - report: the restore event, injected so a test can read it.
   ///   - targetHasQuit: whether the app this dictation was aimed at is gone.
   ///     Injected because `NSRunningApplication.isTerminated` cannot be staged
@@ -38,20 +41,23 @@ enum EscapeRecoveryPasteAction {
   static func paste(
     payload: CancelUndoPayload,
     restorable: (UUID) -> (text: String, stampedAt: Date, takeID: String?)?,
+    copyToClipboard: @MainActor (String) -> Void,
+    dispatchPaste: @escaping @MainActor () -> Void,
     report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void,
     retarget: @MainActor (CancelUndoPayload) -> Bool = Self.defaultRetarget,
-    targetHasQuit: (CancelUndoPayload) -> Bool = { $0.targetApp?.isTerminated == true }
+    targetHasQuit: (CancelUndoPayload) -> Bool = { $0.targetApp?.isTerminated == true },
+    recordLog: @MainActor (_ outcome: String, _ ageMs: Int?, _ takeID: String?) -> Void = Self.log
   ) {
     guard let row = restorable(payload.transcriptID) else {
       // Lapsed between render and press. Silent TO THE USER, whose row is
       // already gone from view and who cannot act on the explanation — but no
       // longer silent to us. A press that produced nothing is the single most
       // likely thing a support conversation is about.
-      Self.log(outcome: "no-row", ageMs: nil, takeID: nil)
+      recordLog("no-row", nil, nil)
       return
     }
 
-    PasteService.copyToClipboard(row.text)
+    copyToClipboard(row.text)
 
     // A TARGET THAT HAS QUIT MUST NOT BE PASTED PAST (cloud review).
     //
@@ -75,7 +81,8 @@ enum EscapeRecoveryPasteAction {
     // text went to the clipboard instead. Still a restore."
     if targetHasQuit(payload) {
       Self.finish(
-        .clipboardOnly, stampedAt: row.stampedAt, takeID: row.takeID, report: report)
+        .clipboardOnly, stampedAt: row.stampedAt, takeID: row.takeID, report: report,
+        recordLog: recordLog)
       return
     }
 
@@ -91,7 +98,8 @@ enum EscapeRecoveryPasteAction {
     // pastes it themselves, or takes it from History for the next 24 hours.
     guard retarget(payload) else {
       Self.finish(
-        .clipboardOnly, stampedAt: row.stampedAt, takeID: row.takeID, report: report)
+        .clipboardOnly, stampedAt: row.stampedAt, takeID: row.takeID, report: report,
+        recordLog: recordLog)
       return
     }
     // `NSApp?`, not `NSApp`. It is an implicitly-unwrapped optional and is nil
@@ -104,7 +112,7 @@ enum EscapeRecoveryPasteAction {
     NSApp?.hide(nil)
     Task {
       try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))
-      PasteService.simulatePaste()
+      dispatchPaste()
     }
 
     // Reported as `.pasted` because that is what was ATTEMPTED and what the user
@@ -112,7 +120,9 @@ enum EscapeRecoveryPasteAction {
     // simulated paste gives no completion signal, so a failure value here would
     // be a guess presented as a measurement.
     //
-    Self.finish(.pasted, stampedAt: row.stampedAt, takeID: row.takeID, report: report)
+    Self.finish(
+      .pasted, stampedAt: row.stampedAt, takeID: row.takeID, report: report,
+      recordLog: recordLog)
   }
 
   /// Record the outcome once, on every path, to BOTH channels.
@@ -135,10 +145,11 @@ enum EscapeRecoveryPasteAction {
     _ result: EscapeRecoveryPasteResult,
     stampedAt: Date,
     takeID: String?,
-    report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void
+    report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void,
+    recordLog: @MainActor (_ outcome: String, _ ageMs: Int?, _ takeID: String?) -> Void
   ) {
     let ageMs = Int(Date().timeIntervalSince(stampedAt) * 1000)
-    log(outcome: result.rawValue, ageMs: ageMs, takeID: takeID)
+    recordLog(result.rawValue, ageMs, takeID)
     guard let takeID else { return }
     report(ageMs, result, takeID)
   }
