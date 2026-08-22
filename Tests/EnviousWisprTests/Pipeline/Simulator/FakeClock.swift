@@ -50,10 +50,11 @@ final class FakeClock {
   /// it rather than absorbed by it.
   ///
   /// So it is a signal a future drain COULD consume, kept because the window is
-  /// real and nothing else names it. What it is not is evidence that any window
-  /// is currently guarded, and A13 in particular is not: that flake is lost
-  /// between `spawn` and the sleep REGISTERING, where this counter reads zero.
-  /// `registeredWaiterCount` below is the signal that window needs.
+  /// real and nothing else names it. What it is not is evidence that the A13
+  /// window is guarded: that flake is lost between `spawn` and the sleep
+  /// REGISTERING, where this counter reads zero. A13 now uses
+  /// `triggerAwaitingClockRegistration`, which waits on `registeredWaiterCount`
+  /// below before advancing the logical clock.
   ///
   /// Incremented at BOTH resume sites and decremented by the resumed task
   /// itself, on the first line that runs after its `await`. `sleep(ticks:)`

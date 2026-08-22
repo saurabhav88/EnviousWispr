@@ -110,6 +110,12 @@ enum VADDirective: Sendable {
 /// One step in a scenario's ordered script.
 enum ScenarioStep: Sendable {
   case trigger(SessionTrigger)
+  /// Apply a trigger that is known to spawn one new logical-clock sleeper,
+  /// then wait for that sleeper's real registration signal before allowing
+  /// the next scenario step to run. This is intentionally explicit: most
+  /// triggers schedule no clock work, so a blanket registration wait would
+  /// strand ordinary scenarios.
+  case triggerAwaitingClockRegistration(SessionTrigger)
   case advanceClock(ticks: Int)
   case engine(EngineDirective)
   case capture(CaptureDirective)

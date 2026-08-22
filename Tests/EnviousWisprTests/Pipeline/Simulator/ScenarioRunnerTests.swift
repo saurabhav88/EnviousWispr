@@ -34,8 +34,10 @@ struct ScenarioRunnerTests {
     return makeContext(sut: stub)
   }
 
-  private func makeContext(sut: RecordingSessionDriving) -> SimulatorContext {
-    let clock = FakeClock()
+  private func makeContext(
+    sut: RecordingSessionDriving,
+    clock: FakeClock = FakeClock()
+  ) -> SimulatorContext {
     return SimulatorContext(
       sut: sut,
       engine: FakeEngine(behavior: .batchSuccess(text: "hello"), clock: clock),
@@ -187,5 +189,63 @@ struct ScenarioRunnerTests {
       spy.concludedCalls == 0,
       "#1868: `.idle` is not terminal, so A16 and its kin must keep the plain drain.")
     #expect(spy.readyWorkCalls > 0, "the plain drain must still run")
+  }
+
+  @Test("a clock-gated trigger waits for its sleeper to register before the next step")
+  func clockGatedTriggerWaitsForRegistration() async {
+    let clock = FakeClock()
+    var sleeper: Task<Void, Never>?
+    let stub = StubRecordingSession { trigger, _ in
+      guard trigger == .stop else { return }
+      sleeper = Task { @MainActor in await clock.sleep(ticks: 1) }
+    }
+    let scenario = Scenario(
+      id: "SELFTEST-1868-CLOCK-REGISTRATION",
+      name: "clock advance waits for the sleeper it is meant to drive",
+      steps: [
+        .triggerAwaitingClockRegistration(.stop),
+        .advanceClock(ticks: 1),
+      ],
+      expected: ExpectedOutcome(
+        terminalState: .idle, pasteCount: 0, pasteOutcome: .none, transcript: .none))
+
+    _ = await ScenarioRunner().run(
+      scenario,
+      context: makeContext(sut: stub, clock: clock))
+
+    let registrationsBeforeCleanup = clock.registeredWaiterCount
+    #expect(
+      registrationsBeforeCleanup == 1,
+      """
+      #1868: the runner must not advance to the next step until the trigger's \
+      sleeper has actually registered. Without that wait, this deterministic \
+      stub leaves the count at zero when the runner returns.
+      """)
+
+    // Keep the negative mutation non-hanging: if the runner returned early,
+    // let the orphaned sleeper register, then release it before this test exits.
+    if registrationsBeforeCleanup == 0 {
+      await clock.waitForRegistrations(1)
+      clock.drainPending()
+    }
+    if let sleeper { await sleeper.value }
+  }
+
+  @Test("A13 binds STOP to registration before it advances the wedge clock")
+  func a13WaitsForWedgeWatcherRegistration() {
+    let a13 = ScenarioInventory.all.first { $0.id == "A13" }
+    let hasBoundStop = a13?.steps.indices.dropLast().contains { index in
+      guard case .triggerAwaitingClockRegistration(.stop) = a13?.steps[index],
+            case .advanceClock = a13?.steps[index + 1]
+      else { return false }
+      return true
+    } ?? false
+
+    #expect(
+      hasBoundStop,
+      """
+      A13 must wait for the finalize wedge watcher to register before advancing \
+      the logical clock; a plain STOP reopens the CI-only spawn-to-register race.
+      """)
   }
 }

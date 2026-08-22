@@ -471,8 +471,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
   ///
   /// Scope: this gate covers ONLY the recording-exit hand-off, behind the
   /// recurring `interleavingSweep` `got recording` failure. It is not the only
-  /// observed window — A13 below is another, and is not covered. The same
-  /// bump-absorption shape exists at other continuations resumed inside a step's
+  /// observed window — A13 below is another, and is not covered by THIS drain.
+  /// `ScenarioRunner` waits for A13's clock registration before advancing. The
+  /// same bump-absorption shape exists at other continuations resumed inside a step's
   /// `apply` — `FakeClock.advance(by:)` resuming a sleep, a VAD
   /// `AsyncStream.yield` — and neither is gated here.
   ///
@@ -491,8 +492,8 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// preceded it — A13 is itself a stale-state-after-`advanceClock` failure that
   /// the counter cannot see, so "it followed an advance" does not pick the fix. A
   /// case that deliberately opens the resume-to-run window wants the counter
-  /// clause added HERE; A13 wants registration tracked, a different mechanism,
-  /// recorded on #1868.
+  /// clause added HERE; A13 uses the separate registration mechanism encoded by
+  /// `triggerAwaitingClockRegistration` in its scenario script (#1868).
   func drainReadyWork() async {
     var last = kernel.workEpoch
     var stable = 0
