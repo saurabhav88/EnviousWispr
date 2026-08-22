@@ -572,11 +572,32 @@ struct ClipboardIsolationFreezeTests {
       return .visitChildren
     }
 
+    override func visit(_ node: FunctionParameterSyntax) -> SyntaxVisitorContinueKind {
+      if parameterShadowsPredicate(firstName: node.firstName, secondName: node.secondName) {
+        predicateIsShadowed = true
+      }
+      return .visitChildren
+    }
+
+    override func visit(_ node: ClosureParameterSyntax) -> SyntaxVisitorContinueKind {
+      if parameterShadowsPredicate(firstName: node.firstName, secondName: node.secondName) {
+        predicateIsShadowed = true
+      }
+      return .visitChildren
+    }
+
+    private func parameterShadowsPredicate(firstName: TokenSyntax, secondName: TokenSyntax?) -> Bool
+    {
+      (secondName ?? firstName).text == "systemPasteCanReachOurText"
+    }
+
     private func isDominatedByPositiveSystemPasteGate(_ call: FunctionCallExprSyntax) -> Bool {
       var ancestor = Syntax(call).parent
       while let current = ancestor {
         if let branch = current.as(IfExprSyntax.self),
-          hasPositiveSystemPasteGate(branch.conditions)
+          hasPositiveSystemPasteGate(branch.conditions),
+          call.positionAfterSkippingLeadingTrivia >= branch.body.positionAfterSkippingLeadingTrivia,
+          call.endPositionBeforeTrailingTrivia <= branch.body.endPositionBeforeTrailingTrivia
         {
           return true
         }
@@ -989,6 +1010,21 @@ struct ClipboardIsolationFreezeTests {
       gates == [false, false, true], "only an exact positive gate may protect a system-paste call")
   }
 
+  @Test("a gate does not protect a system paste in its else branch")
+  func systemPasteGateCheckRejectsElseBranchCalls() {
+    let gates = Self.systemPasteTierGates(
+      inSource: """
+        func f() {
+          if systemPasteCanReachOurText {
+            doSomethingSafe()
+          } else {
+            PasteService.pasteToActiveApp("x", to: board)
+          }
+        }
+        """)
+    #expect(gates == [false], "the positive condition does not dominate its else body")
+  }
+
   @Test("a local declaration cannot shadow the verified system-paste predicate")
   func systemPasteGateCheckRejectsPredicateShadowing() {
     let inspection = Self.systemPasteTierInspection(
@@ -1007,6 +1043,25 @@ struct ClipboardIsolationFreezeTests {
     #expect(
       !inspection.predicateUsesGeneralBoardIdentity,
       "a same-named local can make the condition true independently of the verified property")
+  }
+
+  @Test("a parameter cannot shadow the verified system-paste predicate")
+  func systemPasteGateCheckRejectsParameterShadowing() {
+    let inspection = Self.systemPasteTierInspection(
+      inSource: """
+        var systemPasteCanReachOurText: Bool {
+          pasteboard === NSPasteboard.general
+        }
+        func helper(systemPasteCanReachOurText: Bool) {
+          if systemPasteCanReachOurText {
+            PasteService.pasteToActiveApp("x", to: board)
+          }
+        }
+        """)
+    #expect(inspection.gates == [true])
+    #expect(
+      !inspection.predicateUsesGeneralBoardIdentity,
+      "a parameter can authorize a paste independently of the verified property")
   }
 
   @Test("the system-paste predicate is exactly the injected-board identity check")
