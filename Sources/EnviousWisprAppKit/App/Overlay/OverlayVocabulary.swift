@@ -194,6 +194,32 @@ enum OverlayExpiry: Equatable, Sendable {
 /// no reason that survives inspection: each differs only in its words, its icon
 /// and its dwell.
 struct NoticeModel: Equatable, Sendable {
+
+  /// **Which leaf view renders this notice.**
+  ///
+  /// Collapsing eleven `transitionTo*` methods into one MODEL does not collapse
+  /// their appearance, and this is the obligation recorded when the model was
+  /// first written: a sentence, a severity and a dwell do not say whether to
+  /// draw a spinner, a spectrum wheel or a warning triangle. Named here rather
+  /// than inferred from the text, because inferring a visual from a string is
+  /// how a copy edit silently changes an icon.
+  enum Kind: Equatable, Sendable {
+    /// `PolishingOverlayView` — the spectrum wheel with a label.
+    case processing
+    /// `ColdStartNoticeView` with its spinner.
+    case warmingUp
+    /// `ColdStartNoticeView` with its ready mark.
+    case ready
+    /// `NotificationOverlayView`, whose own style carries the icon and colour.
+    case notification
+    /// `ImportStatusOverlayView`.
+    case importStatus
+    /// `RecoveryNoticeView`, which offers Discard.
+    case recovery
+    /// `AccessibilityToastView`, which offers Grant.
+    case accessibilityToast
+  }
+
   enum Severity: Equatable, Sendable {
     case neutral
     case warning
@@ -202,6 +228,7 @@ struct NoticeModel: Equatable, Sendable {
     case distress
   }
 
+  let kind: Kind
   let text: String
   let secondaryText: String?
   let severity: Severity
@@ -212,15 +239,17 @@ struct NoticeModel: Equatable, Sendable {
   let action: (label: String, action: OverlayAction)?
 
   static func == (a: NoticeModel, b: NoticeModel) -> Bool {
-    a.text == b.text && a.secondaryText == b.secondaryText && a.severity == b.severity
+    a.kind == b.kind && a.text == b.text && a.secondaryText == b.secondaryText
+      && a.severity == b.severity
       && a.isMultiline == b.isMultiline && a.action?.label == b.action?.label
       && a.action?.action == b.action?.action
   }
 
   init(
-    text: String, secondaryText: String? = nil, severity: Severity = .neutral,
+    kind: Kind, text: String, secondaryText: String? = nil, severity: Severity = .neutral,
     isMultiline: Bool = false, action: (label: String, action: OverlayAction)? = nil
   ) {
+    self.kind = kind
     self.text = text
     self.secondaryText = secondaryText
     self.severity = severity

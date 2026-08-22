@@ -407,42 +407,45 @@ struct OverlayReducer {
       // `PolishingOverlayView` pins no width and that site passes `fitToContent: true`,
       // so the `230` at that call site is DISCARDED and the real width is the
       // view's `fittingSize`. Carrying the literal would have looked right.
-      return notice(id: id, text: DictationNarrator.copy(for: phase), width: .measured)
+      return notice(
+        id: id, kind: .processing, text: DictationNarrator.copy(for: phase),
+        width: .measured)
 
     case .clipboardFallback:
       // that site via `transitionToPolishingNow`, dwell from
       // `scheduleAutoDismiss`'s own default.
       return notice(
         // Routes through the same `PolishingOverlayView` path, so also measured.
-        id: id, text: DictationNarrator.clipboardFallbackText, width: .measured,
+        id: id, kind: .processing, text: DictationNarrator.clipboardFallbackText, width: .measured,
         expiry: .after(seconds: 2.5))
 
     case .accessibilityToast:
       return notice(
-        id: id, text: DictationNarrator.accessibilityToastText, width: .fixed(300),  // :1035
+        id: id, kind: .accessibilityToast, text: DictationNarrator.accessibilityToastText,
+        width: .fixed(300),  // :1035
         expiry: .after(seconds: 6), isMultiline: true,  // :1039
         action: (label: "Grant", action: .grantAccessibility))
 
     case .warning(let reason):
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
+        id: id, kind: .notification, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
         expiry: .after(seconds: 2.5), severity: .warning)  // NotificationStyle 2.5
 
     case .error(let reason):
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
+        id: id, kind: .notification, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
         expiry: .after(seconds: 3), severity: .error)  // NotificationStyle 3.0
 
     case .advisory(let reason):
       // #1891: deliberately NOT `.error`. Multiline, and a dwell long enough
       // to read the sentence.
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(360),  // advisoryWidth :1207
+        id: id, kind: .notification, text: DictationNarrator.copy(for: reason), width: .fixed(360),  // advisoryWidth :1207
         expiry: .after(seconds: 8), isMultiline: true)  // NotificationStyle 8.0
 
     case .interruption(let reason):
       return notice(
-        id: id, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
+        id: id, kind: .notification, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
         expiry: .after(seconds: 2), severity: .distress)  // NotificationStyle 2.0
 
     case .passiveChip(let payload):
@@ -452,19 +455,20 @@ struct OverlayReducer {
 
     case .cachingModel(let engineLabel):
       return notice(
-        id: id, text: DictationNarrator.coldStartTitle,
+        id: id, kind: .warmingUp, text: DictationNarrator.coldStartTitle,
         secondary: DictationNarrator.coldStartSubtitle(engineLabel: engineLabel),
         width: .fixed(300),  // :641
         expiry: .after(seconds: 2))  // :642
 
     case .engineReady:
       return notice(
-        id: id, text: DictationNarrator.readyTitle, width: .fixed(240),  // :656
+        id: id, kind: .ready, text: DictationNarrator.readyTitle, width: .fixed(240),  // :656
         expiry: .after(seconds: 1.5))  // :657
 
     case .recoveringLastRecording:
       return notice(
-        id: id, text: DictationNarrator.recoveryTitle, secondary: DictationNarrator.recoverySubtitle,
+        id: id, kind: .recovery, text: DictationNarrator.recoveryTitle,
+        secondary: DictationNarrator.recoverySubtitle,
         width: .fixed(320),  // :688
         // that site gives it a 6-second dwell. The first version said `.untilReplaced`,
         // which would have left the recovery pill on screen forever.
@@ -473,7 +477,7 @@ struct OverlayReducer {
 
     case .recoverySucceeded:
       return notice(
-        id: id, text: DictationNarrator.recoverySucceededTitle,
+        id: id, kind: .notification, text: DictationNarrator.recoverySucceededTitle,
         secondary: DictationNarrator.recoverySucceededSubtitle, width: .fixed(300),  // :674
         expiry: .after(seconds: 3))  // :675
 
@@ -504,7 +508,7 @@ struct OverlayReducer {
     switch request {
     case .importStatus(let message):
       return OverlayPresentation(
-        id: id, content: .notice(NoticeModel(text: message, isMultiline: true)),
+        id: id, content: .notice(NoticeModel(kind: .importStatus, text: message, isMultiline: true)),
         // `ImportStatusOverlayView` uses `.frame(maxWidth: 280)` — a BOUND, not a
         // width — under `fitToContent`, so this is measured too.
         expiry: .after(seconds: 3), requestedWidth: .measured)  // :1105, :1148
@@ -521,14 +525,16 @@ struct OverlayReducer {
         id: id,
         content: .notice(
           NoticeModel(
-            text: DictationNarrator.accessibilityToastText, isMultiline: true,
+            kind: .accessibilityToast, text: DictationNarrator.accessibilityToastText,
+            isMultiline: true,
             action: (label: "Grant", action: .grantAccessibility))),
         expiry: .after(seconds: 6), requestedWidth: .fixed(300))  // :1035, :1039
     }
   }
 
   private static func notice(
-    id: PresentationID, text: String, secondary: String? = nil, width: OverlayWidth,
+    id: PresentationID, kind: NoticeModel.Kind, text: String, secondary: String? = nil,
+    width: OverlayWidth,
     expiry: OverlayExpiry = .untilReplaced, severity: NoticeModel.Severity = .neutral,
     isMultiline: Bool = false, action: (label: String, action: OverlayAction)? = nil
   ) -> OverlayPresentation {
@@ -536,8 +542,8 @@ struct OverlayReducer {
       id: id,
       content: .notice(
         NoticeModel(
-          text: text, secondaryText: secondary, severity: severity, isMultiline: isMultiline,
-          action: action)),
+          kind: kind, text: text, secondaryText: secondary, severity: severity,
+          isMultiline: isMultiline, action: action)),
       expiry: expiry, requestedWidth: width)
   }
 }

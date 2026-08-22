@@ -484,4 +484,48 @@ struct OverlayReducerTests {
       r.reduce(.action(id, .pasteEscapeRecovery(transcriptID: transcript))).deliverAction
         == .pasteEscapeRecovery(transcriptID: transcript))
   }
+
+  /// **Every notice names the leaf view that draws it, and the mapping is
+  /// pinned.** Collapsing eleven `transitionTo*` methods into one model does not
+  /// collapse their appearance: a sentence, a severity and a dwell do not say
+  /// whether to draw a spinner, a spectrum wheel or a warning triangle.
+  ///
+  /// Swept over the closed set rather than spot-checked, because the failure is
+  /// a WRONG icon rather than a missing one — a cold-start pill that renders the
+  /// ready mark looks perfectly fine and says the opposite of the truth.
+  @Test(
+    "every notice carries the visual identity its shipped pill had",
+    arguments: [
+      (OverlayIntent.processing(phase: .transcribing), NoticeModel.Kind.processing),
+      (.clipboardFallback, .processing),
+      (.accessibilityToast, .accessibilityToast),
+      (.warning(reason: .polishFailed), .notification),
+      (.error(reason: .asrFailed), .notification),
+      (.advisory(reason: .zeroSignal), .notification),
+      (.interruption(reason: .deviceRemoved), .notification),
+      (.cachingModel(engineLabel: "Parakeet"), .warmingUp),
+      (.engineReady, .ready),
+      (.recoveringLastRecording, .recovery),
+      (.recoverySucceeded, .notification),
+    ])
+  func noticeKindsArePinned(pair: (intent: OverlayIntent, kind: NoticeModel.Kind)) {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(pair.intent))
+    guard case .notice(let notice)? = r.state.current?.content else {
+      Issue.record("\(pair.intent) did not produce a notice")
+      return
+    }
+    #expect(notice.kind == pair.kind)
+  }
+
+  @Test("an import-status request renders as import status")
+  func importStatusKind() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.featureRequest(.importStatus(message: "Imported 12 words")))
+    guard case .notice(let notice)? = r.state.current?.content else {
+      Issue.record("expected a notice")
+      return
+    }
+    #expect(notice.kind == .importStatus)
+  }
 }
