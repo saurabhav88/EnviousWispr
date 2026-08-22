@@ -85,14 +85,15 @@ struct OverlayRootView: View {
       // The LEVEL on the presentation is a snapshot the reducer carries for
       // identity and morph decisions; the view reads the live provider instead,
       // which is why it is not bound here.
-      RecordingOverlayView(
-        audioLevelProvider: model.audioLevelProvider,
-        recordingElapsedProvider: model.recordingElapsedProvider,
-        livePreviewProvider: model.livePreviewProvider,
-        onContentHeightChange: model.onContentHeightChange,
-        usesPreviewLayout: model.usesPreviewLayout(),
-        lockState: lockState.value,
-        noticeState: noticeState.value)
+      //
+      // **The FRAME is part of the composition, not a detail of the window.** The
+      // shipped site frames this view before handing it to `showPanel`, and the
+      // panel is then sized to match. Dropping the frame leaves the capsule to
+      // size itself inside a 92-point window: the #1341 Bottom case in
+      // particular depends on the ALIGNMENT here, because bottom-aligning the
+      // content is what makes the panel's Y origin the capsule's visible bottom
+      // edge. `OverlayRecordingLayout` owns all of it.
+      recording(model.recordingLayout)
 
     case .notice(let notice):
       notices(notice, on: presentation)
@@ -114,6 +115,32 @@ struct OverlayRootView: View {
       EscapeRecoveryPillView(
         onPaste: { press(.pasteEscapeRecovery(transcriptID: transcriptID), on: presentation) },
         onExpire: {})
+    }
+  }
+
+  @ViewBuilder
+  private func recording(_ layout: OverlayRecordingLayout) -> some View {
+    let view = RecordingOverlayView(
+      audioLevelProvider: model.audioLevelProvider,
+      recordingElapsedProvider: model.recordingElapsedProvider,
+      livePreviewProvider: model.livePreviewProvider,
+      onContentHeightChange: model.onContentHeightChange,
+      usesPreviewLayout: layout.usesPreview,
+      lockState: lockState.value,
+      noticeState: noticeState.value)
+
+    switch layout {
+    case .preview(_):
+      // Width only. The height is content-driven so the pill earns its size a
+      // line at a time rather than snapping once the real height is measured.
+      view.frame(width: layout.width)
+    case .compact(let position):
+      // #1341: Bottom bottom-aligns, Top centres. Centring in Bottom leaves ~24
+      // points of invisible space under a ~44-point capsule, which mutes the
+      // Bottom offset and visibly misaligns the polishing pill that replaces it.
+      view.frame(
+        width: layout.width, height: layout.fixedHeight,
+        alignment: position == .bottom ? .bottom : .center)
     }
   }
 

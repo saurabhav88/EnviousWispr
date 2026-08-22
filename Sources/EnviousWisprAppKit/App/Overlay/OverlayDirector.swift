@@ -107,7 +107,78 @@ final class OverlayDirector {
   /// point of making the binding arrive with the request: the omission has to be
   /// visible at the call site, not inferred from its absence.
   func send(_ event: OverlayEvent, actions: ((OverlayAction) -> Void)?) {
-    let plan = reducer.reduce(event)
+    if case .pipeline(.recording) = event {
+      // **The wrong ORDER is what this refuses, not the wrong event.** A caller
+      // that sends first and installs providers afterwards renders one frame
+      // from whatever the model last held — the previous dictation's layout, or
+      // the `.compact(.top)` default on the first recording of the session — and
+      // a later mutation of the model is not published, so the wrong frame is
+      // also the final one.
+      //
+      // `assertionFailure` rather than a precondition: this is a programming
+      // invariant, caught in Debug and in CI, and trapping in a user's Release
+      // build over a first-frame defect is worse than the defect. In Release it
+      // falls through and renders with the layout already held, which is correct
+      // for the morph case and stale-but-plausible for a fresh one.
+      assertionFailure(
+        "use presentRecording(...) — a recording's providers and layout must be "
+          + "installed in the same operation that presents it")
+    }
+    apply(reducer.reduce(event), actions: actions)
+  }
+
+  /// Present the recording pill with its providers and its layout installed in
+  /// ONE operation.
+  ///
+  /// **Five things travel together and the shipped code installs them together.**
+  /// See `OverlayRecordingLayout`. Splitting them across `setRecordingProviders`
+  /// and `send` made a wrong first frame expressible, so this is the only way to
+  /// express the right one.
+  ///
+  /// A MORPH keeps the layout it was created with. The shipped panel reads the
+  /// preview setting once at creation and its width is fixed for that panel's
+  /// life, because an `NSPanel` cannot grow mid-recording without a rebuild and a
+  /// rebuild is the #930 flicker. Re-resolving here on every audio tick would
+  /// resize a live pill the moment the user changed the setting.
+  func presentRecording(
+    audioLevel: Float,
+    audioLevelProvider: @escaping () -> Float,
+    recordingElapsedProvider: @escaping () -> TimeInterval?,
+    livePreviewEnabled: @escaping () -> Bool,
+    livePreviewDisplay: @escaping () -> LivePreviewDisplay,
+    actions: ((OverlayAction) -> Void)?
+  ) {
+    let plan = reducer.reduce(.pipeline(.recording(audioLevel: audioLevel)))
+    guard let presentation = plan.presentation else {
+      // The reducer refused — a feature holds the slot, or nothing changed.
+      apply(plan, actions: actions)
+      return
+    }
+
+    let layout: OverlayRecordingLayout
+    if presentedID == presentation.id {
+      layout = model.recordingLayout
+    } else {
+      let at = position()
+      layout = livePreviewEnabled() ? .preview(position: at) : .compact(position: at)
+    }
+
+    model.setRecordingProviders(
+      audioLevel: audioLevelProvider,
+      recordingElapsed: recordingElapsedProvider,
+      livePreview: livePreviewDisplay,
+      layout: layout,
+      onContentHeightChange: { [weak self] height in
+        // The preview pill grows a line at a time as words wrap. Keyed to the
+        // presentation it was installed for, so a late callback from a finished
+        // dictation cannot resize the pill that replaced it.
+        guard let self, self.presentedID == presentation.id,
+          self.model.recordingLayout.usesPreview
+        else { return }
+        self.host.resizeCurrentPresentation(
+          to: CGSize(width: self.model.recordingLayout.width, height: height))
+      })
+
     apply(plan, actions: actions)
   }
 
@@ -235,24 +306,18 @@ final class OverlayDirector {
   private func geometry(
     for presentation: OverlayPresentation
   ) -> (width: OverlayWidth, fixedHeight: CGFloat?) {
-    guard case .recording = presentation.content, model.usesPreviewLayout() else {
+    guard case .recording = presentation.content else {
       return (presentation.requestedWidth, presentation.reservesFixedHeight)
     }
-    // **BOTH axes change, and the width is the one that is easy to miss.** The
-    // shipped site reads `showsPreview ? previewPillWidth : 185` — 400 against
-    // 185 — before it picks the sizing branch, so carrying only the height would
-    // still render a preview pill less than half its intended width.
-    return (.fixed(Self.previewPillWidth), nil)
+    // **BOTH axes come from the layout, and the width is the one that is easy to
+    // miss.** The shipped site reads `showsPreview ? previewPillWidth : 185` —
+    // 400 against 185 — before it picks the sizing branch, so carrying only the
+    // height still renders a preview pill at under half its intended width. The
+    // reducer's own 185/92 is the compact answer and is deliberately ignored
+    // here: the reducer cannot know which layout is in force.
+    let layout = model.recordingLayout
+    return (.fixed(layout.width), layout.fixedHeight)
   }
-
-  /// `RecordingOverlayPanel.previewPillWidth`, duplicated because that one is
-  /// `private static` and cannot be referenced from here.
-  ///
-  /// **A transitional duplicate with a named end**, not a value with two owners:
-  /// the panel is deleted in the cutover and this becomes the only copy. Until
-  /// then the two must agree, and nothing enforces it — so if the panel's width
-  /// changes before the cutover lands, change both.
-  private static let previewPillWidth: CGFloat = 400
 
   /// Push the model's new occupant to the window.
   ///

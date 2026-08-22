@@ -41,6 +41,26 @@
     /// hand each test its own host instead of registering it here.
     private static nonisolated(unsafe) var hosts: [OverlayWindowHost] = []
 
+    /// Recordings go through `presentRecording`, never `send`, because providers
+    /// and layout must be installed in the SAME operation that presents the pill.
+    /// The director asserts on the wrong order, so this helper is what keeps the
+    /// suite expressing the right one.
+    private static func record(
+      _ d: OverlayDirector, level: Float = 0.2, preview: Bool = false,
+      elapsed: @escaping () -> TimeInterval? = { nil },
+      display: @escaping () -> LivePreviewDisplay = { .off },
+      onHeight: @escaping (CGFloat) -> Void = { _ in },
+      actions: ((OverlayAction) -> Void)? = nil
+    ) {
+      d.presentRecording(
+        audioLevel: level,
+        audioLevelProvider: { level },
+        recordingElapsedProvider: elapsed,
+        livePreviewEnabled: { preview },
+        livePreviewDisplay: display,
+        actions: actions)
+    }
+
     private static func closeAllWindows() {
       for h in hosts { h.panelForTesting?.orderOut(nil) }
       hosts.removeAll()
@@ -84,7 +104,7 @@
       d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
       let staleTimer = try! #require(armed.work)
 
-      d.send(.pipeline(.recording(audioLevel: 0.4)), actions: nil)
+      Self.record(d, level: 0.4)
       let live = try! #require(d.currentPresentationForTesting?.id)
 
       staleTimer.fireForTesting()
@@ -116,7 +136,7 @@
       d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
       let notice = try! #require(armed.work)
 
-      d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
+      Self.record(d, level: 0.2)
 
       #expect(notice.isCancelled)
       #expect(d.hasArmedExpiryForTesting == false, "the recording pill armed a dismissal")
@@ -160,7 +180,7 @@
       d.send(.pipeline(.accessibilityToast), actions: { _ in delivered.effects.append(.recordingIntentChanged(true)) })
       let toast = try! #require(d.currentPresentationForTesting?.id)
 
-      d.send(.pipeline(.recording(audioLevel: 0.3)), actions: nil)
+      Self.record(d, level: 0.3)
 
       #expect(d.hasActiveBindingForTesting == false)
       d.send(.action(toast, .grantAccessibility), actions: nil)
@@ -236,7 +256,7 @@
         actions: { _ in })
       #expect(d.holdsEscapeRecoveryPayloadForTesting)
 
-      d.send(.pipeline(.recording(audioLevel: 0.3)), actions: nil)
+      Self.record(d, level: 0.3)
 
       #expect(
         d.holdsEscapeRecoveryPayloadForTesting == false,
@@ -273,11 +293,11 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       var pressed: [OverlayAction] = []
-      d.send(.pipeline(.recording(audioLevel: 0.1)), actions: { pressed.append($0) })
+      Self.record(d, level: 0.1, actions: { pressed.append($0) })
       let id = try! #require(d.currentPresentationForTesting?.id)
 
       for level in [Float(0.4), 0.7, 0.2] {
-        d.send(.pipeline(.recording(audioLevel: level)), actions: nil)
+        Self.record(d, level: level)
       }
       d.send(.action(id, .discardRecovery), actions: nil)
 
@@ -295,10 +315,10 @@
     func morphIsNotFresh() {
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
-      d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
+      Self.record(d, level: 0.2)
       let first = try! #require(d.presentedIDForTesting)
 
-      d.send(.pipeline(.recording(audioLevel: 0.8)), actions: nil)
+      Self.record(d, level: 0.8)
 
       #expect(d.presentedIDForTesting == first, "a metering update changed the presented occupant")
     }
@@ -307,7 +327,7 @@
     func replacementIsANewOccupant() {
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
-      d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
+      Self.record(d, level: 0.2)
       let first = try! #require(d.presentedIDForTesting)
 
       d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
@@ -323,8 +343,8 @@
       defer { Self.closeAllWindows() }
       d.renderModel.setRecordingProviders(
         audioLevel: { 0.9 }, recordingElapsed: { 12 }, livePreview: { .off },
-        usesPreviewLayout: { false }, onContentHeightChange: { _ in })
-      d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
+        layout: .compact(position: .top), onContentHeightChange: { _ in })
+      Self.record(d, level: 0.2)
 
       d.send(.pipeline(.hidden), actions: nil)
 
@@ -344,8 +364,8 @@
       defer { Self.closeAllWindows() }
       d.renderModel.setRecordingProviders(
         audioLevel: { 0.9 }, recordingElapsed: { 12 }, livePreview: { .off },
-        usesPreviewLayout: { false }, onContentHeightChange: { _ in })
-      d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
+        layout: .compact(position: .top), onContentHeightChange: { _ in })
+      Self.record(d, level: 0.2)
 
       d.send(.pipeline(.processing(phase: .transcribing)), actions: nil)
 
@@ -359,20 +379,47 @@
     /// is the paired accepted case for the rejection above: without it, "release
     /// on any change" would also be satisfied by releasing on every audio tick,
     /// which empties the meter mid-dictation.
+    ///
+    /// **Asserted as NOT-CLEARED rather than as a specific value**, because
+    /// `presentRecording` installs providers on every call by construction — a
+    /// tick legitimately replaces the level closure with the new level. What must
+    /// never happen is the release path running, which zeroes them.
     @Test("an audio tick does not release the recording's own providers")
     func morphingTheRecordingKeepsItsProviders() {
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
-      d.renderModel.setRecordingProviders(
-        audioLevel: { 0.9 }, recordingElapsed: { 12 }, livePreview: { .off },
-        usesPreviewLayout: { false }, onContentHeightChange: { _ in })
-      d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
+      Self.record(d, level: 0.2, elapsed: { 12 })
 
-      d.send(.pipeline(.recording(audioLevel: 0.7)), actions: nil)
+      Self.record(d, level: 0.7, elapsed: { 12 })
 
       #expect(
-        d.renderModel.audioLevelProvider() == 0.9,
+        d.renderModel.audioLevelProvider() == 0.7,
         "an audio tick emptied the meter it was reporting to")
+      #expect(
+        d.renderModel.recordingElapsedProvider() == 12,
+        "an audio tick dropped the elapsed clock, which no tick carries")
+    }
+
+    /// **A morph keeps the LAYOUT it was created with, whatever the setting now
+    /// says.** The shipped panel reads the preview setting once at creation and
+    /// its width is fixed for that panel's life, because an `NSPanel` cannot grow
+    /// mid-recording without a rebuild and a rebuild is the #930 flicker. So a
+    /// user toggling Live Preview mid-dictation must not resize the live pill —
+    /// which re-resolving the layout on every tick would do.
+    @Test("toggling Live Preview mid-dictation does not resize the live pill")
+    func morphKeepsTheLayoutItWasCreatedWith() {
+      let (d, _, _) = Self.director()
+      defer { Self.closeAllWindows() }
+      Self.record(d, level: 0.2, preview: false)
+      let atStart = d.hostForTesting.panelForTesting?.frame.width
+
+      // The setting flips, and the next tick reports it.
+      Self.record(d, level: 0.6, preview: true)
+
+      #expect(atStart == 185)
+      #expect(
+        d.hostForTesting.panelForTesting?.frame.width == 185,
+        "a mid-dictation settings change resized the live pill, which is the #930 rebuild flicker")
     }
 
     /// **The obligation `OverlayContent.recording` recorded, discharged.** The
@@ -388,18 +435,12 @@
     func previewLayoutDropsTheReservedFrame() {
       let (fixed, _, _) = Self.director()
       defer { Self.closeAllWindows() }
-      fixed.renderModel.setRecordingProviders(
-        audioLevel: { 0 }, recordingElapsed: { nil }, livePreview: { .off },
-        usesPreviewLayout: { false }, onContentHeightChange: { _ in })
-      fixed.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
+      Self.record(fixed, level: 0.2, preview: false)
       let reserved = fixed.hostForTesting.panelForTesting?.frame.height
       let fixedWidth = fixed.hostForTesting.panelForTesting?.frame.width
 
       let (preview, _, _) = Self.director()
-      preview.renderModel.setRecordingProviders(
-        audioLevel: { 0 }, recordingElapsed: { nil }, livePreview: { .off },
-        usesPreviewLayout: { true }, onContentHeightChange: { _ in })
-      preview.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
+      Self.record(preview, level: 0.2, preview: true)
       let measured = preview.hostForTesting.panelForTesting?.frame.height
       let previewWidth = preview.hostForTesting.panelForTesting?.frame.width
 
