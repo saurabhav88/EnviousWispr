@@ -47,15 +47,16 @@
     /// suite expressing the right one.
     private static func record(
       _ d: OverlayDirector, level: Float = 0.2, preview: Bool = false,
+      locked: Bool = false,
       elapsed: @escaping () -> TimeInterval? = { nil },
       display: @escaping () -> LivePreviewDisplay = { .off },
-      onHeight: @escaping (CGFloat) -> Void = { _ in },
       actions: ((OverlayAction) -> Void)? = nil
     ) {
       d.presentRecording(
         audioLevel: level,
         audioLevelProvider: { level },
         recordingElapsedProvider: elapsed,
+        isRecordingLocked: locked,
         livePreviewEnabled: { preview },
         livePreviewDisplay: display,
         actions: actions)
@@ -79,14 +80,16 @@
       var effects: [OverlayEffect] = []
     }
 
-    private static func director() -> (OverlayDirector, Armed, Sink) {
+    private static func director(
+      position: @escaping () -> OverlayPillPosition = { .bottom }
+    ) -> (OverlayDirector, Armed, Sink) {
       let armed = Armed()
       let sink = Sink()
       // Real panels again: the director renders through a real host. Held so the
       // caller can order the window out when the test ends.
       let host = OverlayWindowHost(screens: { OverlayScreenResolver { screen } })
       let d = OverlayDirector(
-        host: host, deliverEffect: { sink.effects.append($0) }, position: { .bottom },
+        host: host, deliverEffect: { sink.effects.append($0) }, position: position,
         scheduler: .manual { armed.work = $0 })
       hosts.append(host)
       return (d, armed, sink)
@@ -384,6 +387,11 @@
     /// `presentRecording` installs providers on every call by construction — a
     /// tick legitimately replaces the level closure with the new level. What must
     /// never happen is the release path running, which zeroes them.
+    ///
+    /// Every tick carries the elapsed provider too, at this boundary. An earlier
+    /// version of this comment said no tick does; that is true of the audio-level
+    /// PUSH and false of `presentRecording`, which takes the full provider set
+    /// each time — the distinction the atomic operation exists to enforce.
     @Test("an audio tick does not release the recording's own providers")
     func morphingTheRecordingKeepsItsProviders() {
       let (d, _, _) = Self.director()
@@ -397,7 +405,7 @@
         "an audio tick emptied the meter it was reporting to")
       #expect(
         d.renderModel.recordingElapsedProvider() == 12,
-        "an audio tick dropped the elapsed clock, which no tick carries")
+        "an audio tick dropped the elapsed clock it was handed")
     }
 
     /// **A morph keeps the LAYOUT it was created with, whatever the setting now
@@ -420,6 +428,47 @@
       #expect(
         d.hostForTesting.panelForTesting?.frame.width == 185,
         "a mid-dictation settings change resized the live pill, which is the #930 rebuild flicker")
+    }
+
+    /// **The lock is part of the presentation TRANSACTION, not a later morph.**
+    /// The reducer's born-locked rule exists for this, and the shipped
+    /// `show(intent:isRecordingLocked:)` takes both in one call. Before this, the
+    /// caller had to remember a second `send(.lockStateChanged(_:))`, and
+    /// forgetting it lost hands-free lock with nothing to say so.
+    @Test("a recording is born with the lock value from its presentation transaction")
+    func recordingIsBornLocked() {
+      let (d, _, _) = Self.director()
+      defer { Self.closeAllWindows() }
+
+      Self.record(d, locked: true)
+
+      guard case .recording(_, let locked, _)? = d.currentPresentationForTesting?.content else {
+        Issue.record("expected a recording presentation")
+        return
+      }
+      #expect(locked, "the recording rendered unlocked before a later lock morph")
+    }
+
+    /// **One position per presentation, not two reads of a provider.** The layout
+    /// captures the anchored edge when the pill is composed; the host used to
+    /// re-read it, so a setting changed in between would compose against one edge
+    /// and place against another.
+    ///
+    /// Counting READS rather than comparing edges, because the defect is the
+    /// second read itself — a test that compared two positions would pass
+    /// whenever the provider happened to answer the same twice.
+    @Test("recording position is resolved once for composition and placement")
+    func recordingPositionIsResolvedOnce() {
+      var reads = 0
+      let (d, _, _) = Self.director(position: {
+        reads += 1
+        return reads == 1 ? .bottom : .top
+      })
+      defer { Self.closeAllWindows() }
+
+      Self.record(d)
+
+      #expect(reads == 1, "the host re-read a position already captured by the recording layout")
     }
 
     /// **The obligation `OverlayContent.recording` recorded, discharged.** The

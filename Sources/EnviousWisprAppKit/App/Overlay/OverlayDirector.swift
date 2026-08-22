@@ -116,10 +116,14 @@ final class OverlayDirector {
       // also the final one.
       //
       // `assertionFailure` rather than a precondition: this is a programming
-      // invariant, caught in Debug and in CI, and trapping in a user's Release
-      // build over a first-frame defect is worse than the defect. In Release it
-      // falls through and renders with the layout already held, which is correct
-      // for the morph case and stale-but-plausible for a fresh one.
+      // invariant, caught in Debug and in CI, and trapping a user's Release build
+      // over a first-frame defect is worse than the defect.
+      //
+      // **In Release this does NOT refuse.** `assertionFailure` compiles away and
+      // the call falls through to render with the layout the model already holds
+      // — correct for a morph, stale-but-plausible for a fresh recording. The
+      // step-4 caller sweep must therefore leave no such call; the assertion
+      // catches one during development, it does not defend against one shipping.
       assertionFailure(
         "use presentRecording(...) — a recording's providers and layout must be "
           + "installed in the same operation that presents it")
@@ -144,10 +148,23 @@ final class OverlayDirector {
     audioLevel: Float,
     audioLevelProvider: @escaping () -> Float,
     recordingElapsedProvider: @escaping () -> TimeInterval?,
+    isRecordingLocked: Bool,
     livePreviewEnabled: @escaping () -> Bool,
     livePreviewDisplay: @escaping () -> LivePreviewDisplay,
     actions: ((OverlayAction) -> Void)?
   ) {
+    // **The lock is a show-time value, not a later morph.** The shipped
+    // `show(intent:isRecordingLocked:)` takes it in the same call and commits it
+    // before drawing, and the reducer's own born-locked rule says why: applied
+    // in the SAME transaction rather than rendered unlocked and morphed a frame
+    // later. Leaving it to a separate `send(.lockStateChanged(_:))` at the call
+    // site makes forgetting it possible, and forgetting it loses hands-free lock
+    // silently.
+    //
+    // The plan is discarded deliberately: it either reports no change, or a
+    // morph that the recording plan below supersedes. What matters is the STATE
+    // it sets, which the born-locked rule and the morph path both read.
+    _ = reducer.reduce(.lockStateChanged(isRecordingLocked))
     let plan = reducer.reduce(.pipeline(.recording(audioLevel: audioLevel)))
     guard let presentation = plan.presentation else {
       // The reducer refused — a feature holds the slot, or nothing changed.
@@ -335,12 +352,23 @@ final class OverlayDirector {
     let isFresh = presentedID != presentation.id
     presentedID = presentation.id
     let recordingGeometry = geometry(for: presentation)
+    // **One position per presentation, not two reads of a provider.** The
+    // recording layout captured the anchored edge when the pill was composed;
+    // re-reading here lets a setting changed in between compose against one edge
+    // and place against another, which is the same assembled-from-two-instants
+    // defect the layout value exists to close.
+    let anchor: OverlayPillPosition
+    if case .recording = presentation.content {
+      anchor = model.recordingLayout.position
+    } else {
+      anchor = position()
+    }
     let presented = host.present(
       rootHostingView,
       width: recordingGeometry.width,
       fixedHeight: recordingGeometry.fixedHeight,
       isFresh: isFresh,
-      position: position())
+      position: anchor)
     if !presented {
       // The host refused — no screen, or a presentation it could not size — and
       // it returns BEFORE touching the panel, so a window that was already up
