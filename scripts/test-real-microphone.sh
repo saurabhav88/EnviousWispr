@@ -25,14 +25,85 @@ LOG_DIR="$PROJECT_ROOT/build/real-boundary"
 LOG_FILE="$LOG_DIR/microphone-$CONFIGURATION.log"
 mkdir -p "$LOG_DIR"
 
-SWIFT_ARGS=(test --filter AudioCaptureManagerLiveInputTests)
-if [ "$CONFIGURATION" = "release" ]; then
-  SWIFT_ARGS=(test -c release --filter AudioCaptureManagerLiveInputTests)
-fi
-
 cd "$PROJECT_ROOT"
-set -o pipefail
-swift "${SWIFT_ARGS[@]}" 2>&1 | tee "$LOG_FILE"
+set +e
+python3 - "$PROJECT_ROOT" "$LOG_FILE" "$CONFIGURATION" <<'PY'
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+
+project_root, log_file, configuration = sys.argv[1:]
+swift_args = ["test", "--filter", "AudioCaptureManagerLiveInputTests"]
+if configuration == "release":
+    swift_args = ["test", "-c", "release", "--filter", "AudioCaptureManagerLiveInputTests"]
+
+with tempfile.TemporaryDirectory(prefix="ew-microphone-watchdog-") as marker_dir:
+    started = Path(marker_dir) / "stop-started"
+    finished = Path(marker_dir) / "stop-finished"
+    environment = os.environ.copy()
+    environment["EW_MICROPHONE_STOP_STARTED"] = str(started)
+    environment["EW_MICROPHONE_STOP_FINISHED"] = str(finished)
+
+    with open(log_file, "w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            ["swift", *swift_args],
+            cwd=project_root,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            start_new_session=True,
+        )
+
+        def relay_output():
+            assert process.stdout is not None
+            for line in process.stdout:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                log.write(line)
+                log.flush()
+
+        relay = threading.Thread(target=relay_output, daemon=True)
+        relay.start()
+        stop_deadline = None
+        timed_out = False
+        while process.poll() is None:
+            if started.exists() and stop_deadline is None:
+                stop_deadline = time.monotonic() + 2.0
+            if finished.exists():
+                stop_deadline = None
+            if stop_deadline is not None and time.monotonic() >= stop_deadline:
+                message = "ERROR: stopCapture and stream completion exceeded two seconds.\n"
+                sys.stderr.write(message)
+                log.write(message)
+                log.flush()
+                timed_out = True
+                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                break
+            time.sleep(0.025)
+
+        return_code = process.wait()
+        relay.join(timeout=2)
+        if timed_out:
+            sys.exit(124)
+        sys.exit(return_code)
+PY
+TEST_STATUS=$?
+set -e
+
+if [ "$TEST_STATUS" -ne 0 ]; then
+  exit "$TEST_STATUS"
+fi
 
 PASS_TEXT='Test "the built-in microphone produces non-zero 16 kHz mono samples and stops cleanly" passed after'
 if ! grep -Fq "$PASS_TEXT" "$LOG_FILE"; then

@@ -36,11 +36,6 @@ struct AudioCaptureManagerLiveInputTests {
     }
   }
 
-  private struct StopReceipt: Sendable {
-    let capture: CaptureResult
-    let receipt: Receipt
-  }
-
   /// `.enabled(if:)` is evaluated outside actor isolation during discovery.
   /// Read only existing system facts: do not request permission or mutate the
   /// user's selected input device merely to decide whether this receipt runs.
@@ -93,18 +88,10 @@ struct AudioCaptureManagerLiveInputTests {
     // CoreAudio can legitimately emit a silent startup buffer. Observe a short
     // live window so this receipt measures the device rather than that transient.
     try await Task.sleep(for: .seconds(1))
-    let stopAndCollect = Task { @MainActor in
-      let capture = await manager.stopCapture(sessionID: sessionID)
-      return StopReceipt(capture: capture, receipt: await collector.value)
-    }
-    guard let stopped = await Self.waitForStopReceipt(from: stopAndCollect) else {
-      stopAndCollect.cancel()
-      collector.cancel()
-      Issue.record("stopCapture and stream completion exceeded two seconds")
-      return
-    }
-    let capture = stopped.capture
-    let receipt = stopped.receipt
+    try Self.writeWatchdogMarker(named: "EW_MICROPHONE_STOP_STARTED")
+    let capture = await manager.stopCapture(sessionID: sessionID)
+    let receipt = await collector.value
+    try Self.writeWatchdogMarker(named: "EW_MICROPHONE_STOP_FINISHED")
 
     #expect(receipt.bufferCount > 0, "the real microphone produced no buffer within one second")
     #expect(receipt.frameCount > 0)
@@ -120,31 +107,8 @@ struct AudioCaptureManagerLiveInputTests {
     #expect(!manager.isCapturing, "stopCapture must end the live session")
   }
 
-  private static func waitForStopReceipt(
-    from operation: Task<StopReceipt, Never>
-  ) async -> StopReceipt? {
-    let (receipts, continuation) = AsyncStream.makeStream(
-      of: StopReceipt.self, bufferingPolicy: .bufferingNewest(1))
-    let relay = Task {
-      continuation.yield(await operation.value)
-      continuation.finish()
-    }
-
-    let result = await withTaskGroup(of: StopReceipt?.self) { group in
-      group.addTask {
-        for await receipt in receipts { return receipt }
-        return nil
-      }
-      group.addTask {
-        try? await Task.sleep(for: .seconds(2))
-        return nil
-      }
-      let first = await group.next() ?? nil
-      group.cancelAll()
-      return first
-    }
-
-    relay.cancel()
-    return result
+  private static func writeWatchdogMarker(named environmentKey: String) throws {
+    guard let path = ProcessInfo.processInfo.environment[environmentKey] else { return }
+    try Data().write(to: URL(filePath: path), options: .atomic)
   }
 }
