@@ -345,6 +345,61 @@ check_fence("two json blocks are both seen, so the caller can refuse",
             "```json\n{}\n```\ntext\n```json\n{}\n```\n", expect_blocks=2)
 
 
+MARKDOWN_RECIPE = """```mutation-recipe
+| mode | label | file | anchor | replacement | suite | must_fire | must_not_fire | instruction |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| mechanical | invert the gate | `Sources/Thing.swift` | `let guarded = true` | `let guarded = false` | `EnviousWisprTests/ThingTests` | `the guard fires`<br>`the second guard fires` | `the control stays green` | |
+| human | restore the semantic route | | | | `EnviousWisprTests/ThingTests` | `the semantic guard fires` | `the independent control stays green` | Route the refusal through the old public outcome. |
+```"""
+
+ran += 1
+try:
+    _markdown_doc = battery.issue_recipe_document(2156, MARKDOWN_RECIPE)
+    _mechanical, _human = _markdown_doc["rows"]
+    assert _mechanical["must_fire"] == ["the guard fires", "the second guard fires"]
+    assert _mechanical["must_not_fire"] == ["the control stays green"]
+    assert _human["mode"] == "human"
+    assert _human["must_fire"] == ["the semantic guard fires"]
+    assert _human["must_not_fire"] == ["the independent control stays green"]
+    assert "old public outcome" in _human["instruction"]
+    assert battery.select_recipe_row(_markdown_doc["rows"], 1)[0]["mode"] == "mechanical"
+    assert battery.select_recipe_row(_markdown_doc["rows"], 2)[0]["mode"] == "human"
+    assert battery.select_recipe_row([_human, _mechanical], 2)[0]["label"] == "invert the gate"
+    import tempfile as _markdown_tf
+    with _markdown_tf.TemporaryDirectory() as _markdown_td:
+        _markdown_tree = make_tree(Path(_markdown_td))
+        _normalized_mixed = battery.load_recipes(
+            None, _markdown_tree, raw=json.dumps({"rows": [_human, _mechanical]}))
+        assert _normalized_mixed[0]["_recipe_index"] == 1
+        assert _normalized_mixed[1]["_recipe_index"] == 2
+        assert _normalized_mixed[0]["must_fire"] == ["the semantic guard fires"]
+    print("  ok  a strict Markdown table preserves mechanical sets and human instructions")
+except Exception as exc:
+    failures.append(f"a valid Markdown recipe was not parsed faithfully: {exc}")
+
+ran += 1
+try:
+    battery.issue_recipe_document(2156, MARKDOWN_RECIPE + '\n```json\n{"rows": []}\n```')
+except battery.Refusal as exc:
+    if "2 explicit recipe blocks" in str(exc):
+        print("  ok  mixed JSON and Markdown blocks are refused as ambiguous")
+    else:
+        failures.append(f"mixed recipe blocks refused for the wrong reason: {exc}")
+else:
+    failures.append("mixed JSON and Markdown blocks were accepted — the runner could pick the wrong one")
+
+ran += 1
+try:
+    battery.issue_recipe_document(2156, "prose only")
+except battery.Refusal as exc:
+    if "Free-form prose is never guessed" in str(exc):
+        print("  ok  free-form English is refused rather than guessed into source code")
+    else:
+        failures.append(f"free-form prose refused for the wrong reason: {exc}")
+else:
+    failures.append("free-form prose was guessed into a source mutation")
+
+
 def check_raw(name, raw, *, expect_text):
     global ran, failures
     ran += 1
@@ -464,10 +519,12 @@ else:
 check_issue("an issue with exactly one recipe block is accepted",
             rc=0, body='prose\n```json\n{"rows": [1]}\n```\n', expect_ok=True)
 check_issue("an issue carrying NO recipe block is refused",
-            rc=0, body="prose with no recipe at all\n", expect_text="carries no ```json recipe block")
+            rc=0, body="prose with no recipe at all\n", expect_text="Free-form prose is never guessed")
 check_issue("an issue carrying TWO recipe blocks is refused rather than picking the first",
             rc=0, body='```json\n{"a":1}\n```\n```json\n{"b":2}\n```\n',
-            expect_text="carries 2 ```json blocks")
+            expect_text="carries 2 explicit recipe blocks")
+check_issue("an issue with one strict Markdown recipe block is accepted",
+            rc=0, body=MARKDOWN_RECIPE, expect_ok=True)
 check_issue("a failed `gh` call is refused, never treated as an empty issue",
             rc=1, body="could not resolve to an Issue", expect_text="could not read issue #2156")
 
@@ -569,6 +626,12 @@ check_row("an expected survivor fails closed when any test fires",
           (5, [], True, "log", 65, 3.0,
            mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Failed"})),
           expect_marker="EXPECTATION-MISMATCH", expect_rc=1, recipe_row=_survivor_row)
+
+check_row("an expected survivor fails closed when a test is skipped",
+          (5, [], True, "log", 0, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Skipped"})),
+          expect_marker="changed status without failing", expect_rc=1,
+          recipe_row=_survivor_row)
 
 check_row("an expected survivor refuses a red lane with a partial green bundle",
           (5, [], True, "log", 65, 3.0,
@@ -787,6 +850,22 @@ if _v_overlap != battery.VERDICT_INVALID or "both must_fire and must_not_fire" n
     failures.append("a test declared in both expectation sets must invalidate the row")
 else:
     print("  ok  overlapping fire and silence sets invalidate the row")
+
+ran += 1
+_alias_base = battery.SuiteResults(
+    {"Suite/guard()": "Passed"},
+    {"guard": {"Suite/guard()"}, "display guard": {"Suite/guard()"}},
+    {})
+_alias_mutated = battery.SuiteResults(
+    {"Suite/guard()": "Failed"},
+    {"guard": {"Suite/guard()"}, "display guard": {"Suite/guard()"}},
+    {})
+_v_alias, _d_alias = battery.classify_expectations(
+    _alias_base, _alias_mutated, ["guard", "display guard"], [])
+if _v_alias != battery.VERDICT_INVALID or "multiple aliases" not in _d_alias:
+    failures.append("two aliases for one test cannot satisfy a two-entry must_fire set")
+else:
+    print("  ok  duplicate aliases inside one expectation set are rejected")
 
 ran += 1
 _v_incomplete, _d_incomplete = battery.classify_expectations(
@@ -1997,10 +2076,25 @@ check_validator("the filing validator still accepts the legacy expect_fail schem
 check_validator("the filing validator accepts fire and silence expectation sets",
                 dict(_validator_base, must_fire=[_guard_name], must_not_fire=[_silent_name]),
                 expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator rejects same-set aliases for one test",
+                dict(_validator_base,
+                     must_fire=[_guard_name, "ProviderStatusMappingTests/egOneNotInstalled()"],
+                     must_not_fire=[]),
+                expected_rc=1, expected_text="multiple aliases")
 check_validator("the filing validator rejects cross-set aliases for the same test",
                 dict(_validator_base, must_fire=[_guard_name],
                      must_not_fire=["ProviderStatusMappingTests/egOneNotInstalled()"]),
                 expected_rc=1, expected_text="resolve to the same test")
+check_validator("the filing validator validates human-row expectations",
+                {"mode": "human", "label": "semantic route", "instruction": "restore it",
+                 "suite": "EnviousWisprTests/ProviderStatusMappingTests",
+                 "must_fire": [_guard_name], "must_not_fire": [_silent_name]},
+                expected_rc=0, expected_text="DEFERRED")
+check_validator("the filing validator rejects a human row with an unknown test",
+                {"mode": "human", "label": "semantic route", "instruction": "restore it",
+                 "suite": "EnviousWisprTests/ProviderStatusMappingTests",
+                 "must_fire": ["this test does not exist"], "must_not_fire": []},
+                expected_rc=1, expected_text="DOES NOT EXIST")
 check_validator("the filing validator checks every name in both expectation sets",
                 dict(_validator_base, must_fire=[_guard_name],
                      must_not_fire=["this test does not exist"]),
@@ -2125,7 +2219,7 @@ with tempfile.TemporaryDirectory() as td:
         capture_output=True, text=True, env=env,
     )
 _issue_output = result.stdout + result.stderr
-if result.returncode != 2 or "carries 2 ```json blocks" not in _issue_output:
+if result.returncode != 2 or "carries 2 explicit recipe blocks" not in _issue_output:
     failures.append(
         "the filing validator shares the runner's single-recipe issue contract — "
         f"exit {result.returncode}: {_issue_output[:250]!r}")

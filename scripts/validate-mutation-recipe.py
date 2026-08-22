@@ -331,6 +331,22 @@ def validate(recipes, root, label):
                 problems.append(
                     "must_fire and must_not_fire resolve to the same test(s): "
                     + ", ".join(alias_overlap))
+            for field in ("_must_fire", "_must_not_fire"):
+                aliases_by_test = {}
+                for name in normalized.get(field, []):
+                    for test_id in suite_names.get(name, set()):
+                        aliases_by_test.setdefault(test_id, []).append(name)
+                duplicates = {
+                    test_id: aliases for test_id, aliases in aliases_by_test.items()
+                    if len(aliases) > 1
+                }
+                if duplicates:
+                    problems.append(
+                        f"{field.removeprefix('_')} names the same test through multiple aliases: "
+                        + "; ".join(
+                            f"{test_id}: {', '.join(aliases)}"
+                            for test_id, aliases in sorted(duplicates.items())
+                        ))
 
             if suite and suite not in names_by_suite:
                 problems.append(f"suite {suite} NOT FOUND in Tests/")
@@ -341,7 +357,8 @@ def validate(recipes, root, label):
                 row_label = row.get("label", "(no label)") if isinstance(row, dict) else "(no label)"
                 print(f"        {str(row_label)[:90]}")
             else:
-                print(f"row {index}: runnable   | {str(normalized.get('label', ''))[:70]}")
+                status = "DEFERRED" if normalized.get("_mode") == "human" else "runnable"
+                print(f"row {index}: {status:<10} | {str(normalized.get('label', ''))[:70]}")
 
     print(f"\n{label}: {total - bad}/{total} rows runnable"
           + (f", {bad} UNRUNNABLE" if bad else ""))

@@ -69,6 +69,12 @@ RECIPE FORMAT (JSON; the same block that goes in the `test-hardening` issue body
     important silent controls and requires their status to stay unchanged. A row
     supplies either `expect_fail` or `must_fire`, never both.
 
+    A mixed mechanical/human issue may instead carry one fenced `mutation-recipe`
+    Markdown table. Run `scripts/mutation-battery.py --print-markdown-template` for
+    the exact header. Mechanical rows use `<br>` between test names and `&#124;` for
+    a literal pipe. A semantic instruction that cannot be an anchor/replacement pair
+    is mode `human`; it is reported as DEFERRED and is never guessed into source code.
+
     `expect_fail` NAMES A TEST AND IS MATCHED EXACTLY — it is not a substring of the
     failure line. Any one of the three spellings the result bundle carries will do:
     the `Suite/function()` identifier, the bare `function()`, or the display name in
@@ -92,6 +98,7 @@ import argparse
 import filecmp
 import fcntl
 import functools
+import html
 import json
 import os
 import re
@@ -721,6 +728,20 @@ def classify_expectations(baseline: "SuiteResults", mutated: "SuiteResults",
     if error:
         return VERDICT_INVALID, error
 
+    for label, resolved in (("must_fire", fire), ("must_not_fire", silent)):
+        aliases_by_test = {}
+        for alias, test_id in resolved.items():
+            aliases_by_test.setdefault(test_id, []).append(alias)
+        duplicates = {
+            test_id: aliases for test_id, aliases in aliases_by_test.items() if len(aliases) > 1
+        }
+        if duplicates:
+            detail = "; ".join(
+                f"{test_id}: {', '.join(repr(alias) for alias in aliases)}"
+                for test_id, aliases in sorted(duplicates.items())
+            )
+            return VERDICT_INVALID, f"{label} names the same test through multiple aliases: {detail}"
+
     required = set(fire.values())
     forbidden = set(silent.values())
     overlap = required & forbidden
@@ -730,6 +751,11 @@ def classify_expectations(baseline: "SuiteResults", mutated: "SuiteResults",
             + ", ".join(sorted(overlap)))
 
     newly_failed = mutated.failed() - baseline.failed()
+    status_changed_without_failure = {
+        test_id for test_id in set(baseline.by_id) & set(mutated.by_id)
+        if baseline.by_id[test_id] != mutated.by_id[test_id]
+        and test_id not in newly_failed
+    }
     missing = required - newly_failed
     unexpected = newly_failed - required
     omitted = set(baseline.by_id) - set(mutated.by_id)
@@ -737,7 +763,8 @@ def classify_expectations(baseline: "SuiteResults", mutated: "SuiteResults",
         test_id for test_id in forbidden
         if baseline.by_id.get(test_id) != mutated.by_id.get(test_id)
     }
-    if not missing and not unexpected and not silent_changed and not omitted:
+    if (not missing and not unexpected and not silent_changed and not omitted
+            and not status_changed_without_failure):
         if required:
             return VERDICT_EXPECTED, (
                 f"exact must_fire set matched ({', '.join(sorted(required))}); "
@@ -754,6 +781,10 @@ def classify_expectations(baseline: "SuiteResults", mutated: "SuiteResults",
     if silent_changed:
         parts.append("must_not_fire control(s) changed status: "
                      + ", ".join(sorted(silent_changed)))
+    if status_changed_without_failure:
+        parts.append(
+            "test(s) changed status without failing: "
+            + ", ".join(sorted(status_changed_without_failure)))
     if omitted:
         parts.append(
             f"mutated result bundle omitted {len(omitted)} baseline test(s): "
@@ -875,6 +906,110 @@ def preflight(worktree: Path):
 
 
 FENCE_RE = re.compile(r"```json\s*\n(.*?)```", re.DOTALL)
+MARKDOWN_FENCE_RE = re.compile(r"```mutation-recipe\s*\n(.*?)```", re.DOTALL)
+MARKDOWN_RECIPE_COLUMNS = (
+    "mode", "label", "file", "anchor", "replacement", "suite", "must_fire",
+    "must_not_fire", "instruction",
+)
+
+
+def _markdown_cells(line: str):
+    """Split one pipe-table row; literal pipes must be escaped or written as `&#124;`."""
+    text = line.strip()
+    if not text.startswith("|") or not text.endswith("|"):
+        raise Refusal("each mutation-recipe table row must start and end with '|'.")
+    cells = re.split(r"(?<!\\)\|", text[1:-1])
+    return [cell.replace(r"\|", "|").strip() for cell in cells]
+
+
+def _markdown_value(cell: str):
+    """Decode the deliberately small Markdown subset accepted inside recipe cells."""
+    value = html.unescape(cell.strip())
+    if len(value) >= 2 and value.startswith("`") and value.endswith("`"):
+        value = value[1:-1]
+    return re.sub(r"<br\s*/?>", "\n", value, flags=re.IGNORECASE).strip()
+
+
+def markdown_recipe_document(raw: str):
+    """Turn one explicit Markdown recipe table into the same document JSON recipes use.
+
+    This does not parse arbitrary issue prose. A confident guess at English is worse than a refusal in
+    an unattended source-rewrite tool, so only the documented table is executable. Semantic mutations
+    remain useful: mark them `human`, give them an instruction, and the runner reports them as deferred.
+    """
+    lines = [line for line in raw.splitlines() if line.strip()]
+    if len(lines) < 3:
+        raise Refusal("the mutation-recipe block must contain a header, separator, and at least one row.")
+    header = tuple(re.sub(r"[ -]+", "_", cell.lower()) for cell in _markdown_cells(lines[0]))
+    if header != MARKDOWN_RECIPE_COLUMNS:
+        raise Refusal(
+            "the mutation-recipe table header must be exactly: "
+            + " | ".join(MARKDOWN_RECIPE_COLUMNS)
+        )
+    separator = _markdown_cells(lines[1])
+    if len(separator) != len(header) or any(not re.fullmatch(r":?-{3,}:?", cell) for cell in separator):
+        raise Refusal("the mutation-recipe table needs one Markdown separator cell per header.")
+
+    rows = []
+    for index, line in enumerate(lines[2:], 1):
+        cells = _markdown_cells(line)
+        if len(cells) != len(header):
+            raise Refusal(
+                f"Markdown recipe row {index} has {len(cells)} cells; expected {len(header)}. "
+                "Escape a literal pipe as \\| or &#124;."
+            )
+        values = {name: _markdown_value(cell) for name, cell in zip(header, cells)}
+        mode = values["mode"].lower()
+        must_fire = [name.strip(" `") for name in values["must_fire"].splitlines() if name.strip(" `")]
+        must_not_fire = [
+            name.strip(" `") for name in values["must_not_fire"].splitlines() if name.strip(" `")
+        ]
+        if mode == "human":
+            rows.append({
+                "mode": "human",
+                "label": values["label"],
+                "suite": values["suite"],
+                "must_fire": must_fire,
+                "must_not_fire": must_not_fire,
+                "instruction": values["instruction"],
+            })
+            continue
+        if mode != "mechanical":
+            raise Refusal(
+                f"Markdown recipe row {index} mode must be 'mechanical' or 'human', got "
+                f"{values['mode']!r}."
+            )
+        rows.append({
+            "mode": "mechanical",
+            "label": values["label"],
+            "file": values["file"],
+            "anchor": values["anchor"],
+            "replacement": values["replacement"],
+            "suite": values["suite"],
+            "must_fire": must_fire,
+            "must_not_fire": must_not_fire,
+        })
+    return {"rows": rows}
+
+
+def issue_recipe_document(number: int, text: str):
+    """Select exactly one explicit recipe representation from an issue and its comments."""
+    json_blocks = FENCE_RE.findall(text)
+    markdown_blocks = MARKDOWN_FENCE_RE.findall(text)
+    total = len(json_blocks) + len(markdown_blocks)
+    if total == 0:
+        raise Refusal(
+            f"issue #{number} carries neither a ```json nor a ```mutation-recipe block in its body "
+            "or comments. Free-form prose is never guessed into source mutations."
+        )
+    if total > 1:
+        raise Refusal(
+            f"issue #{number} carries {total} explicit recipe blocks across its body and comments. "
+            "Exactly one is allowed, or the run and the issue disagree about what was tested."
+        )
+    if json_blocks:
+        return json.loads(json_blocks[0])
+    return markdown_recipe_document(markdown_blocks[0])
 
 
 def recipes_from_issue(number: int, worktree: Path):
@@ -901,20 +1036,10 @@ def recipes_from_issue(number: int, worktree: Path):
     )
     if rc != 0:
         raise Refusal(f"could not read issue #{number}: {out.strip()[:300]}")
-    blocks = FENCE_RE.findall(out)
-    if not blocks:
-        raise Refusal(
-            f"issue #{number} carries no ```json recipe block in its body or any comment. A "
-            "test-hardening issue without its recipe cannot be acted on cold, which is the whole "
-            "reason the recipe is written into the issue."
-        )
-    if len(blocks) > 1:
-        raise Refusal(
-            f"issue #{number} carries {len(blocks)} ```json blocks across its body and comments. "
-            "Exactly one, or the run and the issue disagree about what was tested — edit the "
-            "superseded one out rather than adding a newer block beside it."
-        )
-    return blocks[0]
+    try:
+        return json.dumps(issue_recipe_document(number, out))
+    except json.JSONDecodeError as exc:
+        raise Refusal(f"the JSON recipe in issue #{number} is not valid JSON: {exc}") from exc
 
 
 def load_recipes(path: Path, worktree: Path, raw: str = None):
@@ -943,6 +1068,41 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
     for i, row in enumerate(rows, 1):
         if not isinstance(row, dict):
             raise Refusal(f"row {i} is a {type(row).__name__}, not an object.")
+        mode = row.get("mode", "mechanical")
+        row["_recipe_index"] = i
+        if mode == "human":
+            for field in ("label", "instruction"):
+                if not isinstance(row.get(field), str) or not row[field]:
+                    raise Refusal(f"human row {i} field '{field}' must be a non-empty string.")
+            for field in ("must_fire", "must_not_fire"):
+                value = row.get(field, [])
+                if not isinstance(value, list) or any(
+                    not isinstance(name, str) or not name for name in value
+                ):
+                    raise Refusal(
+                        f"human row {i} field '{field}' must be a list of non-empty test-name strings.")
+                if len(value) != len(set(value)):
+                    raise Refusal(f"human row {i} field '{field}' contains duplicate test names.")
+            overlap = sorted(set(row.get("must_fire", [])) & set(row.get("must_not_fire", [])))
+            if overlap:
+                raise Refusal(
+                    f"human row {i} names test(s) in both must_fire and must_not_fire: "
+                    f"{', '.join(overlap)}.")
+            row.setdefault("must_fire", [])
+            row.setdefault("must_not_fire", [])
+            row.setdefault("suite", default_suite)
+            if not row["suite"]:
+                raise Refusal(f"human row {i} has no suite and no suite_default is set.")
+            if not isinstance(row["suite"], str) or "/" not in row["suite"]:
+                raise Refusal(
+                    f"human row {i} suite must be a target-qualified string, got {row['suite']!r}.")
+            row["_must_fire"] = row["must_fire"]
+            row["_must_not_fire"] = row["must_not_fire"]
+            row["_mode"] = "human"
+            continue
+        if mode != "mechanical":
+            raise Refusal(f"row {i} mode must be 'mechanical' or 'human', got {mode!r}.")
+        row["_mode"] = "mechanical"
         for field in ("label", "file", "anchor", "replacement"):
             if field not in row or row[field] is None:
                 raise Refusal(f"row {i} is missing required field '{field}'.")
@@ -1072,6 +1232,15 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
                 "the mutation lands somewhere you did not choose."
             )
     return rows
+
+
+def select_recipe_row(rows, number):
+    """Apply `--row` to the authored order, before human rows are separated."""
+    if number is None:
+        return rows
+    if not 1 <= number <= len(rows):
+        raise Refusal(f"--row {number} out of range (1..{len(rows)})")
+    return [rows[number - 1]]
 
 
 def suite_test_names(log_path) -> set:
@@ -1232,16 +1401,30 @@ def main_for_test(recipes: Path, worktree: Path):
 @release_battery_lock_on_return
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    src = ap.add_mutually_exclusive_group(required=True)
+    ap.add_argument("--print-markdown-template", action="store_true",
+                    help="print the strict mixed mechanical/human recipe table and exit")
+    src = ap.add_mutually_exclusive_group(required=False)
     src.add_argument("--recipes", type=Path, help="a recipe JSON file")
     src.add_argument("--from-issue", type=int, metavar="N",
-                     help="read the recipe from the ```json block in test-hardening issue #N")
+                     help="read the explicit JSON or Markdown recipe in test-hardening issue #N")
     ap.add_argument("--worktree", type=Path, default=None)
     ap.add_argument("--row", type=int, default=None, help="run a single 1-indexed row")
     ap.add_argument("--dry-run", action="store_true", help="validate recipes and baseline, mutate nothing")
     ap.add_argument("--validate-only", action="store_true",
                     help="preflight and recipe validation only — no xcodebuild, no baseline, no mutations")
     args = ap.parse_args(argv)
+    if args.print_markdown_template:
+        if args.recipes is not None or args.from_issue is not None:
+            ap.error("--print-markdown-template does not take a recipe source.")
+        print("""```mutation-recipe
+| mode | label | file | anchor | replacement | suite | must_fire | must_not_fire | instruction |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| mechanical | drop the guard | `Sources/Module/Foo.swift` | `guard ready else { return }` | `if false { return }` | `EnviousWisprTests/FooTests` | `the guard blocks work` | `the independent control stays green` | |
+| human | re-route the semantic branch | | | | `EnviousWisprTests/FooTests` | | | Reintroduce the old deferral through the public outcome, then grade the named suite. |
+```""")
+        return 0
+    if args.recipes is None and args.from_issue is None:
+        ap.error("one of --recipes or --from-issue is required")
     if args.validate_only and (args.dry_run or args.row is not None):
         ap.error("--validate-only stops before any run; combining it with --dry-run or --row would "
                  "silently do less than the other flag promises.")
@@ -1286,19 +1469,32 @@ def main(argv=None):
             rows = load_recipes(None, worktree, raw=recipes_from_issue(args.from_issue, worktree))
         else:
             rows = load_recipes(args.recipes.resolve(), worktree)
+        rows = select_recipe_row(rows, args.row)
     except Refusal as exc:
         print(f"\nREFUSED — the battery did not start.\n\n{exc}", file=sys.stderr)
         return 2
 
+    deferred = [row for row in rows if row.get("_mode") == "human"]
+    rows = [row for row in rows if row.get("_mode") == "mechanical"]
+    if deferred:
+        print(f"\n{len(deferred)} human-adversary row(s) DEFERRED — no source rewrite was guessed:")
+        for row in deferred:
+            suite = f" [{row.get('suite')}]" if row.get("suite") else ""
+            fire = f"; must fire: {row['must_fire']}" if row["must_fire"] else ""
+            silent = f"; must not fire: {row['must_not_fire']}" if row["must_not_fire"] else ""
+            print(
+                f"  - row {row['_recipe_index']}: {row['label']}{suite}: "
+                f"{row['instruction']}{fire}{silent}"
+            )
+
     if args.validate_only:
-        print(f"\n--validate-only: preflight clean, {len(rows)} row(s) well-formed. Nothing was run.")
+        print(f"\n--validate-only: preflight clean, {len(rows)} row(s) well-formed (mechanical); "
+              f"{len(deferred)} human row(s) deferred. Nothing was run.")
         return 0
 
-    if args.row is not None:
-        if not 1 <= args.row <= len(rows):
-            print(f"--row {args.row} out of range (1..{len(rows)})", file=sys.stderr)
-            return 2
-        rows = [rows[args.row - 1]]
+    if not rows:
+        print("\nNo mechanical rows can run unattended. Human-adversary work remains.", file=sys.stderr)
+        return 1
 
     lane = Lane(worktree, derived, log_dir)
     suites = {row["suite"] for row in rows}
@@ -1332,7 +1528,8 @@ def main(argv=None):
     # test. A PREFIX is the common case and the message says so, because that is what an author who
     # wrote against the old substring contract will have.
     unknown = []
-    for i, row in enumerate(rows, 1):
+    for row in rows:
+        i = row["_recipe_index"]
         known = baseline_names.get(row["suite"])
         names = row["_must_fire"] + row["_must_not_fire"]
         # An EMPTY identity set is not a pass. It means the log was unreadable, or Swift Testing's
@@ -1364,11 +1561,12 @@ def main(argv=None):
 
     if args.dry_run:
         print("\n--dry-run: recipes validated, baseline green, nothing mutated.")
-        return 0
+        return 1 if deferred else 0
 
     print(f"\n[2/3] {len(rows)} mutation(s), one at a time")
     results = []
-    for i, row in enumerate(rows, 1):
+    for row in rows:
+        i = row["_recipe_index"]
         target = Path(row["_resolved"])
         tag = f"row{i:02d}"
         backup = backup_path(worktree, tag, target)
@@ -1501,6 +1699,9 @@ def main(argv=None):
         print(f"\n{len(bad)} row(s) need work:")
         for verdict, label, detail in bad:
             print(f"  {verdict}: {label}\n    {explain_verdict(verdict)}\n    {detail}")
+        return 1
+    if deferred:
+        print(f"\n{len(deferred)} human-adversary row(s) still require a thinking operator.")
         return 1
     print("\nEvery mutation matched its declared fire and silence expectations.")
     print("This proves the declared fire/silence pattern holds for the mutations written here.")
