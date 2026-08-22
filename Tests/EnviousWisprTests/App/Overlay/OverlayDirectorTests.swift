@@ -53,10 +53,10 @@ struct OverlayDirectorTests {
   @Test("a timer armed for a dismissed pill cannot dismiss its replacement")
   func staleTimerCannotDismissTheLivePill() {
     let (d, armed, _) = Self.director()
-    d.send(.pipeline(.warning(reason: .polishFailed)))
+    d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
     let staleTimer = try! #require(armed.work)
 
-    d.send(.pipeline(.recording(audioLevel: 0.4)))
+    d.send(.pipeline(.recording(audioLevel: 0.4)), actions: nil)
     let live = try! #require(d.currentPresentationForTesting?.id)
 
     staleTimer.fireForTesting()
@@ -70,10 +70,10 @@ struct OverlayDirectorTests {
   @Test("arming a new expiry cancels the previous one")
   func armingReplacesTheArmedExpiry() {
     let (d, armed, _) = Self.director()
-    d.send(.pipeline(.warning(reason: .polishFailed)))
+    d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
     let first = try! #require(armed.work)
 
-    d.send(.pipeline(.error(reason: .asrFailed)))
+    d.send(.pipeline(.error(reason: .asrFailed)), actions: nil)
 
     #expect(first.isCancelled, "the previous pill's timer was left running")
     #expect(armed.work !== first, "a second timer was armed without replacing the first")
@@ -83,10 +83,10 @@ struct OverlayDirectorTests {
   @Test("a persistent pill leaves no timer armed")
   func persistentPillDisarms() {
     let (d, armed, _) = Self.director()
-    d.send(.pipeline(.warning(reason: .polishFailed)))
+    d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
     let notice = try! #require(armed.work)
 
-    d.send(.pipeline(.recording(audioLevel: 0.2)))
+    d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
 
     #expect(notice.isCancelled)
     #expect(d.hasArmedExpiryForTesting == false, "the recording pill armed a dismissal")
@@ -97,7 +97,7 @@ struct OverlayDirectorTests {
   @Test("a pill's own timer dismisses it")
   func ownTimerDismisses() {
     let (d, armed, _) = Self.director()
-    d.send(.pipeline(.warning(reason: .polishFailed)))
+    d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
 
     try! #require(armed.work).fireForTesting()
 
@@ -112,7 +112,7 @@ struct OverlayDirectorTests {
     let delivered = Sink()
     d.send(.pipeline(.accessibilityToast), actions: { delivered.effects.append(.recordingIntentChanged(true)); _ = $0 })
     let id = try! #require(d.currentPresentationForTesting?.id)
-    d.send(.action(id, .grantAccessibility))
+    d.send(.action(id, .grantAccessibility), actions: nil)
 
     #expect(delivered.effects.count == 1, "the action never reached the handler bound with the request")
   }
@@ -127,10 +127,10 @@ struct OverlayDirectorTests {
     d.send(.pipeline(.accessibilityToast), actions: { _ in delivered.effects.append(.recordingIntentChanged(true)) })
     let toast = try! #require(d.currentPresentationForTesting?.id)
 
-    d.send(.pipeline(.recording(audioLevel: 0.3)))
+    d.send(.pipeline(.recording(audioLevel: 0.3)), actions: nil)
 
     #expect(d.hasActiveBindingForTesting == false)
-    d.send(.action(toast, .grantAccessibility))
+    d.send(.action(toast, .grantAccessibility), actions: nil)
     #expect(delivered.effects.isEmpty, "an action from a dismissed pill reached its old handler")
   }
 
@@ -149,7 +149,8 @@ struct OverlayDirectorTests {
     let (d, _, _) = Self.director()
     let transcript = UUID()
     d.presentEscapeRecovery(
-      CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil))
+      CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
+      actions: { _ in })
 
     #expect(d.takeEscapeRecoveryPayload(matching: transcript) != nil)
     #expect(
@@ -162,7 +163,8 @@ struct OverlayDirectorTests {
     let (d, _, _) = Self.director()
     let mine = UUID()
     d.presentEscapeRecovery(
-      CancelUndoPayload(transcriptID: mine, targetApp: nil, targetElement: nil))
+      CancelUndoPayload(transcriptID: mine, targetApp: nil, targetElement: nil),
+      actions: { _ in })
 
     #expect(d.takeEscapeRecoveryPayload(matching: UUID()) == nil)
   }
@@ -174,10 +176,11 @@ struct OverlayDirectorTests {
     let (d, _, _) = Self.director()
     let transcript = UUID()
     d.presentEscapeRecovery(
-      CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil))
+      CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
+      actions: { _ in })
     #expect(d.holdsEscapeRecoveryPayloadForTesting)
 
-    d.send(.pipeline(.hidden))
+    d.send(.pipeline(.hidden), actions: nil)
 
     #expect(
       d.holdsEscapeRecoveryPayloadForTesting == false,
@@ -192,13 +195,55 @@ struct OverlayDirectorTests {
     let (d, _, _) = Self.director()
     let transcript = UUID()
     d.presentEscapeRecovery(
-      CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil))
+      CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
+      actions: { _ in })
     #expect(d.holdsEscapeRecoveryPayloadForTesting)
 
-    d.send(.pipeline(.recording(audioLevel: 0.3)))
+    d.send(.pipeline(.recording(audioLevel: 0.3)), actions: nil)
 
     #expect(
       d.holdsEscapeRecoveryPayloadForTesting == false,
       "a cancelled transcript was still held while a different pill was on screen")
+  }
+
+  /// **Undo must be bindable, and it was not.** Making the handler arrive with
+  /// the request broke this entry point outright: the pill appeared with nothing
+  /// bound, so the first press hit the invariant assertion. No test pressed the
+  /// button on a pill presented this way, so the suite could not see it.
+  @Test("the cancelled-transcript pill carries its Undo handler")
+  func escapeRecoveryCarriesItsHandler() {
+    let (d, _, _) = Self.director()
+    let transcript = UUID()
+    var pressed: [OverlayAction] = []
+    d.presentEscapeRecovery(
+      CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
+      actions: { pressed.append($0) })
+    let id = try! #require(d.currentPresentationForTesting?.id)
+
+    d.send(.action(id, .pasteEscapeRecovery(transcriptID: transcript)), actions: nil)
+
+    #expect(
+      pressed == [.pasteEscapeRecovery(transcriptID: transcript)],
+      "Undo was pressed and nothing was bound to it")
+  }
+
+  /// **A morph keeps its buttons.** An audio-level tick is a same-id update with
+  /// no handler and it arrives many times a second; replacing the binding with
+  /// whatever the call carried silently disarmed the live pill.
+  @Test("a same-pill update does not drop its handler")
+  func morphPreservesItsBinding() {
+    let (d, _, _) = Self.director()
+    var pressed: [OverlayAction] = []
+    d.send(.pipeline(.recording(audioLevel: 0.1)), actions: { pressed.append($0) })
+    let id = try! #require(d.currentPresentationForTesting?.id)
+
+    for level in [Float(0.4), 0.7, 0.2] {
+      d.send(.pipeline(.recording(audioLevel: level)), actions: nil)
+    }
+    d.send(.action(id, .discardRecovery), actions: nil)
+
+    #expect(
+      pressed == [.discardRecovery],
+      "a metering update dropped the live pill's handler")
   }
 }

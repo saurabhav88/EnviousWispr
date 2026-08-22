@@ -76,7 +76,11 @@ final class OverlayDirector {
   /// caller had to bind after the presentation existed, an ordering nothing
   /// enforced, and a window in which the pill was on screen with no handler. A
   /// request carries its own handler or it has none by construction.
-  func send(_ event: OverlayEvent, actions: ((OverlayAction) -> Void)? = nil) {
+  /// **No default.** `actions` defaulting to nil let a call site that SHOULD
+  /// carry a handler compile silently without one, which defeats the entire
+  /// point of making the binding arrive with the request: the omission has to be
+  /// visible at the call site, not inferred from its absence.
+  func send(_ event: OverlayEvent, actions: ((OverlayAction) -> Void)?) {
     let plan = reducer.reduce(event)
     apply(plan, actions: actions)
   }
@@ -87,9 +91,16 @@ final class OverlayDirector {
   /// two ids could disagree and the pill would offer to restore a transcript the
   /// custody did not hold — an unrepresentable state made representable by an
   /// extra parameter.
-  func presentEscapeRecovery(_ payload: CancelUndoPayload) {
+  /// **Takes its handler.** Without one this method presented a pill whose Undo
+  /// button had nothing bound, so the first press hit the invariant assertion —
+  /// I broke Undo outright with the change that made binding atomic, and the
+  /// suite could not see it because no test pressed the button on a pill
+  /// presented through this entry point.
+  func presentEscapeRecovery(
+    _ payload: CancelUndoPayload, actions: @escaping (OverlayAction) -> Void
+  ) {
     escapeRecoveryPayload = (id: payload.transcriptID, payload: payload)
-    send(.pipeline(.escapeRecovery(transcriptID: payload.transcriptID)))
+    send(.pipeline(.escapeRecovery(transcriptID: payload.transcriptID)), actions: actions)
   }
 
   /// Take the payload for `transcriptID`, once. Returns nil if it was already
@@ -115,7 +126,7 @@ final class OverlayDirector {
         // The id is captured, never re-read: a timer fires for the presentation
         // it was armed for or it is dropped. The reducer's own identity gate
         // makes a late arrival inert.
-        self?.send(.expiryFired(id))
+        self?.send(.expiryFired(id), actions: nil)
       }
     }
 
@@ -134,8 +145,17 @@ final class OverlayDirector {
 
       // The binding for the NEW presentation is installed BEFORE the model is
       // published, so the pill is never on screen without its handler.
+      //
+      // **A MORPH KEEPS ITS BINDING.** The first version replaced the binding
+      // with whatever this call carried, so any same-id update with no handler —
+      // an audio-level tick, which arrives many times a second — silently
+      // dropped the live pill's buttons. Only a CHANGE OF IDENTITY clears it.
       if let presentation = plan.presentation {
-        activeBinding = actions.map { (id: presentation.id, deliver: $0) }
+        if let actions {
+          activeBinding = (id: presentation.id, deliver: actions)
+        } else if activeBinding?.id != presentation.id {
+          activeBinding = nil
+        }
       } else {
         activeBinding = nil
       }
