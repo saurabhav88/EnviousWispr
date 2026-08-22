@@ -200,8 +200,15 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
   /// Live Preview grows the pill mid-recording; the shipped path cannot do this
   /// without a rebuild, which is the whole reason the preview's size is fixed
   /// for a panel's lifetime today.
+  /// **Anchored to the panel's own display, exactly as `present` is.** A resize
+  /// is a continuation by definition -- the pill is on screen and growing -- so
+  /// resolving the POINTER's screen here mixes coordinate spaces the same way,
+  /// and a shorter pointer display drags the pill down its original one. C10
+  /// fixed the transition path and left this one, which is the twin the fix
+  /// missed rather than a second defect.
   func resizeCurrentPresentation(to size: CGSize) {
-    guard let panel, panel.isVisible, let screen = screens().current() else { return }
+    guard let panel, panel.isVisible else { return }
+    guard let screen = screens().containing(panel.frame) ?? screens().current() else { return }
     let frame = placement.frame(
       for: size,
       continuity: .continuing(

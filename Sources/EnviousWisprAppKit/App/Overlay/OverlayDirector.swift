@@ -592,9 +592,23 @@ final class OverlayDirector {
       host.hide()
       return true
     }
-    // `isFresh` is a change of OCCUPANT, not the absence of a window: a morph
-    // keeps the live frame, a genuinely new presentation re-anchors.
-    let isFresh = presentedID != presentation.id
+    // **`isFresh` means NOTHING IS SHOWING, not "a different occupant".** The
+    // comment here used to say the opposite and the code matched it, which made
+    // every recording -> processing -> warning step a fresh presentation: the
+    // host recentred the panel and `beginFresh` dropped the `.user` anchor, so a
+    // pill the user had dragged snapped back to centre the moment its content
+    // changed. That is #2195 arriving through the identity gate, and this repo
+    // already records the rule it breaks --
+    // `pill-position-behavior.md` RULE: continuing-panel-vs-fresh-panel: an
+    // inherited-frame transition is the SAME logical presentation, and
+    // continuing state must never be reset as fresh or drag and setting changes
+    // are erased.
+    //
+    // The reducer mints a new `PresentationID` for every occupant, so identity
+    // could never express "is a pill already up". `presentedID == nil` can: it is
+    // cleared by `render(nil)` on every hide and on a refused presentation, which
+    // is exactly the shipped `inheritedFrame == nil` test in the new vocabulary.
+    let isFresh = presentedID == nil
     presentedID = presentation.id
     let recordingGeometry = geometry(for: presentation)
     // **One position per presentation, not two reads of a provider.** The

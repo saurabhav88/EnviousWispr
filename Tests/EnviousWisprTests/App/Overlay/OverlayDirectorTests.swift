@@ -818,6 +818,65 @@
       #expect(previewWidth == 400, "the Live Preview pill did not take its 400-point width")
     }
 
+    // MARK: - A dictation is ONE presentation, however its content changes (#2292 C12)
+
+    /// **#2195, arriving through the identity gate rather than the placement
+    /// value.** `OverlayWindowHostTests` already proves the host keeps a dragged
+    /// pill when told `isFresh: false`, and it does. Nothing tested what the
+    /// DIRECTOR passes, and the director passed `presentedID != presentation.id`
+    /// — true for every occupant change, because the reducer mints a new
+    /// `PresentationID` for each one.
+    ///
+    /// So a dragged pill snapped back to centre the moment the recording became
+    /// processing, with the host, the placement value and the whole host suite
+    /// behaving perfectly. The rule it broke is written down:
+    /// `pill-position-behavior.md` RULE: continuing-panel-vs-fresh-panel.
+    @Test("a dragged pill keeps its place when the recording becomes processing")
+    func draggedPillSurvivesAContentChange() throws {
+      let (d, _, _) = Self.director()
+      defer { Self.closeAllWindows() }
+      Self.record(d, level: 0.2)
+      let host = try #require(d.hostForTesting)
+      let panel = try #require(host.panelForTesting)
+
+      // The user drags it well left of centre. No rebuild, so nothing has to
+      // survive one — the host simply learns.
+      panel.setFrameOrigin(NSPoint(x: 120, y: 85))
+      host.windowDidMove(Notification(name: NSWindow.didMoveNotification, object: panel))
+
+      d.send(.pipeline(.processing(phase: .transcribing)), actions: nil)
+
+      #expect(
+        panel.frame.origin.x == 120,
+        "the pill snapped back to centre when its content changed — #2195 through the director")
+      #expect(
+        host.placementForTesting.isUserAnchored(on: ScreenID(rawValue: 1)),
+        "the transition dropped the user's anchor, so the next move re-centres too")
+    }
+
+    /// The paired case, without which the guard above is satisfied by a director
+    /// that never marks anything fresh. A pill appearing when NOTHING is showing
+    /// is genuinely new and must centre, drag history or not.
+    @Test("a pill appearing after the overlay was hidden is centred again")
+    func hiddenThenShownRecentres() throws {
+      let (d, _, _) = Self.director()
+      defer { Self.closeAllWindows() }
+      Self.record(d, level: 0.2)
+      let host = try #require(d.hostForTesting)
+      let panel = try #require(host.panelForTesting)
+      panel.setFrameOrigin(NSPoint(x: 120, y: 85))
+      host.windowDidMove(Notification(name: NSWindow.didMoveNotification, object: panel))
+
+      d.send(.pipeline(.hidden), actions: nil)
+      Self.record(d, level: 0.2)
+
+      // Within a point: AppKit aligns a window frame to whole points, so an
+      // unrounded 663.5 lands at 663. A pill left at 120 still fails this by 543.
+      #expect(
+        abs(panel.frame.origin.x - (Self.screen.visibleFrame.midX - 92.5)) <= 1,
+        "a genuinely new pill inherited the old drag instead of centring")
+    }
+
     // MARK: - A feature that takes the slot is spoken (#2292 C8)
 
     /// **The Bluetooth card appeared in silence, and it is the worst case for

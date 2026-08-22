@@ -591,6 +591,36 @@
         "the fallback produced a frame outside the only screen that exists")
     }
 
+    /// **The twin C10 missed, found by the review gate and unguarded until now.**
+    /// A resize is a continuation by definition — the pill is on screen and Live
+    /// Preview is growing it — so it has exactly the same coordinate-space
+    /// problem as a transition, in a different method.
+    ///
+    /// This case exists because the mutation control for the fix came back
+    /// UNCAUGHT: the repair was right and nothing would have failed if it were
+    /// reverted, which is the state that let the defect live in two methods in
+    /// the first place.
+    @Test("a resize is clamped against the display the pill is on")
+    func resizeKeepsItsOwnScreen() throws {
+      var pointer = Self.screen
+      let h = Self.splitHost(pointer: { pointer }, containing: { _ in Self.screen })
+      defer { h.panelForTesting?.orderOut(nil) }
+
+      h.present(
+        Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
+        position: .top)
+      let before = try #require(h.panelForTesting).frame
+
+      // Live Preview grows the pill while the pointer sits on the SHORT display.
+      pointer = Self.shortSecondary
+      h.resizeCurrentPresentation(to: CGSize(width: 185, height: 92))
+
+      let after = try #require(h.panelForTesting).frame
+      #expect(
+        after.origin.y == before.origin.y,
+        "the growing pill was dragged down its own display by the pointer's clamp")
+    }
+
     /// A FRESH presentation still belongs where the POINTER is, which is the
     /// shipped target resolution and must not be collateral damage of the fix
     /// above. Without this, anchoring everything to the containing screen would
