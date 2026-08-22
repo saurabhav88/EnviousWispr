@@ -206,6 +206,7 @@ scripts/lib/*
 # battery becomes a rubber stamp.
 !scripts/mutation-battery.py
 !scripts/mutation-battery-test.py
+!scripts/validate-mutation-recipe.py
 # UAT helpers (per-PR Swift CLIs invoked during Live UAT, e.g. issue #845 keychain verifier)
 !scripts/uat/
 !scripts/uat/**
