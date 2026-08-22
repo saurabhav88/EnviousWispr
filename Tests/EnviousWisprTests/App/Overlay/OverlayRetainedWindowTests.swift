@@ -155,44 +155,58 @@ struct OverlayRetainedWindowTests {
       }
     }
 
-    @Test("the legacy API builds one window across several transitions")
-    func legacyAPIUsesTheRetainedHost() async {
-      let overlay = RecordingOverlayPanel()
-      defer { overlay.hide() }
+    /// **The property this whole migration exists to establish.** Several
+    /// transitions, ONE window. Every rebuild is the #930 flicker, and the four
+    /// compensating mechanisms #2292 removes — generations, pending work, drag
+    /// deferrals, `CATransaction.flush` — exist only to paper over it.
+    ///
+    /// **Rewritten rather than deleted at the cutover.** It used to drive the
+    /// panel's `showPolishing` / `showAccessibilityToast` / `showWarning`; those
+    /// methods are gone with the class, and the same three transitions are now
+    /// three intents. Deleting it would have removed the only guard on the claim
+    /// the branch is named for.
+    @Test("several transitions build one window")
+    func transitionsReuseTheRetainedWindow() async {
+      let host = OverlayWindowHost()
+      let d = OverlayDirector(host: host, deliverEffect: { _ in }, announce: { _ in })
+      defer { host.panelForTesting?.orderOut(nil) }
 
-      overlay.showPolishing(label: "Polishing…")
+      d.send(.pipeline(.processing(phase: .polishing)), actions: nil)
       await drainMainQueue()
       #expect(
-        overlay.panelConstructionCountForTesting == 1,
+        host.panelConstructionCount == 1,
         "no window was built at all — this guard is asserting nothing")
 
-      overlay.showAccessibilityToast()
+      d.send(.pipeline(.accessibilityToast), actions: nil)
       await drainMainQueue()
-      overlay.showWarning(message: "Polish failed")
+      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
       await drainMainQueue()
 
       #expect(
-        overlay.panelConstructionCountForTesting == 1,
+        host.panelConstructionCount == 1,
         """
         the overlay built a second window for a transition. Every rebuild is the \
-        #930 flicker, and the four compensating mechanisms this migration removes \
-        exist only to paper over it.
+        #930 flicker this migration removes.
         """)
-      overlay.hide()
     }
 
+    /// Hiding must ORDER OUT, never close: a closed `NSPanel` is a destroyed one,
+    /// and the next presentation would have to build another.
     @Test("hiding and showing again reuses the same window")
     func hideThenShowReusesTheWindow() async {
-      let overlay = RecordingOverlayPanel()
-      defer { overlay.hide() }
+      let host = OverlayWindowHost()
+      let d = OverlayDirector(host: host, deliverEffect: { _ in }, announce: { _ in })
+      defer { host.panelForTesting?.orderOut(nil) }
+
       for _ in 0..<4 {
-        overlay.showPolishing(label: "Polishing…")
+        d.send(.pipeline(.processing(phase: .polishing)), actions: nil)
         await drainMainQueue()
-        overlay.hide()
+        d.dismissSilently()
         await drainMainQueue()
       }
+
       #expect(
-        overlay.panelConstructionCountForTesting == 1,
+        host.panelConstructionCount == 1,
         "hiding released the window, so the next presentation had to build a new one")
     }
   }

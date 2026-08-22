@@ -84,6 +84,41 @@ final class OverlayDirector {
 
   private let position: () -> OverlayPillPosition
 
+  /// The once-per-session accessibility-toast policy.
+  ///
+  /// **Owned HERE, not by the caller.** Threading it through
+  /// `DictationLifecycleCoordinator` put that type at 12 collaborators against a
+  /// ceiling of 11 — a ceiling whose purpose is exactly to catch a coordinator
+  /// accumulating other people's policies. The decision is about PRESENTING.
+  private let accessibilityEligibility: OverlayAccessibilityEligibility
+
+  /// Live Preview's two APP-LIFETIME providers.
+  ///
+  /// **Installed once, not passed per call, and the lifetimes are why.** The
+  /// shipped panel already draws this line: `setLivePreviewProviders` is called
+  /// ONCE from `LivePreviewInstaller` at boot, while the audio level and elapsed
+  /// providers arrive with every `show`. One pair belongs to the app, the other
+  /// to a dictation.
+  ///
+  /// Atomicity is untouched: `presentRecording` still RESOLVES the layout by
+  /// calling `livePreviewEnabled()` at present time, so the geometry comes from
+  /// the setting at the moment the pill appears rather than from whenever these
+  /// were installed. That was the property the layout value exists to hold, and
+  /// it is a property of WHEN the closure is called, not of how it arrived.
+  ///
+  /// The defaults are the OFF answers, so a composition root that forgets the
+  /// installer gets the ordinary pill rather than a crash — which is what the
+  /// shipped panel does too. `LivePreviewInstaller` is the only caller.
+  private var livePreviewEnabled: () -> Bool = { false }
+  private var livePreviewDisplay: () -> LivePreviewDisplay = { .off }
+
+  func setLivePreviewProviders(
+    enabled: @escaping () -> Bool, display: @escaping () -> LivePreviewDisplay
+  ) {
+    livePreviewEnabled = enabled
+    livePreviewDisplay = display
+  }
+
   init(
     host: OverlayWindowHost,
     deliverEffect: @escaping (OverlayEffect) -> Void,
@@ -91,11 +126,13 @@ final class OverlayDirector {
     model: OverlayRenderModel = OverlayRenderModel(),
     scheduler: OverlayScheduler = .live,
     announce: @escaping @MainActor (OverlayAnnouncement) -> Void = OverlayDirector.postAnnouncement,
+    accessibilityEligibility: OverlayAccessibilityEligibility = .init(warningDismissed: { false }),
     makeID: @escaping () -> PresentationID = { PresentationID() }
   ) {
     self.host = host
     self.deliverEffect = deliverEffect
     self.announce = announce
+    self.accessibilityEligibility = accessibilityEligibility
     self.position = position
     self.model = model
     self.schedule = scheduler
@@ -103,6 +140,19 @@ final class OverlayDirector {
   }
 
   var renderModel: OverlayRenderModel { model }
+
+  /// The last pipeline intent, for the two features that arbitrate against it.
+  ///
+  /// **Not what is DRAWN, and the difference is deliberate.** A suppressed
+  /// accessibility toast draws the clipboard hint while this stays
+  /// `.accessibilityToast`, exactly as the shipped `currentIntent` does —
+  /// `showClipboardFallback()` never wrote to it either.
+  ///
+  /// `LanguageSuggestionPresenter` asks only whether it is `.hidden` and
+  /// `BluetoothAwarenessPresenter` only whether it is `.bluetoothAwareness`, so
+  /// neither can tell those two apart in any case. Both take it as a closure, so
+  /// neither changes at the cutover; only the closure bodies do.
+  var currentIntent: OverlayIntent { reducer.state.pipelineIntent }
 
   /// The production announcement, lifted verbatim from the sixteen identical
   /// `NSAccessibility.post` calls the panel makes — same element, same
@@ -175,8 +225,6 @@ final class OverlayDirector {
     audioLevelProvider: @escaping () -> Float,
     recordingElapsedProvider: @escaping () -> TimeInterval?,
     isRecordingLocked: Bool,
-    livePreviewEnabled: @escaping () -> Bool,
-    livePreviewDisplay: @escaping () -> LivePreviewDisplay,
     actions: ((OverlayAction) -> Void)?
   ) {
     // **The lock is a show-time value, not a later morph.** The shipped
@@ -204,6 +252,7 @@ final class OverlayDirector {
     } else {
       let at = position()
       layout = livePreviewEnabled() ? .preview(position: at) : .compact(position: at)
+      // Read HERE, at present time — see `livePreviewEnabled`'s note.
     }
 
     model.setRecordingProviders(
@@ -260,12 +309,14 @@ final class OverlayDirector {
   /// switches to the actionable hint is a real question, and it is filed rather
   /// than answered here: a migration that quietly changes behaviour is a worse
   /// defect than the behaviour.
-  /// `showingToast` is a CLOSURE, not a Bool, and that is the whole point: it is
-  /// asked only when this push is not a duplicate. Passing the answer in spends
-  /// the session's one showing on a push the reducer then drops, so the next
-  /// genuine ask is refused and the user is never told.
-  func presentAccessibilityNotice(showingToast: () -> Bool) {
-    apply(reducer.reduceAccessibilityNotice(showingToast: showingToast), actions: nil)
+  /// Eligibility is asked through a CLOSURE so the reducer's dedup guard runs
+  /// FIRST. Asking eagerly spends the session's one showing on a push that is
+  /// then dropped, and the next genuine ask is refused.
+  func presentAccessibilityNotice() {
+    apply(
+      reducer.reduceAccessibilityNotice(showingToast: { [accessibilityEligibility] in
+        accessibilityEligibility.claim()
+      }), actions: nil)
   }
 
   /// Empty the slot WITHOUT announcing "Recording complete".
@@ -467,6 +518,9 @@ final class OverlayDirector {
     /// accessibility toast draws the clipboard fallback and the intent stays
     /// `.accessibilityToast`.
     var pipelineIntentForTesting: OverlayIntent { reducer.state.pipelineIntent }
+    /// The hands-free lock, which OUTLIVES any one presentation — so it is read
+    /// from the reducer's state rather than from whatever is on screen.
+    var isRecordingLockedForTesting: Bool { reducer.state.isLocked }
   #endif
 }
 

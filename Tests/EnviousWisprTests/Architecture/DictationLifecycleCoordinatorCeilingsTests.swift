@@ -134,10 +134,21 @@ import Testing
     // `onDurableSave`/`onRecordingEndedWithoutDurableSave`, already excluded
     // from `nonPrivateMethodCount`). Deterministic rule: actual 488 + 10 →
     // round up to nearest 5 = 500.
+    // #2292 (overlay window ownership): 500 -> 525. `showOverlayIntent` was one
+    // `show(intent:...)` call that took both providers for every intent and threw
+    // them away for all but one. It now SPLITS three ways: the accessibility
+    // toast to a director method that owns its once-per-session policy, a
+    // recording to `presentRecording` (providers, lock and layout installed in
+    // the operation that presents it), everything else to a bare event. The
+    // escape-recovery closure likewise gained its per-presentation Paste binding,
+    // which the deleted panel had held as a lifetime field.
+    // No new collaborator: the count went 11 -> 12 with the eligibility and back
+    // to 11 once the director took ownership of it, which is this ceiling's
+    // sibling doing its job. Deterministic rule: actual 512 + 10 -> 525.
     #expect(
-      count <= 500,
+      count <= 525,
       """
-      DictationLifecycleCoordinator line count exceeded: \(count) > 500. \
+      DictationLifecycleCoordinator line count exceeded: \(count) > 525. \
       Raise via Bible §30 only.
       """)
   }

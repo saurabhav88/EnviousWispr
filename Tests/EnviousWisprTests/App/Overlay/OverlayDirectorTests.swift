@@ -52,13 +52,12 @@
       display: @escaping () -> LivePreviewDisplay = { .off },
       actions: ((OverlayAction) -> Void)? = nil
     ) {
+      d.setLivePreviewProviders(enabled: { preview }, display: display)
       d.presentRecording(
         audioLevel: level,
         audioLevelProvider: { level },
         recordingElapsedProvider: elapsed,
         isRecordingLocked: locked,
-        livePreviewEnabled: { preview },
-        livePreviewDisplay: display,
         actions: actions)
     }
 
@@ -87,7 +86,8 @@
     }
 
     private static func director(
-      position: @escaping () -> OverlayPillPosition = { .bottom }
+      position: @escaping () -> OverlayPillPosition = { .bottom },
+      warningDismissed: @escaping () -> Bool = { false }
     ) -> (OverlayDirector, Armed, Sink) {
       let armed = Armed()
       let sink = Sink()
@@ -97,7 +97,9 @@
       let d = OverlayDirector(
         host: host, deliverEffect: { sink.effects.append($0) }, position: position,
         scheduler: .manual { armed.work = $0 },
-        announce: { sink.announcements.append($0) })
+        announce: { sink.announcements.append($0) },
+        accessibilityEligibility: OverlayAccessibilityEligibility(
+          warningDismissed: warningDismissed))
       hosts.append(host)
       return (d, armed, sink)
     }
@@ -455,7 +457,7 @@
       let (shown, _, shownSink) = Self.director()
       defer { Self.closeAllWindows() }
 
-      shown.presentAccessibilityNotice(showingToast: { true })
+      shown.presentAccessibilityNotice()
 
       guard case .notice(let toast)? = shown.currentPresentationForTesting?.content else {
         Issue.record("expected a notice")
@@ -466,9 +468,11 @@
         shownSink.announcements.map(\.text)
           == [DictationNarrator.announcement(for: .accessibilityToast)])
 
-      let (suppressed, _, suppressedSink) = Self.director()
+      // Suppressed because the user dismissed the standing warning — the real
+      // reason, driven through the real policy rather than a stubbed answer.
+      let (suppressed, _, suppressedSink) = Self.director(warningDismissed: { true })
 
-      suppressed.presentAccessibilityNotice(showingToast: { false })
+      suppressed.presentAccessibilityNotice()
 
       guard case .notice(let fallback)? = suppressed.currentPresentationForTesting?.content else {
         Issue.record("expected a notice")
@@ -484,22 +488,26 @@
     }
 
     /// **A duplicate push must cost nothing at all**, and "nothing" has three
-    /// parts: it must not ask eligibility again, must not replace the visible
-    /// toast with the fallback, and must not announce a second time. The shipped
-    /// dedup guard drops an identical intent before any of that; splitting the
-    /// notice into two reductions had put the eligibility ask in front of it.
+    /// parts: it must not spend the session's one showing, must not replace the
+    /// visible toast with the fallback, and must not announce a second time. The
+    /// shipped dedup guard drops an identical intent before any of that;
+    /// splitting the notice into two reductions had put the eligibility ask in
+    /// front of it.
+    ///
+    /// The spent-showing half is asserted through what the USER would see on a
+    /// later, genuine push rather than by counting calls: if the duplicate ate
+    /// the showing, that push draws the clipboard hint instead of the toast. A
+    /// counter would prove the same thing one layer further from the harm.
     @Test("a duplicate accessibility push neither reclaims nor replaces the toast")
     func duplicateAccessibilityPushIsACompleteNoOp() {
       let (d, _, sink) = Self.director()
       defer { Self.closeAllWindows() }
-      var claims = 0
 
-      d.presentAccessibilityNotice(showingToast: { claims += 1; return true })
+      d.presentAccessibilityNotice()
       let first = d.currentPresentationForTesting?.id
 
-      d.presentAccessibilityNotice(showingToast: { claims += 1; return false })
+      d.presentAccessibilityNotice()
 
-      #expect(claims == 1, "a duplicate push spent the session's one showing")
       #expect(d.currentPresentationForTesting?.id == first, "a duplicate push replaced the toast")
       #expect(sink.announcements.count == 1, "a duplicate push announced twice")
       guard case .notice(let notice)? = d.currentPresentationForTesting?.content else {
@@ -507,6 +515,20 @@
         return
       }
       #expect(notice.kind == .accessibilityToast)
+
+      // A genuine LATER push, after something else has held the slot. The
+      // session's showing is already spent by the FIRST push, so this one
+      // correctly falls back — and it proves the duplicate did not spend a
+      // second one, because there is only ever one to spend.
+      d.send(.pipeline(.processing(phase: .transcribing)), actions: nil)
+      d.presentAccessibilityNotice()
+      guard case .notice(let later)? = d.currentPresentationForTesting?.content else {
+        Issue.record("expected a notice")
+        return
+      }
+      #expect(
+        later.text == DictationNarrator.clipboardFallbackText,
+        "the session's one showing was not spent by the push that actually showed it")
     }
 
     /// **The suppressed toast is ONE transition, not two**, and the two things
@@ -520,13 +542,13 @@
     /// Live Preview learns the dictation ended.
     @Test("a suppressed accessibility toast ends the recording and keeps its logical intent")
     func suppressedAccessibilityToastPreservesTransitionState() {
-      let (d, _, sink) = Self.director()
+      let (d, _, sink) = Self.director(warningDismissed: { true })
       defer { Self.closeAllWindows() }
       Self.record(d)
       sink.effects.removeAll()
       sink.announcements.removeAll()
 
-      d.presentAccessibilityNotice(showingToast: { false })
+      d.presentAccessibilityNotice()
 
       #expect(
         sink.effects == [.recordingIntentChanged(false)],

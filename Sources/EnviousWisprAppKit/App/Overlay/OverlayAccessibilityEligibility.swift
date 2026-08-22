@@ -35,26 +35,3 @@ final class OverlayAccessibilityEligibility {
     return true
   }
 }
-
-/// Wiring for the accessibility notice, out of the composition root.
-///
-/// `WisprBootstrapper` is at 1359 lines against a 1360 ceiling, so this follows
-/// the precedent `EscapeRecoveryWiring` set for exactly that reason: the root
-/// spends one line and the feature is implemented here.
-enum OverlayAccessibilityWiring {
-
-  /// **Narrow on purpose.** The first version took every intent and forwarded
-  /// the ones it did not handle to `send`, which routes `.recording` past the
-  /// atomic transaction that installs its providers, lock and layout — reopening
-  /// the exact defect three review rounds had just closed. A wiring helper that
-  /// accepts an arbitrary intent will eventually be handed the one intent that
-  /// must not go that way.
-  @MainActor
-  static func presentAccessibilityNotice(
-    director: OverlayDirector, eligibility: OverlayAccessibilityEligibility
-  ) -> @MainActor () -> Void {
-    { [weak director] in
-      director?.presentAccessibilityNotice(showingToast: { eligibility.claim() })
-    }
-  }
-}

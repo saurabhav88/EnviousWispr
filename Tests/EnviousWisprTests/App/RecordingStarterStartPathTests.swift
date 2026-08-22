@@ -39,7 +39,7 @@ import Testing
     let permissions: PermissionsService
     let lockBox: TestRecordingLockedBox
     let lastRecordingResult: LastRecordingResult
-    let overlay: RecordingOverlayPanel
+    let overlay: OverlayDirector
     let settings: SettingsManager
   }
 
@@ -50,11 +50,16 @@ import Testing
     recoveringDuringArm: Bool = false,
     micStatus: AVAuthorizationStatus = .authorized
   ) -> Fixture {
-    // `RecordingOverlayPanel.show(intent: .recording, ...)` posts an
-    // `NSAccessibility` notification against `NSApp.mainWindow`. `NSApp`
-    // is an implicitly-unwrapped optional that crashes the test process
-    // when accessed before `NSApplication.shared` has been touched.
-    // Force-initialize so `start()` paths can run.
+    // The overlay used to post an `NSAccessibility` notification against
+    // `NSApp.mainWindow` on every `.recording` push, and `NSApp` is an
+    // implicitly-unwrapped optional that crashes the test process when accessed
+    // before `NSApplication.shared` has been touched.
+    //
+    // **The headless director cannot do that** — its announcement seam goes
+    // nowhere — so this initialisation is no longer load-bearing for the overlay.
+    // It stays because other AppKit reads on the `start()` paths still need it,
+    // and removing it on the strength of one resolved cause is how the next
+    // crash gets attributed to the wrong change.
     _ = NSApplication.shared
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
@@ -69,7 +74,7 @@ import Testing
     // no `modelUnloadPolicy` key, so it defaults to `.never` (SettingsDefaultValues).
     let settings = SettingsManager(
       defaults: UserDefaults(suiteName: "ew-test-\(UUID().uuidString)")!)
-    let overlay = RecordingOverlayPanel()
+    let overlay = OverlayTestDouble.headlessDirector()
     let permissions = PermissionsService(microphoneReader: { micStatus })
     let lockBox = TestRecordingLockedBox()
     let lockAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
@@ -77,7 +82,7 @@ import Testing
       set: { lockBox.isLocked = $0 }
     )
     let hcr = HeartControlRecovery(
-      hideOverlay: { overlay.show(intent: .hidden) },
+      hideOverlay: { overlay.send(.pipeline(.hidden), actions: nil) },
       setLocked: { locked in lockAccess.set(locked) },
       backend: { asr.activeBackendType.rawValue }
     )

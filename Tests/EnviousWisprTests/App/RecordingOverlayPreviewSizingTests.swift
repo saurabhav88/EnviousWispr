@@ -15,7 +15,8 @@ import Testing
 /// things about the replica, and a guard written the same way would stay green while
 /// the shipped panel stayed broken. So every measurement here instantiates the real
 /// `RecordingOverlayView` and reads its own `onContentHeightChange` — the exact
-/// closure `RecordingOverlayPanel.createPanel` wires to `resizeRecordingPanel`.
+/// callback `OverlayDirector.presentRecording` installs, which resizes the
+/// live pill through `OverlayWindowHost.resizeCurrentPresentation`.
 ///
 /// ## The loop being pinned
 ///
@@ -39,7 +40,7 @@ struct RecordingOverlayPreviewSizingTests {
 
   init() { _ = NSApplication.shared }
 
-  /// Width the preview pill is created at (`RecordingOverlayPanel.previewPillWidth`).
+  /// Width the preview pill is created at (`OverlayRecordingLayout.preview`).
   private static let previewWidth: CGFloat = 400
 
   /// Collects every height the view reports. The LAST value is what the panel

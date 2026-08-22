@@ -24,10 +24,16 @@ import Testing
 /// from the other.
 ///
 /// **What these do NOT cover, stated rather than implied:** that an abandonment
-/// leaves the overlay up. `RecordingOverlayPanel.show(...)` traps on an
-/// implicitly-unwrapped nil in a unit context, so the overlay cannot be put into
-/// a non-hidden state to observe, and asserting `.hidden` afterwards would be
-/// vacuous — it starts hidden. The skip is one `if !abandoning` around three
+/// leaves the overlay up. Asserting `.hidden` afterwards would be vacuous — it
+/// starts hidden — so a real guard has to put the overlay into a non-hidden
+/// state first.
+///
+/// **The reason that was IMPOSSIBLE is gone (#2292).** It used to be that
+/// `RecordingOverlayPanel.show(...)` trapped on an implicitly-unwrapped nil in a
+/// unit context; the director posts through an injectable seam and refuses to
+/// draw without a screen, so it can be driven here. The gap is now a gap in
+/// COVERAGE rather than in capability, which is a different thing and worth
+/// closing separately rather than silently inside a migration. The skip is one `if !abandoning` around three
 /// calls; proving it needs the panel behind a seam, which is not this chunk's
 /// scope.
 @MainActor
@@ -182,7 +188,7 @@ struct RecordingFinalizerAbandonmentTests {
       let whisperKitKernelDriver: KernelDictationDriver
       let asr: RouterTestASRManager
       let lockBox: TestRecordingLockedBox
-      let overlay: RecordingOverlayPanel
+      let overlay: OverlayDirector
     }
 
     private static func makeFixture() -> Fixture {
@@ -193,12 +199,12 @@ struct RecordingFinalizerAbandonmentTests {
         audioCapture: audio, asrManager: asr, store: store)
       let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
         audioCapture: audio, store: store)
-      let overlay = RecordingOverlayPanel()
+      let overlay = OverlayTestDouble.headlessDirector()
       let lockBox = TestRecordingLockedBox()
       let lockAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
         get: { lockBox.isLocked }, set: { lockBox.isLocked = $0 })
       let hcr = HeartControlRecovery(
-        hideOverlay: { overlay.show(intent: .hidden) },
+        hideOverlay: { overlay.send(.pipeline(.hidden), actions: nil) },
         setLocked: { locked in lockAccess.set(locked) },
         backend: { asr.activeBackendType.rawValue })
       let finalizer = RecordingFinalizer(

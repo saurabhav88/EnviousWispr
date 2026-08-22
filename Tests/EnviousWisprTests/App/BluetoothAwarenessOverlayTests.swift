@@ -1,37 +1,49 @@
-import AppKit
-import EnviousWisprPipeline
-import Testing
+#if DEBUG
+// **DEBUG-only because it reads a `*ForTesting` accessor**, which lives inside
+// `#if DEBUG` on the type it belongs to. Without the guard the RELEASE build of
+// the test target does not compile — which a Debug-only local run cannot see, by
+// construction, and which CI's `build-release` job catches instead.
+  import AppKit
+  import EnviousWisprPipeline
+  import Testing
 
-@testable import EnviousWisprAppKit
+  @testable import EnviousWisprAppKit
 
-/// #1480 — the Bluetooth card is a normal single-slot overlay intent: recording
-/// must supersede it synchronously through the existing dedup, and it must never
-/// linger in the intent state. `currentIntent` is mutated synchronously in
-/// `show(intent:)`; panel creation is deferred, so these assertions hold headless.
-@Suite @MainActor struct BluetoothAwarenessOverlayTests {
-  /// `show(intent:)` posts an accessibility announcement against `NSApp.mainWindow`;
-  /// `NSApp` is an implicitly-unwrapped `NSApplication!` that stays nil until
-  /// `NSApplication.shared` is first accessed (AppearanceController.swift note), so
-  /// touching it here keeps the AX post from crashing the headless test host.
-  init() { _ = NSApplication.shared }
+  /// #1480 — the Bluetooth card is a normal single-slot occupant: a recording must
+  /// supersede it synchronously, and it must never linger in the intent state.
+  ///
+  /// Retargeted from `RecordingOverlayPanel` to `OverlayDirector` in #2292. The
+  /// properties are unchanged. Two things in the old preamble no longer apply and
+  /// are removed rather than carried: the card is now a `.featureRequest` rather
+  /// than a pipeline intent, and the suite no longer has to touch
+  /// `NSApplication.shared` to stop an accessibility post crashing a headless host,
+  /// because the headless director's announcement seam goes nowhere.
+  @Suite @MainActor struct BluetoothAwarenessOverlayTests {
 
-  @Test func recordingSupersedesBluetoothCardSynchronously() {
-    let overlay = RecordingOverlayPanel()
-    overlay.show(intent: .bluetoothAwareness)
-    #expect(overlay.currentIntent == .bluetoothAwareness)
+    @Test func recordingSupersedesBluetoothCardSynchronously() {
+      let overlay = OverlayTestDouble.headlessDirector()
+      overlay.send(.featureRequest(.bluetoothAwareness), actions: nil)
+      #expect(overlay.currentIntent == .hidden, "a feature does not change the PIPELINE intent")
+      guard case .bluetoothAwareness? = overlay.currentPresentationForTesting?.content else {
+        Issue.record("the Bluetooth card did not take the slot")
+        return
+      }
 
-    overlay.show(intent: .recording(audioLevel: 0))
-    #expect(overlay.currentIntent == .recording(audioLevel: 0))
+      overlay.presentRecording(
+        audioLevel: 0, audioLevelProvider: { 0 }, recordingElapsedProvider: { nil },
+        isRecordingLocked: false, actions: nil)
+      #expect(overlay.currentIntent == .recording(audioLevel: 0))
 
-    // Cancel the deferred panel-creation work so no NSPanel is built headless.
-    overlay.hide()
-    #expect(overlay.currentIntent == .hidden)
+      overlay.dismissSilently()
+      #expect(overlay.currentIntent == .hidden)
+      #expect(overlay.currentPresentationForTesting == nil)
+    }
+
+    @Test func hideClearsBluetoothCard() {
+      let overlay = OverlayTestDouble.headlessDirector()
+      overlay.send(.featureRequest(.bluetoothAwareness), actions: nil)
+      overlay.dismissSilently()
+      #expect(overlay.currentPresentationForTesting == nil)
+    }
   }
-
-  @Test func hideClearsBluetoothCardIntent() {
-    let overlay = RecordingOverlayPanel()
-    overlay.show(intent: .bluetoothAwareness)
-    overlay.hide()
-    #expect(overlay.currentIntent == .hidden)
-  }
-}
+#endif

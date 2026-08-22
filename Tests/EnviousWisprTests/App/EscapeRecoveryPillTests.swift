@@ -29,9 +29,12 @@ import Testing
 /// History matters because a VoiceOver user who misses a three-second dwell needs
 /// the unhurried door, and the pill must never be the only way back to the text.
 ///
-/// `RecordingOverlayPanel.show(...)` traps on an implicitly-unwrapped nil in a
-/// unit context, so the panel is not driven here; the wiring is asserted at the
-/// factory, which is where it is load-bearing.
+/// **The overlay IS driven here now (#2292).** It used to be that
+/// `RecordingOverlayPanel.show(...)` trapped on an implicitly-unwrapped nil in a
+/// unit context, so the panel could not be exercised and the wiring was asserted
+/// at the factory instead. `OverlayDirector` refuses to draw without a screen
+/// rather than trapping, so the custody rules below run through the production
+/// path.
 @MainActor
 /// Class: `.productOutcome` — the offer itself: the one visible promise the feature makes.
 @Suite("Escape Recovery pill (#2087)", .tags(.productOutcome))
@@ -75,98 +78,45 @@ struct EscapeRecoveryPillTests {
     #expect(box.payloads.last === secondPayload)
   }
 
-  #if DEBUG
-    /// Panel replacement can be DEFERRED while the overlay is being dragged, so
-    /// an outgoing pill's callbacks can fire after a NEWER pill has stored its
-    /// payload. Unguarded, the old view's expiry silently revokes the offer the
-    /// user is currently looking at, and its Paste restores the new row from a
-    /// press aimed at different text.
-    ///
-    /// Tested against the guard directly: `show(intent:)` traps in a unit host,
-    /// so there is no way to reach this through the panel's public surface.
-    ///
-    /// Driven through the PRODUCTION closures, which is the whole point: the
-    /// guard helper passing in isolation says nothing about whether either
-    /// callback actually consults it, and an unguarded read inside one of them
-    /// is exactly the defect being prevented.
-    ///
-    /// Debug-only, because reaching those closures without `show(intent:)` needs
-    /// the `#if DEBUG` seam. The seam stays DEBUG-gated rather than `package` so
-    /// no shipped code can set a paste target it did not earn — which costs this
-    /// one test in Release, the same structural trade the rest of the suite
-    /// makes.
-    @Test("a superseded pill's callbacks cannot touch the newer payload")
-    func supersededPillCannotTouchTheNewerPayload() {
-      let panel = RecordingOverlayPanel()
-      let live = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
-      let pasted = PayloadBox()
+  /// **Custody, driven through the DIRECTOR rather than a DEBUG seam.**
+  ///
+  /// These two used to reach the panel's callbacks through
+  /// `escapeRecoveryCallbacksForTesting`, because `show(...)` trapped in a unit
+  /// context and the real path could not be driven. The director can be driven,
+  /// so they now exercise the production route: present, press, observe. That is
+  /// strictly better coverage, and it is why they are rewritten rather than
+  /// deleted (#2292).
+  @Test("a superseded pill's press cannot touch the newer payload")
+  func supersededPillCannotTouchTheNewerPayload() {
+    let d = OverlayTestDouble.headlessDirector()
+    let stale = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    let live = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
 
-      panel.setEscapeRecoveryPayloadForTesting(live)
+    d.presentEscapeRecovery(stale, actions: { _ in })
+    // A newer offer replaces it. The director's custody follows the OFFER.
+    d.presentEscapeRecovery(live, actions: { _ in })
 
-      // A pill that has already been superseded — its id is not the live one.
-      let stale = panel.escapeRecoveryCallbacksForTesting(
-        shownID: UUID(), paste: { pasted.payloads.append($0) })
+    #expect(
+      d.takeEscapeRecoveryPayload(matching: stale.transcriptID) == nil,
+      "a superseded pill could still reach a payload, so a stale press would paste")
+    #expect(d.takeEscapeRecoveryPayload(matching: live.transcriptID) != nil)
+  }
 
-      stale.onPaste()
-      #expect(pasted.payloads.isEmpty, "a stale press must not paste the newer offer")
-      #expect(
-        panel.escapeRecoveryPayloadForTesting === live,
-        "and must not consume it either")
+  /// The take is ONE-SHOT, which is what makes a repeated press safe: the second
+  /// finds nothing rather than pasting twice.
+  @Test("a payload can be taken exactly once")
+  func payloadIsTakenOnce() {
+    let d = OverlayTestDouble.headlessDirector()
+    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
 
-      stale.onExpire()
-      #expect(
-        panel.escapeRecoveryPayloadForTesting === live,
-        "a superseded pill expiring must not revoke the offer the user can see")
+    d.presentEscapeRecovery(payload, actions: { _ in })
 
-      // The live pill's own callbacks still work, or the guard is just a block.
-      let current = panel.escapeRecoveryCallbacksForTesting(
-        shownID: live.transcriptID, paste: { pasted.payloads.append($0) })
+    #expect(d.takeEscapeRecoveryPayload(matching: payload.transcriptID) != nil)
+    #expect(
+      d.takeEscapeRecoveryPayload(matching: payload.transcriptID) == nil,
+      "a second press pasted the same transcript again")
+  }
 
-      current.onPaste()
-      #expect(pasted.payloads.count == 1, "the matching pill pastes exactly once")
-      #expect(pasted.payloads.first === live, "and delivers its own payload, whole")
-      #expect(
-        panel.escapeRecoveryPayloadForTesting == nil,
-        "consumed, so a second press reaches nothing")
-
-      current.onPaste()
-      #expect(pasted.payloads.count == 1, "a second press on the same pill pastes nothing")
-    }
-
-    /// A paste handler is external code, and it may present an overlay of its
-    /// own while it runs. Because `hide()` clears the payload SYNCHRONOUSLY, a
-    /// teardown that runs after the handler would wipe whatever the handler just
-    /// installed — the offer the user is now looking at revoked by the one they
-    /// just accepted.
-    ///
-    /// So the order is consume, tear down, then hand control out. Nothing binds
-    /// `onEscapeRecoveryPaste` yet, so this pins the order for chunk 8b rather
-    /// than describing a live path.
-    @Test("a paste handler that presents its own offer keeps it")
-    func pasteHandlerReentrancyKeepsTheNewOffer() {
-      let panel = RecordingOverlayPanel()
-      let live = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
-      let replacement = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
-      let pasted = PayloadBox()
-
-      panel.setEscapeRecoveryPayloadForTesting(live)
-
-      let callbacks = panel.escapeRecoveryCallbacksForTesting(
-        shownID: live.transcriptID,
-        paste: { delivered in
-          pasted.payloads.append(delivered)
-          // The handler presents a new offer while the paste is still running.
-          panel.setEscapeRecoveryPayloadForTesting(replacement)
-        })
-
-      callbacks.onPaste()
-
-      #expect(pasted.payloads.first === live, "the accepted offer is still delivered whole")
-      #expect(
-        panel.escapeRecoveryPayloadForTesting === replacement,
-        "and the offer raised DURING the paste survives our teardown")
-    }
-  #endif
 
   /// The control. An ordinary completion raises no pill, which is the whole of
   /// this chunk's inertness: nothing constructs the intent until a completion
@@ -215,15 +165,16 @@ struct EscapeRecoveryPillTests {
   }
 
   /// The payload must not outlive its offer. Replacement is the exit with no
-  /// teardown of its own — the pill is simply overwritten by the next intent —
+  /// teardown of its own — the pill is simply overwritten by the next occupant —
   /// and a payload surviving it could paste a later recovery into the app THIS
   /// one was aimed at.
   ///
-  /// The RULE is tested, not the assignment: `show(intent:)` posts to
-  /// `NSApp.mainWindow` on every arm and traps in a unit host, so the one line
-  /// that consults this is not unit-drivable. Enumerated over the whole intent
-  /// set so a sixteenth case cannot default into retaining.
-  @Test("only the pill itself keeps the paste target alive")
+  /// **Driven now, not enumerated.** This used to assert a static intent table
+  /// (`retainsEscapeRecoveryPayload`) because `show(intent:)` trapped in a unit
+  /// host, so the line that consults the rule was not drivable. The director is,
+  /// so the rule is tested through the behaviour instead of through a lookup
+  /// table that could drift from the code reading it (#2292).
+  @Test("any other occupant drops the paste target with the pill")
   func onlyThePillRetainsItsTarget() {
     let others: [OverlayIntent] = [
       .hidden, .recording(audioLevel: 0), .processing(phase: .transcribing),
@@ -234,22 +185,47 @@ struct EscapeRecoveryPillTests {
       .recoveringLastRecording, .recoverySucceeded, .bluetoothAwareness,
     ]
     for intent in others {
+      let d = OverlayTestDouble.headlessDirector()
+      let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+      d.presentEscapeRecovery(payload, actions: { _ in })
+
+      // A recording is a TRANSACTION, not an event — `send` asserts on one, and
+      // that invariant caught this loop on its first run.
+      if case .recording = intent {
+        d.presentRecording(
+          audioLevel: 0, audioLevelProvider: { 0 }, recordingElapsedProvider: { nil },
+          isRecordingLocked: false, actions: nil)
+      } else {
+        d.send(.pipeline(intent), actions: nil)
+      }
+
       #expect(
-        RecordingOverlayPanel.retainsEscapeRecoveryPayload(intent) == false,
-        "\(intent) replaces the pill, so it must drop the target with it")
+        d.takeEscapeRecoveryPayload(matching: payload.transcriptID) == nil,
+        "\(intent) replaced the pill, so it must drop the target with it")
     }
-    #expect(
-      RecordingOverlayPanel.retainsEscapeRecoveryPayload(
-        .escapeRecovery(transcriptID: UUID())))
+
+    // The paired ACCEPTED case: without it, "drops on everything" would also be
+    // satisfied by a director that never holds a payload at all.
+    let d = OverlayTestDouble.headlessDirector()
+    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+    d.presentEscapeRecovery(payload, actions: { _ in })
+    #expect(d.takeEscapeRecoveryPayload(matching: payload.transcriptID) != nil)
   }
 
-  /// Unbound in production today, which is the other half of inertness: even if
-  /// the pill were somehow raised, a press would reach nobody. Binding it to the
-  /// paste cascade is chunk 8b's, and needs chunk 9's pending-row read.
-  @Test("a fresh panel has no paste handler bound")
-  func handlerIsUnboundByDefault() {
-    #expect(RecordingOverlayPanel().onEscapeRecoveryPaste == nil)
-  }
+  #if DEBUG
+    /// A fresh director has nothing bound, which is the other half of inertness:
+    /// even if a pill were somehow raised, a press would reach nobody and the
+    /// director's own invariant would say so rather than silently dropping it.
+    ///
+    /// Just this ONE case is DEBUG-gated, not the file: it is the only one here
+    /// reading a `*ForTesting` accessor, and wrapping the suite would drop every
+    /// other guard out of the Release lane for one test's sake — the mistake the
+    /// first repair of this class made two commits ago.
+    @Test("a fresh director has no active binding")
+    func handlerIsUnboundByDefault() {
+      #expect(OverlayTestDouble.headlessDirector().hasActiveBindingForTesting == false)
+    }
+  #endif
 
   // MARK: Helpers
 

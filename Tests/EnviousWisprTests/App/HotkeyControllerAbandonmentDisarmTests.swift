@@ -102,14 +102,14 @@ struct HotkeyControllerAbandonmentDisarmTests {
       let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
         audioCapture: audio, store: store)
       let settings = SettingsManager()
-      let overlay = RecordingOverlayPanel()
+      let overlay = OverlayTestDouble.headlessDirector()
       let permissions = PermissionsService()
       let hotkey = HotkeyService()
       let lockBox = TestRecordingLockedBox()
       let lockAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
         get: { lockBox.isLocked }, set: { lockBox.isLocked = $0 })
       let hcr = HeartControlRecovery(
-        hideOverlay: { overlay.show(intent: .hidden) },
+        hideOverlay: { overlay.send(.pipeline(.hidden), actions: nil) },
         setLocked: { locked in lockAccess.set(locked) },
         backend: { "parakeet" })
       let finalizer = RecordingFinalizer(

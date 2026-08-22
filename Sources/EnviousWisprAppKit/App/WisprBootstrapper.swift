@@ -109,7 +109,15 @@ public final class WisprBootstrapper {
     // composition root. This is the ONLY KeychainManager that gets `.live`; it carries
     // the sink for the legacy-key-cleanup (Q3.3) + cloud-prewarm (A6) quiet limbs.
     let keychainManager = KeychainManager(telemetrySink: .live)
-    let recordingOverlay = RecordingOverlayPanel(positionProvider: { settings.overlayPillPosition })
+    let overlayEffects = OverlayEffectRouter()
+    let overlayHost = OverlayWindowHost()
+    let recordingOverlay = OverlayDirector(
+      host: overlayHost, deliverEffect: { overlayEffects.deliver($0) },
+      position: { settings.overlayPillPosition },
+      accessibilityEligibility: OverlayAccessibilityEligibility(
+        warningDismissed: { [weak permissions] in
+          permissions?.accessibilityWarningDismissed ?? false
+        }))
     let audioDeviceList = AudioDeviceList()
     let inputDevicePreferenceReconciler = InputDevicePreferenceReconciler(settings: settings)
     audioDeviceList.onDevicesChanged = { [weak inputDevicePreferenceReconciler] devices in
@@ -132,7 +140,7 @@ public final class WisprBootstrapper {
       customWords: customWordsCoordinator,
       aliasSuggester: customWordsCoordinator.aliasSuggester,
       presentStatus: { [weak recordingOverlay] message in
-        recordingOverlay?.showImportStatus(message: message)
+        recordingOverlay?.send(.featureRequest(.importStatus(message: message)), actions: nil)
       })
     customWordsCoordinator.onImportCommitted = { [weak bulkImportEnrichmentCoordinator] in
       bulkImportEnrichmentCoordinator?.requestDrain()
@@ -334,7 +342,8 @@ public final class WisprBootstrapper {
     // `DictationNarrator` owns the user-facing sentence (#1567). The notice
     // no-ops when no recording panel is showing.
     vadSource.onAutoStopUnavailableNotice = { [weak recordingOverlay] in
-      recordingOverlay?.flashRecordingNotice(reason: .autoStopUnavailable, dismissAfter: 4.0)
+      recordingOverlay?.send(
+        .inPanelNotice(.autoStopUnavailable, dismissAfter: 4.0), actions: nil)
     }
 
     // PR-4b.4 of #827: Parakeet recordings flow through the kernel via the
@@ -358,7 +367,7 @@ public final class WisprBootstrapper {
         egOneRuntime: egOneRuntime,
         parakeetDelivery: modelDelivery.parakeetHandle,
         batchDecodeFaultController: batchDecodeFaultController,
-        escapeRecovery: EscapeRecoveryWiring.wire(recordingOverlay, transcriptCoordinator)
+        escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator)
       ))
 
     // W6: language-flip telemetry wired via a closure so `EnviousWisprASR`
@@ -409,7 +418,7 @@ public final class WisprBootstrapper {
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         egOneRuntime: egOneRuntime,
         batchDecodeFaultController: batchDecodeFaultController,
-        escapeRecovery: EscapeRecoveryWiring.wire(recordingOverlay, transcriptCoordinator)
+        escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator)
       ))
 
     // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit
@@ -459,17 +468,13 @@ public final class WisprBootstrapper {
     )
     settingsSync.applyInitialSettings(settings)
 
-    recordingOverlay.setGrantHandler { [weak permissions] in
-      _ = permissions?.requestAccessibilityAccess()
-    }
-    recordingOverlay.setAccessibilityWarningDismissedProvider { [weak permissions] in
-      permissions?.accessibilityWarningDismissed ?? false
-    }
+
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
     let livePreview = LivePreviewInstaller.install(
       overlay: recordingOverlay, capture: audioCapture, settings: settings,
       settingsSync: settingsSync, modelDelivery: modelDelivery)
+    overlayEffects.livePreview = livePreview
 
     // Custom-words propagator wiring (seed → register consumers → install
     // `onWordsChanged`). Phase D (#496). `wireCustomWords` strong-captures the
@@ -592,11 +597,23 @@ public final class WisprBootstrapper {
     // captures `recordingOverlay` through narrow closures.
     let overlay = recordingOverlay
     let languageSuggestionPresenter = LanguageSuggestionPresenter(
-      showOverlay: { [weak overlay] intent in overlay?.show(intent: intent) },
+      showOverlay: { [weak overlay, weak overlayEffects, settings] intent in
+        // The chip is the one pipeline intent with buttons, so it is the one
+        // that carries a binding. Resolved through the router because the
+        // presenter this closure belongs to does not exist yet.
+        guard case .passiveChip = intent else {
+          overlay?.send(.pipeline(intent), actions: nil)
+          return
+        }
+        guard let presenter = overlayEffects?.languageChips else { return }
+        overlay?.send(
+          .pipeline(intent),
+          actions: OverlayChipWiring.actions(presenter: presenter, settings: settings))
+      },
       readCurrentIntent: { [weak overlay] in overlay?.currentIntent ?? .hidden },
       // Silent hide for chip dismissal — bypasses the .hidden case's
       // "Recording complete" AX announcement (PR4 Codex code-diff r5 [P3]).
-      hideOverlay: { [weak overlay] in overlay?.hide() }
+      hideOverlay: { [weak overlay] in overlay?.dismissSilently() }
     )
     // Wires the `LanguageDetector` actor's passive-chip callback to the
     // presenter. The presenter is captured directly (App-lifetime `@State`).
@@ -609,32 +626,7 @@ public final class WisprBootstrapper {
       }
     }
 
-    // Wire RecordingOverlayPanel chip handler closures into the presenter.
-    recordingOverlay.setPassiveChipHandlers(
-      onLock: { [weak settings, presenter = languageSuggestionPresenter] in
-        if let lang = presenter.accept(), let settings = settings {
-          // Capture prior mode for telemetry before mutating settings.
-          let priorMode = settings.languageMode
-          let fromLang: String
-          switch priorMode {
-          case .auto: fromLang = "auto"
-          case .locked(let prev): fromLang = prev
-          }
-          settings.languageMode = .locked(lang)
-          // PR4 Codex code-diff r6 [P2]: chip-driven locks emit the same
-          // language.manual_lock_used event as Settings-driven locks.
-          TelemetryService.shared.trackManualLockUsed(
-            fromLang: fromLang, toLang: lang, reason: "after_bad_detect")
-        }
-        // presenter.accept() already hid the overlay; no extra hide needed.
-      },
-      onDismiss: { [presenter = languageSuggestionPresenter] in
-        presenter.dismissExplicit()
-      },
-      onAutoDismiss: { [presenter = languageSuggestionPresenter] generation in
-        presenter.autoDismiss(generation: generation)
-      }
-    )
+    overlayEffects.languageChips = languageSuggestionPresenter
 
     let updateCoordinatorHolder = UpdateCoordinatorHolder()
     let sparkleUpdateController = SparkleUpdateController(holder: updateCoordinatorHolder)
@@ -717,13 +709,11 @@ public final class WisprBootstrapper {
     // above) can reach it.
     recoveryCoordinatorForEngineMutationScope = recoveryCoordinator
     // #1063 PR2: the "recovering" pill's Discard action.
-    recordingOverlay.setDiscardRecoveryHandler { [weak recoveryCoordinator] in
-      recoveryCoordinator?.discardActiveRecovery()
-    }
+
     // #1464: after a leftover recording lands in History, post the standalone green
     // success notice (the `.recovered` path was silent before).
     recoveryCoordinator.onRecoverySucceeded = { [weak recordingOverlay] in
-      recordingOverlay?.show(intent: .recoverySucceeded)
+      recordingOverlay?.send(.pipeline(.recoverySucceeded), actions: nil)
     }
     // #1171 — the single owner of ASR-engine selection, status, and switching.
     // Reads the user's choice + active engine + readiness LIVE (no stored "want"

@@ -26,7 +26,7 @@ enum ColdPressGuard {
   /// genuine cold press: shows the #879 pill (no session) and the caller returns.
   /// Keeps the decision off `RecordingStarter` (same ceiling rationale as `handle`).
   static func resolveNotReadyPress(
-    overlay: RecordingOverlayPanel,
+    overlay: OverlayDirector,
     active: KernelDictationDriver,
     backendTag: String,
     readiness: ASREngineReadiness,
@@ -50,13 +50,13 @@ enum ColdPressGuard {
   /// now-correct engine. Factored here (like `handle`) to keep `RecordingStarter`
   /// within its line ceiling.
   static func reconcileSelectedBackend(
-    overlay: RecordingOverlayPanel,
+    overlay: OverlayDirector,
     selectedDriver: KernelDictationDriver,
     selected: ASRBackendType,
     ensureSelectedReady: @escaping @MainActor () async -> EngineCoordinator.PressReadiness
   ) {
     let label = selectedDriver.engineDisplayName
-    overlay.show(intent: .cachingModel(engineLabel: label))
+    overlay.send(.pipeline(.cachingModel(engineLabel: label)), actions: nil)
     Task { [overlay] in
       // The coordinator switches to the selection AND warms it (single-flight,
       // latest-wins), returning the outcome so we show the right pill for EVERY
@@ -64,24 +64,24 @@ enum ColdPressGuard {
       // selected engine cannot actually be prepared.
       switch await ensureSelectedReady() {
       case .ready:
-        overlay.show(intent: .engineReady)
+        overlay.send(.pipeline(.engineReady), actions: nil)
       case .notInstalled:
-        overlay.show(intent: .warning(reason: .modelNotDownloaded(engineLabel: label)))
+        overlay.send(.pipeline(.warning(reason: .modelNotDownloaded(engineLabel: label))), actions: nil)
       case .notReady:
         // Switched but not ready (failed warm / transient block): clear the
         // caching pill; the next press retries via the cold-press path.
-        overlay.show(intent: .hidden)
+        overlay.send(.pipeline(.hidden), actions: nil)
       }
     }
   }
 
   static func handle(
-    overlay: RecordingOverlayPanel,
+    overlay: OverlayDirector,
     active: KernelDictationDriver,
     backendTag: String,
     readiness: ASREngineReadiness
   ) {
-    overlay.show(intent: .cachingModel(engineLabel: active.engineDisplayName))
+    overlay.send(.pipeline(.cachingModel(engineLabel: active.engineDisplayName)), actions: nil)
     TelemetryService.shared.coldStartPressBlocked(
       asrBackend: backendTag, warmupInFlight: readiness == .warming)
     Task { [overlay, active] in
@@ -91,7 +91,7 @@ enum ColdPressGuard {
       // caching pill. The user saw a `.cachingModel` pill on this path, so the
       // READY pill is expected — never a launch-time surprise toast.
       guard active.engineReadiness == .ready else { return }
-      overlay.show(intent: .engineReady)
+      overlay.send(.pipeline(.engineReady), actions: nil)
     }
     Task {
       await AppLogger.shared.log(

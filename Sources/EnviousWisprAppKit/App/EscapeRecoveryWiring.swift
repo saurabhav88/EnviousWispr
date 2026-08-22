@@ -40,16 +40,28 @@ enum EscapeRecoveryWiring {
     }
   }
 
-  /// Bind the pill's Paste button to the coordinator that owns the row.
+  /// The pill's action handler, for the ONE call that presents it.
   ///
-  /// Takes the panel rather than returning a closure, so the composition root
-  /// spends ONE line on it. That is not cosmetic: the bootstrapper's ceiling
-  /// has now caught this feature twice, and it exists to keep the root a place
-  /// where dependencies meet rather than where features are implemented.
+  /// **A binding that arrives WITH the presentation, not a lifetime field.** The
+  /// panel kept `onEscapeRecoveryPaste` alive for the app's life whether or not
+  /// a pill was showing; the director holds exactly one active binding, for the
+  /// presentation it belongs to, and drops it when the occupant changes.
+  ///
+  /// The payload is TAKEN from the director's custody rather than captured here.
+  /// The action carries the transcript id as a LOOKUP KEY only, and the take is
+  /// one-shot — which is what makes a stale Undo press safe: the second press
+  /// finds nothing rather than pasting twice.
   @MainActor
-  static func bindPill(overlay: RecordingOverlayPanel, coordinator: TranscriptCoordinator) {
-    overlay.onEscapeRecoveryPaste = pasteAction(
-      coordinator: coordinator, report: restoreReporter(source: .pill))
+  static func pillActions(
+    director: OverlayDirector, coordinator: TranscriptCoordinator
+  ) -> (OverlayAction) -> Void {
+    let paste = pasteAction(coordinator: coordinator, report: restoreReporter(source: .pill))
+    return { [weak director] action in
+      guard case .pasteEscapeRecovery(let transcriptID) = action,
+        let payload = director?.takeEscapeRecoveryPayload(matching: transcriptID)
+      else { return }
+      paste(payload)
+    }
   }
 
   /// The pill's Paste action, bound to the coordinator that owns the row.
@@ -90,20 +102,16 @@ enum EscapeRecoveryWiring {
   /// into one engine appears only for whichever the user happens to be running
   /// — the half-connection this feature has already produced twice.
   ///
-  /// Binds the pill's Paste button as a side effect, which the name says out
-  /// loud. Idempotent: called once per engine, assigning the same closure to
-  /// the same panel, so the second call is a no-op in effect.
+  /// **It no longer binds the pill as a side effect**, because there is no
+  /// lifetime field to bind: the handler now travels with the presentation, from
+  /// `pillActions`, at the one site that presents it. The name used to say the
+  /// side effect out loud; now there is nothing to say.
   ///
-  /// Unlabelled arguments and this shape exist for one measured reason: the
-  /// composition root was ALREADY at its line ceiling before this feature
-  /// (1339 by `wc`, which the gate counts as 1340 of 1340), so the wiring had
-  /// to cost it exactly zero net lines. Extract rather than raise — the
-  /// precedent #1988 set when live-preview wiring hit the same cap.
+  /// Kept as a named call rather than inlining `writer()` for the measured
+  /// reason it was extracted: the composition root is at its line ceiling, and
+  /// this is where the feature's wiring lives.
   @MainActor
-  static func wire(
-    _ overlay: RecordingOverlayPanel, _ history: TranscriptCoordinator
-  ) -> PrepareEscapeRecovery {
-    bindPill(overlay: overlay, coordinator: history)
-    return writer()
+  static func wire(_ history: TranscriptCoordinator) -> PrepareEscapeRecovery {
+    writer()
   }
 }
