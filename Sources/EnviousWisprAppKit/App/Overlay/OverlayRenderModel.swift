@@ -1,0 +1,54 @@
+import CoreGraphics
+import Foundation
+import SwiftUI
+
+/// The bridge the retained hosting view reads (#2292, chunk C4b).
+///
+/// **One observable value replaces the parallel channels.** The shipped panel
+/// carries `OverlayLockState` and `OverlayNoticeState` as separate observable
+/// objects, and `OverlayNoticeState`'s own doc comment says it exists so a
+/// notice can morph the live recording pill "WITHOUT tearing the panel down" —
+/// a workaround that has no reason to exist once the panel is retained, because
+/// every change is a morph.
+///
+/// Deliberately thin. It holds what to draw and the two per-frame providers the
+/// recording pill pulls from; it makes no decisions. The director decides.
+@MainActor
+final class OverlayRenderModel: ObservableObject {
+
+  /// What the retained root should render, or `nil` for an empty slot.
+  @Published var presentation: OverlayPresentation?
+
+  /// **Retained for the rendered recording's lifetime**, which is the obligation
+  /// recorded against `OverlayContent.recording`.
+  ///
+  /// These are PULLS, not pushes: the shipped
+  /// `show(intent:audioLevelProvider:recordingElapsedProvider:isRecordingLocked:)`
+  /// hands the panel two closures the view calls per frame. A snapshot pushed
+  /// through the reducer would either lag the meter or churn a presentation
+  /// identity many times a second, so the level a VIEW reads comes from here
+  /// while the level the reducer carries is only ever a snapshot for identity
+  /// and morph decisions.
+  ///
+  /// `recordingElapsedProvider` had no representation anywhere in the value
+  /// vocabulary; it is named here because nothing else would have named it.
+  private(set) var audioLevelProvider: () -> Float = { 0 }
+  private(set) var recordingElapsedProvider: () -> TimeInterval? = { nil }
+
+  func setRecordingProviders(
+    audioLevel: @escaping () -> Float,
+    recordingElapsed: @escaping () -> TimeInterval?
+  ) {
+    audioLevelProvider = audioLevel
+    recordingElapsedProvider = recordingElapsed
+  }
+
+  /// Dropped when the recording pill goes, so a stale closure cannot outlive the
+  /// dictation it was reading. The shipped providers are installed once and live
+  /// for the app's lifetime, which is safe only because they are re-set on every
+  /// `show`.
+  func clearRecordingProviders() {
+    audioLevelProvider = { 0 }
+    recordingElapsedProvider = { nil }
+  }
+}
