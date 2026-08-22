@@ -690,7 +690,11 @@ struct OverlayReducer {
         // a hover only the view sees — the two would race and the hover would
         // appear to do nothing. Once the director owns the single
         // expiry, that reason is gone and this becomes an ordinary hover-pausing
-        // expiry; C4 removes the view-owned task.
+        // expiry. **C18 removed the view-owned task, which C4 was recorded as
+        // doing and did not.** Two three-second timers ran side by side from the
+        // cutover until cloud review found the rail finishing while the pill
+        // stayed visible -- a comment asserting a FUTURE state is invisible to
+        // every diff review, because nothing in the diff contradicts it.
         id: id, content: .escapeRecovery(transcriptID: transcriptID),
         expiry: .after(seconds: 3, pausesOnHover: true), requestedWidth: .measured)
     }

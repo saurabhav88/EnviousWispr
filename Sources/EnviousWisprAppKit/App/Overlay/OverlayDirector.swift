@@ -518,6 +518,28 @@ final class OverlayDirector {
       }
     }
 
+    // **FAIL CLOSED: the recovery pill needs a payload the intent cannot carry.**
+    // `OverlayIntent` is `Sendable` and the paste target is a pair of main-actor
+    // AX handles, so `presentEscapeRecovery` stores the payload and the intent
+    // carries only the id. A bare `send(.pipeline(.escapeRecovery(id)))` finds
+    // none, and the shipped panel drew NOTHING in that case while still
+    // announcing -- the announcement is true, because the row is saved, and an
+    // offer to Paste that points at no target is not.
+    //
+    // No caller reaches this today. It is preserved because a bare call still
+    // COMPILES, and this branch has already shipped one defect of exactly that
+    // shape: `actions: nil` compiled and left Grant and Discard unbound.
+    //
+    // Rolled back rather than left claiming the slot, so the fail-closed rule
+    // and C7's "a presentation nobody can see leaves no owner" hold together.
+    if case .escapeRecovery(let offeredID)? = plan.presentation?.content,
+      escapeRecoveryPayload?.id != offeredID
+    {
+      if announcing, let announcement = plan.announcement { announce(announcement) }
+      rollBackRefusedPresentation()
+      return
+    }
+
     if plan.didChange {
       // **Custody ends on ANY replacement, not only on an empty slot.** Clearing
       // it only when the slot emptied left a cancelled transcript held while a
@@ -664,6 +686,11 @@ final class OverlayDirector {
   /// Returns `false` ONLY when the host refused a presentation it was asked to
   /// show. Emptying the slot always succeeds, so the caller reads a `false` as
   /// "the occupant this plan installed is not on screen and never will be".
+  private static func isRecording(_ presentation: OverlayPresentation) -> Bool {
+    if case .recording = presentation.content { return true }
+    return false
+  }
+
   /// Three outcomes, because a DEFERRED first render is neither of the other
   /// two: nothing has been refused yet, and nothing is on screen yet. Collapsing
   /// it into `true` announced a presentation the host had not accepted — the C8
@@ -748,7 +775,22 @@ final class OverlayDirector {
     // could never express "is a pill already up". `presentedID == nil` can: it is
     // cleared by `render(nil)` on every hide and on a refused presentation, which
     // is exactly the shipped `inheritedFrame == nil` test in the new vocabulary.
-    let isFresh = presentedID == nil
+    // **AND A RECORDING IS ALWAYS A NEW LIFECYCLE**, which `presentedID == nil`
+    // alone does not say. The shipped `transitionToRecordingNow` re-anchored
+    // explicitly and recorded why: a taller pill sitting lower — the #1480
+    // Bluetooth card — hands its origin to the recording that replaces it and
+    // drops the pill to MID-SCREEN. That was found by #1480's live UAT, not by
+    // review, which is the kind of finding a reading does not produce.
+    //
+    // C12 fixed freshness-from-identity and introduced this in the same edit:
+    // keying only on "nothing showing" made a recording that replaces a feature
+    // pill a continuation of it. Found by reading the deleted file's recorded
+    // lessons against the new module rather than by another review round.
+    //
+    // A CONTINUING recording is excluded by the id check: the reducer keeps one
+    // identity across audio-level morphs, so a tick is not a new lifecycle and
+    // must not re-anchor.
+    let isFresh = presentedID == nil || (Self.isRecording(presentation) && presentedID != presentation.id)
     presentedID = presentation.id
     let recordingGeometry = geometry(for: presentation)
     // **One position per presentation, not two reads of a provider.** The

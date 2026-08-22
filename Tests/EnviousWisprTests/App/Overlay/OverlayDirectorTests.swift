@@ -861,6 +861,28 @@
       #expect(previewWidth == 400, "the Live Preview pill did not take its 400-point width")
     }
 
+    // MARK: - Fail closed (#2292 C19)
+
+    /// **A recovery pill with no payload announces and draws nothing.**
+    /// `panel:713-717` records the rule: the announcement is true because the
+    /// row is saved, and an offer to Paste pointing at no target is not.
+    /// Preserved because a bare call still COMPILES — the same shape that left
+    /// Grant and Discard unbound earlier on this branch.
+    @Test("an escape-recovery intent with no payload announces but shows nothing")
+    func escapeRecoveryWithoutPayloadFailsClosed() {
+      let (d, _, sink) = Self.director()
+      defer { Self.closeAllWindows() }
+
+      // The bare path: no `presentEscapeRecovery`, so no payload is held.
+      d.send(.pipeline(.escapeRecovery(transcriptID: UUID())), actions: nil)
+
+      #expect(sink.announcements.count == 1, "the saved row was not announced")
+      #expect(
+        d.currentPresentationForTesting == nil,
+        "a Paste button was offered with no target behind it")
+      #expect(d.presentedIDForTesting == nil, "the window drew a pill with no payload")
+    }
+
     // MARK: - The first render is deferred one run loop (#2292 C15)
 
     /// **A crash fix, asserted through the production deferral rather than the

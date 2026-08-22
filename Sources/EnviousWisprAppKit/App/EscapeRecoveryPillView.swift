@@ -92,16 +92,25 @@ struct EscapeRecoveryPillView: View {
     withTransaction(instant) { progress = 0 }
   }
 
+  /// **The rail is a PICTURE of the director's dwell, not a second clock**
+  /// (#2292, C18). `OverlayReducer` arms `.after(seconds: 3, pausesOnHover: true)`
+  /// for this pill and its own comment says "C4 removes the view-owned task" --
+  /// C4 did not, so two independent three-second timers ran side by side from
+  /// the cutover onward, started at different moments and agreeing only by luck.
+  ///
+  /// The view's timer is gone; only the animation remains. The director dismisses,
+  /// which is what `exactly one armed expiry` means, and what made the rail
+  /// finish while the pill stayed on screen looking expired.
+  ///
+  /// `onExpire` is kept in the signature and is now unused by this view: the
+  /// preview and the shipped call site both still pass one, and removing it is a
+  /// wider edit than this fix earns.
   private func scheduleExpiry() {
     guard !acted else { return }
     dismissTask?.cancel()
+    dismissTask = nil
     resetRail()
     withAnimation(.linear(duration: Self.dwellSeconds)) { progress = 1 }
-    dismissTask = Task { @MainActor in
-      try? await Task.sleep(for: .seconds(Self.dwellSeconds))
-      guard !Task.isCancelled, !acted else { return }
-      onExpire()
-    }
   }
 }
 
