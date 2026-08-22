@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 
@@ -52,6 +53,44 @@ struct AppLoggerCompileOutTests {
         environment: ["EW_APP_LOG_DIRECTORY": "relative/logger"],
         libraryDirectory: fallback)
       #expect(rejected == fallback.appendingPathComponent("Logs/EnviousWispr", isDirectory: true))
+    }
+
+    @Test("every file handle appends at write time instead of keeping a stale offset")
+    func everyFileHandleUsesAppendSemantics() throws {
+      let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("ew-2159-\(UUID().uuidString)", isDirectory: true)
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: directory) }
+
+      let url = directory.appendingPathComponent("app.log")
+      _ = FileManager.default.createFile(atPath: url.path, contents: nil)
+      let first = try #require(AppLogger.openAppendFileHandle(at: url))
+      let second = try #require(AppLogger.openAppendFileHandle(at: url))
+      defer {
+        try? first.close()
+        try? second.close()
+      }
+
+      let flags = fcntl(first.fileDescriptor, F_GETFL)
+      #expect(flags >= 0)
+      #expect(flags & O_APPEND == O_APPEND, "the AppLogger handle must carry O_APPEND")
+
+      // Both handles opened while the file was empty. Without O_APPEND each
+      // keeps offset zero and these alternating writes overwrite one another.
+      // With O_APPEND, the kernel resolves the current end for every write.
+      for (handle, line) in [
+        (first, "main-1\n"),
+        (second, "xpc-1-longer\n"),
+        (first, "main-2-even-longer\n"),
+        (second, "xpc-2\n"),
+      ] {
+        try handle.write(contentsOf: Data(line.utf8))
+      }
+      try first.synchronize()
+      try second.synchronize()
+
+      let contents = try String(contentsOf: url, encoding: .utf8)
+      #expect(contents == "main-1\nxpc-1-longer\nmain-2-even-longer\nxpc-2\n")
     }
 
     @Test("Debug build: log() emits the marker into the file sink")
