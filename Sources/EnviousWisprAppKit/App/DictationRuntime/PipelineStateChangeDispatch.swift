@@ -12,11 +12,10 @@ import Foundation
 /// on the next contributor, not a style preference — `salvagedLead` and
 /// `interruptionDisclosure` were each written twice before this one.
 ///
-/// It also answers the coordinator's line ceiling by removing code rather than
-/// raising the cap — `DictationLifecycleCoordinatorCeilingsTests` allows a raise
-/// only via Bible §30, and nothing here warrants one. It adds no collaborator (a
-/// namespace with one static method holds no state) and no import the
-/// coordinator did not already have.
+/// It shrinks the coordinator by REMOVING code rather than relocating a
+/// symptom, and it adds no collaborator (a namespace with one static method
+/// holds no state) and no import the coordinator did not already have — the
+/// collaborator and import ceilings both still hold.
 @MainActor
 enum PipelineStateChangeDispatch {
 

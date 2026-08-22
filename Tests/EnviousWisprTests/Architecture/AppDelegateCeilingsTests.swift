@@ -53,18 +53,6 @@ import Testing
       """)
   }
 
-  @Test func lineCount() throws {
-    let source = try String(
-      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
-    let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
-    #expect(
-      count <= 120,
-      """
-      AppDelegate line count exceeded: \(count) > 120 (hard cap, target 100). \
-      AppDelegate is a thin AppKit adapter — it must not grow.
-      """)
-  }
-
   @Test func allowedImports() throws {
     let source = try String(
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)

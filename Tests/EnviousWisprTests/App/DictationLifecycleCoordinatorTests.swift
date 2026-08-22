@@ -39,7 +39,7 @@ import Testing
     let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
     let settings = SettingsManager()
-    let overlay = RecordingOverlayPanel()
+    let overlay = OverlayTestDouble.headlessDirector()
     let hotkey = HotkeyService()
     let settingsSync = PipelineSettingsSync(
       kernelDriver: pipeline,

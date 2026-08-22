@@ -4,9 +4,10 @@ import EnviousWisprServices
 import Foundation
 
 /// #879 — the press-on-cold-engine policy, factored off `RecordingStarter` so
-/// the start-path home stays within its method/line ceilings (mirrors
-/// `ASREngineReadiness+ColdStartCohort.swift`, which deliberately lives off
-/// `RecordingStarter` for the same reason).
+/// the start path owns STARTING and not every policy that touches it (mirrors
+/// `ASREngineReadiness+ColdStartCohort.swift`, which lives off `RecordingStarter`
+/// for the same reason). The method-count ceiling still guards that split; the
+/// line ceiling this note also cited was deleted in #2292 C6.
 ///
 /// When the user presses while the active engine is not yet ready (fresh
 /// install, or first launch after a macOS update wiped the compiled-model
@@ -26,7 +27,7 @@ enum ColdPressGuard {
   /// genuine cold press: shows the #879 pill (no session) and the caller returns.
   /// Keeps the decision off `RecordingStarter` (same ceiling rationale as `handle`).
   static func resolveNotReadyPress(
-    overlay: RecordingOverlayPanel,
+    overlay: OverlayDirector,
     active: KernelDictationDriver,
     backendTag: String,
     readiness: ASREngineReadiness,
@@ -47,16 +48,16 @@ enum ColdPressGuard {
   /// reactive caching pill for the SELECTED engine, then await the EngineCoordinator
   /// driving the selected engine to ready (it owns the single-flight switch + warm),
   /// and announce Ready when it lands. Mints no session — the user re-presses on the
-  /// now-correct engine. Factored here (like `handle`) to keep `RecordingStarter`
-  /// within its line ceiling.
+  /// now-correct engine. Factored here (like `handle`) so `RecordingStarter`
+  /// keeps owning the start path rather than the policies that surround it.
   static func reconcileSelectedBackend(
-    overlay: RecordingOverlayPanel,
+    overlay: OverlayDirector,
     selectedDriver: KernelDictationDriver,
     selected: ASRBackendType,
     ensureSelectedReady: @escaping @MainActor () async -> EngineCoordinator.PressReadiness
   ) {
     let label = selectedDriver.engineDisplayName
-    overlay.show(intent: .cachingModel(engineLabel: label))
+    overlay.send(.pipeline(.cachingModel(engineLabel: label)), actions: nil)
     Task { [overlay] in
       // The coordinator switches to the selection AND warms it (single-flight,
       // latest-wins), returning the outcome so we show the right pill for EVERY
@@ -64,24 +65,24 @@ enum ColdPressGuard {
       // selected engine cannot actually be prepared.
       switch await ensureSelectedReady() {
       case .ready:
-        overlay.show(intent: .engineReady)
+        overlay.send(.pipeline(.engineReady), actions: nil)
       case .notInstalled:
-        overlay.show(intent: .warning(reason: .modelNotDownloaded(engineLabel: label)))
+        overlay.send(.pipeline(.warning(reason: .modelNotDownloaded(engineLabel: label))), actions: nil)
       case .notReady:
         // Switched but not ready (failed warm / transient block): clear the
         // caching pill; the next press retries via the cold-press path.
-        overlay.show(intent: .hidden)
+        overlay.send(.pipeline(.hidden), actions: nil)
       }
     }
   }
 
   static func handle(
-    overlay: RecordingOverlayPanel,
+    overlay: OverlayDirector,
     active: KernelDictationDriver,
     backendTag: String,
     readiness: ASREngineReadiness
   ) {
-    overlay.show(intent: .cachingModel(engineLabel: active.engineDisplayName))
+    overlay.send(.pipeline(.cachingModel(engineLabel: active.engineDisplayName)), actions: nil)
     TelemetryService.shared.coldStartPressBlocked(
       asrBackend: backendTag, warmupInFlight: readiness == .warming)
     Task { [overlay, active] in
@@ -91,7 +92,7 @@ enum ColdPressGuard {
       // caching pill. The user saw a `.cachingModel` pill on this path, so the
       // READY pill is expected — never a launch-time surprise toast.
       guard active.engineReadiness == .ready else { return }
-      overlay.show(intent: .engineReady)
+      overlay.send(.pipeline(.engineReady), actions: nil)
     }
     Task {
       await AppLogger.shared.log(

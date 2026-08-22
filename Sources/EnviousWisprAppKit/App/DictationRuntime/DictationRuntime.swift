@@ -51,7 +51,7 @@ final class DictationRuntime {
     whisperKitKernelDriver: KernelDictationDriver,
     settings: SettingsManager,
     permissions: PermissionsService,
-    recordingOverlay: RecordingOverlayPanel,
+    recordingOverlay: OverlayDirector,
     hotkeyService: HotkeyService,
     lastRecordingResult: LastRecordingResult,
     languageSuggestionPresenter: LanguageSuggestionPresenter?,
@@ -100,7 +100,9 @@ final class DictationRuntime {
     // not in the struct itself. Value-copy is safe; Finalizer + Starter each
     // receive their own copy.
     let heartControlRecovery = HeartControlRecovery(
-      hideOverlay: { [recordingOverlay] in recordingOverlay.show(intent: .hidden) },
+      // ANNOUNCED despite the name: this is the ordinary end of a dictation and
+      // `.hidden` says "Recording complete". Only a feature dismissal is silent.
+      hideOverlay: { [recordingOverlay] in recordingOverlay.send(.pipeline(.hidden), actions: nil) },
       setLocked: { locked in recordingLockedAccess.set(locked) },
       backend: { [asrManager] in asrManager.activeBackendType.rawValue }
     )

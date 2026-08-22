@@ -6,11 +6,17 @@ import Foundation
 
 /// Composition wiring for Escape Recovery's crash-provenance connector (#2087).
 ///
-/// Extracted rather than inlined in `WisprBootstrapper` because that file's
-/// ceiling caught it, which is exactly what the ceiling is for — #1988 set the
-/// precedent when live-preview wiring hit the same cap and moved to
-/// `LivePreviewInstaller` instead of raising it. The composition root holds
-/// dependencies together; it does not implement features.
+/// Extracted rather than inlined in `WisprBootstrapper`, because the composition
+/// root holds dependencies TOGETHER and does not implement features. #1988 set
+/// the precedent when live-preview wiring moved to `LivePreviewInstaller` for
+/// the same reason.
+///
+/// A line ceiling on the bootstrapper is what originally flagged both, and that
+/// ceiling is gone (#2292 C6, founder decision: size caps get raised rather than
+/// respected, so they measure nothing). The SPLIT is unaffected — it was always
+/// justified by what belongs where, and the cap merely noticed. Recorded as the
+/// design rule it is, so nobody re-inlines this on the reasoning that the thing
+/// which objected no longer exists.
 ///
 /// Deliberately tiny and stateless. It owns no lifecycle, makes no decisions, and
 /// exists so that "which store writes the marker" is answered in one place for
@@ -40,24 +46,66 @@ enum EscapeRecoveryWiring {
     }
   }
 
-  /// Bind the pill's Paste button to the coordinator that owns the row.
+  /// The pill's action handler, for the ONE call that presents it.
   ///
-  /// Takes the panel rather than returning a closure, so the composition root
-  /// spends ONE line on it. That is not cosmetic: the bootstrapper's ceiling
-  /// has now caught this feature twice, and it exists to keep the root a place
-  /// where dependencies meet rather than where features are implemented.
+  /// **A binding that arrives WITH the presentation, not a lifetime field.** The
+  /// panel kept onEscapeRecoveryPaste alive for the app's life whether or not
+  /// a pill was showing; the director holds exactly one active binding, for the
+  /// presentation it belongs to, and drops it when the occupant changes.
+  ///
+  /// The payload is TAKEN from the director's custody rather than captured here.
+  /// The action carries the transcript id as a LOOKUP KEY only, and the take is
+  /// one-shot — which is what makes a stale Undo press safe: the second press
+  /// finds nothing rather than pasting twice.
+  ///
+  /// `paste` is a parameter with a production default for the same reason
+  /// `writer`'s `makeStore` is: without it this composition is untestable by
+  /// construction. The production closure reaches `TelemetryService.shared` and
+  /// the real paste cascade, so the only way to exercise the WRAPPER's own
+  /// contract — dismiss first, forward once — would be to fire real telemetry
+  /// and drive AX against whatever app happened to be frontmost. The seam is one
+  /// argument; a test copy of this closure would be a second definition that
+  /// passes while the real one is broken, which is the shape that let the
+  /// missing dismissal through in the first place.
   @MainActor
-  static func bindPill(overlay: RecordingOverlayPanel, coordinator: TranscriptCoordinator) {
-    overlay.onEscapeRecoveryPaste = pasteAction(
-      coordinator: coordinator, report: restoreReporter(source: .pill))
+  static func pillActions(
+    director: OverlayDirector,
+    coordinator: TranscriptCoordinator,
+    paste: ((CancelUndoPayload) -> Void)? = nil
+  ) -> (OverlayAction) -> Void {
+    let paste =
+      paste ?? pasteAction(coordinator: coordinator, report: restoreReporter(source: .pill))
+    return { [weak director] action in
+      guard case .pasteEscapeRecovery(let transcriptID) = action,
+        let payload = director?.takeEscapeRecoveryPayload(matching: transcriptID)
+      else { return }
+      // **Finish tearing down OUR offer before handing control outside**, which
+      // is the shipped order and is load-bearing in two directions.
+      //
+      // Forwards: an accepted pill that stays on screen is an offer the user has
+      // already taken. It sits there until its dwell expires, and a second press
+      // does nothing at all, because the one-shot take above has already spent
+      // the payload — a button that looks live and is not.
+      //
+      // Backwards, and this is the half the shipped comment exists to record:
+      // the paste handler may PRESENT ITS OWN OVERLAY. Dismissing after the call
+      // would tear down the pill that handler just put up, so the offer the user
+      // is now looking at would be revoked by the one they just accepted.
+      //
+      // SILENT, matching shipped `hide()` rather than `show(intent: .hidden)`:
+      // the user pressed a button and their text is being restored, so a spoken
+      // "overlay hidden" is noise on top of the outcome they asked for.
+      director?.dismissSilently()
+      paste(payload)
+    }
   }
 
   /// The pill's Paste action, bound to the coordinator that owns the row.
   ///
-  /// Here rather than inline for the same reason `writer` is: the bootstrapper's
-  /// line ceiling caught it. The ceiling is the mechanism that keeps the
-  /// composition root a place where dependencies MEET rather than a place where
-  /// features are implemented, and it has now caught this feature twice.
+  /// Here rather than inline for the same reason `writer` is: the composition
+  /// root is where dependencies MEET, not where features are implemented. This
+  /// feature has drifted toward that root twice, which is the argument for
+  /// keeping its wiring named and in one place.
   @MainActor
   static func pasteAction(
     coordinator: TranscriptCoordinator,
@@ -90,20 +138,16 @@ enum EscapeRecoveryWiring {
   /// into one engine appears only for whichever the user happens to be running
   /// — the half-connection this feature has already produced twice.
   ///
-  /// Binds the pill's Paste button as a side effect, which the name says out
-  /// loud. Idempotent: called once per engine, assigning the same closure to
-  /// the same panel, so the second call is a no-op in effect.
+  /// **It no longer binds the pill as a side effect**, because there is no
+  /// lifetime field to bind: the handler now travels with the presentation, from
+  /// `pillActions`, at the one site that presents it. The name used to say the
+  /// side effect out loud; now there is nothing to say.
   ///
-  /// Unlabelled arguments and this shape exist for one measured reason: the
-  /// composition root was ALREADY at its line ceiling before this feature
-  /// (1339 by `wc`, which the gate counts as 1340 of 1340), so the wiring had
-  /// to cost it exactly zero net lines. Extract rather than raise — the
-  /// precedent #1988 set when live-preview wiring hit the same cap.
+  /// Kept as a named call rather than inlining `writer()` for the reason it was
+  /// extracted: this is where the feature's wiring lives, and the composition
+  /// root is not.
   @MainActor
-  static func wire(
-    _ overlay: RecordingOverlayPanel, _ history: TranscriptCoordinator
-  ) -> PrepareEscapeRecovery {
-    bindPill(overlay: overlay, coordinator: history)
-    return writer()
+  static func wire(_ history: TranscriptCoordinator) -> PrepareEscapeRecovery {
+    writer()
   }
 }
