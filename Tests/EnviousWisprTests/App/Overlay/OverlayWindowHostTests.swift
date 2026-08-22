@@ -621,6 +621,35 @@
         "the growing pill was dragged down its own display by the pointer's clamp")
     }
 
+    /// **The third member of the screen class, found by enumerating it rather
+    /// than by a third review round.** A drag ends with the panel where it was
+    /// dropped and the pointer where it is; releasing across a display boundary
+    /// separates them. The recorded id is what `isUserAnchored(on:)` checks, so
+    /// the wrong one makes a deliberately placed pill stop counting as
+    /// user-anchored on its own display.
+    @Test("a drag records the screen the panel landed on, not the pointer's")
+    func dragRecordsTheLandingScreen() throws {
+      let h = Self.splitHost(pointer: { Self.shortSecondary }, containing: { _ in Self.screen })
+      defer { h.panelForTesting?.orderOut(nil) }
+      h.present(
+        Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
+        position: .bottom)
+      let panel = try #require(h.panelForTesting)
+
+      panel.setFrameOrigin(NSPoint(x: 120, y: 85))
+      h.windowDidMove(Notification(name: NSWindow.didMoveNotification, object: panel))
+
+      #expect(
+        h.placementForTesting.isUserAnchored(on: ScreenID(rawValue: 1)),
+        """
+        the drag was recorded against the pointer's display, so the pill is not \
+        user-anchored on the one it is actually on
+        """)
+      #expect(
+        !h.placementForTesting.isUserAnchored(on: ScreenID(rawValue: 2)),
+        "the drag was recorded against a display the panel never touched")
+    }
+
     /// A FRESH presentation still belongs where the POINTER is, which is the
     /// shipped target resolution and must not be collateral damage of the fix
     /// above. Without this, anchoring everything to the containing screen would

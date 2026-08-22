@@ -315,9 +315,20 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
   /// exists solely because the panel is destroyed between presentations and the
   /// fact has to survive the rebuild. Nothing survives a rebuild here, because
   /// there is no rebuild.
+  ///
+  /// **The screen recorded here is the one the panel LANDED on, not the one the
+  /// pointer is over.** The third member of the same class as the continuation
+  /// and resize anchors, and the one no review round reached: a drag ends with
+  /// the panel wherever it was dropped and the pointer wherever it is, and those
+  /// differ whenever the release crosses a display boundary. The id goes into
+  /// `.user(origin, position, screenID)` and `isUserAnchored(on:)` compares
+  /// against it later, so a wrong one makes a pill the user deliberately placed
+  /// stop counting as user-anchored on its own display — and the next Space
+  /// change moves it out from under them.
   nonisolated func windowDidMove(_ notification: Notification) {
     MainActor.assumeIsolated {
-      guard programmaticMoveDepth == 0, let panel, let screen = screens().current() else { return }
+      guard programmaticMoveDepth == 0, let panel else { return }
+      guard let screen = screens().containing(panel.frame) ?? screens().current() else { return }
       placement.userDidMove(to: panel.frame.origin, screen: screen)
     }
   }
