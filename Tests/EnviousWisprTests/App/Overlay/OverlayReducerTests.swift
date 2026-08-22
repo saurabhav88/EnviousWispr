@@ -653,6 +653,61 @@ struct OverlayReducerTests {
     #expect(notice.kind == .accessibilityToast)
   }
 
+  /// **Every pipeline intent announces itself, and the priority is per-intent.**
+  /// The shipped panel posts for all sixteen; deleting it without these would
+  /// make the app silent for VoiceOver users with nothing failing anywhere.
+  ///
+  /// The priority is NOT derivable from severity — `.recording` and
+  /// `.engineReady` are high while `.warning` is medium — so it is enumerated
+  /// against the shipped switch rather than computed.
+  @Test(
+    "every pipeline intent announces itself at its shipped priority",
+    arguments: [
+      (OverlayIntent.hidden, false), (.recording(audioLevel: 0), true),
+      (.processing(phase: .transcribing), false), (.clipboardFallback, true),
+      (.accessibilityToast, true), (.warning(reason: .polishFailed), false),
+      (.error(reason: .asrFailed), true), (.advisory(reason: .zeroSignal), true),
+      (.interruption(reason: .deviceRemoved), true),
+      (.cachingModel(engineLabel: "Parakeet"), false), (.engineReady, true),
+      (.recoveringLastRecording, true), (.recoverySucceeded, true),
+      (.bluetoothAwareness, false),
+    ])
+  func everyIntentAnnouncesAtItsShippedPriority(row: (intent: OverlayIntent, high: Bool)) {
+    var r = Self.makeReducer()
+    // A fresh reducer's `pipelineIntent` is `.hidden`, exactly as the shipped
+    // panel's `currentIntent` is, so a first `.hidden` push is a REPEAT in both
+    // and is correctly silent in both. The row still has to be exercised, so it
+    // is primed with something else — the priming is what makes it a change, not
+    // a workaround for a defect.
+    if case .hidden = row.intent { _ = r.reduce(.pipeline(.engineReady)) }
+    let plan = r.reduce(.pipeline(row.intent))
+    guard let announcement = plan.announcement else {
+      Issue.record("\(row.intent) announced nothing — a VoiceOver user hears silence")
+      return
+    }
+    #expect(
+      announcement.text == DictationNarrator.announcement(for: row.intent),
+      "the narrator is the sole author of the sentence (#1569 E4)")
+    #expect(
+      announcement.isHighPriority == row.high,
+      "\(row.intent) announced at the wrong priority")
+  }
+
+  /// **A repeated intent is silent**, which is the shipped dedup guard's own
+  /// condition: the post sits after `guard intent != currentIntent`. Without
+  /// this, a live dictation would re-announce on every push.
+  @Test("a repeated intent does not announce again")
+  func repeatedIntentIsSilent() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(.recording(audioLevel: 0)))
+
+    let second = r.reduce(.pipeline(.recording(audioLevel: 0)))
+
+    #expect(
+      second.announcement == nil,
+      "the same intent announced twice, so a VoiceOver user hears it repeatedly")
+  }
+
   @Test("an import-status request renders as import status")
   func importStatusKind() {
     var r = Self.makeReducer()

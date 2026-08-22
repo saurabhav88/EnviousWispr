@@ -77,11 +77,22 @@ struct OverlayPlan: Equatable {
   let deliverAction: OverlayAction?
   /// Side effects for feature owners that keep their own state. Usually empty.
   let effects: [OverlayEffect]
+  /// What a screen reader should say, and how loudly.
+  ///
+  /// **On the PLAN rather than on the presentation, because `.hidden` has no
+  /// presentation and still announces "Recording complete".** Fifteen of the
+  /// sixteen would sit naturally on the presentation and the sixteenth cannot,
+  /// so the presentation is the wrong home for all of them.
+  ///
+  /// Not an `OverlayEffect` either: effects are delivered to the composition
+  /// root's closure, and posting an accessibility notification is not the
+  /// composition root's job — it is part of presenting, which the director does.
+  let announcement: OverlayAnnouncement?
 
   static func == (a: OverlayPlan, b: OverlayPlan) -> Bool {
     a.presentation == b.presentation && a.didChange == b.didChange
       && a.expiryCommand == b.expiryCommand && a.deliverAction == b.deliverAction
-      && a.effects == b.effects
+      && a.effects == b.effects && a.announcement == b.announcement
   }
 
   static let noChange = OverlayPlan(presentation: nil, didChange: false)
@@ -90,13 +101,15 @@ struct OverlayPlan: Equatable {
     presentation: OverlayPresentation?, didChange: Bool,
     expiryCommand: OverlayExpiryCommand = .unchanged,
     deliverAction: OverlayAction? = nil,
-    effects: [OverlayEffect] = []
+    effects: [OverlayEffect] = [],
+    announcement: OverlayAnnouncement? = nil
   ) {
     self.presentation = presentation
     self.didChange = didChange
     self.expiryCommand = expiryCommand
     self.deliverAction = deliverAction
     self.effects = effects
+    self.announcement = announcement
   }
 }
 
@@ -166,6 +179,21 @@ struct OverlayReducer {
   // MARK: - Pipeline
 
   private mutating func reducePipeline(_ intent: OverlayIntent) -> OverlayPlan {
+    // **Announce on a CHANGE of intent, which is the shipped dedup guard's own
+    // condition.** The shipped post sits after `guard intent != currentIntent`,
+    // so a repeated push is silent — and every production `.recording` push
+    // carries `audioLevel: 0` (the real level is PULLED by the view through a
+    // provider), so a live dictation announces once rather than per frame.
+    //
+    // ONE deliberate difference, recorded rather than inherited: the shipped
+    // guard has a second clause letting a push through when only the LOCK
+    // changed, which re-announces "Recording started" as the user engages
+    // hands-free. The lock is its own event here, so that path does not exist,
+    // and re-announcing a recording that never stopped is not behaviour worth
+    // porting.
+    let isNewIntent = state.pipelineIntent != intent
+    let announcement = isNewIntent ? Self.announcement(for: intent) : nil
+
     // A live recording pill must keep its identity across audio-level updates,
     // or every metering tick would look like a new presentation and re-arm
     // expiry, re-measure the frame and reset the in-panel notice.
@@ -180,7 +208,7 @@ struct OverlayReducer {
         requestedWidth: current.requestedWidth,
         reservesFixedHeight: current.reservesFixedHeight)
       state.set(current: updated, pipelineIntent: intent)
-      return OverlayPlan(presentation: updated, didChange: true)
+      return OverlayPlan(presentation: updated, didChange: true, announcement: announcement)
     }
 
     guard var presentation = Self.presentation(for: intent, id: makeID()) else {
@@ -193,7 +221,8 @@ struct OverlayReducer {
       return OverlayPlan(
         presentation: nil, didChange: wasOccupied,
         expiryCommand: wasOccupied ? .cancel : .unchanged,
-        effects: wasRecording ? [.recordingIntentChanged(false)] : [])
+        effects: wasRecording ? [.recordingIntentChanged(false)] : [],
+        announcement: announcement)
     }
 
     // Born locked if the lock is on. `show(...isRecordingLocked:)`
@@ -212,7 +241,8 @@ struct OverlayReducer {
     return OverlayPlan(
       presentation: presentation, didChange: true,
       expiryCommand: Self.command(for: presentation),
-      effects: wasRecording == isRecording ? [] : [.recordingIntentChanged(isRecording)])
+      effects: wasRecording == isRecording ? [] : [.recordingIntentChanged(isRecording)],
+      announcement: announcement)
   }
 
   // MARK: - Features
@@ -564,6 +594,26 @@ struct OverlayReducer {
   /// failure and no mention in any diff. `noticeGeometryIsPinned` sweeps the
   /// closed set against the shipped call sites so a new row cannot inherit the
   /// default silently.
+  /// The spoken announcement for a pipeline intent, and its priority.
+  ///
+  /// **Both halves come from the shipped `apply(intent:)` switch, read one arm
+  /// at a time.** The TEXT is `DictationNarrator.announcement(for:)`, which is
+  /// already the sole author (#1569 E4). The PRIORITY is the panel's own choice
+  /// per case — nine `.high` and seven `.medium` — and it is not derivable from
+  /// severity: `.recording` and `.engineReady` are high while `.warning` is
+  /// medium, so it is enumerated rather than computed.
+  static func announcement(for intent: OverlayIntent) -> OverlayAnnouncement {
+    let text = DictationNarrator.announcement(for: intent)
+    switch intent {
+    case .recording, .clipboardFallback, .accessibilityToast, .error, .advisory,
+      .interruption, .engineReady, .recoverySucceeded, .recoveringLastRecording:
+      return .high(text)
+    case .hidden, .processing, .warning, .passiveChip, .cachingModel,
+      .bluetoothAwareness, .escapeRecovery:
+      return .medium(text)
+    }
+  }
+
   private static func notice(
     id: PresentationID, kind: NoticeModel.Kind, text: String, secondary: String? = nil,
     width: OverlayWidth, fixedHeight: CGFloat? = nil,

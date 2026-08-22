@@ -168,6 +168,28 @@ enum OverlayEffect: Equatable, Sendable {
 
 // MARK: - What ends up on screen
 
+/// What a screen reader says when a presentation arrives, and how loudly.
+///
+/// **The priority is per-INTENT and was read off the shipped switch**, which
+/// posts for all sixteen: nine at `.high` and seven at `.medium`. It is not
+/// derivable from severity — `.recording` and `.engineReady` are high while
+/// `.warning` is medium — so it is carried rather than computed.
+struct OverlayAnnouncement: Equatable, Sendable {
+  let text: String
+  let isHighPriority: Bool
+
+  /// `NSAccessibilityPriorityLevel` is an AppKit type and the reducer is
+  /// deliberately free of AppKit, so the level is carried as the one bit that
+  /// distinguishes the two values actually used and resolved at the post.
+  static func high(_ text: String) -> OverlayAnnouncement {
+    OverlayAnnouncement(text: text, isHighPriority: true)
+  }
+
+  static func medium(_ text: String) -> OverlayAnnouncement {
+    OverlayAnnouncement(text: text, isHighPriority: false)
+  }
+}
+
 /// How the recording pill is composed, which is FIVE decisions and not one.
 ///
 /// The shipped site takes them together from a single `showsPreview` read, and

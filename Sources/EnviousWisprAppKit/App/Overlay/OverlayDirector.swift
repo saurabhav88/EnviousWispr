@@ -52,6 +52,15 @@ final class OverlayDirector {
   /// effects a feature depends on.
   private let deliverEffect: (OverlayEffect) -> Void
 
+  /// Posting the spoken announcement, injectable so a guard can observe it.
+  ///
+  /// `NSAccessibility.post` writes to the system and returns nothing, so without
+  /// a seam the only assertion available is "the code that would have posted was
+  /// reached" — which is the marker-beside-the-subject defect this repo already
+  /// ranks. The default IS the real post, so a caller that forgets it still
+  /// announces.
+  private let announce: @MainActor (OverlayAnnouncement) -> Void
+
   /// **ONE hosting view for THIS DIRECTOR's lifetime**, created lazily and
   /// reused. The model is observable, so the same view re-renders rather than
   /// being rebuilt — the SwiftUI half of the same claim the retained `NSPanel`
@@ -81,10 +90,12 @@ final class OverlayDirector {
     position: @escaping () -> OverlayPillPosition = { .top },
     model: OverlayRenderModel = OverlayRenderModel(),
     scheduler: OverlayScheduler = .live,
+    announce: @escaping @MainActor (OverlayAnnouncement) -> Void = OverlayDirector.postAnnouncement,
     makeID: @escaping () -> PresentationID = { PresentationID() }
   ) {
     self.host = host
     self.deliverEffect = deliverEffect
+    self.announce = announce
     self.position = position
     self.model = model
     self.schedule = scheduler
@@ -92,6 +103,21 @@ final class OverlayDirector {
   }
 
   var renderModel: OverlayRenderModel { model }
+
+  /// The production announcement, lifted verbatim from the sixteen identical
+  /// `NSAccessibility.post` calls the panel makes — same element, same
+  /// notification, same user-info keys. The only per-case value was the
+  /// priority, which the plan now carries.
+  static func postAnnouncement(_ announcement: OverlayAnnouncement) {
+    let priority: NSAccessibilityPriorityLevel = announcement.isHighPriority ? .high : .medium
+    NSAccessibility.post(
+      element: NSApp.mainWindow as Any,
+      notification: .announcementRequested,
+      userInfo: [
+        .announcement: announcement.text,
+        .priority: priority.rawValue as NSNumber,
+      ])
+  }
 
   // MARK: - The transaction
 
@@ -217,6 +243,21 @@ final class OverlayDirector {
     send(.pipeline(.escapeRecovery(transcriptID: payload.transcriptID)), actions: actions)
   }
 
+  /// Empty the slot WITHOUT announcing "Recording complete".
+  ///
+  /// **The shipped `hide()` and `show(intent: .hidden)` are not the same
+  /// operation and the difference is audible.** `.hidden` announces; `hide()`
+  /// posts nothing, and `LanguageSuggestionPresenter.hideOverlay` carries a
+  /// comment saying so — added by a prior review round because a chip dismissal
+  /// announcing a completed recording is a false statement to a VoiceOver user.
+  ///
+  /// Silence is a parameter of APPLYING rather than a different plan, so the
+  /// reducer stays a pure function of its events and the choice is visible at
+  /// both call sites.
+  func dismissSilently() {
+    apply(reducer.reduce(.pipeline(.hidden)), actions: nil, announcing: false)
+  }
+
   /// Take the payload for `transcriptID`, once. Returns nil if it was already
   /// taken or if a different transcript now owns the slot.
   func takeEscapeRecoveryPayload(matching transcriptID: UUID) -> CancelUndoPayload? {
@@ -227,7 +268,14 @@ final class OverlayDirector {
 
   // MARK: - Applying a plan
 
-  private func apply(_ plan: OverlayPlan, actions: ((OverlayAction) -> Void)? = nil) {
+  private func apply(
+    _ plan: OverlayPlan, actions: ((OverlayAction) -> Void)? = nil, announcing: Bool = true
+  ) {
+    // **Announced BEFORE the window changes**, which is the shipped order: the
+    // panel posts at the top of each `apply(intent:)` arm and draws after.
+    if announcing, let announcement = plan.announcement {
+      announce(announcement)
+    }
     switch plan.expiryCommand {
     case .unchanged:
       break

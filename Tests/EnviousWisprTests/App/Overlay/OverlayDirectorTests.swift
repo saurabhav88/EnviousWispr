@@ -78,6 +78,12 @@
 
     private final class Sink {
       var effects: [OverlayEffect] = []
+      /// What a screen reader would have been told. Captured rather than
+      /// inferred: `NSAccessibility.post` returns nothing, so without this seam
+      /// the strongest available assertion is that the code which would have
+      /// posted was reached — a marker beside the subject rather than the
+      /// subject.
+      var announcements: [OverlayAnnouncement] = []
     }
 
     private static func director(
@@ -90,7 +96,8 @@
       let host = OverlayWindowHost(screens: { OverlayScreenResolver { screen } })
       let d = OverlayDirector(
         host: host, deliverEffect: { sink.effects.append($0) }, position: position,
-        scheduler: .manual { armed.work = $0 })
+        scheduler: .manual { armed.work = $0 },
+        announce: { sink.announcements.append($0) })
       hosts.append(host)
       return (d, armed, sink)
     }
@@ -428,6 +435,56 @@
       #expect(
         d.hostForTesting.panelForTesting?.frame.width == 185,
         "a mid-dictation settings change resized the live pill, which is the #930 rebuild flicker")
+    }
+
+    /// **A dictation ending announces; a chip dismissal must not.**
+    ///
+    /// The shipped `hide()` and `show(intent: .hidden)` are different operations
+    /// and the difference is audible. `LanguageSuggestionPresenter.hideOverlay`
+    /// depends on the silent one, with a comment added by a prior review round
+    /// saying exactly that — and nothing anywhere expressed it as a property
+    /// until now, so a cutover could have collapsed the two and made every chip
+    /// dismissal announce a recording that did not just finish.
+    @Test("dismissing silently says nothing, while ending a dictation announces")
+    func silentDismissalSaysNothing() {
+      let (loud, _, loudSink) = Self.director()
+      defer { Self.closeAllWindows() }
+      Self.record(loud)
+      loudSink.announcements.removeAll()
+
+      loud.send(.pipeline(.hidden), actions: nil)
+
+      #expect(
+        loudSink.announcements.map(\.text) == ["Recording complete"],
+        "ending a dictation stopped announcing completion")
+
+      let (quiet, _, quietSink) = Self.director()
+      Self.record(quiet)
+      quietSink.announcements.removeAll()
+
+      quiet.dismissSilently()
+
+      #expect(
+        quietSink.announcements.isEmpty,
+        "a silent dismissal announced a completed recording that never happened")
+      #expect(
+        quiet.currentPresentationForTesting == nil,
+        "the silent dismissal did not actually empty the slot")
+    }
+
+    /// The announcement is POSTED, not merely computed. The reducer's own guard
+    /// proves the plan carries one; this proves the director acts on it.
+    @Test("presenting a recording announces it")
+    func presentingAnnounces() {
+      let (d, _, sink) = Self.director()
+      defer { Self.closeAllWindows() }
+
+      Self.record(d)
+
+      #expect(
+        sink.announcements.map(\.text) == ["Recording started"],
+        "the director computed an announcement and never posted it")
+      #expect(sink.announcements.first?.isHighPriority == true)
     }
 
     /// **The lock is part of the presentation TRANSACTION, not a later morph.**
