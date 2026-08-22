@@ -1029,9 +1029,21 @@ public struct WordCorrector: Sendable {
       ) -> String? {
         switch (unpeeled, peeled) {
         case let (.some(u), .some(p)):
-          return u.score >= p.score
-            ? acceptFuzzy(unpeeled: true, canonical: u.canonical)
-            : acceptFuzzy(unpeeled: false, canonical: p.canonical)
+          // Each attempt already enforces `ambiguityMargin` WITHIN its own
+          // candidate pool, but that says nothing about the margin BETWEEN
+          // the two attempts' winners -- two different canonicals scoring
+          // 0.956 and 0.959 are each unambiguous alone yet nowhere near
+          // 0.05 apart from each other. Picking the higher score outright
+          // is exactly the "guess when uncertain" this file otherwise never
+          // does (Codex cloud review, PR #2298, round 15). Neither attempt
+          // is confident enough to override the other; fall through rather
+          // than accept either.
+          guard u.canonical != p.canonical, abs(u.score - p.score) < Self.ambiguityMargin else {
+            return u.score >= p.score
+              ? acceptFuzzy(unpeeled: true, canonical: u.canonical)
+              : acceptFuzzy(unpeeled: false, canonical: p.canonical)
+          }
+          return nil
         case let (.some(u), nil):
           return acceptFuzzy(unpeeled: true, canonical: u.canonical)
         case let (nil, .some(p)):

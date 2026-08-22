@@ -599,4 +599,26 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "Right.com")
     #expect(result.replacements == 1)
   }
+
+  // MARK: Cloud Codex review, round 15 (PR #2298) -- round 14's cross-pass
+  // score comparison must apply the SAME ambiguity margin used within each
+  // individual pass; two different canonicals that are each unambiguous
+  // alone can still be too close to each other to pick between confidently.
+
+  @Test(
+    "Near-tied unpeeled and peeled fuzzy candidates for DIFFERENT canonicals are left unresolved"
+  )
+  func nearTiedCrossPassFuzzyCandidatesAreNotResolved() {
+    // Cloud review's own construction: the unpeeled attempt scores ~0.956
+    // for "Wrong.com" and the peeled attempt scores ~0.959 for "Right" --
+    // each is the clear winner within its own scan, but the two scores are
+    // only 0.003 apart, far inside the 0.05 ambiguity margin this file
+    // otherwise always enforces before accepting a replacement. Neither
+    // wins; the original token is left untouched.
+    let distractor = CustomWord(canonical: "Wrong.com", aliases: ["internationalplatforn.com"])
+    let correct = CustomWord(canonical: "Right", aliases: ["internationalplatforx"])
+    let result = corrected("internationalplatform.com", [distractor, correct])
+    #expect(result.text == "internationalplatform.com")
+    #expect(result.replacements == 0)
+  }
 }
