@@ -413,22 +413,19 @@ final class OverlayDirector {
     _ plan: OverlayPlan, actions: ((OverlayAction) -> Void)? = nil, announcing: Bool = true,
     effectsAlreadyDelivered: Bool = false
   ) {
-    // **Effects run FIRST, then the announcement, then the window** — the
-    // shipped order, and it is load-bearing rather than tidy.
-    // recordingIntentObserver fired at the top of `show(intent:)`, before the
-    // post and before any panel work, so Live Preview has frozen its
-    // enabled-for-geometry answer by the time the first frame is sized. Running
-    // effects last, which the first version did, can size that frame from the
-    // live setting instead.
+    // **Effects run FIRST, and that half IS load-bearing rather than tidy.**
+    // recordingIntentObserver fired at the top of `show(intent:)`, before any
+    // panel work, so Live Preview has frozen its enabled-for-geometry answer by
+    // the time the first frame is sized. Running effects last, which the first
+    // version did, can size that frame from the live setting instead.
+    //
+    // The announcement used to sit here too, matching the shipped panel. It now
+    // runs at the END, once the window has accepted the presentation — see the
+    // note at that call for why mirroring the shipped order was wrong.
     if !effectsAlreadyDelivered {
       for effect in plan.effects {
         deliverEffect(effect)
       }
-    }
-    // **Announced BEFORE the window changes**, which is the shipped order: the
-    // panel posts at the top of each `apply(intent:)` arm and draws after.
-    if announcing, let announcement = plan.announcement {
-      announce(announcement)
     }
     switch plan.expiryCommand {
     case .unchanged:
@@ -515,6 +512,25 @@ final class OverlayDirector {
         // rollback deliberately emptied.
         return
       }
+    }
+
+    // **Announced AFTER the window has taken the presentation, and the move is
+    // the point.** The shipped panel posts at the top of each `apply(intent:)`
+    // arm and draws after, which this deliberately no longer mirrors: that order
+    // makes the announcement unconditional, so a presentation the host REFUSES
+    // is still spoken. A VoiceOver user is then told a card appeared that is not
+    // there, and told it in the one situation where they have no other way to
+    // find out — the refusal is silent by design everywhere else.
+    //
+    // Reaching this line means the window accepted the plan, or the plan emptied
+    // the slot, which always succeeds. A refusal returns above and never arrives.
+    //
+    // The EFFECT ordering that was load-bearing is untouched: effects still run
+    // first, before the geometry read, which is the constraint Live Preview's
+    // first frame actually depends on. Nothing depended on announcing before the
+    // draw; a screen reader is not racing the window server.
+    if announcing, let announcement = plan.announcement {
+      announce(announcement)
     }
 
     if let action = plan.deliverAction {

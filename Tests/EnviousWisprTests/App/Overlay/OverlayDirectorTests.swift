@@ -818,6 +818,89 @@
       #expect(previewWidth == 400, "the Live Preview pill did not take its 400-point width")
     }
 
+    // MARK: - A feature that takes the slot is spoken (#2292 C8)
+
+    /// **The Bluetooth card appeared in silence, and it is the worst case for
+    /// that.** Every other pill is transient; this one persists until it is
+    /// dismissed, so a VoiceOver user got no signal at all that the overlay had
+    /// changed and no later event to infer it from.
+    ///
+    /// The shipped `apply(intent:)` has a `.bluetoothAwareness` arm posting
+    /// `DictationNarrator`'s sentence at MEDIUM priority, and the wiring reached
+    /// it by calling `show(intent: .bluetoothAwareness)`. The cutover routed the
+    /// card through `reduceFeature`, the one presenting plan that carried no
+    /// announcement, and nothing failed.
+    @Test("a Bluetooth card is announced at medium priority")
+    func bluetoothCardIsAnnounced() {
+      let (d, _, sink) = Self.director()
+      defer { Self.closeAllWindows() }
+
+      d.send(.featureRequest(.bluetoothAwareness), actions: { _ in })
+
+      #expect(sink.announcements.count == 1, "the card appeared and said nothing")
+      #expect(
+        sink.announcements.first?.isHighPriority == false,
+        "the card interrupted at high priority; the shipped arm posts medium")
+      #expect(
+        sink.announcements.first?.text == DictationNarrator.announcement(for: .bluetoothAwareness),
+        "the card announced something other than the narrator's sentence")
+    }
+
+    /// **The same defect, the same line, the second feature.** The review named
+    /// the Bluetooth card; the language chip goes through `reduceFeature` too and
+    /// the shipped switch has a `.passiveChip` arm posting at medium. Fixing one
+    /// and leaving the other would ship half a repair.
+    @Test("a language chip is announced at medium priority")
+    func languageChipIsAnnounced() {
+      let (d, _, sink) = Self.director()
+      defer { Self.closeAllWindows() }
+      let payload = LanguageChipPayload(
+        lang: "es", displayName: "Spanish", state: .askToLock, generation: 1)
+
+      d.send(.featureRequest(.passiveChip(payload: payload)), actions: { _ in })
+
+      #expect(sink.announcements.count == 1, "the chip appeared and said nothing")
+      #expect(
+        sink.announcements.first?.isHighPriority == false,
+        "the chip interrupted at high priority; the shipped arm posts medium")
+    }
+
+    /// **Import status is silent, and that is the shipped behaviour rather than
+    /// an omission.** It is the one request with no matching `OverlayIntent`, so
+    /// the shipped switch has no arm for it. Asserted so a later reading of
+    /// "features announce" cannot quietly add one.
+    @Test("an import status pill stays silent, as it shipped")
+    func importStatusIsNotAnnounced() {
+      let (d, _, sink) = Self.director()
+      defer { Self.closeAllWindows() }
+
+      d.send(.featureRequest(.importStatus(message: "Importing 3 recordings")), actions: nil)
+
+      #expect(
+        d.currentPresentationForTesting != nil, "the status pill never took the slot")
+      #expect(
+        sink.announcements.isEmpty,
+        "import status announced, which the shipped panel never did")
+    }
+
+    /// **A refused presentation must not be announced**, which is why the post
+    /// moved behind the render rather than staying where the shipped panel put
+    /// it. Announcing first makes the sentence unconditional, so a card the host
+    /// refuses is still spoken — and told to the one user who has no other way
+    /// to discover it is not there.
+    @Test("a refused presentation says nothing")
+    func refusedPresentationIsNotAnnounced() {
+      let (d, sink) = Self.refusingDirectorWithSink({ false })
+      defer { Self.closeAllWindows() }
+
+      d.send(.featureRequest(.bluetoothAwareness), actions: { _ in })
+
+      #expect(
+        sink.announcements.isEmpty,
+        "a card that never reached the screen was announced as though it had")
+      #expect(d.currentIntent == .hidden, "the C7 rollback did not run")
+    }
+
     // MARK: - A refused presentation leaves no owner behind (#2292 C7)
 
     /// A director whose host refuses every presentation until `screenAvailable`
@@ -827,7 +910,7 @@
     /// retry testable: the same director refuses, then succeeds, with nothing
     /// rebuilt in between. A second director would prove only that a fresh one
     /// works, which was never in doubt.
-    private static func refusingDirector(_ screenAvailable: @escaping () -> Bool)
+    private static func refusingDirectorWithSink(_ screenAvailable: @escaping () -> Bool)
       -> (OverlayDirector, Sink)
     {
       let sink = Sink()
@@ -855,7 +938,7 @@
     /// drawn.
     @Test("a refused presentation leaves nothing claiming the slot")
     func refusedPresentationReleasesEverything() {
-      let (d, _) = Self.refusingDirector({ false })
+      let (d, _) = Self.refusingDirectorWithSink({ false })
       defer { Self.closeAllWindows() }
 
       d.send(.featureRequest(.bluetoothAwareness), actions: { _ in })
@@ -883,7 +966,7 @@
     @Test("the same intent presents on retry after a refusal")
     func refusedIntentRetriesSuccessfully() {
       var hasScreen = false
-      let (d, _) = Self.refusingDirector({ hasScreen })
+      let (d, _) = Self.refusingDirectorWithSink({ hasScreen })
       defer { Self.closeAllWindows() }
 
       d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
@@ -905,7 +988,7 @@
     /// instead.
     @Test("a refused recording releases its providers and its lock survives")
     func refusedRecordingReleasesProviders() {
-      let (d, _) = Self.refusingDirector({ false })
+      let (d, _) = Self.refusingDirectorWithSink({ false })
       defer { Self.closeAllWindows() }
 
       d.presentRecording(

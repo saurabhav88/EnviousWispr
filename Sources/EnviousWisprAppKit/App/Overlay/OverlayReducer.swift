@@ -338,7 +338,46 @@ struct OverlayReducer {
     let presentation = Self.presentation(for: request, id: makeID())
     state.set(current: presentation, isHovered: false)
     return OverlayPlan(
-      presentation: presentation, didChange: true, expiryCommand: Self.command(for: presentation))
+      presentation: presentation, didChange: true, expiryCommand: Self.command(for: presentation),
+      announcement: Self.announcement(forFeature: request))
+  }
+
+  /// What a screen reader is told when a FEATURE takes the slot (#2292, C8).
+  ///
+  /// **This was the one presenting plan that carried no announcement**, and the
+  /// cutover lost two spoken notices through it. The pipeline path derives its
+  /// announcement from the intent; features speak `OverlayRequest` and had no
+  /// equivalent, so a Bluetooth card and a language chip both appeared in
+  /// silence. Neither is transient — the card persists until it is dismissed —
+  /// so a VoiceOver user got no signal at all that the overlay had changed.
+  ///
+  /// READ OFF THE SHIPPED SWITCH rather than chosen. `RecordingOverlayPanel`'s
+  /// `apply(intent:)` has a `.bluetoothAwareness` arm and a `.passiveChip` arm,
+  /// both posting `DictationNarrator`'s sentence at MEDIUM priority, and both
+  /// were reached because the wiring called `show(intent:)` for them.
+  ///
+  /// **Import status is nil because it never announced.** It is the one request
+  /// with no matching intent, so the shipped switch has no arm for it and there
+  /// is nothing to restore. Returning a sentence here would be inventing a
+  /// notice, not repairing one.
+  ///
+  /// The accessibility toast is nil for a different reason: it is not presented
+  /// through here at all. `reduceAccessibilityNotice` owns it and already
+  /// carries its announcement, including through the clipboard fallback.
+  /// **The intent argument is spelled out, and it has to be.** `OverlayRequest`
+  /// and `OverlayIntent` both carry `.bluetoothAwareness` and
+  /// `.passiveChip(payload:)`, so a bare `.bluetoothAwareness` here resolves to
+  /// THIS overload rather than the intent one and recurses until the stack ends.
+  /// It compiles perfectly and crashes at runtime — five tests died on it before
+  /// the annotation went in.
+  private static func announcement(forFeature request: OverlayRequest) -> OverlayAnnouncement? {
+    let intent: OverlayIntent? =
+      switch request {
+      case .bluetoothAwareness: .bluetoothAwareness
+      case .passiveChip(let payload): .passiveChip(payload: payload)
+      case .importStatus, .accessibilityToast: nil
+      }
+    return intent.map { Self.announcement(for: $0) }
   }
 
   private static func isRecording(_ p: OverlayPresentation?) -> Bool {
