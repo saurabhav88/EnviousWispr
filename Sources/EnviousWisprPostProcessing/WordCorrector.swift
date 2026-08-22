@@ -895,241 +895,654 @@ public struct WordCorrector: Sendable {
         return token
       }
 
-      // Pass 3: exact single-word alias (includes canonical self-entries)
-      if let canonical = singleAliasMap[coreLower], core != canonical {
+      // Compute the peeled form up front (used by steps 2 and 4 below).
+      // The trigger is purely structural -- a dot followed by a non-empty
+      // run of letters/digits/hyphens -- deliberately not limited to any
+      // curated TLD list: fuzzy scoring can silently swallow ANY glued
+      // suffix that survives edge-punctuation stripping, not only a
+      // hand-picked set (Codex review, PR for #2281, finding P1 round 3).
+      // If nothing ever matches the peeled core, the untouched original
+      // token is returned below, so a permissive trigger costs nothing
+      // when the suffix isn't actually a domain.
+      var matchCore = core
+      var peeledSuffix = ""
+      let hasPeelableSuffix: Bool
+      if let split = Self.splitDomainSuffix(core) {
+        matchCore = split.bare
+        peeledSuffix = split.suffix
+        hasPeelableSuffix = true
+      } else {
+        hasPeelableSuffix = false
+      }
+      let matchCoreLower = matchCore.lowercased()
+      let matchCoreEligible =
+        !Self.emojiTriggerReservedWords.contains(matchCoreLower) && matchCore.count >= 2
+
+      // A peeled suffix, once a match is found, is reattached UNLESS the
+      // matched canonical is itself domain-shaped -- it already fully
+      // specifies its own domain, whatever suffix the user actually said
+      // (Codex review, PR for #2281, finding P2, rounds 2-4).
+      func reattached(_ canonical: String) -> String {
+        let reattach = peeledSuffix.isEmpty || Self.isDomainShaped(canonical) ? "" : peeledSuffix
+        return prefix + canonical + reattach + suffix
+      }
+
+      // Step 1 + 2: EXACT match to completion -- unpeeled, then peeled --
+      // before any fuzzy pass runs at all, AND non-pack outranks pack
+      // across that same boundary. Exact equality always outranks fuzzy
+      // scoring (finding P1 round 4). Within exact itself, "non-pack always
+      // wins over pack" must ALSO hold across the peel boundary: an
+      // unpeeled key can resolve to a pack alias while the peeled key
+      // resolves to the user's own alias (pack "githib.com", user
+      // "githib") -- accepting the unpeeled pack match immediately would
+      // preempt the higher-authority user match one step away (Codex
+      // review, PR for #2281, finding P1 round 7). So both attempts are
+      // computed first, and priority runs across all FOUR (attempt x
+      // authority) slots in a fixed order: unpeeled non-pack, peeled
+      // non-pack, unpeeled pack, peeled pack.
+      let unpeeledExact = exactSingleWordMatch(core: core, coreLower: coreLower, lookups: lookups)
+      let peeledExact =
+        matchCoreEligible
+        ? exactSingleWordMatch(core: matchCore, coreLower: matchCoreLower, lookups: lookups)
+        : ExactSingleWordOutcome.noMatch
+
+      func acceptExact(unpeeled: Bool, canonical: String) -> String {
         appendReplacement(forCanonical: canonical)
         #if DEBUG
-          Self.logger.debug("WordCorrector: type=alias source='\(core)' target='\(canonical)'")
+          Self.logger.debug(
+            "WordCorrector: type=alias source='\(unpeeled ? core : matchCore)' target='\(canonical)'"
+          )
         #endif
-        return prefix + canonical + suffix
+        return unpeeled ? prefix + canonical + suffix : reattached(canonical)
       }
 
-      // Skip fuzzy for very short tokens
-      guard core.count >= 3 else { return token }
+      // `.alreadyCorrect` carries its own isPack, exactly like `.replace`,
+      // so it participates in the SAME four-slot priority order rather than
+      // short-circuiting unconditionally the instant either attempt hits
+      // it. A PACK's own self-alias (canonical "GitHub.com", alias
+      // "GitHub.com") being byte-for-byte correct on the unpeeled attempt
+      // does not get to outrank a higher-authority NON-PACK alias reachable
+      // only by peeling ("github" -> "Other") -- "non-pack always wins over
+      // pack" is exactly as absolute for "leave it alone" as it is for
+      // "replace it" (Codex cloud review, PR #2298, round 13). Only a
+      // NON-PACK `.alreadyCorrect` is the unconditional "stop here" signal:
+      // a deliberate user registration confirming the token is already
+      // correct outranks everything else in this retry by construction.
+      //
+      // Slot 1: unpeeled, non-pack.
+      if case .alreadyCorrect(false) = unpeeledExact { return token }
+      if case .replace(let canonical, false) = unpeeledExact {
+        return acceptExact(unpeeled: true, canonical: canonical)
+      }
+      // Slot 2: peeled, non-pack.
+      if case .alreadyCorrect(false) = peeledExact { return token }
+      if case .replace(let canonical, false) = peeledExact {
+        return acceptExact(unpeeled: false, canonical: canonical)
+      }
+      // Slot 3: unpeeled, pack.
+      if case .alreadyCorrect = unpeeledExact { return token }
+      if case .replace(let canonical, _) = unpeeledExact {
+        return acceptExact(unpeeled: true, canonical: canonical)
+      }
+      // Slot 4: peeled, pack.
+      if case .alreadyCorrect = peeledExact { return token }
+      if case .replace(let canonical, _) = peeledExact {
+        return acceptExact(unpeeled: false, canonical: canonical)
+      }
 
-      // Determine threshold based on token length
-      let effectiveThreshold =
-        core.count <= Self.shortTokenMaxLength
-        ? Self.shortTokenThreshold
-        : Self.threshold
-
-      // Pass 4: fuzzy single-word against aliases + canonical self-entries
-      let coreLen = coreLower.count
-      var bestScore = 0.0
-      var secondBest = 0.0
-      var bestMatch = ""
-
-      for entry in singleFuzzyCandidates {
-        let surface = entry.surface
-        let canonical = entry.canonical
-        // Length-ratio pruning: skip if lengths differ too much for threshold
-        let surfLen = surface.count
-        let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
-        if lenRatio < 0.5 { continue }
-
-        let s = score(coreLower, against: surface)
-        if s > bestScore {
-          if bestMatch != canonical { secondBest = bestScore }
-          bestScore = s
-          bestMatch = canonical
-        } else if s > secondBest && canonical != bestMatch {
-          secondBest = s
+      // Step 3 + 4: non-pack FUZZY to completion -- unpeeled (restricted to
+      // domain-shaped candidates), then peeled (unrestricted) -- before the
+      // pack tier gets a turn at all, so "non-pack always wins over pack"
+      // holds across the peel boundary too, not only within one attempt
+      // (Codex review, PR for #2281; same shape as finding P1 round 4, one
+      // tier down). Step 3's domain restriction is necessary because fuzzy
+      // scoring CAN cross threshold against a glued suffix, but only when
+      // the CANDIDATE compared against is itself bare -- a candidate that
+      // is ALSO domain-shaped makes the raw comparison apples-to-apples, so
+      // a near-miss like "githib.com" needs to try this unpeeled (finding
+      // P1 round 3).
+      //
+      // Step 3 only runs when the token ITSELF has a peelable suffix (Codex
+      // review round 5, P1): without that guard it ran even for an ordinary
+      // no-dot word, comparing it against domain-shaped candidates it has
+      // no business being compared against and letting a weaker
+      // domain-shaped match preempt the correct bare candidate reachable
+      // only at step 4 -- "enviouswhisper" scoring against
+      // "enviouswhisper.com" purely because the strings share a long
+      // prefix, with no dot in the input at all.
+      // Clearing threshold on the unpeeled (domain-restricted) attempt does
+      // not mean it is the STRONGER match: the peeled attempt can score
+      // higher against the user's actual saved alias while the unpeeled
+      // attempt merely clears the bar against an unrelated domain-shaped
+      // distractor. Compute both before accepting either, and take the
+      // higher score -- a raw candidate scoring 0.91 must not preempt a
+      // peeled candidate scoring 0.97 (Codex cloud review, PR #2298, round
+      // 14). Ties favor unpeeled, consistent with the exact-match tier's
+      // own unpeeled-before-peeled precedence.
+      func acceptFuzzy(unpeeled: Bool, canonical: String) -> String {
+        appendReplacement(forCanonical: canonical)
+        return unpeeled ? prefix + canonical + suffix : reattached(canonical)
+      }
+      // `.ambiguous` and `.noCandidate` MUST stay distinguishable to the
+      // caller (Codex cloud review, PR #2298, round 16): collapsing both to
+      // `nil` let an ambiguous NON-PACK tie fall through into the
+      // lower-authority PACK tier as if non-pack had found nothing at all,
+      // letting a pack candidate win a token that "non-pack always outranks
+      // pack" says should have been left untouched instead.
+      enum FuzzyTierOutcome {
+        case accepted(String)
+        case ambiguous
+        case noCandidate
+      }
+      func strongerOf(
+        _ unpeeled: SingleAttemptFuzzyOutcome,
+        _ peeled: SingleAttemptFuzzyOutcome
+      ) -> FuzzyTierOutcome {
+        switch (unpeeled, peeled) {
+        // Either attempt being ambiguous ON ITS OWN (two different
+        // candidates too close together WITHIN that attempt's scan) is
+        // just as terminal as the two attempts' winners being too close to
+        // EACH OTHER below -- round 17 extends round 15's cross-attempt
+        // margin check down into the attempts themselves.
+        case (.ambiguous, _), (_, .ambiguous):
+          return .ambiguous
+        case let (.candidate(uc, us), .candidate(pc, ps)):
+          // Each attempt already enforces `ambiguityMargin` WITHIN its own
+          // candidate pool, but that says nothing about the margin BETWEEN
+          // the two attempts' winners -- two different canonicals scoring
+          // 0.956 and 0.959 are each unambiguous alone yet nowhere near
+          // 0.05 apart from each other. Picking the higher score outright
+          // is exactly the "guess when uncertain" this file otherwise never
+          // does (Codex cloud review, PR #2298, round 15). Neither attempt
+          // is confident enough to override the other.
+          guard uc != pc, abs(us - ps) < Self.ambiguityMargin else {
+            return .accepted(
+              us >= ps
+                ? acceptFuzzy(unpeeled: true, canonical: uc)
+                : acceptFuzzy(unpeeled: false, canonical: pc))
+          }
+          return .ambiguous
+        case let (.candidate(uc, _), .noCandidate):
+          return .accepted(acceptFuzzy(unpeeled: true, canonical: uc))
+        case let (.noCandidate, .candidate(pc, _)):
+          return .accepted(acceptFuzzy(unpeeled: false, canonical: pc))
+        case (.noCandidate, .noCandidate):
+          return .noCandidate
         }
       }
 
-      // Phase 2 (#638) §8.2: vocab-size penalty + length-aware adjustment
-      // applied per-candidate. Per-term override wins absolutely if set.
-      let pass4VocabPenalty = Self.largeVocabPenalty(poolSize: singleFuzzyCandidates.count)
-      let pass4LengthAdj = Self.lengthAwareAdjustment(candidateLength: bestMatch.count)
-      let pass4Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
-      let pass4Threshold =
-        pass4Override ?? (effectiveThreshold + pass4VocabPenalty - pass4LengthAdj)
-      if bestScore >= pass4Threshold,
-        bestScore - secondBest >= Self.ambiguityMargin,
-        core != bestMatch
-      {
-        appendReplacement(forCanonical: bestMatch)
-        #if DEBUG
-          Self.logger.debug(
-            "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3))"
-          )
-        #endif
-        return prefix + bestMatch + suffix
-      } else if bestScore > 0 {
-        #if DEBUG
-          let pass4Margin = bestScore - secondBest
-          let reason: String
-          if bestScore < pass4Threshold {
-            reason = "below_threshold"
-          } else if pass4Margin < Self.ambiguityMargin {
-            reason = "below_margin"
-          } else {
-            reason = "same_as_input"
-          }
-          Self.logger.debug(
-            "WordCorrector: REJECT pass=alias-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass4Margin, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3)) reason=\(reason)"
-          )
-        #endif
-      }
-
-      // Pass 5: fuzzy single-word against canonicals as fallback
-      bestScore = 0.0
-      secondBest = 0.0
-      bestMatch = ""
-
-      for (idx, targetLower) in lowercasedCanonicals.enumerated() {
-        let targetLen = targetLower.count
-        let lenRatio = Double(min(coreLen, targetLen)) / Double(max(coreLen, targetLen))
-        if lenRatio < 0.5 { continue }
-
-        let s = score(coreLower, against: targetLower)
-        if s > bestScore {
-          secondBest = bestScore
-          bestScore = s
-          bestMatch = canonicals[idx]
-        } else if s > secondBest {
-          secondBest = s
-        }
-      }
-
-      // Phase 2 (#638) §8.2: same hardening for Pass 5.
-      let pass5VocabPenalty = Self.largeVocabPenalty(poolSize: lowercasedCanonicals.count)
-      let pass5LengthAdj = Self.lengthAwareAdjustment(candidateLength: bestMatch.count)
-      let pass5Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
-      let pass5Threshold =
-        pass5Override ?? (effectiveThreshold + pass5VocabPenalty - pass5LengthAdj)
-      if bestScore >= pass5Threshold,
-        bestScore - secondBest >= Self.ambiguityMargin,
-        core != bestMatch
-      {
-        appendReplacement(forCanonical: bestMatch)
-        #if DEBUG
-          Self.logger.debug(
-            "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3))"
-          )
-        #endif
-        return prefix + bestMatch + suffix
-      } else if bestScore > 0 {
-        #if DEBUG
-          let pass5Margin = bestScore - secondBest
-          let reason: String
-          if bestScore < pass5Threshold {
-            reason = "below_threshold"
-          } else if pass5Margin < Self.ambiguityMargin {
-            reason = "below_margin"
-          } else {
-            reason = "same_as_input"
-          }
-          Self.logger.debug(
-            "WordCorrector: REJECT pass=canonical-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass5Margin, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3)) reason=\(reason)"
-          )
-        #endif
-      }
-
-      // #992 PACK FUZZY TIER — LOWER authority. Reached ONLY here, i.e. after
-      // every non-pack fuzzy pass above missed (each accept returns early). This
-      // ordering is what makes "user/builtin always wins" structurally true: any
-      // user/builtin match (Pass 3/4/5) preempts the entire pack tier. Pack
-      // matches additionally clear a stricter bar (packFuzzyThresholdBump) and a
-      // casing guard (a case-only change is never an improvement for the
-      // lowercase pack canonicals). Source is unambiguous: only pack terms are
-      // scored in this tier.
-
-      // #992 precedence guard: if the token is already a recognized non-pack
-      // term (user/builtin canonical or alias), it is correct as-is — packs
-      // must not rewrite it. This covers the case where the non-pack tier above
-      // produced no replacement precisely because no fix was needed.
-      if nonPackExactKeys.contains(coreLower) {
+      // Step 3 + 4: non-pack FUZZY to completion -- unpeeled (restricted to
+      // domain-shaped candidates), then peeled (unrestricted) -- before the
+      // pack tier gets a turn at all, so "non-pack always wins over pack"
+      // holds across the peel boundary too, not only within one attempt
+      // (Codex review, PR for #2281; same shape as finding P1 round 4, one
+      // tier down). Step 3's domain restriction is necessary because fuzzy
+      // scoring CAN cross threshold against a glued suffix, but only when
+      // the CANDIDATE compared against is itself bare -- a candidate that
+      // is ALSO domain-shaped makes the raw comparison apples-to-apples, so
+      // a near-miss like "githib.com" needs to try this unpeeled (finding
+      // P1 round 3).
+      //
+      // Step 3 only runs when the token ITSELF has a peelable suffix (Codex
+      // review round 5, P1): without that guard it ran even for an ordinary
+      // no-dot word, comparing it against domain-shaped candidates it has
+      // no business being compared against and letting a weaker
+      // domain-shaped match preempt the correct bare candidate reachable
+      // only at step 4 -- "enviouswhisper" scoring against
+      // "enviouswhisper.com" purely because the strings share a long
+      // prefix, with no dot in the input at all.
+      let unpeeledNonPackFuzzy =
+        hasPeelableSuffix
+        ? nonPackFuzzySingleWordMatch(
+          core: core, coreLower: coreLower, lookups: lookups, domainShapedOnly: true)
+        : .noCandidate
+      let peeledNonPackFuzzy =
+        matchCoreEligible
+        ? nonPackFuzzySingleWordMatch(
+          core: matchCore, coreLower: matchCoreLower, lookups: lookups, domainShapedOnly: false)
+        : .noCandidate
+      // An ambiguous non-pack tie is terminal, not "try pack next": pack is
+      // lower authority and must never get a turn just because non-pack
+      // couldn't confidently pick between two of ITS OWN candidates.
+      switch strongerOf(unpeeledNonPackFuzzy, peeledNonPackFuzzy) {
+      case .accepted(let result):
+        return result
+      case .ambiguous:
         return token
+      case .noCandidate:
+        break
       }
 
-      // Pack Pass 4: single-word pack aliases.
-      if !packSingleFuzzyCandidates.isEmpty {
-        var pBest = 0.0
-        var pSecond = 0.0
-        var pMatch = ""
-        for entry in packSingleFuzzyCandidates {
-          let surfLen = entry.surface.count
-          let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
-          if lenRatio < 0.5 { continue }
-          let s = score(coreLower, against: entry.surface)
-          if s > pBest {
-            if pMatch != entry.canonical { pSecond = pBest }
-            pBest = s
-            pMatch = entry.canonical
-          } else if s > pSecond && entry.canonical != pMatch {
-            pSecond = s
-          }
-        }
-        let vocabPenalty = Self.largeVocabPenalty(poolSize: packSingleFuzzyCandidates.count)
-        let lengthAdj = Self.lengthAwareAdjustment(candidateLength: pMatch.count)
-        let packThreshold =
-          effectiveThreshold + vocabPenalty - lengthAdj + Self.packFuzzyThresholdBump
-        if pBest >= packThreshold, pBest - pSecond >= Self.ambiguityMargin, core != pMatch {
-          if coreLower == pMatch.lowercased() {
-            // Casing guard: case-only change — suppress, fall through.
-            #if DEBUG
-              Self.logger.debug(
-                "WordCorrector: SUPPRESS pass=pack-alias-fuzzy reason=case_only source='\(core)' target='\(pMatch)'"
-              )
-            #endif
-          } else {
-            appendReplacement(forCanonical: pMatch)
-            #if DEBUG
-              Self.logger.debug(
-                "WordCorrector: type=pack-alias-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
-              )
-            #endif
-            return prefix + pMatch + suffix
-          }
-        }
-      }
-
-      // Pack Pass 5: single-word pack canonicals.
-      if !packLowercasedCanonicals.isEmpty {
-        var pBest = 0.0
-        var pSecond = 0.0
-        var pMatch = ""
-        for (idx, targetLower) in packLowercasedCanonicals.enumerated() {
-          let targetLen = targetLower.count
-          let lenRatio = Double(min(coreLen, targetLen)) / Double(max(coreLen, targetLen))
-          if lenRatio < 0.5 { continue }
-          let s = score(coreLower, against: targetLower)
-          if s > pBest {
-            pSecond = pBest
-            pBest = s
-            pMatch = packCanonicals[idx]
-          } else if s > pSecond {
-            pSecond = s
-          }
-        }
-        let vocabPenalty = Self.largeVocabPenalty(poolSize: packLowercasedCanonicals.count)
-        let lengthAdj = Self.lengthAwareAdjustment(candidateLength: pMatch.count)
-        let packThreshold =
-          effectiveThreshold + vocabPenalty - lengthAdj + Self.packFuzzyThresholdBump
-        if pBest >= packThreshold, pBest - pSecond >= Self.ambiguityMargin, core != pMatch {
-          if coreLower == pMatch.lowercased() {
-            #if DEBUG
-              Self.logger.debug(
-                "WordCorrector: SUPPRESS pass=pack-canonical-fuzzy reason=case_only source='\(core)' target='\(pMatch)'"
-              )
-            #endif
-          } else {
-            appendReplacement(forCanonical: pMatch)
-            #if DEBUG
-              Self.logger.debug(
-                "WordCorrector: type=pack-canonical-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pBest - pSecond, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
-              )
-            #endif
-            return prefix + pMatch + suffix
-          }
-        }
+      // Step 5 + 6: pack fuzzy, the same unpeeled-then-peeled shape (step 5
+      // gated on `hasPeelableSuffix` for the same reason step 3 is), only
+      // reached once every higher-authority attempt above has missed. Step
+      // 4's peeled non-pack fuzzy fixes the originally reported bug for a
+      // bare (non-domain-shaped) alias.
+      let unpeeledPackFuzzy =
+        hasPeelableSuffix
+        ? packFuzzySingleWordMatch(
+          core: core, coreLower: coreLower, lookups: lookups, domainShapedOnly: true)
+        : .noCandidate
+      let peeledPackFuzzy =
+        matchCoreEligible
+        ? packFuzzySingleWordMatch(
+          core: matchCore, coreLower: matchCoreLower, lookups: lookups, domainShapedOnly: false)
+        : .noCandidate
+      // Nothing follows the pack tier, so ambiguous and no-candidate both
+      // resolve to the same "leave it alone" outcome here.
+      if case .accepted(let result) = strongerOf(unpeeledPackFuzzy, peeledPackFuzzy) {
+        return result
       }
 
       return token
     }
 
     return (corrected.joined(separator: " "), replacements)
+  }
+
+  /// Pass 3 alone: exact single-word alias (includes canonical self-entries).
+  /// Factored out so the outer single-word retry in `correct(using:)` can run
+  /// EXACT matching to completion -- unpeeled, then peeled -- before trying
+  /// any fuzzy pass. Exact equality always outranks fuzzy scoring and always
+  /// respects the user/pack tiering baked into `singleAliasMap`, and that
+  /// must hold even when a domain-shaped token is involved: a fuzzy match
+  /// found via the unpeeled domain-restricted pass could otherwise preempt
+  /// the user's own exact alias, reachable only by peeling first (Codex
+  /// review, PR for #2281, finding P1 round 4).
+  /// Returns the matched canonical AND whether it came from a pack term,
+  /// but does NOT call `appendReplacement` or log -- the caller decides
+  /// which of potentially several candidate exact matches (unpeeled vs
+  /// peeled) actually wins before committing that side effect (Codex
+  /// review, PR for #2281, finding P1 round 7: see the call site in
+  /// `correct(using:)` for why the caller needs to see both before
+  /// choosing).
+  /// Three outcomes, not two, because the caller must react differently to
+  /// "nothing registered for this key" than to "something IS registered and
+  /// this token already IS that canonical" (Codex review, PR for #2281,
+  /// finding P2 round 9): collapsing both into `nil` let the peeled attempt
+  /// run even when the UNPEELED token was already letter-for-letter a real
+  /// canonical -- e.g. core exactly equals canonical "GitHub.com", so no
+  /// correction is needed at all, but an unrelated alias "github" (the
+  /// peeled bare form) mapping to some OTHER canonical could still win,
+  /// replacing text that was already correct. Exact self-identity is the
+  /// strongest possible "leave this alone" signal there is; it must stop
+  /// the whole single-word retry, not merely this one attempt.
+  private enum ExactSingleWordOutcome {
+    case replace(canonical: String, isPack: Bool)
+    // Carries isPack too (Codex cloud review, PR #2298, round 13): a pack's
+    // own self-alias being byte-for-byte correct must not outrank a
+    // higher-authority non-pack alias reachable at a lower-priority slot --
+    // "leave it alone" needs the same authority tag "replace it" already
+    // has, or the caller has no way to arbitrate the two.
+    case alreadyCorrect(isPack: Bool)
+    case noMatch
+  }
+
+  private func exactSingleWordMatch(
+    core: String, coreLower: String, lookups: Lookups
+  ) -> ExactSingleWordOutcome {
+    guard let canonical = lookups.singleAliasMap[coreLower] else { return .noMatch }
+    // Authority comes from the matched KEY (`coreLower`), never from the
+    // resulting canonical TEXT (Codex review, PR for #2281, finding P2
+    // round 8): `canonicalToWord[canonical]` answers "who owns this
+    // canonical STRING", which breaks when a pack alias and a user word
+    // happen to share the same canonical text -- a pack alias "githib.com"
+    // -> "Shared" would then be misattributed to the USER'S "Shared" word
+    // and wrongly treated as non-pack. `singleAliasMap` is constructed so
+    // non-pack always wins on a KEY collision, so `nonPackExactKeys`
+    // (already the authority for exactly that construction) tells us
+    // whether THIS key's mapping came from a non-pack term, unambiguously.
+    // Computed before the already-correct check too (round 13): "already
+    // correct" needs the same authority tag "replace" gets.
+    let isPack = !lookups.nonPackExactKeys.contains(coreLower)
+    guard core != canonical else { return .alreadyCorrect(isPack: isPack) }
+    return .replace(canonical: canonical, isPack: isPack)
+  }
+
+  /// Pass 4-5 alone (non-pack fuzzy: aliases + canonical self-entries, then
+  /// canonicals as fallback). Split from the pack tier so the outer
+  /// single-word retry can run the FULL non-pack fuzzy tier -- unpeeled,
+  /// then peeled -- before the pack tier gets a turn at all, the same way
+  /// exact already runs to completion before any fuzzy pass. Without this
+  /// split, a pack-tier fuzzy hit reachable unpeeled (domain-restricted)
+  /// could preempt a non-pack fuzzy hit reachable only by peeling -- the
+  /// identical shape of precedence violation Codex review round 4 found one
+  /// tier up (exact vs. fuzzy), and "non-pack always wins over pack" is
+  /// exactly as absolute an invariant in this file as "exact always wins
+  /// over fuzzy" is.
+  ///
+  /// `domainShapedOnly` gates both loops: the unpeeled call site passes
+  /// `true` (fuzzy is only safe unpeeled when comparing against an equally
+  /// domain-shaped candidate -- both sides then carry a suffix, so nothing
+  /// is silently swallowed); the peeled call site passes `false` (the
+  /// ordinary, unrestricted pool).
+  /// A single attempt's fuzzy result must distinguish "genuinely ambiguous"
+  /// from "no candidate scored close at all" (Codex cloud review, PR #2298,
+  /// round 17): collapsing both to the same `nil` let an in-pass ambiguity
+  /// (two DIFFERENT candidates within `ambiguityMargin` of each other) read
+  /// as "this attempt found nothing," which let a lower-authority pack
+  /// match decide a token the non-pack tier had already found genuinely
+  /// uncertain -- the identical shape round 16 fixed one layer up, for the
+  /// cross-attempt (unpeeled vs. peeled) comparison instead of this
+  /// within-attempt one.
+  private enum SingleAttemptFuzzyOutcome {
+    case candidate(canonical: String, score: Double)
+    case ambiguous
+    case noCandidate
+  }
+
+  private func nonPackFuzzySingleWordMatch(
+    core: String, coreLower: String,
+    lookups: Lookups,
+    domainShapedOnly: Bool
+  ) -> SingleAttemptFuzzyOutcome {
+    let singleFuzzyCandidates = lookups.singleFuzzyCandidates
+    let canonicalToWord = lookups.canonicalToWord
+    let lowercasedCanonicals = lookups.lowercasedCanonicals
+    let canonicals = lookups.canonicals
+
+    // Skip fuzzy for very short tokens
+    guard core.count >= 3 else { return .noCandidate }
+
+    // Determine threshold based on token length
+    let effectiveThreshold =
+      core.count <= Self.shortTokenMaxLength
+      ? Self.shortTokenThreshold
+      : Self.threshold
+
+    // Pass 4: fuzzy single-word against aliases + canonical self-entries
+    let coreLen = coreLower.count
+    var bestScore = 0.0
+    var secondBest = 0.0
+    var bestMatch = ""
+    // Tracks whether EITHER pass found a genuine ambiguity (score cleared
+    // its own threshold but not its own margin) that neither pass went on
+    // to resolve -- the function's FINAL fallback, not an early exit,
+    // because a confident Pass 5 canonical match must still be able to
+    // override a Pass 4 alias ambiguity (round 19: two Pass 4 aliases
+    // scoring 0.970/0.959 against each other is genuinely ambiguous, but
+    // Pass 5's own candidate pool can independently and confidently
+    // resolve the SAME input at 0.970 with nothing else within 0.05 of
+    // it -- Pass 5 answers a different, unambiguous question and must get
+    // the chance to).
+    var anyPassWasAmbiguous = false
+
+    for entry in singleFuzzyCandidates {
+      let surface = entry.surface
+      let canonical = entry.canonical
+      // Admission must key off `surface` alone, never `canonical` too: the
+      // comparison two lines below is `coreLower` (the raw, unpeeled input)
+      // against `surface` -- the apples-to-apples reasoning that makes raw
+      // comparison safe only holds when the SURFACE being scored is itself
+      // domain-shaped. Admitting on a domain-shaped CANONICAL with a bare
+      // surface let a long bare alias absorb the glued suffix as scoring
+      // noise, reproducing the original bug through this pass instead
+      // (Codex cloud review, PR #2298, round 11).
+      if domainShapedOnly, !Self.isDomainShaped(surface) {
+        continue
+      }
+      // Length-ratio pruning: skip if lengths differ too much for threshold
+      let surfLen = surface.count
+      let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
+      if lenRatio < 0.5 { continue }
+
+      let s = score(coreLower, against: surface)
+      if s > bestScore {
+        if bestMatch != canonical { secondBest = bestScore }
+        bestScore = s
+        bestMatch = canonical
+      } else if s > secondBest && canonical != bestMatch {
+        secondBest = s
+      }
+    }
+
+    // Phase 2 (#638) §8.2: vocab-size penalty + length-aware adjustment
+    // applied per-candidate. Per-term override wins absolutely if set.
+    let pass4VocabPenalty = Self.largeVocabPenalty(poolSize: singleFuzzyCandidates.count)
+    let pass4LengthAdj = Self.lengthAwareAdjustment(candidateLength: bestMatch.count)
+    let pass4Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
+    let pass4Threshold =
+      pass4Override ?? (effectiveThreshold + pass4VocabPenalty - pass4LengthAdj)
+    let pass4Margin = bestScore - secondBest
+    if bestScore >= pass4Threshold, pass4Margin >= Self.ambiguityMargin, core != bestMatch {
+      #if DEBUG
+        Self.logger.debug(
+          "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass4Margin, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3))"
+        )
+      #endif
+      return .candidate(canonical: bestMatch, score: bestScore)
+    } else if bestScore >= pass4Threshold, pass4Margin < Self.ambiguityMargin {
+      // Score clears the bar but the margin over the runner-up does not --
+      // a genuine ambiguity between two DIFFERENT candidates, not "nothing
+      // scored close." Record it and continue to Pass 5 rather than
+      // returning immediately (round 17 stopped here; round 19 found that
+      // too aggressive): Pass 5's canonical pool answers a DIFFERENT
+      // question, so it may still resolve confidently on its own terms
+      // even though Pass 4 couldn't. Only if Pass 5 ALSO fails to produce
+      // a confident candidate does this ambiguity become the function's
+      // final answer.
+      #if DEBUG
+        Self.logger.debug(
+          "WordCorrector: REJECT pass=alias-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass4Margin, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3)) reason=below_margin"
+        )
+      #endif
+      anyPassWasAmbiguous = true
+    } else if bestScore > 0 {
+      #if DEBUG
+        let reason = bestScore < pass4Threshold ? "below_threshold" : "same_as_input"
+        Self.logger.debug(
+          "WordCorrector: REJECT pass=alias-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass4Margin, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3)) reason=\(reason)"
+        )
+      #endif
+    }
+
+    // Pass 5: fuzzy single-word against canonicals as fallback
+    bestScore = 0.0
+    secondBest = 0.0
+    bestMatch = ""
+
+    for (idx, targetLower) in lowercasedCanonicals.enumerated() {
+      if domainShapedOnly, !Self.isDomainShaped(targetLower) { continue }
+      let targetLen = targetLower.count
+      let lenRatio = Double(min(coreLen, targetLen)) / Double(max(coreLen, targetLen))
+      if lenRatio < 0.5 { continue }
+
+      let s = score(coreLower, against: targetLower)
+      if s > bestScore {
+        secondBest = bestScore
+        bestScore = s
+        bestMatch = canonicals[idx]
+      } else if s > secondBest {
+        secondBest = s
+      }
+    }
+
+    // Phase 2 (#638) §8.2: same hardening for Pass 5.
+    let pass5VocabPenalty = Self.largeVocabPenalty(poolSize: lowercasedCanonicals.count)
+    let pass5LengthAdj = Self.lengthAwareAdjustment(candidateLength: bestMatch.count)
+    let pass5Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
+    let pass5Threshold =
+      pass5Override ?? (effectiveThreshold + pass5VocabPenalty - pass5LengthAdj)
+    let pass5Margin = bestScore - secondBest
+    if bestScore >= pass5Threshold, pass5Margin >= Self.ambiguityMargin, core != bestMatch {
+      #if DEBUG
+        Self.logger.debug(
+          "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass5Margin, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3))"
+        )
+      #endif
+      return .candidate(canonical: bestMatch, score: bestScore)
+    } else if bestScore >= pass5Threshold, pass5Margin < Self.ambiguityMargin {
+      #if DEBUG
+        Self.logger.debug(
+          "WordCorrector: REJECT pass=canonical-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass5Margin, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3)) reason=below_margin"
+        )
+      #endif
+      anyPassWasAmbiguous = true
+    } else if bestScore > 0 {
+      #if DEBUG
+        let reason = bestScore < pass5Threshold ? "below_threshold" : "same_as_input"
+        Self.logger.debug(
+          "WordCorrector: REJECT pass=canonical-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass5Margin, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3)) reason=\(reason)"
+        )
+      #endif
+    }
+
+    // Neither pass produced a confident candidate. If either was
+    // genuinely ambiguous (rather than simply empty), that ambiguity is
+    // this attempt's answer, not "no candidate" -- preserves round 16/17's
+    // invariant that an unresolved ambiguity blocks the pack tier, now
+    // correctly scoped to "unresolved by EITHER pass" instead of
+    // "Pass 4 alone" (round 19).
+    return anyPassWasAmbiguous ? .ambiguous : .noCandidate
+  }
+
+  /// #992 PACK FUZZY TIER — LOWER authority. Split from the non-pack fuzzy
+  /// passes so the outer single-word retry can call this ONLY after BOTH
+  /// non-pack fuzzy attempts (unpeeled, then peeled) have already missed --
+  /// see `nonPackFuzzySingleWordMatch`'s doc comment for why that ordering,
+  /// not merely "non-pack pool before pack pool within one call", is what
+  /// this tier's whole reason for existing depends on. Pack matches
+  /// additionally clear a stricter bar (`packFuzzyThresholdBump`) and a
+  /// casing guard (a case-only change is never an improvement for the
+  /// lowercase pack canonicals).
+  private func packFuzzySingleWordMatch(
+    core: String, coreLower: String,
+    lookups: Lookups,
+    domainShapedOnly: Bool
+  ) -> SingleAttemptFuzzyOutcome {
+    let packSingleFuzzyCandidates = lookups.packSingleFuzzyCandidates
+    let packCanonicals = lookups.packCanonicals
+    let packLowercasedCanonicals = lookups.packLowercasedCanonicals
+    let nonPackExactKeys = lookups.nonPackExactKeys
+
+    guard core.count >= 3 else { return .noCandidate }
+    let effectiveThreshold =
+      core.count <= Self.shortTokenMaxLength
+      ? Self.shortTokenThreshold
+      : Self.threshold
+    let coreLen = coreLower.count
+
+    // #992 precedence guard: if the token is already a recognized non-pack
+    // term (user/builtin canonical or alias), it is correct as-is — packs
+    // must not rewrite it. This covers the case where non-pack matching
+    // produced no replacement precisely because no fix was needed.
+    if nonPackExactKeys.contains(coreLower) {
+      return .noCandidate
+    }
+
+    // Same "final answer, not an early exit" tracking as the non-pack
+    // twin above (round 19): a Pack Pass 4 ambiguity must still let Pack
+    // Pass 5 try to resolve confidently on its own terms.
+    var anyPassWasAmbiguous = false
+
+    // Pack Pass 4: single-word pack aliases.
+    if !packSingleFuzzyCandidates.isEmpty {
+      var pBest = 0.0
+      var pSecond = 0.0
+      var pMatch = ""
+      for entry in packSingleFuzzyCandidates {
+        // Same fix as the non-pack Pass 4 above: admission keys off the
+        // SURFACE alone, since that is what's actually scored against
+        // `coreLower` below (Codex cloud review, PR #2298, round 11).
+        if domainShapedOnly, !Self.isDomainShaped(entry.surface) {
+          continue
+        }
+        let surfLen = entry.surface.count
+        let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
+        if lenRatio < 0.5 { continue }
+        let s = score(coreLower, against: entry.surface)
+        if s > pBest {
+          if pMatch != entry.canonical { pSecond = pBest }
+          pBest = s
+          pMatch = entry.canonical
+        } else if s > pSecond && entry.canonical != pMatch {
+          pSecond = s
+        }
+      }
+      let vocabPenalty = Self.largeVocabPenalty(poolSize: packSingleFuzzyCandidates.count)
+      let lengthAdj = Self.lengthAwareAdjustment(candidateLength: pMatch.count)
+      let packThreshold =
+        effectiveThreshold + vocabPenalty - lengthAdj + Self.packFuzzyThresholdBump
+      let pMargin = pBest - pSecond
+      if pBest >= packThreshold, pMargin >= Self.ambiguityMargin, core != pMatch {
+        if coreLower == pMatch.lowercased() {
+          // Casing guard: case-only change — suppress, fall through.
+          #if DEBUG
+            Self.logger.debug(
+              "WordCorrector: SUPPRESS pass=pack-alias-fuzzy reason=case_only source='\(core)' target='\(pMatch)'"
+            )
+          #endif
+        } else {
+          #if DEBUG
+            Self.logger.debug(
+              "WordCorrector: type=pack-alias-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pMargin, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
+            )
+          #endif
+          return .candidate(canonical: pMatch, score: pBest)
+        }
+      } else if pBest >= packThreshold, pMargin < Self.ambiguityMargin {
+        // Genuinely ambiguous, not merely absent (round 17) -- but record
+        // and continue rather than return, so Pack Pass 5 still gets its
+        // chance (round 19).
+        #if DEBUG
+          Self.logger.debug(
+            "WordCorrector: REJECT pass=pack-alias-fuzzy source='\(core)' best_target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pMargin, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3)) reason=below_margin"
+          )
+        #endif
+        anyPassWasAmbiguous = true
+      }
+    }
+
+    // Pack Pass 5: single-word pack canonicals.
+    if !packLowercasedCanonicals.isEmpty {
+      var pBest = 0.0
+      var pSecond = 0.0
+      var pMatch = ""
+      for (idx, targetLower) in packLowercasedCanonicals.enumerated() {
+        if domainShapedOnly, !Self.isDomainShaped(targetLower) { continue }
+        let targetLen = targetLower.count
+        let lenRatio = Double(min(coreLen, targetLen)) / Double(max(coreLen, targetLen))
+        if lenRatio < 0.5 { continue }
+        let s = score(coreLower, against: targetLower)
+        if s > pBest {
+          pSecond = pBest
+          pBest = s
+          pMatch = packCanonicals[idx]
+        } else if s > pSecond {
+          pSecond = s
+        }
+      }
+      let vocabPenalty = Self.largeVocabPenalty(poolSize: packLowercasedCanonicals.count)
+      let lengthAdj = Self.lengthAwareAdjustment(candidateLength: pMatch.count)
+      let packThreshold =
+        effectiveThreshold + vocabPenalty - lengthAdj + Self.packFuzzyThresholdBump
+      let pMargin = pBest - pSecond
+      if pBest >= packThreshold, pMargin >= Self.ambiguityMargin, core != pMatch {
+        if coreLower == pMatch.lowercased() {
+          #if DEBUG
+            Self.logger.debug(
+              "WordCorrector: SUPPRESS pass=pack-canonical-fuzzy reason=case_only source='\(core)' target='\(pMatch)'"
+            )
+          #endif
+        } else {
+          #if DEBUG
+            Self.logger.debug(
+              "WordCorrector: type=pack-canonical-fuzzy source='\(core)' target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pMargin, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3))"
+            )
+          #endif
+          return .candidate(canonical: pMatch, score: pBest)
+        }
+      } else if pBest >= packThreshold, pMargin < Self.ambiguityMargin {
+        #if DEBUG
+          Self.logger.debug(
+            "WordCorrector: REJECT pass=pack-canonical-fuzzy source='\(core)' best_target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pMargin, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3)) reason=below_margin"
+          )
+        #endif
+        anyPassWasAmbiguous = true
+      }
+    }
+
+    return anyPassWasAmbiguous ? .ambiguous : .noCandidate
   }
 
   // MARK: - Scoring
@@ -1213,6 +1626,239 @@ public struct WordCorrector: Sendable {
   }
 
   // MARK: - Helpers
+
+  /// Splits `s` at its FIRST dot into (bare, suffix) when everything after
+  /// that dot is a non-empty run of letters/digits/hyphens/dots (with no
+  /// leading, trailing, or doubled dot) -- a purely STRUCTURAL definition of
+  /// "looks like it ends in a domain suffix", deliberately not limited to
+  /// any curated TLD list. One shared definition, used for BOTH questions
+  /// this fix has to ask: is an INPUT token worth peeling, and is a saved
+  /// ALIAS/CANONICAL domain-shaped.
+  ///
+  /// FIRST dot, not last: many countries' everyday domains are two-part
+  /// suffixes -- ".co.jp", ".co.uk", ".com.au", ".co.in" -- not the single
+  /// ".com" this app's own San-Francisco-built URL vetting was written
+  /// around. Peeling only the LAST label left "GitHub.co.jp" reattaching as
+  /// "GitHub.co" with the ".jp" silently eaten, and a bare alias "githab"
+  /// glued to "githab.co.jp" never matched at all, because the leftover
+  /// ".co" was still noise on the comparison. Peeling from the first dot
+  /// takes the WHOLE suffix as one unit, whatever shape it has, which is
+  /// what makes a brand name recoverable in a domain-suffix style this app
+  /// was not built around by default.
+  ///
+  /// Codex review, PR for #2281, rounds 3-4: an earlier version reused
+  /// `InverseTextNormalizer.urlTLDAlt` (the closed, ten-item TLD set
+  /// `matcher-set-adversarial-tests` argues for reusing elsewhere) for BOTH
+  /// questions, then for only ONE of them, and each split answer left a
+  /// suffix outside that list unprotected somewhere -- `Enviousvisper.us`
+  /// dropped its ".us" when the list gated the peel trigger; "GitHub.us"
+  /// grew a duplicate suffix when the list gated only the dedup check.
+  /// `urlTLDAlt` asserts semantic meaning ("this specific string IS a
+  /// TLD"), which is the right bar for a POSITIVE identification (deciding
+  /// spoken text represents a real URL). Here the bar is lower and
+  /// symmetric: "is this worth trying as a suffix", never asserted as fact.
+  /// It is not free to be wrong, though (Codex review round 5, P2 --
+  /// correcting an earlier version of this comment that claimed it was): a
+  /// peeled bare form can coincidentally EXACT-match a real, unrelated
+  /// alias, so an over-permissive trigger produces a real wrong correction,
+  /// not merely a harmless miss -- alias "v1" turned input "v1.2" into
+  /// "VersionOne.2" before a first guard existed, and a looser
+  /// "not all-digit" version of that guard still let "v1.2beta" and
+  /// "v1.2.3rc1" through (Codex review round 6, P2: a rejected label needs
+  /// to catch ALPHANUMERIC version/build tails, not only purely-numeric
+  /// ones). The exclusion this function makes is therefore the strictest
+  /// one that still matches real DNS policy rather than an arbitrary
+  /// tightening: a real TLD label is ALL LETTERS -- current ICANN policy
+  /// bars digits and hyphens from the TLD position entirely (unlike an
+  /// ordinary hostname label, which permits both) -- so a final label
+  /// carrying so much as one digit marks a version number, decimal, or
+  /// IP-like token rather than a domain. A purely structural check
+  /// otherwise generalizes to every user's vocabulary rather than the ten
+  /// TLDs this app happens to vet for URL recognition elsewhere.
+  ///
+  /// KNOWN LIMIT, third face of the same tradeoff `knownDedupTLDs`'s own
+  /// doc comment names (founder call, Codex cloud review round 17): an
+  /// ALL-LETTERS suffix that is NOT a version number still passes this
+  /// trigger even when it is an ordinary file extension or dotted
+  /// identifier rather than a domain -- ".swift", ".py", ".js" are all
+  /// structurally indistinguishable from a real TLD by this check alone.
+  /// If a saved word's bare text coincidentally equals a dictated
+  /// filename's stem, the peeled match can fire and silently reattach the
+  /// extension to the wrong replacement ("config.swift" -- a saved
+  /// "config" -> "Configuration" alias -- becomes "Configuration.swift").
+  /// TRIED AND REJECTED: gating this trigger on `knownDedupTLDs`
+  /// (mirroring `isDomainShaped`'s bar) closes that gap but empirically
+  /// breaks real, already-shipped behavior this exact suite tests for --
+  /// ".zzz" (round 3's own test, proving the trigger deliberately works
+  /// OUTSIDE any curated list), ".technology" (round 12, a real TLD this
+  /// list simply does not carry), and native-script IDN dedup
+  /// suppression (".рф", non-ASCII and therefore uncurated by
+  /// construction) all regressed when tried. The permissiveness this
+  /// function documents above as necessary for THOSE cases is the same
+  /// permissiveness that makes this one possible -- there is no purely
+  /// structural or curated-list rule that admits one and excludes the
+  /// other, because both are "an all-letters string after a dot" and
+  /// nothing about the TEXT distinguishes a domain suffix from a file
+  /// extension -- the same irreducible ambiguity `knownDedupTLDs` already
+  /// accepts for dedup-suppression and fuzzy admission, surfacing at a
+  /// THIRD site through a different signal (structural shape here, a
+  /// curated word list there). Closing it needs the same two
+  /// real, feature-sized mechanisms named there: a maintained
+  /// public-suffix authority, or letting a word's OWNER mark it as a
+  /// domain explicitly.
+  private static func splitDomainSuffix(_ s: String) -> (bare: String, suffix: String)? {
+    guard let firstDot = s.firstIndex(of: "."), firstDot > s.startIndex else { return nil }
+    let tail = s[s.index(after: firstDot)...]
+    guard !tail.isEmpty, tail.first != ".", tail.last != ".",
+      tail.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "." })
+    else {
+      return nil
+    }
+    let labels = tail.split(separator: ".", omittingEmptySubsequences: false)
+    guard labels.allSatisfy({ !$0.isEmpty }), let lastLabel = labels.last,
+      Self.isPlausibleTLDLabel(lastLabel)
+    else {
+      return nil
+    }
+    return (String(s[s.startIndex..<firstDot]), String(s[firstDot...]))
+  }
+
+  /// True for an all-letters label (the ordinary case), OR a punycode
+  /// A-label -- the ASCII-only form DNS actually carries for an
+  /// internationalized TLD, always written as `xn--` followed by
+  /// alphanumerics and hyphens (Russia's `.рф` is `.xn--p1ai`, e.g.). Real
+  /// TLDs are never purely numeric or mixed-alphanumeric OUTSIDE this one
+  /// prefixed shape, so accepting punycode here does not reopen the
+  /// version-string/IP exclusions (Codex review, PR for #2281, finding P2
+  /// round 8): "xn--p1ai" and "v1" are structurally distinguishable by the
+  /// `xn--` prefix alone, and nothing that isn't real punycode happens to
+  /// start with it.
+  private static func isPlausibleTLDLabel(_ label: Substring) -> Bool {
+    label.allSatisfy({ $0.isLetter }) || Self.isPunycodeTLDLabel(label)
+  }
+
+  /// The punycode-shape half of `isPlausibleTLDLabel`, factored out so
+  /// `isDomainShaped` can require it WITHOUT also admitting arbitrary
+  /// all-letters labels ("js", "academy", ...) the way the peel trigger
+  /// does -- those two questions need different bars for the reasons
+  /// `knownDedupTLDs`'s own doc comment gives (Codex review, PR for #2281,
+  /// finding P2 round 9: a canonical whose domain is itself an
+  /// internationalized name, written in its ASCII punycode form, was not
+  /// recognized as domain-shaped at all -- `splitDomainSuffix` peeled it
+  /// correctly, but the DEDUP check that decides whether to suppress a
+  /// mismatched reattach only consulted the curated real-word TLD list,
+  /// which can never contain an `xn--...` string).
+  private static func isPunycodeTLDLabel(_ label: Substring) -> Bool {
+    let lower = label.lowercased()
+    guard lower.hasPrefix("xn--") else { return false }
+    let rest = lower.dropFirst(4)
+    return !rest.isEmpty && rest.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" })
+  }
+
+  /// A curated (not exhaustive) set of real TLDs, deliberately much broader
+  /// than `InverseTextNormalizer.urlTLDAlt`'s original ten entries so common
+  /// ccTLDs (`.us`, `.uk`, `.jp`, ...) are covered, but still a REAL,
+  /// vetted list rather than "any letters after a dot". Read ONLY by
+  /// `isDomainShaped` -- never by `splitDomainSuffix`'s peel trigger, which
+  /// stays purely structural on purpose (see that function's doc comment).
+  ///
+  /// Why two different bars for what looks like the same question (Codex
+  /// review round 6, P1): "is this worth TRYING to peel" tolerates being
+  /// wrong for free -- nothing matches, the untouched token comes back.
+  /// "Should a peeled suffix be SUPPRESSED because the matched canonical is
+  /// already a domain" does not: a purely structural check here means any
+  /// dotted brand name with a plausible-looking suffix -- "Node.js",
+  /// "D3.js", "Vue.js", "Chart.js" are all real, common product names in
+  /// exactly this shape -- gets misclassified as a domain and silently
+  /// swallows a suffix the user actually said ("nodejs.com" -> "Node.js").
+  /// A real TLD list is the only mechanical way to tell "GitHub.com" (a
+  /// domain) from "Node.js" (a product name that happens to end in a
+  /// dot-suffix): both are ALL-LETTERS after the dot, so no structural rule
+  /// -- however tightened -- can separate them.
+  /// KNOWN LIMIT, accepted rather than chased further (founder call,
+  /// Codex review round 7, P2; reconfirmed round 16 against two MORE
+  /// consequences of the same root cause): this list is CURATED, not
+  /// exhaustive -- ICANN's real root zone has 1,500+ entries, and any
+  /// hand-picked subset will always be missing one (round 7 named
+  /// "GitHub.academy" as a real gTLD this list omits). `isDomainShaped`
+  /// is the ONLY consumer, but it backs TWO different decisions that both
+  /// inherit this same limit:
+  /// - Dedup suppression (this function's own purpose): a saved domain
+  ///   using a real TLD absent from this list is not recognized as
+  ///   already-a-domain, so a peeled suffix can get appended to it a
+  ///   second time.
+  /// - Domain-restricted fuzzy ADMISSION (Pass 4/5 and their pack
+  ///   equivalents' `domainShapedOnly` gate, round 16): a saved alias
+  ///   using a real TLD absent from this list is excluded from the raw
+  ///   (unpeeled) fuzzy scan entirely, so a near-miss like
+  ///   "githib.photography" for a saved "githab.photography" never
+  ///   matches, because ".photography" is not in this set.
+  /// Round 16 also found the CONVERSE failure: a real TLD present in this
+  /// list ("io") is simultaneously a common non-domain product-name
+  /// suffix ("Socket.IO"), so a canonical like "Socket.IO" is
+  /// misclassified as domain-shaped and silently drops a dictated ".com"
+  /// -- the exact ambiguity this comment already names for "Node.js"
+  /// (".js" is NOT curated) now shows up for a curated TLD too. Canonical
+  /// text alone cannot resolve either direction: `matcher-set-adversarial-
+  /// tests`'s generalisation gate is right that a hand-authored set is a
+  /// prediction about users we haven't met -- the two mechanisms that
+  /// would actually close it are bundling a maintained public-suffix
+  /// authority, or letting a word's OWNER mark it as a domain explicitly
+  /// rather than the app guessing from its text -- and both are real
+  /// feature-sized additions, not a fix for this bug. The failure mode
+  /// this list still has is narrow: it needs a saved word shaped like a
+  /// domain (or ambiguously shaped like one) that is missing from, or
+  /// collides with, this curated set, AND a separately-dictated domain
+  /// suffix interacting with it, and (measured against the shipped pack
+  /// and this founder's own live vocabulary while building this fix) zero
+  /// words anywhere in this app are shaped like a domain at all today.
+  private static let knownDedupTLDs: Set<String> = [
+    "com", "org", "net", "edu", "gov", "mil", "int", "info", "biz", "name",
+    "pro", "coop", "museum", "aero", "jobs", "mobi", "travel", "tel", "asia", "cat", "xxx",
+    "io", "co", "dev", "app", "xyz", "me", "tv", "cc", "ai", "tech",
+    "online", "site", "store", "shop", "cloud", "live", "life", "world", "media", "news",
+    "agency", "studio", "design", "digital", "email", "expert", "guide", "help",
+    "network", "software", "systems", "tools", "works", "so", "academy",
+    "us", "uk", "ca", "au", "de", "fr", "jp", "cn", "in", "br",
+    "ru", "es", "it", "nl", "se", "no", "dk", "fi", "pl", "ch",
+    "at", "be", "pt", "gr", "ie", "nz", "sg", "hk", "tw", "kr",
+    "mx", "ar", "za", "il", "ae", "sa", "tr", "id", "my", "th",
+    "ph", "vn", "eu", "uy", "cl", "pe", "ec", "ve", "cr",
+  ]
+
+  /// True when `s` itself ends in a REAL domain-shaped suffix -- used to
+  /// decide whether a saved alias/canonical is a domain in its own right,
+  /// in which case a peeled suffix must never be appended to it a second
+  /// time (Codex review, PR for #2281, finding P2 rounds 2-4, 6, 9). A
+  /// punycode label (an internationalized domain's ASCII form) counts even
+  /// though it can never appear in `knownDedupTLDs` -- that list holds
+  /// real WORDS, and no curated word list can contain every possible
+  /// `xn--...` string, but the `xn--` shape itself is unambiguous evidence
+  /// on its own (round 9).
+  ///
+  /// A NATIVE-SCRIPT internationalized label (a real ccTLD written in its
+  /// own Unicode form, never converted to punycode -- ".рф" as literal
+  /// Cyrillic, not ".xn--p1ai") also counts, for a reason the curated-list
+  /// exclusion for "Node.js" does NOT apply to here (local Codex sweep of
+  /// PR #2298's cloud findings, same day): the false-positive risk that
+  /// keeps this function from accepting "any all-letters label" is
+  /// specifically an ENGLISH product-name risk (".js", ".io" as common
+  /// English computing suffixes on real brand names). No ordinary English
+  /// or Latin-script brand name coincidentally ends in a run of Cyrillic,
+  /// CJK, or Arabic-script characters, so accepting "all-letters AND
+  /// contains at least one non-ASCII character" here carries none of that
+  /// risk while closing the gap for any real IDN this app cannot curate by
+  /// string (there is no bounded list of "real internationalized domains"
+  /// any more than there is of ASCII ones).
+  private static func isDomainShaped(_ s: String) -> Bool {
+    guard let split = Self.splitDomainSuffix(s) else { return false }
+    guard let lastLabelSub = split.suffix.split(separator: ".").last else { return false }
+    if Self.isPunycodeTLDLabel(lastLabelSub) { return true }
+    if lastLabelSub.allSatisfy({ $0.isLetter }), lastLabelSub.contains(where: { !$0.isASCII }) {
+      return true
+    }
+    return Self.knownDedupTLDs.contains(lastLabelSub.lowercased())
+  }
 
   private func stripPunctuation(_ token: String) -> String {
     splitPunctuation(token).core
