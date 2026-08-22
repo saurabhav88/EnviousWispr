@@ -86,23 +86,33 @@ final class OverlayDirector {
   /// at press time, which relabels a click on an outgoing pill with its
   /// SUCCESSOR's identity — so the staleness check below passes it through and
   /// the wrong pill's handler runs.
-  private lazy var rootHostingView: NSView = NSHostingView(
-    rootView: OverlayRootView(
-      model: model,
-      sendEvent: { [weak self] event in self?.send(event, actions: nil) }))
+  /// **Built on first use, and whether it HAS been built is load-bearing** —
+  /// which a `lazy var` cannot report, so the storage is explicit.
+  ///
+  /// Constructing this during the status-item menu dismiss animation is the
+  /// SIGABRT `deferFirstRender` exists to avoid, so "is it built yet" is the
+  /// exact condition the deferral keys on. A boolean set when a deferral was
+  /// SCHEDULED is a different fact and was wrong twice over: a second event
+  /// arriving before the queued block ran saw the flag already true and
+  /// constructed synchronously, and a deferred request dropped by its identity
+  /// gate left the flag true with nothing built, so the next presentation did
+  /// the same. Cloud review caught both in one finding.
+  private var builtRootView: NSView?
+
+  private var rootHostingView: NSView {
+    if let builtRootView { return builtRootView }
+    let view = NSHostingView(
+      rootView: OverlayRootView(
+        model: model,
+        sendEvent: { [weak self] event in self?.send(event, actions: nil) }))
+    builtRootView = view
+    return view
+  }
 
   /// The occupant the host is currently showing, so a morph can be told from a
   /// fresh presentation. The host needs that distinction to decide whether to
   /// re-anchor or preserve the live frame, and it is the CALLER's fact.
   private var presentedID: PresentationID?
-
-  /// Whether the hosting view has ever been built. Separate from `presentedID`,
-  /// which is cleared on every hide: the crash window is the FIRST construction
-  /// of the `NSHostingView`, and that happens once for this director's lifetime.
-  /// Keying the deferral on `presentedID == nil` would re-defer after every
-  /// dismissal, which is both unnecessary and a visible frame of latency on a
-  /// pill the user is waiting for.
-  private var hasRenderedOnce = false
 
   /// How the FIRST render reaches the next run loop.
   ///
@@ -667,8 +677,11 @@ final class OverlayDirector {
     // view that already exists, and the shipped code was synchronous on that
     // path too. `DispatchQueue.main.async` rather than `Task`, for the reason
     // above, spelled out so it is not "modernised" back.
-    if !hasRenderedOnce {
-      hasRenderedOnce = true
+    // Keyed on the VIEW, not on a flag: every presentation arriving before the
+    // view exists defers, however many that is. Each carries its own identity
+    // gate, so a superseded one drops and the live one constructs; a request
+    // cancelled that way leaves nothing built and the next one defers too.
+    if builtRootView == nil {
       presentedID = presentation.id
       let deferredID = presentation.id
       deferFirstRender { [weak self] in

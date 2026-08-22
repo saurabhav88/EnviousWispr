@@ -893,6 +893,34 @@
       #expect(host.isShowing, "the deferred presentation did not leave the window showing")
     }
 
+    /// **A first request that is SUPERSEDED must leave the deferral armed.**
+    ///
+    /// The first version of this fix set a "deferred once" flag when the work was
+    /// SCHEDULED. Two paths then reopened the crash: another event arriving
+    /// before the queued block ran saw the flag set and built the view
+    /// synchronously, and a request dropped by its own identity gate left the
+    /// flag set with nothing built, so the next presentation did the same.
+    /// Cloud review caught both; keying on whether the view EXISTS closes both.
+    @Test("a superseded first request leaves the next one still deferred")
+    func supersededFirstRequestKeepsDeferring() async {
+      let host = WindowlessOverlayHost()
+      let d = OverlayDirector(
+        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in })
+
+      // First request, deferred. A second replaces it before the run loop turns,
+      // so the first drops on its identity gate and builds nothing.
+      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      d.send(.pipeline(.processing(phase: .transcribing)), actions: nil)
+      #expect(host.presented.isEmpty, "a presentation reached the window synchronously")
+
+      await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } }
+
+      #expect(
+        host.presented.count == 1,
+        "the superseded request drew, or the live one never did")
+      #expect(host.isShowing, "nothing ended up on screen after the run loop turned")
+    }
+
     /// The pair: only the FIRST is deferred. Every later presentation morphs a
     /// view that already exists, so deferring them all would add a frame of
     /// latency to every transition for a crash window that has closed.
