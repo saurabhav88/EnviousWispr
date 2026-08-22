@@ -114,6 +114,104 @@ struct OverlayRetainedWindowTests {
       strictly worse than the shipped code, because nothing rebuilds it.
       """)
   }
+
+  /// **The four compensating mechanisms, frozen out by NAME.**
+  ///
+  /// They existed for ONE reason: every overlay transition destroyed the window
+  /// and built another, so the code needed a generation counter to tell a stale
+  /// deferred creation from a live one, a handle on that pending work to cancel
+  /// it, drag deferral so a rebuild did not fight the user's mouse, and a
+  /// `CATransaction` flush to stop the gap between destroy and create rendering
+  /// as a blink. With one retained window there is nothing to compensate for.
+  ///
+  /// **Named rather than derived, and that is a real weakness of this guard**:
+  /// it cannot recognise the same idea under a different word. It is a tripwire
+  /// on the exact shapes that were removed, not a proof that no equivalent
+  /// returns. The structural guarantee is the one above — no second constructor
+  /// and no close — and this catches the tell-tales that always accompanied
+  /// them, which is worth having precisely because someone reintroducing this
+  /// pattern will reach for these names.
+  @Test("the four rebuild-compensating mechanisms stay gone")
+  func compensatingMechanismsStayGone() throws {
+    // **`generation` was a fourth name here and is deliberately NOT.** The panel
+    // used it for a rebuild counter; `LanguageChipPayload` uses it for the chip's
+    // own staleness token, which is legitimate, unrelated and present in three
+    // files of this module. A guard that fires on correct code is the shape this
+    // repo's own precision tally argues against — it trains people to route
+    // around the guard rather than to stop and look. Dropped rather than
+    // exempted, because an allowlist is the same defect with paperwork.
+    let banned = ["pendingCreateWork", "deferringIfPanelIsBeingDragged", "CATransaction"]
+    var offenders: [String] = []
+    for source in try Self.overlayModuleSources() where source.name.hasPrefix("Overlay") {
+      // Comments describe why these are gone, which is the point of the file
+      // they are gone from — so only CODE counts, found the same structural way
+      // the panel sweep is.
+      let code = source.text.split(separator: "\n")
+        .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+        .joined(separator: "\n")
+      for name in banned where code.contains(name) {
+        offenders.append("\(source.name): \(name)")
+      }
+    }
+    #expect(
+      offenders.isEmpty,
+      """
+      \(offenders) reintroduce a mechanism that exists only to survive a window \
+      being destroyed and rebuilt. With one retained window there is nothing to \
+      survive; if one of these is genuinely needed again, the retained window has \
+      already been lost and THAT is the defect.
+      """)
+  }
+
+  /// **A per-owner ceiling, because the failure mode of this migration is one
+  /// file becoming the thing it replaced.** `RecordingOverlayPanel` reached 3,368
+  /// lines by being the only place anything about the overlay could live; nothing
+  /// stopped it, and no single commit was where it went wrong.
+  ///
+  /// The numbers are today's `wc -l` rounded up, not a target — the point is that
+  /// crossing one is a DECISION rather than a drift. Raise a row deliberately and
+  /// say why, exactly as the app's other ceilings require; if a row needs raising
+  /// twice, the responsibility probably belongs in a new owner instead.
+  ///
+  /// `OverlayLegacyViews.swift` is exempt and named rather than silently omitted:
+  /// it is the nine leaf views moved WHOLE in C1, byte-identical, and its cleanup
+  /// is explicitly outside this migration. Capping it would invite exactly the
+  /// unrelated edit this migration keeps out of its own diff.
+  @Test("no overlay owner grows into the panel it replaced")
+  func perOwnerCeilings() throws {
+    let ceilings: [String: Int] = [
+      "OverlayAccessibilityEligibility.swift": 60,
+      "OverlayChipWiring.swift": 80,
+      "OverlayDirector.swift": 680,
+      "OverlayOutputRouter.swift": 100,
+      "OverlayPlacementState.swift": 220,
+      "OverlayReducer.swift": 790,
+      "OverlayRenderModel.swift": 110,
+      "OverlayRootView.swift": 240,
+      "OverlayVocabulary.swift": 470,
+      "OverlayWindowHost.swift": 390,
+    ]
+    let root = RepoRoot.url.appending(path: "Sources/EnviousWisprAppKit/App/Overlay")
+    for (name, ceiling) in ceilings.sorted(by: { $0.key < $1.key }) {
+      let url = root.appending(path: name)
+      let text = try String(contentsOf: url, encoding: .utf8)
+      let count = text.split(separator: "\n", omittingEmptySubsequences: false).count
+      #expect(
+        count <= ceiling,
+        "\(name) is \(count) lines against a ceiling of \(ceiling). Raise it deliberately and say why, or move the responsibility to a new owner.")
+    }
+
+    // The set is CHECKED, not assumed: a new owner added to the module without a
+    // ceiling is exactly how the old one grew unnoticed.
+    let onDisk = try FileManager.default
+      .contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+      .filter { $0.pathExtension == "swift" }
+      .map(\.lastPathComponent)
+      .filter { $0 != "OverlayLegacyViews.swift" }
+    #expect(
+      Set(onDisk) == Set(ceilings.keys),
+      "the overlay module and this ceiling table disagree: \(Set(onDisk).symmetricDifference(Set(ceilings.keys)))")
+  }
 }
 // **Only the BEHAVIOURAL suite below is DEBUG-only.** It reads
 // panelConstructionCountForTesting, which lives inside `#if DEBUG` on the
