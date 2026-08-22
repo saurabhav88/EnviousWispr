@@ -509,7 +509,8 @@ final class OverlayDirector {
         // The picture and the timer start together. Published here rather than
         // beside `model.presentation` because THIS is the instant the dwell
         // begins, and a view drawing a countdown has no other way to know it.
-        self.model.markDwellStarted(id)
+        self.model.markDwellStarted(
+          OverlayDwellWindow(id: id, startedAt: Date(), seconds: seconds))
         self.armedExpiry = self.schedule.after(seconds) { [weak self] in
           // The id is captured, never re-read: a timer fires for the presentation
           // it was armed for or it is dropped. The reducer's own identity gate

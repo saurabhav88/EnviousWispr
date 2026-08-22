@@ -41,10 +41,15 @@ struct EscapeRecoveryPillView: View {
   /// drawing -- it can reach the end while the pill is still sitting there,
   /// which is an expired-looking offer the user can still press.
   ///
-  /// `nil` until the presentation lands. Changing it is what starts the rail, so
-  /// the picture and the timer share ONE start instant by construction rather
-  /// than by two call sites agreeing.
-  let dwellStarted: PresentationID?
+  /// `nil` until the presentation lands.
+  ///
+  /// It carries a TIME rather than an identity because SwiftUI delivers a
+  /// published change on a later render transaction: a rail that started when
+  /// the signal ARRIVED would lag the running timer and be cut off before its
+  /// end. Reading `startedAt` lets a late arrival draw the REMAINDER, which is
+  /// correct whenever it runs. A hover-exit re-arm also produces a new
+  /// `startedAt`, which an id-only signal could not express at all.
+  let dwell: OverlayDwellWindow?
 
   /// Founder-specified.
   static let dwellSeconds: Double = 3.0
@@ -96,9 +101,9 @@ struct EscapeRecoveryPillView: View {
     // Not `onAppear`: see `dwellStarted`. Both forms are needed because the
     // signal may already be set when this view is built (a later presentation,
     // where nothing is deferred) or arrive after (the deferred first one).
-    .onAppear { if dwellStarted != nil { scheduleExpiry() } }
-    .onChange(of: dwellStarted) { _, landed in
-      if landed != nil { scheduleExpiry() }
+    .onAppear { if dwell != nil { scheduleExpiry() } }
+    .onChange(of: dwell) { _, window in
+      if window != nil { scheduleExpiry() }
     }
     .onDisappear { dismissTask?.cancel() }
   }
@@ -129,8 +134,21 @@ struct EscapeRecoveryPillView: View {
     guard !acted else { return }
     dismissTask?.cancel()
     dismissTask = nil
-    resetRail()
-    withAnimation(.linear(duration: Self.dwellSeconds)) { progress = 1 }
+    // **Draw the REMAINDER, not a fresh three seconds.** The director's timer is
+    // already running by the time this arrives; starting from empty would make
+    // the rail finish after the pill is gone, which is the same disagreement in
+    // the other direction.
+    let now = Date()
+    let elapsed = dwell?.elapsedFraction(at: now) ?? 0
+    let remaining = dwell?.remaining(at: now) ?? Self.dwellSeconds
+    var instant = Transaction()
+    instant.disablesAnimations = true
+    withTransaction(instant) { progress = elapsed }
+    guard remaining > 0 else {
+      withTransaction(instant) { progress = 1 }
+      return
+    }
+    withAnimation(.linear(duration: remaining)) { progress = 1 }
   }
 }
 

@@ -19,18 +19,19 @@ final class OverlayRenderModel: ObservableObject {
   /// What the retained root should render, or `nil` for an empty slot.
   @Published var presentation: OverlayPresentation?
 
-  /// **The presentation whose dwell has actually started**, published so a view
-  /// drawing a countdown starts it at the same instant the director arms the
-  /// real dismissal. `nil` while nothing is dwelling.
+  /// **The dwell a countdown is drawing**, published so a view starts from the
+  /// same instant the director armed the real dismissal. `nil` while nothing is
+  /// dwelling. See `OverlayDwellWindow` for why this carries a TIME rather than
+  /// an identity.
   ///
   /// A view cannot see this for itself: `onAppear` fires during construction and
   /// attachment, which on a deferred first presentation is before the window is
   /// ordered on screen. Two clocks with different start instants is exactly what
   /// made the recovery rail finish while its pill was still visible.
-  @Published private(set) var dwellStarted: PresentationID?
+  @Published private(set) var dwellWindow: OverlayDwellWindow?
 
-  func markDwellStarted(_ id: PresentationID?) {
-    dwellStarted = id
+  func markDwellStarted(_ window: OverlayDwellWindow?) {
+    dwellWindow = window
   }
 
   /// **Retained for the rendered recording's lifetime**, which is the obligation

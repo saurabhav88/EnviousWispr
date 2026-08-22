@@ -115,9 +115,9 @@ struct OverlayRootView: View {
       EscapeRecoveryPillView(
         onPaste: { press(.pasteEscapeRecovery(transcriptID: transcriptID), on: presentation) },
         onExpire: {},
-        // Matched against THIS presentation, so a signal left by a previous pill
-        // cannot start this one's rail early.
-        dwellStarted: model.dwellStarted == presentation.id ? presentation.id : nil)
+        // Matched against THIS presentation, so a window left by a previous pill
+        // cannot drive this one's rail.
+        dwell: model.dwellWindow?.id == presentation.id ? model.dwellWindow : nil)
     }
   }
 
