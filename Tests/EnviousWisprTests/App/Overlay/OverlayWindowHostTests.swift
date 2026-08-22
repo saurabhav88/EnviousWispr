@@ -38,9 +38,23 @@ struct OverlayWindowHostTests {
     visibleFrame: CGRect(x: 0, y: 85, width: 1512, height: 860),
     hasFullScreenSpace: true)
 
-  private static func host() -> OverlayWindowHost {
-    OverlayWindowHost(screens: { OverlayScreenResolver { screen } })
+  /// **Orders the panel out when the test ends.**
+  ///
+  /// These tests build REAL `NSPanel`s and `orderFrontRegardless()` them, which
+  /// is the point — the suite is about window behaviour. But `NSApp` retains an
+  /// ordered-in window, so without this every case leaves a floating pill on the
+  /// developer's screen for the life of the xctest process. Measured: 34 of them
+  /// stacked over the founder's terminal, from one lane.
+  ///
+  /// Not a production change and not a seam on a guard: the test orders out what
+  /// the test ordered in, using the DEBUG accessor that already exists.
+  private static func makeHost(
+    _ geometry: @escaping @autoclosure () -> ScreenGeometry = screen
+  ) -> OverlayWindowHost {
+    OverlayWindowHost(screens: { OverlayScreenResolver { geometry() } })
   }
+
+  private static func host() -> OverlayWindowHost { makeHost() }
 
   /// A view whose FRAME and FITTING size are independently settable.
   ///
@@ -68,6 +82,7 @@ struct OverlayWindowHostTests {
   @Test("one panel is constructed however many presentations arrive")
   func onePanelForEveryPresentation() {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     for i in 0..<12 {
       h.present(
         Self.view(width: 185 + CGFloat(i), height: 44), width: .fixed(185 + CGFloat(i)),
@@ -85,6 +100,7 @@ struct OverlayWindowHostTests {
   @Test("a continuing presentation keeps the pill where the user dragged it")
   func continuingKeepsTheDraggedPosition() throws {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -107,6 +123,7 @@ struct OverlayWindowHostTests {
   @Test("a fresh presentation is centred even after a drag")
   func freshRecentresAfterADrag() throws {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -134,6 +151,7 @@ struct OverlayWindowHostTests {
   @Test("the host's own frame changes never count as a user drag")
   func programmaticMovesAreNotDrags() {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -154,6 +172,7 @@ struct OverlayWindowHostTests {
   func aRealDragCounts() throws {
     // Paired with the case above: a host that never promotes would pass it.
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -168,6 +187,7 @@ struct OverlayWindowHostTests {
   @Test("hiding orders the panel out and keeps it alive")
   func hideOrdersOutWithoutClosing() throws {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -200,6 +220,7 @@ struct OverlayWindowHostTests {
   @Test("hiding never closes the window")
   func hideNeverCloses() throws {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -227,6 +248,7 @@ struct OverlayWindowHostTests {
   func sizingPathsAreDistinguishable() throws {
     // fixed 300, fitting 211, frame 150 — no two alike.
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     let v = Self.view(width: 150, height: 40, fitting: NSSize(width: 211, height: 58))
 
     h.present(v, width: .fixed(300), fixedHeight: nil, isFresh: true, position: .bottom)
@@ -251,6 +273,7 @@ struct OverlayWindowHostTests {
   @Test("a presentation that cannot be sized is refused, not shown at zero")
   func unsizablePresentationIsRefused() {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     let empty = Self.view(width: 0, height: 0)
     h.present(empty, width: .measured, fixedHeight: nil, isFresh: true, position: .bottom)
 
@@ -269,6 +292,7 @@ struct OverlayWindowHostTests {
   @Test("morphing replaces the panel's content view")
   func morphReplacesContent() throws {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -287,6 +311,7 @@ struct OverlayWindowHostTests {
   @Test("the panel's shipped configuration is unchanged")
   func panelConfigurationIsPinned() throws {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -308,6 +333,7 @@ struct OverlayWindowHostTests {
   @Test("Top continuity re-anchors by top edge when the outgoing pill was content-sized")
   func topContinuityContentSized() throws {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44, fitting: NSSize(width: 185, height: 44)),
       width: .fixed(185), fixedHeight: nil, isFresh: true, position: .top)
@@ -324,6 +350,7 @@ struct OverlayWindowHostTests {
   @Test("Top continuity re-anchors by centre when the outgoing pill had a fixed height")
   func topContinuityFixedHeight() throws {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
       position: .top)
@@ -359,6 +386,7 @@ struct OverlayWindowHostTests {
   @Test("a measured width with a fixed height is not content-sized vertically")
   func measuredWidthWithFixedHeightIsNotContentSized() throws {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 150, height: 40, fitting: NSSize(width: 211, height: 58)),
       width: .measured, fixedHeight: 92, isFresh: true, position: .top)
@@ -388,6 +416,7 @@ struct OverlayWindowHostTests {
   @Test("hiding releases the hosting view so its work stops")
   func hideReleasesTheHostingView() throws {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -413,6 +442,7 @@ struct OverlayWindowHostTests {
   func spaceChangeReachesTheHost() throws {
     var geometry = Self.screen
     let h = OverlayWindowHost(screens: { OverlayScreenResolver { geometry } })
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -452,6 +482,7 @@ struct OverlayWindowHostTests {
   @Test("a measured width is taken from the view, not from a default")
   func measuredWidthComesFromTheView() throws {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 271, height: 58), width: .measured, fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -465,6 +496,7 @@ struct OverlayWindowHostTests {
   @Test("a fixed height is honoured and overrides the view's own")
   func fixedHeightIsHonoured() throws {
     let h = Self.host()
+    defer { h.panelForTesting?.orderOut(nil) }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
       position: .bottom)

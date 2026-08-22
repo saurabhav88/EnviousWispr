@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import CoreGraphics
 import EnviousWisprCore
 import EnviousWisprPipeline
@@ -51,15 +52,34 @@ final class OverlayDirector {
   /// effects a feature depends on.
   private let deliverEffect: (OverlayEffect) -> Void
 
+  /// **ONE hosting view for the app's lifetime**, created lazily and reused.
+  /// The model is observable, so the same view re-renders rather than being
+  /// rebuilt — which is the SwiftUI half of the same claim the retained
+  /// `NSPanel` makes about the window.
+  private lazy var rootHostingView: NSView = NSHostingView(
+    rootView: OverlayRootView(model: model, dispatch: { [weak self] action in
+      guard let self, let id = reducer.state.current?.id else { return }
+      send(.action(id, action), actions: nil)
+    }))
+
+  /// The occupant the host is currently showing, so a morph can be told from a
+  /// fresh presentation. The host needs that distinction to decide whether to
+  /// re-anchor or preserve the live frame, and it is the CALLER's fact.
+  private var presentedID: PresentationID?
+
+  private let position: () -> OverlayPillPosition
+
   init(
     host: OverlayWindowHost,
     deliverEffect: @escaping (OverlayEffect) -> Void,
+    position: @escaping () -> OverlayPillPosition = { .top },
     model: OverlayRenderModel = OverlayRenderModel(),
     scheduler: OverlayScheduler = .live,
     makeID: @escaping () -> PresentationID = { PresentationID() }
   ) {
     self.host = host
     self.deliverEffect = deliverEffect
+    self.position = position
     self.model = model
     self.schedule = scheduler
     self.reducer = OverlayReducer(makeID: makeID)
@@ -160,6 +180,7 @@ final class OverlayDirector {
         activeBinding = nil
       }
       model.presentation = plan.presentation
+      render(plan.presentation)
     }
 
     if let action = plan.deliverAction {
@@ -181,7 +202,37 @@ final class OverlayDirector {
     }
   }
 
+  /// Push the model's new occupant to the window.
+  ///
+  /// **The model is set BEFORE this runs**, so the retained root has already
+  /// rendered the new content by the time the host measures it — a host that
+  /// measured first would size the window to the OUTGOING pill.
+  private func render(_ presentation: OverlayPresentation?) {
+    guard let presentation else {
+      presentedID = nil
+      model.clearRecordingProviders()
+      host.hide()
+      return
+    }
+    // `isFresh` is a change of OCCUPANT, not the absence of a window: a morph
+    // keeps the live frame, a genuinely new presentation re-anchors.
+    let isFresh = presentedID != presentation.id
+    presentedID = presentation.id
+    let presented = host.present(
+      rootHostingView,
+      width: presentation.requestedWidth,
+      fixedHeight: presentation.reservesFixedHeight,
+      isFresh: isFresh,
+      position: position())
+    if !presented {
+      // The host refused — no screen, or an unsizable presentation. Do not
+      // leave `presentedID` claiming an occupant that never reached the screen.
+      presentedID = nil
+    }
+  }
+
   #if DEBUG
+    var presentedIDForTesting: PresentationID? { presentedID }
     var currentPresentationForTesting: OverlayPresentation? { reducer.state.current }
     var hasArmedExpiryForTesting: Bool { armedExpiry != nil }
     var hasActiveBindingForTesting: Bool { activeBinding != nil }

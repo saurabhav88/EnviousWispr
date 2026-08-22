@@ -148,6 +148,7 @@ struct OverlayRetainedWindowBehaviourTests {
   @Test("the legacy API builds one window across several transitions")
   func legacyAPIUsesTheRetainedHost() async {
     let overlay = RecordingOverlayPanel()
+    defer { overlay.hide() }
 
     overlay.showPolishing(label: "Polishing…")
     await drainMainQueue()
@@ -173,6 +174,7 @@ struct OverlayRetainedWindowBehaviourTests {
   @Test("hiding and showing again reuses the same window")
   func hideThenShowReusesTheWindow() async {
     let overlay = RecordingOverlayPanel()
+    defer { overlay.hide() }
     for _ in 0..<4 {
       overlay.showPolishing(label: "Polishing…")
       await drainMainQueue()

@@ -22,6 +22,16 @@ struct OverlayDirectorTests {
 
   init() { _ = NSApplication.shared }
 
+  /// Every host built by this suite, so each test can order its window out.
+  /// `NSApp` retains an ordered-in window, so without this the pills accumulate
+  /// on screen for the life of the xctest process.
+  private static nonisolated(unsafe) var hosts: [OverlayWindowHost] = []
+
+  private static func closeAllWindows() {
+    for h in hosts { h.panelForTesting?.orderOut(nil) }
+    hosts.removeAll()
+  }
+
   private final class Armed {
     var work: OverlayScheduledWork?
   }
@@ -38,10 +48,13 @@ struct OverlayDirectorTests {
   private static func director() -> (OverlayDirector, Armed, Sink) {
     let armed = Armed()
     let sink = Sink()
+    // Real panels again: the director renders through a real host. Held so the
+    // caller can order the window out when the test ends.
     let host = OverlayWindowHost(screens: { OverlayScreenResolver { screen } })
     let d = OverlayDirector(
-      host: host, deliverEffect: { sink.effects.append($0) },
+      host: host, deliverEffect: { sink.effects.append($0) }, position: { .bottom },
       scheduler: .manual { armed.work = $0 })
+    hosts.append(host)
     return (d, armed, sink)
   }
 
@@ -53,6 +66,7 @@ struct OverlayDirectorTests {
   @Test("a timer armed for a dismissed pill cannot dismiss its replacement")
   func staleTimerCannotDismissTheLivePill() {
     let (d, armed, _) = Self.director()
+    defer { Self.closeAllWindows() }
     d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
     let staleTimer = try! #require(armed.work)
 
@@ -70,6 +84,7 @@ struct OverlayDirectorTests {
   @Test("arming a new expiry cancels the previous one")
   func armingReplacesTheArmedExpiry() {
     let (d, armed, _) = Self.director()
+    defer { Self.closeAllWindows() }
     d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
     let first = try! #require(armed.work)
 
@@ -83,6 +98,7 @@ struct OverlayDirectorTests {
   @Test("a persistent pill leaves no timer armed")
   func persistentPillDisarms() {
     let (d, armed, _) = Self.director()
+    defer { Self.closeAllWindows() }
     d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
     let notice = try! #require(armed.work)
 
@@ -97,6 +113,7 @@ struct OverlayDirectorTests {
   @Test("a pill's own timer dismisses it")
   func ownTimerDismisses() {
     let (d, armed, _) = Self.director()
+    defer { Self.closeAllWindows() }
     d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
 
     try! #require(armed.work).fireForTesting()
@@ -109,6 +126,7 @@ struct OverlayDirectorTests {
   @Test("an action reaches the feature that owns the live pill")
   func actionReachesItsOwner() {
     let (d, _, _) = Self.director()
+    defer { Self.closeAllWindows() }
     let delivered = Sink()
     d.send(.pipeline(.accessibilityToast), actions: { delivered.effects.append(.recordingIntentChanged(true)); _ = $0 })
     let id = try! #require(d.currentPresentationForTesting?.id)
@@ -123,6 +141,7 @@ struct OverlayDirectorTests {
   @Test("a binding is dropped when its pill is replaced")
   func bindingDiesWithItsPill() {
     let (d, _, _) = Self.director()
+    defer { Self.closeAllWindows() }
     let delivered = Sink()
     d.send(.pipeline(.accessibilityToast), actions: { _ in delivered.effects.append(.recordingIntentChanged(true)) })
     let toast = try! #require(d.currentPresentationForTesting?.id)
@@ -147,6 +166,7 @@ struct OverlayDirectorTests {
   @Test("the cancelled transcript is handed over exactly once")
   func payloadIsTakenOnce() {
     let (d, _, _) = Self.director()
+    defer { Self.closeAllWindows() }
     let transcript = UUID()
     d.presentEscapeRecovery(
       CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
@@ -161,6 +181,7 @@ struct OverlayDirectorTests {
   @Test("a payload is never handed to a different transcript")
   func payloadIsKeyedToItsTranscript() {
     let (d, _, _) = Self.director()
+    defer { Self.closeAllWindows() }
     let mine = UUID()
     d.presentEscapeRecovery(
       CancelUndoPayload(transcriptID: mine, targetApp: nil, targetElement: nil),
@@ -174,6 +195,7 @@ struct OverlayDirectorTests {
   @Test("the payload is released when the pill goes")
   func payloadIsReleasedWithThePill() {
     let (d, _, _) = Self.director()
+    defer { Self.closeAllWindows() }
     let transcript = UUID()
     d.presentEscapeRecovery(
       CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
@@ -193,6 +215,7 @@ struct OverlayDirectorTests {
   @Test("the payload is released when a different pill replaces the recovery pill")
   func payloadIsReleasedOnReplacement() {
     let (d, _, _) = Self.director()
+    defer { Self.closeAllWindows() }
     let transcript = UUID()
     d.presentEscapeRecovery(
       CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
@@ -213,6 +236,7 @@ struct OverlayDirectorTests {
   @Test("the cancelled-transcript pill carries its Undo handler")
   func escapeRecoveryCarriesItsHandler() {
     let (d, _, _) = Self.director()
+    defer { Self.closeAllWindows() }
     let transcript = UUID()
     var pressed: [OverlayAction] = []
     d.presentEscapeRecovery(
@@ -233,6 +257,7 @@ struct OverlayDirectorTests {
   @Test("a same-pill update does not drop its handler")
   func morphPreservesItsBinding() {
     let (d, _, _) = Self.director()
+    defer { Self.closeAllWindows() }
     var pressed: [OverlayAction] = []
     d.send(.pipeline(.recording(audioLevel: 0.1)), actions: { pressed.append($0) })
     let id = try! #require(d.currentPresentationForTesting?.id)
@@ -245,5 +270,52 @@ struct OverlayDirectorTests {
     #expect(
       pressed == [.discardRecovery],
       "a metering update dropped the live pill's handler")
+  }
+
+  // MARK: - Rendering through the host
+
+  /// **A morph is not a fresh presentation, and the host needs that told to it.**
+  /// A fresh presentation re-anchors; a morph keeps the live frame. Getting it
+  /// wrong moves the pill on every audio tick.
+  @Test("a same-pill update is not presented as a fresh occupant")
+  func morphIsNotFresh() {
+    let (d, _, _) = Self.director()
+    defer { Self.closeAllWindows() }
+    d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
+    let first = try! #require(d.presentedIDForTesting)
+
+    d.send(.pipeline(.recording(audioLevel: 0.8)), actions: nil)
+
+    #expect(d.presentedIDForTesting == first, "a metering update changed the presented occupant")
+  }
+
+  @Test("a genuinely new pill is a new occupant")
+  func replacementIsANewOccupant() {
+    let (d, _, _) = Self.director()
+    defer { Self.closeAllWindows() }
+    d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
+    let first = try! #require(d.presentedIDForTesting)
+
+    d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+
+    #expect(d.presentedIDForTesting != first)
+  }
+
+  /// Emptying the slot must release the recording providers, or a closure
+  /// reading a finished dictation outlives it.
+  @Test("hiding releases the recording providers and the occupant")
+  func hidingReleasesEverything() {
+    let (d, _, _) = Self.director()
+    defer { Self.closeAllWindows() }
+    d.renderModel.setRecordingProviders(
+      audioLevel: { 0.9 }, recordingElapsed: { 12 }, livePreview: { .off },
+      usesPreviewLayout: false, onContentHeightChange: { _ in })
+    d.send(.pipeline(.recording(audioLevel: 0.2)), actions: nil)
+
+    d.send(.pipeline(.hidden), actions: nil)
+
+    #expect(d.presentedIDForTesting == nil)
+    #expect(d.renderModel.audioLevelProvider() == 0, "a provider outlived its dictation")
+    #expect(d.renderModel.recordingElapsedProvider() == nil)
   }
 }
