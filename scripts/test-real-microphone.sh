@@ -73,27 +73,69 @@ with tempfile.TemporaryDirectory(prefix="ew-microphone-watchdog-") as marker_dir
         relay.start()
         stop_deadline = None
         timed_out = False
-        while process.poll() is None:
-            if started.exists() and stop_deadline is None:
-                stop_deadline = time.monotonic() + 2.0
-            if finished.exists():
-                stop_deadline = None
-            if stop_deadline is not None and time.monotonic() >= stop_deadline:
-                message = "ERROR: stopCapture and stream completion exceeded two seconds.\n"
-                sys.stderr.write(message)
-                log.write(message)
-                log.flush()
-                timed_out = True
-                os.killpg(process.pid, signal.SIGTERM)
-                try:
-                    process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                break
-            time.sleep(0.025)
+        received_signal = [None]
+
+        def group_exists():
+            try:
+                os.killpg(process.pid, 0)
+                return True
+            except ProcessLookupError:
+                return False
+
+        def signal_group(sig):
+            try:
+                os.killpg(process.pid, sig)
+            except ProcessLookupError:
+                pass
+
+        def reap_group():
+            signal_group(signal.SIGTERM)
+            grace_deadline = time.monotonic() + 2.0
+            while group_exists() and time.monotonic() < grace_deadline:
+                time.sleep(0.025)
+            # Sweep the process group even if its original leader already exited.
+            if group_exists():
+                signal_group(signal.SIGKILL)
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                signal_group(signal.SIGKILL)
+                process.wait()
+
+        def request_shutdown(signum, _frame):
+            received_signal[0] = signum
+
+        for handled_signal in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            signal.signal(handled_signal, request_shutdown)
+
+        try:
+            while True:
+                if received_signal[0] is not None:
+                    reap_group()
+                    break
+                if process.poll() is not None:
+                    break
+                if started.exists() and stop_deadline is None:
+                    stop_deadline = time.monotonic() + 2.0
+                if finished.exists():
+                    stop_deadline = None
+                if stop_deadline is not None and time.monotonic() >= stop_deadline:
+                    message = "ERROR: stopCapture and stream completion exceeded two seconds.\n"
+                    sys.stderr.write(message)
+                    log.write(message)
+                    log.flush()
+                    timed_out = True
+                    reap_group()
+                    break
+                time.sleep(0.025)
+        finally:
+            if group_exists():
+                reap_group()
 
         return_code = process.wait()
         relay.join(timeout=2)
+        if received_signal[0] is not None:
+            sys.exit(128 + received_signal[0])
         if timed_out:
             sys.exit(124)
         sys.exit(return_code)
