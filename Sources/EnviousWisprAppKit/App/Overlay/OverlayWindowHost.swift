@@ -284,6 +284,26 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
     // Fall back to the view's own frame, which is what a caller that sized its
     // view already means. Never to a literal default — a plausible number here
     // is exactly what `.measured` exists to forbid.
+    // **CONSTRAIN THE WIDTH BEFORE MEASURING THE HEIGHT.** A pill that asks for a
+    // fixed width and a CONTENT height is asking "how tall is this text at that
+    // width", and an unconstrained `fittingSize` answers a different question:
+    // how tall it is at whatever width it would naturally take. For the #1891
+    // advisory that is one line, so the panel was then narrowed to 360 points
+    // without gaining the height its sentence needs and the text was clipped.
+    //
+    // The deleted panel avoided this by wrapping the advisory in
+    // `.frame(width: 360)` inside the SwiftUI hierarchy. Fixing it HERE instead
+    // covers every fixed-width, measured-height pill rather than the one that
+    // happened to be reported -- the twin-site class this repo already names
+    // (`workflow-process.md` RULE: port-proven-patterns-wholesale).
+    //
+    // Only that combination is touched: a `.measured` width must stay
+    // unconstrained, or the measurement it exists for is the constraint we just
+    // imposed.
+    if case .fixed(let constrained) = width, fixedHeight == nil, constrained > 0 {
+      view.setFrameSize(NSSize(width: constrained, height: view.frame.height))
+      view.layoutSubtreeIfNeeded()
+    }
     let fitting = view.fittingSize
     let fallback = view.frame.size
     let measuredWidth = fitting.width > 0 ? fitting.width : fallback.width

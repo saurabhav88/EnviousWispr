@@ -480,22 +480,40 @@ final class OverlayDirector {
         deliverEffect(effect)
       }
     }
+    // **A DWELL STARTS WHEN THE PILL IS VISIBLE, NOT WHEN THE PLAN IS APPLIED.**
+    // The shipped panel armed its auto-dismiss INSIDE the deferred creation,
+    // after `showPanel`; arming here instead spends part of a transient pill's
+    // dwell before anything is on screen. With the first render deferred a run
+    // loop that is small, and it is not nothing: Escape Recovery draws a
+    // COUNTDOWN RAIL from the same dwell, so a clock that starts early finishes
+    // early and the rail disagrees with the pill it is drawn on.
+    //
+    // **Cancelling stays immediate.** A cancel is about the OUTGOING pill, which
+    // is already gone; making it wait for the incoming one to land would leave a
+    // dead timer live across the gap — the stale-dismissal defect `PresentationID`
+    // exists to close.
+    let armExpiry: () -> Void
     switch plan.expiryCommand {
     case .unchanged:
-      break
+      armExpiry = {}
     case .cancel:
       armedExpiry?.cancel()
       armedExpiry = nil
+      armExpiry = {}
     case .arm(let id, let seconds, let target):
       armedExpiry?.cancel()
-      armedExpiry = schedule.after(seconds) { [weak self] in
-        // The id is captured, never re-read: a timer fires for the presentation
-        // it was armed for or it is dropped. The reducer's own identity gate
-        // makes a late arrival inert. The TARGET says what ends — the whole
-        // presentation, or only the #1060 banner inside a live recording.
-        switch target {
-        case .presentation: self?.send(.expiryFired(id), actions: nil)
-        case .inPanelNotice: self?.send(.inPanelNoticeExpiryFired(id), actions: nil)
+      armedExpiry = nil
+      armExpiry = { [weak self] in
+        guard let self else { return }
+        self.armedExpiry = self.schedule.after(seconds) { [weak self] in
+          // The id is captured, never re-read: a timer fires for the presentation
+          // it was armed for or it is dropped. The reducer's own identity gate
+          // makes a late arrival inert. The TARGET says what ends — the whole
+          // presentation, or only the #1060 banner inside a live recording.
+          switch target {
+          case .presentation: self?.send(.expiryFired(id), actions: nil)
+          case .inPanelNotice: self?.send(.inPanelNoticeExpiryFired(id), actions: nil)
+          }
         }
       }
     }
@@ -546,6 +564,7 @@ final class OverlayDirector {
       // **The announcement travels WITH the render**, so the deferred first
       // presentation announces when it lands and a refused one never does.
       let announceOnSuccess: () -> Void = { [weak self] in
+        armExpiry()
         guard announcing, let announcement = plan.announcement else { return }
         self?.announce(announcement)
       }
@@ -584,6 +603,11 @@ final class OverlayDirector {
     // The EFFECT ordering that was load-bearing is untouched: effects still run
     // first, before the geometry read, which is the constraint Live Preview's
     // first frame actually depends on.
+    if !plan.didChange {
+      // Nothing is being rendered, so there is no "it landed" signal to wait
+      // for — the pill this dwell belongs to is already on screen.
+      armExpiry()
+    }
     if !plan.didChange, announcing, let announcement = plan.announcement {
       announce(announcement)
     }
