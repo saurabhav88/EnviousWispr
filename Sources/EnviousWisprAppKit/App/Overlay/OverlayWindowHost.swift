@@ -333,7 +333,9 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
     // retained root has already rendered the new content by the time the host
     // measures it". That is FALSE: SwiftUI applies a published change on its own
     // schedule, so without this the host measures the OUTGOING pill — the exact
-    // failure that comment was written to rule out.
+    // failure that comment was written to rule out. **THIS LINE IS THAT
+    // GUARANTEE**, and `render`'s doc comment now says so rather than implying
+    // the ordering alone is sufficient.
     //
     // What it cost, measured live at 40 ms across four runs: the window was
     // placed for the outgoing 400-point recording pill, SwiftUI then re-rendered

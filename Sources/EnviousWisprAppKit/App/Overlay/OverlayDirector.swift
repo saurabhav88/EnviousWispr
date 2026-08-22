@@ -685,9 +685,19 @@ final class OverlayDirector {
 
   /// Push the model's new occupant to the window.
   ///
-  /// **The model is set BEFORE this runs**, so the retained root has already
-  /// rendered the new content by the time the host measures it — a host that
-  /// measured first would size the window to the OUTGOING pill.
+  /// **SETTING THE MODEL FIRST IS NOT ENOUGH, AND THIS COMMENT USED TO SAY IT
+  /// WAS.** It claimed the retained root has already rendered the new content by
+  /// the time the host measures it. SwiftUI applies a published change on its own
+  /// schedule, so the host measured the OUTGOING pill — the exact failure the old
+  /// sentence was written to rule out, and one that only live UAT found: the pill
+  /// sat 124.5 points left of centre for 0.52 s after a recording ended, and
+  /// rested 10.5 points left permanently.
+  ///
+  /// **`OverlayWindowHost.resolvedSize` flushes the pending layout, and THAT is
+  /// what makes the measurement current.** The model is still set first, because
+  /// the flush needs the new content to be pending; the two are a pair and
+  /// neither works alone. Do not treat the flush as redundant on the strength of
+  /// the ordering here — that reasoning is what this comment previously invited.
   ///
   /// Returns `false` ONLY when the host refused a presentation it was asked to
   /// show. Emptying the slot always succeeds, so the caller reads a `false` as
