@@ -22,8 +22,22 @@ private enum ShippedBackendLatencyFixture {
   static let expectedTranscript =
     "the quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills"
 
-  static var parakeetIsInstalled: Bool {
-    AsrModels.modelsExist(at: AsrModels.defaultCacheDirectory(for: .v3), version: .v3)
+  static func parakeetRegistration() throws -> DeliveryRegistration {
+    let manifestURL = repoRoot.appending(
+      path: "Sources/EnviousWispr/Resources/parakeet-delivery-manifest.json")
+    let manifest = try DeliveryManifest.load(from: Data(contentsOf: manifestURL))
+    let appSupport = FileManager.default.urls(
+      for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    return DeliveryRegistration(
+      manifest: manifest,
+      installDirectory: AsrModels.defaultCacheDirectory(for: .v3),
+      metadataDirectory: appSupport.appending(
+        path: "EnviousWispr/ModelDelivery", directoryHint: .isDirectory))
+  }
+
+  static func parakeetIsAdmitted() async -> Bool {
+    guard let registration = try? parakeetRegistration() else { return false }
+    return await ModelDeliveryController().isAdmitted(registration)
   }
 
   static func whisperKitRegistration() throws -> DeliveryRegistration {
@@ -89,7 +103,9 @@ struct ShippedBackendLatencyTests {
 
   @Test(
     "Parakeet p95 stays under one second after warm-up",
-    .enabled(if: ShippedBackendLatencyFixture.parakeetIsInstalled),
+    .enabled("requires the shipped model to be admitted") {
+      await ShippedBackendLatencyFixture.parakeetIsAdmitted()
+    },
     .tags(.realBoundary)
   )
   func parakeetP95StaysUnderOneSecond() async throws {
