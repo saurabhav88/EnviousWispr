@@ -650,6 +650,7 @@ struct ClipboardIsolationFreezeTests {
 
     private static let clipboardWriteFunctions: Set<String> = [
       "pasteToActiveApp",
+      "copyToClipboard",
       "copyToClipboardReturningChangeCount",
     ]
 
@@ -1195,7 +1196,7 @@ struct ClipboardIsolationFreezeTests {
       inspection.writeCallsUsingExecutorBoard.count == gates.count,
       "every system-paste tier must have one clipboard write")
     #expect(
-      inspection.allClipboardWritesUseExecutorBoard == [true, true, true],
+      inspection.allClipboardWritesUseExecutorBoard == [true, true, true, true],
       "every clipboard write in the cascade must use the executor's injected board")
     #expect(
       inspection.writeCallsUsingExecutorBoard == [true, true, true],
