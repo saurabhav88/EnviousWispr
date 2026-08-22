@@ -274,56 +274,53 @@ struct ClipboardIsolationFreezeTests {
       // Following through the call would require data-flow analysis; this syntax-only guard owns only
       // values written directly into the executor's `pasteboard:` argument.
       override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
-        // An immediately-invoked closure is not a helper or a data-flow question, but only its RESULT
-        // becomes the pasteboard. Scanning every descendant made an unrelated local enum case such as
-        // `let mode: Mode = .general` look like the returned board.
-        if let closure = ClipboardVisitor.unwrapped(node.calledExpression).as(
-          ClosureExprSyntax.self)
-        {
-          inspectResult(of: closure) { [weak self] expression in self?.walk(expression) }
-        } else if isOptionalValueWrapper(node.calledExpression) {
+        if isOptionalValueWrapper(node.calledExpression) {
           // `Optional(value)!` and `.some(value)!` preserve the wrapped value. Unlike an arbitrary
           // helper argument, a directly written `.general` here is the pasteboard that reaches the
           // executor and must remain visible to the guard.
           for argument in node.arguments {
             walk(argument.expression)
           }
-        } else if let composedInvocation = ClipboardVisitor.unwrapped(node.calledExpression).as(
-          FunctionCallExprSyntax.self)
-        {
-          // `factory()()` invokes the result of another call. When the inner call is an IIFE returning
-          // a closure, that returned closure is the outer call's value-producing callee and must be
-          // followed just like a one-level IIFE. Arbitrary helper arguments remain skipped.
-          inspectReturnedClosure(from: composedInvocation)
+        } else {
+          // Evaluate only values produced by directly-written IIFEs. This follows any number of
+          // returned-closure invocations while ignoring unrelated locals and arbitrary helper args.
+          for result in producedValues(of: ExprSyntax(node)) { walk(result) }
         }
         return .skipChildren
       }
 
-      private func inspectReturnedClosure(from invocation: FunctionCallExprSyntax) {
+      private func producedValues(of expression: ExprSyntax) -> [ExprSyntax] {
         guard
-          let factory = ClipboardVisitor.unwrapped(invocation.calledExpression).as(
-            ClosureExprSyntax.self)
-        else { return }
-        inspectResult(of: factory) { [weak self] expression in
-          guard
-            let self,
-            let returnedClosure = ClipboardVisitor.unwrapped(expression).as(ClosureExprSyntax.self)
-          else { return }
-          self.inspectResult(of: returnedClosure) { [weak self] in self?.walk($0) }
+          let invocation = ClipboardVisitor.unwrapped(expression).as(FunctionCallExprSyntax.self)
+        else { return [expression] }
+
+        let calledExpression = ClipboardVisitor.unwrapped(invocation.calledExpression)
+        let callableValues: [ExprSyntax]
+        if calledExpression.is(ClosureExprSyntax.self) {
+          callableValues = [calledExpression]
+        } else if calledExpression.is(FunctionCallExprSyntax.self) {
+          callableValues = producedValues(of: calledExpression)
+        } else {
+          return []
+        }
+
+        return callableValues.flatMap { callable -> [ExprSyntax] in
+          guard let closure = ClipboardVisitor.unwrapped(callable).as(ClosureExprSyntax.self)
+          else { return [] }
+          return resultExpressions(of: closure)
         }
       }
 
-      private func inspectResult(
-        of closure: ClosureExprSyntax,
-        using inspect: @escaping (ExprSyntax) -> Void
-      ) {
+      private func resultExpressions(of closure: ClosureExprSyntax) -> [ExprSyntax] {
+        var results: [ExprSyntax] = []
         if let lastItem = closure.statements.last?.item.as(ExprSyntax.self) {
-          inspect(lastItem)
+          results.append(lastItem)
         }
-        let returns = ClosureReturnVisitor(inspect: inspect)
+        let returns = ClosureReturnVisitor { results.append($0) }
         for statement in closure.statements {
           returns.walk(statement)
         }
+        return results
       }
 
       private func isOptionalValueWrapper(_ callee: ExprSyntax) -> Bool {
@@ -602,7 +599,7 @@ struct ClipboardIsolationFreezeTests {
   private final class SystemPasteTierVisitor: SyntaxVisitor {
     private struct ClipboardWrite {
       let position: Int
-      let block: Int?
+      let controlRegions: Set<Int>
       let usesExecutorBoard: Bool
     }
 
@@ -625,6 +622,10 @@ struct ClipboardIsolationFreezeTests {
       associatedWrites.map { $0?.usesExecutorBoard == true }
     }
 
+    var allClipboardWritesUseExecutorBoard: [Bool] {
+      clipboardWrites.map(\.usesExecutorBoard)
+    }
+
     var routeWritesAreDistinct: Bool {
       let positions = associatedWrites.compactMap { $0?.position }
       return positions.count == systemPastes.count && Set(positions).count == positions.count
@@ -635,7 +636,7 @@ struct ClipboardIsolationFreezeTests {
         clipboardWrites
           .filter { write in
             write.position <= paste.position
-              && write.block.map(paste.ancestorBlocks.contains) == true
+              && write.controlRegions.isSubset(of: paste.ancestorBlocks)
           }
           .max { $0.position < $1.position }
       }
@@ -665,7 +666,7 @@ struct ClipboardIsolationFreezeTests {
         clipboardWrites.append(
           ClipboardWrite(
             position: node.positionAfterSkippingLeadingTrivia.utf8Offset,
-            block: nearestCodeBlock(of: node),
+            controlRegions: ancestorControlRegions(of: node),
             usesExecutorBoard: node.arguments.contains { argument in
               argument.label.map(ClipboardVisitor.identifierText) == "to"
                 && Array(argument.expression.tokens(viewMode: .sourceAccurate).map(\.text))
@@ -678,28 +679,16 @@ struct ClipboardIsolationFreezeTests {
       systemPastes.append(
         SystemPaste(
           position: node.positionAfterSkippingLeadingTrivia.utf8Offset,
-          ancestorBlocks: ancestorCodeBlocks(of: node)))
+          ancestorBlocks: ancestorControlRegions(of: node)))
       return .visitChildren
     }
 
-    private func nearestCodeBlock(of node: some SyntaxProtocol) -> Int? {
-      var ancestor = Syntax(node).parent
-      while let current = ancestor {
-        if let block = current.as(CodeBlockSyntax.self) {
-          return block.positionAfterSkippingLeadingTrivia.utf8Offset
-        }
-        if current.is(FunctionDeclSyntax.self) { return nil }
-        ancestor = current.parent
-      }
-      return nil
-    }
-
-    private func ancestorCodeBlocks(of node: some SyntaxProtocol) -> Set<Int> {
+    private func ancestorControlRegions(of node: some SyntaxProtocol) -> Set<Int> {
       var blocks: Set<Int> = []
       var ancestor = Syntax(node).parent
       while let current = ancestor {
-        if let block = current.as(CodeBlockSyntax.self) {
-          blocks.insert(block.positionAfterSkippingLeadingTrivia.utf8Offset)
+        if current.is(CodeBlockSyntax.self) || current.is(SwitchCaseSyntax.self) {
+          blocks.insert(current.positionAfterSkippingLeadingTrivia.utf8Offset)
         }
         if current.is(FunctionDeclSyntax.self) { break }
         ancestor = current.parent
@@ -822,14 +811,16 @@ struct ClipboardIsolationFreezeTests {
 
   static func systemPasteTierInspection(inSource source: String) -> (
     gates: [Bool], predicateUsesGeneralBoardIdentity: Bool,
-    writeCallsUsingExecutorBoard: [Bool], routeWritesAreDistinct: Bool
+    writeCallsUsingExecutorBoard: [Bool], routeWritesAreDistinct: Bool,
+    allClipboardWritesUseExecutorBoard: [Bool]
   ) {
     let tree = Parser.parse(source: source)
     let visitor = SystemPasteTierVisitor(viewMode: .sourceAccurate)
     visitor.walk(tree)
     return (
       visitor.gates, visitor.predicateUsesGeneralBoardIdentity,
-      visitor.writeCallsUsingExecutorBoard, visitor.routeWritesAreDistinct
+      visitor.writeCallsUsingExecutorBoard, visitor.routeWritesAreDistinct,
+      visitor.allClipboardWritesUseExecutorBoard
     )
   }
 
@@ -1174,6 +1165,7 @@ struct ClipboardIsolationFreezeTests {
         #"PasteCascadeExecutor(pasteboard: ({ { let mode: Mode = .general; return NSPasteboard.withUniqueName() } }())())"#,
         0
       ),
+      (#"PasteCascadeExecutor(pasteboard: ({ { { .general } } }())()())"#, 1),
       (#"let board = NSPasteboard.general; PasteCascadeExecutor(pasteboard: board)"#, 1),
     ])
   func pasteCascadeExecutorChecksItsPasteboardArgument(source: String, expected: Int) {
@@ -1202,6 +1194,9 @@ struct ClipboardIsolationFreezeTests {
     #expect(
       inspection.writeCallsUsingExecutorBoard.count == gates.count,
       "every system-paste tier must have one clipboard write")
+    #expect(
+      inspection.allClipboardWritesUseExecutorBoard == [true, true, true],
+      "every clipboard write in the cascade must use the executor's injected board")
     #expect(
       inspection.writeCallsUsingExecutorBoard == [true, true, true],
       "every system-paste tier must write its payload to the executor's injected board")
@@ -1287,6 +1282,7 @@ struct ClipboardIsolationFreezeTests {
         """)
 
     #expect(inspection.writeCallsUsingExecutorBoard == [true, false])
+    #expect(inspection.allClipboardWritesUseExecutorBoard == [true, false])
   }
 
   @Test("a local pasteboard name cannot impersonate the executor property")
@@ -1313,6 +1309,27 @@ struct ClipboardIsolationFreezeTests {
             PasteService.pasteViaAppleScript(pid: 1)
             PasteService.copyToClipboardReturningChangeCount(
               "late", to: self.pasteboard)
+          }
+        }
+        """)
+
+    #expect(inspection.writeCallsUsingExecutorBoard == [false])
+    #expect(!inspection.routeWritesAreDistinct)
+  }
+
+  @Test("a write in another switch case cannot satisfy a system-paste route")
+  func systemPasteWritesMustDominateTheirRoute() {
+    let inspection = Self.systemPasteTierInspection(
+      inSource: """
+        func deliver(_ mode: Mode) {
+          if systemPasteCanReachOurText {
+            switch mode {
+            case .write:
+              PasteService.copyToClipboardReturningChangeCount(
+                "other case", to: self.pasteboard)
+            case .paste:
+              PasteService.pasteViaAppleScript(pid: 1)
+            }
           }
         }
         """)
