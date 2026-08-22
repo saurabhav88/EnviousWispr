@@ -52,15 +52,21 @@ final class OverlayDirector {
   /// effects a feature depends on.
   private let deliverEffect: (OverlayEffect) -> Void
 
-  /// **ONE hosting view for the app's lifetime**, created lazily and reused.
-  /// The model is observable, so the same view re-renders rather than being
-  /// rebuilt — which is the SwiftUI half of the same claim the retained
-  /// `NSPanel` makes about the window.
+  /// **ONE hosting view for THIS DIRECTOR's lifetime**, created lazily and
+  /// reused. The model is observable, so the same view re-renders rather than
+  /// being rebuilt — the SwiftUI half of the same claim the retained `NSPanel`
+  /// makes about the window. "For the app's lifetime" is a property of the
+  /// COMPOSITION ROOT holding the director, not something this file can promise.
+  ///
+  /// The view sends whole events and supplies the presentation's own ID; this
+  /// closure no longer looks one up. It used to read `reducer.state.current?.id`
+  /// at press time, which relabels a click on an outgoing pill with its
+  /// SUCCESSOR's identity — so the staleness check below passes it through and
+  /// the wrong pill's handler runs.
   private lazy var rootHostingView: NSView = NSHostingView(
-    rootView: OverlayRootView(model: model, dispatch: { [weak self] action in
-      guard let self, let id = reducer.state.current?.id else { return }
-      send(.action(id, action), actions: nil)
-    }))
+    rootView: OverlayRootView(
+      model: model,
+      sendEvent: { [weak self] event in self?.send(event, actions: nil) }))
 
   /// The occupant the host is currently showing, so a morph can be told from a
   /// fresh presentation. The host needs that distinction to decide whether to
@@ -179,6 +185,19 @@ final class OverlayDirector {
       } else {
         activeBinding = nil
       }
+
+      // **The providers belong to a RECORDING, so they end when the recording
+      // does — and a replacement ends it just as surely as an empty slot.**
+      // Releasing them only when the slot emptied left a finished dictation's
+      // closures being polled fifty times a second behind whatever pill replaced
+      // it, which is the same lifetime defect as the payload custody above.
+      // A same-id morph keeps them: an audio tick is the SAME recording.
+      if case .recording? = plan.presentation?.content {
+        // Still the recording pill. Its providers are still its own.
+      } else {
+        model.clearRecordingProviders()
+      }
+
       model.presentation = plan.presentation
       render(plan.presentation)
     }
@@ -202,6 +221,23 @@ final class OverlayDirector {
     }
   }
 
+  /// **Discharges the obligation `OverlayContent.recording` records**: the
+  /// non-preview recording pill reserves a fixed 92-point interaction frame, and
+  /// the Live Preview variant is content-sized from its first frame so it does
+  /// not visibly snap once the real height is measured.
+  ///
+  /// The DIRECTOR decides it and the reducer cannot, because whether preview is
+  /// on arrives as a provider rather than as an event — putting it in the
+  /// reducer would mean the reducer reading a closure, which stops it being a
+  /// function of its events. Every other presentation takes its own reserved
+  /// height unchanged.
+  private func fixedHeight(for presentation: OverlayPresentation) -> CGFloat? {
+    guard case .recording = presentation.content, model.usesPreviewLayout else {
+      return presentation.reservesFixedHeight
+    }
+    return nil
+  }
+
   /// Push the model's new occupant to the window.
   ///
   /// **The model is set BEFORE this runs**, so the retained root has already
@@ -210,7 +246,6 @@ final class OverlayDirector {
   private func render(_ presentation: OverlayPresentation?) {
     guard let presentation else {
       presentedID = nil
-      model.clearRecordingProviders()
       host.hide()
       return
     }
@@ -221,13 +256,17 @@ final class OverlayDirector {
     let presented = host.present(
       rootHostingView,
       width: presentation.requestedWidth,
-      fixedHeight: presentation.reservesFixedHeight,
+      fixedHeight: fixedHeight(for: presentation),
       isFresh: isFresh,
       position: position())
     if !presented {
-      // The host refused — no screen, or an unsizable presentation. Do not
-      // leave `presentedID` claiming an occupant that never reached the screen.
+      // The host refused — no screen, or a presentation it could not size — and
+      // it returns BEFORE touching the panel, so a window that was already up
+      // stays up. The model has already published the new occupant by now, so
+      // leaving it would show the NEW content in the OUTGOING pill's frame.
+      // Clear the claim AND take the window down.
       presentedID = nil
+      host.hide()
     }
   }
 
@@ -237,6 +276,10 @@ final class OverlayDirector {
     var hasArmedExpiryForTesting: Bool { armedExpiry != nil }
     var hasActiveBindingForTesting: Bool { activeBinding != nil }
     var holdsEscapeRecoveryPayloadForTesting: Bool { escapeRecoveryPayload != nil }
+    /// The window the director renders through, so a test can assert on the
+    /// FRAME rather than on the argument it passed — the argument is the thing
+    /// under test.
+    var hostForTesting: OverlayWindowHost { host }
   #endif
 }
 

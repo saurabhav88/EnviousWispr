@@ -396,9 +396,9 @@ struct OverlayReducer {
       // was.** With Live Preview on, that site takes a different branch —
       // `fitToContent: true`, content-sized from the first frame so it does not
       // visibly snap. Whether preview is on is a provider the DIRECTOR owns, so
-      // the reducer cannot decide it here. C3 obligation, recorded rather than
-      // guessed: the director supplies the preview flag and this branch gains a
-      // content-sized variant.
+      // the reducer cannot decide it here, and it does not: the 92 below is the
+      // NON-preview answer, and `OverlayDirector.fixedHeight(for:)` overrides it
+      // to content-sized when the render model says preview is on.
       return OverlayPresentation(
         id: id, content: .recording(audioLevel: level, isLocked: false, notice: nil),
         expiry: .untilReplaced, requestedWidth: .fixed(185), reservesFixedHeight: 92)
@@ -422,64 +422,83 @@ struct OverlayReducer {
     case .accessibilityToast:
       return notice(
         id: id, kind: .accessibilityToast, text: DictationNarrator.accessibilityToastText,
-        width: .fixed(300),  // :1035
-        expiry: .after(seconds: 6), isMultiline: true,  // :1039
+        width: .fixed(300), fixedHeight: 56,  // :859 and :1118 both pass height: 56
+        expiry: .after(seconds: 6), isMultiline: true,
         action: (label: "Grant", action: .grantAccessibility))
 
     case .warning(let reason):
       return notice(
-        id: id, kind: .notification, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
+        id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
+        // A single-line notification is NOT `fitToContent`, so it takes
+        // `showPanel`'s own `height: 44` default and keeps the 280x44 box.
+        width: .fixed(280), fixedHeight: 44,
         expiry: .after(seconds: 2.5), severity: .warning)  // NotificationStyle 2.5
 
     case .error(let reason):
       return notice(
-        id: id, kind: .notification, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
+        id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
+        width: .fixed(280), fixedHeight: 44,
         expiry: .after(seconds: 3), severity: .error)  // NotificationStyle 3.0
 
     case .advisory(let reason):
-      // #1891: deliberately NOT `.error`. Multiline, and a dwell long enough
-      // to read the sentence.
+      // #1891. A user-setup advisory draws the mic-slash glyph in the secondary
+      // colour, not the red failure treatment, and `NotificationStyle` owns both
+      // — so it needs a severity of its own rather than inheriting the helper's
+      // `.neutral`, which `OverlayRootView.style(for:)` paints as a warning.
+      //
+      // **The ONLY notification that is content-sized**, because `showPanel` is
+      // called with `fitToContent: style.isMultiline` and this is the one style
+      // where that is true. No `fixedHeight` here is deliberate, not an omission.
       return notice(
         id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
-        width: .fixed(360),  // advisoryWidth
+        width: .fixed(360),  // RecordingOverlayPanel.advisoryWidth
         expiry: .after(seconds: 8), severity: .advisory, isMultiline: true)
 
     case .interruption(let reason):
       return notice(
-        id: id, kind: .notification, text: DictationNarrator.copy(for: reason), width: .fixed(280),  // :1189
+        id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
+        width: .fixed(280), fixedHeight: 44,
         expiry: .after(seconds: 2), severity: .distress)  // NotificationStyle 2.0
 
     case .passiveChip(let payload):
       return OverlayPresentation(
         id: id, content: .languageChip(payload: payload),
-        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: .fixed(340))  // :1721
+        expiry: .after(seconds: 6, pausesOnHover: true),
+        requestedWidth: .fixed(340), reservesFixedHeight: 56)  // :1410
 
     case .cachingModel(let engineLabel):
       return notice(
         id: id, kind: .warmingUp, text: DictationNarrator.coldStartTitle,
         secondary: DictationNarrator.coldStartSubtitle(engineLabel: engineLabel),
-        width: .fixed(300),  // :641
+        width: .fixed(300), fixedHeight: 56,  // :483
         expiry: .after(seconds: 2))  // :642
 
     case .engineReady:
       return notice(
-        id: id, kind: .ready, text: DictationNarrator.readyTitle, width: .fixed(240),  // :656
+        id: id, kind: .ready, text: DictationNarrator.readyTitle,
+        width: .fixed(240), fixedHeight: 44,  // :498
         expiry: .after(seconds: 1.5))  // :657
 
     case .recoveringLastRecording:
       return notice(
         id: id, kind: .recovery, text: DictationNarrator.recoveryTitle,
         secondary: DictationNarrator.recoverySubtitle,
-        width: .fixed(320),  // :688
+        width: .fixed(320), fixedHeight: 56,  // :530
         // that site gives it a 6-second dwell. The first version said `.untilReplaced`,
         // which would have left the recovery pill on screen forever.
         expiry: .after(seconds: 6), isMultiline: true,
         action: (label: "Discard", action: .discardRecovery))
 
     case .recoverySucceeded:
+      // `.ready`, NOT `.notification`. The shipped site draws
+      // `ColdStartNoticeView(title:subtitle:icon: .ready)` — the same green
+      // success mark `.engineReady` uses — and routing it through
+      // `NotificationOverlayView` would have painted a success message as a
+      // warning, which is the exact failure this whole mapping exists to stop.
       return notice(
-        id: id, kind: .notification, text: DictationNarrator.recoverySucceededTitle,
-        secondary: DictationNarrator.recoverySucceededSubtitle, width: .fixed(300),  // :674
+        id: id, kind: .ready, text: DictationNarrator.recoverySucceededTitle,
+        secondary: DictationNarrator.recoverySucceededSubtitle,
+        width: .fixed(300), fixedHeight: 56,  // :516
         expiry: .after(seconds: 3))  // :675
 
     case .bluetoothAwareness:
@@ -520,7 +539,8 @@ struct OverlayReducer {
     case .passiveChip(let payload):
       return OverlayPresentation(
         id: id, content: .languageChip(payload: payload),
-        expiry: .after(seconds: 6, pausesOnHover: true), requestedWidth: .fixed(340))  // :1721
+        expiry: .after(seconds: 6, pausesOnHover: true),
+        requestedWidth: .fixed(340), reservesFixedHeight: 56)  // :1410
     case .accessibilityToast:
       return OverlayPresentation(
         id: id,
@@ -529,13 +549,24 @@ struct OverlayReducer {
             kind: .accessibilityToast, text: DictationNarrator.accessibilityToastText,
             isMultiline: true,
             action: (label: "Grant", action: .grantAccessibility))),
-        expiry: .after(seconds: 6), requestedWidth: .fixed(300))  // :1035, :1039
+        expiry: .after(seconds: 6), requestedWidth: .fixed(300),
+        reservesFixedHeight: 56)  // :859, :1118
     }
   }
 
+  /// `fixedHeight` is the shipped `showPanel(height:)` for this notice, and
+  /// omitting it means CONTENT-SIZED, which is what `fitToContent: true` does at
+  /// the shipped site.
+  ///
+  /// **It defaults to nil and that default is a trap worth naming.** Every
+  /// notice in the first port took it, so eight pills that reserve a fixed box
+  /// became content-sized — a geometry change with no compiler error, no test
+  /// failure and no mention in any diff. `noticeGeometryIsPinned` sweeps the
+  /// closed set against the shipped call sites so a new row cannot inherit the
+  /// default silently.
   private static func notice(
     id: PresentationID, kind: NoticeModel.Kind, text: String, secondary: String? = nil,
-    width: OverlayWidth,
+    width: OverlayWidth, fixedHeight: CGFloat? = nil,
     expiry: OverlayExpiry = .untilReplaced, severity: NoticeModel.Severity = .neutral,
     isMultiline: Bool = false, action: (label: String, action: OverlayAction)? = nil
   ) -> OverlayPresentation {
@@ -545,6 +576,6 @@ struct OverlayReducer {
         NoticeModel(
           kind: kind, text: text, secondaryText: secondary, severity: severity,
           isMultiline: isMultiline, action: action)),
-      expiry: expiry, requestedWidth: width)
+      expiry: expiry, requestedWidth: width, reservesFixedHeight: fixedHeight)
   }
 }

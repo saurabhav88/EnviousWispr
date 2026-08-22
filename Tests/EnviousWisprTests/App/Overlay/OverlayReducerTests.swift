@@ -493,29 +493,164 @@ struct OverlayReducerTests {
   /// Swept over the closed set rather than spot-checked, because the failure is
   /// a WRONG icon rather than a missing one — a cold-start pill that renders the
   /// ready mark looks perfectly fine and says the opposite of the truth.
+  ///
+  /// **THE ORACLE IS `RecordingOverlayPanel.apply(intent:)`, NOT THIS TABLE.**
+  /// The first version of this test listed whatever the reducer already
+  /// returned, which makes it a tautology dressed as a guard: it pinned the
+  /// mapping to itself and passed. It was rewritten after reading the shipped
+  /// switch for all eleven intents, one at a time, and one row was WRONG —
+  /// `.recoverySucceeded` draws `ColdStartNoticeView(icon: .ready)`, a green
+  /// success mark, and the reducer was routing it through
+  /// `NotificationOverlayView`, which paints a warning. So the table below
+  /// carries the shipped call site's own line for each row: a reader can check
+  /// it, and re-deriving it from the reducer reproduces the tautology.
+  ///
+  /// Severity rides in the same table because kind alone does not decide the
+  /// picture: five intents share `.notification` and only the severity tells
+  /// them apart.
   @Test(
     "every notice carries the visual identity its shipped pill had",
     arguments: [
-      (OverlayIntent.processing(phase: .transcribing), NoticeModel.Kind.processing),
-      (.clipboardFallback, .processing),
-      (.accessibilityToast, .accessibilityToast),
-      (.warning(reason: .polishFailed), .notification),
-      (.error(reason: .asrFailed), .notification),
-      (.advisory(reason: .zeroSignal), .notification),
-      (.interruption(reason: .deviceRemoved), .notification),
-      (.cachingModel(engineLabel: "Parakeet"), .warmingUp),
-      (.engineReady, .ready),
-      (.recoveringLastRecording, .recovery),
-      (.recoverySucceeded, .notification),
+      // intent, kind, severity, shipped call site in RecordingOverlayPanel
+      (OverlayIntent.processing(phase: .transcribing), NoticeModel.Kind.processing,
+        NoticeModel.Severity.neutral, "showPolishing"),
+      (.clipboardFallback, .processing, .neutral, "showClipboardFallback"),
+      (.accessibilityToast, .accessibilityToast, .neutral, "showAccessibilityToast"),
+      (.warning(reason: .polishFailed), .notification, .warning, "showWarning style .warning"),
+      (.error(reason: .asrFailed), .notification, .error, "showError style .error"),
+      (.advisory(reason: .zeroSignal), .notification, .advisory, "showAdvisory style .advisory"),
+      (.interruption(reason: .deviceRemoved), .notification, .distress,
+        "showNotification style .interruption"),
+      (.cachingModel(engineLabel: "Parakeet"), .warmingUp, .neutral,
+        "ColdStartNoticeView icon .spinner"),
+      (.engineReady, .ready, .neutral, "ColdStartNoticeView icon .ready"),
+      (.recoveringLastRecording, .recovery, .neutral, "RecoveryNoticeView"),
+      (.recoverySucceeded, .ready, .neutral, "ColdStartNoticeView icon .ready"),
     ])
-  func noticeKindsArePinned(pair: (intent: OverlayIntent, kind: NoticeModel.Kind)) {
+  func noticeVisualIdentityIsPinned(
+    row: (
+      intent: OverlayIntent, kind: NoticeModel.Kind, severity: NoticeModel.Severity,
+      shipped: String
+    )
+  ) {
     var r = Self.makeReducer()
-    _ = r.reduce(.pipeline(pair.intent))
+    _ = r.reduce(.pipeline(row.intent))
     guard case .notice(let notice)? = r.state.current?.content else {
-      Issue.record("\(pair.intent) did not produce a notice")
+      Issue.record("\(row.intent) did not produce a notice")
       return
     }
-    #expect(notice.kind == pair.kind)
+    #expect(
+      notice.kind == row.kind,
+      "\(row.intent) should draw as \(row.kind) — the shipped panel uses \(row.shipped)")
+    #expect(
+      notice.severity == row.severity,
+      "\(row.intent) should carry severity \(row.severity) — shipped: \(row.shipped)")
+  }
+
+  /// **No `.notification` notice may take the severity default.** `.neutral` is
+  /// the notice helper's default and is harmless on every other kind, because no
+  /// other kind consults it. `.notification` is the one that does:
+  /// `OverlayRootView.style(for:)` turns severity into the pill's colour and
+  /// icon, so a row that forgets to state one renders as a warning whatever it
+  /// actually is.
+  ///
+  /// This is the guard that would have caught the `.recoverySucceeded` defect
+  /// from the other direction, and it is a SET sweep rather than a row: it walks
+  /// every intent the reducer can be handed, so a new one cannot be added
+  /// without either stating a severity or failing here.
+  @Test("a notification-styled notice always states its own severity")
+  func notificationNoticesNeverTakeTheSeverityDefault() {
+    let everyIntent: [OverlayIntent] = [
+      .processing(phase: .transcribing), .clipboardFallback, .accessibilityToast,
+      .warning(reason: .polishFailed), .error(reason: .asrFailed),
+      .advisory(reason: .zeroSignal), .interruption(reason: .deviceRemoved),
+      .cachingModel(engineLabel: "Parakeet"), .engineReady,
+      .recoveringLastRecording, .recoverySucceeded,
+    ]
+    for intent in everyIntent {
+      var r = Self.makeReducer()
+      _ = r.reduce(.pipeline(intent))
+      guard case .notice(let notice)? = r.state.current?.content else { continue }
+      guard notice.kind == .notification else { continue }
+      #expect(
+        notice.severity != .neutral,
+        "\(intent) renders through NotificationOverlayView with no severity of its own, so it would paint as a warning regardless of what it means")
+    }
+  }
+
+  /// **Every notice's BOX comes from its shipped `showPanel` call, and omitting
+  /// a height is a decision rather than a default.** The first port carried every
+  /// width and no height at all, so eight pills that reserve a fixed box became
+  /// content-sized — a geometry change with no compiler error, no failing test
+  /// and nothing in the diff to look at, because `reservesFixedHeight` simply
+  /// defaults to nil.
+  ///
+  /// Oracle is `RecordingOverlayPanel`, read one call site at a time; each row
+  /// names it. `nil` means the shipped site passes `fitToContent: true`, which
+  /// makes the height content-driven and DISCARDS the width argument.
+  @Test(
+    "every notice reserves the box its shipped pill reserved",
+    arguments: [
+      // intent, fixed height or nil for content-sized, shipped call site
+      (OverlayIntent.processing(phase: .transcribing), CGFloat?.none, "showPanel fitToContent"),
+      (.clipboardFallback, nil, "showPanel fitToContent"),
+      (.accessibilityToast, 56, "showPanel height: 56"),
+      (.warning(reason: .polishFailed), 44, "showPanel default height 44, not fitToContent"),
+      (.error(reason: .asrFailed), 44, "showPanel default height 44, not fitToContent"),
+      (.interruption(reason: .deviceRemoved), 44, "showPanel default height 44, not fitToContent"),
+      // The one notification that IS content-sized: `fitToContent:` is passed
+      // `style.isMultiline`, and advisory is the only style where that is true.
+      (.advisory(reason: .zeroSignal), nil, "showPanel fitToContent style.isMultiline"),
+      (.cachingModel(engineLabel: "Parakeet"), 56, "presentTransientNotice height 56"),
+      (.engineReady, 44, "presentTransientNotice height 44"),
+      (.recoveringLastRecording, 56, "presentTransientNotice height 56"),
+      (.recoverySucceeded, 56, "presentTransientNotice height 56"),
+    ])
+  func noticeGeometryIsPinned(row: (intent: OverlayIntent, height: CGFloat?, shipped: String)) {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(row.intent))
+    guard let presentation = r.state.current else {
+      Issue.record("\(row.intent) produced no presentation")
+      return
+    }
+    #expect(
+      presentation.reservesFixedHeight == row.height,
+      "\(row.intent) should reserve \(String(describing: row.height)) — shipped: \(row.shipped)")
+  }
+
+  /// The two presentations that are not notices carry a box too, and neither
+  /// goes through the notice factory, so the sweep above cannot see them.
+  @Test("the language chip and the accessibility feature request keep their boxes")
+  func nonNoticePresentationsKeepTheirBoxes() {
+    var chip = Self.makeReducer()
+    _ = chip.reduce(
+      .pipeline(
+        .passiveChip(
+          payload: LanguageChipPayload(
+            lang: "es", displayName: "Spanish", state: .askToLock, generation: 1))))
+    #expect(
+      chip.state.current?.reservesFixedHeight == 56,
+      "the language chip is showPanel(width: 340, height: 56) at its shipped site")
+
+    var toast = Self.makeReducer()
+    _ = toast.reduce(.featureRequest(.accessibilityToast))
+    #expect(
+      toast.state.current?.reservesFixedHeight == 56,
+      "the accessibility toast is showPanel(height: 56) at its shipped site")
+  }
+
+  /// The feature-request half of the notice table. The closed-set sweep above
+  /// walks PIPELINE intents only, so a feature row could carry any kind at all
+  /// and nothing would notice.
+  @Test("an accessibility feature request renders as an accessibility toast")
+  func featureAccessibilityToastKind() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.featureRequest(.accessibilityToast))
+    guard case .notice(let notice)? = r.state.current?.content else {
+      Issue.record("expected a notice")
+      return
+    }
+    #expect(notice.kind == .accessibilityToast)
   }
 
   @Test("an import-status request renders as import status")
