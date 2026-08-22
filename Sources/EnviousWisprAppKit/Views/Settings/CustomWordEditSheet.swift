@@ -44,6 +44,11 @@ struct CustomWordEditSheet: View {
     )
   }
 
+  private var aliasCountLabel: String {
+    let count = word.aliases.count
+    return "\(count) \(count == 1 ? "alias" : "aliases")"
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       Text(word.canonical.isEmpty ? "Add Custom Word" : "Edit Custom Word")
@@ -74,9 +79,15 @@ struct CustomWordEditSheet: View {
 
       // Aliases
       VStack(alignment: .leading, spacing: 4) {
-        Text("Aliases (spoken variants the ASR produces)")
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
+        HStack {
+          Text("Aliases (spoken variants the ASR produces)")
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+          Spacer()
+          Text(aliasCountLabel)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+        }
 
         HStack {
           TextField("Add alias (e.g. clawed)", text: $newAlias)
@@ -86,28 +97,50 @@ struct CustomWordEditSheet: View {
             .disabled(newAlias.trimmingCharacters(in: .whitespaces).isEmpty)
         }
 
-        if !word.aliases.isEmpty {
-          WrappingHStack(spacing: 6) {
-            ForEach(word.aliases, id: \.self) { alias in
-              HStack(spacing: 3) {
-                Text(alias)
-                  .font(.stHelper)
-                Button {
-                  word.aliases.removeAll { $0 == alias }
-                } label: {
-                  Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
+        ScrollView(.vertical) {
+          if word.aliases.isEmpty {
+            Text("No aliases yet")
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(8)
+          } else {
+            WrappingHStack(spacing: 6) {
+              ForEach(word.aliases, id: \.self) { alias in
+                HStack(spacing: 3) {
+                  Text(alias)
+                    .font(.stHelper)
+                    .fixedSize(horizontal: false, vertical: true)
+                  Button {
+                    word.aliases.removeAll { $0 == alias }
+                  } label: {
+                    Image(systemName: "xmark")
+                      .font(.system(size: 8, weight: .bold))
+                  }
+                  .buttonStyle(.plain)
+                  .fixedSize()
+                  .accessibilityLabel("Remove alias \(alias)")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Remove alias \(alias)")
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.stAccentLight)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
               }
-              .padding(.horizontal, 6)
-              .padding(.vertical, 3)
-              .background(Color.stAccentLight)
-              .clipShape(RoundedRectangle(cornerRadius: 4))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
           }
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 150)
+        .background(Color.stPageBg)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+          RoundedRectangle(cornerRadius: 8)
+            .strokeBorder(Color.stDivider, lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Aliases")
       }
 
       // Match strictness (Phase 2a override surface)
@@ -161,6 +194,9 @@ struct CustomWordEditSheet: View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .accessibilityElement(children: .combine)
 
+      Divider()
+        .overlay(Color.stDivider)
+
       // Actions
       HStack {
         if onDelete != nil {
@@ -199,7 +235,7 @@ struct CustomWordEditSheet: View {
       Text("Removes this word and its aliases. Can't be undone.")
     }
     .padding(20)
-    .frame(width: 400, height: 480)
+    .frame(width: 480, height: 600)
     // Phase 1 (#637) + Phase 4 (#634) + Codex P2 fix: keyed task that restarts
     // when canonical changes. Empty-canonical guard prevents the AFM call from
     // running on the blank "+ Add term" sheet open. After the user types into
