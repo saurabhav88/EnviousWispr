@@ -43,19 +43,18 @@ final class OverlayAccessibilityEligibility {
 /// spends one line and the feature is implemented here.
 enum OverlayAccessibilityWiring {
 
-  /// The overlay's show closure, with the accessibility notice routed through
-  /// its eligibility policy and everything else passed straight through.
+  /// **Narrow on purpose.** The first version took every intent and forwarded
+  /// the ones it did not handle to `send`, which routes `.recording` past the
+  /// atomic transaction that installs its providers, lock and layout — reopening
+  /// the exact defect three review rounds had just closed. A wiring helper that
+  /// accepts an arbitrary intent will eventually be handed the one intent that
+  /// must not go that way.
   @MainActor
-  static func showOverlay(
+  static func presentAccessibilityNotice(
     director: OverlayDirector, eligibility: OverlayAccessibilityEligibility
-  ) -> @MainActor (OverlayIntent) -> Void {
-    { [weak director] intent in
-      guard let director else { return }
-      guard case .accessibilityToast = intent else {
-        director.send(.pipeline(intent), actions: nil)
-        return
-      }
-      director.presentAccessibilityNotice(showingToast: eligibility.claim())
+  ) -> @MainActor () -> Void {
+    { [weak director] in
+      director?.presentAccessibilityNotice(showingToast: { eligibility.claim() })
     }
   }
 }

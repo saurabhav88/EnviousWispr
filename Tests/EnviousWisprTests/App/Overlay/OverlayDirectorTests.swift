@@ -455,7 +455,7 @@
       let (shown, _, shownSink) = Self.director()
       defer { Self.closeAllWindows() }
 
-      shown.presentAccessibilityNotice(showingToast: true)
+      shown.presentAccessibilityNotice(showingToast: { true })
 
       guard case .notice(let toast)? = shown.currentPresentationForTesting?.content else {
         Issue.record("expected a notice")
@@ -468,7 +468,7 @@
 
       let (suppressed, _, suppressedSink) = Self.director()
 
-      suppressed.presentAccessibilityNotice(showingToast: false)
+      suppressed.presentAccessibilityNotice(showingToast: { false })
 
       guard case .notice(let fallback)? = suppressed.currentPresentationForTesting?.content else {
         Issue.record("expected a notice")
@@ -481,6 +481,67 @@
         suppressedSink.announcements.map(\.text)
           == [DictationNarrator.announcement(for: .accessibilityToast)],
         "the suppressed run announced the clipboard sentence, which tells a blind user something different from what the shipped app tells them")
+    }
+
+    /// **A duplicate push must cost nothing at all**, and "nothing" has three
+    /// parts: it must not ask eligibility again, must not replace the visible
+    /// toast with the fallback, and must not announce a second time. The shipped
+    /// dedup guard drops an identical intent before any of that; splitting the
+    /// notice into two reductions had put the eligibility ask in front of it.
+    @Test("a duplicate accessibility push neither reclaims nor replaces the toast")
+    func duplicateAccessibilityPushIsACompleteNoOp() {
+      let (d, _, sink) = Self.director()
+      defer { Self.closeAllWindows() }
+      var claims = 0
+
+      d.presentAccessibilityNotice(showingToast: { claims += 1; return true })
+      let first = d.currentPresentationForTesting?.id
+
+      d.presentAccessibilityNotice(showingToast: { claims += 1; return false })
+
+      #expect(claims == 1, "a duplicate push spent the session's one showing")
+      #expect(d.currentPresentationForTesting?.id == first, "a duplicate push replaced the toast")
+      #expect(sink.announcements.count == 1, "a duplicate push announced twice")
+      guard case .notice(let notice)? = d.currentPresentationForTesting?.content else {
+        Issue.record("expected the accessibility toast")
+        return
+      }
+      #expect(notice.kind == .accessibilityToast)
+    }
+
+    /// **The suppressed toast is ONE transition, not two**, and the two things
+    /// that proves are invisible from the picture: the pipeline intent must read
+    /// `.accessibilityToast` even though the clipboard hint is what is drawn, and
+    /// the effect that ends the recording must survive.
+    ///
+    /// Reducing two intents and applying the second lost both — the state said
+    /// `.clipboardFallback`, so a real clipboard push would have been deduped
+    /// away, and `.recordingIntentChanged(false)` was discarded, which is how
+    /// Live Preview learns the dictation ended.
+    @Test("a suppressed accessibility toast ends the recording and keeps its logical intent")
+    func suppressedAccessibilityToastPreservesTransitionState() {
+      let (d, _, sink) = Self.director()
+      defer { Self.closeAllWindows() }
+      Self.record(d)
+      sink.effects.removeAll()
+      sink.announcements.removeAll()
+
+      d.presentAccessibilityNotice(showingToast: { false })
+
+      #expect(
+        sink.effects == [.recordingIntentChanged(false)],
+        "Live Preview was never told the recording ended")
+      #expect(
+        d.pipelineIntentForTesting == .accessibilityToast,
+        "the logical intent followed the picture instead of the decision")
+      guard case .notice(let notice)? = d.currentPresentationForTesting?.content else {
+        Issue.record("expected the clipboard fallback")
+        return
+      }
+      #expect(notice.kind == .processing)
+      #expect(
+        sink.announcements.map(\.text)
+          == [DictationNarrator.announcement(for: .accessibilityToast)])
     }
 
     /// **A dictation ending announces; a chip dismissal must not.**

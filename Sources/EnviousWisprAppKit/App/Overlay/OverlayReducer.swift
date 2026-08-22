@@ -245,6 +245,49 @@ struct OverlayReducer {
       announcement: announcement)
   }
 
+  /// The accessibility notice, as ONE transition.
+  ///
+  /// **The eligibility decision changes what is DRAWN, not what the pipeline
+  /// intent is.** Reducing `.accessibilityToast` and then `.clipboardFallback`
+  /// as two transitions left the state saying `.clipboardFallback` — so a real
+  /// clipboard-fallback push arriving next would be deduped away, and the
+  /// arbitration rule that lets a feature take the slot only while the pipeline
+  /// is idle would be reading the wrong intent. It also DISCARDED the first
+  /// transition's effects, losing `.recordingIntentChanged(false)` when this
+  /// notice replaces a live recording, which is how Live Preview learns the
+  /// dictation ended.
+  ///
+  /// The dedup guard is the shipped one: an identical intent is dropped, which
+  /// is what stops a duplicate push spending a second eligibility ask and
+  /// swapping a visible toast for the fallback.
+  /// `showingToast` is a CLOSURE so the dedup guard below runs BEFORE the
+  /// eligibility ask. Taking a `Bool` evaluates it at the call site, which spends
+  /// the session's one showing on a push this method then drops — and the next
+  /// genuine ask is refused, so the user is never told. My own guard caught that,
+  /// which is the argument for the guard rather than for the parameter.
+  mutating func reduceAccessibilityNotice(showingToast: () -> Bool) -> OverlayPlan {
+    guard state.pipelineIntent != .accessibilityToast else { return .noChange }
+
+    let showToast = showingToast()
+    let toast = reducePipeline(.accessibilityToast)
+    guard !showToast, let shown = toast.presentation,
+      let fallback = Self.presentation(for: .clipboardFallback, id: shown.id)
+    else {
+      return toast
+    }
+
+    // Only the picture changes. `reducePipeline` has already set the intent to
+    // `.accessibilityToast` and that is the intent this IS; the fallback merely
+    // draws in its place.
+    state.set(current: fallback)
+
+    return OverlayPlan(
+      presentation: fallback, didChange: toast.didChange,
+      expiryCommand: Self.command(for: fallback),
+      deliverAction: toast.deliverAction, effects: toast.effects,
+      announcement: toast.announcement)
+  }
+
   // MARK: - Features
 
   private mutating func reduceFeature(_ request: OverlayRequest) -> OverlayPlan {

@@ -260,22 +260,12 @@ final class OverlayDirector {
   /// switches to the actionable hint is a real question, and it is filed rather
   /// than answered here: a migration that quietly changes behaviour is a worse
   /// defect than the behaviour.
-  func presentAccessibilityNotice(showingToast: Bool) {
-    let toast = reducer.reduce(.pipeline(.accessibilityToast))
-    guard !showingToast else {
-      apply(toast, actions: nil)
-      return
-    }
-    // Reduce the fallback for its PRESENTATION, and keep the toast's
-    // announcement. The reducer stays untouched; the substitution is here,
-    // once, where it can be read.
-    let fallback = reducer.reduce(.pipeline(.clipboardFallback))
-    apply(
-      OverlayPlan(
-        presentation: fallback.presentation, didChange: fallback.didChange,
-        expiryCommand: fallback.expiryCommand, deliverAction: fallback.deliverAction,
-        effects: fallback.effects, announcement: toast.announcement),
-      actions: nil)
+  /// `showingToast` is a CLOSURE, not a Bool, and that is the whole point: it is
+  /// asked only when this push is not a duplicate. Passing the answer in spends
+  /// the session's one showing on a push the reducer then drops, so the next
+  /// genuine ask is refused and the user is never told.
+  func presentAccessibilityNotice(showingToast: () -> Bool) {
+    apply(reducer.reduceAccessibilityNotice(showingToast: showingToast), actions: nil)
   }
 
   /// Empty the slot WITHOUT announcing "Recording complete".
@@ -473,6 +463,10 @@ final class OverlayDirector {
     /// FRAME rather than on the argument it passed — the argument is the thing
     /// under test.
     var hostForTesting: OverlayWindowHost { host }
+    /// The LOGICAL intent, which is not always what is drawn: a suppressed
+    /// accessibility toast draws the clipboard fallback and the intent stays
+    /// `.accessibilityToast`.
+    var pipelineIntentForTesting: OverlayIntent { reducer.state.pipelineIntent }
   #endif
 }
 

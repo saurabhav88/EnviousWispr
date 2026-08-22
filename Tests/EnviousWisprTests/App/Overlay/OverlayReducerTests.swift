@@ -671,6 +671,17 @@ struct OverlayReducerTests {
       (.cachingModel(engineLabel: "Parakeet"), false), (.engineReady, true),
       (.recoveringLastRecording, true), (.recoverySucceeded, true),
       (.bluetoothAwareness, false),
+      // The two the first version of this table left out while its commit body
+      // claimed all sixteen. A count in prose is a claim; this is the set.
+      (
+        .passiveChip(
+          payload: LanguageChipPayload(
+            lang: "es", displayName: "Spanish", state: .askToLock, generation: 1)), false
+      ),
+      (
+        .escapeRecovery(
+          transcriptID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!), false
+      ),
     ])
   func everyIntentAnnouncesAtItsShippedPriority(row: (intent: OverlayIntent, high: Bool)) {
     var r = Self.makeReducer()

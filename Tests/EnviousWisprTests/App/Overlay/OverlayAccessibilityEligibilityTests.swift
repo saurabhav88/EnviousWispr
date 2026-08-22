@@ -11,7 +11,7 @@ import Testing
 ///
 /// The rule is unchanged from `RecordingOverlayPanel`; what changed is that it
 /// is now reachable. Inside the panel it could only be exercised by driving a
-/// live window, so none of these four cases existed.
+/// live window, so none of these five cases existed.
 @MainActor
 @Suite(.tags(.productOutcome))
 struct OverlayAccessibilityEligibilityTests {
