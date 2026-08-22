@@ -440,8 +440,9 @@ struct OverlayReducer {
       // #1891: deliberately NOT `.error`. Multiline, and a dwell long enough
       // to read the sentence.
       return notice(
-        id: id, kind: .notification, text: DictationNarrator.copy(for: reason), width: .fixed(360),  // advisoryWidth :1207
-        expiry: .after(seconds: 8), isMultiline: true)  // NotificationStyle 8.0
+        id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
+        width: .fixed(360),  // advisoryWidth
+        expiry: .after(seconds: 8), severity: .advisory, isMultiline: true)
 
     case .interruption(let reason):
       return notice(

@@ -226,6 +226,13 @@ struct NoticeModel: Equatable, Sendable {
     case error
     /// Red pulsing lips — the interruption look.
     case distress
+    /// #1891. Deliberately NOT `.error`: a user-setup advisory is not our
+    /// software failing, and `.error`'s red mark, 3-second dwell and "Error"
+    /// heading would all say it was. Its own case rather than
+    /// `neutral + isMultiline`, because the shipped `NotificationStyle` has four
+    /// styles and inferring one from a layout flag is how a wrapping change
+    /// silently repaints a pill.
+    case advisory
   }
 
   let kind: Kind

@@ -34,13 +34,29 @@ final class OverlayRenderModel: ObservableObject {
   /// vocabulary; it is named here because nothing else would have named it.
   private(set) var audioLevelProvider: () -> Float = { 0 }
   private(set) var recordingElapsedProvider: () -> TimeInterval? = { nil }
+  /// #1988. What the live preview should show, polled on the same 50 ms loop as
+  /// the other two rather than pushed, because that loop already exists and
+  /// coalesces naturally.
+  private(set) var livePreviewProvider: () -> LivePreviewDisplay = { .off }
+  /// The capsule reports its measured height so the window can follow it. A
+  /// callback rather than a value: it flows the other way.
+  private(set) var onContentHeightChange: (CGFloat) -> Void = { _ in }
+  /// Whether the recording pill uses the preview layout, which is content-sized
+  /// rather than the reserved 92-point frame.
+  private(set) var usesPreviewLayout: Bool = false
 
   func setRecordingProviders(
     audioLevel: @escaping () -> Float,
-    recordingElapsed: @escaping () -> TimeInterval?
+    recordingElapsed: @escaping () -> TimeInterval?,
+    livePreview: @escaping () -> LivePreviewDisplay,
+    usesPreviewLayout: Bool,
+    onContentHeightChange: @escaping (CGFloat) -> Void
   ) {
     audioLevelProvider = audioLevel
     recordingElapsedProvider = recordingElapsed
+    livePreviewProvider = livePreview
+    self.usesPreviewLayout = usesPreviewLayout
+    self.onContentHeightChange = onContentHeightChange
   }
 
   /// Dropped when the recording pill goes, so a stale closure cannot outlive the
@@ -50,5 +66,8 @@ final class OverlayRenderModel: ObservableObject {
   func clearRecordingProviders() {
     audioLevelProvider = { 0 }
     recordingElapsedProvider = { nil }
+    livePreviewProvider = { .off }
+    onContentHeightChange = { _ in }
+    usesPreviewLayout = false
   }
 }

@@ -528,4 +528,19 @@ struct OverlayReducerTests {
     }
     #expect(notice.kind == .importStatus)
   }
+
+  /// #1891: the advisory is deliberately NOT an error. Its own severity rather
+  /// than `neutral + isMultiline`, because inferring a paint from a LAYOUT flag
+  /// is how a wrapping change silently repaints a pill.
+  @Test("a user-setup advisory is not painted as an error")
+  func advisoryIsNotAnError() {
+    var r = Self.makeReducer()
+    _ = r.reduce(.pipeline(.advisory(reason: .zeroSignal)))
+    guard case .notice(let notice)? = r.state.current?.content else {
+      Issue.record("expected a notice")
+      return
+    }
+    #expect(notice.severity == .advisory)
+    #expect(notice.severity != .error, "an advisory painted as an error blames our software")
+  }
 }
