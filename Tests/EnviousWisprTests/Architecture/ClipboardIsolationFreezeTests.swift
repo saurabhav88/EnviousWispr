@@ -294,6 +294,13 @@ struct ClipboardIsolationFreezeTests {
           for argument in node.arguments {
             walk(argument.expression)
           }
+        } else if let composedInvocation = ClipboardVisitor.unwrapped(node.calledExpression).as(
+          FunctionCallExprSyntax.self)
+        {
+          // `factory()()` invokes the result of another call. When the inner call is an IIFE returning
+          // a closure, that returned closure is the outer call's value-producing callee and must be
+          // followed just like a one-level IIFE. Arbitrary helper arguments remain skipped.
+          walk(ExprSyntax(composedInvocation))
         }
         return .skipChildren
       }
@@ -573,6 +580,7 @@ struct ClipboardIsolationFreezeTests {
 
   private final class SystemPasteTierVisitor: SyntaxVisitor {
     var gates: [Bool] = []
+    var writeCallsUsingExecutorBoard: [Bool] = []
     private var validPredicateDefinitions = 0
     private var predicateIsShadowed = false
 
@@ -586,16 +594,29 @@ struct ClipboardIsolationFreezeTests {
       "pressMenuItem",
     ]
 
+    private static let clipboardWriteFunctions: Set<String> = [
+      "pasteToActiveApp",
+      "copyToClipboardReturningChangeCount",
+    ]
+
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
       guard
         let member = ClipboardVisitor.unwrapped(node.calledExpression).as(
           MemberAccessExprSyntax.self),
         let base = member.base,
-        Self.systemPasteFunctions.contains(
-          ClipboardVisitor.identifierText(member.declName.baseName)),
         ClipboardVisitor.trailingName(of: base) == "PasteService"
       else { return .visitChildren }
 
+      let functionName = ClipboardVisitor.identifierText(member.declName.baseName)
+      if Self.clipboardWriteFunctions.contains(functionName) {
+        writeCallsUsingExecutorBoard.append(
+          node.arguments.contains { argument in
+            argument.label.map(ClipboardVisitor.identifierText) == "to"
+              && argument.expression.trimmedDescription == "pasteboard"
+          })
+      }
+
+      guard Self.systemPasteFunctions.contains(functionName) else { return .visitChildren }
       gates.append(isDominatedByPositiveSystemPasteGate(node))
       return .visitChildren
     }
@@ -714,12 +735,16 @@ struct ClipboardIsolationFreezeTests {
   }
 
   static func systemPasteTierInspection(inSource source: String) -> (
-    gates: [Bool], predicateUsesGeneralBoardIdentity: Bool
+    gates: [Bool], predicateUsesGeneralBoardIdentity: Bool,
+    writeCallsUsingExecutorBoard: [Bool]
   ) {
     let tree = Parser.parse(source: source)
     let visitor = SystemPasteTierVisitor(viewMode: .sourceAccurate)
     visitor.walk(tree)
-    return (visitor.gates, visitor.predicateUsesGeneralBoardIdentity)
+    return (
+      visitor.gates, visitor.predicateUsesGeneralBoardIdentity,
+      visitor.writeCallsUsingExecutorBoard
+    )
   }
 
   private static func scanTests() throws -> (violations: [Violation], filesScanned: Int) {
@@ -1055,6 +1080,10 @@ struct ClipboardIsolationFreezeTests {
         #"PasteCascadeExecutor(pasteboard: { func mode() -> Mode { return .general }; return NSPasteboard.withUniqueName() }())"#,
         0
       ),
+      (
+        #"PasteCascadeExecutor(pasteboard: ({ () -> (() -> NSPasteboard) in { .general } }())())"#,
+        1
+      ),
       (#"let board = NSPasteboard.general; PasteCascadeExecutor(pasteboard: board)"#, 1),
     ])
   func pasteCascadeExecutorChecksItsPasteboardArgument(source: String, expected: Int) {
@@ -1080,6 +1109,12 @@ struct ClipboardIsolationFreezeTests {
       inspection.predicateUsesGeneralBoardIdentity,
       "system-paste tiers are safe only when the predicate means pasteboard === NSPasteboard.general"
     )
+    #expect(
+      inspection.writeCallsUsingExecutorBoard.count == gates.count,
+      "every system-paste tier must have one clipboard write")
+    #expect(
+      inspection.writeCallsUsingExecutorBoard == [true, true, true],
+      "every system-paste tier must write its payload to the executor's injected board")
   }
 
   @Test("a comment cannot impersonate a missing system-paste gate")
@@ -1142,6 +1177,23 @@ struct ClipboardIsolationFreezeTests {
         }
         """)
     #expect(gates == [false, false, true], "valid Swift wrappers cannot hide a system-paste call")
+  }
+
+  @Test("system-paste payload writes must use the executor's injected board")
+  func systemPasteWritesUseTheExecutorBoard() {
+    let inspection = Self.systemPasteTierInspection(
+      inSource: """
+        func deliver() {
+          if systemPasteCanReachOurText {
+            PasteService.pasteToActiveApp("safe", to: pasteboard)
+            PasteService.copyToClipboardReturningChangeCount(
+              "unsafe", to: NSPasteboard.withUniqueName())
+            PasteService.pasteViaAppleScript(pid: 1)
+          }
+        }
+        """)
+
+    #expect(inspection.writeCallsUsingExecutorBoard == [true, false])
   }
 
   @Test("a local declaration cannot shadow the verified system-paste predicate")
