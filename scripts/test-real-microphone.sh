@@ -50,6 +50,15 @@ with tempfile.TemporaryDirectory(prefix="ew-microphone-watchdog-") as marker_dir
     environment["EW_MICROPHONE_STOP_FINISHED"] = str(finished)
 
     with open(log_file, "w", encoding="utf-8") as log:
+        received_signal = [None]
+
+        def request_shutdown(signum, _frame):
+            received_signal[0] = signum
+
+        # Install handlers before Popen so no signal can strand the new Swift session.
+        for handled_signal in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            signal.signal(handled_signal, request_shutdown)
+
         process = subprocess.Popen(
             ["swift", *swift_args],
             cwd=project_root,
@@ -73,19 +82,17 @@ with tempfile.TemporaryDirectory(prefix="ew-microphone-watchdog-") as marker_dir
         relay.start()
         stop_deadline = None
         timed_out = False
-        received_signal = [None]
-
         def group_exists():
             try:
                 os.killpg(process.pid, 0)
                 return True
-            except ProcessLookupError:
+            except (ProcessLookupError, PermissionError):
                 return False
 
         def signal_group(sig):
             try:
                 os.killpg(process.pid, sig)
-            except ProcessLookupError:
+            except (ProcessLookupError, PermissionError):
                 pass
 
         def reap_group():
@@ -101,12 +108,6 @@ with tempfile.TemporaryDirectory(prefix="ew-microphone-watchdog-") as marker_dir
             except subprocess.TimeoutExpired:
                 signal_group(signal.SIGKILL)
                 process.wait()
-
-        def request_shutdown(signum, _frame):
-            received_signal[0] = signum
-
-        for handled_signal in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-            signal.signal(handled_signal, request_shutdown)
 
         try:
             while True:
