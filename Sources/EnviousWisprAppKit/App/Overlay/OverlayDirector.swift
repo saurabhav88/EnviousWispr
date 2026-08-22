@@ -499,12 +499,17 @@ final class OverlayDirector {
     case .cancel:
       armedExpiry?.cancel()
       armedExpiry = nil
+      model.markDwellStarted(nil)
       armExpiry = {}
     case .arm(let id, let seconds, let target):
       armedExpiry?.cancel()
       armedExpiry = nil
       armExpiry = { [weak self] in
         guard let self else { return }
+        // The picture and the timer start together. Published here rather than
+        // beside `model.presentation` because THIS is the instant the dwell
+        // begins, and a view drawing a countdown has no other way to know it.
+        self.model.markDwellStarted(id)
         self.armedExpiry = self.schedule.after(seconds) { [weak self] in
           // The id is captured, never re-read: a timer fires for the presentation
           // it was armed for or it is dropped. The reducer's own identity gate

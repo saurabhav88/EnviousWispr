@@ -32,6 +32,20 @@ struct EscapeRecoveryPillView: View {
   let onPaste: () -> Void
   let onExpire: () -> Void
 
+  /// **The instant the DIRECTOR's dwell started, and the rail waits for it.**
+  ///
+  /// `onAppear` fires when this view is constructed or attached, which on the
+  /// first presentation is BEFORE `host.present` has sized the window and
+  /// ordered it on screen. The director arms the real dismissal only after that
+  /// returns, so a rail started on appearance runs ahead of the clock it is
+  /// drawing -- it can reach the end while the pill is still sitting there,
+  /// which is an expired-looking offer the user can still press.
+  ///
+  /// `nil` until the presentation lands. Changing it is what starts the rail, so
+  /// the picture and the timer share ONE start instant by construction rather
+  /// than by two call sites agreeing.
+  let dwellStarted: PresentationID?
+
   /// Founder-specified.
   static let dwellSeconds: Double = 3.0
 
@@ -79,7 +93,13 @@ struct EscapeRecoveryPillView: View {
         scheduleExpiry()
       }
     }
-    .onAppear { scheduleExpiry() }
+    // Not `onAppear`: see `dwellStarted`. Both forms are needed because the
+    // signal may already be set when this view is built (a later presentation,
+    // where nothing is deferred) or arrive after (the deferred first one).
+    .onAppear { if dwellStarted != nil { scheduleExpiry() } }
+    .onChange(of: dwellStarted) { _, landed in
+      if landed != nil { scheduleExpiry() }
+    }
     .onDisappear { dismissTask?.cancel() }
   }
 
