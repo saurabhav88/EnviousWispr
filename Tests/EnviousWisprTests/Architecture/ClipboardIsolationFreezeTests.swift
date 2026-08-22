@@ -248,15 +248,41 @@ struct ClipboardIsolationFreezeTests {
     private final class ImplicitGlobalPasteboardVisitor: SyntaxVisitor {
       var found = false
 
+      private final class ClosureReturnVisitor: SyntaxVisitor {
+        let inspect: (ExprSyntax) -> Void
+
+        init(inspect: @escaping (ExprSyntax) -> Void) {
+          self.inspect = inspect
+          super.init(viewMode: .sourceAccurate)
+        }
+
+        override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind {
+          .skipChildren
+        }
+
+        override func visit(_ node: ReturnStmtSyntax) -> SyntaxVisitorContinueKind {
+          if let expression = node.expression { inspect(expression) }
+          return .skipChildren
+        }
+      }
+
       // A helper's argument can have its own `.general` enum case while returning an isolated board.
       // Following through the call would require data-flow analysis; this syntax-only guard owns only
       // values written directly into the executor's `pasteboard:` argument.
       override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
-        // An immediately-invoked closure is not a helper or a data-flow question: its literal result is
-        // written directly in the pasteboard argument. Descend into that closure while continuing to
-        // ignore ordinary helper arguments such as `makeBoard(mode: .general)`.
-        if ClipboardVisitor.unwrapped(node.calledExpression).is(ClosureExprSyntax.self) {
-          return .visitChildren
+        // An immediately-invoked closure is not a helper or a data-flow question, but only its RESULT
+        // becomes the pasteboard. Scanning every descendant made an unrelated local enum case such as
+        // `let mode: Mode = .general` look like the returned board.
+        if let closure = ClipboardVisitor.unwrapped(node.calledExpression).as(
+          ClosureExprSyntax.self)
+        {
+          if let lastItem = closure.statements.last?.item.as(ExprSyntax.self) {
+            walk(lastItem)
+          }
+          let returns = ClosureReturnVisitor { [weak self] expression in self?.walk(expression) }
+          for statement in closure.statements {
+            returns.walk(statement)
+          }
         }
         return .skipChildren
       }
@@ -395,11 +421,18 @@ struct ClipboardIsolationFreezeTests {
       // that one labelled argument rather than banning every construction (which forced safe tests to
       // hide the executor in a local variable and made equivalent code classify differently).
       if Self.constructorTypeName(of: node.calledExpression) == "PasteCascadeExecutor" {
-        let reachesGlobalBoard = node.arguments.contains { argument in
+        let boardArguments = node.arguments.filter { argument in
           argument.label.map { Self.identifierText($0) } == "pasteboard"
-            && Self.containsImplicitGlobalPasteboard(argument.expression)
         }
-        if reachesGlobalBoard {
+        if boardArguments.isEmpty {
+          violations.append(
+            Violation(
+              file: file, line: line(node),
+              reason: "PasteCascadeExecutor must keep its explicit pasteboard injection seam"
+            ))
+        } else if boardArguments.contains(where: {
+          Self.containsImplicitGlobalPasteboard($0.expression)
+        }) {
           violations.append(
             Violation(
               file: file, line: line(node),
@@ -547,17 +580,21 @@ struct ClipboardIsolationFreezeTests {
       return .visitChildren
     }
 
-    override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
-      guard
-        node.bindings.contains(where: { binding in
-          guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self) else {
-            return false
-          }
-          return identifier.identifier.text == "systemPasteCanReachOurText"
-        })
-      else { return .visitChildren }
+    override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
+      guard ClipboardVisitor.identifierText(node.identifier) == "systemPasteCanReachOurText" else {
+        return .visitChildren
+      }
 
-      let tokens = Array(node.tokens(viewMode: .sourceAccurate).map(\.text))
+      var ancestor = Syntax(node).parent
+      while let current = ancestor, !current.is(VariableDeclSyntax.self) {
+        ancestor = current.parent
+      }
+      guard let declaration = ancestor?.as(VariableDeclSyntax.self) else {
+        predicateIsShadowed = true
+        return .visitChildren
+      }
+
+      let tokens = Array(declaration.tokens(viewMode: .sourceAccurate).map(\.text))
       guard let openingBrace = tokens.firstIndex(of: "{"),
         let closingBrace = tokens.lastIndex(of: "}"),
         openingBrace < closingBrace
@@ -591,7 +628,7 @@ struct ClipboardIsolationFreezeTests {
 
     private func parameterShadowsPredicate(firstName: TokenSyntax, secondName: TokenSyntax?) -> Bool
     {
-      (secondName ?? firstName).text == "systemPasteCanReachOurText"
+      ClipboardVisitor.identifierText(secondName ?? firstName) == "systemPasteCanReachOurText"
     }
 
     private func isDominatedByPositiveSystemPasteGate(_ call: FunctionCallExprSyntax) -> Bool {
@@ -948,12 +985,19 @@ struct ClipboardIsolationFreezeTests {
       (#"PasteCascadeExecutor(pasteboard: (.general))"#, 1),
       (#"PasteCascadeExecutor(pasteboard: flag ? .general : board)"#, 1),
       (#"PasteCascadeExecutor(pasteboard: { .general }())"#, 1),
+      (#"PasteCascadeExecutor(pasteboard: { return .general }())"#, 1),
       (#"PasteCascadeExecutor.init(pasteboard: .general)"#, 1),
       (#"PasteCascadeExecutor.self.init(pasteboard: .general)"#, 1),
+      (#"PasteCascadeExecutor()"#, 1),
+      (#"PasteCascadeExecutor.init()"#, 1),
       (#"PasteCascadeExecutor(pasteboard: NSPasteboard.withUniqueName())"#, 0),
       (#"PasteCascadeExecutor(pasteboard: board)"#, 0),
       (#"PasteCascadeExecutor(pasteboard: flag ? board : uniqueBoard)"#, 0),
       (#"PasteCascadeExecutor(pasteboard: makeBoard(mode: .general))"#, 0),
+      (
+        #"PasteCascadeExecutor(pasteboard: { let mode: Mode = .general; return NSPasteboard.withUniqueName() }())"#,
+        0
+      ),
       (#"let board = NSPasteboard.general; PasteCascadeExecutor(pasteboard: board)"#, 1),
     ])
   func pasteCascadeExecutorChecksItsPasteboardArgument(source: String, expected: Int) {
@@ -1061,6 +1105,29 @@ struct ClipboardIsolationFreezeTests {
     #expect(
       !inspection.predicateUsesGeneralBoardIdentity,
       "a same-named local can make the condition true independently of the verified property")
+  }
+
+  @Test("escaped and conditional bindings cannot shadow the verified predicate")
+  func systemPasteGateCheckRejectsEveryBindingPattern() {
+    let inspection = Self.systemPasteTierInspection(
+      inSource: """
+        var systemPasteCanReachOurText: Bool {
+          pasteboard === NSPasteboard.general
+        }
+        func deliver(override: Bool?) {
+          let `systemPasteCanReachOurText` = true
+          if systemPasteCanReachOurText {
+            PasteService.pasteToActiveApp("x", to: board)
+          }
+          if let systemPasteCanReachOurText = override, systemPasteCanReachOurText {
+            PasteService.pasteViaAppleScript(pid: 1)
+          }
+        }
+        """)
+    #expect(inspection.gates == [true, true])
+    #expect(
+      !inspection.predicateUsesGeneralBoardIdentity,
+      "every binding pattern must preserve the verified predicate's identity")
   }
 
   @Test("a parameter cannot shadow the verified system-paste predicate")
