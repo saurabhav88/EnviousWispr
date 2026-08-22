@@ -22,6 +22,23 @@ import Testing
 @Suite(.tags(.productOutcome))
 struct RainbowLevelMeterTests {
 
+  private final class MeterDriver: ObservableObject {
+    @Published var tick = 0
+    @Published var audioLevel: Float = 0
+  }
+
+  private struct MeterHarness: View {
+    @ObservedObject var driver: MeterDriver
+    let onHistoryChange: ([CGFloat]) -> Void
+
+    var body: some View {
+      RainbowLevelMeter(
+        audioLevel: driver.audioLevel,
+        tick: driver.tick,
+        onHistoryChange: onHistoryChange)
+    }
+  }
+
   init() { _ = NSApplication.shared }
 
   // MARK: - The history is a record
@@ -107,6 +124,36 @@ struct RainbowLevelMeterTests {
       \(heights). The loud passage never scrolled off, so the waveform is frozen \
       rather than draining.
       """)
+  }
+
+  @Test("identical silence samples enter history on every poll tick")
+  func identicalSilenceSamplesFollowTheTick() async {
+    let driver = MeterDriver()
+    var observed: [[CGFloat]] = []
+    let host = NSHostingView(
+      rootView: MeterHarness(driver: driver) { observed.append($0) }
+        .frame(width: 100, height: 20))
+    let frame = NSRect(x: 0, y: 0, width: 100, height: 20)
+    let window = NSWindow(
+      contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    host.frame = frame
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    #expect(observed.isEmpty, "mounting the meter must not invent a sample")
+
+    driver.tick = 1
+    await Task.yield()
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+
+    driver.tick = 2
+    await Task.yield()
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+
+    #expect(observed.count == 2, "two poll ticks delivered \(observed.count) samples")
+    #expect(observed.last == [0, 0], "identical silence did not advance the rendered history")
   }
 
   // MARK: - Turning the buffer into bars

@@ -2091,6 +2091,11 @@ struct RainbowLevelMeter: View {
   var barWidth: CGFloat = 2
   var spacing: CGFloat = 1.5
 
+  /// Outcome observer for the rendered history update. Production uses the
+  /// no-op default; host-view tests use it to prove the SwiftUI trigger feeds
+  /// identical samples on successive poll ticks.
+  var onHistoryChange: ([CGFloat]) -> Void = { _ in }
+
   /// #2216: the last `barCount` levels, oldest first. Bar `i` is a MOMENT, not a
   /// position on a shape.
   ///
@@ -2203,7 +2208,9 @@ struct RainbowLevelMeter: View {
     }
     .frame(width: Self.width(barWidth: barWidth, spacing: spacing), height: height)
     .onChange(of: tick) { _, _ in
-      history = Self.pushed(history, level: CGFloat(audioLevel))
+      let next = Self.pushed(history, level: CGFloat(audioLevel))
+      history = next
+      onHistoryChange(next)
     }
     .accessibilityHidden(true)
   }
