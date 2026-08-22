@@ -1,29 +1,29 @@
 ---
-title: "macOS Dictation That Works Offline and Stays Private"
+title: "How Offline Dictation Works on Mac and What Stays On Device"
 description: "Fully private, on-device dictation for macOS that never sends your voice to the cloud. How EnviousWispr delivers offline speech-to-text you can trust."
 pubDate: 2026-03-11
-updatedDate: 2026-04-28
+updatedDate: 2026-08-22
 tags: ["accessibility", "privacy", "dictation", "offline"]
 draft: false
 author: "Saurabh Vaish"
 faqs:
   - question: "Does macOS have a built-in offline dictation option?"
-    answer: "Yes, but with caveats. Apple Dictation can download an Enhanced Dictation model that runs locally, but the experience is dated, post-processing is minimal, and accuracy on long-form dictation lags purpose-built tools. EnviousWispr runs entirely on-device using newer speech models (Parakeet for 25 European languages, Whisper for wider multilingual coverage) plus optional AI polish, so the transcript you paste is closer to what you actually meant to write."
+    answer: "Yes, but with caveats. Apple Dictation can run locally on supported Macs, but its cleanup and customization options are limited. EnviousWispr always transcribes on-device using Parakeet for 25 European languages or WhisperKit for wider multilingual coverage. You can then use local cleanup, local AI polish, or an optional cloud text-polish provider."
   - question: "Can dictation software really work without an internet connection?"
-    answer: "Yes, when the speech model runs locally. EnviousWispr ships with Core ML models that execute on your Mac's Neural Engine, so the entire transcribe-and-polish pipeline runs offline after the first download. There is no API call out, no server round-trip, and no graceful degradation when the Wi-Fi drops."
+    answer: "Yes, when the speech model runs locally. EnviousWispr transcribes on your Mac, so core dictation works offline after the speech model download. Deterministic cleanup, EG-1, supported Apple Intelligence, and downloaded Ollama models can also stay local. OpenAI, Gemini, Claude, and Ollama-hosted polish need a connection."
   - question: "Is on-device dictation accurate enough for medical or accessibility use?"
-    answer: "On Apple Silicon Macs, on-device speech recognition reaches word error rates competitive with leading cloud APIs for English dictation. For accessibility users who rely on voice input as a primary modality, that accuracy plus the predictability of no network failures is usually the deciding factor. For medical dictation, accuracy matters but the on-device privacy story usually matters more."
+    answer: "Accuracy depends on your microphone, language, speaking style, and chosen speech model. On-device processing removes network failures and keeps audio local, but it does not guarantee perfect text. Always review important output, especially medical terms, names, doses, and instructions."
   - question: "What happens if I dictate while completely offline?"
-    answer: "Everything works the same. EnviousWispr captures audio, runs transcription via Core ML, and pastes polished text into your app. The only feature that needs network is optional cloud AI polish (OpenAI, Gemini); on-device polish via Apple Intelligence, EG-1, or Ollama still works offline once its model is installed, as does raw transcription with no polish at all."
+    answer: "Core dictation works the same after its model is downloaded. EnviousWispr captures audio, transcribes locally, runs your selected local cleanup route, and pastes text into your app. OpenAI, Gemini, Claude, and Ollama-hosted polish need a connection. Apple Intelligence on supported systems, EG-1, downloaded Ollama models, deterministic cleanup, and raw transcription can work offline."
   - question: "Is there a free offline dictation app for Mac?"
-    answer: "Yes. EnviousWispr is free to download, requires no account, and runs entirely on your Mac. There is no usage cap, no trial period, and no subscription tier. You can use it indefinitely without ever creating an account or connecting to a server."
+    answer: "Yes. EnviousWispr is free to download and requires no EnviousWispr account. There is no usage cap, trial period, or subscription tier. Choose transcription with deterministic cleanup or a supported local polish provider to use it without connecting to a cloud text-polish service."
 ---
 
 What happens to your primary input method when the Wi-Fi goes down? If voice input is how you write (because typing hurts, or because it's simply not an option) that's not a hypothetical question. It's the difference between a tool you can depend on and one that fails when you need it most.
 
 Most macOS dictation tools treat offline capability as a nice-to-have. For someone who relies on voice input for accessibility, it's the whole point. And "works offline" shouldn't come with the usual asterisks: reduced accuracy, no post-processing, no customization.
 
-EnviousWispr is a different approach: on-device dictation for macOS that processes everything locally, works without an internet connection, and treats accessibility as a core use case rather than a footnote.
+EnviousWispr is a different approach: macOS dictation that always transcribes on-device, can complete the full workflow locally, and treats accessibility as a core use case rather than a footnote. Cloud text polish is available when you choose it, but it is not required for core dictation.
 
 ## Why Offline Matters for Accessible Voice Input
 
@@ -35,20 +35,22 @@ Offline dictation removes the most common point of failure. Your Mac's processin
 
 Privacy matters here too, and not in the abstract. People dictate medical information, therapy notes, personal health details, financial data. If you're using voice input as your primary way of interacting with your computer, everything flows through it. Sending all of that to a cloud service, even one with a solid privacy policy, is a decision most people would rather not make.
 
-With EnviousWispr, that decision doesn't come up. Your recordings stay on your Mac.
+With EnviousWispr, your recordings stay on your Mac. You still choose what happens to the transcript after that: keep cleanup local, or send text to a cloud polish provider you select.
 
 ## How On-Device Transcription Works
 
-EnviousWispr handles transcription locally using two backends: Parakeet for fast dictation across 25 European languages, and WhisperKit for wider multi-language support. Both run natively through Apple's Core ML framework. The Neural Engine on your Apple Silicon chip does the heavy lifting, not a remote server.
+EnviousWispr handles transcription locally using two backends: Parakeet for fast dictation across 25 European languages, and WhisperKit for wider multi-language support. Both run through local Apple Silicon hardware rather than a remote transcription server.
 
 Here's what the pipeline looks like in practice:
 
 1. **Record.** You speak, and EnviousWispr captures audio from your microphone with a pre-roll buffer so your first words are never clipped.
 2. **Transcribe.** On-device speech recognition converts your speech to text using Core ML.
-3. **Post-process.** Optional AI polish cleans up filler words, fixes punctuation, and formats the output. Choose from on-device providers (Apple Intelligence, EG-1, Ollama) or cloud (OpenAI, Gemini).
+3. **Post-process.** Deterministic cleanup runs locally. Optional AI polish can use EG-1, supported Apple Intelligence, or a downloaded Ollama model locally, or OpenAI, Gemini, Claude, and Ollama-hosted models over the network.
 4. **Deliver.** The polished text pastes directly into the app you're using. Your previous clipboard contents are preserved.
 
-End-to-end, this takes a second or two on Apple Silicon. No network round-trip. No waiting for a server response. For a deeper look at the transcription pipeline, see [how it works](/how-it-works/).
+With a local route, there is no network round-trip or server response to wait for. Cloud polish adds a network step after local transcription. For a deeper look at the transcription pipeline, see [how it works](/how-it-works/).
+
+Audio and transcription remain on your Mac in both cases. When you select cloud polish, the transcript, cleanup instructions, custom words, target app name, and your account credential go directly to that provider.
 
 Here's what on-device dictation looks like in practice, composing an email without touching the keyboard:
 
@@ -58,7 +60,7 @@ Here's what on-device dictation looks like in practice, composing an email witho
 **What gets pasted:**
 > Hi Dr. Martinez, following up on last week's appointment. You mentioned scheduling a follow-up in six weeks. I also need the referral paperwork for the hand specialist. Could you send that to my patient portal and let me know if there's anything I need to fill out beforehand? Thank you.
 
-That message was composed entirely by voice, processed on-device, and never left the Mac. For someone dictating medical or personal health content, that distinction matters.
+With a local polish route, that message can be composed entirely by voice and processed without the transcript leaving the Mac. For someone dictating medical or personal health content, that choice matters.
 
 ## Hands-Free Mode for Extended Dictation
 
@@ -102,7 +104,7 @@ These are paid macOS dictation apps that also focus on quality and speed. Both u
 
 EnviousWispr differs on three axes:
 
-- **Fully on-device.** Transcription and post-processing both run locally, with no cloud dependency.
+- **Local by choice.** Transcription always runs on-device. Deterministic cleanup and supported local polish providers can avoid a cloud dependency.
 - **Free to download.** Zero accounts, zero subscriptions. Available on [GitHub](https://github.com/saurabhav88/EnviousWispr).
 - **Hands-free mode included.** Double-press to lock recording for extended dictation without holding keys.
 
@@ -113,9 +115,9 @@ EnviousWispr differs on three axes:
 | On-device transcription | Yes | Partial | No | No |
 | Post-processing | On-device or cloud (your choice) | None | Cloud | Cloud |
 | Hands-free mode | Yes (double-press lock) | No | Varies | No |
-| Adaptive formatting | Yes (Ollama, OpenAI, or Gemini polish) | No | Varies | Varies |
+| Adaptive formatting | Yes (local or cloud polish) | No | Varies | Varies |
 | Custom word dictionary | Yes | No | No | No |
-| Internet required | No | No | Yes | Yes |
+| Internet required | No for local routes | No | Yes | Yes |
 | Cost | Free | Free | Subscription | Subscription |
 
 No tool wins on every axis. Cloud tools often have the easiest setup. Built-in dictation requires zero installation. EnviousWispr wins on privacy, offline capability, customization, and cost: the axes that matter most when voice input is something you depend on every day.
@@ -141,7 +143,7 @@ Both prompts appear automatically. Click Allow for each.
 
 ### Model Download
 
-EnviousWispr downloads its speech recognition model automatically on first launch. The download happens once, and after that everything runs locally.
+EnviousWispr downloads its speech recognition model on first use. Once that model is present, core dictation can run locally. EG-1 and local Ollama models also need to finish downloading before you depend on them offline.
 
 ### Configure for Hands-Free Use
 
@@ -149,11 +151,11 @@ If you want to avoid holding keys, just double-press your keybind to lock record
 
 ### Let the Polish Adapt
 
-EnviousWispr's polish step cleans up your dictation by default, removing filler words and fixing punctuation without flattening your voice. A quick aside stays a clean line. With Ollama, OpenAI, or Gemini polish on, a longer piece with list cues comes back structured with paragraphs and bullets; on the Apple Intelligence default, the same content stays clean prose.
+EnviousWispr's deterministic cleanup can remove filler words and fix punctuation locally. Optional AI polish can shape longer material with paragraphs and lists. Choose EG-1, supported Apple Intelligence, or a downloaded Ollama model for a local route, or OpenAI, Gemini, Claude, and Ollama-hosted models when you want cloud polish.
 
 ## A Tool That Works When You Need It
 
-The core promise of offline, private dictation is simple: it works when you need it, it doesn't send your words somewhere else, and it doesn't cost anything.
+The core promise of offline, private dictation is simple: local transcription works when you need it, you can keep the text-polish path on your Mac, and the app does not cost anything.
 
 For people who rely on voice input as their primary way of writing, those aren't bonus features. They're baseline requirements. EnviousWispr is built around them.
 

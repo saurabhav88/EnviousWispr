@@ -1,0 +1,106 @@
+---
+import SolutionLayout from '../../layouts/SolutionLayout.astro';
+
+const faqs = [
+  {
+    question: 'Does AI polish send my audio to a model provider?',
+    answer: 'No. Speech recognition always happens on your Mac. AI polish receives no microphone audio. Local providers keep the request on your Mac. A cloud provider receives the transcript, cleanup instructions, custom words, target app name, and your account credential when you choose it.',
+  },
+  {
+    question: 'Which AI polish options work on-device?',
+    answer: 'EG-1 works on every supported Apple Silicon Mac after its model download. Apple Intelligence requires macOS 26 or later and an eligible Mac. Ollama stays local only when the selected model is downloaded to your Mac. Deterministic cleanup uses no AI model.',
+  },
+  {
+    question: 'Can I use my own cloud AI account?',
+    answer: 'Yes. EnviousWispr supports bring-your-own-key polish with OpenAI, Gemini, and Claude. The request includes the transcript, cleanup instructions, custom words, target app name, and your account credential. It goes directly to the provider under its terms, without an Envious Labs relay.',
+  },
+  {
+    question: 'What happens when AI polish fails?',
+    answer: 'Your dictation is not discarded. EnviousWispr keeps the last usable result from the earlier pipeline, normally the deterministically cleaned transcript, and delivers that text. Some failures also show a plain-language notice so you can fix the selected provider.',
+  },
+];
+
+const relatedLinks = [
+  {
+    href: '/how-it-works/',
+    title: 'See the full dictation pipeline',
+    description: 'Follow audio, transcription, cleanup, polish, and paste from start to finish.',
+  },
+  {
+    href: '/blog/cloud-ai-polish-not-stored/',
+    title: 'Understand cloud polish requests',
+    description: 'See what leaves your Mac when you deliberately choose a cloud provider.',
+  },
+  {
+    href: '/blog/spoken-text-formatting-dates-numbers-emails/',
+    title: 'Cleanup without an AI model',
+    description: 'Learn how predictable formatting still runs when AI polish is off.',
+  },
+];
+
+const directAnswer = `AI polish for dictation turns a spoken transcript into cleaner written text after speech recognition is complete. In EnviousWispr, that is a choice, not one hidden processing path. Deterministic cleanup formats common numbers, dates, money, email addresses, and spoken emoji without an AI model. EG-1, Apple Intelligence, and downloaded Ollama models can polish text on your Mac. EG-1 works across the app's supported macOS 14 and later range after its model download. Apple Intelligence requires macOS 26 or later and an eligible Mac. Ollama can also point to a hosted model, so check where the selected model runs before treating it as local. OpenAI, Gemini, and Claude are bring-your-own-key cloud choices. Those requests include the transcript, cleanup instructions, custom words, target app name, and your account credential; audio never does. If polish cannot finish, EnviousWispr keeps the usable deterministically cleaned transcript instead of losing the dictation. You decide whether cleanup is predictable, local, or cloud based.`;
+---
+
+<SolutionLayout
+  title="AI Dictation Polish on Mac, Local or Cloud | EnviousWispr"
+  description="Compare deterministic cleanup, local AI polish, and bring-your-own-key cloud models for Mac dictation. Your audio always remains on your Mac device."
+  canonicalPath="/solutions/ai-polish/"
+  eyebrow="AI polish choices"
+  heading="Clean up the words. Keep control of the route."
+  intro="Start with a local transcript, then choose predictable cleanup, an on-device model, or a cloud provider you already use. The privacy boundary stays visible."
+  answerHeading="What is AI polish for dictation on Mac?"
+  directAnswer={directAnswer}
+  downloadSource="solution-ai-polish"
+  trustItems={['Audio always stays local', 'Local and cloud choices', 'Usable text survives failures']}
+  faqs={faqs}
+  relatedLinks={relatedLinks}
+>
+  <div slot="proof" class="proof-window">
+    <div class="proof-window-bar"><i></i><i></i><i></i>polish-route</div>
+    <div class="proof-body">
+      <div class="proof-row">
+        <span class="proof-row-label">Spoken transcript</span>
+        <p>Um send Maya the revised outline on Tuesday at about three thirty and ask if the second section is clear.</p>
+      </div>
+      <div class="proof-row output">
+        <span class="proof-row-label">Clean text</span>
+        <p>Send Maya the revised outline on Tuesday at 3:30 PM and ask whether the second section is clear.</p>
+      </div>
+      <div class="proof-rail" aria-hidden="true"><span>Transcript</span><span>Rules</span><span>Your model</span><span>Paste</span></div>
+    </div>
+  </div>
+
+  <section class="solution-section" aria-labelledby="polish-routes-heading">
+    <div>
+      <p class="solution-kicker">Four clear routes</p>
+      <h2 id="polish-routes-heading">Pick the amount of intelligence the text needs.</h2>
+    </div>
+    <div class="solution-card-grid">
+      <article class="solution-card"><h3>Deterministic cleanup</h3><p>Fixed rules format common numbers, dates, money, email addresses, custom words, and spoken emoji. No generative model is involved.</p></article>
+      <article class="solution-card"><h3>EG-1</h3><p>Envious Labs' dictation-polish model runs on-device after a separate model download. Its weights use the EG-1 Community Model License, not the app's GPLv3 license.</p></article>
+      <article class="solution-card"><h3>Apple Intelligence</h3><p>Apple's on-device model can polish supported languages on eligible Macs running macOS 26 or later, with no extra EnviousWispr model download.</p></article>
+      <article class="solution-card"><h3>Ollama or your cloud key</h3><p>Use a downloaded Ollama model locally, a model hosted by Ollama, or your own OpenAI, Gemini, or Claude account. The execution location is part of the choice.</p></article>
+    </div>
+  </section>
+
+  <section class="solution-section" aria-labelledby="polish-boundary-heading">
+    <div>
+      <p class="solution-kicker">The privacy boundary</p>
+      <h2 id="polish-boundary-heading">Audio never enters the polish step.</h2>
+    </div>
+    <div>
+      <p class="solution-section-lead">Speech recognition finishes on your Mac before polish begins. A local route keeps the request there. A cloud route sends the transcript, cleanup instructions, custom words, target app name, and your account credential directly to the selected provider. Envious Labs does not operate a transcription or polish relay.</p>
+      <div class="solution-callout" style="margin-top:20px"><strong>One Ollama detail worth checking</strong><p>Ollama supports both downloaded local models and hosted models. A hosted model runs on Ollama's servers, even though you selected Ollama in the app.</p></div>
+    </div>
+  </section>
+
+  <section class="solution-section" aria-labelledby="polish-failure-heading">
+    <div>
+      <p class="solution-kicker">Fail soft</p>
+      <h2 id="polish-failure-heading">A polish problem should not swallow your thought.</h2>
+    </div>
+    <div>
+      <p class="solution-section-lead">The transcript passes through predictable cleanup before model polish. If the selected model is unavailable, times out, or rejects the request, EnviousWispr keeps the last usable text and continues toward paste. A model problem can reduce cleanup quality, but it does not erase the dictation.</p>
+    </div>
+  </section>
+</SolutionLayout>

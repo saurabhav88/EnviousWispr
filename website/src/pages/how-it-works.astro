@@ -44,7 +44,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does EnviousWispr work without internet?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. All speech recognition runs on-device using Apple Silicon and the Parakeet or WhisperKit model. Your audio never leaves your Mac. AI polish is optional and can also run fully on-device: EG-1, our own model, on any supported Mac, or Apple Intelligence on macOS 26 and later. If you bring your own OpenAI or Gemini API key, only the transcribed text (not the audio) is sent to that provider for polishing."
+        "text": "Yes. All speech recognition runs on-device using Apple Silicon and the Parakeet or WhisperKit model. Your audio never leaves your Mac. AI polish can also run on-device with EG-1, Apple Intelligence on supported systems, or a downloaded Ollama model. If you choose cloud polish, the transcript, cleanup instructions, custom words, target app name, and your account credential go directly to that provider."
       }
     },
     {
@@ -76,7 +76,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does EnviousWispr send my voice or text anywhere?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Audio never leaves your Mac. Transcription is fully on-device. AI polish runs on-device by default through Apple Intelligence on supported Macs. If you opt into cloud polish by adding your own OpenAI or Gemini API key, only the transcribed text is sent to the provider you chose. No raw audio is ever uploaded."
+        "text": "Audio never leaves your Mac. Transcription is fully on-device. Local AI polish can keep the request there too. If you choose cloud polish, the transcript, cleanup instructions, custom words, target app name, and your account credential go directly to the provider. No raw audio is ever uploaded."
       }
     },
     {
@@ -497,7 +497,7 @@ const faqJsonLd = JSON.stringify({
       <div class="engine-card reveal" style="--i:3">
         <span class="engine-badge">Your call</span>
         <h3>Your OpenAI or Gemini key</h3>
-        <p>Prefer a cloud model? Add your own key. Only your text is sent, never audio, and we ask the provider not to keep it.</p>
+        <p>Prefer a cloud model? The transcript, cleanup instructions, custom words, target app name, and your account credential go directly to that provider. Audio never does.</p>
         <div class="engine-meta">Cloud &middot; Your own key &middot; Text only</div>
       </div>
     </div>
@@ -599,6 +599,8 @@ const faqJsonLd = JSON.stringify({
       <a href="/compare/" class="back-link">Compare with alternatives</a>
     </div>
     <nav class="how-it-works-links reveal" aria-label="Related content">
+      <a href="/solutions/ai-polish/">Compare AI polish choices</a>
+      <a href="/solutions/offline-dictation/">Set up offline dictation</a>
       <a href="/blog/getting-started-enviouswispr-under-2-minutes/">Get started in under 2 minutes</a>
       <a href="/blog/on-device-vs-cloud-dictation-privacy/">On-device vs cloud dictation</a>
       <a href="/compare/wisprflow/">Compare with WisprFlow</a>

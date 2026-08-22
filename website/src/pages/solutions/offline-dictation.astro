@@ -1,0 +1,106 @@
+---
+import SolutionLayout from '../../layouts/SolutionLayout.astro';
+
+const faqs = [
+  {
+    question: 'Does EnviousWispr work without an internet connection?',
+    answer: 'Yes, after the speech model and any local polish model you want have finished downloading. Recording, speech recognition, deterministic cleanup, and paste can all run without a network connection on an Apple Silicon Mac.',
+  },
+  {
+    question: 'Is transcription always on-device?',
+    answer: 'Yes. EnviousWispr does not offer cloud transcription. Parakeet and WhisperKit process microphone audio on your Mac whether you use no polish, local polish, or a cloud text-polish provider afterward.',
+  },
+  {
+    question: 'Which polish choices work offline?',
+    answer: 'Deterministic cleanup, EG-1 after its model download, Apple Intelligence on supported macOS 26 systems, and downloaded Ollama models can work offline. OpenAI, Gemini, Claude, and Ollama-hosted models need a network connection.',
+  },
+  {
+    question: 'How can I test offline dictation myself?',
+    answer: 'Finish all model downloads, open TextEdit, turn off Wi-Fi, and dictate a short sentence. Confirm the text appears, then repeat with your chosen local polish provider. This checks the real workflow instead of relying on a settings label.',
+  },
+];
+
+const relatedLinks = [
+  {
+    href: '/blog/macos-dictation-offline-private/',
+    title: 'How offline dictation works',
+    description: 'Read the longer guide to the local speech and cleanup pipeline.',
+  },
+  {
+    href: '/blog/on-device-vs-cloud-dictation-privacy/',
+    title: 'On-device versus cloud dictation',
+    description: 'Compare the data paths and trade-offs before choosing a workflow.',
+  },
+  {
+    href: '/solutions/ai-polish/',
+    title: 'Choose an AI polish route',
+    description: 'Separate local models, hosted models, and deterministic cleanup clearly.',
+  },
+];
+
+const directAnswer = `Offline dictation on Mac converts speech to text without sending microphone audio to an internet service. EnviousWispr records and transcribes locally with Parakeet or WhisperKit on Apple Silicon, then runs predictable cleanup and pastes the result into the active app. It works offline after the speech model has been downloaded. You can stop there, use deterministic cleanup with no AI model, or keep AI polish local with EG-1, Apple Intelligence on supported macOS 26 systems, or a downloaded Ollama model. Ollama-hosted models are different: they run on Ollama's servers and need a connection. OpenAI, Gemini, and Claude also need the internet because the transcript, cleanup instructions, custom words, target app name, and your account credential go to the provider, though audio stays local. To verify the boundary, finish your model downloads, open TextEdit, turn off Wi-Fi, and dictate a sentence. If the text appears with your selected local route, you have tested the actual offline path. EnviousWispr requires macOS 14 or later and Apple Silicon.`;
+---
+
+<SolutionLayout
+  title="Free Offline Dictation for Apple Silicon Mac | EnviousWispr"
+  description="Use free offline dictation on Apple Silicon Mac. Speech recognition runs on-device, audio stays local, and downloaded polish models work without Wi-Fi."
+  canonicalPath="/solutions/offline-dictation/"
+  eyebrow="Offline dictation"
+  heading="Your connection can drop. Your words do not have to."
+  intro="Record, transcribe, clean, and paste on your Mac after the models you need are downloaded. No transcription server and no account stand between your voice and the page."
+  answerHeading="How does offline dictation work on Mac?"
+  directAnswer={directAnswer}
+  downloadSource="solution-offline-dictation"
+  trustItems={['Transcription always on-device', 'Works after model download', 'macOS 14+ · Apple Silicon']}
+  faqs={faqs}
+  relatedLinks={relatedLinks}
+>
+  <div slot="proof" class="proof-window">
+    <div class="proof-window-bar"><i></i><i></i><i></i>offline-path</div>
+    <div class="proof-body">
+      <div class="proof-row">
+        <span class="proof-row-label">Network</span>
+        <p>Wi-Fi off. No EnviousWispr account. Speech and local models are already downloaded.</p>
+      </div>
+      <div class="proof-row output">
+        <span class="proof-row-label">TextEdit</span>
+        <p>The sentence appears in the document through the same hold, speak, release workflow.</p>
+      </div>
+      <div class="proof-rail" aria-hidden="true"><span>Voice</span><span>Local ASR</span><span>Local cleanup</span><span>Paste</span></div>
+    </div>
+  </div>
+
+  <section class="solution-section" aria-labelledby="offline-path-heading">
+    <div>
+      <p class="solution-kicker">The local path</p>
+      <h2 id="offline-path-heading">Four steps can stay on one machine.</h2>
+    </div>
+    <div class="solution-card-grid">
+      <article class="solution-card"><h3>1. Capture</h3><p>Your microphone records on the Mac. EnviousWispr does not upload audio for transcription.</p></article>
+      <article class="solution-card"><h3>2. Transcribe</h3><p>Parakeet or WhisperKit converts speech to text locally with a model downloaded to your Mac.</p></article>
+      <article class="solution-card"><h3>3. Clean</h3><p>Fixed formatting rules run locally. EG-1, supported Apple Intelligence, or a downloaded Ollama model can add local AI polish.</p></article>
+      <article class="solution-card"><h3>4. Deliver</h3><p>The usable text is copied or pasted into the app you were using, with no network round trip.</p></article>
+    </div>
+  </section>
+
+  <section class="solution-section" aria-labelledby="offline-download-heading">
+    <div>
+      <p class="solution-kicker">Prepare before going offline</p>
+      <h2 id="offline-download-heading">Models need to arrive before the network leaves.</h2>
+    </div>
+    <div>
+      <p class="solution-section-lead">The first speech model download needs an internet connection. EG-1 and local Ollama models also need to be downloaded before you rely on them offline. Once the required files are present, core dictation does not need a server.</p>
+      <div class="solution-callout" style="margin-top:20px"><strong>Hosted is not local</strong><p>An Ollama-hosted model still uses Ollama's servers. Choose a model that is downloaded to your Mac when an offline or fully local text path matters.</p></div>
+    </div>
+  </section>
+
+  <section class="solution-section" aria-labelledby="offline-test-heading">
+    <div>
+      <p class="solution-kicker">A test you can repeat</p>
+      <h2 id="offline-test-heading">Turn off Wi-Fi and use the real path.</h2>
+    </div>
+    <div>
+      <p class="solution-section-lead">Open TextEdit, disable Wi-Fi, then use your normal keybind to dictate one sentence. Confirm the text appears. If you selected local AI polish, first confirm the provider shows ready, then dictate a spoken list and check that the model formats it as a list. Filler removal alone is not proof because deterministic cleanup can remove filler without an AI model.</p>
+    </div>
+  </section>
+</SolutionLayout>

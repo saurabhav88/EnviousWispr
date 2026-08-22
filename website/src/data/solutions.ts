@@ -16,4 +16,20 @@ export const solutions: SolutionCard[] = [
     outcome: 'Less typing between thinking and shipping',
     accent: 'blue',
   },
+  {
+    href: '/solutions/ai-polish/',
+    eyebrow: 'AI polish choices',
+    title: 'Choose how rough speech becomes clean text',
+    description: 'Compare deterministic cleanup, local AI models, and bring-your-own-key cloud polish without blurring their privacy boundaries.',
+    outcome: 'The cleanup you want with the boundary you choose',
+    accent: 'violet',
+  },
+  {
+    href: '/solutions/offline-dictation/',
+    eyebrow: 'Offline dictation',
+    title: 'Keep dictating when the internet disappears',
+    description: 'Run speech recognition and text cleanup on your Apple Silicon Mac after the required models have been downloaded.',
+    outcome: 'Reliable voice input on planes, trains, and quiet networks',
+    accent: 'green',
+  },
 ];
