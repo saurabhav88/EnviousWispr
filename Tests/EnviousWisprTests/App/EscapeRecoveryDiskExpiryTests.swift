@@ -57,7 +57,8 @@ struct EscapeRecoveryDiskExpiryTests {
       .appendingPathComponent("ew-2186-\(UUID().uuidString)", isDirectory: true)
     return (
       TranscriptStore(directory: directory, liveSpoolIDs: spools),
-      directory)
+      directory
+    )
   }
 
   /// Written from the detached walk and read on the main actor, so it carries
@@ -208,13 +209,40 @@ struct EscapeRecoveryDiskExpiryTests {
         kept row already carries that proof, so this one is litter that is never collected — and \
         the countdown keeps running against it forever.
         """)
-      #expect(swept.deletedIDs.contains(id), "it must be swept as the litter it is")
+      #expect(swept.clearedShadows == 1, "the leftover pending copy was cleared")
+      #expect(
+        !swept.deletedIDs.contains(id),
+        "the shared id still names the permanent row and must not be reported for eviction")
       #expect(
         swept.remainingLive == 0 && swept.nextLiveDeadline == nil,
         "a kept live shadow must not be re-offered or keep the expiry pulse armed")
       #expect(
         swept.expired.isEmpty,
         "and NOT reported as expired — the user kept this dictation, nothing lapsed")
+    }
+
+    @Test("clearing a kept shadow does not evict its permanent History row")
+    func keptLiveShadowPreservesPermanentRowInMemory() async throws {
+      let store = makeStore(spools: { ["session-kept-history"] })
+      let coordinator = makeCoordinator(EventLog(), store: store)
+      let pending = Transcript(
+        id: UUID(), text: "the kept row must stay visible",
+        recoverySessionID: "session-kept-history",
+        escapeRecoveredAt: Date().addingTimeInterval(-60),
+        escapeRecoveryTakeID: "take-kept-history")
+      let permanent = pending.promotedFromPending()
+      try store.savePending(pending)
+      try store.save(permanent)
+      coordinator.setTranscriptsForTesting([permanent])
+
+      await coordinator.sweepExpiredPending()
+
+      #expect(
+        coordinator.visibleTranscripts.map(\.id) == [permanent.id],
+        "clearing the pending shadow must not make the user's kept row disappear from History")
+      #expect(
+        try await store.loadPending().isEmpty,
+        "control: the pending shadow itself was actually removed")
     }
 
     @Test("the recovery folder is never read on the main thread")

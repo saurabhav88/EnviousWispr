@@ -359,6 +359,7 @@ public final class TranscriptStore {
     let fm = FileManager.default
     var reported: [ExpiredPendingRow] = []
     var deleted: Set<UUID> = []
+    var clearedShadows = 0
     var unremovable = 0
     // An unreadable directory is reported as an INCOMPLETE walk, never as an
     // empty one. Swallowing it into `[]` produced `unremovable == 0`, which the
@@ -409,8 +410,12 @@ public final class TranscriptStore {
       if fm.fileExists(atPath: candidate.url.path) {
         unremovable += 1
         if candidate.isLive { survivingLiveShadows.append(candidate) }
-      } else if let id = UUID(uuidString: candidate.url.deletingPathExtension().lastPathComponent) {
-        deleted.insert(id)
+      } else {
+        // This file disappeared, but its transcript did not: the permanent
+        // twin is the surviving record. `deletedIDs` is consumed as an
+        // in-memory eviction channel, so putting the shared id there removes
+        // the row the user just kept from History until the next load.
+        clearedShadows += 1
       }
     }
     var liveCandidates = sweepCandidates.filter(\.isLive)
@@ -498,7 +503,7 @@ public final class TranscriptStore {
     return PendingSweepResult(
       deletedIDs: deleted, expired: reported, unremovable: unremovable,
       remainingLive: remainingLive, retainedForSpool: retainedForSpool,
-      nextLiveDeadline: nextLiveDeadline)
+      nextLiveDeadline: nextLiveDeadline, clearedShadows: clearedShadows)
   }
 
   /// Why a pending file is or is not still offered.
@@ -804,9 +809,11 @@ public final class TranscriptStore {
 
 /// What one sweep did (#2087).
 ///
-/// Four fields because they answer four different questions. `deletedIDs` is
+/// The fields answer different questions. `deletedIDs` is
 /// every file the sweep removed — expired AND invalid — and is what a caller
-/// evicts from memory on. `expired` is only the rows a user genuinely let lapse,
+/// evicts from memory on. It deliberately excludes cleared pending shadows,
+/// because their permanent twin is still the user's live record. `expired` is
+/// only the rows a user genuinely let lapse,
 /// and is what telemetry reports: a corrupt file is not a user letting a
 /// recovery go, so it is a strict subset.
 /// `unremovable` is the third: how many files this sweep decided must go and
@@ -868,10 +875,15 @@ public struct PendingSweepResult: Sendable {
   /// counting down.
   public let nextLiveDeadline: Date?
 
+  /// Pending copies removed because the same transcript already survives in
+  /// the permanent store. A count rather than ids because callers must never
+  /// evict the shared transcript identity; this is cleanup evidence only.
+  public let clearedShadows: Int
+
   public init(
     deletedIDs: Set<UUID>, expired: [ExpiredPendingRow], unremovable: Int = 0,
     walkComplete: Bool = true, remainingLive: Int = 0, retainedForSpool: Int = 0,
-    nextLiveDeadline: Date? = nil
+    nextLiveDeadline: Date? = nil, clearedShadows: Int = 0
   ) {
     self.deletedIDs = deletedIDs
     self.expired = expired
@@ -880,6 +892,7 @@ public struct PendingSweepResult: Sendable {
     self.remainingLive = remainingLive
     self.retainedForSpool = retainedForSpool
     self.nextLiveDeadline = nextLiveDeadline
+    self.clearedShadows = clearedShadows
   }
 }
 
