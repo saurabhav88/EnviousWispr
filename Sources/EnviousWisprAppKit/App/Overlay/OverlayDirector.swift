@@ -12,12 +12,12 @@ import Foundation
 /// grows a per-kind field collection it has become the thing the migration is
 /// removing.
 ///
-/// **Not yet authoritative.** `RecordingOverlayPanel` still routes its own
-/// transitions; the director is introduced here with its own tests so the
-/// cutover is a retargeting rather than a retargeting plus a first run. The
-/// panel OWNS the director and injects its existing host — the director never
-/// owns the panel, and two references to one host do not make two window owners
-/// because the host still solely owns the `NSPanel`.
+/// **Not yet authoritative or production-owned.** C4c installs this director at
+/// the composition root and injects the retained host. Nothing but the tests
+/// instantiates it today — an earlier version of this comment claimed the panel
+/// owned it, which was simply untrue and is the exact shape of comment this
+/// migration keeps finding: confident, plausible, and describing code that does
+/// not exist.
 @MainActor
 final class OverlayDirector {
 
@@ -45,13 +45,21 @@ final class OverlayDirector {
   /// second press finds nothing rather than pasting twice.
   private var escapeRecoveryPayload: (id: UUID, payload: CancelUndoPayload)?
 
+  /// Required, immutable, and injected. It was a settable `var` for one round —
+  /// one more mutable handler field on the type whose whole purpose is to have
+  /// fewer, and one where a caller that forgot to wire it would silently discard
+  /// effects a feature depends on.
+  private let deliverEffect: (OverlayEffect) -> Void
+
   init(
     host: OverlayWindowHost,
+    deliverEffect: @escaping (OverlayEffect) -> Void,
     model: OverlayRenderModel = OverlayRenderModel(),
     scheduler: OverlayScheduler = .live,
     makeID: @escaping () -> PresentationID = { PresentationID() }
   ) {
     self.host = host
+    self.deliverEffect = deliverEffect
     self.model = model
     self.schedule = scheduler
     self.reducer = OverlayReducer(makeID: makeID)
@@ -61,22 +69,27 @@ final class OverlayDirector {
 
   // MARK: - The transaction
 
-  func send(_ event: OverlayEvent) {
+  /// `actions` is the handler for the presentation this event PRODUCES, and it
+  /// arrives with the request rather than after it.
+  ///
+  /// A separate `bind(for:)` call made binding a post-publication operation: the
+  /// caller had to bind after the presentation existed, an ordering nothing
+  /// enforced, and a window in which the pill was on screen with no handler. A
+  /// request carries its own handler or it has none by construction.
+  func send(_ event: OverlayEvent, actions: ((OverlayAction) -> Void)? = nil) {
     let plan = reducer.reduce(event)
-    apply(plan)
+    apply(plan, actions: actions)
   }
 
   /// Take custody of a cancelled-transcript payload and present its pill.
-  func presentEscapeRecovery(_ payload: CancelUndoPayload, transcriptID: UUID) {
-    escapeRecoveryPayload = (id: transcriptID, payload: payload)
-    send(.pipeline(.escapeRecovery(transcriptID: transcriptID)))
-  }
-
-  /// Bind the feature handler for the CURRENT presentation. Dropped when that
-  /// presentation goes, so nothing outlives the pill it belongs to.
-  func bindActions(for id: PresentationID, deliver: @escaping (OverlayAction) -> Void) {
-    guard reducer.state.current?.id == id else { return }
-    activeBinding = (id: id, deliver: deliver)
+  ///
+  /// The id comes from the PAYLOAD. An earlier signature took it separately, so
+  /// two ids could disagree and the pill would offer to restore a transcript the
+  /// custody did not hold — an unrepresentable state made representable by an
+  /// extra parameter.
+  func presentEscapeRecovery(_ payload: CancelUndoPayload) {
+    escapeRecoveryPayload = (id: payload.transcriptID, payload: payload)
+    send(.pipeline(.escapeRecovery(transcriptID: payload.transcriptID)))
   }
 
   /// Take the payload for `transcriptID`, once. Returns nil if it was already
@@ -89,7 +102,7 @@ final class OverlayDirector {
 
   // MARK: - Applying a plan
 
-  private func apply(_ plan: OverlayPlan) {
+  private func apply(_ plan: OverlayPlan, actions: ((OverlayAction) -> Void)? = nil) {
     switch plan.expiryCommand {
     case .unchanged:
       break
@@ -107,28 +120,46 @@ final class OverlayDirector {
     }
 
     if plan.didChange {
-      model.presentation = plan.presentation
-      if plan.presentation == nil {
-        activeBinding = nil
+      // **Custody ends on ANY replacement, not only on an empty slot.** Clearing
+      // it only when the slot emptied left a cancelled transcript held while a
+      // DIFFERENT pill was showing — the payload outliving the offer to restore
+      // it, which is the same defect the id gate exists to prevent, one level up.
+      if case .escapeRecovery(let id)? = plan.presentation?.content,
+        escapeRecoveryPayload?.id == id
+      {
+        // The pill still on screen is the one whose payload we hold.
+      } else {
         escapeRecoveryPayload = nil
-      } else if let binding = activeBinding, binding.id != plan.presentation?.id {
-        // A new occupant invalidates the previous feature's binding, or an
-        // action would be delivered to a pill that is no longer showing.
+      }
+
+      // The binding for the NEW presentation is installed BEFORE the model is
+      // published, so the pill is never on screen without its handler.
+      if let presentation = plan.presentation {
+        activeBinding = actions.map { (id: presentation.id, deliver: $0) }
+      } else {
         activeBinding = nil
+      }
+      model.presentation = plan.presentation
+    }
+
+    if let action = plan.deliverAction {
+      if let binding = activeBinding, binding.id == reducer.state.current?.id {
+        binding.deliver(action)
+      } else {
+        // **Loud, not silent.** The reducer only emits `deliverAction` for the
+        // CURRENT presentation, so arriving here without a matching binding is
+        // an invariant failure, not a race. Dropping it quietly would lose a
+        // button press with nothing anywhere to say so.
+        assertionFailure(
+          "an action for the live presentation had no binding — the request that "
+            + "produced it did not carry its handler")
       }
     }
 
-    if let action = plan.deliverAction, let binding = activeBinding {
-      binding.deliver(action)
-    }
-
     for effect in plan.effects {
-      effects?(effect)
+      deliverEffect(effect)
     }
   }
-
-  /// Where side effects for feature owners go. Set by the wiring; nil until then.
-  var effects: ((OverlayEffect) -> Void)?
 
   #if DEBUG
     var currentPresentationForTesting: OverlayPresentation? { reducer.state.current }

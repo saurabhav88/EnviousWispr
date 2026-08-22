@@ -31,12 +31,18 @@ struct OverlayDirectorTests {
     frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
     visibleFrame: CGRect(x: 0, y: 85, width: 1512, height: 860))
 
-  private static func director() -> (OverlayDirector, Armed) {
+  private final class Sink {
+    var effects: [OverlayEffect] = []
+  }
+
+  private static func director() -> (OverlayDirector, Armed, Sink) {
     let armed = Armed()
+    let sink = Sink()
     let host = OverlayWindowHost(screens: { OverlayScreenResolver { screen } })
     let d = OverlayDirector(
-      host: host, scheduler: .manual { armed.work = $0 })
-    return (d, armed)
+      host: host, deliverEffect: { sink.effects.append($0) },
+      scheduler: .manual { armed.work = $0 })
+    return (d, armed, sink)
   }
 
   // MARK: - Exactly one expiry
@@ -46,7 +52,7 @@ struct OverlayDirectorTests {
   /// work still valid" their own way, and nothing held them to the same answer.
   @Test("a timer armed for a dismissed pill cannot dismiss its replacement")
   func staleTimerCannotDismissTheLivePill() {
-    let (d, armed) = Self.director()
+    let (d, armed, _) = Self.director()
     d.send(.pipeline(.warning(reason: .polishFailed)))
     let staleTimer = try! #require(armed.work)
 
@@ -63,7 +69,7 @@ struct OverlayDirectorTests {
   /// A new occupant REPLACES the armed expiry rather than leaving it running.
   @Test("arming a new expiry cancels the previous one")
   func armingReplacesTheArmedExpiry() {
-    let (d, armed) = Self.director()
+    let (d, armed, _) = Self.director()
     d.send(.pipeline(.warning(reason: .polishFailed)))
     let first = try! #require(armed.work)
 
@@ -76,7 +82,7 @@ struct OverlayDirectorTests {
   /// A persistent presentation cancels rather than inheriting.
   @Test("a persistent pill leaves no timer armed")
   func persistentPillDisarms() {
-    let (d, armed) = Self.director()
+    let (d, armed, _) = Self.director()
     d.send(.pipeline(.warning(reason: .polishFailed)))
     let notice = try! #require(armed.work)
 
@@ -90,7 +96,7 @@ struct OverlayDirectorTests {
   /// every guard above is satisfied by a director that never dismisses anything.
   @Test("a pill's own timer dismisses it")
   func ownTimerDismisses() {
-    let (d, armed) = Self.director()
+    let (d, armed, _) = Self.director()
     d.send(.pipeline(.warning(reason: .polishFailed)))
 
     try! #require(armed.work).fireForTesting()
@@ -102,15 +108,13 @@ struct OverlayDirectorTests {
 
   @Test("an action reaches the feature that owns the live pill")
   func actionReachesItsOwner() {
-    let (d, _) = Self.director()
-    d.send(.pipeline(.accessibilityToast))
+    let (d, _, _) = Self.director()
+    let delivered = Sink()
+    d.send(.pipeline(.accessibilityToast), actions: { delivered.effects.append(.recordingIntentChanged(true)); _ = $0 })
     let id = try! #require(d.currentPresentationForTesting?.id)
-
-    var delivered: [OverlayAction] = []
-    d.bindActions(for: id) { delivered.append($0) }
     d.send(.action(id, .grantAccessibility))
 
-    #expect(delivered == [.grantAccessibility])
+    #expect(delivered.effects.count == 1, "the action never reached the handler bound with the request")
   }
 
   /// **A binding must not outlive its pill.** The shipped panel keeps eight
@@ -118,42 +122,34 @@ struct OverlayDirectorTests {
   /// uses them is showing.
   @Test("a binding is dropped when its pill is replaced")
   func bindingDiesWithItsPill() {
-    let (d, _) = Self.director()
-    d.send(.pipeline(.accessibilityToast))
+    let (d, _, _) = Self.director()
+    let delivered = Sink()
+    d.send(.pipeline(.accessibilityToast), actions: { _ in delivered.effects.append(.recordingIntentChanged(true)) })
     let toast = try! #require(d.currentPresentationForTesting?.id)
-    var delivered: [OverlayAction] = []
-    d.bindActions(for: toast) { delivered.append($0) }
 
     d.send(.pipeline(.recording(audioLevel: 0.3)))
 
     #expect(d.hasActiveBindingForTesting == false)
     d.send(.action(toast, .grantAccessibility))
-    #expect(delivered.isEmpty, "an action from a dismissed pill reached its old handler")
+    #expect(delivered.effects.isEmpty, "an action from a dismissed pill reached its old handler")
   }
 
-  @Test("a binding for a pill that is not current is refused")
-  func bindingForAStalePillIsRefused() {
-    let (d, _) = Self.director()
-    d.send(.pipeline(.accessibilityToast))
-    let stale = try! #require(d.currentPresentationForTesting?.id)
-    d.send(.pipeline(.recording(audioLevel: 0.1)))
-
-    d.bindActions(for: stale) { _ in }
-
-    #expect(d.hasActiveBindingForTesting == false)
-  }
-
+  /// **Replaced by construction.** There used to be a test that a `bind(for:)`
+  /// call naming a non-current pill was refused. That entry point is gone: a
+  /// request carries its own handler, so a binding for a presentation that is
+  /// not current cannot be expressed. The guard it provided is now a property of
+  /// the API rather than a runtime check — which is the better place for it, and
+  /// the reason the test is deleted rather than rewritten.
   // MARK: - Payload custody
 
   /// The payload is taken ONCE. A second Undo press must find nothing rather
   /// than paste the transcript again.
   @Test("the cancelled transcript is handed over exactly once")
   func payloadIsTakenOnce() {
-    let (d, _) = Self.director()
+    let (d, _, _) = Self.director()
     let transcript = UUID()
     d.presentEscapeRecovery(
-      CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
-      transcriptID: transcript)
+      CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil))
 
     #expect(d.takeEscapeRecoveryPayload(matching: transcript) != nil)
     #expect(
@@ -163,11 +159,10 @@ struct OverlayDirectorTests {
 
   @Test("a payload is never handed to a different transcript")
   func payloadIsKeyedToItsTranscript() {
-    let (d, _) = Self.director()
+    let (d, _, _) = Self.director()
     let mine = UUID()
     d.presentEscapeRecovery(
-      CancelUndoPayload(transcriptID: mine, targetApp: nil, targetElement: nil),
-      transcriptID: mine)
+      CancelUndoPayload(transcriptID: mine, targetApp: nil, targetElement: nil))
 
     #expect(d.takeEscapeRecoveryPayload(matching: UUID()) == nil)
   }
@@ -176,11 +171,10 @@ struct OverlayDirectorTests {
   /// belongs to and the next Undo could reach it.
   @Test("the payload is released when the pill goes")
   func payloadIsReleasedWithThePill() {
-    let (d, _) = Self.director()
+    let (d, _, _) = Self.director()
     let transcript = UUID()
     d.presentEscapeRecovery(
-      CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
-      transcriptID: transcript)
+      CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil))
     #expect(d.holdsEscapeRecoveryPayloadForTesting)
 
     d.send(.pipeline(.hidden))
@@ -188,5 +182,23 @@ struct OverlayDirectorTests {
     #expect(
       d.holdsEscapeRecoveryPayloadForTesting == false,
       "a cancelled transcript outlived the pill offering to restore it")
+  }
+
+  /// Custody must end when ANOTHER pill takes the slot, not only when the slot
+  /// empties. Clearing it only on empty left a cancelled transcript held while a
+  /// different pill was showing.
+  @Test("the payload is released when a different pill replaces the recovery pill")
+  func payloadIsReleasedOnReplacement() {
+    let (d, _, _) = Self.director()
+    let transcript = UUID()
+    d.presentEscapeRecovery(
+      CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil))
+    #expect(d.holdsEscapeRecoveryPayloadForTesting)
+
+    d.send(.pipeline(.recording(audioLevel: 0.3)))
+
+    #expect(
+      d.holdsEscapeRecoveryPayloadForTesting == false,
+      "a cancelled transcript was still held while a different pill was on screen")
   }
 }
