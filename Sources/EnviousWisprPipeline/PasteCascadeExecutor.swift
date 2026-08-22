@@ -320,7 +320,6 @@ internal final class PasteCascadeExecutor {
     self.pasteboard = pasteboard
   }
 
-
   func deliver(_ request: PasteDeliveryRequest) async -> PasteDeliveryResult {
     let pasteStart = CFAbsoluteTimeGetCurrent()
     let bundleId = request.targetApp?.bundleIdentifier ?? "unknown"
@@ -481,7 +480,7 @@ internal final class PasteCascadeExecutor {
           : nil
         submittedKind = payload.kind
         let dispatchResult = PasteService.pasteToActiveApp(
-          payload.text, to: pasteboard)
+          payload.text, to: self.pasteboard)
         submittedClipboardChangeCount = dispatchResult.changeCount
         switch dispatchResult {
         case .dispatched:
@@ -533,7 +532,7 @@ internal final class PasteCascadeExecutor {
           : nil
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
-          payload.text, to: pasteboard)
+          payload.text, to: self.pasteboard)
         submittedClipboardChangeCount = changeCount
         if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
           tier = .appleScript
@@ -583,7 +582,7 @@ internal final class PasteCascadeExecutor {
           terminalBudget: request.terminalBudget)
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
-          payload.text, to: pasteboard)
+          payload.text, to: self.pasteboard)
         submittedClipboardChangeCount = changeCount
         switch PasteService.findPasteMenuItem(pid: app.processIdentifier) {
         case .found(let menuItem):

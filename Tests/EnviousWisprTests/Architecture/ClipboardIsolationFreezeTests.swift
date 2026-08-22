@@ -280,13 +280,7 @@ struct ClipboardIsolationFreezeTests {
         if let closure = ClipboardVisitor.unwrapped(node.calledExpression).as(
           ClosureExprSyntax.self)
         {
-          if let lastItem = closure.statements.last?.item.as(ExprSyntax.self) {
-            walk(lastItem)
-          }
-          let returns = ClosureReturnVisitor { [weak self] expression in self?.walk(expression) }
-          for statement in closure.statements {
-            returns.walk(statement)
-          }
+          inspectResult(of: closure) { [weak self] expression in self?.walk(expression) }
         } else if isOptionalValueWrapper(node.calledExpression) {
           // `Optional(value)!` and `.some(value)!` preserve the wrapped value. Unlike an arbitrary
           // helper argument, a directly written `.general` here is the pasteboard that reaches the
@@ -300,9 +294,36 @@ struct ClipboardIsolationFreezeTests {
           // `factory()()` invokes the result of another call. When the inner call is an IIFE returning
           // a closure, that returned closure is the outer call's value-producing callee and must be
           // followed just like a one-level IIFE. Arbitrary helper arguments remain skipped.
-          walk(ExprSyntax(composedInvocation))
+          inspectReturnedClosure(from: composedInvocation)
         }
         return .skipChildren
+      }
+
+      private func inspectReturnedClosure(from invocation: FunctionCallExprSyntax) {
+        guard
+          let factory = ClipboardVisitor.unwrapped(invocation.calledExpression).as(
+            ClosureExprSyntax.self)
+        else { return }
+        inspectResult(of: factory) { [weak self] expression in
+          guard
+            let self,
+            let returnedClosure = ClipboardVisitor.unwrapped(expression).as(ClosureExprSyntax.self)
+          else { return }
+          self.inspectResult(of: returnedClosure) { [weak self] in self?.walk($0) }
+        }
+      }
+
+      private func inspectResult(
+        of closure: ClosureExprSyntax,
+        using inspect: @escaping (ExprSyntax) -> Void
+      ) {
+        if let lastItem = closure.statements.last?.item.as(ExprSyntax.self) {
+          inspect(lastItem)
+        }
+        let returns = ClosureReturnVisitor(inspect: inspect)
+        for statement in closure.statements {
+          returns.walk(statement)
+        }
       }
 
       private func isOptionalValueWrapper(_ callee: ExprSyntax) -> Bool {
@@ -579,13 +600,45 @@ struct ClipboardIsolationFreezeTests {
   }
 
   private final class SystemPasteTierVisitor: SyntaxVisitor {
+    private struct ClipboardWrite {
+      let position: Int
+      let block: Int?
+      let usesExecutorBoard: Bool
+    }
+
+    private struct SystemPaste {
+      let position: Int
+      let ancestorBlocks: Set<Int>
+    }
+
     var gates: [Bool] = []
-    var writeCallsUsingExecutorBoard: [Bool] = []
+    private var clipboardWrites: [ClipboardWrite] = []
+    private var systemPastes: [SystemPaste] = []
     private var validPredicateDefinitions = 0
     private var predicateIsShadowed = false
 
     var predicateUsesGeneralBoardIdentity: Bool {
       validPredicateDefinitions == 1 && !predicateIsShadowed
+    }
+
+    var writeCallsUsingExecutorBoard: [Bool] {
+      associatedWrites.map { $0?.usesExecutorBoard == true }
+    }
+
+    var routeWritesAreDistinct: Bool {
+      let positions = associatedWrites.compactMap { $0?.position }
+      return positions.count == systemPastes.count && Set(positions).count == positions.count
+    }
+
+    private var associatedWrites: [ClipboardWrite?] {
+      systemPastes.map { paste in
+        clipboardWrites
+          .filter { write in
+            write.position <= paste.position
+              && write.block.map(paste.ancestorBlocks.contains) == true
+          }
+          .max { $0.position < $1.position }
+      }
     }
 
     private static let systemPasteFunctions: Set<String> = [
@@ -609,16 +662,49 @@ struct ClipboardIsolationFreezeTests {
 
       let functionName = ClipboardVisitor.identifierText(member.declName.baseName)
       if Self.clipboardWriteFunctions.contains(functionName) {
-        writeCallsUsingExecutorBoard.append(
-          node.arguments.contains { argument in
-            argument.label.map(ClipboardVisitor.identifierText) == "to"
-              && argument.expression.trimmedDescription == "pasteboard"
-          })
+        clipboardWrites.append(
+          ClipboardWrite(
+            position: node.positionAfterSkippingLeadingTrivia.utf8Offset,
+            block: nearestCodeBlock(of: node),
+            usesExecutorBoard: node.arguments.contains { argument in
+              argument.label.map(ClipboardVisitor.identifierText) == "to"
+                && Array(argument.expression.tokens(viewMode: .sourceAccurate).map(\.text))
+                  == ["self", ".", "pasteboard"]
+            }))
       }
 
       guard Self.systemPasteFunctions.contains(functionName) else { return .visitChildren }
       gates.append(isDominatedByPositiveSystemPasteGate(node))
+      systemPastes.append(
+        SystemPaste(
+          position: node.positionAfterSkippingLeadingTrivia.utf8Offset,
+          ancestorBlocks: ancestorCodeBlocks(of: node)))
       return .visitChildren
+    }
+
+    private func nearestCodeBlock(of node: some SyntaxProtocol) -> Int? {
+      var ancestor = Syntax(node).parent
+      while let current = ancestor {
+        if let block = current.as(CodeBlockSyntax.self) {
+          return block.positionAfterSkippingLeadingTrivia.utf8Offset
+        }
+        if current.is(FunctionDeclSyntax.self) { return nil }
+        ancestor = current.parent
+      }
+      return nil
+    }
+
+    private func ancestorCodeBlocks(of node: some SyntaxProtocol) -> Set<Int> {
+      var blocks: Set<Int> = []
+      var ancestor = Syntax(node).parent
+      while let current = ancestor {
+        if let block = current.as(CodeBlockSyntax.self) {
+          blocks.insert(block.positionAfterSkippingLeadingTrivia.utf8Offset)
+        }
+        if current.is(FunctionDeclSyntax.self) { break }
+        ancestor = current.parent
+      }
+      return blocks
     }
 
     override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
@@ -736,14 +822,14 @@ struct ClipboardIsolationFreezeTests {
 
   static func systemPasteTierInspection(inSource source: String) -> (
     gates: [Bool], predicateUsesGeneralBoardIdentity: Bool,
-    writeCallsUsingExecutorBoard: [Bool]
+    writeCallsUsingExecutorBoard: [Bool], routeWritesAreDistinct: Bool
   ) {
     let tree = Parser.parse(source: source)
     let visitor = SystemPasteTierVisitor(viewMode: .sourceAccurate)
     visitor.walk(tree)
     return (
       visitor.gates, visitor.predicateUsesGeneralBoardIdentity,
-      visitor.writeCallsUsingExecutorBoard
+      visitor.writeCallsUsingExecutorBoard, visitor.routeWritesAreDistinct
     )
   }
 
@@ -1084,6 +1170,10 @@ struct ClipboardIsolationFreezeTests {
         #"PasteCascadeExecutor(pasteboard: ({ () -> (() -> NSPasteboard) in { .general } }())())"#,
         1
       ),
+      (
+        #"PasteCascadeExecutor(pasteboard: ({ { let mode: Mode = .general; return NSPasteboard.withUniqueName() } }())())"#,
+        0
+      ),
       (#"let board = NSPasteboard.general; PasteCascadeExecutor(pasteboard: board)"#, 1),
     ])
   func pasteCascadeExecutorChecksItsPasteboardArgument(source: String, expected: Int) {
@@ -1115,6 +1205,9 @@ struct ClipboardIsolationFreezeTests {
     #expect(
       inspection.writeCallsUsingExecutorBoard == [true, true, true],
       "every system-paste tier must write its payload to the executor's injected board")
+    #expect(
+      inspection.routeWritesAreDistinct,
+      "every system-paste tier must have its own preceding payload write")
   }
 
   @Test("a comment cannot impersonate a missing system-paste gate")
@@ -1185,7 +1278,7 @@ struct ClipboardIsolationFreezeTests {
       inSource: """
         func deliver() {
           if systemPasteCanReachOurText {
-            PasteService.pasteToActiveApp("safe", to: pasteboard)
+            PasteService.pasteToActiveApp("safe", to: self.pasteboard)
             PasteService.copyToClipboardReturningChangeCount(
               "unsafe", to: NSPasteboard.withUniqueName())
             PasteService.pasteViaAppleScript(pid: 1)
@@ -1194,6 +1287,38 @@ struct ClipboardIsolationFreezeTests {
         """)
 
     #expect(inspection.writeCallsUsingExecutorBoard == [true, false])
+  }
+
+  @Test("a local pasteboard name cannot impersonate the executor property")
+  func systemPasteWritesRejectShadowedBoardNames() {
+    let inspection = Self.systemPasteTierInspection(
+      inSource: """
+        func deliver() {
+          let pasteboard = NSPasteboard.withUniqueName()
+          if systemPasteCanReachOurText {
+            PasteService.pasteToActiveApp("unsafe", to: pasteboard)
+          }
+        }
+        """)
+
+    #expect(inspection.writeCallsUsingExecutorBoard == [false])
+  }
+
+  @Test("a payload write after a system paste cannot satisfy the route")
+  func systemPasteWritesMustPrecedeTheirRoute() {
+    let inspection = Self.systemPasteTierInspection(
+      inSource: """
+        func deliver() {
+          if systemPasteCanReachOurText {
+            PasteService.pasteViaAppleScript(pid: 1)
+            PasteService.copyToClipboardReturningChangeCount(
+              "late", to: self.pasteboard)
+          }
+        }
+        """)
+
+    #expect(inspection.writeCallsUsingExecutorBoard == [false])
+    #expect(!inspection.routeWritesAreDistinct)
   }
 
   @Test("a local declaration cannot shadow the verified system-paste predicate")
