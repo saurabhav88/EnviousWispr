@@ -27,6 +27,7 @@ enum EscapeRecoveryPasteAction {
   ///     the 24-hour promise forbids.
   ///   - copyToClipboard: the clipboard write, injected so tests never touch
   ///     the developer's real clipboard.
+  ///   - dispatchPaste: the Cmd-V dispatch, injected for the same reason.
   ///   - report: the restore event, injected so a test can read it.
   ///   - targetHasQuit: whether the app this dictation was aimed at is gone.
   ///     Injected because `NSRunningApplication.isTerminated` cannot be staged
@@ -41,6 +42,7 @@ enum EscapeRecoveryPasteAction {
     payload: CancelUndoPayload,
     restorable: (UUID) -> (text: String, stampedAt: Date, takeID: String?)?,
     copyToClipboard: @MainActor (String) -> Void,
+    dispatchPaste: @escaping @MainActor () -> Void,
     report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void,
     retarget: @MainActor (CancelUndoPayload) -> Bool = Self.defaultRetarget,
     targetHasQuit: (CancelUndoPayload) -> Bool = { $0.targetApp?.isTerminated == true },
@@ -110,7 +112,7 @@ enum EscapeRecoveryPasteAction {
     NSApp?.hide(nil)
     Task {
       try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))
-      PasteService.simulatePaste()
+      dispatchPaste()
     }
 
     // Reported as `.pasted` because that is what was ATTEMPTED and what the user
