@@ -29,6 +29,15 @@ struct OverlayWindowHostTests {
     frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
     visibleFrame: CGRect(x: 0, y: 85, width: 1512, height: 860))
 
+  /// The same display with a full-screen space present. `visibleFrame` does NOT
+  /// shrink when another app goes full screen (#1341, measured 2026-07-17), so
+  /// the Bottom rule drops to the true screen edge instead.
+  private static let fullScreened = ScreenGeometry(
+    id: ScreenID(rawValue: 1),
+    frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+    visibleFrame: CGRect(x: 0, y: 85, width: 1512, height: 860),
+    hasFullScreenSpace: true)
+
   private static func host() -> OverlayWindowHost {
     OverlayWindowHost(screens: { OverlayScreenResolver { screen } })
   }
@@ -390,6 +399,36 @@ struct OverlayWindowHostTests {
     #expect(
       panel.contentView == nil,
       "a hidden pill kept its view, so its 50ms polling loop runs for the rest of the session")
+  }
+
+  /// **The host observes Space changes itself, and nothing in the suite covered
+  /// this before it moved.** The panel used to own the observer and hand the
+  /// geometry back across the seam; every fact the callback needs — the anchor,
+  /// the screen, the window — already lives here.
+  ///
+  /// Posting the real `NSWorkspace` notification is the observation: it proves
+  /// the host is REGISTERED, which a direct call to
+  /// `repositionForActiveSpaceChange()` would not.
+  @Test("the host re-anchors a Bottom pill when the active Space changes")
+  func spaceChangeReachesTheHost() throws {
+    var geometry = Self.screen
+    let h = OverlayWindowHost(screens: { OverlayScreenResolver { geometry } })
+    h.present(
+      Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
+      position: .bottom)
+    let panel = try #require(h.panelForTesting)
+    #expect(panel.frame.origin.y == 85)
+
+    // A full-screen space appears: `visibleFrame` does not shrink, so the pill
+    // must drop to the true screen edge (#1341).
+    geometry = Self.fullScreened
+    NSWorkspace.shared.notificationCenter.post(
+      name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+    RunLoop.main.run(until: Date())  // settle: deliver a posted notification, no polling
+
+    #expect(
+      panel.frame.origin.y == 0,
+      "the Space-change notification never reached the host — it is not registered")
   }
 
   /// A `.measured` width must come from the view, and no default may stand in

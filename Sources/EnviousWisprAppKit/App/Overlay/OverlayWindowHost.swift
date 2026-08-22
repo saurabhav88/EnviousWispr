@@ -71,9 +71,31 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
     private(set) var panelConstructionCount = 0
   #endif
 
+  /// Registered here rather than on the panel because **every fact this
+  /// callback needs already lives in this object**: the placement anchor, the
+  /// screen resolution and the window itself. On the panel it had to re-derive
+  /// them and then hand the geometry back across the seam.
+  ///
+  /// `queue: .main` plus `MainActor.assumeIsolated` matches the shape the panel
+  /// used: the notification centre guarantees the main thread, so hopping
+  /// through a `Task` only adds a scheduling round trip and delays how fast the
+  /// pill reacts to the swipe.
+  private nonisolated(unsafe) var spaceChangeObserver: NSObjectProtocol?
+
   init(screens: @escaping () -> OverlayScreenResolver = { .live }) {
     self.screens = screens
     super.init()
+    spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated { self?.repositionForActiveSpaceChange() }
+    }
+  }
+
+  deinit {
+    if let spaceChangeObserver {
+      NSWorkspace.shared.notificationCenter.removeObserver(spaceChangeObserver)
+    }
   }
 
   // MARK: - Presenting

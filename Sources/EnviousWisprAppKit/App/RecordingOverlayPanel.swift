@@ -252,10 +252,9 @@ final class RecordingOverlayPanel {
   private let positionProvider: () -> OverlayPillPosition
 
   /// The Top/Bottom edge actually chosen for the CURRENT panel, captured once
-  /// at fresh-appearance time. `repositionForActiveSpaceChange()` reuses this
-  /// — never re-reads `positionProvider()` — so that changing the setting
-  /// while a panel is visible can't retroactively snap it to the other edge
-  /// mid-Space-swipe (Codex grounded review, 2026-07-17); the SwiftUI content
+  /// at fresh-appearance time. Never re-read from `positionProvider()` while a
+  /// panel is visible, so changing the setting can't retroactively snap it to
+  /// the other edge (Codex grounded review, 2026-07-17); the SwiftUI content
   /// alignment baked in at creation time (`createPanel`'s `.frame(alignment:)`)
   /// would otherwise mismatch the edge the panel got repositioned to,
   /// reintroducing the recording/polishing misalignment bug this same PR
@@ -278,8 +277,6 @@ final class RecordingOverlayPanel {
   /// it is written here as a property of the field instead of a comment at any
   /// one of them. The three live write sites and how each discharges the
   /// obligation:
-  /// - `repositionForActiveSpaceChange()` — compares, then returns early on a
-  ///   mismatch, so it only writes when no drag happened.
   /// - `showPanel`'s inherited-`y` capture — latches `wasManuallyDragged` first.
   /// - `resizeRecordingPanel(toContentHeight:)` — latches first, using the
   ///   PRE-resize origin (the resize itself moves the origin in Top position).
@@ -290,99 +287,19 @@ final class RecordingOverlayPanel {
   /// recording -> polishing) on purpose: those transitions tear down and
   /// recreate the `NSPanel` object, but from the user's perspective it's the
   /// same pill continuing, so "I dragged this" must not be forgotten just
-  /// because a new window object got created underneath it. Checked BEFORE
-  /// `lastProgrammaticOrigin` comparison in both `repositionForActiveSpaceChange()`
-  /// and the inherited-`y` capture — a continuous origin-comparison alone was
-  /// tried first and broke twice (Codex grounded review r4 found the Space-
-  /// change path re-anchoring over a drag; r5 found the SAME root cause one
-  /// level up, an inherited-`y` transition silently re-baselining
+  /// because a new window object got created underneath it. Checked BEFORE the
+  /// `lastProgrammaticOrigin` comparison at the inherited-`y` capture — a
+  /// continuous origin-comparison alone was tried first and broke twice (Codex
+  /// grounded review r4 found the Space-change path re-anchoring over a drag;
+  /// r5 found the SAME root cause one level up, an inherited-`y` transition
+  /// silently re-baselining
   /// `lastProgrammaticOrigin` to the dragged spot and erasing the signal).
   /// Reset to `false` only on a genuine fresh appearance (`y == nil`).
   private var wasManuallyDragged = false
 
-  /// #1341 follow-up: fullscreen state is a per-Space property, and macOS
-  /// treats going fullscreen as switching to a NEW Space/"desktop" rather than
-  /// changing the current one. A panel that started in windowed mode and then
-  /// follows the user (`.canJoinAllSpaces`) into a fullscreen Space — or back
-  /// out — keeps its ORIGINAL Y forever unless something re-runs the position
-  /// math. Observing Space changes and repositioning the live panel (same
-  /// Top/Bottom setting, freshly evaluated fullscreen state) is what makes the
-  /// pill track the user across a trackpad swipe between Spaces mid-recording
-  /// instead of freezing at whatever was correct for the Space it started in.
-  /// Written once in `init` before any other access is possible, read once in
-  /// `deinit` after which nothing else can touch it — a single-touch lifecycle
-  /// handoff, not a shared-mutation risk. `deinit` is nonisolated even on a
-  /// `@MainActor` class, so the property needs this to be readable there.
-  private nonisolated(unsafe) var spaceChangeObserver: NSObjectProtocol?
 
   init(positionProvider: @escaping () -> OverlayPillPosition = { .top }) {
     self.positionProvider = positionProvider
-    // Same `queue: .main` + `MainActor.assumeIsolated` shape as
-    // `UpdateTriggerCoordinator.start()`'s wake observer — the notification
-    // center guarantees this callback runs on the main thread, so hopping
-    // through a `Task` first only adds a scheduling round-trip and delays how
-    // fast the pill can react to the Space switch.
-    spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
-      forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
-    ) { [weak self] _ in
-      MainActor.assumeIsolated { self?.repositionForActiveSpaceChange() }
-    }
-  }
-
-  deinit {
-    if let spaceChangeObserver {
-      NSWorkspace.shared.notificationCenter.removeObserver(spaceChangeObserver)
-    }
-  }
-
-  /// Recompute and apply the current panel's frame using the same formula as
-  /// a fresh appearance. No-op when nothing is showing. Only geometry moves —
-  /// elapsed timer, audio level, and every other piece of live state are
-  /// untouched. Animated (`animate: true`): repositioning a panel that is
-  /// ALREADY visible and settled needs to read as an intentional glide, not a
-  /// snap-to-new-spot jump — the panel is already on-screen at its old
-  /// position by the time this notification fires, so an instant jump reads
-  /// as a glitch (founder feedback, live-tested 2026-07-17). A fresh
-  /// appearance in `showPanel` stays instant on purpose: there is no "old
-  /// position" for a brand-new panel to visibly jump from.
-  ///
-  /// SCOPE: Bottom only (founder decision, 2026-07-17). Top's fresh-Y formula
-  /// is a fixed offset from the menu bar, so it was never affected by the
-  /// bug this feature exists to fix (the Dock-reservation gap only shows up
-  /// at the BOTTOM of a fullscreen Space). Reacting for Top too surfaced a
-  /// real but narrow bug: Top's origin gets height-clamped so a tall panel
-  /// (the 92pt recording capsule) doesn't poke above the screen, and an
-  /// inherited-y transition to a SHORTER panel (the ~44pt polishing pill)
-  /// carries that taller clamp forward — a later Space change would then
-  /// recompute the clamp for the shorter height and visibly jump the panel
-  /// (Codex grounded review r6). Rather than chase that height/clamp
-  /// interaction through more rounds for an edge that was never broken,
-  /// Top is excluded from reactive repositioning entirely; the founder
-  /// explicitly asked not to touch Top's existing behavior in the first
-  /// place.
-  private func repositionForActiveSpaceChange() {
-    // Reuses whichever edge THIS panel was actually created with — never
-    // `positionProvider()` live — so a settings change made while the panel is
-    // already visible can't retroactively snap it to the other edge on the next
-    // Space swipe (Codex grounded review, 2026-07-17).
-    guard let panel, activePanelPosition == .bottom, !wasManuallyDragged else { return }
-    // The pill supports drag-to-relocate: if its live origin no longer matches
-    // where WE last put it, the user moved it since, and an automatic
-    // reposition must not silently undo that (Codex grounded review r4,
-    // 2026-07-17). Stays where the user left it for the rest of this
-    // presentation; the next fresh appearance re-anchors normally.
-    if let lastProgrammaticOrigin,
-      !panel.frame.origin.isApproximately(lastProgrammaticOrigin)
-    {
-      wasManuallyDragged = true
-      return
-    }
-    // **The geometry itself belongs to the host**, which resolves the target
-    // screen and applies the Bottom rule. This method kept its own copy of that
-    // computation after the delegation landed — dead, and worse than dead: it
-    // resolved the screen a second time.
-    windowHost.repositionForActiveSpaceChange()
-    lastProgrammaticOrigin = panel.frame.origin
   }
 
   // MARK: - Intent-driven API
