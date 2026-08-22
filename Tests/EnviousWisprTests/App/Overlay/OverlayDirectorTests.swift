@@ -437,6 +437,52 @@
         "a mid-dictation settings change resized the live pill, which is the #930 rebuild flicker")
     }
 
+    /// **The accessibility notice announces the SAME sentence whether or not the
+    /// toast is shown, and that is the whole reason it is one method.**
+    ///
+    /// The shipped panel posts the accessibility announcement BEFORE its
+    /// eligibility branch, so a VoiceOver user hears "Accessibility permission
+    /// needed for auto-paste" even on the runs where the toast is suppressed and
+    /// the clipboard hint is drawn instead. Routing the suppressed case through
+    /// `.pipeline(.clipboardFallback)` would say "Text copied to clipboard" — a
+    /// different sentence, and a silent change in what a blind user is told,
+    /// arriving inside a refactor.
+    ///
+    /// Paired ACCEPTED and SUPPRESSED cases, because a guard that only checked
+    /// the suppressed one would pass a version that never shows the toast at all.
+    @Test("the accessibility notice keeps its spoken sentence when the toast is suppressed")
+    func suppressedAccessibilityToastKeepsItsAnnouncement() {
+      let (shown, _, shownSink) = Self.director()
+      defer { Self.closeAllWindows() }
+
+      shown.presentAccessibilityNotice(showingToast: true)
+
+      guard case .notice(let toast)? = shown.currentPresentationForTesting?.content else {
+        Issue.record("expected a notice")
+        return
+      }
+      #expect(toast.kind == .accessibilityToast, "an eligible toast was not drawn")
+      #expect(
+        shownSink.announcements.map(\.text)
+          == [DictationNarrator.announcement(for: .accessibilityToast)])
+
+      let (suppressed, _, suppressedSink) = Self.director()
+
+      suppressed.presentAccessibilityNotice(showingToast: false)
+
+      guard case .notice(let fallback)? = suppressed.currentPresentationForTesting?.content else {
+        Issue.record("expected a notice")
+        return
+      }
+      #expect(
+        fallback.text == DictationNarrator.clipboardFallbackText,
+        "a suppressed toast did not fall back to the clipboard hint")
+      #expect(
+        suppressedSink.announcements.map(\.text)
+          == [DictationNarrator.announcement(for: .accessibilityToast)],
+        "the suppressed run announced the clipboard sentence, which tells a blind user something different from what the shipped app tells them")
+    }
+
     /// **A dictation ending announces; a chip dismissal must not.**
     ///
     /// The shipped `hide()` and `show(intent: .hidden)` are different operations

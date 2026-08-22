@@ -243,6 +243,41 @@ final class OverlayDirector {
     send(.pipeline(.escapeRecovery(transcriptID: payload.transcriptID)), actions: actions)
   }
 
+  /// Present the accessibility notice, showing the toast or falling back to the
+  /// clipboard hint — **and announcing the accessibility sentence either way.**
+  ///
+  /// That last part is the whole reason this is one method rather than a
+  /// conditional at the call site. The shipped panel posts the accessibility
+  /// announcement BEFORE its eligibility branch, so a user on VoiceOver hears
+  /// "Accessibility permission needed for auto-paste" even on the runs where the
+  /// toast is suppressed and the clipboard hint is drawn instead. Routing the
+  /// suppressed case through `.pipeline(.clipboardFallback)` would announce
+  /// "Text copied to clipboard" — a different sentence, and a silent change in
+  /// what a blind user is told, smuggled in by a refactor.
+  ///
+  /// **Preserved deliberately, not endorsed.** Whether it is right that the
+  /// spoken sentence keeps explaining the permission while the visible one
+  /// switches to the actionable hint is a real question, and it is filed rather
+  /// than answered here: a migration that quietly changes behaviour is a worse
+  /// defect than the behaviour.
+  func presentAccessibilityNotice(showingToast: Bool) {
+    let toast = reducer.reduce(.pipeline(.accessibilityToast))
+    guard !showingToast else {
+      apply(toast, actions: nil)
+      return
+    }
+    // Reduce the fallback for its PRESENTATION, and keep the toast's
+    // announcement. The reducer stays untouched; the substitution is here,
+    // once, where it can be read.
+    let fallback = reducer.reduce(.pipeline(.clipboardFallback))
+    apply(
+      OverlayPlan(
+        presentation: fallback.presentation, didChange: fallback.didChange,
+        expiryCommand: fallback.expiryCommand, deliverAction: fallback.deliverAction,
+        effects: fallback.effects, announcement: toast.announcement),
+      actions: nil)
+  }
+
   /// Empty the slot WITHOUT announcing "Recording complete".
   ///
   /// **The shipped `hide()` and `show(intent: .hidden)` are not the same
