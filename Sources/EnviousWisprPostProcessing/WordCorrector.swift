@@ -1648,6 +1648,37 @@ public struct WordCorrector: Sendable {
   /// IP-like token rather than a domain. A purely structural check
   /// otherwise generalizes to every user's vocabulary rather than the ten
   /// TLDs this app happens to vet for URL recognition elsewhere.
+  ///
+  /// KNOWN LIMIT, third face of the same tradeoff `knownDedupTLDs`'s own
+  /// doc comment names (founder call, Codex cloud review round 17): an
+  /// ALL-LETTERS suffix that is NOT a version number still passes this
+  /// trigger even when it is an ordinary file extension or dotted
+  /// identifier rather than a domain -- ".swift", ".py", ".js" are all
+  /// structurally indistinguishable from a real TLD by this check alone.
+  /// If a saved word's bare text coincidentally equals a dictated
+  /// filename's stem, the peeled match can fire and silently reattach the
+  /// extension to the wrong replacement ("config.swift" -- a saved
+  /// "config" -> "Configuration" alias -- becomes "Configuration.swift").
+  /// TRIED AND REJECTED: gating this trigger on `knownDedupTLDs`
+  /// (mirroring `isDomainShaped`'s bar) closes that gap but empirically
+  /// breaks real, already-shipped behavior this exact suite tests for --
+  /// ".zzz" (round 3's own test, proving the trigger deliberately works
+  /// OUTSIDE any curated list), ".technology" (round 12, a real TLD this
+  /// list simply does not carry), and native-script IDN dedup
+  /// suppression (".рф", non-ASCII and therefore uncurated by
+  /// construction) all regressed when tried. The permissiveness this
+  /// function documents above as necessary for THOSE cases is the same
+  /// permissiveness that makes this one possible -- there is no purely
+  /// structural or curated-list rule that admits one and excludes the
+  /// other, because both are "an all-letters string after a dot" and
+  /// nothing about the TEXT distinguishes a domain suffix from a file
+  /// extension -- the same irreducible ambiguity `knownDedupTLDs` already
+  /// accepts for dedup-suppression and fuzzy admission, surfacing at a
+  /// THIRD site through a different signal (structural shape here, a
+  /// curated word list there). Closing it needs the same two
+  /// real, feature-sized mechanisms named there: a maintained
+  /// public-suffix authority, or letting a word's OWNER mark it as a
+  /// domain explicitly.
   private static func splitDomainSuffix(_ s: String) -> (bare: String, suffix: String)? {
     guard let firstDot = s.firstIndex(of: "."), firstDot > s.startIndex else { return nil }
     let tail = s[s.index(after: firstDot)...]
