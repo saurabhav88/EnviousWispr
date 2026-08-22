@@ -34,6 +34,7 @@ struct EscapeRecoveryObservabilityTests {
     EscapeRecoveryPasteAction.paste(
       payload: payload,
       restorable: { _ in ("kept", Date(timeIntervalSinceNow: -1), nil) },
+      copyToClipboard: { _ in },
       report: { _, result, takeID in box.reports.append((result, takeID)) },
       retarget: { _ in
         box.retargetCount += 1
@@ -58,6 +59,7 @@ struct EscapeRecoveryObservabilityTests {
       payload: CancelUndoPayload(
         transcriptID: UUID(), targetApp: nil, targetElement: nil),
       restorable: { _ in nil },
+      copyToClipboard: { _ in },
       report: { _, result, takeID in box.reports.append((result, takeID)) },
       retarget: { _ in
         box.retargetCount += 1

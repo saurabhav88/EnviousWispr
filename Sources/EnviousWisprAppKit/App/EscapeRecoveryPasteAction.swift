@@ -25,6 +25,8 @@ enum EscapeRecoveryPasteAction {
   ///     restored. **Inert, not merely harmless**: pasting a cached snapshot
   ///     would hand back text the user was told had gone, which is the one thing
   ///     the 24-hour promise forbids.
+  ///   - copyToClipboard: the clipboard write, injected so tests never touch
+  ///     the developer's real clipboard.
   ///   - report: the restore event, injected so a test can read it.
   ///   - targetHasQuit: whether the app this dictation was aimed at is gone.
   ///     Injected because `NSRunningApplication.isTerminated` cannot be staged
@@ -38,6 +40,7 @@ enum EscapeRecoveryPasteAction {
   static func paste(
     payload: CancelUndoPayload,
     restorable: (UUID) -> (text: String, stampedAt: Date, takeID: String?)?,
+    copyToClipboard: @MainActor (String) -> Void,
     report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void,
     retarget: @MainActor (CancelUndoPayload) -> Bool = Self.defaultRetarget,
     targetHasQuit: (CancelUndoPayload) -> Bool = { $0.targetApp?.isTerminated == true },
@@ -52,7 +55,7 @@ enum EscapeRecoveryPasteAction {
       return
     }
 
-    PasteService.copyToClipboard(row.text)
+    copyToClipboard(row.text)
 
     // A TARGET THAT HAS QUIT MUST NOT BE PASTED PAST (cloud review).
     //

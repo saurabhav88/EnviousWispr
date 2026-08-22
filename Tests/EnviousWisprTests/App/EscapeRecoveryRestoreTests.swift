@@ -33,6 +33,7 @@ struct EscapeRecoveryRestoreTests {
     EscapeRecoveryPasteAction.paste(
       payload: payload,
       restorable: { _ in row },
+      copyToClipboard: { _ in },
       report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
       retarget: {
         spy.retargeted.append($0.transcriptID)
@@ -111,6 +112,7 @@ struct EscapeRecoveryRestoreTests {
     EscapeRecoveryPasteAction.paste(
       payload: payload,
       restorable: { _ in ("kept", Date(), "take-1") },
+      copyToClipboard: { _ in },
       report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
       retarget: {
         spy.retargeted.append($0.transcriptID)
@@ -142,6 +144,7 @@ struct EscapeRecoveryRestoreTests {
     EscapeRecoveryPasteAction.paste(
       payload: payload,
       restorable: { _ in ("kept", Date(), "take-1") },
+      copyToClipboard: { _ in },
       report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
       retarget: {
         spy.retargeted.append($0.transcriptID)
@@ -171,6 +174,7 @@ struct EscapeRecoveryRestoreTests {
     EscapeRecoveryPasteAction.paste(
       payload: payload,
       restorable: { _ in ("kept", Date(), "take-1") },
+      copyToClipboard: { _ in },
       report: { spy.reports.append((ageMs: $0, result: $1, takeID: $2)) },
       retarget: {
         spy.retargeted.append($0.transcriptID)
