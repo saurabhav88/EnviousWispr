@@ -56,6 +56,14 @@ struct OverlayPlacementStateTests {
     // Where the pill actually is: dragged well away from centre.
     let live = CGRect(
       x: 120, y: Self.screen.visibleFrame.minY, width: pair.from.width, height: pair.from.height)
+    // **THE DRAG HAS TO ACTUALLY HAPPEN.** The comment above said "dragged" and
+    // the fixture only moved the RECT; the anchor stayed `.automatic`. So this
+    // case demanded #2195 behaviour from a pill nobody had touched, and the
+    // implementation that satisfied it — preserve X unconditionally — holds an
+    // automatically centred pill by its LEFT EDGE through every width change.
+    // The mirror of the bug it was written to prevent, certified by the guard
+    // meant to catch it.
+    placement.userDidMove(to: live.origin, screen: Self.screen)
 
     let next = placement.frame(
       for: pair.to,
@@ -67,6 +75,40 @@ struct OverlayPlacementStateTests {
       next.origin.x == live.origin.x,
       "x was recentred on a continuing presentation — this is #2195")
     #expect(next.origin.y == live.origin.y, "y was not preserved on a Bottom continuation")
+  }
+
+  /// **The mirror, which nothing asserted until the third review round found it
+  /// in production.** A pill the user never touched is centred by definition, so
+  /// a continuation that preserves its ORIGIN holds the left edge and slides the
+  /// pill sideways by half the width change — 185 to 280 moves it 47 points.
+  ///
+  /// The pair above and this one are the same claim from both sides: X follows
+  /// the ANCHOR KIND. Either alone is satisfiable by a wrong implementation, and
+  /// for most of this branch only one existed.
+  @Test(
+    "an automatic continuation re-centres for its new width",
+    arguments: [
+      (CGSize(width: 185, height: 92), CGSize(width: 280, height: 44)),
+      (CGSize(width: 320, height: 120), CGSize(width: 185, height: 44)),
+      (CGSize(width: 185, height: 44), CGSize(width: 185, height: 44)),
+    ])
+  func automaticContinuationRecentres(pair: (from: CGSize, to: CGSize)) {
+    var placement = OverlayPlacementState()
+    placement.beginFresh(at: .bottom, screen: Self.screen)
+    // No drag: the anchor stays `.automatic`, which is the whole distinction.
+    let live = CGRect(
+      x: Self.screen.visibleFrame.midX - pair.from.width / 2,
+      y: Self.screen.visibleFrame.minY, width: pair.from.width, height: pair.from.height)
+
+    let next = placement.frame(
+      for: pair.to,
+      continuity: .continuing(
+        currentFrame: live, anchoredScreen: Self.screen.id, outgoingWasContentSized: true),
+      environment: Self.screen)
+
+    #expect(
+      next.midX == Self.screen.visibleFrame.midX,
+      "a centred pill slid sideways when its width changed")
   }
 
   /// Paired case: a FRESH presentation must still centre, or the guard above is

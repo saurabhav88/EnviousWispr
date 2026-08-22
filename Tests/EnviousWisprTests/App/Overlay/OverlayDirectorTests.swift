@@ -634,6 +634,48 @@
         "a feature must not change the PIPELINE intent, which arbitration reads")
     }
 
+    /// **The slot must report a chip as occupying it, exactly as it reports the
+    /// card.** Both arrive through `reduceFeature`, which never touches
+    /// `pipelineIntent`, so both read `.hidden` unless projected.
+    ///
+    /// Bluetooth was projected at the cutover and the chip was not — the same
+    /// omission twice, and only the first was found by review.
+    /// `LanguageSuggestionPresenter` guards `case .hidden` before showing a
+    /// chip, so with its own chip up it read the slot as free.
+    @Test("a language chip reports itself as the current intent")
+    func languageChipReportsOwnership() {
+      let (d, _, _) = Self.director()
+      defer { Self.closeAllWindows() }
+      let payload = LanguageChipPayload(
+        lang: "es", displayName: "Spanish", state: .askToLock, generation: 1)
+
+      d.send(.featureRequest(.passiveChip(payload: payload)), actions: { _ in })
+
+      #expect(
+        d.currentIntent == .passiveChip(payload: payload),
+        "the chip is up and its own presenter reads the slot as free")
+      #expect(
+        d.pipelineIntentForTesting == .hidden,
+        "a feature must not change the PIPELINE intent, which arbitration reads")
+    }
+
+    /// The non-member, pinned so it is not "fixed" later. Import status is the
+    /// one request with no matching `OverlayIntent`; the shipped panel did not
+    /// set `currentIntent` for it either, so reporting `.hidden` while a status
+    /// pill shows is preserved behaviour rather than a third omission.
+    @Test("an import status pill deliberately does not claim the intent")
+    func importStatusDoesNotClaimTheIntent() {
+      let (d, _, _) = Self.director()
+      defer { Self.closeAllWindows() }
+
+      d.send(.featureRequest(.importStatus(message: "Importing 3 recordings")), actions: nil)
+
+      #expect(d.currentPresentationForTesting != nil, "the status pill never took the slot")
+      #expect(
+        d.currentIntent == .hidden,
+        "import status began claiming the intent, which the shipped panel never did")
+    }
+
     /// **Effects run before the render.** The shipped
     /// recordingIntentObserver fired at the top of `show(intent:)`, before the
     /// announcement and before any panel work, so Live Preview has frozen its

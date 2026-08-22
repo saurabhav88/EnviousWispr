@@ -175,10 +175,27 @@ final class OverlayDirector {
     // `.bluetoothAwareness` before it will act on any of its buttons. Returning
     // the bare pipeline intent left that handshake permanently failing and every
     // button on the card a no-op, with nothing failing anywhere.
-    if case .bluetoothAwareness? = reducer.state.current?.content {
-      return .bluetoothAwareness
+    // **Every occupant that arrives WITHOUT setting `pipelineIntent` must be
+    // projected here, and the rule is that sentence rather than a list.** A
+    // feature takes the slot through `reduceFeature`, which never touches the
+    // pipeline intent, so anything reaching the slot that way reports `.hidden`
+    // unless it is named below.
+    //
+    // Bluetooth was named at the cutover and the language chip was not, which is
+    // the same omission twice: `LanguageSuggestionPresenter` guards
+    // `case .hidden` before showing a chip, so with its own chip already up it
+    // read the slot as free — it could stack a second chip, and
+    // `resetAllChipState()` left a visible one behind.
+    //
+    // IMPORT STATUS IS DELIBERATELY ABSENT. It is the one request with no
+    // matching `OverlayIntent`, and the shipped panel did not set `currentIntent`
+    // for it either, so reporting `.hidden` while a status pill shows is the
+    // behaviour being preserved rather than a third omission.
+    switch reducer.state.current?.content {
+    case .bluetoothAwareness: return .bluetoothAwareness
+    case .languageChip(let payload): return .passiveChip(payload: payload)
+    default: return reducer.state.pipelineIntent
     }
-    return reducer.state.pipelineIntent
   }
 
   /// The production announcement, lifted verbatim from the sixteen identical

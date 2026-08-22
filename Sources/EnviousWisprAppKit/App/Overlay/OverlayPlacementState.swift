@@ -80,8 +80,22 @@ struct OverlayPlacementState: Equatable {
       x = screen.visibleFrame.midX - size.width / 2
       requestedY = Self.freshOriginY(for: position, on: screen)
 
-    case .continuing(let currentFrame, _, let outgoingWasContentSized):
-      x = currentFrame.origin.x
+    case .continuing(let currentFrame, let anchoredScreen, let outgoingWasContentSized):
+      // **X is preserved for a DRAGGED pill and recomputed for an automatic
+      // one, and the anchor kind is the only thing that can tell them apart.**
+      //
+      // Preserving it unconditionally, which the first version did, fixes #2195
+      // and creates its mirror: an automatically centred 185-point recording
+      // pill becoming a 280-point warning keeps its LEFT EDGE, so the pill
+      // visibly slides sideways on every width-changing transition. The shipped
+      // path recomputed X unconditionally and had the opposite half of the bug.
+      //
+      // `anchoredScreen` was being discarded here. It is exactly the fact the
+      // decision needs: a user anchor belongs to the screen it was made on.
+      x =
+        isUserAnchored(on: anchoredScreen)
+        ? currentFrame.origin.x
+        : screen.visibleFrame.midX - size.width / 2
       switch anchorPosition {
       case .top:
         // Ported from `origin/main`'s `RecordingOverlayPanel.inheritedTopOriginY`:
