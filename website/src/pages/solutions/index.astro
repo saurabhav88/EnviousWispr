@@ -1,0 +1,120 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { solutions } from '../../data/solutions';
+
+const siteUrl = 'https://enviouswispr.com';
+const title = 'Mac Dictation Solutions for Real Work | EnviousWispr';
+const description = 'Explore a free Mac dictation workflow for developers. Turn spoken context into PR descriptions, code reviews, docs, issues, commits, and prompts locally.';
+
+const collectionJsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: title,
+  description,
+  url: `${siteUrl}/solutions/`,
+  mainEntity: {
+    '@type': 'ItemList',
+    itemListElement: solutions.map((solution, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: solution.title,
+      url: `${siteUrl}${solution.href}`,
+    })),
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: siteUrl },
+    { '@type': 'ListItem', position: 2, name: 'Solutions', item: `${siteUrl}/solutions/` },
+  ],
+});
+---
+
+<BaseLayout title={title} description={description} activePage="solutions" canonicalPath="/solutions/">
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={collectionJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+  </Fragment>
+
+  <div class="solutions-hub">
+    <div class="container">
+      <nav class="hub-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span aria-current="page">Solutions</span></nav>
+      <header class="hub-hero">
+        <div>
+          <div class="section-label-pill accent">Solutions</div>
+          <h1>Less typing.<br/><span class="rainbow-text">More finished work.</span></h1>
+        </div>
+        <div class="hub-intro">
+          <p>EnviousWispr is a free dictation app for Apple Silicon Macs. Start with the developer workflow and see exactly where voice fits around code.</p>
+          <a href="/how-it-works/">See how on-device dictation works</a>
+        </div>
+      </header>
+
+      <section class="hub-grid" aria-label="Dictation solutions">
+        {solutions.map((solution, index) => (
+          <a href={solution.href} class={`hub-card ${solution.accent}`}>
+            <div class="hub-card-number">0{index + 1}</div>
+            <p class="hub-card-eyebrow">{solution.eyebrow}</p>
+            <h2>{solution.title}</h2>
+            <p class="hub-card-description">{solution.description}</p>
+            <div class="hub-card-outcome"><span aria-hidden="true"></span>{solution.outcome}</div>
+            <div class="hub-card-link">Explore the workflow <span aria-hidden="true">→</span></div>
+          </a>
+        ))}
+      </section>
+
+      <section class="hub-principles" aria-labelledby="principles-heading">
+        <div>
+          <p class="hub-kicker">One foundation</p>
+          <h2 id="principles-heading">Every workflow starts with the same three promises.</h2>
+        </div>
+        <div class="hub-principle-list">
+          <article><strong>Audio stays local</strong><p>Speech recognition runs on your Mac. Your voice is never uploaded.</p></article>
+          <article><strong>You choose the polish path</strong><p>Keep cleanup on-device, use deterministic cleanup only, or bring your own cloud provider key.</p></article>
+          <article><strong>The app stays free</strong><p>No EnviousWispr account, subscription, or locked core dictation feature.</p></article>
+        </div>
+      </section>
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  .solutions-hub { padding: 96px 0 96px; }
+  .hub-breadcrumb { display:flex; gap:9px; margin:10px 0 42px; color:var(--text-3); font-size:13px; }
+  .hub-breadcrumb a { color:var(--text-3); text-decoration:none; }
+  .hub-hero { display:grid; grid-template-columns:1.25fr .75fr; gap:80px; align-items:end; margin-bottom:58px; }
+  .hub-hero h1 { max-width:760px; font-size:clamp(52px,7vw,88px); line-height:.98; letter-spacing:-5px; }
+  .hub-intro { padding-bottom:8px; }
+  .hub-intro p { margin-bottom:18px; color:var(--text-2); font-size:18px; line-height:1.75; }
+  .hub-intro a { color:var(--accent); font-size:14px; font-weight:700; text-underline-offset:4px; }
+  .hub-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; }
+  .hub-card { position:relative; min-height:390px; display:flex; flex-direction:column; padding:34px; border:1px solid var(--border-hover); border-radius:22px; background:rgba(255,255,255,.8); color:var(--text); text-decoration:none; overflow:hidden; transition:transform .22s,box-shadow .22s; }
+  .hub-card::before { content:''; position:absolute; inset:0 auto auto 0; width:100%; height:5px; background:var(--card-accent); }
+  .hub-card::after { content:''; position:absolute; right:-70px; top:-70px; width:210px; height:210px; border-radius:50%; background:var(--card-glow); filter:blur(4px); }
+  .hub-card:hover { transform:translateY(-5px); box-shadow:0 22px 55px rgba(62,34,107,.11); }
+  .hub-card.blue { --card-accent:linear-gradient(90deg,#1e90ff,#00ccdd); --card-glow:rgba(30,144,255,.12); }
+  .hub-card.violet { --card-accent:linear-gradient(90deg,#8a2be2,#d45a90); --card-glow:rgba(138,43,226,.12); }
+  .hub-card.green { --card-accent:linear-gradient(90deg,#00c880,#adff2f); --card-glow:rgba(0,200,128,.12); }
+  .hub-card.orange { --card-accent:linear-gradient(90deg,#ff8c00,#ffd700); --card-glow:rgba(255,140,0,.12); }
+  .hub-card.cyan { --card-accent:linear-gradient(90deg,#00ccdd,#7c3aed); --card-glow:rgba(0,204,221,.12); }
+  .hub-card-number { position:relative; z-index:1; margin-bottom:45px; color:var(--text-3); font-family:var(--font-mono); font-size:11px; }
+  .hub-card-eyebrow,.hub-kicker { margin-bottom:10px; color:var(--accent); font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; }
+  .hub-card h2 { position:relative; z-index:1; max-width:520px; margin-bottom:14px; font-size:32px; line-height:1.12; letter-spacing:-1.3px; }
+  .hub-card-description { max-width:560px; color:var(--text-2); line-height:1.7; }
+  .hub-card-outcome { display:flex; gap:9px; align-items:center; margin-top:24px; color:var(--text-2); font-size:12px; font-weight:600; }
+  .hub-card-outcome span { width:7px; height:7px; border-radius:50%; background:#00c880; box-shadow:0 0 0 4px rgba(0,200,128,.1); }
+  .hub-card-link { margin-top:auto; padding-top:30px; color:var(--accent); font-size:13px; font-weight:700; }
+  .hub-principles { display:grid; grid-template-columns:.8fr 1.2fr; gap:68px; margin-top:82px; padding:48px; border-radius:24px; background:var(--text); color:#fff; }
+  .hub-principles h2 { font-size:36px; line-height:1.18; letter-spacing:-1.5px; }
+  .hub-kicker { color:#8de8f1; }
+  .hub-principle-list { display:grid; gap:20px; }
+  .hub-principle-list article { padding-bottom:20px; border-bottom:1px solid rgba(255,255,255,.1); }
+  .hub-principle-list article:last-child { padding-bottom:0; border-bottom:0; }
+  .hub-principle-list strong { display:block; margin-bottom:5px; font-size:16px; }
+  .hub-principle-list p { color:rgba(255,255,255,.63); font-size:14px; line-height:1.65; }
+  @media(max-width:850px){.hub-hero,.hub-principles{grid-template-columns:1fr;gap:32px}.hub-grid{grid-template-columns:1fr}.hub-hero h1{letter-spacing:-3px}.hub-card{min-height:350px}.hub-principles{padding:32px}}
+  @media(max-width:600px){.solutions-hub{padding-top:80px}.hub-hero h1{font-size:48px;letter-spacing:-2.7px}.hub-card{padding:26px}.hub-card h2{font-size:28px}.hub-principles{padding:28px 24px}}
+</style>

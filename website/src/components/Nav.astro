@@ -40,6 +40,7 @@ const { activePage = 'home' } = Astro.props;
     </a>
     <ul class="nav-links" id="navLinks" role="list">
       <li><a href="/how-it-works/" class:list={[{ active: activePage === 'how-it-works' }]}>Under the Hood</a></li>
+      <li><a href="/solutions/" class:list={[{ active: activePage === 'solutions' }]}>Solutions</a></li>
       <li><a href="/compare/" class:list={[{ active: activePage === 'compare' }]}>Compare</a></li>
       <li><a href="/blog/">Blog</a></li>
       <li><a href="/help/" class:list={[{ active: activePage === 'help' }]}>Help</a></li>

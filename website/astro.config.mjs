@@ -103,6 +103,13 @@ function sourceForUrl(url) {
     const slug = p.replace('/compare/', '');
     return path.join(__dirname, `src/pages/compare/${slug}.astro`);
   }
+  // /solutions/ index → src/pages/solutions/index.astro
+  if (p === '/solutions') return path.join(__dirname, 'src/pages/solutions/index.astro');
+  // /solutions/<slug>/ → src/pages/solutions/<slug>.astro
+  if (p.startsWith('/solutions/')) {
+    const slug = p.replace('/solutions/', '');
+    return path.join(__dirname, `src/pages/solutions/${slug}.astro`);
+  }
   // /index → src/pages/index.astro
   if (p === '/index') return path.join(__dirname, 'src/pages/index.astro');
   // /<page>/ → src/pages/<page>.astro
