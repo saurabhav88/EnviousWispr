@@ -58,6 +58,17 @@ RECIPE FORMAT (JSON; the same block that goes in the `test-hardening` issue body
       ]
     }
 
+    `expect_fail` is the backward-compatible single-guard form. A row that needs to
+    describe a JOINT expectation uses these fields instead:
+
+        "must_fire": ["theGuard()"],
+        "must_not_fire": ["theIndependentControl()"]
+
+    `must_fire` is the EXACT set of tests that must newly fail. An empty set is an
+    expected survivor: no test in the suite may newly fail. `must_not_fire` names
+    important silent controls and requires their status to stay unchanged. A row
+    supplies either `expect_fail` or `must_fire`, never both.
+
     `expect_fail` NAMES A TEST AND IS MATCHED EXACTLY — it is not a substring of the
     failure line. Any one of the three spellings the result bundle carries will do:
     the `Suite/function()` identifier, the bare `function()`, or the display name in
@@ -72,8 +83,8 @@ USAGE
     scripts/mutation-battery.py --recipes recipes.json --validate-only  # no xcodebuild at all
 
 EXIT CODES
-    0  every row CAUGHT, baseline green before and after, every file byte-identical
-    1  at least one SURVIVED, ERRORED, or a restore failed
+    0  every row matched its expectation, baseline green before and after, every file byte-identical
+    1  at least one expectation missed, SURVIVED, ERRORED, or a restore failed
     2  usage / preflight refusal (the battery never started)
 """
 
@@ -562,6 +573,8 @@ VERDICT_SURVIVED = "SURVIVED"
 # recipe precisely when the TEST was at fault.
 VERDICT_NOOP = "SURVIVED-UNOBSERVED"
 VERDICT_INVALID = "INVALID-ROW"
+VERDICT_EXPECTED = "EXPECTED"
+VERDICT_MISMATCH = "EXPECTATION-MISMATCH"
 
 
 # WHAT TO DO ABOUT A ROW DEPENDS ON WHY IT IS NOT A CATCH, and the old report
@@ -578,10 +591,12 @@ VERDICT_INVALID = "INVALID-ROW"
 # REMEDIATION HERE. `classify_row` owns that judgement; a second sentence of guidance
 # is a second owner, and it is the one that drifted.
 WHAT_IT_MEANS = {
+    VERDICT_EXPECTED: "the declared fire and silence sets matched",
     VERDICT_NOOP: "no test changed status; the two causes, and how to tell them apart, are below",
     VERDICT_CAUGHT_ELSEWHERE: "a different test caught it; this row says nothing about its own guard",
     VERDICT_INVALID: "the row cannot prove anything as written",
     VERDICT_SURVIVED: "the test did not detect the mutation",
+    VERDICT_MISMATCH: "the suite did not match the row's declared fire and silence sets",
     "ERROR": "the row did not produce a verdict",
 }
 
@@ -673,6 +688,77 @@ def classify_row(baseline: "SuiteResults", mutated: "SuiteResults", expect_fail:
         f"changed status ({', '.join(sorted(changed)[:5])}) — skipped, or absent from the mutated "
         f"run. No guard went red, so the mutation was not detected; check whether the run was cut "
         f"short before reading this as a weak test.")
+
+
+def _resolve_expectation_names(baseline, mutated, names):
+    """Resolve recipe spellings once, failing closed on missing or ambiguous names."""
+    resolved = {}
+    for name in names:
+        targets = mutated.resolve(name) | baseline.resolve(name)
+        if not targets:
+            return None, f"`{name}` names no test in this suite."
+        if len(targets) > 1:
+            return None, (
+                f"`{name}` is ambiguous: it names {len(targets)} tests "
+                f"({', '.join(sorted(targets))}). Use the `Suite/function()` identifier.")
+        target = next(iter(targets))
+        base_result = baseline.by_id.get(target)
+        if base_result not in ("Passed", "Expected Failure"):
+            return None, (
+                f"`{target}` was {base_result or 'absent'} BEFORE the mutation, so its expectation "
+                "has no clean baseline.")
+        resolved[name] = target
+    return resolved, None
+
+
+def classify_expectations(baseline: "SuiteResults", mutated: "SuiteResults",
+                          must_fire, must_not_fire):
+    """Grade an exact newly-failing set plus named controls that must stay unchanged."""
+    fire, error = _resolve_expectation_names(baseline, mutated, must_fire)
+    if error:
+        return VERDICT_INVALID, error
+    silent, error = _resolve_expectation_names(baseline, mutated, must_not_fire)
+    if error:
+        return VERDICT_INVALID, error
+
+    required = set(fire.values())
+    forbidden = set(silent.values())
+    overlap = required & forbidden
+    if overlap:
+        return VERDICT_INVALID, (
+            "the same test is declared in both must_fire and must_not_fire: "
+            + ", ".join(sorted(overlap)))
+
+    newly_failed = mutated.failed() - baseline.failed()
+    missing = required - newly_failed
+    unexpected = newly_failed - required
+    omitted = set(baseline.by_id) - set(mutated.by_id)
+    silent_changed = {
+        test_id for test_id in forbidden
+        if baseline.by_id.get(test_id) != mutated.by_id.get(test_id)
+    }
+    if not missing and not unexpected and not silent_changed and not omitted:
+        if required:
+            return VERDICT_EXPECTED, (
+                f"exact must_fire set matched ({', '.join(sorted(required))}); "
+                f"{len(forbidden)} named silent control(s) stayed unchanged")
+        return VERDICT_EXPECTED, (
+            "expected survivor matched: no test newly failed; "
+            f"{len(forbidden)} named silent control(s) stayed unchanged")
+
+    parts = []
+    if missing:
+        parts.append("required test(s) did not fire: " + ", ".join(sorted(missing)))
+    if unexpected:
+        parts.append("unexpected test(s) fired: " + ", ".join(sorted(unexpected)))
+    if silent_changed:
+        parts.append("must_not_fire control(s) changed status: "
+                     + ", ".join(sorted(silent_changed)))
+    if omitted:
+        parts.append(
+            f"mutated result bundle omitted {len(omitted)} baseline test(s): "
+            + ", ".join(sorted(omitted)[:5]))
+    return VERDICT_MISMATCH, "; ".join(parts)
 
 
 class Lane:
@@ -857,7 +943,7 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
     for i, row in enumerate(rows, 1):
         if not isinstance(row, dict):
             raise Refusal(f"row {i} is a {type(row).__name__}, not an object.")
-        for field in ("label", "file", "anchor", "replacement", "expect_fail"):
+        for field in ("label", "file", "anchor", "replacement"):
             if field not in row or row[field] is None:
                 raise Refusal(f"row {i} is missing required field '{field}'.")
             if not isinstance(row[field], str):
@@ -868,6 +954,40 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
             # typed value as missing. Every other field empty is still a mistake.
             if field != "replacement" and not row[field]:
                 raise Refusal(f"row {i} is missing required field '{field}'.")
+        has_legacy = "expect_fail" in row
+        has_sets = "must_fire" in row
+        if has_legacy == has_sets:
+            raise Refusal(
+                f"row {i} must declare exactly one of 'expect_fail' or 'must_fire'.")
+        if has_legacy:
+            if not isinstance(row["expect_fail"], str) or not row["expect_fail"]:
+                raise Refusal(f"row {i} field 'expect_fail' must be a non-empty string.")
+            if "must_not_fire" in row:
+                raise Refusal(
+                    f"row {i} uses legacy 'expect_fail' and cannot also declare 'must_not_fire'. "
+                    "Use must_fire for a joint expectation.")
+            row["_expectation_mode"] = "legacy"
+            row["_must_fire"] = [row["expect_fail"]]
+            row["_must_not_fire"] = []
+        else:
+            for field in ("must_fire", "must_not_fire"):
+                value = row.get(field, [])
+                if not isinstance(value, list) or any(
+                    not isinstance(name, str) or not name for name in value
+                ):
+                    raise Refusal(
+                        f"row {i} field '{field}' must be a list of non-empty test-name strings.")
+                if len(value) != len(set(value)):
+                    raise Refusal(f"row {i} field '{field}' contains duplicate test names.")
+            row.setdefault("must_not_fire", [])
+            overlap = sorted(set(row["must_fire"]) & set(row["must_not_fire"]))
+            if overlap:
+                raise Refusal(
+                    f"row {i} names test(s) in both must_fire and must_not_fire: "
+                    f"{', '.join(overlap)}.")
+            row["_expectation_mode"] = "sets"
+            row["_must_fire"] = row["must_fire"]
+            row["_must_not_fire"] = row["must_not_fire"]
         row.setdefault("suite", default_suite)
         if not row["suite"]:
             raise Refusal(f"row {i} has no suite and no suite_default is set.")
@@ -1207,35 +1327,37 @@ def main(argv=None):
             print(f"  - {p}", file=sys.stderr)
         return 1
 
-    # Refuse a recipe whose expect_fail names no test the clean baseline ran. The answer is already in
+    # Refuse a recipe whose expectation names no test the clean baseline ran. The answer is already in
     # hand at this point, and the alternative is discovering it as a SURVIVED verdict that blames the
     # test. A PREFIX is the common case and the message says so, because that is what an author who
     # wrote against the old substring contract will have.
     unknown = []
     for i, row in enumerate(rows, 1):
         known = baseline_names.get(row["suite"])
+        names = row["_must_fire"] + row["_must_not_fire"]
         # An EMPTY identity set is not a pass. It means the log was unreadable, or Swift Testing's
         # output no longer matches the pattern — in both cases we have no evidence the named test
         # exists, and skipping the check restores exactly the false-SURVIVED this was added to stop.
         # A suite that ran at least one test always prints identity lines, so empty means the reader
         # broke, not that the suite is empty. Fail closed: the whole point of this check.
-        if not known:
+        if not known and names:
             unknown.append(
                 f"row {i}: could not read any test names from {row['suite']}'s baseline run, so "
-                f"{row['expect_fail']!r} cannot be verified. The suite passed, which means it printed "
+                f"{names!r} cannot be verified. The suite passed, which means it printed "
                 "test lines and the reader failed — not that the suite is empty."
             )
             continue
-        if row["expect_fail"] in known:
-            continue
-        near = sorted(n for n in known if row["expect_fail"] in n or n in row["expect_fail"])
-        hint = f"\n      did you mean: {near[0]!r}" if near else ""
-        unknown.append(f"row {i}: no test named {row['expect_fail']!r} ran in {row['suite']}{hint}")
+        for name in names:
+            if name in known:
+                continue
+            near = sorted(n for n in known if name in n or n in name)
+            hint = f"\n      did you mean: {near[0]!r}" if near else ""
+            unknown.append(f"row {i}: no test named {name!r} ran in {row['suite']}{hint}")
     if unknown:
         print("\nREFUSED — nothing was mutated.\n", file=sys.stderr)
-        print("A recipe names the test that must go red, and these name a test the clean baseline did "
-              "not run. Matching is on the FULL test name, not a prefix — a recipe written when this "
-              "matched substrings will look like this.\n", file=sys.stderr)
+        print("A recipe expectation names a test the clean baseline did not run. Matching is on the "
+              "FULL test name, not a prefix — a recipe written when this matched substrings will look "
+              "like this.\n", file=sys.stderr)
         for u in unknown:
             print(f"  - {u}", file=sys.stderr)
         return 2
@@ -1286,11 +1408,23 @@ def main(argv=None):
                         detail = (
                             f"no unmutated baseline was recorded for {row['suite']}, so this row has "
                             f"nothing to differ from ({log})")
+                    elif (row["_expectation_mode"] == "sets"
+                          and not row["_must_fire"] and rc_run != 0
+                          and not (row_results.failed()
+                                   - baseline_results[row["suite"]].failed())):
+                        detail = (
+                            f"expected-survivor lane exited {rc_run}, so a partial result bundle cannot "
+                            f"be graded as success even though no test was recorded failing ({log})")
                     else:
                         # THE VERDICT IS A DIFF, NOT A RED/GREEN READ. See classify_row for why, and
                         # for the limit it does NOT close.
-                        verdict, detail = classify_row(
-                            baseline_results[row["suite"]], row_results, row["expect_fail"])
+                        if row["_expectation_mode"] == "legacy":
+                            verdict, detail = classify_row(
+                                baseline_results[row["suite"]], row_results, row["expect_fail"])
+                        else:
+                            verdict, detail = classify_expectations(
+                                baseline_results[row["suite"]], row_results,
+                                row["_must_fire"], row["_must_not_fire"])
                         detail = f"{detail} — {elapsed:.0f}s ({log})"
         except (_RowFailed, Refusal) as exc:
             detail = str(exc)
@@ -1344,6 +1478,8 @@ def main(argv=None):
             VERDICT_SURVIVED: " SURV ",
             VERDICT_NOOP: " NOOP ",
             VERDICT_INVALID: " BADR ",
+            VERDICT_EXPECTED: " EXP  ",
+            VERDICT_MISMATCH: " MISS ",
             "ERROR": " ERR  ",
         }[verdict]
         print(f"  [{marker}] row {i}: {row['label']}\n           {detail}")
@@ -1357,18 +1493,19 @@ def main(argv=None):
             print(f"  - {p}", file=sys.stderr)
         return 1
 
-    caught = [r for r in results if r[0] == VERDICT_CAUGHT]
-    bad = [r for r in results if r[0] != VERDICT_CAUGHT]
-    print(f"\n{'=' * 72}\n{len(caught)}/{len(results)} CAUGHT, baseline green before and after.")
+    successful = [r for r in results if r[0] in (VERDICT_CAUGHT, VERDICT_EXPECTED)]
+    bad = [r for r in results if r[0] not in (VERDICT_CAUGHT, VERDICT_EXPECTED)]
+    print(f"\n{'=' * 72}\n{len(successful)}/{len(results)} expectations matched "
+          "(CAUGHT or EXPECTED), baseline green before and after.")
     if bad:
         print(f"\n{len(bad)} row(s) need work:")
         for verdict, label, detail in bad:
             print(f"  {verdict}: {label}\n    {explain_verdict(verdict)}\n    {detail}")
         return 1
-    print("\nEvery mutation was detected by the test that claimed to guard it.")
-    print("This proves the tests fire on the mutations written here. It does NOT prove they are")
-    print("binding — a guard over identifier names or source text still needs an independent")
-    print("attempt to evade it, by someone other than its author.")
+    print("\nEvery mutation matched its declared fire and silence expectations.")
+    print("This proves the declared fire/silence pattern holds for the mutations written here.")
+    print("It does NOT prove a guard is binding — identifier-name or source-text guards still need")
+    print("an independent attempt to evade them, by someone other than their author.")
     return 0
 
 

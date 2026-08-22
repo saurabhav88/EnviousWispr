@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 
 BATTERY = Path(__file__).resolve().parent / "mutation-battery.py"
+VALIDATOR = Path(__file__).resolve().parent / "validate-mutation-recipe.py"
 
 VALID_ROW = {
     "label": "a representative mutation",
@@ -135,10 +136,38 @@ check("suite_default supplies a missing per-row suite",
       expect_exit=0, top={"suite_default": "EnviousWisprTests/ThingTests"})
 
 # --- each rejection, paired against the accepted case above ---------------------------------------
-for field in ("label", "file", "anchor", "replacement", "expect_fail"):
+for field in ("label", "file", "anchor", "replacement"):
     check(f"missing '{field}' is refused",
           [{k: v for k, v in VALID_ROW.items() if k != field}],
           expect_exit=2, expect_text=f"missing required field '{field}'")
+
+SET_ROW = {
+    k: v for k, v in VALID_ROW.items() if k != "expect_fail"
+}
+SET_ROW["must_fire"] = []
+SET_ROW["must_not_fire"] = [VALID_ROW["expect_fail"]]
+
+check("must_fire may be empty to declare an expected survivor",
+      [dict(SET_ROW)], expect_exit=0, expect_text="1 row(s) well-formed")
+check("a row with neither expectation form is refused",
+      [{k: v for k, v in VALID_ROW.items() if k != "expect_fail"}],
+      expect_exit=2, expect_text="exactly one of 'expect_fail' or 'must_fire'")
+check("a row with both expectation forms is refused",
+      [dict(VALID_ROW, must_fire=[VALID_ROW["expect_fail"]])],
+      expect_exit=2, expect_text="exactly one of 'expect_fail' or 'must_fire'")
+check("must_fire must be a list of test names",
+      [dict(SET_ROW, must_fire=VALID_ROW["expect_fail"])],
+      expect_exit=2, expect_text="must be a list of non-empty test-name strings")
+check("must_not_fire rejects duplicate test names",
+      [dict(SET_ROW, must_not_fire=[VALID_ROW["expect_fail"], VALID_ROW["expect_fail"]])],
+      expect_exit=2, expect_text="contains duplicate test names")
+check("must_fire and must_not_fire cannot contradict each other",
+      [dict(SET_ROW, must_fire=[VALID_ROW["expect_fail"]],
+            must_not_fire=[VALID_ROW["expect_fail"]])],
+      expect_exit=2, expect_text="both must_fire and must_not_fire")
+check("legacy expect_fail cannot silently absorb must_not_fire",
+      [dict(VALID_ROW, must_not_fire=["some other case"])],
+      expect_exit=2, expect_text="cannot also declare 'must_not_fire'")
 
 check("a bare suite name is refused as not target-qualified",
       [dict(VALID_ROW, suite="ThingTests")],
@@ -454,14 +483,14 @@ import contextlib  # noqa: E402
 ORIGINAL = "let guarded = true\n"
 
 
-def drive_row(lane_result, *, expect_verdict, expect_detail, raise_instead=None):
+def drive_row(lane_result, *, expect_verdict, expect_detail, raise_instead=None, recipe_row=None):
     """Run one row with a stubbed lane; return (verdict, detail, file_bytes_after)."""
     import tempfile as _t
     with _t.TemporaryDirectory() as td:
         tmp = make_tree(Path(td))
         target = tmp / "Sources" / "Thing.swift"
         recipes = tmp / "r.json"
-        recipes.write_text(json.dumps({"rows": [dict(VALID_ROW)]}))
+        recipes.write_text(json.dumps({"rows": [dict(recipe_row or VALID_ROW)]}))
 
         seen = {}
 
@@ -492,12 +521,12 @@ def drive_row(lane_result, *, expect_verdict, expect_detail, raise_instead=None)
         return rc, buf.getvalue(), target.read_text(), seen.get("content_during_run")
 
 
-def check_row(name, lane_result, *, expect_marker, expect_rc, raise_instead=None):
+def check_row(name, lane_result, *, expect_marker, expect_rc, raise_instead=None, recipe_row=None):
     global ran, failures
     ran += 1
     try:
         rc, out, after, during = drive_row(lane_result, expect_verdict=None, expect_detail=None,
-                                           raise_instead=raise_instead)
+                                           raise_instead=raise_instead, recipe_row=recipe_row)
     except Exception as exc:
         failures.append(f"{name}: driver raised {type(exc).__name__}: {exc}")
         return
@@ -522,6 +551,30 @@ check_row("the named test failing scores CAUGHT",
           (5, [], True, "log", 65, 3.0,
            mk_results({VALID_ROW["expect_fail"]: "Failed", "some other case": "Passed"})),
           expect_marker="CAUGHT", expect_rc=0)
+
+_joint_row = dict(SET_ROW, must_fire=[VALID_ROW["expect_fail"]],
+                  must_not_fire=["some other case"])
+check_row("joint fire and silence expectations can both match",
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Failed", "some other case": "Passed"})),
+          expect_marker="EXPECTED", expect_rc=0, recipe_row=_joint_row)
+
+_survivor_row = dict(SET_ROW, must_fire=[], must_not_fire=[VALID_ROW["expect_fail"]])
+check_row("an expected survivor is a successful result, not a weak-test warning",
+          (5, [], True, "log", 0, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Passed"})),
+          expect_marker="expected survivor matched", expect_rc=0, recipe_row=_survivor_row)
+
+check_row("an expected survivor fails closed when any test fires",
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Failed"})),
+          expect_marker="EXPECTATION-MISMATCH", expect_rc=1, recipe_row=_survivor_row)
+
+check_row("an expected survivor refuses a red lane with a partial green bundle",
+          (5, [], True, "log", 65, 3.0,
+           mk_results({VALID_ROW["expect_fail"]: "Passed", "some other case": "Passed"})),
+          expect_marker="expected-survivor lane exited 65", expect_rc=1,
+          recipe_row=_survivor_row)
 
 # THE STATE THE CONSOLE COULD NOT EXPRESS. Nothing changed status, so the mutation
 # never reached anything the suite observes — today that scored identically to a
@@ -693,6 +746,56 @@ if _problems:
                     + "; ".join(_problems))
 else:
     print("  ok  an unchanged test set names BOTH causes and asserts neither")
+
+# #2224 gap 5: a row may declare a joint expectation instead of pretending every
+# SURVIVED result means a weak test. The fire set is exact, and named silent
+# controls must remain status-identical to their clean baseline.
+ran += 1
+_set_base = mk_results({"guard": "Passed", "independent": "Passed", "sibling": "Passed"})
+_set_mut = mk_results({"guard": "Failed", "independent": "Passed", "sibling": "Passed"})
+_v_set, _d_set = battery.classify_expectations(
+    _set_base, _set_mut, ["guard"], ["independent"])
+if _v_set != battery.VERDICT_EXPECTED:
+    failures.append(f"an exact fire set plus a silent control can match — got {_v_set}: {_d_set}")
+else:
+    print("  ok  an exact fire set plus a silent control can match")
+
+ran += 1
+_v_extra, _d_extra = battery.classify_expectations(
+    _set_base,
+    mk_results({"guard": "Failed", "independent": "Passed", "sibling": "Failed"}),
+    ["guard"], ["independent"])
+if _v_extra != battery.VERDICT_MISMATCH or "unexpected test(s) fired" not in _d_extra:
+    failures.append("an extra red outside must_fire is an expectation mismatch")
+else:
+    print("  ok  an extra red outside must_fire is an expectation mismatch")
+
+ran += 1
+_v_silent, _d_silent = battery.classify_expectations(
+    _set_base,
+    mk_results({"guard": "Failed", "independent": "Skipped", "sibling": "Passed"}),
+    ["guard"], ["independent"])
+if _v_silent != battery.VERDICT_MISMATCH or "changed status" not in _d_silent:
+    failures.append("must_not_fire requires status silence, not merely absence from the failed set")
+else:
+    print("  ok  must_not_fire requires status silence")
+
+ran += 1
+_v_overlap, _d_overlap = battery.classify_expectations(
+    _set_base, _set_mut, ["guard"], ["guard"])
+if _v_overlap != battery.VERDICT_INVALID or "both must_fire and must_not_fire" not in _d_overlap:
+    failures.append("a test declared in both expectation sets must invalidate the row")
+else:
+    print("  ok  overlapping fire and silence sets invalidate the row")
+
+ran += 1
+_v_incomplete, _d_incomplete = battery.classify_expectations(
+    _set_base, mk_results({"guard": "Failed"}), ["guard"], [])
+if (_v_incomplete != battery.VERDICT_MISMATCH
+        or "omitted 2 baseline test(s)" not in _d_incomplete):
+    failures.append("an incomplete mutated bundle cannot satisfy an exact fire set")
+else:
+    print("  ok  an incomplete mutated bundle cannot satisfy an exact fire set")
 
 # P1a: the row gate is fed from the BUNDLE, so a parameterized identifier resolves.
 # The console has no addressable name for one, so a console-derived gate refused
@@ -1856,6 +1959,178 @@ if _mismatch:
     failures.append("a documented return shape matches the code — it does not: " + "; ".join(_mismatch))
 else:
     print("  ok  a documented return shape matches the code")
+
+# --- filing-time validator accepts exactly the schemas the runner accepts ------------------------
+def check_validator(name, row=None, *, document=None, expected_rc, expected_text):
+    global ran
+    ran += 1
+    with tempfile.TemporaryDirectory() as td:
+        recipe = Path(td) / "recipe.json"
+        recipe.write_text(json.dumps(document if document is not None else {"rows": [row]}))
+        result = subprocess.run(
+            [sys.executable, str(VALIDATOR), "--recipes", str(recipe),
+             "--checkout", str(BATTERY.parent.parent)],
+            capture_output=True, text=True,
+        )
+    output = result.stdout + result.stderr
+    if result.returncode != expected_rc or expected_text not in output:
+        failures.append(
+            f"{name}: exit {result.returncode}, wanted {expected_rc}; "
+            f"missing {expected_text!r} in {output[:300]!r}")
+    else:
+        print(f"  ok  {name}")
+
+
+_validator_base = {
+    "label": "validator schema control",
+    "file": "Sources/EnviousWisprAppKit/Views/Settings/AIPolishProviderRail.swift",
+    "anchor": "  // progress is kept, so this is a setup state, never an error.",
+    "replacement": "  // progress remains, so this is a setup state, never an error.",
+    "suite": "EnviousWisprTests/ProviderStatusMappingTests",
+}
+_guard_name = "EG-1 not installed → Not installed / needs-setup"
+_silent_name = "EG-1 paused → Paused / needs-setup"
+
+check_validator("the filing validator still accepts the legacy expect_fail schema",
+                dict(_validator_base, expect_fail=_guard_name),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator accepts fire and silence expectation sets",
+                dict(_validator_base, must_fire=[_guard_name], must_not_fire=[_silent_name]),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator rejects cross-set aliases for the same test",
+                dict(_validator_base, must_fire=[_guard_name],
+                     must_not_fire=["ProviderStatusMappingTests/egOneNotInstalled()"]),
+                expected_rc=1, expected_text="resolve to the same test")
+check_validator("the filing validator checks every name in both expectation sets",
+                dict(_validator_base, must_fire=[_guard_name],
+                     must_not_fire=["this test does not exist"]),
+                expected_rc=1, expected_text="DOES NOT EXIST")
+check_validator("the filing validator refuses a row carrying both schemas",
+                dict(_validator_base, expect_fail=_guard_name, must_fire=[_guard_name]),
+                expected_rc=1, expected_text="must declare exactly one of")
+check_validator("the filing validator rejects a recipe containing zero rows",
+                document={"rows": []}, expected_rc=1, expected_text="declares no rows")
+check_validator("the filing validator checks names inside the selected suite",
+                dict(_validator_base, expect_fail=_guard_name,
+                     suite="EnviousWisprTests/TerminalProcessScannerTests"),
+                expected_rc=1, expected_text="DOES NOT EXIST")
+check_validator("the filing validator decodes escaped Swift display names",
+                dict(_validator_base,
+                     expect_fail='hardware class is real, never "unknown"',
+                     suite="EnviousWisprTests/LaunchAvailabilitySnapshotTests"),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator keeps later tests in their enclosing suite",
+                dict(_validator_base, expect_fail="proxyErrorRecyclesConnection()",
+                     suite="EnviousWisprASRTests/ParakeetDeliveryModeTests"),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator does not invent a parameter suffix",
+                dict(_validator_base, expect_fail="egOnePaused(_:)"),
+                expected_rc=1, expected_text="DOES NOT EXIST")
+check_validator("the filing validator derives a real parameter suffix",
+                dict(_validator_base,
+                     expect_fail="egOneUpdatePausedReadsAsNeedingAttention(_:)"),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator does not accept a raw function name",
+                dict(_validator_base, expect_fail="egOnePaused"),
+                expected_rc=1, expected_text="PREFIX, not a full test name")
+check_validator("the filing validator does not treat an arguments value as a display name",
+                dict(_validator_base, expect_fail="gpt-5.6-sol",
+                     suite="EnviousWisprTests/OpenAIRequestBodyTests"),
+                expected_rc=1, expected_text="DOES NOT EXIST")
+check_validator("the filing validator validates the test target as well as the suite",
+                dict(_validator_base, expect_fail=_guard_name,
+                     suite="BogusTarget/ProviderStatusMappingTests"),
+                expected_rc=1, expected_text="NOT FOUND in Tests")
+check_validator("the filing validator accepts a test active in the Debug lane",
+                dict(_validator_base,
+                     expect_fail="Debug build: log() emits the marker into the file sink",
+                     suite="EnviousWisprTests/AppLoggerCompileOutTests"),
+                expected_rc=0, expected_text="1/1 rows runnable")
+check_validator("the filing validator excludes a release-only test from the Debug lane",
+                dict(_validator_base,
+                     expect_fail="Release build: log() does NOT emit the marker (sink is dead code)",
+                     suite="EnviousWisprTests/AppLoggerCompileOutTests"),
+                expected_rc=1, expected_text="DOES NOT EXIST")
+check_validator("the filing validator does not parse Swift inside a raw multiline fixture",
+                dict(_validator_base, expect_fail="notReal()",
+                     suite="EnviousWisprTests/NotReal"),
+                expected_rc=1, expected_text="DOES NOT EXIST")
+check_validator("the filing validator rejects a test in an environment-gated suite",
+                dict(_validator_base,
+                     expect_fail="everyOfferedModelPolishesSuccessfully()",
+                     suite="EnviousWisprTests/OpenAILiveSweepTests"),
+                expected_rc=1, expected_text="DOES NOT EXIST")
+check_validator("the filing validator rejects a runtime-gated individual test",
+                dict(_validator_base,
+                     expect_fail="filteredSweepFindsWhatTheFullSweepFinds()",
+                     suite="EnviousWisprTests/TerminalProcessScannerTests"),
+                expected_rc=1, expected_text="DOES NOT EXIST")
+
+_validator_spec = importlib.util.spec_from_file_location("mutation_validator", VALIDATOR)
+validator = importlib.util.module_from_spec(_validator_spec)
+_validator_spec.loader.exec_module(validator)
+ran += 1
+_real_read_text = Path.read_text
+
+
+def _fail_one_test_source(path, *args, **kwargs):
+    if path.name == "ProviderStatusMappingTests.swift":
+        raise OSError("simulated unreadable test source")
+    return _real_read_text(path, *args, **kwargs)
+
+
+Path.read_text = _fail_one_test_source
+try:
+    try:
+        validator.test_oracle(BATTERY.parent.parent)
+        failures.append("an unreadable test source refuses the entire filing-time oracle")
+    except RuntimeError as error:
+        if "cannot read test source" not in str(error):
+            failures.append(f"an unreadable test source refused for the wrong reason: {error}")
+        else:
+            print("  ok  an unreadable test source refuses the entire filing-time oracle")
+finally:
+    Path.read_text = _real_read_text
+
+ran += 1
+result = subprocess.run(
+    [sys.executable, str(VALIDATOR), "--issue", "0",
+     "--checkout", str(BATTERY.parent.parent)],
+    capture_output=True, text=True,
+)
+_zero_issue_output = result.stdout + result.stderr
+if (result.returncode != 2 or "issue number must be positive" not in _zero_issue_output
+        or "Traceback" in _zero_issue_output):
+    failures.append(
+        "the filing validator refuses --issue 0 cleanly — "
+        f"exit {result.returncode}: {_zero_issue_output[:250]!r}")
+else:
+    print("  ok  the filing validator refuses --issue 0 cleanly")
+
+ran += 1
+with tempfile.TemporaryDirectory() as td:
+    fake_bin = Path(td) / "bin"
+    fake_bin.mkdir()
+    fake_gh = fake_bin / "gh"
+    fake_gh.write_text(
+        "#!/bin/sh\n"
+        "printf '%s\\n' '```json' '{\"rows\": []}' '```' "
+        "'```json' '{\"rows\": []}' '```'\n")
+    fake_gh.chmod(0o755)
+    env = dict(NEUTRAL_ENV)
+    env["PATH"] = str(fake_bin) + ":" + env.get("PATH", "")
+    result = subprocess.run(
+        [sys.executable, str(VALIDATOR), "--issue", "1",
+         "--checkout", str(BATTERY.parent.parent)],
+        capture_output=True, text=True, env=env,
+    )
+_issue_output = result.stdout + result.stderr
+if result.returncode != 2 or "carries 2 ```json blocks" not in _issue_output:
+    failures.append(
+        "the filing validator shares the runner's single-recipe issue contract — "
+        f"exit {result.returncode}: {_issue_output[:250]!r}")
+else:
+    print("  ok  the filing validator shares the runner's single-recipe issue contract")
 
 print()
 if failures:
