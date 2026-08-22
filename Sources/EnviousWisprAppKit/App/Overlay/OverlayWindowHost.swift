@@ -156,6 +156,13 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
   /// whole frame because it is drag-to-relocate.
   func hide() {
     panel?.orderOut(nil)
+    // **Release the hosting view, or a hidden pill keeps working.** The shipped
+    // panel got this for free by being destroyed. `RecordingOverlayView` runs a
+    // `.task` polling the audio level every 50 ms and `OverlayCapsuleBackground`
+    // runs a `repeatForever` animation; retained and merely ordered out, both
+    // keep going for the rest of the session, invisibly. Nothing in the suite
+    // could see it — the window is correctly hidden either way.
+    panel?.contentView = nil
   }
 
   /// Re-anchor after the active Space changed. Bottom only, and never for a pill

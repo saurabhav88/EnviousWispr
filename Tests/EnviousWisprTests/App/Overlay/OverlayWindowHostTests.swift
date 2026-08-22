@@ -367,6 +367,31 @@ struct OverlayWindowHostTests {
       "re-anchored by top edge — the outgoing pill's fixed HEIGHT makes it centre-anchored")
   }
 
+  /// **Hiding must release the hosting view, and nothing observed that until a
+  /// mutant survived.** The shipped panel got this for free by being destroyed.
+  /// `RecordingOverlayView` runs a `.task` polling the audio level every 50 ms
+  /// and `OverlayCapsuleBackground` runs a `repeatForever` animation; a retained
+  /// panel that is merely ordered out keeps both running for the rest of the
+  /// session, invisibly and forever.
+  ///
+  /// The window is correctly hidden either way, so no visibility assertion can
+  /// see it — this had to be a direct observation of the content view.
+  @Test("hiding releases the hosting view so its work stops")
+  func hideReleasesTheHostingView() throws {
+    let h = Self.host()
+    h.present(
+      Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
+      position: .bottom)
+    let panel = try #require(h.panelForTesting)
+    #expect(panel.contentView != nil)
+
+    h.hide()
+
+    #expect(
+      panel.contentView == nil,
+      "a hidden pill kept its view, so its 50ms polling loop runs for the rest of the session")
+  }
+
   /// A `.measured` width must come from the view, and no default may stand in
   /// for it. Escape Recovery's real width is computed from text metrics, so a
   /// literal there would look plausible and silently disagree with the pill.

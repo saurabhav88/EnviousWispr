@@ -394,14 +394,14 @@ final class RecordingOverlayPanel {
     let resolvedWidth = panel.frame.width
     let resolvedHeight = panel.frame.height
     let x = targetScreen.visibleFrame.midX - resolvedWidth / 2
-    let panelY = clampedOriginY(
-      requestedY: computeRequestedY(on: targetScreen, position: position),
-      resolvedHeight: resolvedHeight, on: targetScreen)
-    panel.setFrame(
-      NSRect(x: x, y: panelY, width: resolvedWidth, height: resolvedHeight),
-      display: true, animate: true
-    )
-    lastProgrammaticOrigin = NSPoint(x: x, y: panelY)
+    // **Through the host.** A direct `setFrame` does not pass through
+    // `withProgrammaticMove`, so `windowDidMove` reads it as the USER dragging
+    // the pill — and the very next transition would then refuse to re-anchor it.
+    // The shipped code could write the frame directly because nothing was
+    // watching; the retained host is.
+    _ = (x, resolvedWidth, resolvedHeight, targetScreen)
+    windowHost.repositionForActiveSpaceChange()
+    lastProgrammaticOrigin = panel.frame.origin
   }
 
   /// Shared Top/Bottom position formula — used both when a panel first
@@ -936,7 +936,9 @@ final class RecordingOverlayPanel {
       frame.size.height = target
       frame.origin.y = topEdge - target
     }
-    panel.setFrame(frame, display: true)
+    // Through the host, for the same reason as the Space-change write: a direct
+    // `setFrame` would register as a user drag.
+    windowHost.resizeCurrentPresentation(to: frame.size)
     if !wasManuallyDragged { lastProgrammaticOrigin = frame.origin }
 
     // #2201: every ACCEPTED resize, so "the box holds still" has a receipt an
@@ -1480,24 +1482,55 @@ final class RecordingOverlayPanel {
     let size = NSRect(x: 0, y: 0, width: resolvedWidth, height: resolvedHeight)
 
     // #2292 C3b: the host owns construction, geometry, ordering and lifetime.
-    // Everything above — the content view, the resolved size, the inherited
-    // frame — is unchanged legacy behaviour handed across the seam.
+    let isFresh = inheritedFrame == nil
+    let position: OverlayPillPosition
+    if isFresh {
+      // **Read the provider ONCE.** The first version called `positionProvider()`
+      // for the argument and again to store `activePanelPosition`, so a setting
+      // changed between the two reads would have anchored the window to one edge
+      // while recording the other — and the next Space swipe re-anchors from the
+      // recorded one.
+      position = positionProvider()
+    } else {
+      // **Refuse rather than invent an edge.** The first version fell back to
+      // `?? .bottom`, which silently picks a side when a continuing presentation
+      // has no recorded edge. That state is an invariant violation, not a case
+      // with a sensible default: guessing puts the pill on the wrong edge with
+      // its content aligned for the other.
+      guard let activePanelPosition else { return }
+      position = activePanelPosition
+    }
+
     let presented = windowHost.present(
       hostingView,
       width: fitToContent ? .measured : .fixed(resolvedWidth),
       fixedHeight: fitToContent ? nil : resolvedHeight,
-      isFresh: inheritedFrame == nil,
-      position: inheritedFrame == nil ? positionProvider() : (activePanelPosition ?? .bottom))
+      isFresh: isFresh,
+      position: position)
     guard presented else {
-      // The host refused — no screen, or an unsizable presentation. Claiming a
-      // panel here is what `showImportStatusNow`'s ownership guard was written
-      // against (`:1108-1110`), and a retained window makes `panel != nil`
-      // useless as that signal.
+      // The host refused — no screen, or an unsizable presentation. **Hide
+      // rather than return**, or the PREVIOUS occupant stays on screen: with a
+      // retained window a refused replacement leaves the old pill visible, where
+      // the shipped code had already destroyed it. Claiming a panel here is also
+      // what `showImportStatusNow`'s ownership guard was written against
+      // (`:1108-1110`).
+      windowHost.hide()
+      panel = nil
       return
     }
-    if inheritedFrame == nil { activePanelPosition = positionProvider() }
+    if isFresh {
+      activePanelPosition = position
+      // A genuinely NEW presentation starts clean. The shipped fresh branch did
+      // this (`:1532`) and the first C3b wiring DROPPED it, so a drag would have
+      // outlived the presentation it belonged to.
+      wasManuallyDragged = false
+    }
     self.panel = windowHost.panelForLegacyBridge
-    lastProgrammaticOrigin = windowHost.panelForLegacyBridge?.frame.origin
+    // Read BACK rather than reusing the requested origin: AppKit aligns a window
+    // frame to whole points, so the requested value can differ from the applied
+    // one by up to a point — and the drag comparison uses a 0.5 tolerance.
+    lastProgrammaticOrigin = panel?.frame.origin
+    activePanelIsContentSized = fitToContent
     activePanelIsContentSized = fitToContent
   }
 
@@ -1901,7 +1934,12 @@ final class RecordingOverlayPanel {
     pendingCreateWork?.cancel()
     pendingCreateWork = nil
 
-    guard let panelToClose = panel else { return }
+    // **No early return on a nil alias.** The weak alias is nil while a queued
+    // replacement is in flight, and the shipped code could return safely because
+    // there was genuinely no window. With one retained window there always is
+    // one, so returning here left it VISIBLE — pressing Escape mid-transition
+    // would have stranded the pill on screen. Clear the state and hide
+    // unconditionally.
     panel = nil
     activePanelPosition = nil
     activePanelIsContentSized = false
@@ -1926,7 +1964,6 @@ final class RecordingOverlayPanel {
     // **The one genuine hide among ten `close()` calls.** The other nine are
     // replacements that a retained window makes unnecessary; this one really
     // means "get off the screen", so it orders out rather than closing.
-    _ = panelToClose
     windowHost.hide()
   }
 }

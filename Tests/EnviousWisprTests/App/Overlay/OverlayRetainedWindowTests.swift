@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftParser
 import SwiftSyntax
@@ -110,5 +111,74 @@ struct OverlayRetainedWindowTests {
       and is what every rebuild came from. A retained panel that gets closed is \
       strictly worse than the shipped code, because nothing rebuilds it.
       """)
+  }
+}
+
+/// The BEHAVIOURAL half, which I had wrongly concluded was untestable.
+///
+/// **Product Outcome**, and the sentence finishes: when this fails the user sees
+/// the pill blink as it is destroyed and rebuilt — the stated root cause of #930.
+///
+/// I moved this claim to Live UAT after finding that a synchronous test creates
+/// no window (every `showPanel` is queued with `DispatchQueue.main.async`) and
+/// that observing it seemed to need a run-loop pump, which
+/// `check-test-timing.sh` refuses. Asked directly whether I had talked myself
+/// out of a guard I should have written, cloud review said yes and named the
+/// mechanism: **a main-queue barrier is a SIGNAL, not a clock.** Enqueueing a
+/// continuation behind the work under test resumes only after that work has run,
+/// so it waits on the subject rather than on time — exactly what
+/// `never-guess-when-the-subject-is-finished` asks for, and no annotation needed.
+@MainActor
+@Suite(.tags(.productOutcome))
+struct OverlayRetainedWindowBehaviourTests {
+
+  init() { _ = NSApplication.shared }
+
+  /// Resumes after everything already queued on the main queue has run —
+  /// including the deferred panel creation. FIFO ordering is the whole
+  /// mechanism; there is no interval anywhere in it.
+  private func drainMainQueue() async {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.main.async { continuation.resume() }
+    }
+  }
+
+  @Test("the legacy API builds one window across several transitions")
+  func legacyAPIUsesTheRetainedHost() async {
+    let overlay = RecordingOverlayPanel()
+
+    overlay.showPolishing(label: "Polishing…")
+    await drainMainQueue()
+    #expect(
+      overlay.panelConstructionCountForTesting == 1,
+      "no window was built at all — this guard is asserting nothing")
+
+    overlay.showAccessibilityToast()
+    await drainMainQueue()
+    overlay.showWarning(message: "Polish failed")
+    await drainMainQueue()
+
+    #expect(
+      overlay.panelConstructionCountForTesting == 1,
+      """
+      the overlay built a second window for a transition. Every rebuild is the \
+      #930 flicker, and the four compensating mechanisms this migration removes \
+      exist only to paper over it.
+      """)
+    overlay.hide()
+  }
+
+  @Test("hiding and showing again reuses the same window")
+  func hideThenShowReusesTheWindow() async {
+    let overlay = RecordingOverlayPanel()
+    for _ in 0..<4 {
+      overlay.showPolishing(label: "Polishing…")
+      await drainMainQueue()
+      overlay.hide()
+      await drainMainQueue()
+    }
+    #expect(
+      overlay.panelConstructionCountForTesting == 1,
+      "hiding released the window, so the next presentation had to build a new one")
   }
 }
