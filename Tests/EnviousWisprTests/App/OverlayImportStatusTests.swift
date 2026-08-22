@@ -1,8 +1,8 @@
 #if DEBUG
-// **DEBUG-only because it reads a `*ForTesting` accessor**, which lives inside
-// `#if DEBUG` on the type it belongs to. Without the guard the RELEASE build of
-// the test target does not compile — which a Debug-only local run cannot see, by
-// construction, and which CI's `build-release` job catches instead.
+  // **DEBUG-only because it reads a `*ForTesting` accessor**, which lives inside
+  // `#if DEBUG` on the type it belongs to. Without the guard the RELEASE build of
+  // the test target does not compile — which a Debug-only local run cannot see, by
+  // construction, and which CI's `build-release` job catches instead.
   import AppKit
   import EnviousWisprPipeline
   import Testing
@@ -20,7 +20,7 @@
   /// a feature may occupy the slot only while the pipeline intent is `.hidden`.
   @MainActor
   @Suite("Overlay — bulk-import status pill (#1701 Phase 3)")
-  struct RecordingOverlayPanelImportStatusTests {
+  struct OverlayImportStatusTests {
 
     private static func importMessage(_ d: OverlayDirector) -> String? {
       guard case .notice(let notice)? = d.currentPresentationForTesting?.content,
@@ -42,7 +42,8 @@
       // No `await`/suspension between these two calls — this reproduces the exact
       // race a fast (or unavailable-model) drain hits: "Finished" arriving before
       // "Importing" has ever been rendered.
-      overlay.send(.featureRequest(.importStatus(message: "Importing your words now.")), actions: nil)
+      overlay.send(
+        .featureRequest(.importStatus(message: "Importing your words now.")), actions: nil)
       overlay.send(
         .featureRequest(.importStatus(message: "Finished importing your words.")), actions: nil)
 
@@ -67,7 +68,8 @@
     func recordingSupersedesPendingImportStatus() {
       let overlay = OverlayTestDouble.headlessDirector()
 
-      overlay.send(.featureRequest(.importStatus(message: "Importing your words now.")), actions: nil)
+      overlay.send(
+        .featureRequest(.importStatus(message: "Importing your words now.")), actions: nil)
       Self.record(overlay)
       overlay.send(
         .featureRequest(.importStatus(message: "Finished importing your words.")), actions: nil)
