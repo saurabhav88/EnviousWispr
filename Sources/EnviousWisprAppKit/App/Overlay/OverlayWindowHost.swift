@@ -23,24 +23,24 @@ import SwiftUI
 ///
 /// - **One construction across 203 presentations**, including a size morph.
 /// - Hidden with `orderOut`, the panel is absent from `NSApp`'s on-screen count,
-///   absent from `CGWindowListCopyWindowInfo(.optionOnScreenOnly)` — the list
-///   Mission Control and the screenshot path draw from — and absent from a real
-///   screenshot taken while hidden.
+/// absent from `CGWindowListCopyWindowInfo(.optionOnScreenOnly)` — the list
+/// Mission Control and the screenshot path draw from — and absent from a real
+/// screenshot taken while hidden.
 /// - **Memory converges**: flat at 45.0 MB from cycle 126 through 200, a
-///   one-time cost of ~2.7 MB. Ten cycles, which is what the plan specified,
-///   could NOT have shown that — at ten the curve is still rising and
-///   convergence is indistinguishable from a slow leak.
+/// one-time cost of ~2.7 MB. Ten cycles, which is what the plan specified,
+/// could NOT have shown that — at ten the curve is still rising and
+/// convergence is indistinguishable from a slow leak.
 ///
 /// Two constraints came out of it and both are honoured here rather than
 /// rediscovered later:
 ///
 /// - **`occlusionState` is unreliable and is never read.** It reported
-///   `.visible` while `isVisible == false` at five of nine samples, settling
-///   only after an idle beat. A guard built on it would be a confident wrong
-///   answer, not a flake.
+/// `.visible` while `isVisible == false` at five of nine samples, settling
+/// only after an idle beat. A guard built on it would be a confident wrong
+/// answer, not a flake.
 /// - **Right after `orderOut` in a fast cycle the window server may still list
-///   the window, at alpha 0.00.** Invisible, but present. Any test asserting
-///   `onScreen == 0` immediately after hide will flake; assert absent OR alpha 0.
+/// the window, at alpha 0.00.** Invisible, but present. Any test asserting
+/// `onScreen == 0` immediately after hide will flake; assert absent OR alpha 0.
 @MainActor
 final class OverlayWindowHost: NSObject, NSWindowDelegate {
 
@@ -91,7 +91,7 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
   /// one shipped caller depends on exactly that.** `showImportStatusNow` guards
   /// `self.panel != nil` before claiming the slot, because `showPanel` can
   /// no-op when no screen is available — "never claim false ownership of a slot
-  /// with no actual panel" (`RecordingOverlayPanel.swift:1108-1110`). Once the
+  /// with no actual panel" (`RecordingOverlayPanel.swift`). Once the
   /// panel outlives every presentation that check is ALWAYS true, so it would
   /// claim ownership of a show that never happened. Cloud review caught this
   /// before the wiring chunk was written.
@@ -126,7 +126,7 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
     // centre — a VERTICAL decision, so a measured WIDTH has no bearing on it.
     // The first predicate ORed the two axes together and would have picked the
     // wrong branch for any measured-width, fixed-height pill. It mirrors the
-    // shipped `activePanelIsContentSized = fitToContent` (`:1543`).
+    // This preserves the pre-C3b `fitToContent` sizing contract.
     currentWasContentSized = fixedHeight == nil
 
     let frame = placement.frame(for: size, continuity: continuity, environment: screen)
@@ -183,7 +183,7 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
     #if DEBUG
       panelConstructionCount += 1
     #endif
-    // Configuration copied verbatim from `RecordingOverlayPanel.swift:1467-1479`
+    // Configuration copied verbatim from `RecordingOverlayPanel.swift`
     // so this chunk changes the panel's LIFETIME and nothing about its identity.
     let p = NSPanel(
       contentRect: NSRect(x: 0, y: 0, width: 185, height: 44),
@@ -243,7 +243,7 @@ final class OverlayWindowHost: NSObject, NSWindowDelegate {
   ///
   /// **With one retained window this is a direct observation.** The shipped code
   /// can only INFER it, by comparing the outgoing panel's Y against the last
-  /// origin it set (`RecordingOverlayPanel.swift:1518`) — an inference that
+  /// origin it set (`RecordingOverlayPanel.swift`) — an inference that
   /// exists solely because the panel is destroyed between presentations and the
   /// fact has to survive the rebuild. Nothing survives a rebuild here, because
   /// there is no rebuild.
@@ -293,7 +293,7 @@ struct OverlayScreenResolver {
   let current: () -> ScreenGeometry?
 
   /// Mirrors the shipped target-screen resolution
-  /// (`RecordingOverlayPanel.swift:1444-1449`): the screen under the pointer,
+  /// (`RecordingOverlayPanel.swift`): the screen under the pointer,
   /// then main, then the first attached.
   @MainActor
   static let live = OverlayScreenResolver {
@@ -312,7 +312,7 @@ struct OverlayScreenResolver {
   /// native full screen and the Dock is hidden from view — measured empirically
   /// 2026-07-17, leaving an ~85pt unused gap below the pill.
   ///
-  /// **Ported verbatim from `RecordingOverlayPanel.swift:1571-1601`, not written
+  /// **Ported verbatim from `RecordingOverlayPanel.swift`, not written
   /// from a description of it.** The first version of this method here was
   /// composed from memory and differed in two behaviour-changing ways: it
   /// omitted the `screen == NSScreen.main` guard, so it would have reported full

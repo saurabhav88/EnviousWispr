@@ -110,35 +110,35 @@ enum OverlayRequest: Equatable, Sendable {
 /// where a bare enum case had thrown away something the feature depends on, so
 /// the whole surface was then enumerated at once rather than waiting for a
 /// fourth. The panel's own handler fields are the authority
-/// (`RecordingOverlayPanel.swift:84-229`); each row below names the field it
+/// (`RecordingOverlayPanel.swift`); each row below names the field it
 /// replaces.
 enum OverlayAction: Equatable, Sendable {
-  /// `grantHandler` (`:84`).
+  /// `grantHandler`.
   case grantAccessibility
-  /// `discardRecoveryHandler` (`:93`).
+  /// `discardRecoveryHandler`.
   case discardRecovery
-  /// `onEscapeRecoveryPaste` (`:115`), which takes the `CancelUndoPayload`.
+  /// `onEscapeRecoveryPaste`, which takes the `CancelUndoPayload`.
   ///
   /// **Carries the transcript id, and the first version did not.** The panel
   /// holds the payload itself and looks it up with
-  /// `takeEscapeRecoveryPayload(matching:)` (`:137`) — a one-shot take, so the
+  /// `takeEscapeRecoveryPayload(matching:)` — a one-shot take, so the
   /// id is what makes the hand-off safe against a stale press. A bare case
   /// would have delivered "the user pressed Undo" with nothing to undo.
   case pasteEscapeRecovery(transcriptID: UUID)
-  /// `passiveChipLockHandler` (`:98`).
+  /// `passiveChipLockHandler`.
   case lockLanguage
-  /// `passiveChipDismissHandler` (`:99`).
+  /// `passiveChipDismissHandler`.
   case dismissChip
-  /// `bluetoothAwarenessGotItHandler` (`:227`).
+  /// `bluetoothAwarenessGotItHandler`.
   ///
   /// **Distinct from `closeBluetoothAwareness`, and collapsing them lost real
   /// telemetry.** `BluetoothAwarenessPresenter` emits `.dismissed/.gotIt` versus
-  /// `.dismissed/.closed` (`:193-196`): acknowledging the card and closing it
+  /// `.dismissed/.closed`: acknowledging the card and closing it
   /// are different user answers and the dashboard reads them apart.
   case acknowledgeBluetoothAwareness
-  /// `bluetoothAwarenessCloseHandler` (`:228`).
+  /// `bluetoothAwarenessCloseHandler`.
   case closeBluetoothAwareness
-  /// `bluetoothAwarenessAdjustSettingsHandler` (`:229`).
+  /// `bluetoothAwarenessAdjustSettingsHandler`.
   case openBluetoothSettings
 }
 
@@ -147,21 +147,21 @@ enum OverlayAction: Equatable, Sendable {
 ///
 /// **These exist because a feature keeps state the overlay does not own, and
 /// clearing only the overlay's copy leaves the feature's stale.**
-/// `LanguageSuggestionPresenter.currentChip` (`:46`) is cleared by a
-/// generation-gated call (`:279-281`), and the escape-recovery payload is taken
+/// `LanguageSuggestionPresenter.currentChip` is cleared by a
+/// generation-gated call, and the escape-recovery payload is taken
 /// by transcript id — neither is reachable from "the slot is now empty".
 ///
-/// An array rather than a field per occasion: a single `expiryEffect` would have
+/// An array rather than a field per occasion: a field dedicated to expiry alone would
 /// needed a sibling the moment the recording-intent observer was wired, and
 /// accreting one field per occasion is how the type this migration deletes grew
 /// its 33 stored properties. Usually empty; at most a couple, emitted in order.
 enum OverlayEffect: Equatable, Sendable {
-  /// `passiveChipAutoDismissHandler` (`:222`), which takes the generation.
+  /// `passiveChipAutoDismissHandler`, which takes the generation.
   case languageChipAutoDismissed(generation: UInt64)
   /// The escape-recovery pill went away without the user pressing Undo, so the
   /// owner must drop the payload it is holding.
   case escapeRecoveryExpired(transcriptID: UUID)
-  /// `setRecordingIntentObserver` (`:469`). Fires when the recording pill
+  /// `setRecordingIntentObserver`. Fires when the recording pill
   /// arrives or leaves. Nothing in the first model expressed it at all.
   case recordingIntentChanged(Bool)
 }
@@ -234,14 +234,14 @@ struct NoticeModel: Equatable, Sendable {
 enum OverlayContent: Equatable, Sendable {
   /// **`audioLevel` is a SNAPSHOT and the shipped path is a PULL.**
   /// `show(intent:audioLevelProvider:recordingElapsedProvider:isRecordingLocked:)`
-  /// (`RecordingOverlayPanel.swift:499-502`) hands the panel two CLOSURES that
+  /// (`RecordingOverlayPanel.swift`) hands the panel two CLOSURES that
   /// the view calls per frame, plus the initial lock. The reducer models the
   /// lock (persistent, in `OverlayState`) and carries a level snapshot, but it
   /// deliberately does NOT own per-frame providers — a value type invoked from a
   /// render loop is the wrong home for them.
   ///
-  /// **C3 obligation, recorded rather than left implicit:** `OverlayRenderModel`
-  /// retains BOTH the audio-level and the recording-elapsed provider for the
+  /// **C3 obligation, recorded rather than left implicit:** the render model
+  /// must retain BOTH the audio-level and the recording-elapsed provider for the
   /// rendered recording's lifetime. `recordingElapsedProvider` has no
   /// representation anywhere in C2 and must not be forgotten because nothing
   /// here names it — which is precisely why it is named here.
@@ -280,20 +280,20 @@ struct OverlayPresentation: Equatable, Sendable {
   /// the field optional with Escape Recovery as the only `nil`. Both were wrong
   /// in the same direction — `showPanel(fitToContent:)` sizes the panel from the
   /// view's own `fittingSize` and DISCARDS the `width` argument entirely
-  /// (`RecordingOverlayPanel.swift:1430-1435`), so any row whose view does not
+  /// (`RecordingOverlayPanel.swift`), so any row whose view does not
   /// pin its own width is measured no matter what number sits at the call site.
   ///
   /// The test is not "did the call site pass a width" but **"does the VIEW pin
   /// one"**:
   /// - `PolishingOverlayView` pins nothing → processing and clipboard fallback
-  ///   are `.measured`, and their `230` is dead at the call site.
+  /// are `.measured`, and their `230` is dead at the call site.
   /// - `ImportStatusOverlayView` uses `.frame(maxWidth: 280)` → `.measured`; a
-  ///   max is a bound, not a width.
+  /// max is a bound, not a width.
   /// - `BluetoothAwarenessCardView` has `.frame(width: 320)` of its own
-  ///   (`:58`, `:119`) → `.fixed(320)` even though the call passes
-  ///   `fitToContent: true`.
+  /// → `.fixed(320)` even though the call passes
+  /// `fitToContent: true`.
   /// - Escape Recovery's `PillMetrics.pillWidth` is computed from the title
-  ///   font's text metrics at runtime → `.measured`, and no literal is correct.
+  /// font's text metrics at runtime → `.measured`, and no literal is correct.
   let requestedWidth: OverlayWidth
   /// True when this presentation must reserve a fixed interaction frame rather
   /// than shrink to its content. **Only the non-preview recording pill sets

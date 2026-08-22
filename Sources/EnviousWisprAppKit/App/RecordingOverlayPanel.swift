@@ -262,11 +262,6 @@ final class RecordingOverlayPanel {
   /// fixed. `nil` when nothing is showing.
   private var activePanelPosition: OverlayPillPosition?
 
-  /// Whether the showing panel's frame hugs its content exactly (`fitToContent`)
-  /// rather than sitting inside a taller fixed frame. Maintained by `showPanel`,
-  /// read by the inherited-`y` Top transition, which has to preserve a DIFFERENT
-  /// edge for the two geometries — see the branch there for why.
-
   /// The origin WE last set programmatically. Used only to DETECT a manual
   /// drag (`isMovableByWindowBackground = true`, an existing feature) by
   /// comparing against the panel's live origin — `wasManuallyDragged` below

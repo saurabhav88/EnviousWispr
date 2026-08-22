@@ -15,7 +15,7 @@ struct OverlayPlacementState: Equatable {
   ///
   /// `.user` is reached only by a genuine drag. The shipped code infers that by
   /// comparing the outgoing panel's Y against the last origin it set
-  /// (`RecordingOverlayPanel.swift:1518`) — an inference that exists only
+  /// (`RecordingOverlayPanel.swift`) — an inference that exists only
   /// because the panel is destroyed between presentations and the fact has to
   /// survive the rebuild. With one retained window, `windowDidMove` reports it
   /// directly. The probe run on 2026-08-21 confirmed the callback fires and
@@ -34,9 +34,9 @@ struct OverlayPlacementState: Equatable {
   private(set) var anchor: Anchor?
 
   /// Shipped default: `visibleFrame.maxY - 60` for Top
-  /// (`RecordingOverlayPanel.swift:400`).
+  /// (`RecordingOverlayPanel.swift`).
   static let topOffsetFromVisibleTop: CGFloat = 60
-  /// Shipped clamp margin (`:425`).
+  /// Shipped clamp margin.
   static let topClampMargin: CGFloat = 8
 
   // MARK: - Anchor transitions
@@ -44,7 +44,7 @@ struct OverlayPlacementState: Equatable {
   mutating func beginFresh(at position: OverlayPillPosition, screen: ScreenGeometry) {
     // A genuinely new presentation starts clean; an earlier drag does not carry
     // over. That matches the contract the settings copy already promises, and
-    // the shipped `wasManuallyDragged = false` on the fresh branch (`:1532`).
+    // the shipped `wasManuallyDragged = false` on the fresh branch.
     anchor = .automatic(position, screen.id)
   }
 
@@ -64,8 +64,8 @@ struct OverlayPlacementState: Equatable {
   ///
   /// **X is preserved on a continuing presentation.** The shipped path computes
   /// `x` unconditionally as `targetScreen.visibleFrame.midX - resolvedWidth / 2`
-  /// (`RecordingOverlayPanel.swift:1484`) BEFORE it branches on whether the
-  /// presentation is continuing, and only `y` is inherited (`:1508`). That is
+  /// (`RecordingOverlayPanel.swift`) BEFORE it branches on whether the
+  /// presentation is continuing, and only `y` is inherited. That is
   /// #2195: a pill dragged sideways snaps back to centre the moment its content
   /// changes. Here both axes travel together in `OverlayContinuity`, so the
   /// half-inheritance cannot be expressed.
@@ -84,7 +84,8 @@ struct OverlayPlacementState: Equatable {
       x = currentFrame.origin.x
       switch anchorPosition {
       case .top:
-        // Ported from `Self.inheritedTopOriginY` (`:1420-1426`): re-anchor a
+        // Ported from `origin/main`'s `RecordingOverlayPanel.inheritedTopOriginY`:
+        // re-anchor a
         // content-sized outgoing panel by its TOP edge, a fixed-frame one by
         // its CENTRE.
         requestedY =
@@ -94,7 +95,7 @@ struct OverlayPlacementState: Equatable {
       case .bottom:
         // Bottom content is `.bottom`-aligned (#1341) and the preview grows
         // upward from a fixed bottom edge, so the outgoing bottom origin already
-        // IS the visible bottom in both geometries. Preserve it (`:1508`).
+        // IS the visible bottom in both geometries. Preserve it.
         requestedY = currentFrame.origin.y
       }
     }
@@ -111,11 +112,11 @@ struct OverlayPlacementState: Equatable {
   /// space appears, so Top needs no re-anchor. Bottom does, because
   /// `visibleFrame.minY` reserves Dock space this background app still sees
   /// even when the Dock is hidden behind another app's full-screen space
-  /// (`RecordingOverlayPanel.swift:354-395`, measured 2026-07-17).
+  /// (`RecordingOverlayPanel.swift`, measured 2026-07-17).
   ///
   /// A user-dragged pill is left alone: the user's position outranks our rule.
   /// `screen` is the CURRENT target screen the caller resolved, not the screen
-  /// the pill was anchored to. Shipped `:376-378` re-resolves the target every
+  /// the pill was anchored to. Shipped that site re-resolves the target every
   /// time (mouse-containing screen, then main, then first) and re-anchors onto
   /// it, so a Space change that also moves the pill's context moves the pill.
   /// The first version rejected a different screen, which would have stranded
@@ -132,7 +133,7 @@ struct OverlayPlacementState: Equatable {
     // moves, and the ownership silently never transfers.
     anchor = .automatic(position, screen.id)
 
-    // Shipped `:381` recentres X here rather than preserving it. That is NOT the
+    // Shipped that site recentres X here rather than preserving it. That is NOT the
     // #2195 defect wearing a different hat: this path only ever runs for an
     // `.automatic` anchor, which is centred by definition, and the guard above
     // returns early for a pill the user moved. Preserving X, as the first
@@ -165,7 +166,7 @@ struct OverlayPlacementState: Equatable {
     }
   }
 
-  /// Ported from `computeRequestedY` (`RecordingOverlayPanel.swift:398-413`).
+  /// Ported from `origin/main`'s `RecordingOverlayPanel.computeRequestedY`.
   static func freshOriginY(for position: OverlayPillPosition, on screen: ScreenGeometry)
     -> CGFloat
   {
@@ -181,7 +182,8 @@ struct OverlayPlacementState: Equatable {
     }
   }
 
-  /// Ported from `clampedOriginY` (`:422-427`). #1060: keep the whole panel
+  /// Ported from `origin/main`'s `RecordingOverlayPanel.clampedOriginY`.
+  /// #1060: keep the whole panel
   /// inside the visible frame, because positioning a tall pill by its bottom
   /// origin would push its top under the menu bar.
   static func clampedOriginY(requestedY: CGFloat, height: CGFloat, on screen: ScreenGeometry)

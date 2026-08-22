@@ -248,7 +248,7 @@ struct OverlayWindowHostTests {
     #expect(h.panelForTesting == nil, "an unsizable presentation created a zero-sized window")
     #expect(h.panelConstructionCount == 0)
     // A retained panel makes `panel != nil` useless as a success signal, and the
-    // shipped import-status owner depends on exactly that check (`:1108-1110`).
+    // shipped import-status owner depends on exactly that check.
     #expect(
       h.present(empty, width: .measured, fixedHeight: nil, isFresh: true, position: .bottom)
         == false,

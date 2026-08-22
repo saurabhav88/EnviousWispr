@@ -33,8 +33,8 @@ struct OverlayPlacementStateTests {
 
   /// **The bug, stated as a test.** The shipped path computes `x` as
   /// `visibleFrame.midX - width / 2` unconditionally
-  /// (`RecordingOverlayPanel.swift:1484`), before it branches on continuity, and
-  /// inherits only `y` (`:1508`). So a pill the user dragged left snaps back to
+  /// (`RecordingOverlayPanel.swift`), before it branches on continuity, and
+  /// inherits only `y`. So a pill the user dragged left snaps back to
   /// centre the instant its content changes — recording to polishing, for
   /// instance, which happens in every single dictation.
   ///
@@ -165,7 +165,7 @@ struct OverlayPlacementStateTests {
       currentFrame: live, on: Self.fullScreened)
 
     #expect(moved?.origin.y == 0)
-    // Shipped `:381` RECENTRES on this path. An earlier version of this test
+    // Shipped that site RECENTRES on this path. An earlier version of this test
     // asserted the x was preserved, which encoded my own invented behaviour
     // rather than the shipped rule. It is not the #2195 defect: this path runs
     // only for an `.automatic` anchor, which is centred by definition, and it
@@ -197,7 +197,7 @@ struct OverlayPlacementStateTests {
 
   /// **Inverted after review.** An earlier version asserted a different screen
   /// was ignored, which would have stranded the pill on the old display.
-  /// Shipped `:376-378` re-resolves the target screen every time — mouse-
+  /// Shipped that site re-resolves the target screen every time — mouse-
   /// containing, then main, then first — and re-anchors onto it.
   @Test("a Bottom pill follows the resolved target screen")
   func spaceChangeFollowsTheTargetScreen() {

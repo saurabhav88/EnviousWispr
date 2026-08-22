@@ -241,7 +241,7 @@ struct OverlayReducerTests {
     // "simplifying" it away.
     //
     // Scoped to NON-PREVIEW deliberately. With Live Preview on, the shipped
-    // path is content-sized (`RecordingOverlayPanel.swift:855-861`), so the
+    // path is content-sized (`RecordingOverlayPanel.swift`), so the
     // earlier unscoped name claimed more than the code does. The reducer cannot
     // yet tell the two apart — the preview flag is a provider the director owns
     // — so C3 adds that branch and this test gains its pair.
@@ -258,7 +258,7 @@ struct OverlayReducerTests {
   // MARK: - Regressions cloud review found in the first version of this chunk
 
   /// **The expensive one.** Shipped `hide()` sets `currentIntent = .hidden`
-  /// (`RecordingOverlayPanel.swift:1912`, `:1924`), so once a notice
+  /// (`RecordingOverlayPanel.swift`), so once a notice
   /// auto-dismisses the pipeline is idle and features may take the slot again.
   /// The first reducer left `pipelineIntent` at `.warning` forever, so EVERY
   /// feature pill was blocked for the rest of the session after any pipeline
@@ -311,7 +311,7 @@ struct OverlayReducerTests {
 
   /// A width the shipped code DISCARDS must not be carried as a literal.
   /// `showPanel(fitToContent:)` sizes from the view's own `fittingSize` and
-  /// ignores the `width` argument (`RecordingOverlayPanel.swift:1430-1435`), so
+  /// ignores the `width` argument (`RecordingOverlayPanel.swift`), so
   /// a row whose view pins no width is `.measured` however plausible the number
   /// at its call site looks. Two review rounds were spent on this exact shape.
   @Test(
@@ -328,7 +328,7 @@ struct OverlayReducerTests {
 
   /// The paired case, or the guard above is satisfied by making everything
   /// measured. `BluetoothAwarenessCardView` pins `.frame(width: 320)` of its own
-  /// (`:58`, `:119`), so it stays fixed despite `fitToContent: true` at the call
+  ///, so it stays fixed despite `fitToContent: true` at the call
   /// site — the call-site flag is not the discriminator, the VIEW is.
   @Test("a presentation whose view pins its own width stays fixed")
   func viewPinnedPresentationsStayFixed() {
@@ -350,8 +350,8 @@ struct OverlayReducerTests {
 
   // MARK: - Facts a bare enum case would have thrown away
 
-  /// `LanguageSuggestionPresenter.currentChip` (`:46`) is cleared by a
-  /// GENERATION-GATED call (`:279-281`), so an expiry that says only "the slot is
+  /// `LanguageSuggestionPresenter.currentChip` is cleared by a
+  /// GENERATION-GATED call, so an expiry that says only "the slot is
   /// empty" leaves the presenter holding a chip forever.
   @Test("an auto-dismissed language chip tells its owner, with the generation")
   func chipExpiryNotifiesItsOwner() {
@@ -367,7 +367,7 @@ struct OverlayReducerTests {
   }
 
   /// The escape-recovery payload is taken by transcript id
-  /// (`RecordingOverlayPanel.swift:137`), a one-shot take. If the pill expires
+  /// (`RecordingOverlayPanel.swift`), a one-shot take. If the pill expires
   /// unpressed, the owner must drop it.
   @Test("an expired escape-recovery pill releases its payload")
   func escapeRecoveryExpiryReleasesThePayload() {
@@ -381,7 +381,7 @@ struct OverlayReducerTests {
     #expect(plan.effects.contains(.escapeRecoveryExpired(transcriptID: transcript)))
   }
 
-  /// `setRecordingIntentObserver` (`:469`) had no representation at all in the
+  /// `setRecordingIntentObserver` had no representation at all in the
   /// first model — not a wrong value, an absent one.
   @Test("the recording intent observer is told when recording starts and stops")
   func recordingIntentIsObservable() {
@@ -394,7 +394,7 @@ struct OverlayReducerTests {
     #expect(r.reduce(.pipeline(.hidden)).effects == [.recordingIntentChanged(false)])
   }
 
-  /// `updateLockState` (`:1601`) morphs the live recording pill and does nothing
+  /// `updateLockState` morphs the live recording pill and does nothing
   /// otherwise. The first model carried `isLocked` with no event able to set it.
   @Test("hands-free lock morphs the live recording pill")
   func lockMorphsTheRecordingPill() {
@@ -419,12 +419,12 @@ struct OverlayReducerTests {
   @Test("a lock change with no recording pill draws nothing but is remembered")
   func lockWithoutRecordingIsRemembered() {
     var r = Self.makeReducer()
-    // Shipped `updateLockState` (`:1601-1604`) has NO recording guard.
+    // Shipped `updateLockState` has NO recording guard.
     #expect(r.reduce(.lockStateChanged(true)).didChange == false)
     #expect(r.state.isLocked, "the lock was dropped because no pill was showing")
   }
 
-  /// `show(...isRecordingLocked:)` (`:502`) exists so a pill is BORN locked. The
+  /// `show(...isRecordingLocked:)` exists so a pill is BORN locked. The
   /// first model always started `isLocked: false`, so a locked start would have
   /// rendered unlocked for a frame and then morphed.
   @Test("a recording pill that starts while locked is born locked")
@@ -453,7 +453,7 @@ struct OverlayReducerTests {
   }
 
   /// `BluetoothAwarenessPresenter` emits `.dismissed/.gotIt` versus
-  /// `.dismissed/.closed` (`:193-196`). Collapsing them into one action would
+  /// `.dismissed/.closed`. Collapsing them into one action would
   /// have made the dashboard unable to tell "I understand" from "go away".
   @Test("acknowledging and closing the Bluetooth card stay distinct")
   func bluetoothDismissalsStayDistinct() {
