@@ -180,8 +180,6 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
       environment = anchored
     }
 
-    view.frame = NSRect(origin: .zero, size: size)
-    panel.contentView = view
     // **Keys on HEIGHT, not width.** The Top continuing rule re-anchors a
     // content-sized outgoing panel by its top edge and a fixed one by its
     // centre — a VERTICAL decision, so a measured WIDTH has no bearing on it.
@@ -190,8 +188,34 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
     // This preserves the pre-C3b `fitToContent` sizing contract.
     currentWasContentSized = fixedHeight == nil
 
+    // **PLACE THE WINDOW BEFORE GIVING IT THE VIEW, and this order is the whole
+    // fix (#2292, C21).** Assigning `contentView` makes AppKit adopt the view's
+    // size AT THE WINDOW'S CURRENT ORIGIN. Placing afterwards therefore draws
+    // twice: once with the NEW size at the OLD origin, once correct. Measured
+    // live at 40 ms resolution, four runs: a 400-point recording pill becoming a
+    // 151-point "Transcribing…" sat 124.5 points LEFT of centre for 0.52 s
+    // before snapping right, and on a no-speech dictation — where the pill's
+    // whole life is shorter than that — it never recentred at all.
+    //
+    // Ordered this way there is one placement and one draw. `display: false`
+    // because nothing is on screen yet for a fresh presentation, and a
+    // continuation is already showing the OUTGOING content until the view lands.
     let frame = placement.frame(for: size, continuity: continuity, environment: environment)
-    withProgrammaticMove { panel.setFrame(frame, display: true) }
+    withProgrammaticMove { panel.setFrame(frame, display: false) }
+
+    // **The view FOLLOWS the window; it must not drive it.** An `NSHostingView`
+    // resizes itself as SwiftUI settles, and a self-sizing content view drags
+    // the window with it — AFTER the placement above has already run. That is
+    // the second half of the same defect: the frame was computed for a measured
+    // 150 points and the content settled at 129, leaving the pill 10.5 points
+    // left of centre PERMANENTLY, on every dictation.
+    //
+    // Growth that is genuinely wanted still has an explicit path:
+    // `onContentHeightChange` → `resizeCurrentPresentation`, which places the
+    // window deliberately. This closes the implicit one.
+    view.autoresizingMask = [.width, .height]
+    view.frame = NSRect(origin: .zero, size: size)
+    panel.contentView = view
     panel.orderFrontRegardless()
     return true
   }
@@ -302,8 +326,28 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
     // imposed.
     if case .fixed(let constrained) = width, fixedHeight == nil, constrained > 0 {
       view.setFrameSize(NSSize(width: constrained, height: view.frame.height))
-      view.layoutSubtreeIfNeeded()
     }
+    // **FLUSH THE PENDING LAYOUT BEFORE MEASURING, ALWAYS (#2292, C21).**
+    //
+    // `render`'s comment claimed "the model is set BEFORE this runs, so the
+    // retained root has already rendered the new content by the time the host
+    // measures it". That is FALSE: SwiftUI applies a published change on its own
+    // schedule, so without this the host measures the OUTGOING pill — the exact
+    // failure that comment was written to rule out.
+    //
+    // What it cost, measured live at 40 ms across four runs: the window was
+    // placed for the outgoing 400-point recording pill, SwiftUI then re-rendered
+    // to a 151-point "Transcribing…", and the window shrank AT THE OLD ORIGIN --
+    // 124.5 points left of centre, held for 0.52 s. On a no-speech dictation the
+    // pill never recentred at all, because its whole life was shorter than that.
+    // The same staleness left the settled pill 10.5 points off centre on every
+    // dictation: placed for a measured 150 while the content settled at 129.
+    //
+    // Unconditional, not just for the fixed-width case C17 added it to. A
+    // measured width is measured from this same view, so a stale layout is a
+    // stale WIDTH too -- the twin site, which this migration has now paid for
+    // four separate times.
+    view.layoutSubtreeIfNeeded()
     let fitting = view.fittingSize
     let fallback = view.frame.size
     let measuredWidth = fitting.width > 0 ? fitting.width : fallback.width
