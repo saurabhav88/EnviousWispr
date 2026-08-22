@@ -1,8 +1,8 @@
 ---
-title: "macOS Dictation for Developers: Code Reviews and PRs"
+title: "How to Dictate Code Reviews and PR Descriptions on Mac"
 description: "How developers use macOS voice dictation to write PR descriptions, code review comments, and documentation, faster and without breaking flow state."
 pubDate: 2026-03-12
-updatedDate: 2026-04-04
+updatedDate: 2026-08-22
 tags: ["developers", "dictation", "productivity", "code-review"]
 draft: false
 author: "Saurabh Vaish"
@@ -10,7 +10,7 @@ author: "Saurabh Vaish"
 
 The biggest time sink in software development isn't writing code. It's everything around the code. PR descriptions, review comments, Slack threads, postmortems, design docs, README updates. Developers often spend a surprising share of their workday writing prose, not code, and most of that prose gets typed in the cracks between implementation work, breaking flow state every time.
 
-That context-switch cost is what makes voice input valuable for developers. Hold a keybind, speak, release. Your words get transcribed on-device, cleaned up by optional AI polish, and pasted into whatever app has focus. The whole cycle takes a second or two on Apple Silicon. No cloud API, no uploaded audio.
+That context-switch cost is what makes voice input valuable for developers. Hold a keybind, speak, release. Your words get transcribed on-device, cleaned up by the local or cloud polish route you choose, and pasted into whatever app has focus. Audio is not uploaded for transcription, and cloud text polish is optional.
 
 Here's how that fits into a developer's actual day.
 
@@ -28,9 +28,9 @@ Not all developer writing sounds the same. A commit message is terse. A PR descr
 
 For most developer writing (review comments, ticket updates, README sections, Slack threads), the default polish handles the cleanup without over-formalizing or stripping your voice. You speak naturally and the output reads naturally.
 
-For more specialized output, the way you talk steers the shape, and Ollama, OpenAI, or Gemini polish turns those cues into formatting. A few patterns that work well for developer workflows:
+For more specialized output, the way you talk steers the shape, and supported local or cloud AI polish can turn those cues into formatting. A few patterns that work well for developer workflows:
 
-- Call out a list ("first... then... finally," "the changes were") and, with Ollama, OpenAI, or Gemini polish on, changelog entries or release notes come back as a clean markdown bullet list.
+- Call out a list ("first... then... finally," "the changes were") and, with a supported AI polish route on, changelog entries or release notes can come back as a clean markdown bullet list.
 - Walk a postmortem timeline in order and the polish keeps that sequence the way you narrate it.
 - Name the parts of an API doc as you speak (the parameters, what each returns) and the output lands organized.
 
@@ -74,7 +74,7 @@ This works especially well for longer review comments, the kind where you need t
 
 Technical documentation has the highest typing-to-thinking ratio of anything developers write. You know what the system does. You just need to get it into words. Dictation makes this almost trivial.
 
-For documentation, the polish step produces clean prose with proper punctuation and clear paragraphs. You talk through the architecture the way you'd explain it to a new team member, and the output lands polished and ready to commit. Walk through it in sections, and with Ollama, OpenAI, or Gemini polish on those headers and lists carry into the output as markdown.
+For documentation, the polish step can produce clean prose with proper punctuation and clear paragraphs. You talk through the architecture the way you'd explain it to a new team member, then review the output before committing it. Walk through it in sections, and a supported AI polish route can carry those headers and lists into the output as markdown.
 
 This is particularly useful for the kind of documentation that always gets skipped: the "how does this subsystem actually work" docs that everyone wishes existed but nobody wants to sit down and type out. Speaking is lower friction than typing for this kind of knowledge dump, and the difference is enough to make it actually happen.
 
@@ -82,9 +82,9 @@ This is particularly useful for the kind of documentation that always gets skipp
 
 Developer conversations are sensitive. PR descriptions mention internal architecture. Code review comments reference proprietary logic. Slack threads discuss unreleased features, customer issues, and security concerns.
 
-EnviousWispr processes everything on-device. Your audio is transcribed locally using either Parakeet or WhisperKit, both running natively via Core ML. Post-processing runs through your local LLM. From microphone to clipboard, nothing leaves your Mac unless you explicitly configure an external API.
+EnviousWispr always transcribes audio on-device using Parakeet or WhisperKit. Deterministic cleanup, EG-1, supported Apple Intelligence, and downloaded Ollama models can keep the text path local too. OpenAI, Gemini, Claude, and Ollama-hosted polish send the transcript and supporting context to the provider you select.
 
-This isn't a privacy policy; it's architecture. There's no server to send data to. For a detailed breakdown of how on-device processing differs from cloud alternatives, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/). The processing happens on your hardware, using models that run on your Apple Silicon Neural Engine.
+The choice is explicit: audio and transcription stay on your Mac, while text leaves only when you select a cloud polish route. For a detailed breakdown, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
 
 For developers working on proprietary codebases, under NDA, or at companies with strict data handling policies, this is the difference between "tool I can actually use at work" and "tool that's blocked by security review."
 
@@ -92,11 +92,13 @@ For developers working on proprietary codebases, under NDA, or at companies with
 
 [Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). On first launch, grant microphone and accessibility permissions. The speech model downloads automatically.
 
+See the focused guide to [dictation for developers on Mac](/solutions/developers/) for the workflow, privacy choices, and setup in one place.
+
 To set up for developer use:
 
 1. **Pick your keybind.** Choose something that doesn't collide with your IDE shortcuts.
 2. **Leave polish on.** The polish handles most developer writing (review comments, ticket updates, README sections) without over-formalizing.
-3. **Speak the structure for the niches.** API docs, changelog entries, structured postmortems: name the sections and lists out loud, and with Ollama, OpenAI, or Gemini polish on the output comes back formatted.
+3. **Speak the structure for the niches.** API docs, changelog entries, structured postmortems: name the sections and lists out loud, and a supported AI polish route can format the output.
 
 Hold the keybind in GitHub, talk through your PR description, and the polished text lands ready to paste. Move to Slack and the same workflow handles a quick reply.
 

@@ -1,0 +1,108 @@
+---
+import SolutionLayout from '../../layouts/SolutionLayout.astro';
+
+const repoUrl = 'https://github.com/saurabhav88/EnviousWispr';
+
+const faqs = [
+  {
+    question: 'Is EnviousWispr open source?',
+    answer: 'Yes. The app source is published on GitHub under the GNU General Public License version 3. You can read it, build it, modify it, and redistribute covered code under the terms of that license.',
+  },
+  {
+    question: 'Is the EG-1 model open source too?',
+    answer: 'No. EG-1 model weights are distributed separately under the EG-1 Community Model License. The app code is GPLv3, but that license does not apply to the EG-1 weights. The separate model license is included in the repository.',
+  },
+  {
+    question: 'Can I build the Mac app from source?',
+    answer: 'Yes. Swift Package Manager can compile the packages. The runnable app bundle uses the Xcode build engine through Tuist. The repository documents the development and release commands, including the additional tools needed for a distributable build.',
+  },
+  {
+    question: 'Does open source guarantee that the app is secure?',
+    answer: 'No. Public code makes independent inspection and testing possible, but it is not a security guarantee. Review the source, release history, permissions, and network behavior according to the risk of the material you plan to dictate.',
+  },
+];
+
+const relatedLinks = [
+  {
+    href: repoUrl,
+    title: 'Read the repository',
+    description: 'Inspect the Swift source, issue tracker, releases, build scripts, and licenses on GitHub.',
+  },
+  {
+    href: '/help/source-code-and-contributing/',
+    title: 'Source and contribution guide',
+    description: 'Find the project links and the supported way to report an issue or contribute.',
+  },
+  {
+    href: '/solutions/offline-dictation/',
+    title: 'Test the local data path',
+    description: 'Use an offline workflow to verify how speech recognition behaves without a network.',
+  },
+];
+
+const directAnswer = `An open source dictation app publishes the code that records, transcribes, cleans, and delivers speech as text, so people can inspect how its claims are implemented. EnviousWispr's Mac app source is available on GitHub under GPLv3. You can read the Swift packages, follow issues and releases, compile the packages with Swift Package Manager, or assemble the runnable app through the documented Xcode and Tuist path. That visibility makes privacy and reliability claims testable, but it does not guarantee security or eliminate the need to review permissions and network behavior. The license boundary also matters. GPLv3 covers the app code. EG-1, Envious Labs' downloadable dictation-polish model, has a separate Community Model License and its weights are not open source. Other bundled dependencies and speech models retain their own licenses, listed in the repository notices. If you prefer a signed build, the same repository publishes releases. If you prefer direct inspection, the source, build scripts, release history, model license, and issue tracker are public.`;
+---
+
+<SolutionLayout
+  title="Free Open Source Dictation App for Mac | EnviousWispr"
+  description="Inspect the GPLv3 source for a free Mac dictation app, follow development on GitHub, or build it yourself. EG-1 model weights use a separate license."
+  canonicalPath="/solutions/open-source/"
+  eyebrow="Open source"
+  heading="Do not stop at the privacy promise. Read the implementation."
+  intro="The app source, build path, issue history, and releases are public. Inspect the local speech pipeline yourself and keep the app license separate from the EG-1 model license."
+  answerHeading="What is an open source dictation app for Mac?"
+  directAnswer={directAnswer}
+  downloadSource="solution-open-source"
+  trustItems={['App source under GPLv3', 'Public issues and releases', 'Separate EG-1 model license']}
+  faqs={faqs}
+  relatedLinks={relatedLinks}
+>
+  <div slot="proof" class="proof-window">
+    <div class="proof-window-bar"><i></i><i></i><i></i>enviouswispr</div>
+    <div class="proof-body">
+      <div class="proof-row">
+        <span class="proof-row-label">App code · GPLv3</span>
+        <p>Sources / Tests / scripts / Package.swift / Project.swift / LICENSE</p>
+      </div>
+      <div class="proof-row output">
+        <span class="proof-row-label">Separate model terms</span>
+        <p>EG-1-MODEL-LICENSE.txt keeps the downloadable model-weight boundary explicit.</p>
+      </div>
+      <div class="proof-rail" aria-hidden="true"><span>Inspect</span><span>Build</span><span>Test</span><span>Contribute</span></div>
+    </div>
+  </div>
+
+  <section class="solution-section" aria-labelledby="source-visible-heading">
+    <div>
+      <p class="solution-kicker">What is visible</p>
+      <h2 id="source-visible-heading">The useful evidence lives deeper than a badge.</h2>
+    </div>
+    <div class="solution-card-grid">
+      <article class="solution-card"><h3>Processing code</h3><p>Trace microphone capture, on-device speech engines, deterministic cleanup, model polish, and paste behavior through the source packages.</p></article>
+      <article class="solution-card"><h3>Tests and build scripts</h3><p>Read the automated coverage and the commands used to compile packages, assemble the app, and produce a release build.</p></article>
+      <article class="solution-card"><h3>Issues and pull requests</h3><p>See active defects, product decisions, proposed fixes, and the history behind reliability work.</p></article>
+      <article class="solution-card"><h3>Licenses and notices</h3><p>Review GPLv3 for the app, separate EG-1 terms for model weights, and third-party notices for dependencies.</p></article>
+    </div>
+  </section>
+
+  <section class="solution-section" aria-labelledby="source-build-heading">
+    <div>
+      <p class="solution-kicker">Build path</p>
+      <h2 id="source-build-heading">Compile the packages or assemble the Mac app.</h2>
+    </div>
+    <div>
+      <p class="solution-section-lead"><code>swift build</code> compiles the Swift packages after dependencies resolve. The runnable app bundle is assembled with the Xcode build engine through Tuist. The repository's development script creates a local app build, while the release script adds the packaging path for a distributable DMG.</p>
+      <div class="solution-callout" style="margin-top:20px"><strong>A public repository is evidence, not a guarantee</strong><p>Open source lets you inspect and test the implementation. It does not promise that every defect is known or that the software is appropriate for every security policy.</p></div>
+    </div>
+  </section>
+
+  <section class="solution-section" aria-labelledby="source-license-heading">
+    <div>
+      <p class="solution-kicker">License boundary</p>
+      <h2 id="source-license-heading">The app and EG-1 are not licensed the same way.</h2>
+    </div>
+    <div>
+      <p class="solution-section-lead">EnviousWispr's app code is GPLv3. EG-1 model weights are a separate artifact under the EG-1 Community Model License, which permits specific personal, educational, research, and evaluation uses and includes restrictions. Read both files before redistributing code or using the model outside the published app.</p>
+    </div>
+  </section>
+</SolutionLayout>

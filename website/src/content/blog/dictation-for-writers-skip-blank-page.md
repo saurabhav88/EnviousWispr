@@ -1,8 +1,8 @@
 ---
-title: "macOS Dictation for Writers: Skip the Blank Page"
+title: "How to Dictate a First Draft on Mac Without Losing Your Voice"
 description: "Voice writing bypasses the blank page entirely. Learn how dictation fits a writer's workflow and why speaking your first draft changes everything."
 pubDate: 2026-03-14
-updatedDate: 2026-04-04
+updatedDate: 2026-08-22
 tags: ["writing", "dictation", "workflow", "creativity"]
 draft: false
 author: "Saurabh Vaish"
@@ -36,15 +36,15 @@ The shift is psychological as much as practical. When you dictate, you give your
 
 Most dictation tools were built for business users dictating emails and memos. Writers need something different. You need output that sounds like writing, not like a transcribed meeting. And you need it to land in your writing app, formatted the way you work.
 
-EnviousWispr handles this with on-device LLM post-processing tuned specifically for writers.
+EnviousWispr handles this with deterministic cleanup plus optional local or cloud AI polish.
 
 ### Polish That Keeps Your Voice
 
-After EnviousWispr transcribes your speech, it runs the text through a local LLM for post-processing. The default polish removes filler words, fixes punctuation, and tightens structure without flattening your phrasing into corporate prose. The result is a clean first draft that sounds like you, not like a robot or a memo.
+After EnviousWispr transcribes your speech, deterministic cleanup can remove filler and fix punctuation locally. Optional AI polish can tighten structure, but model edits can also change phrasing. Treat the result as a first draft and compare it with what you intended to say.
 
-That processing can run fully on-device with Apple Intelligence, EG-1, or Ollama, without sending your words anywhere.
+That processing can stay on-device with deterministic cleanup, EG-1, supported Apple Intelligence, or a downloaded Ollama model. OpenAI, Gemini, Claude, and Ollama-hosted polish require a connection and send text to that provider.
 
-For writers who want their voice preserved, the polish is built to edit, not reword. It keeps your meaning, tone, and phrasing intact, so your em dashes, your parentheticals, and your intentional fragments survive the cleanup. Keep a passage as loose stream of consciousness and the polish leaves your flow alone; the output always sounds like you, not a template.
+For writers who want their voice preserved, polish should be a starting point rather than the final editor. Read every passage against your meaning, tone, and phrasing. Restore intentional fragments or rhythms when the model makes a choice you would not.
 
 For a step-by-step look at how this works in a real writing session, see [Voice to Prose: A Realistic Writing Workflow](/blog/voice-to-prose-writing-workflow/).
 
@@ -70,7 +70,7 @@ Don't try to "write out loud." Instead, imagine you're explaining the piece to a
 
 ### Don't Correct Yourself Mid-Stream
 
-If you stumble or say something awkward, keep going. The post-processing step will clean up filler words and false starts. Stopping to correct yourself breaks the flow, which is the whole thing you're trying to protect.
+If you stumble or say something awkward, keep going. Cleanup can remove filler words and some false starts, and you can fix anything it misses during the edit. Stopping to correct every sentence breaks the flow you're trying to protect.
 
 ### Pace Around
 
@@ -82,7 +82,7 @@ Instead of aiming for 500 words, aim for 10 minutes of continuous dictation. You
 
 ### Use Hands-Free Mode for Long Sessions
 
-For anything longer than a quick paragraph, use hands-free mode. Double-press your keybind to lock recording instead of holding it the entire time. You can pace, pause to think, and keep going without worrying about key presses. It turns your MacBook Air or Mac Mini into a dictation station.
+For anything longer than a quick paragraph, use a hands-free recording route. In Push-to-Talk mode, double-press your keybind to start and press once to finish. In Toggle mode, press once to start and once to finish. You can pace, pause to think, and keep going without holding a key.
 
 ### Edit in a Separate Pass
 
@@ -105,9 +105,11 @@ The draft won't be perfect. That's the point. It doesn't need to be perfect; it 
 
 If you're dictating early drafts, unpublished ideas, or sensitive client work, where that audio goes matters. Most cloud dictation tools send your recordings to external servers for processing. That means your unfinished novel, your half-formed article, your notes about a source. All of it passes through someone else's infrastructure.
 
-EnviousWispr runs entirely on your Mac. Transcription happens locally using on-device speech recognition via Core ML. Post-processing can run fully on-device with Apple Intelligence, EG-1, or Ollama. Your recordings never leave your device. For writers working on anything unpublished or confidential, that's not a minor detail.
+EnviousWispr always transcribes on your Mac. Deterministic cleanup, EG-1, supported Apple Intelligence, and downloaded Ollama models can keep manuscript text there too. If you choose OpenAI, Gemini, Claude, or Ollama-hosted polish, the transcript and supporting context go to that provider. Audio remains local in either case.
 
 You can read more about [how the pipeline works](/how-it-works/), from microphone input through transcription and AI cleanup to final output. For a detailed comparison of on-device and cloud-based dictation, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
+
+See the focused guide to [dictation for writers on Mac](/solutions/writers/) for the first-draft workflow, hands-free controls, and privacy choices in one place.
 
 ## Related Posts
 
@@ -117,7 +119,7 @@ You can read more about [how the pipeline works](/how-it-works/), from microphon
 
 ## Getting Started
 
-EnviousWispr is free. You don't need an account, a subscription, or an API key.
+EnviousWispr is free. Core dictation and local cleanup do not need an EnviousWispr account, a subscription, or a cloud API key.
 
 [Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). Install it, grant microphone and accessibility permissions, and you're dictating within a few minutes. The speech model downloads automatically. Try dictating your next first draft instead of typing it, and let the polish keep it in your voice.
 
