@@ -507,8 +507,11 @@ import Testing
       swept.expired.isEmpty,
       "the user pressed Keep; reporting an expiry would understate the one ratio")
     #expect(
-      swept.deletedIDs.contains(row.id),
+      swept.clearedShadows == 1,
       "the shadow is still litter and must be cleared, receipt or no receipt")
+    #expect(
+      !swept.deletedIDs.contains(row.id),
+      "the permanent twin shares this id, so it must not be reported for eviction")
     let shadow = dir.appendingPathComponent("pending/\(row.id.uuidString).json")
     #expect(!FileManager.default.fileExists(atPath: shadow.path))
   }
