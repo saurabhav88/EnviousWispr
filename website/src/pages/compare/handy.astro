@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const siteUrl = 'https://enviouswispr.com';
 
@@ -144,7 +145,7 @@ const faqJsonLd = JSON.stringify({
 
 <BaseLayout
   title="Handy vs EnviousWispr: Free Mac Dictation, AI Polish Built In"
-  description="Compare Handy and EnviousWispr, two free, open source, on-device Mac dictation apps. Both offer AI cleanup; EnviousWispr's is a built-in model that needs no provider or prompt setup."
+  description="Compare Handy and EnviousWispr, two free, open-source, on-device dictation apps. See how AI polish, platforms, setup, and paste recovery differ on Mac."
   activePage="compare"
   ogImage="/og-image.png"
   canonicalPath="/compare/handy/"
@@ -352,6 +353,10 @@ const faqJsonLd = JSON.stringify({
     <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
+
+<CompareDecisionSummary id="handy-vs-enviouswispr-answer" heading="Handy or EnviousWispr: which should you choose?">
+  <p>Both apps are free, open source, and can keep dictation on your device. Choose Handy if you need Windows or Linux, want a large model catalog, prefer its permissive MIT license, or need to replay saved audio. Choose EnviousWispr if you want a curated Mac setup where one hotkey records, transcribes, polishes, and pastes, with Escape Recovery when a dictation is canceled by mistake. Handy is the better fit for people who enjoy choosing engines and hardware settings. EnviousWispr is the better fit for people who want local AI polish built into a simpler daily workflow. Both are credible choices for private speech-to-text. The deciding question is whether you want broad control across operating systems or a Mac-first flow with fewer switches.</p>
+</CompareDecisionSummary>
 
 <!-- Side-by-Side Table -->
 <section class="section" aria-label="Feature Comparison">

@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const siteUrl = 'https://enviouswispr.com';
 
@@ -144,7 +145,7 @@ const faqJsonLd = JSON.stringify({
 
 <BaseLayout
   title="Juno vs EnviousWispr: Free Mac Dictation on More Macs"
-  description="Compare Juno and EnviousWispr, two free, open source, on-device Mac dictation tools. Juno needs an M2 Mac with 24GB RAM; EnviousWispr runs on any M1 Mac and up."
+  description="Compare Juno and EnviousWispr, two free, open-source, on-device Mac dictation apps. See which fits your Mac, memory, and voice workflow day to day."
   activePage="compare"
   ogImage="/og-image.png"
   canonicalPath="/compare/juno/"
@@ -352,6 +353,10 @@ const faqJsonLd = JSON.stringify({
     <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
+
+<CompareDecisionSummary id="juno-vs-enviouswispr-answer" heading="Juno or EnviousWispr: which should you choose?">
+  <p>Both Juno and EnviousWispr are free, open source, and run speech processing on your Mac. Choose Juno if you have an M2 or newer Mac with at least 24GB of RAM and want voice-triggered Notes, Reminders, alarms, or spoken rewrites of selected text. Choose EnviousWispr if you have an M1 Mac, 16GB of RAM, or macOS 14, or if you want focused system-wide dictation with a smaller setup. Juno reaches beyond dictation into voice actions. EnviousWispr supports more existing Apple Silicon Macs and keeps the product centered on reliable speech-to-text, polish, and paste. The decision is unusually hardware-specific: on a supported high-memory Mac, compare the extra actions; on older or lower-memory models, EnviousWispr is the practical option.</p>
+</CompareDecisionSummary>
 
 <!-- Side-by-Side Table -->
 <section class="section" aria-label="Feature Comparison">

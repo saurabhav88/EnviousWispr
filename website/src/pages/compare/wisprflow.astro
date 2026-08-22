@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const siteUrl = 'https://enviouswispr.com';
 
@@ -361,6 +362,10 @@ const faqJsonLd = JSON.stringify({
     <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
+
+<CompareDecisionSummary id="wisprflow-vs-enviouswispr-answer" heading="WisprFlow or EnviousWispr: which should you choose?">
+  <p>Choose WisprFlow if you need dictation across Mac, Windows, iPhone, and Android, or want its broader set of snippets, shared dictionaries, app styles, backtrack, meeting, team, and enterprise controls. Choose EnviousWispr if you want free, open-source Mac dictation where audio is always transcribed on your device and no account or subscription is required. WisprFlow is the more mature cross-device service. EnviousWispr is the private, Mac-focused alternative with local speech, optional local polish, direct paste, and Escape Recovery. The key tradeoff is breadth and sync versus local control, price, and source-code transparency. If you move between devices or administer a team, WisprFlow's service model is useful. If you work on one Mac and want fewer external dependencies, EnviousWispr fits that constraint.</p>
+</CompareDecisionSummary>
 
 <!-- Side-by-Side Table -->
 <section class="section" aria-label="Feature Comparison">

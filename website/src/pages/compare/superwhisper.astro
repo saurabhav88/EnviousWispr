@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const siteUrl = 'https://enviouswispr.com';
 
@@ -353,6 +354,10 @@ const faqJsonLd = JSON.stringify({
     <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
+
+<CompareDecisionSummary id="superwhisper-vs-enviouswispr-answer" heading="Superwhisper or EnviousWispr: which should you choose?">
+  <p>Choose Superwhisper if you need meeting notes, audio or video file transcription, iPhone or Windows support, a large speech and writing model library, or custom writing modes. Choose EnviousWispr if your priority is free, open-source Mac dictation with no account or subscription, local speech processing, and a smaller set of built-in defaults. Both can run transcription locally, but Superwhisper is the broader paid product and EnviousWispr is the focused free alternative. For everyday speech-to-text on an Apple Silicon Mac, the decision mainly comes down to whether you value Superwhisper's wider feature set or EnviousWispr's cost, inspectability, and simpler setup. If meetings or file work are central, Superwhisper's paid features matter. If your main job is live dictation into Mac apps, EnviousWispr covers that narrower path without a purchase.</p>
+</CompareDecisionSummary>
 
 <!-- Side-by-Side Table -->
 <section class="section" aria-label="Feature Comparison">
