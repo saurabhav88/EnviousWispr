@@ -463,14 +463,16 @@ struct ClipboardIsolationFreezeTests {
   private final class SnapshotRoutingVisitor: SyntaxVisitor {
     private(set) var snapshotCalls = 0
     private(set) var callsUsingExecutorBoard = 0
-    private(set) var automaticRouteWrites: [(block: Int?, usesExecutorBoard: Bool)] = []
+    private(set) var automaticRouteWrites: [(block: Int?, position: Int, usesExecutorBoard: Bool)] =
+      []
     private(set) var clipboardFallbackWrites: [(insideFallback: Bool, usesExecutorBoard: Bool)] = []
-    private var snapshotsByBlock: [Int: Int] = [:]
+    private var snapshotsByBlock: [Int: [Int]] = [:]
 
     var automaticRoutesHaveSnapshots: [Bool] {
       automaticRouteWrites.map { route in
         guard let block = route.block else { return false }
-        return snapshotsByBlock[block] == 1
+        guard let snapshots = snapshotsByBlock[block], snapshots.count == 1 else { return false }
+        return snapshots[0] < route.position
       }
     }
 
@@ -484,7 +486,8 @@ struct ClipboardIsolationFreezeTests {
       if functionName == "snapshotForDelivery", base == "ClipboardCleanup" {
         snapshotCalls += 1
         if let block = enclosingCodeBlockStart(node) {
-          snapshotsByBlock[block, default: 0] += 1
+          snapshotsByBlock[block, default: []].append(
+            node.positionAfterSkippingLeadingTrivia.utf8Offset)
         }
         if node.arguments.count == 1, let argument = node.arguments.first,
           argument.label?.text == "from",
@@ -494,7 +497,9 @@ struct ClipboardIsolationFreezeTests {
         }
       }
 
-      guard base == "PasteService" else { return .visitChildren }
+      guard trailingName(of: member.base) == "PasteService" else {
+        return .visitChildren
+      }
       let usesExecutorBoard = node.arguments.contains { argument in
         argument.label?.text == "to" && argument.expression.trimmedDescription == "pasteboard"
       }
@@ -502,12 +507,26 @@ struct ClipboardIsolationFreezeTests {
         || functionName == "copyToClipboardReturningChangeCount"
       {
         automaticRouteWrites.append(
-          (block: enclosingCodeBlockStart(node), usesExecutorBoard: usesExecutorBoard))
+          (
+            block: enclosingCodeBlockStart(node),
+            position: node.positionAfterSkippingLeadingTrivia.utf8Offset,
+            usesExecutorBoard: usesExecutorBoard
+          ))
       } else if functionName == "copyToClipboard" {
         clipboardFallbackWrites.append(
           (insideFallback: isInsideClipboardFallback(node), usesExecutorBoard: usesExecutorBoard))
       }
       return .visitChildren
+    }
+
+    private func trailingName(of expression: ExprSyntax?) -> String? {
+      if let reference = expression?.as(DeclReferenceExprSyntax.self) {
+        return reference.baseName.text
+      }
+      if let member = expression?.as(MemberAccessExprSyntax.self) {
+        return member.declName.baseName.text
+      }
+      return nil
     }
 
     private func enclosingCodeBlockStart(_ node: some SyntaxProtocol) -> Int? {
@@ -647,6 +666,36 @@ struct ClipboardIsolationFreezeTests {
     visitor.walk(tree)
 
     #expect(visitor.automaticRoutesHaveSnapshots == [true, false])
+  }
+
+  @Test("a cleanup snapshot must precede its automatic route write")
+  func automaticRouteRejectsLateSnapshot() {
+    let tree = Parser.parse(
+      source: """
+        func deliver() {
+          PasteService.pasteToActiveApp("one", to: pasteboard)
+          let snapshot = ClipboardCleanup.snapshotForDelivery(from: pasteboard)
+        }
+        """)
+    let visitor = SnapshotRoutingVisitor(viewMode: .sourceAccurate)
+    visitor.walk(tree)
+
+    #expect(visitor.automaticRoutesHaveSnapshots == [false])
+  }
+
+  @Test("module-qualified route writes stay in the cleanup inventory")
+  func moduleQualifiedAutomaticRouteIsCaught() {
+    let tree = Parser.parse(
+      source: """
+        func deliver() {
+          EnviousWisprServices.PasteService.copyToClipboardReturningChangeCount(
+            "one", to: pasteboard)
+        }
+        """)
+    let visitor = SnapshotRoutingVisitor(viewMode: .sourceAccurate)
+    visitor.walk(tree)
+
+    #expect(visitor.automaticRoutesHaveSnapshots == [false])
   }
 
   // MARK: Two-way controls
