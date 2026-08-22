@@ -509,5 +509,111 @@
       let panel = try #require(h.panelForTesting)
       #expect(panel.frame.height == 92)
     }
+
+    // MARK: - A continuation stays on ITS OWN display (#2292 C10)
+
+    /// A SHORT second display, and short is the whole point.
+    ///
+    /// The clamp is `min(requestedY, visibleFrame.maxY - height - margin)`, so
+    /// reading the wrong screen only MOVES the pill when the wrong screen's
+    /// ceiling is LOWER. Two displays of the same height give identical answers
+    /// and the defect is invisible; so does a taller second display, because a
+    /// looser clamp changes nothing. A short one is the case that bites, and the
+    /// first version of this test used a tall one and passed against the bug.
+    private static let shortSecondary = ScreenGeometry(
+      id: ScreenID(rawValue: 2),
+      frame: CGRect(x: 0, y: 0, width: 1512, height: 400),
+      visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 380))
+
+    /// A host whose POINTER screen and CONTAINING screen can disagree, which is
+    /// exactly the situation a moved pointer creates.
+    private static func splitHost(
+      pointer: @escaping () -> ScreenGeometry,
+      containing: @escaping (CGRect) -> ScreenGeometry?
+    ) -> OverlayWindowHost {
+      OverlayWindowHost(
+        screens: { OverlayScreenResolver(containing: containing, current: pointer) })
+    }
+
+    /// **The regression, stated as the user sees it.** Start dictating on the
+    /// main display, move the pointer to a shorter second display, and the
+    /// recording-to-processing transition yanks the pill downward on the display
+    /// it is still sitting on.
+    ///
+    /// The mechanism is a coordinate-space mix: the continuation inherits
+    /// `panel.frame`, which is in the ORIGINAL display's space, while the clamp
+    /// measured it against the POINTER's display. A Top pill sits at 845 on the
+    /// tall display; the short display's ceiling is 280, so the wrong anchor
+    /// drags it 565 points down a screen the pointer is not even on.
+    @Test("a continuation is clamped against the display it is on, not the pointer's")
+    func continuationKeepsItsOwnScreen() throws {
+      var pointer = Self.screen
+      let h = Self.splitHost(pointer: { pointer }, containing: { _ in Self.screen })
+      defer { h.panelForTesting?.orderOut(nil) }
+
+      h.present(
+        Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
+        position: .top)
+      let first = try #require(h.panelForTesting).frame
+
+      // The pointer moves to the SHORT display. The panel has not moved.
+      pointer = Self.shortSecondary
+      h.present(
+        Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: false,
+        position: .top)
+      let after = try #require(h.panelForTesting).frame
+
+      #expect(
+        after.origin.y == first.origin.y,
+        "the pill was dragged down its own display by a clamp read off the pointer's screen")
+      #expect(after.origin.x == first.origin.x, "a continuation must preserve X (#2195)")
+    }
+
+    /// **The fallback is the disconnected-display case.** When nothing contains
+    /// the panel any more, the pointer's screen is the right answer: re-home the
+    /// pill onto a screen that exists rather than clamp it against one that does
+    /// not. Asserted so the `?? screen` is a decision rather than an accident.
+    @Test("a continuation with no containing screen falls back to the pointer's")
+    func continuationFallsBackWhenItsScreenIsGone() throws {
+      let h = Self.splitHost(pointer: { Self.screen }, containing: { _ in nil })
+      defer { h.panelForTesting?.orderOut(nil) }
+
+      h.present(
+        Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
+        position: .top)
+      h.present(
+        Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: false,
+        position: .top)
+
+      let panel = try #require(h.panelForTesting)
+      #expect(
+        panel.frame.maxY <= Self.screen.visibleFrame.maxY - OverlayPlacementState.topClampMargin,
+        "the fallback produced a frame outside the only screen that exists")
+    }
+
+    /// A FRESH presentation still belongs where the POINTER is, which is the
+    /// shipped target resolution and must not be collateral damage of the fix
+    /// above. Without this, anchoring everything to the containing screen would
+    /// look correct and quietly stop new pills following the user.
+    ///
+    /// Asserted on Y, not X: both fixtures span the same horizontal range, so a
+    /// centre-X assertion cannot tell them apart and would pass either way.
+    @Test("a fresh presentation still follows the pointer's screen")
+    func freshPresentationFollowsThePointer() throws {
+      let h = Self.splitHost(pointer: { Self.shortSecondary }, containing: { _ in Self.screen })
+      defer { h.panelForTesting?.orderOut(nil) }
+
+      h.present(
+        Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
+        position: .top)
+
+      let panel = try #require(h.panelForTesting)
+      let expected = OverlayPlacementState.clampedOriginY(
+        requestedY: OverlayPlacementState.freshOriginY(for: .top, on: Self.shortSecondary),
+        height: 92, on: Self.shortSecondary)
+      #expect(
+        panel.frame.origin.y == expected,
+        "a fresh pill was placed on the containing screen instead of the pointer's")
+    }
   }
 #endif
