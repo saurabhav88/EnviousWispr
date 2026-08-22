@@ -168,7 +168,9 @@ struct OverlayRetainedWindowTests {
     @Test("several transitions build one window")
     func transitionsReuseTheRetainedWindow() async {
       let host = OverlayWindowHost()
-      let d = OverlayDirector(host: host, deliverEffect: { _ in }, announce: { _ in })
+      let d = OverlayDirector(
+        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in },
+        announce: { _ in })
       defer { host.panelForTesting?.orderOut(nil) }
 
       d.send(.pipeline(.processing(phase: .polishing)), actions: nil)
@@ -195,7 +197,9 @@ struct OverlayRetainedWindowTests {
     @Test("hiding and showing again reuses the same window")
     func hideThenShowReusesTheWindow() async {
       let host = OverlayWindowHost()
-      let d = OverlayDirector(host: host, deliverEffect: { _ in }, announce: { _ in })
+      let d = OverlayDirector(
+        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in },
+        announce: { _ in })
       defer { host.panelForTesting?.orderOut(nil) }
 
       for _ in 0..<4 {

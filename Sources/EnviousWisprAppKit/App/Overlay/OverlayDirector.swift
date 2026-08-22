@@ -13,12 +13,15 @@ import Foundation
 /// grows a per-kind field collection it has become the thing the migration is
 /// removing.
 ///
-/// **Not yet authoritative or production-owned.** C4c installs this director at
-/// the composition root and injects the retained host. Nothing but the tests
-/// instantiates it today — an earlier version of this comment claimed the panel
-/// owned it, which was simply untrue and is the exact shape of comment this
-/// migration keeps finding: confident, plausible, and describing code that does
-/// not exist.
+/// **The production authority for every overlay presentation transaction.** The
+/// composition root owns one director and injects one retained host, both for
+/// the app's lifetime.
+///
+/// Two earlier versions of this paragraph were false in opposite directions —
+/// one said the panel owned this type, the next said only tests instantiated it
+/// — which is the shape of comment this migration keeps finding: confident,
+/// plausible, and describing code that does not exist. This one is checkable:
+/// `WisprBootstrapper` holds the single construction.
 @MainActor
 final class OverlayDirector {
 
@@ -53,9 +56,14 @@ final class OverlayDirector {
   private let deliverEffect: (OverlayEffect) -> Void
 
   /// The handler for the two buttons that belong to the APP rather than to a
-  /// presentation — Grant and Discard. Required, not defaulted: both were
-  /// silently unbound by the cutover because `actions: nil` compiles, and a
-  /// required dependency is the only version of this a call site cannot forget.
+  /// presentation — Grant and Discard.
+  ///
+  /// **Required, with no default, and my argument for a default was wrong on the
+  /// facts.** I claimed sixteen test constructions would need editing; there are
+  /// THREE — one shared headless factory and two retained-window cases — because
+  /// the rest go through that factory. A no-op default is a fresh structural
+  /// omission path introduced by the fix for an omission, which is not a trade
+  /// worth making for three lines.
   private let deliverAppAction: (OverlayAction) -> Void
 
   /// Posting the spoken announcement, injectable so a guard can observe it.
@@ -128,7 +136,7 @@ final class OverlayDirector {
   init(
     host: OverlayWindowHost,
     deliverEffect: @escaping (OverlayEffect) -> Void,
-    deliverAppAction: @escaping (OverlayAction) -> Void = { _ in },
+    deliverAppAction: @escaping (OverlayAction) -> Void,
     position: @escaping () -> OverlayPillPosition = { .top },
     model: OverlayRenderModel = OverlayRenderModel(),
     scheduler: OverlayScheduler = .live,
@@ -259,9 +267,22 @@ final class OverlayDirector {
     // it sets, which the born-locked rule and the morph path both read.
     _ = reducer.reduce(.lockStateChanged(isRecordingLocked))
     let plan = reducer.reduce(.pipeline(.recording(audioLevel: audioLevel)))
+
+    // **The effect goes out BEFORE the layout is resolved, not merely before the
+    // render.** Moving effects to the top of `apply` was half the fix: this
+    // method reads `livePreviewEnabled()` on its way to a layout, and that read
+    // happens before `apply` is ever called. `LivePreviewCoordinator` applies its
+    // model-removal suppression inside `setRecording`, so a geometry read that
+    // beats the effect can pick the 400-point preview layout for a pill whose
+    // preview is about to resolve DISABLED — a preview-sized window with no
+    // preview in it.
+    for effect in plan.effects {
+      deliverEffect(effect)
+    }
+
     guard let presentation = plan.presentation else {
       // The reducer refused — a feature holds the slot, or nothing changed.
-      apply(plan, actions: actions)
+      apply(plan, actions: actions, effectsAlreadyDelivered: true)
       return
     }
 
@@ -290,7 +311,7 @@ final class OverlayDirector {
           to: CGSize(width: self.model.recordingLayout.width, height: height))
       })
 
-    apply(plan, actions: actions)
+    apply(plan, actions: actions, effectsAlreadyDelivered: true)
   }
 
   /// Take custody of a cancelled-transcript payload and present its pill.
@@ -374,7 +395,8 @@ final class OverlayDirector {
   // MARK: - Applying a plan
 
   private func apply(
-    _ plan: OverlayPlan, actions: ((OverlayAction) -> Void)? = nil, announcing: Bool = true
+    _ plan: OverlayPlan, actions: ((OverlayAction) -> Void)? = nil, announcing: Bool = true,
+    effectsAlreadyDelivered: Bool = false
   ) {
     // **Effects run FIRST, then the announcement, then the window** — the
     // shipped order, and it is load-bearing rather than tidy.
@@ -383,8 +405,10 @@ final class OverlayDirector {
     // enabled-for-geometry answer by the time the first frame is sized. Running
     // effects last, which the first version did, can size that frame from the
     // live setting instead.
-    for effect in plan.effects {
-      deliverEffect(effect)
+    if !effectsAlreadyDelivered {
+      for effect in plan.effects {
+        deliverEffect(effect)
+      }
     }
     // **Announced BEFORE the window changes**, which is the shipped order: the
     // panel posts at the top of each `apply(intent:)` arm and draws after.

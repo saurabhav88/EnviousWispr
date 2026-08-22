@@ -652,6 +652,39 @@
       #expect(sink.effects == [.recordingIntentChanged(true)])
     }
 
+    /// **The effect must beat the GEOMETRY READ, not merely the render.**
+    ///
+    /// `presentRecording` reads `livePreviewEnabled()` on its way to a layout,
+    /// and that read happens before `apply` is entered — so moving effects to the
+    /// top of `apply` fixed only half of it. `LivePreviewCoordinator` applies its
+    /// model-removal suppression inside `setRecording`, so a geometry read that
+    /// beats the effect picks the 400-point preview layout for a pill whose
+    /// preview is about to resolve DISABLED: a preview-sized window with no
+    /// preview in it.
+    ///
+    /// The probe is the provider itself. It answers true only AFTER the effect
+    /// has been delivered, so `usesPreview` is true if and only if the ordering
+    /// is right. Asserting the ORDER directly would need a clock; this needs none.
+    @Test("a recording's effect is delivered before its geometry is resolved")
+    func recordingEffectsPrecedeGeometry() {
+      var recordingStarted = false
+      let host = OverlayWindowHost(screens: { OverlayScreenResolver { nil } })
+      let d = OverlayDirector(
+        host: host,
+        deliverEffect: { if $0 == .recordingIntentChanged(true) { recordingStarted = true } },
+        deliverAppAction: { _ in },
+        announce: { _ in })
+
+      d.setLivePreviewProviders(enabled: { recordingStarted }, display: { .off })
+      d.presentRecording(
+        audioLevel: 0, audioLevelProvider: { 0 }, recordingElapsedProvider: { nil },
+        isRecordingLocked: false, actions: nil)
+
+      #expect(
+        d.renderModel.recordingLayout.usesPreview,
+        "geometry was resolved before the effect that freezes its input")
+    }
+
     /// **A dictation ending announces; a chip dismissal must not.**
     ///
     /// The shipped `hide()` and `show(intent: .hidden)` are different operations

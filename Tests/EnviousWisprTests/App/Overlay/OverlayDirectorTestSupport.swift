@@ -24,6 +24,7 @@ enum OverlayTestDouble {
     OverlayDirector(
       host: OverlayWindowHost(screens: { OverlayScreenResolver { nil } }),
       deliverEffect: { _ in },
+      deliverAppAction: { _ in },
       // Announcements go nowhere: a test that has not asked for a screen has not
       // asked for VoiceOver either, and the real post reaches the system.
       announce: { _ in })
