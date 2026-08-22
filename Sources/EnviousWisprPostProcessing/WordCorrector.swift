@@ -1023,10 +1023,21 @@ public struct WordCorrector: Sendable {
         appendReplacement(forCanonical: canonical)
         return unpeeled ? prefix + canonical + suffix : reattached(canonical)
       }
+      // `.ambiguous` and `.noCandidate` MUST stay distinguishable to the
+      // caller (Codex cloud review, PR #2298, round 16): collapsing both to
+      // `nil` let an ambiguous NON-PACK tie fall through into the
+      // lower-authority PACK tier as if non-pack had found nothing at all,
+      // letting a pack candidate win a token that "non-pack always outranks
+      // pack" says should have been left untouched instead.
+      enum FuzzyTierOutcome {
+        case accepted(String)
+        case ambiguous
+        case noCandidate
+      }
       func strongerOf(
         _ unpeeled: (canonical: String, score: Double)?,
         _ peeled: (canonical: String, score: Double)?
-      ) -> String? {
+      ) -> FuzzyTierOutcome {
         switch (unpeeled, peeled) {
         case let (.some(u), .some(p)):
           // Each attempt already enforces `ambiguityMargin` WITHIN its own
@@ -1036,20 +1047,20 @@ public struct WordCorrector: Sendable {
           // 0.05 apart from each other. Picking the higher score outright
           // is exactly the "guess when uncertain" this file otherwise never
           // does (Codex cloud review, PR #2298, round 15). Neither attempt
-          // is confident enough to override the other; fall through rather
-          // than accept either.
+          // is confident enough to override the other.
           guard u.canonical != p.canonical, abs(u.score - p.score) < Self.ambiguityMargin else {
-            return u.score >= p.score
-              ? acceptFuzzy(unpeeled: true, canonical: u.canonical)
-              : acceptFuzzy(unpeeled: false, canonical: p.canonical)
+            return .accepted(
+              u.score >= p.score
+                ? acceptFuzzy(unpeeled: true, canonical: u.canonical)
+                : acceptFuzzy(unpeeled: false, canonical: p.canonical))
           }
-          return nil
+          return .ambiguous
         case let (.some(u), nil):
-          return acceptFuzzy(unpeeled: true, canonical: u.canonical)
+          return .accepted(acceptFuzzy(unpeeled: true, canonical: u.canonical))
         case let (nil, .some(p)):
-          return acceptFuzzy(unpeeled: false, canonical: p.canonical)
+          return .accepted(acceptFuzzy(unpeeled: false, canonical: p.canonical))
         case (nil, nil):
-          return nil
+          return .noCandidate
         }
       }
 
@@ -1083,8 +1094,16 @@ public struct WordCorrector: Sendable {
         ? nonPackFuzzySingleWordMatch(
           core: matchCore, coreLower: matchCoreLower, lookups: lookups, domainShapedOnly: false)
         : nil
-      if let result = strongerOf(unpeeledNonPackFuzzy, peeledNonPackFuzzy) {
+      // An ambiguous non-pack tie is terminal, not "try pack next": pack is
+      // lower authority and must never get a turn just because non-pack
+      // couldn't confidently pick between two of ITS OWN candidates.
+      switch strongerOf(unpeeledNonPackFuzzy, peeledNonPackFuzzy) {
+      case .accepted(let result):
         return result
+      case .ambiguous:
+        return token
+      case .noCandidate:
+        break
       }
 
       // Step 5 + 6: pack fuzzy, the same unpeeled-then-peeled shape (step 5
@@ -1102,7 +1121,9 @@ public struct WordCorrector: Sendable {
         ? packFuzzySingleWordMatch(
           core: matchCore, coreLower: matchCoreLower, lookups: lookups, domainShapedOnly: false)
         : nil
-      if let result = strongerOf(unpeeledPackFuzzy, peeledPackFuzzy) {
+      // Nothing follows the pack tier, so ambiguous and no-candidate both
+      // resolve to the same "leave it alone" outcome here.
+      if case .accepted(let result) = strongerOf(unpeeledPackFuzzy, peeledPackFuzzy) {
         return result
       }
 
@@ -1658,21 +1679,42 @@ public struct WordCorrector: Sendable {
   /// dot-suffix): both are ALL-LETTERS after the dot, so no structural rule
   /// -- however tightened -- can separate them.
   /// KNOWN LIMIT, accepted rather than chased further (founder call,
-  /// Codex review round 7, P2): this list is CURATED, not exhaustive --
-  /// ICANN's real root zone has 1,500+ entries, and any hand-picked subset
-  /// will always be missing one (round 7 named "GitHub.academy" as a real
-  /// gTLD this list omits). `matcher-set-adversarial-tests`'s
-  /// generalisation gate is right that a hand-authored set is a prediction
-  /// about users we haven't met -- the two mechanisms that would actually
-  /// close it are bundling a maintained public-suffix authority, or letting
-  /// a word's OWNER mark it as a domain explicitly rather than the app
-  /// guessing from its text -- and both are real feature-sized additions,
-  /// not a fix for this bug. The failure mode this list still has is
-  /// narrow: it needs BOTH a saved word shaped like a domain that ISN'T one
-  /// AND a separately-dictated real domain suffix glued onto its bare
-  /// alias, and (measured against the shipped pack and this founder's own
-  /// live vocabulary while building this fix) zero words anywhere in this
-  /// app are shaped like a domain at all today.
+  /// Codex review round 7, P2; reconfirmed round 16 against two MORE
+  /// consequences of the same root cause): this list is CURATED, not
+  /// exhaustive -- ICANN's real root zone has 1,500+ entries, and any
+  /// hand-picked subset will always be missing one (round 7 named
+  /// "GitHub.academy" as a real gTLD this list omits). `isDomainShaped`
+  /// is the ONLY consumer, but it backs TWO different decisions that both
+  /// inherit this same limit:
+  /// - Dedup suppression (this function's own purpose): a saved domain
+  ///   using a real TLD absent from this list is not recognized as
+  ///   already-a-domain, so a peeled suffix can get appended to it a
+  ///   second time.
+  /// - Domain-restricted fuzzy ADMISSION (Pass 4/5 and their pack
+  ///   equivalents' `domainShapedOnly` gate, round 16): a saved alias
+  ///   using a real TLD absent from this list is excluded from the raw
+  ///   (unpeeled) fuzzy scan entirely, so a near-miss like
+  ///   "githib.photography" for a saved "githab.photography" never
+  ///   matches, because ".photography" is not in this set.
+  /// Round 16 also found the CONVERSE failure: a real TLD present in this
+  /// list ("io") is simultaneously a common non-domain product-name
+  /// suffix ("Socket.IO"), so a canonical like "Socket.IO" is
+  /// misclassified as domain-shaped and silently drops a dictated ".com"
+  /// -- the exact ambiguity this comment already names for "Node.js"
+  /// (".js" is NOT curated) now shows up for a curated TLD too. Canonical
+  /// text alone cannot resolve either direction: `matcher-set-adversarial-
+  /// tests`'s generalisation gate is right that a hand-authored set is a
+  /// prediction about users we haven't met -- the two mechanisms that
+  /// would actually close it are bundling a maintained public-suffix
+  /// authority, or letting a word's OWNER mark it as a domain explicitly
+  /// rather than the app guessing from its text -- and both are real
+  /// feature-sized additions, not a fix for this bug. The failure mode
+  /// this list still has is narrow: it needs a saved word shaped like a
+  /// domain (or ambiguously shaped like one) that is missing from, or
+  /// collides with, this curated set, AND a separately-dictated domain
+  /// suffix interacting with it, and (measured against the shipped pack
+  /// and this founder's own live vocabulary while building this fix) zero
+  /// words anywhere in this app are shaped like a domain at all today.
   private static let knownDedupTLDs: Set<String> = [
     "com", "org", "net", "edu", "gov", "mil", "int", "info", "biz", "name",
     "pro", "coop", "museum", "aero", "jobs", "mobi", "travel", "tel", "asia", "cat", "xxx",

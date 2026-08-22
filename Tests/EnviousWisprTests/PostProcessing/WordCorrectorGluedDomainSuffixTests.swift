@@ -621,4 +621,25 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "internationalplatform.com")
     #expect(result.replacements == 0)
   }
+
+  // MARK: Cloud Codex review, round 16 (PR #2298) -- an ambiguous non-pack
+  // result must be TERMINAL, not "no non-pack candidate, try pack next": a
+  // lower-authority pack candidate must never win a token that non-pack
+  // itself couldn't confidently resolve.
+
+  @Test("An ambiguous non-pack tie is terminal and never falls through to a pack candidate")
+  func ambiguousNonPackTieDoesNotFallThroughToPack() {
+    // Same near-tied non-pack pair as round 15, plus a pack alias that
+    // WOULD clear its own threshold if given a turn. The non-pack tier's
+    // ambiguity must stop the retry outright rather than reading as "no
+    // non-pack candidate" and letting the pack tier decide instead.
+    let distractor = CustomWord(canonical: "Wrong.com", aliases: ["internationalplatforn.com"])
+    let correct = CustomWord(canonical: "Right", aliases: ["internationalplatforx"])
+    let packDistractor = CustomWord(
+      canonical: "PackWrong", aliases: ["internationalplatforq.com"], source: .pack)
+    let result = corrected(
+      "internationalplatform.com", [distractor, correct, packDistractor])
+    #expect(result.text == "internationalplatform.com")
+    #expect(result.replacements == 0)
+  }
 }
