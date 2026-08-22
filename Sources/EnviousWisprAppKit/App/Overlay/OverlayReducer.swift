@@ -685,16 +685,21 @@ struct OverlayReducer {
 
     case .escapeRecovery(let transcriptID):
       return OverlayPresentation(
-        // `EscapeRecoveryPillView.dwellSeconds = 3.0`, hover-pausable. The VIEW
-        // owns this dwell today because a panel-level timer cannot be paused by
-        // a hover only the view sees — the two would race and the hover would
-        // appear to do nothing. Once the director owns the single
-        // expiry, that reason is gone and this becomes an ordinary hover-pausing
-        // expiry. **C18 removed the view-owned task, which C4 was recorded as
-        // doing and did not.** Two three-second timers ran side by side from the
-        // cutover until cloud review found the rail finishing while the pill
-        // stayed visible -- a comment asserting a FUTURE state is invisible to
-        // every diff review, because nothing in the diff contradicts it.
+        // **THIS expiry is the only one. The director owns it; the view draws
+        // it.** Three seconds, hover-pausable, exactly like any other dwell.
+        //
+        // The shipped panel could not do that -- it had no single owner of
+        // expiry, so a panel-level timer could not be paused by a hover only the
+        // view sees and the view kept its own. That reason died with the
+        // retained window, and this comment used to LEAD with it as though it
+        // were still true, correcting itself only at the end.
+        //
+        // It cost two independent three-second timers running side by side from
+        // the cutover until cloud review found the rail finishing while the pill
+        // was still on screen. The trap worth naming: a comment asserting a
+        // FUTURE state ("a later chunk removes the view's task") is invisible to
+        // every diff review, because nothing in a diff can contradict a promise.
+        // C4 was recorded as doing it and did not; C18 did.
         id: id, content: .escapeRecovery(transcriptID: transcriptID),
         expiry: .after(seconds: 3, pausesOnHover: true), requestedWidth: .measured)
     }

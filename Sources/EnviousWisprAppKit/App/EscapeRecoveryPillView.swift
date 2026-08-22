@@ -132,9 +132,11 @@ struct EscapeRecoveryPillView: View {
 
   /// **The rail is a PICTURE of the director's dwell, not a second clock**
   /// (#2292, C18). `OverlayReducer` arms `.after(seconds: 3, pausesOnHover: true)`
-  /// for this pill and its own comment says "C4 removes the view-owned task" --
-  /// C4 did not, so two independent three-second timers ran side by side from
-  /// the cutover onward, started at different moments and agreeing only by luck.
+  /// for this pill, and the view's own timer was removed in C18. A comment there
+  /// had recorded a LATER chunk as the one that would remove it; that chunk did
+  /// not, and nothing in any diff could contradict the promise, so two
+  /// independent three-second timers ran side by side from the cutover onward --
+  /// started at different moments and agreeing only by luck.
   ///
   /// The view's timer is gone; only the animation remains. The director dismisses,
   /// which is what `exactly one armed expiry` means, and what made the rail
