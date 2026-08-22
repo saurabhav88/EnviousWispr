@@ -320,7 +320,6 @@ internal final class PasteCascadeExecutor {
     self.pasteboard = pasteboard
   }
 
-
   func deliver(_ request: PasteDeliveryRequest) async -> PasteDeliveryResult {
     let pasteStart = CFAbsoluteTimeGetCurrent()
     let bundleId = request.targetApp?.bundleIdentifier ?? "unknown"
@@ -481,7 +480,7 @@ internal final class PasteCascadeExecutor {
           : nil
         submittedKind = payload.kind
         let dispatchResult = PasteService.pasteToActiveApp(
-          payload.text, to: pasteboard)
+          payload.text, to: self.pasteboard)
         submittedClipboardChangeCount = dispatchResult.changeCount
         switch dispatchResult {
         case .dispatched:
@@ -533,7 +532,7 @@ internal final class PasteCascadeExecutor {
           : nil
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
-          payload.text, to: pasteboard)
+          payload.text, to: self.pasteboard)
         submittedClipboardChangeCount = changeCount
         if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
           tier = .appleScript
@@ -583,7 +582,7 @@ internal final class PasteCascadeExecutor {
           terminalBudget: request.terminalBudget)
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
-          payload.text, to: pasteboard)
+          payload.text, to: self.pasteboard)
         submittedClipboardChangeCount = changeCount
         switch PasteService.findPasteMenuItem(pid: app.processIdentifier) {
         case .found(let menuItem):
@@ -647,7 +646,7 @@ internal final class PasteCascadeExecutor {
     // Tier 2 because a non-text element was focused (PR #220's void-protection
     // path). Nil-element paths reach Tier 2 and log their own tier=cgevent.
     if tier == .clipboardOnly {
-      PasteService.copyToClipboard(request.legacyText, to: pasteboard)
+      PasteService.copyToClipboard(request.legacyText, to: self.pasteboard)
       // An earlier route may have SUBMITTED the contextual payload and failed.
       // What the user can now paste by hand is this legacy text, so that is what
       // the record has to say (Codex review r4) — otherwise the field reports a
