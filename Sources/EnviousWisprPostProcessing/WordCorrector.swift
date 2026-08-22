@@ -1255,6 +1255,17 @@ public struct WordCorrector: Sendable {
     var bestScore = 0.0
     var secondBest = 0.0
     var bestMatch = ""
+    // Tracks whether EITHER pass found a genuine ambiguity (score cleared
+    // its own threshold but not its own margin) that neither pass went on
+    // to resolve -- the function's FINAL fallback, not an early exit,
+    // because a confident Pass 5 canonical match must still be able to
+    // override a Pass 4 alias ambiguity (round 19: two Pass 4 aliases
+    // scoring 0.970/0.959 against each other is genuinely ambiguous, but
+    // Pass 5's own candidate pool can independently and confidently
+    // resolve the SAME input at 0.970 with nothing else within 0.05 of
+    // it -- Pass 5 answers a different, unambiguous question and must get
+    // the chance to).
+    var anyPassWasAmbiguous = false
 
     for entry in singleFuzzyCandidates {
       let surface = entry.surface
@@ -1302,16 +1313,20 @@ public struct WordCorrector: Sendable {
       return .candidate(canonical: bestMatch, score: bestScore)
     } else if bestScore >= pass4Threshold, pass4Margin < Self.ambiguityMargin {
       // Score clears the bar but the margin over the runner-up does not --
-      // this is a genuine ambiguity between two DIFFERENT candidates, not
-      // "nothing scored close." Stop here rather than trying Pass 5, whose
-      // canonical pool answers a different question and cannot resolve
-      // THIS ambiguity (round 17).
+      // a genuine ambiguity between two DIFFERENT candidates, not "nothing
+      // scored close." Record it and continue to Pass 5 rather than
+      // returning immediately (round 17 stopped here; round 19 found that
+      // too aggressive): Pass 5's canonical pool answers a DIFFERENT
+      // question, so it may still resolve confidently on its own terms
+      // even though Pass 4 couldn't. Only if Pass 5 ALSO fails to produce
+      // a confident candidate does this ambiguity become the function's
+      // final answer.
       #if DEBUG
         Self.logger.debug(
           "WordCorrector: REJECT pass=alias-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass4Margin, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3)) reason=below_margin"
         )
       #endif
-      return .ambiguous
+      anyPassWasAmbiguous = true
     } else if bestScore > 0 {
       #if DEBUG
         let reason = bestScore < pass4Threshold ? "below_threshold" : "same_as_input"
@@ -1362,7 +1377,7 @@ public struct WordCorrector: Sendable {
           "WordCorrector: REJECT pass=canonical-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass5Margin, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3)) reason=below_margin"
         )
       #endif
-      return .ambiguous
+      anyPassWasAmbiguous = true
     } else if bestScore > 0 {
       #if DEBUG
         let reason = bestScore < pass5Threshold ? "below_threshold" : "same_as_input"
@@ -1372,7 +1387,13 @@ public struct WordCorrector: Sendable {
       #endif
     }
 
-    return .noCandidate
+    // Neither pass produced a confident candidate. If either was
+    // genuinely ambiguous (rather than simply empty), that ambiguity is
+    // this attempt's answer, not "no candidate" -- preserves round 16/17's
+    // invariant that an unresolved ambiguity blocks the pack tier, now
+    // correctly scoped to "unresolved by EITHER pass" instead of
+    // "Pass 4 alone" (round 19).
+    return anyPassWasAmbiguous ? .ambiguous : .noCandidate
   }
 
   /// #992 PACK FUZZY TIER — LOWER authority. Split from the non-pack fuzzy
@@ -1408,6 +1429,11 @@ public struct WordCorrector: Sendable {
     if nonPackExactKeys.contains(coreLower) {
       return .noCandidate
     }
+
+    // Same "final answer, not an early exit" tracking as the non-pack
+    // twin above (round 19): a Pack Pass 4 ambiguity must still let Pack
+    // Pass 5 try to resolve confidently on its own terms.
+    var anyPassWasAmbiguous = false
 
     // Pack Pass 4: single-word pack aliases.
     if !packSingleFuzzyCandidates.isEmpty {
@@ -1455,14 +1481,15 @@ public struct WordCorrector: Sendable {
           return .candidate(canonical: pMatch, score: pBest)
         }
       } else if pBest >= packThreshold, pMargin < Self.ambiguityMargin {
-        // Same "genuinely ambiguous, not merely absent" distinction as the
-        // non-pack Pass 4 above (round 17).
+        // Genuinely ambiguous, not merely absent (round 17) -- but record
+        // and continue rather than return, so Pack Pass 5 still gets its
+        // chance (round 19).
         #if DEBUG
           Self.logger.debug(
             "WordCorrector: REJECT pass=pack-alias-fuzzy source='\(core)' best_target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pMargin, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3)) reason=below_margin"
           )
         #endif
-        return .ambiguous
+        anyPassWasAmbiguous = true
       }
     }
 
@@ -1511,11 +1538,11 @@ public struct WordCorrector: Sendable {
             "WordCorrector: REJECT pass=pack-canonical-fuzzy source='\(core)' best_target='\(pMatch)' score=\(pBest, format: .fixed(precision: 3)) margin=\(pMargin, format: .fixed(precision: 3)) threshold=\(packThreshold, format: .fixed(precision: 3)) reason=below_margin"
           )
         #endif
-        return .ambiguous
+        anyPassWasAmbiguous = true
       }
     }
 
-    return .noCandidate
+    return anyPassWasAmbiguous ? .ambiguous : .noCandidate
   }
 
   // MARK: - Scoring

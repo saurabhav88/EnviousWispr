@@ -667,4 +667,38 @@ struct WordCorrectorGluedDomainSuffixTests {
     #expect(result.text == "internationalplatform.com")
     #expect(result.replacements == 0)
   }
+
+  // MARK: Cloud Codex review, round 19 (PR #2298) -- a Pass 4 (alias)
+  // ambiguity must still let Pass 5 (canonicals) try to resolve
+  // confidently on its own terms, rather than blocking Pass 5 outright the
+  // way round 17 did. Pass 5 answers a DIFFERENT question over a DIFFERENT
+  // candidate pool, so its own margin can clear even when Pass 4's cannot.
+
+  @Test("A confident Pass 5 canonical match resolves a Pass 4 alias ambiguity")
+  func confidentPass5ResolvesPass4Ambiguity() {
+    // Cloud review's own construction, real scores measured: two Pass 4
+    // aliases score 0.970/0.959 against each other (ambiguous, only 0.011
+    // apart) -- but Pass 5's canonical pool scores the SAME top candidate
+    // at 0.970 against an unrelated ~0.09 for the other canonicals, a
+    // margin of ~0.88, nowhere near ambiguous. Pass 5's confident answer
+    // must win rather than the whole attempt staying silent.
+    let right = CustomWord(canonical: "internationalplatforn", aliases: [])
+    let wrong1 = CustomWord(canonical: "Wrong1", aliases: ["internationalplatforn"])
+    let wrong2 = CustomWord(canonical: "Wrong2", aliases: ["internationalplatforx"])
+    let result = corrected("internationalplatform", [right, wrong1, wrong2])
+    #expect(result.text == "internationalplatforn")
+    #expect(result.replacements == 1)
+  }
+
+  @Test("A confident pack Pass 5 canonical match resolves a pack Pass 4 alias ambiguity")
+  func confidentPackPass5ResolvesPackPass4Ambiguity() {
+    // Same construction as above, at the lower-authority pack tier -- the
+    // twin site round 16/17/18 each needed a matching fix for.
+    let right = CustomWord(canonical: "internationalplatforn", aliases: [], source: .pack)
+    let wrong1 = CustomWord(canonical: "Wrong1", aliases: ["internationalplatforn"], source: .pack)
+    let wrong2 = CustomWord(canonical: "Wrong2", aliases: ["internationalplatforx"], source: .pack)
+    let result = corrected("internationalplatform", [right, wrong1, wrong2])
+    #expect(result.text == "internationalplatforn")
+    #expect(result.replacements == 1)
+  }
 }
