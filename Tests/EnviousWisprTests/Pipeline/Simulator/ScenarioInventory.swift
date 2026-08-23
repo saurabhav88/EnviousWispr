@@ -171,12 +171,14 @@ enum ScenarioInventory {
     Scenario(
       // .wedgeOnFinalize emits a few finalize-progress ticks then goes silent;
       // the kernel's finalize wedge watcher arms on the first tick and fires
-      // after a stall window of logical time (PR-3 plan §3.7). The advanceClock
-      // step supplies that window; the trailing cancel hits a terminal state.
+      // after a stall window of logical time (PR-3 plan §3.7). STOP waits for
+      // the watcher's real clock registration before advanceClock supplies that
+      // window; the trailing cancel then hits an already-terminal state (#1868).
       id: "A13", name: "adapter wedge on finalize",
       steps: [
         .engine(.setBehavior(.wedgeOnFinalize)),
-        .trigger(.start), .capture(.deliverBuffer), .trigger(.stop),
+        .trigger(.start), .capture(.deliverBuffer),
+        .triggerAwaitingClockRegistration(.stop),
         .advanceClock(ticks: 4), .trigger(.cancel),
       ],
       expected: ExpectedOutcome(

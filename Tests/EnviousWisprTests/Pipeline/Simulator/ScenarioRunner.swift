@@ -104,6 +104,19 @@ struct ScenarioRunner {
     case .trigger(let trigger):
       await context.sut.apply(trigger)
 
+    case .triggerAwaitingClockRegistration(let trigger):
+      // #1868: A13's finalize-progress consumer spawns its wedge watcher, but
+      // the watcher may not have reached `FakeClock.sleep` yet. Advancing in
+      // that spawn-to-register window moves an empty clock and makes the
+      // watcher's deadline four ticks late, so the following cancel wins.
+      // Capture the monotonic count BEFORE the trigger, then wait for the
+      // clock's own registration event. A bounded fall-through would recreate
+      // the bug; this step is used only where a new sleeper is part of the
+      // scenario's declared meaning.
+      let requiredRegistration = context.clock.registeredWaiterCount + 1
+      await context.sut.apply(trigger)
+      await context.clock.waitForRegistrations(requiredRegistration)
+
     case .advanceClock(let ticks):
       context.clock.advance(by: ticks)
 
