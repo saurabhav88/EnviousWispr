@@ -104,7 +104,7 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`
       const link = e.target.closest('a[href*="EnviousWispr.dmg"]');
       if (!link || typeof window.posthog === 'undefined') return;
       const source = link.dataset.downloadSource
-        || link.closest('nav')?.classList.contains('nav-bar') && 'nav'
+        || link.closest('nav') && 'nav'
         || link.closest('.hero-section') && 'hero'
         || link.closest('.cta-section') && 'bottom-cta'
         || link.closest('footer') && 'footer'
