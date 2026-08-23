@@ -507,7 +507,7 @@ public final class WisprBootstrapper {
       customWords: customWordsCoordinator,
       aliasSuggester: customWordsCoordinator.aliasSuggester,
       presentStatus: { [weak recordingOverlay] message in
-        recordingOverlay?.send(.featureRequest(.importStatus(message: message)), actions: nil)
+        recordingOverlay?.present(.importStatus(message: message))
       })
     customWordsCoordinator.onImportCommitted = { [weak bulkImportEnrichmentCoordinator] in
       bulkImportEnrichmentCoordinator?.requestDrain()
@@ -528,8 +528,7 @@ public final class WisprBootstrapper {
     // cannot start until bootstrap returns, so no reachable interval exists where
     // it is unbound.
     vadSource.onAutoStopUnavailableNotice = { [weak recordingOverlay] in
-      recordingOverlay?.send(
-        .inPanelNotice(.autoStopUnavailable, dismissAfter: 4.0), actions: nil)
+      recordingOverlay?.update(.inPanelNotice(.autoStopUnavailable, dismissAfter: 4.0))
     }
 
     // Custom-words propagator wiring (seed → register consumers → install
@@ -755,7 +754,7 @@ public final class WisprBootstrapper {
     // #1464: after a leftover recording lands in History, post the standalone green
     // success notice (the `.recovered` path was silent before).
     recoveryCoordinator.onRecoverySucceeded = { [weak recordingOverlay] in
-      recordingOverlay?.send(.pipeline(.recoverySucceeded), actions: nil)
+      recordingOverlay?.present(.recoverySucceeded)
     }
     // #1171 — the single owner of ASR-engine selection, status, and switching.
     // Reads the user's choice + active engine + readiness LIVE (no stored "want"

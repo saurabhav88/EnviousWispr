@@ -68,6 +68,25 @@
             isLocked: locked)))
     }
 
+    /// The same wiring as `director()` on a host that never draws, for a case
+    /// whose subject is a BUTTON rather than a window.
+    ///
+    /// The real host has no root to press through, and giving it one would be a
+    /// test hatch in shipping code. Every case using this asserts what a press
+    /// reached; none of them asks a question about a frame.
+    private static func pressableDirector() -> (OverlayDirector, WindowlessOverlayHost, Sink) {
+      let sink = Sink()
+      let host = WindowlessOverlayHost()
+      let d = OverlayDirector(
+        host: host,
+        scheduler: .manual { _ in },
+        announce: { sink.announcements.append($0) },
+        livePreview: .disabled,
+        grantAccessibility: { sink.appActions.append(.grantAccessibility) },
+        deferFirstRender: { $0() })
+      return (d, host, sink)
+    }
+
     private static func closeAllWindows() {
       for h in hosts { h.panelForTesting?.orderOut(nil) }
       hosts.removeAll()
@@ -167,7 +186,7 @@
     func staleTimerCannotDismissTheLivePill() {
       let (d, armed, _) = Self.director()
       defer { Self.closeAllWindows() }
-      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      d.present(.warning(reason: .polishFailed))
       let staleTimer = try! #require(armed.work)
 
       Self.record(d, level: 0.4)
@@ -185,10 +204,10 @@
     func armingReplacesTheArmedExpiry() {
       let (d, armed, _) = Self.director()
       defer { Self.closeAllWindows() }
-      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      d.present(.warning(reason: .polishFailed))
       let first = try! #require(armed.work)
 
-      d.send(.pipeline(.error(reason: .asrFailed)), actions: nil)
+      d.present(.error(reason: .asrFailed))
 
       #expect(first.isCancelled, "the previous pill's timer was left running")
       #expect(armed.work !== first, "a second timer was armed without replacing the first")
@@ -199,7 +218,7 @@
     func persistentPillDisarms() {
       let (d, armed, _) = Self.director()
       defer { Self.closeAllWindows() }
-      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      d.present(.warning(reason: .polishFailed))
       let notice = try! #require(armed.work)
 
       Self.record(d, level: 0.2)
@@ -214,7 +233,7 @@
     func ownTimerDismisses() {
       let (d, armed, _) = Self.director()
       defer { Self.closeAllWindows() }
-      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      d.present(.warning(reason: .polishFailed))
 
       try! #require(armed.work).fireForTesting()
 
@@ -223,34 +242,31 @@
 
     // MARK: - Exactly one action binding
 
-    @Test("an action reaches the feature that owns the live pill")
-    func actionReachesItsOwner() {
-      let (d, _, _) = Self.director()
-      defer { Self.closeAllWindows() }
-      let delivered = Sink()
-      d.send(.pipeline(.accessibilityToast), actions: { delivered.effects.append(.recordingStateChanged(true)); _ = $0 })
-      let id = try! #require(d.currentPresentationForTesting?.id)
-      d.send(.action(id, .grantAccessibility), actions: nil)
-
-      #expect(delivered.effects.count == 1, "the action never reached the handler bound with the request")
-    }
+    // **`actionReachesItsOwner` was DELETED** (#2292 C5c). It installed a test
+    // observer through the generic ingress's `actions:` parameter, which no
+    // longer exists — an action's owner now arrives with the request, so the
+    // observer it used cannot be expressed. What it asserted, that a press
+    // reaches the owner bound with its own presentation, is asserted in BOTH
+    // lanes by `PillRequestParityTests.everyActionIsBound` across the five
+    // feature actions and by `grantIsBound` for the app-owned one.
 
     /// **A binding must not outlive its pill.** The shipped panel keeps eight
     /// handler closures alive for the app's lifetime whether or not the pill that
     /// uses them is showing.
     @Test("a binding is dropped when its pill is replaced")
-    func bindingDiesWithItsPill() {
-      let (d, _, _) = Self.director()
-      defer { Self.closeAllWindows() }
-      let delivered = Sink()
-      d.send(.pipeline(.accessibilityToast), actions: { _ in delivered.effects.append(.recordingStateChanged(true)) })
-      let toast = try! #require(d.currentPresentationForTesting?.id)
+    func bindingDiesWithItsPill() throws {
+      let (d, host, _) = Self.pressableDirector()
+      var discards = 0
+
+      // A request that carries its OWN owner, so the observation is the callback
+      // the caller supplied rather than a test closure the ingress used to take.
+      let notice = try #require(d.present(.recoveryNotice(onDiscard: { discards += 1 })))
 
       Self.record(d, level: 0.3)
 
       #expect(d.hasActiveBindingForTesting == false)
-      d.send(.action(toast, .grantAccessibility), actions: nil)
-      #expect(delivered.effects.isEmpty, "an action from a dismissed pill reached its old handler")
+      try host.sendUserActionThroughRoot(.discardRecovery, for: notice)
+      #expect(discards == 0, "an action from a replaced pill reached its old handler")
     }
 
     /// **Replaced by construction.** There used to be a test that a `bind(for:)`
@@ -275,7 +291,7 @@
           onPaste: { _ in }))
       #expect(d.holdsEscapeRecoveryPayloadForTesting)
 
-      d.send(.pipeline(.hidden), actions: nil)
+      d.dismissCurrent(.announced)
 
       #expect(
         d.holdsEscapeRecoveryPayloadForTesting == false,
@@ -313,19 +329,19 @@
     /// this observes the PAYLOAD arriving rather than a raw action — which is the
     /// thing a user's press has to produce.
     @Test("the cancelled-transcript pill carries its Undo handler")
-    func escapeRecoveryCarriesItsHandler() {
-      let (d, _, _) = Self.director()
-      defer { Self.closeAllWindows() }
+    func escapeRecoveryCarriesItsHandler() throws {
+      let (d, host, _) = Self.pressableDirector()
       let transcript = UUID()
       var pressed: [PillAction] = []
-      d.present(
-        .escapeRecovery(
-          payload: CancelUndoPayload(
-            transcriptID: transcript, targetApp: nil, targetElement: nil),
-          onPaste: { _ in pressed.append(.pasteEscapeRecovery(transcriptID: transcript)) }))
-      let id = try! #require(d.currentPresentationForTesting?.id)
+      let receipt = try #require(
+        d.present(
+          .escapeRecovery(
+            payload: CancelUndoPayload(
+              transcriptID: transcript, targetApp: nil, targetElement: nil),
+            onPaste: { _ in pressed.append(.pasteEscapeRecovery(transcriptID: transcript)) })))
 
-      d.send(.action(id, .pasteEscapeRecovery(transcriptID: transcript)), actions: nil)
+      try host.sendUserActionThroughRoot(
+        .pasteEscapeRecovery(transcriptID: transcript), for: receipt)
 
       #expect(
         pressed == [.pasteEscapeRecovery(transcriptID: transcript)],
@@ -378,7 +394,7 @@
       Self.record(d, level: 0.2)
       let first = try! #require(d.presentedIDForTesting)
 
-      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      d.present(.warning(reason: .polishFailed))
 
       #expect(d.presentedIDForTesting != first)
     }
@@ -394,7 +410,7 @@
         layout: .compact(position: .top), onContentHeightChange: { _ in })
       Self.record(d, level: 0.2)
 
-      d.send(.pipeline(.hidden), actions: nil)
+      d.dismissCurrent(.announced)
 
       #expect(d.presentedIDForTesting == nil)
       #expect(d.renderModel.audioLevelProvider() == 0, "a provider outlived its dictation")
@@ -415,7 +431,7 @@
         layout: .compact(position: .top), onContentHeightChange: { _ in })
       Self.record(d, level: 0.2)
 
-      d.send(.pipeline(.processing(phase: .transcribing)), actions: nil)
+      d.present(.processing(phase: .transcribing))
 
       #expect(
         d.renderModel.audioLevelProvider() == 0,
@@ -557,7 +573,7 @@
       // session's showing is already spent by the FIRST push, so this one
       // correctly falls back — and it proves the duplicate did not spend a
       // second one, because there is only ever one to spend.
-      d.send(.pipeline(.processing(phase: .transcribing)), actions: nil)
+      d.present(.processing(phase: .transcribing))
       d.present(.accessibilityNotice)
       guard case .notice(let later)? = d.currentPresentationForTesting?.content else {
         Issue.record("expected a notice")
@@ -609,33 +625,17 @@
     /// their setters went with the class and both presenting sites passed
     /// `actions: nil`, so the buttons rendered and reached nobody. Nothing
     /// failed, which is why a review found it and the suite did not.
-    @Test("the accessibility toast's Grant button reaches the app")
-    func grantIsBound() {
-      let (d, _, sink) = Self.director()
-      defer { Self.closeAllWindows() }
-
-      d.present(.accessibilityNotice)
-      let id = try! #require(d.currentPresentationForTesting?.id)
-      d.send(.action(id, .grantAccessibility), actions: nil)
-
-      #expect(sink.appActions == [.grantAccessibility], "Grant reached nobody")
-    }
+    // **`grantIsBound` was DELETED here** (#2292 C5c) and lives in
+    // `PillRequestParityTests`, which runs in the Release lane. This suite is
+    // `#if DEBUG` in its entirety, so the Debug-only copy was the weaker of two
+    // tests making one claim.
 
     /// **Observed at the request's own callback since C4b.** There is no app
     /// action sink any more: the router that owned it is deleted, so Discard
     /// reaches the closure the presenting caller supplied and nowhere else.
-    @Test("the recovery notice's Discard button reaches the app")
-    func discardIsBound() {
-      let (d, _, _) = Self.director()
-      defer { Self.closeAllWindows() }
-      var discards = 0
-
-      let receipt = d.present(.recoveryNotice(onDiscard: { discards += 1 }))
-      let id = try! #require(receipt?.presentationID)
-      d.send(.action(id, .discardRecovery), actions: nil)
-
-      #expect(discards == 1, "Discard reached nobody")
-    }
+    // **`discardIsBound` was DELETED here** (#2292 C5c), for the same reason as
+    // `grantIsBound` above: `PillRequestParityTests.discardDismisses` asserts it
+    // in both lanes, and `discardRunsBeforeDismissal` adds the ordering half.
 
     /// **A feature that OCCUPIES the slot has to say so.**
     /// `BluetoothAwarenessPresenter` confirms its own card by asking
@@ -648,7 +648,7 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
 
-      d.send(.featureRequest(.bluetoothAwareness), actions: { _ in })
+      d.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
 
       #expect(
         d.currentIntent == .bluetoothAwareness,
@@ -659,13 +659,23 @@
     }
 
     /// **The slot must report a chip as occupying it, exactly as it reports the
-    /// card.** Both arrive through `reduceFeature`, which never touches
-    /// `pipelineIntent`, so both read `.hidden` unless projected.
+    /// card.**
     ///
     /// Bluetooth was projected at the cutover and the chip was not — the same
     /// omission twice, and only the first was found by review.
     /// `LanguageSuggestionPresenter` guards `case .hidden` before showing a
     /// chip, so with its own chip up it read the slot as free.
+    ///
+    /// **The pipeline-intent assertion this case used to carry was DELETED and
+    /// its claim was false** (#2292 C5c). It read "a feature must not change the
+    /// PIPELINE intent", which was true of the spelling this case used to send —
+    /// `.featureRequest(.passiveChip(...))`, routed through `reduceFeature`,
+    /// which never touches `pipelineIntent`. That spelling is not the one
+    /// production uses and is now unreachable. The typed request travels as
+    /// `.pipeline(.passiveChip)` and SETS the pipeline intent, which is the whole
+    /// point: the language presenter arbitrates against exactly that.
+    /// `PillRequestParityTests.languageChip` owns the claim in its correct
+    /// direction, and the two contradicted each other until this one was fixed.
     @Test("a language chip reports itself as the current intent")
     func languageChipReportsOwnership() {
       let (d, _, _) = Self.director()
@@ -673,14 +683,11 @@
       let payload = LanguageChipPayload(
         lang: "es", displayName: "Spanish", state: .askToLock, generation: 1)
 
-      d.send(.featureRequest(.passiveChip(payload: payload)), actions: { _ in })
+      d.present(.languageChip(payload: payload, onLock: {}, onDismiss: {}, onExpire: {}))
 
       #expect(
         d.currentIntent == .passiveChip(payload: payload),
         "the chip is up and its own presenter reads the slot as free")
-      #expect(
-        d.pipelineIntentForTesting == .hidden,
-        "a feature must not change the PIPELINE intent, which arbitration reads")
     }
 
     /// The non-member, pinned so it is not "fixed" later. Import status is the
@@ -692,7 +699,7 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
 
-      d.send(.featureRequest(.importStatus(message: "Importing 3 recordings")), actions: nil)
+      d.present(.importStatus(message: "Importing 3 recordings"))
 
       #expect(d.currentPresentationForTesting != nil, "the status pill never took the slot")
       #expect(
@@ -785,7 +792,7 @@
       Self.record(loud)
       loudSink.announcements.removeAll()
 
-      loud.send(.pipeline(.hidden), actions: nil)
+      loud.dismissCurrent(.announced)
 
       #expect(
         loudSink.announcements.map(\.text) == ["Recording complete"],
@@ -898,25 +905,13 @@
 
     // MARK: - Fail closed (#2292 C19)
 
-    /// **A recovery pill with no payload announces and draws nothing.**
-    /// `panel:713-717` records the rule: the announcement is true because the
-    /// row is saved, and an offer to Paste pointing at no target is not.
-    /// Preserved because a bare call still COMPILES — the same shape that left
-    /// Grant and Discard unbound earlier on this branch.
-    @Test("an escape-recovery intent with no payload announces but shows nothing")
-    func escapeRecoveryWithoutPayloadFailsClosed() {
-      let (d, _, sink) = Self.director()
-      defer { Self.closeAllWindows() }
-
-      // The bare path: no typed `.escapeRecovery` request, so no payload is held.
-      d.send(.pipeline(.escapeRecovery(transcriptID: UUID())), actions: nil)
-
-      #expect(sink.announcements.count == 1, "the saved row was not announced")
-      #expect(
-        d.currentPresentationForTesting == nil,
-        "a Paste button was offered with no target behind it")
-      #expect(d.presentedIDForTesting == nil, "the window drew a pill with no payload")
-    }
+    // **`escapeRecoveryWithoutPayloadFailsClosed` was DELETED** (#2292 C5c), and
+    // its own comment names the reason it can go: it was "preserved because a
+    // bare call still COMPILES". It does not. The one route to that presentation
+    // is `present(.escapeRecovery(payload:onPaste:))`, whose payload is not
+    // optional, so an offer to Paste with no target behind it is no longer a
+    // shape anyone can write. The rule it protected became a property of the API,
+    // which is the stronger place for it.
 
     // MARK: - The first render is deferred one run loop (#2292 C15)
 
@@ -940,7 +935,7 @@
         host: host, announce: { _ in },
         livePreview: .disabled, grantAccessibility: {})
 
-      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      d.present(.warning(reason: .polishFailed))
       #expect(
         host.presented.isEmpty,
         "the first presentation reached the window synchronously — this is the menu-dismiss crash")
@@ -968,8 +963,8 @@
 
       // First request, deferred. A second replaces it before the run loop turns,
       // so the first drops on its identity gate and builds nothing.
-      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
-      d.send(.pipeline(.processing(phase: .transcribing)), actions: nil)
+      d.present(.warning(reason: .polishFailed))
+      d.present(.processing(phase: .transcribing))
       #expect(host.presented.isEmpty, "a presentation reached the window synchronously")
 
       await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } }
@@ -989,10 +984,10 @@
       let d = OverlayDirector(
         host: host, announce: { _ in },
         livePreview: .disabled, grantAccessibility: {})
-      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      d.present(.warning(reason: .polishFailed))
       await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } }
 
-      d.send(.pipeline(.processing(phase: .transcribing)), actions: nil)
+      d.present(.processing(phase: .transcribing))
 
       #expect(
         host.presented.count == 2,
@@ -1025,7 +1020,7 @@
       panel.setFrameOrigin(NSPoint(x: 120, y: 85))
       host.windowDidMove(Notification(name: NSWindow.didMoveNotification, object: panel))
 
-      d.send(.pipeline(.processing(phase: .transcribing)), actions: nil)
+      d.present(.processing(phase: .transcribing))
 
       #expect(
         panel.frame.origin.x == 120,
@@ -1048,7 +1043,7 @@
       panel.setFrameOrigin(NSPoint(x: 120, y: 85))
       host.windowDidMove(Notification(name: NSWindow.didMoveNotification, object: panel))
 
-      d.send(.pipeline(.hidden), actions: nil)
+      d.dismissCurrent(.announced)
       Self.record(d, level: 0.2)
 
       // Within a point: AppKit aligns a window frame to whole points, so an
@@ -1075,7 +1070,7 @@
       let (d, _, sink) = Self.director()
       defer { Self.closeAllWindows() }
 
-      d.send(.featureRequest(.bluetoothAwareness), actions: { _ in })
+      d.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
 
       #expect(sink.announcements.count == 1, "the card appeared and said nothing")
       #expect(
@@ -1097,7 +1092,7 @@
       let payload = LanguageChipPayload(
         lang: "es", displayName: "Spanish", state: .askToLock, generation: 1)
 
-      d.send(.featureRequest(.passiveChip(payload: payload)), actions: { _ in })
+      d.present(.languageChip(payload: payload, onLock: {}, onDismiss: {}, onExpire: {}))
 
       #expect(sink.announcements.count == 1, "the chip appeared and said nothing")
       #expect(
@@ -1114,7 +1109,7 @@
       let (d, _, sink) = Self.director()
       defer { Self.closeAllWindows() }
 
-      d.send(.featureRequest(.importStatus(message: "Importing 3 recordings")), actions: nil)
+      d.present(.importStatus(message: "Importing 3 recordings"))
 
       #expect(
         d.currentPresentationForTesting != nil, "the status pill never took the slot")
@@ -1133,7 +1128,7 @@
       let (d, sink) = Self.refusingDirectorWithSink({ false })
       defer { Self.closeAllWindows() }
 
-      d.send(.featureRequest(.bluetoothAwareness), actions: { _ in })
+      d.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
 
       #expect(
         sink.announcements.isEmpty,
@@ -1182,7 +1177,7 @@
       let (d, _) = Self.refusingDirectorWithSink({ false })
       defer { Self.closeAllWindows() }
 
-      d.send(.featureRequest(.bluetoothAwareness), actions: { _ in })
+      d.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
 
       #expect(
         d.currentIntent == .hidden,
@@ -1210,11 +1205,11 @@
       let (d, _) = Self.refusingDirectorWithSink({ hasScreen })
       defer { Self.closeAllWindows() }
 
-      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      d.present(.warning(reason: .polishFailed))
       #expect(d.currentPresentationForTesting == nil, "the refusal did not take")
 
       hasScreen = true
-      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      d.present(.warning(reason: .polishFailed))
 
       #expect(
         d.currentPresentationForTesting != nil,

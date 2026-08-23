@@ -59,7 +59,7 @@ import Testing
       set: { lockBox.isLocked = $0 }
     )
     let hcr = HeartControlRecovery(
-      hideOverlay: { overlay.send(.pipeline(.hidden), actions: nil) },
+      hideOverlay: { overlay.dismissCurrent(.announced) },
       setLocked: { locked in lockAccess.set(locked) },
       backend: { "parakeet" }
     )

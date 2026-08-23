@@ -51,12 +51,12 @@ struct OverlayHostingContractTests {
       host: host,       announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
       deferFirstRender: { $0() })
 
-    d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+    d.present(.warning(reason: .polishFailed))
 
     #expect(host.presented.count == 1, "the fake was never asked to present")
     #expect(host.isShowing, "the fake accepted a presentation and then reported nothing showing")
 
-    d.send(.pipeline(.hidden), actions: nil)
+    d.dismissCurrent(.announced)
 
     #expect(host.hideCount == 1, "the fake was never asked to hide")
     #expect(!host.isShowing, "the fake was hidden and still reports a presentation showing")
@@ -106,7 +106,7 @@ struct OverlayHostingContractTests {
       for (name, host) in Self.hosts() {
         let d = Self.director(on: host)
 
-        d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+        d.present(.warning(reason: .polishFailed))
 
         #expect(
           d.presentedIDForTesting != nil,
@@ -122,9 +122,9 @@ struct OverlayHostingContractTests {
       defer { Self.closeRealHosts() }
       for (name, host) in Self.hosts() {
         let d = Self.director(on: host)
-        d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+        d.present(.warning(reason: .polishFailed))
 
-        d.send(.pipeline(.hidden), actions: nil)
+        d.dismissCurrent(.announced)
 
         #expect(d.presentedIDForTesting == nil, "the \(name) host still claims a presentation")
         #expect(

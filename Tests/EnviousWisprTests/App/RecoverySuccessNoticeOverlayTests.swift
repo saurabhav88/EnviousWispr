@@ -19,7 +19,7 @@ import Testing
   func recoverySucceededAcceptedFromLaunch() {
     let overlay = OverlayTestDouble.headlessDirector()
     // Nothing shown first — mirrors launch recovery with no live recording.
-    overlay.send(.pipeline(.recoverySucceeded), actions: nil)
+    overlay.present(.recoverySucceeded)
     #expect(
       overlay.currentIntent == .recoverySucceeded,
       "a dedicated intent routed through the standalone launch-visible notice path")
@@ -30,7 +30,7 @@ import Testing
   @Test("a recording supersedes the success notice synchronously (single slot)")
   func recordingSupersedesSuccessNotice() {
     let overlay = OverlayTestDouble.headlessDirector()
-    overlay.send(.pipeline(.recoverySucceeded), actions: nil)
+    overlay.present(.recoverySucceeded)
     overlay.present(
         .recording(
           RecordingPillInput(

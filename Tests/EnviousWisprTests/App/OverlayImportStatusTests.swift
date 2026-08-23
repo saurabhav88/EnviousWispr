@@ -46,10 +46,8 @@
       // No `await`/suspension between these two calls — this reproduces the exact
       // race a fast (or unavailable-model) drain hits: "Finished" arriving before
       // "Importing" has ever been rendered.
-      overlay.send(
-        .featureRequest(.importStatus(message: "Importing your words now.")), actions: nil)
-      overlay.send(
-        .featureRequest(.importStatus(message: "Finished importing your words.")), actions: nil)
+      overlay.present(.importStatus(message: "Importing your words now."))
+      overlay.present(.importStatus(message: "Finished importing your words."))
 
       #expect(Self.importMessage(overlay) == "Finished importing your words.")
     }
@@ -59,8 +57,7 @@
       let overlay = OverlayTestDouble.headlessDirector()
 
       Self.record(overlay)
-      overlay.send(
-        .featureRequest(.importStatus(message: "Finished importing your words.")), actions: nil)
+      overlay.present(.importStatus(message: "Finished importing your words."))
 
       #expect(overlay.currentIntent == .recording(audioLevel: 0))
       #expect(
@@ -72,11 +69,9 @@
     func recordingSupersedesPendingImportStatus() {
       let overlay = OverlayTestDouble.headlessDirector()
 
-      overlay.send(
-        .featureRequest(.importStatus(message: "Importing your words now.")), actions: nil)
+      overlay.present(.importStatus(message: "Importing your words now."))
       Self.record(overlay)
-      overlay.send(
-        .featureRequest(.importStatus(message: "Finished importing your words.")), actions: nil)
+      overlay.present(.importStatus(message: "Finished importing your words."))
 
       #expect(overlay.currentIntent == .recording(audioLevel: 0))
       #expect(

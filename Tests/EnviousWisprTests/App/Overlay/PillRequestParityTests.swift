@@ -6,16 +6,29 @@ import Testing
 
 @testable import EnviousWisprAppKit
 
-/// Chunk C1 is a semantic no-op port, and this suite is what makes that claim
-/// checkable rather than asserted (#2292 Phase 1).
+/// What the typed pill boundary DOES, asserted on outputs an observer outside
+/// the director can see (#2292 Phase 1).
 ///
-/// **Every case drives the SAME request twice — once through the old ingress,
-/// once through `OverlayPresenting` — and compares what an observer outside the
-/// director can see.** Comparing the two requests to each other would prove
-/// nothing: the whole risk of a port is that two spellings of the same intent
-/// diverge in what they PRODUCE. So the comparison is on outputs only — what the
-/// host was asked to present, what reached the screen reader, which effects were
-/// emitted, and what the render model published.
+/// **The parity scaffolding this suite was built around is gone** (C5c). C1
+/// created it to make a no-op port checkable: every case drove one request twice,
+/// once through the old generic ingress and once through `OverlayPresenting`, and
+/// compared what came out. C5 deleted the old ingress, so each `old:` arm was
+/// rewritten to the typed spelling as its legacy twin disappeared — and by C5c
+/// all eighteen comparisons were driving the same call on both rigs. A comparison
+/// of a call against itself cannot fail, and none of the eighteen was the only
+/// red test for any defect: every request they presented is presented by at least
+/// one other test file. They were removed rather than left reading as coverage.
+///
+/// What remains is every case that asserted a BEHAVIOUR rather than an
+/// equivalence — action ownership, ordering, refusal, receipts, expiry — and each
+/// one still asserts it on outputs only: what the host was asked to present, what
+/// reached the screen reader, which effects were emitted, and what the render
+/// model published.
+///
+/// **The name is stale and is kept deliberately until C6.** Two frozen mutation
+/// recipes (#2352, #2356) name `EnviousWisprTests/PillRequestParityTests`, and a
+/// recipe is frozen when it is filed; renaming the suite would make both
+/// unrunnable against a subject that still exists.
 ///
 /// **This suite runs in Release, and the reason is what it does NOT read.** The
 /// existing director suite is `#if DEBUG` in its entirety because every case
@@ -27,14 +40,12 @@ import Testing
 /// to reach a dwell without waiting for one. Those are a fake CLOCK rather than a
 /// window into private state, and neither is `#if DEBUG`, so the suite compiles
 /// and executes in both lanes. C6 of this phase replaces them.
-/// **Class: `.productOutcome`, and the judgment is worth stating because a parity suite could read as a
-/// drift guard.** A drift guard freezes an internal property and fails when we change our own code. This
-/// fails when the two spellings of one request produce DIFFERENT USER-VISIBLE RESULTS — a pill with a
-/// button bound to nobody, the wrong copy, a screen-reader announcement that does not fire. Nothing calls
-/// the façade in C1, so that divergence reaches a user only once C3 and C5 migrate the callers; the tag
-/// describes what the suite PROTECTS, not when it activates.
+/// **Class: `.productOutcome`.** Every remaining case fails on a USER-VISIBLE
+/// result — a button bound to nobody, a press reaching the wrong owner, a
+/// dismissal that beats the handler it was meant to follow, a screen-reader
+/// announcement that does not fire.
 @MainActor
-@Suite("Pill request parity (#2292 C1)", .tags(.productOutcome))
+@Suite("Pill request behaviour (#2292)", .tags(.productOutcome))
 struct PillRequestParityTests {
 
   /// One director, plus every observable output it produces, recorded in order.
@@ -76,173 +87,11 @@ struct PillRequestParityTests {
         deferFirstRender: { $0() })
     }
 
-    /// What an observer outside the director can see, as one comparable value.
-    @MainActor
-    var observed: Observed {
-      Observed(
-        presentedWidths: host.presented.map(\.width),
-        presentedFixedHeights: host.presented.map(\.fixedHeight),
-        presentedFreshness: host.presented.map(\.isFresh),
-        hideCount: host.hideCount,
-        isShowing: host.isShowing,
-        effects: effects,
-        announcements: announcements,
-        content: director.renderModel.presentation?.content,
-        expiry: director.renderModel.presentation?.expiry,
-        recordingLayout: director.renderModel.recordingLayout,
-        // **The one public value that separates a pipeline intent from a feature
-        // request.** Without it the two routing cases below compare identical
-        // observations and cannot fail when a request travels through the wrong
-        // enum — which is the exact defect they were written to catch.
-        featureSlotIsAvailable: director.featureSlotIsAvailable)
-    }
-  }
-
-  private struct Observed: Equatable {
-    let presentedWidths: [OverlayWidth]
-    let presentedFixedHeights: [CGFloat?]
-    let presentedFreshness: [Bool]
-    let hideCount: Int
-    let isShowing: Bool
-    let effects: [PillEffect]
-    let announcements: [OverlayAnnouncement]
-    let content: OverlayContent?
-    let expiry: OverlayExpiry?
-    let recordingLayout: OverlayRecordingLayout
-    let featureSlotIsAvailable: Bool
-  }
-
-  /// Drive `old` on one rig and `new` on another, then compare every output.
-  private func parity(
-    _ label: String,
-    old: (OverlayDirector) -> Void,
-    new: (any OverlayPresenting) -> Void
-  ) {
-    let a = Rig()
-    let b = Rig()
-    old(a.director)
-    new(b.director)
-    #expect(a.observed == b.observed, "\(label): the façade diverged from the old ingress")
   }
 
   // MARK: - Pipeline-owned requests
 
-  @Test("recording") func recording() {
-    parity(
-      "recording",
-      old: {
-        $0.present(
-        .recording(
-          RecordingPillInput(
-            audioLevel: 0.4,
-            audioLevelProvider: { 0.4 },
-            recordingElapsedProvider: { 3 },
-            isLocked: false)))
-      },
-      new: {
-        $0.present(.recording(RecordingPillInput(
-          audioLevel: 0.4, audioLevelProvider: { 0.4 },
-          recordingElapsedProvider: { 3 }, isLocked: false)))
-      })
-  }
-
-  @Test("recording, born locked") func recordingLocked() {
-    parity(
-      "recording locked",
-      old: {
-        $0.present(
-        .recording(
-          RecordingPillInput(
-            audioLevel: 0.2,
-            audioLevelProvider: { 0.2 },
-            recordingElapsedProvider: { nil },
-            isLocked: true)))
-      },
-      new: {
-        $0.present(.recording(RecordingPillInput(
-          audioLevel: 0.2, audioLevelProvider: { 0.2 },
-          recordingElapsedProvider: { nil }, isLocked: true)))
-      })
-  }
-
-  @Test("processing") func processing() {
-    parity(
-      "processing",
-      old: { $0.send(.pipeline(.processing(phase: .transcribing)), actions: nil) },
-      new: { $0.present(.processing(phase: .transcribing)) })
-  }
-
-  @Test("clipboard fallback") func clipboardFallback() {
-    parity(
-      "clipboardFallback",
-      old: { $0.send(.pipeline(.clipboardFallback), actions: nil) },
-      new: { $0.present(.clipboardFallback) })
-  }
-
-  @Test("warning") func warning() {
-    parity(
-      "warning",
-      old: { $0.send(.pipeline(.warning(reason: .polishFailed)), actions: nil) },
-      new: { $0.present(.warning(reason: .polishFailed)) })
-  }
-
-  @Test("error") func error() {
-    parity(
-      "error",
-      old: { $0.send(.pipeline(.error(reason: .modelLoadFailed)), actions: nil) },
-      new: { $0.present(.error(reason: .modelLoadFailed)) })
-  }
-
-  @Test("advisory") func advisory() {
-    parity(
-      "advisory",
-      old: { $0.send(.pipeline(.advisory(reason: .zeroSignal)), actions: nil) },
-      new: { $0.present(.advisory(reason: .zeroSignal)) })
-  }
-
-  @Test("interruption") func interruption() {
-    parity(
-      "interruption",
-      old: { $0.send(.pipeline(.interruption(reason: .captureStalled)), actions: nil) },
-      new: { $0.present(.interruption(reason: .captureStalled)) })
-  }
-
-  @Test("caching model") func cachingModel() {
-    parity(
-      "cachingModel",
-      old: { $0.send(.pipeline(.cachingModel(engineLabel: "Parakeet")), actions: nil) },
-      new: { $0.present(.cachingModel(engineLabel: "Parakeet")) })
-  }
-
-  @Test("engine ready") func engineReady() {
-    parity(
-      "engineReady",
-      old: { $0.send(.pipeline(.engineReady), actions: nil) },
-      new: { $0.present(.engineReady) })
-  }
-
-  @Test("recovery succeeded") func recoverySucceeded() {
-    parity(
-      "recoverySucceeded",
-      old: { $0.send(.pipeline(.recoverySucceeded), actions: nil) },
-      new: { $0.present(.recoverySucceeded) })
-  }
-
-  @Test("import status") func importStatus() {
-    parity(
-      "importStatus",
-      old: { $0.send(.featureRequest(.importStatus(message: "Importing 12")), actions: nil) },
-      new: { $0.present(.importStatus(message: "Importing 12")) })
-  }
-
   // MARK: - Feature-owned requests
-
-  @Test("accessibility notice") func accessibilityNotice() {
-    parity(
-      "accessibilityNotice",
-      old: { $0.present(.accessibilityNotice) },
-      new: { $0.present(.accessibilityNotice) })
-  }
 
   // **The recovery-notice parity row is gone** (#2292 C4b), for the reason the
   // escape-recovery row went in C4a: parity needs two spellings and
@@ -289,90 +138,7 @@ struct PillRequestParityTests {
     #endif
   }
 
-  /// The mirror image of the chip: Bluetooth genuinely IS a `.featureRequest`.
-  @Test("bluetooth awareness routes through the feature request") func bluetooth() {
-    parity(
-      "bluetoothAwareness",
-      old: { $0.send(.featureRequest(.bluetoothAwareness), actions: { _ in }) },
-      new: {
-        $0.present(.bluetoothAwareness(
-          onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
-      })
-  }
-
   // MARK: - Updates and dismissal
-
-  @Test("recording lock update") func lockUpdate() {
-    parity(
-      "recordingLock",
-      old: {
-        $0.present(
-        .recording(
-          RecordingPillInput(
-            audioLevel: 0.1,
-            audioLevelProvider: { 0.1 },
-            recordingElapsedProvider: { nil },
-            isLocked: false)))
-        $0.send(.lockStateChanged(true), actions: nil)
-      },
-      new: {
-        $0.present(.recording(RecordingPillInput(
-          audioLevel: 0.1, audioLevelProvider: { 0.1 },
-          recordingElapsedProvider: { nil }, isLocked: false)))
-        $0.update(.recordingLock(true))
-      })
-  }
-
-  @Test("in-panel notice update") func inPanelNoticeUpdate() {
-    parity(
-      "inPanelNotice",
-      old: {
-        $0.present(
-        .recording(
-          RecordingPillInput(
-            audioLevel: 0.1,
-            audioLevelProvider: { 0.1 },
-            recordingElapsedProvider: { nil },
-            isLocked: false)))
-        $0.send(.inPanelNotice(.approachingCap, dismissAfter: 2), actions: nil)
-      },
-      new: {
-        $0.present(.recording(RecordingPillInput(
-          audioLevel: 0.1, audioLevelProvider: { 0.1 },
-          recordingElapsedProvider: { nil }, isLocked: false)))
-        $0.update(.inPanelNotice(.approachingCap, dismissAfter: 2))
-      })
-  }
-
-  /// **Announced and silent dismissal are different operations and the
-  /// difference is audible.** A chip dismissal that announced "Recording
-  /// complete" would be a false statement to a VoiceOver user, so the two must
-  /// not collapse into one façade call.
-  @Test("announced dismissal") func announcedDismissal() {
-    parity(
-      "dismiss announced",
-      old: {
-        $0.send(.pipeline(.engineReady), actions: nil)
-        $0.send(.pipeline(.hidden), actions: nil)
-      },
-      new: {
-        $0.present(.engineReady)
-        $0.dismissCurrent(.announced)
-      })
-  }
-
-  @Test("silent dismissal") func silentDismissal() {
-    parity(
-      "dismiss silent",
-      old: {
-        $0.send(.pipeline(.engineReady), actions: nil)
-        $0.dismissCurrent(.silent)
-      },
-      new: {
-        $0.present(.engineReady)
-        $0.dismissCurrent(.silent)
-      })
-  }
 
   @Test("announced and silent dismissal are not the same operation") func dismissalDiffers() {
     let announced = Rig()
@@ -401,16 +167,18 @@ struct PillRequestParityTests {
   /// land on top of the restore the user asked for. That is the only reason:
   /// `pasteAction` copies to the clipboard and dispatches a keystroke, and raises
   /// no pill.
-  @Test("Undo dismisses the pill before it forwards the payload") func pasteOrdering() {
+  @Test("Undo dismisses the pill before it forwards the payload") func pasteOrdering() throws {
     let rig = Rig()
     let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
     var hiddenWhenPasted: Bool?
-    rig.director.present(.escapeRecovery(payload: payload, onPaste: { [rig] _ in
+    // Hoisted out of `#require`: the macro cannot expand a call whose argument
+    // closure captures the rig, and fails with an internal diagnostic error.
+    let presented = rig.director.present(.escapeRecovery(payload: payload, onPaste: { [rig] _ in
       hiddenWhenPasted = rig.host.isShowing == false
     }))
-    rig.director.send(
-      .action(rig.director.renderModel.presentation!.id, .pasteEscapeRecovery(transcriptID: payload.transcriptID)),
-      actions: nil)
+    let receipt = try #require(presented)
+    try rig.host.sendUserActionThroughRoot(
+      .pasteEscapeRecovery(transcriptID: payload.transcriptID), for: receipt)
     #expect(hiddenWhenPasted == true, "the pill must already be hidden when onPaste runs")
   }
 
@@ -425,15 +193,16 @@ struct PillRequestParityTests {
   ///
   /// The real user input here is a double-click on Undo, and what it must not do
   /// is paste twice.
-  @Test("a queued second Undo is ignored after dismissal") func queuedSecondUndoIsIgnored() {
+  @Test("a queued second Undo is ignored after dismissal") func queuedSecondUndoIsIgnored() throws {
     let rig = Rig()
     let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
     var pastes = 0
-    rig.director.present(.escapeRecovery(payload: payload, onPaste: { _ in pastes += 1 }))
-    let id = rig.director.renderModel.presentation!.id
-    let press = OverlayEvent.action(id, .pasteEscapeRecovery(transcriptID: payload.transcriptID))
-    rig.director.send(press, actions: nil)
-    rig.director.send(press, actions: nil)
+    let receipt = try #require(
+      rig.director.present(.escapeRecovery(payload: payload, onPaste: { _ in pastes += 1 })))
+    try rig.host.sendUserActionThroughRoot(
+      .pasteEscapeRecovery(transcriptID: payload.transcriptID), for: receipt)
+    try rig.host.sendUserActionThroughRoot(
+      .pasteEscapeRecovery(transcriptID: payload.transcriptID), for: receipt)
     #expect(
       pastes == 1,
       "the first press dismissed this presentation; the second event is stale")
@@ -441,12 +210,11 @@ struct PillRequestParityTests {
 
   // MARK: - Recovery discard, which must also clear the notice
 
-  @Test("Discard calls its owner and then hides the notice") func discardDismisses() {
+  @Test("Discard calls its owner and then hides the notice") func discardDismisses() throws {
     let rig = Rig()
     var discards = 0
-    rig.director.present(.recoveryNotice(onDiscard: { discards += 1 }))
-    let id = rig.director.renderModel.presentation!.id
-    rig.director.send(.action(id, .discardRecovery), actions: nil)
+    let receipt = try #require(rig.director.present(.recoveryNotice(onDiscard: { discards += 1 })))
+    try rig.host.sendUserActionThroughRoot(.discardRecovery, for: receipt)
     #expect(discards == 1)
     #expect(rig.host.isShowing == false, "a notice the user answered must not stay on screen")
   }
@@ -519,23 +287,21 @@ struct PillRequestParityTests {
   /// These five language and Bluetooth actions must each reach exactly one
   /// callback. Paste, Discard, and Grant have behaviour-specific cases nearby.
   @Test("language and Bluetooth actions each reach exactly one callback")
-  func everyActionIsBound() {
+  func everyActionIsBound() throws {
     var fired: [String] = []
     let chipRig = Rig()
-    chipRig.director.present(.languageChip(
+    let chipReceipt = try #require(chipRig.director.present(.languageChip(
       payload: LanguageChipPayload(lang: "es", displayName: "Spanish", state: .askToLock, generation: 1),
       onLock: { fired.append("lock") },
       onDismiss: { fired.append("dismiss") },
-      onExpire: { fired.append("expire") }))
-    let chipID = chipRig.director.renderModel.presentation!.id
-    chipRig.director.send(.action(chipID, .lockLanguage), actions: nil)
+      onExpire: { fired.append("expire") })))
+    try chipRig.host.sendUserActionThroughRoot(.lockLanguage, for: chipReceipt)
 
     let dismissRig = Rig()
-    dismissRig.director.present(.languageChip(
+    let dismissReceipt = try #require(dismissRig.director.present(.languageChip(
       payload: LanguageChipPayload(lang: "es", displayName: "Spanish", state: .askToLock, generation: 1),
-      onLock: {}, onDismiss: { fired.append("dismiss") }, onExpire: {}))
-    let dismissID = dismissRig.director.renderModel.presentation!.id
-    dismissRig.director.send(.action(dismissID, .dismissChip), actions: nil)
+      onLock: {}, onDismiss: { fired.append("dismiss") }, onExpire: {})))
+    try dismissRig.host.sendUserActionThroughRoot(.dismissChip, for: dismissReceipt)
 
     for (action, label) in [
       (PillAction.acknowledgeBluetoothAwareness, "gotIt"),
@@ -543,12 +309,11 @@ struct PillRequestParityTests {
       (PillAction.openBluetoothSettings, "settings"),
     ] {
       let rig = Rig()
-      rig.director.present(.bluetoothAwareness(
+      let receipt = try #require(rig.director.present(.bluetoothAwareness(
         onAcknowledge: { fired.append("gotIt") },
         onClose: { fired.append("close") },
-        onOpenSettings: { fired.append("settings") }))
-      let id = rig.director.renderModel.presentation!.id
-      rig.director.send(.action(id, action), actions: nil)
+        onOpenSettings: { fired.append("settings") })))
+      try rig.host.sendUserActionThroughRoot(action, for: receipt)
       #expect(fired.last == label, "\(label) must reach its own callback")
     }
 
@@ -568,9 +333,8 @@ struct PillRequestParityTests {
   /// dictation never gains permission.
   @Test("Grant reaches the app action sink") func grantIsBound() throws {
     let rig = Rig()
-    rig.director.present(.accessibilityNotice)
-    let id = try #require(rig.director.renderModel.presentation?.id)
-    rig.director.send(.action(id, .grantAccessibility), actions: nil)
+    let receipt = try #require(rig.director.present(.accessibilityNotice))
+    try rig.host.sendUserActionThroughRoot(.grantAccessibility, for: receipt)
     #expect(rig.appActions == [.grantAccessibility])
   }
 
@@ -594,10 +358,9 @@ struct PillRequestParityTests {
   @Test("Grant runs before the notice is dismissed, and the notice then goes")
   func grantRunsBeforeDismissal() throws {
     let rig = Rig()
-    rig.director.present(.accessibilityNotice)
-    let id = try #require(rig.director.renderModel.presentation?.id)
+    let receipt = try #require(rig.director.present(.accessibilityNotice))
 
-    rig.director.send(.action(id, .grantAccessibility), actions: nil)
+    try rig.host.sendUserActionThroughRoot(.grantAccessibility, for: receipt)
 
     #expect(
       rig.grantSawPresentation == true,
@@ -626,7 +389,7 @@ struct PillRequestParityTests {
     }
     let receipt = try #require(rig.director.present(.recoveryNotice(onDiscard: onDiscard)))
 
-    rig.director.send(.action(receipt.presentationID, .discardRecovery), actions: nil)
+    try rig.host.sendUserActionThroughRoot(.discardRecovery, for: receipt)
 
     #expect(discards == 1, "Discard reached nobody")
     #expect(

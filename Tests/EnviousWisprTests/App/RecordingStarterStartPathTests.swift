@@ -40,6 +40,8 @@ import Testing
     let lockBox: TestRecordingLockedBox
     let lastRecordingResult: LastRecordingResult
     let overlay: OverlayDirector
+    /// The overlay's fake host, held so a case can press the button a user sees.
+    let overlayHost: WindowlessOverlayHost
     let settings: SettingsManager
     /// What the recovery notice's Discard button reached, and whether the notice
     /// was still up when it did (#2292 C4b).
@@ -85,7 +87,7 @@ import Testing
     // no `modelUnloadPolicy` key, so it defaults to `.never` (SettingsDefaultValues).
     let settings = SettingsManager(
       defaults: UserDefaults(suiteName: "ew-test-\(UUID().uuidString)")!)
-    let overlay = OverlayTestDouble.headlessDirector()
+    let (overlay, overlayHost) = OverlayTestDouble.headlessDirectorWithHost()
     let permissions = PermissionsService(microphoneReader: { micStatus })
     let lockBox = TestRecordingLockedBox()
     let lockAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
@@ -93,7 +95,7 @@ import Testing
       set: { lockBox.isLocked = $0 }
     )
     let hcr = HeartControlRecovery(
-      hideOverlay: { overlay.send(.pipeline(.hidden), actions: nil) },
+      hideOverlay: { overlay.dismissCurrent(.announced) },
       setLocked: { locked in lockAccess.set(locked) },
       backend: { asr.activeBackendType.rawValue }
     )
@@ -165,6 +167,7 @@ import Testing
       lockBox: lockBox,
       lastRecordingResult: lastRecordingResult,
       overlay: overlay,
+      overlayHost: overlayHost,
       settings: settings,
       discards: discards
     )
@@ -316,31 +319,28 @@ import Testing
   /// so an unset target left a rendered button that reached nobody. The action is
   /// now required at the presentation that draws it.
   ///
-  /// **Debug-only, and the reason is the seam rather than the property.** Pressing
-  /// the button needs the presentation's id, and the starter presents internally
-  /// so no receipt reaches here; `currentPresentationForTesting` is the only way
-  /// to name it and it lives inside `#if DEBUG`. What is unique to this case is
-  /// that the STARTER supplies a real discard — the ORDERING claim it also makes
-  /// is covered in both lanes by `PillRequestParityTests`
-  /// `discardRunsBeforeDismissal`, which builds its own request and needs no seam.
-  #if DEBUG
+  /// Runs in both lanes. The starter presents internally and returns no receipt,
+  /// so this sends Discard to the presentation currently published by the hosted
+  /// root. Staleness is not this case's subject; receipt-scoped tests own that.
+  ///
+  /// What is unique to this case is that the STARTER supplies a real discard; the
+  /// ORDERING claim it also makes is covered by `PillRequestParityTests`
+  /// `discardRunsBeforeDismissal`, which builds its own request.
   @Test func discardInvokesRecoveryOwner() async throws {
     let fx = Self.makeFixture(isRecovering: true)
     fx.asr.activeBackendType = .parakeet
     _ = await fx.starter.start()
-    let id = try #require(fx.overlay.currentPresentationForTesting?.id)
 
-    fx.overlay.send(.action(id, .discardRecovery), actions: nil)
+    try fx.overlayHost.sendCurrentUserActionThroughRoot(.discardRecovery)
 
     #expect(fx.discards.count == 1, "Discard reached nobody")
     #expect(
       fx.discards.noticeWasStillUp == [true],
       "the notice was dismissed before its owner was told to discard")
     #expect(
-      fx.overlay.currentIntent == .hidden,
+      fx.overlay.renderModel.presentation == nil,
       "the notice the user already answered is still on screen")
   }
-  #endif
 
   @Test func toggleWhileRecoveringMintsNoSessionAndShowsRecoveringPill() async {
     let fx = Self.makeFixture(isRecovering: true)

@@ -135,7 +135,7 @@ final class OverlayDirector {
     let view = NSHostingView(
       rootView: OverlayRootView(
         model: model,
-        sendEvent: { [weak self] event in self?.send(event, actions: nil) }))
+        sendEvent: { [weak self] event in self?.handle(event, binding: .none) }))
     builtRootView = view
     return view
   }
@@ -285,18 +285,23 @@ final class OverlayDirector {
 
   // MARK: - The transaction
 
-  /// `actions` is the handler for the presentation this event PRODUCES, and it
-  /// arrives with the request rather than after it.
+  /// What an event installs for the presentation it produces.
   ///
-  /// A separate `bind(for:)` call made binding a post-publication operation: the
+  /// **An explicit two-case input, not an optional** (#2292 C5c). An
+  /// `((PillAction) -> Void)?` let a call site that SHOULD carry a handler
+  /// compile silently without one — the omission read as absence rather than as
+  /// a choice. `.none` has to be written down.
+  ///
+  /// The binding arrives WITH the event for the reason a separate `bind(for:)`
+  /// call was removed: that made binding a post-publication operation, so the
   /// caller had to bind after the presentation existed, an ordering nothing
-  /// enforced, and a window in which the pill was on screen with no handler. A
-  /// request carries its own handler or it has none by construction.
-  /// **No default.** `actions` defaulting to nil let a call site that SHOULD
-  /// carry a handler compile silently without one, which defeats the entire
-  /// point of making the binding arrive with the request: the omission has to be
-  /// visible at the call site, not inferred from its absence.
-  func send(_ event: OverlayEvent, actions: ((PillAction) -> Void)?) {
+  /// enforced, and a window in which the pill was on screen with no handler.
+  private enum BindingInput {
+    case none
+    case install(deliver: (PillAction) -> Void, onExpire: (() -> Void)?)
+  }
+
+  private func handle(_ event: OverlayEvent, binding: BindingInput) {
     if case .pipeline(.recording) = event {
       // **The wrong ORDER is what this refuses, not the wrong event.** A caller
       // that sends first and installs providers afterwards renders one frame
@@ -318,7 +323,7 @@ final class OverlayDirector {
         "use presentRecording(...) — a recording's providers and layout must be "
           + "installed in the same operation that presents it")
     }
-    apply(reducer.reduce(event), actions: actions)
+    apply(reducer.reduce(event), binding: binding)
   }
 
   /// Present the recording pill with its providers and its layout installed in
@@ -334,12 +339,14 @@ final class OverlayDirector {
   /// life, because an `NSPanel` cannot grow mid-recording without a rebuild and a
   /// rebuild is the #930 flicker. Re-resolving here on every audio tick would
   /// resize a live pill the moment the user changed the setting.
-  func presentRecording(
+  /// **No binding parameter: a recording pill draws no buttons** (#2292 C5c), so
+  /// there was never a handler to install. Private now — `present(.recording(_:))`
+  /// is the only way in.
+  private func presentRecording(
     audioLevel: Float,
     audioLevelProvider: @escaping () -> Float,
     recordingElapsedProvider: @escaping () -> TimeInterval?,
-    isRecordingLocked: Bool,
-    actions: ((PillAction) -> Void)?
+    isRecordingLocked: Bool
   ) {
     // **The lock is a show-time value, not a later morph.** The shipped
     // `show(intent:isRecordingLocked:)` takes it in the same call and commits it
@@ -369,7 +376,7 @@ final class OverlayDirector {
 
     guard let presentation = plan.presentation else {
       // The reducer refused — a feature holds the slot, or nothing changed.
-      apply(plan, actions: actions, effectsAlreadyDelivered: true)
+      apply(plan, binding: .none, effectsAlreadyDelivered: true)
       return
     }
 
@@ -398,7 +405,7 @@ final class OverlayDirector {
           to: CGSize(width: self.model.recordingLayout.width, height: height))
       })
 
-    apply(plan, actions: actions, effectsAlreadyDelivered: true)
+    apply(plan, binding: .none, effectsAlreadyDelivered: true)
   }
 
   /// Present the accessibility notice, showing the toast or falling back to the
@@ -427,20 +434,21 @@ final class OverlayDirector {
   /// `overlay?.dismissSilently()`. Requesting and leaving the notice on screen
   /// is a pill the user already answered; dismissing first would race the
   /// system prompt against the pill's own teardown.
-  func presentAccessibilityNotice() {
+  private func presentAccessibilityNotice() {
     apply(
       reducer.reduceAccessibilityNotice(showingToast: { [accessibilityEligibility] in
         accessibilityEligibility.claim()
       }),
-      actions: { [weak self] action in
-        guard let self else { return }
-        guard case .grantAccessibility = action else {
-          assertionFailure("the accessibility notice emitted a non-Grant action")
-          return
-        }
-        self.grantAccessibility()
-        self.dismissSilently()
-      })
+      binding: .install(
+        deliver: { [weak self] action in
+          guard let self else { return }
+          guard case .grantAccessibility = action else {
+            assertionFailure("the accessibility notice emitted a non-Grant action")
+            return
+          }
+          self.grantAccessibility()
+          self.dismissSilently()
+        }, onExpire: nil))
   }
 
   /// Empty the slot WITHOUT announcing "Recording complete".
@@ -454,8 +462,8 @@ final class OverlayDirector {
   /// Silence is a parameter of APPLYING rather than a different plan, so the
   /// reducer stays a pure function of its events and the choice is visible at
   /// both call sites.
-  func dismissSilently() {
-    apply(reducer.reduce(.pipeline(.hidden)), actions: nil, announcing: false)
+  private func dismissSilently() {
+    apply(reducer.reduce(.pipeline(.hidden)), binding: .none, announcing: false)
   }
 
   /// Undo a plan whose presentation the host refused.
@@ -470,13 +478,13 @@ final class OverlayDirector {
   /// carries no presentation, so `render` takes its early return and cannot
   /// refuse a second time.
   private func rollBackRefusedPresentation() {
-    apply(reducer.reduce(.pipeline(.hidden)), actions: nil, announcing: false)
+    apply(reducer.reduce(.pipeline(.hidden)), binding: .none, announcing: false)
   }
 
   // MARK: - Applying a plan
 
   private func apply(
-    _ plan: OverlayPlan, actions: ((PillAction) -> Void)? = nil, announcing: Bool = true,
+    _ plan: OverlayPlan, binding: BindingInput, announcing: Bool = true,
     effectsAlreadyDelivered: Bool = false
   ) {
     // **Effects run FIRST, and that half IS load-bearing rather than tidy.**
@@ -530,8 +538,8 @@ final class OverlayDirector {
           // makes a late arrival inert. The TARGET says what ends — the whole
           // presentation, or only the #1060 banner inside a live recording.
           switch target {
-          case .presentation: self?.send(.expiryFired(id), actions: nil)
-          case .inPanelNotice: self?.send(.inPanelNoticeExpiryFired(id), actions: nil)
+          case .presentation: self?.handle(.expiryFired(id), binding: .none)
+          case .inPanelNotice: self?.handle(.inPanelNoticeExpiryFired(id), binding: .none)
           }
         }
       }
@@ -575,15 +583,14 @@ final class OverlayDirector {
       // The binding for the NEW presentation is installed BEFORE the model is
       // published, so the pill is never on screen without its handler.
       //
-      // **A MORPH KEEPS ITS BINDING.** The first version replaced the binding
-      // with whatever this call carried, so any same-id update with no handler —
-      // an audio-level tick, which arrives many times a second — silently
-      // dropped the live pill's buttons. Only a CHANGE OF IDENTITY clears it.
+      // A binding belongs to one presentation identity. A same-ID plan is a
+      // morph of that presentation; replacement or dismissal ends its binding.
       if let presentation = plan.presentation {
-        if let actions {
-          activeBinding = (id: presentation.id, deliver: actions, onExpire: nil)
-        } else if activeBinding?.id != presentation.id {
-          activeBinding = nil
+        switch binding {
+        case .install(let deliver, let onExpire):
+          activeBinding = (id: presentation.id, deliver: deliver, onExpire: onExpire)
+        case .none:
+          if activeBinding?.id != presentation.id { activeBinding = nil }
         }
       } else {
         activeBinding = nil
@@ -952,28 +959,27 @@ extension OverlayDirector: OverlayPresenting {
         audioLevel: input.audioLevel,
         audioLevelProvider: input.audioLevelProvider,
         recordingElapsedProvider: input.recordingElapsedProvider,
-        isRecordingLocked: input.isLocked,
-        actions: nil)
+        isRecordingLocked: input.isLocked)
     case .processing(let phase):
-      send(.pipeline(.processing(phase: phase)), actions: nil)
+      handle(.pipeline(.processing(phase: phase)), binding: .none)
     case .clipboardFallback:
-      send(.pipeline(.clipboardFallback), actions: nil)
+      handle(.pipeline(.clipboardFallback), binding: .none)
     case .warning(let reason):
-      send(.pipeline(.warning(reason: reason)), actions: nil)
+      handle(.pipeline(.warning(reason: reason)), binding: .none)
     case .error(let reason):
-      send(.pipeline(.error(reason: reason)), actions: nil)
+      handle(.pipeline(.error(reason: reason)), binding: .none)
     case .advisory(let reason):
-      send(.pipeline(.advisory(reason: reason)), actions: nil)
+      handle(.pipeline(.advisory(reason: reason)), binding: .none)
     case .interruption(let reason):
-      send(.pipeline(.interruption(reason: reason)), actions: nil)
+      handle(.pipeline(.interruption(reason: reason)), binding: .none)
     case .cachingModel(let engineLabel):
-      send(.pipeline(.cachingModel(engineLabel: engineLabel)), actions: nil)
+      handle(.pipeline(.cachingModel(engineLabel: engineLabel)), binding: .none)
     case .engineReady:
-      send(.pipeline(.engineReady), actions: nil)
+      handle(.pipeline(.engineReady), binding: .none)
     case .recoverySucceeded:
-      send(.pipeline(.recoverySucceeded), actions: nil)
+      handle(.pipeline(.recoverySucceeded), binding: .none)
     case .importStatus(let message):
-      send(.featureRequest(.importStatus(message: message)), actions: nil)
+      handle(.featureRequest(.importStatus(message: message)), binding: .none)
 
     case .accessibilityNotice:
       presentAccessibilityNotice()
@@ -982,11 +988,15 @@ extension OverlayDirector: OverlayPresenting {
     // `overlay?.dismissSilently()`; calling the owner and leaving the notice on
     // screen is a pill the user already answered.
     case .recoveryNotice(let onDiscard):
-      send(.pipeline(.recoveringLastRecording)) { [weak self] action in
-        guard case .discardRecovery = action else { return }
-        onDiscard()
-        self?.dismissSilently()
-      }
+      handle(
+        .pipeline(.recoveringLastRecording),
+        binding: .install(
+          deliver: { [weak self] action in
+            guard case .discardRecovery = action else { return }
+            onDiscard()
+            self?.dismissSilently()
+          },
+          onExpire: nil))
     // **The chip is a `.pipeline` intent, not a `.featureRequest`, and the two
     // spellings both exist.** `OverlayIntent` and `OverlayRequest` each declare
     // a `passiveChip` case; the shipped path routes it through the pipeline, so
@@ -1000,31 +1010,41 @@ extension OverlayDirector: OverlayPresenting {
       // actual acceptance. A refusal returns nil below and the presenter
       // commits nothing.
       guard featureSlotIsAvailable else { return nil }
-      send(.pipeline(.passiveChip(payload: payload))) { action in
-        switch action {
-        case .lockLanguage: onLock()
-        case .dismissChip: onDismiss()
-        default: break
-        }
-      }
-      // **Attached AFTER the send, because the binding does not exist until the
-      // send establishes it.** Expiry is not an action — nobody pressed
-      // anything — so it cannot travel through the action closure above; it
-      // rides on the same binding so it dies with the same presentation.
-      activeBinding?.onExpire = onExpire
+      // **Expiry rides the same binding as the buttons, and arrives in the
+      // same call** (#2292 C5c). It was previously assigned after the fact,
+      // because the binding did not exist until the event had been sent — a
+      // window in which the chip was on screen with an owner for its buttons
+      // and none for its expiry. Expiry is not an action (nobody pressed
+      // anything), so it cannot travel through `deliver`; it is a second slot
+      // on the same binding and dies with the same presentation.
+      handle(
+        .pipeline(.passiveChip(payload: payload)),
+        binding: .install(
+          deliver: { action in
+            switch action {
+            case .lockLanguage: onLock()
+            case .dismissChip: onDismiss()
+            default: break
+            }
+          },
+          onExpire: onExpire))
     case .bluetoothAwareness(let onAcknowledge, let onClose, let onOpenSettings):
       // Same admission transaction as `.languageChip` above. C3b moves the
       // Bluetooth presenter onto the receipt; the guard belongs here from the
       // moment either feature uses it, so the two cannot drift.
       guard featureSlotIsAvailable else { return nil }
-      send(.featureRequest(.bluetoothAwareness)) { action in
-        switch action {
-        case .acknowledgeBluetoothAwareness: onAcknowledge()
-        case .closeBluetoothAwareness: onClose()
-        case .openBluetoothSettings: onOpenSettings()
-        default: break
-        }
-      }
+      handle(
+        .featureRequest(.bluetoothAwareness),
+        binding: .install(
+          deliver: { action in
+            switch action {
+            case .acknowledgeBluetoothAwareness: onAcknowledge()
+            case .closeBluetoothAwareness: onClose()
+            case .openBluetoothSettings: onOpenSettings()
+            default: break
+            }
+          },
+          onExpire: nil))
     // **Take, DISMISS, then forward — matching the shipped order.**
     // `EscapeRecoveryWiring` dismisses before pasting for ONE stated reason: a
     // spoken "overlay hidden" arriving after the restore is noise on top of the
@@ -1046,19 +1066,24 @@ extension OverlayDirector: OverlayPresenting {
       // the only call that can put a pill on screen, and taken by the only
       // binding that pill can raise.
       escapeRecoveryPayload = (id: payload.transcriptID, payload: payload)
-      send(.pipeline(.escapeRecovery(transcriptID: payload.transcriptID))) { [weak self] action in
-        guard case .pasteEscapeRecovery(let transcriptID) = action,
-          let self,
-          let held = self.escapeRecoveryPayload,
-          held.id == transcriptID
-        else { return }
-        // Take, DISMISS, then forward — the shipped order, and the dismissal is
-        // load-bearing for a VoiceOver user: a spoken "overlay hidden" arriving
-        // after the restore is noise on top of the outcome they asked for.
-        self.escapeRecoveryPayload = nil
-        self.dismissSilently()
-        onPaste(held.payload)
-      }
+      handle(
+        .pipeline(.escapeRecovery(transcriptID: payload.transcriptID)),
+        binding: .install(
+          deliver: { [weak self] action in
+            guard case .pasteEscapeRecovery(let transcriptID) = action,
+              let self,
+              let held = self.escapeRecoveryPayload,
+              held.id == transcriptID
+            else { return }
+            // Take, DISMISS, then forward — the shipped order, and the
+            // dismissal is load-bearing for a VoiceOver user: a spoken "overlay
+            // hidden" arriving after the restore is noise on top of the outcome
+            // they asked for.
+            self.escapeRecoveryPayload = nil
+            self.dismissSilently()
+            onPaste(held.payload)
+          },
+          onExpire: nil))
     }
 
     // **A refused request returns nil, not the incumbent's receipt.** The slot
@@ -1080,15 +1105,15 @@ extension OverlayDirector: OverlayPresenting {
   func update(_ update: PillUpdate) {
     switch update {
     case .recordingLock(let isLocked):
-      send(.lockStateChanged(isLocked), actions: nil)
+      handle(.lockStateChanged(isLocked), binding: .none)
     case .inPanelNotice(let reason, let dismissAfter):
-      send(.inPanelNotice(reason, dismissAfter: dismissAfter), actions: nil)
+      handle(.inPanelNotice(reason, dismissAfter: dismissAfter), binding: .none)
     }
   }
 
   func dismissCurrent(_ mode: PillDismissal) {
     switch mode {
-    case .announced: send(.pipeline(.hidden), actions: nil)
+    case .announced: handle(.pipeline(.hidden), binding: .none)
     case .silent: dismissSilently()
     }
   }

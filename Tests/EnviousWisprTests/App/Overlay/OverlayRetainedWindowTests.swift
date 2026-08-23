@@ -234,15 +234,15 @@ struct OverlayRetainedWindowTests {
         deferFirstRender: { $0() })
       defer { host.panelForTesting?.orderOut(nil) }
 
-      d.send(.pipeline(.processing(phase: .polishing)), actions: nil)
+      d.present(.processing(phase: .polishing))
       await drainMainQueue()
       #expect(
         host.panelConstructionCount == 1,
         "no window was built at all — this guard is asserting nothing")
 
-      d.send(.pipeline(.accessibilityToast), actions: nil)
+      d.present(.accessibilityNotice)
       await drainMainQueue()
-      d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      d.present(.warning(reason: .polishFailed))
       await drainMainQueue()
 
       #expect(
@@ -264,7 +264,7 @@ struct OverlayRetainedWindowTests {
       defer { host.panelForTesting?.orderOut(nil) }
 
       for _ in 0..<4 {
-        d.send(.pipeline(.processing(phase: .polishing)), actions: nil)
+        d.present(.processing(phase: .polishing))
         await drainMainQueue()
         d.dismissCurrent(.silent)
         await drainMainQueue()

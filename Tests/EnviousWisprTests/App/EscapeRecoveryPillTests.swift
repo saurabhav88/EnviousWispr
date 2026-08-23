@@ -87,8 +87,8 @@ struct EscapeRecoveryPillTests {
   /// strictly better coverage, and it is why they are rewritten rather than
   /// deleted (#2292).
   @Test("a superseded pill's press cannot touch the newer payload")
-  func supersededPillCannotTouchTheNewerPayload() {
-    let d = OverlayTestDouble.headlessDirector()
+  func supersededPillCannotTouchTheNewerPayload() throws {
+    let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
     let stale = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
     let live = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
     var pasted: [UUID] = []
@@ -100,16 +100,14 @@ struct EscapeRecoveryPillTests {
       .escapeRecovery(payload: live, onPaste: { pasted.append($0.transcriptID) }))
 
     // The stale pill's own presentation id, replayed after replacement.
-    d.send(
-      .action(staleReceipt!.presentationID, .pasteEscapeRecovery(transcriptID: stale.transcriptID)),
-      actions: nil)
+    try host.sendUserActionThroughRoot(
+      .pasteEscapeRecovery(transcriptID: stale.transcriptID), for: try #require(staleReceipt))
     #expect(
       pasted.isEmpty,
       "a superseded pill still reached a payload, so a stale press would paste")
 
-    d.send(
-      .action(liveReceipt!.presentationID, .pasteEscapeRecovery(transcriptID: live.transcriptID)),
-      actions: nil)
+    try host.sendUserActionThroughRoot(
+      .pasteEscapeRecovery(transcriptID: live.transcriptID), for: try #require(liveReceipt))
     #expect(pasted == [live.transcriptID], "the live offer did not forward its own payload")
   }
 
@@ -139,7 +137,7 @@ struct EscapeRecoveryPillTests {
   /// at all, because the one-shot take had spent the payload. A live-looking
   /// button that is inert is worse than no button.
   @Test("pressing Paste takes the pill down")
-  func pressingPasteDismissesTheOffer() {
+  func pressingPasteDismissesTheOffer() throws {
     let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
     let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
     var pasted: [UUID] = []
@@ -152,9 +150,8 @@ struct EscapeRecoveryPillTests {
     // COMPILE with zero failure marks — invisible to a Debug-only run.
     #expect(host.isShowing, "the pill never went up")
 
-    d.send(
-      .action(receipt!.presentationID, .pasteEscapeRecovery(transcriptID: payload.transcriptID)),
-      actions: nil)
+    try host.sendUserActionThroughRoot(
+      .pasteEscapeRecovery(transcriptID: payload.transcriptID), for: try #require(receipt))
 
     #expect(pasted == [payload.transcriptID], "the press did not reach the paste handler")
     #expect(!host.isShowing, "the window still shows a pill the user already accepted")
@@ -178,16 +175,18 @@ struct EscapeRecoveryPillTests {
   /// made it safe; this pins that the dismissal did not make it UNsafe by, for
   /// example, re-presenting or reviving custody.
   @Test("a second press after Paste is inert")
-  func secondPressIsInert() {
+  func secondPressIsInert() throws {
     let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
     let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
     var pasteCount = 0
 
     let receipt = d.present(
       .escapeRecovery(payload: payload, onPaste: { _ in pasteCount += 1 }))
-    let id = receipt!.presentationID
-    d.send(.action(id, .pasteEscapeRecovery(transcriptID: payload.transcriptID)), actions: nil)
-    d.send(.action(id, .pasteEscapeRecovery(transcriptID: payload.transcriptID)), actions: nil)
+    let held = try #require(receipt)
+    try host.sendUserActionThroughRoot(
+      .pasteEscapeRecovery(transcriptID: payload.transcriptID), for: held)
+    try host.sendUserActionThroughRoot(
+      .pasteEscapeRecovery(transcriptID: payload.transcriptID), for: held)
 
     #expect(pasteCount == 1, "the transcript was pasted twice")
     #expect(!host.isShowing, "the second press brought the pill back")
@@ -253,58 +252,99 @@ struct EscapeRecoveryPillTests {
   /// so the rule is tested through the behaviour instead of through a lookup
   /// table that could drift from the code reading it (#2292).
   @Test("any other occupant drops the paste target with the pill")
-  func onlyThePillRetainsItsTarget() {
-    let others: [OverlayIntent] = [
-      .hidden, .recording(audioLevel: 0), .processing(phase: .transcribing),
-      .clipboardFallback, .accessibilityToast, .warning(reason: .polishFailed),
-      .error(reason: .asrFailed), .advisory(reason: .zeroSignal),
-      .interruption(reason: .deviceRemoved),
-      .cachingModel(engineLabel: "Parakeet v3"), .engineReady,
-      .recoveringLastRecording, .recoverySucceeded, .bluetoothAwareness,
+  func onlyThePillRetainsItsTarget() throws {
+    // **Enumerated over what a CALLER can do** (#2292 C5c). This used to sweep
+    // `OverlayIntent`, the director's own internal vocabulary, through an ingress
+    // that no longer exists. The question is unchanged — does anything else
+    // taking the slot leave the payload behind — but it is now asked of the
+    // surface a caller has, so a request added to `PillRequest` and forgotten
+    // here is the only way this sweep can go stale.
+    let others: [(String, (any OverlayPresenting) -> Void)] = [
+      ("announced dismissal", { $0.dismissCurrent(.announced) }),
+      ("recording", {
+        $0.present(
+          .recording(
+            RecordingPillInput(
+              audioLevel: 0, audioLevelProvider: { 0 },
+              recordingElapsedProvider: { nil }, isLocked: false)))
+      }),
+      ("processing", { $0.present(.processing(phase: .transcribing)) }),
+      ("clipboard fallback", { $0.present(.clipboardFallback) }),
+      ("accessibility notice", { $0.present(.accessibilityNotice) }),
+      ("warning", { $0.present(.warning(reason: .polishFailed)) }),
+      ("error", { $0.present(.error(reason: .asrFailed)) }),
+      ("advisory", { $0.present(.advisory(reason: .zeroSignal)) }),
+      ("interruption", { $0.present(.interruption(reason: .deviceRemoved)) }),
+      ("caching model", { $0.present(.cachingModel(engineLabel: "Parakeet v3")) }),
+      ("engine ready", { $0.present(.engineReady) }),
+      ("recovery notice", { $0.present(.recoveryNotice(onDiscard: {})) }),
+      ("recovery succeeded", { $0.present(.recoverySucceeded) }),
+    ]
+
+    // **The REFUSED arm, and it is not a weaker version of the sweep above — it
+    // asserts the opposite outcome for the opposite reason.** A feature request
+    // arriving while the pipeline holds the slot is refused, so it replaces
+    // nothing: the recovery offer is still the pill on screen, and its payload
+    // must still be behind the button. Asserting "everything drops the target"
+    // over these two says a live offer stops working because an import finished
+    // somewhere else.
+    //
+    // The old sweep could not reach this. It spelled Bluetooth as a PIPELINE
+    // intent through the generic ingress — a spelling no caller ever used, which
+    // did take the slot — and had no import-status row at all.
+    let refused: [(String, (any OverlayPresenting) -> PillReceipt?)] = [
+      ("import status", { $0.present(.importStatus(message: "Importing 3")) }),
+      ("bluetooth awareness", {
+        $0.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
+      }),
     ]
     // **Observed through a real press since C4a**, because custody is no longer
     // reachable from outside the director. A stale press forwarding nothing is
     // the same fact the old accessor asserted, one step further along the path a
     // user actually takes.
-    for intent in others {
-      let d = OverlayTestDouble.headlessDirector()
+    for (label, replace) in others {
+      let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
       let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
       var pasted: [UUID] = []
-      let receipt = d.present(
-        .escapeRecovery(payload: payload, onPaste: { pasted.append($0.transcriptID) }))
+      let receipt = try #require(
+        d.present(.escapeRecovery(payload: payload, onPaste: { pasted.append($0.transcriptID) })))
 
-      // A recording is a TRANSACTION, not an event — `send` asserts on one, and
-      // that invariant caught this loop on its first run.
-      if case .recording = intent {
-        d.present(
-        .recording(
-          RecordingPillInput(
-            audioLevel: 0,
-            audioLevelProvider: { 0 },
-            recordingElapsedProvider: { nil },
-            isLocked: false)))
-      } else {
-        d.send(.pipeline(intent), actions: nil)
-      }
+      replace(d)
 
-      d.send(
-        .action(receipt!.presentationID, .pasteEscapeRecovery(transcriptID: payload.transcriptID)),
-        actions: nil)
+      try host.sendUserActionThroughRoot(
+        .pasteEscapeRecovery(transcriptID: payload.transcriptID), for: receipt)
       #expect(
         pasted.isEmpty,
-        "\(intent) replaced the pill, so it must drop the target with it")
+        "\(label) replaced the pill, so it must drop the target with it")
+    }
+
+    for (label, attempt) in refused {
+      let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
+      let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
+      var pasted: [UUID] = []
+      let receipt = try #require(
+        d.present(.escapeRecovery(payload: payload, onPaste: { pasted.append($0.transcriptID) })))
+
+      #expect(
+        attempt(d) == nil,
+        "\(label) took the slot from a live recovery offer, which arbitration refuses")
+
+      try host.sendUserActionThroughRoot(
+        .pasteEscapeRecovery(transcriptID: payload.transcriptID), for: receipt)
+      #expect(
+        pasted == [payload.transcriptID],
+        "\(label) was refused and the offer still shows, so Undo must still restore")
     }
 
     // The paired ACCEPTED case: without it, "drops on everything" would also be
     // satisfied by a director that never holds a payload at all.
-    let d = OverlayTestDouble.headlessDirector()
+    let (d, host) = OverlayTestDouble.headlessDirectorWithHost()
     let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
     var pasted: [UUID] = []
-    let receipt = d.present(
-      .escapeRecovery(payload: payload, onPaste: { pasted.append($0.transcriptID) }))
-    d.send(
-      .action(receipt!.presentationID, .pasteEscapeRecovery(transcriptID: payload.transcriptID)),
-      actions: nil)
+    let receipt = try #require(
+      d.present(.escapeRecovery(payload: payload, onPaste: { pasted.append($0.transcriptID) })))
+    try host.sendUserActionThroughRoot(
+      .pasteEscapeRecovery(transcriptID: payload.transcriptID), for: receipt)
     #expect(pasted == [payload.transcriptID])
   }
 
