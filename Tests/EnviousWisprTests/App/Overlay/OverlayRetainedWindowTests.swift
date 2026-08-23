@@ -231,7 +231,8 @@ struct OverlayRetainedWindowTests {
       let host = OverlayWindowHost()
       let d = OverlayDirector(
         host: host, deliverEffect: { _ in }, deliverAppAction: { _ in },
-        announce: { _ in }, deferFirstRender: { $0() })
+        announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+        deferFirstRender: { $0() })
       defer { host.panelForTesting?.orderOut(nil) }
 
       d.send(.pipeline(.processing(phase: .polishing)), actions: nil)
@@ -260,7 +261,8 @@ struct OverlayRetainedWindowTests {
       let host = OverlayWindowHost()
       let d = OverlayDirector(
         host: host, deliverEffect: { _ in }, deliverAppAction: { _ in },
-        announce: { _ in }, deferFirstRender: { $0() })
+        announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+        deferFirstRender: { $0() })
       defer { host.panelForTesting?.orderOut(nil) }
 
       for _ in 0..<4 {

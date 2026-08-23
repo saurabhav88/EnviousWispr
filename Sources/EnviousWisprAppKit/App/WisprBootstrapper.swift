@@ -478,9 +478,15 @@ public final class WisprBootstrapper {
         warningDismissed: { [weak permissions] in
           permissions?.accessibilityWarningDismissed ?? false
         }),
-      livePreview: livePreviewInstallation.bridge)
-    overlayOutputs.overlay = recordingOverlay
-    overlayOutputs.permissions = permissions
+      livePreview: livePreviewInstallation.bridge,
+      // Grant leaves the router in C2. `permissions` is captured weakly for the
+      // reason the router captured it weakly: a feature's owner anchors its
+      // lifetime, and the director outlives everything. `PermissionsService` is
+      // a bootstrapper-owned `let`, so the app-lifetime director and the weak
+      // reference never disagree in practice.
+      grantAccessibility: { [weak permissions] in
+        _ = permissions?.requestAccessibilityAccess()
+      })
 
     // #1701 Chunk 2: bulk-import-enrichment producer, a sibling of
     // `contactsImportCoordinator` on the same alias-suggester permit lane.
@@ -488,11 +494,12 @@ public final class WisprBootstrapper {
     // unconditional: without this wiring `onImportCommitted` stays nil and a
     // committed import never enriches.
     //
-    // The WHOLE block moves, including `requestDrain()`. That call creates a task
-    // whose status arrives inside a later drain loop, so leaving it above the
-    // director would let a fast task reach a presentation callback that does not
-    // exist yet. It stays before `wireCustomWords` below, and the drain stays
-    // after both callbacks are installed.
+    // The WHOLE block moves because `presentStatus` closes over
+    // `recordingOverlay`; leaving it above the director would need the mutable
+    // forward-reference shape this chunk removes. `requestDrain()` stays after
+    // both callbacks and before `wireCustomWords`, unchanged from before the
+    // move — its MainActor task cannot run until this synchronous initializer
+    // yields, which it does not do before returning.
     let bulkImportEnrichmentCoordinator = BulkImportEnrichmentCoordinator(
       customWords: customWordsCoordinator,
       aliasSuggester: customWordsCoordinator.aliasSuggester,

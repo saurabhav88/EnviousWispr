@@ -1,35 +1,38 @@
 import EnviousWisprPipeline
-import EnviousWisprServices
 import Foundation
 
-/// Where an overlay's OUTPUT goes — its effects, and the two button actions that
-/// belong to the app rather than to a presentation (#2292, C4c).
+/// Where an overlay's OUTPUT goes — its effects, and the one remaining button
+/// action that belongs to the app rather than to a presentation (#2292, C4c).
 ///
 /// **Targets are settable because the composition root cannot construct them in
-/// dependency order.** The director is built early, since everything that shows
-/// a pill needs it, while the Live Preview coordinator, the chip presenter and
-/// the recovery coordinator are built much later. The shipped code had the same
-/// ordering and solved it with `set*Handler` calls on the panel afterwards; this
-/// is the same shape with one owner instead of five fields scattered across a
-/// 1,300-line function.
+/// dependency order**, and C2 removed the reason for two of them. The chip
+/// presenter and the recovery coordinator are still built after the director, so
+/// they remain; Live Preview and the permissions service no longer are, and the
+/// director now takes both at construction. The shipped code solved this with
+/// `set*Handler` calls on the panel afterwards; what is left here is the same
+/// shape with one owner, and C4 deletes it.
 ///
 /// Every target reference is weak because its feature owner anchors its
 /// lifetime. A missing target after bootstrap installation is a wiring defect.
 @MainActor
 final class OverlayOutputRouter {
 
-  weak var overlay: OverlayDirector?
-  weak var permissions: PermissionsService?
   weak var recovery: RecoveryCoordinator?
   weak var languageChips: LanguageSuggestionPresenter?
 
   func deliver(_ effect: PillEffect) {
     switch effect {
     case .recordingStateChanged:
-      // **Handled by the director's own `LivePreviewBridge` since C2**, which it
-      // receives at construction. Nothing reaches here: the branch survives only
-      // because `PillEffect` is exhaustive, and C4 deletes this whole type.
-      break
+      // **Consumed by `OverlayDirector.route` since C2**, through the
+      // `LivePreviewBridge` the director receives at construction. Nothing
+      // reaches here today; the branch survives only because `PillEffect` is
+      // exhaustive, and C4 deletes this whole type.
+      //
+      // It asserts rather than `break`ing because the failure it would otherwise
+      // hide is silent: a routing change that let this case through again would
+      // leave Live Preview never told a recording began, with no crash and no
+      // compile error. A Debug build now says so; a shipped build is unaffected.
+      assertionFailure("recordingStateChanged must be consumed by OverlayDirector.route")
 
     case .languageChipExpired(let generation):
       // The chip expiring on its own is NOT a user action, which is why it is an
@@ -46,26 +49,25 @@ final class OverlayOutputRouter {
     }
   }
 
-  /// The two buttons whose handlers belong to the APP, not to whoever presented
-  /// the pill.
+  /// The one remaining button whose handler belongs to the APP rather than to
+  /// whoever presented the pill.
   ///
-  /// **Both were silently unbound by the cutover and review caught it.** Grant
-  /// and Discard were setGrantHandler / setDiscardRecoveryHandler on the
-  /// panel; their setters were deleted with the class and the presenting sites
-  /// pass `actions: nil`, so the buttons still rendered and reached nobody. They
-  /// are here rather than at a call site because neither has one: an
-  /// accessibility toast is raised by the pipeline funnel and a recovery notice
-  /// by the recording starter, and neither of those knows about permissions or
-  /// the recovery coordinator.
+  /// **Grant left in C2 and only Discard remains.** Both were silently unbound
+  /// by the cutover and review caught it: they were setGrantHandler /
+  /// setDiscardRecoveryHandler on the panel, their setters were deleted with the
+  /// class, and the presenting sites passed `actions: nil`, so the buttons still
+  /// rendered and reached nobody. Grant now arrives through the director's
+  /// injected `grantAccessibility`, which cannot be omitted.
+  ///
+  /// Discard is still here because its OWNER is: `RecoveryCoordinator` is built
+  /// after the director, and C4 is the chunk that inverts that. The DISMISSAL
+  /// moved to the director in C2 regardless, because this type no longer holds a
+  /// route back to the overlay.
   func deliver(_ action: PillAction) {
     switch action {
-    case .grantAccessibility:
-      _ = permissions?.requestAccessibilityAccess()
-      overlay?.dismissSilently()
     case .discardRecovery:
       recovery?.discardActiveRecovery()
-      overlay?.dismissSilently()
-    case .pasteEscapeRecovery, .lockLanguage, .dismissChip,
+    case .grantAccessibility, .pasteEscapeRecovery, .lockLanguage, .dismissChip,
       .acknowledgeBluetoothAwareness, .closeBluetoothAwareness, .openBluetoothSettings:
       // These belong to the presentation that raised them and arrive through its
       // own `actions:` binding. Reaching here means one was presented without

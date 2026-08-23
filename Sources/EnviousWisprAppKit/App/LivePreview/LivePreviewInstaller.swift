@@ -38,7 +38,6 @@ enum LivePreviewInstaller {
   /// registers every consumer in one non-reversible order, and a second
   /// registration path would be a second source of truth for when the preview
   /// learns a user's vocabulary.
-  @discardableResult
   static func install(
     capture: any AudioCaptureInterface,
     settings: SettingsManager,
@@ -92,19 +91,12 @@ enum LivePreviewInstaller {
     // CONSTRUCTION, which is what lets the director be built after this call
     // instead of before it. Recording state rides on the same value rather than
     // arriving separately through the effect router.
-    let bridge = LivePreviewBridge(
-      recordingDidChange: { coordinator.setRecording($0) },
-      isEnabledForGeometry: { coordinator.isEnabledForGeometry },
-      display: { coordinator.display }
-    )
+    let bridge = LivePreviewBridge(coordinator: coordinator)
 
     // #2108: switching Live Preview OFF releases its cached engine, and with it a
-    // loaded 217 MB model. Wired HERE rather than in `WisprBootstrapper` for the
-    // reason this installer exists at all: the composition root carries a line
-    // ceiling whose purpose is to stop feature wiring accumulating in it, and the
-    // first version of this hook pushed it over — 1344 against 1340. Raising that
-    // ceiling for six lines of preview wiring would be exactly the trade this
-    // file was extracted to avoid.
+    // loaded model. Wired HERE because this installer owns the coordinator and
+    // its settings-driven teardown; the composition root only composes the
+    // result.
     //
     // Weak, because a settings hook must never be what keeps the limb alive.
     settingsSync.onLivePreviewDisabled = { [weak coordinator] in

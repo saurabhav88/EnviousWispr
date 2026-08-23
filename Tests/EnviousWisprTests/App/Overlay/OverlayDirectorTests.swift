@@ -154,6 +154,7 @@
           },
           isEnabledForGeometry: { preview.isEnabled },
           display: { preview.display() }),
+        grantAccessibility: { sink.appActions.append(.grantAccessibility) },
         deferFirstRender: { $0() })
       hosts.append(host)
       return (d, armed, sink)
@@ -770,7 +771,7 @@
           recordingDidChange: { if $0 { recordingStarted = true } },
           isEnabledForGeometry: { recordingStarted },
           display: { .off }),
-        deferFirstRender: { $0() })
+        grantAccessibility: {}, deferFirstRender: { $0() })
       Self.hosts.append(host)
       defer { Self.closeAllWindows() }
 
@@ -950,7 +951,8 @@
       let host = WindowlessOverlayHost()
       // The production `deferFirstRender` — the default — is the subject here.
       let d = OverlayDirector(
-        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in })
+        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in },
+        livePreview: .disabled, grantAccessibility: {})
 
       d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
       #expect(
@@ -975,7 +977,8 @@
     func supersededFirstRequestKeepsDeferring() async {
       let host = WindowlessOverlayHost()
       let d = OverlayDirector(
-        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in })
+        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in },
+        livePreview: .disabled, grantAccessibility: {})
 
       // First request, deferred. A second replaces it before the run loop turns,
       // so the first drops on its identity gate and builds nothing.
@@ -998,7 +1001,8 @@
     func laterRendersAreSynchronous() async {
       let host = WindowlessOverlayHost()
       let d = OverlayDirector(
-        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in })
+        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in },
+        livePreview: .disabled, grantAccessibility: {})
       d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
       await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } }
 
@@ -1171,6 +1175,8 @@
         deliverEffect: { sink.effects.append($0) },
         deliverAppAction: { sink.appActions.append($0) },
         announce: { sink.announcements.append($0) },
+        livePreview: .disabled,
+        grantAccessibility: { sink.appActions.append(.grantAccessibility) },
         deferFirstRender: { $0() })
       hosts.append(host)
       return (d, sink)

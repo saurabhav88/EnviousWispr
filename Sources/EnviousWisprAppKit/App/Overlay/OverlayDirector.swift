@@ -193,6 +193,16 @@ final class OverlayDirector {
   /// the closure is called.
   private let livePreview: LivePreviewBridge
 
+  /// What the accessibility notice's Grant button does.
+  ///
+  /// **Injected, because the notice has no call site that knows about
+  /// permissions.** `DictationLifecycleCoordinator` raises it from the pipeline
+  /// funnel and `PermissionsService` is nowhere in its world. Before C2 this
+  /// travelled out through the router's settable, weak `permissions` target;
+  /// that route could be unset and the button would render and reach nobody,
+  /// which is the failure this whole phase exists to make unspellable.
+  private let grantAccessibility: () -> Void
+
   init(
     host: any OverlayWindowHosting,
     deliverEffect: @escaping (PillEffect) -> Void,
@@ -202,7 +212,13 @@ final class OverlayDirector {
     scheduler: OverlayScheduler = .live,
     announce: @escaping @MainActor (OverlayAnnouncement) -> Void = OverlayDirector.postAnnouncement,
     accessibilityEligibility: OverlayAccessibilityEligibility = .init(warningDismissed: { false }),
-    livePreview: LivePreviewBridge = .disabled,
+    // **Neither of these defaults, and that is the point of C2.** A default here
+    // has no token at the call site, so no sweep can find a caller that meant to
+    // pass one and did not — the omission compiles and the feature is silently
+    // dead. `.disabled` and a no-op grant both still EXIST for tests that are
+    // about neither; choosing one is now visible in the source.
+    livePreview: LivePreviewBridge,
+    grantAccessibility: @escaping () -> Void,
     makeID: @escaping () -> PresentationID = { PresentationID() },
     deferFirstRender: @escaping (@escaping () -> Void) -> Void = { work in
       DispatchQueue.main.async(execute: work)
@@ -215,6 +231,7 @@ final class OverlayDirector {
     self.announce = announce
     self.accessibilityEligibility = accessibilityEligibility
     self.livePreview = livePreview
+    self.grantAccessibility = grantAccessibility
     self.position = position
     self.model = model
     self.schedule = scheduler
@@ -435,11 +452,26 @@ final class OverlayDirector {
   /// Eligibility is asked through a CLOSURE so the reducer's dedup guard runs
   /// FIRST. Asking eagerly spends the session's one showing on a push that is
   /// then dropped, and the next genuine ask is refused.
+  ///
+  /// **Grant, THEN dismiss, and the order is the shipped one.** The router this
+  /// replaces ran `permissions?.requestAccessibilityAccess()` followed by
+  /// `overlay?.dismissSilently()`. Requesting and leaving the notice on screen
+  /// is a pill the user already answered; dismissing first would race the
+  /// system prompt against the pill's own teardown.
   func presentAccessibilityNotice() {
     apply(
       reducer.reduceAccessibilityNotice(showingToast: { [accessibilityEligibility] in
         accessibilityEligibility.claim()
-      }), actions: deliverAppAction)
+      }),
+      actions: { [weak self] action in
+        guard let self else { return }
+        guard case .grantAccessibility = action else {
+          assertionFailure("the accessibility notice emitted a non-Grant action")
+          return
+        }
+        self.grantAccessibility()
+        self.dismissSilently()
+      })
   }
 
   /// The crash-recovery notice, which offers Discard.
@@ -448,8 +480,21 @@ final class OverlayDirector {
   /// `presentAccessibilityNotice` is one: its button's handler belongs to the app
   /// and no call site has it. `RecordingStarter` raises this notice and knows
   /// nothing about the recovery coordinator.
+  /// **Discard, THEN dismiss**, matching the router's own order and the
+  /// `.recoveryNotice` case of `present`. The OWNER still lives outside the
+  /// director until C4 takes custody, so the action is forwarded rather than
+  /// handled; only the dismissal moved here, because the router lost its
+  /// settable route back to the overlay.
   func presentRecoveryNotice() {
-    send(.pipeline(.recoveringLastRecording), actions: deliverAppAction)
+    send(.pipeline(.recoveringLastRecording)) { [weak self] action in
+      guard let self else { return }
+      guard case .discardRecovery = action else {
+        assertionFailure("the recovery notice emitted a non-Discard action")
+        return
+      }
+      self.deliverAppAction(action)
+      self.dismissSilently()
+    }
   }
 
   /// Empty the slot WITHOUT announcing "Recording complete".

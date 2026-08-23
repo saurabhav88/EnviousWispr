@@ -13,13 +13,17 @@ import Foundation
 ///
 /// Here the director cannot be built without them.
 ///
-/// **Every closure reads the COORDINATOR's frozen answer**, never a second live
-/// computation. `LivePreviewCoordinator` reads its provider once per recording
-/// and freezes the route together with the effective-enabled value, so geometry
-/// and resolution cannot disagree. A live read here would re-open exactly that
-/// gap: the overlay creates its panel on the next run-loop cycle and reads
-/// `isEnabledForGeometry` inside that deferred work, so a fresh computation
-/// could size a pill for one engine while the recording resolves another.
+/// **All three closures read one coordinator, and that is what keeps them
+/// consistent.** `recordingDidChange` establishes or clears the coordinator's
+/// recording snapshot; during a recording, `isEnabledForGeometry` and `display`
+/// both read that same coordinator-owned state rather than recomputing. So the
+/// overlay never re-decides the engine choice — which matters because it creates
+/// its panel on the next run-loop cycle and reads `isEnabledForGeometry` inside
+/// that deferred work, where a fresh computation could size a pill for one
+/// engine while the recording resolves another.
+///
+/// Use `init(coordinator:)` in production. The memberwise initializer exists for
+/// tests that need to observe one seam.
 @MainActor
 struct LivePreviewBridge {
 
@@ -38,6 +42,20 @@ struct LivePreviewBridge {
   /// What to render in it.
   let display: () -> LivePreviewDisplay
 
+  /// The production mapping, in ONE place so it can be tested.
+  ///
+  /// **Three hand-written closures at the composition site had no test that
+  /// could see them** — every director test builds its own bridge, so swapping
+  /// two of these mappings, or pointing one at a different coordinator, compiled
+  /// and passed the whole suite while a Live Preview user got a compact or blank
+  /// pill. Naming the mapping gives it a spelling a test can assert on.
+  init(coordinator: LivePreviewCoordinator) {
+    self.init(
+      recordingDidChange: { coordinator.setRecording($0) },
+      isEnabledForGeometry: { coordinator.isEnabledForGeometry },
+      display: { coordinator.display })
+  }
+
   init(
     recordingDidChange: @escaping (Bool) -> Void,
     isEnabledForGeometry: @escaping () -> Bool,
@@ -54,8 +72,12 @@ struct LivePreviewBridge {
   /// real one and the composition root has no other route; this exists so a test
   /// that is not about preview does not have to fabricate three closures. It
   /// reports the feature OFF, which is the honest answer for a director nobody
-  /// wired a preview to — and unlike the old defaults, choosing it is visible at
-  /// the call site.
+  /// wired a preview to.
+  ///
+  /// It is not a DEFAULT and must never become one. A defaulted bridge leaves no
+  /// token at the call site, so nothing distinguishes a caller that chose the
+  /// disabled preview from one that forgot to pass a real one — and the second
+  /// silently ships a dead feature.
   static let disabled = LivePreviewBridge(
     recordingDidChange: { _ in },
     isEnabledForGeometry: { false },

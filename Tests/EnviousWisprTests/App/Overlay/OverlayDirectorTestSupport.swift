@@ -36,7 +36,8 @@ enum OverlayTestDouble {
       deliverAppAction: { _ in },
       // Announcements go nowhere: a test that has not asked for a screen has not
       // asked for VoiceOver either, and the real post reaches the system.
-      announce: { _ in }, deferFirstRender: { $0() })
+      announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      deferFirstRender: { $0() })
   }
 
   /// The same director, with its fake host in hand for a test that needs to
@@ -45,7 +46,8 @@ enum OverlayTestDouble {
     let host = WindowlessOverlayHost()
     return (
       OverlayDirector(
-        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in }, deferFirstRender: { $0() }),
+        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in },
+        livePreview: .disabled, grantAccessibility: {}, deferFirstRender: { $0() }),
       host
     )
   }

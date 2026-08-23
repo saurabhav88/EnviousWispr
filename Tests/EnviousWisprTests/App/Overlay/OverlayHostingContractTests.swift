@@ -48,7 +48,9 @@ struct OverlayHostingContractTests {
   func theFakeNeverRefuses() {
     let host = WindowlessOverlayHost()
     let d = OverlayDirector(
-      host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in }, deferFirstRender: { $0() })
+      host: host, deliverEffect: { _ in }, deliverAppAction: { _ in },
+      announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      deferFirstRender: { $0() })
 
     d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
 
@@ -95,7 +97,9 @@ struct OverlayHostingContractTests {
 
     private static func director(on host: any OverlayWindowHosting) -> OverlayDirector {
       OverlayDirector(
-        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in }, deferFirstRender: { $0() })
+        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in },
+        announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+        deferFirstRender: { $0() })
     }
 
     @Test("both hosts report a presentation they accepted")

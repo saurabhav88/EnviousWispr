@@ -49,6 +49,13 @@ struct PillRequestParityTests {
     /// clock. Firing it is how a dwell is reached without waiting for one.
     var armedExpiry: OverlayScheduledWork?
 
+    /// Whether a pill was STILL SHOWING at the instant each app-owned handler
+    /// ran (#2292 C2). Both handlers must run before the director dismisses, so
+    /// `true` is the passing value; a snapshot taken afterwards cannot tell
+    /// "granted, then dismissed" from "dismissed, then granted".
+    var grantSawPresentation: Bool?
+    var discardSawPresentation: Bool?
+
     @MainActor
     init(manualClock: Bool = false) {
       let scheduler: OverlayScheduler
@@ -60,9 +67,19 @@ struct PillRequestParityTests {
       director = OverlayDirector(
         host: host,
         deliverEffect: { [self] in effects.append($0) },
-        deliverAppAction: { [self] in appActions.append($0) },
+        deliverAppAction: { [self] in
+          appActions.append($0)
+          if case .discardRecovery = $0 {
+            discardSawPresentation = director.renderModel.presentation != nil
+          }
+        },
         scheduler: scheduler,
         announce: { [self] in announcements.append($0) },
+        livePreview: .disabled,
+        grantAccessibility: { [self] in
+          appActions.append(.grantAccessibility)
+          grantSawPresentation = director.renderModel.presentation != nil
+        },
         deferFirstRender: { $0() })
     }
 
@@ -493,6 +510,60 @@ struct PillRequestParityTests {
     let id = try #require(rig.director.renderModel.presentation?.id)
     rig.director.send(.action(id, .grantAccessibility), actions: nil)
     #expect(rig.appActions == [.grantAccessibility])
+  }
+
+  /// **Grant, THEN dismiss — the shipped order, and the two halves are separate
+  /// claims.** Before C2 both lived in `OverlayOutputRouter`
+  /// (`permissions?.requestAccessibilityAccess()` then
+  /// `overlay?.dismissSilently()`); C2 moved them into the director, so the
+  /// ordering had to move with them rather than be re-derived.
+  ///
+  /// REPRODUCIBLE, and it is the same user in both directions. Someone without
+  /// Accessibility permission is shown the notice and clicks Grant. Dismissing
+  /// first races the system's own permission prompt against the pill's teardown;
+  /// never dismissing leaves a pill the user has already answered sitting over
+  /// their work with no way to clear it.
+  ///
+  /// Release-visible on purpose: `OverlayDirectorTests` is entirely `#if DEBUG`,
+  /// so nothing else in this behaviour is exercised by a Release lane.
+  @Test("Grant runs before the notice is dismissed, and the notice then goes")
+  func grantRunsBeforeDismissal() throws {
+    let rig = Rig()
+    rig.director.present(.accessibilityNotice)
+    let id = try #require(rig.director.renderModel.presentation?.id)
+
+    rig.director.send(.action(id, .grantAccessibility), actions: nil)
+
+    #expect(
+      rig.grantSawPresentation == true,
+      "the notice was dismissed before Grant ran, racing the system prompt")
+    #expect(
+      rig.director.renderModel.presentation == nil,
+      "the notice the user already answered is still on screen")
+  }
+
+  /// The same two claims for Discard, whose owner still lives outside the
+  /// director until C4 — so only the DISMISSAL moved here, and this is what pins
+  /// that it did not also move ahead of the owner.
+  ///
+  /// REPRODUCIBLE: a user whose last recording is being recovered presses
+  /// Discard. Dismissing first would leave the recovery running with its notice
+  /// gone; never dismissing leaves an answered pill on screen.
+  @Test("Discard reaches its owner before the recovery notice is dismissed")
+  func discardRunsBeforeDismissal() throws {
+    let rig = Rig()
+    rig.director.presentRecoveryNotice()
+    let id = try #require(rig.director.renderModel.presentation?.id)
+
+    rig.director.send(.action(id, .discardRecovery), actions: nil)
+
+    #expect(rig.appActions == [.discardRecovery], "Discard reached nobody")
+    #expect(
+      rig.discardSawPresentation == true,
+      "the notice was dismissed before its owner was told to discard")
+    #expect(
+      rig.director.renderModel.presentation == nil,
+      "the recovery notice the user answered is still on screen")
   }
 
   /// The chip's expiry is not an action — nobody pressed anything — so it travels

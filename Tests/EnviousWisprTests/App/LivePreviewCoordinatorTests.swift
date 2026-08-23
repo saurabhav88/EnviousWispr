@@ -36,6 +36,57 @@ private func previewRoute(
 @MainActor
 struct LivePreviewCoordinatorTests {
 
+  // MARK: - #2292 C2: the production bridge mapping
+
+  /// **The three closures the app actually ships, asserted once.**
+  ///
+  /// Every other test in the overlay suites builds its own `LivePreviewBridge`
+  /// out of test closures, so none of them can see the mapping the composition
+  /// root uses. Swapping two of these, or pointing one at a different
+  /// coordinator, compiled and passed the entire suite — and a user with Live
+  /// Preview on would get a compact or blank pill for a recording that should
+  /// show text. `LivePreviewBridge.init(coordinator:)` exists to give that
+  /// mapping one spelling; this is the case that reads it.
+  ///
+  /// Each assertion is chosen so a WRONG wiring gives a different answer:
+  /// - Geometry is read AFTER the setting is flipped off mid-recording. A live
+  ///   recomputation answers false; the coordinator's frozen snapshot answers
+  ///   true. So this passes only if the closure reaches the coordinator AND
+  ///   `recordingDidChange` reached `setRecording`.
+  /// - Display moves `.off` → `.waiting` → `.off` across the same two calls, so
+  ///   a closure returning a constant, or reading a second coordinator, fails.
+  ///
+  /// Not `#if DEBUG`: this is the mapping a Release build ships, and the
+  /// director suite that covers everything else about the bridge is Debug-only.
+  @Test("the production bridge maps all three coordinator seams")
+  func productionBridgeMapsCoordinatorSeams() {
+    var previewOn = true
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { previewOn },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
+    )
+    let bridge = LivePreviewBridge(coordinator: coordinator)
+
+    #expect(bridge.isEnabledForGeometry(), "control: the live answer is true before recording")
+    #expect(bridge.display() == .off, "control: nothing is showing yet")
+
+    bridge.recordingDidChange(true)
+    #expect(bridge.display() == .waiting, "recordingDidChange never reached setRecording")
+
+    previewOn = false
+    #expect(
+      bridge.isEnabledForGeometry(),
+      "geometry recomputed live instead of reading the recording's frozen snapshot")
+
+    bridge.recordingDidChange(false)
+    #expect(bridge.display() == .off, "the recording ending did not reach the coordinator")
+    #expect(
+      !bridge.isEnabledForGeometry(),
+      "the snapshot outlived its recording, or geometry is not reading the coordinator")
+  }
+
   // MARK: - #2123 F3: the removal barrier, tested at the coordinator
 
   /// **Tested HERE, not through a stand-in for the delivery home.** The previous
