@@ -131,9 +131,13 @@ struct PillRequestParityTests {
     parity(
       "recording",
       old: {
-        $0.presentRecording(
-          audioLevel: 0.4, audioLevelProvider: { 0.4 },
-          recordingElapsedProvider: { 3 }, isRecordingLocked: false, actions: nil)
+        $0.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0.4,
+            audioLevelProvider: { 0.4 },
+            recordingElapsedProvider: { 3 },
+            isLocked: false)))
       },
       new: {
         $0.present(.recording(RecordingPillInput(
@@ -146,9 +150,13 @@ struct PillRequestParityTests {
     parity(
       "recording locked",
       old: {
-        $0.presentRecording(
-          audioLevel: 0.2, audioLevelProvider: { 0.2 },
-          recordingElapsedProvider: { nil }, isRecordingLocked: true, actions: nil)
+        $0.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0.2,
+            audioLevelProvider: { 0.2 },
+            recordingElapsedProvider: { nil },
+            isLocked: true)))
       },
       new: {
         $0.present(.recording(RecordingPillInput(
@@ -232,7 +240,7 @@ struct PillRequestParityTests {
   @Test("accessibility notice") func accessibilityNotice() {
     parity(
       "accessibilityNotice",
-      old: { $0.presentAccessibilityNotice() },
+      old: { $0.present(.accessibilityNotice) },
       new: { $0.present(.accessibilityNotice) })
   }
 
@@ -298,9 +306,13 @@ struct PillRequestParityTests {
     parity(
       "recordingLock",
       old: {
-        $0.presentRecording(
-          audioLevel: 0.1, audioLevelProvider: { 0.1 },
-          recordingElapsedProvider: { nil }, isRecordingLocked: false, actions: nil)
+        $0.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0.1,
+            audioLevelProvider: { 0.1 },
+            recordingElapsedProvider: { nil },
+            isLocked: false)))
         $0.send(.lockStateChanged(true), actions: nil)
       },
       new: {
@@ -315,9 +327,13 @@ struct PillRequestParityTests {
     parity(
       "inPanelNotice",
       old: {
-        $0.presentRecording(
-          audioLevel: 0.1, audioLevelProvider: { 0.1 },
-          recordingElapsedProvider: { nil }, isRecordingLocked: false, actions: nil)
+        $0.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0.1,
+            audioLevelProvider: { 0.1 },
+            recordingElapsedProvider: { nil },
+            isLocked: false)))
         $0.send(.inPanelNotice(.approachingCap, dismissAfter: 2), actions: nil)
       },
       new: {
@@ -350,7 +366,7 @@ struct PillRequestParityTests {
       "dismiss silent",
       old: {
         $0.send(.pipeline(.engineReady), actions: nil)
-        $0.dismissSilently()
+        $0.dismissCurrent(.silent)
       },
       new: {
         $0.present(.engineReady)
@@ -561,7 +577,7 @@ struct PillRequestParityTests {
   /// **Preserves the existing Grant transaction: request permission, then
   /// dismiss.** Before C2 both calls lived in `OverlayOutputRouter`
   /// (`permissions?.requestAccessibilityAccess()` then
-  /// `overlay?.dismissSilently()`); C2 moved them into the director, so the
+  /// `overlay?.dismissCurrent(.silent)`); C2 moved them into the director, so the
   /// order had to move with them rather than be re-derived.
   ///
   /// **This is a semantic-parity guard, and the ordering half does NOT claim a

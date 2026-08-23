@@ -50,19 +50,22 @@
       locked: Bool = false,
       elapsed: @escaping () -> TimeInterval? = { nil },
       display: @escaping () -> LivePreviewDisplay = { .off },
-      actions: ((PillAction) -> Void)? = nil,
       // Only the two cases that exercise Live Preview pass one; every other
       // caller records with the feature off and has no setting to flip.
       previewSetting: PreviewSetting? = nil
     ) {
       previewSetting?.isEnabled = preview
       previewSetting?.display = display
-      d.presentRecording(
-        audioLevel: level,
-        audioLevelProvider: { level },
-        recordingElapsedProvider: elapsed,
-        isRecordingLocked: locked,
-        actions: actions)
+      // **No `actions:` parameter, and nothing is lost.** A recording pill draws
+      // no buttons, so `PillRequest.recording` carries no callbacks — an action
+      // binding on a recording is unspellable rather than merely unused.
+      d.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: level,
+            audioLevelProvider: { level },
+            recordingElapsedProvider: elapsed,
+            isLocked: locked)))
     }
 
     private static func closeAllWindows() {
@@ -329,30 +332,31 @@
         "Undo was pressed and nothing was bound to it")
     }
 
-    /// **A morph keeps its buttons.** An audio-level tick is a same-id update with
-    /// no handler and it arrives many times a second; replacing the binding with
-    /// whatever the call carried silently disarmed the live pill.
-    @Test("a same-pill update does not drop its handler")
-    func morphPreservesItsBinding() {
-      let (d, _, _) = Self.director()
-      defer { Self.closeAllWindows() }
-      var pressed: [PillAction] = []
-      Self.record(d, level: 0.1, actions: { pressed.append($0) })
-      let id = try! #require(d.currentPresentationForTesting?.id)
+    // **`morphPreservesItsBinding` was DELETED here** (#2292 C5b), and the reason
+    // is a real consequence of the typed boundary rather than a convenience.
+    //
+    // It proved that an audio-level tick — a same-id morph arriving many times a
+    // second — must not replace the live pill's action binding with the nothing
+    // that tick carried. Its vehicle was a RECORDING presented with an `actions:`
+    // closure and a synthetic `.discardRecovery` press.
+    //
+    // `PillRequest.recording` carries no callbacks, because a recording pill
+    // draws no buttons — so that vehicle cannot be built, and an action binding
+    // on a recording is now unspellable rather than merely unused. The only
+    // morphable presentation is the recording (`PillUpdate` targets exactly
+    // `.recordingLock` and `.inPanelNotice`), so there is no pill that both
+    // morphs AND carries a binding, and the defect this case described can no
+    // longer occur.
+    //
+    // **The production guard in `apply` stays and is now DEFENSIVE.** Keeping it
+    // costs a comparison; removing it would be a bet that no future request ever
+    // becomes both morphable and interactive. Flagged for the C5 review rather
+    // than decided here.
 
-      for level in [Float(0.4), 0.7, 0.2] {
-        Self.record(d, level: level)
-      }
-      d.send(.action(id, .discardRecovery), actions: nil)
-
-      #expect(
-        pressed == [.discardRecovery],
-        "a metering update dropped the live pill's handler")
-    }
+    /// **A morph is not a fresh presentation, and the host needs that told to it.**
 
     // MARK: - Rendering through the host
 
-    /// **A morph is not a fresh presentation, and the host needs that told to it.**
     /// A fresh presentation re-anchors; a morph keeps the live frame. Getting it
     /// wrong moves the pill on every audio tick.
     @Test("a same-pill update is not presented as a fresh occupant")
@@ -490,7 +494,7 @@
       let (shown, _, shownSink) = Self.director()
       defer { Self.closeAllWindows() }
 
-      shown.presentAccessibilityNotice()
+      shown.present(.accessibilityNotice)
 
       guard case .notice(let toast)? = shown.currentPresentationForTesting?.content else {
         Issue.record("expected a notice")
@@ -505,7 +509,7 @@
       // reason, driven through the real policy rather than a stubbed answer.
       let (suppressed, _, suppressedSink) = Self.director(warningDismissed: { true })
 
-      suppressed.presentAccessibilityNotice()
+      suppressed.present(.accessibilityNotice)
 
       guard case .notice(let fallback)? = suppressed.currentPresentationForTesting?.content else {
         Issue.record("expected a notice")
@@ -536,10 +540,10 @@
       let (d, _, sink) = Self.director()
       defer { Self.closeAllWindows() }
 
-      d.presentAccessibilityNotice()
+      d.present(.accessibilityNotice)
       let first = d.currentPresentationForTesting?.id
 
-      d.presentAccessibilityNotice()
+      d.present(.accessibilityNotice)
 
       #expect(d.currentPresentationForTesting?.id == first, "a duplicate push replaced the toast")
       #expect(sink.announcements.count == 1, "a duplicate push announced twice")
@@ -554,7 +558,7 @@
       // correctly falls back — and it proves the duplicate did not spend a
       // second one, because there is only ever one to spend.
       d.send(.pipeline(.processing(phase: .transcribing)), actions: nil)
-      d.presentAccessibilityNotice()
+      d.present(.accessibilityNotice)
       guard case .notice(let later)? = d.currentPresentationForTesting?.content else {
         Issue.record("expected a notice")
         return
@@ -582,7 +586,7 @@
       sink.recordingStates.removeAll()
       sink.announcements.removeAll()
 
-      d.presentAccessibilityNotice()
+      d.present(.accessibilityNotice)
 
       #expect(
         sink.recordingStates == [false],
@@ -610,7 +614,7 @@
       let (d, _, sink) = Self.director()
       defer { Self.closeAllWindows() }
 
-      d.presentAccessibilityNotice()
+      d.present(.accessibilityNotice)
       let id = try! #require(d.currentPresentationForTesting?.id)
       d.send(.action(id, .grantAccessibility), actions: nil)
 
@@ -753,9 +757,13 @@
       Self.hosts.append(host)
       defer { Self.closeAllWindows() }
 
-      d.presentRecording(
-        audioLevel: 0, audioLevelProvider: { 0 }, recordingElapsedProvider: { nil },
-        isRecordingLocked: false, actions: nil)
+      d.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0,
+            audioLevelProvider: { 0 },
+            recordingElapsedProvider: { nil },
+            isLocked: false)))
 
       #expect(
         d.renderModel.recordingLayout.usesPreview,
@@ -787,7 +795,7 @@
       Self.record(quiet)
       quietSink.announcements.removeAll()
 
-      quiet.dismissSilently()
+      quiet.dismissCurrent(.silent)
 
       #expect(
         quietSink.announcements.isEmpty,
@@ -1224,9 +1232,13 @@
       let (d, _) = Self.refusingDirectorWithSink({ false })
       defer { Self.closeAllWindows() }
 
-      d.presentRecording(
-        audioLevel: 0.5, audioLevelProvider: { 0.5 }, recordingElapsedProvider: { 3 },
-        isRecordingLocked: true, actions: { _ in })
+      d.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0.5,
+            audioLevelProvider: { 0.5 },
+            recordingElapsedProvider: { 3 },
+            isLocked: true)))
 
       #expect(d.currentPresentationForTesting == nil, "the reducer still holds the recording")
       // Asserted through the providers THEMSELVES rather than a test-only flag:

@@ -266,7 +266,7 @@ struct OverlayRetainedWindowTests {
       for _ in 0..<4 {
         d.send(.pipeline(.processing(phase: .polishing)), actions: nil)
         await drainMainQueue()
-        d.dismissSilently()
+        d.dismissCurrent(.silent)
         await drainMainQueue()
       }
 

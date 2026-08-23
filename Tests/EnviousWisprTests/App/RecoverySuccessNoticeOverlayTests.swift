@@ -23,7 +23,7 @@ import Testing
     #expect(
       overlay.currentIntent == .recoverySucceeded,
       "a dedicated intent routed through the standalone launch-visible notice path")
-    overlay.dismissSilently()
+    overlay.dismissCurrent(.silent)
     #expect(overlay.currentIntent == .hidden)
   }
 
@@ -31,11 +31,15 @@ import Testing
   func recordingSupersedesSuccessNotice() {
     let overlay = OverlayTestDouble.headlessDirector()
     overlay.send(.pipeline(.recoverySucceeded), actions: nil)
-    overlay.presentRecording(
-      audioLevel: 0, audioLevelProvider: { 0 }, recordingElapsedProvider: { nil },
-      isRecordingLocked: false, actions: nil)
+    overlay.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0,
+            audioLevelProvider: { 0 },
+            recordingElapsedProvider: { nil },
+            isLocked: false)))
     #expect(overlay.currentIntent == .recording(audioLevel: 0))
-    overlay.dismissSilently()
+    overlay.dismissCurrent(.silent)
     #expect(overlay.currentIntent == .hidden)
   }
 }

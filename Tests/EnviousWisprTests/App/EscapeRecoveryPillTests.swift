@@ -276,9 +276,13 @@ struct EscapeRecoveryPillTests {
       // A recording is a TRANSACTION, not an event — `send` asserts on one, and
       // that invariant caught this loop on its first run.
       if case .recording = intent {
-        d.presentRecording(
-          audioLevel: 0, audioLevelProvider: { 0 }, recordingElapsedProvider: { nil },
-          isRecordingLocked: false, actions: nil)
+        d.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0,
+            audioLevelProvider: { 0 },
+            recordingElapsedProvider: { nil },
+            isLocked: false)))
       } else {
         d.send(.pipeline(intent), actions: nil)
       }

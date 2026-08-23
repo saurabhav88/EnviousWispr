@@ -22,7 +22,7 @@
 
     @Test func recordingSupersedesBluetoothCardSynchronously() {
       let overlay = OverlayTestDouble.headlessDirector()
-      overlay.send(.featureRequest(.bluetoothAwareness), actions: nil)
+      overlay.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
       // **This asserted `.hidden` and that is what hid the defect.** A feature
       // does not change the pipeline intent, which is true and was the wrong
       // question: `BluetoothAwarenessPresenter` asks `currentIntent` for
@@ -35,20 +35,24 @@
         return
       }
 
-      overlay.presentRecording(
-        audioLevel: 0, audioLevelProvider: { 0 }, recordingElapsedProvider: { nil },
-        isRecordingLocked: false, actions: nil)
+      overlay.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0,
+            audioLevelProvider: { 0 },
+            recordingElapsedProvider: { nil },
+            isLocked: false)))
       #expect(overlay.currentIntent == .recording(audioLevel: 0))
 
-      overlay.dismissSilently()
+      overlay.dismissCurrent(.silent)
       #expect(overlay.currentIntent == .hidden)
       #expect(overlay.currentPresentationForTesting == nil)
     }
 
     @Test func hideClearsBluetoothCard() {
       let overlay = OverlayTestDouble.headlessDirector()
-      overlay.send(.featureRequest(.bluetoothAwareness), actions: nil)
-      overlay.dismissSilently()
+      overlay.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
+      overlay.dismissCurrent(.silent)
       #expect(overlay.currentPresentationForTesting == nil)
     }
   }

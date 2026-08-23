@@ -30,9 +30,13 @@
     }
 
     private static func record(_ d: OverlayDirector) {
-      d.presentRecording(
-        audioLevel: 0, audioLevelProvider: { 0 }, recordingElapsedProvider: { nil },
-        isRecordingLocked: false, actions: nil)
+      d.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0,
+            audioLevelProvider: { 0 },
+            recordingElapsedProvider: { nil },
+            isLocked: false)))
     }
 
     @Test("a still-pending Importing pill is replaced by Finished, not dropped")
