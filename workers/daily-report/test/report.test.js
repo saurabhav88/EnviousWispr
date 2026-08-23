@@ -510,6 +510,68 @@ test("adoption section: every recovery column the query asks for reaches the for
   }
 });
 
+test("adoption query: outcome buckets stay aligned with Swift's wire vocabulary", () => {
+  const swift = readFileSync(
+    new URL("../../../Sources/EnviousWisprCore/EscapeRecoveryTerminalOutcome.swift", import.meta.url),
+    "utf8"
+  );
+  const enumBody = swift.match(
+    /public enum EscapeRecoveryTerminalOutcome:[^{]+\{([\s\S]*?)\n\}/
+  )?.[1];
+  assert.ok(enumBody, "expected EscapeRecoveryTerminalOutcome in the Swift source");
+
+  const outcomes = Object.fromEntries(
+    [...enumBody.matchAll(/^\s*case\s+(\w+)(?:\s*=\s*"([^"]+)")?/gm)]
+      .map(([, name, explicitRawValue]) => [name, explicitRawValue || name])
+  );
+  assert.deepEqual(
+    Object.keys(outcomes).sort(),
+    ["abandoned", "empty", "saveFailed", "saved", "transcriptionFailed"],
+    "a new terminal outcome needs an explicit daily-report decision"
+  );
+
+  const adoption = readFileSync(new URL("../src/adoption.js", import.meta.url), "utf8");
+  const totalsQuery = adoption.match(/const totalsSql = `([\s\S]*?)`;/)?.[1];
+  assert.ok(totalsQuery, "expected totalsSql");
+
+  const buckets = new Map();
+  for (const match of totalsQuery.matchAll(
+    /(?:countIf|uniqExactIf)\(([\s\S]*?)\)\s+AS\s+(er_[a-z_]+)/g
+  )) {
+    const literal = match[1].match(/properties\.outcome\s*=\s*'([^']+)'/)?.[1];
+    if (!literal) continue;
+    const aliases = buckets.get(literal) || [];
+    aliases.push(match[2]);
+    buckets.set(literal, aliases);
+  }
+
+  assert.deepEqual(
+    buckets.get(outcomes.saved),
+    ["er_kept", "er_kept_users"],
+    "saved is the only success and owns both its count and unique-user count"
+  );
+  assert.deepEqual(
+    buckets.get(outcomes.transcriptionFailed),
+    ["er_failed_transcription"],
+    "a transcription failure must stay in its own failure bucket"
+  );
+  assert.deepEqual(
+    buckets.get(outcomes.saveFailed),
+    ["er_failed_save"],
+    "a save failure must stay in its own failure bucket"
+  );
+  assert.equal(buckets.has(outcomes.empty), false, "empty audio is not a failure");
+  assert.equal(buckets.has(outcomes.abandoned), false, "a user cancellation is not a failure");
+
+  const knownRawValues = new Set(Object.values(outcomes));
+  for (const literal of totalsQuery.matchAll(/properties\.outcome\s*=\s*'([^']+)'/g)) {
+    assert.ok(
+      knownRawValues.has(literal[1]),
+      `the query uses unknown Escape Recovery outcome '${literal[1]}'`
+    );
+  }
+});
+
 test("adoption section: a report predating the feature renders without it, and without throwing", () => {
   const { escapeRecovery, ...withoutIt } = GOLDEN_DATA;
   const msg = formatAdoption(withoutIt, GOLDEN_BUCKETS).join("\n");

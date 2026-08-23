@@ -116,6 +116,8 @@ enum EscapeRecoveryWiring {
       EscapeRecoveryPasteAction.paste(
         payload: payload,
         restorable: { coordinator.restorableHeldRow(id: $0) },
+        copyToClipboard: { PasteService.copyToClipboard($0) },
+        dispatchPaste: { PasteService.simulatePaste() },
         report: report)
     }
   }
