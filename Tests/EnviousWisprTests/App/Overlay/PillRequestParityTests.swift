@@ -512,17 +512,20 @@ struct PillRequestParityTests {
     #expect(rig.appActions == [.grantAccessibility])
   }
 
-  /// **Grant, THEN dismiss — the shipped order, and the two halves are separate
-  /// claims.** Before C2 both lived in `OverlayOutputRouter`
+  /// **Preserves the existing Grant transaction: request permission, then
+  /// dismiss.** Before C2 both calls lived in `OverlayOutputRouter`
   /// (`permissions?.requestAccessibilityAccess()` then
   /// `overlay?.dismissSilently()`); C2 moved them into the director, so the
-  /// ordering had to move with them rather than be re-derived.
+  /// order had to move with them rather than be re-derived.
   ///
-  /// REPRODUCIBLE, and it is the same user in both directions. Someone without
-  /// Accessibility permission is shown the notice and clicks Grant. Dismissing
-  /// first races the system's own permission prompt against the pill's teardown;
-  /// never dismissing leaves a pill the user has already answered sitting over
-  /// their work with no way to clear it.
+  /// **This is a semantic-parity guard, and the ordering half does NOT claim a
+  /// user defect.** Both calls are synchronous on the MainActor, and no
+  /// supported-machine failure has been demonstrated for the inverse order — an
+  /// earlier version of this comment asserted a race against the system
+  /// permission prompt, which the repository does not establish. What IS a user
+  /// defect, and what the second assertion pins, is Grant reaching nobody or the
+  /// notice surviving the answer: a pill the user already dealt with, sitting
+  /// over their work with no way to clear it.
   ///
   /// Release-visible on purpose: `OverlayDirectorTests` is entirely `#if DEBUG`,
   /// so nothing else in this behaviour is exercised by a Release lane.
@@ -542,13 +545,15 @@ struct PillRequestParityTests {
       "the notice the user already answered is still on screen")
   }
 
-  /// The same two claims for Discard, whose owner still lives outside the
-  /// director until C4 — so only the DISMISSAL moved here, and this is what pins
-  /// that it did not also move ahead of the owner.
+  /// **Preserves the temporary recovery transaction: notify the owner, then
+  /// dismiss.** The owner still lives outside the director until C4, so only the
+  /// DISMISSAL moved here; C4 replaces this split with the request-owned
+  /// callback.
   ///
-  /// REPRODUCIBLE: a user whose last recording is being recovered presses
-  /// Discard. Dismissing first would leave the recovery running with its notice
-  /// gone; never dismissing leaves an answered pill on screen.
+  /// Same split as the Grant case above: the ORDER is parity, both calls being
+  /// synchronous on the MainActor, while the user defect the third assertion
+  /// pins is real — a user whose last recording is being recovered presses
+  /// Discard and the notice stays on screen, or Discard reaches nobody.
   @Test("Discard reaches its owner before the recovery notice is dismissed")
   func discardRunsBeforeDismissal() throws {
     let rig = Rig()

@@ -95,15 +95,12 @@ final class OverlayDirector {
     }
   }
 
-  /// The handler for the two buttons that belong to the APP rather than to a
-  /// presentation — Grant and Discard.
+  /// Forwards Discard Recovery to its late-constructed owner.
   ///
-  /// **Required, with no default, and my argument for a default was wrong on the
-  /// facts.** I claimed sixteen test constructions would need editing; there are
-  /// THREE — one shared headless factory and two retained-window cases — because
-  /// the rest go through that factory. A no-op default is a fresh structural
-  /// omission path introduced by the fix for an omission, which is not a trade
-  /// worth making for three lines.
+  /// Grant left this seam in C2 and is now a required construction-time action.
+  /// C4 moves Discard into its own `PillRequest` and deletes this temporary
+  /// output route. Required, with no default: a no-op default is a fresh
+  /// structural omission path inside the fix for an omission.
   private let deliverAppAction: (PillAction) -> Void
 
   /// Posting the spoken announcement, injectable so a guard can observe it.

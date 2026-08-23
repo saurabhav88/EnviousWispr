@@ -479,14 +479,19 @@ public final class WisprBootstrapper {
           permissions?.accessibilityWarningDismissed ?? false
         }),
       livePreview: livePreviewInstallation.bridge,
-      // Grant leaves the router in C2. `permissions` is captured weakly for the
-      // reason the router captured it weakly: a feature's owner anchors its
-      // lifetime, and the director outlives everything. `PermissionsService` is
-      // a bootstrapper-owned `let`, so the app-lifetime director and the weak
-      // reference never disagree in practice.
-      grantAccessibility: { [weak permissions] in
-        _ = permissions?.requestAccessibilityAccess()
-      })
+      // Grant leaves the router in C2, captured STRONGLY on purpose. The
+      // router's targets were weak because they were settable and their feature
+      // owners anchored them; a REQUIRED construction argument has the opposite
+      // obligation — a weak capture reintroduces the silent failure this
+      // parameter exists to make unspellable, where the button renders and
+      // reaches nobody.
+      //
+      // No cycle: `PermissionsService` lives in `EnviousWisprServices`, which is
+      // downstream of this module and cannot name `OverlayDirector` — zero hits.
+      // Its one callback has a single assignment (`MenuBarController.swift:76`)
+      // and that captures weakly. `WisprBootstrapper` owns the service for the
+      // app's lifetime regardless.
+      grantAccessibility: { _ = permissions.requestAccessibilityAccess() })
 
     // #1701 Chunk 2: bulk-import-enrichment producer, a sibling of
     // `contactsImportCoordinator` on the same alias-suggester permit lane.
