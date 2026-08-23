@@ -32,7 +32,7 @@ const faqJsonLd = JSON.stringify({
       "name": "Does local speech to text work without an internet connection?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes, once the model files are downloaded. Recording, transcription, filler removal, and number and date formatting all run on the Mac with no network. Cleanup with a cloud provider is the one step that needs a connection, and it is optional.",
+        "text": "Yes, once the model files are downloaded. Recording, transcription, and filler removal run on the Mac with no network. Number and date formatting also runs offline, but only when you are dictating in English. Cleanup is the one step that can need a connection, and only if you point it at a cloud provider or a hosted Ollama model.",
       },
     },
     {
@@ -114,7 +114,7 @@ const faqJsonLd = JSON.stringify({
             </tr>
             <tr>
               <td><strong>The transcript</strong></td>
-              <td>Stays on the Mac by default. If you deliberately choose a cloud provider for cleanup, the transcript goes to that provider under your own API key, and so do your custom words and the name of the app you are dictating into, so the model gets your spellings and tone right. Audio is never sent. Never anything to us.</td>
+              <td>Stays on the Mac by default. If you deliberately choose a cloud provider for cleanup, the transcript goes to that provider under your own API key, and so do your custom words and the name of the app you are dictating into, so the model gets your spellings and tone right. Picking a hosted Ollama model sends it to Ollama the same way, with no key involved; an Ollama model you download runs on your Mac and sends nothing. Audio is never sent on any of these routes. Never anything to us.</td>
             </tr>
             <tr>
               <td><strong>Usage telemetry</strong></td>
@@ -259,7 +259,7 @@ const faqJsonLd = JSON.stringify({
       <div class="faq-list reveal">
         <div class="faq-item">
           <h3>Does local speech to text work without an internet connection?</h3>
-          <p>Yes, once the model files are downloaded. Recording, transcription, filler removal, and number and date formatting all run on the Mac with no network. Cleanup with a cloud provider is the one step that needs a connection, and it is optional.</p>
+          <p>Yes, once the model files are downloaded. Recording, transcription, and filler removal run on the Mac with no network. Number and date formatting also runs offline, but only when you are dictating in English. Cleanup is the one step that can need a connection, and only if you point it at a cloud provider or a hosted Ollama model.</p>
         </div>
         <div class="faq-item">
           <h3>How fast is on-device speech to text on Apple Silicon?</h3>
