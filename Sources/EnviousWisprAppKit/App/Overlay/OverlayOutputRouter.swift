@@ -21,15 +21,15 @@ final class OverlayOutputRouter {
   weak var overlay: OverlayDirector?
   weak var permissions: PermissionsService?
   weak var recovery: RecoveryCoordinator?
-  weak var livePreview: LivePreviewCoordinator?
   weak var languageChips: LanguageSuggestionPresenter?
 
   func deliver(_ effect: PillEffect) {
     switch effect {
-    case .recordingStateChanged(let isRecording):
-      // #1988. The preview starts and stops with the recording pill, and the
-      // heart path never learns it exists.
-      livePreview?.setRecording(isRecording)
+    case .recordingStateChanged:
+      // **Handled by the director's own `LivePreviewBridge` since C2**, which it
+      // receives at construction. Nothing reaches here: the branch survives only
+      // because `PillEffect` is exhaustive, and C4 deletes this whole type.
+      break
 
     case .languageChipExpired(let generation):
       // The chip expiring on its own is NOT a user action, which is why it is an

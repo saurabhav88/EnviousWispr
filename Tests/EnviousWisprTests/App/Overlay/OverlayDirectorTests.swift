@@ -50,9 +50,13 @@
       locked: Bool = false,
       elapsed: @escaping () -> TimeInterval? = { nil },
       display: @escaping () -> LivePreviewDisplay = { .off },
-      actions: ((PillAction) -> Void)? = nil
+      actions: ((PillAction) -> Void)? = nil,
+      // Only the two cases that exercise Live Preview pass one; every other
+      // caller records with the feature off and has no setting to flip.
+      previewSetting: PreviewSetting? = nil
     ) {
-      d.setLivePreviewProviders(enabled: { preview }, display: display)
+      previewSetting?.isEnabled = preview
+      previewSetting?.display = display
       d.presentRecording(
         audioLevel: level,
         audioLevelProvider: { level },
@@ -77,6 +81,14 @@
 
     private final class Sink {
       var effects: [PillEffect] = []
+      /// Recording state as LIVE PREVIEW receives it (#2292 C2).
+      ///
+      /// This used to arrive as a `.recordingStateChanged` effect in `effects`,
+      /// routed to the preview by the composition root. The director now holds a
+      /// `LivePreviewBridge` and delivers it there directly, so a suite watching
+      /// only `effects` would see an empty list and read a working feature as a
+      /// dead one. Same signal, same ordering guarantee, different channel.
+      var recordingStates: [Bool] = []
       /// The two buttons whose handler belongs to the APP. Captured so a guard
       /// can prove they are BOUND — both were silently unbound by the cutover
       /// and only a cloud review caught it, because an unbound button renders
@@ -94,9 +106,23 @@
       var announcements: [OverlayAnnouncement] = []
     }
 
+    /// Live Preview's enabled answer, held so a test can flip it BETWEEN
+    /// presentations (#2292 C2).
+    ///
+    /// The bridge is supplied at construction now and cannot be replaced, which
+    /// is the point of the chunk. That does not make the setting immutable: the
+    /// production bridge reads `coordinator.isEnabledForGeometry` live, and a
+    /// user toggling Live Preview mid-dictation changes what the next read
+    /// returns. This box is the same shape.
+    private final class PreviewSetting {
+      var isEnabled = false
+      var display: () -> LivePreviewDisplay = { .off }
+    }
+
     private static func director(
       position: @escaping () -> OverlayPillPosition = { .bottom },
-      warningDismissed: @escaping () -> Bool = { false }
+      warningDismissed: @escaping () -> Bool = { false },
+      preview: PreviewSetting = PreviewSetting()
     ) -> (OverlayDirector, Armed, Sink) {
       let armed = Armed()
       let sink = Sink()
@@ -118,6 +144,16 @@
         },
         accessibilityEligibility: OverlayAccessibilityEligibility(
           warningDismissed: warningDismissed),
+        livePreview: LivePreviewBridge(
+          recordingDidChange: {
+            sink.recordingStates.append($0)
+            // The SAME marker the effect sink writes: what this suite pins is
+            // that the preview learns of the recording before the window is
+            // drawn, and that property did not move when the channel did.
+            sink.order.append("effect")
+          },
+          isEnabledForGeometry: { preview.isEnabled },
+          display: { preview.display() }),
         deferFirstRender: { $0() })
       hosts.append(host)
       return (d, armed, sink)
@@ -444,13 +480,14 @@
     /// which re-resolving the layout on every tick would do.
     @Test("toggling Live Preview mid-dictation does not resize the live pill")
     func morphKeepsTheLayoutItWasCreatedWith() {
-      let (d, _, _) = Self.director()
+      let setting = PreviewSetting()
+      let (d, _, _) = Self.director(preview: setting)
       defer { Self.closeAllWindows() }
-      Self.record(d, level: 0.2, preview: false)
+      Self.record(d, level: 0.2, preview: false, previewSetting: setting)
       let atStart = d.hostForTesting?.panelForTesting?.frame.width
 
       // The setting flips, and the next tick reports it.
-      Self.record(d, level: 0.6, preview: true)
+      Self.record(d, level: 0.6, preview: true, previewSetting: setting)
 
       #expect(atStart == 185)
       #expect(
@@ -565,12 +602,13 @@
       defer { Self.closeAllWindows() }
       Self.record(d)
       sink.effects.removeAll()
+      sink.recordingStates.removeAll()
       sink.announcements.removeAll()
 
       d.presentAccessibilityNotice()
 
       #expect(
-        sink.effects == [.recordingStateChanged(false)],
+        sink.recordingStates == [false],
         "Live Preview was never told the recording ended")
       #expect(
         d.pipelineIntentForTesting == .accessibilityToast,
@@ -692,7 +730,7 @@
       #expect(
         sink.order.first == "effect",
         "the recording-intent effect arrived after the window was already being drawn")
-      #expect(sink.effects == [.recordingStateChanged(true)])
+      #expect(sink.recordingStates == [true])
     }
 
     /// **The effect must beat the GEOMETRY READ, not merely the render.**
@@ -719,15 +757,23 @@
     func recordingEffectsPrecedeGeometry() {
       var recordingStarted = false
       let host = OverlayWindowHost(screens: { OverlayScreenResolver { Self.screen } })
+      // **Both halves ride on the SAME bridge now** (#2292 C2), which states the
+      // ordering this case is about more directly than the old pair did: the
+      // recording signal and the geometry answer arrive together, so "did the
+      // signal land before the geometry was read" is a question about one value.
       let d = OverlayDirector(
         host: host,
-        deliverEffect: { if $0 == .recordingStateChanged(true) { recordingStarted = true } },
+        deliverEffect: { _ in },
         deliverAppAction: { _ in },
-        announce: { _ in }, deferFirstRender: { $0() })
+        announce: { _ in },
+        livePreview: LivePreviewBridge(
+          recordingDidChange: { if $0 { recordingStarted = true } },
+          isEnabledForGeometry: { recordingStarted },
+          display: { .off }),
+        deferFirstRender: { $0() })
       Self.hosts.append(host)
       defer { Self.closeAllWindows() }
 
-      d.setLivePreviewProviders(enabled: { recordingStarted }, display: { .off })
       d.presentRecording(
         audioLevel: 0, audioLevelProvider: { 0 }, recordingElapsedProvider: { nil },
         isRecordingLocked: false, actions: nil)
@@ -839,14 +885,16 @@
     /// that is not is content-sized.
     @Test("Live Preview makes the recording pill content-sized, and only Live Preview")
     func previewLayoutDropsTheReservedFrame() {
-      let (fixed, _, _) = Self.director()
+      let fixedSetting = PreviewSetting()
+      let (fixed, _, _) = Self.director(preview: fixedSetting)
       defer { Self.closeAllWindows() }
-      Self.record(fixed, level: 0.2, preview: false)
+      Self.record(fixed, level: 0.2, preview: false, previewSetting: fixedSetting)
       let reserved = fixed.hostForTesting?.panelForTesting?.frame.height
       let fixedWidth = fixed.hostForTesting?.panelForTesting?.frame.width
 
-      let (preview, _, _) = Self.director()
-      Self.record(preview, level: 0.2, preview: true)
+      let previewSetting = PreviewSetting()
+      let (preview, _, _) = Self.director(preview: previewSetting)
+      Self.record(preview, level: 0.2, preview: true, previewSetting: previewSetting)
       let measured = preview.hostForTesting?.panelForTesting?.frame.height
       let previewWidth = preview.hostForTesting?.panelForTesting?.frame.width
 

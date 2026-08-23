@@ -78,12 +78,21 @@ final class OverlayDirector {
   /// changes and cleared when the slot empties (see `apply`), and effects are
   /// routed BEFORE either happens. So a binding holding an `onExpire` belongs to
   /// the presentation whose expiry is being reported.
+  /// **`.recordingStateChanged` goes to the bridge, and it is not optional.**
+  /// It reached Live Preview through the composition root's effect sink before
+  /// C2; the bridge now owns that channel, so the preview starts and stops with
+  /// the recording pill without the heart path learning it exists (#1988).
+  /// Removing the router's branch without adding this one would leave the
+  /// preview never told a recording began — a user-visible dead feature.
   private func route(_ effect: PillEffect) {
-    if case .languageChipExpired = effect, let onExpire = activeBinding?.onExpire {
-      onExpire()
-      return
+    switch effect {
+    case .languageChipExpired where activeBinding?.onExpire != nil:
+      activeBinding?.onExpire?()
+    case .recordingStateChanged(let isRecording):
+      livePreview.recordingDidChange(isRecording)
+    default:
+      deliverEffect(effect)
     }
-    deliverEffect(effect)
   }
 
   /// The handler for the two buttons that belong to the APP rather than to a
@@ -169,32 +178,20 @@ final class OverlayDirector {
   /// accumulating other people's policies. The decision is about PRESENTING.
   private let accessibilityEligibility: OverlayAccessibilityEligibility
 
-  /// Live Preview's two APP-LIFETIME providers.
+  /// Live Preview's whole surface, supplied at CONSTRUCTION (#2292 C2).
   ///
-  /// **Installed once, not passed per call, and the lifetimes are why.** The
-  /// shipped panel already draws this line: `setLivePreviewProviders` is called
-  /// ONCE from `LivePreviewInstaller` at boot, while the audio level and elapsed
-  /// providers arrive with every `show`. One pair belongs to the app, the other
-  /// to a dictation.
+  /// **It used to arrive afterwards through `setLivePreviewProviders`, and the
+  /// defaults were the OFF answers** — so a composition root that forgot the
+  /// installer got a director that silently reported the feature disabled rather
+  /// than failing. `LivePreviewInstaller` now returns a `LivePreviewBridge` and
+  /// this is required, so forgetting it does not compile.
   ///
-  /// Atomicity is untouched: `presentRecording` still RESOLVES the layout by
-  /// calling `livePreviewEnabled()` at present time, so the geometry comes from
-  /// the setting at the moment the pill appears rather than from whenever these
-  /// were installed. That was the property the layout value exists to hold, and
-  /// it is a property of WHEN the closure is called, not of how it arrived.
-  ///
-  /// The defaults are the OFF answers, so a composition root that forgets the
-  /// installer gets the ordinary pill rather than a crash — which is what the
-  /// shipped panel does too. `LivePreviewInstaller` is the only caller.
-  private var livePreviewEnabled: () -> Bool = { false }
-  private var livePreviewDisplay: () -> LivePreviewDisplay = { .off }
-
-  func setLivePreviewProviders(
-    enabled: @escaping () -> Bool, display: @escaping () -> LivePreviewDisplay
-  ) {
-    livePreviewEnabled = enabled
-    livePreviewDisplay = display
-  }
+  /// Atomicity is untouched, and it never depended on how these arrived:
+  /// `presentRecording` still RESOLVES the layout by calling
+  /// `livePreview.isEnabledForGeometry()` at present time, so the geometry comes
+  /// from the setting at the moment the pill appears. That is a property of WHEN
+  /// the closure is called.
+  private let livePreview: LivePreviewBridge
 
   init(
     host: any OverlayWindowHosting,
@@ -205,6 +202,7 @@ final class OverlayDirector {
     scheduler: OverlayScheduler = .live,
     announce: @escaping @MainActor (OverlayAnnouncement) -> Void = OverlayDirector.postAnnouncement,
     accessibilityEligibility: OverlayAccessibilityEligibility = .init(warningDismissed: { false }),
+    livePreview: LivePreviewBridge = .disabled,
     makeID: @escaping () -> PresentationID = { PresentationID() },
     deferFirstRender: @escaping (@escaping () -> Void) -> Void = { work in
       DispatchQueue.main.async(execute: work)
@@ -216,6 +214,7 @@ final class OverlayDirector {
     self.deliverAppAction = deliverAppAction
     self.announce = announce
     self.accessibilityEligibility = accessibilityEligibility
+    self.livePreview = livePreview
     self.position = position
     self.model = model
     self.schedule = scheduler
@@ -354,7 +353,7 @@ final class OverlayDirector {
 
     // **The effect goes out BEFORE the layout is resolved, not merely before the
     // render.** Moving effects to the top of `apply` was half the fix: this
-    // method reads `livePreviewEnabled()` on its way to a layout, and that read
+    // method reads `livePreview.isEnabledForGeometry()` on its way to a layout, and
     // happens before `apply` is ever called. `LivePreviewCoordinator` applies its
     // model-removal suppression inside `setRecording`, so a geometry read that
     // beats the effect can pick the 400-point preview layout for a pill whose
@@ -375,14 +374,14 @@ final class OverlayDirector {
       layout = model.recordingLayout
     } else {
       let at = position()
-      layout = livePreviewEnabled() ? .preview(position: at) : .compact(position: at)
-      // Read HERE, at present time — see `livePreviewEnabled`'s note.
+      layout = livePreview.isEnabledForGeometry() ? .preview(position: at) : .compact(position: at)
+      // Read HERE, at present time — see the `livePreview` note.
     }
 
     model.setRecordingProviders(
       audioLevel: audioLevelProvider,
       recordingElapsed: recordingElapsedProvider,
-      livePreview: livePreviewDisplay,
+      livePreview: livePreview.display,
       layout: layout,
       onContentHeightChange: { [weak self] height in
         // The preview pill grows a line at a time as words wrap. Keyed to the
