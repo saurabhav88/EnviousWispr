@@ -435,11 +435,10 @@ struct PillRequestParityTests {
     #expect(morph != nil, "a morph is accepted, not refused")
   }
 
-  // MARK: - Every action reaches exactly one owner
+  // MARK: - Each action reaches exactly one owner
 
-  /// **All eight, because an action that reaches nobody is the defect this whole
-  /// boundary exists to make impossible.** Grant and Discard belong to the app;
-  /// the other six belong to the presentation that raised them.
+  /// These five language and Bluetooth actions must each reach exactly one
+  /// callback. Paste, Discard, and Grant have behaviour-specific cases nearby.
   @Test("language and Bluetooth actions each reach exactly one callback")
   func everyActionIsBound() {
     var fired: [String] = []
@@ -482,9 +481,8 @@ struct PillRequestParityTests {
     #expect(counts == ["lock": 1, "dismiss": 1, "gotIt": 1, "close": 1, "settings": 1])
   }
 
-  /// Grant is one of the two APP-owned actions, so it reaches the app sink rather
-  /// than a presentation's own callback — and it was missing from the sweep above,
-  /// which claimed all eight.
+  /// Grant is app-owned, so it reaches the app sink rather than a presentation
+  /// callback.
   ///
   /// REPRODUCIBLE at C5: a user without Accessibility permission is shown the
   /// notice and clicks Grant. If it reaches nobody, the button does nothing and
