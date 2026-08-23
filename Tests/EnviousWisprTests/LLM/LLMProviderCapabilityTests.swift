@@ -25,7 +25,7 @@ struct LLMProviderCapabilityTests {
   ])
   func reasoningFamilySupportsReasoningAndOmitsTemperature(model: String) {
     let c = caps(model)
-    #expect(c.supportsReasoning)
+    #expect(c.thinkingControl != .unsupported)
     #expect(c.temperaturePolicy == .omit)
     #expect(c.supportsChatCompletions)
   }
@@ -35,7 +35,7 @@ struct LLMProviderCapabilityTests {
   @Test(arguments: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-nano", "chatgpt-4o-latest"])
   func classicFamilyIncludesTemperatureWithoutReasoning(model: String) {
     let c = caps(model)
-    #expect(!c.supportsReasoning)
+    #expect(c.thinkingControl == .unsupported)
     #expect(c.temperaturePolicy == .include)
     #expect(c.supportsChatCompletions)
   }
@@ -44,7 +44,7 @@ struct LLMProviderCapabilityTests {
 
   @Test func gpt5ChatVariantIsNotReasoning() {
     let c = caps("gpt-5-chat-latest")
-    #expect(!c.supportsReasoning)
+    #expect(c.thinkingControl == .unsupported)
     #expect(c.temperaturePolicy == .include)
     #expect(c.supportsChatCompletions)
   }
@@ -59,7 +59,7 @@ struct LLMProviderCapabilityTests {
   // MARK: - Case-insensitive matching (persisted strings may vary)
 
   @Test func matchingIsCaseInsensitive() {
-    #expect(caps("GPT-5.6-Sol").supportsReasoning)
+    #expect(caps("GPT-5.6-Sol").thinkingControl != .unsupported)
     #expect(!caps("GPT-5-Pro").supportsChatCompletions)
   }
 
@@ -68,7 +68,7 @@ struct LLMProviderCapabilityTests {
   @Test func emptyAndUnknownIdsAreClassicShaped() {
     for model in ["", "some-future-model"] {
       let c = caps(model)
-      #expect(!c.supportsReasoning)
+      #expect(c.thinkingControl == .unsupported)
       #expect(c.temperaturePolicy == .include)
     }
   }
@@ -118,7 +118,7 @@ struct LLMProviderCapabilityTests {
       #expect(
         LLMProvider.gemini.modelCapabilities(model: unknown).thinkingControl == .unsupported,
         "\(unknown) must fall through to .unsupported, not inherit an untested value")
-      #expect(LLMProvider.gemini.modelCapabilities(model: unknown).supportsReasoning == false)
+      #expect(LLMProvider.gemini.modelCapabilities(model: unknown).thinkingControl == .unsupported)
     }
 
     // Gemini models always keep temperature.
@@ -129,7 +129,7 @@ struct LLMProviderCapabilityTests {
   @Test func localProvidersNeverReasonAndKeepTemperature() {
     for provider in [LLMProvider.ollama, .appleIntelligence, .egOne, .none] {
       let c = provider.modelCapabilities(model: "anything")
-      #expect(!c.supportsReasoning)
+      #expect(c.thinkingControl == .unsupported)
       #expect(c.temperaturePolicy == .include)
     }
   }
@@ -142,7 +142,7 @@ struct LLMProviderCapabilityTests {
   ])
   func claudeNeverReasonsAndOmitsTemperature(model: String) {
     let c = LLMProvider.claude.modelCapabilities(model: model)
-    #expect(!c.supportsReasoning)
+    #expect(c.thinkingControl == .unsupported)
     #expect(c.temperaturePolicy == .omit)
     #expect(!c.supportsChatCompletions)
   }
