@@ -110,7 +110,7 @@ const faqJsonLd = JSON.stringify({
           <tbody>
             <tr>
               <td><strong>Your audio</strong></td>
-              <td>Nowhere. It is recorded, transcribed on the Neural Engine or GPU, and discarded. This holds whatever else you turn on.</td>
+              <td>Never off the Mac, whatever else you turn on. On disk it does touch down: while you dictate, the app keeps an encrypted backup of the recording so a crash cannot lose your words, and deletion is requested once the text is safely saved. If the app quits first, one recovery attempt runs at next launch and deletion is requested either way. You can switch that backup off, which is the privacy-strict choice.</td>
             </tr>
             <tr>
               <td><strong>The transcript</strong></td>
@@ -175,7 +175,7 @@ const faqJsonLd = JSON.stringify({
       </div>
 
       <p class="note reveal">
-        Only the first row is the sub-second number. Cleanup is a separate step with its own cost, and it grows with length. Any tool quoting one figure for the whole path is quoting the wrong thing. By default the text arrives after you stop talking. There is an optional Faster Transcription mode that writes while you speak, but we recommend leaving it off on the default Parakeet engine, because Parakeet stitches overlapping pieces together and the joins are where errors appear.
+        Only the first row is the sub-second number. Cleanup is a separate step with its own cost, and it grows with length. Any tool quoting one figure for the whole path is quoting the wrong thing. By default the text arrives after you stop talking. An optional Faster Transcription mode does the transcription work while you are still speaking, so the finished text arrives sooner once you stop. It does not put text into your document mid-sentence. Seeing words as you speak is a separate setting, Live Preview, which draws a rough draft in the recording pill from a lighter engine and throws it away at the end; it never changes the text that gets pasted. We recommend leaving Faster Transcription off on the default Parakeet engine, because Parakeet stitches overlapping pieces together and the joins are where errors appear.
       </p>
     </div>
   </section>
