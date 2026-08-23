@@ -109,7 +109,6 @@ public final class WisprBootstrapper {
     // composition root. This is the ONLY KeychainManager that gets `.live`; it carries
     // the sink for the legacy-key-cleanup (Q3.3) + cloud-prewarm (A6) quiet limbs.
     let keychainManager = KeychainManager(telemetrySink: .live)
-    let overlayOutputs = OverlayOutputRouter()
     // **The host is built early and the DIRECTOR is not** (#2292 C2).
     //
     // `OverlayWindowHost.init` registers an active-Space observer and nothing
@@ -471,8 +470,7 @@ public final class WisprBootstrapper {
     // recording. Its own `init` creates no panel, hosting view, status item or
     // task.
     let recordingOverlay = OverlayDirector(
-      host: overlayHost, deliverEffect: { overlayOutputs.deliver($0) },
-      deliverAppAction: { overlayOutputs.deliver($0) },
+      host: overlayHost,
       position: { settings.overlayPillPosition },
       accessibilityEligibility: OverlayAccessibilityEligibility(
         warningDismissed: { [weak permissions] in
@@ -756,7 +754,6 @@ public final class WisprBootstrapper {
 
     // #1464: after a leftover recording lands in History, post the standalone green
     // success notice (the `.recovered` path was silent before).
-    overlayOutputs.recovery = recoveryCoordinator
     recoveryCoordinator.onRecoverySucceeded = { [weak recordingOverlay] in
       recordingOverlay?.send(.pipeline(.recoverySucceeded), actions: nil)
     }

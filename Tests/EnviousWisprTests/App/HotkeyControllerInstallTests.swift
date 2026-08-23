@@ -84,7 +84,8 @@ import Testing
       recordingLockedAccess: lockAccess,
       lastUserStopAccess: finalizer.lastUserStopAccess,
       lastRecordingResult: LastRecordingResult(),
-      dictationLifecycleCoordinator: nil
+      dictationLifecycleCoordinator: nil,
+      recovery: .disabled
     )
     let controller = HotkeyController(
       hotkeyService: hotkey,

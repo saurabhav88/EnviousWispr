@@ -132,7 +132,8 @@ struct HotkeyControllerAbandonmentDisarmTests {
         recordingLockedAccess: lockAccess,
         lastUserStopAccess: finalizer.lastUserStopAccess,
         lastRecordingResult: LastRecordingResult(),
-        dictationLifecycleCoordinator: nil)
+        dictationLifecycleCoordinator: nil,
+      recovery: .disabled)
       let controller = HotkeyController(
         hotkeyService: hotkey, starter: starter, finalizer: finalizer, settings: settings)
       return Fixture(controller: controller, hotkeyService: hotkey, kernelDriver: pipeline)

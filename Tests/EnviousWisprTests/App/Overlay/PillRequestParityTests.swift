@@ -66,13 +66,6 @@ struct PillRequestParityTests {
       }
       director = OverlayDirector(
         host: host,
-        deliverEffect: { [self] in effects.append($0) },
-        deliverAppAction: { [self] in
-          appActions.append($0)
-          if case .discardRecovery = $0 {
-            discardSawPresentation = director.renderModel.presentation != nil
-          }
-        },
         scheduler: scheduler,
         announce: { [self] in announcements.append($0) },
         livePreview: .disabled,
@@ -243,12 +236,11 @@ struct PillRequestParityTests {
       new: { $0.present(.accessibilityNotice) })
   }
 
-  @Test("recovery notice") func recoveryNotice() {
-    parity(
-      "recoveryNotice",
-      old: { $0.presentRecoveryNotice() },
-      new: { $0.present(.recoveryNotice(onDiscard: {})) })
-  }
+  // **The recovery-notice parity row is gone** (#2292 C4b), for the reason the
+  // escape-recovery row went in C4a: parity needs two spellings and
+  // `presentRecoveryNotice` is deleted. What it protected — the typed request
+  // producing the same presentation the old method did — is now the only path,
+  // and `discardRunsBeforeDismissal` below asserts what that path DOES.
 
   /// **The chip travels as a `.pipeline` intent, not a `.featureRequest`.**
   /// `OverlayIntent` and `OverlayRequest` both declare a `passiveChip` case, so
@@ -589,12 +581,16 @@ struct PillRequestParityTests {
   @Test("Discard reaches its owner before the recovery notice is dismissed")
   func discardRunsBeforeDismissal() throws {
     let rig = Rig()
-    rig.director.presentRecoveryNotice()
-    let id = try #require(rig.director.renderModel.presentation?.id)
+    var discards = 0
+    let onDiscard: () -> Void = {
+      discards += 1
+      rig.discardSawPresentation = rig.director.renderModel.presentation != nil
+    }
+    let receipt = try #require(rig.director.present(.recoveryNotice(onDiscard: onDiscard)))
 
-    rig.director.send(.action(id, .discardRecovery), actions: nil)
+    rig.director.send(.action(receipt.presentationID, .discardRecovery), actions: nil)
 
-    #expect(rig.appActions == [.discardRecovery], "Discard reached nobody")
+    #expect(discards == 1, "Discard reached nobody")
     #expect(
       rig.discardSawPresentation == true,
       "the notice was dismissed before its owner was told to discard")
@@ -629,25 +625,19 @@ struct PillRequestParityTests {
       "a typed request owns its expiry; broadcasting it too would clear the chip twice")
   }
 
-  /// The two-way control: with no typed request bound, the same expiry still
-  /// reaches the composition root exactly as it does today. Without this, the
-  /// case above would pass just as well against a director that dropped the
-  /// effect entirely.
-  @Test("with no typed request, the expiry still reaches the effect sink")
-  func expiryFallsBackToTheEffectSink() {
-    let rig = Rig(manualClock: true)
-    rig.director.send(
-      .pipeline(.passiveChip(payload: LanguageChipPayload(
-        lang: "fr", displayName: "French", state: .askToLock, generation: 9))),
-      actions: { _ in })
-
-    let armed = try! #require(rig.armedExpiry)
-    armed.fireForTesting()
-
-    #expect(
-      rig.effects.contains(.languageChipExpired(generation: 9)),
-      "the legacy route is unchanged for callers that supplied no onExpire")
-  }
+  // **`expiryFallsBackToTheEffectSink` was DELETED** (#2292 C4b).
+  //
+  // It was the two-way control for the case above: with no typed request bound,
+  // the same expiry still reached the composition root's effect sink. That
+  // legacy route is gone — every chip carries an `onExpire` on its own request
+  // since C3a, the output router is deleted, and the director's routing is
+  // exhaustive with an assertion rather than a fallback. There is no sink to
+  // fall back TO, so the case could only have asserted a path no production
+  // caller can reach.
+  //
+  // What it was guarding against — the case above passing against a director
+  // that simply dropped the effect — is now structural: dropping it would hit
+  // the `assertionFailure` in `route`.
 
   // MARK: - Receipts
 

@@ -50,12 +50,6 @@ final class OverlayDirector {
   /// second press finds nothing rather than pasting twice.
   private var escapeRecoveryPayload: (id: UUID, payload: CancelUndoPayload)?
 
-  /// Required, immutable, and injected. It was a settable `var` for one round —
-  /// one more mutable handler field on the type whose whole purpose is to have
-  /// fewer, and one where a caller that forgot to wire it would silently discard
-  /// effects a feature depends on.
-  private let deliverEffect: (PillEffect) -> Void
-
   /// Send an effect to whoever owns it.
   ///
   /// **The chip's expiry belongs to the presentation that raised it, when that
@@ -86,22 +80,22 @@ final class OverlayDirector {
   /// preview never told a recording began — a user-visible dead feature.
   private func route(_ effect: PillEffect) {
     switch effect {
-    case .languageChipExpired where activeBinding?.onExpire != nil:
-      activeBinding?.onExpire?()
     case .recordingStateChanged(let isRecording):
       livePreview.recordingDidChange(isRecording)
-    default:
-      deliverEffect(effect)
+
+    case .languageChipExpired:
+      // **Exhaustive since C4b, with no sink behind it.** Every chip carries an
+      // `onExpire` on its own request, so a missing owner is a wiring defect
+      // rather than a case to route elsewhere — and there is nowhere else: the
+      // output router is deleted.
+      guard let onExpire = activeBinding?.onExpire else {
+        assertionFailure(
+          "languageChipExpired reached a presentation with no typed onExpire owner")
+        return
+      }
+      onExpire()
     }
   }
-
-  /// Forwards Discard Recovery to its late-constructed owner.
-  ///
-  /// Grant left this seam in C2 and is now a required construction-time action.
-  /// C4 moves Discard into its own `PillRequest` and deletes this temporary
-  /// output route. Required, with no default: a no-op default is a fresh
-  /// structural omission path inside the fix for an omission.
-  private let deliverAppAction: (PillAction) -> Void
 
   /// Posting the spoken announcement, injectable so a guard can observe it.
   ///
@@ -202,8 +196,6 @@ final class OverlayDirector {
 
   init(
     host: any OverlayWindowHosting,
-    deliverEffect: @escaping (PillEffect) -> Void,
-    deliverAppAction: @escaping (PillAction) -> Void,
     position: @escaping () -> OverlayPillPosition = { .top },
     model: OverlayRenderModel = OverlayRenderModel(),
     scheduler: OverlayScheduler = .live,
@@ -223,8 +215,6 @@ final class OverlayDirector {
   ) {
     self.deferFirstRender = deferFirstRender
     self.host = host
-    self.deliverEffect = deliverEffect
-    self.deliverAppAction = deliverAppAction
     self.announce = announce
     self.accessibilityEligibility = accessibilityEligibility
     self.livePreview = livePreview
@@ -451,29 +441,6 @@ final class OverlayDirector {
         self.grantAccessibility()
         self.dismissSilently()
       })
-  }
-
-  /// The crash-recovery notice, which offers Discard.
-  ///
-  /// A named method rather than a bare `send`, for the same reason
-  /// `presentAccessibilityNotice` is one: its button's handler belongs to the app
-  /// and no call site has it. `RecordingStarter` raises this notice and knows
-  /// nothing about the recovery coordinator.
-  /// **Discard, THEN dismiss**, matching the router's own order and the
-  /// `.recoveryNotice` case of `present`. The OWNER still lives outside the
-  /// director until C4 takes custody, so the action is forwarded rather than
-  /// handled; only the dismissal moved here, because the router lost its
-  /// settable route back to the overlay.
-  func presentRecoveryNotice() {
-    send(.pipeline(.recoveringLastRecording)) { [weak self] action in
-      guard let self else { return }
-      guard case .discardRecovery = action else {
-        assertionFailure("the recovery notice emitted a non-Discard action")
-        return
-      }
-      self.deliverAppAction(action)
-      self.dismissSilently()
-    }
   }
 
   /// Empty the slot WITHOUT announcing "Recording complete".

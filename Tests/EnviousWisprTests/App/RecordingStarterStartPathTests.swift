@@ -41,6 +41,17 @@ import Testing
     let lastRecordingResult: LastRecordingResult
     let overlay: OverlayDirector
     let settings: SettingsManager
+    /// What the recovery notice's Discard button reached, and whether the notice
+    /// was still up when it did (#2292 C4b).
+    let discards: DiscardProbe
+  }
+
+  /// Records Discard presses and what the overlay was showing at the instant of
+  /// each, so a case can pin OWNER-BEFORE-DISMISS rather than merely both.
+  @MainActor
+  private final class DiscardProbe {
+    var count = 0
+    var noticeWasStillUp: [Bool] = []
   }
 
   private static func makeFixture(
@@ -96,6 +107,7 @@ import Testing
       languageSuggestionPresenter: nil
     )
     let lastRecordingResult = LastRecordingResult()
+    let discards = DiscardProbe()
     // `recovering` is a captured var both the arm closure (mutates) and the gate
     // closure (reads) share — lets a test flip recovery ON during the arm await
     // (#1063 PR2: the post-arm re-check). Both run on the MainActor.
@@ -132,8 +144,15 @@ import Testing
       lastRecordingResult: lastRecordingResult,
       dictationLifecycleCoordinator: nil,
       accessibilityRefresh: accessibilityRefresh,
-      makeRecoveryDirective: makeRecoveryDirective,
-      isRecovering: { recovering }
+      recovery: RecordingStarter.RecoveryAccess(
+        makeDirective: makeRecoveryDirective,
+        cleanupArm: { _ in },
+        isRecovering: { recovering },
+        signalPendingLiveStart: {},
+        discardActive: {
+          discards.count += 1
+          discards.noticeWasStillUp.append(overlay.currentIntent == .recoveringLastRecording)
+        })
     )
     return Fixture(
       starter: starter,
@@ -146,7 +165,8 @@ import Testing
       lockBox: lockBox,
       lastRecordingResult: lastRecordingResult,
       overlay: overlay,
-      settings: settings
+      settings: settings,
+      discards: discards
     )
   }
 
@@ -287,6 +307,40 @@ import Testing
       fx.overlay.currentIntent == .recoveringLastRecording,
       "recovery hold takes precedence over the cold-engine pill")
   }
+
+  /// **Discard reaches the recovery owner, and the answered notice goes.**
+  ///
+  /// REPRODUCIBLE: crash recovery holds the engine, the user presses Record, sees
+  /// the recovery notice, and presses Discard. Before C4b this travelled out
+  /// through a settable overlay sink to a router holding a WEAK recovery target,
+  /// so an unset target left a rendered button that reached nobody. The action is
+  /// now required at the presentation that draws it.
+  ///
+  /// **Debug-only, and the reason is the seam rather than the property.** Pressing
+  /// the button needs the presentation's id, and the starter presents internally
+  /// so no receipt reaches here; `currentPresentationForTesting` is the only way
+  /// to name it and it lives inside `#if DEBUG`. What is unique to this case is
+  /// that the STARTER supplies a real discard — the ORDERING claim it also makes
+  /// is covered in both lanes by `PillRequestParityTests`
+  /// `discardRunsBeforeDismissal`, which builds its own request and needs no seam.
+  #if DEBUG
+  @Test func discardInvokesRecoveryOwner() async throws {
+    let fx = Self.makeFixture(isRecovering: true)
+    fx.asr.activeBackendType = .parakeet
+    _ = await fx.starter.start()
+    let id = try #require(fx.overlay.currentPresentationForTesting?.id)
+
+    fx.overlay.send(.action(id, .discardRecovery), actions: nil)
+
+    #expect(fx.discards.count == 1, "Discard reached nobody")
+    #expect(
+      fx.discards.noticeWasStillUp == [true],
+      "the notice was dismissed before its owner was told to discard")
+    #expect(
+      fx.overlay.currentIntent == .hidden,
+      "the notice the user already answered is still on screen")
+  }
+  #endif
 
   @Test func toggleWhileRecoveringMintsNoSessionAndShowsRecoveringPill() async {
     let fx = Self.makeFixture(isRecovering: true)

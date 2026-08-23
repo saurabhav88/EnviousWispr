@@ -131,11 +131,6 @@
       let host = OverlayWindowHost(screens: { OverlayScreenResolver { screen } })
       let d = OverlayDirector(
         host: host,
-        deliverEffect: {
-          sink.effects.append($0)
-          sink.order.append("effect")
-        },
-        deliverAppAction: { sink.appActions.append($0) },
         position: position,
         scheduler: .manual { armed.work = $0 },
         announce: {
@@ -622,16 +617,20 @@
       #expect(sink.appActions == [.grantAccessibility], "Grant reached nobody")
     }
 
+    /// **Observed at the request's own callback since C4b.** There is no app
+    /// action sink any more: the router that owned it is deleted, so Discard
+    /// reaches the closure the presenting caller supplied and nowhere else.
     @Test("the recovery notice's Discard button reaches the app")
     func discardIsBound() {
-      let (d, _, sink) = Self.director()
+      let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
+      var discards = 0
 
-      d.presentRecoveryNotice()
-      let id = try! #require(d.currentPresentationForTesting?.id)
+      let receipt = d.present(.recoveryNotice(onDiscard: { discards += 1 }))
+      let id = try! #require(receipt?.presentationID)
       d.send(.action(id, .discardRecovery), actions: nil)
 
-      #expect(sink.appActions == [.discardRecovery], "Discard reached nobody")
+      #expect(discards == 1, "Discard reached nobody")
     }
 
     /// **A feature that OCCUPIES the slot has to say so.**
@@ -745,8 +744,6 @@
       // signal land before the geometry was read" is a question about one value.
       let d = OverlayDirector(
         host: host,
-        deliverEffect: { _ in },
-        deliverAppAction: { _ in },
         announce: { _ in },
         livePreview: LivePreviewBridge(
           recordingDidChange: { if $0 { recordingStarted = true } },
@@ -932,7 +929,7 @@
       let host = WindowlessOverlayHost()
       // The production `deferFirstRender` — the default — is the subject here.
       let d = OverlayDirector(
-        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in },
+        host: host, announce: { _ in },
         livePreview: .disabled, grantAccessibility: {})
 
       d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
@@ -958,7 +955,7 @@
     func supersededFirstRequestKeepsDeferring() async {
       let host = WindowlessOverlayHost()
       let d = OverlayDirector(
-        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in },
+        host: host, announce: { _ in },
         livePreview: .disabled, grantAccessibility: {})
 
       // First request, deferred. A second replaces it before the run loop turns,
@@ -982,7 +979,7 @@
     func laterRendersAreSynchronous() async {
       let host = WindowlessOverlayHost()
       let d = OverlayDirector(
-        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in },
+        host: host, announce: { _ in },
         livePreview: .disabled, grantAccessibility: {})
       d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
       await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } }
@@ -1153,8 +1150,6 @@
         screens: { OverlayScreenResolver { screenAvailable() ? screen : nil } })
       let d = OverlayDirector(
         host: host,
-        deliverEffect: { sink.effects.append($0) },
-        deliverAppAction: { sink.appActions.append($0) },
         announce: { sink.announcements.append($0) },
         livePreview: .disabled,
         grantAccessibility: { sink.appActions.append(.grantAccessibility) },

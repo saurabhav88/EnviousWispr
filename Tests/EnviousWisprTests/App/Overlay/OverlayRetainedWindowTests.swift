@@ -230,8 +230,7 @@ struct OverlayRetainedWindowTests {
     func transitionsReuseTheRetainedWindow() async {
       let host = OverlayWindowHost()
       let d = OverlayDirector(
-        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in },
-        announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+        host: host,         announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
         deferFirstRender: { $0() })
       defer { host.panelForTesting?.orderOut(nil) }
 
@@ -260,8 +259,7 @@ struct OverlayRetainedWindowTests {
     func hideThenShowReusesTheWindow() async {
       let host = OverlayWindowHost()
       let d = OverlayDirector(
-        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in },
-        announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+        host: host,         announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
         deferFirstRender: { $0() })
       defer { host.panelForTesting?.orderOut(nil) }
 

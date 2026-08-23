@@ -32,8 +32,6 @@ enum OverlayTestDouble {
   static func headlessDirector() -> OverlayDirector {
     OverlayDirector(
       host: WindowlessOverlayHost(),
-      deliverEffect: { _ in },
-      deliverAppAction: { _ in },
       // Announcements go nowhere: a test that has not asked for a screen has not
       // asked for VoiceOver either, and the real post reaches the system.
       announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
@@ -46,7 +44,7 @@ enum OverlayTestDouble {
     let host = WindowlessOverlayHost()
     return (
       OverlayDirector(
-        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in },
+        host: host, announce: { _ in },
         livePreview: .disabled, grantAccessibility: {}, deferFirstRender: { $0() }),
       host
     )
