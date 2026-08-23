@@ -1,6 +1,8 @@
 import EnviousWisprASR
 import EnviousWisprCore
 import Foundation
+import SwiftParser
+import SwiftSyntax
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -59,11 +61,12 @@ struct LanguageLockOptionsTests {
     #expect(parakeet != nil)
   }
 
-  /// The rule has exactly one implementation. Two copies is the defect this
-  /// owner was created to prevent, and the second copy is always added by
-  /// somebody who did not know the first existed.
-  @Test("No page reproduces the backend switch")
-  func theRuleIsNotReproduced() throws {
+  /// The rule has exactly one implementation. Settings pages depend on the
+  /// shared owner, never on the concrete ASR backend that feeds it. This
+  /// boundary catches a copied rule at its source, before receiver aliases or
+  /// helper parameters can hide the eventual member access.
+  @Test("Only the shared owner names the fast backend")
+  func onlyTheOwnerNamesTheFastBackend() throws {
     let settingsDir = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()  // Settings
       .deletingLastPathComponent()  // EnviousWisprTests
@@ -77,21 +80,13 @@ struct LanguageLockOptionsTests {
     var offenders: [String] = []
     for file in files {
       let source = try String(contentsOf: settingsDir.appendingPathComponent(file), encoding: .utf8)
-      // Strip comments first: a matcher that cannot tell an ACTION from PROSE
-      // about one is the precision failure this repo keeps hitting, and the
-      // doc comment on the shared owner describes exactly this call.
-      let code =
-        source
-        .split(separator: "\n", omittingEmptySubsequences: false)
-        .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-        .joined(separator: "\n")
-      if code.contains("ParakeetBackend.lockableLanguageCodes") {
+      if Self.namesFastBackend(in: source) {
         offenders.append(file)
       }
     }
     #expect(
       offenders.isEmpty,
-      "the backend rule is reproduced outside LanguageLockOptions in: \(offenders)")
+      "ParakeetBackend is named outside LanguageLockOptions in: \(offenders)")
 
     // Two-way control: the check can actually find the string, so an empty
     // result means "looked correctly and found nothing" rather than "the sweep
@@ -99,9 +94,67 @@ struct LanguageLockOptionsTests {
     let owner = try String(
       contentsOf: settingsDir.appendingPathComponent("LanguageLockOptions.swift"), encoding: .utf8)
     #expect(
-      owner.contains("ParakeetBackend.lockableLanguageCodes"),
-      "positive control failed: the sweep cannot see the owner's own call, so its silence proves nothing"
+      Self.namesFastBackend(in: owner),
+      "positive control failed: the sweep cannot see the owner naming ParakeetBackend"
     )
+  }
+
+  /// #2161's independent mutant hid the backend member behind a receiver alias.
+  /// The boundary check catches the root type reference instead, regardless of
+  /// how many aliases, parameters, or control-flow scopes follow it. SwiftSyntax
+  /// keeps comments and string literals out of these nodes, so prose is safe.
+  @Test("The backend boundary scan reads syntax, not matching prose")
+  func backendBoundaryScanIsStructural() {
+    for source in [
+      "let fastBackend = ParakeetBackend.self",
+      "let fastBackend: ParakeetBackend.Type = ParakeetBackend.self",
+      "typealias FastBackend = ParakeetBackend",
+      "func codes(backend: ParakeetBackend.Type) { backend.lockableLanguageCodes }",
+      "return EnviousWisprASR.ParakeetBackend.lockableLanguageCodes",
+    ] {
+      #expect(Self.namesFastBackend(in: source), "missed backend syntax: \(source)")
+    }
+    #expect(!Self.namesFastBackend(in: "return self.lockableLanguageCodes"))
+    #expect(!Self.namesFastBackend(in: "let backend = OtherBackend.self"))
+    #expect(!Self.namesFastBackend(in: "// ParakeetBackend\nlet note = \"ParakeetBackend\""))
+  }
+
+  private static func namesFastBackend(in source: String) -> Bool {
+    let visitor = FastBackendReferenceVisitor()
+    visitor.walk(Parser.parse(source: source))
+    return visitor.foundReference
+  }
+
+  private final class FastBackendReferenceVisitor: SyntaxVisitor {
+    var foundReference = false
+
+    init() {
+      super.init(viewMode: .sourceAccurate)
+    }
+
+    private static func isFastBackend(_ token: TokenSyntax) -> Bool {
+      (token.identifier?.name ?? token.text) == "ParakeetBackend"
+    }
+
+    override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
+      if Self.isFastBackend(node.baseName) { foundReference = true }
+      return foundReference ? .skipChildren : .visitChildren
+    }
+
+    override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
+      if Self.isFastBackend(node.declName.baseName) { foundReference = true }
+      return foundReference ? .skipChildren : .visitChildren
+    }
+
+    override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
+      if Self.isFastBackend(node.name) { foundReference = true }
+      return foundReference ? .skipChildren : .visitChildren
+    }
+
+    override func visit(_ node: MemberTypeSyntax) -> SyntaxVisitorContinueKind {
+      if Self.isFastBackend(node.name) { foundReference = true }
+      return foundReference ? .skipChildren : .visitChildren
+    }
   }
 
   /// #2154, cloud review r3. **Every consumer of the resolved language must read
