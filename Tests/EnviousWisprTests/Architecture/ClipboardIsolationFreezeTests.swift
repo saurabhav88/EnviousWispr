@@ -355,7 +355,8 @@ struct ClipboardIsolationFreezeTests {
       // Unwrap here too. The rule is "what does the compiler treat as transparent", and it has to hold
       // at EVERY expression this visitor inspects — `(executor.deliver)(request)` is the same call, and
       // applying the rule at three sites and not the other two is how the class comes back.
-      guard let callee = Self.unwrapped(node.calledExpression).as(MemberAccessExprSyntax.self) else {
+      guard let callee = Self.unwrapped(node.calledExpression).as(MemberAccessExprSyntax.self)
+      else {
         return .visitChildren
       }
       let baseName = Self.trailingName(of: callee.base)
@@ -459,6 +460,102 @@ struct ClipboardIsolationFreezeTests {
     return visitor.violations
   }
 
+  private final class SnapshotRoutingVisitor: SyntaxVisitor {
+    private(set) var snapshotCalls = 0
+    private(set) var callsUsingExecutorBoard = 0
+    private(set) var automaticRouteWrites: [(block: Int?, position: Int, usesExecutorBoard: Bool)] =
+      []
+    private(set) var clipboardFallbackWrites: [(insideFallback: Bool, usesExecutorBoard: Bool)] = []
+    private var snapshotsByBlock: [Int: [Int]] = [:]
+
+    var automaticRoutesHaveSnapshots: [Bool] {
+      automaticRouteWrites.map { route in
+        guard let block = route.block else { return false }
+        guard let snapshots = snapshotsByBlock[block], snapshots.count == 1 else { return false }
+        return snapshots[0] < route.position
+      }
+    }
+
+    override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+      guard let member = node.calledExpression.as(MemberAccessExprSyntax.self) else {
+        return .visitChildren
+      }
+      let functionName = member.declName.baseName.text
+      let base = member.base?.trimmedDescription
+
+      if functionName == "snapshotForDelivery", base == "ClipboardCleanup" {
+        snapshotCalls += 1
+        if let block = enclosingCodeBlockStart(node) {
+          snapshotsByBlock[block, default: []].append(
+            node.positionAfterSkippingLeadingTrivia.utf8Offset)
+        }
+        if node.arguments.count == 1, let argument = node.arguments.first,
+          argument.label?.text == "from",
+          argument.expression.trimmedDescription == "pasteboard"
+        {
+          callsUsingExecutorBoard += 1
+        }
+      }
+
+      guard trailingName(of: member.base) == "PasteService" else {
+        return .visitChildren
+      }
+      let usesExecutorBoard = node.arguments.contains { argument in
+        argument.label?.text == "to" && argument.expression.trimmedDescription == "pasteboard"
+      }
+      if functionName == "pasteToActiveApp"
+        || functionName == "copyToClipboardReturningChangeCount"
+      {
+        automaticRouteWrites.append(
+          (
+            block: enclosingCodeBlockStart(node),
+            position: node.positionAfterSkippingLeadingTrivia.utf8Offset,
+            usesExecutorBoard: usesExecutorBoard
+          ))
+      } else if functionName == "copyToClipboard" {
+        clipboardFallbackWrites.append(
+          (insideFallback: isInsideClipboardFallback(node), usesExecutorBoard: usesExecutorBoard))
+      }
+      return .visitChildren
+    }
+
+    private func trailingName(of expression: ExprSyntax?) -> String? {
+      if let reference = expression?.as(DeclReferenceExprSyntax.self) {
+        return reference.baseName.text
+      }
+      if let member = expression?.as(MemberAccessExprSyntax.self) {
+        return member.declName.baseName.text
+      }
+      return nil
+    }
+
+    private func enclosingCodeBlockStart(_ node: some SyntaxProtocol) -> Int? {
+      var ancestor = Syntax(node).parent
+      while let current = ancestor {
+        if let block = current.as(CodeBlockSyntax.self) {
+          return block.positionAfterSkippingLeadingTrivia.utf8Offset
+        }
+        ancestor = current.parent
+      }
+      return nil
+    }
+
+    private func isInsideClipboardFallback(_ node: some SyntaxProtocol) -> Bool {
+      var ancestor = Syntax(node).parent
+      while let current = ancestor {
+        if let branch = current.as(IfExprSyntax.self),
+          Array(branch.conditions.tokens(viewMode: .sourceAccurate).map(\.text))
+            == ["tier", "==", ".", "clipboardOnly"]
+        {
+          return true
+        }
+        if current.is(FunctionDeclSyntax.self) { return false }
+        ancestor = current.parent
+      }
+      return false
+    }
+  }
+
   private static func scanTests() throws -> (violations: [Violation], filesScanned: Int) {
     let root = RepoRoot.sourceURL("Tests")
     var found: [Violation] = []
@@ -518,6 +615,87 @@ struct ClipboardIsolationFreezeTests {
         - PasteService tests: use `NSPasteboard.withUniqueName()` and pass it
           explicitly via `to:` / `from:` / `on:`.
       """)
+  }
+
+  @Test("every paste route inherits cleanup through the executor's board")
+  func pasteRoutesUseCleanupSnapshot() throws {
+    let url = RepoRoot.sourceURL("Sources/EnviousWisprPipeline/PasteCascadeExecutor.swift")
+    let source = try String(contentsOf: url, encoding: .utf8)
+    let tree = Parser.parse(source: source)
+    let visitor = SnapshotRoutingVisitor(viewMode: .sourceAccurate)
+    visitor.walk(tree)
+
+    #expect(
+      visitor.snapshotCalls == 3,
+      "expected the three clipboard paste routes, found \(visitor.snapshotCalls)")
+    #expect(
+      visitor.callsUsingExecutorBoard == visitor.snapshotCalls,
+      "a paste route bypasses cleanup inheritance or silently defaults to the real clipboard")
+    #expect(
+      visitor.automaticRouteWrites.count == 3,
+      "expected the Cmd+V, AppleScript, and menu-paste clipboard writes")
+    #expect(
+      visitor.automaticRouteWrites.allSatisfy { $0.usesExecutorBoard },
+      "every automatic paste route must write to the executor's board")
+    #expect(
+      visitor.automaticRoutesHaveSnapshots == [true, true, true],
+      "every automatic paste route must take its cleanup snapshot in the same scope")
+    #expect(
+      visitor.clipboardFallbackWrites.count == 1
+        && visitor.clipboardFallbackWrites.allSatisfy {
+          $0.insideFallback && $0.usesExecutorBoard
+        },
+      "the one manual clipboard fallback must stay explicit and use the executor's board")
+  }
+
+  @Test("a new automatic paste route cannot omit its cleanup snapshot")
+  func automaticRouteWithoutSnapshotIsCaught() {
+    let tree = Parser.parse(
+      source: """
+        func deliver() {
+          if firstRoute {
+            let snapshot = ClipboardCleanup.snapshotForDelivery(from: pasteboard)
+            PasteService.pasteToActiveApp("one", to: pasteboard)
+          }
+          if secondRoute {
+            PasteService.copyToClipboardReturningChangeCount("two", to: pasteboard)
+          }
+        }
+        """)
+    let visitor = SnapshotRoutingVisitor(viewMode: .sourceAccurate)
+    visitor.walk(tree)
+
+    #expect(visitor.automaticRoutesHaveSnapshots == [true, false])
+  }
+
+  @Test("a cleanup snapshot must precede its automatic route write")
+  func automaticRouteRejectsLateSnapshot() {
+    let tree = Parser.parse(
+      source: """
+        func deliver() {
+          PasteService.pasteToActiveApp("one", to: pasteboard)
+          let snapshot = ClipboardCleanup.snapshotForDelivery(from: pasteboard)
+        }
+        """)
+    let visitor = SnapshotRoutingVisitor(viewMode: .sourceAccurate)
+    visitor.walk(tree)
+
+    #expect(visitor.automaticRoutesHaveSnapshots == [false])
+  }
+
+  @Test("module-qualified route writes stay in the cleanup inventory")
+  func moduleQualifiedAutomaticRouteIsCaught() {
+    let tree = Parser.parse(
+      source: """
+        func deliver() {
+          EnviousWisprServices.PasteService.copyToClipboardReturningChangeCount(
+            "one", to: pasteboard)
+        }
+        """)
+    let visitor = SnapshotRoutingVisitor(viewMode: .sourceAccurate)
+    visitor.walk(tree)
+
+    #expect(visitor.automaticRoutesHaveSnapshots == [false])
   }
 
   // MARK: Two-way controls

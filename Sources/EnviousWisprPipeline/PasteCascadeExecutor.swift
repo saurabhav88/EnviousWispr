@@ -477,7 +477,7 @@ internal final class PasteCascadeExecutor {
         // proven gap — taken because it costs one moved line.
         let snapshot: ClipboardSnapshot? =
           request.restoreClipboardAfterPaste
-          ? ClipboardCleanup.snapshotForDelivery()
+          ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
           : nil
         submittedKind = payload.kind
         let dispatchResult = PasteService.pasteToActiveApp(
@@ -529,7 +529,7 @@ internal final class PasteCascadeExecutor {
         // Same ordering as Tier 2: snapshot after the re-check, before the write.
         let snapshot: ClipboardSnapshot? =
           request.restoreClipboardAfterPaste
-          ? ClipboardCleanup.snapshotForDelivery()
+          ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
           : nil
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
@@ -568,7 +568,9 @@ internal final class PasteCascadeExecutor {
         // Put our text on the clipboard BEFORE probing enabled-state: apps grey
         // out Paste when the clipboard is empty/incompatible (#729 Codex r1).
         let snapshot: ClipboardSnapshot? =
-          request.restoreClipboardAfterPaste ? ClipboardCleanup.snapshotForDelivery() : nil
+          request.restoreClipboardAfterPaste
+          ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
+          : nil
         // Selected through the same owner as every other route. A container
         // target should never HAVE a candidate — the context reader refuses any
         // role that is not a text role — but this route asks the same question
