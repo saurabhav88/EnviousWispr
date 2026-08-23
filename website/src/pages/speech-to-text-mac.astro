@@ -40,7 +40,7 @@ const faqJsonLd = JSON.stringify({
       "name": "How fast is on-device speech to text on Apple Silicon?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Transcription lands in about 0.61 seconds median in our own measurements. Optional on-device cleanup adds roughly a second, for about 1.65 seconds from release to pasted text. Cleanup time scales with how much you said.",
+        "text": "Transcription lands in about 0.61 seconds median, a 30-day trailing median taken from production usage across real Apple Silicon Macs rather than one test machine. Optional on-device cleanup adds roughly a second, for about 1.65 seconds from release to pasted text. Cleanup time scales with how much you said.",
       },
     },
     {
@@ -159,7 +159,7 @@ const faqJsonLd = JSON.stringify({
     <div class="container">
       <h2 class="section-title-left reveal">What latency to expect</h2>
       <p class="section-sub-left reveal">
-        Measured on our own hardware. Your numbers will differ with chip and dictation length.
+        A 30-day trailing median from production usage across real Apple Silicon Macs, measured 2026-08-21. Your own numbers will differ with chip and dictation length.
       </p>
 
       <div class="fact-table reveal">
@@ -168,7 +168,7 @@ const faqJsonLd = JSON.stringify({
             <tr><th scope="col">Stage</th><th scope="col">Time</th><th scope="col">Notes</th></tr>
           </thead>
           <tbody>
-            <tr><td>Release key to raw text</td><td><strong>0.61s median</strong></td><td>Transcription only, measured across our own test dictations. Text is written after you stop talking, so a longer dictation takes longer.</td></tr>
+            <tr><td>Release key to raw text</td><td><strong>0.61s median</strong></td><td>Transcription only. Text is written after you stop talking, so a longer dictation takes longer.</td></tr>
             <tr><td>Release key to cleaned text</td><td><strong>~1.65s</strong></td><td>Adds on-device AI cleanup. This one scales with how much you said.</td></tr>
           </tbody>
         </table>
@@ -263,7 +263,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="faq-item">
           <h3>How fast is on-device speech to text on Apple Silicon?</h3>
-          <p>Transcription lands in about 0.61 seconds median in our own measurements. Optional on-device cleanup adds roughly a second, for about 1.65 seconds from release to pasted text. Cleanup time scales with how much you said.</p>
+          <p>Transcription lands in about 0.61 seconds median, a 30-day trailing median taken from production usage across real Apple Silicon Macs rather than one test machine. Optional on-device cleanup adds roughly a second, for about 1.65 seconds from release to pasted text. Cleanup time scales with how much you said.</p>
         </div>
         <div class="faq-item">
           <h3>What is the difference between local speech to text and cloud speech to text?</h3>
