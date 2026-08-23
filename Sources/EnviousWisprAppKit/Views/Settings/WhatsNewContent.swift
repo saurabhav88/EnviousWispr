@@ -18,6 +18,53 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.4.6
+
+    // #1831. OPENS THE 2.4.6 GROUP, and that placement is load-bearing.
+    //
+    // v2.4.5 shipped 2026-08-20. Anyone who has opened What's New since
+    // then has `lastSeenWhatsNewVersion == "2.4.5"`, and the unread badge
+    // is `lastSeen != currentContentVersion` (SettingsManager.swift:633),
+    // so an entry added to the 2.4.5 group is never surfaced to exactly the
+    // population it is written for. An earlier revision of this change put
+    // it there; cloud review caught it.
+    //
+    // Bumping `currentContentVersion` from a feature PR is the established
+    // shape, not an invented release: #2027 opened 2.4.5 the same way after
+    // 2.4.4 shipped, touching WhatsNewConstants and NOT Info.plist. The
+    // marketing version stays 2.4.5 until a release PR moves it.
+    //
+    // This entry exists because a REMOVAL is the case where saying nothing is
+    // worst. The user who deliberately turned this on will not file a bug; they
+    // will notice the switch is gone, assume their polish changed, and trust the
+    // app less. Stating the measurement is what makes that a decision they can
+    // check rather than something done to them quietly.
+    //
+    // The numbers are the #1832 thinking-level run: 100 topic_shift cases from
+    // type_b_parakeet, gemini-3.7-flash, arms low/medium/high, one judge. NOT
+    // the 1,462-case sealed_v1 run — that one compared MODELS at a fixed `low`
+    // and is where 93.5% comes from. An earlier draft of this entry merged the
+    // two and cloud review caught it; they are different corpora answering
+    // different questions.
+    //
+    // Measured: 57.0 / 58.0 / 61.0% pass, McNemar exact two-sided p=0.42 for
+    // low vs high, so the nominal edge is not distinguishable from chance at
+    // n=100; p90 2.83x. Full table in the run's README.
+    //
+    // The copy deliberately does NOT promise unchanged output. Every arm here is
+    // Gemini; #1831 also moves OpenAI reasoning models from medium to low and
+    // that combination was never measured, so "your polish will read the same"
+    // would be a claim about an unmeasured provider. No dash characters, per
+    // GR-NO-DASHES.
+    Entry(
+      id: "deep-reasoning-retired",
+      icon: "slider.horizontal.3",
+      title: "One less switch to think about",
+      description:
+        "The AI Polish page used to carry a Deep reasoning switch, which asked cloud models to think harder before polishing your text. We finally measured it, on the hundred hardest dictations we test with, using the Gemini model the app ships with. Thinking harder did not produce a difference we could tell apart from chance, and it made polishing take close to three times as long on the slower dictations. So the switch is gone. Every model now always uses the setting it was already using for virtually everyone, because it shipped off and stayed off for practically all of you. If you were one of the few who turned it on, polishing will finish noticeably sooner. Nothing else about polishing changes, and no other setting moves.",
+      version: "2.4.6"
+    ),
+
     // MARK: - v2.4.5
     //
     // Order is the hierarchy (whats-new-protocol.md RULE: whats-new-content-rules):
@@ -126,38 +173,6 @@ enum WhatsNewContent {
       version: "2.4.5"
     ),
 
-    // #1831. Placed BEFORE the collected entry, which must stay last.
-    //
-    // This entry exists because a REMOVAL is the case where saying nothing is
-    // worst. The user who deliberately turned this on will not file a bug; they
-    // will notice the switch is gone, assume their polish changed, and trust the
-    // app less. Stating the measurement is what makes that a decision they can
-    // check rather than something done to them quietly.
-    //
-    // The numbers are the #1832 thinking-level run: 100 topic_shift cases from
-    // type_b_parakeet, gemini-3.7-flash, arms low/medium/high, one judge. NOT
-    // the 1,462-case sealed_v1 run — that one compared MODELS at a fixed `low`
-    // and is where 93.5% comes from. An earlier draft of this entry merged the
-    // two and cloud review caught it; they are different corpora answering
-    // different questions.
-    //
-    // Measured: 57.0 / 58.0 / 61.0% pass, McNemar exact two-sided p=0.42 for
-    // low vs high, so the nominal edge is not distinguishable from chance at
-    // n=100; p90 2.83x. Full table in the run's README.
-    //
-    // The copy deliberately does NOT promise unchanged output. Every arm here is
-    // Gemini; #1831 also moves OpenAI reasoning models from medium to low and
-    // that combination was never measured, so "your polish will read the same"
-    // would be a claim about an unmeasured provider. No dash characters, per
-    // GR-NO-DASHES.
-    Entry(
-      id: "deep-reasoning-retired",
-      icon: "slider.horizontal.3",
-      title: "One less switch to think about",
-      description:
-        "The AI Polish page used to carry a Deep reasoning switch, which asked cloud models to think harder before polishing your text. We finally measured it, on the hundred hardest dictations we test with, using the Gemini model the app ships with. Thinking harder did not produce a difference we could tell apart from chance, and it made polishing take close to three times as long on the slower dictations. So the switch is gone. Every model now always uses the setting it was already using for virtually everyone, because it shipped off and stayed off for practically all of you. If you were one of the few who turned it on, polishing will finish noticeably sooner. Nothing else about polishing changes, and no other setting moves.",
-      version: "2.4.5"
-    ),
 
     // #2181, #2174, #2192, #2197, #2032, #2200, #2076, #1999, #2001, #2006.
     // A COLLECTED entry, permitted by whats-new-protocol.md
