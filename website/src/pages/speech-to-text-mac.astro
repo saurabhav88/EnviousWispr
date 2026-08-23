@@ -1,0 +1,369 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const webPageJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Local Speech to Text on Mac: How On-Device Transcription Works",
+  "description": "How local speech to text works on a Mac. Which models run on Apple Silicon, what latency to expect, what happens with no internet, and the constraints that apply.",
+  "url": `${siteUrl}/speech-to-text-mac/`,
+  "isPartOf": { "@type": "WebSite", "url": siteUrl, "name": "EnviousWispr" },
+  "datePublished": "2026-08-23T00:00:00Z",
+  "dateModified": "2026-08-23T00:00:00Z",
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": siteUrl },
+    { "@type": "ListItem", "position": 2, "name": "Speech to Text on Mac", "item": `${siteUrl}/speech-to-text-mac/` },
+  ],
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Does local speech to text work without an internet connection?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, once the model files are downloaded. Recording, transcription, and filler removal run on the Mac with no network. Number and date formatting also runs offline, but only when you are dictating in English. Cleanup is the one step that can need a connection, and only if you point it at a cloud provider or a hosted Ollama model.",
+      },
+    },
+    {
+      "@type": "Question",
+      "name": "How fast is on-device speech to text on Apple Silicon?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Transcription lands in about 0.61 seconds median, a 30-day trailing median taken from production usage across real Apple Silicon Macs rather than one test machine. Optional on-device cleanup adds roughly a second, for about 1.65 seconds from release to pasted text. Cleanup time scales with how much you said.",
+      },
+    },
+    {
+      "@type": "Question",
+      "name": "What is the difference between local speech to text and cloud speech to text?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Local means the model runs on your machine and the audio is never uploaded. Cloud means the audio is sent to a server for processing. Local removes the network round trip and the upload, and it keeps working offline. Cloud services can run larger models than a laptop holds.",
+      },
+    },
+  ],
+});
+---
+
+<BaseLayout
+  title="Local Speech to Text on Mac: How On-Device Transcription Works"
+  description="How local speech to text works on a Mac: which models run on Apple Silicon, what latency to expect, what happens with no internet, and the real constraints."
+  activePage="speech-to-text"
+  canonicalPath="/speech-to-text-mac/"
+  ogType="article"
+>
+  <script type="application/ld+json" set:html={webPageJsonLd} />
+  <script type="application/ld+json" set:html={breadcrumbJsonLd} />
+  <script type="application/ld+json" set:html={faqJsonLd} />
+
+  <header class="page-header">
+    <div class="container">
+      <h1 class="reveal">Speech to text on a Mac, running locally</h1>
+      <p class="page-header-sub reveal">
+        What "local" actually means, which models run on Apple Silicon, the latency to expect, and the constraints that apply.
+      </p>
+      <div class="hero-trust-row reveal" aria-label="Key facts">
+        <span><strong>0.61s</strong> median transcription</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span><strong>Audio</strong> never uploaded</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span><strong>Works</strong> offline</span>
+      </div>
+    </div>
+  </header>
+
+  <section class="section" style="padding-top: 8px;" aria-label="Direct answer">
+    <div class="container">
+      <div class="answer-block reveal">
+        <p class="answer-lead">
+          Local speech to text means the model runs on your own machine and the audio is never uploaded. On an Apple Silicon Mac that is no longer a compromise on speed: there is no upload and no server round trip, nothing depends on your connection, and for everyday dictation the text lands in well under a second.
+        </p>
+        <p>
+          There are two real trades. A server can run a larger model than a laptop holds, though for everyday speech the on-device models are accurate enough that the gap is not what you notice. And a cloud service that transcribes while you are still talking can finish a long dictation sooner than we do, because by default we start when you stop. For the short bursts most dictation actually consists of, the upload and the round trip cost more than they save.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top: 8px;" aria-label="What local means">
+    <div class="container">
+      <h2 class="section-title-left reveal">What "local" means, precisely</h2>
+      <p class="section-sub-left reveal">
+        The word gets used loosely. Three different things travel in a dictation app, and they have different answers.
+      </p>
+
+      <div class="fact-table reveal">
+        <table>
+          <thead>
+            <tr><th scope="col">What travels</th><th scope="col">Where it goes</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Your audio</strong></td>
+              <td>Never off the Mac, whatever else you turn on. On disk it does touch down: while you dictate, the app keeps an encrypted backup of the recording, so a crash has something to recover from rather than losing the words outright. Deletion is requested once the text is safely saved. If the app quits first, one recovery attempt runs at next launch, and deletion is requested whether that attempt succeeded or failed. You can switch that backup off, which is the privacy-strict choice.</td>
+            </tr>
+            <tr>
+              <td><strong>The transcript</strong></td>
+              <td>Stays on the Mac by default. If you deliberately choose a cloud provider for cleanup, exactly four things about you and your dictation reach it: the transcript, your custom words, the name of the app you are dictating into, and the dictation language if you have locked one. The last three are what let the model get your spellings and tone right. Alongside them go our cleanup instructions, which are the same text for every user and describe nothing about you, and your own API key, which is how that provider bills you. Text around your cursor is never included, and audio is never sent. Picking a hosted Ollama model sends the same four to Ollama with no key involved; an Ollama model you download runs on your Mac and sends nothing. Never anything to us on any route.</td>
+            </tr>
+            <tr>
+              <td><strong>Usage telemetry</strong></td>
+              <td>Anonymous usage and crash data: that a dictation happened, how long it took, which engine ran, which app it was pasted into, and your settings. Never the words you said. It is on by default and cannot be turned off; the source is public if you would rather build without it.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="note reveal">
+        Read the distinction on the second row carefully when comparing tools. "On-device transcription" and "nothing leaves your machine" are different claims, and the first is easy to read as the second. Check which one a tool is actually making, ours included: the row above is why we split it into three. Ours is the first: the audio claim holds unconditionally, the transcript claim does not, and the row above says exactly what a cloud provider receives. Full detail: <a href="/help/what-data-is-collected/">what data is collected</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top: 8px;" aria-label="The models">
+    <div class="container">
+      <h2 class="section-title-left reveal">Which models run on the Mac</h2>
+
+      <div class="split-grid">
+        <div class="split-card reveal">
+          <h3>Parakeet TDT v3</h3>
+          <p>
+            The default. Runs on the Apple Neural Engine. Fastest of the two and the reason the median lands under a second. Covers 25 European languages, and you pick the language yourself: this engine does not detect it for you.
+          </p>
+        </div>
+        <div class="split-card reveal">
+          <h3>WhisperKit</h3>
+          <p>
+            Runs on the GPU. Slower than Parakeet, covers 99 languages, and this is the one that detects the language automatically. Switch to it in settings when you need a language Parakeet does not carry, or when you move between languages without wanting to set one.
+          </p>
+        </div>
+      </div>
+
+      <p class="note reveal">
+        Both are downloaded once and then run with no network. Neither sends audio anywhere. The engine choice is a setting, not a purchase tier.
+      </p>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top: 8px;" aria-label="Latency">
+    <div class="container">
+      <h2 class="section-title-left reveal">What latency to expect</h2>
+      <p class="section-sub-left reveal">
+        A 30-day trailing median from production usage across real Apple Silicon Macs, measured 2026-08-21. Your own numbers will differ with chip and dictation length.
+      </p>
+
+      <div class="fact-table reveal">
+        <table>
+          <thead>
+            <tr><th scope="col">Stage</th><th scope="col">Time</th><th scope="col">Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Release key to raw text</td><td><strong>0.61s median</strong></td><td>Transcription only. Text is written after you stop talking, so a longer dictation takes longer.</td></tr>
+            <tr><td>Release key to cleaned text</td><td><strong>~1.65s</strong></td><td>Adds on-device AI cleanup. This one scales with how much you said.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="note reveal">
+        Only the first row is the sub-second number. Cleanup is a separate step with its own cost, and it grows with length. Any tool quoting one figure for the whole path is quoting the wrong thing. By default the text arrives after you stop talking. An optional Faster Transcription mode does the transcription work while you are still speaking, so the finished text arrives sooner once you stop. It does not put text into your document mid-sentence. Seeing words as you speak is a separate setting, Live Preview, which draws a rough draft in the recording pill from a lighter engine and throws it away at the end; it never changes the text that gets pasted. We recommend leaving Faster Transcription off on the default Parakeet engine, because Parakeet stitches overlapping pieces together and the joins are where errors appear.
+      </p>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top: 8px;" aria-label="Offline behaviour">
+    <div class="container">
+      <h2 class="section-title-left reveal">What works with no internet</h2>
+
+      <div class="offline-grid">
+        <div class="offline-col reveal">
+          <h3 class="offline-yes">Works offline</h3>
+          <ul>
+            <li>Recording and transcription, both engines</li>
+            <li>Filler word removal</li>
+            <li>Numbers, dates, money, emails, URLs, and spoken punctuation formatted correctly, when you are dictating in English. These share one step and it is skipped for other languages</li>
+            <li>Spoken emoji</li>
+            <li>Custom vocabulary correction</li>
+            <li>Cleanup with our own on-device model, or with Apple Intelligence on macOS 26 and later, or with a local Ollama model</li>
+          </ul>
+        </div>
+        <div class="offline-col reveal">
+          <h3 class="offline-no">Needs a connection</h3>
+          <ul>
+            <li>Cleanup routed to a cloud provider, if you chose one</li>
+            <li>The first download of a model file</li>
+            <li>App updates</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="note reveal">
+        If cleanup is unavailable for any reason, you still get the deterministically cleaned transcript rather than raw output. The formatting steps above run before cleanup, so they survive it failing.
+      </p>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top: 8px;" aria-label="Constraints">
+    <div class="container">
+      <div class="honesty reveal">
+        <h2>Constraints</h2>
+        <ul>
+          <li><strong>Apple Silicon only.</strong> M1 or later. There is no Intel build and there will not be one; the speed comes from the Neural Engine.</li>
+          <li><strong>macOS 14 Sonoma or later.</strong> Core dictation works across that whole range.</li>
+          <li><strong>Apple Intelligence cleanup needs macOS 26.</strong> Third-party apps could not call the on-device model before that. Apple Intelligence is also the shipped default, so on macOS 14 to 25 the cleanup step is skipped silently and you get the deterministically cleaned text rather than raw output. There is no automatic fallback: to get AI cleanup below macOS 26 you pick EG-1, a local Ollama model, or your own provider key yourself.</li>
+          <li><strong>No Windows, Linux, iOS, or Android version.</strong> If you need those, <a href="/compare/handy/">Handy</a> is free, open source, and cross-platform.</li>
+          <li><strong>Dictation, not file transcription.</strong> For turning existing recordings into transcripts, <a href="/compare/macwhisper/">MacWhisper</a> is built for that job.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top: 8px;" aria-label="Versus built-in dictation">
+    <div class="container">
+      <h2 class="section-title-left reveal">Versus the dictation already in macOS</h2>
+      <p class="section-sub-left reveal">
+        macOS ships with dictation. It is free and it is already installed, so it is the right baseline to beat.
+      </p>
+      <div class="fact-table reveal">
+        <table>
+          <thead>
+            <tr><th scope="col"></th><th scope="col">Apple Dictation</th><th scope="col">EnviousWispr</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Runs on device</td><td>General text dictation can, depending on language and settings</td><td>Always, both engines</td></tr>
+            <tr><td>Session limit</td><td>Stops after 30 seconds with no detected speech</td><td>Up to 60 minutes</td></tr>
+            <tr><td>Removes filler words</td><td>No</td><td>Yes, automatic</td></tr>
+            <tr><td>Rewrites awkward phrasing</td><td>No</td><td>Yes, optional AI cleanup</td></tr>
+            <tr><td>Custom vocabulary</td><td>Not supported</td><td>Yes, with imports from other apps</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note reveal">
+        For a sentence here and there, the built-in one is fine and needs no install. The case for a dedicated tool is frequency: the 30-second cutoff and the lack of cleanup are what wear out when you dictate all day. Full breakdown: <a href="/compare/apple-dictation/">EnviousWispr vs Apple Dictation</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top: 8px;" aria-label="Common questions">
+    <div class="container">
+      <h2 class="section-title-left reveal">Common questions</h2>
+      <div class="faq-list reveal">
+        <div class="faq-item">
+          <h3>Does local speech to text work without an internet connection?</h3>
+          <p>Yes, once the model files are downloaded. Recording, transcription, and filler removal run on the Mac with no network. Number and date formatting also runs offline, but only when you are dictating in English. Cleanup is the one step that can need a connection, and only if you point it at a cloud provider or a hosted Ollama model.</p>
+        </div>
+        <div class="faq-item">
+          <h3>How fast is on-device speech to text on Apple Silicon?</h3>
+          <p>Transcription lands in about 0.61 seconds median, a 30-day trailing median taken from production usage across real Apple Silicon Macs rather than one test machine. Optional on-device cleanup adds roughly a second, for about 1.65 seconds from release to pasted text. Cleanup time scales with how much you said.</p>
+        </div>
+        <div class="faq-item">
+          <h3>What is the difference between local speech to text and cloud speech to text?</h3>
+          <p>Local means the model runs on your machine and the audio is never uploaded. Cloud means the audio is sent to a server for processing. Local removes the network round trip and the upload, and it keeps working offline. Cloud services can run larger models than a laptop holds.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-section" aria-label="Download">
+    <div class="container">
+      <h2 class="reveal">Free, open source, no account</h2>
+      <p class="reveal">GPLv3. No subscription, no word cap, no trial that expires. Apple Silicon, macOS 14 or later.</p>
+      <div class="cta-row reveal">
+        <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="speech-to-text-mac">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download EnviousWispr Free
+        </a>
+        <a href="/how-it-works/" class="btn-secondary">See the pipeline</a>
+      </div>
+      <p class="directory-line reveal">
+        Comparing options? See <a href="/compare/best-dictation-apps-for-mac/">the picks by use case</a> or <a href="/compare/">every head-to-head</a>.
+      </p>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-header { padding: 120px 0 32px; text-align: center; position: relative; z-index: 1; }
+  .page-header h1 { font-size: 60px; font-weight: 800; letter-spacing: -3px; line-height: 1.05; color: var(--text); margin-bottom: 16px; max-width: 780px; margin-left: auto; margin-right: auto; }
+  .page-header-sub { font-size: 20px; font-weight: 400; color: var(--text-2); max-width: 640px; margin: 0 auto; }
+  .hero-trust-row { display: inline-flex; align-items: center; gap: 16px; margin-top: 18px; padding: 8px 18px; border: 1px solid var(--border-hover); border-radius: 100px; background: #fff; font-size: 13px; color: var(--text-2); flex-wrap: wrap; justify-content: center; }
+  .hero-trust-row strong { color: var(--text); font-weight: 700; }
+  .hero-trust-row .sep { width: 4px; height: 4px; border-radius: 50%; background: var(--text-3); }
+
+  .answer-block { max-width: 780px; }
+  .answer-lead { font-size: 21px; line-height: 1.55; color: var(--text); font-weight: 500; margin-bottom: 18px; }
+  .answer-block p { font-size: 17px; line-height: 1.7; color: var(--text-2); }
+
+  .section-title-left { font-size: 34px; font-weight: 800; letter-spacing: -1.4px; color: var(--text); margin-bottom: 10px; }
+  .section-sub-left { font-size: 17px; color: var(--text-2); max-width: 720px; margin-bottom: 26px; line-height: 1.6; }
+
+  .fact-table { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-card); background: #fff; }
+  .fact-table table { width: 100%; border-collapse: collapse; min-width: 520px; }
+  .fact-table th, .fact-table td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--border); font-size: 15px; line-height: 1.6; color: var(--text-2); vertical-align: top; }
+  .fact-table th { font-size: 13px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-3); font-weight: 700; background: var(--bg); }
+  .fact-table tbody tr:last-child td { border-bottom: none; }
+  .fact-table td strong { color: var(--text); font-weight: 700; }
+
+  .note { font-size: 15px; color: var(--text-3); line-height: 1.7; margin-top: 16px; max-width: 760px; }
+  .note a { color: var(--accent); font-weight: 600; }
+
+  .split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .split-card { border: 1px solid var(--border); border-radius: var(--radius-card); padding: 22px 24px; background: #fff; }
+  .split-card h3 { font-size: 19px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  .split-card p { font-size: 15px; line-height: 1.7; color: var(--text-2); }
+
+  .offline-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .offline-col { border: 1px solid var(--border); border-radius: var(--radius-card); padding: 22px 24px; background: #fff; }
+  .offline-col h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+  .offline-yes { color: var(--green); }
+  .offline-no { color: var(--orange); }
+  .offline-col ul { list-style: none; padding: 0; margin: 0; }
+  .offline-col li { font-size: 15px; line-height: 1.6; color: var(--text-2); padding: 7px 0 7px 20px; position: relative; border-bottom: 1px solid var(--border); }
+  .offline-col li:last-child { border-bottom: none; }
+  .offline-col li::before { content: ""; position: absolute; left: 4px; top: 15px; width: 5px; height: 5px; border-radius: 50%; background: var(--text-3); }
+
+  .honesty { border: 1px solid var(--border); border-radius: var(--radius-card); padding: 26px 28px; background: #fff; }
+  .honesty h2 { font-size: 24px; font-weight: 800; color: var(--text); margin-bottom: 14px; letter-spacing: -0.8px; }
+  .honesty ul { list-style: none; padding: 0; margin: 0; }
+  .honesty li { font-size: 15px; line-height: 1.7; color: var(--text-2); padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .honesty li:last-child { border-bottom: none; }
+  .honesty strong { color: var(--text); font-weight: 700; }
+  .honesty a { color: var(--accent); font-weight: 600; }
+
+  .faq-list { border: 1px solid var(--border); border-radius: var(--radius-card); background: #fff; }
+  .faq-item { padding: 20px 24px; border-bottom: 1px solid var(--border); }
+  .faq-item:last-child { border-bottom: none; }
+  .faq-item h3 { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  .faq-item p { font-size: 15px; line-height: 1.7; color: var(--text-2); }
+
+  .cta-section { padding: 72px 0 96px; text-align: center; }
+  .cta-section h2 { font-size: 38px; font-weight: 800; letter-spacing: -1.6px; color: var(--text); margin-bottom: 10px; }
+  .cta-section > .container > p { font-size: 17px; color: var(--text-2); margin-bottom: 24px; }
+  .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .directory-line { margin-top: 26px; font-size: 15px; color: var(--text-3); }
+  .directory-line a { color: var(--accent); font-weight: 600; }
+
+  @media (max-width: 860px) {
+    .split-grid, .offline-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 768px) {
+    .page-header { padding: 96px 0 24px; }
+    .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+    .section-title-left { font-size: 28px; }
+    .answer-lead { font-size: 19px; }
+    .hero-trust-row { display: flex; gap: 10px; font-size: 12px; }
+  }
+  @media (max-width: 480px) {
+    .page-header h1 { font-size: 34px; }
+    .cta-section h2 { font-size: 28px; }
+  }
+</style>
