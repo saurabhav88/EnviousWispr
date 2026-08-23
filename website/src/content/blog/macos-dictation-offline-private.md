@@ -159,6 +159,8 @@ The core promise of offline, private dictation is simple: local transcription wo
 
 For people who rely on voice input as their primary way of writing, those aren't bonus features. They're baseline requirements. EnviousWispr is built around them.
 
+See the focused guide to [free offline dictation for Mac](/solutions/offline-dictation/) for the local data path, model-download checklist, and a Wi-Fi-off test you can repeat.
+
 ## Related Posts
 
 - [Voice Input for RSI: A Keyboard-Free Workflow](/blog/voice-input-rsi-keyboard-free-workflow/). A practical guide for people whose hands need a break from typing.
