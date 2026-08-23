@@ -1053,6 +1053,12 @@ extension OverlayDirector: OverlayPresenting {
     // presenter expects. Bluetooth is the mirror image and genuinely is a
     // `.featureRequest`. Sending either through the other enum compiles.
     case .languageChip(let payload, let onLock, let onDismiss, let onExpire):
+      // **Admission lives HERE, beside the state change** (#2292 C3). It used
+      // to live in the presenter, which read the current intent and compared
+      // it — one decision with two authorities, and only this one reports
+      // actual acceptance. A refusal returns nil below and the presenter
+      // commits nothing.
+      guard featureSlotIsAvailable else { return nil }
       send(.pipeline(.passiveChip(payload: payload))) { action in
         switch action {
         case .lockLanguage: onLock()
@@ -1066,6 +1072,10 @@ extension OverlayDirector: OverlayPresenting {
       // rides on the same binding so it dies with the same presentation.
       activeBinding?.onExpire = onExpire
     case .bluetoothAwareness(let onAcknowledge, let onClose, let onOpenSettings):
+      // Same admission transaction as `.languageChip` above. C3b moves the
+      // Bluetooth presenter onto the receipt; the guard belongs here from the
+      // moment either feature uses it, so the two cannot drift.
+      guard featureSlotIsAvailable else { return nil }
       send(.featureRequest(.bluetoothAwareness)) { action in
         switch action {
         case .acknowledgeBluetoothAwareness: onAcknowledge()

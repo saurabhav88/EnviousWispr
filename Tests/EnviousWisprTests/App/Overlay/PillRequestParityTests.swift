@@ -438,6 +438,38 @@ struct PillRequestParityTests {
     #expect(rig.director.isCurrent(recording!), "the recording still owns the slot")
   }
 
+  /// **The language chip is refused over a recording, and it is the ONE request
+  /// that needed a guard adding to say so** (#2292 C3a).
+  ///
+  /// Bluetooth is a `.featureRequest` and the reducer already refused it — the
+  /// case above proves that. The chip travels as `.pipeline(.passiveChip)`,
+  /// which the reducer ACCEPTS, so the refusal used to be performed by
+  /// `LanguageSuggestionPresenter` reading the overlay's current intent. That
+  /// gave one decision two authorities and left only the presenter's copy able
+  /// to be wrong. The guard now sits inside `present`, beside the state change.
+  ///
+  /// REPRODUCIBLE, and it is the whole reason the old guard existed: language
+  /// detection finishes DURING a recording. Without this the chip replaces the
+  /// recording pill mid-dictation — the user watches their recording indicator
+  /// turn into a language suggestion while still speaking.
+  @Test("a language chip is refused while a recording owns the slot")
+  func refusedLanguageRequestDoesNotReplaceRecording() throws {
+    let rig = Rig()
+    let recording = try #require(rig.director.present(.recording(RecordingPillInput(
+      audioLevel: 0.3, audioLevelProvider: { 0.3 },
+      recordingElapsedProvider: { nil }, isLocked: false))))
+
+    let refused = rig.director.present(.languageChip(
+      payload: LanguageChipPayload(
+        lang: "es", displayName: "Spanish", state: .askToLock, generation: 1),
+      onLock: {}, onDismiss: {}, onExpire: {}))
+
+    #expect(refused == nil, "the chip was admitted over a live recording")
+    #expect(
+      rig.director.isCurrent(recording),
+      "the recording pill was replaced by a language suggestion mid-dictation")
+  }
+
   /// A recording morph keeps the identity it was created with, so the unchanged
   /// id is an ACCEPTED continuation rather than a refusal.
   @Test("a recording morph still returns a receipt") func morphReturnsReceipt() {

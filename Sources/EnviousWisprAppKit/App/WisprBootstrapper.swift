@@ -651,27 +651,14 @@ public final class WisprBootstrapper {
 
     let diagnosticsCoordinator = DiagnosticsCoordinator(engineMutationScope: engineMutationScope)
 
-    // PR4 of #763 construction-order constraint preserved: LanguageSuggestionPresenter
-    // captures `recordingOverlay` through narrow closures.
-    let overlay = recordingOverlay
+    // **Two arguments, and no self-reference problem to solve** (#2292 C3).
+    // This used to hand over three closures, one of which resolved the chip's
+    // buttons through the router BECAUSE the presenter they belonged to did not
+    // exist yet. The buttons now ride on the chip's own request, which the
+    // presenter builds in a method, so `self` is simply in scope.
     let languageSuggestionPresenter = LanguageSuggestionPresenter(
-      showOverlay: { [weak overlay, weak overlayOutputs, settings] intent in
-        // The chip is the one pipeline intent with buttons, so it is the one
-        // that carries a binding. Resolved through the router because the
-        // presenter this closure belongs to does not exist yet.
-        guard case .passiveChip = intent else {
-          overlay?.send(.pipeline(intent), actions: nil)
-          return
-        }
-        guard let presenter = overlayOutputs?.languageChips else { return }
-        overlay?.send(
-          .pipeline(intent),
-          actions: OverlayChipWiring.actions(presenter: presenter, settings: settings))
-      },
-      readCurrentIntent: { [weak overlay] in overlay?.currentIntent ?? .hidden },
-      // Silent hide for chip dismissal — bypasses the .hidden case's
-      // "Recording complete" AX announcement (PR4 Codex code-diff r5 [P3]).
-      hideOverlay: { [weak overlay] in overlay?.dismissSilently() }
+      overlay: recordingOverlay,
+      onLanguageAccepted: OverlayChipWiring.acceptedLanguage(settings: settings)
     )
     // Wires the `LanguageDetector` actor's passive-chip callback to the
     // presenter. The presenter is captured directly (App-lifetime `@State`).
@@ -684,7 +671,6 @@ public final class WisprBootstrapper {
       }
     }
 
-    overlayOutputs.languageChips = languageSuggestionPresenter
 
     let updateCoordinatorHolder = UpdateCoordinatorHolder()
     let sparkleUpdateController = SparkleUpdateController(holder: updateCoordinatorHolder)

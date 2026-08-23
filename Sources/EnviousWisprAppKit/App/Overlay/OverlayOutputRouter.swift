@@ -18,7 +18,6 @@ import Foundation
 final class OverlayOutputRouter {
 
   weak var recovery: RecoveryCoordinator?
-  weak var languageChips: LanguageSuggestionPresenter?
 
   func deliver(_ effect: PillEffect) {
     switch effect {
@@ -34,12 +33,17 @@ final class OverlayOutputRouter {
       // compile error. A Debug build now says so; a shipped build is unaffected.
       assertionFailure("recordingStateChanged must be consumed by OverlayDirector.route")
 
-    case .languageChipExpired(let generation):
-      // The chip expiring on its own is NOT a user action, which is why it is an
-      // effect carrying its generation rather than a `PillAction`: the
-      // presenter needs to know a specific chip lapsed, not that someone pressed
-      // something.
-      languageChips?.autoDismiss(generation: generation)
+    case .languageChipExpired:
+      // **Consumed by `OverlayDirector.route` since C3**, through the `onExpire`
+      // callback the chip's own `PillRequest` carries — so "which chip lapsed"
+      // is answered by the binding rather than by matching a generation here.
+      // Nothing reaches this branch today; it survives only because `PillEffect`
+      // is exhaustive, and C4 deletes this whole type.
+      //
+      // Asserts rather than `break`ing for the same reason the recording branch
+      // does: a routing change that let this case through again would leave a
+      // chip that lapsed still on screen, with no crash and no compile error.
+      assertionFailure("languageChipExpired must be consumed by OverlayDirector.route")
 
     case .escapeRecoveryExpired:
       // The pill went without an Undo press. The director has already dropped

@@ -214,8 +214,17 @@ protocol OverlayPresenting: AnyObject {
 
   /// Whether a feature-owned pill would be admitted right now.
   ///
-  /// Replaces reading the current intent and comparing it. A feature asks
-  /// whether the slot is free for it, never what happens to be in the slot.
+  /// **Never use this to admit a presentation. `present(_:)` is the
+  /// authoritative admission transaction** (#2292 C3), and it performs this
+  /// same check inside itself, beside the state change. Asking here and then
+  /// presenting gives one decision two authorities, which is the defect this
+  /// phase removes — not a timing window, since both are synchronous on the
+  /// MainActor.
+  ///
+  /// It survives for exactly one caller: Bluetooth's tips-disabled
+  /// `suppressed_by_setting` metric, which counts users who would OTHERWISE
+  /// have qualified and had a clear slot. That is an eligibility snapshot for a
+  /// dashboard, not an admission.
   var featureSlotIsAvailable: Bool { get }
 
   /// Show `request`, returning its receipt, or nil when it was refused.
