@@ -36,11 +36,14 @@ EOF
 FAKE_SWIFT_B=$(cat <<EOF
 #!/usr/bin/env bash
 sleep 3
-touch "\$EW_MICROPHONE_STOP_STARTED"
-started_epoch=\$(stat -c %Y "\$EW_MICROPHONE_STOP_STARTED")
-touch -d "@\$((started_epoch + 3))" "\$EW_MICROPHONE_STOP_FINISHED"
+python3 -c "
+import os,sys,time
+now=time.time()
+s,f=sys.argv[1],sys.argv[2]
+open(s,'w').close(); open(f,'w').close()
+os.utime(s,(now-3.0,now-3.0)); os.utime(f,(now,now))
+" "\$EW_MICROPHONE_STOP_STARTED" "\$EW_MICROPHONE_STOP_FINISHED"
 printf '%s\n' '$PASS_LINE'
-sleep 0.5
 EOF
 )
 
