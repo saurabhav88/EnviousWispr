@@ -2,6 +2,7 @@ import EnviousWisprCore
 import Foundation
 import Testing
 @preconcurrency import WhisperKit
+import os
 
 @testable import EnviousWisprASR
 
@@ -502,21 +503,34 @@ import Testing
   private actor AbortDecoder: WhisperKitTranscribing {
     nonisolated func encodeText(_ text: String) -> [Int] { [] }
     static let limit = 2_000
-    private(set) var entered = false
     private(set) var wasHandedASignal = false
     private(set) var polls = 0
     private(set) var ranToLimit = false
     private let loopResult: [TranscriptionResult]
+    private let announceEntry: @Sendable () -> Void
+    private let waitForAbortRequest: @Sendable () async -> Void
 
-    init(loopResult: [TranscriptionResult]) { self.loopResult = loopResult }
+    init(
+      loopResult: [TranscriptionResult],
+      announceEntry: @escaping @Sendable () -> Void,
+      waitForAbortRequest: @escaping @Sendable () async -> Void
+    ) {
+      self.loopResult = loopResult
+      self.announceEntry = announceEntry
+      self.waitForAbortRequest = waitForAbortRequest
+    }
 
     func transcribe(
       audioArray: [Float], decodeOptions: DecodingOptions?,
       shouldContinueDecoding: (@Sendable () -> Bool)?
     ) async throws -> [TranscriptionResult] {
-      entered = true
       wasHandedASignal = shouldContinueDecoding != nil
+      announceEntry()
       guard let keepGoing = shouldContinueDecoding else { return loopResult }
+      // Park before the first poll. The subject releases this only AFTER cancel
+      // writes its abort flag, so no runner schedule can spend the finite
+      // livelock bound while the test task is merely ready but not running.
+      await waitForAbortRequest()
       while polls < Self.limit {
         polls += 1
         if !keepGoing() { return loopResult }
@@ -537,23 +551,61 @@ import Testing
   /// in `cancel()` makes it red the same way.
   @Test("cancel aborts the in-flight loop decode rather than waiting it out")
   func cancelAbortsInFlightLoopDecode() async throws {
-    let dec = AbortDecoder(loopResult: [result("one two", [seg(0, 1, "one"), seg(1, 2, "two")])])
+    let entered = AsyncStream<Void>.makeStream()
+    let abortRequested = AsyncStream<Void>.makeStream()
+    let hookFired = OSAllocatedUnfairLock(initialState: false)
+    let dec = AbortDecoder(
+      loopResult: [result("one two", [seg(0, 1, "one"), seg(1, 2, "two")])],
+      announceEntry: {
+        entered.continuation.yield()
+        entered.continuation.finish()
+      },
+      waitForAbortRequest: {
+        var iterator = abortRequested.stream.makeAsyncIterator()
+        _ = await iterator.next()
+      })
     let s = WhisperKitStreamingSession(
       whisperKit: dec, decodingOptions: DecodingOptions(),
-      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1))
+      requiredSegmentsForConfirmation: 2, cadence: .milliseconds(1),
+      onCancelLoopAbortRequestedForTesting: {
+        hookFired.withLock { $0 = true }
+        abortRequested.continuation.yield()
+        abortRequested.continuation.finish()
+      })
     await s.start(audioSamplesProvider: fixedProvider([Float](repeating: 0.3, count: 48_000)))
 
-    while !(await dec.entered) { await Task.yield() }
+    let didEnter = await withDeadline(seconds: 5) {
+      var iterator = entered.stream.makeAsyncIterator()
+      return await iterator.next() != nil
+    }
+    try #require(didEnter == true, "the loop decode never announced entry")
     // CONTROLS, both before the act: the decode really started, and it really was
     // handed a stop signal. Without these, `ranToLimit == false` could mean the
     // decode never ran at all.
     #expect(await dec.wasHandedASignal, "control: the loop decode must receive an abort signal")
 
-    await s.cancel()
+    // A missing subject signal must fail loudly, not wedge CI. The fallback
+    // releases the decoder after five seconds; the separate six-second deadline
+    // bounds cancel itself. The hook assertion below keeps that fallback from
+    // turning a missing signal into a pass.
+    let deadlineRelease = Task {
+      try? await Task.sleep(for: .seconds(5))
+      abortRequested.continuation.yield()
+      abortRequested.continuation.finish()
+    }
+    let didCancel = await withDeadline(seconds: 6) {
+      await s.cancel()
+      return true
+    }
+    deadlineRelease.cancel()
+    abortRequested.continuation.yield()
+    abortRequested.continuation.finish()
+    try #require(didCancel == true, "cancel did not return after the decoder was released")
 
+    #expect(hookFired.withLock { $0 }, "cancel must fire the subject-owned release signal")
     #expect(await dec.polls > 0, "control: the decode must have polled before stopping")
     #expect(
-      !(await dec.ranToLimit),
+      await dec.ranToLimit == false,
       "the decode ran to its own limit — the stop never reached the decoder")
   }
 
