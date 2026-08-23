@@ -168,9 +168,13 @@ extension LLMModelCapabilities {
   /// Every value below is the one the Deep-reasoning toggle sent in its OFF
   /// position, which was the shipped default, so this table is byte-identical
   /// on the wire for every user who never flipped it. The `deep:` half was
-  /// removed by #1831 after #1832 measured it: on sealed_v1 against
-  /// `gemini-3.7-flash`, `high` produced no significant quality difference from
-  /// `low` while nearly tripling p90 latency.
+  /// removed by #1831 after #1832 measured it. Scope matters and is easy to
+  /// overstate: 100 `topic_shift` cases from `type_b_parakeet`, NOT the
+  /// 1,462-case `sealed_v1` run that chose this model. Pass rate 57.0 / 58.0 /
+  /// 61.0% for low / medium / high, McNemar exact two-sided p=0.42 for low vs
+  /// high, so the nominal edge is not distinguishable from chance at n=100;
+  /// p90 2.83x. CRITICAL failures moved the other way, 1 -> 2 -> 3. Table:
+  /// `benchmark-results/eval/runs/1832-gemini-thinking-topicshift-2026-08-23/`.
   fileprivate static func geminiThinkingControl(_ id: String) -> ThinkingControl {
     switch id {
     // Gemini 3 Flash tier: `minimal` returns 200 and spends 0 thinking tokens.

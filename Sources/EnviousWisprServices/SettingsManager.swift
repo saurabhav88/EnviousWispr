@@ -867,10 +867,11 @@ public final class SettingsManager {
     // launch after upgrade. Idempotent: removeObject on an absent key is a no-op.
     defaults.removeObject(forKey: "noiseSuppression")
     // Migration (issue #1831, 2026-08-23): Deep-reasoning toggle removed. #1832
-    // measured it on sealed_v1 against the shipped Gemini model and found no
-    // significant quality difference at roughly triple the p90 latency, so each
-    // model now always sends the value this toggle sent in its default OFF
-    // position. Drop the persisted key: a user who had it ON is migrated to the
+    // measured it on 100 topic_shift cases against the shipped Gemini model and
+    // found no quality difference distinguishable from chance (McNemar exact
+    // p=0.42) at 2.83x the p90 latency, so each model now always sends the value
+    // this toggle sent in its default OFF position. Scope and caveats are owned
+    // by `LLMModelCapabilities.geminiThinkingControl`; do not restate them. Drop the persisted key: a user who had it ON is migrated to the
     // value everyone else already received. Idempotent: removeObject on an
     // absent key is a no-op.
     defaults.removeObject(forKey: "useExtendedThinking")

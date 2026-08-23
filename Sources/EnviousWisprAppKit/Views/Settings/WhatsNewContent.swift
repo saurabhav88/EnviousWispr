@@ -134,14 +134,28 @@ enum WhatsNewContent {
     // app less. Stating the measurement is what makes that a decision they can
     // check rather than something done to them quietly.
     //
-    // The numbers are the #1832 sealed_v1 run against the shipped Gemini model,
-    // not estimates. No dash characters, per GR-NO-DASHES.
+    // The numbers are the #1832 thinking-level run: 100 topic_shift cases from
+    // type_b_parakeet, gemini-3.7-flash, arms low/medium/high, one judge. NOT
+    // the 1,462-case sealed_v1 run — that one compared MODELS at a fixed `low`
+    // and is where 93.5% comes from. An earlier draft of this entry merged the
+    // two and cloud review caught it; they are different corpora answering
+    // different questions.
+    //
+    // Measured: 57.0 / 58.0 / 61.0% pass, McNemar exact two-sided p=0.42 for
+    // low vs high, so the nominal edge is not distinguishable from chance at
+    // n=100; p90 2.83x. Full table in the run's README.
+    //
+    // The copy deliberately does NOT promise unchanged output. Every arm here is
+    // Gemini; #1831 also moves OpenAI reasoning models from medium to low and
+    // that combination was never measured, so "your polish will read the same"
+    // would be a claim about an unmeasured provider. No dash characters, per
+    // GR-NO-DASHES.
     Entry(
       id: "deep-reasoning-retired",
       icon: "slider.horizontal.3",
       title: "One less switch to think about",
       description:
-        "The AI Polish page used to carry a Deep reasoning switch, which asked cloud models to think harder before polishing your text. We finally measured it properly, across 1,462 real dictations on the Gemini model the app ships with, and it did not meaningfully improve the result while making the polishing step take around three times as long. So it is gone. Every model now always uses the setting it was already using for virtually everyone, because the switch shipped off and stayed off for practically all of you. If you were one of the few who turned it on, your polish will read the same and finish noticeably sooner. Nothing else about polishing changes, and no other setting moves.",
+        "The AI Polish page used to carry a Deep reasoning switch, which asked cloud models to think harder before polishing your text. We finally measured it, on the hundred hardest dictations we test with, using the Gemini model the app ships with. Thinking harder did not produce a difference we could tell apart from chance, and it made polishing take close to three times as long on the slower dictations. So the switch is gone. Every model now always uses the setting it was already using for virtually everyone, because it shipped off and stayed off for practically all of you. If you were one of the few who turned it on, polishing will finish noticeably sooner. Nothing else about polishing changes, and no other setting moves.",
       version: "2.4.5"
     ),
 
