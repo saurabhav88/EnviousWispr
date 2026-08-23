@@ -247,16 +247,38 @@ struct PillRequestParityTests {
   /// the wrong one compiles and only differs in whether `pipelineIntent` is set
   /// — which is exactly what the language presenter arbitrates against. This
   /// case is the one that catches it.
+  /// **The `old:` arm was DELETED and this row now asserts the NEW spelling alone**
+  /// (#2292 C5a), because keeping it crashed the test process.
+  ///
+  /// `send(.pipeline(.passiveChip(...)), actions:)` supplies button handlers but
+  /// no `onExpire`. Since C4b the director's routing is exhaustive and asserts
+  /// when a chip expiry arrives with no typed owner — correctly, because every
+  /// PRODUCTION chip carries one. This test was the last caller that did not, so
+  /// on expiry it hit `assertionFailure` and TRAPPED, which in a Debug lane kills
+  /// the xctest process and reports the failure against whatever test happened to
+  /// be running: four lanes blamed an unrelated kernel sweep.
+  ///
+  /// The parity claim it made — the chip travels as a `.pipeline` intent so it
+  /// sets `pipelineIntent` and arbitrates the way the language presenter expects
+  /// — survives, asserted directly on the typed path below.
   @Test("language chip routes through the pipeline intent") func languageChip() {
     let payload = LanguageChipPayload(
       lang: "es", displayName: "Spanish", state: .askToLock, generation: 1)
-    parity(
-      "languageChip",
-      old: { $0.send(.pipeline(.passiveChip(payload: payload)), actions: { _ in }) },
-      new: {
-        $0.present(.languageChip(
-          payload: payload, onLock: {}, onDismiss: {}, onExpire: {}))
-      })
+    let rig = Rig()
+
+    let receipt = rig.director.present(.languageChip(
+      payload: payload, onLock: {}, onDismiss: {}, onExpire: {}))
+
+    #expect(receipt != nil, "the chip was refused on an empty slot")
+    // The pipeline-intent half needs `pipelineIntentForTesting`, which lives in
+    // `#if DEBUG`. The receipt assertion above runs in BOTH lanes; this one is
+    // Debug-only rather than dropped, because which enum the chip travels through
+    // is the whole point of the case.
+    #if DEBUG
+      #expect(
+        rig.director.pipelineIntentForTesting == .passiveChip(payload: payload),
+        "the chip must set the PIPELINE intent, which a feature request would not — the language presenter arbitrates against exactly that")
+    #endif
   }
 
   /// The mirror image of the chip: Bluetooth genuinely IS a `.featureRequest`.

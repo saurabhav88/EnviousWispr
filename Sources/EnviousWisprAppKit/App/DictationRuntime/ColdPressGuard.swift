@@ -57,7 +57,7 @@ enum ColdPressGuard {
     ensureSelectedReady: @escaping @MainActor () async -> EngineCoordinator.PressReadiness
   ) {
     let label = selectedDriver.engineDisplayName
-    overlay.send(.pipeline(.cachingModel(engineLabel: label)), actions: nil)
+    overlay.present(.cachingModel(engineLabel: label))
     Task { [overlay] in
       // The coordinator switches to the selection AND warms it (single-flight,
       // latest-wins), returning the outcome so we show the right pill for EVERY
@@ -65,13 +65,13 @@ enum ColdPressGuard {
       // selected engine cannot actually be prepared.
       switch await ensureSelectedReady() {
       case .ready:
-        overlay.send(.pipeline(.engineReady), actions: nil)
+        overlay.present(.engineReady)
       case .notInstalled:
-        overlay.send(.pipeline(.warning(reason: .modelNotDownloaded(engineLabel: label))), actions: nil)
+        overlay.present(.warning(reason: .modelNotDownloaded(engineLabel: label)))
       case .notReady:
         // Switched but not ready (failed warm / transient block): clear the
         // caching pill; the next press retries via the cold-press path.
-        overlay.send(.pipeline(.hidden), actions: nil)
+        overlay.dismissCurrent(.announced)
       }
     }
   }
@@ -82,7 +82,7 @@ enum ColdPressGuard {
     backendTag: String,
     readiness: ASREngineReadiness
   ) {
-    overlay.send(.pipeline(.cachingModel(engineLabel: active.engineDisplayName)), actions: nil)
+    overlay.present(.cachingModel(engineLabel: active.engineDisplayName))
     TelemetryService.shared.coldStartPressBlocked(
       asrBackend: backendTag, warmupInFlight: readiness == .warming)
     Task { [overlay, active] in
@@ -92,7 +92,7 @@ enum ColdPressGuard {
       // caching pill. The user saw a `.cachingModel` pill on this path, so the
       // READY pill is expected — never a launch-time surprise toast.
       guard active.engineReadiness == .ready else { return }
-      overlay.send(.pipeline(.engineReady), actions: nil)
+      overlay.present(.engineReady)
     }
     Task {
       await AppLogger.shared.log(

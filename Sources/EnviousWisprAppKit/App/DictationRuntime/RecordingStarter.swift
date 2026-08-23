@@ -292,9 +292,8 @@ final class RecordingStarter {
     // gate, before any readiness/warm logic — a removal's first instants can
     // still read "ready", so the readiness path alone cannot cover this.
     guard isSelectedModelInstalled() else {
-      recordingOverlay.send(
-        .pipeline(.warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName))),
-        actions: nil)
+      recordingOverlay.present(
+        .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
       TelemetryService.shared.coldStartPressBlocked(
         asrBackend: backend.rawValue, warmupInFlight: false)
       return .noRecording
@@ -325,29 +324,29 @@ final class RecordingStarter {
     beginMinting()
     defer { endMinting() }
     accessibilityRefresh()
-    recordingOverlay.presentRecording(
-      audioLevel: 0,
-      audioLevelProvider: { [audioCapture] in audioCapture.audioLevel },
-      // #1393: this is the FIRST `.recording` push (fires before
-      // `DictationLifecycleCoordinator` sees any state change), so it must
-      // carry the real provider itself — a later duplicate morphs the SAME
-      // presentation, so whatever is installed here is what renders for the
-      // whole recording.
-      recordingElapsedProvider: { [weak active] in active?.recordingElapsedSeconds },
-      isRecordingLocked: false,
-      actions: nil
-    )
+    recordingOverlay.present(
+      .recording(
+        RecordingPillInput(
+          audioLevel: 0,
+          audioLevelProvider: { [audioCapture] in audioCapture.audioLevel },
+          // #1393: this is the FIRST `.recording` push (fires before
+          // `DictationLifecycleCoordinator` sees any state change), so it must
+          // carry the real provider itself — a later duplicate morphs the SAME
+          // presentation, so whatever is installed here is what renders for the
+          // whole recording.
+          recordingElapsedProvider: { [weak active] in active?.recordingElapsedSeconds },
+          isLocked: false)))
     let pttStart = ContinuousClock.now
     do {
       try await active.handle(event: .preWarm)
     } catch is CancellationError {
       audioCapture.abortPreWarm()
-      recordingOverlay.send(.pipeline(.hidden), actions: nil)
+      recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
       return .noRecording
     } catch {
       audioCapture.abortPreWarm()
-      recordingOverlay.send(.pipeline(.hidden), actions: nil)
+      recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
       SentryBreadcrumb.add(
         stage: "recording", message: "preWarm failed — start aborted",
@@ -372,7 +371,7 @@ final class RecordingStarter {
     }
     guard !Task.isCancelled else {
       audioCapture.abortPreWarm()
-      recordingOverlay.send(.pipeline(.hidden), actions: nil)
+      recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
       return .noRecording
     }
@@ -389,7 +388,7 @@ final class RecordingStarter {
     }()
     if userStoppedDuringPreWarm {
       audioCapture.abortPreWarm()
-      recordingOverlay.send(.pipeline(.hidden), actions: nil)
+      recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
       return .noRecording
     }
@@ -415,7 +414,7 @@ final class RecordingStarter {
         // pipeline state fires, so clean the orphan spool/key here (Codex r3).
         // Pre-start abort is always a discard (#1063 PR2: pass this take's id).
         recovery.cleanupArm(config.recoverySessionID)
-        recordingOverlay.send(.pipeline(.hidden), actions: nil)
+        recordingOverlay.dismissCurrent(.announced)
         recordingLockedAccess.set(false)
         return .noRecording
       }
@@ -465,13 +464,13 @@ final class RecordingStarter {
         category: .pipelinePostConditionFailed, stage: "recording",
         extra: ["backend": backend.rawValue]
       )
-      recordingOverlay.send(.pipeline(.hidden), actions: nil)
+      recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
       active.setTerminalReason(.modelWedged)
       return .noRecording
     }
     if !pipelineActive && !pipelineConcluded && userStoppedDuringStart {
-      recordingOverlay.send(.pipeline(.hidden), actions: nil)
+      recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
       return .noRecording
     }
@@ -544,9 +543,8 @@ final class RecordingStarter {
       // STOPS an active session is unaffected (guarded by `isStartingFromIdle`).
       // #1386 PR-2c (founder): same removal/not-installed gate as the PTT path.
       guard isSelectedModelInstalled() else {
-        recordingOverlay.send(
-          .pipeline(.warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName))),
-        actions: nil)
+        recordingOverlay.present(
+          .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
         TelemetryService.shared.coldStartPressBlocked(
           asrBackend: backend.rawValue, warmupInFlight: false)
         return

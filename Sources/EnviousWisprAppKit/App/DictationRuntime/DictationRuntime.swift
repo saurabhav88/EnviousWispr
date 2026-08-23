@@ -102,7 +102,7 @@ final class DictationRuntime {
     let heartControlRecovery = HeartControlRecovery(
       // ANNOUNCED despite the name: this is the ordinary end of a dictation and
       // `.hidden` says "Recording complete". Only a feature dismissal is silent.
-      hideOverlay: { [recordingOverlay] in recordingOverlay.send(.pipeline(.hidden), actions: nil) },
+      hideOverlay: { [recordingOverlay] in recordingOverlay.dismissCurrent(.announced) },
       setLocked: { locked in recordingLockedAccess.set(locked) },
       backend: { [asrManager] in asrManager.activeBackendType.rawValue }
     )
