@@ -109,7 +109,6 @@ EnviousWispr always transcribes on your Mac. Deterministic cleanup, EG-1, suppor
 
 You can read more about [how the pipeline works](/how-it-works/), from microphone input through transcription and AI cleanup to final output. For a detailed comparison of on-device and cloud-based dictation, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
 
-See the focused guide to [dictation for writers on Mac](/solutions/writers/) for the first-draft workflow, hands-free controls, and privacy choices in one place.
 
 ## Related Posts
 

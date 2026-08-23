@@ -682,10 +682,6 @@ jobs:
         working-directory: website
         run: npm run check:help
 
-      - name: Solution checker tests
-        if: steps.changes.outputs.needs_website == 'true'
-        working-directory: website
-        run: npm run test:solutions
 
   # Required aggregate gate. This is the ONLY required status check on main
   # (ruleset main-protection, context "build-check"); keeping the job id

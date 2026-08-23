@@ -92,7 +92,6 @@ For developers working on proprietary codebases, under NDA, or at companies with
 
 [Download EnviousWispr free](/#download) or browse the source [on GitHub](https://github.com/saurabhav88/EnviousWispr). On first launch, grant microphone and accessibility permissions. The speech model downloads automatically.
 
-See the focused guide to [dictation for developers on Mac](/solutions/developers/) for the workflow, privacy choices, and setup in one place.
 
 To set up for developer use:
 

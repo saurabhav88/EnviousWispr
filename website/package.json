@@ -8,13 +8,10 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "postbuild": "node scripts/check-solutions.mjs",
     "preview": "astro preview",
     "astro": "astro",
     "prebuild": "node scripts/check-help-content.mjs",
-    "check:help": "node scripts/check-help-routes.mjs && node scripts/check-help-search.mjs",
-    "check:solutions": "node scripts/check-solutions.mjs",
-    "test:solutions": "node --test scripts/check-solutions.test.mjs"
+    "check:help": "node scripts/check-help-routes.mjs && node scripts/check-help-search.mjs"
   },
   "overrides": {
     "devalue": ">=5.8.1",
