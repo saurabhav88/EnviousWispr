@@ -17,10 +17,13 @@ Two pure decision functions for the TIK Sentry-triage routine, sharing the
     already proven benign (#980, three times), and a mechanical auto-reopen on
     `ambiguous` (unprovable release relation) caused a second false reopen
     (#1332, 2026-07-12) by mutating a closed issue's state on pure uncertainty.
-  - `decide_create()` (#1218) -- the CREATE gate. Given the event list for a NEW
-    fingerprint that has no GitHub issue, decide whether it becomes a ticket (create),
-    is deliberate fault-injection noise (suppress), or is a dev-only self-healed error
-    to list in the run digest (digest). See its own docstring for the branch order.
+  - `decide_create()` (#1218, duplicate guard #2194) -- the CREATE gate. Given the
+    event list for a NEW fingerprint that has no GitHub issue, decide whether it becomes
+    a ticket (create), is deliberate fault-injection noise (suppress), or is a dev-only
+    self-healed error to list in the run digest (digest). Since #2194 it ALSO takes the
+    routine's duplicate-check outcome as a REQUIRED input and can refuse (an open issue
+    already tracks the fingerprint) or report that it could not decide (check absent or
+    errored) -- neither of which is the fail-open `create` default. See its docstring.
 
 DESIGN INVARIANTS (council 2026-06-21, 2 rounds; Codex grounded review 3 rounds;
 family semantics revised #1431, 2026-07-15):
@@ -38,6 +41,17 @@ family semantics revised #1431, 2026-07-15):
   - This module does NO network and NO git. The routine resolves the fix boundary
     (stamp or local-git-only derivation) and the event list, then pipes JSON here.
     Keeping it pure is what makes the gate unit-testable before it ships.
+  - CREATE-GATE DUPLICATE AXIS (#2194, 2026-08): `decide_create` takes a REQUIRED
+    `duplicate_check` input ("open_found" | "none_found" | "unknown"; anything else
+    is "unknown"). "open_found" returns `refuse-duplicate` (family `refuse`): the
+    fingerprint already has an open, visible ticket, so the refusal costs no
+    visibility. "unknown" (absent / errored / skipped check) returns a distinct
+    `undecidable` outcome -- NEITHER create nor suppress -- which the routine lists
+    in the run digest. This is the one place the create gate does NOT fail open to
+    `create`: failing open to create on a missing duplicate check is the mechanism
+    of #2194 itself (the 2026-08-16/17 duplicate batches). Same invariant, different
+    axis -- nothing is silently suppressed, and an unprovable duplicate state never
+    mutates GitHub state.
 
 Input (JSON on stdin): see EXPECTED_INPUT_SHAPE below.
 Output (JSON on stdout): {"verdict", "family", "reason", "eligible_user_count",
@@ -45,7 +59,10 @@ Output (JSON on stdout): {"verdict", "family", "reason", "eligible_user_count",
   "dev_canary"}.
 On any internal error: prints an `ambiguous` verdict (family `manual-review`,
 fail open to visible-but-non-mutating) and exits 0, so a helper bug can never
-become a silent hold NOR a silent reopen.
+become a silent hold NOR a silent reopen. Under `--create` the helper-error
+verdict is `undecidable` instead (#2194): an input the gate cannot read cannot
+have read the duplicate check, and an unreadable check must never become
+`create` -- so a helper bug can never become a silent drop NOR a duplicate create.
 """
 
 from __future__ import annotations
@@ -405,6 +422,12 @@ def _out(verdict, reason, eligible_user_count=0, eligible_count=0,
 # dev-detector -- the single authority for "is this dev" -- and the same fail-open
 # philosophy: anything we cannot PROVE is dev-only-and-self-healed becomes a VISIBLE
 # create, never a silent drop.
+#
+# The #2194 duplicate gate is the documented exception, on a different axis
+# (see decide_create): an unprovable DUPLICATE STATE never fails open to create --
+# refusing a duplicate costs no visibility (the open ticket is already on the
+# board), and an unverifiable check returns `undecidable` (run-digest line),
+# which is neither a create nor a silent suppression.
 
 # Create-path verdict -> action family. The routine Path A branches on `family`.
 #   create  : file the GitHub issue (real production signal, untagged dev fatal, or
@@ -417,13 +440,51 @@ CREATE_VERDICT_FAMILY = {
     "create-dev-fatal": "create",
     "suppress-synthetic": "suppress",
     "digest-dev-only": "digest",
+    # #2194 duplicate axis. `refuse`: an open issue already tracks this
+    # fingerprint -- creating a second one IS the bug. `undecidable`: the
+    # duplicate state was not established (check absent/errored/skipped) --
+    # neither create nor suppress; surfaced in the run digest like every other
+    # non-ticketed outcome, so a human sees it.
+    "refuse-duplicate": "refuse",
+    "undecidable": "digest",
 }
 
 # Create-path verdicts that SUPPRESS a ticket (do not create). On a truncated event
 # list (the fetch hit the page cap with more pages pending) a hidden later page could
 # carry a real production/fatal event, so any of these must fail OPEN (downgrade to
 # create) when `events_truncated` is set -- mirrors the reopen gate's `_HOLD_VERDICTS`.
+# The #2194 duplicate-axis verdicts are deliberately ABSENT from this set: they do
+# not rest on the event list at all (decided before it is read), so `events_truncated`
+# has no upgrade path into them -- in particular `undecidable` can never become
+# `create`, by construction.
 _CREATE_SUPPRESSING_VERDICTS = {"suppress-synthetic", "digest-dev-only"}
+
+# Duplicate-check states (issue #2194) -- the REQUIRED `duplicate_check` input to
+# `decide_create`, i.e. the outcome of the routine's Step 2 marker search for the
+# shortId. This gate is pure and cannot see GitHub; the routine ran the search and
+# must hand it the result. A skipped check is indistinguishable from an absent
+# one, and both must be treated as "could not verify" -- never as "none found".
+_DUP_CHECK_OPEN = "open_found"
+_DUP_CHECK_NONE = "none_found"
+_DUP_CHECK_UNKNOWN = "unknown"
+
+
+def _duplicate_check_state(data: dict) -> str:
+    """Normalise the REQUIRED `duplicate_check` input (#2194) to a state string.
+
+    Only the three documented spellings are recognised, after strip().lower()
+    (the same leniency `close_class` gets). Anything else -- absent, null,
+    non-string, or a typo -- returns "unknown". That direction is deliberate:
+    "unknown" is the one state that can never become `create`, so a broken,
+    misspelt, or skipped check always lands in the safe direction.
+    """
+    v = data.get("duplicate_check")
+    if not isinstance(v, str):
+        return _DUP_CHECK_UNKNOWN
+    v = v.strip().lower()
+    if v in (_DUP_CHECK_OPEN, _DUP_CHECK_NONE, _DUP_CHECK_UNKNOWN):
+        return v
+    return _DUP_CHECK_UNKNOWN
 
 
 def _effective_level(event: dict, issue_level) -> str | None:
@@ -438,16 +499,73 @@ def _effective_level(event: dict, issue_level) -> str | None:
 
 
 def decide_create(data: dict) -> dict:
-    """Create-path eligibility gate (#1218): should a NEW fingerprint become a ticket?
+    """Create-path eligibility gate (#1218; duplicate guard #2194).
 
     Input (JSON): {events: [{environment, build_type, release, level, synthetic,
-    user_id, dateCreated}], issue_level, events_truncated}. `issue_level` is the
-    aggregate/latest-event level Path A severity already reads -- the per-event `level`
-    fallback. Operates over the event LIST (not a scalar) so a multi-event fingerprint
-    partitions correctly. Output: {verdict, family, reason, dev_count, event_count};
-    family in {create, suppress, digest}. Fails OPEN (create) on empty/unclassifiable
-    input AND on a truncated event list (unread pages could hide a real event).
+    user_id, dateCreated}], issue_level, events_truncated, duplicate_check}.
+    `issue_level` is the aggregate/latest-event level Path A severity already reads --
+    the per-event `level` fallback. Operates over the event LIST (not a scalar) so a
+    multi-event fingerprint partitions correctly. `events_truncated` is the event-list
+    completeness flag (REQUIRED by the #1218 logic).
+
+    `duplicate_check` is REQUIRED since #2194 -- the outcome of the routine's Step 2
+    marker search for this shortId, because this gate is pure and cannot see GitHub:
+      "open_found"  an OPEN issue carrying the shortId's marker exists
+      "none_found"  the check ran and found no open issue for this shortId
+      "unknown"     the check errored or was not run (a skipped check is absent,
+                    and an absent check must be treated like an errored one, because
+                    both are "I could not verify")
+    Anything else -- missing, null, non-string, a typo -- is treated as "unknown";
+    that is the only state a mis-piped input can land in, and it never creates.
+
+    Output: {verdict, family, reason, dev_count, event_count};
+    family in {create, suppress, digest, refuse}. Fails OPEN (create) on
+    empty/unclassifiable input AND on a truncated event list (unread pages could hide
+    a real event) -- but only AFTER the duplicate check above has passed: the
+    event-axis fail-open default is `create`, the duplicate-axis one is
+    `undecidable`.
     """
+    events = data.get("events") if isinstance(data.get("events"), list) else []
+    dev_count = sum(1 for e in events if isinstance(e, dict) and is_development(e))
+
+    # ---- duplicate gate (#2194) -- decided before, and independent of, the events --
+    #
+    # This module's invariant is "anything unprovable stays visible, never silently
+    # suppressed", and every fail-open branch in this file protects VISIBILITY.
+    # The two outcomes below do not contradict it -- they are a different axis:
+    #
+    #   open_found -> refuse. Refusing a duplicate COSTS NO VISIBILITY: the
+    #   fingerprint already has an open, visible ticket; a second issue only buries
+    #   the first (#2194: eight duplicates in two days, seven P0-labelled, read as
+    #   seven emergencies when it was three fingerprints).
+    #
+    #   unknown -> undecidable. NEITHER create NOR suppress. Failing open to create
+    #   here would reproduce #2194 exactly -- an agent that skips Step 2 supplies
+    #   nothing and gets the fail-open default. Failing closed to suppress would
+    #   silently swallow a genuinely new fingerprint, the one outcome this module
+    #   exists to prevent. So it is listed in the run digest ("could not check
+    #   duplicates for {shortId}"): nothing hidden, a person told. Fail open to
+    #   VISIBILITY, literally.
+    #
+    # The field is REQUIRED precisely so the enforcement does not depend on the
+    # routine choosing to comply: a skipped Step 2 reaches this gate with nothing to
+    # read and gets `undecidable`, not `create`. The prompt already said "never
+    # assume 'no GitHub issue exists' on an error"; the 2026-08-16/17 runs show that
+    # an instruction is not self-enforcing while a required input is.
+    check = _duplicate_check_state(data)
+    if check == _DUP_CHECK_OPEN:
+        return _out_create("refuse-duplicate",
+                           "open GitHub issue already exists for this shortId; refusing "
+                           "to create a duplicate (the fingerprint is already visible "
+                           "on the board)",
+                           dev_count=dev_count, event_count=len(events))
+    if check != _DUP_CHECK_NONE:
+        return _out_create("undecidable",
+                           "could not check duplicates (duplicate_check absent or "
+                           "errored); neither create nor suppress -- run digest: "
+                           "could not check duplicates for this shortId",
+                           dev_count=dev_count, event_count=len(events))
+
     result = _decide_create_inner(data)
     # A digest/suppress decision is only valid on a PROVABLY COMPLETE event list. The
     # `events_truncated` flag is REQUIRED on the input and is this gate's ONLY
@@ -548,11 +666,17 @@ def main(argv=None) -> int:
         raw = sys.stdin.read()
         data = json.loads(raw)
         result = decide_create(data) if create_mode else decide(data)
-    except Exception as exc:  # noqa: BLE001 -- fail OPEN on any helper error
-        # Fail-open shape differs per gate: reopen-gate -> ambiguous (family
-        # manual-review: visible flag, closed issue stays closed, #1431),
-        # create -> create (visible new ticket). Neither can become a silent drop.
-        result = (_out_create("create", f"helper error: {type(exc).__name__}: {exc}")
+    except Exception as exc:  # noqa: BLE001 -- fail CLOSED-to-VISIBLE on helper error
+        # Helper-error shape differs per gate: reopen-gate -> ambiguous (family
+        # manual-review: visible flag, closed issue stays closed, #1431); create ->
+        # undecidable (#2194: an input the gate cannot read cannot have read the
+        # duplicate check, and an unreadable check must never become `create`; the
+        # run digest surfaces it). Neither can become a silent drop.
+        result = (_out_create(
+                      "undecidable",
+                      f"helper error: {type(exc).__name__}: {exc} -- the duplicate "
+                      f"check could not be read, so neither create nor suppress; "
+                      f"run digest: could not check duplicates")
                   if create_mode
                   else _out("ambiguous", f"helper error: {type(exc).__name__}: {exc}"))
     print(json.dumps(result))
