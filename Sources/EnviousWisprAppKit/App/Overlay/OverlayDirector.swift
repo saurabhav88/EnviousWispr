@@ -39,7 +39,8 @@ final class OverlayDirector {
   /// closures alive for the app's lifetime whether or not the pill that uses
   /// them is showing; this holds the binding for the presentation that is
   /// actually on screen and drops it when that presentation goes.
-  private var activeBinding: (id: PresentationID, deliver: (PillAction) -> Void)?
+  private var activeBinding:
+    (id: PresentationID, deliver: (PillAction) -> Void, onExpire: (() -> Void)?)?
 
   /// Custody of the cancelled-transcript payload.
   ///
@@ -54,6 +55,36 @@ final class OverlayDirector {
   /// fewer, and one where a caller that forgot to wire it would silently discard
   /// effects a feature depends on.
   private let deliverEffect: (PillEffect) -> Void
+
+  /// Send an effect to whoever owns it.
+  ///
+  /// **The chip's expiry belongs to the presentation that raised it, when that
+  /// presentation supplied a callback.** A `PillRequest.languageChip` carries a
+  /// non-optional `onExpire`, so discarding it would make the type's own contract
+  /// a lie: the caller is required to hand one over and would never be called.
+  /// Every other effect, and the chip's expiry when no typed request is bound,
+  /// goes to the composition root exactly as before.
+  ///
+  /// **Scoped by the BINDING's own lifetime, not by a match against the current
+  /// presentation** — and the first version got that wrong in a way its test
+  /// caught. Expiry is reported at exactly the moment the presentation goes
+  /// away: by the time this runs the reducer has already emptied
+  /// `state.current`, so `binding.id == reducer.state.current?.id` compares
+  /// against `nil` and can never pass. The callback was silently dropped and the
+  /// effect broadcast instead, which is the behaviour the guard existed to
+  /// prevent.
+  ///
+  /// The binding is the correct scope on its own: it is replaced when identity
+  /// changes and cleared when the slot empties (see `apply`), and effects are
+  /// routed BEFORE either happens. So a binding holding an `onExpire` belongs to
+  /// the presentation whose expiry is being reported.
+  private func route(_ effect: PillEffect) {
+    if case .languageChipExpired = effect, let onExpire = activeBinding?.onExpire {
+      onExpire()
+      return
+    }
+    deliverEffect(effect)
+  }
 
   /// The handler for the two buttons that belong to the APP rather than to a
   /// presentation — Grant and Discard.
@@ -330,7 +361,7 @@ final class OverlayDirector {
     // preview is about to resolve DISABLED — a preview-sized window with no
     // preview in it.
     for effect in plan.effects {
-      deliverEffect(effect)
+      route(effect)
     }
 
     guard let presentation = plan.presentation else {
@@ -477,7 +508,7 @@ final class OverlayDirector {
     // note at that call for why mirroring the shipped order was wrong.
     if !effectsAlreadyDelivered {
       for effect in plan.effects {
-        deliverEffect(effect)
+        route(effect)
       }
     }
     // **A DWELL STARTS WHEN THE PILL IS VISIBLE, NOT WHEN THE PLAN IS APPLIED.**
@@ -568,7 +599,7 @@ final class OverlayDirector {
       // dropped the live pill's buttons. Only a CHANGE OF IDENTITY clears it.
       if let presentation = plan.presentation {
         if let actions {
-          activeBinding = (id: presentation.id, deliver: actions)
+          activeBinding = (id: presentation.id, deliver: actions, onExpire: nil)
         } else if activeBinding?.id != presentation.id {
           activeBinding = nil
         }
@@ -930,6 +961,9 @@ extension OverlayDirector: OverlayPresenting {
 
   @discardableResult
   func present(_ request: PillRequest) -> PillReceipt? {
+    // Captured BEFORE the request runs, so the guard at the end can tell an
+    // accepted presentation from an unchanged slot.
+    let incumbentID = reducer.state.current?.id
     switch request {
     case .recording(let input):
       presentRecording(
@@ -961,9 +995,15 @@ extension OverlayDirector: OverlayPresenting {
 
     case .accessibilityNotice:
       presentAccessibilityNotice()
+    // **Discard, THEN dismiss, and the order is the shipped one.** The router this
+    // replaces ran `recovery?.discardActiveRecovery()` followed by
+    // `overlay?.dismissSilently()`; calling the owner and leaving the notice on
+    // screen is a pill the user already answered.
     case .recoveryNotice(let onDiscard):
-      send(.pipeline(.recoveringLastRecording)) { action in
-        if case .discardRecovery = action { onDiscard() }
+      send(.pipeline(.recoveringLastRecording)) { [weak self] action in
+        guard case .discardRecovery = action else { return }
+        onDiscard()
+        self?.dismissSilently()
       }
     // **The chip is a `.pipeline` intent, not a `.featureRequest`, and the two
     // spellings both exist.** `OverlayIntent` and `OverlayRequest` each declare
@@ -971,7 +1011,7 @@ extension OverlayDirector: OverlayPresenting {
     // it sets `pipelineIntent` and arbitrates against the pipeline the way the
     // presenter expects. Bluetooth is the mirror image and genuinely is a
     // `.featureRequest`. Sending either through the other enum compiles.
-    case .languageChip(let payload, let onLock, let onDismiss, _):
+    case .languageChip(let payload, let onLock, let onDismiss, let onExpire):
       send(.pipeline(.passiveChip(payload: payload))) { action in
         switch action {
         case .lockLanguage: onLock()
@@ -979,6 +1019,11 @@ extension OverlayDirector: OverlayPresenting {
         default: break
         }
       }
+      // **Attached AFTER the send, because the binding does not exist until the
+      // send establishes it.** Expiry is not an action — nobody pressed
+      // anything — so it cannot travel through the action closure above; it
+      // rides on the same binding so it dies with the same presentation.
+      activeBinding?.onExpire = onExpire
     case .bluetoothAwareness(let onAcknowledge, let onClose, let onOpenSettings):
       send(.featureRequest(.bluetoothAwareness)) { action in
         switch action {
@@ -988,14 +1033,44 @@ extension OverlayDirector: OverlayPresenting {
         default: break
         }
       }
+    // **Take, DISMISS, then forward — matching the shipped order.**
+    // `EscapeRecoveryWiring` dismisses before pasting for ONE stated reason: a
+    // spoken "overlay hidden" arriving after the restore is noise on top of the
+    // outcome the user asked for. That is a real VoiceOver experience, not a
+    // theoretical one.
+    //
+    // No second reason is claimed. `EscapeRecoveryWiring.pasteAction` copies to
+    // the clipboard and dispatches a keystroke; it raises no pill, so "a pill
+    // raised by onPaste would be destroyed by a later dismissal" describes
+    // nothing this code does today.
+    //
+    // The take comes first so a stale press finds nothing and neither dismisses
+    // nor pastes.
     case .escapeRecovery(let payload, let onPaste):
       presentEscapeRecovery(payload) { [weak self] action in
-        guard case .pasteEscapeRecovery(let transcriptID) = action else { return }
-        guard let taken = self?.takeEscapeRecoveryPayload(matching: transcriptID) else { return }
+        guard case .pasteEscapeRecovery(let transcriptID) = action,
+          let self,
+          let taken = self.takeEscapeRecoveryPayload(matching: transcriptID)
+        else { return }
+        self.dismissSilently()
         onPaste(taken)
       }
     }
-    return reducer.state.current.map { PillReceipt(presentationID: $0.id) }
+
+    // **A refused request returns nil, not the incumbent's receipt.** The slot
+    // holds ONE presentation, so after a refusal `reducer.state.current` is
+    // whatever was already there — and handing that back tells the caller its
+    // request was accepted while naming a pill it does not own. A feature owner
+    // would then believe `isCurrent` about someone else's presentation and
+    // dismiss it.
+    //
+    // Recording is the exception and it is not a refusal: a recording morph
+    // keeps the identity it was created with, so the incumbent id IS the id this
+    // request now owns.
+    guard let current = reducer.state.current else { return nil }
+    if case .recording = request { return PillReceipt(presentationID: current.id) }
+    guard current.id != incumbentID else { return nil }
+    return PillReceipt(presentationID: current.id)
   }
 
   func update(_ update: PillUpdate) {
