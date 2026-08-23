@@ -10,7 +10,7 @@ author: "Saurabh Vaish"
 
 By some estimates, knowledge workers produce somewhere between 5,000 and 10,000 words per day across emails, messages, documents, and tickets. That's roughly 125,000 to 250,000 keystrokes. Every single workday, five days a week, for years. The human wrist was not designed for this.
 
-Repetitive strain injury doesn't announce itself with a single dramatic moment. It builds quietly, one email, one Slack thread, one commit message at a time, until typing becomes something you ration instead of something you do without thinking. You start making calculations: can I afford to type this reply, or should I save my keystrokes for the report due at five?
+Repetitive strain injury, whether that is carpal tunnel syndrome, tendinitis, or something a doctor has not yet put a name to, doesn't announce itself with a single dramatic moment. It builds quietly, one email, one Slack thread, one commit message at a time, until typing becomes something you ration instead of something you do without thinking. You start making calculations: can I afford to type this reply, or should I save my keystrokes for the report due at five?
 
 Voice input changes that math entirely. Not as a novelty, but as a genuine reduction in the repetitive motion that causes the damage.
 

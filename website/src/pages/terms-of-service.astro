@@ -19,6 +19,15 @@ const jsonLd = {
     "url": "https://enviouswispr.com",
   },
 };
+
+const breadcrumbJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://enviouswispr.com" },
+    { "@type": "ListItem", "position": 2, "name": "Terms of Service", "item": "https://enviouswispr.com/terms-of-service/" },
+  ],
+};
 ---
 
 <BaseLayout
@@ -28,6 +37,7 @@ const jsonLd = {
   canonicalPath="/terms-of-service/"
 >
   <script slot="head" type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(breadcrumbJsonLd)} />
 
   <div class="legal-page">
     <a href="/" class="back-link">&larr; Back to home</a>

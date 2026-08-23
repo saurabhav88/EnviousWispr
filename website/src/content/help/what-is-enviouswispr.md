@@ -1,6 +1,6 @@
 ---
 title: "What Is EnviousWispr?"
-description: "What EnviousWispr does, and what you get for free."
+description: "EnviousWispr is a free, open-source dictation app for macOS. Hold a keybind, speak, and your words appear as text in whatever app you are using."
 category: "getting-started"
 section: "Basics"
 order: 1
