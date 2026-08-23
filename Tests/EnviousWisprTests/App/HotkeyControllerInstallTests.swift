@@ -39,7 +39,7 @@ import Testing
     let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
     let settings = SettingsManager()
-    let overlay = RecordingOverlayPanel()
+    let overlay = OverlayTestDouble.headlessDirector()
     let permissions = PermissionsService()
     let hotkey = HotkeyService()
     let settingsSync = PipelineSettingsSync(
@@ -59,7 +59,7 @@ import Testing
       set: { lockBox.isLocked = $0 }
     )
     let hcr = HeartControlRecovery(
-      hideOverlay: { overlay.show(intent: .hidden) },
+      hideOverlay: { overlay.send(.pipeline(.hidden), actions: nil) },
       setLocked: { locked in lockAccess.set(locked) },
       backend: { "parakeet" }
     )

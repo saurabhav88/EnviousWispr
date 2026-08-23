@@ -10,17 +10,40 @@ extension BluetoothAwarenessPresenter {
   /// sink live here.
   @MainActor
   static func live(
-    overlay: RecordingOverlayPanel,
+    overlay: OverlayDirector,
     settings: SettingsManager,
     liveRecordingState: LiveRecordingState,
     navigationCoordinator: NavigationCoordinator,
     appWindowCoordinator: AppWindowCoordinator
   ) -> BluetoothAwarenessPresenter {
+    let box = PresenterBox()
     let presenter = BluetoothAwarenessPresenter(
       readCurrentIntent: { [weak overlay] in overlay?.currentIntent ?? .hidden },
-      showOverlay: { [weak overlay] in overlay?.show(intent: .bluetoothAwareness) },
+      // **The card's three buttons ride WITH the presentation now**, rather than
+      // living in setBluetoothAwarenessHandlers for the app's lifetime whether
+      // or not a card is showing.
+      //
+      // The box exists because the presenter does not: this closure is one of
+      // its own constructor arguments, so it cannot capture it. The shipped code
+      // has the same ordering and solved it by binding the handlers in a SECOND
+      // call afterwards — which is precisely the lifetime field being removed.
+      // Weak inside, so a card cannot keep its presenter alive.
+      showOverlay: { [weak overlay] in
+        overlay?.send(
+          .featureRequest(.bluetoothAwareness),
+          actions: { action in
+            guard let presenter = box.value else { return }
+            switch action {
+            case .acknowledgeBluetoothAwareness: presenter.handleUserAction(.gotIt)
+            case .closeBluetoothAwareness: presenter.handleUserAction(.close)
+            case .openBluetoothSettings: presenter.handleUserAction(.adjustSettings)
+            default: break
+            }
+          })
+      },
+      // SILENT: dismissing the card is not a dictation ending.
       hideIfCurrent: { [weak overlay] in
-        if overlay?.currentIntent == .bluetoothAwareness { overlay?.hide() }
+        if overlay?.currentIntent == .bluetoothAwareness { overlay?.dismissSilently() }
       },
       effectiveInputIsBluetooth: { [weak settings] in
         // Predict the CONFIGURED input the way HAL binds it: explicit override,
@@ -61,11 +84,15 @@ extension BluetoothAwarenessPresenter {
           action: action.rawValue, reason: reason?.rawValue)
       }
     )
-    overlay.setBluetoothAwarenessHandlers(
-      onGotIt: { [weak presenter] in presenter?.handleUserAction(.gotIt) },
-      onClose: { [weak presenter] in presenter?.handleUserAction(.close) },
-      onAdjustSettings: { [weak presenter] in presenter?.handleUserAction(.adjustSettings) }
-    )
+    box.value = presenter
     return presenter
+  }
+
+  /// Holds the presenter for a closure that is one of its own constructor
+  /// arguments. Weak, so the card's action handler can never be what keeps the
+  /// presenter alive.
+  @MainActor
+  private final class PresenterBox {
+    weak var value: BluetoothAwarenessPresenter?
   }
 }

@@ -6,11 +6,10 @@ import Foundation
 
 /// Wires the live preview (#1988) to the recording overlay, and to nothing else.
 ///
-/// Extracted rather than written inline in `WisprBootstrapper` because that file
-/// carries a hard line ceiling whose whole purpose is to stop the composition root
-/// accumulating feature wiring. Raising the ceiling for fifteen lines would have
-/// spent a budget that exists precisely to prevent this, so the wiring lives with
-/// the feature and the root keeps its two lines.
+/// Extracted rather than written inline in `WisprBootstrapper` because feature
+/// wiring accumulating in the composition root is what turns a graph into a
+/// second implementation. The wiring lives with the feature and the root keeps
+/// its two lines.
 ///
 /// **The install surface is the point.** The preview attaches to the overlay panel
 /// and to nothing on the recording path. The kernel, the recording starter and the
@@ -34,7 +33,7 @@ enum LivePreviewInstaller {
   /// when the preview learns a user's vocabulary.
   @discardableResult
   static func install(
-    overlay: RecordingOverlayPanel,
+    overlay: OverlayDirector,
     capture: any AudioCaptureInterface,
     settings: SettingsManager,
     settingsSync: PipelineSettingsSync,
@@ -85,9 +84,10 @@ enum LivePreviewInstaller {
       enabled: { coordinator.isEnabledForGeometry },
       display: { coordinator.display }
     )
-    overlay.setRecordingIntentObserver { recording in
-      coordinator.setRecording(recording)
-    }
+    // The recording-intent observer is gone: the director emits
+    // `.recordingIntentChanged` as a plan EFFECT, and the composition root's
+    // effect sink forwards it here. One channel instead of a bespoke field.
+
     // #2108: switching Live Preview OFF releases its cached engine, and with it a
     // loaded 217 MB model. Wired HERE rather than in `WisprBootstrapper` for the
     // reason this installer exists at all: the composition root carries a line

@@ -45,7 +45,7 @@ struct CapsuleBackgroundFreezeTests {
 
   private static func overlaySource() throws -> String {
     let url = RepoRoot.url.appending(
-      path: "Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift")
+      path: "Sources/EnviousWisprAppKit/App/Overlay/Views/OverlayLegacyViews.swift")
     return try String(contentsOf: url, encoding: .utf8)
   }
 
@@ -143,7 +143,7 @@ struct CapsuleBackgroundFreezeTests {
     #expect(
       count >= 8,
       """
-      only \(count) references to the preview palette in RecordingOverlayPanel.swift. \
+      only \(count) references to the preview palette in OverlayLegacyViews.swift. \
       The gate check above passes vacuously when there is nothing to gate, so this \
       pins that the wiring is really there.
       """)

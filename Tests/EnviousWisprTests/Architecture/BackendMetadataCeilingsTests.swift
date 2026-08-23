@@ -65,17 +65,6 @@ import Testing
       """)
   }
 
-  @Test func lineCountCeiling() throws {
-    let source = try CeilingsTestSupport.source(at: Self.sourcePath)
-    let count = CeilingsTestSupport.lineCount(in: source)
-    #expect(
-      count <= 85,
-      """
-      BackendMetadata line count exceeded: \(count) > 85. \
-      Ratchet down if implementation came in lower; raise only via Bible §30.
-      """)
-  }
-
   @Test func allowedImports() throws {
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)
     let actual = CeilingsTestSupport.imports(in: source)

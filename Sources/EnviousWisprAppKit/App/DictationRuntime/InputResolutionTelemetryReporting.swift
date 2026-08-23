@@ -13,9 +13,8 @@ import EnviousWisprServices
 /// means NOT KNOWN rather than zero. Deriving or defaulting anything here would
 /// put a second opinion between the resolver's decision and the recorded event.
 ///
-/// It lives in its own file rather than inside `WisprBootstrapper` because that
-/// file is at its architecture-test line ceiling (1330,
-/// `EnviousWisprAppCeilingsTests.swift:432`).
+/// It lives in its own file rather than inside `WisprBootstrapper` because the
+/// composition root wires things together and does not implement telemetry.
 @MainActor
 enum InputResolutionTelemetryReporting {
   /// Install this observer on the manager and hand it back, so the composition

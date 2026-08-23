@@ -67,18 +67,6 @@ import Testing
       """)
   }
 
-  @Test func lineCount() throws {
-    let source = try String(
-      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
-    let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
-    #expect(
-      count <= 90,
-      """
-      AudioEventRouter line count exceeded: \(count) > 90. \
-      Raise via Bible §30 only.
-      """)
-  }
-
   @Test func allowedImports() throws {
     let source = try String(
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)

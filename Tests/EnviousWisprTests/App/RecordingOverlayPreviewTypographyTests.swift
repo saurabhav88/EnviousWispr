@@ -177,9 +177,8 @@ struct RecordingOverlayPreviewTypographyTests {
 
 /// #2203: when the reading well fades its top edge.
 ///
-/// A mask does not participate in layout, so no height measurement can see whether
-/// the fade is applied. The decision is therefore pinned directly — the same shape
-/// `RecordingOverlayPanelInheritedGeometryTests` uses for panel arithmetic.
+/// A mask does not participate in layout, so no height measurement can observe
+/// whether the fade is applied. The decision is therefore pinned directly.
 ///
 /// **Cloud review found the fade applying unconditionally**, so a one-line
 /// transcript had its only line dimmed with nothing above it to scroll away. A

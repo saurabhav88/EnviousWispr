@@ -31,7 +31,7 @@ final class DictationLifecycleCoordinator {
 
   let kernelDriver: KernelDictationDriver  // 1
   let whisperKitKernelDriver: KernelDictationDriver  // 2
-  let recordingOverlay: RecordingOverlayPanel  // 3
+  let recordingOverlay: OverlayDirector  // 3
   let hotkeyService: HotkeyService  // 4
   let settingsSync: PipelineSettingsSync  // 5
   let audioCapture: any AudioCaptureInterface  // 6
@@ -142,7 +142,7 @@ final class DictationLifecycleCoordinator {
   init(
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver,
-    recordingOverlay: RecordingOverlayPanel,
+    recordingOverlay: OverlayDirector,
     hotkeyService: HotkeyService,
     settingsSync: PipelineSettingsSync,
     audioCapture: any AudioCaptureInterface,
@@ -207,23 +207,36 @@ final class DictationLifecycleCoordinator {
     whisperKitKernelDriver.onApproachingMaxDuration = onApproaching
   }
 
-  /// The single overlay-show seam. Every overlay push — state-handler driven
+  /// The single overlay-show seam. Every push — state-handler driven
   /// (`makeStateChangeHandler`) and sub-status driven (`onOverlayIntentChange`)
-  /// — flows through here so the audio-level provider and lock state are
-  /// threaded identically. `RecordingOverlayPanel.show(intent:)` dedups on its
-  /// current intent, so a redundant identical push is dropped (#930).
+  /// — flows through here so the providers and lock state are threaded
+  /// identically; `OverlayReducer` dedups an identical intent (#930).
+  ///
+  /// It SPLITS by what each intent needs installed: the toast carries a
+  /// once-per-session policy the director owns, a recording carries providers, a
+  /// lock and a layout that must arrive in the operation that presents it, and
+  /// everything else needs none of them.
   private func showOverlayIntent(_ intent: OverlayIntent) {
     let audioCapture = self.audioCapture
     // #1393: resolve the active driver the same way `activeTelemetryTarget()`
-    // does, so the overlay's elapsed-time provider reads from whichever
-    // backend is actually recording.
+    // does, so the elapsed-time provider reads from whichever backend is
+    // actually recording.
     let backend = activeCaptureBackend() ?? lastCapturingBackend
     let driver = backend == .whisperKit ? whisperKitKernelDriver : kernelDriver
-    recordingOverlay.show(
-      intent: intent,
+    if case .accessibilityToast = intent {
+      recordingOverlay.presentAccessibilityNotice()
+      return
+    }
+    guard case .recording(let level) = intent else {
+      recordingOverlay.send(.pipeline(intent), actions: nil)
+      return
+    }
+    recordingOverlay.presentRecording(
+      audioLevel: level,
       audioLevelProvider: { audioCapture.audioLevel },
       recordingElapsedProvider: { [weak driver] in driver?.recordingElapsedSeconds },
-      isRecordingLocked: recordingLockedAccess.get()
+      isRecordingLocked: recordingLockedAccess.get(),
+      actions: nil
     )
   }
 
@@ -236,7 +249,7 @@ final class DictationLifecycleCoordinator {
   /// against the recording session that produced it — the coordinator forwards it
   /// and never re-derives one from an active driver.
   private func showApproachingCapWarning(remainingSeconds: TimeInterval, takeID: String) {
-    recordingOverlay.flashRecordingNotice(reason: .approachingCap)
+    recordingOverlay.send(.inPanelNotice(.approachingCap, dismissAfter: nil), actions: nil)
     TelemetryService.shared.recordingCapWarningShown(
       backend: lastCapturingBackend == .whisperKit ? "whisperKit" : "parakeet",
       capSeconds: TimingConstants.maxRecordingDuration,
@@ -447,7 +460,7 @@ final class DictationLifecycleCoordinator {
       let parakeetComplete = self.kernelDriver.state == .complete
       let whisperKitComplete = self.whisperKitKernelDriver.state == .complete
       guard parakeetComplete || whisperKitComplete else { return }
-      self.recordingOverlay.show(intent: .warning(reason: reason))
+      self.recordingOverlay.send(.pipeline(.warning(reason: reason)), actions: nil)
     }
   }
 
@@ -456,9 +469,9 @@ final class DictationLifecycleCoordinator {
   /// #1408: the closure bodies live in `PipelineStateChangeHandlerFactory`; this
   /// hands it the coordinator-owned seams they reach back into. #1567: the factory
   /// now forwards typed `RecordingWarningReason` facts and `DictationNarrator`
-  /// owns every user-facing sentence. Extracted rather than grown in place — the
-  /// coordinator sat at its line ceiling, which is exactly the signal that
-  /// ceiling exists to send.
+  /// owns every user-facing sentence. Extracted rather than grown in place: the
+  /// coordinator's job is to SEQUENCE a dictation, and the bodies of every
+  /// per-state reaction are not that.
   private func makeStateChangeHandler(backendLabel: String) -> PipelineStateChangeHandler {
     let driver = backendLabel == "whisperKit" ? whisperKitKernelDriver : kernelDriver
     return PipelineStateChangeHandlerFactory.make(
@@ -473,10 +486,15 @@ final class DictationLifecycleCoordinator {
         onDurableSave: { [weak self] sid in self?.onDurableSave(sid) },
         inputMode: { [weak self] in self?.settings.recordingMode.rawValue },
         driver: driver,
-        // #2087: straight to the panel, because the payload carries AX handles
-        // the `Sendable` overlay intent cannot.
+        // #2087: straight to the director, because the payload carries AX
+        // handles the `Sendable` overlay intent cannot. The Paste handler arrives
+        // WITH the presentation, so a pill is never up with nothing behind it.
         presentEscapeRecoveryPill: { [weak self] payload in
-          self?.recordingOverlay.presentEscapeRecoveryPill(payload)
+          guard let self else { return }
+          self.recordingOverlay.presentEscapeRecovery(
+            payload,
+            actions: EscapeRecoveryWiring.pillActions(
+              director: self.recordingOverlay, coordinator: self.transcriptCoordinator))
         },
         // The SAME `append` an ordinary completion uses. A held row differs by
         // carrying an expiry stamp, not by needing a second insertion path, and

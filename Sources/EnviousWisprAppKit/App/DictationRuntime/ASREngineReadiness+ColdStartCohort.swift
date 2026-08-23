@@ -8,7 +8,7 @@ extension ASREngineReadiness {
   /// (no load cost this press); `notReady` = cold (full load); `warming` = a
   /// load is in flight (mid-flight, kept distinct so it skews neither cohort).
   /// Lives in the App module (telemetry concern), kept off `RecordingStarter`
-  /// so the start-path home stays within its method/line ceilings.
+  /// so the start path owns starting rather than every policy adjacent to it.
   var coldStartCohortToken: String {
     switch self {
     case .notReady: return "notReady"

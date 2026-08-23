@@ -6,7 +6,7 @@ import Foundation
 
 /// What the Escape Recovery pill's Paste button does (#2087, chunk 12).
 ///
-/// **Until this existed the button was decoration.** `onEscapeRecoveryPaste` was
+/// **Until this existed the button was decoration.** onEscapeRecoveryPaste was
 /// declared, the pill rendered it, and nothing bound it — so the feature's one
 /// visible promise, "we kept it, press to put it back", did nothing at all while
 /// every layer beneath it passed its tests.

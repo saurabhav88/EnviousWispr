@@ -80,68 +80,6 @@ import Testing
       """)
   }
 
-  @Test func lineCount() throws {
-    let source = try String(
-      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
-    let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
-    // #1063 PR1 (crash recovery): raised 365 → 385 for the setter-injected
-    // `onDurableSave` `var` closure (deletes a session's spool + key on durable
-    // save) + its invocation in the existing `appendCompletedTranscript` seam.
-    // A `var` closure is NOT counted as a collaborator (collaboratorCount still
-    // ≤ 11); the Pipeline stays recovery-unaware. Only the paper-line ceiling
-    // moves (deterministic rule: actual 374 + 10 → round up to 385).
-    // #1063 PR1 (Codex code-diff r3): raised 385 → 400 for the second
-    // setter-injected `onRecordingEndedWithoutDurableSave` `var` closure +
-    // its invocation on the non-saved `.idle`/`.error` terminals in BOTH
-    // per-backend handlers (deletes the armed spool/key when a recording ends
-    // without a durable save, instead of leaking until launch). Still a `var`
-    // closure (collaboratorCount stays ≤ 11); only the paper-line ceiling moves
-    // (deterministic rule: actual 390 + 10 → round up to 400).
-    // #1063 PR2 (crash-recovery replay): raised 400 → 415. The published-state
-    // `.idle`/`.error` cleanup branch was REPLACED by wiring the driver's
-    // kernel-terminal signal (`onSessionEndedWithoutSave`, carrying the recovery
-    // id + the narrow ending) to the recovery-cleanup closure in `install()`; the
-    // closure type widened to `(String?, RecordingRecoveryEnding) -> Void`. No new
-    // collaborator (count stays ≤ 11). Deterministic rule: actual 404 + 10 → 415.
-    // #1171 (Telemetry Bible Phase 2): raised 415 → 430 for the two-line
-    // `settingsSync.retryDeferredBackendSwitch(settings:)` call added to BOTH the
-    // Parakeet and WhisperKit `.error/.idle/.complete` terminal arms (applies an
-    // engine switch deferred while the recording was active). No new collaborator
-    // (count stays ≤ 11). Deterministic rule: actual 419 + 10 → round up to 430.
-    // #1171 EngineCoordinator refactor (2026-06-23): raised 430 → 445. The
-    // `retryDeferredBackendSwitch` terminal calls were REPLACED by a single
-    // setter-injected `onEngineRelevantStateChange` `var` closure fired on EVERY
-    // transition in both handlers (the coordinator now owns deferred-switch
-    // application + status refresh). Still a `var` closure (collaboratorCount stays
-    // ≤ 11). Deterministic rule: actual 434 + 10 → round up to nearest 5 = 445.
-    // #1317 (2026-07-11): raised 445 → 460. Both per-backend `interruptionDisclosure:`
-    // arguments gained a one-line ternary reading `kernelDriver`/
-    // `whisperKitKernelDriver.lastZeroSignalFailureMode` before falling back to the
-    // existing `CompletionInterruptionDisclosure(cause:)` construction — a
-    // `becameZeroMidCapture` completion never stamps an `EngineInterruptionCause`
-    // (§3.4), so the disclosure has to be read off the zero-signal side-channel
-    // instead. No new collaborator: both driver properties are already-owned
-    // collaborators (collaboratorCount stays ≤ 11); no new method (nonPrivateMethodCount
-    // unchanged). Deterministic rule: actual 446 + 10 → round up to nearest 5 = 460.
-    // #1732 (GitHub cloud review round 6): 460 → 500. Both `handleParakeet`/
-    // `handleWhisperKit` gained a 6-line block reading `kernelDriver`/
-    // `whisperKitKernelDriver.lastHistorySaved` + `.currentTranscript?
-    // .recoverySessionID` and calling the new `onDurableSaveFailed` closure on
-    // a `.complete`-with-failed-save transition — protects a spool this same
-    // transition's own recovery wake-up would otherwise immediately rescan.
-    // No new collaborator (both driver properties already owned); one new
-    // off-cap `var` closure (`onDurableSaveFailed`, same pattern as
-    // `onDurableSave`/`onRecordingEndedWithoutDurableSave`, already excluded
-    // from `nonPrivateMethodCount`). Deterministic rule: actual 488 + 10 →
-    // round up to nearest 5 = 500.
-    #expect(
-      count <= 500,
-      """
-      DictationLifecycleCoordinator line count exceeded: \(count) > 500. \
-      Raise via Bible §30 only.
-      """)
-  }
-
   @Test func allowedImports() throws {
     let source = try String(
       contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)

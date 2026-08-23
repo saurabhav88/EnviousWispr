@@ -6,10 +6,11 @@ import Foundation
 ///
 /// A free function in its own file rather than a method on
 /// `DictationLifecycleCoordinator`, for two reasons that are not style: that
-/// type sits at 482 of its 500-line ceiling and this area is saturated (plan
-/// §3e says extract rather than squeeze), and holding a reference to something
-/// that owns this would spend one of its 11 collaborator slots on a pure
-/// mapping with no state.
+/// type's terminal-handling area is already saturated (plan §3e says extract
+/// rather than squeeze), and holding a reference to something that owns this
+/// would spend one of its collaborator slots on a pure mapping with no state.
+/// The collaborator ceiling is still live and still the one that matters here;
+/// the line ceiling this note used to cite was deleted in #2292 C6.
 ///
 /// **Reads the ROW, not the driver.** Every number here already lives on the
 /// transcript that was just written. Asking the driver instead would read
@@ -20,9 +21,9 @@ enum EscapeRecoveryCompletionReport {
 
   /// The production emission, in ONE call.
   ///
-  /// Exists so the composition site spends a single line: that file sits at its
-  /// line ceiling, and the ceiling's whole purpose is to stop feature logic
-  /// accumulating in a place meant only for wiring.
+  /// Exists so the composition site spends a single line, because that file is
+  /// for wiring and feature logic accumulating there is what turns a composition
+  /// root into a second implementation.
   @MainActor
   static func report(
     outcome: EscapeRecoveryTerminalOutcome, transcript: Transcript?, fallbackTakeID: String?

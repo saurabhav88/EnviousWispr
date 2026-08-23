@@ -25,7 +25,7 @@ final class RecordingFinalizer {
   let kernelDriver: KernelDictationDriver
   let whisperKitKernelDriver: KernelDictationDriver
   let asrManager: any ASRManagerInterface
-  let recordingOverlay: RecordingOverlayPanel
+  let recordingOverlay: OverlayDirector
 
   var heartControlRecovery: HeartControlRecovery
   var recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess
@@ -69,7 +69,7 @@ final class RecordingFinalizer {
     kernelDriver: KernelDictationDriver,
     whisperKitKernelDriver: KernelDictationDriver,
     asrManager: any ASRManagerInterface,
-    recordingOverlay: RecordingOverlayPanel,
+    recordingOverlay: OverlayDirector,
     heartControlRecovery: HeartControlRecovery,
     recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess,
     languageSuggestionPresenter: LanguageSuggestionPresenter?
@@ -120,14 +120,14 @@ final class RecordingFinalizer {
     guard active.state == .recording || active.state == .loadingModel else { return false }
     languageSuggestionPresenter?.clearCurrentChip()
     languageSuggestionPresenter?.clearBuffer()
-    recordingOverlay.hide()
+    recordingOverlay.dismissSilently()
     await cancelRecordingDispatch(active, trigger)
     return false
   }
 
   func markLocked() {
     recordingLockedAccess.set(true)
-    recordingOverlay.updateLockState(true)
+    recordingOverlay.send(.lockStateChanged(true), actions: nil)
     Task {
       await AppLogger.shared.log(
         "Hands-free mode activated — overlay expanding",

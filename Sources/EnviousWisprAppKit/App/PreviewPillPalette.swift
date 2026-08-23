@@ -11,8 +11,9 @@ import SwiftUI
 ///
 /// Two reasons, and the second is the load-bearing one.
 ///
-/// First, `RecordingOverlayPanel.swift` is ~3,000 lines and the pill's colours
-/// were scattered through it as literals. Collecting them makes "what does the
+/// First, the overlay's view layer (`OverlayLegacyViews.swift`, extracted from
+/// `05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift` in #2292) is large and the pill's colours were
+/// scattered through it as literals. Collecting them makes "what does the
 /// preview pill look like" a question with one answer.
 ///
 /// Second, and this is the isolation the whole epic turns on: **every modifier on

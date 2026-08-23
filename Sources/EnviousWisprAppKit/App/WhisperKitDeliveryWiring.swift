@@ -9,9 +9,8 @@ import Foundation
 ///
 /// It exists so the composition root can NAME this subsystem in three lines
 /// instead of spelling out its closures. That is the composition root's job —
-/// own the graph, not the detail — and epic #763's line ceiling on
-/// `WisprBootstrapper` is the thing that says so out loud. Everything here is
-/// construction: no policy, no state.
+/// own the graph, not the detail. Everything here is construction: no policy,
+/// no state.
 @MainActor
 enum WhisperKitDeliveryWiring {
   struct Wired {

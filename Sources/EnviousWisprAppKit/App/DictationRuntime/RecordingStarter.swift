@@ -22,7 +22,7 @@ final class RecordingStarter {
   let kernelDriver: KernelDictationDriver
   let whisperKitKernelDriver: KernelDictationDriver
   let settings: SettingsManager
-  let recordingOverlay: RecordingOverlayPanel
+  let recordingOverlay: OverlayDirector
   /// #904 test seam — the accessibility re-arm step `start()`/`toggle()` run.
   /// Default (bound in init capturing `permissions`, since a default arg can't
   /// reference an init param) is today's block; a test injects a counting spy.
@@ -151,7 +151,7 @@ final class RecordingStarter {
   /// press timestamp of this episode for the pairing `recovery.press_unblocked`
   /// telemetry below, and emits the existing `recovery.press_blocked` event.
   private func handleRecoveryPressRefused(backend: ASRBackendType) {
-    recordingOverlay.show(intent: .recoveringLastRecording)
+    recordingOverlay.presentRecoveryNotice()
     signalPendingLiveStart()
     if pendingBlockedPressInfo == nil {
       pendingBlockedPressInfo = (backend.rawValue, ContinuousClock.now)
@@ -182,7 +182,7 @@ final class RecordingStarter {
     whisperKitKernelDriver: KernelDictationDriver,
     settings: SettingsManager,
     permissions: PermissionsService,
-    recordingOverlay: RecordingOverlayPanel,
+    recordingOverlay: OverlayDirector,
     heartControlRecovery: HeartControlRecovery,
     recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess,
     lastUserStopAccess: RecordingFinalizer.LastUserStopAccess,
@@ -272,8 +272,9 @@ final class RecordingStarter {
     // gate, before any readiness/warm logic — a removal's first instants can
     // still read "ready", so the readiness path alone cannot cover this.
     guard isSelectedModelInstalled() else {
-      recordingOverlay.show(
-        intent: .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
+      recordingOverlay.send(
+        .pipeline(.warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName))),
+        actions: nil)
       TelemetryService.shared.coldStartPressBlocked(
         asrBackend: backend.rawValue, warmupInFlight: false)
       return .noRecording
@@ -304,28 +305,29 @@ final class RecordingStarter {
     beginMinting()
     defer { endMinting() }
     accessibilityRefresh()
-    recordingOverlay.show(
-      intent: .recording(audioLevel: 0),
+    recordingOverlay.presentRecording(
+      audioLevel: 0,
       audioLevelProvider: { [audioCapture] in audioCapture.audioLevel },
-      // #1393: this is the FIRST `.recording` overlay push (fires before
+      // #1393: this is the FIRST `.recording` push (fires before
       // `DictationLifecycleCoordinator` sees any state change), so it must
-      // carry the real provider itself — the panel's identical-intent dedup
-      // guard means whatever is passed here is what actually renders for the
-      // whole recording if a later push is a no-op duplicate.
+      // carry the real provider itself — a later duplicate morphs the SAME
+      // presentation, so whatever is installed here is what renders for the
+      // whole recording.
       recordingElapsedProvider: { [weak active] in active?.recordingElapsedSeconds },
-      isRecordingLocked: false
+      isRecordingLocked: false,
+      actions: nil
     )
     let pttStart = ContinuousClock.now
     do {
       try await active.handle(event: .preWarm)
     } catch is CancellationError {
       audioCapture.abortPreWarm()
-      recordingOverlay.show(intent: .hidden)
+      recordingOverlay.send(.pipeline(.hidden), actions: nil)
       recordingLockedAccess.set(false)
       return .noRecording
     } catch {
       audioCapture.abortPreWarm()
-      recordingOverlay.show(intent: .hidden)
+      recordingOverlay.send(.pipeline(.hidden), actions: nil)
       recordingLockedAccess.set(false)
       SentryBreadcrumb.add(
         stage: "recording", message: "preWarm failed — start aborted",
@@ -350,7 +352,7 @@ final class RecordingStarter {
     }
     guard !Task.isCancelled else {
       audioCapture.abortPreWarm()
-      recordingOverlay.show(intent: .hidden)
+      recordingOverlay.send(.pipeline(.hidden), actions: nil)
       recordingLockedAccess.set(false)
       return .noRecording
     }
@@ -367,7 +369,7 @@ final class RecordingStarter {
     }()
     if userStoppedDuringPreWarm {
       audioCapture.abortPreWarm()
-      recordingOverlay.show(intent: .hidden)
+      recordingOverlay.send(.pipeline(.hidden), actions: nil)
       recordingLockedAccess.set(false)
       return .noRecording
     }
@@ -393,7 +395,7 @@ final class RecordingStarter {
         // pipeline state fires, so clean the orphan spool/key here (Codex r3).
         // Pre-start abort is always a discard (#1063 PR2: pass this take's id).
         cleanupRecoveryArm(config.recoverySessionID)
-        recordingOverlay.show(intent: .hidden)
+        recordingOverlay.send(.pipeline(.hidden), actions: nil)
         recordingLockedAccess.set(false)
         return .noRecording
       }
@@ -443,13 +445,13 @@ final class RecordingStarter {
         category: .pipelinePostConditionFailed, stage: "recording",
         extra: ["backend": backend.rawValue]
       )
-      recordingOverlay.show(intent: .hidden)
+      recordingOverlay.send(.pipeline(.hidden), actions: nil)
       recordingLockedAccess.set(false)
       active.setTerminalReason(.modelWedged)
       return .noRecording
     }
     if !pipelineActive && !pipelineConcluded && userStoppedDuringStart {
-      recordingOverlay.show(intent: .hidden)
+      recordingOverlay.send(.pipeline(.hidden), actions: nil)
       recordingLockedAccess.set(false)
       return .noRecording
     }
@@ -522,8 +524,9 @@ final class RecordingStarter {
       // STOPS an active session is unaffected (guarded by `isStartingFromIdle`).
       // #1386 PR-2c (founder): same removal/not-installed gate as the PTT path.
       guard isSelectedModelInstalled() else {
-        recordingOverlay.show(
-          intent: .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
+        recordingOverlay.send(
+          .pipeline(.warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName))),
+        actions: nil)
         TelemetryService.shared.coldStartPressBlocked(
           asrBackend: backend.rawValue, warmupInFlight: false)
         return

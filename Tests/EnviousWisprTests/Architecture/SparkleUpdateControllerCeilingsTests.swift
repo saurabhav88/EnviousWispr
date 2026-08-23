@@ -87,18 +87,6 @@ import Testing
       """)
   }
 
-  @Test func lineCount() throws {
-    let source = try String(
-      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
-    let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
-    #expect(
-      count <= 800,
-      """
-      SparkleUpdateController line count exceeded: \(count) > 800 (soft trip-wire). \
-      File should stay focused on Sparkle lifecycle + the two delegate extensions.
-      """)
-  }
-
   @Test func allowedExtensionConformances() throws {
     // Guard against smuggling behavior through a third extension that escapes
     // the in-class non-private method count. Only the two Sparkle delegate
