@@ -6,7 +6,9 @@ Run: python3 -m pytest workers/sentry-triage/test_tik_eligibility.py
 
 Each test is one council/Codex validation case. The whole point of this file is
 that the reopen/hold/ambiguous boundary is PROVABLE before the gate ships to an
-unattended daily cron.
+unattended daily cron. Since #2194 the file also proves the create gate's
+duplicate boundary (open_found / none_found / unknown -> refuse / event logic /
+undecidable) the same way.
 """
 
 from __future__ import annotations
@@ -389,24 +391,28 @@ def pev(*, release="com.enviouswispr.app@2.2.0", level="error", user="u1"):
 
 
 def dc_full(events, **kw):
-    """decide_create over a PROVABLY COMPLETE event list (events_truncated=False).
+    """decide_create over a PROVABLY COMPLETE event list (events_truncated=False)
+    with the duplicate check ESTABLISHED (duplicate_check="none_found").
 
     The create gate REQUIRES `events_truncated` -- a MISSING flag fails open to create
-    (Codex #1218 r3), since the flag is the gate's only completeness signal. Branch
-    tests that assert digest/suppress must therefore prove completeness; this wrapper
-    states that once instead of repeating it at every call site."""
-    return decide_create({"events": events, "events_truncated": False, **kw})
+    (Codex #1218 r3), since the flag is the gate's only completeness signal -- and,
+    since #2194, it REQUIRES `duplicate_check`: a missing check is `undecidable`,
+    never create. Branch tests that exercise the #1218 event logic must therefore
+    supply both; this wrapper states that once instead of repeating it at every call
+    site."""
+    return decide_create({"events": events, "events_truncated": False,
+                          "duplicate_check": "none_found", **kw})
 
 
 def test_create_production_event_creates():
-    out = decide_create({"events": [pev()]})
+    out = decide_create({"events": [pev()], "duplicate_check": "none_found"})
     assert out["verdict"] == "create"
     assert out["family"] == "create"
 
 
 def test_create_mixed_prod_and_dev_creates():
     # One real production event among dev noise still creates (real customer signal).
-    out = decide_create({"events": [cev(), pev(user="real")]})
+    out = decide_create({"events": [cev(), pev(user="real")], "duplicate_check": "none_found"})
     assert out["family"] == "create"
     assert out["dev_count"] == 1
     assert out["event_count"] == 2
@@ -422,7 +428,7 @@ def test_create_all_dev_all_synthetic_suppresses():
 
 def test_create_all_dev_untagged_fatal_creates_canary():
     # An untagged dev crash could be a real new-crash -> create-visible.
-    out = decide_create({"events": [cev(level="fatal")]})
+    out = decide_create({"events": [cev(level="fatal")], "duplicate_check": "none_found"})
     assert out["verdict"] == "create-dev-fatal"
     assert out["family"] == "create"
 
@@ -435,19 +441,20 @@ def test_create_all_dev_handled_error_digests():
 
 
 def test_create_empty_events_fails_open_to_create():
-    out = decide_create({"events": []})
+    out = decide_create({"events": [], "duplicate_check": "none_found"})
     assert out["family"] == "create"
 
 
 def test_create_missing_events_fails_open_to_create():
-    # Missing fetch is NOT proof of "nothing real" -> create (visible).
-    out = decide_create({})
+    # Missing fetch is NOT proof of "nothing real" -> create (visible). The duplicate
+    # check IS established here (none_found), so the #1218 event-axis fail-open holds.
+    out = decide_create({"duplicate_check": "none_found"})
     assert out["family"] == "create"
 
 
 def test_create_all_dev_warning_level_fails_open():
     # All-dev but not provably all-handled-error (warning) -> fail open to create.
-    out = decide_create({"events": [cev(level="warning")]})
+    out = decide_create({"events": [cev(level="warning")], "duplicate_check": "none_found"})
     assert out["family"] == "create"
     assert out["verdict"] == "create"
 
@@ -456,7 +463,7 @@ def test_create_unknown_level_no_fallback_fails_open():
     # No per-event level AND no issue_level -> unclassifiable -> fail open.
     e = cev()
     del e["level"]
-    out = decide_create({"events": [e]})
+    out = decide_create({"events": [e], "duplicate_check": "none_found"})
     assert out["family"] == "create"
 
 
@@ -474,7 +481,8 @@ def test_create_synthetic_absent_is_not_suppressed():
 
 def test_create_per_event_level_overrides_issue_level():
     # event.level=fatal must win over issue_level=error -> create-dev-fatal.
-    out = decide_create({"events": [cev(level="fatal")], "issue_level": "error"})
+    out = decide_create({"events": [cev(level="fatal")], "issue_level": "error",
+                         "duplicate_check": "none_found"})
     assert out["verdict"] == "create-dev-fatal"
 
 
@@ -502,7 +510,8 @@ def test_create_untagged_fatal_mixed_with_synthetic_still_creates():
     # A genuine (untagged) dev fatal alongside a synthetic one is NOT all-synthetic,
     # so branch 2 fails and the untagged fatal surfaces (create-dev-fatal).
     out = decide_create({"events": [cev(synthetic="true", level="fatal"),
-                                    cev(level="fatal")]})
+                                    cev(level="fatal")],
+                         "duplicate_check": "none_found"})
     assert out["verdict"] == "create-dev-fatal"
 
 
@@ -525,7 +534,8 @@ def test_create_synthetic_fatal_plus_untagged_handled_digests():
 
 def test_create_cli_create_flag_dispatches_to_decide_create():
     # `--create` routes to decide_create; a digest fixture returns family=digest.
-    payload = json.dumps({"events": [cev(level="error")], "events_truncated": False})
+    payload = json.dumps({"events": [cev(level="error")], "events_truncated": False,
+                          "duplicate_check": "none_found"})
     proc = subprocess.run(
         [sys.executable, str(Path(__file__).resolve().parent / "tik_eligibility.py"), "--create"],
         input=payload, capture_output=True, text=True)
@@ -546,13 +556,18 @@ def test_create_cli_without_flag_is_reopen_gate():
     assert json.loads(proc.stdout)["verdict"] == "ambiguous"
 
 
-def test_create_cli_create_flag_fails_open_on_bad_json():
-    # Malformed stdin under --create must fail OPEN to create (visible), exit 0.
+def test_dup_check_cli_bad_json_is_undecidable_not_create():
+    # #2194 SUPERSEDES the old assertion here (which expected `create` on malformed
+    # stdin): an input the gate cannot read cannot have read the duplicate check,
+    # and an unreadable check must never become `create` -- it is `undecidable`
+    # (run-digest line) instead. Still visible, still exit 0; just no duplicate.
     proc = subprocess.run(
         [sys.executable, str(Path(__file__).resolve().parent / "tik_eligibility.py"), "--create"],
         input="not json", capture_output=True, text=True)
     assert proc.returncode == 0
-    assert json.loads(proc.stdout)["family"] == "create"
+    out = json.loads(proc.stdout)
+    assert out["verdict"] == "undecidable"
+    assert out["family"] != "create"
 
 
 def test_create_8_fingerprint_regression_zero_creates():
@@ -571,20 +586,23 @@ def test_create_missing_events_truncated_fails_open_on_suppress():
     # Codex P2 (#1218 review r3): events_truncated is REQUIRED. A digest/suppress with
     # NO events_truncated key cannot prove the list is complete -> fail open to create.
     # (Same events that digest/suppress WITH events_truncated=False, per dc_full above.)
-    assert decide_create({"events": [cev(level="error")]})["family"] == "create"
-    assert decide_create({"events": [cev(synthetic="true")]})["family"] == "create"
+    # The duplicate check is established (none_found), so the #1218 logic is reachable.
+    assert decide_create({"events": [cev(level="error")],
+                          "duplicate_check": "none_found"})["family"] == "create"
+    assert decide_create({"events": [cev(synthetic="true")],
+                          "duplicate_check": "none_found"})["family"] == "create"
 
 
 def test_create_truncated_downgrades_digest_to_create():
     # Codex P2 (#1218 review r2): a digest on a TRUNCATED list is unsafe — an unread
     # page could hold a production/fatal event -> fail open to create.
-    base = {"events": [cev(level="error")]}
+    base = {"events": [cev(level="error")], "duplicate_check": "none_found"}
     assert decide_create({**base, "events_truncated": False})["family"] == "digest"
     assert decide_create({**base, "events_truncated": True})["family"] == "create"
 
 
 def test_create_truncated_downgrades_suppress_to_create():
-    base = {"events": [cev(synthetic="true")]}
+    base = {"events": [cev(synthetic="true")], "duplicate_check": "none_found"}
     assert decide_create({**base, "events_truncated": False})["family"] == "suppress"
     assert decide_create({**base, "events_truncated": True})["family"] == "create"
 
@@ -592,14 +610,128 @@ def test_create_truncated_downgrades_suppress_to_create():
 def test_create_truncated_does_not_change_create():
     # A create verdict is already visible -> truncation is irrelevant (like the reopen
     # gate's test_truncated_does_not_downgrade_reopen).
-    base = {"events": [cev(level="fatal")]}  # create-dev-fatal
+    base = {"events": [cev(level="fatal")], "duplicate_check": "none_found"}  # create-dev-fatal
     assert decide_create({**base, "events_truncated": True})["verdict"] == "create-dev-fatal"
 
 
 def test_create_truncated_string_true_is_coerced():
     # Shell-built JSON passes "true"/"false" as strings; only a real true downgrades.
-    out = decide_create({"events": [cev(level="error")], "events_truncated": "true"})
+    out = decide_create({"events": [cev(level="error")], "events_truncated": "true",
+                         "duplicate_check": "none_found"})
     assert out["family"] == "create"
+
+
+# ---- decide_create: duplicate guard (issue #2194) ---------------------------
+#
+# The create gate takes a REQUIRED `duplicate_check` input -- the outcome of the
+# routine's Step 2 marker search for the shortId. Three states, three outcomes:
+#   "open_found"  -> refuse-duplicate (family refuse): never create a second issue
+#   "none_found"  -> the #1218 event logic decides (create / digest / suppress)
+#   absent / errored / skipped ("unknown") -> undecidable (family digest): neither
+#     create nor suppress; the run digest says "could not check duplicates for X".
+# The enforcement is the REQUIRED input, not an instruction: a caller that supplies
+# nothing can never reach `create`.
+
+def test_dup_check_open_found_refuses_create():
+    # A production event that would otherwise create, plus a known open issue:
+    # the gate refuses. The open ticket already makes the fingerprint visible.
+    out = decide_create({"events": [pev()], "duplicate_check": "open_found"})
+    assert out["verdict"] == "refuse-duplicate"
+    assert out["family"] == "refuse"
+    assert out["family"] != "create"
+
+
+def test_dup_check_open_found_refuses_dev_fatal_too():
+    # The duplicate state dominates the event logic: even an untagged dev fatal
+    # (create-dev-fatal without the check) is refused when an open issue exists.
+    out = decide_create({"events": [cev(level="fatal")], "duplicate_check": "open_found"})
+    assert out["verdict"] == "refuse-duplicate"
+    assert out["family"] == "refuse"
+
+
+def test_dup_check_open_found_ignores_events_truncated():
+    # refuse-duplicate does not rest on the event list, so the truncation downgrade
+    # (which only upgrades suppressing verdicts to create) cannot reach it.
+    out = decide_create({"events": [cev(level="error")], "duplicate_check": "open_found",
+                         "events_truncated": True})
+    assert out["verdict"] == "refuse-duplicate"
+    assert out["family"] == "refuse"
+
+
+def test_dup_check_none_found_reaches_event_logic():
+    # "checked, none found" is the ONLY state that lets the #1218 event logic decide.
+    out = decide_create({"events": [pev()], "duplicate_check": "none_found"})
+    assert out["verdict"] == "create"
+    assert dc_full([cev(level="error")])["verdict"] == "digest-dev-only"
+
+
+def test_dup_check_missing_input_is_undecidable_never_create():
+    # The enforcement (REQUIRED input): a caller that supplies nothing to read gets
+    # the undecidable outcome, NOT the fail-open create default -- even when the
+    # events would create.
+    out = decide_create({"events": [pev()]})
+    assert out["verdict"] == "undecidable"
+    assert out["family"] == "digest"
+    assert out["family"] != "create"
+
+
+def test_dup_check_missing_everything_is_undecidable():
+    # The empty caller (the 2026-08-16/17 shape: Step 2 skipped, gate reached with
+    # nothing) must not create.
+    out = decide_create({})
+    assert out["verdict"] == "undecidable"
+    assert out["family"] != "create"
+
+
+def test_dup_check_unknown_value_is_undecidable():
+    # The search errored -> the routine says "unknown" -> neither create nor suppress.
+    out = decide_create({"events": [pev()], "duplicate_check": "unknown"})
+    assert out["verdict"] == "undecidable"
+    assert out["family"] != "create"
+
+
+def test_dup_check_unrecognised_values_are_undecidable():
+    # A typo or mis-pipe must land in the only state that cannot create.
+    for bad in ("openfound", "none", "no duplicates", "", None, 1, ["none_found"]):
+        out = decide_create({"events": [pev()], "duplicate_check": bad})
+        assert out["verdict"] == "undecidable", f"{bad!r} -> {out}"
+        assert out["family"] != "create"
+
+
+def test_dup_check_strip_and_case_normalised():
+    # strip/lower match the close_class leniency; the recognised spellings are the
+    # exact three states, so normalisation can only ever produce the documented
+    # outcomes (refuse / event logic), never a create the caller did not send.
+    assert decide_create({"events": [pev()], "duplicate_check": " OPEN_FOUND "})["family"] == "refuse"
+    assert decide_create({"events": [pev()], "duplicate_check": "None_Found"})["family"] == "create"
+    assert decide_create({"events": [pev()], "duplicate_check": "None_fond"})["family"] != "create"
+
+
+def test_dup_check_cli_missing_field_is_undecidable():
+    # Valid JSON without the REQUIRED field: the GATE (not the routine's compliance)
+    # returns undecidable. This is the enforcement end-to-end over the CLI the
+    # routine actually uses.
+    payload = json.dumps({"events": [pev()], "issue_level": "error",
+                          "events_truncated": False})
+    proc = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parent / "tik_eligibility.py"), "--create"],
+        input=payload, capture_output=True, text=True)
+    assert proc.returncode == 0
+    out = json.loads(proc.stdout)
+    assert out["verdict"] == "undecidable"
+    assert out["family"] != "create"
+
+
+def test_dup_check_cli_open_found_refuses():
+    payload = json.dumps({"events": [pev()], "issue_level": "error",
+                          "events_truncated": False, "duplicate_check": "open_found"})
+    proc = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parent / "tik_eligibility.py"), "--create"],
+        input=payload, capture_output=True, text=True)
+    assert proc.returncode == 0
+    out = json.loads(proc.stdout)
+    assert out["verdict"] == "refuse-duplicate"
+    assert out["family"] == "refuse"
 
 
 # ---- self-runner (no pytest dependency in the routine sandbox) --------------
