@@ -166,7 +166,18 @@ jobs:
     # #2334: the schedule path additionally requires the guard to answer
     # "run". On every other event the guard is skipped and this reduces to
     # the original condition — the push path is unconditional by design.
+    #
+    # `!cancelled()` is a status check function, so it removes the implicit
+    # success() that otherwise skips a job whenever a `needs` dependency is
+    # skipped — and schedule-guard skips on every non-schedule event, which
+    # was silently dragging both macOS suites into the skip (run 32653384491).
+    # With the implicit success() gone, the classify dependency is enforced
+    # explicitly. It is `!cancelled()`, not `always()`: the latter would run
+    # the suites even while the run is being cancelled, which is the
+    # merge-train waste #2334 exists to reduce.
     if: >-
+      !cancelled() &&
+      needs.classify.result == 'success' &&
       needs.classify.outputs.needs_build == 'true' &&
       (github.event_name != 'schedule' || needs.schedule-guard.outputs.should_run == 'yes')
     runs-on: macos-26
@@ -321,8 +332,11 @@ jobs:
   # cache, so the writer contract with pr-check.yml has exactly one owner.
   debug-validation:
     needs: [classify, schedule-guard]
-    # #2334: same schedule guard as release-validation (see above).
+    # #2334: same schedule guard and status-function rationale as
+    # release-validation (see above).
     if: >-
+      !cancelled() &&
+      needs.classify.result == 'success' &&
       needs.classify.outputs.needs_build == 'true' &&
       (github.event_name != 'schedule' || needs.schedule-guard.outputs.should_run == 'yes')
     runs-on: macos-26
