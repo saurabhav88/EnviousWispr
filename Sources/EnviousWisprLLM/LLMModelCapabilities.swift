@@ -16,14 +16,17 @@ import Foundation
 /// `supportsChatCompletions`; `LLMModelDiscovery` filters the picker on
 /// `supportsChatCompletions`.
 public struct LLMModelCapabilities: Sendable, Equatable {
-  /// How a model expresses "how hard to think", and the two values our
-  /// Deep-reasoning toggle maps onto (#1770).
+  /// How a model expresses "how hard to think", and the one value we send it
+  /// (#1770; collapsed from a fast/deep pair by #1831).
   ///
-  /// Dialect and values travel TOGETHER because providers disagree on both the
+  /// Dialect and value travel TOGETHER because providers disagree on both the
   /// KEY and the legal values per model: Gemini 2.5 takes an integer
   /// `thinkingBudget`, Gemini 3 takes a string `thinkingLevel` and rejects
-  /// `thinkingBudget: 0` outright. A dialect without its values is exactly what
-  /// let `thinkingBudget: 0` reach models that refuse it.
+  /// `thinkingBudget: 0` outright. A dialect without its value is exactly what
+  /// let `thinkingBudget: 0` reach models that refuse it. The three dialect
+  /// CASES therefore stay distinct — collapsing them into one "is reasoning"
+  /// bit is the #1330 conflation this type exists to prevent. #1831 collapsed
+  /// only the pair, never the dialect.
   ///
   /// Keyed on EXACT model ids, never prefixes. A `gemini-3` prefix row would
   /// silently capture a future `gemini-3.7-flash` we have never tested and send
@@ -40,11 +43,11 @@ public struct LLMModelCapabilities: Sendable, Equatable {
     /// instance, thinks by default and is measurably slower for it.
     case unsupported
     /// Gemini 2.5 dialect: integer token budget.
-    case budget(fast: Int, deep: Int)
+    case budget(Int)
     /// Gemini 3 dialect: string level (minimal/low/medium/high).
-    case level(fast: String, deep: String)
+    case level(String)
     /// OpenAI dialect: `reasoning_effort`.
-    case effort(fast: String, deep: String)
+    case effort(String)
   }
 
   public enum TemperaturePolicy: Sendable, Equatable {
@@ -61,10 +64,10 @@ public struct LLMModelCapabilities: Sendable, Equatable {
   }
 
   public let thinkingControl: ThinkingControl
-  /// Whether the Deep-reasoning toggle is meaningful for this model.
+  /// Whether this model takes a thinking parameter at all.
   ///
-  /// DERIVED, never stored: toggle visibility and request shape are two
-  /// statements about one fact, and storing both is how they drift (#1770).
+  /// DERIVED, never stored: two statements about one fact drift when both are
+  /// stored (#1770).
   public var supportsReasoning: Bool { thinkingControl != .unsupported }
   public let temperaturePolicy: TemperaturePolicy
   /// Primary-endpoint (Chat Completions) eligibility. Meaningful for
@@ -110,9 +113,10 @@ extension LLMProvider {
       let isResponsesOnly = id.contains("codex") || id.contains("-pro")
 
       return LLMModelCapabilities(
-        // Unchanged behaviour, restated as a dialect: the prior resolver
-        // has always sent low/medium for these ids (#1330).
-        thinkingControl: isReasoning ? .effort(fast: "low", deep: "medium") : .unsupported,
+        // `low` is what every user has always received here: it was the
+        // toggle's OFF value, the toggle shipped OFF by default (#1831), and
+        // the prior resolver sent it before the toggle existed (#1330).
+        thinkingControl: isReasoning ? .effort("low") : .unsupported,
         temperaturePolicy: isReasoning ? .omit : .include,
         supportsChatCompletions: !isResponsesOnly
       )
@@ -163,16 +167,19 @@ extension LLMModelCapabilities {
   /// guarantee; an unlisted model also loses the Deep-reasoning toggle until a
   /// row is added here.
   ///
-  /// The `deep:` values are provisional — #1832 measures whether thinking level
-  /// changes polish quality at all. `"high"` is the widest separation from
-  /// `minimal`, not an evidence-backed optimum.
+  /// Every value below is the one the Deep-reasoning toggle sent in its OFF
+  /// position, which was the shipped default, so this table is byte-identical
+  /// on the wire for every user who never flipped it. The `deep:` half was
+  /// removed by #1831 after #1832 measured it: on sealed_v1 against
+  /// `gemini-3.7-flash`, `high` produced no significant quality difference from
+  /// `low` while nearly tripling p90 latency.
   fileprivate static func geminiThinkingControl(_ id: String) -> ThinkingControl {
     switch id {
     // Gemini 3 Flash tier: `minimal` returns 200 and spends 0 thinking tokens.
     case "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite",
       "gemini-3.1-flash-lite", "gemini-3.1-flash-lite-preview",
       "gemini-3-flash-preview":
-      return .level(fast: "minimal", deep: "high")
+      return .level("minimal")
 
     // 3.7 Flash sits in the Pro tier's shape despite the Flash name: `minimal`
     // -> 400 "Thinking level MINIMAL is not supported for this model", verified
@@ -188,24 +195,24 @@ extension LLMModelCapabilities {
     // medium would silently spend more than that on every polish, and the 93.5%
     // score this model was chosen on was measured at `low`, not at medium.
     case "gemini-3.7-flash":
-      return .level(fast: "low", deep: "high")
+      return .level("low")
 
     // Gemini 3 Pro tier: `minimal` -> 400 "Thinking level MINIMAL is not
     // supported for this model", so `low` is the floor Google permits.
     case "gemini-3.1-pro-preview", "gemini-3.1-pro-preview-customtools":
-      return .level(fast: "low", deep: "high")
+      return .level("low")
 
     // Gemini 2.5 Flash tier: budget 0 is legal and spends 0 thinking tokens.
     // NOTE 2.5-flash-lite rejects 128 ("choose a value between 512 and 24576")
-    // while accepting 0 — which is why the off-state value is per-model here
-    // and not a per-tier rule.
+    // while accepting 0 — which is why this value is per-model here and not a
+    // per-tier rule.
     case "gemini-2.5-flash", "gemini-2.5-flash-lite":
-      return .budget(fast: 0, deep: 8192)
+      return .budget(0)
 
     // Gemini 2.5 Pro: budget 0 -> 400 "This model only works in thinking
     // mode"; 128 is the documented and measured minimum.
     case "gemini-2.5-pro":
-      return .budget(fast: 128, deep: 8192)
+      return .budget(128)
 
     default:
       return .unsupported

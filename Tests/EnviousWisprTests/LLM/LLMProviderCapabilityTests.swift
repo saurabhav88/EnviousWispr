@@ -85,11 +85,11 @@ struct LLMProviderCapabilityTests {
     // Gemini 3 Flash tier: string level, `minimal` is a real thinking-off.
     #expect(
       LLMProvider.gemini.modelCapabilities(model: "gemini-3.6-flash").thinkingControl
-        == .level(fast: "minimal", deep: "high"))
+        == .level("minimal"))
     // Gemini 3 Pro tier: rejects `minimal`, so `low` is the floor.
     #expect(
       LLMProvider.gemini.modelCapabilities(model: "gemini-3.1-pro-preview").thinkingControl
-        == .level(fast: "low", deep: "high"))
+        == .level("low"))
     // 3.7 Flash carries the PRO tier's shape under a Flash name: Google rejects
     // `minimal` on it (400, verified live 2026-08-16), so `low` is its floor and
     // it must not join the Flash-tier grouping above. It was the "untested
@@ -97,15 +97,15 @@ struct LLMProviderCapabilityTests {
     // this assertion replaces that coverage rather than dropping it.
     #expect(
       LLMProvider.gemini.modelCapabilities(model: "gemini-3.7-flash").thinkingControl
-        == .level(fast: "low", deep: "high"))
+        == .level("low"))
     // Gemini 2.5 Flash tier: integer budget, 0 is legal.
     #expect(
       LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-flash").thinkingControl
-        == .budget(fast: 0, deep: 8192))
+        == .budget(0))
     // Gemini 2.5 Pro: rejects budget 0, documented minimum 128.
     #expect(
       LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-pro").thinkingControl
-        == .budget(fast: 128, deep: 8192))
+        == .budget(128))
 
     // Unknown / untested / retired ids reach the fallback and send NOTHING —
     // the shape that succeeded on all eleven working Gemini models measured
