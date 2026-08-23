@@ -61,12 +61,15 @@ public struct LLMModelCapabilities: Sendable, Equatable {
     case omit
   }
 
-  public let thinkingControl: ThinkingControl
-  /// Whether this model takes a thinking parameter at all.
+  /// Whether this model takes a thinking parameter, and in which dialect.
   ///
-  /// DERIVED, never stored: two statements about one fact drift when both are
-  /// stored (#1770).
-  public var supportsReasoning: Bool { thinkingControl != .unsupported }
+  /// `.unsupported` IS the "takes no thinking parameter" answer; read it
+  /// directly rather than reintroducing a derived Bool. #1770 added
+  /// `supportsReasoning` for the Deep-reasoning toggle's visibility gate,
+  /// #1831 deleted that gate, and Periphery then reported the property dead in
+  /// production — its only remaining callers were tests, which that scan
+  /// excludes, so they never kept it alive. One fact, one spelling.
+  public let thinkingControl: ThinkingControl
   public let temperaturePolicy: TemperaturePolicy
   /// Primary-endpoint (Chat Completions) eligibility. Meaningful for
   /// `.openAI` only — Responses-API-only families (`-pro`, codex) can never

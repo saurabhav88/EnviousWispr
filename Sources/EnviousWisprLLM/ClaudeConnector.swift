@@ -3,8 +3,8 @@ import Foundation
 
 /// Anthropic Claude Messages API connector for transcript polishing.
 ///
-/// v1: no extended thinking, ever (`LLMModelCapabilities.supportsReasoning`
-/// is `false` for every Claude model). `temperature`/`top_p`/`top_k` are
+/// v1: no extended thinking, ever (`LLMModelCapabilities.thinkingControl`
+/// is `.unsupported` for every Claude model). `temperature`/`top_p`/`top_k` are
 /// omitted from the request body — Claude generations released after Opus
 /// 4.6 reject a non-default `temperature`, including 0, with an HTTP 400;
 /// omitting them unconditionally is the same shape #1330 established for
