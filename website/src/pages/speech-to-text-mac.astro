@@ -86,10 +86,10 @@ const faqJsonLd = JSON.stringify({
     <div class="container">
       <div class="answer-block reveal">
         <p class="answer-lead">
-          Local speech to text means the model runs on your own machine and the audio is never uploaded. On an Apple Silicon Mac that is now the faster option, not a compromise: there is no upload and no server round trip, so the text arrives sooner than a cloud service can return it.
+          Local speech to text means the model runs on your own machine and the audio is never uploaded. On an Apple Silicon Mac that is no longer a compromise on speed: there is no upload and no server round trip, nothing depends on your connection, and for everyday dictation the text lands in well under a second.
         </p>
         <p>
-          The trade is model size. A server can run a larger model than a laptop holds. In practice, for dictation of everyday speech, the on-device models are accurate enough that the gap is not the thing you notice. What you notice is latency and whether it works on a plane.
+          There are two real trades. A server can run a larger model than a laptop holds, though for everyday speech the on-device models are accurate enough that the gap is not what you notice. And a cloud service that transcribes while you are still talking can finish a long dictation sooner than we do, because by default we start when you stop. For the short bursts most dictation actually consists of, the upload and the round trip cost more than they save.
         </p>
       </div>
     </div>
