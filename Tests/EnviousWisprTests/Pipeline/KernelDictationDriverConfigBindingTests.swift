@@ -73,18 +73,20 @@ import Testing
 
     // MARK: 1. LLM-config apply on toggleRecording
 
-    @Test("handle(.toggleRecording) writes the 4 LLM-polish fields to LimbSteps.llmPolish")
+    // The name deliberately does not publish a COUNT of the fields. A count in
+    // a test name tracks a struct nothing links it to, so it goes stale the
+    // first time a field is added or removed — as it did here, when #1831
+    // removed one of the four.
+    @Test("handle(.toggleRecording) writes the LLM-polish fields to LimbSteps.llmPolish")
     func toggleRecordingAppliesLLMConfig() async throws {
       let fx = makeFixture()
       let config: DictationSessionConfig = .testDefault(
         llmProvider: .openAI,
         llmModel: "gpt-4o-mini",
-        polishInstructions: .default,
-        useExtendedThinking: true)
+        polishInstructions: .default)
       try await fx.driver.handle(event: .toggleRecording(config))
       #expect(fx.steps.llmPolish.llmProvider == .openAI)
       #expect(fx.steps.llmPolish.llmModel == "gpt-4o-mini")
-      #expect(fx.steps.llmPolish.useExtendedThinking == true)
       // PolishInstructions is .default — set to the same value the config
       // carries; assertion is that the write happened (default == default).
       // No equality on PolishInstructions to assert further.

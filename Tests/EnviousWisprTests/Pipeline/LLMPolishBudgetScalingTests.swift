@@ -15,19 +15,18 @@ import Testing
 /// down to rescue the 0.1% tail.
 ///
 /// One table-driven test rather than "long > short": that weaker assertion
-/// would pass with the base, the divisor, the ceiling, the unsupported-model
-/// case or the deep base all wrong.
+/// would pass with the base, the divisor or the ceiling wrong.
+///
+/// #1831 removed the second (60 s) base along with the Deep-reasoning toggle
+/// that was its only trigger, so every Gemini request now shares one base.
 @MainActor
 @Suite("Gemini polish budget scales with transcript length (#1770)")
 struct LLMPolishBudgetScalingTests {
 
-  private func step(model: String, deep: Bool = false, provider: LLMProvider = .gemini)
-    -> LLMPolishStep
-  {
+  private func step(model: String, provider: LLMProvider = .gemini) -> LLMPolishStep {
     let s = LLMPolishStep(keychainManager: KeychainManager())
     s.llmProvider = provider
     s.llmModel = model
-    s.useExtendedThinking = deep
     return s
   }
 
@@ -39,8 +38,8 @@ struct LLMPolishBudgetScalingTests {
   }
 
   /// Exact expected values, not display rounding: `base + chars / 500`.
-  @Test("fast mode: base 5s plus one second per 500 characters")
-  func fastModeScales() {
+  @Test("base 5s plus one second per 500 characters")
+  func budgetScalesWithLength() {
     let s = step(model: "gemini-3.6-flash")
     // ~20 words. Preserves today's short-dictation failure speed almost exactly.
     #expect(budget(s, chars: 110) == .seconds(5 + 110.0 / 500))
@@ -60,21 +59,26 @@ struct LLMPolishBudgetScalingTests {
     #expect(budget(s, chars: 1_000_000) == .seconds(180))
   }
 
-  /// Deep mode pays a fixed pre-first-byte thinking cost (measured 42.2-42.4s),
-  /// not a per-character one.
-  @Test("deep mode uses the larger base")
-  func deepModeUsesLargerBase() {
-    let s = step(model: "gemini-3.6-flash", deep: true)
-    #expect(budget(s, chars: 110) == .seconds(60 + 110.0 / 500))
-  }
+  // REMOVED by #1831: `deepModeUsesLargerBase` asserted that a deep request
+  // got a 60 s base to cover a measured 42.2-42.4 s of pre-first-byte
+  // thinking. Nothing can request that shape now — the capability table holds
+  // one value per model — so there is no behaviour left for it to guard. The
+  // measurement itself is preserved at the constant it justified, in
+  // `LLMPolishStep.maxDuration`, because it is the evidence for the removal
+  // rather than a description of live code.
 
-  /// The case that keys off the RESOLVED request rather than the raw toggle: a
-  /// model we have never verified sends no thinking field at all, so it must
-  /// not inherit the deep base just because the toggle happens to be on.
-  @Test("an unsupported model with the toggle ON still gets the fast base")
-  func unsupportedModelDoesNotGetDeepBase() {
-    let s = step(model: "gemini-4.0-flash-imaginary", deep: true)
-    #expect(budget(s, chars: 110) == .seconds(5 + 110.0 / 500))
+  /// The base must not vary by MODEL. Previously this asserted the narrower
+  /// property that an unverified model could not inherit the deep base while
+  /// the toggle was on; with one base remaining, the durable claim is that a
+  /// model absent from the capability table is budgeted identically to one
+  /// present in it. Kept rather than deleted because it is the case that would
+  /// go red if anyone reintroduced a per-model base.
+  @Test("a model absent from the capability table gets the same base")
+  func unlistedModelGetsTheSameBase() {
+    let listed = step(model: "gemini-3.6-flash")
+    let unlisted = step(model: "gemini-4.0-flash-imaginary")
+    #expect(budget(unlisted, chars: 110) == .seconds(5 + 110.0 / 500))
+    #expect(budget(unlisted, chars: 110) == budget(listed, chars: 110))
   }
 
   /// Only Gemini scales. OpenAI and Claude keep their fixed budgets; widening

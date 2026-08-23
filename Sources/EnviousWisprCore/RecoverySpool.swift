@@ -88,10 +88,6 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
   /// Polish provider/model identity at record time (e.g. "appleIntelligence").
   public let llmProvider: String
   public let llmModel: String
-  /// Whether extended-thinking polish was on at record time. Recovery applies it
-  /// so a reasoning-capable provider replays under the same setting the live
-  /// dictation used, not the default off.
-  public let useExtendedThinking: Bool
   /// Polish prompt version at record time. Nil for providers without one.
   public let polishPromptVersion: String?
 
@@ -106,7 +102,6 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     customWordsVersion: String? = nil,
     llmProvider: String,
     llmModel: String,
-    useExtendedThinking: Bool = false,
     polishPromptVersion: String? = nil
   ) {
     self.backendType = backendType
@@ -119,7 +114,6 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     self.customWordsVersion = customWordsVersion
     self.llmProvider = llmProvider
     self.llmModel = llmModel
-    self.useExtendedThinking = useExtendedThinking
     self.polishPromptVersion = polishPromptVersion
   }
 }

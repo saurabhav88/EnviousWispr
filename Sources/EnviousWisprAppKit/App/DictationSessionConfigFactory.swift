@@ -68,7 +68,6 @@ enum DictationSessionConfigFactory {
       llmProvider: settings.llmProvider,
       llmModel: resolvedModel,
       polishInstructions: settings.activePolishInstructions,
-      useExtendedThinking: settings.useExtendedThinking,
       selectedInputDeviceUID: settings.selectedInputDeviceUID,
       preferredInputDeviceIDOverride: settings.preferredInputDeviceIDOverride,
       recoverySessionID: recoverySessionID,
