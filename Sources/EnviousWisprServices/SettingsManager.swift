@@ -37,7 +37,6 @@ public final class SettingsManager {
     case isDebugModeEnabled
     case isDictationAudioArchiveEnabled
     case debugLogLevel
-    case useExtendedThinking
     case whisperKitLanguage
     case languageMode
     case selectedInputDeviceUID
@@ -85,7 +84,7 @@ public final class SettingsManager {
     "fillerRemovalEnabled", "emojiFormatterEnabled", "spokenPunctuationEnabled",
     "crashRecoveryEnabled", "contactsSyncOnLaunchEnabled",
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
-    "useExtendedThinking", "whisperKitLanguage", "languageMode",
+    "whisperKitLanguage", "languageMode",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride",
     "useStreamingASR", "livePreviewEnabled", "livePreviewEngine",
     "warmEnginePolicy", "appearancePreference",
@@ -570,13 +569,6 @@ public final class SettingsManager {
     }
   }
 
-  public var useExtendedThinking: Bool {
-    didSet {
-      defaults.set(useExtendedThinking, forKey: "useExtendedThinking")
-      onChange?(.useExtendedThinking)
-    }
-  }
-
   /// WhisperKit language code (ISO 639-1). Manual selection, not auto-detect.
   /// EN, DE, TA supported. "en" is default.
   /// Deprecated: superseded by `languageMode` (Multilingual v1). Retained for
@@ -812,9 +804,6 @@ public final class SettingsManager {
       DebugLogLevel(
         rawValue: defaults.string(forKey: "debugLogLevel") ?? ""
       ) ?? SettingsDefaultValues.debugLogLevel
-    useExtendedThinking =
-      defaults.object(forKey: "useExtendedThinking") as? Bool
-      ?? SettingsDefaultValues.useExtendedThinking
     whisperKitLanguage =
       defaults.string(forKey: "whisperKitLanguage") ?? SettingsDefaultValues.whisperKitLanguage
     // Load languageMode, or migrate from whisperKitLanguage on first launch
@@ -877,6 +866,14 @@ public final class SettingsManager {
     // key so existing users with `noiseSuppression=true` are migrated to raw audio on first
     // launch after upgrade. Idempotent: removeObject on an absent key is a no-op.
     defaults.removeObject(forKey: "noiseSuppression")
+    // Migration (issue #1831, 2026-08-23): Deep-reasoning toggle removed. #1832
+    // measured it on sealed_v1 against the shipped Gemini model and found no
+    // significant quality difference at roughly triple the p90 latency, so each
+    // model now always sends the value this toggle sent in its default OFF
+    // position. Drop the persisted key: a user who had it ON is migrated to the
+    // value everyone else already received. Idempotent: removeObject on an
+    // absent key is a no-op.
+    defaults.removeObject(forKey: "useExtendedThinking")
     useStreamingASR =
       defaults.object(forKey: "useStreamingASR") as? Bool ?? SettingsDefaultValues.useStreamingASR
     livePreviewEnabled =

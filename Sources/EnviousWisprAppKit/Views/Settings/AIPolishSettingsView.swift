@@ -315,10 +315,6 @@ struct AIPolishSettingsView: View {
       || settings.llmProvider == .claude
   }
 
-  private var isReasoningModel: Bool {
-    settings.llmProvider.modelCapabilities(model: settings.llmModel).supportsReasoning
-  }
-
   private var showModelSection: Bool {
     // EG-1 excluded: one fixed first-party model, no model picker (#1271).
     settings.llmProvider != .none && settings.llmProvider != .appleIntelligence
@@ -426,19 +422,6 @@ struct AIPolishSettingsView: View {
         providerExplainer
       }
 
-      if isReasoningModel {
-        detailCard(label: "Advanced") {
-          VStack(alignment: .leading, spacing: 4) {
-            Toggle(isOn: $settings.useExtendedThinking) {
-              Text("Deep reasoning").settingsRowLabel()
-            }
-            .toggleStyle(BrandedToggleStyle())
-            Text("Takes longer but handles complex formatting instructions better.")
-              .settingsReadingCopy()
-          }
-          FrozenPerRecordingFootnote()
-        }
-      }
     }
   }
 

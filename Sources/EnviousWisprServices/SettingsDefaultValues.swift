@@ -94,7 +94,6 @@ enum SettingsDefaultValues {
   // mic-audio retention is opt-in only, never silently on.
   static let isDictationAudioArchiveEnabled = false
   static let debugLogLevel: DebugLogLevel = .info
-  static let useExtendedThinking = false
 
   static let whisperKitLanguage = "en"
 

@@ -10,9 +10,7 @@ import Foundation
 /// conflation that produced the silent gpt-5.5 polish outage (#1330).
 ///
 /// Consumers: `LLMPolishStep.resolveThinking` reads `thinkingControl` to build
-/// the request; `AIPolishSettingsView.isReasoningModel` reads the derived
-/// `supportsReasoning` to decide whether to show the Deep-reasoning toggle;
-/// `OpenAIConnector` reads `temperaturePolicy` and preflights
+/// the request; `OpenAIConnector` reads `temperaturePolicy` and preflights
 /// `supportsChatCompletions`; `LLMModelDiscovery` filters the picker on
 /// `supportsChatCompletions`.
 public struct LLMModelCapabilities: Sendable, Equatable {

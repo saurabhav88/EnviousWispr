@@ -14,8 +14,9 @@ import Testing
 /// drive the real `LLMPolishStep.process()` path and capture what the polisher
 /// is actually handed, with no production test seam added.
 ///
-/// The defect being pinned: with Deep reasoning OFF (the default, used by 570
-/// of 571 users) we sent `thinkingBudget: 0` to every Gemini 2.5/3 model. Gemini
+/// The defect being pinned: we sent `thinkingBudget: 0` to every Gemini 2.5/3
+/// model in the configuration 570 of 571 users ran. (#1831 later removed the
+/// toggle entirely and kept that configuration's value as the only one.) Gemini
 /// 3 answers that with HTTP 400, so five of the eleven offered models failed
 /// every polish attempt.
 @MainActor
