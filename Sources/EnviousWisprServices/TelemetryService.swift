@@ -164,6 +164,11 @@ public enum RecoveryFailureClass: String, Sendable {
   case parakeetModelLoad = "parakeet_model_load"
   case parakeetTranscription = "parakeet_transcription"
   case xpcTransport = "xpc_transport"
+  /// #2221: the helper received the request but had no admitted model, so it
+  /// never decoded the recovered audio. This gets the same bounded readiness
+  /// retry as `loadReturnedNotReady`, while genuine transport failures remain
+  /// terminal.
+  case xpcModelNotLoaded = "xpc_model_not_loaded"
   /// #2207: the engine's load returned NORMALLY and its readiness projection was
   /// still false. Distinct from `notReady`, which is a DETERMINISTIC refusal at
   /// the load site with no model admitted — conflating the two restores the #2132
