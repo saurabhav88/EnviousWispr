@@ -213,6 +213,79 @@ GEMINI_THINKING_FAST = {
     "gemini-2.5-pro": ("thinkingBudget", 128),
 }
 
+# Levels the `thinkingLevel` dialect accepts. `minimal` is NOT universal: the two
+# 3.1 Pro ids reject it and floor at `low` (#1770), which is why the table above
+# gives them a different fast value.
+#
+# Thinking is DYNAMIC and decided per request, so a small --limit probe cannot tell
+# you whether a level takes (measured 2026-08-12, #1832). `gemini-3.5-flash-lite` at
+# `medium` returned no thinking on a 3-case probe and thinking on 119 of 338 real
+# cases; `gemini-3.6-flash` at `low` thinks on 259 of 338. A probe is for "does the
+# API accept this and does the request shape work", never for "does the level engage".
+# The one measured level that genuinely does nothing is flash-lite at `low`: zero
+# thinking on 338 of 338, which is what a truly inert setting looks like.
+GEMINI_THINKING_LEVELS = ("minimal", "low", "medium", "high")
+
+# The value that means "do not think", per dialect. One home, because the alternative
+# is a literal `in ("minimal", 0)` membership test at the point of use — a set of values
+# standing in for the concept, which silently misreads any future off-value (a `"none"`
+# or `"off"` level) as thinking-ON and then demands reasoning tokens that cannot arrive.
+GEMINI_THINKING_OFF = {"thinkingLevel": "minimal", "thinkingBudget": 0}
+
+
+def is_thinking_off(thinking: tuple[str, object] | None) -> bool:
+    """True only when the config explicitly asks for NO thinking.
+
+    `None` (no field sent) is deliberately not "off": the provider's own default
+    decides, and measured here that default DOES think.
+    """
+    if thinking is None:
+        return False
+    dialect, value = thinking
+    return dialect in GEMINI_THINKING_OFF and value == GEMINI_THINKING_OFF[dialect]
+
+
+def resolve_gemini_thinking(model: str, override: str = "") -> tuple[str, object] | None:
+    """The single source of the thinking config, so the printed receipt and the
+    request body cannot disagree — they are two readers of one value, never two
+    lookups of one table.
+
+    Raises ValueError rather than falling back, because every fallback here
+    silently benchmarks a configuration nobody asked for.
+    """
+    shipped = GEMINI_THINKING_FAST.get(model.lower())
+    if not override:
+        return shipped
+    if shipped is None:
+        raise ValueError(
+            f"--thinking-level given for {model!r}, which is absent from the "
+            "capability table. Production sends NO thinking field for such an id, "
+            "so there is no shipped configuration to vary."
+        )
+    dialect = shipped[0]
+    if dialect != "thinkingLevel":
+        raise ValueError(
+            f"{model!r} takes {dialect}, a token BUDGET. A level does not map to a "
+            "budget, and inventing a number would benchmark a configuration the "
+            "app never sends. Vary the budget in GEMINI_THINKING_FAST instead."
+        )
+    # An id whose SHIPPED fast level is already `low` is one that cannot go lower: the
+    # table gives it `low` precisely because the provider rejects `minimal` (#1770).
+    # Read the floor off the table rather than keeping a second list of Pro ids, which
+    # would be one more thing to update when a model is added.
+    #
+    # Measured rather than taken from the note: gemini-3.1-pro-preview with
+    # thinkingLevel `minimal` returns HTTP 400 "Thinking level MINIMAL is not supported
+    # for this model" (2026-08-12). Refused here, before the run, because the request
+    # otherwise fails per case and a full corpus is spent discovering it.
+    if override == "minimal" and shipped[1] == "low":
+        raise ValueError(
+            f"{model!r} floors at 'low': the provider rejects thinkingLevel 'minimal' "
+            "with HTTP 400, and this id's shipped fast level is 'low' for that reason. "
+            "Use --thinking-level low as its off-equivalent."
+        )
+    return (dialect, override)
+
 
 # --- Request construction ---------------------------------------------------
 
@@ -234,9 +307,9 @@ def openai_body(model: str, system: str, user: str) -> dict:
     return body
 
 
-def gemini_body(model: str, system: str, user: str) -> dict:
+def gemini_body(model: str, system: str, user: str,
+                thinking: tuple[str, object] | None) -> dict:
     generation_config: dict = {"temperature": 0}
-    thinking = GEMINI_THINKING_FAST.get(model.lower())
     if thinking is not None:
         generation_config["thinkingConfig"] = {thinking[0]: thinking[1]}
     return {
@@ -261,7 +334,8 @@ def claude_body(model: str, system: str, user: str) -> dict:
     }
 
 
-def describe_shape(provider: str, model: str) -> str:
+def describe_shape(provider: str, model: str,
+                   thinking: tuple[str, object] | None = None) -> str:
     if provider == "bedrock":
         # Report the region actually in force, not the override variable -- which
         # is normally unset, and printing "region=None" would hide the value that
@@ -287,7 +361,6 @@ def describe_shape(provider: str, model: str) -> str:
             else "no reasoning_effort"
         )
         return f"chat/completions | store=false | {temp} | {eff} | no max_completion_tokens"
-    thinking = GEMINI_THINKING_FAST.get(model.lower())
     tdesc = f"{thinking[0]}={thinking[1]!r}" if thinking else "NO thinking field (id not in table)"
     return f"generateContent | temperature=0 | {tdesc} | no maxOutputTokens"
 
@@ -303,7 +376,8 @@ def _post(url: str, body: dict, headers: dict, timeout: int) -> dict:
 
 
 def call_once(provider: str, model: str, api_key: str, system: str, user: str,
-              azure_endpoint: str = "") -> tuple[str, dict]:
+              azure_endpoint: str = "",
+              thinking: tuple[str, object] | None = None) -> tuple[str, dict]:
     if provider == "openai":
         # Azure hosts the same OpenAI models on Founders Hub credits. Same
         # Chat Completions body; only the URL and the auth header differ, and
@@ -462,7 +536,7 @@ def call_once(provider: str, model: str, api_key: str, system: str, user: str,
     else:
         data = _post(
             GEMINI_URL.format(model=model, key=api_key),
-            gemini_body(model, system, user),
+            gemini_body(model, system, user, thinking),
             {"Content-Type": "application/json"},
             timeout=120,
         )
@@ -497,6 +571,7 @@ def polish_case(
     provider: str, model: str, api_key: str, case: dict,
     prompt_mode: str = "production", azure_endpoint: str = "",
     prompt_body: str | None = None,
+    thinking: tuple[str, object] | None = None,
 ) -> dict:
     transcript = case["text"]
     word_count = len(transcript.split())
@@ -510,7 +585,8 @@ def polish_case(
     last_err = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            raw, meta = call_once(provider, model, api_key, system, user, azure_endpoint)
+            raw, meta = call_once(provider, model, api_key, system, user, azure_endpoint,
+                                  thinking)
             # Production strips the LLM preamble before pasting; judge the same
             # text the user would get. Cloud keeps literal <transcript> tags.
             candidate = _strip_llm_preamble_python(raw, strip_transcript_tags=False)
@@ -605,6 +681,14 @@ def main() -> int:
              "score and must be reported as such.",
     )
     ap.add_argument(
+        "--thinking-level", choices=GEMINI_THINKING_LEVELS, default="",
+        help="Gemini only. Override the shipped thinking level for this arm, so the "
+             "quality cost of the hard-coded fast value can be MEASURED rather than "
+             "assumed (#1832). Omit to send exactly what production sends. Refused "
+             "for a token-budget id or an id absent from the capability table, "
+             "because both would benchmark a configuration the app never sends.",
+    )
+    ap.add_argument(
         "--azure", action="store_true",
         help="route --provider openai through the Azure deployment on Founders Hub "
              "credits instead of the direct key. --model then takes the DEPLOYMENT "
@@ -625,6 +709,20 @@ def main() -> int:
         if not prompt_body.strip():
             print(f"{args.system_prompt_file} is empty", file=sys.stderr)
             return 2
+
+    if args.thinking_level and args.provider != "gemini":
+        print(
+            f"--thinking-level applies to --provider gemini only; {args.provider} "
+            "carries its own reasoning field from the capability table",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        thinking = resolve_gemini_thinking(args.model, args.thinking_level) \
+            if args.provider == "gemini" else None
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 2
 
     if args.provider == "openai" and not openai_capabilities(args.model)["supports_chat_completions"]:
         print(f"{args.model} is Responses-API-only; the shipped connector cannot call it", file=sys.stderr)
@@ -688,12 +786,53 @@ def main() -> int:
         )
 
     cases = load_corpus(args.corpus)
+    corpus_total = len(cases)
     if args.limit:
         cases = cases[: args.limit]
+    # Whether this run is a PROBE is a property of what it covered, not of which flag
+    # was typed: `--limit 400` on a 338-case corpus runs every case and must be judged
+    # as a full run. But a genuinely tiny --corpus is no more representative than a
+    # tiny --limit of a big one, so BOTH make this a probe.
+    #
+    # 100 is derived from the weakest whole-corpus engagement measured (flash-lite at
+    # `medium` thinks on 119 of 338 cases, 35%). P(no case thinks by chance) = 0.65^n:
+    # 27% at n=3, 1.3% at n=10, 1e-19 at n=100. So 100 puts a false "inert" verdict far
+    # out of reach while sitting below the smallest canonical corpus (338), where it can
+    # never affect a real arm.
+    #
+    # A TRUNCATED run stays a probe at ANY size, and case count cannot rescue it. The
+    # corpora are ordered by bucket — `head -100` of type_b_parakeet.jsonl is 100%
+    # `self_correction` — and engagement is strongly bucket-dependent: measured on
+    # flash-lite at `medium`, 5% on `emoji_retention` against 75% on `self_correction`,
+    # a 15x spread. So 100 truncated cases can be 100 cases of the one bucket this model
+    # rarely thinks about, where P(none think) is ~0.6% rather than 1e-19. Raising the
+    # count does not fix a sample that is one category by construction.
+    MIN_CASES_FOR_INERT_VERDICT = 100
+    is_truncated = len(cases) < corpus_total
+    is_probe = is_truncated or len(cases) < MIN_CASES_FOR_INERT_VERDICT
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"model    : {args.model} ({args.provider})", file=sys.stderr)
-    print(f"shape    : {describe_shape(args.provider, args.model)}", file=sys.stderr)
+    print(f"shape    : {describe_shape(args.provider, args.model, thinking)}", file=sys.stderr)
+    # The label is a claim about the RESOLVED config, not about which flags were typed.
+    # `--thinking-level minimal` on gemini-3.6-flash resolves to the shipped value, so
+    # calling it "NOT the shipped configuration" mislabels a control arm as a variant —
+    # and the arm most likely to be run this way is exactly the control.
+    if args.thinking_level:
+        shipped = GEMINI_THINKING_FAST.get(args.model.lower())
+        if thinking == shipped:
+            print(
+                f"OVERRIDE : --thinking-level {args.thinking_level!r} equals this model's "
+                "shipped value, so this arm IS the shipped configuration",
+                file=sys.stderr,
+            )
+        else:
+            shipped_desc = f"{shipped[0]}={shipped[1]!r}" if shipped else "no thinking field"
+            print(
+                f"OVERRIDE : thinking level forced to {args.thinking_level!r} (shipped is "
+                f"{shipped_desc}) — this arm is NOT the shipped configuration",
+                file=sys.stderr,
+            )
     if prompt_body is None:
         print(f"prompt   : {args.system_prompt}", file=sys.stderr)
     else:
@@ -712,7 +851,7 @@ def main() -> int:
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = [
             pool.submit(polish_case, args.provider, args.model, api_key, c,
-                        args.system_prompt, azure_endpoint, prompt_body)
+                        args.system_prompt, azure_endpoint, prompt_body, thinking)
             for c in cases
         ]
         for fut in as_completed(futures):
@@ -739,11 +878,122 @@ def main() -> int:
             f"latency ms: median={lat[len(lat)//2]} p90={lat[int(len(lat)*0.9)]} max={lat[-1]}",
             file=sys.stderr,
         )
+    # Only ONE direction of this is a real discriminator, and a mutation control is
+    # what established which (2026-08-12, #1832). Deleting the thinking field
+    # entirely and asking for `high` still returned 150 reasoning tokens, because
+    # this model's provider-side DEFAULT is dynamic thinking — so "reasoning > 0"
+    # is satisfied by a dropped override and proves nothing about a thinking-ON arm.
+    # The off direction does discriminate: the same probe returns exactly 0 with
+    # `minimal` and non-zero without the field, so a non-zero on an off arm is proof
+    # the field did not take. Whether an ON arm ran the level it claims is answered
+    # by comparing per-case `reasoningTok` ACROSS arms, not from inside one run.
+    if thinking is None:
+        expectation = "no thinking field sent; the provider default decides, nothing asserted"
+        asked_off = False
+    elif is_thinking_off(thinking):
+        expectation = f"reasoning MUST be 0 at {thinking[0]}={thinking[1]!r}"
+        asked_off = True
+    else:
+        expectation = (
+            f"reasoning > 0 expected at {thinking[0]}={thinking[1]!r}; necessary, NOT "
+            "sufficient — compare reasoningTok across arms to prove the level took"
+        )
+        asked_off = False
     print(
-        f"tokens: in={in_tok} out={out_tok} reasoning={reason_tok} "
-        f"(reasoning MUST be 0 for a thinking-off run)",
+        f"tokens: in={in_tok} out={out_tok} reasoning={reason_tok} ({expectation})",
         file=sys.stderr,
     )
+    if asked_off and reason_tok:
+        # The two off-values are NOT equally binding, and the refusal says which it is.
+        # `thinkingBudget: 0` is a contract — a budget of zero tokens. `thinkingLevel:
+        # minimal` is a LEVEL NAME, so zero is an observation rather than a guarantee:
+        # measured 0 reasoning tokens across 6,084 cases (three models, both phases of
+        # #1832), which is a strong base and still not a promise the vendor made.
+        #
+        # It stays a hard refusal in both cases because of the failure DIRECTION. A
+        # false reject is loud and costs a re-run; a missed drop grades an arm labelled
+        # `minimal` that actually ran the provider's default thinking, and silently
+        # corrupts every comparison it appears in. The mutation control that set this
+        # guard's scope depends on exactly this branch: with the field deleted, a
+        # `minimal` request returned 130 reasoning tokens.
+        if thinking[0] == "thinkingBudget":
+            cause = ("a zero token budget cannot produce reasoning, so the field did not "
+                     "reach the API")
+        else:
+            cause = ("either the field did not reach the API, or the vendor changed what "
+                     "'minimal' does — 0 of 6,084 measured cases produced reasoning at "
+                     "this level, so check which before re-running")
+        print(
+            f"FAIL: {reason_tok} reasoning tokens with {thinking[0]}={thinking[1]!r} — "
+            f"{cause}. Do not grade these candidates.",
+            file=sys.stderr,
+        )
+        return 2
+    if not asked_off and thinking is not None and not reason_tok:
+        # A zero here means "no case chose to think", which is only EVIDENCE of an
+        # inert level over a whole corpus. Under --limit it is an ordinary outcome:
+        # thinking is per-request, and flash-lite at `medium` returned zero on a
+        # 3-case probe and thought on 119 of 338 real cases. Hard-failing a probe
+        # would break the very --limit smoke this file tells operators to run, so
+        # the severity follows what the run IS, not what the number is.
+        if is_probe:
+            why = (
+                f"this run is TRUNCATED ({len(cases)} of {corpus_total}), and these "
+                "corpora are ordered by bucket, so a slice is one category rather than "
+                "a sample — engagement varies 5%-75% across buckets, so no case count "
+                "makes a truncated run safe for this verdict"
+                if is_truncated
+                else f"the corpus itself holds only {corpus_total} cases; an inert "
+                     f"verdict needs {MIN_CASES_FOR_INERT_VERDICT}"
+            )
+            print(
+                f"WARNING: zero reasoning tokens across {len(cases)} cases at "
+                f"{thinking[0]}={thinking[1]!r}, but {why}. Thinking is decided per "
+                "request, so this cannot distinguish an inert level from cases that "
+                "declined to think. Not a verdict; run the FULL corpus to find out.",
+                file=sys.stderr,
+            )
+        elif errors:
+            # "No case thought" only supports "the level is inert" if the cases
+            # actually RAN. reason_tok sums successful rows only, so 337 HTTP errors
+            # plus one success that happened not to think looks identical to a whole
+            # corpus declining — and would convict the model of a fault that is ours.
+            # An incomplete arm is reported as incomplete; the errors path already
+            # exits non-zero below.
+            print(
+                f"WARNING: zero reasoning tokens, but {errors} of {len(cases)} cases "
+                f"failed, so only {len(cases) - errors} actually ran at "
+                f"{thinking[0]}={thinking[1]!r}. That is not enough to call the level "
+                "inert — fix the errors and re-run before concluding anything.",
+                file=sys.stderr,
+            )
+        elif thinking == GEMINI_THINKING_FAST.get(args.model.lower()):
+            # Ordered AFTER the errors branch on purpose: an incomplete run establishes
+            # nothing about production either.
+            #
+            # The refusal exists to catch an OVERRIDE that did not take. A shipped
+            # control makes no such claim — it ran production's exact request shape, so
+            # if that configuration is inert, that is a fact ABOUT PRODUCTION, and the
+            # arm is still the baseline every other arm is measured against. Failing it
+            # would discard the control: `gemini-3.1-pro-preview` ships `low` rather
+            # than `minimal`, so a shipped run of it would exit 2 on any corpus where
+            # the model happened never to think.
+            print(
+                f"WARNING: zero reasoning tokens across all {len(cases)} cases at "
+                f"{thinking[0]}={thinking[1]!r} — but this is the SHIPPED configuration, "
+                "so the arm is a valid production control and the finding is that "
+                "production is inert on this corpus, not that the arm is broken.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"FAIL: zero reasoning tokens across all {len(cases)} cases at "
+                f"{thinking[0]}={thinking[1]!r}, every one of which succeeded, and this "
+                "is NOT the shipped configuration — the override did not take, so the "
+                "arm is indistinguishable from thinking-off; do not grade it",
+                file=sys.stderr,
+            )
+            return 2
     print(
         f"DONE {len(cases) - errors}/{len(cases)} in {int(time.monotonic() - t0)}s | errors={errors} -> {args.out}",
         file=sys.stderr,
