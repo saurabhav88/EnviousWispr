@@ -126,6 +126,25 @@ enum WhatsNewContent {
       version: "2.4.5"
     ),
 
+    // #1831. Placed BEFORE the collected entry, which must stay last.
+    //
+    // This entry exists because a REMOVAL is the case where saying nothing is
+    // worst. The user who deliberately turned this on will not file a bug; they
+    // will notice the switch is gone, assume their polish changed, and trust the
+    // app less. Stating the measurement is what makes that a decision they can
+    // check rather than something done to them quietly.
+    //
+    // The numbers are the #1832 sealed_v1 run against the shipped Gemini model,
+    // not estimates. No dash characters, per GR-NO-DASHES.
+    Entry(
+      id: "deep-reasoning-retired",
+      icon: "slider.horizontal.3",
+      title: "One less switch to think about",
+      description:
+        "The AI Polish page used to carry a Deep reasoning switch, which asked cloud models to think harder before polishing your text. We finally measured it properly, across 1,462 real dictations on the Gemini model the app ships with, and it did not meaningfully improve the result while making the polishing step take around three times as long. So it is gone. Every model now always uses the setting it was already using for virtually everyone, because the switch shipped off and stayed off for practically all of you. If you were one of the few who turned it on, your polish will read the same and finish noticeably sooner. Nothing else about polishing changes, and no other setting moves.",
+      version: "2.4.5"
+    ),
+
     // #2181, #2174, #2192, #2197, #2032, #2200, #2076, #1999, #2001, #2006.
     // A COLLECTED entry, permitted by whats-new-protocol.md
     // RULE: whats-new-content-rules only when it is LAST, every other entry is

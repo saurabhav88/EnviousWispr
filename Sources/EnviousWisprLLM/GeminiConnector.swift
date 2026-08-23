@@ -100,7 +100,9 @@ public struct GeminiConnector: TranscriptPolisher {
     // #1770: Gemini speaks TWO thinking dialects and refuses the other one.
     // 2.5 takes an integer `thinkingBudget`; 3.x takes a string `thinkingLevel`
     // and rejects `thinkingBudget: 0` outright (400) — which was exactly what
-    // the Deep-reasoning toggle sent in its default OFF position. Which dialect
+    // we sent every 3.x model before that fix, in the configuration essentially
+    // every user ran. (#1831 later removed the toggle that named that
+    // configuration; the values it sent are now the only values.) Which dialect
     // a model speaks is decided by `LLMModelCapabilities`, never here.
     switch config.thinking {
     case .budget(let value):

@@ -927,7 +927,11 @@ def scan(toggle=False):
          ["Unload model after"], ["engine"], []),
         ("Microphone", [], ["Input"], [], []),
         ("Keybinds", [], [], [], []),
-        ("AI Polish", ["Deep reasoning"], ["Provider", "Model"],
+        # #1831 removed the Deep reasoning toggle, so the AI Polish tab now
+        # declares no expected switches. An empty list is the correct
+        # expectation, not a gap: naming a control that no longer exists would
+        # fail every run, and naming none asserts the tab still renders.
+        ("AI Polish", [], ["Provider", "Model"],
          ["style"], ["Save", "Clear", "Refresh", "Copy Diagnostics"]),
         ("Your Words", ["Enable custom words"], [], [], []),
         ("Clipboard",
