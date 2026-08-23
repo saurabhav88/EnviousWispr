@@ -343,10 +343,11 @@ struct PillRequestParityTests {
       new: { $0.present(.escapeRecovery(payload: payload, onPaste: { _ in })) })
   }
 
-  /// **Dismiss BEFORE forwarding, and the order is the shipped one.**
+  /// **Dismiss BEFORE forwarding, matching shipped behaviour.**
   /// `EscapeRecoveryWiring` dismisses first so a spoken "overlay hidden" does not
-  /// land on top of the restore the user asked for, and so a pill raised by the
-  /// paste itself survives.
+  /// land on top of the restore the user asked for. That is the only reason:
+  /// `pasteAction` copies to the clipboard and dispatches a keystroke, and raises
+  /// no pill.
   @Test("Undo dismisses the pill before it forwards the payload") func pasteOrdering() {
     let rig = Rig()
     let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
@@ -360,7 +361,15 @@ struct PillRequestParityTests {
     #expect(hiddenWhenPasted == true, "the pill must already be hidden when onPaste runs")
   }
 
-  @Test("a second Undo press pastes nothing") func pasteIsOneShot() {
+  /// **This proves STALENESS, not one-shot custody, and the original name claimed
+  /// the wrong one.** The first press dismisses the presentation, so the second
+  /// event names an id that is no longer current and is rejected before payload
+  /// custody is ever reached. Custody's own one-shot property needs a case that
+  /// gets past that gate; this is not it.
+  ///
+  /// The real user input is a double-click on Undo, and what it must not do is
+  /// paste twice — which this does check.
+  @Test("a queued second Undo is ignored after dismissal") func queuedSecondUndoIsIgnored() {
     let rig = Rig()
     let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
     var pastes = 0
@@ -369,7 +378,9 @@ struct PillRequestParityTests {
     let press = OverlayEvent.action(id, .pasteEscapeRecovery(transcriptID: payload.transcriptID))
     rig.director.send(press, actions: nil)
     rig.director.send(press, actions: nil)
-    #expect(pastes == 1, "the payload is taken once; a stale press finds nothing")
+    #expect(
+      pastes == 1,
+      "the first press dismissed this presentation; the second event is stale")
   }
 
   // MARK: - Recovery discard, which must also clear the notice
@@ -453,8 +464,25 @@ struct PillRequestParityTests {
       #expect(fired.last == label, "\(label) must reach its own callback")
     }
 
-    #expect(fired.contains("lock"))
-    #expect(fired.contains("dismiss"))
+    // **Exact sequence, not `contains`.** A membership check passes just as well
+    // when an action is delivered twice, which is the defect a single owner is
+    // supposed to make impossible.
+    #expect(fired == ["lock", "dismiss", "gotIt", "close", "settings"])
+  }
+
+  /// Grant is one of the two APP-owned actions, so it reaches the app sink rather
+  /// than a presentation's own callback — and it was missing from the sweep above,
+  /// which claimed all eight.
+  ///
+  /// REPRODUCIBLE at C5: a user without Accessibility permission is shown the
+  /// notice and clicks Grant. If it reaches nobody, the button does nothing and
+  /// dictation never gains permission.
+  @Test("Grant reaches the app action sink") func grantIsBound() throws {
+    let rig = Rig()
+    rig.director.present(.accessibilityNotice)
+    let id = try #require(rig.director.renderModel.presentation?.id)
+    rig.director.send(.action(id, .grantAccessibility), actions: nil)
+    #expect(rig.appActions == [.grantAccessibility])
   }
 
   /// The chip's expiry is not an action — nobody pressed anything — so it travels
