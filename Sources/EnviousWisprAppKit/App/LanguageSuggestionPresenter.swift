@@ -139,10 +139,9 @@ final class LanguageSuggestionPresenter {
   }
 
   /// Called on pipeline transition to `.complete` (parakeet) or
-  /// `.complete`/`.ready` (whisperkit). Decides whether to surface the buffered
-  /// trigger given the current language mode and the overlay's current intent
-  /// (read via the injected closure). Calls `showOverlay(.passiveChip(...))`
-  /// internally when surfacing.
+  /// `.complete`/`.ready` (whisperkit). Decides whether to OFFER the buffered
+  /// trigger, given the current language mode; whether it is then admitted is
+  /// the overlay's answer, returned by `present`.
   ///
   /// F5 locked-mode guard: no-op if `currentLanguageMode != .auto`.
   /// F14 overlay-priority: the chip surfaces only when the overlay ADMITS it.

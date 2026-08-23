@@ -67,17 +67,31 @@ final class BluetoothAwarenessPresenter {
   /// blocks cleanup of a visible card.
   private var hasShownThisLaunch = false
   /// Does the presenter currently own the Bluetooth card in the overlay slot.
-  private var isPresented = false
+  /// The accepted presentation this card owns, or nil when nothing is showing.
+  ///
+  /// **Replaced a `Bool` (#2292 C3b), and the difference is which questions it
+  /// can answer.** `isPresented` said only "I believe a card is up", so every
+  /// dismissal had to ask the overlay a SECOND question — what is on screen now
+  /// — and act on the answer. The receipt names the presentation, so
+  /// `dismissIfCurrent` is a no-op once the slot has moved on and the two
+  /// questions collapse into one the overlay owns.
+  private var currentReceipt: PillReceipt?
   /// Telemetry dedup: `suppressed_by_setting` fires at most once per launch.
   private var hasEmittedSettingSuppressionThisLaunch = false
 
   // MARK: - Injected dependencies (narrow closures)
 
-  private let readCurrentIntent: @MainActor () -> OverlayIntent
-  private let showOverlay: @MainActor () -> Void
-  /// Hides the overlay ONLY when it currently shows `.bluetoothAwareness`, so it
-  /// never removes a newer recording / processing / warning / error intent.
-  private let hideIfCurrent: @MainActor () -> Void
+  /// Held STRONGLY, with `[weak self]` in every callback this presenter puts on
+  /// a request (#2292 C3b). The overlay retains the active presentation's
+  /// callbacks, so capturing self strongly there would make
+  /// presenter -> overlay -> binding -> presenter for as long as a card is up;
+  /// breaking it at the binding is right because the binding is the half that
+  /// dies with the presentation.
+  ///
+  /// It replaced three closures — show, read-current-intent, hide-if-current.
+  /// The middle one was the problem: it made this type a second authority on
+  /// what was on screen, and every dismissal had to consult it first.
+  private let overlay: any OverlayPresenting
   private let effectiveInputIsBluetooth: @MainActor () -> Bool
   private let dictationIsIdle: @MainActor () -> Bool
   private let onboardingCompleted: @MainActor () -> Bool
@@ -86,9 +100,7 @@ final class BluetoothAwarenessPresenter {
   private let emit: @MainActor (Action, DismissReason?) -> Void
 
   init(
-    readCurrentIntent: @escaping @MainActor () -> OverlayIntent,
-    showOverlay: @escaping @MainActor () -> Void,
-    hideIfCurrent: @escaping @MainActor () -> Void,
+    overlay: any OverlayPresenting,
     effectiveInputIsBluetooth: @escaping @MainActor () -> Bool,
     dictationIsIdle: @escaping @MainActor () -> Bool,
     onboardingCompleted: @escaping @MainActor () -> Bool,
@@ -96,9 +108,7 @@ final class BluetoothAwarenessPresenter {
     openMicrophoneSettings: @escaping @MainActor () -> Void,
     emit: @escaping @MainActor (Action, DismissReason?) -> Void
   ) {
-    self.readCurrentIntent = readCurrentIntent
-    self.showOverlay = showOverlay
-    self.hideIfCurrent = hideIfCurrent
+    self.overlay = overlay
     self.effectiveInputIsBluetooth = effectiveInputIsBluetooth
     self.dictationIsIdle = dictationIsIdle
     self.onboardingCompleted = onboardingCompleted
@@ -112,40 +122,43 @@ final class BluetoothAwarenessPresenter {
   /// The single show/dismiss decision. Synchronous, no `await`, so no
   /// check-then-act window exists across a suspension (plan §5 six-class check).
   ///
-  /// When already presenting, invalidating facts are checked on `isPresented`,
-  /// NOT on `readCurrentIntent()`: recording may already have synchronously
-  /// replaced the intent, so gating the record-started branch on the current
-  /// intent would never fire and the telemetry would be lost (Codex r2). Each
-  /// hide is still guarded by `currentIntent == .bluetoothAwareness` so a newer
-  /// intent is never torn down.
+  /// **Invalidating facts are checked on OWNERSHIP, never on what happens to be
+  /// on screen** (Codex r2, preserved through #2292 C3b). A recording may have
+  /// already replaced the card synchronously, so gating the record-started
+  /// branch on the visible intent would never fire and the telemetry would be
+  /// lost. Holding a receipt is what "we own a card" means; whether it is still
+  /// the CURRENT presentation is a separate question, and `dismissIfCurrent`
+  /// asks it atomically instead of this type reading and then acting.
   func reconcile(trigger: Trigger) {
-    let currentIntent = readCurrentIntent()
-    if isPresented {
+    if let receipt = currentReceipt {
       if !tipsEnabled() {
-        if currentIntent == .bluetoothAwareness { hideIfCurrent() }
-        isPresented = false
+        overlay.dismissIfCurrent(receipt)
+        currentReceipt = nil
         emit(.dismissed, .settingDisabled)
         breadcrumb(trigger, "dismissed", reason: DismissReason.settingDisabled.rawValue)
         return
       }
       if !effectiveInputIsBluetooth() {
-        if currentIntent == .bluetoothAwareness { hideIfCurrent() }
-        isPresented = false
+        overlay.dismissIfCurrent(receipt)
+        currentReceipt = nil
         emit(.dismissed, .routeChanged)
         breadcrumb(trigger, "dismissed", reason: DismissReason.routeChanged.rawValue)
         return
       }
       if !dictationIsIdle() {
-        // Recording may already own the slot; hide is a no-op then, telemetry still fires.
-        if currentIntent == .bluetoothAwareness { hideIfCurrent() }
-        isPresented = false
+        // Recording may already own the slot; the dismissal is then a no-op and
+        // the telemetry still fires, which is the point of checking ownership
+        // rather than visibility.
+        overlay.dismissIfCurrent(receipt)
+        currentReceipt = nil
         emit(.dismissed, .recordStarted)
         breadcrumb(trigger, "dismissed", reason: DismissReason.recordStarted.rawValue)
         return
       }
-      if currentIntent != .bluetoothAwareness {
-        // Another overlay replaced us while idle — release ownership silently.
-        isPresented = false
+      if !overlay.isCurrent(receipt) {
+        // Another presentation replaced us while idle — release ownership
+        // silently, and do NOT dismiss: the slot is not ours to empty.
+        currentReceipt = nil
         return
       }
       return
@@ -157,10 +170,17 @@ final class BluetoothAwarenessPresenter {
     // wired mic who would never see it (Codex r2 P2: gating suppression behind the
     // same eligibility keeps the opt-out metric meaningful).
     guard !hasShownThisLaunch, onboardingCompleted(), effectiveInputIsBluetooth(),
-      dictationIsIdle(), readCurrentIntent() == .hidden
+      dictationIsIdle()
     else { return }
 
     guard tipsEnabled() else {
+      // **The ONE place `featureSlotIsAvailable` may still be read** (#2292 C3b).
+      // Nothing is being admitted here — the card is opted out — so there is no
+      // `present` call whose answer could stand in. What this snapshot buys is
+      // that `suppressed_by_setting` keeps counting only launches where the card
+      // WOULD have shown, rather than every opted-out user whose slot happened
+      // to be busy. Dropping it inflates the metric silently.
+      guard overlay.featureSlotIsAvailable else { return }
       if !hasEmittedSettingSuppressionThisLaunch {
         hasEmittedSettingSuppressionThisLaunch = true
         emit(.suppressedBySetting, nil)
@@ -169,26 +189,39 @@ final class BluetoothAwarenessPresenter {
       return
     }
 
-    showOverlay()
-    // Confirm the overlay actually took the intent before committing state (a
-    // concurrent show could have won the single slot in the same run-loop turn).
-    guard readCurrentIntent() == .bluetoothAwareness else { return }
+    // **Admission and its proof are one call now.** This used to show and then
+    // re-read the intent to confirm the overlay had taken it, because a
+    // concurrent show could win the single slot in the same run-loop turn. The
+    // receipt IS that confirmation, and a refusal returns nil — so
+    // `hasShownThisLaunch` is not spent on a card nobody saw, and the user gets
+    // the card on a later reconcile once the slot clears.
+    guard let receipt = overlay.present(.bluetoothAwareness(
+      onAcknowledge: { [weak self] in self?.handleUserAction(.gotIt) },
+      onClose: { [weak self] in self?.handleUserAction(.close) },
+      onOpenSettings: { [weak self] in self?.handleUserAction(.adjustSettings) }
+    )) else { return }
+
     hasShownThisLaunch = true
-    isPresented = true
+    currentReceipt = receipt
     emit(.shown, nil)
     breadcrumb(trigger, "shown", reason: nil)
   }
 
   // MARK: - User actions
 
-  /// The card's buttons call this; the presenter alone clears `isPresented`,
-  /// hides only when Bluetooth still owns the slot, emits exactly one event, and
-  /// opens settings for the explicit action (Codex r3 Q2). A call when not
-  /// presenting is a no-op.
-  func handleUserAction(_ action: UserAction) {
-    guard isPresented else { return }
-    if readCurrentIntent() == .bluetoothAwareness { hideIfCurrent() }
-    isPresented = false
+  /// The card's buttons call this. The presenter alone releases the receipt,
+  /// dismisses only its own presentation, emits exactly one event, and opens
+  /// settings for the explicit action (Codex r3 Q2). A call with no receipt is a
+  /// no-op.
+  ///
+  /// **The three actions stay three actions.** Got it, Close and Adjust Settings
+  /// emit `.dismissed/.gotIt`, `.dismissed/.closed` and `.settingsOpened`, and
+  /// the dashboard reads them apart — collapsing any two would silently merge
+  /// two different answers a user gave.
+  private func handleUserAction(_ action: UserAction) {
+    guard let receipt = currentReceipt else { return }
+    overlay.dismissIfCurrent(receipt)
+    currentReceipt = nil
     switch action {
     case .gotIt:
       emit(.dismissed, .gotIt)
