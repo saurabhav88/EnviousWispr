@@ -35,68 +35,6 @@ const breadcrumbJsonLd = JSON.stringify({
   ],
 });
 
-const faqJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr work without internet?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. All speech recognition runs on-device using Apple Silicon and the Parakeet or WhisperKit model. Your audio never leaves your Mac. AI polish can also run on-device with EG-1, Apple Intelligence on supported systems, or a downloaded Ollama model. If you choose cloud polish, the transcript, cleanup instructions, custom words, target app name, and your account credential go directly to that provider."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What Mac do I need to run EnviousWispr?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "EnviousWispr requires macOS 14 Sonoma or later, running on an Apple Silicon Mac (M1, M2, M3, M4 or newer). It does not run on Intel Macs. The Neural Engine on Apple Silicon is what makes on-device transcription fast enough to feel instant."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "How fast is voice-to-text with EnviousWispr?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Typical dictation completes in under two seconds from the moment you stop speaking to the moment polished text pastes into your active app. Recording, transcription, and AI polish run in parallel rather than in sequence, which is why the perceived latency is sub-second on warm runs."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What is the difference between push-to-talk and hands-free mode?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Push-to-talk means you hold a keybind while speaking and release to transcribe. It is the default mode. Hands-free mode listens continuously and transcribes when you pause. It is useful when typing is not an option, for example during accessibility-driven dictation or when both hands are occupied."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr send my voice or text anywhere?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Audio never leaves your Mac. Transcription is fully on-device. Local AI polish can keep the request there too. If you choose cloud polish, the transcript, cleanup instructions, custom words, target app name, and your account credential go directly to the provider. No raw audio is ever uploaded."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Which languages does EnviousWispr support?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "The default Parakeet engine covers 25 European languages. Switching the backend to WhisperKit supports 90+ languages. Both run on-device on Apple Silicon."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr work in every app?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "EnviousWispr pastes into any macOS app that accepts text input. That includes Slack, VS Code, Gmail, Notion, Google Docs, Terminal, Messages, browser forms, and any other text field. There is no per-app configuration."
-      }
-    },
-  ],
-});
 ---
 
 <BaseLayout
@@ -108,7 +46,6 @@ const faqJsonLd = JSON.stringify({
   <Fragment slot="head">
     <script type="application/ld+json" set:html={webPageJsonLd}></script>
     <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
   </Fragment>
 
 <style>

@@ -87,76 +87,6 @@ const jsonLdWebSite = JSON.stringify({
   }
 });
 
-const jsonLdFaq = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr free?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr is completely free to download and use. No subscription, no account required."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr work offline?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. All speech recognition runs on-device using Apple Silicon. Your audio never leaves your Mac."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What makes EnviousWispr different from WisprFlow?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "EnviousWispr is free and processes everything on-device. WisprFlow costs $15/month and sends audio to cloud servers. EnviousWispr requires no account signup."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Which macOS versions does EnviousWispr support?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "EnviousWispr requires macOS 14 (Sonoma) or later running on Apple Silicon (M1 or newer)."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr support multiple languages?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "The default Parakeet engine covers 25 European languages. The WhisperKit backend supports 90+ languages for wider multi-language dictation."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I see EnviousWispr's source code?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr is open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. The full codebase is on GitHub. You can read every line, build from source, and verify every privacy claim."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Which apps does EnviousWispr work with?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "EnviousWispr works with any app that accepts text input. It pastes directly into your active text field, whether that is Slack, VS Code, Gmail, Notion, Google Docs, Terminal, or any other app."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr run Whisper locally?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. The WhisperKit backend runs OpenAI Whisper models locally via Apple Core ML. The default Parakeet engine uses NVIDIA's Parakeet TDT model, also running on-device. Both use Apple Silicon's Neural Engine for fast inference."
-      }
-    }
-  ]
-});
 ---
 
 <BaseLayout title={title} description={description} activePage="home" canonicalPath="/">
@@ -165,7 +95,6 @@ const jsonLdFaq = JSON.stringify({
     <script type="application/ld+json" set:html={jsonLdOrg}></script>
     <script type="application/ld+json" set:html={jsonLdPerson}></script>
     <script type="application/ld+json" set:html={jsonLdWebSite}></script>
-    <script type="application/ld+json" set:html={jsonLdFaq}></script>
   </Fragment>
 
   <!-- ═══════════════════════════════════════════════════════
