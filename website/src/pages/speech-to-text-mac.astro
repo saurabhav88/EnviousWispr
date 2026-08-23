@@ -168,14 +168,14 @@ const faqJsonLd = JSON.stringify({
             <tr><th scope="col">Stage</th><th scope="col">Time</th><th scope="col">Notes</th></tr>
           </thead>
           <tbody>
-            <tr><td>Release key to raw text</td><td><strong>0.61s median</strong></td><td>Transcription only. Flat with respect to dictation length because it streams while you speak.</td></tr>
+            <tr><td>Release key to raw text</td><td><strong>0.61s median</strong></td><td>Transcription only, measured across our own test dictations. Text is written after you stop talking, so a longer dictation takes longer.</td></tr>
             <tr><td>Release key to cleaned text</td><td><strong>~1.65s</strong></td><td>Adds on-device AI cleanup. This one scales with how much you said.</td></tr>
           </tbody>
         </table>
       </div>
 
       <p class="note reveal">
-        Only the first row is the sub-second number. Cleanup is a separate step with its own cost, and it grows with length. Any tool quoting one figure for the whole path is quoting the wrong thing.
+        Only the first row is the sub-second number. Cleanup is a separate step with its own cost, and it grows with length. Any tool quoting one figure for the whole path is quoting the wrong thing. By default the text arrives after you stop talking. There is an optional Faster Transcription mode that writes while you speak, but we recommend leaving it off on the default Parakeet engine, because Parakeet stitches overlapping pieces together and the joins are where errors appear.
       </p>
     </div>
   </section>
