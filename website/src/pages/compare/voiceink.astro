@@ -145,7 +145,7 @@ const faqJsonLd = JSON.stringify({
 
 <BaseLayout
   title="VoiceInk vs EnviousWispr: Free, Open-Source Dictation"
-  description="VoiceInk is on-device and open source with a paid app after a free trial. EnviousWispr is completely free, GPLv3, and needs no account. Compared."
+  description="VoiceInk is open source under GPL v3 and the app is paid, from $29 one-time. EnviousWispr is free, GPLv3, on-device, and needs no account. Compared."
   activePage="compare"
   ogImage="/images/og/voiceink.png"
   ogType="article"
@@ -316,6 +316,40 @@ const faqJsonLd = JSON.stringify({
   .page-header h1 { font-size: 34px; letter-spacing: -1px; }
   .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
 }
+
+  /* Direct answer block (#2340): the buying question, above the comparison. */
+  .vi-answer-section { padding-top: 0; }
+  .vi-answer {
+    position: relative; max-width: 900px; padding: 34px 38px 30px;
+    border: 1px solid var(--border-hover); border-left: 0; border-radius: 0 20px 20px 0;
+    background: rgba(255,255,255,.86); box-shadow: 0 16px 44px rgba(62,34,107,.07);
+  }
+  .vi-answer::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    border-radius: 4px 0 0 4px; background: linear-gradient(180deg, var(--accent), var(--cyan));
+  }
+  .vi-answer-kicker {
+    margin-bottom: 8px; color: var(--accent); font-family: var(--font-mono);
+    font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+  }
+  .vi-answer h2 { margin-bottom: 16px; font-size: 30px; letter-spacing: -1.2px; }
+  .vi-answer-lead { color: var(--text); font-size: 19px; line-height: 1.62; letter-spacing: -.3px; }
+  .vi-facts {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 40px;
+    margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--border);
+  }
+  .vi-facts dt {
+    margin-bottom: 5px; color: var(--text-3); font-family: var(--font-mono);
+    font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+  }
+  .vi-facts dd { color: var(--text-2); font-size: 15px; line-height: 1.6; }
+  .vi-answer-foot { margin-top: 22px; color: var(--text-2); font-size: 14.5px; line-height: 1.7; }
+  @media (max-width: 700px) {
+    .vi-answer { padding: 24px 22px; border-radius: 0 16px 16px 0; }
+    .vi-answer h2 { font-size: 24px; }
+    .vi-answer-lead { font-size: 17px; }
+    .vi-facts { grid-template-columns: 1fr; gap: 14px; }
+  }
 </style>
 
 <!-- Page Header -->
@@ -351,6 +385,36 @@ const faqJsonLd = JSON.stringify({
     <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
   </div>
 </header>
+
+<!-- Direct answer: the questions people actually arrive with (#2340) -->
+<section class="section vi-answer-section" aria-labelledby="voiceink-answer-heading">
+  <div class="container">
+    <div class="vi-answer reveal">
+      <p class="vi-answer-kicker">The short answer</p>
+      <h2 id="voiceink-answer-heading">Is VoiceInk free, and is it open source?</h2>
+      <p class="vi-answer-lead">VoiceInk is a Mac dictation app that can transcribe on your Mac, depending on which of its three engines you pick. It is open source under GPL v3, and the app is paid: one-time pricing of $29 for one Mac, $49 for two, or $69 for three, with no subscription.</p>
+      <dl class="vi-facts">
+        <div>
+          <dt>What it costs</dt>
+          <dd>$29 Solo, $49 Personal, $69 Extended. One-time, not a subscription.</dd>
+        </div>
+        <div>
+          <dt>Is it free?</dt>
+          <dd>The source is public, so you can build it yourself. The packaged app is paid.</dd>
+        </div>
+        <div>
+          <dt>Is it open source?</dt>
+          <dd>Yes, GPL v3 on GitHub. Same licence EnviousWispr uses.</dd>
+        </div>
+        <div>
+          <dt>Where audio goes</dt>
+          <dd>On device with whisper.cpp or Parakeet. Its third engine, Cohere Transcribe, is a cloud option, so that one sends audio out.</dd>
+        </div>
+      </dl>
+      <p class="vi-answer-foot">EnviousWispr is free, GPL v3, and always transcribes on your Mac, with no engine that sends audio anywhere. The full comparison is below. Pricing and engines re-verified from tryvoiceink.com and the VoiceInk GitHub repository on 21 August 2026.</p>
+    </div>
+  </div>
+</section>
 
 <!-- Side-by-Side Table -->
 <section class="section" aria-label="Feature Comparison">
