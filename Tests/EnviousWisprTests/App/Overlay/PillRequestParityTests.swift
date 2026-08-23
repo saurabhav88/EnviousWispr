@@ -79,7 +79,12 @@ struct PillRequestParityTests {
         announcements: announcements,
         content: director.renderModel.presentation?.content,
         expiry: director.renderModel.presentation?.expiry,
-        recordingLayout: director.renderModel.recordingLayout)
+        recordingLayout: director.renderModel.recordingLayout,
+        // **The one public value that separates a pipeline intent from a feature
+        // request.** Without it the two routing cases below compare identical
+        // observations and cannot fail when a request travels through the wrong
+        // enum — which is the exact defect they were written to catch.
+        featureSlotIsAvailable: director.featureSlotIsAvailable)
     }
   }
 
@@ -94,6 +99,7 @@ struct PillRequestParityTests {
     let content: OverlayContent?
     let expiry: OverlayExpiry?
     let recordingLayout: OverlayRecordingLayout
+    let featureSlotIsAvailable: Bool
   }
 
   /// Drive `old` on one rig and `new` on another, then compare every output.
@@ -364,11 +370,14 @@ struct PillRequestParityTests {
   /// **This proves STALENESS, not one-shot custody, and the original name claimed
   /// the wrong one.** The first press dismisses the presentation, so the second
   /// event names an id that is no longer current and is rejected before payload
-  /// custody is ever reached. Custody's own one-shot property needs a case that
-  /// gets past that gate; this is not it.
+  /// custody is ever reached.
   ///
-  /// The real user input is a double-click on Undo, and what it must not do is
-  /// paste twice — which this does check.
+  /// One-shot custody is not uncovered: `EscapeRecoveryPillTests.payloadIsTakenOnce`
+  /// takes the payload twice directly and requires the second to find nothing. C4
+  /// moves custody and must preserve that case.
+  ///
+  /// The real user input here is a double-click on Undo, and what it must not do
+  /// is paste twice.
   @Test("a queued second Undo is ignored after dismissal") func queuedSecondUndoIsIgnored() {
     let rig = Rig()
     let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
@@ -431,7 +440,8 @@ struct PillRequestParityTests {
   /// **All eight, because an action that reaches nobody is the defect this whole
   /// boundary exists to make impossible.** Grant and Discard belong to the app;
   /// the other six belong to the presentation that raised them.
-  @Test("every presentation-owned action reaches its own callback") func everyActionIsBound() {
+  @Test("language and Bluetooth actions each reach exactly one callback")
+  func everyActionIsBound() {
     var fired: [String] = []
     let chipRig = Rig()
     chipRig.director.present(.languageChip(
@@ -464,10 +474,12 @@ struct PillRequestParityTests {
       #expect(fired.last == label, "\(label) must reach its own callback")
     }
 
-    // **Exact sequence, not `contains`.** A membership check passes just as well
-    // when an action is delivered twice, which is the defect a single owner is
-    // supposed to make impossible.
-    #expect(fired == ["lock", "dismiss", "gotIt", "close", "settings"])
+    // **Counts, not membership and not sequence.** A membership check passes
+    // when an action is delivered twice — the defect a single owner exists to
+    // prevent — while an exact sequence would also freeze the order these
+    // independent scenarios happen to run in, which is incidental.
+    let counts = Dictionary(grouping: fired, by: { $0 }).mapValues(\.count)
+    #expect(counts == ["lock": 1, "dismiss": 1, "gotIt": 1, "close": 1, "settings": 1])
   }
 
   /// Grant is one of the two APP-owned actions, so it reaches the app sink rather
