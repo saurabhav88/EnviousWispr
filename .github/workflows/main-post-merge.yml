@@ -13,8 +13,27 @@ on:
       - '.github/workflows/main-post-merge.yml'
       - '.github/actions/xcode-ci-setup/action.yml'
       - 'scripts/ci/verify-checked-out-revision.sh'
+      - 'scripts/ci/post-merge-should-run.sh'
+  schedule:
+    # Hourly re-validation of main HEAD (#2334): during a merge train,
+    # cancel-in-progress cancels every push run before it completes, so main
+    # can sit unverified for hours. The schedule guarantees a green signal
+    # exists within an hour even then. The minute is offset from :00 because
+    # GitHub flags top-of-hour as a high-load window where scheduled runs are
+    # delayed or dropped (#1131). The schedule-guard job skips the macOS
+    # matrix when this HEAD already has a green full-matrix run, so an idle
+    # main costs no macOS minutes.
+    - cron: '7 * * * *'
   workflow_dispatch:
 
+# Concurrency group per event (#2334): push runs group as
+# `main-post-merge-push-refs/heads/main`, scheduled runs as
+# `main-post-merge-schedule-refs/heads/main`, PR runs as
+# `main-post-merge-pull_request-<number>`. The event_name segment isolates
+# the schedule from push: a newer push can still cancel an in-flight push
+# run, but it can never cancel an in-flight scheduled run — which is what
+# lets the hourly validation survive a merge train. Do not "simplify" this
+# group: the push path's per-ref isolation is load-bearing.
 concurrency:
   group: main-post-merge-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -96,17 +115,60 @@ jobs:
               echo "needs_build=true" >> "$GITHUB_OUTPUT"
               echo "==> Manual diagnostic dispatch requires the full Xcode matrix"
               ;;
+            schedule)
+              echo "needs_build=true" >> "$GITHUB_OUTPUT"
+              echo "==> Scheduled main-HEAD validation always runs the full Xcode matrix (#2334)"
+              ;;
             *)
               echo "::error::Unsupported event: $EVENT_NAME"
               exit 1
               ;;
           esac
 
+  # #2334. The schedule's only reason to exist is a merge train, where every
+  # push run of this workflow is cancelled before it completes. The guard
+  # answers whether the current main HEAD already has a green full-matrix
+  # run; if so the expensive macOS jobs skip and an idle main costs no macOS
+  # minutes. It runs on schedule events ONLY: the push path must stay
+  # unconditional and never consults it. Anything the guard cannot determine
+  # answers "run" — a guard that failed closed toward skipping would silently
+  # restore the exact hole #2334 is about.
+  schedule-guard:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_run: ${{ steps.guard.outputs.should_run }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Verify checked-out revision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: scripts/ci/verify-checked-out-revision.sh
+
+      - name: Decide whether main HEAD is already validated
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: scripts/ci/post-merge-should-run.sh --sha "${{ github.sha }}"
+
   # The long pole, and the cache WRITER. Builds both configurations (the cache
   # shape pr-check.yml restores) but runs only the release suite.
   release-validation:
-    needs: classify
-    if: needs.classify.outputs.needs_build == 'true'
+    needs: [classify, schedule-guard]
+    # #2334: the schedule path additionally requires the guard to answer
+    # "run". On every other event the guard is skipped and this reduces to
+    # the original condition — the push path is unconditional by design.
+    if: >-
+      needs.classify.outputs.needs_build == 'true' &&
+      (github.event_name != 'schedule' || needs.schedule-guard.outputs.should_run == 'yes')
     runs-on: macos-26
     # Worst observed critical path for this job's steps is ~36 min (44.0 min
     # whole-run max, less the 8.0 min debug suite that run executed). 45 leaves
@@ -258,8 +320,11 @@ jobs:
   # Runs in parallel with release-validation. Restore-only: it never writes the
   # cache, so the writer contract with pr-check.yml has exactly one owner.
   debug-validation:
-    needs: classify
-    if: needs.classify.outputs.needs_build == 'true'
+    needs: [classify, schedule-guard]
+    # #2334: same schedule guard as release-validation (see above).
+    if: >-
+      needs.classify.outputs.needs_build == 'true' &&
+      (github.event_name != 'schedule' || needs.schedule-guard.outputs.should_run == 'yes')
     runs-on: macos-26
     # Whole-job duration over the 20 most recent successful runs: 666-1008s
     # (11.1-16.8 min), median ~850s. The CI-speed pass added coverage
@@ -408,7 +473,7 @@ jobs:
   # One place that says whether main is green. Without this, a reader has to
   # combine three job results by eye, and a SKIPPED job looks like a failure.
   post-merge-result:
-    needs: [classify, release-validation, debug-validation]
+    needs: [classify, release-validation, debug-validation, schedule-guard]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -416,6 +481,9 @@ jobs:
     steps:
       - name: Post result
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE_GUARD_RESULT: ${{ needs.schedule-guard.result }}
+          SCHEDULE_GUARD: ${{ needs.schedule-guard.outputs.should_run }}
           NEEDS_BUILD: ${{ needs.classify.outputs.needs_build }}
           CLASSIFY_RESULT: ${{ needs.classify.result }}
           RELEASE_RESULT: ${{ needs.release-validation.result }}
@@ -427,6 +495,21 @@ jobs:
           if [ "$CLASSIFY_RESULT" != "success" ]; then
             echo "::error::Change classification did not complete (result=$CLASSIFY_RESULT) — main is UNVERIFIED"
             exit 1
+          fi
+
+          # #2334: the scheduled path consults the skip guard; the push path
+          # does not. A guard that answered "no" is an INTENDED skip — the
+          # full matrix already ran green on this HEAD — and must not fall
+          # into the skipped-while-needs_build defect below.
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            if [ "$SCHEDULE_GUARD_RESULT" != "success" ]; then
+              echo "::error::Schedule guard did not complete (result=$SCHEDULE_GUARD_RESULT) — cannot confirm main HEAD is validated — main is UNVERIFIED"
+              exit 1
+            fi
+            if [ "$SCHEDULE_GUARD" = "no" ]; then
+              echo "Scheduled validation skipped: main HEAD already has a green full-matrix run"
+              exit 0
+            fi
           fi
 
           if [ "$NEEDS_BUILD" != "true" ]; then
