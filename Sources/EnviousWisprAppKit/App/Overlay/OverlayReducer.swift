@@ -28,7 +28,7 @@ enum OverlayEvent: Equatable {
   /// carried `isLocked` on the presentation with no event able to change it.
   case lockStateChanged(Bool)
   /// The user pressed something on the presentation identified by this id.
-  case action(PresentationID, OverlayAction)
+  case action(PresentationID, PillAction)
   /// Hover began or ended on the presentation identified by this id.
   case hoverChanged(PresentationID, Bool)
   /// The expiry armed for this id fired.
@@ -89,9 +89,9 @@ struct OverlayPlan: Equatable {
   let expiryCommand: OverlayExpiryCommand
   /// An action the director should forward to the feature that owns it. The
   /// director holds exactly ONE active binding, so this is at most one.
-  let deliverAction: OverlayAction?
+  let deliverAction: PillAction?
   /// Side effects for feature owners that keep their own state. Usually empty.
-  let effects: [OverlayEffect]
+  let effects: [PillEffect]
   /// What a screen reader should say, and how loudly.
   ///
   /// **On the PLAN rather than on the presentation, because `.hidden` has no
@@ -99,7 +99,7 @@ struct OverlayPlan: Equatable {
   /// sixteen would sit naturally on the presentation and the sixteenth cannot,
   /// so the presentation is the wrong home for all of them.
   ///
-  /// Not an `OverlayEffect` either: effects are delivered to the composition
+  /// Not a `PillEffect` either: effects are delivered to the composition
   /// root's closure, and posting an accessibility notification is not the
   /// composition root's job — it is part of presenting, which the director does.
   let announcement: OverlayAnnouncement?
@@ -115,8 +115,8 @@ struct OverlayPlan: Equatable {
   init(
     presentation: OverlayPresentation?, didChange: Bool,
     expiryCommand: OverlayExpiryCommand = .unchanged,
-    deliverAction: OverlayAction? = nil,
-    effects: [OverlayEffect] = [],
+    deliverAction: PillAction? = nil,
+    effects: [PillEffect] = [],
     announcement: OverlayAnnouncement? = nil
   ) {
     self.presentation = presentation
@@ -249,7 +249,7 @@ struct OverlayReducer {
       return OverlayPlan(
         presentation: nil, didChange: wasOccupied,
         expiryCommand: wasOccupied ? .cancel : .unchanged,
-        effects: wasRecording ? [.recordingIntentChanged(false)] : [],
+        effects: wasRecording ? [.recordingStateChanged(false)] : [],
         announcement: announcement)
     }
 
@@ -269,7 +269,7 @@ struct OverlayReducer {
     return OverlayPlan(
       presentation: presentation, didChange: true,
       expiryCommand: Self.command(for: presentation),
-      effects: wasRecording == isRecording ? [] : [.recordingIntentChanged(isRecording)],
+      effects: wasRecording == isRecording ? [] : [.recordingStateChanged(isRecording)],
       announcement: announcement)
   }
 
@@ -281,7 +281,7 @@ struct OverlayReducer {
   /// clipboard-fallback push arriving next would be deduped away, and the
   /// arbitration rule that lets a feature take the slot only while the pipeline
   /// is idle would be reading the wrong intent. It also DISCARDED the first
-  /// transition's effects, losing `.recordingIntentChanged(false)` when this
+  /// transition's effects, losing `.recordingStateChanged(false)` when this
   /// notice replaces a live recording, which is how Live Preview learns the
   /// dictation ended.
   ///
@@ -469,7 +469,7 @@ struct OverlayReducer {
   /// compared for order: the question is only ever "is this still the one".
   private func isCurrent(_ id: PresentationID) -> Bool { state.current?.id == id }
 
-  private mutating func reduceAction(_ id: PresentationID, _ action: OverlayAction) -> OverlayPlan {
+  private mutating func reduceAction(_ id: PresentationID, _ action: PillAction) -> OverlayPlan {
     guard isCurrent(id) else { return .noChange }
     return OverlayPlan(presentation: state.current, didChange: false, deliverAction: action)
   }
@@ -512,14 +512,14 @@ struct OverlayReducer {
     // clearing the slot leaves its state stale — `currentChip` survives, and the
     // escape-recovery payload is never released. Enumerated from the panel's
     // handler fields rather than found one at a time.
-    var effects: [OverlayEffect] = []
+    var effects: [PillEffect] = []
     switch current.content {
     case .languageChip(let payload):
-      effects.append(.languageChipAutoDismissed(generation: payload.generation))
+      effects.append(.languageChipExpired(generation: payload.generation))
     case .escapeRecovery(let transcriptID):
       effects.append(.escapeRecoveryExpired(transcriptID: transcriptID))
     case .recording:
-      effects.append(.recordingIntentChanged(false))
+      effects.append(.recordingStateChanged(false))
     case .notice, .bluetoothAwareness:
       break
     }
@@ -776,7 +776,7 @@ struct OverlayReducer {
     id: PresentationID, kind: NoticeModel.Kind, text: String, secondary: String? = nil,
     width: OverlayWidth, fixedHeight: CGFloat? = nil,
     expiry: OverlayExpiry = .untilReplaced, severity: NoticeModel.Severity = .neutral,
-    isMultiline: Bool = false, action: (label: String, action: OverlayAction)? = nil
+    isMultiline: Bool = false, action: (label: String, action: PillAction)? = nil
   ) -> OverlayPresentation {
     OverlayPresentation(
       id: id,

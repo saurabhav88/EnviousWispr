@@ -39,7 +39,7 @@ final class OverlayDirector {
   /// closures alive for the app's lifetime whether or not the pill that uses
   /// them is showing; this holds the binding for the presentation that is
   /// actually on screen and drops it when that presentation goes.
-  private var activeBinding: (id: PresentationID, deliver: (OverlayAction) -> Void)?
+  private var activeBinding: (id: PresentationID, deliver: (PillAction) -> Void)?
 
   /// Custody of the cancelled-transcript payload.
   ///
@@ -53,7 +53,7 @@ final class OverlayDirector {
   /// one more mutable handler field on the type whose whole purpose is to have
   /// fewer, and one where a caller that forgot to wire it would silently discard
   /// effects a feature depends on.
-  private let deliverEffect: (OverlayEffect) -> Void
+  private let deliverEffect: (PillEffect) -> Void
 
   /// The handler for the two buttons that belong to the APP rather than to a
   /// presentation — Grant and Discard.
@@ -64,7 +64,7 @@ final class OverlayDirector {
   /// the rest go through that factory. A no-op default is a fresh structural
   /// omission path introduced by the fix for an omission, which is not a trade
   /// worth making for three lines.
-  private let deliverAppAction: (OverlayAction) -> Void
+  private let deliverAppAction: (PillAction) -> Void
 
   /// Posting the spoken announcement, injectable so a guard can observe it.
   ///
@@ -167,8 +167,8 @@ final class OverlayDirector {
 
   init(
     host: any OverlayWindowHosting,
-    deliverEffect: @escaping (OverlayEffect) -> Void,
-    deliverAppAction: @escaping (OverlayAction) -> Void,
+    deliverEffect: @escaping (PillEffect) -> Void,
+    deliverAppAction: @escaping (PillAction) -> Void,
     position: @escaping () -> OverlayPillPosition = { .top },
     model: OverlayRenderModel = OverlayRenderModel(),
     scheduler: OverlayScheduler = .live,
@@ -262,7 +262,7 @@ final class OverlayDirector {
   /// carry a handler compile silently without one, which defeats the entire
   /// point of making the binding arrive with the request: the omission has to be
   /// visible at the call site, not inferred from its absence.
-  func send(_ event: OverlayEvent, actions: ((OverlayAction) -> Void)?) {
+  func send(_ event: OverlayEvent, actions: ((PillAction) -> Void)?) {
     if case .pipeline(.recording) = event {
       // **The wrong ORDER is what this refuses, not the wrong event.** A caller
       // that sends first and installs providers afterwards renders one frame
@@ -305,7 +305,7 @@ final class OverlayDirector {
     audioLevelProvider: @escaping () -> Float,
     recordingElapsedProvider: @escaping () -> TimeInterval?,
     isRecordingLocked: Bool,
-    actions: ((OverlayAction) -> Void)?
+    actions: ((PillAction) -> Void)?
   ) {
     // **The lock is a show-time value, not a later morph.** The shipped
     // `show(intent:isRecordingLocked:)` takes it in the same call and commits it
@@ -379,7 +379,7 @@ final class OverlayDirector {
   /// suite could not see it because no test pressed the button on a pill
   /// presented through this entry point.
   func presentEscapeRecovery(
-    _ payload: CancelUndoPayload, actions: @escaping (OverlayAction) -> Void
+    _ payload: CancelUndoPayload, actions: @escaping (PillAction) -> Void
   ) {
     escapeRecoveryPayload = (id: payload.transcriptID, payload: payload)
     send(.pipeline(.escapeRecovery(transcriptID: payload.transcriptID)), actions: actions)
@@ -463,7 +463,7 @@ final class OverlayDirector {
   // MARK: - Applying a plan
 
   private func apply(
-    _ plan: OverlayPlan, actions: ((OverlayAction) -> Void)? = nil, announcing: Bool = true,
+    _ plan: OverlayPlan, actions: ((PillAction) -> Void)? = nil, announcing: Bool = true,
     effectsAlreadyDelivered: Bool = false
   ) {
     // **Effects run FIRST, and that half IS load-bearing rather than tidy.**
@@ -906,5 +906,120 @@ struct OverlayScheduler {
       armed(work)
       return work
     }
+  }
+}
+
+// MARK: - The typed façade (#2292 Phase 1, chunk C1)
+
+/// The final caller-facing surface, implemented by translating each typed
+/// request into the transaction that already runs.
+///
+/// **Nothing in production calls this yet, and that is the chunk boundary rather
+/// than an oversight.** C1 is a semantic no-op port: the façade exists and its
+/// parity tests exercise it, while the old ingress stays the sole production
+/// path. C3 and C4 bring the first real callers; C5 migrates the rest and
+/// deletes the old ingress. A temporary production caller here would be a
+/// forwarding shim, which is precisely what this refactor refuses to ship.
+///
+/// It lives in this file rather than beside the protocol because every method
+/// reads the director's private state, and file-scoped `private` is what keeps
+/// that state private instead of widening it for a translation layer.
+extension OverlayDirector: OverlayPresenting {
+
+  var featureSlotIsAvailable: Bool { currentIntent == .hidden }
+
+  @discardableResult
+  func present(_ request: PillRequest) -> PillReceipt? {
+    switch request {
+    case .recording(let input):
+      presentRecording(
+        audioLevel: input.audioLevel,
+        audioLevelProvider: input.audioLevelProvider,
+        recordingElapsedProvider: input.recordingElapsedProvider,
+        isRecordingLocked: input.isLocked,
+        actions: nil)
+    case .processing(let phase):
+      send(.pipeline(.processing(phase: phase)), actions: nil)
+    case .clipboardFallback:
+      send(.pipeline(.clipboardFallback), actions: nil)
+    case .warning(let reason):
+      send(.pipeline(.warning(reason: reason)), actions: nil)
+    case .error(let reason):
+      send(.pipeline(.error(reason: reason)), actions: nil)
+    case .advisory(let reason):
+      send(.pipeline(.advisory(reason: reason)), actions: nil)
+    case .interruption(let reason):
+      send(.pipeline(.interruption(reason: reason)), actions: nil)
+    case .cachingModel(let engineLabel):
+      send(.pipeline(.cachingModel(engineLabel: engineLabel)), actions: nil)
+    case .engineReady:
+      send(.pipeline(.engineReady), actions: nil)
+    case .recoverySucceeded:
+      send(.pipeline(.recoverySucceeded), actions: nil)
+    case .importStatus(let message):
+      send(.featureRequest(.importStatus(message: message)), actions: nil)
+
+    case .accessibilityNotice:
+      presentAccessibilityNotice()
+    case .recoveryNotice(let onDiscard):
+      send(.pipeline(.recoveringLastRecording)) { action in
+        if case .discardRecovery = action { onDiscard() }
+      }
+    // **The chip is a `.pipeline` intent, not a `.featureRequest`, and the two
+    // spellings both exist.** `OverlayIntent` and `OverlayRequest` each declare
+    // a `passiveChip` case; the shipped path routes it through the pipeline, so
+    // it sets `pipelineIntent` and arbitrates against the pipeline the way the
+    // presenter expects. Bluetooth is the mirror image and genuinely is a
+    // `.featureRequest`. Sending either through the other enum compiles.
+    case .languageChip(let payload, let onLock, let onDismiss, _):
+      send(.pipeline(.passiveChip(payload: payload))) { action in
+        switch action {
+        case .lockLanguage: onLock()
+        case .dismissChip: onDismiss()
+        default: break
+        }
+      }
+    case .bluetoothAwareness(let onAcknowledge, let onClose, let onOpenSettings):
+      send(.featureRequest(.bluetoothAwareness)) { action in
+        switch action {
+        case .acknowledgeBluetoothAwareness: onAcknowledge()
+        case .closeBluetoothAwareness: onClose()
+        case .openBluetoothSettings: onOpenSettings()
+        default: break
+        }
+      }
+    case .escapeRecovery(let payload, let onPaste):
+      presentEscapeRecovery(payload) { [weak self] action in
+        guard case .pasteEscapeRecovery(let transcriptID) = action else { return }
+        guard let taken = self?.takeEscapeRecoveryPayload(matching: transcriptID) else { return }
+        onPaste(taken)
+      }
+    }
+    return reducer.state.current.map { PillReceipt(presentationID: $0.id) }
+  }
+
+  func update(_ update: PillUpdate) {
+    switch update {
+    case .recordingLock(let isLocked):
+      send(.lockStateChanged(isLocked), actions: nil)
+    case .inPanelNotice(let reason, let dismissAfter):
+      send(.inPanelNotice(reason, dismissAfter: dismissAfter), actions: nil)
+    }
+  }
+
+  func dismissCurrent(_ mode: PillDismissal) {
+    switch mode {
+    case .announced: send(.pipeline(.hidden), actions: nil)
+    case .silent: dismissSilently()
+    }
+  }
+
+  func dismissIfCurrent(_ receipt: PillReceipt) {
+    guard isCurrent(receipt) else { return }
+    dismissCurrent(.silent)
+  }
+
+  func isCurrent(_ receipt: PillReceipt) -> Bool {
+    reducer.state.current?.id == receipt.presentationID
   }
 }

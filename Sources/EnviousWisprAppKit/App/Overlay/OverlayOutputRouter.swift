@@ -24,16 +24,16 @@ final class OverlayOutputRouter {
   weak var livePreview: LivePreviewCoordinator?
   weak var languageChips: LanguageSuggestionPresenter?
 
-  func deliver(_ effect: OverlayEffect) {
+  func deliver(_ effect: PillEffect) {
     switch effect {
-    case .recordingIntentChanged(let isRecording):
+    case .recordingStateChanged(let isRecording):
       // #1988. The preview starts and stops with the recording pill, and the
       // heart path never learns it exists.
       livePreview?.setRecording(isRecording)
 
-    case .languageChipAutoDismissed(let generation):
+    case .languageChipExpired(let generation):
       // The chip expiring on its own is NOT a user action, which is why it is an
-      // effect carrying its generation rather than an `OverlayAction`: the
+      // effect carrying its generation rather than a `PillAction`: the
       // presenter needs to know a specific chip lapsed, not that someone pressed
       // something.
       languageChips?.autoDismiss(generation: generation)
@@ -57,7 +57,7 @@ final class OverlayOutputRouter {
   /// accessibility toast is raised by the pipeline funnel and a recovery notice
   /// by the recording starter, and neither of those knows about permissions or
   /// the recovery coordinator.
-  func deliver(_ action: OverlayAction) {
+  func deliver(_ action: PillAction) {
     switch action {
     case .grantAccessibility:
       _ = permissions?.requestAccessibilityAccess()

@@ -21,13 +21,13 @@ enum OverlayChipWiring {
   /// `.dismissChip` is the explicit dismissal — the user pressing the close
   /// control. The chip's AUTO-dismissal is not a user action and does not arrive
   /// here: the reducer expires the presentation and the director delivers
-  /// `OverlayEffect.languageChipAutoDismissed(generation:)` to the effect sink,
+  /// `PillEffect.languageChipExpired(generation:)` to the effect sink,
   /// which is why that generation is carried on the effect rather than on an
   /// action.
   @MainActor
   static func actions(
     presenter: LanguageSuggestionPresenter, settings: SettingsManager
-  ) -> (OverlayAction) -> Void {
+  ) -> (PillAction) -> Void {
     { [weak settings] action in
       switch action {
       case .lockLanguage:

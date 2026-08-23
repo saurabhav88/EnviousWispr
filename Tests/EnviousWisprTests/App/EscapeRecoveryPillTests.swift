@@ -199,7 +199,7 @@ struct EscapeRecoveryPillTests {
   @MainActor
   private static func pillActions(
     director: OverlayDirector, onPaste: @escaping (CancelUndoPayload) -> Void
-  ) -> (OverlayAction) -> Void {
+  ) -> (PillAction) -> Void {
     EscapeRecoveryWiring.pillActions(
       director: director,
       coordinator: TranscriptCoordinator(store: Self.throwawayStore()),

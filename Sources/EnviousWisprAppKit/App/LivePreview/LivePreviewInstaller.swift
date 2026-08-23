@@ -85,7 +85,7 @@ enum LivePreviewInstaller {
       display: { coordinator.display }
     )
     // The recording-intent observer is gone: the director emits
-    // `.recordingIntentChanged` as a plan EFFECT, and the composition root's
+    // `.recordingStateChanged` as a plan EFFECT, and the composition root's
     // effect sink forwards it here. One channel instead of a bespoke field.
 
     // #2108: switching Live Preview OFF releases its cached engine, and with it a

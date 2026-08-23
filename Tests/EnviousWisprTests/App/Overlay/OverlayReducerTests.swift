@@ -363,7 +363,7 @@ struct OverlayReducerTests {
 
     let plan = r.reduce(.expiryFired(id))
 
-    #expect(plan.effects.contains(.languageChipAutoDismissed(generation: 42)))
+    #expect(plan.effects.contains(.languageChipExpired(generation: 42)))
   }
 
   /// The escape-recovery payload is taken by transcript id
@@ -388,10 +388,10 @@ struct OverlayReducerTests {
     var r = Self.makeReducer()
     #expect(
       r.reduce(.pipeline(.recording(audioLevel: 0.2))).effects
-        == [.recordingIntentChanged(true)])
+        == [.recordingStateChanged(true)])
     // A metering update is not a start: it must not re-notify.
     #expect(r.reduce(.pipeline(.recording(audioLevel: 0.9))).effects.isEmpty)
-    #expect(r.reduce(.pipeline(.hidden)).effects == [.recordingIntentChanged(false)])
+    #expect(r.reduce(.pipeline(.hidden)).effects == [.recordingStateChanged(false)])
   }
 
   /// updateLockState morphs the live recording pill and does nothing
@@ -467,7 +467,7 @@ struct OverlayReducerTests {
     #expect(
       r.reduce(.action(id, .closeBluetoothAwareness)).deliverAction
         == .closeBluetoothAwareness)
-    #expect(OverlayAction.acknowledgeBluetoothAwareness != .closeBluetoothAwareness)
+    #expect(PillAction.acknowledgeBluetoothAwareness != .closeBluetoothAwareness)
   }
 
   /// onEscapeRecoveryPaste takes the payload, and the panel looks it up by id

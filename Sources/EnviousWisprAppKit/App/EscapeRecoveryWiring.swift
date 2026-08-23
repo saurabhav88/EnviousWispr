@@ -72,7 +72,7 @@ enum EscapeRecoveryWiring {
     director: OverlayDirector,
     coordinator: TranscriptCoordinator,
     paste: ((CancelUndoPayload) -> Void)? = nil
-  ) -> (OverlayAction) -> Void {
+  ) -> (PillAction) -> Void {
     let paste =
       paste ?? pasteAction(coordinator: coordinator, report: restoreReporter(source: .pill))
     return { [weak director] action in

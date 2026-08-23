@@ -50,7 +50,7 @@
       locked: Bool = false,
       elapsed: @escaping () -> TimeInterval? = { nil },
       display: @escaping () -> LivePreviewDisplay = { .off },
-      actions: ((OverlayAction) -> Void)? = nil
+      actions: ((PillAction) -> Void)? = nil
     ) {
       d.setLivePreviewProviders(enabled: { preview }, display: display)
       d.presentRecording(
@@ -76,12 +76,12 @@
       visibleFrame: CGRect(x: 0, y: 85, width: 1512, height: 860))
 
     private final class Sink {
-      var effects: [OverlayEffect] = []
+      var effects: [PillEffect] = []
       /// The two buttons whose handler belongs to the APP. Captured so a guard
       /// can prove they are BOUND — both were silently unbound by the cutover
       /// and only a cloud review caught it, because an unbound button renders
       /// perfectly and nothing fails.
-      var appActions: [OverlayAction] = []
+      var appActions: [PillAction] = []
       /// The ORDER outputs left the director in. Effects must precede the
       /// render, which is the shipped order and is load-bearing for Live
       /// Preview's first frame.
@@ -193,7 +193,7 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       let delivered = Sink()
-      d.send(.pipeline(.accessibilityToast), actions: { delivered.effects.append(.recordingIntentChanged(true)); _ = $0 })
+      d.send(.pipeline(.accessibilityToast), actions: { delivered.effects.append(.recordingStateChanged(true)); _ = $0 })
       let id = try! #require(d.currentPresentationForTesting?.id)
       d.send(.action(id, .grantAccessibility), actions: nil)
 
@@ -208,7 +208,7 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       let delivered = Sink()
-      d.send(.pipeline(.accessibilityToast), actions: { _ in delivered.effects.append(.recordingIntentChanged(true)) })
+      d.send(.pipeline(.accessibilityToast), actions: { _ in delivered.effects.append(.recordingStateChanged(true)) })
       let toast = try! #require(d.currentPresentationForTesting?.id)
 
       Self.record(d, level: 0.3)
@@ -303,7 +303,7 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       let transcript = UUID()
-      var pressed: [OverlayAction] = []
+      var pressed: [PillAction] = []
       d.presentEscapeRecovery(
         CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
         actions: { pressed.append($0) })
@@ -323,7 +323,7 @@
     func morphPreservesItsBinding() {
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
-      var pressed: [OverlayAction] = []
+      var pressed: [PillAction] = []
       Self.record(d, level: 0.1, actions: { pressed.append($0) })
       let id = try! #require(d.currentPresentationForTesting?.id)
 
@@ -557,7 +557,7 @@
     ///
     /// Reducing two intents and applying the second lost both — the state said
     /// `.clipboardFallback`, so a real clipboard push would have been deduped
-    /// away, and `.recordingIntentChanged(false)` was discarded, which is how
+    /// away, and `.recordingStateChanged(false)` was discarded, which is how
     /// Live Preview learns the dictation ended.
     @Test("a suppressed accessibility toast ends the recording and keeps its logical intent")
     func suppressedAccessibilityToastPreservesTransitionState() {
@@ -570,7 +570,7 @@
       d.presentAccessibilityNotice()
 
       #expect(
-        sink.effects == [.recordingIntentChanged(false)],
+        sink.effects == [.recordingStateChanged(false)],
         "Live Preview was never told the recording ended")
       #expect(
         d.pipelineIntentForTesting == .accessibilityToast,
@@ -692,7 +692,7 @@
       #expect(
         sink.order.first == "effect",
         "the recording-intent effect arrived after the window was already being drawn")
-      #expect(sink.effects == [.recordingIntentChanged(true)])
+      #expect(sink.effects == [.recordingStateChanged(true)])
     }
 
     /// **The effect must beat the GEOMETRY READ, not merely the render.**
@@ -721,7 +721,7 @@
       let host = OverlayWindowHost(screens: { OverlayScreenResolver { Self.screen } })
       let d = OverlayDirector(
         host: host,
-        deliverEffect: { if $0 == .recordingIntentChanged(true) { recordingStarted = true } },
+        deliverEffect: { if $0 == .recordingStateChanged(true) { recordingStarted = true } },
         deliverAppAction: { _ in },
         announce: { _ in }, deferFirstRender: { $0() })
       Self.hosts.append(host)
