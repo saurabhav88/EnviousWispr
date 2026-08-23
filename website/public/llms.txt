@@ -13,6 +13,8 @@ Last-updated: 2026-08-22
 - [Homepage](https://enviouswispr.com/): Download, screenshots, core value proposition, system requirements (Apple Silicon, macOS 14+).
 - [Solutions](https://enviouswispr.com/solutions/): Focused dictation workflows for the work people do on a Mac.
 - [Dictation for developers](https://enviouswispr.com/solutions/developers/): On-device voice input for PR descriptions, code reviews, issues, documentation, commit messages, and prompts.
+- [AI dictation polish](https://enviouswispr.com/solutions/ai-polish/): Deterministic cleanup, local AI models, and bring-your-own-key cloud polish with a clear privacy boundary.
+- [Offline dictation](https://enviouswispr.com/solutions/offline-dictation/): Local speech recognition and text cleanup for Apple Silicon Macs after required model downloads.
 - [Best dictation apps for Mac](https://enviouswispr.com/compare/best-dictation-apps-for-mac/): A practical 2026 guide to seven Mac dictation options, with honest picks by workflow.
 - [Compare to alternatives](https://enviouswispr.com/compare/): Index of comparison pages vs WisprFlow, Superwhisper, Apple Dictation, Dragon, MacWhisper, Otter.ai, and others.
 
