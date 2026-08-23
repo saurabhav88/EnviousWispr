@@ -19,8 +19,12 @@ import Foundation
 enum OverlayEvent: Equatable {
   /// The dictation pipeline. Outranks every feature.
   case pipeline(OverlayIntent)
-  /// A feature that is not the pipeline.
-  case featureRequest(OverlayRequest)
+  /// A bulk-import progress pill. A feature, so it takes the slot only while
+  /// the pipeline is idle, and only from ITSELF.
+  case importStatus(message: String)
+  /// The Bluetooth-microphone card. A feature, so it takes the slot only while
+  /// the pipeline is idle, and persists until it is replaced.
+  case bluetoothAwareness
   /// A notice that morphs a LIVE recording pill rather than replacing it.
   case inPanelNotice(RecordingNoticeReason, dismissAfter: Double?)
   /// Hands-free lock engaged or released. updateLockState today; it
@@ -151,6 +155,26 @@ struct OverlayState: Equatable {
   /// start would have flashed unlocked.
   private(set) var isLocked = false
 
+  /// Whether a FEATURE may take the slot right now.
+  ///
+  /// **THE arbitration rule, stated once and owned by state** (#2292 C5c). It
+  /// used to be re-derived at every feature — import status read
+  /// `currentIntent == .hidden && …`, Bluetooth kept its own `isPresented` flag,
+  /// the chip kept a generation counter — and nothing held those three to the
+  /// same answer. Two conditions, both required: the pipeline is idle, and no
+  /// other feature already holds the slot.
+  ///
+  /// The second half is not redundant. A feature does not touch `pipelineIntent`,
+  /// so a card or a chip on screen leaves it `.hidden`, and idleness alone would
+  /// let either be replaced by the next feature to ask.
+  var featureSlotIsAvailable: Bool {
+    guard pipelineIntent == .hidden else { return false }
+    switch current?.content {
+    case .bluetoothAwareness, .languageChip: return false
+    default: return true
+    }
+  }
+
   fileprivate mutating func set(
     current: OverlayPresentation?, pipelineIntent: OverlayIntent? = nil, isHovered: Bool? = nil,
     isLocked: Bool? = nil
@@ -176,8 +200,10 @@ struct OverlayReducer {
     switch event {
     case .pipeline(let intent):
       return reducePipeline(intent)
-    case .featureRequest(let request):
-      return reduceFeature(request)
+    case .importStatus(let message):
+      return reduceImportStatus(message: message)
+    case .bluetoothAwareness:
+      return reduceBluetoothAwareness()
     case .inPanelNotice(let reason, let dismissAfter):
       return reduceInPanelNotice(reason, dismissAfter: dismissAfter)
     case .lockStateChanged(let locked):
@@ -318,67 +344,65 @@ struct OverlayReducer {
 
   // MARK: - Features
 
-  private mutating func reduceFeature(_ request: OverlayRequest) -> OverlayPlan {
-    // THE arbitration rule, stated once: a feature may occupy the slot only
-    // while the pipeline is idle. Today this is re-derived at each feature
-    // (importStatusOwnsCurrentSlot, Bluetooth's `isPresented`, the chip's
-    // generation), and nothing holds those three to the same answer.
-    guard state.pipelineIntent == .hidden else { return .noChange }
-
-    // **Import status may only replace ITSELF.** Pipeline idleness alone is not
-    // the shipped rule: a status pill could otherwise take the slot from the
-    // Bluetooth card or the language chip, which the panel refused. The other
-    // two features have no such restriction and are unchanged.
-    if case .importStatus = request, let current = state.current {
+  /// **Import status may only replace ITSELF.** Pipeline idleness alone is not
+  /// the shipped rule: a status pill could otherwise take the slot from the
+  /// Bluetooth card or the language chip, which the panel refused.
+  ///
+  /// **It announces nothing, and that is preserved rather than omitted.** It is
+  /// the one presentation with no matching `OverlayIntent`, so the shipped
+  /// switch had no arm for it. A sentence here would be inventing a notice.
+  private mutating func reduceImportStatus(message: String) -> OverlayPlan {
+    guard state.featureSlotIsAvailable else { return .noChange }
+    if let current = state.current {
       guard case .notice(let notice) = current.content, notice.kind == .importStatus else {
         return .noChange
       }
     }
+    return admit(
+      OverlayPresentation(
+        id: makeID(),
+        content: .notice(NoticeModel(kind: .importStatus, text: message, isMultiline: true)),
+        // `ImportStatusOverlayView` uses `.frame(maxWidth: 280)` — a BOUND, not a
+        // width — under `fitToContent`, so this is measured too.
+        expiry: .after(seconds: 3), requestedWidth: .measured),  // :1105, :1148
+      announcement: nil)
+  }
 
-    let presentation = Self.presentation(for: request, id: makeID())
+  /// **The card is announced at MEDIUM priority, read off the shipped switch.**
+  /// `RecordingOverlayPanel.apply(intent:)` has a `.bluetoothAwareness` arm
+  /// posting `DictationNarrator`'s sentence, reached because the wiring called
+  /// `show(intent:)` for it. The cutover routed the card through the one
+  /// presenting plan that carried no announcement, so it appeared in silence —
+  /// and it is the worst pill for that, being the only one that persists until
+  /// dismissed rather than expiring on its own.
+  private mutating func reduceBluetoothAwareness() -> OverlayPlan {
+    guard state.featureSlotIsAvailable else { return .noChange }
+    return admit(
+      OverlayPresentation(
+        id: makeID(), content: .bluetoothAwareness, expiry: .untilReplaced,
+        requestedWidth: .fixed(320)),  // :1790 — persistent
+      announcement: Self.announcement(for: .bluetoothAwareness))
+  }
+
+  /// The tail every feature shares: take the slot, arm the expiry, speak.
+  private mutating func admit(
+    _ presentation: OverlayPresentation, announcement: OverlayAnnouncement?
+  ) -> OverlayPlan {
     state.set(current: presentation, isHovered: false)
     return OverlayPlan(
       presentation: presentation, didChange: true, expiryCommand: Self.command(for: presentation),
-      announcement: Self.announcement(forFeature: request))
+      announcement: announcement)
   }
 
-  /// What a screen reader is told when a FEATURE takes the slot (#2292, C8).
-  ///
-  /// **This was the one presenting plan that carried no announcement**, and the
-  /// cutover lost two spoken notices through it. The pipeline path derives its
-  /// announcement from the intent; features speak `OverlayRequest` and had no
-  /// equivalent, so a Bluetooth card and a language chip both appeared in
-  /// silence. Neither is transient — the card persists until it is dismissed —
-  /// so a VoiceOver user got no signal at all that the overlay had changed.
-  ///
-  /// READ OFF THE SHIPPED SWITCH rather than chosen. `RecordingOverlayPanel`'s
-  /// `apply(intent:)` has a `.bluetoothAwareness` arm and a `.passiveChip` arm,
-  /// both posting `DictationNarrator`'s sentence at MEDIUM priority, and both
-  /// were reached because the wiring called `show(intent:)` for them.
-  ///
-  /// **Import status is nil because it never announced.** It is the one request
-  /// with no matching intent, so the shipped switch has no arm for it and there
-  /// is nothing to restore. Returning a sentence here would be inventing a
-  /// notice, not repairing one.
-  ///
-  /// The accessibility toast is nil for a different reason: it is not presented
-  /// through here at all. `reduceAccessibilityNotice` owns it and already
-  /// carries its announcement, including through the clipboard fallback.
-  /// **The intent argument is spelled out, and it has to be.** `OverlayRequest`
-  /// and `OverlayIntent` both carry `.bluetoothAwareness` and
-  /// `.passiveChip(payload:)`, so a bare `.bluetoothAwareness` here resolves to
-  /// THIS overload rather than the intent one and recurses until the stack ends.
-  /// It compiles perfectly and crashes at runtime — five tests died on it before
-  /// the annotation went in.
-  private static func announcement(forFeature request: OverlayRequest) -> OverlayAnnouncement? {
-    let intent: OverlayIntent? =
-      switch request {
-      case .bluetoothAwareness: .bluetoothAwareness
-      case .passiveChip(let payload): .passiveChip(payload: payload)
-      case .importStatus, .accessibilityToast: nil
-      }
-    return intent.map { Self.announcement(for: $0) }
-  }
+  // **`announcement(forFeature:)` was DELETED with `OverlayRequest`** (#2292 C5c).
+  // It existed to map a feature request onto the intent whose sentence it should
+  // speak, and its own comment records what that duplication cost: `OverlayRequest`
+  // and `OverlayIntent` both carried `.bluetoothAwareness` and `.passiveChip`, so a
+  // bare `.bluetoothAwareness` resolved to that overload rather than the intent one
+  // and recursed until the stack ended — compiling perfectly and crashing at
+  // runtime, killing five tests before an annotation went in. With one vocabulary
+  // there is no overload to resolve wrongly, and each feature names its own
+  // sentence at the point it takes the slot.
 
   private static func isRecording(_ p: OverlayPresentation?) -> Bool {
     if case .recording? = p?.content { return true }
@@ -708,37 +732,12 @@ struct OverlayReducer {
     }
   }
 
-  private static func presentation(for request: OverlayRequest, id: PresentationID)
-    -> OverlayPresentation
-  {
-    switch request {
-    case .importStatus(let message):
-      return OverlayPresentation(
-        id: id, content: .notice(NoticeModel(kind: .importStatus, text: message, isMultiline: true)),
-        // `ImportStatusOverlayView` uses `.frame(maxWidth: 280)` — a BOUND, not a
-        // width — under `fitToContent`, so this is measured too.
-        expiry: .after(seconds: 3), requestedWidth: .measured)  // :1105, :1148
-    case .bluetoothAwareness:
-      return OverlayPresentation(
-        id: id, content: .bluetoothAwareness, expiry: .untilReplaced,
-        requestedWidth: .fixed(320))  // :1790 — persistent
-    case .passiveChip(let payload):
-      return OverlayPresentation(
-        id: id, content: .languageChip(payload: payload),
-        expiry: .after(seconds: 6, pausesOnHover: true),
-        requestedWidth: .fixed(340), reservesFixedHeight: 56)  // :1410
-    case .accessibilityToast:
-      return OverlayPresentation(
-        id: id,
-        content: .notice(
-          NoticeModel(
-            kind: .accessibilityToast, text: DictationNarrator.accessibilityToastText,
-            isMultiline: true,
-            action: (label: "Grant", action: .grantAccessibility))),
-        expiry: .after(seconds: 6), requestedWidth: .fixed(300),
-        reservesFixedHeight: 56)  // :859, :1118
-    }
-  }
+  // **`presentation(for request:id:)` was DELETED with `OverlayRequest`**
+  // (#2292 C5c). Its four arms are now: import status and Bluetooth inline in
+  // their own reducers above, and `.passiveChip` / `.accessibilityToast` gone
+  // entirely — those were unreachable duplicates of the pipeline presentations
+  // `presentation(for intent:)` already builds, since the chip travels as
+  // `.pipeline(.passiveChip)` and the toast through `reduceAccessibilityNotice`.
 
   /// `fixedHeight` is the shipped `showPanel(height:)` for this notice, and
   /// omitting it means CONTENT-SIZED, which is what `fitToContent: true` does at

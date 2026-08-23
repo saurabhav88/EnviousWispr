@@ -99,11 +99,12 @@ struct PillRequestParityTests {
   // producing the same presentation the old method did — is now the only path,
   // and `discardRunsBeforeDismissal` below asserts what that path DOES.
 
-  /// **The chip travels as a `.pipeline` intent, not a `.featureRequest`.**
-  /// `OverlayIntent` and `OverlayRequest` both declare a `passiveChip` case, so
-  /// the wrong one compiles and only differs in whether `pipelineIntent` is set
-  /// — which is exactly what the language presenter arbitrates against. This
-  /// case is the one that catches it.
+  /// **The chip travels as a PIPELINE intent.** That is what sets
+  /// `pipelineIntent`, which is exactly what the language presenter arbitrates
+  /// against. Until C5c a second enum also declared `passiveChip`, so the wrong
+  /// spelling compiled and differed only in whether `pipelineIntent` was set;
+  /// this case is the one that caught it, and it still pins the property now
+  /// that only one spelling exists.
   /// **The `old:` arm was DELETED and this row now asserts the NEW spelling alone**
   /// (#2292 C5a), because keeping it crashed the test process.
   ///

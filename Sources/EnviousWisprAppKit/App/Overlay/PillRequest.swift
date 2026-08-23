@@ -8,10 +8,11 @@ import Foundation
 // including the callbacks for every button it draws, so a pill cannot reach the
 // screen with a control bound to nobody.
 //
-// Chunk C1 is a semantic no-op port. `PillAction` and `PillEffect` moved here
-// from `OverlayVocabulary.swift` under new names with their behavior unchanged;
-// `OverlayRequest` deliberately stays behind until chunk C5, so the reducer
-// holds one new name and one old one until then.
+// Chunk C1 was a semantic no-op port: `PillAction` and `PillEffect` moved here
+// from `OverlayVocabulary.swift` under new names with their behavior unchanged.
+// `OverlayRequest` stayed behind until C5c, which deleted it — the reducer now
+// speaks one vocabulary rather than a pipeline enum and a feature enum that both
+// declared `passiveChip` and `bluetoothAwareness`.
 
 // MARK: - What the user did
 

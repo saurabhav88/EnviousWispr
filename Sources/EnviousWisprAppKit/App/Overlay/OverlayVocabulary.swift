@@ -79,25 +79,6 @@ enum OverlayContinuity: Equatable, Sendable {
     currentFrame: CGRect, anchoredScreen: ScreenID, outgoingWasContentSized: Bool)
 }
 
-// MARK: - Feature requests and actions
-
-/// A request from a FEATURE — something that is not the dictation pipeline.
-///
-/// The pipeline speaks `OverlayIntent`; features speak this. Keeping them as
-/// two types is what lets the reducer state the arbitration rule as a fact about
-/// types rather than as a convention: a feature may occupy the slot only while
-/// the pipeline is idle. Today that rule is spelled out separately at every
-/// feature — importStatusOwnsCurrentSlot reads
-/// `currentIntent == .hidden && …`, Bluetooth keeps its own `isPresented`
-/// flag, and the passive chip keeps a generation counter — and nothing holds
-/// them to the same answer.
-enum OverlayRequest: Equatable, Sendable {
-  case importStatus(message: String)
-  case bluetoothAwareness
-  case passiveChip(payload: LanguageChipPayload)
-  case accessibilityToast
-}
-
 // MARK: - What ends up on screen
 
 /// What a screen reader says when a presentation arrives, and how loudly.

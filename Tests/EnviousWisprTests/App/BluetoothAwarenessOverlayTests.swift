@@ -14,7 +14,7 @@
   ///
   /// Retargeted from `RecordingOverlayPanel` to `OverlayDirector` in #2292. The
   /// properties are unchanged. Two things in the old preamble no longer apply and
-  /// are removed rather than carried: the card is now a `.featureRequest` rather
+  /// are removed rather than carried: the card is now a feature request rather
   /// than a pipeline intent, and the suite no longer has to touch
   /// `NSApplication.shared` to stop an accessibility post crashing a headless host,
   /// because the headless director's announcement seam goes nowhere.

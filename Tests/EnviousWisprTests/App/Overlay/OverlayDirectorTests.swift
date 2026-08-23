@@ -669,9 +669,9 @@
     /// **The pipeline-intent assertion this case used to carry was DELETED and
     /// its claim was false** (#2292 C5c). It read "a feature must not change the
     /// PIPELINE intent", which was true of the spelling this case used to send —
-    /// `.featureRequest(.passiveChip(...))`, routed through `reduceFeature`,
-    /// which never touches `pipelineIntent`. That spelling is not the one
-    /// production uses and is now unreachable. The typed request travels as
+    /// a feature request routed through the reducer's feature path, which never
+    /// touches `pipelineIntent`. That spelling was not the one production used
+    /// and C5c deleted it outright. The typed request travels as
     /// `.pipeline(.passiveChip)` and SETS the pipeline intent, which is the whole
     /// point: the language presenter arbitrates against exactly that.
     /// `PillRequestParityTests.languageChip` owns the claim in its correct

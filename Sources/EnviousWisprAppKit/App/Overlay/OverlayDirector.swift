@@ -239,8 +239,8 @@ final class OverlayDirector {
   /// neither can tell those two apart in any case. Both take it as a closure, so
   /// neither changes at the cutover; only the closure bodies do.
   var currentIntent: OverlayIntent {
-    // **A feature that OCCUPIES the slot has to say so.** `BluetoothAwareness`
-    // is a `.featureRequest`, so it never touches `pipelineIntent` — and
+    // **A feature that OCCUPIES the slot has to say so.** A feature never
+    // touches `pipelineIntent` — and
     // `BluetoothAwarenessPresenter` confirms its own card by asking this for
     // `.bluetoothAwareness` before it will act on any of its buttons. Returning
     // the bare pipeline intent left that handshake permanently failing and every
@@ -946,7 +946,7 @@ struct OverlayScheduler {
 /// that state private instead of widening it for a translation layer.
 extension OverlayDirector: OverlayPresenting {
 
-  var featureSlotIsAvailable: Bool { currentIntent == .hidden }
+  var featureSlotIsAvailable: Bool { reducer.state.featureSlotIsAvailable }
 
   @discardableResult
   func present(_ request: PillRequest) -> PillReceipt? {
@@ -979,7 +979,7 @@ extension OverlayDirector: OverlayPresenting {
     case .recoverySucceeded:
       handle(.pipeline(.recoverySucceeded), binding: .none)
     case .importStatus(let message):
-      handle(.featureRequest(.importStatus(message: message)), binding: .none)
+      handle(.importStatus(message: message), binding: .none)
 
     case .accessibilityNotice:
       presentAccessibilityNotice()
@@ -997,12 +997,15 @@ extension OverlayDirector: OverlayPresenting {
             self?.dismissSilently()
           },
           onExpire: nil))
-    // **The chip is a `.pipeline` intent, not a `.featureRequest`, and the two
-    // spellings both exist.** `OverlayIntent` and `OverlayRequest` each declare
-    // a `passiveChip` case; the shipped path routes it through the pipeline, so
-    // it sets `pipelineIntent` and arbitrates against the pipeline the way the
-    // presenter expects. Bluetooth is the mirror image and genuinely is a
-    // `.featureRequest`. Sending either through the other enum compiles.
+    // **The chip travels as a PIPELINE intent, and the Bluetooth card does not.**
+    // The shipped path routes the chip through the pipeline, so it sets
+    // `pipelineIntent` and arbitrates against the pipeline the way the presenter
+    // expects; the card is a feature and leaves `pipelineIntent` alone.
+    //
+    // Until C5c both spellings existed — `OverlayIntent` and a separate
+    // `OverlayRequest` each declared `passiveChip` and `bluetoothAwareness`, and
+    // sending either through the other enum COMPILED. That is why the type is
+    // gone: one vocabulary means there is no wrong enum to send through.
     case .languageChip(let payload, let onLock, let onDismiss, let onExpire):
       // **Admission lives HERE, beside the state change** (#2292 C3). It used
       // to live in the presenter, which read the current intent and compared
@@ -1034,7 +1037,7 @@ extension OverlayDirector: OverlayPresenting {
       // moment either feature uses it, so the two cannot drift.
       guard featureSlotIsAvailable else { return nil }
       handle(
-        .featureRequest(.bluetoothAwareness),
+        .bluetoothAwareness,
         binding: .install(
           deliver: { action in
             switch action {

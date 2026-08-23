@@ -42,7 +42,7 @@ struct OverlayReducerTests {
     var r = Self.makeReducer()
     _ = r.reduce(.pipeline(.recording(audioLevel: 0.4)))
 
-    let plan = r.reduce(.featureRequest(.importStatus(message: "Imported 12 words")))
+    let plan = r.reduce(.importStatus(message: "Imported 12 words"))
 
     #expect(plan.didChange == false)
     #expect(plan.presentation == nil)
@@ -58,7 +58,7 @@ struct OverlayReducerTests {
   @Test("a feature takes the slot while the pipeline is idle")
   func featureIsAcceptedWhenIdle() {
     var r = Self.makeReducer()
-    let plan = r.reduce(.featureRequest(.importStatus(message: "Imported 12 words")))
+    let plan = r.reduce(.importStatus(message: "Imported 12 words"))
 
     #expect(plan.didChange)
     guard case .notice(let notice)? = plan.presentation?.content else {
@@ -68,25 +68,28 @@ struct OverlayReducerTests {
     #expect(notice.text == "Imported 12 words")
   }
 
+  /// **Two features, not four** (#2292 C5c). This swept `OverlayRequest`'s four
+  /// cases, two of which were never reachable as feature requests: the language
+  /// chip travels as `.pipeline(.passiveChip)` and the accessibility toast
+  /// through `reduceAccessibilityNotice`. Sweeping them here asserted the rule
+  /// about two routes nothing used, and the duplicate spellings are what made a
+  /// bare `.bluetoothAwareness` resolve to the wrong overload and recurse until
+  /// the stack ended. Both features that DO arbitrate are still swept.
   @Test(
     "every feature request obeys the same arbitration rule",
     arguments: [
-      OverlayRequest.importStatus(message: "x"),
+      OverlayEvent.importStatus(message: "x"),
       .bluetoothAwareness,
-      .accessibilityToast,
-      .passiveChip(
-        payload: LanguageChipPayload(
-          lang: "es", displayName: "Spanish", state: .askToLock, generation: 1)),
     ])
-  func everyFeatureObeysTheRule(request: OverlayRequest) {
-    // The defect this guards is not one feature getting it wrong; it is the four
-    // features DISAGREEING, which is what four separate ownership flags produce.
+  func everyFeatureObeysTheRule(request: OverlayEvent) {
+    // The defect this guards is not one feature getting it wrong; it is the
+    // features DISAGREEING, which is what separate ownership flags produce.
     var busy = Self.makeReducer()
     _ = busy.reduce(.pipeline(.recording(audioLevel: 0.1)))
-    #expect(busy.reduce(.featureRequest(request)).didChange == false)
+    #expect(busy.reduce(request).didChange == false)
 
     var idle = Self.makeReducer()
-    #expect(idle.reduce(.featureRequest(request)).didChange)
+    #expect(idle.reduce(request).didChange)
   }
 
   // MARK: - Identity
@@ -272,7 +275,7 @@ struct OverlayReducerTests {
     _ = r.reduce(.expiryFired(id))
 
     #expect(
-      r.reduce(.featureRequest(.importStatus(message: "Imported 12 words"))).didChange,
+      r.reduce(.importStatus(message: "Imported 12 words")).didChange,
       "features stayed blocked after a pipeline notice expired")
   }
 
@@ -637,19 +640,25 @@ struct OverlayReducerTests {
       "the language chip is showPanel(width: 340, height: 56) at its shipped site")
 
     var toast = Self.makeReducer()
-    _ = toast.reduce(.featureRequest(.accessibilityToast))
+    _ = toast.reduceAccessibilityNotice(showingToast: { true })
     #expect(
       toast.state.current?.reservesFixedHeight == 56,
       "the accessibility toast is showPanel(height: 56) at its shipped site")
   }
 
-  /// The feature-request half of the notice table. The closed-set sweep above
-  /// walks PIPELINE intents only, so a feature row could carry any kind at all
-  /// and nothing would notice.
-  @Test("an accessibility feature request renders as an accessibility toast")
+  /// The accessibility half of the notice table. The closed-set sweep above
+  /// walks PIPELINE intents only, so this row could carry any kind at all and
+  /// nothing would notice.
+  ///
+  /// **Driven through `reduceAccessibilityNotice`** (#2292 C5c). It used to send
+  /// `.featureRequest(.accessibilityToast)`, a second route to the same
+  /// presentation that no caller ever took — `presentAccessibilityNotice` has
+  /// always gone through the eligibility branch, because the announcement has to
+  /// be posted whether the toast is drawn or the clipboard hint replaces it.
+  @Test("the accessibility notice renders as an accessibility toast")
   func featureAccessibilityToastKind() {
     var r = Self.makeReducer()
-    _ = r.reduce(.featureRequest(.accessibilityToast))
+    _ = r.reduceAccessibilityNotice(showingToast: { true })
     guard case .notice(let notice)? = r.state.current?.content else {
       Issue.record("expected a notice")
       return
@@ -746,9 +755,9 @@ struct OverlayReducerTests {
   @Test("import status cannot take the slot from another feature")
   func importStatusCannotStealAFeatureSlot() {
     var r = Self.makeReducer()
-    _ = r.reduce(.featureRequest(.bluetoothAwareness))
+    _ = r.reduce(.bluetoothAwareness)
 
-    let stolen = r.reduce(.featureRequest(.importStatus(message: "Importing…")))
+    let stolen = r.reduce(.importStatus(message: "Importing…"))
 
     #expect(stolen.didChange == false)
     guard case .bluetoothAwareness? = r.state.current?.content else {
@@ -759,8 +768,8 @@ struct OverlayReducerTests {
     // The paired ACCEPTED case: it must still replace its own kind, which is the
     // race the #1701 pill exists to survive.
     var live = Self.makeReducer()
-    _ = live.reduce(.featureRequest(.importStatus(message: "Importing…")))
-    let replaced = live.reduce(.featureRequest(.importStatus(message: "Finished.")))
+    _ = live.reduce(.importStatus(message: "Importing…"))
+    let replaced = live.reduce(.importStatus(message: "Finished."))
     #expect(replaced.didChange)
   }
 
@@ -805,7 +814,7 @@ struct OverlayReducerTests {
   @Test("an import-status request renders as import status")
   func importStatusKind() {
     var r = Self.makeReducer()
-    _ = r.reduce(.featureRequest(.importStatus(message: "Imported 12 words")))
+    _ = r.reduce(.importStatus(message: "Imported 12 words"))
     guard case .notice(let notice)? = r.state.current?.content else {
       Issue.record("expected a notice")
       return
