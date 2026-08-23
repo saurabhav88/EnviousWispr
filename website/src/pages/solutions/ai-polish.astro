@@ -59,7 +59,7 @@ const directAnswer = `AI polish for dictation turns a spoken transcript into cle
     <div class="proof-window-bar"><i></i><i></i><i></i>polish-route</div>
     <div class="proof-body">
       <div class="proof-row">
-        <span class="proof-row-label">Spoken transcript</span>
+        <span class="proof-row-label">Spoken transcript<span class="proof-wave" aria-hidden="true"><span style="height:4px"></span><span style="height:9px"></span><span style="height:6px"></span><span style="height:11px"></span><span style="height:5px"></span><span style="height:8px"></span><span style="height:3px"></span><span style="height:7px"></span></span></span>
         <p>Um send Maya the revised outline on Tuesday at about three thirty and ask if the second section is clear.</p>
       </div>
       <div class="proof-row output">
@@ -90,11 +90,11 @@ const directAnswer = `AI polish for dictation turns a spoken transcript into cle
     </div>
     <div>
       <p class="solution-section-lead">Speech recognition finishes on your Mac before polish begins. A local route keeps the request there. A cloud route sends the transcript, cleanup instructions, custom words, target app name, and your account credential directly to the selected provider. Envious Labs does not operate a transcription or polish relay.</p>
-      <div class="solution-callout" style="margin-top:20px"><strong>One Ollama detail worth checking</strong><p>Ollama supports both downloaded local models and hosted models. A hosted model runs on Ollama's servers, even though you selected Ollama in the app.</p></div>
+      <div class="solution-callout" style="margin-top:22px"><span class="solution-callout-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.6 20 6v5.4c0 4.3-3.2 7.4-8 8.6-4.8-1.2-8-4.3-8-8.6V6Z"/><path d="m9 12 2.2 2.2L15.4 10"/></svg></span><div><strong>One Ollama detail worth checking</strong><p>Ollama supports both downloaded local models and hosted models. A hosted model runs on Ollama's servers, even though you selected Ollama in the app.</p></div></div>
     </div>
   </section>
 
-  <section class="solution-section" aria-labelledby="polish-failure-heading">
+  <section class="solution-section solution-statement" aria-labelledby="polish-failure-heading">
     <div>
       <p class="solution-kicker">Fail soft</p>
       <h2 id="polish-failure-heading">A polish problem should not swallow your thought.</h2>
