@@ -164,6 +164,30 @@ struct SettingsDefaultsRoutingTests {
     #expect(!keys.contains("sessionLanguagePriors"))
   }
 
+  /// #1831 removed the Deep-reasoning toggle. `exclusionsHold` above asserts
+  /// only that a retired key is absent from the unified set — the half the
+  /// #734 `noiseSuppression` precedent covers. This adds the half it does not:
+  /// that a key already ON DISK from a previous build is actively stripped.
+  ///
+  /// The two are different failures. A key left in the unified set would sync
+  /// a dead value between machines; a key left on disk is inert today and
+  /// becomes a live setting again the moment anyone reuses the name.
+  @Test("a persisted useExtendedThinking key from a previous build is stripped")
+  func retiredReasoningKeyIsStripped() {
+    let suite = Self.freshSuite()
+    suite.set(true, forKey: "useExtendedThinking")
+    // Positive control: prove the seed landed, or this test passes vacuously
+    // against a suite that never had the key at all.
+    #expect(suite.object(forKey: "useExtendedThinking") as? Bool == true)
+
+    _ = SettingsManager(defaults: suite)
+
+    #expect(
+      suite.object(forKey: "useExtendedThinking") == nil,
+      "constructing SettingsManager must strip the retired key, not just ignore it")
+    #expect(!Set(SettingsManager.unifiedDefaultsKeys).contains("useExtendedThinking"))
+  }
+
   // MARK: - Appearance preference (#1047)
 
   @Test("appearance defaults to .system on a fresh install")

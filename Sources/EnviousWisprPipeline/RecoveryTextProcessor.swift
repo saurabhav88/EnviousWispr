@@ -108,9 +108,12 @@ public final class RecoveryTextProcessor {
     steps.llmPolish.llmModel = LLMProvider.replacingRetiredModel(
       snapshot.llmModel, for: steps.llmPolish.llmProvider)
     steps.llmPolish.backend = snapshot.backendType
-    // Reasoning setting at record time, so a reasoning-capable provider replays
-    // under the same setting the live dictation used (Codex PR0 P2).
-    steps.llmPolish.useExtendedThinking = snapshot.useExtendedThinking
+    // #1831 removed the record-time reasoning setting this used to replay. The
+    // reason it existed still holds and is now satisfied structurally rather
+    // than by carrying state: a recovered take must polish under the same
+    // request shape the live dictation would have used, and that shape is now
+    // determined entirely by provider + model, both of which ARE replayed from
+    // the snapshot two lines above.
     // No persisted language-detection result for a recovered take; the planner
     // treats nil detection safely.
     steps.llmPolish.languageDetection = nil

@@ -24,7 +24,6 @@ struct DictationSessionConfigTests {
     #expect(config.llmProvider == .none)
     #expect(config.llmModel == "")
     #expect(config.polishInstructions.systemPrompt == PolishInstructions.default.systemPrompt)
-    #expect(config.useExtendedThinking == false)
     #expect(config.selectedInputDeviceUID == "")
     #expect(config.preferredInputDeviceIDOverride == "")
   }
@@ -42,7 +41,6 @@ struct DictationSessionConfigTests {
       useStreamingASR: false,
       llmProvider: .appleIntelligence,
       llmModel: "apple-intelligence",
-      useExtendedThinking: true,
       selectedInputDeviceUID: "BuiltInMic",
       preferredInputDeviceIDOverride: "ExternalMic"
     )
@@ -56,7 +54,6 @@ struct DictationSessionConfigTests {
     #expect(config.useStreamingASR == false)
     #expect(config.llmProvider == LLMProvider.appleIntelligence)
     #expect(config.llmModel == "apple-intelligence")
-    #expect(config.useExtendedThinking == true)
     #expect(config.selectedInputDeviceUID == "BuiltInMic")
     #expect(config.preferredInputDeviceIDOverride == "ExternalMic")
     #expect(config.smartInsertion == true)

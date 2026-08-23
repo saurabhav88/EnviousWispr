@@ -217,8 +217,6 @@ final class PipelineSettingsSync {
       Task { await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled) }
     case .debugLogLevel:
       Task { await AppLogger.shared.setLogLevel(settings.debugLogLevel) }
-    case .useExtendedThinking:
-      break  // Frozen per recording; see `DictationSessionConfig`. (Re-polish mirror removed #1106.)
     case .selectedInputDeviceUID:
       // Rebuilds next recording's capture source; in-flight recordings unaffected.
       audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID

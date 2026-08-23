@@ -93,7 +93,6 @@ public struct DictationSessionConfig: Sendable {
   /// races inside `SettingsManager`.
   public let llmModel: String
   public let polishInstructions: PolishInstructions
-  public let useExtendedThinking: Bool
 
   // MARK: Audio device selection
 
@@ -158,7 +157,6 @@ public struct DictationSessionConfig: Sendable {
     llmProvider: LLMProvider,
     llmModel: String,
     polishInstructions: PolishInstructions,
-    useExtendedThinking: Bool,
     selectedInputDeviceUID: String,
     preferredInputDeviceIDOverride: String,
     recoverySessionID: String? = nil,
@@ -181,7 +179,6 @@ public struct DictationSessionConfig: Sendable {
     self.llmProvider = llmProvider
     self.llmModel = llmModel
     self.polishInstructions = polishInstructions
-    self.useExtendedThinking = useExtendedThinking
     self.selectedInputDeviceUID = selectedInputDeviceUID
     self.preferredInputDeviceIDOverride = preferredInputDeviceIDOverride
     self.recoverySessionID = recoverySessionID

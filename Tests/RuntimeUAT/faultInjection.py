@@ -1749,10 +1749,11 @@ def A6_settings_storm(**_) -> dict:
     `wordCorrectionEnabled live-sync from PipelineSettingsSync`.
 
     Notes 2026-05-02:
-    - Toggles in the AI Polish tab (writing style, Deep reasoning) are
-      LIMBS — their copy explicitly says "Changes made during a recording
-      apply to the next recording." So they do not exercise the live-sync
-      hot path and are not what this scenario is for.
+    - Toggles in the AI Polish tab (writing style) are LIMBS — their copy
+      explicitly says "Changes made during a recording apply to the next
+      recording." So they do not exercise the live-sync hot path and are not
+      what this scenario is for. (Deep reasoning was the other example here
+      until #1831 removed it.)
     - `noiseSuppression` was the heaviest live-sync (cancelled recording +
       rebuilt engine), but the toggle was removed in #734 because the rebuild
       path was structurally hostile to the heart and Apple Voice Processing

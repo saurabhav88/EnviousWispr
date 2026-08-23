@@ -24,7 +24,6 @@ extension DictationSessionConfig {
     llmProvider: LLMProvider = .none,
     llmModel: String = "",
     polishInstructions: PolishInstructions = .default,
-    useExtendedThinking: Bool = false,
     selectedInputDeviceUID: String = "",
     preferredInputDeviceIDOverride: String = "",
     // #2087: both default to the pre-feature world — off, and no spool — so
@@ -49,7 +48,6 @@ extension DictationSessionConfig {
       llmProvider: llmProvider,
       llmModel: llmModel,
       polishInstructions: polishInstructions,
-      useExtendedThinking: useExtendedThinking,
       selectedInputDeviceUID: selectedInputDeviceUID,
       preferredInputDeviceIDOverride: preferredInputDeviceIDOverride,
       recoverySessionID: recoverySessionID,

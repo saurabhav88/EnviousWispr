@@ -179,7 +179,8 @@ def openai_capabilities(model: str) -> dict:
     )
     is_responses_only = "codex" in mid or "-pro" in mid
     return {
-        # .effort(fast: "low", deep: "medium") — fast is the shipped default.
+        # .effort("low") — the single shipped value since #1831 removed the
+        # Deep-reasoning toggle. It is what the pair's fast side always sent.
         "reasoning_effort": "low" if is_reasoning else None,
         "send_temperature": not is_reasoning,
         "supports_chat_completions": not is_responses_only,

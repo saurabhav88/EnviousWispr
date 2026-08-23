@@ -16,7 +16,7 @@ Last-updated: 2026-08-22
 
 ## Help
 
-- [Help centre](https://enviouswispr.com/help/): All 52 support articles, searchable, with the complete article list on the page.
+- [Help centre](https://enviouswispr.com/help/): The full support library, searchable, with the complete article list on the page.
 - [Getting Started](https://enviouswispr.com/help/getting-started/): System requirements, download and install, first dictation, granting microphone and accessibility permission, uninstalling.
 - [Troubleshooting](https://enviouswispr.com/help/troubleshooting/): No text appearing, inaccurate dictation, first word cut off, accessibility permission not sticking, recording that will not stop, Ollama and Apple Intelligence failures, app crashes.
 - [Recording and Keybinds](https://enviouswispr.com/help/recording-and-keybinds/): Push-to-talk, hands-free, toggle mode, changing the recording keybind, cancelling a recording.

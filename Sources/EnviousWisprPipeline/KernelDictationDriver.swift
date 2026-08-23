@@ -1756,7 +1756,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     steps.llmPolish.llmProvider = config.llmProvider
     steps.llmPolish.llmModel = config.llmModel
     steps.llmPolish.polishInstructions = config.polishInstructions
-    steps.llmPolish.useExtendedThinking = config.useExtendedThinking
   }
 
   /// Clear `context.config` + paste-target references whenever the kernel is

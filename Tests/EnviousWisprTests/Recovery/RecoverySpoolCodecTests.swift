@@ -27,7 +27,6 @@ struct RecoverySpoolCodecTests {
       customWordsVersion: "v3",
       llmProvider: "appleIntelligence",
       llmModel: "apple-intelligence",
-      useExtendedThinking: true,
       polishPromptVersion: "v38")
   }
 
@@ -131,6 +130,71 @@ struct RecoverySpoolCodecTests {
     #expect(throws: RecoverySpoolCipherError.authenticationFailed) {
       _ = try wrongReader.openSettings(sealed)
     }
+  }
+
+  // MARK: - Legacy spool compatibility (#1831)
+
+  /// #1831 removed `useExtendedThinking` from `RecordingSettingsSnapshot`. A
+  /// spool written by the PREVIOUS build carries that key, and a user who
+  /// crashes on the old build and relaunches on the new one must still recover.
+  ///
+  /// TWO ARMS, because one alone would not answer the question.
+  ///
+  /// Arm 1 runs the whole production seam — `sealSettings` -> `openSettings`
+  /// (`RecoverySpoolCipher.swift:235`, `:256`) — proving the seam still works
+  /// after the field removal.
+  ///
+  /// Arm 2 supplies plaintext carrying the retired key and decodes it with the
+  /// exact expression `openSettings` uses at `RecoverySpoolCipher.swift:266`:
+  /// `JSONDecoder().decode(RecordingSettingsSnapshot.self, from: plaintext)`.
+  /// It is NOT a hand-built decoder — it is that call, with the AES wrapper
+  /// omitted because the private nonce and AAD are file-scoped and unreachable
+  /// from a test. STATED LIMIT rather than hidden: the wrapper produces the
+  /// plaintext and cannot change how that plaintext decodes, so nothing about
+  /// key tolerance lives in the arm this cannot reach.
+  ///
+  /// The tolerance is a property of the PAIR — synthesized `Decodable` requests
+  /// only the properties it declares, and `JSONDecoder` ignores keys nobody
+  /// asked for. Neither half alone implies it, which is why a future
+  /// hand-written `init(from:)` could break this silently. The mutation control
+  /// for that is in the plan's `test-hardening` recipe: a custom `init(from:)`
+  /// using a DYNAMIC coding-key type, which can enumerate keys actually present
+  /// and throw on the retired one. A fixed `CodingKeys` enum cannot express
+  /// that control — a case with no matching property defeats `Codable`
+  /// synthesis and fails to COMPILE, which would prove the build broke rather
+  /// than that this guard detects unknown-key rejection.
+  @Test("a spool written before #1831 still decodes, retired key and all")
+  func legacySpoolWithRetiredKeyStillDecodes() throws {
+    // Arm 1: the real seam, end to end.
+    let cipher = RecoverySpoolCipher(mode: .aesGcm256, keyData: Self.key())
+    let sealed = try #require(try cipher.sealSettings(snapshot()))
+    #expect(try cipher.openSettings(sealed) == snapshot())
+
+    // Arm 2: plaintext from the OLD build, carrying the retired key.
+    //
+    // DERIVED from the real encoder, never hand-written. A literal JSON fixture
+    // would encode this author's GUESS at the wire shape of every field —
+    // `LanguageMode`'s enum representation above all — and a wrong guess fails
+    // for the wrong reason while a lucky one silently stops matching the real
+    // format the next time an unrelated field changes. Encoding the live
+    // snapshot and inserting only the retired key isolates the one difference
+    // this test is about.
+    let current = try JSONEncoder().encode(snapshot())
+    var fields = try #require(
+      try JSONSerialization.jsonObject(with: current) as? [String: Any])
+    #expect(
+      fields["useExtendedThinking"] == nil,
+      "the retired key must be absent from a NEW snapshot, or arm 2 tests nothing")
+    fields["useExtendedThinking"] = true
+    let legacy = try JSONSerialization.data(withJSONObject: fields)
+
+    // Positive control on the fixture itself: if the injection had not landed,
+    // this would pass while proving nothing.
+    #expect(String(decoding: legacy, as: UTF8.self).contains("useExtendedThinking"))
+
+    let decoded = try JSONDecoder().decode(RecordingSettingsSnapshot.self, from: legacy)
+    // Every surviving field must arrive intact — not merely "it did not throw".
+    #expect(decoded == snapshot())
   }
 
   @Test("the file header round-trips and locates the frames")

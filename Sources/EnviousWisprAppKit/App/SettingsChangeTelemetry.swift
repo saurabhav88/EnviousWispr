@@ -37,7 +37,6 @@ enum SettingsProjection {
     case emojiFormatter = "emoji_formatter"
     case spokenPunctuation = "spoken_punctuation"
     case crashRecovery = "crash_recovery"
-    case useExtendedThinking = "use_extended_thinking"
     case languageMode = "language_mode"
     case streamingASR = "streaming_asr"
     // #1988. Instrumented because adoption is the question this feature was built
@@ -104,7 +103,6 @@ enum SettingsProjection {
     case .emojiFormatterEnabled: return [.emojiFormatter]
     case .spokenPunctuationEnabled: return [.spokenPunctuation]
     case .crashRecoveryEnabled: return [.crashRecovery]
-    case .useExtendedThinking: return [.useExtendedThinking]
     case .languageMode: return [.languageMode]
     case .useStreamingASR: return [.streamingASR]
     case .livePreviewEnabled: return [.livePreview]
@@ -152,7 +150,6 @@ enum SettingsProjection {
     case .emojiFormatter: return onOff(settings.emojiFormatterEnabled)
     case .spokenPunctuation: return onOff(settings.spokenPunctuationEnabled)
     case .crashRecovery: return onOff(settings.crashRecoveryEnabled)
-    case .useExtendedThinking: return onOff(settings.useExtendedThinking)
     case .languageMode: return languageModeLabel(settings.languageMode)
     case .streamingASR: return onOff(settings.useStreamingASR)
     case .livePreview: return onOff(settings.livePreviewEnabled)

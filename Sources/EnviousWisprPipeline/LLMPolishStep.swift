@@ -20,7 +20,6 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   public var llmProvider: LLMProvider = .none
   public var llmModel: String = LLMProvider.defaultModel(for: .openAI)
   public var polishInstructions: PolishInstructions = .default
-  public var useExtendedThinking: Bool = false
   public var polishVocabulary: PolishVocabulary = .empty
 
   // MARK: - Multilingual v1 (W3)
@@ -234,13 +233,17 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// chars/second leaves ~2.6x margin on the variable part alone. Headroom
   /// lands at 6x / 6x / 4.5x / 2.7x across the table above.
   ///
-  /// `base` is 5 s normally — preserving today's short-dictation failure speed
-  /// almost exactly (110 chars -> 5.22 s) — and 60 s when the resolved request
-  /// carries a deep-thinking value, because deep mode spends a measured
-  /// 42.2-42.4 s thinking BEFORE the first byte, a fixed cost rather than a
-  /// per-character one. It keys off the resolved `ThinkingControl`, not the raw
-  /// toggle: an `.unsupported` model sends no thinking field at all, so it must
-  /// not inherit the deep base merely because the toggle is on.
+  /// `base` is 5 s, preserving today's short-dictation failure speed almost
+  /// exactly (110 chars -> 5.22 s).
+  ///
+  /// #1831 removed the 60 s deep base along with the Deep-reasoning toggle that
+  /// was its only trigger. The measurement that justified it is kept because it
+  /// is evidence, not dead code: deep mode spent a measured 42.2-42.4 s
+  /// thinking BEFORE the first byte, a fixed cost rather than a per-character
+  /// one. No caller can request that shape any more — the capability table now
+  /// holds one value per model, each of them the toggle's OFF value — so 5 s is
+  /// what every Gemini request has always been budgeted at in the shipped
+  /// default configuration.
   ///
   /// Capped at 180 s to match `URLSession`'s `timeoutIntervalForResource`
   /// (`LLMNetworkSession`): beyond that the transport terminates the attempt
@@ -249,36 +252,30 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   ///
   /// Transport liveness is NOT reimplemented here — the shared session already
   /// provides a 60 s inter-data idle timer and the 180 s resource cap.
-  /// Reads `llmProvider` / `llmModel` / `useExtendedThinking` live, exactly as
-  /// the existing `maxDuration` above already reads `llmProvider` live at this
-  /// same call site. Safe because `PipelineSettingsSync` deliberately does NOT
-  /// mirror these three onto a live step — `.llmProvider` ("live steps are
-  /// seeded per recording, so nothing to mirror here") and `.useExtendedThinking`
-  /// ("Frozen per recording") are explicit no-ops there, and the values are
-  /// frozen into `DictationSessionConfig` at record start. The only writers are
-  /// session start and `RecoveryTextProcessor.applySettings`, neither of which
-  /// runs while a `process()` is in flight.
+  /// Reads `llmProvider` live, exactly as the existing `maxDuration` above
+  /// already does at this same call site. Safe because `PipelineSettingsSync`
+  /// deliberately does NOT mirror it onto a live step — `.llmProvider` ("live
+  /// steps are seeded per recording, so nothing to mirror here") is an explicit
+  /// no-op there, and the value is frozen into `DictationSessionConfig` at
+  /// record start. The only writers are session start and
+  /// `RecoveryTextProcessor.applySettings`, neither of which runs while a
+  /// `process()` is in flight.
   ///
-  /// KNOWN LIMIT, recorded rather than engineered around: this is an invariant
-  /// held elsewhere, not a guarantee of this function. If mirroring is ever
-  /// added for these fields, the budget and the request could be computed for
-  /// different settings — a deep request could inherit the 5 s fast budget.
-  /// Closing that properly means giving the runner and the step one shared
-  /// snapshot, which is a change to the execution boundary and not warranted
-  /// for a window no current code can open.
+  /// The KNOWN LIMIT this carried — that a mirrored settings change could let
+  /// the budget and the request disagree, giving a deep request the 5 s fast
+  /// budget — was retired by #1831 along with the toggle. There is now one base
+  /// for every Gemini request, so a torn read cannot produce a budget/request
+  /// mismatch on this axis. `llmProvider` and `llmModel` retain the invariant
+  /// above.
   public func maxDuration(for context: TextProcessingContext) -> Duration {
     guard llmProvider == .gemini else { return maxDuration }
-    let control = llmProvider.modelCapabilities(model: llmModel).thinkingControl
-    let isDeep = useExtendedThinking && control != .unsupported
-    let base = isDeep ? Self.geminiDeepBaseSeconds : Self.geminiFastBaseSeconds
-    let scaled = base + Double(context.text.count) / Self.geminiCharsPerSecond
+    let scaled =
+      Self.geminiBaseSeconds + Double(context.text.count) / Self.geminiCharsPerSecond
     return .seconds(min(Self.geminiMaxBudgetSeconds, scaled))
   }
 
-  /// Fast-mode base: preserves today's 5 s short-dictation failure speed.
-  private static let geminiFastBaseSeconds: Double = 5
-  /// Deep-mode base: covers the measured 42.2-42.4 s of pre-first-byte thinking.
-  private static let geminiDeepBaseSeconds: Double = 60
+  /// Preserves today's 5 s short-dictation failure speed.
+  private static let geminiBaseSeconds: Double = 5
   /// Budgeted throughput, ~2.6x slower than the slowest measured rate.
   private static let geminiCharsPerSecond: Double = 500
   /// Matches `URLSession.timeoutIntervalForResource`; beyond it the transport
@@ -465,7 +462,6 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // read below uses these locals, never `self`, so reentrancy cannot tear it.
     let provider = llmProvider
     let model = llmModel
-    let extendedThinking = useExtendedThinking
     telemetry.breadcrumbStarted(
       "LLM polish started",
       [
@@ -651,8 +647,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       provider == .ollama
       ? Self.ollamaThinking(thinks: ollamaThinks)
       : Self.resolveThinking(
-        control: provider.modelCapabilities(model: model).thinkingControl,
-        useExtendedThinking: extendedThinking
+        control: provider.modelCapabilities(model: model).thinkingControl
       )
     let outputTokens = Self.outputTokenPolicy(
       provider: provider, model: model, textCount: context.text.count,
@@ -1144,19 +1139,6 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     }
   }
 
-  /// Resolve the thinking value for this request from the per-model capability
-  /// authority and the user's toggle (#1770).
-  ///
-  /// This function knows NO model ids. Providers disagree on both the wire key
-  /// and the legal values per model — Gemini 2.5 wants an integer budget,
-  /// Gemini 3 wants a string level and rejects budget 0 — and encoding that
-  /// here is what shipped `thinkingBudget: 0` to models that refuse it. The
-  /// dialect and its fast/deep values live together in
-  /// `LLMModelCapabilities.thinkingControl`; this only picks which of the two.
-  ///
-  /// Static and fed from `process()`'s entry snapshot, never from `self`, so a
-  /// concurrent settings change cannot tear it away from the model the rest of
-  /// the request was built for.
   /// #1914: Ollama's thinking value, resolved from the attempt's observed facts.
   ///
   /// A thinking model gets an explicit `"low"`, never an omitted field and never
@@ -1182,15 +1164,27 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     thinks == true ? .level("low") : nil
   }
 
+  /// Carry the per-model capability value onto the wire (#1770; #1831 removed
+  /// the user toggle that used to pick between a fast and a deep value).
+  ///
+  /// This function knows NO model ids. Providers disagree on both the wire key
+  /// and the legal values per model — Gemini 2.5 wants an integer budget,
+  /// Gemini 3 wants a string level and rejects budget 0 — and encoding that
+  /// here is what shipped `thinkingBudget: 0` to models that refuse it. The
+  /// dialect and its value live together in
+  /// `LLMModelCapabilities.thinkingControl`; this only changes the type.
+  ///
+  /// Static and fed from `process()`'s entry snapshot, never from `self`, so a
+  /// concurrent settings change cannot tear it away from the model the rest of
+  /// the request was built for.
   private static func resolveThinking(
-    control: LLMModelCapabilities.ThinkingControl,
-    useExtendedThinking: Bool
+    control: LLMModelCapabilities.ThinkingControl
   ) -> ResolvedThinking? {
     switch control {
     case .unsupported: return nil
-    case .budget(let fast, let deep): return .budget(useExtendedThinking ? deep : fast)
-    case .level(let fast, let deep): return .level(useExtendedThinking ? deep : fast)
-    case .effort(let fast, let deep): return .effort(useExtendedThinking ? deep : fast)
+    case .budget(let v): return .budget(v)
+    case .level(let v): return .level(v)
+    case .effort(let v): return .effort(v)
     }
   }
 }

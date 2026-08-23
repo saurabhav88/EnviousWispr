@@ -209,7 +209,6 @@ struct DictationSessionConfigFactoryTests {
     harness.settings.vadEnergyGate = true
     harness.settings.languageMode = .locked("en")
     harness.settings.useStreamingASR = false
-    harness.settings.useExtendedThinking = true
 
     let config = harness.makeConfig()
     #expect(config.autoCopyToClipboard == false)
@@ -220,7 +219,6 @@ struct DictationSessionConfigFactoryTests {
     #expect(config.vadEnergyGate == true)
     #expect(config.languageMode == .locked("en"))
     #expect(config.useStreamingASR == false)
-    #expect(config.useExtendedThinking == true)
   }
 }
 
