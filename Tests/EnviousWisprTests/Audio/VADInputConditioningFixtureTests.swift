@@ -174,7 +174,7 @@ struct VADInputConditioningFixtureTests {
 
   /// Minimal 16 kHz mono int16 WAV reader. Deliberately strict: a fixture in any
   /// other format is a broken fixture, not something to resample quietly.
-  private static func loadPCM16(at url: URL) throws -> [Float] {
+  fileprivate static func loadPCM16(at url: URL) throws -> [Float] {
     let data = try Data(contentsOf: url)
     guard data.count > 12,
       data[0..<4].elementsEqual("RIFF".utf8),
@@ -224,5 +224,80 @@ struct VADInputConditioningFixtureTests {
       cursor = body + size + (size % 2)
     }
     throw FixtureError.notPCM16Mono16k("\(url.lastPathComponent): no data chunk")
+  }
+}
+
+/// Protects the detector's internal reset wiring. This deliberately uses a fake
+/// VAD and compares exact conditioned samples, so it is a drift guard rather
+/// than a claim about user-visible speech boundaries.
+@Suite("VAD conditioning reset wiring", .tags(.driftGuard))
+struct VADConditioningResetWiringTests {
+
+  /// The detector is retained across recordings. Its high-pass sections carry
+  /// the previous recording's tail by design, so `reset()` must clear that
+  /// state as well as the VAD's own session state. Drive the committed cabin
+  /// recording through one retained detector twice and compare the exact audio
+  /// handed to the VAD. Segment summaries are too coarse for this contract: the
+  /// real model can produce the same boundaries even when the inherited filter
+  /// state changed the first samples.
+  @Test("a retained detector starts each session with fresh conditioning")
+  func retainedDetectorResetsConditioningBetweenSessions() async throws {
+    let recorder = ConditioningChunkRecorder()
+    let detector = SilenceDetector(
+      silenceTimeout: 1.5,
+      vadConfig: SmoothedVADConfig(),
+      makeStreamingVad: { recorder }
+    )
+    try await detector.prepare()
+    let fixture = RepoRoot.sourceURL("Tests/Fixtures/vad-conditioning/fixture-noisy-cabin.wav")
+    let samples = try VADInputConditioningFixtureTests.loadPCM16(at: fixture)
+    try #require(samples.count >= SilenceDetector.chunkSize)
+
+    let first = await conditionedChunks(from: samples, using: detector, recorder: recorder)
+    let second = await conditionedChunks(from: samples, using: detector, recorder: recorder)
+
+    try #require(second.count == first.count)
+    let firstDifferentChunk = first.indices.first { second[$0] != first[$0] }
+    #expect(
+      firstDifferentChunk == nil,
+      "the same cabin recording first differed at chunk \(String(describing: firstDifferentChunk)) after reset, so session two inherited filter state from session one"
+    )
+  }
+
+  private func conditionedChunks(
+    from samples: [Float],
+    using detector: SilenceDetector,
+    recorder: ConditioningChunkRecorder
+  ) async -> [[Float]] {
+    await detector.reset()
+    await recorder.clear()
+    let chunkSize = SilenceDetector.chunkSize
+    for start in stride(from: 0, through: samples.count - chunkSize, by: chunkSize) {
+      _ = await detector.processChunk(Array(samples[start..<(start + chunkSize)]))
+    }
+    return await recorder.recordedChunks
+  }
+}
+
+/// Records the detector's conditioned input without changing its streaming
+/// clock, so the fixture test can compare two sessions sample-for-sample.
+private actor ConditioningChunkRecorder: StreamingVad {
+  private(set) var recordedChunks: [[Float]] = []
+
+  func clear() {
+    recordedChunks = []
+  }
+
+  func processStreamingChunk(
+    _ audioChunk: [Float],
+    state: VadStreamState,
+    config: VadSegmentationConfig,
+    returnSeconds: Bool,
+    timeResolution: Int
+  ) async throws -> VadStreamResult {
+    recordedChunks.append(audioChunk)
+    var next = state
+    next.processedSamples += audioChunk.count
+    return VadStreamResult(state: next, event: nil, probability: 0)
   }
 }
