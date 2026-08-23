@@ -1,0 +1,248 @@
+---
+import BaseLayout from './BaseLayout.astro';
+
+interface FAQ {
+  question: string;
+  answer: string;
+}
+
+interface RelatedLink {
+  href: string;
+  title: string;
+  description: string;
+}
+
+interface Props {
+  title: string;
+  description: string;
+  canonicalPath: string;
+  eyebrow: string;
+  heading: string;
+  intro: string;
+  answerHeading: string;
+  directAnswer: string;
+  downloadSource: string;
+  trustItems: string[];
+  faqs: FAQ[];
+  relatedLinks: RelatedLink[];
+}
+
+const {
+  title,
+  description,
+  canonicalPath,
+  eyebrow,
+  heading,
+  intro,
+  answerHeading,
+  directAnswer,
+  downloadSource,
+  trustItems,
+  faqs,
+  relatedLinks,
+} = Astro.props;
+
+const siteUrl = 'https://enviouswispr.com';
+const pageUrl = `${siteUrl}${canonicalPath}`;
+const downloadUrl = 'https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg';
+
+const webPageJsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'WebPage',
+  name: title,
+  description,
+  url: pageUrl,
+  isPartOf: {
+    '@type': 'WebSite',
+    name: 'EnviousWispr',
+    url: siteUrl,
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: siteUrl },
+    { '@type': 'ListItem', position: 2, name: 'Solutions', item: `${siteUrl}/solutions/` },
+    { '@type': 'ListItem', position: 3, name: eyebrow, item: pageUrl },
+  ],
+});
+
+---
+
+<BaseLayout
+  title={title}
+  description={description}
+  activePage="solutions"
+  canonicalPath={canonicalPath}
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={webPageJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+  </Fragment>
+
+  <article class="solution-page">
+    <div class="container">
+      <nav class="solution-breadcrumb" aria-label="Breadcrumb">
+        <a href="/">Home</a><span aria-hidden="true">/</span>
+        <a href="/solutions/">Solutions</a><span aria-hidden="true">/</span>
+        <span aria-current="page">{eyebrow}</span>
+      </nav>
+
+      <header class="solution-hero">
+        <div class="solution-hero-copy">
+          <div class="section-label-pill accent">{eyebrow}</div>
+          <h1>{heading}</h1>
+          <p class="solution-intro">{intro}</p>
+          <div class="solution-actions">
+            <a href={downloadUrl} class="solution-primary" data-download-source={downloadSource}>Download free</a>
+            <a href="#how-it-fits" class="solution-secondary">See how it fits</a>
+          </div>
+          <ul class="solution-trust" role="list">
+            {trustItems.map((item) => <li>{item}</li>)}
+          </ul>
+        </div>
+        <div class="solution-proof" aria-label={`${eyebrow} workflow example`}>
+          <slot name="proof" />
+        </div>
+      </header>
+
+      <section class="solution-answer" aria-labelledby="direct-answer-heading" data-answer-block>
+        <p class="solution-answer-label">The short answer</p>
+        <h2 id="direct-answer-heading">{answerHeading}</h2>
+        <p>{directAnswer}</p>
+      </section>
+
+      <div id="how-it-fits" class="solution-content">
+        <slot />
+      </div>
+
+      <section class="solution-faq" aria-labelledby="faq-heading">
+        <div class="solution-section-heading">
+          <p class="solution-kicker">Common questions</p>
+          <h2 id="faq-heading">What to know before you download</h2>
+        </div>
+        <div class="solution-faq-list">
+          {faqs.map((faq) => (
+            <details>
+              <summary>{faq.question}</summary>
+              <p>{faq.answer}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <section class="solution-related" aria-labelledby="related-heading">
+        <div class="solution-section-heading">
+          <p class="solution-kicker">Keep exploring</p>
+          <h2 id="related-heading">Related guides and workflows</h2>
+        </div>
+        <div class="solution-related-grid">
+          {relatedLinks.map((link) => (
+            <a href={link.href}>
+              <h3>{link.title}</h3>
+              <p>{link.description}</p>
+              <span>Explore this guide</span>
+            </a>
+          ))}
+        </div>
+      </section>
+
+      <section class="solution-bottom-cta cta-section" aria-labelledby="solution-cta-heading">
+        <div>
+          <p class="solution-kicker">Free, private, Mac native</p>
+          <h2 id="solution-cta-heading">Give your keyboard a quieter day.</h2>
+          <p>No account and no subscription. Requires macOS 14 or later on Apple Silicon.</p>
+        </div>
+        <a href={downloadUrl} class="solution-primary" data-download-source={`${downloadSource}-bottom`}>Download EnviousWispr</a>
+      </section>
+    </div>
+  </article>
+</BaseLayout>
+
+<style is:global>
+  .solution-page { padding: 92px 0 80px; }
+  .solution-breadcrumb { display: flex; align-items: center; gap: 9px; margin: 10px 0 34px; font-size: 13px; color: var(--text-3); }
+  .solution-breadcrumb a { color: var(--text-3); text-decoration: none; }
+  .solution-breadcrumb a:hover { color: var(--accent); }
+  .solution-hero { display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(420px, 0.98fr); gap: 64px; align-items: center; min-height: 570px; }
+  .solution-hero-copy h1 { max-width: 720px; margin-bottom: 22px; font-size: clamp(46px, 5.4vw, 72px); line-height: 1.02; letter-spacing: -3.5px; }
+  .solution-intro { max-width: 650px; color: var(--text-2); font-size: 19px; line-height: 1.72; }
+  .solution-actions { display: flex; align-items: center; gap: 14px; margin-top: 30px; flex-wrap: wrap; }
+  .solution-primary, .solution-secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 13px 21px; border-radius: var(--radius-btn); font-size: 14px; font-weight: 700; text-decoration: none; transition: transform .2s, box-shadow .2s, background .2s; }
+  .solution-primary { color: #fff; background: var(--text); box-shadow: 0 10px 28px rgba(15,10,26,.14); }
+  .solution-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(15,10,26,.2); }
+  .solution-secondary { color: var(--accent); border: 1px solid rgba(124,58,237,.2); background: rgba(255,255,255,.7); }
+  .solution-secondary:hover { background: #fff; }
+  .solution-trust { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; list-style: none; }
+  .solution-trust li { padding: 7px 11px; border: 1px solid var(--border-hover); border-radius: var(--radius-pill); background: rgba(255,255,255,.72); color: var(--text-2); font-family: var(--font-mono); font-size: 11px; }
+  .solution-proof { position: relative; min-height: 440px; padding: 18px; border: 1px solid rgba(124,58,237,.14); border-radius: 28px; background: linear-gradient(145deg,rgba(255,255,255,.94),rgba(240,236,249,.82)); box-shadow: 0 32px 80px rgba(62,34,107,.13); overflow: hidden; }
+  .solution-proof::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 85% 10%,rgba(0,204,221,.16),transparent 34%),radial-gradient(circle at 6% 92%,rgba(124,58,237,.14),transparent 38%); pointer-events: none; }
+  .proof-window { position: relative; height: 100%; min-height: 404px; display: flex; flex-direction: column; border: 1px solid rgba(138,43,226,.11); border-radius: 18px; background: rgba(15,10,26,.96); color: #f8f5ff; overflow: hidden; }
+  .proof-window-bar { display: flex; align-items: center; gap: 7px; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.09); color: rgba(248,245,255,.55); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+  .proof-window-bar i { width: 8px; height: 8px; border-radius: 50%; background: #ff6258; }
+  .proof-window-bar i:nth-child(2) { background: #ffbd2e; }
+  .proof-window-bar i:nth-child(3) { background: #29c940; margin-right: 5px; }
+  .proof-body { display: grid; gap: 14px; padding: 22px; flex: 1; }
+  .proof-row { padding: 15px 16px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: rgba(255,255,255,.04); }
+  .proof-row-label { display: block; margin-bottom: 7px; color: #8de8f1; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
+  .proof-row p { color: rgba(248,245,255,.86); font-size: 13px; line-height: 1.65; }
+  .proof-row.output { border-color: rgba(0,250,154,.25); background: rgba(0,200,128,.08); }
+  .proof-row.output .proof-row-label { color: #55e0a8; }
+  .proof-rail { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-top: auto; }
+  .proof-rail span { position: relative; padding-top: 16px; color: rgba(248,245,255,.48); font-family: var(--font-mono); font-size: 9px; text-align: center; }
+  .proof-rail span::before { content: ''; position: absolute; top: 3px; left: 0; right: 0; height: 3px; border-radius: 3px; background: linear-gradient(90deg,#8a2be2,#00ccdd); }
+  .solution-answer { margin: 68px auto; max-width: 920px; padding: 34px 38px; border-left: 4px solid var(--accent); border-radius: 0 18px 18px 0; background: rgba(255,255,255,.78); box-shadow: 0 14px 40px rgba(62,34,107,.07); }
+  .solution-answer-label, .solution-kicker { margin-bottom: 8px; color: var(--accent); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+  .solution-answer h2 { margin-bottom: 14px; font-size: 30px; letter-spacing: -1px; }
+  .solution-answer p:last-child { color: var(--text-2); font-size: 17px; line-height: 1.8; }
+  .solution-content { display: grid; gap: 72px; scroll-margin-top: 88px; }
+  .solution-section { display: grid; grid-template-columns: .72fr 1.28fr; gap: 60px; align-items: start; }
+  .solution-section h2, .solution-section-heading h2 { font-size: clamp(30px,3.4vw,44px); line-height: 1.12; letter-spacing: -1.8px; }
+  .solution-section-lead { color: var(--text-2); font-size: 17px; line-height: 1.75; }
+  .solution-card-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; }
+  .solution-card { padding: 24px; border: 1px solid var(--border-hover); border-radius: var(--radius-card); background: rgba(255,255,255,.76); }
+  .solution-card h3 { margin-bottom: 9px; font-size: 17px; letter-spacing: -.4px; }
+  .solution-card p { color: var(--text-2); font-size: 14px; line-height: 1.65; }
+  .solution-callout { padding: 26px 28px; border: 1px solid rgba(0,204,221,.22); border-radius: 18px; background: linear-gradient(135deg,rgba(0,204,221,.08),rgba(124,58,237,.06)); }
+  .solution-callout strong { display: block; margin-bottom: 8px; font-size: 17px; }
+  .solution-callout p { color: var(--text-2); }
+  .solution-faq, .solution-related { margin-top: 92px; }
+  .solution-section-heading { max-width: 680px; margin-bottom: 32px; }
+  .solution-faq-list { display: grid; gap: 12px; }
+  .solution-faq details { border: 1px solid var(--border-hover); border-radius: 14px; background: rgba(255,255,255,.75); }
+  .solution-faq summary { padding: 20px 22px; cursor: pointer; font-size: 16px; font-weight: 700; }
+  .solution-faq details p { padding: 0 22px 22px; color: var(--text-2); line-height: 1.72; }
+  .solution-related-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+  .solution-related-grid a { display: block; padding: 24px; border: 1px solid var(--border-hover); border-radius: var(--radius-card); background: rgba(255,255,255,.72); color: var(--text); text-decoration: none; transition: transform .2s, border-color .2s; }
+  .solution-related-grid a:hover { transform: translateY(-3px); border-color: rgba(124,58,237,.25); }
+  .solution-related-grid h3 { margin-bottom: 8px; font-size: 17px; }
+  .solution-related-grid p { margin-bottom: 18px; color: var(--text-2); font-size: 13px; line-height: 1.65; }
+  .solution-related-grid span { color: var(--accent); font-size: 12px; font-weight: 700; }
+  .solution-bottom-cta { display: flex; align-items: center; justify-content: space-between; gap: 32px; margin-top: 92px; padding: 38px; border-radius: 24px; background: var(--text); color: #fff; }
+  .solution-bottom-cta h2 { margin-bottom: 7px; font-size: 32px; letter-spacing: -1.2px; }
+  .solution-bottom-cta p:not(.solution-kicker) { color: rgba(255,255,255,.67); }
+  .solution-bottom-cta .solution-primary { color: var(--text); background: #fff; white-space: nowrap; }
+  .solution-bottom-cta .solution-kicker { color: #8de8f1; }
+  @media (max-width: 980px) {
+    .solution-hero { grid-template-columns: 1fr; gap: 38px; min-height: 0; }
+    .solution-proof { min-height: 390px; }
+    .solution-section { grid-template-columns: 1fr; gap: 26px; }
+  }
+  @media (max-width: 700px) {
+    .solution-page { padding-top: 78px; }
+    .solution-breadcrumb { margin-bottom: 24px; }
+    .solution-hero-copy h1 { font-size: 43px; letter-spacing: -2.2px; }
+    .solution-intro { font-size: 17px; }
+    .solution-proof { min-height: 0; padding: 10px; border-radius: 20px; }
+    .proof-window { min-height: 390px; }
+    .proof-body { padding: 16px; }
+    .proof-rail { grid-template-columns: repeat(2,1fr); }
+    .solution-answer { margin: 48px 0; padding: 26px 24px; }
+    .solution-answer h2 { font-size: 26px; }
+    .solution-card-grid, .solution-related-grid { grid-template-columns: 1fr; }
+    .solution-faq, .solution-related { margin-top: 68px; }
+    .solution-bottom-cta { align-items: flex-start; flex-direction: column; margin-top: 68px; padding: 28px 24px; }
+  }
+</style>

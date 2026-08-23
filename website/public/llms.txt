@@ -5,12 +5,14 @@
 Maker: Envious Labs LLC (Connecticut, USA). Founder: Saurabh Vaish.
 License: GNU General Public License v3 (GPLv3, open source on GitHub).
 Platform: macOS 14 (Sonoma) or later, Apple Silicon only.
-Last-updated: 2026-08-21
+Last-updated: 2026-08-22
 
 ## Product
 
 - [How it works](https://enviouswispr.com/how-it-works/): The end-to-end pipeline: keybind hold, audio capture, on-device ASR, optional LLM polish, clipboard or paste-to-app delivery.
 - [Homepage](https://enviouswispr.com/): Download, screenshots, core value proposition, system requirements (Apple Silicon, macOS 14+).
+- [Solutions](https://enviouswispr.com/solutions/): Focused dictation workflows for the work people do on a Mac.
+- [Dictation for developers](https://enviouswispr.com/solutions/developers/): On-device voice input for PR descriptions, code reviews, issues, documentation, commit messages, and prompts.
 - [Best dictation apps for Mac](https://enviouswispr.com/compare/best-dictation-apps-for-mac/): A practical 2026 guide to seven Mac dictation options, with honest picks by workflow.
 - [Compare to alternatives](https://enviouswispr.com/compare/): Index of comparison pages vs WisprFlow, Superwhisper, Apple Dictation, Dragon, MacWhisper, Otter.ai, and others.
 
