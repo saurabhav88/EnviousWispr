@@ -190,7 +190,7 @@ const faqJsonLd = JSON.stringify({
           <ul>
             <li>Recording and transcription, both engines</li>
             <li>Filler word removal</li>
-            <li>Numbers, dates, money, emails, and URLs formatted correctly</li>
+            <li>Numbers, dates, money, emails, and URLs formatted correctly, when you are dictating in English</li>
             <li>Spoken punctuation and emoji</li>
             <li>Custom vocabulary correction</li>
             <li>Cleanup with our own on-device model, or with Apple Intelligence on macOS 26 and later, or with a local Ollama model</li>
@@ -219,7 +219,7 @@ const faqJsonLd = JSON.stringify({
         <ul>
           <li><strong>Apple Silicon only.</strong> M1 or later. There is no Intel build and there will not be one; the speed comes from the Neural Engine.</li>
           <li><strong>macOS 14 Sonoma or later.</strong> Core dictation works across that whole range.</li>
-          <li><strong>Apple Intelligence cleanup needs macOS 26.</strong> Third-party apps could not call the on-device model before that. Below 26, cleanup falls to our own model, Ollama, or a provider key, and if none is configured the step is skipped silently and you get the deterministically cleaned text.</li>
+          <li><strong>Apple Intelligence cleanup needs macOS 26.</strong> Third-party apps could not call the on-device model before that. Apple Intelligence is also the shipped default, so on macOS 14 to 25 the cleanup step is skipped silently and you get the deterministically cleaned text rather than raw output. There is no automatic fallback: to get AI cleanup below macOS 26 you pick EG-1, a local Ollama model, or your own provider key yourself.</li>
           <li><strong>No Windows, Linux, iOS, or Android version.</strong> If you need those, <a href="/compare/handy/">Handy</a> is free, open source, and cross-platform.</li>
           <li><strong>Dictation, not file transcription.</strong> For turning existing recordings into transcripts, <a href="/compare/macwhisper/">MacWhisper</a> is built for that job.</li>
         </ul>
