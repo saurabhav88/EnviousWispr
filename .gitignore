@@ -168,6 +168,9 @@ scripts/lib/*
 # who already knows it exists, which is precisely the person who does not need it.
 !scripts/check-preview-engine-resources.sh
 !scripts/xcode-test.sh
+# #2335: end-to-end fake-swift driver for the receipt watchdog. Tracked for the same reason as
+# the checks above — a gitignored regression driver only runs for someone who already knows it.
+!scripts/test-real-microphone.test.sh
 # #2141: the grandfather list the test-inventory gate checks against. Tracked for the same reason as
 # the two checks above — a gitignored baseline can only be read by someone who already knows the split
 # is wrong, which is exactly the person who does not need it. The gate itself is a Swift test

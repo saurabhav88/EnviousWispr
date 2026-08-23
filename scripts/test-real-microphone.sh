@@ -81,6 +81,7 @@ with tempfile.TemporaryDirectory(prefix="ew-microphone-watchdog-") as marker_dir
         relay = threading.Thread(target=relay_output, daemon=True)
         relay.start()
         stop_deadline = None
+        started_at = None
         timed_out = False
         def group_exists():
             try:
@@ -109,21 +110,36 @@ with tempfile.TemporaryDirectory(prefix="ew-microphone-watchdog-") as marker_dir
                 signal_group(signal.SIGKILL)
                 process.wait()
 
+        stop_error = "ERROR: stopCapture and stream completion exceeded two seconds.\n"
         try:
             while True:
                 if received_signal[0] is not None:
                     reap_group()
                     break
+                # Read the markers before the exit poll: they live in the
+                # watchdog's own directory and outlive the Swift process, so an
+                # iteration that wakes after a long shutdown would otherwise see
+                # only the exit and report a clean receipt.
+                if started.exists() and started_at is None:
+                    started_at = started.stat().st_mtime
+                    stop_deadline = time.monotonic() + 2.0
+                if started_at is not None and finished.exists():
+                    # Judge the shutdown by the markers' own timestamps, not by
+                    # when this loop happened to look. Both mtimes come from the
+                    # same filesystem clock, so the difference is meaningful.
+                    if finished.stat().st_mtime - started_at > 2.0:
+                        sys.stderr.write(stop_error)
+                        log.write(stop_error)
+                        log.flush()
+                        timed_out = True
+                        reap_group()
+                        break
+                    stop_deadline = None
                 if process.poll() is not None:
                     break
-                if started.exists() and stop_deadline is None:
-                    stop_deadline = time.monotonic() + 2.0
-                if finished.exists():
-                    stop_deadline = None
                 if stop_deadline is not None and time.monotonic() >= stop_deadline:
-                    message = "ERROR: stopCapture and stream completion exceeded two seconds.\n"
-                    sys.stderr.write(message)
-                    log.write(message)
+                    sys.stderr.write(stop_error)
+                    log.write(stop_error)
                     log.flush()
                     timed_out = True
                     reap_group()
