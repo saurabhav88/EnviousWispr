@@ -842,7 +842,8 @@ struct ClipboardIsolationFreezeTests {
     }
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
-      guard let member = node.calledExpression.as(MemberAccessExprSyntax.self) else {
+      guard let member = ClipboardVisitor.unwrapped(
+        node.calledExpression).as(MemberAccessExprSyntax.self) else {
         return .visitChildren
       }
       let functionName = member.declName.baseName.text
@@ -894,10 +895,11 @@ struct ClipboardIsolationFreezeTests {
     }
 
     private func trailingName(of expression: ExprSyntax?) -> String? {
-      if let reference = expression?.as(DeclReferenceExprSyntax.self) {
+      let unwrappedExpression = expression.map { ClipboardVisitor.unwrapped($0) }
+      if let reference = unwrappedExpression?.as(DeclReferenceExprSyntax.self) {
         return reference.baseName.text
       }
-      if let member = expression?.as(MemberAccessExprSyntax.self) {
+      if let member = unwrappedExpression?.as(MemberAccessExprSyntax.self) {
         return member.declName.baseName.text
       }
       return nil
@@ -1064,6 +1066,20 @@ struct ClipboardIsolationFreezeTests {
         func deliver() {
           EnviousWisprServices.PasteService.copyToClipboardReturningChangeCount(
             "one", to: pasteboard)
+        }
+        """)
+    let visitor = SnapshotRoutingVisitor(viewMode: .sourceAccurate)
+    visitor.walk(tree)
+
+    #expect(visitor.automaticRoutesHaveSnapshots == [false])
+  }
+
+  @Test("a parenthesized route callee is still classified")
+  func parenthesizedCalleeIsCaught() {
+    let tree = Parser.parse(
+      source: """
+        func deliver() {
+          (PasteService.copyToClipboardReturningChangeCount)("one", to: pasteboard)
         }
         """)
     let visitor = SnapshotRoutingVisitor(viewMode: .sourceAccurate)
