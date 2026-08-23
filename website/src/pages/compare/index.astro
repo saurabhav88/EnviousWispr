@@ -64,8 +64,8 @@ const itemListJsonLd = JSON.stringify({
 ---
 
 <BaseLayout
-  title="Compare 17 Mac Dictation Apps with Free EnviousWispr"
-  description="Browse 17 head-to-head comparisons of free EnviousWispr and Mac dictation apps. Compare price, privacy, offline use, languages, and everyday workflow."
+  title="EnviousWispr Comparisons: Pick a Mac Dictation App"
+  description="Choose which Mac dictation app to compare against free EnviousWispr. Seventeen head-to-head breakdowns. For a recommendation, read our picks by use case."
   activePage="compare"
   canonicalPath="/compare/"
 >
@@ -183,6 +183,28 @@ const itemListJsonLd = JSON.stringify({
   transition: background 0.15s;
 }
 .compare-cta .btn-primary:hover { background: var(--accent-hover); }
+
+  /* Signpost to the recommendation page (#2340). The index is a directory; this is the
+     visible route to the page that answers "which one should I use". */
+  .compare-signpost { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; margin-top: 22px; }
+  .compare-signpost a {
+    display: flex; flex-direction: column; gap: 6px; padding: 20px 22px;
+    border: 1px solid var(--border-hover); border-radius: var(--radius-card);
+    background: rgba(255,255,255,.72); text-decoration: none;
+    transition: transform .2s, border-color .2s, box-shadow .2s;
+  }
+  .compare-signpost a:hover {
+    transform: translateY(-2px); border-color: rgba(124,58,237,.26);
+    box-shadow: 0 14px 34px rgba(62,34,107,.08);
+  }
+  .compare-signpost-label {
+    color: var(--text-3); font-family: var(--font-mono); font-size: 10.5px;
+    letter-spacing: .06em; text-transform: uppercase;
+  }
+  .compare-signpost-title { color: var(--text); font-size: 16px; font-weight: 700; letter-spacing: -.4px; }
+  .compare-signpost-primary { background: linear-gradient(135deg, rgba(255,255,255,.9), rgba(240,236,249,.7)); }
+  .compare-signpost-primary .compare-signpost-title { color: var(--accent); }
+  @media (max-width: 760px) { .compare-signpost { grid-template-columns: 1fr; } }
 </style>
 
 <div class="compare-hero">
@@ -195,7 +217,16 @@ const itemListJsonLd = JSON.stringify({
     </a>
     <span class="compare-hero-cta-sub">macOS 14+, Apple Silicon. No account. Works offline.</span>
     <p class="compare-intro">Mac dictation tools split into three groups: cloud-based services that send your audio to a server (<a href="/compare/wisprflow/">WisprFlow</a>, <a href="/compare/otter-ai/">Otter.ai</a>, <a href="/compare/notta/">Notta</a>, <a href="/compare/google-docs-voice-typing/">Google Docs Voice Typing</a>), apps that offer local or mixed processing (<a href="/compare/superwhisper/">Superwhisper</a>, <a href="/compare/macwhisper/">MacWhisper</a>, <a href="/compare/voiceink/">VoiceInk</a>, <a href="/compare/willow-voice/">Willow Voice</a>, <a href="/compare/handy/">Handy</a>, <a href="/compare/fluidvoice/">FluidVoice</a>, <a href="/compare/juno/">Juno</a>, <a href="/compare/typewhisper/">TypeWhisper</a>, <a href="/compare/spokenly/">Spokenly</a>, <a href="/compare/vox/">Vox</a>), and legacy or developer-focused tools (<a href="/compare/dragon/">Dragon</a>, <a href="/compare/apple-dictation/">Apple Dictation</a>, <a href="/compare/whisper-cpp/">whisper.cpp</a>). Each comparison covers price, privacy, offline use, language support, and the workflow each tool fits best, so you can narrow the list without installing all 17.</p>
-    <p class="compare-intro" style="margin-top: 16px;">Want a recommendation rather than a directory? See our guide to the <a href="/compare/best-dictation-apps-for-mac/">best dictation apps for Mac by use case</a>. If you are specifically replacing WisprFlow without a subscription, start with our <a href="/compare/wisprflow-alternatives/">free WisprFlow alternatives for Mac</a>.</p>
+    <div class="compare-signpost">
+      <a href="/compare/best-dictation-apps-for-mac/" class="compare-signpost-primary">
+        <span class="compare-signpost-label">Want a recommendation, not a directory?</span>
+        <span class="compare-signpost-title">Best dictation apps for Mac, picked by use case &rarr;</span>
+      </a>
+      <a href="/compare/wisprflow-alternatives/" class="compare-signpost-secondary">
+        <span class="compare-signpost-label">Replacing WisprFlow?</span>
+        <span class="compare-signpost-title">Free WisprFlow alternatives for Mac &rarr;</span>
+      </a>
+    </div>
   </div>
 </div>
 
