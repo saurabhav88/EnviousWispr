@@ -54,12 +54,23 @@ export function validateSolutionDocument({ html, route, kind, knownRoutes }) {
     if (!matches(html, /href="[^"]*EnviousWispr\.dmg"/)) errors.push(`${route}: missing direct download action`);
     if (sources.length < 2) errors.push(`${route}: expected distinct hero and bottom download sources`);
 
+    // The answer prose is rendered as a lead sentence plus balanced columns, so its word
+    // count is the SUM of the paragraphs inside [data-answer-prose] rather than any single
+    // one. Scoping to that container excludes the block's label and heading. Fail closed:
+    // a missing container is a broken template, not a zero-word answer.
     const answerBlock = html.match(/<section\b[^>]*data-answer-block[^>]*>([\s\S]*?)<\/section>/i)?.[1] ?? '';
-    const answerParagraphs = [...answerBlock.matchAll(/<p(?:\s[^>]*)?>([\s\S]*?)<\/p>/gi)];
-    const answerParagraph = answerParagraphs.at(-1)?.[1] ?? '';
-    const answerWords = wordCount(answerParagraph);
-    if (answerWords < 134 || answerWords > 167) {
-      errors.push(`${route}: direct answer has ${answerWords} words, expected 134 to 167`);
+    const answerProse = answerBlock.match(/<div\b[^>]*data-answer-prose[^>]*>([\s\S]*)$/i)?.[1] ?? null;
+    if (answerProse === null) {
+      errors.push(`${route}: answer block has no [data-answer-prose] container`);
+    } else {
+      const answerParagraphs = [...answerProse.matchAll(/<p(?:\s[^>]*)?>([\s\S]*?)<\/p>/gi)];
+      const answerWords = answerParagraphs.reduce((total, match) => total + wordCount(match[1]), 0);
+      if (answerParagraphs.length < 2) {
+        errors.push(`${route}: direct answer is ${answerParagraphs.length} paragraph(s), expected it to be broken up`);
+      }
+      if (answerWords < 134 || answerWords > 167) {
+        errors.push(`${route}: direct answer has ${answerWords} words, expected 134 to 167`);
+      }
     }
   }
 

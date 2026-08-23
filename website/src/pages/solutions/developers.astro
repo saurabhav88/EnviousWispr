@@ -59,7 +59,7 @@ const directAnswer = `Dictation for developers on Mac is voice input for the wri
     <div class="proof-window-bar"><i></i><i></i><i></i>pull-request.md</div>
     <div class="proof-body">
       <div class="proof-row">
-        <span class="proof-row-label">Spoken</span>
+        <span class="proof-row-label">Spoken<span class="proof-wave" aria-hidden="true"><span style="height:4px"></span><span style="height:9px"></span><span style="height:6px"></span><span style="height:11px"></span><span style="height:5px"></span><span style="height:8px"></span><span style="height:3px"></span><span style="height:7px"></span></span></span>
         <p>Okay so this changes the auth retry because the old path could lose the refresh result, and I also added coverage for the fallback.</p>
       </div>
       <div class="proof-row output">
@@ -90,7 +90,7 @@ const directAnswer = `Dictation for developers on Mac is voice input for the wri
     </div>
     <div>
       <p class="solution-section-lead">EnviousWispr is an input tool, not an autonomous coding agent. It can place dictated text into compatible text fields, including terminal input, but it does not press Return, execute shell commands, change files, or make repository decisions for you.</p>
-      <div class="solution-callout" style="margin-top:20px"><strong>Best fit</strong><p>Use it for natural-language work around code. Keep precise syntax, structural edits, and command execution under direct control.</p></div>
+      <div class="solution-callout" style="margin-top:22px"><span class="solution-callout-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.6 20 6v5.4c0 4.3-3.2 7.4-8 8.6-4.8-1.2-8-4.3-8-8.6V6Z"/><path d="m9 12 2.2 2.2L15.4 10"/></svg></span><div><strong>Best fit</strong><p>Use it for natural-language work around code. Keep precise syntax, structural edits, and command execution under direct control.</p></div></div>
     </div>
   </section>
 
@@ -98,9 +98,49 @@ const directAnswer = `Dictation for developers on Mac is voice input for the wri
     <div>
       <p class="solution-kicker">A concrete privacy boundary</p>
       <h2 id="developer-privacy-heading">Your voice never becomes somebody else's audio file.</h2>
+      <p class="solution-section-lead" style="margin-top:18px;font-size:15.5px">Transcription runs on your Mac, so spoken project context is not uploaded for speech recognition. Everything below is what can cross the line, and what never does.</p>
     </div>
-    <div>
-      <p class="solution-section-lead">Transcription runs on your Mac, so spoken project context is not uploaded for speech recognition. Local polish can keep the resulting text there too. If you turn on a cloud provider, the transcript, cleanup instructions, custom words, target app name, and your account credential go directly to it. Envious Labs does not relay the request.</p>
+    <div class="solution-lanes">
+      <div class="solution-lane local">
+        <div class="solution-lane-head">
+          <span class="solution-lane-dot" aria-hidden="true"></span>
+          <h3 class="solution-lane-title">Stays on your Mac</h3>
+          <span class="solution-lane-note">Always</span>
+        </div>
+        <ul class="solution-lane-items" role="list">
+          <li>Your voice</li>
+          <li>The recording</li>
+          <li>Speech recognition</li>
+          <li>Deterministic cleanup</li>
+          <li>EG-1 polish</li>
+          <li>Apple Intelligence polish</li>
+          <li>Downloaded Ollama polish</li>
+        </ul>
+        <p class="solution-lane-sub">No EnviousWispr account and no upload. This half is the same whether you are online or not.</p>
+      </div>
+
+      <p class="solution-lane-boundary">The network</p>
+
+      <div class="solution-lane remote">
+        <div class="solution-lane-head">
+          <span class="solution-lane-dot" aria-hidden="true"></span>
+          <h3 class="solution-lane-title">Leaves your Mac, only if you turn cloud polish on</h3>
+          <span class="solution-lane-note">Your choice</span>
+        </div>
+        <ul class="solution-lane-items" role="list">
+          <li>The transcript</li>
+          <li>Cleanup instructions</li>
+          <li>Your custom words</li>
+          <li>Target app name</li>
+          <li>Your own provider credential</li>
+        </ul>
+        <p class="solution-lane-sub">These go from your Mac straight to the provider you chose, under your own account. Envious Labs does not relay the request.</p>
+      </div>
+
+      <p class="solution-lane-never">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#e6253a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M4.2 4.2l7.6 7.6"/></svg>
+        <span><strong>Audio is never in the second lane.</strong> There is no setting that sends your recording anywhere.</span>
+      </p>
     </div>
   </section>
 </SolutionLayout>

@@ -1,3 +1,5 @@
+export type SolutionIcon = 'code' | 'polish' | 'offline' | 'source' | 'draft';
+
 export interface SolutionCard {
   href: string;
   eyebrow: string;
@@ -5,6 +7,10 @@ export interface SolutionCard {
   description: string;
   outcome: string;
   accent: 'blue' | 'violet' | 'green' | 'orange' | 'cyan';
+  icon: SolutionIcon;
+  /** The featured card leads the hub grid at full width with a product panel. At most one;
+   *  the hub page throws at build time if a second is added. */
+  featured?: boolean;
 }
 
 export const solutions: SolutionCard[] = [
@@ -15,6 +21,8 @@ export const solutions: SolutionCard[] = [
     description: 'Turn spoken context into PR descriptions, review comments, issue notes, and technical documentation without sending your audio away.',
     outcome: 'Less typing between thinking and shipping',
     accent: 'blue',
+    icon: 'code',
+    featured: true,
   },
   {
     href: '/solutions/ai-polish/',
@@ -23,6 +31,7 @@ export const solutions: SolutionCard[] = [
     description: 'Compare deterministic cleanup, local AI models, and bring-your-own-key cloud polish without blurring their privacy boundaries.',
     outcome: 'The cleanup you want with the boundary you choose',
     accent: 'violet',
+    icon: 'polish',
   },
   {
     href: '/solutions/offline-dictation/',
@@ -31,6 +40,7 @@ export const solutions: SolutionCard[] = [
     description: 'Run speech recognition and text cleanup on your Apple Silicon Mac after the required models have been downloaded.',
     outcome: 'Reliable voice input on planes, trains, and quiet networks',
     accent: 'green',
+    icon: 'offline',
   },
   {
     href: '/solutions/open-source/',
@@ -39,6 +49,7 @@ export const solutions: SolutionCard[] = [
     description: 'Read the GPLv3 app source, review the local processing path, build it yourself, or follow active development on GitHub.',
     outcome: 'Trust based on code you can inspect',
     accent: 'orange',
+    icon: 'source',
   },
   {
     href: '/solutions/writers/',
@@ -47,5 +58,6 @@ export const solutions: SolutionCard[] = [
     description: 'Turn outlines, rough prose, essays, and scripts into editable text while keeping the original thought and your revision pass separate.',
     outcome: 'More raw material and less time facing a blank page',
     accent: 'cyan',
+    icon: 'draft',
   },
 ];
