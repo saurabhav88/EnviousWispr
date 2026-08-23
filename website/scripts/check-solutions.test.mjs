@@ -294,6 +294,19 @@ test('run exits 1 when the source or dist directory is missing', () => {
   }
 });
 
+test('run exits 1 when only the source directory is missing', () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'check-solutions-'));
+  try {
+    // dist exists but src/pages/solutions does not: the missing-sourceDir half of the OR guard.
+    fs.mkdirSync(path.join(tmpRoot, 'dist'));
+    const { exitCode, failures } = runQuiet(tmpRoot);
+    assert.equal(exitCode, 1);
+    assert.deepEqual(failures, ['FAIL: solutions source or dist directory is missing. Run `npm run build` from website/.']);
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
 test('run exits 1 when a source route has no built index.html', () => {
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'check-solutions-'));
   try {
