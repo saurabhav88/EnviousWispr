@@ -11,7 +11,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/best-dictation-apps-for-mac/`,
   "image": `${siteUrl}/og-image.png`,
   "datePublished": "2026-06-18T12:00:00Z",
-  "dateModified": "2026-08-21T00:00:00Z",
+  "dateModified": "2026-08-23T00:00:00Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -44,45 +44,45 @@ const tableRows = [
   {
     feature: "Price",
     ew: "Free",
-    cells: ["$12-15/mo Pro (free 2k words/wk)", "$8.49/mo (unlimited free tier)", "~$69 (Gumroad) or $99.99 (App Store lifetime)", "$8.33/mo Pro (free 300 min/mo)", "Free (built in)", "Free for personal and one-person-company work; larger companies pay $12/seat monthly or $120 yearly ($10/mo)"],
+    cells: ["Free (MIT, open source)", "Free (GPLv3, open source)", "$12-15/mo Pro (free 2k words/wk)", "$8.49/mo (unlimited free tier)", "~$69 (Gumroad) or $99.99 (App Store lifetime)", "$8.33/mo Pro (free 300 min/mo)", "Free (built in)", "Free for personal and one-person-company work; larger companies pay $12/seat monthly or $120 yearly ($10/mo)"],
   },
   {
     feature: "Audio stays on your Mac",
     ew: "Yes, fully on-device",
-    cells: ["No, cloud", "Yes with local models", "Yes", "No, cloud only", "Mostly (enhanced uses cloud)", "Yes"],
+    cells: ["Yes, no cloud engine documented", "Yes, on-device", "No, cloud", "Yes with local models", "Yes", "No, cloud only", "Mostly (enhanced uses cloud)", "Yes"],
   },
   {
     feature: "Works offline",
     ew: "Yes",
-    cells: ["No", "Yes with local models", "Yes", "No", "Partial (enhanced needs internet)", "Yes with downloaded Gemma; Apple Intelligence may use Private Cloud Compute"],
+    cells: ["Yes (after models download)", "Yes (after models download)", "No", "Yes with local models", "Yes", "No", "Partial (enhanced needs internet)", "Yes with downloaded Gemma; Apple Intelligence may use Private Cloud Compute"],
   },
   {
     feature: "Account",
     ew: "No account for core use",
-    cells: ["Email signup required", "No", "No", "Account required", "No", "No for personal use"],
+    cells: ["No", "No", "Email signup required", "No", "No", "Account required", "No", "No for personal use"],
   },
   {
     feature: "Polish / cleanup",
     ew: "Yes, on-device with EG-1, Ollama, or Apple Intelligence (macOS 26+); optional cloud via your own key",
-    cells: ["Yes, cloud", "Local S1-mini or cloud writing models", "Optional add-on", "AI summaries (cloud)", "No", "Downloaded Gemma 4 for strictly local cleanup; Apple Intelligence also offered"],
+    cells: ["Yes, but off until enabled; default provider is OpenAI so it expects an API key, and it runs on a second hotkey", "Yes, its own Fluid-1 model plus cloud providers; the Fluid-1 license and base model are not published", "Yes, cloud", "Local S1-mini or cloud writing models", "Optional add-on", "AI summaries (cloud)", "No", "Downloaded Gemma 4 for strictly local cleanup; Apple Intelligence also offered"],
   },
   {
     feature: "Languages",
     ew: "25 European (Parakeet) + 99 (WhisperKit)",
-    cells: ["100+", "100+", "100+", "~100", "~60", "25 languages via Parakeet TDT v3; additional multilingual Whisper options"],
+    cells: ["Broad via Whisper; auto-detect on Parakeet V3", "Up to 99 via Whisper, 40 via Nemotron, 25 via Parakeet", "100+", "100+", "100+", "~100", "~60", "25 languages via Parakeet TDT v3; additional multilingual Whisper options"],
   },
   {
     feature: "Best for",
     ew: "Free, private, on-device dictation",
-    cells: ["Cross-device dictation, meetings, and teams", "Large speech and writing model library", "Transcribing existing audio files", "Meetings and long transcripts", "Built-in, zero-install short bursts", "Editable local modes and a voice task list"],
+    cells: ["Free and open source across Mac, Windows and Linux, with the deepest model catalog", "Open source with its own tuned cleanup model and prompt routing (needs macOS 15+)", "Cross-device dictation, meetings, and teams", "Large speech and writing model library", "Transcribing existing audio files", "Meetings and long transcripts", "Built-in, zero-install short bursts", "Editable local modes and a voice task list"],
   },
 ];
-const tableCols = ["WisprFlow", "SuperWhisper", "MacWhisper", "Otter.ai", "Apple Dictation", "Vox"];
+const tableCols = ["Handy", "FluidVoice", "WisprFlow", "SuperWhisper", "MacWhisper", "Otter.ai", "Apple Dictation", "Vox"];
 ---
 
 <BaseLayout
   title="Best Dictation App for Mac in 2026: Honest Picks by Use Case"
-  description="Compare the best dictation apps for Mac in 2026 by use case, including free, private, built-in, file transcription, cross-device, and meeting options."
+  description="Compare the best dictation apps for Mac in 2026 by use case: free and open source, fully on-device, built in, file transcription, cross-device, and meetings."
   activePage="compare"
   canonicalPath="/compare/best-dictation-apps-for-mac/"
   ogType="article"
@@ -182,7 +182,7 @@ const tableCols = ["WisprFlow", "SuperWhisper", "MacWhisper", "Otter.ai", "Apple
         <p>We compared the main Mac dictation and transcription tools on the things that actually change the decision: Mac support, whether your audio stays on your device, offline support, price, account requirements, cleanup, and whether the app is built for live dictation, meetings, or recorded files. Picks are by use case, not a single universal ranking. We checked official sources and opened the current installed versions of the local apps where available.</p>
       </div>
 
-      <p class="short-answer reveal">The best Mac dictation app depends on what you need. For <strong>free, fully private, on-device dictation</strong>, EnviousWispr is the pick. For <strong>built-in, zero-install</strong> use, Apple Dictation. For <strong>recorded audio files</strong>, MacWhisper. For the <strong>broadest speech and writing model library</strong>, SuperWhisper. For <strong>editable local modes and a voice task list</strong>, Vox. For a <strong>cross-device service with meetings and teams</strong>, WisprFlow. For <strong>meetings and long transcripts</strong>, Otter.ai.</p>
+      <p class="short-answer reveal">The best Mac dictation app depends on what you need. For <strong>free, fully private, on-device dictation</strong>, EnviousWispr is the pick. For a <strong>free, open-source app with the widest model catalog, on Windows and Linux too</strong>, Handy. For <strong>open source with its own tuned cleanup model and prompt routing</strong>, FluidVoice. For <strong>built-in, zero-install</strong> use, Apple Dictation. For <strong>recorded audio files</strong>, MacWhisper. For the <strong>broadest speech and writing model library</strong>, SuperWhisper. For <strong>editable local modes and a voice task list</strong>, Vox. For a <strong>cross-device service with meetings and teams</strong>, WisprFlow. For <strong>meetings and long transcripts</strong>, Otter.ai.</p>
     </div>
   </div>
 </section>
@@ -227,6 +227,25 @@ const tableCols = ["WisprFlow", "SuperWhisper", "MacWhisper", "Otter.ai", "Apple
         <a href="https://www.youtube.com/watch?v=srS5OgTj3O4" target="_blank" rel="noopener">Watch the 30-second demo</a>
         <a href="/compare/wisprflow/">Full EnviousWispr vs WisprFlow comparison</a>
         <a href="/compare/wisprflow-alternatives/">Free WisprFlow alternatives for Mac</a>
+      </div>
+    </div>
+
+
+    <div class="pick reveal" id="best-free-cross-platform">
+      <div class="pick-label">Best free and open source if you also need Windows or Linux</div>
+      <h2>Handy</h2>
+      <p>Handy is free, open source under the permissive MIT license, and runs on macOS (Intel and Apple Silicon), Windows, and Linux. That makes it the pick if the Mac is not your only machine, or if you are on an Intel Mac that rules out Apple Silicon-only apps. Transcription stays on your device with no cloud engine documented, and it works offline once models are downloaded. Its model catalog is the deepest here: dozens of local choices across the Parakeet, Nemotron, Canary, and Whisper families, filterable by language and speed, plus custom GGUF models auto-discovered from Hugging Face. The honest trade-off is the cleanup step. AI polish is off until you turn it on, its default provider is OpenAI so it expects an API key unless you switch to a keyless one, and it fires on a second dedicated hotkey rather than the one you already held to record. Transcription latency is not published.</p>
+      <div class="pick-links">
+        <a href="/compare/handy/">Full EnviousWispr vs Handy comparison</a>
+      </div>
+    </div>
+
+    <div class="pick reveal" id="best-open-source-model-choice">
+      <div class="pick-label">Best open source with its own tuned cleanup model</div>
+      <h2>FluidVoice</h2>
+      <p>FluidVoice is the closest neighbour to EnviousWispr in this list: also free, also GPLv3, and also shipping its own AI model tuned specifically for cleaning up dictation, called Fluid-1. Where it goes further than we do is configurability: fourteen visible speech-model options across the Apple Speech, Cohere, Nemotron, Parakeet, and Whisper families against our two, prompt profiles that route cleanup differently per situation, file transcription, and a Windows pre-build. If sheer model count is what you are after, Handy above carries the deeper catalog; FluidVoice&rsquo;s distinction is that the cleanup step is its own trained model rather than a prompt. Two honest catches: it needs macOS 15 Sequoia or later, one version newer than we require, and the license and base model behind Fluid-1 are not published in its own repository, so you cannot audit what the cleanup step is built on. Choose FluidVoice if configurability is the point; choose EnviousWispr if you would rather have a working default and a published model license.</p>
+      <div class="pick-links">
+        <a href="/compare/fluidvoice/">Full EnviousWispr vs FluidVoice comparison</a>
       </div>
     </div>
 
@@ -300,6 +319,8 @@ const tableCols = ["WisprFlow", "SuperWhisper", "MacWhisper", "Otter.ai", "Apple
           <li>You want the broadest speech and writing model library: choose <a href="/compare/superwhisper/">SuperWhisper</a>.</li>
           <li>You want editable local modes, Windows support, or a voice-controlled Mac task list: choose <a href="/compare/vox/">Vox</a>.</li>
           <li>You mainly transcribe already-recorded audio or video files: choose <a href="/compare/macwhisper/">MacWhisper</a>.</li>
+          <li>You need Windows or Linux too, you are on an Intel Mac, or you want the widest catalog of speech models, and want to stay free and open source: choose <a href="/compare/handy/">Handy</a>.</li>
+          <li>You want a cleanup step that is its own trained model, with prompt profiles routing it per situation, and you are on macOS 15 or later: choose <a href="/compare/fluidvoice/">FluidVoice</a>.</li>
           <li>You need hands-free Mac control or system commands, not just text dictation: start with Apple's built-in Voice Control accessibility tools.</li>
         </ul>
       </div>
