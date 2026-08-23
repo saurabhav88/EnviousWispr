@@ -36,11 +36,11 @@ enum PillAction: Equatable, Sendable {
   case discardRecovery
   /// onEscapeRecoveryPaste, which takes the `CancelUndoPayload`.
   ///
-  /// **Carries the transcript id, and the first version did not.** The panel
-  /// holds the payload itself and looks it up with
-  /// `takeEscapeRecoveryPayload(matching:)` — a one-shot take, so the
-  /// id is what makes the hand-off safe against a stale press. A bare case
-  /// would have delivered "the user pressed Undo" with nothing to undo.
+  /// **Carries the transcript id, and the first version did not.** The director
+  /// holds the payload and compares this id against the one it took custody of
+  /// when the pill was raised, so a press for a transcript it no longer holds
+  /// forwards nothing. A bare case would have delivered "the user pressed Undo"
+  /// with nothing to undo.
   case pasteEscapeRecovery(transcriptID: UUID)
   /// passiveChipLockHandler.
   case lockLanguage
@@ -77,12 +77,6 @@ enum PillAction: Equatable, Sendable {
 enum PillEffect: Equatable, Sendable {
   /// passiveChipAutoDismissHandler, which takes the generation.
   case languageChipExpired(generation: UInt64)
-  /// The escape-recovery pill went away without the user pressing Undo, so the
-  /// owner must drop the payload it is holding.
-  ///
-  /// Deleted in chunk C4, when the director takes custody of the payload and
-  /// no owner outside it holds one to drop.
-  case escapeRecoveryExpired(transcriptID: UUID)
   /// setRecordingIntentObserver. Fires when the recording pill
   /// arrives or leaves. Nothing in the first model expressed it at all.
   case recordingStateChanged(Bool)

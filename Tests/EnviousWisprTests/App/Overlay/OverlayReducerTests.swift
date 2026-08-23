@@ -378,7 +378,11 @@ struct OverlayReducerTests {
 
     let plan = r.reduce(.expiryFired(id))
 
-    #expect(plan.effects.contains(.escapeRecoveryExpired(transcriptID: transcript)))
+    // **The routing marker is gone since C4a** — the director holds the
+    // payload and clears it itself, so there is no owner outside to tell.
+    // What a user actually experiences is the pill disappearing when they
+    // ignore it, which is what this now asserts.
+    #expect(plan.presentation == nil)
   }
 
   /// setRecordingIntentObserver had no representation at all in the

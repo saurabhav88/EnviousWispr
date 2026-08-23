@@ -411,24 +411,6 @@ final class OverlayDirector {
     apply(plan, actions: actions, effectsAlreadyDelivered: true)
   }
 
-  /// Take custody of a cancelled-transcript payload and present its pill.
-  ///
-  /// The id comes from the PAYLOAD. An earlier signature took it separately, so
-  /// two ids could disagree and the pill would offer to restore a transcript the
-  /// custody did not hold — an unrepresentable state made representable by an
-  /// extra parameter.
-  /// **Takes its handler.** Without one this method presented a pill whose Undo
-  /// button had nothing bound, so the first press hit the invariant assertion —
-  /// I broke Undo outright with the change that made binding atomic, and the
-  /// suite could not see it because no test pressed the button on a pill
-  /// presented through this entry point.
-  func presentEscapeRecovery(
-    _ payload: CancelUndoPayload, actions: @escaping (PillAction) -> Void
-  ) {
-    escapeRecoveryPayload = (id: payload.transcriptID, payload: payload)
-    send(.pipeline(.escapeRecovery(transcriptID: payload.transcriptID)), actions: actions)
-  }
-
   /// Present the accessibility notice, showing the toast or falling back to the
   /// clipboard hint — **and announcing the accessibility sentence either way.**
   ///
@@ -524,14 +506,6 @@ final class OverlayDirector {
     apply(reducer.reduce(.pipeline(.hidden)), actions: nil, announcing: false)
   }
 
-  /// Take the payload for `transcriptID`, once. Returns nil if it was already
-  /// taken or if a different transcript now owns the slot.
-  func takeEscapeRecoveryPayload(matching transcriptID: UUID) -> CancelUndoPayload? {
-    guard let held = escapeRecoveryPayload, held.id == transcriptID else { return nil }
-    escapeRecoveryPayload = nil
-    return held.payload
-  }
-
   // MARK: - Applying a plan
 
   private func apply(
@@ -598,7 +572,7 @@ final class OverlayDirector {
 
     // **FAIL CLOSED: the recovery pill needs a payload the intent cannot carry.**
     // `OverlayIntent` is `Sendable` and the paste target is a pair of main-actor
-    // AX handles, so `presentEscapeRecovery` stores the payload and the intent
+    // AX handles, so the typed `.escapeRecovery` request stores the payload and the intent
     // carries only the id. A bare `send(.pipeline(.escapeRecovery(id)))` finds
     // none, and the shipped panel drew NOTHING in that case while still
     // announcing -- the announcement is true, because the row is saved, and an
@@ -1098,13 +1072,25 @@ extension OverlayDirector: OverlayPresenting {
     // The take comes first so a stale press finds nothing and neither dismisses
     // nor pastes.
     case .escapeRecovery(let payload, let onPaste):
-      presentEscapeRecovery(payload) { [weak self] action in
+      // **Custody lives HERE now, and nowhere else** (#2292 C4a). It used to be
+      // reachable through two public doors — `presentEscapeRecovery` and
+      // `takeEscapeRecoveryPayload` — with the take performed by a wiring
+      // helper outside the director. Both are deleted: the payload is stored by
+      // the only call that can put a pill on screen, and taken by the only
+      // binding that pill can raise.
+      escapeRecoveryPayload = (id: payload.transcriptID, payload: payload)
+      send(.pipeline(.escapeRecovery(transcriptID: payload.transcriptID))) { [weak self] action in
         guard case .pasteEscapeRecovery(let transcriptID) = action,
           let self,
-          let taken = self.takeEscapeRecoveryPayload(matching: transcriptID)
+          let held = self.escapeRecoveryPayload,
+          held.id == transcriptID
         else { return }
+        // Take, DISMISS, then forward — the shipped order, and the dismissal is
+        // load-bearing for a VoiceOver user: a spoken "overlay hidden" arriving
+        // after the restore is noise on top of the outcome they asked for.
+        self.escapeRecoveryPayload = nil
         self.dismissSilently()
-        onPaste(taken)
+        onPaste(held.payload)
       }
     }
 

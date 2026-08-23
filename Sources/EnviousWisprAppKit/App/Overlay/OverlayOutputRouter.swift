@@ -44,12 +44,6 @@ final class OverlayOutputRouter {
       // does: a routing change that let this case through again would leave a
       // chip that lapsed still on screen, with no crash and no compile error.
       assertionFailure("languageChipExpired must be consumed by OverlayDirector.route")
-
-    case .escapeRecoveryExpired:
-      // The pill went without an Undo press. The director has already dropped
-      // its custody of the payload, which is the whole obligation here; the row
-      // stays in History under its own expiry.
-      break
     }
   }
 

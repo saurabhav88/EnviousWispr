@@ -516,8 +516,11 @@ struct OverlayReducer {
     switch current.content {
     case .languageChip(let payload):
       effects.append(.languageChipExpired(generation: payload.generation))
-    case .escapeRecovery(let transcriptID):
-      effects.append(.escapeRecoveryExpired(transcriptID: transcriptID))
+    case .escapeRecovery:
+      // **No effect since C4a.** The director holds the payload and clears it
+      // itself when the slot changes hands, so there is no owner outside to
+      // tell. The row stays in History under its own expiry.
+      break
     case .recording:
       effects.append(.recordingStateChanged(false))
     case .notice, .bluetoothAwareness:

@@ -358,13 +358,13 @@ struct PillRequestParityTests {
 
   // MARK: - Escape recovery, whose ORDER is load-bearing
 
-  @Test("escape recovery") func escapeRecovery() {
-    let payload = CancelUndoPayload(transcriptID: UUID(), targetApp: nil, targetElement: nil)
-    parity(
-      "escapeRecovery",
-      old: { $0.presentEscapeRecovery(payload, actions: { _ in }) },
-      new: { $0.present(.escapeRecovery(payload: payload, onPaste: { _ in })) })
-  }
+  // **The escape-recovery parity row is gone** (#2292 C4a), because parity needs
+  // two spellings and there is now one: `presentEscapeRecovery` was deleted along
+  // with `takeEscapeRecoveryPayload`, so custody lives only inside the typed
+  // request. What that row protected — the typed path producing the same
+  // presentation the old one did — is now the only path there is, and the
+  // OUTCOME cases below (`pasteOrdering`, and the director's own custody suite)
+  // assert what it does.
 
   /// **Dismiss BEFORE forwarding, matching shipped behaviour.**
   /// `EscapeRecoveryWiring` dismisses first so a spoken "overlay hidden" does not

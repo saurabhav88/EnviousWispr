@@ -491,10 +491,18 @@ final class DictationLifecycleCoordinator {
         // WITH the presentation, so a pill is never up with nothing behind it.
         presentEscapeRecoveryPill: { [weak self] payload in
           guard let self else { return }
-          self.recordingOverlay.presentEscapeRecovery(
-            payload,
-            actions: EscapeRecoveryWiring.pillActions(
-              director: self.recordingOverlay, coordinator: self.transcriptCoordinator))
+          // **The typed request is the only presentation path since C4a.** The
+          // wrapper that used to sit here — take the payload, dismiss, forward —
+          // is now the director's own binding, so there is exactly one place the
+          // order can be got wrong. The paste callback is the SAME production
+          // composition, so the cascade and its `.pill` telemetry source are
+          // unchanged.
+          _ = self.recordingOverlay.present(
+            .escapeRecovery(
+              payload: payload,
+              onPaste: EscapeRecoveryWiring.pasteAction(
+                coordinator: self.transcriptCoordinator,
+                report: EscapeRecoveryWiring.restoreReporter(source: .pill))))
         },
         // The SAME `append` an ordinary completion uses. A held row differs by
         // carrying an expiry stamp, not by needing a second insertion path, and

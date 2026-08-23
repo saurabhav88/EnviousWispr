@@ -263,35 +263,6 @@
     /// the reason the test is deleted rather than rewritten.
     // MARK: - Payload custody
 
-    /// The payload is taken ONCE. A second Undo press must find nothing rather
-    /// than paste the transcript again.
-    @Test("the cancelled transcript is handed over exactly once")
-    func payloadIsTakenOnce() {
-      let (d, _, _) = Self.director()
-      defer { Self.closeAllWindows() }
-      let transcript = UUID()
-      d.presentEscapeRecovery(
-        CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
-        actions: { _ in })
-
-      #expect(d.takeEscapeRecoveryPayload(matching: transcript) != nil)
-      #expect(
-        d.takeEscapeRecoveryPayload(matching: transcript) == nil,
-        "the payload was handed over twice — a double press would paste twice")
-    }
-
-    @Test("a payload is never handed to a different transcript")
-    func payloadIsKeyedToItsTranscript() {
-      let (d, _, _) = Self.director()
-      defer { Self.closeAllWindows() }
-      let mine = UUID()
-      d.presentEscapeRecovery(
-        CancelUndoPayload(transcriptID: mine, targetApp: nil, targetElement: nil),
-        actions: { _ in })
-
-      #expect(d.takeEscapeRecoveryPayload(matching: UUID()) == nil)
-    }
-
     /// Custody ends with the pill. Otherwise a payload outlives the dictation it
     /// belongs to and the next Undo could reach it.
     @Test("the payload is released when the pill goes")
@@ -299,9 +270,11 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       let transcript = UUID()
-      d.presentEscapeRecovery(
-        CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
-        actions: { _ in })
+      d.present(
+        .escapeRecovery(
+          payload: CancelUndoPayload(
+            transcriptID: transcript, targetApp: nil, targetElement: nil),
+          onPaste: { _ in }))
       #expect(d.holdsEscapeRecoveryPayloadForTesting)
 
       d.send(.pipeline(.hidden), actions: nil)
@@ -319,9 +292,11 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       let transcript = UUID()
-      d.presentEscapeRecovery(
-        CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
-        actions: { _ in })
+      d.present(
+        .escapeRecovery(
+          payload: CancelUndoPayload(
+            transcriptID: transcript, targetApp: nil, targetElement: nil),
+          onPaste: { _ in }))
       #expect(d.holdsEscapeRecoveryPayloadForTesting)
 
       Self.record(d, level: 0.3)
@@ -335,15 +310,21 @@
     /// the request broke this entry point outright: the pill appeared with nothing
     /// bound, so the first press hit the invariant assertion. No test pressed the
     /// button on a pill presented this way, so the suite could not see it.
+    ///
+    /// Since C4a the request carries `onPaste` and the director owns custody, so
+    /// this observes the PAYLOAD arriving rather than a raw action — which is the
+    /// thing a user's press has to produce.
     @Test("the cancelled-transcript pill carries its Undo handler")
     func escapeRecoveryCarriesItsHandler() {
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       let transcript = UUID()
       var pressed: [PillAction] = []
-      d.presentEscapeRecovery(
-        CancelUndoPayload(transcriptID: transcript, targetApp: nil, targetElement: nil),
-        actions: { pressed.append($0) })
+      d.present(
+        .escapeRecovery(
+          payload: CancelUndoPayload(
+            transcriptID: transcript, targetApp: nil, targetElement: nil),
+          onPaste: { _ in pressed.append(.pasteEscapeRecovery(transcriptID: transcript)) }))
       let id = try! #require(d.currentPresentationForTesting?.id)
 
       d.send(.action(id, .pasteEscapeRecovery(transcriptID: transcript)), actions: nil)
@@ -922,7 +903,7 @@
       let (d, _, sink) = Self.director()
       defer { Self.closeAllWindows() }
 
-      // The bare path: no `presentEscapeRecovery`, so no payload is held.
+      // The bare path: no typed `.escapeRecovery` request, so no payload is held.
       d.send(.pipeline(.escapeRecovery(transcriptID: UUID())), actions: nil)
 
       #expect(sink.announcements.count == 1, "the saved row was not announced")
