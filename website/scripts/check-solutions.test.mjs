@@ -16,19 +16,22 @@ function prose(paragraphs) {
     : `<div data-answer-prose>${paragraphs.map((text) => `<p>${text}</p>`).join('')}</div>`;
 }
 
-function page({ route = '/solutions/developers/', title = 'Free Dictation for Developers on Mac | EnviousWispr', description = 'Dictate pull requests, reviews, documentation, and prompts on Mac with free, private, on-device voice input designed for technical vocabulary every day.', source = 'solution-developers', body = answerParagraphs, target = '/solutions/' } = {}) {
+function page({ route = '/solutions/developers/', title = 'Free Dictation for Developers on Mac | EnviousWispr', description = 'Dictate pull requests, reviews, documentation, and prompts on Mac with free, private, on-device voice input designed for technical vocabulary every day.', source = 'solution-developers', body = answerParagraphs, target = '/solutions/', webPage = true, breadcrumb = true, faq = true, emDash = false } = {}) {
   return {
     route,
     kind: 'landing',
-    html: `<!doctype html><html><head><title>${title}</title><meta name="description" content="${description}"><link rel="canonical" href="https://enviouswispr.com${route}"><script type="application/ld+json">{"@type":"WebPage"}</script><script type="application/ld+json">{"@type":"BreadcrumbList"}</script></head><body><h1>One heading</h1><a href="${target}">Solutions</a><a href="https://example.com/EnviousWispr.dmg" data-download-source="${source}">Download</a><section data-answer-block><p>Label</p><h2>Answer</h2>${prose(body)}</section><details><summary>Question</summary><p>Answer</p></details><a href="https://example.com/EnviousWispr.dmg" data-download-source="${source}-bottom">Download</a></body></html>`,
+    html: `<!doctype html><html><head><title>${title}</title><meta name="description" content="${description}"><link rel="canonical" href="https://enviouswispr.com${route}">${webPage ? '<script type="application/ld+json">{"@type":"WebPage"}</script>' : ''}${breadcrumb ? '<script type="application/ld+json">{"@type":"BreadcrumbList"}</script>' : ''}</head><body><h1>One heading${emDash ? ' —' : ''}</h1><a href="${target}">Solutions</a><a href="https://example.com/EnviousWispr.dmg" data-download-source="${source}">Download</a><section data-answer-block><p>Label</p><h2>Answer</h2>${prose(body)}</section>${faq ? '<details><summary>Question</summary><p>Answer</p></details>' : ''}<a href="https://example.com/EnviousWispr.dmg" data-download-source="${source}-bottom">Download</a></body></html>`,
   };
 }
 
-function hub() {
+function hub({ collectionPage = true, itemList = true } = {}) {
+  const collection = collectionPage
+    ? (itemList ? '{"@type":"CollectionPage","mainEntity":{"@type":"ItemList"}}' : '{"@type":"CollectionPage"}')
+    : '{"@type":"ItemList"}';
   return {
     route: '/solutions/',
     kind: 'hub',
-    html: '<!doctype html><html><head><title>Mac Dictation Solutions for Real Work | EnviousWispr</title><meta name="description" content="Find a free Mac dictation workflow for coding, writing, private offline work, and clean AI-polished text. Explore EnviousWispr and download free."><link rel="canonical" href="https://enviouswispr.com/solutions/"><script type="application/ld+json">{"@type":"CollectionPage","mainEntity":{"@type":"ItemList"}}</script><script type="application/ld+json">{"@type":"BreadcrumbList"}</script></head><body><h1>One heading</h1><a href="/solutions/developers/">Developers</a></body></html>',
+    html: `<!doctype html><html><head><title>Mac Dictation Solutions for Real Work | EnviousWispr</title><meta name="description" content="Find a free Mac dictation workflow for coding, writing, private offline work, and clean AI-polished text. Explore EnviousWispr and download free."><link rel="canonical" href="https://enviouswispr.com/solutions/"><script type="application/ld+json">${collection}</script><script type="application/ld+json">{"@type":"BreadcrumbList"}</script></head><body><h1>One heading</h1><a href="/solutions/developers/">Developers</a></body></html>`,
   };
 }
 
@@ -81,4 +84,84 @@ test('rejects duplicate metadata and download attribution', () => {
   assert.ok(errors.some((error) => error.includes('duplicate title')));
   assert.ok(errors.some((error) => error.includes('duplicate meta description')));
   assert.ok(errors.some((error) => error.includes('duplicate download source')));
+});
+
+test('rejects a landing page missing the WebPage schema', () => {
+  const documents = [hub(), page({ webPage: false })];
+  const errors = validateSolutionCluster({ documents, sitemapXml: sitemap(...documents.map((item) => item.route)) });
+  assert.deepEqual(errors, ['/solutions/developers/: missing WebPage schema']);
+});
+
+test('rejects a landing page missing the BreadcrumbList schema', () => {
+  const documents = [hub(), page({ breadcrumb: false })];
+  const errors = validateSolutionCluster({ documents, sitemapXml: sitemap(...documents.map((item) => item.route)) });
+  assert.deepEqual(errors, ['/solutions/developers/: missing BreadcrumbList schema']);
+});
+
+test('rejects a landing page missing its FAQ block', () => {
+  // The checker fail-closed check for a page's FAQ is the rendered details block; a landing
+  // page without it is the missing-FAQ failure mode the cluster validation reports.
+  const documents = [hub(), page({ faq: false })];
+  const errors = validateSolutionCluster({ documents, sitemapXml: sitemap(...documents.map((item) => item.route)) });
+  assert.deepEqual(errors, ['/solutions/developers/: missing visible FAQ details']);
+});
+
+test('rejects a hub missing the CollectionPage schema', () => {
+  const documents = [hub({ collectionPage: false }), page()];
+  const errors = validateSolutionCluster({ documents, sitemapXml: sitemap(...documents.map((item) => item.route)) });
+  assert.deepEqual(errors, ['/solutions/: missing CollectionPage schema']);
+});
+
+test('rejects a hub missing the ItemList schema', () => {
+  const documents = [hub({ itemList: false }), page()];
+  const errors = validateSolutionCluster({ documents, sitemapXml: sitemap(...documents.map((item) => item.route)) });
+  assert.deepEqual(errors, ['/solutions/: missing ItemList schema']);
+});
+
+test('rejects a duplicate title across two routes', () => {
+  const writers = page({ route: '/solutions/writers/', description: 'Dictate notes, essays, and email from your voice on Mac with free, private, on-device dictation built for everyday writers who need clean text every day.', source: 'solution-writers' });
+  const documents = [hub(), page(), writers];
+  const errors = validateSolutionCluster({ documents, sitemapXml: sitemap(...documents.map((item) => item.route)) });
+  assert.deepEqual(errors, ['/solutions/writers/: duplicate title also used by /solutions/developers/']);
+});
+
+test('rejects a duplicate meta description across two routes', () => {
+  const writers = page({ route: '/solutions/writers/', title: 'Free Dictation for Busy Writers on Mac | EnviousWispr', source: 'solution-writers' });
+  const documents = [hub(), page(), writers];
+  const errors = validateSolutionCluster({ documents, sitemapXml: sitemap(...documents.map((item) => item.route)) });
+  assert.deepEqual(errors, ['/solutions/writers/: duplicate meta description also used by /solutions/developers/']);
+});
+
+test('rejects a duplicate download source across two routes', () => {
+  const writers = page({ route: '/solutions/writers/', title: 'Free Dictation for Busy Writers on Mac | EnviousWispr', description: 'Dictate notes, essays, and email from your voice on Mac with free, private, on-device dictation built for everyday writers who need clean text every day.', source: 'solution-developers' });
+  const documents = [hub(), page(), writers];
+  const errors = validateSolutionCluster({ documents, sitemapXml: sitemap(...documents.map((item) => item.route)) });
+  assert.deepEqual(errors, [
+    '/solutions/writers/: duplicate download source also used by /solutions/developers/: solution-developers',
+    '/solutions/writers/: duplicate download source also used by /solutions/developers/: solution-developers-bottom',
+  ]);
+});
+
+test('rejects a direct answer longer than the window', () => {
+  const documents = [hub(), page({ body: [words(30), words(70, 30), words(70, 100)] })];
+  const errors = validateSolutionCluster({ documents, sitemapXml: sitemap(...documents.map((item) => item.route)) });
+  assert.deepEqual(errors, ['/solutions/developers/: direct answer has 170 words, expected 134 to 167']);
+});
+
+test('rejects a solution route missing from the sitemap', () => {
+  const documents = [hub(), page()];
+  const errors = validateSolutionCluster({ documents, sitemapXml: sitemap('/solutions/') });
+  assert.deepEqual(errors, ['/solutions/developers/: expected once in sitemap, found 0']);
+});
+
+test('rejects a solution route listed twice in the sitemap', () => {
+  const documents = [hub(), page()];
+  const errors = validateSolutionCluster({ documents, sitemapXml: sitemap('/solutions/', '/solutions/developers/', '/solutions/developers/') });
+  assert.deepEqual(errors, ['/solutions/developers/: expected once in sitemap, found 2']);
+});
+
+test('rejects an em dash in rendered solution copy', () => {
+  const documents = [hub(), page({ emDash: true })];
+  const errors = validateSolutionCluster({ documents, sitemapXml: sitemap(...documents.map((item) => item.route)) });
+  assert.deepEqual(errors, ['/solutions/developers/: rendered copy contains an em or en dash']);
 });
