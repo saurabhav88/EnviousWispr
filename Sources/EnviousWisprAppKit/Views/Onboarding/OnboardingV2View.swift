@@ -23,7 +23,7 @@ enum AppleIntelligenceSettings {
 @MainActor
 @Observable
 final class OnboardingV2ViewModel {
-  enum Screen { case welcome, settingUp, ready }
+  enum Screen { case welcome, settingUp, ready, warmingUp }
   enum SetupPhase { case checklist, permissions }
 
   enum ChecklistItemStatus: Equatable {
@@ -156,6 +156,12 @@ final class OnboardingV2ViewModel {
     switch currentScreen {
     case .welcome: return .idle
     case .ready: return .heart
+    // #2196: the gate is a working beat, so it wears the same animation the
+    // checklist wears while the model loads. Reads the GATE's own outcome —
+    // `downloadError` belongs to the checklist and is a different subject.
+    case .warmingUp:
+      if case .failed = warmingOutcome { return .drooping }
+      return .equalizer
     case .settingUp:
       if setupPhase == .permissions { return .triumph }
       if downloadError != nil { return .drooping }
@@ -284,6 +290,128 @@ final class OnboardingV2ViewModel {
     setupCancelled = false
     cancelRequested = false
     retryCount += 1
+  }
+
+  // MARK: - Engine warm gate (#2196)
+
+  /// What the gate has LEARNED, never what it has waited through. `waiting`
+  /// holds until the awaited warm-up returns a value; no elapsed time, poll or
+  /// yield count can move it (testing-philosophy.md
+  /// RULE: never-guess-when-the-subject-is-finished).
+  enum WarmingOutcome: Equatable {
+    case waiting
+    case ready
+    case failed(String)
+  }
+
+  var warmingOutcome: WarmingOutcome = .waiting
+
+  /// Bumped by `retryWarming()` so the view's `.task(id:)` re-keys and kicks a
+  /// fresh attempt — the same shape `retryCount` gives the checklist.
+  var warmingRetryCount = 0
+
+  /// Owned HERE rather than in the view's `.task`, for the reason #1388
+  /// established for `setupTask`: window churn cancels a view task, and an
+  /// outcome landing in a cancelled context is dropped in silence.
+  @ObservationIgnored private(set) var warmingTask: Task<Void, Never>?
+
+  /// One-shot per attempt: the gate reports itself exactly once, whichever of
+  /// ready / failed / skipped arrives first. Reset by `retryWarming()`.
+  private var warmingReported = false
+
+  /// Minimum time the gate stays on screen once readiness has landed, so the
+  /// usual already-warm case reads as a beat rather than a flash. A DISPLAY
+  /// floor applied AFTER the real signal, never a substitute for one; tests
+  /// pass 0.
+  static let warmingDisplayFloor: TimeInterval = 0.6
+
+  static let warmingFailureCopy =
+    "You can try again, or skip ahead and it will load the first time you dictate."
+
+  /// Start the gate's warm-up if none is live. Safe to call on every view
+  /// re-appear: a live attempt makes a re-kick a no-op.
+  func kickWarmingIfNeeded(
+    warmUp: @escaping @MainActor () async -> EngineWarmupOutcome,
+    displayFloor: TimeInterval = OnboardingV2ViewModel.warmingDisplayFloor
+  ) {
+    guard warmingTask == nil else { return }
+    guard currentScreen == .warmingUp, warmingOutcome == .waiting else { return }
+    warmingTask = Task { @MainActor in
+      await self.runWarmingGate(warmUp: warmUp, displayFloor: displayFloor)
+      self.warmingTask = nil
+    }
+  }
+
+  /// #2196 — the gate is a second CALLER of the shared warm-up
+  /// (`DictationRuntime.ensureActiveEngineWarmForOnboarding`), not a second
+  /// authority over readiness. That entry is idempotent and single-flighted, so
+  /// asking again when the engine is already warm returns `.ready` at once.
+  func runWarmingGate(
+    warmUp: @MainActor () async -> EngineWarmupOutcome, displayFloor: TimeInterval
+  ) async {
+    stepStartedAt = Date()
+    let startedAt = Date()
+    let outcome = await warmUp()
+    if Task.isCancelled { return }
+
+    switch outcome {
+    case .ready:
+      let elapsed = Date().timeIntervalSince(startedAt)
+      if displayFloor > elapsed {
+        try? await Task.sleep(for: .seconds(displayFloor - elapsed))
+        if Task.isCancelled { return }
+      }
+      guard reportWarmingOnce({ completeStep("engine_warm_gate", result: "ready") })
+      else { return }
+      warmingOutcome = .ready
+    case .cancelled:
+      // Nothing on this screen offers a Cancel. A `.cancelled` can only reach
+      // here from a Cancel pressed on the CHECKLIST that raced the gate's own
+      // single-flighted call — so the engine is not ready and the gate must not
+      // open. Retry re-asks; skip remains available.
+      guard reportWarmingOnce({ blockStep("engine_warm_gate", reason: "warmup_cancelled") })
+      else { return }
+      warmingOutcome = .failed(Self.warmingFailureCopy)
+    case .failed:
+      guard reportWarmingOnce({ blockStep("engine_warm_gate", reason: "warmup_failed") })
+      else { return }
+      warmingOutcome = .failed(Self.warmingFailureCopy)
+    }
+  }
+
+  /// Enter the gate from the Ready screen. Resets the attempt, because
+  /// `warmingOutcome` survives a finished visit: a reopened onboarding would
+  /// otherwise inherit a previous visit's `ready` and walk straight through
+  /// without asking the engine anything, and the engine may have been unloaded
+  /// in between. The reset is here rather than at the view's `onAppear`
+  /// because a reused window can skip `onAppear` entirely
+  /// (`OnboardingProgress.swift:40-44`).
+  func beginWarmingGate() {
+    warmingReported = false
+    warmingOutcome = .waiting
+    currentScreen = .warmingUp
+  }
+
+  func retryWarming() {
+    warmingReported = false
+    warmingOutcome = .waiting
+    warmingRetryCount += 1
+  }
+
+  /// The person chose not to wait. Deliberately does NOT cancel the in-flight
+  /// warm-up: that load is shared and single-flighted, so cancelling it to
+  /// leave a screen would cancel it for every other waiter. The attempt runs to
+  /// completion and its outcome is dropped by the one-shot latch below, which
+  /// is what keeps this step from reporting twice.
+  func skipWarmingGate() {
+    _ = reportWarmingOnce { completeStep("engine_warm_gate", result: "skipped") }
+  }
+
+  private func reportWarmingOnce(_ emit: () -> Void) -> Bool {
+    guard !warmingReported else { return false }
+    warmingReported = true
+    emit()
+    return true
   }
 
   // MARK: - Progress Polling
@@ -508,13 +636,20 @@ struct OnboardingV2View: View {
         SettingUpScreenV2(viewModel: viewModel)
           .transition(Self.screenTransition)
       case .ready:
-        ReadyScreenV2(onComplete: {
-          viewModel.finishOnboarding(settings: settings)
-          // #1176 (race fix): mark terminal BEFORE the window closes, so the
-          // unguarded window-close path sees it and does not also fire abandon.
-          onboardingProgress.markCompleted()
-          onComplete()
-        })
+        // #2196: this button no longer ends setup. It opens the warm gate,
+        // which is what finishes — so the last thing that happens before a new
+        // person leaves is a proven-ready engine rather than an assumed one.
+        ReadyScreenV2(onContinue: { viewModel.beginWarmingGate() })
+          .transition(Self.screenTransition)
+      case .warmingUp:
+        WarmingScreenV2(
+          viewModel: viewModel,
+          onReady: finishSetup,
+          onSkip: {
+            viewModel.skipWarmingGate()
+            finishSetup()
+          }
+        )
         .transition(Self.screenTransition)
       }
     }
@@ -542,11 +677,29 @@ struct OnboardingV2View: View {
     // setupPhase is intentionally excluded from the id: changing phase at the
     // end of startSetup must NOT re-trigger. currentScreen + retryCount are
     // sufficient — retryCount bumps on retry, currentScreen on navigation.
-    .task(id: "\(viewModel.currentScreen)-\(viewModel.retryCount)") {
+    .task(
+      id:
+        "\(viewModel.currentScreen)-\(viewModel.retryCount)-\(viewModel.warmingRetryCount)"
+    ) {
       viewModel.kickSetupIfNeeded(
         warmUp: { await dictationRuntime.ensureActiveEngineWarmForOnboarding() },
         settings: settings)
+      // #2196: the gate's attempt, same owned-task shape and same #1388 reason.
+      // Each kick carries its own eligibility guard, so only one can fire.
+      viewModel.kickWarmingIfNeeded(
+        warmUp: { await dictationRuntime.ensureActiveEngineWarmForOnboarding() })
     }
+  }
+
+  /// The one place setup ends. Hoisted from the Ready button (#2196) because
+  /// the gate now has two exits that both finish, and two copies of a terminal
+  /// sequence is how one of them drifts.
+  private func finishSetup() {
+    viewModel.finishOnboarding(settings: settings)
+    // #1176 (race fix): mark terminal BEFORE the window closes, so the
+    // unguarded window-close path sees it and does not also fire abandon.
+    onboardingProgress.markCompleted()
+    onComplete()
   }
 
   private func recoverFromPersistedState() {
@@ -597,6 +750,9 @@ struct OnboardingV2View: View {
     case .ready:
       screen = "ready"
       step = "ready"
+    case .warmingUp:
+      screen = "warming_up"
+      step = "engine_warm_gate"
     }
     onboardingProgress.update(screen: screen, step: step)
   }
@@ -1306,7 +1462,7 @@ private struct ReadyScreenV2: View {
 
   @Environment(SettingsManager.self) private var settings
   @Environment(PermissionsService.self) private var permissions
-  let onComplete: () -> Void
+  let onContinue: () -> Void
 
   var body: some View {
     @Bindable var settings = settings
@@ -1393,7 +1549,7 @@ private struct ReadyScreenV2: View {
       Spacer()
 
       VStack(spacing: 0) {
-        Button(action: onComplete) {
+        Button(action: onContinue) {
           Text("GET STARTED!")
             .font(.system(size: 15, weight: .heavy))
             .kerning(0.3)
