@@ -527,8 +527,8 @@ import Testing
         await withHook { events in
           let vm = OnboardingV2ViewModel()
           vm.beginPractice()
-          vm.practiceTakeStarted(boxFocused: false)
-          vm.practiceTakeEnded()
+          vm.practiceTakeStarted(boxFocused: false, transcriptCount: 0)
+          vm.practiceTakeEnded(transcriptCount: 1)
 
           vm.reportPracticeExit()
 
@@ -748,14 +748,34 @@ import Testing
       @Test("a take that missed the box is not reported as silence")
       func missedBoxIsNotSilence() {
         let vm = makePracticeViewModel()
-        vm.practiceTakeStarted(boxFocused: false)
+        vm.practiceTakeStarted(boxFocused: false, transcriptCount: 3)
 
-        vm.practiceTakeEnded()
+        // A transcript appeared, so words genuinely existed — they just had
+        // nowhere here to land.
+        vm.practiceTakeEnded(transcriptCount: 4)
 
         #expect(vm.practiceState == .missedTheBox)
         #expect(
           vm.practiceState != .saidNothing,
           "the screen told someone it heard nothing when it heard them fine")
+      }
+
+      /// Cloud review, and it is the founder's own defect pointed the other way,
+      /// inside the fix for it: losing focus says where words WOULD go, never
+      /// whether any existed. Without the transcript evidence this take was
+      /// classified `missedTheBox` and the screen said "We heard you" about
+      /// somebody who had said nothing at all.
+      @Test("an unfocused SILENT take is silence, not a missed box")
+      func unfocusedSilenceIsNotAMissedBox() {
+        let vm = makePracticeViewModel()
+        vm.practiceTakeStarted(boxFocused: false, transcriptCount: 3)
+
+        // No transcript appeared: nothing was heard.
+        vm.practiceTakeEnded(transcriptCount: 3)
+
+        #expect(
+          vm.practiceState == .saidNothing,
+          "the screen claimed it heard someone who said nothing")
       }
 
       /// The other half, and why the copy was not simply replaced: real silence

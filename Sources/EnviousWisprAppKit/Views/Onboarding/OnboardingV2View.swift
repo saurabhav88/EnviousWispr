@@ -555,24 +555,33 @@ final class OnboardingV2ViewModel {
   /// elsewhere", and the two need opposite advice.
   private var boxWasFocusedAtTakeStart = true
 
-  func practiceTakeStarted(boxFocused: Bool = true) {
+  /// Transcripts on record when the take began. Focus alone cannot tell a
+  /// missed box from silence — it says where words WOULD go, not whether any
+  /// existed — so the count of produced transcripts is what separates them.
+  private var transcriptCountAtTakeStart = 0
+
+  func practiceTakeStarted(boxFocused: Bool = true, transcriptCount: Int = 0) {
     if case .cannotHear = practiceState { return }
     practiceTextAtTakeStart = practiceText
     boxWasFocusedAtTakeStart = boxFocused
+    transcriptCountAtTakeStart = transcriptCount
     practiceState = .listening
   }
 
   /// The dictation finished. Whether it produced anything is decided by the box
   /// itself, never by a clock.
-  func practiceTakeEnded() {
+  func practiceTakeEnded(transcriptCount: Int = 0) {
     guard practiceState == .listening else { return }
     let grew = practiceText != practiceTextAtTakeStart
       && !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    // A transcript that did not reach the box IS the missed-box case, and it
+    // is the only evidence that words existed at all. Requiring BOTH — the box
+    // unfocused AND a transcript produced — is what stops this screen claiming
+    // "We heard you" about a take that was simply silent (cloud review).
+    let producedWords = transcriptCount > transcriptCountAtTakeStart
     if grew {
       practiceState = .worked
-    } else if !boxWasFocusedAtTakeStart {
-      // Words may well have been produced; they simply had nowhere here to go.
-      // Saying "all quiet" here is the one wrong thing this screen can say.
+    } else if !boxWasFocusedAtTakeStart && producedWords {
       practiceState = .missedTheBox
     } else {
       practiceState = .saidNothing
@@ -622,13 +631,26 @@ final class OnboardingV2ViewModel {
   /// Reset on entry, for the same reason `beginWarmingGate` resets: a reopened
   /// onboarding must not inherit a previous visit's success and offer FINISH
   /// SETUP to someone who has not dictated in this one.
+  /// The session this screen's contents belong to, so a reopened window cannot
+  /// show a previous visit's words. `sessionStartFloor` is the same box the
+  /// abandon emitter uses, so "a new visit" means exactly what it means
+  /// everywhere else in onboarding.
+  private var practiceVisitStamp: Date?
+
+  var practiceBelongsToCurrentVisit: Bool {
+    guard let stamp = practiceVisitStamp, let current = sessionStartFloor?() else { return false }
+    return stamp == current
+  }
+
   func beginPractice() {
+    practiceVisitStamp = sessionStartFloor?()
     practiceText = ""
     practiceSucceeded = false
     practiceState = .waiting
     practiceExitReported = false
     practiceTextAtTakeStart = ""
     boxWasFocusedAtTakeStart = true
+    transcriptCountAtTakeStart = 0
     currentScreen = .tryItOut
   }
 

@@ -26,6 +26,9 @@ struct PracticeScreenV2: View {
   let onFinish: () -> Void
 
   @Environment(SettingsManager.self) private var settings
+  /// Whether a take produced anything at all. Focus says where words WOULD go;
+  /// only this says whether any existed (cloud review).
+  @Environment(TranscriptCoordinator.self) private var transcripts
   @Environment(PermissionsService.self) private var permissions
   /// The SUBJECT's own in-flight signal: true while either pipeline is
   /// recording, transcribing or polishing. The screen was previously blind to a
@@ -229,7 +232,24 @@ struct PracticeScreenV2: View {
       .padding(.top, 12)
     }
     .onAppear {
+      // A reopened window keeps the retained view model, and the open bridge
+      // only starts a fresh `OnboardingProgress` session — it never resets this
+      // screen. Without this, someone who closed the window here and came back
+      // would find a previous visit's words already in the box and FINISH SETUP
+      // already lit (cloud review). Same class as the warm gate's reopen guard.
+      if !viewModel.practiceBelongsToCurrentVisit {
+        viewModel.beginPractice()
+      }
       boxFocused = true
+      // A take can ALREADY be running when this view mounts — press the
+      // shortcut during the warming transition and `isDictationActive` is true
+      // before the observer below exists. `onChange` has no initial callback,
+      // so without this the take is never opened and its end is dropped by the
+      // `.listening` guard (cloud review).
+      if live.isDictationActive {
+        viewModel.practiceTakeStarted(
+          boxFocused: true, transcriptCount: transcripts.transcriptCount)
+      }
       permissions.refreshAccessibilityStatus()
       viewModel.applyPracticePosture(
         micGranted: permissions.hasMicrophonePermission,
@@ -256,11 +276,13 @@ struct PracticeScreenV2: View {
     }
     .onChange(of: live.isDictationActive) { _, active in
       if active {
-        // Whether the box holds focus RIGHT NOW is what separates "we heard
-        // nothing" from "we heard you and it went to the clipboard".
-        viewModel.practiceTakeStarted(boxFocused: boxFocused)
+        // Whether the box holds focus RIGHT NOW is half of what separates "we
+        // heard nothing" from "we heard you and it went to the clipboard"; the
+        // transcript count is the other half.
+        viewModel.practiceTakeStarted(
+          boxFocused: boxFocused, transcriptCount: transcripts.transcriptCount)
       } else {
-        viewModel.practiceTakeEnded()
+        viewModel.practiceTakeEnded(transcriptCount: transcripts.transcriptCount)
         // Put the cursor back, so the next attempt cannot repeat the miss for
         // the same reason. Founder-found in Live UAT: the advice is useless if
         // acting on it needs a click they were not told about.
