@@ -348,20 +348,12 @@ struct EscapeRecoveryPillTests {
     #expect(pasted == [payload.transcriptID])
   }
 
-  #if DEBUG
-    /// A fresh director has nothing bound, which is the other half of inertness:
-    /// even if a pill were somehow raised, a press would reach nobody and the
-    /// director's own invariant would say so rather than silently dropping it.
-    ///
-    /// Just this ONE case is DEBUG-gated, not the file: it is the only one here
-    /// reading a `*ForTesting` accessor, and wrapping the suite would drop every
-    /// other guard out of the Release lane for one test's sake — the mistake the
-    /// first repair of this class made two commits ago.
-    @Test("a fresh director has no active binding")
-    func handlerIsUnboundByDefault() {
-      #expect(OverlayTestDouble.headlessDirector().hasActiveBindingForTesting == false)
-    }
-  #endif
+  // **`handlerIsUnboundByDefault` was DELETED** (#2292 C6). It asserted that a
+  // fresh director has no binding — an internal empty state no supported user can
+  // encounter, since a pill with buttons cannot reach the screen without its
+  // handlers arriving in the same call. The property it wanted is now structural
+  // rather than a runtime fact worth checking, and it was the only case in this
+  // file holding a `*ForTesting` read.
 
   // MARK: Helpers
 

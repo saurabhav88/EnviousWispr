@@ -1,8 +1,7 @@
-#if DEBUG
-  // **DEBUG-only because it reads a `*ForTesting` accessor**, which lives inside
-  // `#if DEBUG` on the type it belongs to. Without the guard the RELEASE build of
-  // the test target does not compile — which a Debug-only local run cannot see, by
-  // construction, and which CI's `build-release` job catches instead.
+// **Release-visible since C6.** This file was `#if DEBUG` for one reason: it read
+// `currentPresentationForTesting` and `currentIntent`, both of which lived inside
+// `#if DEBUG` on the director. It now reads the render model, which is the
+// production surface.
   import AppKit
   import EnviousWisprPipeline
   import Testing
@@ -23,7 +22,7 @@
   struct OverlayImportStatusTests {
 
     private static func importMessage(_ d: OverlayDirector) -> String? {
-      guard case .notice(let notice)? = d.currentPresentationForTesting?.content,
+      guard case .notice(let notice)? = d.renderModel.presentation?.content,
         notice.kind == .importStatus
       else { return nil }
       return notice.text
@@ -59,7 +58,10 @@
       Self.record(overlay)
       overlay.present(.importStatus(message: "Finished importing your words."))
 
-      #expect(overlay.currentIntent == .recording(audioLevel: 0))
+      guard case .recording? = overlay.renderModel.presentation?.content else {
+        Issue.record("a limb claimed ownership of a slot a genuine recording holds")
+        return
+      }
       #expect(
         Self.importMessage(overlay) == nil,
         "a limb must never claim ownership of a slot a genuine recording holds")
@@ -73,10 +75,12 @@
       Self.record(overlay)
       overlay.present(.importStatus(message: "Finished importing your words."))
 
-      #expect(overlay.currentIntent == .recording(audioLevel: 0))
+      guard case .recording? = overlay.renderModel.presentation?.content else {
+        Issue.record("a limb claimed ownership of a slot a genuine recording holds")
+        return
+      }
       #expect(
         Self.importMessage(overlay) == nil,
         "the stale import token must lose all ownership once recording superseded it")
     }
   }
-#endif

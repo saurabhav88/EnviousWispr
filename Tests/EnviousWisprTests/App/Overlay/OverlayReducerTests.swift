@@ -836,4 +836,58 @@ struct OverlayReducerTests {
     #expect(notice.severity == .advisory)
     #expect(notice.severity != .error, "an advisory painted as an error blames our software")
   }
+
+  // MARK: - The committed intent, which is not always the picture (#2292 C6)
+
+  /// **The language chip travels as a PIPELINE intent, and that is what makes
+  /// arbitration work.** A feature request leaves `pipelineIntent` alone; the
+  /// chip does not, so the pipeline sees the slot as busy while a chip is up.
+  ///
+  /// Moved here from `OverlayDirectorTests` (#2292 C6), which asserted it
+  /// through a `pipelineIntentForTesting` hatch. It is a statement about what the
+  /// reducer commits, so the reducer suite can make it directly — and in the
+  /// Release lane, which the director suite could not.
+  @Test("a language chip commits the pipeline intent; a Bluetooth card does not")
+  func chipCommitsThePipelineIntentAndTheCardDoesNot() {
+    let payload = LanguageChipPayload(
+      lang: "es", displayName: "Spanish", state: .askToLock, generation: 1)
+
+    var chip = Self.makeReducer()
+    _ = chip.reduce(.pipeline(.passiveChip(payload: payload)))
+    #expect(
+      chip.state.pipelineIntent == .passiveChip(payload: payload),
+      "the chip left the pipeline idle, so a recording could take the slot under it")
+
+    // The paired case: without it, "the chip commits an intent" is also satisfied
+    // by a reducer that commits one for everything.
+    var card = Self.makeReducer()
+    _ = card.reduce(.bluetoothAwareness)
+    #expect(
+      card.state.pipelineIntent == .hidden,
+      "a feature changed the PIPELINE intent, which arbitration reads")
+  }
+
+  /// **The committed intent follows the DECISION, not the picture.** A suppressed
+  /// accessibility toast draws the CLIPBOARD FALLBACK, and the intent stays
+  /// `.accessibilityToast` — because the decision that was made is "tell them
+  /// about accessibility", and the picture is only how it was told.
+  ///
+  /// Moved here from `OverlayDirectorTests` (#2292 C6) for the same reason as the
+  /// case above. The director suite keeps the half a user meets: the drawn pill
+  /// is the clipboard hint and the sentence spoken is still the accessibility one.
+  @Test("a suppressed accessibility toast still commits the toast intent")
+  func suppressedToastCommitsTheToastIntent() {
+    var r = Self.makeReducer()
+
+    _ = r.reduceAccessibilityNotice(showingToast: { false })
+
+    #expect(
+      r.state.pipelineIntent == .accessibilityToast,
+      "the logical intent followed the picture instead of the decision")
+    guard case .notice(let notice)? = r.state.current?.content else {
+      Issue.record("expected the clipboard fallback to be drawn")
+      return
+    }
+    #expect(notice.kind == .processing, "the suppressed case drew something other than the hint")
+  }
 }

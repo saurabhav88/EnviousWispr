@@ -36,7 +36,7 @@ import Testing
 /// tests are invisible to the Release lane for that reason. Nothing here reads
 /// director state.
 ///
-/// It does use `OverlayScheduler.manual` and `OverlayScheduledWork.fireForTesting`
+/// It does use `OverlayScheduler.manual` and `OverlayScheduledWork.fire`
 /// to reach a dwell without waiting for one. Those are a fake CLOCK rather than a
 /// window into private state, and neither is `#if DEBUG`, so the suite compiles
 /// and executes in both lanes. C6 of this phase replaces them.
@@ -128,15 +128,11 @@ struct PillRequestParityTests {
       payload: payload, onLock: {}, onDismiss: {}, onExpire: {}))
 
     #expect(receipt != nil, "the chip was refused on an empty slot")
-    // The pipeline-intent half needs `pipelineIntentForTesting`, which lives in
-    // `#if DEBUG`. The receipt assertion above runs in BOTH lanes; this one is
-    // Debug-only rather than dropped, because which enum the chip travels through
-    // is the whole point of the case.
-    #if DEBUG
-      #expect(
-        rig.director.pipelineIntentForTesting == .passiveChip(payload: payload),
-        "the chip must set the PIPELINE intent, which a feature request would not — the language presenter arbitrates against exactly that")
-    #endif
+    // **The pipeline-intent half moved to `OverlayReducerTests`**
+    // `chipCommitsThePipelineIntentAndTheCardDoesNot` (#2292 C6). It needed a
+    // director hatch that no longer exists, and it is a claim about what the
+    // reducer commits rather than about the façade — so it is now asserted where
+    // it is true, with a paired Bluetooth case, in both lanes.
   }
 
   // MARK: - Updates and dismissal
@@ -419,7 +415,7 @@ struct PillRequestParityTests {
       onLock: {}, onDismiss: {}, onExpire: { expiries += 1 }))
 
     let armed = try! #require(rig.armedExpiry)
-    armed.fireForTesting()
+    armed.fire()
 
     #expect(expiries == 1, "the request's own onExpire must run")
     #expect(

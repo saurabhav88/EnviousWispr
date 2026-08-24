@@ -1,9 +1,9 @@
-#if DEBUG
-// **DEBUG-only because it reads a `*ForTesting` accessor**, which lives inside
-// `#if DEBUG` on the type it belongs to. Without the guard the RELEASE build of
-// the test target does not compile — which a Debug-only local run cannot see, by
-// construction, and which CI's `build-release` job catches instead.
-  import AppKit
+// **Release-visible since C6.** This file was `#if DEBUG` for one reason: it read
+// `currentIntent` and `currentPresentationForTesting`, both of which lived inside
+// `#if DEBUG` on the director. It now reads the render model, which is the
+// production surface, so the Release lane executes these cases instead of
+// silently excluding them.
+import AppKit
   import EnviousWisprPipeline
   import Testing
 
@@ -23,14 +23,14 @@
     @Test func recordingSupersedesBluetoothCardSynchronously() {
       let overlay = OverlayTestDouble.headlessDirector()
       overlay.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
-      // **This asserted `.hidden` and that is what hid the defect.** A feature
-      // does not change the pipeline intent, which is true and was the wrong
-      // question: `BluetoothAwarenessPresenter` asks `currentIntent` for
-      // `.bluetoothAwareness` to confirm its own card before acting on any
-      // button, so reporting hidden left every one of them a no-op. The test
-      // agreed with the code because both were written from the same assumption.
-      #expect(overlay.currentIntent == .bluetoothAwareness)
-      guard case .bluetoothAwareness? = overlay.currentPresentationForTesting?.content else {
+      // **This once asserted `.hidden` and that is what hid the defect.** A
+      // feature does not change the pipeline intent, which is true and was the
+      // wrong question: the presenter had to confirm its own card before acting
+      // on any button, so reporting hidden left every one of them a no-op. The
+      // test agreed with the code because both were written from the same
+      // assumption. Asking what is ON SCREEN cannot go wrong that way — there is
+      // no projection to get right, only the pill the user is looking at.
+      guard case .bluetoothAwareness? = overlay.renderModel.presentation?.content else {
         Issue.record("the Bluetooth card did not take the slot")
         return
       }
@@ -42,18 +42,21 @@
             audioLevelProvider: { 0 },
             recordingElapsedProvider: { nil },
             isLocked: false)))
-      #expect(overlay.currentIntent == .recording(audioLevel: 0))
+      guard case .recording? = overlay.renderModel.presentation?.content else {
+        Issue.record("the recording pill did not supersede the card")
+        return
+      }
 
       overlay.dismissCurrent(.silent)
-      #expect(overlay.currentIntent == .hidden)
-      #expect(overlay.currentPresentationForTesting == nil)
+      #expect(
+        overlay.renderModel.presentation == nil,
+        "a dismissed slot still shows a pill")
     }
 
     @Test func hideClearsBluetoothCard() {
       let overlay = OverlayTestDouble.headlessDirector()
       overlay.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
       overlay.dismissCurrent(.silent)
-      #expect(overlay.currentPresentationForTesting == nil)
+      #expect(overlay.renderModel.presentation == nil)
     }
   }
-#endif

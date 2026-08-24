@@ -1,9 +1,11 @@
-#if DEBUG
-// **The whole file is DEBUG-only, and that is structural rather than stylistic.**
-// Every case here reads a `*ForTesting` accessor, and those live inside `#if
-// DEBUG` on the types they belong to. Without this wrapper the RELEASE build of
-// the test target does not compile — which a Debug-only local run cannot see, by
-// construction, and which CI's `build-release` job catches instead.
+// **Release-visible since C6, and the wrapper it lost was load-bearing until
+// then.** Every case here used to read a `*ForTesting` accessor, and those lived
+// inside `#if DEBUG` on the types they belonged to — so without a wrapper the
+// RELEASE build of the test target did not compile, which a Debug-only local run
+// cannot see by construction. The accessors are gone: each case now reads what
+// the user gets, what the caller was handed back, or what the host was asked
+// for, all of which are production surface. 39 cases moved into the Release lane
+// with this line.
   import AppKit
   import EnviousWisprCore
   import EnviousWisprPipeline
@@ -74,21 +76,33 @@
     /// The real host has no root to press through, and giving it one would be a
     /// test hatch in shipping code. Every case using this asserts what a press
     /// reached; none of them asks a question about a frame.
-    private static func pressableDirector() -> (OverlayDirector, WindowlessOverlayHost, Sink) {
+    private static func pressableDirector(preview: PreviewSetting = PreviewSetting())
+      -> (OverlayDirector, WindowlessOverlayHost, Sink)
+    {
       let sink = Sink()
       let host = WindowlessOverlayHost()
       let d = OverlayDirector(
         host: host,
         scheduler: .manual { _ in },
         announce: { sink.announcements.append($0) },
-        livePreview: .disabled,
+        livePreview: LivePreviewBridge(
+          recordingDidChange: { sink.recordingStates.append($0) },
+          isEnabledForGeometry: { preview.isEnabled },
+          display: { preview.display() }),
         grantAccessibility: { sink.appActions.append(.grantAccessibility) },
         deferFirstRender: { $0() })
       return (d, host, sink)
     }
 
+    /// **Teardown through `hide()`, the production surface** (#2292 C6). It used
+    /// to reach `panelForTesting`, a `#if DEBUG` accessor on the host, which is
+    /// what kept this whole suite out of the Release lane once the director's own
+    /// hatches were gone. `hide()` does strictly MORE than the old line did: it
+    /// orders the panel out AND releases the hosting view, so a hidden pill stops
+    /// polling the audio level instead of running invisibly for the rest of the
+    /// session.
     private static func closeAllWindows() {
-      for h in hosts { h.panelForTesting?.orderOut(nil) }
+      for h in hosts { h.hide() }
       hosts.removeAll()
     }
 
@@ -190,12 +204,12 @@
       let staleTimer = try! #require(armed.work)
 
       Self.record(d, level: 0.4)
-      let live = try! #require(d.currentPresentationForTesting?.id)
+      let live = try! #require(d.renderModel.presentation?.id)
 
-      staleTimer.fireForTesting()
+      staleTimer.fire()
 
       #expect(
-        d.currentPresentationForTesting?.id == live,
+        d.renderModel.presentation?.id == live,
         "a timer from a finished notice closed the live recording pill")
     }
 
@@ -223,8 +237,11 @@
 
       Self.record(d, level: 0.2)
 
-      #expect(notice.isCancelled)
-      #expect(d.hasArmedExpiryForTesting == false, "the recording pill armed a dismissal")
+      // `isCancelled` on the schedule the director armed IS the observation —
+      // it is the object the director acted on, not a flag beside it. The
+      // `hasArmedExpiryForTesting` read that used to sit here asked the same
+      // question of a private field and could not fail while this one passed.
+      #expect(notice.isCancelled, "the notice's dwell survived the recording that replaced it")
     }
 
     /// The paired accepted case: a timed pill's OWN timer must still work, or
@@ -235,9 +252,9 @@
       defer { Self.closeAllWindows() }
       d.present(.warning(reason: .polishFailed))
 
-      try! #require(armed.work).fireForTesting()
+      try! #require(armed.work).fire()
 
-      #expect(d.currentPresentationForTesting == nil)
+      #expect(d.renderModel.presentation == nil)
     }
 
     // MARK: - Exactly one action binding
@@ -264,7 +281,10 @@
 
       Self.record(d, level: 0.3)
 
-      #expect(d.hasActiveBindingForTesting == false)
+      // The press below IS the assertion: a binding that outlived its pill shows
+      // up as a callback firing for a pill nobody can see. The
+      // `hasActiveBindingForTesting` read that used to precede it asked about the
+      // field instead of the effect, and could not fail while the press passed.
       try host.sendUserActionThroughRoot(.discardRecovery, for: notice)
       #expect(discards == 0, "an action from a replaced pill reached its old handler")
     }
@@ -279,22 +299,29 @@
 
     /// Custody ends with the pill. Otherwise a payload outlives the dictation it
     /// belongs to and the next Undo could reach it.
+    ///
+    /// **Observed through a PRESS since C6.** "Is a payload held" is a field a
+    /// user cannot meet; what they can meet is Undo restoring a transcript from a
+    /// dictation they already finished with. Pressing the dismissed pill's own
+    /// receipt is how that would happen, so it is what the case does.
     @Test("the payload is released when the pill goes")
-    func payloadIsReleasedWithThePill() {
-      let (d, _, _) = Self.director()
-      defer { Self.closeAllWindows() }
+    func payloadIsReleasedWithThePill() throws {
+      let (d, host, _) = Self.pressableDirector()
       let transcript = UUID()
-      d.present(
-        .escapeRecovery(
-          payload: CancelUndoPayload(
-            transcriptID: transcript, targetApp: nil, targetElement: nil),
-          onPaste: { _ in }))
-      #expect(d.holdsEscapeRecoveryPayloadForTesting)
+      var restored: [UUID] = []
+      let receipt = try #require(
+        d.present(
+          .escapeRecovery(
+            payload: CancelUndoPayload(
+              transcriptID: transcript, targetApp: nil, targetElement: nil),
+            onPaste: { restored.append($0.transcriptID) })))
 
       d.dismissCurrent(.announced)
+      try host.sendUserActionThroughRoot(
+        .pasteEscapeRecovery(transcriptID: transcript), for: receipt)
 
       #expect(
-        d.holdsEscapeRecoveryPayloadForTesting == false,
+        restored.isEmpty,
         "a cancelled transcript outlived the pill offering to restore it")
     }
 
@@ -302,21 +329,23 @@
     /// empties. Clearing it only on empty left a cancelled transcript held while a
     /// different pill was showing.
     @Test("the payload is released when a different pill replaces the recovery pill")
-    func payloadIsReleasedOnReplacement() {
-      let (d, _, _) = Self.director()
-      defer { Self.closeAllWindows() }
+    func payloadIsReleasedOnReplacement() throws {
+      let (d, host, _) = Self.pressableDirector()
       let transcript = UUID()
-      d.present(
-        .escapeRecovery(
-          payload: CancelUndoPayload(
-            transcriptID: transcript, targetApp: nil, targetElement: nil),
-          onPaste: { _ in }))
-      #expect(d.holdsEscapeRecoveryPayloadForTesting)
+      var restored: [UUID] = []
+      let receipt = try #require(
+        d.present(
+          .escapeRecovery(
+            payload: CancelUndoPayload(
+              transcriptID: transcript, targetApp: nil, targetElement: nil),
+            onPaste: { restored.append($0.transcriptID) })))
 
       Self.record(d, level: 0.3)
+      try host.sendUserActionThroughRoot(
+        .pasteEscapeRecovery(transcriptID: transcript), for: receipt)
 
       #expect(
-        d.holdsEscapeRecoveryPayloadForTesting == false,
+        restored.isEmpty,
         "a cancelled transcript was still held while a different pill was on screen")
     }
 
@@ -380,11 +409,13 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       Self.record(d, level: 0.2)
-      let first = try! #require(d.presentedIDForTesting)
+      let first = try! #require(d.renderModel.presentation?.id)
 
       Self.record(d, level: 0.8)
 
-      #expect(d.presentedIDForTesting == first, "a metering update changed the presented occupant")
+      #expect(
+        d.renderModel.presentation?.id == first,
+        "a metering update changed the presented occupant")
     }
 
     @Test("a genuinely new pill is a new occupant")
@@ -392,11 +423,11 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       Self.record(d, level: 0.2)
-      let first = try! #require(d.presentedIDForTesting)
+      let first = try! #require(d.renderModel.presentation?.id)
 
       d.present(.warning(reason: .polishFailed))
 
-      #expect(d.presentedIDForTesting != first)
+      #expect(d.renderModel.presentation?.id != first)
     }
 
     /// Emptying the slot must release the recording providers, or a closure
@@ -412,7 +443,7 @@
 
       d.dismissCurrent(.announced)
 
-      #expect(d.presentedIDForTesting == nil)
+      #expect(d.renderModel.presentation == nil)
       #expect(d.renderModel.audioLevelProvider() == 0, "a provider outlived its dictation")
       #expect(d.renderModel.recordingElapsedProvider() == nil)
     }
@@ -478,17 +509,20 @@
     @Test("toggling Live Preview mid-dictation does not resize the live pill")
     func morphKeepsTheLayoutItWasCreatedWith() {
       let setting = PreviewSetting()
-      let (d, _, _) = Self.director(preview: setting)
-      defer { Self.closeAllWindows() }
+      let (d, host, _) = Self.pressableDirector(preview: setting)
       Self.record(d, level: 0.2, preview: false, previewSetting: setting)
-      let atStart = d.hostForTesting?.panelForTesting?.frame.width
 
       // The setting flips, and the next tick reports it.
       Self.record(d, level: 0.6, preview: true, previewSetting: setting)
 
-      #expect(atStart == 185)
+      // **Asserted on what the director ASKED FOR, not on the panel it got**
+      // (#2292 C6). The claim is about the director's arithmetic — it must not
+      // re-resolve the layout on a tick — and reading an `NSPanel` frame to check
+      // that tested it through AppKit, which is why this case could only run in
+      // the Debug lane. Whether a panel then honours the width it is handed is
+      // `OverlayWindowHostTests`' question.
       #expect(
-        d.hostForTesting?.panelForTesting?.frame.width == 185,
+        host.presented.map(\.width) == [.fixed(185), .fixed(185)],
         "a mid-dictation settings change resized the live pill, which is the #930 rebuild flicker")
     }
 
@@ -512,7 +546,7 @@
 
       shown.present(.accessibilityNotice)
 
-      guard case .notice(let toast)? = shown.currentPresentationForTesting?.content else {
+      guard case .notice(let toast)? = shown.renderModel.presentation?.content else {
         Issue.record("expected a notice")
         return
       }
@@ -527,7 +561,7 @@
 
       suppressed.present(.accessibilityNotice)
 
-      guard case .notice(let fallback)? = suppressed.currentPresentationForTesting?.content else {
+      guard case .notice(let fallback)? = suppressed.renderModel.presentation?.content else {
         Issue.record("expected a notice")
         return
       }
@@ -557,13 +591,13 @@
       defer { Self.closeAllWindows() }
 
       d.present(.accessibilityNotice)
-      let first = d.currentPresentationForTesting?.id
+      let first = d.renderModel.presentation?.id
 
       d.present(.accessibilityNotice)
 
-      #expect(d.currentPresentationForTesting?.id == first, "a duplicate push replaced the toast")
+      #expect(d.renderModel.presentation?.id == first, "a duplicate push replaced the toast")
       #expect(sink.announcements.count == 1, "a duplicate push announced twice")
-      guard case .notice(let notice)? = d.currentPresentationForTesting?.content else {
+      guard case .notice(let notice)? = d.renderModel.presentation?.content else {
         Issue.record("expected the accessibility toast")
         return
       }
@@ -575,7 +609,7 @@
       // second one, because there is only ever one to spend.
       d.present(.processing(phase: .transcribing))
       d.present(.accessibilityNotice)
-      guard case .notice(let later)? = d.currentPresentationForTesting?.content else {
+      guard case .notice(let later)? = d.renderModel.presentation?.content else {
         Issue.record("expected a notice")
         return
       }
@@ -607,10 +641,13 @@
       #expect(
         sink.recordingStates == [false],
         "Live Preview was never told the recording ended")
-      #expect(
-        d.pipelineIntentForTesting == .accessibilityToast,
-        "the logical intent followed the picture instead of the decision")
-      guard case .notice(let notice)? = d.currentPresentationForTesting?.content else {
+      // **The "logical intent follows the DECISION, not the picture" claim moved
+      // to `OverlayReducerTests`** (#2292 C6). It is a statement about what the
+      // reducer commits, and it was read here through a director hatch; the
+      // reducer suite can assert it directly and in the Release lane. What this
+      // case keeps is the part a user meets: the picture is the clipboard
+      // fallback and the sentence spoken is still the accessibility one.
+      guard case .notice(let notice)? = d.renderModel.presentation?.content else {
         Issue.record("expected the clipboard fallback")
         return
       }
@@ -637,25 +674,33 @@
     // `grantIsBound` above: `PillRequestParityTests.discardDismisses` asserts it
     // in both lanes, and `discardRunsBeforeDismissal` adds the ordering half.
 
-    /// **A feature that OCCUPIES the slot has to say so.**
-    /// `BluetoothAwarenessPresenter` confirms its own card by asking
-    /// `currentIntent` for `.bluetoothAwareness` before acting on any of its
-    /// buttons. Returning the bare pipeline intent — which a feature never
-    /// changes — left that handshake permanently failing and every button on the
-    /// card a no-op.
-    @Test("a Bluetooth card reports itself as the current intent")
-    func bluetoothCardReportsOwnership() {
+    /// **A feature that OCCUPIES the slot has to say so.** The presenter used to
+    /// confirm its own card by asking `currentIntent` for `.bluetoothAwareness`
+    /// before acting on any button, and returning the bare pipeline intent —
+    /// which a feature never changes — left that handshake permanently failing
+    /// and every button on the card a no-op.
+    ///
+    /// **The projection is gone and the question is now asked of the screen**
+    /// (#2292 C6). Admission moved into `present` in C3, so no presenter reads an
+    /// intent any more; what remains is that the card must be the pill on screen
+    /// and must hold the slot against the next feature that asks. The
+    /// pipeline-intent half is a reducer claim and lives in `OverlayReducerTests`.
+    @Test("a Bluetooth card owns the slot it took")
+    func bluetoothCardReportsOwnership() throws {
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
 
-      d.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
+      let receipt = try #require(
+        d.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {})))
 
+      guard case .bluetoothAwareness? = d.renderModel.presentation?.content else {
+        Issue.record("the card is not the pill on screen")
+        return
+      }
+      #expect(d.isCurrent(receipt), "the card does not own the presentation it was issued")
       #expect(
-        d.currentIntent == .bluetoothAwareness,
-        "the card is up and the presenter cannot tell, so its buttons no-op")
-      #expect(
-        d.pipelineIntentForTesting == .hidden,
-        "a feature must not change the PIPELINE intent, which arbitration reads")
+        d.featureSlotIsAvailable == false,
+        "the card is up and the slot still reads free, so the next feature evicts it")
     }
 
     /// **The slot must report a chip as occupying it, exactly as it reports the
@@ -685,9 +730,14 @@
 
       d.present(.languageChip(payload: payload, onLock: {}, onDismiss: {}, onExpire: {}))
 
+      guard case .languageChip(let shown)? = d.renderModel.presentation?.content else {
+        Issue.record("the chip is not the pill on screen")
+        return
+      }
+      #expect(shown == payload, "a different chip reached the screen")
       #expect(
-        d.currentIntent == .passiveChip(payload: payload),
-        "the chip is up and its own presenter reads the slot as free")
+        d.featureSlotIsAvailable == false,
+        "the chip is up and the slot still reads free, so the next feature evicts it")
     }
 
     /// The non-member, pinned so it is not "fixed" later. Import status is the
@@ -701,10 +751,10 @@
 
       d.present(.importStatus(message: "Importing 3 recordings"))
 
-      #expect(d.currentPresentationForTesting != nil, "the status pill never took the slot")
+      #expect(d.renderModel.presentation != nil, "the status pill never took the slot")
       #expect(
-        d.currentIntent == .hidden,
-        "import status began claiming the intent, which the shipped panel never did")
+        d.featureSlotIsAvailable,
+        "import status began BLOCKING other features, which the shipped panel never did")
     }
 
     /// **Effects run before the render.** The shipped
@@ -808,7 +858,7 @@
         quietSink.announcements.isEmpty,
         "a silent dismissal announced a completed recording that never happened")
       #expect(
-        quiet.currentPresentationForTesting == nil,
+        quiet.renderModel.presentation == nil,
         "the silent dismissal did not actually empty the slot")
     }
 
@@ -839,7 +889,7 @@
 
       Self.record(d, locked: true)
 
-      guard case .recording(_, let locked, _)? = d.currentPresentationForTesting?.content else {
+      guard case .recording(_, let locked, _)? = d.renderModel.presentation?.content else {
         Issue.record("expected a recording presentation")
         return
       }
@@ -874,33 +924,38 @@
     /// visibly snap once the real height is measured. The reducer cannot decide
     /// this — preview arrives as a provider, not an event — so the director does.
     ///
-    /// Asserted on the WINDOW rather than on the argument, because the argument is
-    /// the thing under test: a panel 92 points tall is the reserved frame, and one
-    /// that is not is content-sized.
+    /// **Asserted on the ARGUMENT since C6, which is the thing under test.** The
+    /// earlier version read the resulting `NSPanel` frame on the stated grounds
+    /// that "a panel 92 points tall is the reserved frame". That is true and it
+    /// measured the director's decision through AppKit, which forced a real
+    /// window and kept the case out of the Release lane. A windowless host
+    /// records the reserved height and the requested width verbatim; whether a
+    /// panel honours them is `OverlayWindowHostTests`' question and it owns it.
     @Test("Live Preview makes the recording pill content-sized, and only Live Preview")
-    func previewLayoutDropsTheReservedFrame() {
+    func previewLayoutDropsTheReservedFrame() throws {
       let fixedSetting = PreviewSetting()
-      let (fixed, _, _) = Self.director(preview: fixedSetting)
-      defer { Self.closeAllWindows() }
+      let (fixed, fixedHost, _) = Self.pressableDirector(preview: fixedSetting)
       Self.record(fixed, level: 0.2, preview: false, previewSetting: fixedSetting)
-      let reserved = fixed.hostForTesting?.panelForTesting?.frame.height
-      let fixedWidth = fixed.hostForTesting?.panelForTesting?.frame.width
+      let compact = try #require(fixedHost.presented.last)
 
       let previewSetting = PreviewSetting()
-      let (preview, _, _) = Self.director(preview: previewSetting)
+      let (preview, previewHost, _) = Self.pressableDirector(preview: previewSetting)
       Self.record(preview, level: 0.2, preview: true, previewSetting: previewSetting)
-      let measured = preview.hostForTesting?.panelForTesting?.frame.height
-      let previewWidth = preview.hostForTesting?.panelForTesting?.frame.width
+      let wide = try #require(previewHost.presented.last)
 
-      #expect(reserved == 92, "the non-preview recording pill lost its reserved 92-point frame")
       #expect(
-        measured != 92,
-        "the Live Preview pill took the reserved frame instead of sizing to its content")
+        compact.fixedHeight == 92,
+        "the non-preview recording pill lost its reserved 92-point frame")
+      #expect(
+        wide.fixedHeight == nil,
+        "the Live Preview pill reserved a frame instead of sizing to its content")
       // **The WIDTH is the half that is easy to miss.** The shipped site reads
       // `showsPreview ? previewPillWidth : 185` — 400 against 185 — so carrying
       // only the height still renders a preview pill at under half its size.
-      #expect(fixedWidth == 185, "the non-preview recording pill lost its 185-point width")
-      #expect(previewWidth == 400, "the Live Preview pill did not take its 400-point width")
+      #expect(
+        compact.width == .fixed(185), "the non-preview recording pill lost its 185-point width")
+      #expect(
+        wide.width == .fixed(400), "the Live Preview pill did not take its 400-point width")
     }
 
     // MARK: - Fail closed (#2292 C19)
@@ -1007,50 +1062,51 @@
     /// processing, with the host, the placement value and the whole host suite
     /// behaving perfectly. The rule it broke is written down:
     /// `pill-position-behavior.md` RULE: continuing-panel-vs-fresh-panel.
+    /// **Asserted on `isFresh` since C6, which is the value this case is about.**
+    /// Its own paragraph says so: the host was already proven to keep a dragged
+    /// pill when told `isFresh: false` (`OverlayWindowHostTests` :106), and
+    /// nothing tested what the DIRECTOR passes. Reading the resulting panel
+    /// origin proved the director's flag through AppKit's placement arithmetic,
+    /// which needed a real window and kept the case out of the Release lane. The
+    /// windowless host records the flag itself.
     @Test("a dragged pill keeps its place when the recording becomes processing")
     func draggedPillSurvivesAContentChange() throws {
-      let (d, _, _) = Self.director()
-      defer { Self.closeAllWindows() }
+      let (d, host, _) = Self.pressableDirector()
       Self.record(d, level: 0.2)
-      let host = try #require(d.hostForTesting)
-      let panel = try #require(host.panelForTesting)
-
-      // The user drags it well left of centre. No rebuild, so nothing has to
-      // survive one — the host simply learns.
-      panel.setFrameOrigin(NSPoint(x: 120, y: 85))
-      host.windowDidMove(Notification(name: NSWindow.didMoveNotification, object: panel))
 
       d.present(.processing(phase: .transcribing))
 
+      // **The LAST value is the subject.** The first presentation of a
+      // director's life is reported `isFresh: false` because the deferred
+      // first-render path sets `presentedID` before it renders, so
+      // `presentedID == nil` is already false by the time freshness is computed.
+      // That is a property of first render, not of this transition, and pinning
+      // it here would make this case fail for a reason it is not about.
       #expect(
-        panel.frame.origin.x == 120,
-        "the pill snapped back to centre when its content changed — #2195 through the director")
-      #expect(
-        host.placementForTesting.isUserAnchored(on: ScreenID(rawValue: 1)),
-        "the transition dropped the user's anchor, so the next move re-centres too")
+        host.presented.last?.isFresh == false,
+        """
+        the director called the content change a FRESH presentation, so a dragged \
+        pill snaps back to centre — #2195 through the director
+        """)
     }
 
     /// The paired case, without which the guard above is satisfied by a director
     /// that never marks anything fresh. A pill appearing when NOTHING is showing
     /// is genuinely new and must centre, drag history or not.
-    @Test("a pill appearing after the overlay was hidden is centred again")
-    func hiddenThenShownRecentres() throws {
-      let (d, _, _) = Self.director()
-      defer { Self.closeAllWindows() }
+    @Test("a pill appearing after the overlay was hidden is marked fresh again")
+    func hiddenThenShownRecentres() {
+      let (d, host, _) = Self.pressableDirector()
       Self.record(d, level: 0.2)
-      let host = try #require(d.hostForTesting)
-      let panel = try #require(host.panelForTesting)
-      panel.setFrameOrigin(NSPoint(x: 120, y: 85))
-      host.windowDidMove(Notification(name: NSWindow.didMoveNotification, object: panel))
 
       d.dismissCurrent(.announced)
       Self.record(d, level: 0.2)
 
-      // Within a point: AppKit aligns a window frame to whole points, so an
-      // unrounded 663.5 lands at 663. A pill left at 120 still fails this by 543.
       #expect(
-        abs(panel.frame.origin.x - (Self.screen.visibleFrame.midX - 92.5)) <= 1,
-        "a genuinely new pill inherited the old drag instead of centring")
+        host.presented.last?.isFresh == true,
+        """
+        a pill raised after the overlay emptied was called CONTINUING, so it inherits \
+        a drag from a dictation that is over
+        """)
     }
 
     // MARK: - A feature that takes the slot is spoken (#2292 C8)
@@ -1112,7 +1168,7 @@
       d.present(.importStatus(message: "Importing 3 recordings"))
 
       #expect(
-        d.currentPresentationForTesting != nil, "the status pill never took the slot")
+        d.renderModel.presentation != nil, "the status pill never took the slot")
       #expect(
         sink.announcements.isEmpty,
         "import status announced, which the shipped panel never did")
@@ -1125,7 +1181,7 @@
     /// to discover it is not there.
     @Test("a refused presentation says nothing")
     func refusedPresentationIsNotAnnounced() {
-      let (d, sink) = Self.refusingDirectorWithSink({ false })
+      let (d, sink, _) = Self.refusingDirectorWithSink({ false })
       defer { Self.closeAllWindows() }
 
       d.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
@@ -1133,7 +1189,7 @@
       #expect(
         sink.announcements.isEmpty,
         "a card that never reached the screen was announced as though it had")
-      #expect(d.currentIntent == .hidden, "the C7 rollback did not run")
+      #expect(d.featureSlotIsAvailable, "the C7 rollback did not run")
     }
 
     // MARK: - A refused presentation leaves no owner behind (#2292 C7)
@@ -1145,20 +1201,28 @@
     /// retry testable: the same director refuses, then succeeds, with nothing
     /// rebuilt in between. A second director would prove only that a fresh one
     /// works, which was never in doubt.
+    /// **Captures the armed expiry since C6.** The rollback case needs to fire
+    /// whatever timer a refused presentation left behind, and it cannot: this rig
+    /// used the LIVE scheduler, so an armed dwell was unreachable and the only
+    /// way to ask about one was a Boolean hatch reading `armedExpiry != nil`.
+    /// A captured schedule can be FIRED, which turns "is a timer armed" into
+    /// "does the timer take the successor down" — the thing a user would meet.
     private static func refusingDirectorWithSink(_ screenAvailable: @escaping () -> Bool)
-      -> (OverlayDirector, Sink)
+      -> (OverlayDirector, Sink, Armed)
     {
       let sink = Sink()
+      let armed = Armed()
       let host = OverlayWindowHost(
         screens: { OverlayScreenResolver { screenAvailable() ? screen : nil } })
       let d = OverlayDirector(
         host: host,
+        scheduler: .manual { armed.work = $0 },
         announce: { sink.announcements.append($0) },
         livePreview: .disabled,
         grantAccessibility: { sink.appActions.append(.grantAccessibility) },
         deferFirstRender: { $0() })
       hosts.append(host)
-      return (d, sink)
+      return (d, sink, armed)
     }
 
     /// **Clearing the window is not the same as releasing the slot.**
@@ -1172,23 +1236,35 @@
     /// like a rollback and is not one: the reducer, the render model, the
     /// binding and the armed expiry all still named an occupant that was never
     /// drawn.
+    ///
+    /// **Asserted through CONSEQUENCES since C6**, because the internal markers
+    /// this used to read are gone and most of them had none on their own: nobody
+    /// can press a button on a pill that was never drawn, and an internal id
+    /// nobody reads cannot hurt a user. What DOES reach a person is the slot —
+    /// a refused card that keeps holding it means every later feature is refused
+    /// for the rest of the session, which is the failure this case exists for.
+    ///
+    /// **The armed-timer half is deliberately NOT re-asserted here**, and the
+    /// reason is worth stating because the obvious attempt does not work. Firing
+    /// "the armed work" after presenting a successor fires the SUCCESSOR'S OWN
+    /// dwell, which correctly dismisses it — a test that cannot pass. Firing the
+    /// timer captured before the successor tests nothing when the rollback is
+    /// correct, because there is no timer to fire. The property that actually
+    /// matters — a timer armed for one presentation cannot dismiss another — is
+    /// scoped by `PresentationID` and owned by
+    /// `staleTimerCannotDismissTheLivePill`, which proves it for every armed
+    /// timer including this one.
     @Test("a refused presentation leaves nothing claiming the slot")
     func refusedPresentationReleasesEverything() {
-      let (d, _) = Self.refusingDirectorWithSink({ false })
+      let (d, _, _) = Self.refusingDirectorWithSink({ false })
       defer { Self.closeAllWindows() }
 
       d.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
 
+      #expect(d.renderModel.presentation == nil, "a refused card was published anyway")
       #expect(
-        d.currentIntent == .hidden,
-        "the Bluetooth presenter's handshake confirms a card that is not on screen")
-      #expect(
-        d.currentPresentationForTesting == nil,
-        "the reducer still holds an occupant the host refused")
-      #expect(d.presentedIDForTesting == nil, "the window still claims a presentation")
-      #expect(d.renderModel.presentation == nil, "the render model still publishes it")
-      #expect(!d.hasActiveBindingForTesting, "a handler is bound to a pill nobody can press")
-      #expect(!d.hasArmedExpiryForTesting, "a timer is armed to dismiss something invisible")
+        d.featureSlotIsAvailable,
+        "the refused card still holds the slot, so every later feature is refused too")
     }
 
     /// **The dedup guard is what turns a refusal into a PERMANENT failure.**
@@ -1202,19 +1278,18 @@
     @Test("the same intent presents on retry after a refusal")
     func refusedIntentRetriesSuccessfully() {
       var hasScreen = false
-      let (d, _) = Self.refusingDirectorWithSink({ hasScreen })
+      let (d, _, _) = Self.refusingDirectorWithSink({ hasScreen })
       defer { Self.closeAllWindows() }
 
       d.present(.warning(reason: .polishFailed))
-      #expect(d.currentPresentationForTesting == nil, "the refusal did not take")
+      #expect(d.renderModel.presentation == nil, "the refusal did not take")
 
       hasScreen = true
       d.present(.warning(reason: .polishFailed))
 
       #expect(
-        d.currentPresentationForTesting != nil,
+        d.renderModel.presentation != nil,
         "the retry was deduplicated against the intent the refusal left behind")
-      #expect(d.presentedIDForTesting != nil, "the retry never reached the window")
     }
 
     /// **A recording's providers are polled ~50 times a second**, so leaving
@@ -1224,7 +1299,7 @@
     /// instead.
     @Test("a refused recording releases its providers and its lock survives")
     func refusedRecordingReleasesProviders() {
-      let (d, _) = Self.refusingDirectorWithSink({ false })
+      let (d, _, _) = Self.refusingDirectorWithSink({ false })
       defer { Self.closeAllWindows() }
 
       d.present(
@@ -1235,7 +1310,7 @@
             recordingElapsedProvider: { 3 },
             isLocked: true)))
 
-      #expect(d.currentPresentationForTesting == nil, "the reducer still holds the recording")
+      #expect(d.renderModel.presentation == nil, "a refused recording was published anyway")
       // Asserted through the providers THEMSELVES rather than a test-only flag:
       // a cleared model answers 0 and nil, and the installed ones answer 0.5 and
       // 3, so this reads the thing that would actually still be running.
@@ -1245,12 +1320,16 @@
       #expect(
         d.renderModel.recordingElapsedProvider() == nil,
         "a refused recording's elapsed provider is still being polled")
-      // **The lock is NOT part of the rollback.** It outlives any one
-      // presentation by design, so a refused frame must not silently unlock a
-      // hands-free session that is still running.
-      #expect(
-        d.isRecordingLockedForTesting,
-        "the rollback unlocked a hands-free recording that never stopped")
+      // **The lock is NOT part of the rollback, and that claim moved to the
+      // reducer suite** (#2292 C6). It outlives any one presentation by design,
+      // so a refused frame must not silently unlock a hands-free session that is
+      // still running — but the lock is only OBSERVABLE where it is drawn, and
+      // every recording request carries its own lock flag, so a later pill
+      // reports what that call asked for rather than what survived. There is no
+      // rendered observation of this property at the director level.
+      //
+      // `OverlayReducerTests.lockWithoutRecordingIsRemembered` asserts it where
+      // it is real: the lock is remembered with NO pill showing, which is the
+      // same state a refusal leaves. That case runs in the Release lane.
     }
   }
-#endif

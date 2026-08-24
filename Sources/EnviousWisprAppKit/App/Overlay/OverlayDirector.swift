@@ -227,46 +227,15 @@ final class OverlayDirector {
 
   var renderModel: OverlayRenderModel { model }
 
-  /// The last pipeline intent, for the two features that arbitrate against it.
-  ///
-  /// **Not what is DRAWN, and the difference is deliberate.** A suppressed
-  /// accessibility toast draws the clipboard hint while this stays
-  /// `.accessibilityToast`, exactly as the shipped `currentIntent` does —
-  /// `showClipboardFallback()` never wrote to it either.
-  ///
-  /// `LanguageSuggestionPresenter` asks only whether it is `.hidden` and
-  /// `BluetoothAwarenessPresenter` only whether it is `.bluetoothAwareness`, so
-  /// neither can tell those two apart in any case. Both take it as a closure, so
-  /// neither changes at the cutover; only the closure bodies do.
-  var currentIntent: OverlayIntent {
-    // **A feature that OCCUPIES the slot has to say so.** A feature never
-    // touches `pipelineIntent` — and
-    // `BluetoothAwarenessPresenter` confirms its own card by asking this for
-    // `.bluetoothAwareness` before it will act on any of its buttons. Returning
-    // the bare pipeline intent left that handshake permanently failing and every
-    // button on the card a no-op, with nothing failing anywhere.
-    // **Every occupant that arrives WITHOUT setting `pipelineIntent` must be
-    // projected here, and the rule is that sentence rather than a list.** A
-    // feature takes the slot through `reduceFeature`, which never touches the
-    // pipeline intent, so anything reaching the slot that way reports `.hidden`
-    // unless it is named below.
-    //
-    // Bluetooth was named at the cutover and the language chip was not, which is
-    // the same omission twice: `LanguageSuggestionPresenter` guards
-    // `case .hidden` before showing a chip, so with its own chip already up it
-    // read the slot as free — it could stack a second chip, and
-    // `resetAllChipState()` left a visible one behind.
-    //
-    // IMPORT STATUS IS DELIBERATELY ABSENT. It is the one request with no
-    // matching `OverlayIntent`, and the shipped panel did not set `currentIntent`
-    // for it either, so reporting `.hidden` while a status pill shows is the
-    // behaviour being preserved rather than a third omission.
-    switch reducer.state.current?.content {
-    case .bluetoothAwareness: return .bluetoothAwareness
-    case .languageChip(let payload): return .passiveChip(payload: payload)
-    default: return reducer.state.pipelineIntent
-    }
-  }
+  // **`currentIntent` was DELETED** (#2292 C6). It was a PROJECTION invented so a
+  // presenter could ask "is my own thing on screen" — and it had to project,
+  // because a feature never sets `pipelineIntent`, so the bare pipeline value
+  // answered `.hidden` while a card was up and left every button on that card a
+  // no-op. C3 moved admission into `present`, so no presenter asks any more.
+  //
+  // What replaced it, per question: what the user sees is `renderModel`; whether
+  // a feature may take the slot is `featureSlotIsAvailable`; whether a caller
+  // still owns its presentation is `isCurrent(_:)`.
 
   /// The production announcement, lifted verbatim from the sixteen identical
   /// `NSAccessibility.post` calls the panel makes — same element, same
@@ -859,28 +828,19 @@ final class OverlayDirector {
     return true
   }
 
-  #if DEBUG
-    var presentedIDForTesting: PresentationID? { presentedID }
-    var currentPresentationForTesting: OverlayPresentation? { reducer.state.current }
-    var hasArmedExpiryForTesting: Bool { armedExpiry != nil }
-    var hasActiveBindingForTesting: Bool { activeBinding != nil }
-    var holdsEscapeRecoveryPayloadForTesting: Bool { escapeRecoveryPayload != nil }
-    /// The window the director renders through, so a test can assert on the
-    /// FRAME rather than on the argument it passed — the argument is the thing
-    /// under test.
-    ///
-    /// Optional because the director now takes any `OverlayWindowHosting`: a
-    /// test driving the windowless fake has no frame to assert on, and saying so
-    /// in the type is better than a fake that answers with a plausible one.
-    var hostForTesting: OverlayWindowHost? { host as? OverlayWindowHost }
-    /// The LOGICAL intent, which is not always what is drawn: a suppressed
-    /// accessibility toast draws the clipboard fallback and the intent stays
-    /// `.accessibilityToast`.
-    var pipelineIntentForTesting: OverlayIntent { reducer.state.pipelineIntent }
-    /// The hands-free lock, which OUTLIVES any one presentation — so it is read
-    /// from the reducer's state rather than from whatever is on screen.
-    var isRecordingLockedForTesting: Bool { reducer.state.isLocked }
-  #endif
+  // **The eight `*ForTesting` hatches were DELETED** (#2292 C6), and with them
+  // the director suite's `#if DEBUG` wrapper — which existed only because those
+  // accessors did, and which kept 39 cases out of the Release lane.
+  //
+  // Each read became the observation it was standing in for: what is drawn
+  // (`renderModel`), whether a request was accepted (the receipt), whether it
+  // still owns the slot (`isCurrent`), what the host was ASKED for (the fake
+  // host's own record), or a reducer claim asserted in `OverlayReducerTests`.
+  //
+  // Two of them had no user-visible consequence at all and their cases now
+  // assert the effect instead: a binding that outlives its pill shows up as a
+  // callback firing for a pill nobody can see, and a payload that outlives its
+  // offer shows up as Undo restoring a finished dictation.
 }
 
 /// A piece of scheduled work that can be cancelled.
@@ -897,11 +857,20 @@ final class OverlayScheduledWork {
   init(body: @escaping () -> Void) { self.body = body }
 
   func cancel() { cancelled = true }
-  func fireForTesting() {
+  var isCancelled: Bool { cancelled }
+
+  /// Run the work now, unless it has been cancelled.
+  ///
+  /// **Not a test hatch.** `OverlayScheduler.live` calls this from its own timer
+  /// callback, so it is the one path a dwell fires through in production as well
+  /// as under a manual clock — which is the point: a test that fires a dwell
+  /// exercises the same cancellation check a real one does. It replaced a
+  /// `fireForTesting` that only tests called, and whose name claimed the
+  /// cancellation guard was a testing convenience.
+  func fire() {
     guard !cancelled else { return }
     body()
   }
-  var isCancelled: Bool { cancelled }
 }
 
 /// How the director arms its single expiry.
@@ -912,8 +881,7 @@ struct OverlayScheduler {
   static let live = OverlayScheduler { seconds, body in
     let work = OverlayScheduledWork(body: body)
     DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak work] in
-      guard let work, !work.isCancelled else { return }
-      body()
+      work?.fire()
     }
     return work
   }

@@ -207,7 +207,7 @@ private func emitEquals(
     let h = Harness()
     h.isBluetooth = true
     let p = h.makePresenter()
-    p.reconcile(trigger: .launch)  // shown; currentIntent == .bluetoothAwareness
+    p.reconcile(trigger: .launch)  // the card is shown and holds the slot
     // Recording synchronously replaced the slot before this reconcile ran.
     h.simulateReplacement()
     h.isIdle = false
