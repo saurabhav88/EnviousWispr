@@ -67,13 +67,22 @@ private final class Harness: OverlayPresenting {
   private var heldResult: ((PillPresentationResult) -> Void)?
   private var heldReceipt: PillReceipt?
 
-  /// Release a held result the way the director would once the run loop turned.
+  /// Release a held result the way the director would once the run loop turned,
+  /// **including its identity gate** — without which this fake cannot represent a
+  /// card dismissed while it was still pending, and every assertion about one
+  /// would pass whatever the presenter did.
   func releaseDeferredResult() {
     guard let sink = heldResult else { return }
     heldResult = nil
     let receipt = heldReceipt
     heldReceipt = nil
-    if deferredHostAccepts, let receipt {
+    guard let receipt, receipt == currentReceipt else {
+      // Dismissed or superseded while we held it. The real director's deferred
+      // block drops on exactly this check and reports that it never rendered.
+      sink(.notPresented)
+      return
+    }
+    if deferredHostAccepts {
       sink(.presented(receipt))
     } else {
       rollBackDeferredPresentation()
@@ -311,6 +320,69 @@ private func emitEquals(
     #expect(h.emitted.count == emitCountAfterShow)  // no dismiss emit
     #expect(h.hideCount == 0)  // does not touch the newer overlay
     #expect(h.unconditionalDismissals == 0)
+  }
+
+  // MARK: - PR #2370 round 4: owned at admission, shown when drawn
+
+  /// **THE DEFECT: a card that is owned but not yet DRAWN was uncancellable.**
+  /// Committing on `.presented` is right — the allowance must wait for the host —
+  /// but it left `currentReceipt` nil during the deferral, so a reconcile in that
+  /// window found nothing to name, fell past the receipt block, and the guard at
+  /// the bottom simply returned. The card rendered anyway.
+  ///
+  /// REPRODUCIBLE: this card is requested from `reconcile(trigger: .launch)`,
+  /// which is the request most likely to be the deferred first presentation. Take
+  /// the headset off in that window and a NON-Bluetooth user is left looking at a
+  /// Bluetooth tip that nothing will take down.
+  @Test func aRouteChangeCancelsACardOwnedButNotYetDrawn() {
+    let h = Harness()
+    h.isBluetooth = true
+    h.defersResult = true
+    let p = h.makePresenter()
+
+    p.reconcile(trigger: .launch)
+    #expect(h.showCount == 1, "the card was never admitted, so this case never reaches its subject")
+
+    // The headset comes off before the host has drawn anything.
+    h.isBluetooth = false
+    p.reconcile(trigger: .deviceChanged)
+    h.releaseDeferredResult()
+
+    #expect(h.cardIsShowing == false, "a Bluetooth tip drew for a user with no Bluetooth device")
+    #expect(
+      h.emitted.isEmpty,
+      "a card nobody saw was recorded — a dismissal with no matching shown is a hole in the funnel")
+
+    // And the allowance survived, because the user never saw it: plug the headset
+    // back in and the card is still owed.
+    h.isBluetooth = true
+    h.defersResult = false
+    p.reconcile(trigger: .deviceChanged)
+    #expect(h.showCount == 2, "the launch allowance was spent on a card that was cancelled before it drew")
+    #expect(emitEquals(h.lastEmit, .shown, nil), "the card that DID draw was not recorded")
+  }
+
+  /// The paired case: while the card is still eligible, a second reconcile in the
+  /// deferral window leaves it alone. Without this, "cancels a pending card" is
+  /// also satisfied by a presenter that cancels every pending card, or by one that
+  /// asks for the slot twice.
+  @Test func aStillEligiblePendingCardIsNeitherCancelledNorRequestedTwice() {
+    let h = Harness()
+    h.isBluetooth = true
+    h.defersResult = true
+    let p = h.makePresenter()
+
+    p.reconcile(trigger: .launch)
+    p.reconcile(trigger: .deviceChanged)
+
+    #expect(h.showCount == 1, "the pending card was requested a second time")
+    #expect(h.emitted.isEmpty, "a verdict was recorded before the host drew anything")
+
+    h.releaseDeferredResult()
+
+    #expect(h.cardIsShowing, "a still-eligible pending card was cancelled")
+    #expect(h.emitted.count == 1, "the drawn card was not recorded exactly once")
+    #expect(emitEquals(h.lastEmit, .shown, nil))
   }
 
   // MARK: - PR #2370: the launch allowance is spent on a SEEN card

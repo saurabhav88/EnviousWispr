@@ -217,11 +217,18 @@ final class LanguageSuggestionPresenter {
     // later. `lastShownLanguage` PERSISTS, so a chip committed on a refusal
     // would suppress that language across relaunches for a chip nobody saw.
     //
-    // A chip cannot currently BE that first presentation — a dictation always
-    // draws a pill first, so the hosting view exists by the time a chip is
-    // requested. Committing on the result anyway keeps the rule the same at both
-    // callers, rather than making this one's correctness depend on a bootstrap
-    // ordering nothing here states or enforces.
+    // Production language chips are emitted only after a dictation presentation,
+    // so the hosting view already exists and this result is synchronous. Unlike
+    // launch-time Bluetooth, there is no pending-ownership window: the card in
+    // `BluetoothAwarenessPresenter` holds its receipt from admission so a
+    // reconcile can cancel a card that is owned but not yet drawn, and nothing
+    // here needs that because nothing here can be in that state.
+    //
+    // **If a pre-dictation chip ingress is added, it must add pending receipt
+    // ownership before shipping.** That is the activation condition, stated here
+    // rather than left as an unwritten ordering assumption — without it a chip
+    // admitted before the first render would be uncancellable by every path
+    // below, all of which key on `currentChip` or `currentReceipt`.
     overlay.present(
       .languageChip(
         payload: payload,

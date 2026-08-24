@@ -76,6 +76,22 @@ final class BluetoothAwarenessPresenter {
   /// `dismissIfCurrent` is a no-op once the slot has moved on and the two
   /// questions collapse into one the overlay owns.
   private var currentReceipt: PillReceipt?
+
+  /// The card is ADMITTED but the host has not drawn it yet.
+  ///
+  /// **Ownership and shown-ness are different moments, and only one of them can
+  /// wait.** `.shown` and the launch allowance must wait for the host, because a
+  /// card the host refuses was never seen. Ownership cannot wait: between
+  /// admission and the first render this presenter holds a presentation, and a
+  /// reconcile that finds nothing to name is a reconcile that cannot cancel it.
+  /// The route-change path then returned without dismissing, the deferred block
+  /// rendered the card anyway, and a user who had just unplugged their headset
+  /// was left with a Bluetooth tip nothing would take down.
+  private var pendingReceipt: PillReceipt?
+
+  /// Which attempt `pendingReceipt` belongs to, so a late result from a CANCELLED
+  /// attempt cannot clear the ownership of the attempt that replaced it.
+  private var pendingGeneration: UInt64 = 0
   /// Telemetry dedup: `suppressed_by_setting` fires at most once per launch.
   private var hasEmittedSettingSuppressionThisLaunch = false
 
@@ -164,6 +180,36 @@ final class BluetoothAwarenessPresenter {
       return
     }
 
+    // **A card that is owned but not yet drawn is still cancellable.** Without
+    // this the reconcile fell through to the eligibility guard below, which
+    // simply returns — so a route change arriving in the deferral window left an
+    // admitted card to render into a user it no longer applies to.
+    //
+    // No `.dismissed` event: this card was never `.shown`, and a dismissal with
+    // no matching shown is a hole in the funnel rather than a data point. The
+    // breadcrumb carries the reason instead, and `hasShownThisLaunch` stays
+    // false — the user did not see it, so the allowance is not spent.
+    if let pending = pendingReceipt {
+      let invalidation: DismissReason?
+      if !tipsEnabled() {
+        invalidation = .settingDisabled
+      } else if !effectiveInputIsBluetooth() {
+        invalidation = .routeChanged
+      } else if !dictationIsIdle() {
+        invalidation = .recordStarted
+      } else {
+        invalidation = nil
+      }
+      if let invalidation {
+        overlay.dismissIfCurrent(pending)
+        pendingReceipt = nil
+        breadcrumb(trigger, "cancelled_before_show", reason: invalidation.rawValue)
+      }
+      // Either way this reconcile is finished: the card is already admitted, so
+      // presenting again below would be a second request for the slot it holds.
+      return
+    }
+
     // Eligibility is evaluated BEFORE the tips setting so `suppressed_by_setting`
     // counts only launches where the card WOULD have shown (a Bluetooth user, past
     // onboarding, idle, slot free) — not every opted-out user with a built-in or
@@ -206,19 +252,33 @@ final class BluetoothAwarenessPresenter {
     // Committing inside `.presented` is what makes the comment above true: the
     // allowance survives a refusal and the user gets the card on a later
     // reconcile once a screen returns.
-    overlay.present(
+    pendingGeneration &+= 1
+    let attempt = pendingGeneration
+    var settledSynchronously = false
+    let admitted = overlay.present(
       .bluetoothAwareness(
         onAcknowledge: { [weak self] in self?.handleUserAction(.gotIt) },
         onClose: { [weak self] in self?.handleUserAction(.close) },
         onOpenSettings: { [weak self] in self?.handleUserAction(.adjustSettings) }
       ),
       onResult: { [weak self] result in
-        guard let self, case .presented(let receipt) = result else { return }
+        guard let self else { return }
+        settledSynchronously = true
+        // **Only this attempt's ownership.** A result arriving late from an
+        // attempt that was already cancelled must not clear the ownership of the
+        // attempt that replaced it.
+        if self.pendingGeneration == attempt { self.pendingReceipt = nil }
+        guard case .presented(let receipt) = result else { return }
         self.hasShownThisLaunch = true
         self.currentReceipt = receipt
         self.emit(.shown, nil)
         self.breadcrumb(trigger, "shown", reason: nil)
       })
+
+    // Held ONLY while the answer is still outstanding. Reading the returned
+    // receipt unconditionally would re-arm ownership for a card that had already
+    // been drawn or already been refused, one statement earlier.
+    if !settledSynchronously { pendingReceipt = admitted }
   }
 
   // MARK: - User actions
