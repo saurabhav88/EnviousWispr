@@ -247,8 +247,15 @@ struct PracticeScreenV2: View {
       // so without this the take is never opened and its end is dropped by the
       // `.listening` guard (cloud review).
       if live.isDictationActive {
+        // `boxFocused: false`, and the hardcoded `true` here was the SAME
+        // mistake a third time: this take began before this view existed, so
+        // the pipeline captured its paste target when there was no box on
+        // screen. Claiming focus would send a take that DID produce words into
+        // `saidNothing` — "All quiet" about someone we heard perfectly, which
+        // is the founder's original defect once more. False is not a guess
+        // here, it is the fact: the box could not have been the target.
         viewModel.practiceTakeStarted(
-          boxFocused: true, transcriptCount: transcripts.transcriptCount)
+          boxFocused: false, transcriptCount: transcripts.transcriptCount)
       }
       permissions.refreshAccessibilityStatus()
       viewModel.applyPracticePosture(
