@@ -1270,6 +1270,13 @@ private struct OnboardingWindowRoot: View {
     .environment(b.navigationCoordinator)
     .environment(b.languageSuggestionPresenter)
     .environment(b.dictationRuntime)
+    // #2196 chunk 3 — the practice screen needs to know a take is in flight.
+    // `LiveRecordingState.isDictationActive` is true while EITHER pipeline is
+    // recording, transcribing or polishing, and it is already @Observable, so
+    // the screen reads an existing signal rather than growing a new one. The
+    // main window has had this injected all along; onboarding never needed it
+    // until it hosted a dictation target.
+    .environment(b.liveRecordingState)
     .environment(b.appWindowCoordinator)
     // The nine view-facing homes (epic #763).
     .environment(b.settings)

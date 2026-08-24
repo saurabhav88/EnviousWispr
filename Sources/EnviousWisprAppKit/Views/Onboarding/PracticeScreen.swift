@@ -25,25 +25,89 @@ struct PracticeScreenV2: View {
   /// Fired when the person is finished, however they got there.
   let onFinish: () -> Void
 
+  @Environment(PermissionsService.self) private var permissions
+  /// The SUBJECT's own in-flight signal: true while either pipeline is
+  /// recording, transcribing or polishing. The screen was previously blind to a
+  /// take entirely, which is what let Skip pull the target away mid-dictation
+  /// and let a silent take go unacknowledged (local Codex chunk-2 review).
+  @Environment(LiveRecordingState.self) private var live
+
   @FocusState private var boxFocused: Bool
+
+  /// A take is in flight, so both exits are held. Leaving now would close the
+  /// window the ordinary cascade is about to type into, and the words would
+  /// land on the clipboard behind the same notice this feature removes — or in
+  /// whatever app happened to be behind us.
+  private var takeInFlight: Bool { live.isDictationActive }
+
+  private var cannotHear: Bool {
+    if case .cannotHear = viewModel.practiceState { return true }
+    return false
+  }
+
+  private func grantPermission(reason: String) async {
+    if reason == "mic_denied" {
+      _ = await permissions.requestMicrophoneAccess()
+    } else {
+      _ = permissions.requestAccessibilityAccess()
+    }
+    permissions.refreshAccessibilityStatus()
+    viewModel.applyPracticePosture(
+      micGranted: permissions.hasMicrophonePermission,
+      accessibilityGranted: permissions.accessibilityGranted)
+  }
+
+  private var headline: String {
+    switch viewModel.practiceState {
+    case .cannotHear: return "We cannot hear you"
+    case .listening: return "Listening…"
+    case .saidNothing: return "All quiet"
+    case .worked: return "That is it. You are set."
+    case .waiting: return viewModel.practiceSucceeded ? "That is it. You are set." : "Time for your first dictation!"
+    }
+  }
+
+  private var subhead: String {
+    switch viewModel.practiceState {
+    case .cannotHear(let reason, _):
+      return reason == "mic_denied"
+        ? "EnviousWispr needs permission to use your microphone.\nYou can turn it on and come back, or skip ahead."
+        : "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead."
+    case .listening:
+      return "Go ahead. Let go of the key when you are done."
+    case .saidNothing:
+      // Not an error, and never worded as one: the microphone worked, there
+      // was simply nothing to hear. The prompt is drawn from the persona banks
+      // so it sounds like something a person would actually say.
+      return "Your microphone is working — we just did not hear anything.\nTry holding the key and saying: tell grandma I will call Sunday."
+    case .worked:
+      return "Those are your words, typed for you.\nIn any other app, click into a text box first."
+    case .waiting:
+      return viewModel.practiceSucceeded
+        ? "Those are your words, typed for you.\nIn any other app, click into a text box first."
+        : "Hold your shortcut and say something.\nLet go when you are done."
+    }
+  }
+
+  private var footnote: String {
+    if cannotHear { return " " }
+    if viewModel.practiceSucceeded { return " " }
+    return "Your recording indicator appears while you hold the key."
+  }
 
   var body: some View {
     VStack(spacing: 0) {
       RainbowLipsView(animationState: viewModel.lipsState, size: 108)
         .padding(.bottom, 14)
 
-      Text(viewModel.practiceSucceeded ? "That is it. You are set." : "Time for your first dictation!")
+      Text(headline)
         .font(.system(size: 26, weight: .heavy, design: .rounded))
         .foregroundStyle(Color.obTextPrimary)
         .kerning(-0.4)
         .multilineTextAlignment(.center)
         .padding(.bottom, 6)
 
-      Text(
-        viewModel.practiceSucceeded
-          ? "Those are your words, typed for you.\nIn any other app, click into a text box first."
-          : "Hold your shortcut and say something.\nLet go when you are done."
-      )
+      Text(subhead)
       .font(.obBody)
       .foregroundStyle(Color.obTextSecondary)
       .multilineTextAlignment(.center)
@@ -72,10 +136,28 @@ struct PracticeScreenV2: View {
       // appears over this window and carries the recording state — which is what
       // this person will see in every other app forever after. A second waveform
       // here would teach them a UI that only exists during setup.
-      Text(viewModel.practiceSucceeded ? " " : "Your recording indicator appears while you hold the key.")
+      Text(footnote)
         .font(.obCaptionSmall)
         .foregroundStyle(Color.obTextTertiary)
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 10)
+
+      // The route out. `PermissionsService` exposes request methods rather
+      // than a settings opener, and the request is the better offer anyway: an
+      // undetermined permission is granted in place, and a denied one lands the
+      // person on the right pane instead of the top of System Settings.
+      if case .cannotHear(let reason, _) = viewModel.practiceState {
+        Button {
+          Task { await grantPermission(reason: reason) }
+        } label: {
+          Text(reason == "mic_denied" ? "Turn on the microphone" : "Turn on Accessibility")
+            .font(.obCaption)
+            .foregroundStyle(Color.obAccent)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 8)
+      }
 
       Spacer()
 
@@ -91,18 +173,33 @@ struct PracticeScreenV2: View {
             in: RoundedRectangle(cornerRadius: 12))
       }
       .buttonStyle(.plain)
-      .disabled(!viewModel.practiceSucceeded)
+      .disabled(!viewModel.practiceSucceeded || takeInFlight)
       .keyboardShortcut(.defaultAction)
 
       Button(action: onFinish) {
-        Text("Skip this step")
+        Text(takeInFlight ? "One moment, still working on that" : "Skip this step")
           .font(.obCaption)
-          .foregroundStyle(Color.obAccent)
+          .foregroundStyle(takeInFlight ? Color.obTextTertiary : Color.obAccent)
       }
       .buttonStyle(.plain)
+      .disabled(takeInFlight)
       .padding(.top, 12)
     }
-    .onAppear { boxFocused = true }
-    .animation(.easeInOut(duration: 0.3), value: viewModel.practiceSucceeded)
+    .onAppear {
+      boxFocused = true
+      permissions.refreshAccessibilityStatus()
+      viewModel.applyPracticePosture(
+        micGranted: permissions.hasMicrophonePermission,
+        accessibilityGranted: permissions.accessibilityGranted)
+    }
+    // The take's own edges, from the subject rather than from a timer.
+    .onChange(of: live.isDictationActive) { _, active in
+      if active {
+        viewModel.practiceTakeStarted()
+      } else {
+        viewModel.practiceTakeEnded()
+      }
+    }
+    .animation(.easeInOut(duration: 0.3), value: viewModel.practiceState)
   }
 }

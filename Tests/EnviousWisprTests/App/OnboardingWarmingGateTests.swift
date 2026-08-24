@@ -463,6 +463,104 @@ import Testing
         }
       }
 
+      /// Chunk 4. Without these the funnel cannot tell a person who practised
+      /// from one who bailed — both exits called the same no-argument finish, so
+      /// `practice_dictation` never appeared at all.
+      @Test("finishing after a successful take reports completed")
+      func practiceCompletedIsReported() async {
+        await withHook { events in
+          let vm = OnboardingV2ViewModel()
+          vm.beginPractice()
+          vm.practiceTakeStarted()
+          vm.setPracticeText("hey Mike pick up Emma from school today")
+          vm.practiceTakeEnded()
+
+          vm.reportPracticeExit()
+
+          let rows = events.all.filter {
+            $0.name == "onboarding.step_completed" && $0.stringProps["step"] == "practice_dictation"
+          }
+          #expect(rows.count == 1)
+          #expect(rows.first?.stringProps["result"] == "completed")
+        }
+      }
+
+      /// `no_speech` and `skipped` are deliberately different: one person tried
+      /// and got silence, the other never tried. Collapsing them would hide the
+      /// 20.3% case inside the skip rate.
+      @Test("leaving after a silent take reports no_speech, not skipped")
+      func silentThenLeaveReportsNoSpeech() async {
+        await withHook { events in
+          let vm = OnboardingV2ViewModel()
+          vm.beginPractice()
+          vm.practiceTakeStarted()
+          vm.practiceTakeEnded()
+
+          vm.reportPracticeExit()
+
+          let rows = events.all.filter {
+            $0.name == "onboarding.step_completed" && $0.stringProps["step"] == "practice_dictation"
+          }
+          #expect(rows.first?.stringProps["result"] == "no_speech")
+        }
+      }
+
+      @Test("leaving without ever trying reports skipped")
+      func neverTriedReportsSkipped() async {
+        await withHook { events in
+          let vm = OnboardingV2ViewModel()
+          vm.beginPractice()
+
+          vm.reportPracticeExit()
+
+          let rows = events.all.filter {
+            $0.name == "onboarding.step_completed" && $0.stringProps["step"] == "practice_dictation"
+          }
+          #expect(rows.first?.stringProps["result"] == "skipped")
+        }
+      }
+
+      @Test("a blocked permission reports blocked with its permission named")
+      func blockedPermissionIsReported() async {
+        await withHook { events in
+          let vm = OnboardingV2ViewModel()
+          vm.beginPractice()
+          vm.applyPracticePosture(micGranted: false, accessibilityGranted: true)
+
+          vm.reportPracticeExit()
+
+          let blocked = events.all.filter {
+            $0.name == "onboarding.step_blocked" && $0.stringProps["step"] == "practice_dictation"
+          }
+          #expect(blocked.count == 1)
+          #expect(blocked.first?.stringProps["reason"] == "mic_denied")
+          #expect(blocked.first?.stringProps["permission"] == "microphone")
+          #expect(
+            events.all.filter {
+              $0.name == "onboarding.step_completed"
+                && $0.stringProps["step"] == "practice_dictation"
+            }.isEmpty)
+        }
+      }
+
+      @Test("one visit to the box reports exactly once, however it ends")
+      func practiceExitReportsOnce() async {
+        await withHook { events in
+          let vm = OnboardingV2ViewModel()
+          vm.beginPractice()
+          vm.setPracticeText("remember soccer jersey and cleats for tomorrow")
+
+          vm.reportPracticeExit()
+          vm.reportPracticeExit()
+
+          #expect(
+            events.all.filter {
+              $0.name == "onboarding.step_completed"
+                && $0.stringProps["step"] == "practice_dictation"
+            }.count == 1)
+        }
+      }
+
       @Test("a second skip press cannot report twice")
       func doubleSkipReportsOnce() async {
         await withHook { events in
@@ -548,6 +646,101 @@ import Testing
       /// The gate's ready exit opens the box; it no longer ends setup. If this
       /// regresses, the warm gate silently becomes the last screen again and the
       /// entire feature is absent while every other test still passes.
+      /// Local Codex chunk-2 review, P1: Skip after releasing the key but
+      /// BEFORE transcription finishes closed the window while the ordinary
+      /// cascade still targeted the practice editor — so the words landed on
+      /// the clipboard behind the very notice this feature removes, or in
+      /// whatever app was behind us. The screen was blind to a take entirely.
+      @Test("a take in flight is a state the screen can see")
+      func aTakeInFlightIsObservable() {
+        let vm = makePracticeViewModel()
+        #expect(vm.practiceState == .waiting)
+
+        vm.practiceTakeStarted()
+
+        #expect(vm.practiceState == .listening, "the screen cannot tell a take is running")
+      }
+
+      /// The 20.3% case, and the reason it is a state rather than an error: a
+      /// take that produces nothing must be acknowledged, or the screen just
+      /// keeps asking and the person concludes the product ignored them.
+      @Test("a take that produces nothing lands in all-quiet, not in success")
+      func silentTakeIsAcknowledged() {
+        let vm = makePracticeViewModel()
+        vm.practiceTakeStarted()
+
+        vm.practiceTakeEnded()
+
+        #expect(vm.practiceState == .saidNothing)
+        #expect(vm.practiceSucceeded == false)
+      }
+
+      @Test("a take that produces words lands in success")
+      func productiveTakeWorks() {
+        let vm = makePracticeViewModel()
+        vm.practiceTakeStarted()
+        vm.setPracticeText("Emma the birthday card is in the mail happy 7th sweetie")
+
+        vm.practiceTakeEnded()
+
+        #expect(vm.practiceState == .worked)
+        #expect(vm.practiceSucceeded)
+      }
+
+      /// A SECOND take is scored on its own words, never on the first take's.
+      /// Comparing against empty instead of against the take's own start would
+      /// score every later silent take as a success.
+      @Test("a silent second take is not credited to the first take's words")
+      func secondTakeIsScoredOnItsOwn() {
+        let vm = makePracticeViewModel()
+        vm.practiceTakeStarted()
+        vm.setPracticeText("running 15 min late got stuck on the client call")
+        vm.practiceTakeEnded()
+        #expect(vm.practiceState == .worked)
+
+        vm.practiceTakeStarted()
+        vm.practiceTakeEnded()
+
+        #expect(vm.practiceState == .saidNothing, "a silent take inherited the previous take's words")
+      }
+
+      @Test("a denied microphone is named rather than left as a dead screen")
+      func deniedMicIsNamed() {
+        let vm = makePracticeViewModel()
+        vm.applyPracticePosture(micGranted: false, accessibilityGranted: true)
+        #expect(vm.practiceState == .cannotHear(reason: "mic_denied", permission: "microphone"))
+      }
+
+      /// The known limit of this route: Tier 1 writes through Accessibility, so
+      /// without it the person would meet the raw clipboard notice. Named
+      /// instead.
+      @Test("denied accessibility is named rather than left to the clipboard notice")
+      func deniedAccessibilityIsNamed() {
+        let vm = makePracticeViewModel()
+        vm.applyPracticePosture(micGranted: true, accessibilityGranted: false)
+        #expect(
+          vm.practiceState == .cannotHear(reason: "accessibility_denied", permission: "accessibility"))
+      }
+
+      @Test("granting the permission afterwards clears the blocked state")
+      func grantingClearsTheBlock() {
+        let vm = makePracticeViewModel()
+        vm.applyPracticePosture(micGranted: false, accessibilityGranted: false)
+        vm.applyPracticePosture(micGranted: true, accessibilityGranted: true)
+        #expect(vm.practiceState == .waiting)
+      }
+
+      /// A take cannot start while the screen is telling someone their
+      /// microphone is off — otherwise the honest message is replaced by
+      /// "Listening…" on a machine that cannot hear.
+      @Test("a blocked screen does not pretend to listen")
+      func blockedScreenDoesNotListen() {
+        let vm = makePracticeViewModel()
+        vm.applyPracticePosture(micGranted: false, accessibilityGranted: true)
+        vm.practiceTakeStarted()
+        #expect(vm.practiceState == .cannotHear(reason: "mic_denied", permission: "microphone"))
+      }
+
       @Test("a warmed gate opens the box rather than ending setup")
       func warmGateOpensTheBox() {
         let vm = OnboardingV2ViewModel()

@@ -485,12 +485,99 @@ final class OnboardingV2ViewModel {
     }
   }
 
+  /// What the practice screen is SHOWING. Distinct from `practiceSucceeded`,
+  /// which is the sticky record that a dictation once worked: this is the
+  /// moment-to-moment state, and it exists because the screen was previously
+  /// blind to a take that produced nothing (local Codex chunk-2 review).
+  enum PracticeState: Equatable {
+    case waiting
+    case listening
+    case worked
+    /// The most likely non-success outcome by a wide margin — 20.3% of real
+    /// first takes against 10.1% for every genuine failure combined — so it is
+    /// a normal state with a way forward, never an error.
+    case saidNothing
+    /// Something must be turned on before any of this can work. Carries the
+    /// telemetry reason so the screen and the funnel cannot disagree.
+    case cannotHear(reason: String, permission: String?)
+  }
+
+  var practiceState: PracticeState = .waiting
+
+  /// One-shot: a visit to the practice screen reports its outcome exactly once,
+  /// whichever way it ends. Same shape as `gateExitReported` and for the same
+  /// reason — the screen has several exits and they must not each report.
+  private var practiceExitReported = false
+
+  /// The box's contents when the current take began, so "did this take produce
+  /// anything" is answered by comparing against the take's own start rather
+  /// than against empty — a second take after a successful one must not be
+  /// scored on the first one's words.
+  private var practiceTextAtTakeStart = ""
+
+  /// A dictation started while this screen is up. Driven by
+  /// `LiveRecordingState.isDictationActive`, which is the SUBJECT's own signal
+  /// (true while either pipeline is recording, transcribing or polishing).
+  func practiceTakeStarted() {
+    if case .cannotHear = practiceState { return }
+    practiceTextAtTakeStart = practiceText
+    practiceState = .listening
+  }
+
+  /// The dictation finished. Whether it produced anything is decided by the box
+  /// itself, never by a clock.
+  func practiceTakeEnded() {
+    guard practiceState == .listening else { return }
+    let grew = practiceText != practiceTextAtTakeStart
+      && !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    practiceState = grew ? .worked : .saidNothing
+  }
+
+  /// Called on appear with the live posture. Accessibility is the known limit of
+  /// this route — Tier 1 writes through it — so a person who reaches here with
+  /// it denied is told plainly instead of meeting the raw clipboard notice this
+  /// whole feature exists to remove.
+  func applyPracticePosture(micGranted: Bool, accessibilityGranted: Bool) {
+    if !micGranted {
+      practiceState = .cannotHear(reason: "mic_denied", permission: "microphone")
+    } else if !accessibilityGranted {
+      practiceState = .cannotHear(reason: "accessibility_denied", permission: "accessibility")
+    } else if case .cannotHear = practiceState {
+      practiceState = .waiting
+    }
+  }
+
+  /// The single reporting seam for leaving this screen. `completed` when they
+  /// saw their own words; `no_speech` when their last take produced nothing,
+  /// which is a materially different thing from `skipped` — one person tried
+  /// and got silence, the other never tried.
+  func reportPracticeExit() {
+    guard !practiceExitReported else { return }
+    practiceExitReported = true
+    if case .cannotHear(let reason, let permission) = practiceState {
+      blockStep("practice_dictation", reason: reason, permission: permission)
+      return
+    }
+    let result: String
+    if practiceSucceeded {
+      result = "completed"
+    } else if practiceState == .saidNothing {
+      result = "no_speech"
+    } else {
+      result = "skipped"
+    }
+    completeStep("practice_dictation", result: result)
+  }
+
   /// Reset on entry, for the same reason `beginWarmingGate` resets: a reopened
   /// onboarding must not inherit a previous visit's success and offer FINISH
   /// SETUP to someone who has not dictated in this one.
   func beginPractice() {
     practiceText = ""
     practiceSucceeded = false
+    practiceState = .waiting
+    practiceExitReported = false
+    practiceTextAtTakeStart = ""
     currentScreen = .tryItOut
   }
 
@@ -732,8 +819,18 @@ struct OnboardingV2View: View {
         )
         .transition(Self.screenTransition)
       case .tryItOut:
-        PracticeScreenV2(viewModel: viewModel, onFinish: finishSetup)
-          .transition(Self.screenTransition)
+        // Both exits report through ONE seam, so the funnel can tell a person
+        // who practised from one who bailed. Before this they shared a
+        // no-argument finish and `practice_dictation` never appeared at all
+        // (local Codex chunk-2 review).
+        PracticeScreenV2(
+          viewModel: viewModel,
+          onFinish: {
+            viewModel.reportPracticeExit()
+            finishSetup()
+          }
+        )
+        .transition(Self.screenTransition)
       }
     }
     .animation(.easeInOut(duration: 0.35), value: viewModel.currentScreen)
