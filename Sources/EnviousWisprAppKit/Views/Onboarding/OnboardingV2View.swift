@@ -347,7 +347,7 @@ final class OnboardingV2ViewModel {
   /// the exact experience this gate exists to prevent, so the copy must not
   /// promise its absence.
   static let warmingFailureCopy =
-    "You can try again, or skip ahead — your first shortcut press may just wake the engine up, and the one after it will dictate."
+    "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate."
 
   /// Start the gate's warm-up if none is live. Safe to call on every view
   /// re-appear: a live attempt makes a re-kick a no-op.
@@ -381,6 +381,15 @@ final class OnboardingV2ViewModel {
       if displayFloor > elapsed {
         try? await Task.sleep(for: .seconds(displayFloor - elapsed))
         if Task.isCancelled { return }
+      }
+      // The visit may have ended while this ran — the window closes, abandon is
+      // emitted, and this task deliberately survives. Re-arm rather than
+      // report: a completion after abandonment is a double terminal, and a
+      // stale `.ready` would let the next open walk through without asking an
+      // engine that may since have been unloaded.
+      guard isVisitActive?() ?? true else {
+        beginWarmingGate()
+        return
       }
       // Readiness both answers the warm-up and ends the visit, so it takes the
       // EXIT latch: if the person already skipped, this must stay silent and
@@ -749,6 +758,13 @@ final class OnboardingV2ViewModel {
   /// because `stepStartedAt` is always >= the session start on the forward path).
   var sessionStartFloor: (@MainActor () -> Date?)?
 
+  /// Whether the onboarding VISIT is still live, supplied by the view from
+  /// `OnboardingProgress.isInFlight` (local Codex r3 on chunks 3-4). The gate's
+  /// warm-up outlives a window close by design, so without this its `.ready`
+  /// branch reports a step completion for a visit already counted as abandoned
+  /// and leaves a stale answer for the next open to walk through.
+  var isVisitActive: (@MainActor () -> Bool)?
+
   /// `stepStartedAt`, never earlier than the current session start.
   private func clampedStepStart() -> Date {
     if let floor = sessionStartFloor?(), floor > stepStartedAt { return floor }
@@ -918,6 +934,7 @@ struct OnboardingV2View: View {
     // start. Set-once is reliable even if a later reused-window reopen skips this
     // onAppear — the closure captures the stable box reference.
     viewModel.sessionStartFloor = { [onboardingProgress] in onboardingProgress.sessionStart }
+    viewModel.isVisitActive = { [onboardingProgress] in onboardingProgress.isInFlight }
     // #1176: `begin()` (the session reset) fires from `openOnboardingAction` so it
     // is reliable even when a reused window skips a fresh onAppear; here we only
     // mirror the resolved screen/step into the box.

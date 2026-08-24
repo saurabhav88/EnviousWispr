@@ -79,7 +79,7 @@ struct PracticeScreenV2: View {
       // Not an error, and never worded as one: the microphone worked, there
       // was simply nothing to hear. The prompt is drawn from the persona banks
       // so it sounds like something a person would actually say.
-      return "Your microphone is working — we just did not hear anything.\nTry holding the key and saying: tell grandma I will call Sunday."
+      return "Your microphone is working. We just did not hear anything.\nTry holding the key and saying: tell grandma I will call Sunday."
     case .worked:
       return "Those are your words, typed for you.\nIn any other app, click into a text box first."
     case .waiting:
@@ -193,6 +193,24 @@ struct PracticeScreenV2: View {
         accessibilityGranted: permissions.accessibilityGranted)
     }
     // The take's own edges, from the subject rather than from a timer.
+    // Accessibility cannot be observed by notification and
+    // `requestAccessibilityAccess()` returns the instant the system prompt
+    // opens, so a person who grants it in System Settings and comes back would
+    // sit on `cannotHear` until they pressed the button again. The permissions
+    // phase upstream solved this with a 2s poll; ported wholesale, scoped to
+    // the blocked state so it costs nothing on the ordinary path.
+    .task(id: cannotHear) {
+      guard cannotHear else { return }
+      while !Task.isCancelled {
+        try? await Task.sleep(for: .seconds(2))
+        guard !Task.isCancelled else { return }
+        permissions.refreshAccessibilityStatus()
+        viewModel.applyPracticePosture(
+          micGranted: permissions.hasMicrophonePermission,
+          accessibilityGranted: permissions.accessibilityGranted)
+        if !cannotHear { return }
+      }
+    }
     .onChange(of: live.isDictationActive) { _, active in
       if active {
         viewModel.practiceTakeStarted()

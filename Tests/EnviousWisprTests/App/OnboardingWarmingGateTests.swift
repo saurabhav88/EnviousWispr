@@ -14,7 +14,7 @@ import Testing
   /// negative assertion passes having exercised nothing.
   @MainActor
   fileprivate final class EntrySignal {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [(UUID, CheckedContinuation<Bool, Never>)] = []
     private var fired = false
 
     /// Called from inside the warm-up, before it suspends.
@@ -23,24 +23,37 @@ import Testing
       fired = true
       let resumable = waiters
       waiters = []
-      for w in resumable { w.resume() }
+      for w in resumable { w.1.resume(returning: true) }
     }
 
-    /// Returns once the warm-up has actually been entered.
-    func awaitEntry() async {
-      if fired { return }
-      await withCheckedContinuation { waiters.append($0) }
+    /// Returns once the warm-up has actually been entered, or gives up after
+    /// `timeout` so a regression that never invokes the warm-up produces a
+    /// FAILING assertion instead of a wedged run. Cancellation does not resume
+    /// a checked continuation, so the suite time limit alone would leave the
+    /// process hung (local Codex r3; test-timing.md — write the deadline when
+    /// you write the waiter).
+    /// - Returns: true if the subject entered, false if the deadline won.
+    func awaitEntry(timeout: Duration = .seconds(5)) async -> Bool {
+      if fired { return true }
+      let id = UUID()
+      return await withCheckedContinuation { continuation in
+        waiters.append((id, continuation))
+        Task { [weak self] in
+          try? await Task.sleep(for: timeout)
+          await self?.expire(id)
+        }
+      }
+    }
+
+    /// Resumes a still-parked waiter with `false`. Removed first, so the real
+    /// signal arriving later cannot resume it a second time.
+    private func expire(_ id: UUID) {
+      guard let index = waiters.firstIndex(where: { $0.0 == id }) else { return }
+      let waiter = waiters.remove(at: index)
+      waiter.1.resume(returning: false)
     }
   }
 
-  /// #2196 chunk 1 — the engine warm gate.
-  ///
-  /// When these fail, a brand new person's very first press lands on a cold
-  /// engine: `RecordingStarter.swift:292-297` refuses a press taken before
-  /// readiness and mints no session, so the press appears to do nothing and
-  /// needs a second one. The gate's entire job is to make that unreachable, so
-  /// every case here asks the same question — can the gate open on anything
-  /// other than the engine itself saying ready.
   /// #2196 — the onboarding practice step, all of it.
   ///
   /// ONE serialized parent, because the children emit `engine_warm_gate` and
@@ -85,7 +98,7 @@ import Testing
           }, displayFloor: 0)
         let task = vm.warmingTask
         // The subject says it is running; nothing here guesses that it is.
-        await entered.awaitEntry()
+        #expect(await entered.awaitEntry(), "the warm-up was never entered")
 
         #expect(vm.warmingOutcome == .waiting, "the gate opened before the engine answered")
 
@@ -168,7 +181,7 @@ import Testing
         vm.kickWarmingIfNeeded(warmUp: warmUp, displayFloor: 0)
         let first = vm.warmingTask
         // Without this the re-kick could land before the first attempt ran.
-        await entered.awaitEntry()
+        #expect(await entered.awaitEntry(), "the warm-up was never entered")
         vm.kickWarmingIfNeeded(warmUp: warmUp, displayFloor: 0)
 
         // Found by the mutation battery, not by review: dropping the
@@ -261,7 +274,7 @@ import Testing
             return .ready
           }, displayFloor: 0)
         let task = vm.warmingTask
-        await entered.awaitEntry()
+        #expect(await entered.awaitEntry(), "the warm-up was never entered")
 
         vm.skipWarmingGate()
         gateCont.yield(())
@@ -371,7 +384,7 @@ import Testing
               return .ready
             }, displayFloor: 0)
           let task = vm.warmingTask
-          await entered.awaitEntry()
+          #expect(await entered.awaitEntry(), "the warm-up was never entered")
 
           vm.skipWarmingGate()
           gateCont.yield(())
@@ -426,7 +439,7 @@ import Testing
               return .failed(Boom())
             }, displayFloor: 0)
           let task = vm.warmingTask
-          await entered.awaitEntry()
+          #expect(await entered.awaitEntry(), "the warm-up was never entered")
 
           vm.skipWarmingGate()
           gateCont.yield(())
