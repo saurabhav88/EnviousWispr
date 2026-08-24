@@ -595,6 +595,28 @@ final class OnboardingV2ViewModel {
     // is the only evidence that words existed at all. Requiring BOTH — the box
     // unfocused AND a transcript produced — is what stops this screen claiming
     // "We heard you" about a take that was simply silent (cloud review).
+    //
+    // KNOWN LIMIT, recorded rather than fixed, and classified deliberately.
+    // `transcriptCount` comes from history, and `PipelineStateChangePlanner`
+    // skips the append when a History SAVE fails — so a take that produced
+    // words during a failed save reads as silence here and the person is told
+    // "All quiet" instead of "click the box".
+    //
+    // HYPOTHETICAL under validate-automated-review-findings: it needs a
+    // misbehaving dependency (a failed store write), not an input a real user
+    // produces. The rule fixes a hypothetical only when the repair is TRIVIAL,
+    // and this one is not — it means sourcing "were words produced" from
+    // somewhere other than history, and every signal within reach at this point
+    // in the take is either the same fact or a new inference. Five rounds on
+    // this branch have shown what a guessed signal costs: three separate
+    // versions of this screen confidently telling someone something false about
+    // their own words.
+    //
+    // Cost if it fires is also bounded: the person is in a session whose
+    // history is already failing to save, which is a louder problem surfacing
+    // elsewhere, and the advice they get ("we did not hear anything") is
+    // unhelpful rather than harmful. Revisit if a first-class
+    // "this take produced text" signal appears; do not invent one here.
     let producedWords = transcriptCount > transcriptCountAtTakeStart
     if grew {
       practiceState = .worked
