@@ -338,8 +338,15 @@ final class OnboardingV2ViewModel {
   /// pass 0.
   static let warmingDisplayFloor: TimeInterval = 0.6
 
+  /// Local Codex r3: the earlier wording promised the engine "will load the
+  /// first time you dictate", which this path specifically cannot deliver — a
+  /// press taken before readiness is refused and mints no session
+  /// (`RecordingStarter.swift:292-297`), so the first press after a genuinely
+  /// failed warm-up only starts the load and a second one is needed. That is
+  /// the exact experience this gate exists to prevent, so the copy must not
+  /// promise its absence.
   static let warmingFailureCopy =
-    "You can try again, or skip ahead and it will load the first time you dictate."
+    "You can try again, or skip ahead — your first shortcut press may just wake the engine up, and the one after it will dictate."
 
   /// Start the gate's warm-up if none is live. Safe to call on every view
   /// re-appear: a live attempt makes a re-kick a no-op.
@@ -410,6 +417,10 @@ final class OnboardingV2ViewModel {
     warmingAnswerReported = false
     gateExitReported = false
     warmingOutcome = .waiting
+    // Re-keys the view's `.task`, so a fresh attempt kicks even when the screen
+    // is not changing — which is the case when a dead visit is re-armed in
+    // place rather than entered from the Ready button.
+    warmingRetryCount += 1
     currentScreen = .warmingUp
   }
 
@@ -726,6 +737,17 @@ struct OnboardingV2View: View {
   /// the gate now has two exits that both finish, and two copies of a terminal
   /// sequence is how one of them drifts.
   private func finishSetup() {
+    // Local Codex r3, and it is the consequence of r1's rejected finding rather
+    // than a refutation of it: the owned warm-up outliving a window close is
+    // exactly what keeps the observer alive to fire — and firing after the
+    // close path already emitted `onboarding.abandoned` would count one visit
+    // as both abandoned AND completed. Re-arm rather than return, so a reopened
+    // window meets a fresh attempt instead of sitting on an answer that belongs
+    // to a visit nobody is in any more.
+    guard onboardingProgress.isInFlight else {
+      viewModel.beginWarmingGate()
+      return
+    }
     viewModel.finishOnboarding(settings: settings)
     // #1176 (race fix): mark terminal BEFORE the window closes, so the
     // unguarded window-close path sees it and does not also fire abandon.

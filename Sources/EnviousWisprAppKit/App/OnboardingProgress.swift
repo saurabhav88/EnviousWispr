@@ -67,6 +67,14 @@ final class OnboardingProgress {
     terminalEmitted = true
   }
 
+  /// True while this visit is still live — begun, and neither cleanly finished
+  /// nor abandoned. Read by the warm gate before it completes setup (#2196,
+  /// local Codex r3): the gate's warm-up deliberately outlives a window close,
+  /// so a `.ready` landing afterwards would otherwise finish a visit the close
+  /// path has already counted as ABANDONED, emitting both terminals for one
+  /// visit and reopening a window only to close it again.
+  var isInFlight: Bool { sessionStartedAt != nil && !terminalEmitted }
+
   /// The single guarded abandon emit — both the window-close closure and the
   /// app-quit terminate path call this. Emits at most once per session; a clean
   /// finish (`markCompleted`) or a prior abandon suppresses it. Posture is passed

@@ -41,310 +41,220 @@ import Testing
   /// needs a second one. The gate's entire job is to make that unreachable, so
   /// every case here asks the same question — can the gate open on anything
   /// other than the engine itself saying ready.
+  /// #2196 chunk 1 — the engine warm gate.
+  ///
+  /// ONE serialized parent, because both children emit `engine_warm_gate` and
+  /// capture it through the process-global `TelemetryService.shared.testEventHook`.
+  /// `.serialized` orders tests WITHIN a suite; it says nothing about two
+  /// SIBLING suites, so a sibling's events landed in this suite's capture and a
+  /// count assertion read three completions where it expected one. Nesting is
+  /// what actually orders them against each other (local Codex r3).
   @MainActor
-  @Suite(
-    "Onboarding engine warm gate", .tags(.productOutcome), .serialized,
-    .timeLimit(.minutes(1)))
-  struct OnboardingWarmingGateTests {
+  @Suite("Onboarding engine warm gate", .serialized)
+  struct OnboardingWarmingGateSuite {
 
     @MainActor
-    private final class Counter { var value = 0 }
+    @Suite("behaviour", .tags(.productOutcome), .timeLimit(.minutes(1)))
+    struct OnboardingWarmingGateTests {
 
-    /// A view model parked on the gate, as the Ready button leaves it.
-    private func makeGatedViewModel() -> OnboardingV2ViewModel {
-      let vm = OnboardingV2ViewModel()
-      vm.currentScreen = .warmingUp
-      return vm
-    }
+      @MainActor
+      private final class Counter { var value = 0 }
 
-    @Test("the gate stays shut while the warm-up is still running")
-    func gateHoldsUntilTheEngineAnswers() async {
-      let vm = makeGatedViewModel()
-      // Signal-gated, never timed: the warm-up suspends until this test
-      // releases it, so "still running" is a state the test creates rather
-      // than one it waits out.
-      let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
-
-      let entered = EntrySignal()
-      vm.kickWarmingIfNeeded(
-        warmUp: {
-          entered.fire()
-          var it = gate.makeAsyncIterator()
-          _ = await it.next()
-          return .ready
-        }, displayFloor: 0)
-      let task = vm.warmingTask
-      // The subject says it is running; nothing here guesses that it is.
-      await entered.awaitEntry()
-
-      #expect(vm.warmingOutcome == .waiting, "the gate opened before the engine answered")
-
-      gateCont.yield(())
-      gateCont.finish()
-      await task?.value
-
-      #expect(vm.warmingOutcome == .ready)
-    }
-
-    @Test("a failed warm-up never opens the gate")
-    func failureNeverOpensTheGate() async {
-      let vm = makeGatedViewModel()
-      struct Boom: Error {}
-
-      vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
-      await vm.warmingTask?.value
-
-      #expect(vm.warmingOutcome != .ready)
-      #expect(vm.warmingOutcome == .failed(OnboardingV2ViewModel.warmingFailureCopy))
-    }
-
-    /// A `.cancelled` can only arrive from a Cancel pressed on the CHECKLIST
-    /// that raced the gate's own single-flighted call. The engine is not ready,
-    /// so the gate must treat it exactly like a failure rather than waving it
-    /// through as "the user chose this".
-    @Test("a cancelled warm-up never opens the gate")
-    func cancellationNeverOpensTheGate() async {
-      let vm = makeGatedViewModel()
-
-      vm.kickWarmingIfNeeded(warmUp: { .cancelled }, displayFloor: 0)
-      await vm.warmingTask?.value
-
-      #expect(vm.warmingOutcome != .ready)
-    }
-
-    @Test("retry re-arms the gate and a second attempt can open it")
-    func retryReArms() async {
-      let vm = makeGatedViewModel()
-      struct Boom: Error {}
-      let calls = Counter()
-
-      vm.kickWarmingIfNeeded(
-        warmUp: {
-          calls.value += 1
-          return calls.value == 1 ? .failed(Boom()) : .ready
-        }, displayFloor: 0)
-      await vm.warmingTask?.value
-      #expect(vm.warmingOutcome != .ready)
-
-      vm.retryWarming()
-      #expect(vm.warmingOutcome == .waiting)
-      #expect(vm.warmingRetryCount == 1)
-
-      vm.kickWarmingIfNeeded(
-        warmUp: {
-          calls.value += 1
-          return calls.value == 1 ? .failed(Boom()) : .ready
-        }, displayFloor: 0)
-      await vm.warmingTask?.value
-
-      #expect(vm.warmingOutcome == .ready)
-      #expect(calls.value == 2)
-    }
-
-    @Test("a re-kick while an attempt is live is a no-op (window churn)")
-    func reKickIsSingleFlight() async {
-      let vm = makeGatedViewModel()
-      let calls = Counter()
-      let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
-      let entered = EntrySignal()
-      let warmUp: @MainActor () async -> EngineWarmupOutcome = {
-        calls.value += 1
-        entered.fire()
-        var it = gate.makeAsyncIterator()
-        _ = await it.next()
-        return .ready
+      /// A view model parked on the gate, as the Ready button leaves it.
+      private func makeGatedViewModel() -> OnboardingV2ViewModel {
+        let vm = OnboardingV2ViewModel()
+        vm.currentScreen = .warmingUp
+        return vm
       }
 
-      vm.kickWarmingIfNeeded(warmUp: warmUp, displayFloor: 0)
-      let first = vm.warmingTask
-      // Without this the re-kick could land before the first attempt ran, and a
-      // `calls.value == 1` read would pass having proven nothing.
-      await entered.awaitEntry()
-      vm.kickWarmingIfNeeded(warmUp: warmUp, displayFloor: 0)
-
-      #expect(calls.value == 1, "a re-kick started a second warm-up")
-
-      gateCont.yield(())
-      gateCont.finish()
-      await first?.value
-      #expect(vm.warmingOutcome == .ready)
-    }
-
-    @Test("the gate does not run from any other screen")
-    func doesNotKickOffScreen() async {
-      let vm = OnboardingV2ViewModel()
-      vm.currentScreen = .ready
-      let calls = Counter()
-
-      vm.kickWarmingIfNeeded(
-        warmUp: {
-          calls.value += 1
-          return .ready
-        }, displayFloor: 0)
-      await vm.warmingTask?.value
-
-      #expect(calls.value == 0)
-      #expect(vm.warmingOutcome == .waiting)
-    }
-
-    /// Found by self-review, and it survives a green suite because nothing
-    /// resets `warmingOutcome` when a visit ENDS: a reopened onboarding
-    /// inherits the last visit's `ready`, the gate's `onAppear` fires straight
-    /// through, and the engine is never asked — on a machine where it may have
-    /// been unloaded since.
-    @Test("a reopened onboarding cannot inherit the last visit's ready")
-    func reopeningReArmsTheGate() async {
-      let vm = makeGatedViewModel()
-      vm.kickWarmingIfNeeded(warmUp: { .ready }, displayFloor: 0)
-      await vm.warmingTask?.value
-      #expect(vm.warmingOutcome == .ready)
-
-      // Setup finished and was reopened: recovery parks it back on Ready, and
-      // the person presses the button again.
-      vm.currentScreen = .ready
-      vm.beginWarmingGate()
-
-      #expect(vm.currentScreen == .warmingUp)
-      #expect(
-        vm.warmingOutcome == .waiting,
-        "the gate opened on a stale answer from a previous visit")
-
-      let calls = Counter()
-      vm.kickWarmingIfNeeded(
-        warmUp: {
-          calls.value += 1
-          return .ready
-        }, displayFloor: 0)
-      await vm.warmingTask?.value
-      #expect(calls.value == 1, "the second visit never asked the engine")
-    }
-
-    /// The skip does NOT cancel the shared warm-up — that load is
-    /// single-flighted, so cancelling it to leave a screen would cancel it for
-    /// every other waiter. The consequence this locks: the abandoned attempt
-    /// still resolves, and it must not then open a gate nobody is standing at.
-    @Test("skipping leaves the in-flight warm-up alone and its late answer opens nothing")
-    func skipDoesNotCancelAndLateReadyIsInert() async {
-      let vm = makeGatedViewModel()
-      let calls = Counter()
-      let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
-
-      let entered = EntrySignal()
-      vm.kickWarmingIfNeeded(
-        warmUp: {
-          calls.value += 1
-          entered.fire()
-          var it = gate.makeAsyncIterator()
-          _ = await it.next()
-          return .ready
-        }, displayFloor: 0)
-      let task = vm.warmingTask
-      await entered.awaitEntry()
-
-      vm.skipWarmingGate()
-      gateCont.yield(())
-      gateCont.finish()
-      await task?.value
-
-      #expect(calls.value == 1, "the warm-up never ran")
-      #expect(
-        vm.warmingOutcome == .waiting,
-        "a skipped gate opened later on an answer nobody was waiting for")
-    }
-  }
-
-  /// #2196 chunk 1 — what the gate reports. When these fail the onboarding
-  /// funnel lies about where people stop: `engine_warm_gate` is the step that
-  /// separates "waited and got a warm engine" from "did not wait".
-  @MainActor
-  @Suite(
-    "Onboarding engine warm gate telemetry", .tags(.observabilityContract), .serialized,
-    .timeLimit(.minutes(1)))
-  struct OnboardingWarmingGateTelemetryTests {
-
-    final class Events: @unchecked Sendable {
-      private let lock = NSLock()
-      private var stored: [CapturedTelemetryEvent] = []
-      func add(_ e: CapturedTelemetryEvent) { lock.withLock { stored.append(e) } }
-      var all: [CapturedTelemetryEvent] { lock.withLock { stored } }
-      /// Only this step's rows, so an unrelated suite emitting onto the shared
-      /// hook cannot be read as one of ours.
-      func gateRows(_ name: String) -> [CapturedTelemetryEvent] {
-        all.filter { $0.name == name && $0.stringProps["step"] == "engine_warm_gate" }
-      }
-    }
-
-    private func makeGatedViewModel() -> OnboardingV2ViewModel {
-      let vm = OnboardingV2ViewModel()
-      vm.currentScreen = .warmingUp
-      return vm
-    }
-
-    private func withHook<T>(_ body: (Events) async throws -> T) async rethrows -> T {
-      let events = Events()
-      TelemetryService.shared.testEventHook = { @Sendable e in events.add(e) }
-      defer { TelemetryService.shared.testEventHook = nil }
-      return try await body(events)
-    }
-
-    @Test("a warmed gate completes the step once, with a duration")
-    func readyCompletesOnce() async {
-      await withHook { events in
+      @Test("the gate stays shut while the warm-up is still running")
+      func gateHoldsUntilTheEngineAnswers() async {
         let vm = makeGatedViewModel()
-        vm.kickWarmingIfNeeded(warmUp: { .ready }, displayFloor: 0)
-        await vm.warmingTask?.value
-
-        let rows = events.gateRows("onboarding.step_completed")
-        #expect(rows.count == 1)
-        #expect(rows.first?.stringProps["result"] == "ready")
-        // The already-warm case and a real wait are told apart by this, which
-        // is why the gate carries no separate already_ready result value.
-        #expect(rows.first?.stringProps["duration_seconds"] != nil)
-        #expect(events.gateRows("onboarding.step_blocked").isEmpty)
-      }
-    }
-
-    @Test("a failed warm-up blocks the step, and does not also complete it")
-    func failureBlocks() async {
-      await withHook { events in
-        struct Boom: Error {}
-        let vm = makeGatedViewModel()
-        vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
-        await vm.warmingTask?.value
-
-        let blocked = events.gateRows("onboarding.step_blocked")
-        #expect(blocked.count == 1)
-        #expect(blocked.first?.stringProps["reason"] == "warmup_failed")
-        #expect(events.gateRows("onboarding.step_completed").isEmpty)
-      }
-    }
-
-    @Test("a checklist cancel that races the gate is reported as its own reason")
-    func cancellationBlocksWithItsOwnReason() async {
-      await withHook { events in
-        let vm = makeGatedViewModel()
-        vm.kickWarmingIfNeeded(warmUp: { .cancelled }, displayFloor: 0)
-        await vm.warmingTask?.value
-
-        let blocked = events.gateRows("onboarding.step_blocked")
-        #expect(blocked.count == 1)
-        #expect(blocked.first?.stringProps["reason"] == "warmup_cancelled")
-      }
-    }
-
-    /// The one-shot latch, stated as a funnel property: one visit to the gate
-    /// produces exactly one row. Without it a skipped gate whose abandoned
-    /// warm-up later resolves would report BOTH skipped and ready, and the
-    /// share-who-skipped number would be quietly wrong in the flattering
-    /// direction.
-    @Test("skip then a late ready reports exactly one row, and it is the skip")
-    func skipReportsOnce() async {
-      await withHook { events in
-        let vm = makeGatedViewModel()
+        // Signal-gated, never timed: the warm-up suspends until this test
+        // releases it, so "still running" is a state the test creates rather
+        // than one it waits out.
         let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
+
         let entered = EntrySignal()
         vm.kickWarmingIfNeeded(
           warmUp: {
+            entered.fire()
+            var it = gate.makeAsyncIterator()
+            _ = await it.next()
+            return .ready
+          }, displayFloor: 0)
+        let task = vm.warmingTask
+        // The subject says it is running; nothing here guesses that it is.
+        await entered.awaitEntry()
+
+        #expect(vm.warmingOutcome == .waiting, "the gate opened before the engine answered")
+
+        gateCont.yield(())
+        gateCont.finish()
+        await task?.value
+
+        #expect(vm.warmingOutcome == .ready)
+      }
+
+      @Test("a failed warm-up never opens the gate")
+      func failureNeverOpensTheGate() async {
+        let vm = makeGatedViewModel()
+        struct Boom: Error {}
+
+        vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
+        await vm.warmingTask?.value
+
+        #expect(vm.warmingOutcome != .ready)
+        #expect(vm.warmingOutcome == .failed(OnboardingV2ViewModel.warmingFailureCopy))
+      }
+
+      /// A `.cancelled` can only arrive from a Cancel pressed on the CHECKLIST
+      /// that raced the gate's own single-flighted call. The engine is not ready,
+      /// so the gate must treat it exactly like a failure rather than waving it
+      /// through as "the user chose this".
+      @Test("a cancelled warm-up never opens the gate")
+      func cancellationNeverOpensTheGate() async {
+        let vm = makeGatedViewModel()
+
+        vm.kickWarmingIfNeeded(warmUp: { .cancelled }, displayFloor: 0)
+        await vm.warmingTask?.value
+
+        #expect(vm.warmingOutcome != .ready)
+      }
+
+      @Test("retry re-arms the gate and a second attempt can open it")
+      func retryReArms() async {
+        let vm = makeGatedViewModel()
+        struct Boom: Error {}
+        let calls = Counter()
+
+        vm.kickWarmingIfNeeded(
+          warmUp: {
+            calls.value += 1
+            return calls.value == 1 ? .failed(Boom()) : .ready
+          }, displayFloor: 0)
+        await vm.warmingTask?.value
+        #expect(vm.warmingOutcome != .ready)
+
+        vm.retryWarming()
+        #expect(vm.warmingOutcome == .waiting)
+        #expect(vm.warmingRetryCount == 1)
+
+        vm.kickWarmingIfNeeded(
+          warmUp: {
+            calls.value += 1
+            return calls.value == 1 ? .failed(Boom()) : .ready
+          }, displayFloor: 0)
+        await vm.warmingTask?.value
+
+        #expect(vm.warmingOutcome == .ready)
+        #expect(calls.value == 2)
+      }
+
+      @Test("a re-kick while an attempt is live is a no-op (window churn)")
+      func reKickIsSingleFlight() async {
+        let vm = makeGatedViewModel()
+        let calls = Counter()
+        let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
+        let entered = EntrySignal()
+        let warmUp: @MainActor () async -> EngineWarmupOutcome = {
+          calls.value += 1
+          entered.fire()
+          var it = gate.makeAsyncIterator()
+          _ = await it.next()
+          return .ready
+        }
+
+        vm.kickWarmingIfNeeded(warmUp: warmUp, displayFloor: 0)
+        let first = vm.warmingTask
+        // Without this the re-kick could land before the first attempt ran.
+        await entered.awaitEntry()
+        vm.kickWarmingIfNeeded(warmUp: warmUp, displayFloor: 0)
+
+        // Found by the mutation battery, not by review: dropping the
+        // single-flight guard left this test GREEN. A second `Task` does not
+        // begin executing at the moment it is created, so reading `calls.value`
+        // straight after the re-kick reads an instant at which the evidence
+        // cannot exist yet — the assertion could never have caught the thing it
+        // names. What IS decided synchronously is whether the live attempt was
+        // REPLACED, so assert that first.
+        #expect(
+          vm.warmingTask == first,
+          "a re-kick replaced the live attempt instead of standing down")
+
+        gateCont.yield(())
+        gateCont.finish()
+        await first?.value
+
+        // And the count, now read after the run has finished, so any second
+        // attempt has had its chance to execute.
+        #expect(calls.value == 1, "a re-kick started a second warm-up")
+        #expect(vm.warmingOutcome == .ready)
+      }
+
+      @Test("the gate does not run from any other screen")
+      func doesNotKickOffScreen() async {
+        let vm = OnboardingV2ViewModel()
+        vm.currentScreen = .ready
+        let calls = Counter()
+
+        vm.kickWarmingIfNeeded(
+          warmUp: {
+            calls.value += 1
+            return .ready
+          }, displayFloor: 0)
+        await vm.warmingTask?.value
+
+        #expect(calls.value == 0)
+        #expect(vm.warmingOutcome == .waiting)
+      }
+
+      /// Found by self-review, and it survives a green suite because nothing
+      /// resets `warmingOutcome` when a visit ENDS: a reopened onboarding
+      /// inherits the last visit's `ready`, the gate's `onAppear` fires straight
+      /// through, and the engine is never asked — on a machine where it may have
+      /// been unloaded since.
+      @Test("a reopened onboarding cannot inherit the last visit's ready")
+      func reopeningReArmsTheGate() async {
+        let vm = makeGatedViewModel()
+        vm.kickWarmingIfNeeded(warmUp: { .ready }, displayFloor: 0)
+        await vm.warmingTask?.value
+        #expect(vm.warmingOutcome == .ready)
+
+        // Setup finished and was reopened: recovery parks it back on Ready, and
+        // the person presses the button again.
+        vm.currentScreen = .ready
+        vm.beginWarmingGate()
+
+        #expect(vm.currentScreen == .warmingUp)
+        #expect(
+          vm.warmingOutcome == .waiting,
+          "the gate opened on a stale answer from a previous visit")
+
+        let calls = Counter()
+        vm.kickWarmingIfNeeded(
+          warmUp: {
+            calls.value += 1
+            return .ready
+          }, displayFloor: 0)
+        await vm.warmingTask?.value
+        #expect(calls.value == 1, "the second visit never asked the engine")
+      }
+
+      /// The skip does NOT cancel the shared warm-up — that load is
+      /// single-flighted, so cancelling it to leave a screen would cancel it for
+      /// every other waiter. The consequence this locks: the abandoned attempt
+      /// still resolves, and it must not then open a gate nobody is standing at.
+      @Test("skipping leaves the in-flight warm-up alone and its late answer opens nothing")
+      func skipDoesNotCancelAndLateReadyIsInert() async {
+        let vm = makeGatedViewModel()
+        let calls = Counter()
+        let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
+
+        let entered = EntrySignal()
+        vm.kickWarmingIfNeeded(
+          warmUp: {
+            calls.value += 1
             entered.fire()
             var it = gate.makeAsyncIterator()
             _ = await it.next()
@@ -358,100 +268,212 @@ import Testing
         gateCont.finish()
         await task?.value
 
-        let rows = events.gateRows("onboarding.step_completed")
-        #expect(rows.count == 1)
-        #expect(rows.first?.stringProps["result"] == "skipped")
+        #expect(calls.value == 1, "the warm-up never ran")
+        #expect(
+          vm.warmingOutcome == .waiting,
+          "a skipped gate opened later on an answer nobody was waiting for")
       }
     }
 
-    /// Local Codex review, adopted: one latch guarded both the warm-up's answer
-    /// and the visit's exit, so a failed attempt consumed it and the Skip link
-    /// still offered beneath the failure panel then reported nothing. A
-    /// failed-then-skipped visit was indistinguishable from a failed-then-
-    /// abandoned one, and the skip rate undercounted exactly the people the
-    /// gate had already failed.
-    @Test("skipping after a failed warm-up still records the skip")
-    func skipAfterFailureIsRecorded() async {
-      await withHook { events in
-        struct Boom: Error {}
-        let vm = makeGatedViewModel()
-        vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
-        await vm.warmingTask?.value
+    /// #2196 chunk 1 — what the gate reports. When these fail the onboarding
+    /// funnel lies about where people stop: `engine_warm_gate` is the step that
+    /// separates "waited and got a warm engine" from "did not wait".
+    @MainActor
+    @Suite("telemetry", .tags(.observabilityContract), .timeLimit(.minutes(1)))
+    struct OnboardingWarmingGateTelemetryTests {
 
-        vm.skipWarmingGate()
+      final class Events: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: [CapturedTelemetryEvent] = []
+        func add(_ e: CapturedTelemetryEvent) { lock.withLock { stored.append(e) } }
+        var all: [CapturedTelemetryEvent] { lock.withLock { stored } }
+        /// Only this step's rows, so an unrelated suite emitting onto the shared
+        /// hook cannot be read as one of ours.
+        func gateRows(_ name: String) -> [CapturedTelemetryEvent] {
+          all.filter { $0.name == name && $0.stringProps["step"] == "engine_warm_gate" }
+        }
+      }
 
-        let blocked = events.gateRows("onboarding.step_blocked")
-        #expect(blocked.count == 1)
-        #expect(blocked.first?.stringProps["reason"] == "warmup_failed")
-        let completed = events.gateRows("onboarding.step_completed")
-        #expect(completed.count == 1, "the skip after a failure was never recorded")
-        #expect(completed.first?.stringProps["result"] == "skipped")
+      private func makeGatedViewModel() -> OnboardingV2ViewModel {
+        let vm = OnboardingV2ViewModel()
+        vm.currentScreen = .warmingUp
+        return vm
+      }
+
+      private func withHook<T>(_ body: (Events) async throws -> T) async rethrows -> T {
+        let events = Events()
+        TelemetryService.shared.testEventHook = { @Sendable e in events.add(e) }
+        defer { TelemetryService.shared.testEventHook = nil }
+        return try await body(events)
+      }
+
+      @Test("a warmed gate completes the step once, with a duration")
+      func readyCompletesOnce() async {
+        await withHook { events in
+          let vm = makeGatedViewModel()
+          vm.kickWarmingIfNeeded(warmUp: { .ready }, displayFloor: 0)
+          await vm.warmingTask?.value
+
+          let rows = events.gateRows("onboarding.step_completed")
+          #expect(rows.count == 1)
+          #expect(rows.first?.stringProps["result"] == "ready")
+          // The already-warm case and a real wait are told apart by this, which
+          // is why the gate carries no separate already_ready result value.
+          #expect(rows.first?.stringProps["duration_seconds"] != nil)
+          #expect(events.gateRows("onboarding.step_blocked").isEmpty)
+        }
+      }
+
+      @Test("a failed warm-up blocks the step, and does not also complete it")
+      func failureBlocks() async {
+        await withHook { events in
+          struct Boom: Error {}
+          let vm = makeGatedViewModel()
+          vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
+          await vm.warmingTask?.value
+
+          let blocked = events.gateRows("onboarding.step_blocked")
+          #expect(blocked.count == 1)
+          #expect(blocked.first?.stringProps["reason"] == "warmup_failed")
+          #expect(events.gateRows("onboarding.step_completed").isEmpty)
+        }
+      }
+
+      @Test("a checklist cancel that races the gate is reported as its own reason")
+      func cancellationBlocksWithItsOwnReason() async {
+        await withHook { events in
+          let vm = makeGatedViewModel()
+          vm.kickWarmingIfNeeded(warmUp: { .cancelled }, displayFloor: 0)
+          await vm.warmingTask?.value
+
+          let blocked = events.gateRows("onboarding.step_blocked")
+          #expect(blocked.count == 1)
+          #expect(blocked.first?.stringProps["reason"] == "warmup_cancelled")
+        }
+      }
+
+      /// The one-shot latch, stated as a funnel property: one visit to the gate
+      /// produces exactly one row. Without it a skipped gate whose abandoned
+      /// warm-up later resolves would report BOTH skipped and ready, and the
+      /// share-who-skipped number would be quietly wrong in the flattering
+      /// direction.
+      @Test("skip then a late ready reports exactly one row, and it is the skip")
+      func skipReportsOnce() async {
+        await withHook { events in
+          let vm = makeGatedViewModel()
+          let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
+          let entered = EntrySignal()
+          vm.kickWarmingIfNeeded(
+            warmUp: {
+              entered.fire()
+              var it = gate.makeAsyncIterator()
+              _ = await it.next()
+              return .ready
+            }, displayFloor: 0)
+          let task = vm.warmingTask
+          await entered.awaitEntry()
+
+          vm.skipWarmingGate()
+          gateCont.yield(())
+          gateCont.finish()
+          await task?.value
+
+          let rows = events.gateRows("onboarding.step_completed")
+          #expect(rows.count == 1)
+          #expect(rows.first?.stringProps["result"] == "skipped")
+        }
+      }
+
+      /// Local Codex review, adopted: one latch guarded both the warm-up's answer
+      /// and the visit's exit, so a failed attempt consumed it and the Skip link
+      /// still offered beneath the failure panel then reported nothing. A
+      /// failed-then-skipped visit was indistinguishable from a failed-then-
+      /// abandoned one, and the skip rate undercounted exactly the people the
+      /// gate had already failed.
+      @Test("skipping after a failed warm-up still records the skip")
+      func skipAfterFailureIsRecorded() async {
+        await withHook { events in
+          struct Boom: Error {}
+          let vm = makeGatedViewModel()
+          vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
+          await vm.warmingTask?.value
+
+          vm.skipWarmingGate()
+
+          let blocked = events.gateRows("onboarding.step_blocked")
+          #expect(blocked.count == 1)
+          #expect(blocked.first?.stringProps["reason"] == "warmup_failed")
+          let completed = events.gateRows("onboarding.step_completed")
+          #expect(completed.count == 1, "the skip after a failure was never recorded")
+          #expect(completed.first?.stringProps["result"] == "skipped")
+        }
+      }
+
+      /// The other direction of the same split: once the person has left, a
+      /// warm-up answer that arrives afterwards is not their block to carry.
+      @Test("a failure landing after the skip adds no row")
+      func lateFailureAfterSkipIsSilent() async {
+        await withHook { events in
+          struct Boom: Error {}
+          let vm = makeGatedViewModel()
+          let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
+          let entered = EntrySignal()
+          vm.kickWarmingIfNeeded(
+            warmUp: {
+              entered.fire()
+              var it = gate.makeAsyncIterator()
+              _ = await it.next()
+              return .failed(Boom())
+            }, displayFloor: 0)
+          let task = vm.warmingTask
+          await entered.awaitEntry()
+
+          vm.skipWarmingGate()
+          gateCont.yield(())
+          gateCont.finish()
+          await task?.value
+
+          #expect(events.gateRows("onboarding.step_blocked").isEmpty)
+          let completed = events.gateRows("onboarding.step_completed")
+          #expect(completed.count == 1)
+          #expect(completed.first?.stringProps["result"] == "skipped")
+        }
+      }
+
+      /// A retry is not an exit: two real attempts produce two blocks, and the
+      /// visit still produces exactly one completion when it finally ends.
+      @Test("retry then skip reports two blocks and exactly one completion")
+      func retryThenSkipReportsOnce() async {
+        await withHook { events in
+          struct Boom: Error {}
+          let vm = makeGatedViewModel()
+          vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
+          await vm.warmingTask?.value
+
+          vm.retryWarming()
+          vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
+          await vm.warmingTask?.value
+
+          vm.skipWarmingGate()
+
+          #expect(events.gateRows("onboarding.step_blocked").count == 2)
+          let completed = events.gateRows("onboarding.step_completed")
+          #expect(completed.count == 1)
+          #expect(completed.first?.stringProps["result"] == "skipped")
+        }
+      }
+
+      @Test("a second skip press cannot report twice")
+      func doubleSkipReportsOnce() async {
+        await withHook { events in
+          let vm = makeGatedViewModel()
+          vm.skipWarmingGate()
+          vm.skipWarmingGate()
+          #expect(events.gateRows("onboarding.step_completed").count == 1)
+        }
       }
     }
 
-    /// The other direction of the same split: once the person has left, a
-    /// warm-up answer that arrives afterwards is not their block to carry.
-    @Test("a failure landing after the skip adds no row")
-    func lateFailureAfterSkipIsSilent() async {
-      await withHook { events in
-        struct Boom: Error {}
-        let vm = makeGatedViewModel()
-        let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
-        let entered = EntrySignal()
-        vm.kickWarmingIfNeeded(
-          warmUp: {
-            entered.fire()
-            var it = gate.makeAsyncIterator()
-            _ = await it.next()
-            return .failed(Boom())
-          }, displayFloor: 0)
-        let task = vm.warmingTask
-        await entered.awaitEntry()
-
-        vm.skipWarmingGate()
-        gateCont.yield(())
-        gateCont.finish()
-        await task?.value
-
-        #expect(events.gateRows("onboarding.step_blocked").isEmpty)
-        let completed = events.gateRows("onboarding.step_completed")
-        #expect(completed.count == 1)
-        #expect(completed.first?.stringProps["result"] == "skipped")
-      }
-    }
-
-    /// A retry is not an exit: two real attempts produce two blocks, and the
-    /// visit still produces exactly one completion when it finally ends.
-    @Test("retry then skip reports two blocks and exactly one completion")
-    func retryThenSkipReportsOnce() async {
-      await withHook { events in
-        struct Boom: Error {}
-        let vm = makeGatedViewModel()
-        vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
-        await vm.warmingTask?.value
-
-        vm.retryWarming()
-        vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
-        await vm.warmingTask?.value
-
-        vm.skipWarmingGate()
-
-        #expect(events.gateRows("onboarding.step_blocked").count == 2)
-        let completed = events.gateRows("onboarding.step_completed")
-        #expect(completed.count == 1)
-        #expect(completed.first?.stringProps["result"] == "skipped")
-      }
-    }
-
-    @Test("a second skip press cannot report twice")
-    func doubleSkipReportsOnce() async {
-      await withHook { events in
-        let vm = makeGatedViewModel()
-        vm.skipWarmingGate()
-        vm.skipWarmingGate()
-        #expect(events.gateRows("onboarding.step_completed").count == 1)
-      }
-    }
   }
 
 #endif  // DEBUG
