@@ -64,25 +64,65 @@ struct SelectionReaderTests {
 
   @Test("A selection comes back as text")
   func aSelectionIsReturned() {
-    #expect(SelectionReader.resolve(error: .success, value: "codecs") == .text("codecs"))
+    #expect(SelectionReader.resolve(error: .success, value: "codecs" as CFString) == .text("codecs"))
   }
 
   @Test("A selection is trimmed, because a drag routinely picks up the surrounding space")
   func aSelectionIsTrimmed() {
-    #expect(SelectionReader.resolve(error: .success, value: "  codecs \n") == .text("codecs"))
+    #expect(SelectionReader.resolve(error: .success, value: "  codecs \n" as CFString) == .text("codecs"))
   }
 
   @Test("Whitespace only is nothing selected, not a selection of spaces")
   func whitespaceOnlyIsNoSelection() {
     for value in ["", " ", "\n", "\t  \n"] {
-      #expect(SelectionReader.resolve(error: .success, value: value) == .noSelection)
+      #expect(SelectionReader.resolve(error: .success, value: value as CFString) == .noSelection)
     }
   }
 
-  @Test("A successful read with no string is nothing selected")
+  @Test("A lot of whitespace is still nothing selected, not a selection that is too long")
+  func longWhitespaceIsNoSelectionNotTooLong() {
+    // Measuring before trimming reported this as `selectionTooLong`, which tells the user their
+    // selection was too big when they had not selected anything at all.
+    let padding = String(repeating: " ", count: SelectionReader.maximumSelectionScalars * 2)
+
+    #expect(SelectionReader.resolve(error: .success, value: padding as CFString) == .noSelection)
+  }
+
+  @Test("A short word dragged with a lot of surrounding space is accepted, not refused for length")
+  func aPaddedShortSelectionIsAccepted() {
+    // The ceiling bounds what gets STORED, and what gets stored is the trimmed string. Measuring
+    // the untrimmed one refuses a word that would have fitted easily.
+    let padding = String(repeating: " ", count: SelectionReader.maximumSelectionScalars)
+    let padded = padding + "codecs" + padding
+
+    #expect(padded.unicodeScalars.count > SelectionReader.maximumSelectionScalars)
+    #expect(SelectionReader.resolve(error: .success, value: padded as CFString) == .text("codecs"))
+  }
+
+  @Test("A successful read with no value at all is nothing selected")
   func successWithNoStringIsNoSelection() {
     // The attribute answered; it just had nothing in it. Distinct from `noValue`, which did not.
     #expect(SelectionReader.resolve(error: .success, value: nil) == .noSelection)
+  }
+
+  @Test("An attribute that answers with something other than text is unreadable, not empty")
+  func aNonStringAnswerIsUnreadable() {
+    // `as? String` alone would turn every one of these into nil, and nil reads as "nothing
+    // selected" — a broken element reported to the user as an empty selection.
+    let notStrings: [CFTypeRef] = [
+      NSNumber(value: 42), kCFBooleanTrue, [1, 2, 3] as CFArray, Data() as CFData,
+    ]
+    for value in notStrings {
+      #expect(
+        SelectionReader.resolve(error: .success, value: value) == .refused(.unreadable),
+        "a \(CFCopyTypeIDDescription(CFGetTypeID(value)) as String? ?? "?") answer must not read as an empty selection")
+    }
+
+    // The paired ACCEPTED case, in the same test rather than a duplicate of `aSelectionIsReturned`:
+    // a type check that refused everything would satisfy the loop above and look clean.
+    #expect(
+      SelectionReader.resolve(error: .success, value: "codecs" as CFString) == .text("codecs"),
+      "the type check must not be refusing every answer")
   }
 
   @Test("An element that does not expose selected text says so")
@@ -114,7 +154,7 @@ struct SelectionReaderTests {
   @Test("An error wins over a value, so a stale string cannot be offered as a selection")
   func anErrorIsNotOverriddenByAValue() {
     #expect(
-      SelectionReader.resolve(error: .cannotComplete, value: "codecs") == .refused(.unreadable))
+      SelectionReader.resolve(error: .cannotComplete, value: "codecs" as CFString) == .refused(.unreadable))
   }
 
   // MARK: - Too long to be a word
@@ -125,14 +165,14 @@ struct SelectionReaderTests {
     let tooLong = String(repeating: "a", count: SelectionReader.maximumSelectionScalars + 1)
 
     #expect(
-      SelectionReader.resolve(error: .success, value: tooLong) == .refused(.selectionTooLong))
+      SelectionReader.resolve(error: .success, value: tooLong as CFString) == .refused(.selectionTooLong))
   }
 
   @Test("A selection exactly at the store's ceiling is accepted")
   func aSelectionAtTheCeilingIsAccepted() {
     let atLimit = String(repeating: "a", count: SelectionReader.maximumSelectionScalars)
 
-    #expect(SelectionReader.resolve(error: .success, value: atLimit) == .text(atLimit))
+    #expect(SelectionReader.resolve(error: .success, value: atLimit as CFString) == .text(atLimit))
   }
 
   @Test("The ceiling is the store's own, not a number invented here")
@@ -155,12 +195,12 @@ struct SelectionReaderTests {
 
     let underCeiling = String(repeating: family, count: SelectionReader.maximumSelectionScalars / 5)
     #expect(underCeiling.unicodeScalars.count <= SelectionReader.maximumSelectionScalars)
-    #expect(SelectionReader.resolve(error: .success, value: underCeiling) == .text(underCeiling))
+    #expect(SelectionReader.resolve(error: .success, value: underCeiling as CFString) == .text(underCeiling))
 
     let overCeiling = underCeiling + family
     #expect(overCeiling.unicodeScalars.count > SelectionReader.maximumSelectionScalars)
     #expect(
-      SelectionReader.resolve(error: .success, value: overCeiling) == .refused(.selectionTooLong),
+      SelectionReader.resolve(error: .success, value: overCeiling as CFString) == .refused(.selectionTooLong),
       "the ceiling counted characters rather than scalars")
   }
 

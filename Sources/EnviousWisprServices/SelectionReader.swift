@@ -92,7 +92,10 @@ public enum SelectionReader {
     let error = AXUIElementCopyAttributeValue(
       focused, kAXSelectedTextAttribute as CFString, &valueRef)
 
-    return resolve(error: error, value: valueRef as? String)
+    // The raw CF value is handed on UNERASED. `valueRef as? String` here would turn "the attribute
+    // answered with something that is not a string" into `nil`, which reads as "nothing selected" —
+    // and it would do it in the one function no test can reach.
+    return resolve(error: error, value: valueRef)
   }
 
   // MARK: - The decisions, which are pure
@@ -113,7 +116,7 @@ public enum SelectionReader {
   /// Separated from the round trip so every branch is reachable from a test without fabricating an
   /// `AXUIElement`. Only `noFocusedElement` stays untested by construction: it is one guard over a
   /// live AX call whose result cannot be produced without a real element, and Live UAT covers it.
-  static func resolve(error: AXError, value: String?) -> Result {
+  static func resolve(error: AXError, value: CFTypeRef?) -> Result {
     switch error {
     case .success:
       break
@@ -125,15 +128,27 @@ public enum SelectionReader {
       return .refused(.unreadable)
     }
 
-    // A successful read with no string is the same fact as `noValue` from the user's side: nothing
+    // A successful read with no value is the same fact as `noValue` from the user's side: nothing
     // was selected. It reaches here rather than the refusal branch because the attribute answered.
     guard let value else { return .noSelection }
 
-    guard value.unicodeScalars.count <= maximumSelectionScalars else {
-      return .refused(.selectionTooLong)
+    // Type-checked before the cast, the same way `PasteService.focusedElementQuery` validates the
+    // element it is handed. An attribute answering with a number or a boolean is a broken element,
+    // not an empty selection, and `as? String` alone would collapse the two into `noSelection`.
+    guard CFGetTypeID(value) == CFStringGetTypeID(), let text = value as? String else {
+      return .refused(.unreadable)
     }
 
-    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? .noSelection : .text(trimmed)
+    // TRIM FIRST, then measure. The ceiling exists to bound what gets STORED, and what gets stored
+    // is the trimmed string — so measuring the untrimmed one refuses a short word that happened to
+    // be dragged with a lot of surrounding space, and reports whitespace-only text as "too long"
+    // when the honest answer is "nothing selected".
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return .noSelection }
+
+    guard trimmed.unicodeScalars.count <= maximumSelectionScalars else {
+      return .refused(.selectionTooLong)
+    }
+    return .text(trimmed)
   }
 }
