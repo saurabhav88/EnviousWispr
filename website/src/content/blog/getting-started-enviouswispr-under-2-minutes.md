@@ -83,7 +83,7 @@ EnviousWispr works well with zero configuration, but if you want to tune it to y
 
 ### Speech engine
 
-EnviousWispr downloads its speech recognition model automatically on first launch. The primary engine handles English with streaming transcription that overlaps with recording. A secondary engine is available for 100+ languages. The download takes a minute or two, and the model is cached locally from then on.
+EnviousWispr downloads its speech recognition model automatically on first launch. The primary engine handles English with streaming transcription that overlaps with recording. A secondary engine is available for 99+ languages. The download takes a minute or two, and the model is cached locally from then on.
 
 ### AI polish
 

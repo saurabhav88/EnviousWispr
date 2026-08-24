@@ -12,7 +12,7 @@ EnviousWispr handles dozens of languages without asking you to change a setting 
 
 ### Switching to WhisperKit for more languages
 
-If your spoken language is not among the 25 Parakeet covers, switch to the WhisperKit engine, which supports 99 languages.
+If your spoken language is not among the 25 Parakeet covers, switch to the WhisperKit engine, which supports 99+ languages.
 
 **Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Transcription**.
 

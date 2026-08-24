@@ -1092,7 +1092,7 @@ enum WhatsNewContent {
     Entry(
       id: "multilingual-auto-detect",
       icon: "globe",
-      title: "Dictate in 99 languages",
+      title: "Dictate in 99+ languages",
       description:
         "EnviousWispr now auto-detects the language you are speaking and transcribes accordingly. German, Japanese, Arabic, Tamil, Mandarin and 95 others work out of the box with no setting change needed.",
       version: "1.9.2"

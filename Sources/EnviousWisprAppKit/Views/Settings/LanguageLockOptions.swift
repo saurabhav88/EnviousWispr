@@ -157,7 +157,7 @@ enum LanguageLockOptions {
   static func lockableCodes(for backend: ASRBackendType) -> Set<String>? {
     switch backend {
     case .whisperKit:
-      // All 99. The engine claims no restriction, so the app must not invent one.
+      // The engine's full catalogue. It claims no restriction, so the app must not invent one.
       return nil
     case .parakeet:
       // Owned by the backend, derived from the vendor enum minus the cases its

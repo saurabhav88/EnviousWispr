@@ -56,7 +56,7 @@ Press keybind -->  Record  -->  Transcribe  -->  Polish (optional)  -->  Paste
 
 1. **Press your keybind** from any app. Push-to-talk, toggle, or hands-free (double-press to lock for long-form), your choice.
 2. **Speak naturally.** Silero VAD detects when you stop talking and ends recording automatically.
-3. **On-device transcription.** Choose Parakeet v3 (fastest, 25 European languages) or WhisperKit (99 languages, with automatic language detection).
+3. **On-device transcription.** Choose Parakeet v3 (fastest, 25 European languages) or WhisperKit (99+ languages, with automatic language detection).
 4. **AI polish** (optional). Clean up grammar, punctuation, and formatting. Runs fully on-device with EG-1 (our own custom model), Apple Intelligence (macOS 26+), or Ollama, or in the cloud via OpenAI or Gemini with your own API key.
 5. **Text lands in your clipboard** and optionally auto-pastes into the active app.
 
@@ -82,7 +82,7 @@ Dictation is only useful if you can trust it mid-sentence, every time. EnviousWi
 | Model | Best for | Languages | Disk space | Runs on |
 |---|---|---|---|---|
 | **Parakeet TDT v3** | Fastest dictation (default) | 25 European languages | ~460 MB | Apple Neural Engine |
-| **WhisperKit** (Whisper Large v3 Turbo) | Broadest language coverage and automatic language detection | 99 languages | ~1.6 GB | Apple GPU |
+| **WhisperKit** (Whisper Large v3 Turbo) | Broadest language coverage and automatic language detection | 99+ languages | ~1.6 GB | Apple GPU |
 
 Both models run entirely on-device on Apple Silicon using CoreML. Parakeet runs on the Apple Neural Engine, which is what makes the default engine near-instant; WhisperKit runs on the GPU for broad-language accuracy. First launch downloads and compiles the model; subsequent launches are instant.
 

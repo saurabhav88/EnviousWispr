@@ -1,6 +1,6 @@
 import Foundation
 
-/// Display metadata for the 99 Whisper-supported languages.
+/// Display metadata for the languages accepted by the Whisper path.
 ///
 /// Keyed by ISO 639-1 (and one ISO 639-3-style code, `haw`, plus `yue` for
 /// Cantonese) matching `LanguageTypes.whisperSupportedLanguages`. Each entry
@@ -26,13 +26,14 @@ enum LanguageCatalog {
     return Entry(code: code, nativeName: code.uppercased(), englishName: code.uppercased())
   }
 
-  /// All 99 languages, sorted alphabetically by English name for catalog display.
+  /// Every accepted Whisper language, sorted alphabetically by English name
+  /// for catalog display.
   static let sortedByEnglishName: [Entry] = all.sorted { lhs, rhs in
     lhs.englishName.localizedCaseInsensitiveCompare(rhs.englishName) == .orderedAscending
   }
 
-  /// All 99 Whisper-supported languages. Order here is not significant; the
-  /// UI sorts via `sortedByEnglishName`.
+  /// Every language accepted by the Whisper path. Order here is not
+  /// significant; the UI sorts via `sortedByEnglishName`.
   static let all: [Entry] = [
     Entry(code: "af", nativeName: "Afrikaans", englishName: "Afrikaans"),
     Entry(code: "am", nativeName: "አማርኛ", englishName: "Amharic"),

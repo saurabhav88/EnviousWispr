@@ -788,7 +788,7 @@ public actor LanguageDetector {
     else {
       return SessionLanguageMemory()
     }
-    // Defensive: strip any langs that are not in the 99-language set.
+    // Defensive: strip any langs that are not accepted Whisper codes.
     decoded.usage24h = decoded.usage24h.filter { LanguageTypes.isSupported($0.key) }
     decoded.accepted = decoded.accepted.filter { LanguageTypes.isSupported($0.lang) }
     if let p = decoded.sessionPreferred, !LanguageTypes.isSupported(p) {
