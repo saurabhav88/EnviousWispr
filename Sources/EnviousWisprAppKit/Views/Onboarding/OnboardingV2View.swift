@@ -23,7 +23,7 @@ enum AppleIntelligenceSettings {
 @MainActor
 @Observable
 final class OnboardingV2ViewModel {
-  enum Screen { case welcome, settingUp, ready }
+  enum Screen { case welcome, settingUp, ready, warmingUp, tryItOut }
   enum SetupPhase { case checklist, permissions }
 
   enum ChecklistItemStatus: Equatable {
@@ -156,6 +156,15 @@ final class OnboardingV2ViewModel {
     switch currentScreen {
     case .welcome: return .idle
     case .ready: return .heart
+    // #2196: the gate is a working beat, so it wears the same animation the
+    // checklist wears while the model loads. Reads the GATE's own outcome —
+    // `downloadError` belongs to the checklist and is a different subject.
+    case .warmingUp:
+      if case .failed = warmingOutcome { return .drooping }
+      return .equalizer
+    case .tryItOut:
+      if practiceState == .missedTheBox { return .idle }
+      return practiceSucceeded ? .smile : .idle
     case .settingUp:
       if setupPhase == .permissions { return .triumph }
       if downloadError != nil { return .drooping }
@@ -284,6 +293,410 @@ final class OnboardingV2ViewModel {
     setupCancelled = false
     cancelRequested = false
     retryCount += 1
+  }
+
+  // MARK: - Engine warm gate (#2196)
+
+  /// What the gate has LEARNED, never what it has waited through. `waiting`
+  /// holds until the awaited warm-up returns a value; no elapsed time, poll or
+  /// yield count can move it (testing-philosophy.md
+  /// RULE: never-guess-when-the-subject-is-finished).
+  enum WarmingOutcome: Equatable {
+    case waiting
+    case ready
+    case failed(String)
+  }
+
+  var warmingOutcome: WarmingOutcome = .waiting
+
+  /// Bumped by `retryWarming()` so the view's `.task(id:)` re-keys and kicks a
+  /// fresh attempt — the same shape `retryCount` gives the checklist.
+  var warmingRetryCount = 0
+
+  /// Owned HERE rather than in the view's `.task`, for the reason #1388
+  /// established for `setupTask`: window churn cancels a view task, and an
+  /// outcome landing in a cancelled context is dropped in silence.
+  @ObservationIgnored private(set) var warmingTask: Task<Void, Never>?
+
+  /// Two independent one-shots, because the gate reports two different things
+  /// and an earlier revision conflated them (local Codex review, adopted).
+  ///
+  /// `warmingAnswerReported` guards the WARM-UP's own answer — the `blocked`
+  /// row for a failed or cancelled attempt. It resets on retry, because a
+  /// second failed attempt is a second real block.
+  ///
+  /// `gateExitReported` guards the VISIT's terminal `completed` row, whether
+  /// that is `ready` or `skipped`. It resets only when a NEW visit begins, so
+  /// one visit produces exactly one completion however it ends.
+  ///
+  /// Conflating them cost the skip-after-failure case: the failure consumed the
+  /// single latch, and the Skip link still offered beneath the failure panel
+  /// then reported nothing at all.
+  private var warmingAnswerReported = false
+  private var gateExitReported = false
+
+  /// Minimum time the gate stays on screen once readiness has landed, so the
+  /// usual already-warm case reads as a beat rather than a flash. A DISPLAY
+  /// floor applied AFTER the real signal, never a substitute for one; tests
+  /// pass 0.
+  static let warmingDisplayFloor: TimeInterval = 0.6
+
+  /// Local Codex r3: the earlier wording promised the engine "will load the
+  /// first time you dictate", which this path specifically cannot deliver — a
+  /// press taken before readiness is refused and mints no session
+  /// (`RecordingStarter.swift:292-297`), so the first press after a genuinely
+  /// failed warm-up only starts the load and a second one is needed. That is
+  /// the exact experience this gate exists to prevent, so the copy must not
+  /// promise its absence.
+  static let warmingFailureCopy =
+    "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate."
+
+  /// Start the gate's warm-up if none is live. Safe to call on every view
+  /// re-appear: a live attempt makes a re-kick a no-op.
+  func kickWarmingIfNeeded(
+    warmUp: @escaping @MainActor () async -> EngineWarmupOutcome,
+    displayFloor: TimeInterval = OnboardingV2ViewModel.warmingDisplayFloor
+  ) {
+    guard warmingTask == nil else { return }
+    guard currentScreen == .warmingUp, warmingOutcome == .waiting else { return }
+    warmingTask = Task { @MainActor in
+      await self.runWarmingGate(warmUp: warmUp, displayFloor: displayFloor)
+      self.warmingTask = nil
+    }
+  }
+
+  /// #2196 — the gate is a second CALLER of the shared warm-up
+  /// (`DictationRuntime.ensureActiveEngineWarmForOnboarding`), not a second
+  /// authority over readiness. That entry is idempotent and single-flighted, so
+  /// asking again when the engine is already warm returns `.ready` at once.
+  func runWarmingGate(
+    warmUp: @MainActor () async -> EngineWarmupOutcome, displayFloor: TimeInterval
+  ) async {
+    stepStartedAt = Date()
+    let startedAt = Date()
+    let outcome = await warmUp()
+    if Task.isCancelled { return }
+
+    // The visit may have ended while this ran: the window closes, abandon is
+    // emitted, and this task deliberately survives. NOTHING it learned belongs
+    // to that visit any more — not a completion, not a block, not a stored
+    // outcome. Re-arm and say nothing.
+    //
+    // This check sits ABOVE the switch on purpose. It was first written inside
+    // the `.ready` branch alone, and cloud review found `.failed` and
+    // `.cancelled` still reporting for a dead visit — the fourth time this one
+    // class was patched at an instance instead of at its root. One guard, every
+    // outcome, no next instance.
+    guard isVisitActive?() ?? true else {
+      beginWarmingGate()
+      return
+    }
+
+    switch outcome {
+    case .ready:
+      let elapsed = Date().timeIntervalSince(startedAt)
+      if displayFloor > elapsed {
+        try? await Task.sleep(for: .seconds(displayFloor - elapsed))
+        if Task.isCancelled { return }
+        // Re-checked after the sleep: the floor is a real suspension point and
+        // the visit can end inside it.
+        guard isVisitActive?() ?? true else {
+          beginWarmingGate()
+          return
+        }
+      }
+      // Readiness both answers the warm-up and ends the visit, so it takes the
+      // EXIT latch: if the person already skipped, this must stay silent and
+      // must not open a gate nobody is standing at.
+      guard takeGateExit({ completeStep("engine_warm_gate", result: "ready") })
+      else { return }
+      warmingOutcome = .ready
+    case .cancelled:
+      // Nothing on this screen offers a Cancel. A `.cancelled` can only reach
+      // here from a Cancel pressed on the CHECKLIST that raced the gate's own
+      // single-flighted call — so the engine is not ready and the gate must not
+      // open. Retry re-asks; skip remains available.
+      guard !gateExitReported,
+        takeWarmingAnswer({ blockStep("engine_warm_gate", reason: "warmup_cancelled") })
+      else { return }
+      warmingOutcome = .failed(Self.warmingFailureCopy)
+    case .failed:
+      // A late failure arriving after the person left is not their block to
+      // carry, so the exit check comes first.
+      guard !gateExitReported,
+        takeWarmingAnswer({ blockStep("engine_warm_gate", reason: "warmup_failed") })
+      else { return }
+      warmingOutcome = .failed(Self.warmingFailureCopy)
+    }
+  }
+
+  /// Enter the gate from the Ready screen. Resets the attempt, because
+  /// `warmingOutcome` survives a finished visit: a reopened onboarding would
+  /// otherwise inherit a previous visit's `ready` and walk straight through
+  /// without asking the engine anything, and the engine may have been unloaded
+  /// in between. The reset is here rather than at the view's `onAppear`
+  /// because a reused window can skip `onAppear` entirely
+  /// (`OnboardingProgress.swift:40-44`).
+  func beginWarmingGate() {
+    warmingAnswerReported = false
+    gateExitReported = false
+    warmingOutcome = .waiting
+    // Re-keys the view's `.task`, so a fresh attempt kicks even when the screen
+    // is not changing — which is the case when a dead visit is re-armed in
+    // place rather than entered from the Ready button.
+    warmingRetryCount += 1
+    currentScreen = .warmingUp
+  }
+
+  /// A retry re-arms the ANSWER latch only. The visit's exit latch is
+  /// deliberately untouched: retrying is not leaving, and a person who retries
+  /// and then skips must still produce exactly one completion.
+  func retryWarming() {
+    warmingAnswerReported = false
+    warmingOutcome = .waiting
+    warmingRetryCount += 1
+  }
+
+  /// The person chose not to wait. Deliberately does NOT cancel the in-flight
+  /// warm-up: that load is shared and single-flighted, so cancelling it to
+  /// leave a screen would cancel it for every other waiter. The attempt runs to
+  /// completion and its outcome is dropped by the one-shot latch below, which
+  /// is what keeps this step from reporting twice.
+  func skipWarmingGate() {
+    _ = takeGateExit { completeStep("engine_warm_gate", result: "skipped") }
+  }
+
+  private func takeWarmingAnswer(_ emit: () -> Void) -> Bool {
+    guard !warmingAnswerReported else { return false }
+    warmingAnswerReported = true
+    emit()
+    return true
+  }
+
+  private func takeGateExit(_ emit: () -> Void) -> Bool {
+    guard !gateExitReported else { return false }
+    gateExitReported = true
+    emit()
+    return true
+  }
+
+  // MARK: - Practice box (#2196 chunk 2)
+
+  /// What the person has dictated into the practice box. Written by the box
+  /// itself — including when the paste cascade types into it, which is the whole
+  /// point — so the success signal comes from the SUBJECT rather than from
+  /// elapsed time or a poll (testing-philosophy.md
+  /// RULE: never-guess-when-the-subject-is-finished).
+  var practiceText: String = ""
+
+  /// True once the box has ever held non-whitespace text. Deliberately STICKY:
+  /// a person who dictates and then selects-all-and-deletes has still seen the
+  /// product work, and taking FINISH SETUP away from them at that moment would
+  /// be the screen punishing them for tidying up.
+  private(set) var practiceSucceeded = false
+
+  var practiceTextBinding: Binding<String> {
+    Binding(
+      get: { self.practiceText },
+      set: { self.setPracticeText($0) })
+  }
+
+  func setPracticeText(_ value: String) {
+    practiceText = value
+    if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      practiceSucceeded = true
+    }
+  }
+
+  /// What the practice screen is SHOWING. Distinct from `practiceSucceeded`,
+  /// which is the sticky record that a dictation once worked: this is the
+  /// moment-to-moment state, and it exists because the screen was previously
+  /// blind to a take that produced nothing (local Codex chunk-2 review).
+  enum PracticeState: Equatable {
+    case waiting
+    case listening
+    case worked
+    /// The most likely non-success outcome by a wide margin — 20.3% of real
+    /// first takes against 10.1% for every genuine failure combined — so it is
+    /// a normal state with a way forward, never an error.
+    case saidNothing
+    /// The pipeline FAILED — ASR, capture, or the model. Cloud review, and the
+    /// same class a fourth time: without this a failure produced no text and no
+    /// transcript, fell through to `saidNothing`, and the screen told the person
+    /// "Your microphone is working. We just did not hear anything." Both halves
+    /// false, and it sends them to try harder at a thing that is broken.
+    ///
+    /// `PipelineState` already separates these deliberately: `.error` is our
+    /// failure, `.advisory` is "the microphone delivered nothing usable" (#1891).
+    /// The distinction existed; this screen simply was not reading it.
+    case somethingBroke
+    /// FOUNDER-FOUND IN LIVE UAT, 2026-08-24. The take WORKED — words were
+    /// produced — but the box was not selected, so the cascade classified
+    /// `.nonText` and fell to clipboard-only, exactly as it does anywhere else.
+    /// Reporting that as `saidNothing` was a confident WRONG SUBJECT: it told
+    /// someone their microphone heard nothing when it had heard them perfectly,
+    /// and sent them to check hardware when the fix is one click. Measured on
+    /// his take: `RAW ASR "Testing one two three."` beside
+    /// `non-text element focused, falling back to clipboard-only`.
+    case missedTheBox
+    /// Something must be turned on before any of this can work. Carries the
+    /// telemetry reason so the screen and the funnel cannot disagree.
+    case cannotHear(reason: String, permission: String?)
+  }
+
+  var practiceState: PracticeState = .waiting
+
+  /// One-shot: a visit to the practice screen reports its outcome exactly once,
+  /// whichever way it ends. Same shape as `gateExitReported` and for the same
+  /// reason — the screen has several exits and they must not each report.
+  private var practiceExitReported = false
+
+  /// The box's contents when the current take began, so "did this take produce
+  /// anything" is answered by comparing against the take's own start rather
+  /// than against empty — a second take after a successful one must not be
+  /// scored on the first one's words.
+  private var practiceTextAtTakeStart = ""
+
+  /// A dictation started while this screen is up. Driven by
+  /// `LiveRecordingState.isDictationActive`, which is the SUBJECT's own signal
+  /// (true while either pipeline is recording, transcribing or polishing).
+  /// Whether the box held focus when the current take began. This is what
+  /// separates "we heard nothing" from "we heard you and the words went
+  /// elsewhere", and the two need opposite advice.
+  private var boxWasFocusedAtTakeStart = true
+
+  /// Transcripts on record when the take began. Focus alone cannot tell a
+  /// missed box from silence — it says where words WOULD go, not whether any
+  /// existed — so the count of produced transcripts is what separates them.
+  private var transcriptCountAtTakeStart = 0
+
+  func practiceTakeStarted(boxFocused: Bool = true, transcriptCount: Int = 0) {
+    if case .cannotHear = practiceState { return }
+    practiceTextAtTakeStart = practiceText
+    boxWasFocusedAtTakeStart = boxFocused
+    transcriptCountAtTakeStart = transcriptCount
+    practiceState = .listening
+  }
+
+  /// The dictation finished. Whether it produced anything is decided by the box
+  /// itself, never by a clock.
+  func practiceTakeEnded(transcriptCount: Int = 0, pipelineFailed: Bool = false) {
+    guard practiceState == .listening else { return }
+    // A failure outranks every other reading: no text and no transcript are
+    // SYMPTOMS of it, so classifying on them first would describe the symptom
+    // and hide the cause.
+    if pipelineFailed {
+      practiceState = .somethingBroke
+      return
+    }
+    let grew = practiceText != practiceTextAtTakeStart
+      && !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    // A transcript that did not reach the box IS the missed-box case, and it
+    // is the only evidence that words existed at all. Requiring BOTH — the box
+    // unfocused AND a transcript produced — is what stops this screen claiming
+    // "We heard you" about a take that was simply silent (cloud review).
+    //
+    // KNOWN LIMIT, recorded rather than fixed, and classified deliberately.
+    // `transcriptCount` comes from history, and `PipelineStateChangePlanner`
+    // skips the append when a History SAVE fails — so a take that produced
+    // words during a failed save reads as silence here and the person is told
+    // "All quiet" instead of "click the box".
+    //
+    // HYPOTHETICAL under validate-automated-review-findings: it needs a
+    // misbehaving dependency (a failed store write), not an input a real user
+    // produces. The rule fixes a hypothetical only when the repair is TRIVIAL,
+    // and this one is not — it means sourcing "were words produced" from
+    // somewhere other than history, and every signal within reach at this point
+    // in the take is either the same fact or a new inference. Five rounds on
+    // this branch have shown what a guessed signal costs: three separate
+    // versions of this screen confidently telling someone something false about
+    // their own words.
+    //
+    // Cost if it fires is also bounded: the person is in a session whose
+    // history is already failing to save, which is a louder problem surfacing
+    // elsewhere, and the advice they get ("we did not hear anything") is
+    // unhelpful rather than harmful. Revisit if a first-class
+    // "this take produced text" signal appears; do not invent one here.
+    let producedWords = transcriptCount > transcriptCountAtTakeStart
+    if grew {
+      practiceState = .worked
+    } else if !boxWasFocusedAtTakeStart && producedWords {
+      practiceState = .missedTheBox
+    } else {
+      practiceState = .saidNothing
+    }
+  }
+
+  /// Called on appear with the live posture. Accessibility is the known limit of
+  /// this route — Tier 1 writes through it — so a person who reaches here with
+  /// it denied is told plainly instead of meeting the raw clipboard notice this
+  /// whole feature exists to remove.
+  func applyPracticePosture(micGranted: Bool, accessibilityGranted: Bool) {
+    if !micGranted {
+      practiceState = .cannotHear(reason: "mic_denied", permission: "microphone")
+    } else if !accessibilityGranted {
+      practiceState = .cannotHear(reason: "accessibility_denied", permission: "accessibility")
+    } else if case .cannotHear = practiceState {
+      practiceState = .waiting
+    }
+  }
+
+  /// The single reporting seam for leaving this screen. `completed` when they
+  /// saw their own words; `no_speech` when their last take produced nothing,
+  /// which is a materially different thing from `skipped` — one person tried
+  /// and got silence, the other never tried.
+  func reportPracticeExit() {
+    guard !practiceExitReported else { return }
+    practiceExitReported = true
+    if case .cannotHear(let reason, let permission) = practiceState {
+      blockStep("practice_dictation", reason: reason, permission: permission)
+      return
+    }
+    let result: String
+    if practiceSucceeded {
+      result = "completed"
+    } else if practiceState == .somethingBroke {
+      // Its own reason, never folded into `no_speech`: one is us failing and
+      // the other is a quiet room, and a funnel that cannot tell them apart
+      // will read our own breakage as people not speaking.
+      blockStep("practice_dictation", reason: "pipeline_failed")
+      return
+    } else if practiceState == .missedTheBox {
+      // NOT `no_speech`: this person dictated. Filing them under silence would
+      // repeat the screen's own mistake in the funnel, where nobody can see it.
+      result = "missed_box"
+    } else if practiceState == .saidNothing {
+      result = "no_speech"
+    } else {
+      result = "skipped"
+    }
+    completeStep("practice_dictation", result: result)
+  }
+
+  /// Reset on entry, for the same reason `beginWarmingGate` resets: a reopened
+  /// onboarding must not inherit a previous visit's success and offer FINISH
+  /// SETUP to someone who has not dictated in this one.
+  /// The session this screen's contents belong to, so a reopened window cannot
+  /// show a previous visit's words. `sessionStartFloor` is the same box the
+  /// abandon emitter uses, so "a new visit" means exactly what it means
+  /// everywhere else in onboarding.
+  private var practiceVisitStamp: Date?
+
+  var practiceBelongsToCurrentVisit: Bool {
+    guard let stamp = practiceVisitStamp, let current = sessionStartFloor?() else { return false }
+    return stamp == current
+  }
+
+  func beginPractice() {
+    practiceVisitStamp = sessionStartFloor?()
+    practiceText = ""
+    practiceSucceeded = false
+    practiceState = .waiting
+    practiceExitReported = false
+    practiceTextAtTakeStart = ""
+    boxWasFocusedAtTakeStart = true
+    transcriptCountAtTakeStart = 0
+    currentScreen = .tryItOut
   }
 
   // MARK: - Progress Polling
@@ -454,6 +867,13 @@ final class OnboardingV2ViewModel {
   /// because `stepStartedAt` is always >= the session start on the forward path).
   var sessionStartFloor: (@MainActor () -> Date?)?
 
+  /// Whether the onboarding VISIT is still live, supplied by the view from
+  /// `OnboardingProgress.isInFlight` (local Codex r3 on chunks 3-4). The gate's
+  /// warm-up outlives a window close by design, so without this its `.ready`
+  /// branch reports a step completion for a visit already counted as abandoned
+  /// and leaves a stale answer for the next open to walk through.
+  var isVisitActive: (@MainActor () -> Bool)?
+
   /// `stepStartedAt`, never earlier than the current session start.
   private func clampedStepStart() -> Date {
     if let floor = sessionStartFloor?(), floor > stepStartedAt { return floor }
@@ -508,13 +928,33 @@ struct OnboardingV2View: View {
         SettingUpScreenV2(viewModel: viewModel)
           .transition(Self.screenTransition)
       case .ready:
-        ReadyScreenV2(onComplete: {
-          viewModel.finishOnboarding(settings: settings)
-          // #1176 (race fix): mark terminal BEFORE the window closes, so the
-          // unguarded window-close path sees it and does not also fire abandon.
-          onboardingProgress.markCompleted()
-          onComplete()
-        })
+        // #2196: this button no longer ends setup. It opens the warm gate,
+        // which is what finishes — so the last thing that happens before a new
+        // person leaves is a proven-ready engine rather than an assumed one.
+        ReadyScreenV2(onContinue: { viewModel.beginWarmingGate() })
+          .transition(Self.screenTransition)
+      case .warmingUp:
+        WarmingScreenV2(
+          viewModel: viewModel,
+          onReady: { viewModel.beginPractice() },
+          onSkip: {
+            viewModel.skipWarmingGate()
+            finishSetup()
+          }
+        )
+        .transition(Self.screenTransition)
+      case .tryItOut:
+        // Both exits report through ONE seam, so the funnel can tell a person
+        // who practised from one who bailed. Before this they shared a
+        // no-argument finish and `practice_dictation` never appeared at all
+        // (local Codex chunk-2 review).
+        PracticeScreenV2(
+          viewModel: viewModel,
+          onFinish: {
+            viewModel.reportPracticeExit()
+            finishSetup()
+          }
+        )
         .transition(Self.screenTransition)
       }
     }
@@ -542,11 +982,40 @@ struct OnboardingV2View: View {
     // setupPhase is intentionally excluded from the id: changing phase at the
     // end of startSetup must NOT re-trigger. currentScreen + retryCount are
     // sufficient — retryCount bumps on retry, currentScreen on navigation.
-    .task(id: "\(viewModel.currentScreen)-\(viewModel.retryCount)") {
+    .task(
+      id:
+        "\(viewModel.currentScreen)-\(viewModel.retryCount)-\(viewModel.warmingRetryCount)"
+    ) {
       viewModel.kickSetupIfNeeded(
         warmUp: { await dictationRuntime.ensureActiveEngineWarmForOnboarding() },
         settings: settings)
+      // #2196: the gate's attempt, same owned-task shape and same #1388 reason.
+      // Each kick carries its own eligibility guard, so only one can fire.
+      viewModel.kickWarmingIfNeeded(
+        warmUp: { await dictationRuntime.ensureActiveEngineWarmForOnboarding() })
     }
+  }
+
+  /// The one place setup ends. Hoisted from the Ready button (#2196) because
+  /// the gate now has two exits that both finish, and two copies of a terminal
+  /// sequence is how one of them drifts.
+  private func finishSetup() {
+    // Local Codex r3, and it is the consequence of r1's rejected finding rather
+    // than a refutation of it: the owned warm-up outliving a window close is
+    // exactly what keeps the observer alive to fire — and firing after the
+    // close path already emitted `onboarding.abandoned` would count one visit
+    // as both abandoned AND completed. Re-arm rather than return, so a reopened
+    // window meets a fresh attempt instead of sitting on an answer that belongs
+    // to a visit nobody is in any more.
+    guard onboardingProgress.isInFlight else {
+      viewModel.beginWarmingGate()
+      return
+    }
+    viewModel.finishOnboarding(settings: settings)
+    // #1176 (race fix): mark terminal BEFORE the window closes, so the
+    // unguarded window-close path sees it and does not also fire abandon.
+    onboardingProgress.markCompleted()
+    onComplete()
   }
 
   private func recoverFromPersistedState() {
@@ -574,6 +1043,7 @@ struct OnboardingV2View: View {
     // start. Set-once is reliable even if a later reused-window reopen skips this
     // onAppear — the closure captures the stable box reference.
     viewModel.sessionStartFloor = { [onboardingProgress] in onboardingProgress.sessionStart }
+    viewModel.isVisitActive = { [onboardingProgress] in onboardingProgress.isInFlight }
     // #1176: `begin()` (the session reset) fires from `openOnboardingAction` so it
     // is reliable even when a reused window skips a fresh onAppear; here we only
     // mirror the resolved screen/step into the box.
@@ -597,6 +1067,12 @@ struct OnboardingV2View: View {
     case .ready:
       screen = "ready"
       step = "ready"
+    case .warmingUp:
+      screen = "warming_up"
+      step = "engine_warm_gate"
+    case .tryItOut:
+      screen = "try_it_out"
+      step = "practice_dictation"
     }
     onboardingProgress.update(screen: screen, step: step)
   }
@@ -1306,7 +1782,7 @@ private struct ReadyScreenV2: View {
 
   @Environment(SettingsManager.self) private var settings
   @Environment(PermissionsService.self) private var permissions
-  let onComplete: () -> Void
+  let onContinue: () -> Void
 
   var body: some View {
     @Bindable var settings = settings
@@ -1393,7 +1869,7 @@ private struct ReadyScreenV2: View {
       Spacer()
 
       VStack(spacing: 0) {
-        Button(action: onComplete) {
+        Button(action: onContinue) {
           Text("GET STARTED!")
             .font(.system(size: 15, weight: .heavy))
             .kerning(0.3)

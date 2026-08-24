@@ -806,6 +806,31 @@ import Testing
       matcher: "warmUp", text: "await self.startSetup(warmUp: warmUp, settings: settings)",
       classification: .structurallySafe),
 
+    // #2196 — the onboarding engine warm GATE, which is a second caller of the
+    // same seam the checklist above already uses, so these two entries are the
+    // gate's copies of the two directly above and carry the same reasoning.
+    // Verified rather than assumed: the gate's sole production caller supplies
+    // the same closure literal the checklist's does
+    // (`{ await dictationRuntime.ensureActiveEngineWarmForOnboarding() }`, in
+    // `OnboardingV2View`'s `.task`), which routes through
+    // `KernelDictationDriver.ensureEngineWarm(reason:)` to the already-counted
+    // `gated` `adapter.warmUp()`. `structurallySafe` category (c): the real
+    // engine touch re-acquires its own claim internally on every invocation,
+    // whatever chain the closure travelled to get here.
+    //
+    // The first entry duplicates the text of `startSetup`'s bare call, which is
+    // why it is a SECOND array entry rather than an edit — multiplicity is the
+    // signal, so a future removal of either one has to be accounted for here.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/Views/Onboarding/OnboardingV2View.swift",
+      matcher: "warmUp", text: "let outcome = await warmUp()",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/Views/Onboarding/OnboardingV2View.swift",
+      matcher: "warmUp",
+      text: "await self.runWarmingGate(warmUp: warmUp, displayFloor: displayFloor)",
+      classification: .structurallySafe),
+
     // MARK: WhisperKitEngineAdapter
     // `recoverFromWedge()`'s deadline-bounded unload — this file's own doc
     // comment marks it "§3.2, structurally-safe row": called only by the
