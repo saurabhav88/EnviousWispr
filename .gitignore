@@ -55,6 +55,13 @@ playwright-report/
 .wrangler/
 .validation/*
 !.validation/lid-perf-baseline.json
+# #2374 Phase 2: the view-split MOVE-ONLY receipt. ONE named file, not the whole
+# directory — a broad exception would track every future run's output. The
+# directory exception is required too: git does not descend into an excluded
+# directory to find a file exception inside it.
+!.validation/runs/
+.validation/runs/*
+!.validation/runs/2374-phase2-c1.json
 
 # Historical benchmark output — regenerable, untracked
 benchmark-results/
@@ -141,6 +148,11 @@ scripts/*
 !scripts/build-dev-app.sh
 !scripts/check-xpc-error-hygiene.sh
 !scripts/check-contacts-data-flow.sh
+# #2374 Phase 2: the view-split equivalence proof and its two-way control. The
+# PR's central claim is a MOVE-ONLY verdict from this script, so a reviewer who
+# cannot read it is being handed an unchecked premise.
+!scripts/verify-view-split.py
+!scripts/verify-view-split.test.sh
 # #2157: local build-loop tooling. `scripts/*` ignores everything by default, so
 # a new tracked script needs an explicit exception or it silently never ships —
 # it would work on the author's machine and be absent for everyone else.

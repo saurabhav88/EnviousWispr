@@ -1,0 +1,515 @@
+import AppKit
+import EnviousWisprCore
+import EnviousWisprPipeline
+import SwiftUI
+
+// MARK: - RecordingOverlayView
+
+/// Compact recording indicator overlay.
+struct RecordingOverlayView: View {
+  let audioLevelProvider: () -> Float
+  /// #1393: monotonic elapsed recording time, read from the shared kernel
+  /// source of truth instead of a per-view-instance stamp — a panel-recreate
+  /// (e.g. transitionToRecording) must not reset the displayed timer.
+  let recordingElapsedProvider: () -> TimeInterval?
+  /// #1988: what the live preview should show. Polled on the same 50 ms loop as
+  /// audio level and elapsed time rather than on a publisher, because that loop
+  /// already exists and coalesces naturally: Apple emits updates every ~210-290 ms,
+  /// so a push-based feed would redraw more often than the eye can read without
+  /// showing anything more.
+  let livePreviewProvider: () -> LivePreviewDisplay
+  /// #1988: reports the capsule's measured height so the panel can follow it as the
+  /// preview grows. No-op when the preview is off.
+  var onContentHeightChange: (CGFloat) -> Void = { _ in }
+  /// #1988: whether this pill is the tall preview layout. Passed in rather than
+  /// derived from the display state, which remains `.off` until the polling task
+  /// first runs and would flash the capsule shape before that first read.
+  ///
+  /// #2201: the previous wording said "for one 50 ms poll", which names a duration
+  /// the code does not have — the task reads its providers BEFORE its first sleep,
+  /// so the window is until it is first scheduled, not a fixed 50 ms.
+  var usesPreviewLayout: Bool = false
+  var lockState: OverlayLockState
+  /// #1060: transient notice banner shown inside the recording capsule.
+  var noticeState: OverlayNoticeState
+  @State private var audioLevel: Float = 0
+
+  /// Counts polls, not level changes. #2216: the meter's history needs a sample
+  /// every tick INCLUDING the silent ones, and consecutive silent samples are
+  /// bit-identical, so `audioLevel` alone cannot drive it.
+  @State private var audioTick: Int = 0
+  @State private var elapsed: TimeInterval = 0
+  @State private var preview: LivePreviewDisplay
+
+  /// Seeds `preview` so a size test can measure a KNOWN display state on the
+  /// first layout pass instead of waiting for the 50 ms poll to publish one.
+  ///
+  /// **The seam exists because the alternative is a timed wait, and this view's
+  /// whole defect is about what its height does over time.** `preview` is
+  /// `@State`, so nothing outside can set it; without this a test would have to
+  /// pump a run loop until the polling task happened to run, which is the
+  /// guess-when-the-subject-is-finished shape testing-philosophy.md forbids.
+  ///
+  /// Production never passes it. The poll is the only writer it needs, and it
+  /// overwrites this on the first tick regardless — so a wrong value here cannot
+  /// survive into a real recording, which is what makes the seam cheap.
+  init(
+    audioLevelProvider: @escaping () -> Float,
+    recordingElapsedProvider: @escaping () -> TimeInterval? = { nil },
+    livePreviewProvider: @escaping () -> LivePreviewDisplay,
+    onContentHeightChange: @escaping (CGFloat) -> Void = { _ in },
+    usesPreviewLayout: Bool = false,
+    lockState: OverlayLockState,
+    noticeState: OverlayNoticeState,
+    initialPreview: LivePreviewDisplay = .off
+  ) {
+    self.audioLevelProvider = audioLevelProvider
+    self.recordingElapsedProvider = recordingElapsedProvider
+    self.livePreviewProvider = livePreviewProvider
+    self.onContentHeightChange = onContentHeightChange
+    self.usesPreviewLayout = usesPreviewLayout
+    self.lockState = lockState
+    self.noticeState = noticeState
+    _preview = State(initialValue: initialPreview)
+  }
+
+  /// #2202: the preview pill's header — timer hard left, live meter beside it,
+  /// recording mode on the right.
+  ///
+  /// **The badge buys CLARITY, not height stability — the first version of this
+  /// comment claimed the wrong thing.** It said the capsule's 2x mark was "the
+  /// single biggest height jump anywhere in the pill". It is not a height jump at
+  /// all: `scaleEffect` is a rendering transform and does not participate in
+  /// layout. Measured — an `HStack` holding a 24pt box reports `fittingSize`
+  /// 95x44 at `scaleEffect(1.0)` and 95x44 at `scaleEffect(2.0)`. The capsule is
+  /// already height-neutral across modes; the 2x mark overflows its own slot
+  /// visually and nothing resizes.
+  ///
+  /// What the badge actually fixes: a size change is a signal you can only read
+  /// by COMPARISON — you notice it only if you saw the other size a moment
+  /// earlier — while a badge naming the mode works the first time you see it.
+  /// This header is height-neutral across modes too, which is a property to KEEP
+  /// rather than one this chunk introduces.
+  ///
+  /// **The timer renders in both modes.** The capsule hides it when locked, which
+  /// is backwards: hands-free is the mode that runs for minutes, so it is the one
+  /// that needs a clock. Founder decision, 2026-08-19.
+  @ViewBuilder
+  private var previewHeader: some View {
+    HStack(spacing: 12) {
+      Text(FormattingConstants.formatDuration(elapsed))
+        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+        .foregroundStyle(PreviewPillPalette.timer)
+
+      RainbowLevelMeter(audioLevel: audioLevel, tick: audioTick)
+
+      Spacer(minLength: 8)
+
+      if lockState.isLocked {
+        // A filled badge, because the mode it announces persists until the user
+        // presses again. A size change is a weak signal — you only notice it if
+        // you saw the other size a second earlier.
+        HStack(spacing: 6) {
+          Circle()
+            .fill(PreviewPillPalette.badgeText)
+            .frame(width: 5, height: 5)
+          Text(LivePreviewCopy.handsFreeMode)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(PreviewPillPalette.badgeText)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(PreviewPillPalette.badgeFill))
+        .transition(.opacity)
+      } else {
+        Text(LivePreviewCopy.listeningMode)
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(PreviewPillPalette.modeQuiet)
+          .transition(.opacity)
+      }
+    }
+    .textCase(.uppercase)
+    .padding(.horizontal, 16)
+    .padding(.top, 9)
+    .padding(.bottom, 8)
+    .frame(height: Self.previewHeaderHeight)
+    .overlay(alignment: .bottom) {
+      Rectangle()
+        .fill(PreviewPillPalette.divider)
+        .frame(height: 0.5)
+    }
+  }
+
+  /// Fixed, so the header cannot change height between modes. Read by a test.
+  static let previewHeaderHeight: CGFloat = 34
+
+  var body: some View {
+    // #2202 row 1 of the shared-root table: the capsule wants 6pt between its
+    // stacked pieces; the preview puts a ruled header directly against its
+    // reading well and supplies its own spacing inside each section.
+    VStack(spacing: usesPreviewLayout ? 0 : 6) {
+      if usesPreviewLayout {
+        previewHeader
+      } else {
+        HStack(spacing: 10) {
+          // Rainbow lips icon — audio-reactive during recording.
+          // Scales to 2x in hands-free (locked) mode.
+          RainbowLipsIcon(size: 24, audioLevel: audioLevel)
+            .scaleEffect(lockState.isLocked ? 2.0 : 1.0)
+
+          if !lockState.isLocked {
+            Text(FormattingConstants.formatDuration(elapsed))
+              .font(.system(size: 13, weight: .medium, design: .monospaced))
+              .foregroundStyle(.white)
+              .transition(.opacity)
+          }
+        }
+      }
+
+      // #1988: the live preview. Display only — the pasted text comes from the
+      // normal transcription path after the key is released.
+      livePreviewBody
+
+      // #1060: approaching-cap warning banner. Appears inside the same capsule
+      // (no panel rebuild), wraps within the pill width, auto-clears.
+      if let notice = noticeState.message {
+        Text(notice)
+          .font(.system(size: 11, weight: .medium))
+          // #2204: the notice is rendered by BOTH layouts from this one `Text`,
+          // and white is invisible on a light pill. Gated rather than made
+          // dynamic, so the capsule's paint is unchanged to the byte.
+          .foregroundStyle(
+            usesPreviewLayout ? PreviewPillPalette.notice : Color.white.opacity(0.95)
+          )
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+          // 170pt suits the 185pt capsule. The preview pill is 400pt wide, so the
+          // same cap would wrap a one-line warning into three inside a box with
+          // room to spare.
+          .frame(maxWidth: usesPreviewLayout ? .infinity : 170)
+          // #2202 row 4 of the shared-root table. The notice is rendered by BOTH
+          // layouts and its ONLY inset came from the shared root padding, which
+          // the preview now zeroes — so without this it sits flush against the
+          // pill's bottom edge. The header and the reading well each received
+          // replacement padding; this is the third section and it was missed.
+          .padding(.horizontal, usesPreviewLayout ? 16 : 0)
+          .padding(.bottom, usesPreviewLayout ? 12 : 0)
+          .transition(.opacity)
+      }
+    }
+    .animation(.easeInOut(duration: 0.3), value: lockState.isLocked)
+    // Single container animation prevents animation stacking: N per-element
+    // modifiers × update rate creates exponential state transitions (gotchas.md).
+    //
+    // #2201: the PREVIEW layout selects no animation here. `audioLevel` is
+    // repolled every 50 ms, so this fires ~20 times a second, and a container
+    // animation animates whatever else changed in the same update — including the
+    // preview text, and therefore the capsule's HEIGHT. That turned each genuine
+    // resize into a smoothly animated one and drove `setFrame` once per frame.
+    //
+    // The trigger VALUE is kept rather than deleted, so the non-preview capsule's
+    // animation is visibly untouched in the diff and the two branches sit side by
+    // side. Audio-reactive PAINT is unaffected in both: `RainbowLipsIcon` reads
+    // `audioLevel` directly and redraws without needing this.
+    //
+    // Not a violation of swift-patterns.md RULE: animate-the-container-not-children
+    // — that forbids per-child `.animation(value:)`, and this adds none. The
+    // container keeps its `lockState` and `noticeState` triggers in both layouts.
+    .animation(
+      usesPreviewLayout ? nil : .easeOut(duration: 0.08),
+      value: audioLevel
+    )
+    .animation(.easeInOut(duration: 0.25), value: noticeState.message)
+    // #2202 row 8 of the shared-root table. The capsule keeps its uniform inset;
+    // the preview zeroes it and each section supplies its own, because a header
+    // strip over a reading well does not want one rectangle of padding wrapped
+    // around both. Migrated ATOMICALLY with the section padding above and below:
+    // split across two commits, whatever shipped in between would have had no
+    // insets at all.
+    .padding(.horizontal, usesPreviewLayout ? 0 : 14)
+    .padding(.vertical, usesPreviewLayout ? 0 : 10)
+    // #2201: the preview pill's height must be a function of what it is SHOWING,
+    // never of how tall it happens to be already.
+    //
+    // Without this the capsule is free to stretch into whatever room the panel
+    // offers, because `previewText`'s `.frame(maxHeight:)` grows to its cap under
+    // a large proposal. The panel is then sized FROM that measurement
+    // (`onContentHeightChange` -> resizeRecordingPanel) while the measurement is
+    // taken INSIDE the panel, so the pair has no single solution: measured on the
+    // real view, one line of text reported 65pt in a 65pt panel and 125pt in a
+    // 125pt one. Nothing in the loop pulls the height back down either, so a box
+    // that grew for a long sentence stayed at the cap when the recognizer revised
+    // the sentence shorter.
+    //
+    // `fixedSize` makes the stack report its IDEAL height whatever it is offered,
+    // which is the same question `showPanel(fitToContent:)` asks at creation — so
+    // the two sizing paths finally agree. Growth is unaffected: the ideal height
+    // still tracks the text (65 -> 80 -> 125 across one, three and six-plus lines).
+    //
+    // **Gated, because every modifier on this root is rendered by BOTH layouts.**
+    // The 185pt capsule sits inside a fixed 92pt frame and is out of scope for
+    // #2198; `vertical: false` leaves it exactly as it was.
+    //
+    // **Order is load-bearing:** after both paddings, before both backgrounds. The
+    // measurement is taken on the padded stack, so moving this either side of it
+    // measures a different view than the one that was proven.
+    .fixedSize(horizontal: false, vertical: usesPreviewLayout)
+    .background(OverlayCapsuleBackground(cornerStyle: usesPreviewLayout ? .rounded : .capsule))
+    // #1988: report the capsule's real height so the panel can follow it. Measured
+    // on the capsule rather than computed from a line count, because only the text
+    // engine knows how many lines a sentence wraps to at this width in this script.
+    .background(
+      GeometryReader { geo in
+        Color.clear
+          .onAppear { onContentHeightChange(geo.size.height) }
+          .onChange(of: geo.size.height) { _, height in onContentHeightChange(height) }
+      }
+    )
+    .task {
+      while !Task.isCancelled {
+        audioLevel = audioLevelProvider()
+        audioTick &+= 1
+        elapsed = recordingElapsedProvider() ?? 0
+        preview = livePreviewProvider()
+        try? await Task.sleep(for: .milliseconds(50))
+      }
+    }
+  }
+
+  /// The preview area.
+  ///
+  /// **The tail is produced by `.truncationMode(.head)`, not by counting characters
+  /// and not by clipping an oversized box.** A character budget is a guess about how
+  /// many glyphs fit, and that guess is wrong by a factor of two for CJK and wrong
+  /// again for any proportional font. Clipping was tried first and shipped two
+  /// visible defects that a screenshot caught immediately: `fixedSize` makes a Text
+  /// render at its ideal height regardless of the frame around it, so three lines of
+  /// text spilled out of the capsule background entirely and the top line was sliced
+  /// through the middle of its glyphs. Letting the text engine drop the head gives
+  /// the same "newest words win" result, correct in every script, with a leading
+  /// ellipsis that reads as continuation rather than as a rendering fault.
+  @ViewBuilder
+  private var livePreviewBody: some View {
+    switch preview {
+    case .off:
+      EmptyView()
+    case .waiting:
+      // One line, so the pill starts compact and the growth the user sees is their
+      // own words arriving rather than space that was always reserved.
+      //
+      // #2202: in the PREVIEW layout the header already says `Listening`, so
+      // repeating it here would greet a first-time user with the same word twice
+      // in one small box — worse than either alone. The well shows nothing and
+      // the pill stays one header tall until real words arrive. The capsule has
+      // no header, so it keeps the sentence.
+      //
+      // #2222: `EmptyView()`, NOT `previewText("")`. An empty string still built a
+      // `PreviewWellText`, which applies the well's own 12/15pt inset and an empty
+      // `Text`'s line box unconditionally — so the state documented above as "one
+      // header tall" measured 75pt against the header's 34pt, three points short of
+      // a pill with words in it. Every dictation passes through here before the
+      // first word, so every user saw the pill resize before saying anything.
+      //
+      // The inset lives on `PreviewWellText` and is correct for every state that
+      // HAS a well; the defect was asking for a well to hold nothing. Fixed at the
+      // call site rather than by making the shared padding conditional, which would
+      // put an emptiness test inside a view that should not care.
+      if usesPreviewLayout {
+        EmptyView()
+      } else {
+        previewText(LivePreviewCopy.listening, dimmed: true, lines: 1)
+      }
+    case .unavailable(let reason):
+      // Say why rather than sitting blank. A blank preview reads as "it did not
+      // hear me", which is the exact anxiety this feature exists to remove. Two
+      // lines because some of these sentences wrap.
+      previewText(reason, dimmed: true, lines: 2)
+    case .text(let text):
+      previewText(text, dimmed: false, lines: Self.previewMaxLines)
+    }
+  }
+
+  /// One builder for all three states, so the pill cannot change alignment as it
+  /// moves between "Listening...", real words, and a reason it cannot run.
+  ///
+  /// **No fixed height.** The text takes exactly the lines it needs, the capsule
+  /// grows with it, and the panel follows via `onContentHeightChange`. At the cap
+  /// the text keeps laying out in full but the box stops growing and pins the text
+  /// to its BOTTOM, so the overflow leaves at the top and the newest words stay
+  /// where the eye already is.
+  ///
+  /// **`.lineLimit(n)` + `.truncationMode(.head)` does NOT do this, despite
+  /// reading as though it should.** Measured by rendering this exact modifier
+  /// stack over 60 numbered words: it keeps the OLDEST four lines and truncates
+  /// only the LAST one, so a long dictation showed `word1...word32`, then a jump
+  /// to `...word53 word60` — the middle silently gone and four fifths of the pill
+  /// frozen on the opening words. Review caught it; the screenshot that had
+  /// "verified" the behaviour showed a transcript at exactly five lines, which
+  /// never exercises overflow at all.
+  ///
+  /// Bottom-pinned clipping is the literal reading of "scrolls off the top", and
+  /// needs no ScrollView (which brings scrollers, elasticity and its own
+  /// scroll-to-bottom timing into a borderless overlay) and no manual text
+  /// measurement.
+  private func previewText(_ message: String, dimmed: Bool, lines: Int) -> some View {
+    PreviewWellText(
+      message: message, dimmed: dimmed, lines: lines, usesPreviewLayout: usesPreviewLayout)
+  }
+
+  /// #2203: ONE authority for preview typography. The `Text` and the cap both read
+  /// these, so a change to the type size cannot leave the two disagreeing.
+  ///
+  /// **The previous version's doc comment claimed the cap "tracks the type size"
+  /// and it did not.** It built `NSFont.systemFont(ofSize: 12)` from its own
+  /// hardcoded 12, independent of the `Text`'s own `.font(.system(size: 12))`
+  /// twenty lines away. Two literals that had to agree, with a comment asserting
+  /// they could not drift — which is worse than no comment, because it stops the
+  /// next reader checking.
+  static let previewFontSize: CGFloat = 14
+  static let previewLineSpacing: CGFloat = 4
+
+  /// #2203: how much of the reading well's height the top fade occupies.
+  ///
+  /// Deliberately small. The fade exists to say "there is more above this", not to
+  /// hide a line — at the cap the oldest visible line is still readable, just
+  /// clearly on its way out. A larger value starts costing the user words they
+  /// have not finished reading.
+  static let previewFadeFraction: CGFloat = 0.22
+
+  /// Height of `lines` lines of the preview font, INCLUDING the gaps between them.
+  ///
+  /// **Counting the gaps is not a refinement, it is the difference between five
+  /// lines and four.** SwiftUI adds `lineSpacing` BETWEEN lines, so five lines
+  /// occupy five glyph heights plus four gaps. A cap that counts only the glyphs
+  /// under-measures by 4 x `previewLineSpacing` and clips the fifth line partway.
+  ///
+  /// An exact multiple still matters: the clip lands on a line boundary, so no row
+  /// is cut through the middle of its glyphs.
+  static func previewHeight(lines: Int) -> CGFloat {
+    let font = NSFont.systemFont(ofSize: previewFontSize)
+    let glyphHeight = ceil(font.ascender - font.descender + font.leading)
+    let gaps = max(lines - 1, 0)
+    return glyphHeight * CGFloat(lines) + previewLineSpacing * CGFloat(gaps)
+  }
+
+  /// Five lines, matching the shape the founder tested against Spokenly: the pill
+  /// grows a line at a time up to this, then holds its size and scrolls.
+  static let previewMaxLines = 5
+}
+
+/// #2203: the reading well's text, and the one part of the pill that has to know
+/// whether it is FULL.
+///
+/// Split out of `RecordingOverlayView` only because the fade decision needs
+/// `@State`, and a function returning a view cannot hold one.
+struct PreviewWellText: View {
+  let message: String
+  let dimmed: Bool
+  let lines: Int
+  let usesPreviewLayout: Bool
+
+  /// Whether the well is at its cap, and so whether anything is scrolling off the
+  /// top. Written from a `GeometryReader` in the BACKGROUND of the capped frame,
+  /// which does not participate in layout, and it feeds only the mask, which does
+  /// not either — so it cannot reach the panel-resize loop #2201 settled.
+  /// `RecordingOverlayPreviewSizingTests` is the check on that claim rather than
+  /// this sentence.
+  @State private var wellIsFull = false
+
+  private var cap: CGFloat { RecordingOverlayView.previewHeight(lines: lines) }
+
+  var body: some View {
+    Text(message)
+      .font(.system(size: RecordingOverlayView.previewFontSize))
+      .lineSpacing(RecordingOverlayView.previewLineSpacing)
+      .foregroundStyle(
+        usesPreviewLayout
+          ? (dimmed ? PreviewPillPalette.textDimmed : PreviewPillPalette.text)
+          : .white.opacity(dimmed ? 0.5 : 0.92)
+      )
+      .multilineTextAlignment(.leading)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      // `maxHeight` CAPS without fixing: below the cap the box is the text's own
+      // height, which is what lets the pill still grow a line at a time.
+      .frame(maxHeight: cap, alignment: .bottom)
+      .background(
+        GeometryReader { geo in
+          Color.clear
+            .onAppear { updateFullness(geo.size.height) }
+            .onChange(of: geo.size.height) { _, height in updateFullness(height) }
+        }
+      )
+      .clipped()
+      // #2203: fade the top edge ONLY when something is actually above it.
+      //
+      // **Cloud review caught this applying unconditionally.** The capped frame
+      // takes the TEXT's height while the text is short, so the gradient mapped
+      // onto the first line of a one-line transcript and dimmed words the user
+      // still had to read. A fade means "there is more above this"; saying that
+      // when there is not is worse than not saying it at all.
+      //
+      // Doing it with a mask rather than per-line opacity remains the point:
+      // dimming older LINES needs to know where the text engine broke them, which
+      // is the knowledge this file records as unavailable — a character budget is
+      // wrong by 2x for CJK and wrong again for any proportional font. A gradient
+      // needs no line information and behaves identically in every script, because
+      // older words are higher up by construction.
+      //
+      // KNOWN LIMIT, recorded rather than hidden: a transcript landing at EXACTLY
+      // the cap fades slightly with nothing yet above it. Separating that from a
+      // genuine overflow needs the text's unclipped intrinsic height, which costs a
+      // second layout of the same string for a one-frame cosmetic difference at the
+      // moment the well is about to overflow anyway.
+      .mask(fadeMask)
+      // #2202: the well's own inset, replacing what the shared root padding used
+      // to give it. **Outside the cap, deliberately.** Padding inserted before
+      // `.frame(maxHeight:)` is subtracted from the five-line viewport, so the
+      // box would clip at four-and-a-bit lines and the founder's five-line rule
+      // would quietly stop holding — a number that looks like it means lines
+      // while meaning something else.
+      .padding(.horizontal, usesPreviewLayout ? 16 : 0)
+      .padding(.top, usesPreviewLayout ? 12 : 0)
+      .padding(.bottom, usesPreviewLayout ? 15 : 0)
+  }
+
+  @ViewBuilder
+  private var fadeMask: some View {
+    if usesPreviewLayout && wellIsFull {
+      LinearGradient(
+        stops: [
+          .init(color: .clear, location: 0),
+          .init(color: .white, location: RecordingOverlayView.previewFadeFraction),
+          .init(color: .white, location: 1),
+        ],
+        startPoint: .top,
+        endPoint: .bottom)
+    } else {
+      Rectangle()
+    }
+  }
+
+  /// The capped frame reports the TEXT's height below the cap and the CAP once the
+  /// text exceeds it, so "is it at the cap" is the overflow signal without
+  /// measuring the string ourselves.
+  private func updateFullness(_ height: CGFloat) {
+    let full = Self.wellIsFull(measuredHeight: height, cap: cap)
+    if full != wellIsFull { wellIsFull = full }
+  }
+
+  /// The fade decision, extracted so it can be asserted directly.
+  ///
+  /// A mask does not participate in layout, so no height test can see whether the
+  /// fade is applied — the same reason `RecordingOverlayPanel`'s inherited-geometry
+  /// arithmetic is pinned as a pure function rather than driven through a panel.
+  /// Cloud review found this applying unconditionally; a decision worth fixing is
+  /// worth pinning.
+  ///
+  /// The half-point tolerance absorbs the rounding between a laid-out frame and a
+  /// computed cap. Without it a well that is full to the pixel reports empty and
+  /// the fade flickers off at exactly the moment it is needed.
+  static func wellIsFull(measuredHeight: CGFloat, cap: CGFloat) -> Bool {
+    measuredHeight >= cap - 0.5
+  }
+
+}

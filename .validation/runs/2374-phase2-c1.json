@@ -1,0 +1,41 @@
+{
+  "base": "f9b70283326254aad6974cceb33ca41316e493ec",
+  "original": "Sources/EnviousWisprAppKit/App/Overlay/Views/OverlayLegacyViews.swift",
+  "new_files": [
+    "Sources/EnviousWisprAppKit/App/Overlay/OverlayObservableChannels.swift",
+    "Sources/EnviousWisprAppKit/App/Brand/SpectrumWheelIcon.swift",
+    "Sources/EnviousWisprAppKit/App/Overlay/Views/RainbowLevelMeter.swift",
+    "Sources/EnviousWisprAppKit/App/Brand/RainbowLipsIcon.swift",
+    "Sources/EnviousWisprAppKit/App/Overlay/Views/OverlayCapsuleBackgrounds.swift",
+    "Sources/EnviousWisprAppKit/App/Overlay/Views/RecordingOverlayView.swift",
+    "Sources/EnviousWisprAppKit/App/Overlay/Views/PolishingOverlayView.swift",
+    "Sources/EnviousWisprAppKit/App/Overlay/Views/ColdStartNoticeView.swift",
+    "Sources/EnviousWisprAppKit/App/Overlay/Views/NotificationOverlayView.swift",
+    "Sources/EnviousWisprAppKit/App/Overlay/Views/ImportStatusOverlayView.swift",
+    "Sources/EnviousWisprAppKit/App/Overlay/Views/LanguageChipView.swift",
+    "Sources/EnviousWisprAppKit/App/Overlay/Views/AccessibilityToastView.swift",
+    "Sources/EnviousWisprAppKit/App/Overlay/Views/RecoveryNoticeView.swift"
+  ],
+  "allowed_widenings": [
+    "OverlayCapsuleBackground",
+    "DistressCapsuleBackground"
+  ],
+  "dropped_original_lines": "38-47",
+  "dropped_text": [
+    "",
+    "// The overlay's SwiftUI view layer, moved verbatim out of",
+    "// `05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift` (#2292, chunk C1). Nothing here changed: same",
+    "// declarations, same order, same file-private relationships between the view",
+    "// types, which is why they moved as ONE unit rather than one file per feature.",
+    "//",
+    "// These views DO still participate in the current presentation transaction \u2014",
+    "// through provider closures, `OverlayNoticeState`, and view-owned expiry tasks.",
+    "// The move changes their LOCATION, not their ownership or behaviour. Ownership",
+    "// moves in the C4 cutover, which is where the per-feature split belongs."
+  ],
+  "original_lines": 1320,
+  "reconstruction_lines": 1320,
+  "residual_changed_lines": 0,
+  "verdict": "MOVE-ONLY",
+  "diff": []
+}
