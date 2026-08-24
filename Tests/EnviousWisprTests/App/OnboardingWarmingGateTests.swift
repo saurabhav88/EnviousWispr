@@ -539,6 +539,33 @@ import Testing
         }
       }
 
+      /// `pipeline_failed` is its own reason, never folded into `no_speech`:
+      /// one is us failing and the other is a quiet room, and a funnel that
+      /// cannot tell them apart will read our own breakage as people not
+      /// speaking.
+      @Test("a pipeline failure blocks the step with its own reason")
+      func failureReportsItsOwnReason() async {
+        await withHook { events in
+          let vm = OnboardingV2ViewModel()
+          vm.beginPractice()
+          vm.practiceTakeStarted(boxFocused: true, transcriptCount: 0)
+          vm.practiceTakeEnded(transcriptCount: 0, pipelineFailed: true)
+
+          vm.reportPracticeExit()
+
+          let blocked = events.all.filter {
+            $0.name == "onboarding.step_blocked" && $0.stringProps["step"] == "practice_dictation"
+          }
+          #expect(blocked.count == 1)
+          #expect(blocked.first?.stringProps["reason"] == "pipeline_failed")
+          #expect(
+            events.all.filter {
+              $0.name == "onboarding.step_completed"
+                && $0.stringProps["step"] == "practice_dictation"
+            }.isEmpty)
+        }
+      }
+
       @Test("leaving without ever trying reports skipped")
       func neverTriedReportsSkipped() async {
         await withHook { events in
@@ -802,6 +829,50 @@ import Testing
         vm.practiceTakeEnded()
 
         #expect(vm.practiceState == .worked)
+      }
+
+      /// Cloud review, and the SAME class a fourth time: a failed take produces
+      /// no text and no transcript, so without this it fell through to
+      /// `saidNothing` and the screen said "Your microphone is working. We just
+      /// did not hear anything." Both halves false, and it sends someone to try
+      /// harder at a thing that is broken.
+      @Test("a pipeline failure is not reported as silence")
+      func failureIsNotSilence() {
+        let vm = makePracticeViewModel()
+        vm.practiceTakeStarted(boxFocused: true, transcriptCount: 0)
+
+        vm.practiceTakeEnded(transcriptCount: 0, pipelineFailed: true)
+
+        #expect(vm.practiceState == .somethingBroke)
+        #expect(
+          vm.practiceState != .saidNothing,
+          "the screen blamed a quiet room for our own failure")
+      }
+
+      /// The other half: a genuinely quiet room must NOT be dressed up as our
+      /// failure, or the most common first-take outcome starts reading as the
+      /// product breaking.
+      @Test("silence with a healthy pipeline is still silence")
+      func healthySilenceIsStillSilence() {
+        let vm = makePracticeViewModel()
+        vm.practiceTakeStarted(boxFocused: true, transcriptCount: 0)
+
+        vm.practiceTakeEnded(transcriptCount: 0, pipelineFailed: false)
+
+        #expect(vm.practiceState == .saidNothing)
+      }
+
+      /// A failure outranks every other reading, because no text and no
+      /// transcript are SYMPTOMS of it — classifying on them first would
+      /// describe the symptom and hide the cause.
+      @Test("a failure outranks a missed box")
+      func failureOutranksMissedBox() {
+        let vm = makePracticeViewModel()
+        vm.practiceTakeStarted(boxFocused: false, transcriptCount: 0)
+
+        vm.practiceTakeEnded(transcriptCount: 1, pipelineFailed: true)
+
+        #expect(vm.practiceState == .somethingBroke)
       }
 
       @Test("a denied microphone is named rather than left as a dead screen")

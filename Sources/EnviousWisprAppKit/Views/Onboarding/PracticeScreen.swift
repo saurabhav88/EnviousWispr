@@ -1,3 +1,5 @@
+import AppKit
+import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
@@ -73,13 +75,33 @@ struct PracticeScreenV2: View {
 
   private func grantPermission(reason: String) async {
     if reason == "mic_denied" {
-      _ = await permissions.requestMicrophoneAccess()
+      // `AVCaptureDevice.requestAccess` only presents the prompt from the
+      // UNDETERMINED state. After a prior denial it returns false immediately
+      // and nothing appears, so the button did nothing at all and the recovery
+      // path read as broken (cloud review). Send them where the switch is.
+      if permissions.microphonePermissionIsDenied {
+        if let url = URL(
+          string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+        {
+          NSWorkspace.shared.open(url)
+        }
+      } else {
+        _ = await permissions.requestMicrophoneAccess()
+      }
     } else {
       _ = permissions.requestAccessibilityAccess()
     }
+    refreshPosture()
+  }
+
+  /// `hasMicrophonePermission` reads a CACHED snapshot taken at construction,
+  /// so a microphone revoked while the app kept running still reads authorized
+  /// (cloud review). `microphonePermissionIsDenied` reads LIVE, which is the
+  /// whole reason #1558 added it.
+  private func refreshPosture() {
     permissions.refreshAccessibilityStatus()
     viewModel.applyPracticePosture(
-      micGranted: permissions.hasMicrophonePermission,
+      micGranted: !permissions.microphonePermissionIsDenied,
       accessibilityGranted: permissions.accessibilityGranted)
   }
 
@@ -87,6 +109,7 @@ struct PracticeScreenV2: View {
     switch viewModel.practiceState {
     case .cannotHear: return "We cannot hear you"
     case .listening: return "Listening…"
+    case .somethingBroke: return "That did not work"
     case .missedTheBox: return "Click the box first"
     case .saidNothing: return "All quiet"
     case .worked: return "That is it. You are set."
@@ -102,6 +125,11 @@ struct PracticeScreenV2: View {
         : "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead."
     case .listening:
       return "Go ahead. Let go of \(shortcutName) when you are done."
+    case .somethingBroke:
+      // Takes the blame explicitly. Someone told "we did not hear anything"
+      // tries harder at a thing that is broken; someone told it was us tries
+      // once more and then moves on, which is the honest ask.
+      return "Something went wrong on our side, not yours.\nTry once more, or skip ahead and dictate anywhere."
     case .missedTheBox:
       // Says what happened and what to do, and takes the blame off them. The
       // words are genuinely on the clipboard, so telling them that is useful
@@ -257,10 +285,7 @@ struct PracticeScreenV2: View {
         viewModel.practiceTakeStarted(
           boxFocused: false, transcriptCount: transcripts.transcriptCount)
       }
-      permissions.refreshAccessibilityStatus()
-      viewModel.applyPracticePosture(
-        micGranted: permissions.hasMicrophonePermission,
-        accessibilityGranted: permissions.accessibilityGranted)
+      refreshPosture()
     }
     // The take's own edges, from the subject rather than from a timer.
     // Accessibility cannot be observed by notification and
@@ -274,10 +299,7 @@ struct PracticeScreenV2: View {
       while !Task.isCancelled {
         try? await Task.sleep(for: .seconds(2))
         guard !Task.isCancelled else { return }
-        permissions.refreshAccessibilityStatus()
-        viewModel.applyPracticePosture(
-          micGranted: permissions.hasMicrophonePermission,
-          accessibilityGranted: permissions.accessibilityGranted)
+        refreshPosture()
         if !cannotHear { return }
       }
     }
@@ -289,7 +311,13 @@ struct PracticeScreenV2: View {
         viewModel.practiceTakeStarted(
           boxFocused: boxFocused, transcriptCount: transcripts.transcriptCount)
       } else {
-        viewModel.practiceTakeEnded(transcriptCount: transcripts.transcriptCount)
+        // A pipeline FAILURE outranks silence, and `PipelineState` already
+        // separates our failure (`.error`) from "the microphone delivered
+        // nothing usable" (`.advisory`, #1891).
+        var failed = false
+        if case .error = live.pipelineState { failed = true }
+        viewModel.practiceTakeEnded(
+          transcriptCount: transcripts.transcriptCount, pipelineFailed: failed)
         // Put the cursor back, so the next attempt cannot repeat the miss for
         // the same reason. Founder-found in Live UAT: the advice is useless if
         // acting on it needs a click they were not told about.

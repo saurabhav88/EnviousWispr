@@ -520,6 +520,16 @@ final class OnboardingV2ViewModel {
     /// first takes against 10.1% for every genuine failure combined — so it is
     /// a normal state with a way forward, never an error.
     case saidNothing
+    /// The pipeline FAILED — ASR, capture, or the model. Cloud review, and the
+    /// same class a fourth time: without this a failure produced no text and no
+    /// transcript, fell through to `saidNothing`, and the screen told the person
+    /// "Your microphone is working. We just did not hear anything." Both halves
+    /// false, and it sends them to try harder at a thing that is broken.
+    ///
+    /// `PipelineState` already separates these deliberately: `.error` is our
+    /// failure, `.advisory` is "the microphone delivered nothing usable" (#1891).
+    /// The distinction existed; this screen simply was not reading it.
+    case somethingBroke
     /// FOUNDER-FOUND IN LIVE UAT, 2026-08-24. The take WORKED — words were
     /// produced — but the box was not selected, so the cascade classified
     /// `.nonText` and fell to clipboard-only, exactly as it does anywhere else.
@@ -570,8 +580,15 @@ final class OnboardingV2ViewModel {
 
   /// The dictation finished. Whether it produced anything is decided by the box
   /// itself, never by a clock.
-  func practiceTakeEnded(transcriptCount: Int = 0) {
+  func practiceTakeEnded(transcriptCount: Int = 0, pipelineFailed: Bool = false) {
     guard practiceState == .listening else { return }
+    // A failure outranks every other reading: no text and no transcript are
+    // SYMPTOMS of it, so classifying on them first would describe the symptom
+    // and hide the cause.
+    if pipelineFailed {
+      practiceState = .somethingBroke
+      return
+    }
     let grew = practiceText != practiceTextAtTakeStart
       && !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     // A transcript that did not reach the box IS the missed-box case, and it
@@ -616,6 +633,12 @@ final class OnboardingV2ViewModel {
     let result: String
     if practiceSucceeded {
       result = "completed"
+    } else if practiceState == .somethingBroke {
+      // Its own reason, never folded into `no_speech`: one is us failing and
+      // the other is a quiet room, and a funnel that cannot tell them apart
+      // will read our own breakage as people not speaking.
+      blockStep("practice_dictation", reason: "pipeline_failed")
+      return
     } else if practiceState == .missedTheBox {
       // NOT `no_speech`: this person dictated. Filing them under silence would
       // repeat the screen's own mistake in the funnel, where nobody can see it.
