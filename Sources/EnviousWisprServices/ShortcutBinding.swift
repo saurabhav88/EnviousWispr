@@ -5,14 +5,32 @@ import AppKit
 /// A closed set, deliberately: the #1991 defect was possible because "record"
 /// and "cancel" were never named as members of one thing, so a dispatch path
 /// could handle one and silently omit the other and nothing said so.
+/// **Declaration order is SEVERITY order, and it is load-bearing.** `allCases` is iterated to answer
+/// "which role dies if the modifier monitors are missing", and the field holds one value, so the most
+/// severe loss must come first: record kills dictation entirely, cancel kills the ability to abort one,
+/// Quick Add is a limb. `ShortcutRoleOrderTests` pins it — reordering these cases silently mislabels
+/// that telemetry rather than failing to compile.
 package enum ShortcutRole: String, Sendable, CaseIterable {
   case record
   case cancel
   /// Quick Add (#2381): capture the selected word into the library.
   ///
   /// Unlike the other two this one is armed WHENEVER THE SERVICE IS, because it
-  /// does not belong to a recording. That is why it sorts last below.
+  /// does not belong to a recording. That is why it sorts last in the matcher.
   case quickAdd
+
+  /// The wire name this role uses in hotkey telemetry.
+  ///
+  /// `record` is `"toggle"` because that is the string production has been sending since #1175 and a
+  /// rename would split every existing breakdown. A switch, so a fourth role cannot inherit a
+  /// neighbour's name by omission.
+  package var telemetryKind: String {
+    switch self {
+    case .record: "toggle"
+    case .cancel: "cancel"
+    case .quickAdd: "quick_add"
+    }
+  }
 }
 
 /// One shortcut, whatever kind it is.

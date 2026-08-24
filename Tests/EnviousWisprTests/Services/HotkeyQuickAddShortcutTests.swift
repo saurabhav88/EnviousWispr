@@ -223,6 +223,80 @@ struct HotkeyQuickAddShortcutTests {
     #expect(sink.cancels == 0)
   }
 
+  // MARK: - Installation, which every dispatch test above is blind to
+
+  @Test("A bare-modifier Quick Add installs the modifier monitors")
+  func bareModifierQuickAddInstallsMonitors() {
+    // #1991 BLOCKER 2, REPRODUCED BY #2381 AND CAUGHT HERE. The install condition was a hand-written
+    // disjunction over record and cancel, so this exact configuration — a bare-modifier Quick Add
+    // paired with a chord record key and a chord cancel key, which is the DEFAULT shape for both —
+    // installed no monitor at all and left the shortcut stored, displayed, and completely inert.
+    //
+    // Every dispatch case in this suite drives `handleFlagsChangedValues` directly and so passes
+    // against that build, which is precisely why #1991's original tests could not see it either.
+    // This asserts the DECISION, not the `NSEvent` objects: the monitor objects say nothing about
+    // whether the right question was asked.
+    let (service, _, _, _, _) = makeService(
+      recordKey: chordKeyCode, recordModifiers: [.command],
+      cancelKey: 53, quickAddKey: rightCommand)
+
+    #expect(service.recordBinding.isBareModifier == false)
+    #expect(service.cancelBinding.isBareModifier == false)
+    #expect(service.quickAddBinding.isBareModifier == true)
+    #expect(service.shouldInstallModifierMonitors, "no monitor means the shortcut is inert")
+  }
+
+  @Test("Chords everywhere install no monitors")
+  func chordsEverywhereInstallNoMonitors() {
+    // The paired negative. Without it, a condition returning true for everything would look clean.
+    let (service, _, _, _, _) = makeService(
+      recordKey: chordKeyCode, recordModifiers: [.command],
+      cancelKey: 53, quickAddKey: wKeyCode, quickAddModifiers: [.control, .option])
+
+    #expect(service.shouldInstallModifierMonitors == false)
+    #expect(service.bareModifierRoleAtRisk == nil)
+  }
+
+  @Test("The role that dies without monitors is the most severe one bound to a bare modifier")
+  func theRoleAtRiskIsTheMostSevereOne() {
+    // The field holds ONE value and it labels the failure telemetry, so the answer must be the
+    // biggest loss: record kills dictation, cancel kills aborting one, Quick Add is a limb.
+    let (allThree, _, _, _, _) = makeService(
+      recordKey: rightOption, cancelKey: rightCommand, quickAddKey: ModifierKeyCodes.rightShift)
+    #expect(allThree.bareModifierRoleAtRisk == .record)
+
+    let (cancelAndQuickAdd, _, _, _, _) = makeService(
+      recordKey: chordKeyCode, recordModifiers: [.command],
+      cancelKey: rightCommand, quickAddKey: ModifierKeyCodes.rightShift)
+    #expect(cancelAndQuickAdd.bareModifierRoleAtRisk == .cancel)
+
+    let (quickAddOnly, _, _, _, _) = makeService(
+      recordKey: chordKeyCode, recordModifiers: [.command],
+      cancelKey: 53, quickAddKey: rightCommand)
+    #expect(
+      quickAddOnly.bareModifierRoleAtRisk == .quickAdd,
+      "a dead Quick Add reported as a dead cancel shortcut names the wrong subject")
+  }
+
+  @Test("Every role has its own telemetry name, and record keeps the one production sends")
+  func telemetryKindsAreDistinctAndStable() {
+    // `record` is "toggle" on the wire since #1175. Renaming it would split every existing
+    // breakdown, so this pins it rather than leaving it to look like an inconsistency worth tidying.
+    #expect(ShortcutRole.record.telemetryKind == "toggle")
+    #expect(ShortcutRole.cancel.telemetryKind == "cancel")
+    #expect(ShortcutRole.quickAdd.telemetryKind == "quick_add")
+
+    let names = ShortcutRole.allCases.map(\.telemetryKind)
+    #expect(Set(names).count == names.count, "two roles sharing a name make the field ambiguous")
+  }
+
+  @Test("Role declaration order is severity order, which the risk answer depends on")
+  func roleOrderIsSeverityOrder() {
+    // `bareModifierRoleAtRisk` takes the FIRST matching case, so reordering this enum silently
+    // relabels that telemetry instead of failing to compile. Pinned here so it cannot.
+    #expect(ShortcutRole.allCases == [.record, .cancel, .quickAdd])
+  }
+
   // MARK: - Telemetry names the right subject
 
   @Test("A Quick Add press reports ITS OWN key shape, not the record key's")

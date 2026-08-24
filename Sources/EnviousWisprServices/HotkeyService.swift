@@ -64,6 +64,16 @@ public final class HotkeyService {
     /// #2381. Takes 4, not the free slot at 2: that gap is a RETIRED id whose meaning nobody wrote
     /// down, and a stale Carbon registration or an old log line could still carry it.
     case quickAdd = 4
+
+    /// Which role this Carbon registration belongs to. A switch, so a new id must declare one
+    /// rather than borrowing a neighbour's telemetry name.
+    var role: ShortcutRole {
+      switch self {
+      case .toggle: .record
+      case .cancel: .cancel
+      case .quickAdd: .quickAdd
+      }
+    }
   }
 
   // MARK: - Carbon State
@@ -776,8 +786,36 @@ public final class HotkeyService {
   /// `package` so the install condition is testable directly. Testing it through
   /// `installModifierMonitors()` would assert on `NSEvent` monitor objects, which
   /// says nothing about the decision being made here.
+  /// #2381 reproduced #1991's blocker 2 before this was written. The condition was
+  /// `recordBinding.isBareModifier || cancelBinding.isBareModifier` — a hand-written disjunction over
+  /// the roles that existed when it was authored — so a user pairing a bare-modifier QUICK ADD with a
+  /// chord record key and a chord cancel key got no monitor at all, and their shortcut was stored,
+  /// displayed, and completely inert. Exactly the defect the comment above describes, one role over,
+  /// added by the change that quotes it.
+  ///
+  /// It now asks the CLOSED SET rather than a list of the roles someone remembered, so a fourth role
+  /// is included by construction instead of by whoever adds it noticing this line.
   package var shouldInstallModifierMonitors: Bool {
-    recordBinding.isBareModifier || cancelBinding.isBareModifier
+    bareModifierRoleAtRisk != nil
+  }
+
+  /// Which role loses its dispatch if the modifier monitors are missing, or nil when none is a bare
+  /// modifier and the monitors are not needed at all.
+  ///
+  /// One value, so the most SEVERE loss wins — `ShortcutRole`'s declaration order is that severity
+  /// order and its doc comment says so. Read by both the install decision and the failure label, so
+  /// the two cannot come to disagree about which roles matter.
+  package var bareModifierRoleAtRisk: ShortcutRole? {
+    ShortcutRole.allCases.first { binding(for: $0).isBareModifier }
+  }
+
+  /// The binding a role is currently bound to. A switch, so a new role must be given one.
+  package func binding(for role: ShortcutRole) -> ShortcutBinding {
+    switch role {
+    case .record: recordBinding
+    case .cancel: cancelBinding
+    case .quickAdd: quickAddBinding
+    }
   }
 
   /// The current record binding, as one value.
@@ -859,10 +897,15 @@ public final class HotkeyService {
       // as a toggle failure — mislabelling the telemetry for exactly the users
       // this change is for, in the one signal that would tell us it broke.
       //
-      // Record wins when both are bare modifiers: it is armed for the whole
+      // Record wins when several are bare modifiers: it is armed for the whole
       // session while cancel is armed only during a recording, so it is the
       // more severe loss and the field holds one value.
-      let kind = recordBinding.isBareModifier ? "toggle" : "cancel"
+      //
+      // #2381: this was `recordBinding.isBareModifier ? "toggle" : "cancel"`, a THIRD two-role
+      // ternary alongside the two the switch repairs elsewhere in this file, and it reported a dead
+      // bare-modifier Quick Add as a dead CANCEL shortcut. It now reads the same closed enumeration
+      // the install decision does.
+      let kind = bareModifierRoleAtRisk?.telemetryKind ?? "unknown"
       telemetry.registrationFailed("nsevent_\(scope)", kind, nil, "modifier_only")
     }
     return monitor
@@ -965,17 +1008,13 @@ public final class HotkeyService {
     )
     guard status == noErr else {
       // #1175: the noErr-but-silent trap means success can't confirm delivery, so
-      // we only report FAILURE. This is the single Carbon chokepoint — both the
-      // toggle and cancel registrations route through here.
-      // A `switch`, not a ternary (#2381). The old `id == cancel ? "cancel" : "toggle"` reported a
-      // quick-add registration failure as a TOGGLE failure — the telemetry naming the wrong subject,
-      // on the one signal that says a user's shortcut is inert.
-      let kind =
-        switch HotkeyID(rawValue: id) {
-        case .cancel: "cancel"
-        case .quickAdd: "quick_add"
-        case .toggle, nil: "toggle"
-        }
+      // we only report FAILURE. This is the single Carbon chokepoint — every registration routes
+      // through here.
+      // #2381: this was `id == cancel ? "cancel" : "toggle"`, which reported a quick-add
+      // registration failure as a TOGGLE failure. It now resolves the id to a ROLE and asks the role
+      // for its wire name, so the Carbon path and the monitor path below cannot disagree about what
+      // a role is called — one owner, `ShortcutRole.telemetryKind`.
+      let kind = (HotkeyID(rawValue: id)?.role ?? .record).telemetryKind
       let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
       telemetry.registrationFailed("carbon", kind, status, keyShape)
       return nil
