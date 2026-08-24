@@ -73,14 +73,21 @@ struct WarmingScreenV2: View {
 
       Spacer()
 
-      Text("This usually takes a moment. Nothing else is needed from you.")
-        .font(.obCaption)
-        .foregroundStyle(Color.obTextSecondary)
-        .multilineTextAlignment(.center)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity)
-        .padding(14)
-        .background(Color.obSurface, in: RoundedRectangle(cornerRadius: 12))
+      // Local Codex r2: on the failure panel this caption said nothing else was
+      // needed while the panel beside it asked for a retry or a skip — two
+      // instructions, one of them wrong, at the moment the person is stuck.
+      // The panel already carries the honest instruction, so this simply does
+      // not render there rather than repeating it in different words.
+      if failureMessage == nil {
+        Text("This usually takes a moment. Nothing else is needed from you.")
+          .font(.obCaption)
+          .foregroundStyle(Color.obTextSecondary)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity)
+          .padding(14)
+          .background(Color.obSurface, in: RoundedRectangle(cornerRadius: 12))
+      }
 
       Button(action: onSkip) {
         // Visible from the first frame, never behind a delay or a confirm

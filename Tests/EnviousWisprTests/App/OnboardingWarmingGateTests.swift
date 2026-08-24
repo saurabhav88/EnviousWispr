@@ -8,6 +8,31 @@ import Testing
 
 #if DEBUG
 
+  /// A one-shot signal the injected warm-up fires when it is genuinely
+  /// RUNNING. Replaces a yield-count settle, which guessed at the scheduler:
+  /// under contention the guess can expire before the subject has run, so a
+  /// negative assertion passes having exercised nothing.
+  @MainActor
+  fileprivate final class EntrySignal {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var fired = false
+
+    /// Called from inside the warm-up, before it suspends.
+    func fire() {
+      guard !fired else { return }
+      fired = true
+      let resumable = waiters
+      waiters = []
+      for w in resumable { w.resume() }
+    }
+
+    /// Returns once the warm-up has actually been entered.
+    func awaitEntry() async {
+      if fired { return }
+      await withCheckedContinuation { waiters.append($0) }
+    }
+  }
+
   /// #2196 chunk 1 — the engine warm gate.
   ///
   /// When these fail, a brand new person's very first press lands on a cold
@@ -17,7 +42,9 @@ import Testing
   /// every case here asks the same question — can the gate open on anything
   /// other than the engine itself saying ready.
   @MainActor
-  @Suite("Onboarding engine warm gate", .tags(.productOutcome), .serialized)
+  @Suite(
+    "Onboarding engine warm gate", .tags(.productOutcome), .serialized,
+    .timeLimit(.minutes(1)))
   struct OnboardingWarmingGateTests {
 
     @MainActor
@@ -30,11 +57,6 @@ import Testing
       return vm
     }
 
-    /// Let the kicked task reach its first suspension point.
-    private func settle() async {
-      for _ in 0..<8 { await Task.yield() }
-    }
-
     @Test("the gate stays shut while the warm-up is still running")
     func gateHoldsUntilTheEngineAnswers() async {
       let vm = makeGatedViewModel()
@@ -43,14 +65,17 @@ import Testing
       // than one it waits out.
       let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
 
+      let entered = EntrySignal()
       vm.kickWarmingIfNeeded(
         warmUp: {
+          entered.fire()
           var it = gate.makeAsyncIterator()
           _ = await it.next()
           return .ready
         }, displayFloor: 0)
       let task = vm.warmingTask
-      await settle()
+      // The subject says it is running; nothing here guesses that it is.
+      await entered.awaitEntry()
 
       #expect(vm.warmingOutcome == .waiting, "the gate opened before the engine answered")
 
@@ -121,8 +146,10 @@ import Testing
       let vm = makeGatedViewModel()
       let calls = Counter()
       let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
+      let entered = EntrySignal()
       let warmUp: @MainActor () async -> EngineWarmupOutcome = {
         calls.value += 1
+        entered.fire()
         var it = gate.makeAsyncIterator()
         _ = await it.next()
         return .ready
@@ -130,7 +157,9 @@ import Testing
 
       vm.kickWarmingIfNeeded(warmUp: warmUp, displayFloor: 0)
       let first = vm.warmingTask
-      await settle()
+      // Without this the re-kick could land before the first attempt ran, and a
+      // `calls.value == 1` read would pass having proven nothing.
+      await entered.awaitEntry()
       vm.kickWarmingIfNeeded(warmUp: warmUp, displayFloor: 0)
 
       #expect(calls.value == 1, "a re-kick started a second warm-up")
@@ -200,15 +229,17 @@ import Testing
       let calls = Counter()
       let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
 
+      let entered = EntrySignal()
       vm.kickWarmingIfNeeded(
         warmUp: {
           calls.value += 1
+          entered.fire()
           var it = gate.makeAsyncIterator()
           _ = await it.next()
           return .ready
         }, displayFloor: 0)
       let task = vm.warmingTask
-      await settle()
+      await entered.awaitEntry()
 
       vm.skipWarmingGate()
       gateCont.yield(())
@@ -226,7 +257,9 @@ import Testing
   /// funnel lies about where people stop: `engine_warm_gate` is the step that
   /// separates "waited and got a warm engine" from "did not wait".
   @MainActor
-  @Suite("Onboarding engine warm gate telemetry", .tags(.observabilityContract), .serialized)
+  @Suite(
+    "Onboarding engine warm gate telemetry", .tags(.observabilityContract), .serialized,
+    .timeLimit(.minutes(1)))
   struct OnboardingWarmingGateTelemetryTests {
 
     final class Events: @unchecked Sendable {
@@ -309,14 +342,16 @@ import Testing
       await withHook { events in
         let vm = makeGatedViewModel()
         let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
+        let entered = EntrySignal()
         vm.kickWarmingIfNeeded(
           warmUp: {
+            entered.fire()
             var it = gate.makeAsyncIterator()
             _ = await it.next()
             return .ready
           }, displayFloor: 0)
         let task = vm.warmingTask
-        for _ in 0..<8 { await Task.yield() }
+        await entered.awaitEntry()
 
         vm.skipWarmingGate()
         gateCont.yield(())
@@ -362,14 +397,16 @@ import Testing
         struct Boom: Error {}
         let vm = makeGatedViewModel()
         let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
+        let entered = EntrySignal()
         vm.kickWarmingIfNeeded(
           warmUp: {
+            entered.fire()
             var it = gate.makeAsyncIterator()
             _ = await it.next()
             return .failed(Boom())
           }, displayFloor: 0)
         let task = vm.warmingTask
-        for _ in 0..<8 { await Task.yield() }
+        await entered.awaitEntry()
 
         vm.skipWarmingGate()
         gateCont.yield(())
