@@ -93,7 +93,14 @@ struct WarmingScreenV2: View {
         // Visible from the first frame, never behind a delay or a confirm
         // (plan D4). A gate nobody can leave would be a worse product than the
         // cold press it exists to prevent.
-        Text("In a hurry? Skip ahead")
+        //
+        // The wording is the SIXTH site on this screen that has to answer the
+        // failure case, and the only one neither review round named — found by
+        // enumerating the class rather than by a third round. "In a hurry?"
+        // is true of someone impatient with a working wait and false of
+        // someone the engine has just failed; offering it to them reads as
+        // blaming them for being in a rush.
+        Text(failureMessage == nil ? "In a hurry? Skip ahead" : "Skip and finish setup")
           .font(.obCaption)
           .foregroundStyle(Color.obAccent)
       }
