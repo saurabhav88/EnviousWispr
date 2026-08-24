@@ -377,21 +377,33 @@ final class OnboardingV2ViewModel {
     let outcome = await warmUp()
     if Task.isCancelled { return }
 
+    // The visit may have ended while this ran: the window closes, abandon is
+    // emitted, and this task deliberately survives. NOTHING it learned belongs
+    // to that visit any more — not a completion, not a block, not a stored
+    // outcome. Re-arm and say nothing.
+    //
+    // This check sits ABOVE the switch on purpose. It was first written inside
+    // the `.ready` branch alone, and cloud review found `.failed` and
+    // `.cancelled` still reporting for a dead visit — the fourth time this one
+    // class was patched at an instance instead of at its root. One guard, every
+    // outcome, no next instance.
+    guard isVisitActive?() ?? true else {
+      beginWarmingGate()
+      return
+    }
+
     switch outcome {
     case .ready:
       let elapsed = Date().timeIntervalSince(startedAt)
       if displayFloor > elapsed {
         try? await Task.sleep(for: .seconds(displayFloor - elapsed))
         if Task.isCancelled { return }
-      }
-      // The visit may have ended while this ran — the window closes, abandon is
-      // emitted, and this task deliberately survives. Re-arm rather than
-      // report: a completion after abandonment is a double terminal, and a
-      // stale `.ready` would let the next open walk through without asking an
-      // engine that may since have been unloaded.
-      guard isVisitActive?() ?? true else {
-        beginWarmingGate()
-        return
+        // Re-checked after the sleep: the floor is a real suspension point and
+        // the visit can end inside it.
+        guard isVisitActive?() ?? true else {
+          beginWarmingGate()
+          return
+        }
       }
       // Readiness both answers the warm-up and ends the visit, so it takes the
       // EXIT latch: if the person already skipped, this must stay silent and

@@ -25,6 +25,7 @@ struct PracticeScreenV2: View {
   /// Fired when the person is finished, however they got there.
   let onFinish: () -> Void
 
+  @Environment(SettingsManager.self) private var settings
   @Environment(PermissionsService.self) private var permissions
   /// The SUBJECT's own in-flight signal: true while either pipeline is
   /// recording, transcribing or polishing. The screen was previously blind to a
@@ -34,11 +35,33 @@ struct PracticeScreenV2: View {
 
   @FocusState private var boxFocused: Bool
 
-  /// A take is in flight, so both exits are held. Leaving now would close the
-  /// window the ordinary cascade is about to type into, and the words would
-  /// land on the clipboard behind the same notice this feature removes — or in
-  /// whatever app happened to be behind us.
+  /// A take is in flight, so both BUTTONS are held. Leaving by button now would
+  /// close the window the ordinary cascade is about to type into, and the words
+  /// would land on the clipboard behind the same notice this feature removes.
+  ///
+  /// KNOWN LIMIT, named rather than implied (cloud review): this holds the
+  /// buttons, NOT the window. The close control and Command-W still work,
+  /// because the window coordinator observes `willClose` and does not veto it.
+  /// Someone determined can still leave mid-take. What that costs is now
+  /// bounded rather than wrong: the abandon path emits, and `runWarmingGate`'s
+  /// visit-alive guard means the late outcome reports nothing and stores
+  /// nothing. So the DATA stays honest and the words behave exactly as they do
+  /// when anyone closes any window mid-dictation anywhere else in the app.
+  /// Vetoing a window close is a bigger change than this screen justifies.
   private var takeInFlight: Bool { live.isDictationActive }
+
+  /// FOUNDER, 2026-08-24: "this page should remind people what keybind they
+  /// set". They chose it on the previous screen seconds ago, and "hold your
+  /// shortcut" assumes they remember which one — the assumption is hardest on
+  /// exactly the person this feature exists for. Same formatter the keycap on
+  /// that screen uses, so the two can never disagree about the name.
+  private var shortcutName: String {
+    if ModifierKeyCodes.isModifierOnly(settings.toggleKeyCode), settings.toggleModifiers.isEmpty {
+      return KeySymbols.formatModifierOnly(
+        settings.toggleModifiers, keyCode: settings.toggleKeyCode)
+    }
+    return KeySymbols.format(keyCode: settings.toggleKeyCode, modifiers: settings.toggleModifiers)
+  }
 
   private var cannotHear: Bool {
     if case .cannotHear = viewModel.practiceState { return true }
@@ -75,23 +98,23 @@ struct PracticeScreenV2: View {
         ? "EnviousWispr needs permission to use your microphone.\nYou can turn it on and come back, or skip ahead."
         : "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead."
     case .listening:
-      return "Go ahead. Let go of the key when you are done."
+      return "Go ahead. Let go of \(shortcutName) when you are done."
     case .missedTheBox:
       // Says what happened and what to do, and takes the blame off them. The
       // words are genuinely on the clipboard, so telling them that is useful
       // rather than a consolation.
-      return "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold your shortcut again."
+      return "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold \(shortcutName) again."
     case .saidNothing:
       // Not an error, and never worded as one: the microphone worked, there
       // was simply nothing to hear. The prompt is drawn from the persona banks
       // so it sounds like something a person would actually say.
-      return "Your microphone is working. We just did not hear anything.\nTry holding the key and saying: tell grandma I will call Sunday."
+      return "Your microphone is working. We just did not hear anything.\nTry holding \(shortcutName) and saying: tell grandma I will call Sunday."
     case .worked:
       return "Those are your words, typed for you.\nIn any other app, click into a text box first."
     case .waiting:
       return viewModel.practiceSucceeded
         ? "Those are your words, typed for you.\nIn any other app, click into a text box first."
-        : "Hold your shortcut and say something.\nLet go when you are done."
+        : "Hold \(shortcutName) and say something.\nLet go when you are done."
     }
   }
 
