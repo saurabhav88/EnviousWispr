@@ -14,11 +14,12 @@ import Testing
 /// fixture reproduces exactly (`WordCorrector.score`, weights 0.40/0.40/0.20). No number in this
 /// file was estimated.
 ///
-/// **The bar itself cannot be tested AT its boundary with real words.** 400,000 random pairs and
-/// every shipped pack spelling against every pack canonical (1,928 x 391)
-/// produced ZERO pairs scoring exactly 0.55, so the `>=` case is unreachable by a value test. The
-/// two sides are tested instead, against the named constant rather than a literal, so moving the
-/// bar moves the test with it.
+/// **No real string SCORES exactly 0.55** — 400,000 random pairs and every shipped pack spelling
+/// against every pack canonical (1,928 x 391) produced none — so no fixture can sit on the
+/// boundary. That is a fact about the scorer's reachable values, not about the boundary, which is a
+/// property of the comparison and is asserted directly through `clearsConfidenceBar`. The measured
+/// VALUE is pinned separately, because tests written against the named constant move with it and
+/// would not notice the bar being changed.
 @Suite("QuickAddRanker — #2381 which saved word does this mishearing belong to", .tags(.productOutcome))
 struct QuickAddRankerTests {
 
@@ -332,13 +333,86 @@ struct QuickAddRankerTests {
     #expect(first.candidates.first?.isPackTerm == false, "the user's own word leads a tie")
   }
 
+  @Test("Two entries alike on every ordering key keep their order when the input is reversed")
+  func tiesSurviveAReversedInput() {
+    // Same score, same source, same canonical — the case the comparator used to leave to
+    // `Array.sorted`. Repeating one input order cannot observe it; reversing the input can.
+    let a = CustomWord(canonical: "codec")
+    let b = CustomWord(canonical: "codec")
+
+    let forward = ranker.search(query: "codec", heard: "codecs", userWords: [a, b], packTerms: [])
+    let reversed = ranker.search(query: "codec", heard: "codecs", userWords: [b, a], packTerms: [])
+
+    #expect(forward.candidates.count == 2)
+    #expect(forward.candidates.map(\.id) == reversed.candidates.map(\.id))
+    #expect(forward.preselectedID == reversed.preselectedID)
+  }
+
+  @Test("The heard ranking resolves the same tie the same way in both input orders")
+  func rankedTiesSurviveAReversedInput() {
+    let a = CustomWord(canonical: "codec")
+    let b = CustomWord(canonical: "codec")
+
+    let forward = ranker.rank(heard: "codecs", userWords: [a, b], packTerms: [])
+    let reversed = ranker.rank(heard: "codecs", userWords: [b, a], packTerms: [])
+
+    #expect(forward.candidates.map(\.id) == reversed.candidates.map(\.id))
+    #expect(forward.preselectedID == reversed.preselectedID)
+  }
+
   @Test("The preselected id is always a row that is on screen")
-  func thePreselectedRowIsAlwaysVisible() {
+  func thePreselectedRowIsAlwaysVisible() throws {
     let library = (0..<20).map { CustomWord(canonical: "Docker\($0)") }
     let ranking = ranker.rank(heard: "docker0", userWords: library, packTerms: [], limit: 2)
 
-    guard let id = ranking.preselectedID else { return }
+    // `try #require`, never a `guard ... else { return }`: the early return made this pass against
+    // a ranker that preselected NOTHING, which is the one break it exists to catch.
+    let id = try #require(ranking.preselectedID)
     #expect(ranking.candidates.contains { $0.id == id })
     #expect(ranking.preselected != nil)
+  }
+
+  @Test("A ranking cannot carry a highlight on a row that is not on screen")
+  func anIdNamingNoVisibleRowIsDropped() {
+    let visible = QuickAddRanker.Candidate(
+      word: Self.codex, score: 1, alreadyHasHeardSpelling: false)
+
+    let ranking = QuickAddRanker.Ranking(candidates: [visible], preselectedID: UUID())
+
+    #expect(ranking.preselectedID == nil, "a highlight nobody can see would still accept on Return")
+    #expect(ranking.preselected == nil)
+  }
+
+  // MARK: - The bar's value and its boundary
+
+  @Test("The confidence bar is the measured value, not whatever the constant currently says")
+  func theConfidenceBarIsTheMeasuredValue() {
+    // Every other bar test compares against the named constant, so all of them move with it. This
+    // is the one that does not: 0.55 is the lowest value at which confident-and-wrong is zero on
+    // the user's own words in BOTH the warm and cold arms of the 1,648-mishearing sweep. Changing
+    // it needs that sweep re-run, and this line is what makes the change say so.
+    #expect(QuickAddRanker.confidenceBar == 0.55)
+  }
+
+  @Test("A score exactly AT the bar clears it")
+  func theBoundaryIsInclusive() {
+    // No fixture can reach 0.55 through the scorer, so the boundary is asserted where it lives.
+    #expect(QuickAddRanker.clearsConfidenceBar(QuickAddRanker.confidenceBar))
+    #expect(!QuickAddRanker.clearsConfidenceBar(QuickAddRanker.confidenceBar.nextDown))
+    #expect(QuickAddRanker.clearsConfidenceBar(QuickAddRanker.confidenceBar.nextUp))
+  }
+
+  @Test("A library of only pack terms still renders a list")
+  func aPackOnlyLibraryStillRenders() {
+    // A brand-new user has no saved words. With `banana` scoring 0.0000 against `Docker`, a
+    // strictly-greater test against a best user score of zero admitted nothing, so this user saw an
+    // empty panel while everyone else saw their own zero-scoring rows.
+    let ranking = ranker.rank(
+      heard: "banana", userWords: [], packTerms: [CustomWord(canonical: "Docker", source: .pack)])
+
+    #expect(corrector.score("banana", against: "docker") == 0)
+    #expect(ranking.candidates.count == 1)
+    #expect(ranking.candidates.first?.isPackTerm == true)
+    #expect(ranking.preselectedID == nil, "nothing scored, so Return must still write nothing")
   }
 }

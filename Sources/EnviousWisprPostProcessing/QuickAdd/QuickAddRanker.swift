@@ -79,9 +79,14 @@ public struct QuickAddRanker: Sendable {
     /// The top row's score, or nil when there are no candidates. Telemetry reports this raw.
     public var topScore: Double? { candidates.first?.score }
 
+    /// An id naming no visible row is dropped, so the documented invariant above is carried by
+    /// this branch rather than by the sentence. A highlight on a row nobody can see is the one
+    /// state in which Return writes something the user was never shown.
     public init(candidates: [Candidate], preselectedID: UUID?) {
       self.candidates = candidates
-      self.preselectedID = preselectedID
+      self.preselectedID = preselectedID.flatMap { id in
+        candidates.contains { $0.id == id } ? id : nil
+      }
     }
 
     public static let empty = Ranking(candidates: [], preselectedID: nil)
@@ -114,17 +119,20 @@ public struct QuickAddRanker: Sendable {
     let bestUserScore = user.first?.score ?? 0
 
     var ordered = user
-    if bestUserScore < Self.confidenceBar {
+    if !Self.clearsConfidenceBar(bestUserScore) {
       // Only now do packs enter, and only ahead of the user list if they actually beat it.
       let stillPack = Self.packTermsNotOverridden(by: userWords, in: packTerms)
       let pack = score(needle: needle, against: stillPack, heardNeedle: needle)
-      if let bestPack = pack.first, bestPack.score > bestUserScore {
+      // `user.isEmpty` is not a special case, it repairs an incoherence: with user words present
+      // even zero-scoring rows render, so a user with ONLY packs saw an empty panel while everyone
+      // else saw a list. A strictly-greater test alone cannot beat a best user score of zero.
+      if let bestPack = pack.first, user.isEmpty || bestPack.score > bestUserScore {
         ordered = (user + pack).sorted(by: Self.betterFirst)
       }
     }
 
     let shown = Array(ordered.prefix(max(0, limit)))
-    guard let top = shown.first, top.score >= Self.confidenceBar else {
+    guard let top = shown.first, Self.clearsConfidenceBar(top.score) else {
       return Ranking(candidates: shown, preselectedID: nil)
     }
     return Ranking(candidates: shown, preselectedID: top.id)
@@ -176,7 +184,11 @@ public struct QuickAddRanker: Sendable {
       .sorted { a, b in
         if a.tier != b.tier { return a.tier < b.tier }
         if a.candidate.isPackTerm != b.candidate.isPackTerm { return !a.candidate.isPackTerm }
-        return a.candidate.word.canonical.lowercased() < b.candidate.word.canonical.lowercased()
+        let left = Self.normalize(a.candidate.word.canonical)
+        let right = Self.normalize(b.candidate.word.canonical)
+        if left != right { return left < right }
+        // Same last resort as `betterFirst`, and for the same reason.
+        return a.candidate.id.uuidString < b.candidate.id.uuidString
       }
       .map(\.candidate)
 
@@ -237,6 +249,14 @@ public struct QuickAddRanker: Sendable {
     return Candidate(word: word, score: best, alreadyHasHeardSpelling: carriesHeard)
   }
 
+  /// Does this score earn a one-keypress accept?
+  ///
+  /// The boundary lives here rather than inline at its two call sites so it can be asserted AT its
+  /// own value. No real string reaches exactly `confidenceBar` — 400,000 random pairs and every
+  /// shipped pack spelling against every pack canonical produced none — so a fixture-based test can
+  /// only ever straddle the boundary, never sit on it. The comparison itself has no such limit.
+  static func clearsConfidenceBar(_ score: Double) -> Bool { score >= confidenceBar }
+
   /// One ordering, used by every list this type produces.
   ///
   /// `Array.sorted` gives no stability guarantee, so ties need an explicit total order or a
@@ -245,7 +265,12 @@ public struct QuickAddRanker: Sendable {
   private static func betterFirst(_ a: Candidate, _ b: Candidate) -> Bool {
     if a.score != b.score { return a.score > b.score }
     if a.isPackTerm != b.isPackTerm { return !a.isPackTerm }
-    return a.word.canonical < b.word.canonical
+    if a.word.canonical != b.word.canonical { return a.word.canonical < b.word.canonical }
+    // Two library entries can share a canonical — a pack term and the user's override of a
+    // different one, or a duplicate the store never rejected. Without this last step their order
+    // is whatever `Array.sorted` happens to do with the input order, and a row that moves between
+    // two identical calls changes what Return accepts with no user action.
+    return a.id.uuidString < b.id.uuidString
   }
 
   /// The pack terms the user has NOT already taken ownership of.
