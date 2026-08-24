@@ -130,6 +130,22 @@ final class OverlayDirector {
   /// the same. Cloud review caught both in one finding.
   private var builtRootView: NSView?
 
+  /// One-shot, armed for the duration of one `present` transaction and consumed
+  /// by whichever terminal wins: the synchronous render, or the deferred one a
+  /// run loop later. Declared here rather than beside `present` because a stored
+  /// property cannot live in the `OverlayPresenting` extension.
+  private var presentationResultSink: ((Bool) -> Void)?
+
+  /// Set while a first render is waiting for its run loop, so `present` can tell
+  /// "the host has not been asked yet" from "the host was never going to be
+  /// asked, because the plan changed nothing".
+  ///
+  /// **Tracked rather than inferred from the render outcome**, because several
+  /// different plans produce the same outcome: rendering nil is a DISMISSAL and
+  /// reports success, so reading the outcome alone told a refused card's caller
+  /// that it had been presented — by way of the rollback that took it down.
+  private var deferredPresentationIsPending = false
+
   private var rootHostingView: NSView {
     if let builtRootView { return builtRootView }
     let view = NSHostingView(
@@ -586,7 +602,13 @@ final class OverlayDirector {
         self?.announce(announcement)
       }
       let outcome = render(plan.presentation, onPresented: announceOnSuccess)
-      if outcome == .deferred { return }
+      // The deferred branch resolves its own result when it lands; returning
+      // here must not resolve, or the caller hears a verdict before the host
+      // has been asked.
+      if outcome == .deferred {
+        deferredPresentationIsPending = true
+        return
+      }
       if outcome == .refused {
         // **A REFUSED PRESENTATION MUST NOT LEAVE AN OWNER BEHIND.** Clearing
         // `presentedID` and the window says nothing to the reducer, the model,
@@ -603,12 +625,22 @@ final class OverlayDirector {
         // second, partial one written here. Silent because nothing appeared:
         // announcing a dismissal for a pill a VoiceOver user was never told
         // about is a false statement in the other direction.
+        // **Rollback FIRST, then the verdict — and the ORDER is why this reads
+        // `presentedThisPlan` below.** The rollback dismisses through
+        // `apply(.hidden)`, which renders nil, which SUCCEEDS. Resolving on a
+        // bare render outcome therefore reported `.presented` for the very pill
+        // the host had just refused.
         rollBackRefusedPresentation()
+        resolvePresentation(false)
         // Nothing this plan installed survives, so an action addressed to it has
         // no target. Delivering it would hit the assertion below on a state the
         // rollback deliberately emptied.
         return
       }
+      // Only a plan that actually PUT SOMETHING ON SCREEN answers "presented".
+      // A `.hidden` plan reaches here too — that is a dismissal, and the sink it
+      // would otherwise consume belongs to a different request.
+      if plan.presentation != nil { resolvePresentation(true) }
     }
 
     // **A plan that changes NOTHING still announces, and that is shipped.**
@@ -622,7 +654,9 @@ final class OverlayDirector {
     // first frame actually depends on.
     if !plan.didChange {
       // Nothing is being rendered, so there is no "it landed" signal to wait
-      // for — the pill this dwell belongs to is already on screen.
+      // for — the pill this dwell belongs to is already on screen. That is also
+      // the honest answer for a caller asking whether its request reached the
+      // screen: it did, and a no-change plan did not take it down.
       armExpiry()
     }
     if !plan.didChange, announcing, let announcement = plan.announcement {
@@ -745,11 +779,21 @@ final class OverlayDirector {
         // Identity gate, not a generation counter: a presentation superseded
         // while we waited is dropped, and the one that replaced it does its own
         // render. Same one-shot staleness rule `PresentationID` exists for.
-        guard self.reducer.state.current?.id == deferredID else { return }
+        self.deferredPresentationIsPending = false
+        guard self.reducer.state.current?.id == deferredID else {
+          // Superseded while we waited. The replacement does its own render, so
+          // this request never reached the screen and its caller must hear so.
+          self.resolvePresentation(false)
+          return
+        }
         if self.performRender(presentation) {
           onPresented()
+          self.resolvePresentation(true)
         } else {
+          // Rollback FIRST, so a caller acting inside the callback sees an
+          // emptied slot rather than one still naming the pill it was refused.
           self.rollBackRefusedPresentation()
+          self.resolvePresentation(false)
         }
       }
       return .deferred
@@ -916,8 +960,72 @@ extension OverlayDirector: OverlayPresenting {
 
   var featureSlotIsAvailable: Bool { reducer.state.featureSlotIsAvailable }
 
+  private func resolvePresentation(_ presented: Bool) {
+    guard let sink = presentationResultSink else { return }
+    presentationResultSink = nil
+    sink(presented)
+  }
+
+  @discardableResult
+  func present(
+    _ request: PillRequest,
+    onResult: @escaping (PillPresentationResult) -> Void
+  ) -> PillReceipt? {
+    // **A new presentation supersedes a pending one, and its caller hears that.**
+    // One sink, armed per transaction: without this flush a recording arriving
+    // while a card is still waiting for its run loop would resolve the CARD's
+    // caller with the RECORDING's outcome, and the card's owner would commit to
+    // a pill that never appeared.
+    resolvePresentation(false)
+
+    // Captured synchronously. `deferFirstRender` hands its block to
+    // `DispatchQueue.main.async`, so it cannot run until this call stack
+    // unwinds — the deferred branch below is reached with the receipt already
+    // in hand rather than racing it.
+    var synchronousOutcome: Bool?
+    presentationResultSink = { synchronousOutcome = $0 }
+    deferredPresentationIsPending = false
+
+    guard let receipt = admit(request) else {
+      // Admission refused, so nothing was ever handed to the host and no
+      // terminal will fire. Disarm rather than leaving a sink a later
+      // transaction could consume.
+      presentationResultSink = nil
+      onResult(.notPresented)
+      return nil
+    }
+
+    if let synchronousOutcome {
+      onResult(synchronousOutcome ? .presented(receipt) : .notPresented)
+      return receipt
+    }
+
+    if deferredPresentationIsPending {
+      // The host has not been asked yet. Rewire the sink to the real caller now
+      // that the receipt exists, and let the deferred block deliver the verdict.
+      presentationResultSink = { presented in
+        onResult(presented ? .presented(receipt) : .notPresented)
+      }
+      return receipt
+    }
+
+    // Nothing rendered and nothing deferred: the plan changed nothing, which
+    // means the pill this receipt names is already on screen. That IS presented.
+    presentationResultSink = nil
+    onResult(.presented(receipt))
+    return receipt
+  }
+
   @discardableResult
   func present(_ request: PillRequest) -> PillReceipt? {
+    // Same supersession rule as the result-taking form: a caller waiting on a
+    // deferred verdict must hear that something else took the slot, even when
+    // the thing that took it did not ask for a verdict of its own.
+    resolvePresentation(false)
+    return admit(request)
+  }
+
+  private func admit(_ request: PillRequest) -> PillReceipt? {
     // Captured BEFORE the request runs, so the guard at the end can tell an
     // accepted presentation from an unchanged slot.
     let incumbentID = reducer.state.current?.id

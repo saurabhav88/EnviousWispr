@@ -191,20 +191,34 @@ final class BluetoothAwarenessPresenter {
 
     // **Admission and its proof are one call now.** This used to show and then
     // re-read the intent to confirm the overlay had taken it, because a
-    // concurrent show could win the single slot in the same run-loop turn. The
-    // receipt IS that confirmation, and a refusal returns nil — so
-    // `hasShownThisLaunch` is not spent on a card nobody saw, and the user gets
-    // the card on a later reconcile once the slot clears.
-    guard let receipt = overlay.present(.bluetoothAwareness(
-      onAcknowledge: { [weak self] in self?.handleUserAction(.gotIt) },
-      onClose: { [weak self] in self?.handleUserAction(.close) },
-      onOpenSettings: { [weak self] in self?.handleUserAction(.adjustSettings) }
-    )) else { return }
-
-    hasShownThisLaunch = true
-    currentReceipt = receipt
-    emit(.shown, nil)
-    breadcrumb(trigger, "shown", reason: nil)
+    // concurrent show could win the single slot in the same run-loop turn.
+    //
+    // **The RECEIPT is not that confirmation, and believing it was is the defect
+    // PR #2370 fixed.** A receipt proves the request was admitted and that this
+    // presenter owns the presentation; it cannot prove the host drew anything,
+    // because on the FIRST presentation of a launch the host is called a run
+    // loop later. This card is requested from `reconcile(trigger: .launch)`, so
+    // it is exactly the request most likely to BE that first presentation — and
+    // if the host then refuses, for want of a screen while the display wakes,
+    // the allowance was spent on a card nobody saw and telemetry recorded a
+    // `shown` that never happened.
+    //
+    // Committing inside `.presented` is what makes the comment above true: the
+    // allowance survives a refusal and the user gets the card on a later
+    // reconcile once a screen returns.
+    overlay.present(
+      .bluetoothAwareness(
+        onAcknowledge: { [weak self] in self?.handleUserAction(.gotIt) },
+        onClose: { [weak self] in self?.handleUserAction(.close) },
+        onOpenSettings: { [weak self] in self?.handleUserAction(.adjustSettings) }
+      ),
+      onResult: { [weak self] result in
+        guard let self, case .presented(let receipt) = result else { return }
+        self.hasShownThisLaunch = true
+        self.currentReceipt = receipt
+        self.emit(.shown, nil)
+        self.breadcrumb(trigger, "shown", reason: nil)
+      })
   }
 
   // MARK: - User actions

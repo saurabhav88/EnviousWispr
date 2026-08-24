@@ -196,6 +196,25 @@ enum PillDismissal: Equatable, Sendable {
   case silent
 }
 
+/// Whether a request reached the screen.
+///
+/// **A receipt cannot answer this, and that is a fact about time rather than a
+/// design choice** (#2292, PR #2370). `present` returns synchronously; the FIRST
+/// presentation of a launch is handed to the host a run loop later, because
+/// building the hosting view inside the status-item menu's dismiss animation
+/// causes a re-entrant layout cycle and SIGABRT. So at the moment `present`
+/// returns there is nothing truthful it can say about a host call that has not
+/// happened.
+///
+/// The receipt still means what it always meant: the request was ADMITTED and
+/// the caller OWNS that presentation. A caller that also needs to know the pill
+/// was SEEN — because it is about to spend a once-per-launch allowance, or
+/// record that the user was shown something — takes this instead.
+enum PillPresentationResult: Equatable, Sendable {
+  case presented(PillReceipt)
+  case notPresented
+}
+
 // MARK: - The façade
 
 /// The whole overlay surface, as its callers see it.
@@ -225,6 +244,20 @@ protocol OverlayPresenting: AnyObject {
   /// Show `request`, returning its receipt, or nil when it was refused.
   @discardableResult
   func present(_ request: PillRequest) -> PillReceipt?
+
+  /// Present, and hear exactly once whether it reached the screen.
+  ///
+  /// `onResult` fires exactly once per call, on every path: admission refused,
+  /// host refused, a deferred presentation superseded before it rendered, or
+  /// presented. **Commit anything a user would notice inside the `.presented`
+  /// arm, never on the receipt alone** — a Bluetooth card that spends its
+  /// once-per-launch allowance on a pill the host refused is a tip nobody sees
+  /// and a telemetry row saying they did.
+  @discardableResult
+  func present(
+    _ request: PillRequest,
+    onResult: @escaping (PillPresentationResult) -> Void
+  ) -> PillReceipt?
 
   /// Change the presentation already on screen.
   func update(_ update: PillUpdate)

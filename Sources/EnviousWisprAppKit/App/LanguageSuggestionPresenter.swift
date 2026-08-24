@@ -211,30 +211,45 @@ final class LanguageSuggestionPresenter {
     //
     // A refusal consumes a generation. Generations are equality/staleness
     // tokens, never dense indices, so a gap costs nothing.
-    guard let receipt = overlay.present(.languageChip(
-      payload: payload,
-      onLock: { [weak self] in self?.acceptCurrentChip() },
-      onDismiss: { [weak self] in self?.dismissExplicit() },
-      onExpire: { [weak self] in self?.expireCurrentChip() }
-    )) else {
-      if prevLangChanged { persistState() }
-      return
-    }
-
-    currentChip = payload
-    currentReceipt = receipt
-    lastShownLanguage = lang
-    persistState()
-    SentryBreadcrumb.add(
-      stage: "language_chip",
-      message: "chip_shown",
-      data: [
-        "lang": lang,
-        "state": state == .askToLock ? "askToLock" : "educateAboutSettings",
-        "dismissalCount": count,
-        "generation": Int(generationCounter),
-      ]
-    )
+    // **Committed on the RESULT, not on the receipt** (PR #2370). A receipt
+    // proves admission and ownership; it cannot prove the host drew anything,
+    // because the first presentation of a launch reaches the host a run loop
+    // later. `lastShownLanguage` PERSISTS, so a chip committed on a refusal
+    // would suppress that language across relaunches for a chip nobody saw.
+    //
+    // A chip cannot currently BE that first presentation — a dictation always
+    // draws a pill first, so the hosting view exists by the time a chip is
+    // requested. Committing on the result anyway keeps the rule the same at both
+    // callers, rather than making this one's correctness depend on a bootstrap
+    // ordering nothing here states or enforces.
+    overlay.present(
+      .languageChip(
+        payload: payload,
+        onLock: { [weak self] in self?.acceptCurrentChip() },
+        onDismiss: { [weak self] in self?.dismissExplicit() },
+        onExpire: { [weak self] in self?.expireCurrentChip() }
+      ),
+      onResult: { [weak self] result in
+        guard let self else { return }
+        guard case .presented(let receipt) = result else {
+          if prevLangChanged { self.persistState() }
+          return
+        }
+        self.currentChip = payload
+        self.currentReceipt = receipt
+        self.lastShownLanguage = lang
+        self.persistState()
+        SentryBreadcrumb.add(
+          stage: "language_chip",
+          message: "chip_shown",
+          data: [
+            "lang": lang,
+            "state": state == .askToLock ? "askToLock" : "educateAboutSettings",
+            "dismissalCount": count,
+            "generation": Int(self.generationCounter),
+          ]
+        )
+      })
   }
 
   /// Clear the currently visible chip payload, e.g. when a new recording starts

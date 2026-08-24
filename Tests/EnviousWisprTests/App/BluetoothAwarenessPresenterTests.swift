@@ -55,6 +55,58 @@ private final class Harness: OverlayPresenting {
     return receipt
   }
 
+
+  // MARK: - Deferred results (PR #2370)
+
+  /// Hold the result instead of answering immediately, modelling the FIRST
+  /// presentation of a launch — the only window in which a receipt can exist
+  /// before the host has been asked.
+  var defersResult = false
+  /// What the host will say when the held result is released.
+  var deferredHostAccepts = true
+  private var heldResult: ((PillPresentationResult) -> Void)?
+  private var heldReceipt: PillReceipt?
+
+  /// Release a held result the way the director would once the run loop turned.
+  func releaseDeferredResult() {
+    guard let sink = heldResult else { return }
+    heldResult = nil
+    let receipt = heldReceipt
+    heldReceipt = nil
+    if deferredHostAccepts, let receipt {
+      sink(.presented(receipt))
+    } else {
+      rollBackDeferredPresentation()
+      sink(.notPresented)
+    }
+  }
+
+  @discardableResult
+  func present(
+    _ request: PillRequest,
+    onResult: @escaping (PillPresentationResult) -> Void
+  ) -> PillReceipt? {
+    guard let receipt = present(request) else {
+      onResult(.notPresented)
+      return nil
+    }
+    guard defersResult else {
+      onResult(.presented(receipt))
+      return receipt
+    }
+    heldResult = onResult
+    heldReceipt = receipt
+    return receipt
+  }
+
+  /// The director rolls a refused presentation back through its own silent
+  /// dismiss path; the fake mirrors the OUTCOME rather than the mechanism.
+  private func rollBackDeferredPresentation() {
+    currentReceipt = nil
+    cardIsShowing = false
+    slotIsFree = true
+  }
+
   func update(_ update: PillUpdate) {}
 
   func dismissCurrent(_ mode: PillDismissal) {
@@ -259,6 +311,78 @@ private func emitEquals(
     #expect(h.emitted.count == emitCountAfterShow)  // no dismiss emit
     #expect(h.hideCount == 0)  // does not touch the newer overlay
     #expect(h.unconditionalDismissals == 0)
+  }
+
+  // MARK: - PR #2370: the launch allowance is spent on a SEEN card
+
+  /// **THE DEFECT: a receipt is not proof the card was drawn.** `present`
+  /// returns synchronously, and the FIRST presentation of a launch reaches the
+  /// host a run loop later. This card is requested from
+  /// `reconcile(trigger: .launch)`, so it is the request most likely to BE that
+  /// first presentation.
+  ///
+  /// REPRODUCIBLE: the app is a login item. It launches while the display is
+  /// still waking, the host has no screen and refuses, and the old code had
+  /// already spent `hasShownThisLaunch` and emitted `.shown`. The user never
+  /// sees the tip that launch and the dashboard says they did.
+  @Test func deferredRefusalLeavesTheLaunchAllowanceUnspent() {
+    let h = Harness()
+    h.isBluetooth = true
+    h.defersResult = true
+    h.deferredHostAccepts = false
+    let p = h.makePresenter()
+
+    p.reconcile(trigger: .launch)
+    h.releaseDeferredResult()
+
+    #expect(h.emitted.isEmpty, "a card the host refused was recorded as shown")
+    #expect(h.cardIsShowing == false, "a refused card is still on screen")
+
+    // The allowance survived, so a later reconcile still gets the card — which
+    // is the user-visible half and the whole point of not committing early.
+    h.defersResult = false
+    p.reconcile(trigger: .deviceChanged)
+    #expect(h.showCount == 2, "the launch allowance was spent on a card nobody saw")
+    #expect(
+      emitEquals(h.lastEmit, .shown, nil),
+      "the card that DID reach the screen was not recorded")
+  }
+
+  /// The paired accepted case. Without it, "does not commit" is also satisfied
+  /// by a presenter that never commits at all.
+  @Test func deferredAcceptanceCommitsExactlyOnce() {
+    let h = Harness()
+    h.isBluetooth = true
+    h.defersResult = true
+    let p = h.makePresenter()
+
+    p.reconcile(trigger: .launch)
+    #expect(h.emitted.isEmpty, "the card was recorded as shown before the host answered")
+
+    h.releaseDeferredResult()
+
+    #expect(h.emitted.count == 1, "the accepted card was not recorded exactly once")
+    #expect(emitEquals(h.lastEmit, .shown, nil))
+    #expect(h.cardIsShowing, "the accepted card is not on screen")
+
+    // And the allowance IS spent now, so a later reconcile shows nothing more.
+    p.reconcile(trigger: .deviceChanged)
+    #expect(h.showCount == 1, "the launch allowance was not spent on a card that was seen")
+  }
+
+  /// The ordinary path — every presentation after the first — still commits, and
+  /// still exactly once. Without this the two cases above are satisfied by a
+  /// presenter that only works when a result is deferred.
+  @Test func immediatePresentationCommitsExactlyOnce() {
+    let h = Harness()
+    h.isBluetooth = true
+    let p = h.makePresenter()
+
+    p.reconcile(trigger: .launch)
+
+    #expect(h.showCount == 1)
+    #expect(h.emitted.count == 1, "the immediate path did not record exactly one shown")
+    #expect(emitEquals(h.lastEmit, .shown, nil))
   }
 
   // MARK: - #2292 C3b: admission is the overlay's answer

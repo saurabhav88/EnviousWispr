@@ -101,6 +101,52 @@
     /// orders the panel out AND releases the hosting view, so a hidden pill stops
     /// polling the audio level instead of running invisibly for the rest of the
     /// session.
+    /// A windowless host that can be told to refuse, so the refusal path needs no
+    /// screen state.
+    private final class RefusingWindowlessHost: OverlayWindowHosting {
+      var accepts = true
+      private(set) var presentCount = 0
+      private(set) var hideCount = 0
+
+      @discardableResult
+      func present(
+        _ view: NSView, width: OverlayWidth, fixedHeight: CGFloat?, isFresh: Bool,
+        position: OverlayPillPosition
+      ) -> Bool {
+        presentCount += 1
+        return accepts
+      }
+
+      func hide() { hideCount += 1 }
+      func resizeCurrentPresentation(to size: CGSize) {}
+      func repositionForActiveSpaceChange() {}
+    }
+
+    /// Holds the deferred first render so a test can fire it, which is the only
+    /// way to reach the window this whole class of defect lives in.
+    private final class Deferral {
+      var block: (() -> Void)?
+      var fired = 0
+      func fire() {
+        guard let block else { return }
+        self.block = nil
+        fired += 1
+        block()
+      }
+    }
+
+    private static func deferrableDirector(
+      _ host: RefusingWindowlessHost, _ deferral: Deferral
+    ) -> OverlayDirector {
+      OverlayDirector(
+        host: host,
+        scheduler: .manual { _ in },
+        announce: { _ in },
+        livePreview: .disabled,
+        grantAccessibility: {},
+        deferFirstRender: { deferral.block = $0 })
+    }
+
     private static func closeAllWindows() {
       for h in hosts { h.hide() }
       hosts.removeAll()
@@ -956,6 +1002,132 @@
         compact.width == .fixed(185), "the non-preview recording pill lost its 185-point width")
       #expect(
         wide.width == .fixed(400), "the Live Preview pill did not take its 400-point width")
+    }
+
+    // MARK: - A presentation result is delivered exactly once (PR #2370)
+
+    /// **THE DEFECT: a receipt is not proof the pill was drawn.** `present`
+    /// returns synchronously, and the FIRST presentation of a launch reaches the
+    /// host a run loop later — so at the moment a receipt is handed back there is
+    /// nothing truthful it can say about a host call that has not happened.
+    ///
+    /// REPRODUCIBLE: the app is a login item and the Bluetooth card is requested
+    /// from `reconcile(trigger: .launch)`, so it is the request most likely to BE
+    /// that first presentation. If the host then refuses for want of a screen
+    /// while the display wakes, the old code spent a once-per-launch allowance on
+    /// a card nobody saw and recorded a `shown` that never happened.
+    @Test("a deferred presentation the host refuses reports notPresented")
+    func deferredRefusalReportsNotPresented() {
+      let host = RefusingWindowlessHost()
+      let deferral = Deferral()
+      let d = Self.deferrableDirector(host, deferral)
+      host.accepts = false
+      var results: [PillPresentationResult] = []
+
+      let receipt = d.present(
+        .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+        onResult: { results.append($0) })
+
+      // The receipt IS handed back — admission succeeded — and no result has been
+      // delivered yet, because the host has not been asked.
+      #expect(receipt != nil, "admission was refused, so this case never reaches its subject")
+      #expect(results.isEmpty, "a verdict was delivered before the host was asked")
+
+      deferral.fire()
+
+      #expect(results == [.notPresented], "a refused card was reported as presented")
+      #expect(d.renderModel.presentation == nil, "a refused card is still published")
+      #expect(d.featureSlotIsAvailable, "the refused card still holds the slot")
+    }
+
+    /// The paired accepted case. Without it, "reports notPresented" is also
+    /// satisfied by a director that reports notPresented for everything.
+    @Test("a deferred presentation the host accepts reports presented, once")
+    func deferredAcceptanceReportsPresentedOnce() throws {
+      let host = RefusingWindowlessHost()
+      let deferral = Deferral()
+      let d = Self.deferrableDirector(host, deferral)
+      var results: [PillPresentationResult] = []
+
+      let receipt = try #require(
+        d.present(
+          .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+          onResult: { results.append($0) }))
+      #expect(results.isEmpty, "a verdict was delivered before the host was asked")
+
+      deferral.fire()
+
+      #expect(results == [.presented(receipt)], "the accepted card was not reported once")
+      guard case .bluetoothAwareness? = d.renderModel.presentation?.content else {
+        Issue.record("the accepted card never reached the screen")
+        return
+      }
+    }
+
+    /// A deferred presentation superseded before it renders never reached the
+    /// screen, and its caller must hear that rather than nothing at all — a
+    /// silent path is what leaves a once-per-launch allowance spent forever.
+    @Test("a deferred presentation superseded before rendering reports notPresented")
+    func supersededDeferralReportsNotPresented() {
+      let host = RefusingWindowlessHost()
+      let deferral = Deferral()
+      let d = Self.deferrableDirector(host, deferral)
+      var results: [PillPresentationResult] = []
+
+      d.present(
+        .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+        onResult: { results.append($0) })
+
+      // A recording takes the slot while the card is still waiting to render.
+      Self.record(d, level: 0.3)
+      deferral.fire()
+
+      #expect(results == [.notPresented], "a superseded card was reported as presented")
+    }
+
+    /// The ordinary path, which is every presentation after the first: no
+    /// deferral, one result, delivered before `present` returns.
+    @Test("an immediate presentation reports presented exactly once")
+    func immediatePresentationReportsPresentedOnce() throws {
+      let host = RefusingWindowlessHost()
+      let deferral = Deferral()
+      let d = Self.deferrableDirector(host, deferral)
+
+      // Spend the deferral on a first presentation, so the next one is
+      // synchronous — then clear the slot, or the card is refused at admission
+      // and this case never reaches the immediate render it is about.
+      d.present(.engineReady)
+      deferral.fire()
+      d.dismissCurrent(.silent)
+
+      var results: [PillPresentationResult] = []
+      let receipt = try #require(
+        d.present(
+          .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+          onResult: { results.append($0) }))
+
+      #expect(deferral.fired == 1, "the second presentation deferred, so this is not the immediate path")
+      #expect(results == [.presented(receipt)], "the immediate path did not report exactly one result")
+    }
+
+    /// Admission refusal is the fourth terminal and the only one that also
+    /// returns nil. A caller that hears nothing here would keep an allowance
+    /// pending forever waiting for a verdict that never arrives.
+    @Test("a request refused at admission reports notPresented and returns nil")
+    func admissionRefusalReportsNotPresented() {
+      let host = RefusingWindowlessHost()
+      let deferral = Deferral()
+      let d = Self.deferrableDirector(host, deferral)
+      Self.record(d, level: 0.3)
+      deferral.fire()
+
+      var results: [PillPresentationResult] = []
+      let receipt = d.present(
+        .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+        onResult: { results.append($0) })
+
+      #expect(receipt == nil, "a recording holds the slot, so the card is refused")
+      #expect(results == [.notPresented], "an admission refusal delivered no verdict")
     }
 
     // MARK: - Fail closed (#2292 C19)

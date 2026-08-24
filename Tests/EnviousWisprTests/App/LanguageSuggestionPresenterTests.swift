@@ -55,6 +55,51 @@ private final class FakeOverlay: OverlayPresenting {
     return receipt
   }
 
+  // MARK: - Deferred results (PR #2370)
+
+  /// Hold the result instead of answering immediately, modelling the FIRST
+  /// presentation of a launch — the only window in which a receipt can exist
+  /// before the host has been asked. The chip cannot currently BE that first
+  /// presentation, since a dictation always draws a pill first; the switch
+  /// exists so the presenter's commit rule is testable rather than resting on
+  /// a bootstrap ordering nothing here enforces.
+  var defersResult = false
+  var deferredHostAccepts = true
+  private var heldResult: ((PillPresentationResult) -> Void)?
+  private var heldReceipt: PillReceipt?
+
+  func releaseDeferredResult() {
+    guard let sink = heldResult else { return }
+    heldResult = nil
+    let receipt = heldReceipt
+    heldReceipt = nil
+    if deferredHostAccepts, let receipt {
+      sink(.presented(receipt))
+    } else {
+      currentReceipt = nil
+      slotIsFree = true
+      sink(.notPresented)
+    }
+  }
+
+  @discardableResult
+  func present(
+    _ request: PillRequest,
+    onResult: @escaping (PillPresentationResult) -> Void
+  ) -> PillReceipt? {
+    guard let receipt = present(request) else {
+      onResult(.notPresented)
+      return nil
+    }
+    guard defersResult else {
+      onResult(.presented(receipt))
+      return receipt
+    }
+    heldResult = onResult
+    heldReceipt = receipt
+    return receipt
+  }
+
   func update(_ update: PillUpdate) {}
 
   func dismissCurrent(_ mode: PillDismissal) {
