@@ -130,21 +130,6 @@ final class OverlayDirector {
   /// the same. Cloud review caught both in one finding.
   private var builtRootView: NSView?
 
-  /// One-shot, armed for the duration of one `present` transaction and consumed
-  /// by whichever terminal wins: the synchronous render, or the deferred one a
-  /// run loop later. Declared here rather than beside `present` because a stored
-  /// property cannot live in the `OverlayPresenting` extension.
-  private var presentationResultSink: ((Bool) -> Void)?
-
-  /// Set while a first render is waiting for its run loop, so `present` can tell
-  /// "the host has not been asked yet" from "the host was never going to be
-  /// asked, because the plan changed nothing".
-  ///
-  /// **Tracked rather than inferred from the render outcome**, because several
-  /// different plans produce the same outcome: rendering nil is a DISMISSAL and
-  /// reports success, so reading the outcome alone told a refused card's caller
-  /// that it had been presented — by way of the rollback that took it down.
-  private var deferredPresentationIsPending = false
 
   private var rootHostingView: NSView {
     if let builtRootView { return builtRootView }
@@ -154,6 +139,50 @@ final class OverlayDirector {
         sendEvent: { [weak self] event in self?.handle(event, binding: .none) }))
     builtRootView = view
     return view
+  }
+
+  /// Carries one `present` call's result from wherever that call terminates back
+  /// to the caller — and is reachable from nothing else.
+  ///
+  /// **NOT stored on the director, and that is the whole design.** A result held
+  /// in a director property belongs to whoever touched it last, and both ways of
+  /// managing that shipped a defect in turn: left armed, a recording resolved a
+  /// CARD's caller with the recording's outcome; flushed on entry, a request that
+  /// `admit` went on to REFUSE had already told a pending caller its card never
+  /// appeared — while that card rendered anyway, with buttons whose target its
+  /// presenter had never been told to record. A relay created by the call and
+  /// captured by that call's own deferred block cannot be reached by a later
+  /// transaction, so neither is expressible.
+  ///
+  /// **SEVERAL DEFERRALS CAN BE PENDING AT ONCE**, which is why no single slot
+  /// could have been right: `builtRootView` is assigned inside `rootHostingView`,
+  /// reached only from `performRender`, so until some deferred block actually
+  /// renders, every presentation defers and queues its own block.
+  ///
+  /// One-shot: `resolve` after the first is a no-op, so a path that both rolls
+  /// back and reports cannot report twice.
+  private final class PresentationRelay {
+    private var deliver: ((Bool) -> Void)?
+
+    /// Set by `render` when it hands the presentation to a later run loop, so
+    /// `present` can tell "the host has not been asked yet" from "the host was
+    /// never going to be asked, because the plan changed nothing".
+    private(set) var isDeferred = false
+
+    init(_ deliver: @escaping (Bool) -> Void) { self.deliver = deliver }
+
+    func markDeferred() { isDeferred = true }
+
+    /// Rebind once the receipt exists, which is only after admission.
+    func redirect(to deliver: @escaping (Bool) -> Void) { self.deliver = deliver }
+
+    func disarm() { deliver = nil }
+
+    func resolve(_ presented: Bool) {
+      guard let deliver else { return }
+      self.deliver = nil
+      deliver(presented)
+    }
   }
 
   /// The occupant the host is currently showing, so a morph can be told from a
@@ -286,7 +315,9 @@ final class OverlayDirector {
     case install(deliver: (PillAction) -> Void, onExpire: (() -> Void)?)
   }
 
-  private func handle(_ event: OverlayEvent, binding: BindingInput) {
+  private func handle(
+    _ event: OverlayEvent, binding: BindingInput, relay: PresentationRelay? = nil
+  ) {
     if case .pipeline(.recording) = event {
       // **The wrong ORDER is what this refuses, not the wrong event.** A caller
       // that sends first and installs providers afterwards renders one frame
@@ -308,7 +339,7 @@ final class OverlayDirector {
         "use presentRecording(...) — a recording's providers and layout must be "
           + "installed in the same operation that presents it")
     }
-    apply(reducer.reduce(event), binding: binding)
+    apply(reducer.reduce(event), binding: binding, relay: relay)
   }
 
   /// Present the recording pill with its providers and its layout installed in
@@ -331,7 +362,8 @@ final class OverlayDirector {
     audioLevel: Float,
     audioLevelProvider: @escaping () -> Float,
     recordingElapsedProvider: @escaping () -> TimeInterval?,
-    isRecordingLocked: Bool
+    isRecordingLocked: Bool,
+    relay: PresentationRelay? = nil
   ) {
     // **The lock is a show-time value, not a later morph.** The shipped
     // `show(intent:isRecordingLocked:)` takes it in the same call and commits it
@@ -361,7 +393,7 @@ final class OverlayDirector {
 
     guard let presentation = plan.presentation else {
       // The reducer refused — a feature holds the slot, or nothing changed.
-      apply(plan, binding: .none, effectsAlreadyDelivered: true)
+      apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
       return
     }
 
@@ -390,7 +422,7 @@ final class OverlayDirector {
           to: CGSize(width: self.model.recordingLayout.width, height: height))
       })
 
-    apply(plan, binding: .none, effectsAlreadyDelivered: true)
+    apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
   }
 
   /// Present the accessibility notice, showing the toast or falling back to the
@@ -419,7 +451,7 @@ final class OverlayDirector {
   /// `overlay?.dismissSilently()`. Requesting and leaving the notice on screen
   /// is a pill the user already answered; dismissing first would race the
   /// system prompt against the pill's own teardown.
-  private func presentAccessibilityNotice() {
+  private func presentAccessibilityNotice(relay: PresentationRelay? = nil) {
     apply(
       reducer.reduceAccessibilityNotice(showingToast: { [accessibilityEligibility] in
         accessibilityEligibility.claim()
@@ -433,7 +465,8 @@ final class OverlayDirector {
           }
           self.grantAccessibility()
           self.dismissSilently()
-        }, onExpire: nil))
+        }, onExpire: nil),
+      relay: relay)
   }
 
   /// Empty the slot WITHOUT announcing "Recording complete".
@@ -470,7 +503,7 @@ final class OverlayDirector {
 
   private func apply(
     _ plan: OverlayPlan, binding: BindingInput, announcing: Bool = true,
-    effectsAlreadyDelivered: Bool = false
+    effectsAlreadyDelivered: Bool = false, relay: PresentationRelay? = nil
   ) {
     // **Effects run FIRST, and that half IS load-bearing rather than tidy.**
     // recordingIntentObserver fired at the top of `show(intent:)`, before any
@@ -601,14 +634,11 @@ final class OverlayDirector {
         guard announcing, let announcement = plan.announcement else { return }
         self?.announce(announcement)
       }
-      let outcome = render(plan.presentation, onPresented: announceOnSuccess)
-      // The deferred branch resolves its own result when it lands; returning
-      // here must not resolve, or the caller hears a verdict before the host
-      // has been asked.
-      if outcome == .deferred {
-        deferredPresentationIsPending = true
-        return
-      }
+      let outcome = render(plan.presentation, onPresented: announceOnSuccess, relay: relay)
+      // The deferred branch holds the relay and resolves it when it lands;
+      // returning here must not resolve, or the caller hears a verdict before
+      // the host has been asked.
+      if outcome == .deferred { return }
       if outcome == .refused {
         // **A REFUSED PRESENTATION MUST NOT LEAVE AN OWNER BEHIND.** Clearing
         // `presentedID` and the window says nothing to the reducer, the model,
@@ -630,17 +660,21 @@ final class OverlayDirector {
         // `apply(.hidden)`, which renders nil, which SUCCEEDS. Resolving on a
         // bare render outcome therefore reported `.presented` for the very pill
         // the host had just refused.
+        // **Rollback FIRST, then the verdict.** The rollback dismisses through
+        // `apply(.hidden)`, which renders nil, which SUCCEEDS — and it carries no
+        // relay, so it cannot answer for the presentation it is undoing. Reading
+        // a bare render outcome instead reported `.presented` for the very pill
+        // the host had just refused.
         rollBackRefusedPresentation()
-        resolvePresentation(false)
+        relay?.resolve(false)
         // Nothing this plan installed survives, so an action addressed to it has
         // no target. Delivering it would hit the assertion below on a state the
         // rollback deliberately emptied.
         return
       }
       // Only a plan that actually PUT SOMETHING ON SCREEN answers "presented".
-      // A `.hidden` plan reaches here too — that is a dismissal, and the sink it
-      // would otherwise consume belongs to a different request.
-      if plan.presentation != nil { resolvePresentation(true) }
+      // A `.hidden` plan reaches here too, and that is a dismissal.
+      if plan.presentation != nil { relay?.resolve(true) }
     }
 
     // **A plan that changes NOTHING still announces, and that is shipped.**
@@ -738,7 +772,8 @@ final class OverlayDirector {
 
   @discardableResult
   private func render(
-    _ presentation: OverlayPresentation?, onPresented: @escaping () -> Void = {}
+    _ presentation: OverlayPresentation?, onPresented: @escaping () -> Void = {},
+    relay: PresentationRelay? = nil
   ) -> RenderOutcome {
     guard let presentation else {
       presentedID = nil
@@ -774,26 +809,35 @@ final class OverlayDirector {
     if builtRootView == nil {
       presentedID = presentation.id
       let deferredID = presentation.id
+      relay?.markDeferred()
+      // Captured, not read from the director when the block fires: the result
+      // belongs to the call that scheduled this block, and a transaction that
+      // starts in between must not be able to reach it.
       deferFirstRender { [weak self] in
-        guard let self else { return }
+        guard let self else {
+          // The director went away before its own run loop turn. Nothing was
+          // drawn, and a caller left waiting forever is a once-per-launch
+          // allowance spent on a pill that never existed.
+          relay?.resolve(false)
+          return
+        }
         // Identity gate, not a generation counter: a presentation superseded
         // while we waited is dropped, and the one that replaced it does its own
         // render. Same one-shot staleness rule `PresentationID` exists for.
-        self.deferredPresentationIsPending = false
         guard self.reducer.state.current?.id == deferredID else {
           // Superseded while we waited. The replacement does its own render, so
           // this request never reached the screen and its caller must hear so.
-          self.resolvePresentation(false)
+          relay?.resolve(false)
           return
         }
         if self.performRender(presentation) {
           onPresented()
-          self.resolvePresentation(true)
+          relay?.resolve(true)
         } else {
           // Rollback FIRST, so a caller acting inside the callback sees an
           // emptied slot rather than one still naming the pill it was refused.
           self.rollBackRefusedPresentation()
-          self.resolvePresentation(false)
+          relay?.resolve(false)
         }
       }
       return .deferred
@@ -960,37 +1004,25 @@ extension OverlayDirector: OverlayPresenting {
 
   var featureSlotIsAvailable: Bool { reducer.state.featureSlotIsAvailable }
 
-  private func resolvePresentation(_ presented: Bool) {
-    guard let sink = presentationResultSink else { return }
-    presentationResultSink = nil
-    sink(presented)
-  }
-
   @discardableResult
   func present(
     _ request: PillRequest,
     onResult: @escaping (PillPresentationResult) -> Void
   ) -> PillReceipt? {
-    // **A new presentation supersedes a pending one, and its caller hears that.**
-    // One sink, armed per transaction: without this flush a recording arriving
-    // while a card is still waiting for its run loop would resolve the CARD's
-    // caller with the RECORDING's outcome, and the card's owner would commit to
-    // a pill that never appeared.
-    resolvePresentation(false)
-
     // Captured synchronously. `deferFirstRender` hands its block to
     // `DispatchQueue.main.async`, so it cannot run until this call stack
-    // unwinds — the deferred branch below is reached with the receipt already
-    // in hand rather than racing it.
+    // unwinds — the branches below are reached with the receipt already in hand
+    // rather than racing it.
     var synchronousOutcome: Bool?
-    presentationResultSink = { synchronousOutcome = $0 }
-    deferredPresentationIsPending = false
+    let relay = PresentationRelay { synchronousOutcome = $0 }
 
-    guard let receipt = admit(request) else {
-      // Admission refused, so nothing was ever handed to the host and no
-      // terminal will fire. Disarm rather than leaving a sink a later
-      // transaction could consume.
-      presentationResultSink = nil
+    guard let receipt = admit(request, relay: relay) else {
+      // **A REFUSED REQUEST ANSWERS FOR ITSELF AND FOR NOTHING ELSE.** Nothing
+      // was handed to the host and nothing was superseded, so a presentation
+      // already waiting for its run loop still renders and still reports through
+      // its own relay. Answering on its behalf here is what put a Bluetooth card
+      // on screen with buttons its presenter had never recorded a target for.
+      relay.disarm()
       onResult(.notPresented)
       return nil
     }
@@ -1000,32 +1032,32 @@ extension OverlayDirector: OverlayPresenting {
       return receipt
     }
 
-    if deferredPresentationIsPending {
-      // The host has not been asked yet. Rewire the sink to the real caller now
-      // that the receipt exists, and let the deferred block deliver the verdict.
-      presentationResultSink = { presented in
+    if relay.isDeferred {
+      // The host has not been asked yet. Rebind to the real caller now that the
+      // receipt exists; the deferred block holding this relay delivers the
+      // verdict on whichever of its three terminals it reaches.
+      relay.redirect(to: { presented in
         onResult(presented ? .presented(receipt) : .notPresented)
-      }
+      })
       return receipt
     }
 
     // Nothing rendered and nothing deferred: the plan changed nothing, which
     // means the pill this receipt names is already on screen. That IS presented.
-    presentationResultSink = nil
+    relay.disarm()
     onResult(.presented(receipt))
     return receipt
   }
 
   @discardableResult
   func present(_ request: PillRequest) -> PillReceipt? {
-    // Same supersession rule as the result-taking form: a caller waiting on a
-    // deferred verdict must hear that something else took the slot, even when
-    // the thing that took it did not ask for a verdict of its own.
-    resolvePresentation(false)
-    return admit(request)
+    // No relay: this form owns no result. A caller waiting on a deferred verdict
+    // is answered by that deferral's own block, which reports `.notPresented`
+    // through its identity gate if this request supersedes it.
+    admit(request, relay: nil)
   }
 
-  private func admit(_ request: PillRequest) -> PillReceipt? {
+  private func admit(_ request: PillRequest, relay: PresentationRelay?) -> PillReceipt? {
     // Captured BEFORE the request runs, so the guard at the end can tell an
     // accepted presentation from an unchanged slot.
     let incumbentID = reducer.state.current?.id
@@ -1035,30 +1067,31 @@ extension OverlayDirector: OverlayPresenting {
         audioLevel: input.audioLevel,
         audioLevelProvider: input.audioLevelProvider,
         recordingElapsedProvider: input.recordingElapsedProvider,
-        isRecordingLocked: input.isLocked)
+        isRecordingLocked: input.isLocked,
+        relay: relay)
     case .processing(let phase):
-      handle(.pipeline(.processing(phase: phase)), binding: .none)
+      handle(.pipeline(.processing(phase: phase)), binding: .none, relay: relay)
     case .clipboardFallback:
-      handle(.pipeline(.clipboardFallback), binding: .none)
+      handle(.pipeline(.clipboardFallback), binding: .none, relay: relay)
     case .warning(let reason):
-      handle(.pipeline(.warning(reason: reason)), binding: .none)
+      handle(.pipeline(.warning(reason: reason)), binding: .none, relay: relay)
     case .error(let reason):
-      handle(.pipeline(.error(reason: reason)), binding: .none)
+      handle(.pipeline(.error(reason: reason)), binding: .none, relay: relay)
     case .advisory(let reason):
-      handle(.pipeline(.advisory(reason: reason)), binding: .none)
+      handle(.pipeline(.advisory(reason: reason)), binding: .none, relay: relay)
     case .interruption(let reason):
-      handle(.pipeline(.interruption(reason: reason)), binding: .none)
+      handle(.pipeline(.interruption(reason: reason)), binding: .none, relay: relay)
     case .cachingModel(let engineLabel):
-      handle(.pipeline(.cachingModel(engineLabel: engineLabel)), binding: .none)
+      handle(.pipeline(.cachingModel(engineLabel: engineLabel)), binding: .none, relay: relay)
     case .engineReady:
-      handle(.pipeline(.engineReady), binding: .none)
+      handle(.pipeline(.engineReady), binding: .none, relay: relay)
     case .recoverySucceeded:
-      handle(.pipeline(.recoverySucceeded), binding: .none)
+      handle(.pipeline(.recoverySucceeded), binding: .none, relay: relay)
     case .importStatus(let message):
-      handle(.importStatus(message: message), binding: .none)
+      handle(.importStatus(message: message), binding: .none, relay: relay)
 
     case .accessibilityNotice:
-      presentAccessibilityNotice()
+      presentAccessibilityNotice(relay: relay)
     // **Discard, THEN dismiss, and the order is the shipped one.** The router this
     // replaces ran `recovery?.discardActiveRecovery()` followed by
     // `overlay?.dismissSilently()`; calling the owner and leaving the notice on
@@ -1072,7 +1105,8 @@ extension OverlayDirector: OverlayPresenting {
             onDiscard()
             self?.dismissSilently()
           },
-          onExpire: nil))
+          onExpire: nil),
+        relay: relay)
     // **The chip travels as a PIPELINE intent, and the Bluetooth card does not.**
     // The shipped path routes the chip through the pipeline, so it sets
     // `pipelineIntent` and arbitrates against the pipeline the way the presenter
@@ -1106,7 +1140,8 @@ extension OverlayDirector: OverlayPresenting {
             default: break
             }
           },
-          onExpire: onExpire))
+          onExpire: onExpire),
+        relay: relay)
     case .bluetoothAwareness(let onAcknowledge, let onClose, let onOpenSettings):
       // Same admission transaction as `.languageChip` above. C3b moves the
       // Bluetooth presenter onto the receipt; the guard belongs here from the
@@ -1123,7 +1158,8 @@ extension OverlayDirector: OverlayPresenting {
             default: break
             }
           },
-          onExpire: nil))
+          onExpire: nil),
+        relay: relay)
     // **Take, DISMISS, then forward — matching the shipped order.**
     // `EscapeRecoveryWiring` dismisses before pasting for ONE stated reason: a
     // spoken "overlay hidden" arriving after the restore is noise on top of the
@@ -1162,7 +1198,8 @@ extension OverlayDirector: OverlayPresenting {
             self.dismissSilently()
             onPaste(held.payload)
           },
-          onExpire: nil))
+          onExpire: nil),
+        relay: relay)
     }
 
     // **A refused request returns nil, not the incumbent's receipt.** The slot

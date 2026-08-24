@@ -122,17 +122,34 @@
       func repositionForActiveSpaceChange() {}
     }
 
-    /// Holds the deferred first render so a test can fire it, which is the only
-    /// way to reach the window this whole class of defect lives in.
+    /// Holds the deferred first renders so a test can fire them, which is the
+    /// only way to reach the window this whole class of defect lives in.
+    ///
+    /// **A QUEUE, not a slot, because production queues too.** `builtRootView` is
+    /// assigned inside `rootHostingView`, reached only from `performRender`, so
+    /// until some deferred block actually renders, every presentation defers and
+    /// schedules its own block. A one-slot fixture silently dropped all but the
+    /// last, which made the case the relay exists for unwritable — the fixture
+    /// would have reported coverage it did not have.
     private final class Deferral {
-      var block: (() -> Void)?
+      private var blocks: [() -> Void] = []
       var fired = 0
-      func fire() {
-        guard let block else { return }
-        self.block = nil
-        fired += 1
-        block()
+
+      var block: (() -> Void)? {
+        get { blocks.first }
+        set { if let newValue { blocks.append(newValue) } else { blocks = [] } }
       }
+
+      /// Fire the oldest queued block, the way the main queue would.
+      func fire() {
+        guard !blocks.isEmpty else { return }
+        let next = blocks.removeFirst()
+        fired += 1
+        next()
+      }
+
+      /// Drain every queued block in the order they were scheduled.
+      func fireAll() { while !blocks.isEmpty { fire() } }
     }
 
     private static func deferrableDirector(
@@ -1062,6 +1079,129 @@
         Issue.record("the accepted card never reached the screen")
         return
       }
+    }
+
+    /// **A REQUEST THAT IS REFUSED ANSWERS FOR ITSELF AND FOR NOTHING ELSE.**
+    /// The card is still waiting for its run loop when a second feature asks for
+    /// the slot and is turned away. The card is untouched by that: it still
+    /// renders, and its owner must still be told, because the owner is what
+    /// records the receipt the buttons are dispatched through.
+    ///
+    /// REPRODUCIBLE: a launch-time reconcile defers the card, a second feature
+    /// request arrives in the same run-loop turn and is refused for want of the
+    /// slot the card itself holds. Resolving the pending caller on the way in put
+    /// a VISIBLE Bluetooth card on screen with dead buttons and no `.shown` — the
+    /// user sees a tip they cannot dismiss, and the dashboard says they were
+    /// never shown one.
+    @Test
+    func aRefusedRequestLeavesAPendingDeferralsResultIntact() throws {
+      let host = RefusingWindowlessHost()
+      let deferral = Deferral()
+      let d = Self.deferrableDirector(host, deferral)
+      var cardResults: [PillPresentationResult] = []
+      var refusedResults: [PillPresentationResult] = []
+
+      let receipt = try #require(
+        d.present(
+          .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+          onResult: { cardResults.append($0) }))
+
+      // A second feature asks while the card holds the slot, and is refused.
+      let refused = d.present(.importStatus(message: "Imported 3 words"),
+                              onResult: { refusedResults.append($0) })
+
+      #expect(refused == nil, "the second feature was admitted, so this case never reaches its subject")
+      #expect(refusedResults == [.notPresented], "the refused caller was not told it was refused")
+      #expect(cardResults.isEmpty, "the refused request answered on the pending card's behalf")
+
+      deferral.fire()
+
+      #expect(
+        cardResults == [.presented(receipt)],
+        "the card rendered but its owner was never told, so its buttons have no target")
+      guard case .bluetoothAwareness? = d.renderModel.presentation?.content else {
+        Issue.record("the card never reached the screen")
+        return
+      }
+    }
+
+    /// The paired case: a request that IS admitted supersedes the pending one,
+    /// and the pending caller hears `.notPresented` from its own deferred block.
+    /// Without this, the case above is satisfied by a director that simply never
+    /// reports supersession.
+    @Test
+    func anAdmittedRequestStillSupersedesAPendingDeferral() {
+      let host = RefusingWindowlessHost()
+      let deferral = Deferral()
+      let d = Self.deferrableDirector(host, deferral)
+      var cardResults: [PillPresentationResult] = []
+
+      d.present(
+        .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+        onResult: { cardResults.append($0) })
+
+      // A recording outranks a feature, so this one IS admitted.
+      Self.record(d, level: 0.3)
+      deferral.fire()
+
+      #expect(
+        cardResults == [.notPresented],
+        "a card that lost the slot before rendering was reported as presented")
+    }
+
+    /// **TWO DEFERRALS IN FLIGHT AT ONCE, EACH ANSWERING ITS OWN CALLER.** This
+    /// is the case no single slot could ever have got right, and it is not exotic:
+    /// nothing is built until a deferred block actually renders, so every
+    /// presentation arriving before that queues its own.
+    @Test
+    func twoQueuedDeferralsEachAnswerTheirOwnCaller() throws {
+      let host = RefusingWindowlessHost()
+      let deferral = Deferral()
+      let d = Self.deferrableDirector(host, deferral)
+      var cardResults: [PillPresentationResult] = []
+      var noticeResults: [PillPresentationResult] = []
+
+      d.present(
+        .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+        onResult: { cardResults.append($0) })
+      // A pipeline pill outranks the feature, so this one IS admitted — and it
+      // defers too, because nothing has rendered yet.
+      let notice = try #require(
+        d.present(.clipboardFallback, onResult: { noticeResults.append($0) }))
+
+      #expect(cardResults.isEmpty && noticeResults.isEmpty, "a verdict arrived before any render")
+
+      deferral.fireAll()
+
+      #expect(
+        cardResults == [.notPresented],
+        "the superseded card was reported through the wrong transaction's verdict")
+      #expect(
+        noticeResults == [.presented(notice)],
+        "the pill that actually rendered was not reported to its own caller")
+    }
+
+    /// Exactly once, on the path that has the most terminals to get it wrong: the
+    /// host refuses, which rolls back through a dismissal that itself renders
+    /// successfully. Reading a bare render outcome reported that dismissal as the
+    /// presentation's own success.
+    @Test
+    func aRefusedDeferralReportsExactlyOnce() {
+      let host = RefusingWindowlessHost()
+      let deferral = Deferral()
+      let d = Self.deferrableDirector(host, deferral)
+      host.accepts = false
+      var results: [PillPresentationResult] = []
+
+      d.present(
+        .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+        onResult: { results.append($0) })
+
+      deferral.fireAll()
+      // Firing again must add nothing: the queue is drained and the relay spent.
+      deferral.fireAll()
+
+      #expect(results == [.notPresented], "the refused card was reported \(results.count) times")
     }
 
     /// A deferred presentation superseded before it renders never reached the
