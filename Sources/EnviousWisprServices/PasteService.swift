@@ -809,9 +809,14 @@ public enum PasteService {
   /// a usable pid, the messaging timeout bound, CF type validation before the
   /// cast, and confirming the returned element actually belongs to the
   /// process that was asked, not one AX resolved to on its own.
-  private static func focusedElementQuery(
+  ///
+  /// Module-internal rather than private since #2381: `SelectionReader` asks the same question of
+  /// the frontmost app and a second implementation of it would be the parallel machine this repo's
+  /// adopt-before-inventing rule exists to prevent. Every defensive check above is exactly what a
+  /// second copy would have had to reproduce and would eventually have drifted on.
+  static func focusedElementQuery(
     pid: pid_t,
-    messagingTimeout: Double
+    messagingTimeout: Double = axMessagingTimeoutSeconds
   ) -> AXUIElement? {
     guard AXIsProcessTrusted(), pid > 0 else { return nil }
 
