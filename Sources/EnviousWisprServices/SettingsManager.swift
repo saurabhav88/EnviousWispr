@@ -20,6 +20,8 @@ public final class SettingsManager {
     case hasCompletedOnboarding  // Legacy — kept for backward-compat writes only
     case cancelKeyCode
     case cancelModifiers
+    case quickAddKeyCode
+    case quickAddModifiers
     case toggleKeyCode
     case toggleModifiers
     case pushToTalkKeyCode
@@ -78,6 +80,7 @@ public final class SettingsManager {
     "autoCopyToClipboard", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
+    "quickAddKeyCode", "quickAddModifiersRaw",
     "pushToTalkKeyCode", "pushToTalkModifiersRaw", "modelUnloadPolicy",
     "restoreClipboardAfterPaste", "smartInsertion", "escapeRecoveryEnabled",
     "wordCorrectionEnabled",
@@ -318,6 +321,23 @@ public final class SettingsManager {
     didSet {
       defaults.set(cancelModifiers.rawValue, forKey: "cancelModifiersRaw")
       onChange?(.cancelModifiers)
+    }
+  }
+
+  /// Quick Add's key code (#2381). Same shape as its two siblings above: the `didSet` is the ONLY
+  /// writer, so a change cannot reach defaults without also notifying, which is what stops an edit
+  /// that persists and never registers.
+  public var quickAddKeyCode: UInt16 {
+    didSet {
+      defaults.set(Int(quickAddKeyCode), forKey: "quickAddKeyCode")
+      onChange?(.quickAddKeyCode)
+    }
+  }
+
+  public var quickAddModifiers: NSEvent.ModifierFlags {
+    didSet {
+      defaults.set(quickAddModifiers.rawValue, forKey: "quickAddModifiersRaw")
+      onChange?(.quickAddModifiers)
     }
   }
 
@@ -737,6 +757,13 @@ public final class SettingsManager {
     let savedCancelModRaw = defaults.object(forKey: "cancelModifiersRaw") as? UInt
     cancelModifiers = NSEvent.ModifierFlags(
       rawValue: savedCancelModRaw ?? SettingsDefaultValues.cancelModifiersRaw)
+
+    let savedQuickAddKeyCode = defaults.object(forKey: "quickAddKeyCode") as? Int
+    quickAddKeyCode = UInt16(savedQuickAddKeyCode ?? SettingsDefaultValues.quickAddKeyCode)
+
+    let savedQuickAddModRaw = defaults.object(forKey: "quickAddModifiersRaw") as? UInt
+    quickAddModifiers = NSEvent.ModifierFlags(
+      rawValue: savedQuickAddModRaw ?? SettingsDefaultValues.quickAddModifiersRaw)
 
     let savedToggleKeyCode = defaults.object(forKey: "toggleKeyCode") as? Int
     toggleKeyCode = UInt16(savedToggleKeyCode ?? SettingsDefaultValues.toggleKeyCode)

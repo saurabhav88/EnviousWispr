@@ -43,6 +43,12 @@ enum SettingsDefaultValues {
 
   static let cancelKeyCode: Int = 53  // Escape
   static let cancelModifiersRaw: UInt = 0
+  /// Quick Add (#2381): Control-Option-W. Awkward enough that nobody reaches it by accident —
+  /// the persona review's hard requirement is that a user who has never heard of this feature
+  /// never triggers it — and still reachable with one hand.
+  static let quickAddKeyCode: Int = 13  // W
+  static let quickAddModifiersRaw: UInt =
+    NSEvent.ModifierFlags([.control, .option]).rawValue
   static let toggleKeyCode: Int = Int(ModifierKeyCodes.rightOption)
   static let toggleModifiersRaw: UInt = 0
   static let pushToTalkKeyCode: Int = 49  // Space

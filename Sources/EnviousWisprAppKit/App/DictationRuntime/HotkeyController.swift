@@ -53,6 +53,11 @@ final class HotkeyController {
     hotkeyService.recordingMode = settings.recordingMode
     hotkeyService.cancelKeyCode = settings.cancelKeyCode
     hotkeyService.cancelModifiers = settings.cancelModifiers
+    // #2381. Pushed here as well as through `PipelineSettingsSync`, for the same reason the other
+    // two are: the sync path carries CHANGES, and without an initial push the service would
+    // register its own compiled-in default until the user happened to edit the shortcut.
+    hotkeyService.quickAddKeyCode = settings.quickAddKeyCode
+    hotkeyService.quickAddModifiers = settings.quickAddModifiers
     hotkeyService.toggleKeyCode = settings.toggleKeyCode
     hotkeyService.toggleModifiers = settings.toggleModifiers
     hotkeyService.onToggleRecording = { [weak starter] in

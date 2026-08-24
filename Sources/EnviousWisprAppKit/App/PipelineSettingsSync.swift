@@ -181,6 +181,12 @@ final class PipelineSettingsSync {
     case .cancelKeyCode:
       hotkeyService.cancelKeyCode = settings.cancelKeyCode
       hotkeyService.reapplyCancelBinding()
+    case .quickAddKeyCode:
+      hotkeyService.quickAddKeyCode = settings.quickAddKeyCode
+      hotkeyService.reapplyQuickAddBinding()
+    case .quickAddModifiers:
+      hotkeyService.quickAddModifiers = settings.quickAddModifiers
+      hotkeyService.reapplyQuickAddBinding()
     case .cancelModifiers:
       hotkeyService.cancelModifiers = settings.cancelModifiers
       hotkeyService.reapplyCancelBinding()

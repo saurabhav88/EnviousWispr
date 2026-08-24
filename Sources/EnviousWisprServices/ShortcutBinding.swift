@@ -8,6 +8,11 @@ import AppKit
 package enum ShortcutRole: String, Sendable, CaseIterable {
   case record
   case cancel
+  /// Quick Add (#2381): capture the selected word into the library.
+  ///
+  /// Unlike the other two this one is armed WHENEVER THE SERVICE IS, because it
+  /// does not belong to a recording. That is why it sorts last below.
+  case quickAdd
 }
 
 /// One shortcut, whatever kind it is.
@@ -66,10 +71,17 @@ package enum ShortcutMatcher {
 
   /// Which armed role a bare-modifier key press belongs to, if any.
   ///
-  /// `armed` is passed in rather than inferred because the two roles are not
-  /// symmetric: record is live whenever the service is running, while cancel is
-  /// armed only for the duration of a recording. A matcher that assumed both
-  /// were always live would cancel recordings that had not started.
+  /// `armed` is passed in rather than inferred because the roles are not
+  /// symmetric: record and Quick Add are live whenever the service is running,
+  /// while cancel is armed only for the duration of a recording. A matcher that
+  /// assumed all were always live would cancel recordings that had not started.
+  ///
+  /// **Quick Add is checked LAST, and the order is a safety decision rather than
+  /// an arbitrary one.** It is the only role armed at all times, so putting it
+  /// ahead of cancel would shadow cancel for the entire duration of every
+  /// recording — silently taking away the key that stops one. Behind cancel, a
+  /// shared binding gives Quick Add every moment cancel is not armed, and costs
+  /// the user nothing they had before.
   ///
   /// **Record wins a tie, and nothing currently prevents the tie.** No conflict
   /// check has ever existed at either capture surface, so a user can already
@@ -87,6 +99,7 @@ package enum ShortcutMatcher {
     forBareModifierKeyCode keyCode: UInt16,
     record: ShortcutBinding,
     cancel: ShortcutBinding,
+    quickAdd: ShortcutBinding,
     armed: Set<ShortcutRole>
   ) -> ShortcutRole? {
     if armed.contains(.record), record == .keyboard(keyCode: keyCode, modifiers: []) {
@@ -118,6 +131,21 @@ package enum ShortcutMatcher {
         return nil
       }
       return .cancel
+    }
+    if armed.contains(.quickAdd), quickAdd == .keyboard(keyCode: keyCode, modifiers: []) {
+      // The SAME refusal as cancel's, for the same reason one step over. With the
+      // record chord needing this modifier, a bare press of it is genuinely
+      // ambiguous, and accepting it opens a panel that TAKES KEY FOCUS — so the
+      // rest of the chord lands in the panel and the recording the user was
+      // starting never happens. Cancel refuses because accepting destroys text
+      // already spoken; this refuses because accepting prevents text being spoken
+      // at all. Neither is recoverable by waiting.
+      if let flag = ModifierKeyCodes.flag(for: keyCode),
+        record.requiredModifiers.contains(flag)
+      {
+        return nil
+      }
+      return .quickAdd
     }
     return nil
   }
