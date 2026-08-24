@@ -329,6 +329,83 @@ import Testing
       }
     }
 
+    /// Local Codex review, adopted: one latch guarded both the warm-up's answer
+    /// and the visit's exit, so a failed attempt consumed it and the Skip link
+    /// still offered beneath the failure panel then reported nothing. A
+    /// failed-then-skipped visit was indistinguishable from a failed-then-
+    /// abandoned one, and the skip rate undercounted exactly the people the
+    /// gate had already failed.
+    @Test("skipping after a failed warm-up still records the skip")
+    func skipAfterFailureIsRecorded() async {
+      await withHook { events in
+        struct Boom: Error {}
+        let vm = makeGatedViewModel()
+        vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
+        await vm.warmingTask?.value
+
+        vm.skipWarmingGate()
+
+        let blocked = events.gateRows("onboarding.step_blocked")
+        #expect(blocked.count == 1)
+        #expect(blocked.first?.stringProps["reason"] == "warmup_failed")
+        let completed = events.gateRows("onboarding.step_completed")
+        #expect(completed.count == 1, "the skip after a failure was never recorded")
+        #expect(completed.first?.stringProps["result"] == "skipped")
+      }
+    }
+
+    /// The other direction of the same split: once the person has left, a
+    /// warm-up answer that arrives afterwards is not their block to carry.
+    @Test("a failure landing after the skip adds no row")
+    func lateFailureAfterSkipIsSilent() async {
+      await withHook { events in
+        struct Boom: Error {}
+        let vm = makeGatedViewModel()
+        let (gate, gateCont) = AsyncStream.makeStream(of: Void.self)
+        vm.kickWarmingIfNeeded(
+          warmUp: {
+            var it = gate.makeAsyncIterator()
+            _ = await it.next()
+            return .failed(Boom())
+          }, displayFloor: 0)
+        let task = vm.warmingTask
+        for _ in 0..<8 { await Task.yield() }
+
+        vm.skipWarmingGate()
+        gateCont.yield(())
+        gateCont.finish()
+        await task?.value
+
+        #expect(events.gateRows("onboarding.step_blocked").isEmpty)
+        let completed = events.gateRows("onboarding.step_completed")
+        #expect(completed.count == 1)
+        #expect(completed.first?.stringProps["result"] == "skipped")
+      }
+    }
+
+    /// A retry is not an exit: two real attempts produce two blocks, and the
+    /// visit still produces exactly one completion when it finally ends.
+    @Test("retry then skip reports two blocks and exactly one completion")
+    func retryThenSkipReportsOnce() async {
+      await withHook { events in
+        struct Boom: Error {}
+        let vm = makeGatedViewModel()
+        vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
+        await vm.warmingTask?.value
+
+        vm.retryWarming()
+        vm.kickWarmingIfNeeded(warmUp: { .failed(Boom()) }, displayFloor: 0)
+        await vm.warmingTask?.value
+
+        vm.skipWarmingGate()
+
+        #expect(events.gateRows("onboarding.step_blocked").count == 2)
+        let completed = events.gateRows("onboarding.step_completed")
+        #expect(completed.count == 1)
+        #expect(completed.first?.stringProps["result"] == "skipped")
+      }
+    }
+
     @Test("a second skip press cannot report twice")
     func doubleSkipReportsOnce() async {
       await withHook { events in

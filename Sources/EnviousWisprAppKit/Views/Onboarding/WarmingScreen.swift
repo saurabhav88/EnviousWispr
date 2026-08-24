@@ -101,6 +101,21 @@ struct WarmingScreenV2: View {
     // a change `onChange` never sees, and the gate would hold forever. They
     // cannot both fire for one transition, because `onChange` only sees a
     // SUBSEQUENT change.
+    //
+    // Local Codex review raised a third ordering: the window closed mid-warm-up
+    // (the owned task survives, deliberately), the outcome landing with nobody
+    // watching, and a reopen that skips `onAppear` leaving nothing to fire.
+    // WHAT WAS CHECKED: onboarding is a singleton `Window(id: "onboarding")`
+    // scene (`EnviousWisprApp.swift:44`), not a `WindowGroup`, and the evidence
+    // the finding itself cites — that a reopen keeps the view model and skips
+    // `onAppear` (`OnboardingProgress.swift:40-44`) — is evidence the root view
+    // holding that `@State` is RETAINED, which retains this subtree and its
+    // `onChange` with it. The finding needs the view discarded and the view
+    // model kept at once, and one `@State` cannot outlive its own view.
+    // WHAT IS NOT ESTABLISHED: whether SwiftUI re-evaluates a dismissed
+    // window's body immediately or defers to reopen. Either is correct here;
+    // only "never", which would mean discarding a pending change on a retained
+    // view, would strand the gate, and nothing observed says it does that.
     .onAppear { if viewModel.warmingOutcome == .ready { onReady() } }
     .onChange(of: viewModel.warmingOutcome) { _, outcome in
       if outcome == .ready { onReady() }

@@ -315,9 +315,22 @@ final class OnboardingV2ViewModel {
   /// outcome landing in a cancelled context is dropped in silence.
   @ObservationIgnored private(set) var warmingTask: Task<Void, Never>?
 
-  /// One-shot per attempt: the gate reports itself exactly once, whichever of
-  /// ready / failed / skipped arrives first. Reset by `retryWarming()`.
-  private var warmingReported = false
+  /// Two independent one-shots, because the gate reports two different things
+  /// and an earlier revision conflated them (local Codex review, adopted).
+  ///
+  /// `warmingAnswerReported` guards the WARM-UP's own answer — the `blocked`
+  /// row for a failed or cancelled attempt. It resets on retry, because a
+  /// second failed attempt is a second real block.
+  ///
+  /// `gateExitReported` guards the VISIT's terminal `completed` row, whether
+  /// that is `ready` or `skipped`. It resets only when a NEW visit begins, so
+  /// one visit produces exactly one completion however it ends.
+  ///
+  /// Conflating them cost the skip-after-failure case: the failure consumed the
+  /// single latch, and the Skip link still offered beneath the failure panel
+  /// then reported nothing at all.
+  private var warmingAnswerReported = false
+  private var gateExitReported = false
 
   /// Minimum time the gate stays on screen once readiness has landed, so the
   /// usual already-warm case reads as a beat rather than a flash. A DISPLAY
@@ -361,7 +374,10 @@ final class OnboardingV2ViewModel {
         try? await Task.sleep(for: .seconds(displayFloor - elapsed))
         if Task.isCancelled { return }
       }
-      guard reportWarmingOnce({ completeStep("engine_warm_gate", result: "ready") })
+      // Readiness both answers the warm-up and ends the visit, so it takes the
+      // EXIT latch: if the person already skipped, this must stay silent and
+      // must not open a gate nobody is standing at.
+      guard takeGateExit({ completeStep("engine_warm_gate", result: "ready") })
       else { return }
       warmingOutcome = .ready
     case .cancelled:
@@ -369,11 +385,15 @@ final class OnboardingV2ViewModel {
       // here from a Cancel pressed on the CHECKLIST that raced the gate's own
       // single-flighted call — so the engine is not ready and the gate must not
       // open. Retry re-asks; skip remains available.
-      guard reportWarmingOnce({ blockStep("engine_warm_gate", reason: "warmup_cancelled") })
+      guard !gateExitReported,
+        takeWarmingAnswer({ blockStep("engine_warm_gate", reason: "warmup_cancelled") })
       else { return }
       warmingOutcome = .failed(Self.warmingFailureCopy)
     case .failed:
-      guard reportWarmingOnce({ blockStep("engine_warm_gate", reason: "warmup_failed") })
+      // A late failure arriving after the person left is not their block to
+      // carry, so the exit check comes first.
+      guard !gateExitReported,
+        takeWarmingAnswer({ blockStep("engine_warm_gate", reason: "warmup_failed") })
       else { return }
       warmingOutcome = .failed(Self.warmingFailureCopy)
     }
@@ -387,13 +407,17 @@ final class OnboardingV2ViewModel {
   /// because a reused window can skip `onAppear` entirely
   /// (`OnboardingProgress.swift:40-44`).
   func beginWarmingGate() {
-    warmingReported = false
+    warmingAnswerReported = false
+    gateExitReported = false
     warmingOutcome = .waiting
     currentScreen = .warmingUp
   }
 
+  /// A retry re-arms the ANSWER latch only. The visit's exit latch is
+  /// deliberately untouched: retrying is not leaving, and a person who retries
+  /// and then skips must still produce exactly one completion.
   func retryWarming() {
-    warmingReported = false
+    warmingAnswerReported = false
     warmingOutcome = .waiting
     warmingRetryCount += 1
   }
@@ -404,12 +428,19 @@ final class OnboardingV2ViewModel {
   /// completion and its outcome is dropped by the one-shot latch below, which
   /// is what keeps this step from reporting twice.
   func skipWarmingGate() {
-    _ = reportWarmingOnce { completeStep("engine_warm_gate", result: "skipped") }
+    _ = takeGateExit { completeStep("engine_warm_gate", result: "skipped") }
   }
 
-  private func reportWarmingOnce(_ emit: () -> Void) -> Bool {
-    guard !warmingReported else { return false }
-    warmingReported = true
+  private func takeWarmingAnswer(_ emit: () -> Void) -> Bool {
+    guard !warmingAnswerReported else { return false }
+    warmingAnswerReported = true
+    emit()
+    return true
+  }
+
+  private func takeGateExit(_ emit: () -> Void) -> Bool {
+    guard !gateExitReported else { return false }
+    gateExitReported = true
     emit()
     return true
   }
