@@ -23,7 +23,7 @@ enum AppleIntelligenceSettings {
 @MainActor
 @Observable
 final class OnboardingV2ViewModel {
-  enum Screen { case welcome, settingUp, ready, warmingUp }
+  enum Screen { case welcome, settingUp, ready, warmingUp, tryItOut }
   enum SetupPhase { case checklist, permissions }
 
   enum ChecklistItemStatus: Equatable {
@@ -162,6 +162,7 @@ final class OnboardingV2ViewModel {
     case .warmingUp:
       if case .failed = warmingOutcome { return .drooping }
       return .equalizer
+    case .tryItOut: return practiceSucceeded ? .smile : .idle
     case .settingUp:
       if setupPhase == .permissions { return .triumph }
       if downloadError != nil { return .drooping }
@@ -456,6 +457,43 @@ final class OnboardingV2ViewModel {
     return true
   }
 
+  // MARK: - Practice box (#2196 chunk 2)
+
+  /// What the person has dictated into the practice box. Written by the box
+  /// itself — including when the paste cascade types into it, which is the whole
+  /// point — so the success signal comes from the SUBJECT rather than from
+  /// elapsed time or a poll (testing-philosophy.md
+  /// RULE: never-guess-when-the-subject-is-finished).
+  var practiceText: String = ""
+
+  /// True once the box has ever held non-whitespace text. Deliberately STICKY:
+  /// a person who dictates and then selects-all-and-deletes has still seen the
+  /// product work, and taking FINISH SETUP away from them at that moment would
+  /// be the screen punishing them for tidying up.
+  private(set) var practiceSucceeded = false
+
+  var practiceTextBinding: Binding<String> {
+    Binding(
+      get: { self.practiceText },
+      set: { self.setPracticeText($0) })
+  }
+
+  func setPracticeText(_ value: String) {
+    practiceText = value
+    if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      practiceSucceeded = true
+    }
+  }
+
+  /// Reset on entry, for the same reason `beginWarmingGate` resets: a reopened
+  /// onboarding must not inherit a previous visit's success and offer FINISH
+  /// SETUP to someone who has not dictated in this one.
+  func beginPractice() {
+    practiceText = ""
+    practiceSucceeded = false
+    currentScreen = .tryItOut
+  }
+
   // MARK: - Progress Polling
 
   /// Start polling the shared progress file at ~8 Hz.
@@ -686,13 +724,16 @@ struct OnboardingV2View: View {
       case .warmingUp:
         WarmingScreenV2(
           viewModel: viewModel,
-          onReady: finishSetup,
+          onReady: { viewModel.beginPractice() },
           onSkip: {
             viewModel.skipWarmingGate()
             finishSetup()
           }
         )
         .transition(Self.screenTransition)
+      case .tryItOut:
+        PracticeScreenV2(viewModel: viewModel, onFinish: finishSetup)
+          .transition(Self.screenTransition)
       }
     }
     .animation(.easeInOut(duration: 0.35), value: viewModel.currentScreen)
@@ -806,6 +847,9 @@ struct OnboardingV2View: View {
     case .warmingUp:
       screen = "warming_up"
       step = "engine_warm_gate"
+    case .tryItOut:
+      screen = "try_it_out"
+      step = "practice_dictation"
     }
     onboardingProgress.update(screen: screen, step: step)
   }

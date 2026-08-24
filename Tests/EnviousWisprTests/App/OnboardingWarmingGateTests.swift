@@ -41,17 +41,17 @@ import Testing
   /// needs a second one. The gate's entire job is to make that unreachable, so
   /// every case here asks the same question — can the gate open on anything
   /// other than the engine itself saying ready.
-  /// #2196 chunk 1 — the engine warm gate.
+  /// #2196 — the onboarding practice step, all of it.
   ///
-  /// ONE serialized parent, because both children emit `engine_warm_gate` and
+  /// ONE serialized parent, because the children emit `engine_warm_gate` and
   /// capture it through the process-global `TelemetryService.shared.testEventHook`.
   /// `.serialized` orders tests WITHIN a suite; it says nothing about two
   /// SIBLING suites, so a sibling's events landed in this suite's capture and a
   /// count assertion read three completions where it expected one. Nesting is
   /// what actually orders them against each other (local Codex r3).
   @MainActor
-  @Suite("Onboarding engine warm gate", .serialized)
-  struct OnboardingWarmingGateSuite {
+  @Suite("Onboarding practice step", .serialized)
+  struct OnboardingPracticeStepSuite {
 
     @MainActor
     @Suite("behaviour", .tags(.productOutcome), .timeLimit(.minutes(1)))
@@ -471,6 +471,89 @@ import Testing
           vm.skipWarmingGate()
           #expect(events.gateRows("onboarding.step_completed").count == 1)
         }
+      }
+    }
+
+
+    /// #2196 chunk 2 — the box.
+    ///
+    /// When these fail a new person reaches the end of setup without ever
+    /// seeing the product work, which is the whole defect #2196 exists to fix:
+    /// 51 people in 90 days whose entire experience was the clipboard notice.
+    /// The box's contents are the SUBJECT's own signal — the paste cascade
+    /// writes them — so nothing here waits on a clock.
+    @MainActor
+    @Suite("the box", .tags(.productOutcome), .timeLimit(.minutes(1)))
+    struct OnboardingPracticeBoxTests {
+
+      private func makePracticeViewModel() -> OnboardingV2ViewModel {
+        let vm = OnboardingV2ViewModel()
+        vm.beginPractice()
+        return vm
+      }
+
+      @Test("words landing in the box are what unlocks the end of setup")
+      func wordsInTheBoxUnlockFinish() {
+        let vm = makePracticeViewModel()
+        #expect(vm.practiceSucceeded == false)
+
+        // What the cascade does when it finds a text target: it types.
+        vm.setPracticeText("tell grandma I love her and will call Sunday after church")
+
+        #expect(vm.practiceSucceeded)
+      }
+
+      /// The screen must not congratulate someone for a stray newline. `no_speech`
+      /// is 20.3% of real first takes, so an empty-ish box is the COMMON case and
+      /// treating it as success would tell a fifth of new people the product
+      /// worked when they never heard from it.
+      @Test("whitespace alone is not a successful dictation")
+      func whitespaceIsNotSuccess() {
+        let vm = makePracticeViewModel()
+        vm.setPracticeText("   \n  \t ")
+        #expect(vm.practiceSucceeded == false)
+      }
+
+      /// Deliberately sticky. Someone who dictates and then selects-all-deletes
+      /// has still SEEN the product work; taking FINISH SETUP away at that moment
+      /// would be the screen punishing them for tidying up.
+      @Test("clearing the box does not take the finish button away again")
+      func successIsStickyAcrossAClear() {
+        let vm = makePracticeViewModel()
+        vm.setPracticeText("running 15 min late got stuck on the client call")
+        #expect(vm.practiceSucceeded)
+
+        vm.setPracticeText("")
+
+        #expect(vm.practiceText.isEmpty)
+        #expect(vm.practiceSucceeded, "a cleared box revoked a success that had already happened")
+      }
+
+      /// Same reason `beginWarmingGate` resets: a reopened onboarding must not
+      /// inherit a previous visit's success and offer FINISH SETUP to someone who
+      /// has not dictated in THIS one.
+      @Test("a reopened onboarding cannot inherit the last visit's dictation")
+      func reopeningClearsTheBox() {
+        let vm = makePracticeViewModel()
+        vm.setPracticeText("hey Mike pick up Emma from school today")
+        #expect(vm.practiceSucceeded)
+
+        vm.beginPractice()
+
+        #expect(vm.currentScreen == .tryItOut)
+        #expect(vm.practiceText.isEmpty)
+        #expect(vm.practiceSucceeded == false, "the box opened already believing it had succeeded")
+      }
+
+      /// The gate's ready exit opens the box; it no longer ends setup. If this
+      /// regresses, the warm gate silently becomes the last screen again and the
+      /// entire feature is absent while every other test still passes.
+      @Test("a warmed gate opens the box rather than ending setup")
+      func warmGateOpensTheBox() {
+        let vm = OnboardingV2ViewModel()
+        vm.currentScreen = .warmingUp
+        vm.beginPractice()
+        #expect(vm.currentScreen == .tryItOut)
       }
     }
 
