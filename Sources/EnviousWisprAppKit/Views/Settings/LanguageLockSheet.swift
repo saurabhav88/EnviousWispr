@@ -15,7 +15,7 @@ struct LanguageLockSheet: View {
   @Environment(\.dismiss) private var dismiss
 
   /// Codes this engine may be locked to, or nil for "no restriction" (the
-  /// multilingual engine's 99).
+  /// multilingual engine's full catalogue).
   ///
   /// #1678: the fast engine claims 25 European languages, so the sheet must not
   /// offer the rest. A code outside the engine's set is a SILENT failure — it
@@ -105,7 +105,7 @@ struct LanguageLockSheet: View {
   /// strands the people who trusted it.
   ///
   /// Placed FIRST rather than in the list: it is not a language, and sorting it
-  /// among them would hide the escape route in a scroll of 99 rows. Hidden while
+  /// among them would hide the escape route in a long scroll. Hidden while
   /// searching for the same reason recents are — typing means looking for a
   /// specific language.
   @ViewBuilder

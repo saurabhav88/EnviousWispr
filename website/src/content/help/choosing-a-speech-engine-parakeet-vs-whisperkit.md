@@ -14,7 +14,7 @@ You can choose between two speech engines for transcription, Parakeet or Whisper
 
 | Feature | Parakeet | WhisperKit |
 | --- | --- | --- |
-| Languages | 25 European | 99 |
+| Languages | 25 European | 99+ |
 | Speed | Faster | Slower |
 | Setup | Downloaded for you during setup | You download it, about 1.5 GB |
 | Best for | Everyday dictation | Languages Parakeet does not cover |

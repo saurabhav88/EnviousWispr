@@ -10,7 +10,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "prebuild": "node scripts/check-help-content.mjs",
+    "prebuild": "node scripts/check-help-content.mjs && node scripts/check-language-count.mjs",
     "check:help": "node scripts/check-help-routes.mjs && node scripts/check-help-search.mjs"
   },
   "overrides": {

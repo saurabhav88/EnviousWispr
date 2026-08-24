@@ -61,7 +61,7 @@ For a full breakdown, read [how on-device dictation compares to cloud services](
 The pipeline has four steps, and they run in parallel on Apple Silicon, which is what makes the end-to-end time roughly two seconds:
 
 1. **Record.** Hold the global keybind (configurable), speak, release. EnviousWispr captures audio from your microphone with a pre-roll buffer so your first words are never clipped.
-2. **Transcribe.** On-device speech recognition runs natively via Core ML on Apple Silicon. The primary engine handles English with streaming transcription that overlaps with recording. A secondary engine covers 100+ languages.
+2. **Transcribe.** On-device speech recognition runs natively via Core ML on Apple Silicon. The primary engine handles English with streaming transcription that overlaps with recording. A secondary engine covers 99+ languages.
 3. **Polish.** Your choice of AI provider (OpenAI, Gemini, Ollama, Apple Intelligence, or none) removes filler words, fixes punctuation, and shapes the output to match how you speak.
 4. **Paste.** The polished text pastes directly into whatever app has keyboard focus. Your previous clipboard contents are preserved and restored automatically.
 

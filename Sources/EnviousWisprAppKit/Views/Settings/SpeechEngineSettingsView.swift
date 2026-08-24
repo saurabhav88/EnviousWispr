@@ -74,7 +74,7 @@ struct SpeechEngineSettingsView: View {
         tagline: "Pick this for other languages or the toughest audio.",
         specs: [
           ("Model", "Whisper Large v3 Turbo"),
-          ("Languages", "99 languages"),
+          ("Languages", "99+ languages"),
           ("Runs on", "Apple GPU"),
           ("Transcribe time", "Usually 1-2s after you speak"),
         ],
@@ -446,7 +446,7 @@ struct SpeechEngineSettingsView: View {
     switch settings.selectedBackend {
     case .whisperKit:
       return
-        "Auto-detect your language, or lock to a specific one. WhisperKit supports 99 languages."
+        "Auto-detect your language, or lock to a specific one. WhisperKit supports 99+ languages."
     case .parakeet:
       return """
         Auto-detect your language, or lock to one of 25 European languages. \

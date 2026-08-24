@@ -17,7 +17,7 @@ faqs:
   - question: "Why does live transcription turn off when Auto-detect language is on?"
     answer: "Live transcription has to commit to one language within the first second or two of your recording, which is not enough audio to detect a language reliably. With Auto-detect on, EnviousWispr waits until you stop and decides the language from more of your opening audio instead, which is far more accurate. Pick a specific language in Settings to stream live."
   - question: "Does live transcription work with the Fast engine too?"
-    answer: "Yes. The Fast engine has transcribed live for a while. What is new is that the All Languages engine, the one that covers 99 languages and the toughest audio, now does it too."
+    answer: "Yes. The Fast engine has transcribed live for a while. What is new is that the All Languages engine, the one that covers 99+ languages and the toughest audio, now does it too."
   - question: "Is live transcription less accurate?"
     answer: "For most dictation it produces the same text. A word is only committed once two consecutive passes over the audio agree on it. On very long recordings, transcribing everything at the end can still read slightly cleaner, which is why the toggle is there."
 ---

@@ -359,8 +359,9 @@ public enum LanguageTypes {
     LanguageScriptGuardrail.isUnsegmentedScript(lang)
   }
 
-  /// Full set of Whisper-supported ISO 639-1 codes (99 languages).
-  /// Used for defensive validation when reading persisted session priors.
+  /// Accepted language codes for the Whisper path: ISO 639-1, plus the ISO
+  /// 639-3 entries `haw` and `yue`. A validation set for persisted session
+  /// priors, not a count of languages the vendor claims to support.
   public static let whisperSupportedLanguages: Set<String> = [
     "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br",
     "bs", "ca", "cs", "cy", "da", "de", "el", "en", "es", "et", "eu",
@@ -373,7 +374,7 @@ public enum LanguageTypes {
     "tk", "tl", "tr", "tt", "uk", "ur", "uz", "vi", "yi", "yo", "yue", "zh",
   ]
 
-  /// True if `lang` is in the 99-language Whisper set. Used to defensively skip
+  /// True if `lang` is an accepted Whisper code. Used to defensively skip
   /// stale/unrecognized session priors rather than crashing.
   public static func isSupported(_ lang: String) -> Bool {
     whisperSupportedLanguages.contains(lang.lowercased())
