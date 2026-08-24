@@ -518,6 +518,27 @@ import Testing
         }
       }
 
+      /// The funnel must not repeat the screen's own mistake where nobody can
+      /// see it: someone who dictated and missed the box DID dictate, and
+      /// filing them under silence would hide a one-click UX problem inside the
+      /// most common genuine outcome.
+      @Test("a missed box is reported as its own thing, not as silence")
+      func missedBoxHasItsOwnResult() async {
+        await withHook { events in
+          let vm = OnboardingV2ViewModel()
+          vm.beginPractice()
+          vm.practiceTakeStarted(boxFocused: false)
+          vm.practiceTakeEnded()
+
+          vm.reportPracticeExit()
+
+          let rows = events.all.filter {
+            $0.name == "onboarding.step_completed" && $0.stringProps["step"] == "practice_dictation"
+          }
+          #expect(rows.first?.stringProps["result"] == "missed_box")
+        }
+      }
+
       @Test("leaving without ever trying reports skipped")
       func neverTriedReportsSkipped() async {
         await withHook { events in
@@ -715,6 +736,52 @@ import Testing
         vm.practiceTakeEnded()
 
         #expect(vm.practiceState == .saidNothing, "a silent take inherited the previous take's words")
+      }
+
+      /// FOUNDER-FOUND IN LIVE UAT, 2026-08-24, and the most valuable finding
+      /// of the day because no test would have produced it: he dictated with
+      /// the box unfocused and the screen said "All quiet". The app had heard
+      /// him perfectly — `RAW ASR "Testing one two three."` — and the words
+      /// went to the clipboard because the cascade classified `.nonText`. The
+      /// screen accused his microphone of a fault it did not have and sent him
+      /// to check hardware when the fix was one click.
+      @Test("a take that missed the box is not reported as silence")
+      func missedBoxIsNotSilence() {
+        let vm = makePracticeViewModel()
+        vm.practiceTakeStarted(boxFocused: false)
+
+        vm.practiceTakeEnded()
+
+        #expect(vm.practiceState == .missedTheBox)
+        #expect(
+          vm.practiceState != .saidNothing,
+          "the screen told someone it heard nothing when it heard them fine")
+      }
+
+      /// The other half, and why the copy was not simply replaced: real silence
+      /// is 20.3% of first takes, and telling THAT person to click a box they
+      /// already clicked is the same wrong advice pointed the other way.
+      @Test("a silent take with the box focused is still all-quiet")
+      func focusedSilenceIsStillSilence() {
+        let vm = makePracticeViewModel()
+        vm.practiceTakeStarted(boxFocused: true)
+
+        vm.practiceTakeEnded()
+
+        #expect(vm.practiceState == .saidNothing)
+      }
+
+      /// Words arriving is what decides success, whatever the focus flag said
+      /// at the start — a take that lands text has plainly not missed.
+      @Test("a productive take is success even if focus was uncertain at the start")
+      func wordsBeatTheFocusFlag() {
+        let vm = makePracticeViewModel()
+        vm.practiceTakeStarted(boxFocused: false)
+        vm.setPracticeText("tell grandma I love her and will call Sunday")
+
+        vm.practiceTakeEnded()
+
+        #expect(vm.practiceState == .worked)
       }
 
       @Test("a denied microphone is named rather than left as a dead screen")

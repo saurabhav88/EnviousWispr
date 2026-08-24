@@ -162,7 +162,9 @@ final class OnboardingV2ViewModel {
     case .warmingUp:
       if case .failed = warmingOutcome { return .drooping }
       return .equalizer
-    case .tryItOut: return practiceSucceeded ? .smile : .idle
+    case .tryItOut:
+      if practiceState == .missedTheBox { return .idle }
+      return practiceSucceeded ? .smile : .idle
     case .settingUp:
       if setupPhase == .permissions { return .triumph }
       if downloadError != nil { return .drooping }
@@ -506,6 +508,15 @@ final class OnboardingV2ViewModel {
     /// first takes against 10.1% for every genuine failure combined — so it is
     /// a normal state with a way forward, never an error.
     case saidNothing
+    /// FOUNDER-FOUND IN LIVE UAT, 2026-08-24. The take WORKED — words were
+    /// produced — but the box was not selected, so the cascade classified
+    /// `.nonText` and fell to clipboard-only, exactly as it does anywhere else.
+    /// Reporting that as `saidNothing` was a confident WRONG SUBJECT: it told
+    /// someone their microphone heard nothing when it had heard them perfectly,
+    /// and sent them to check hardware when the fix is one click. Measured on
+    /// his take: `RAW ASR "Testing one two three."` beside
+    /// `non-text element focused, falling back to clipboard-only`.
+    case missedTheBox
     /// Something must be turned on before any of this can work. Carries the
     /// telemetry reason so the screen and the funnel cannot disagree.
     case cannotHear(reason: String, permission: String?)
@@ -527,9 +538,15 @@ final class OnboardingV2ViewModel {
   /// A dictation started while this screen is up. Driven by
   /// `LiveRecordingState.isDictationActive`, which is the SUBJECT's own signal
   /// (true while either pipeline is recording, transcribing or polishing).
-  func practiceTakeStarted() {
+  /// Whether the box held focus when the current take began. This is what
+  /// separates "we heard nothing" from "we heard you and the words went
+  /// elsewhere", and the two need opposite advice.
+  private var boxWasFocusedAtTakeStart = true
+
+  func practiceTakeStarted(boxFocused: Bool = true) {
     if case .cannotHear = practiceState { return }
     practiceTextAtTakeStart = practiceText
+    boxWasFocusedAtTakeStart = boxFocused
     practiceState = .listening
   }
 
@@ -539,7 +556,15 @@ final class OnboardingV2ViewModel {
     guard practiceState == .listening else { return }
     let grew = practiceText != practiceTextAtTakeStart
       && !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    practiceState = grew ? .worked : .saidNothing
+    if grew {
+      practiceState = .worked
+    } else if !boxWasFocusedAtTakeStart {
+      // Words may well have been produced; they simply had nowhere here to go.
+      // Saying "all quiet" here is the one wrong thing this screen can say.
+      practiceState = .missedTheBox
+    } else {
+      practiceState = .saidNothing
+    }
   }
 
   /// Called on appear with the live posture. Accessibility is the known limit of
@@ -570,6 +595,10 @@ final class OnboardingV2ViewModel {
     let result: String
     if practiceSucceeded {
       result = "completed"
+    } else if practiceState == .missedTheBox {
+      // NOT `no_speech`: this person dictated. Filing them under silence would
+      // repeat the screen's own mistake in the funnel, where nobody can see it.
+      result = "missed_box"
     } else if practiceState == .saidNothing {
       result = "no_speech"
     } else {
@@ -587,6 +616,7 @@ final class OnboardingV2ViewModel {
     practiceState = .waiting
     practiceExitReported = false
     practiceTextAtTakeStart = ""
+    boxWasFocusedAtTakeStart = true
     currentScreen = .tryItOut
   }
 

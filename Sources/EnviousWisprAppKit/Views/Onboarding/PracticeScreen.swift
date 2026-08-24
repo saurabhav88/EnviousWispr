@@ -61,6 +61,7 @@ struct PracticeScreenV2: View {
     switch viewModel.practiceState {
     case .cannotHear: return "We cannot hear you"
     case .listening: return "Listening…"
+    case .missedTheBox: return "Click the box first"
     case .saidNothing: return "All quiet"
     case .worked: return "That is it. You are set."
     case .waiting: return viewModel.practiceSucceeded ? "That is it. You are set." : "Time for your first dictation!"
@@ -75,6 +76,11 @@ struct PracticeScreenV2: View {
         : "EnviousWispr needs Accessibility permission to type for you.\nYou can turn it on and come back, or skip ahead."
     case .listening:
       return "Go ahead. Let go of the key when you are done."
+    case .missedTheBox:
+      // Says what happened and what to do, and takes the blame off them. The
+      // words are genuinely on the clipboard, so telling them that is useful
+      // rather than a consolation.
+      return "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold your shortcut again."
     case .saidNothing:
       // Not an error, and never worded as one: the microphone worked, there
       // was simply nothing to hear. The prompt is drawn from the persona banks
@@ -213,9 +219,15 @@ struct PracticeScreenV2: View {
     }
     .onChange(of: live.isDictationActive) { _, active in
       if active {
-        viewModel.practiceTakeStarted()
+        // Whether the box holds focus RIGHT NOW is what separates "we heard
+        // nothing" from "we heard you and it went to the clipboard".
+        viewModel.practiceTakeStarted(boxFocused: boxFocused)
       } else {
         viewModel.practiceTakeEnded()
+        // Put the cursor back, so the next attempt cannot repeat the miss for
+        // the same reason. Founder-found in Live UAT: the advice is useless if
+        // acting on it needs a click they were not told about.
+        if viewModel.practiceState == .missedTheBox { boxFocused = true }
       }
     }
     .animation(.easeInOut(duration: 0.3), value: viewModel.practiceState)
