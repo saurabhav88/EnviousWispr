@@ -33,6 +33,21 @@ import Testing
 /// `TestInventoryFreezeTests` parses Swift rather than enumerating suites at
 /// runtime.
 ///
+/// ## Why an EXPLICIT file set rather than one file or a directory glob
+///
+/// #2374 Phase 2 split `OverlayLegacyViews.swift` into thirteen files. The three
+/// frozen literals did not travel together: the fill and border live in
+/// `OverlayCapsuleBackgrounds.swift`, while the notice-text literal has always
+/// been inside `RecordingOverlayView`. Pointing this guard at one file would make
+/// a frozen count read 0 and invite lowering it — which deletes the coverage the
+/// guard exists to provide.
+///
+/// A glob over `Overlay/Views/` would be worse in the other direction: an
+/// unrelated future declaration could satisfy a frozen count after the intended
+/// literal disappeared, which is the same vacuity this suite was rewritten to
+/// close, one level up. The set therefore names exactly the two files that own a
+/// frozen literal, and **fails closed** if either is missing or empty.
+///
 /// **Known limit of a text guard, stated rather than discovered later:** it
 /// asserts the literals are present, so it catches an edit and cannot catch a
 /// change made somewhere else that overrides them. It is a tripwire on the file,
@@ -43,10 +58,43 @@ struct CapsuleBackgroundFreezeTests {
 
   init() { _ = NSApplication.shared }
 
-  private static func overlaySource() throws -> String {
-    let url = RepoRoot.url.appending(
-      path: "Sources/EnviousWisprAppKit/App/Overlay/Views/OverlayLegacyViews.swift")
-    return try String(contentsOf: url, encoding: .utf8)
+  /// The only two files that own a frozen literal. Explicit, never a glob.
+  nonisolated static let capsuleSourcePaths = [
+    "Sources/EnviousWisprAppKit/App/Overlay/Views/OverlayCapsuleBackgrounds.swift",
+    "Sources/EnviousWisprAppKit/App/Overlay/Views/RecordingOverlayView.swift",
+  ]
+
+  private static func read(_ path: String) throws -> String {
+    let url = RepoRoot.url.appending(path: path)
+    let text = try String(contentsOf: url, encoding: .utf8)
+    // Fails closed: an empty or unreadable member makes every count below read
+    // low, which is indistinguishable from a deleted literal.
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw CapsuleFreezeSourceError.empty(path)
+    }
+    return text
+  }
+
+  /// The two-file set, concatenated. Used by the count-based guards.
+  private static func capsuleSources() throws -> String {
+    try capsuleSourcePaths.map { try read($0) }.joined(separator: "\n")
+  }
+
+  /// `OverlayCapsuleBackground`'s own file, and only it. The gating check is a
+  /// claim about that one struct's branches; widening its input is what would
+  /// make it vacuous.
+  private static func capsuleBackgroundSource() throws -> String {
+    try read(capsuleSourcePaths[0])
+  }
+
+  enum CapsuleFreezeSourceError: Error, CustomStringConvertible {
+    case empty(String)
+    var description: String {
+      switch self {
+      case .empty(let path):
+        return "\(path) is missing or empty — this guard is pointed at nothing"
+      }
+    }
   }
 
   /// The capsule's own values, exactly as they were before #2204.
@@ -58,6 +106,10 @@ struct CapsuleBackgroundFreezeTests {
   /// value, which is precisely how the earlier existence check managed to pass
   /// while the capsule's own fill had been deleted. The border is 1 because only
   /// the `.capsule` branch spells it with the `Capsule()` prefix.
+  ///
+  /// Every expectation below is UNCHANGED across the #2374 split. Only the source
+  /// the guard reads changed; if a number here ever moves in a relocation commit,
+  /// that is the finding.
   nonisolated static let frozenCapsuleLiterals: [(what: String, expected: Int, literal: String)] = [
     ("capsule fill", 2, "Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82)"),
     ("capsule border", 1, "Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)"),
@@ -75,7 +127,7 @@ struct CapsuleBackgroundFreezeTests {
     "the capsule's own colours are unchanged",
     arguments: CapsuleBackgroundFreezeTests.frozenCapsuleLiterals)
   func capsuleLiteralsAreFrozen(entry: (what: String, expected: Int, literal: String)) throws {
-    let source = try Self.overlaySource()
+    let source = try Self.capsuleSources()
     let found = source.components(separatedBy: entry.literal).count - 1
     #expect(
       found == entry.expected,
@@ -89,7 +141,7 @@ struct CapsuleBackgroundFreezeTests {
   }
 
   /// The palette must not be readable from `OverlayCapsuleBackground`'s SHARED
-  /// default. That struct is the eight-call-site surface; the rest of the file's
+  /// default. That struct is the eight-call-site surface; the rest of the
   /// palette reads live in `previewHeader` and `PreviewWellText`, which are
   /// preview-only by CONSTRUCTION rather than by a nearby keyword.
   ///
@@ -100,17 +152,55 @@ struct CapsuleBackgroundFreezeTests {
   /// none of them says so. Lexical proximity is not the property; reachability is,
   /// and the honest way to check reachability cheaply is to scope the check to the
   /// one type where a leak is possible.
+  ///
+  /// **The struct's end is found by a balanced brace walk, not by the next
+  /// declaration's text.** The previous sentinel was
+  /// `hasPrefix("private struct DistressCapsuleBackground")`, and #2374 widened
+  /// that type to `internal` — so the sentinel string stopped existing and the
+  /// guard would have reported the struct as unfindable rather than as changed. A
+  /// brace walk asks the language's own question and cannot be broken by an access
+  /// keyword, a rename of the following type, or a reordering.
   @Test("the shared capsule background reads the palette only on its preview branch")
   func capsuleBackgroundGatesEveryPaletteRead() throws {
-    let source = try Self.overlaySource()
+    let source = try Self.capsuleBackgroundSource()
     let lines = source.split(separator: "\n", omittingEmptySubsequences: false)
 
     let open = try #require(
       lines.firstIndex { $0.contains("struct OverlayCapsuleBackground") },
       "OverlayCapsuleBackground not found — this guard is pointed at nothing")
+
+    var depth = 0
+    var end: Int? = nil
+    for i in open..<lines.count {
+      depth += lines[i].filter { $0 == "{" }.count
+      depth -= lines[i].filter { $0 == "}" }.count
+      if depth == 0 && i > open {
+        end = i
+        break
+      }
+    }
     let close = try #require(
-      lines[open...].firstIndex { $0.hasPrefix("private struct DistressCapsuleBackground") },
-      "could not find the end of OverlayCapsuleBackground")
+      end,
+      "OverlayCapsuleBackground's braces never balance — the guard cannot bound the struct")
+
+    // The walk counts braces textually, so a stray brace inside a comment or a
+    // string literal could land it somewhere other than the struct's own closing
+    // line. Measured on this file today: zero braces in comments or strings, no
+    // `#if`, no interpolation — so this is a bound on a hypothetical, not a fix
+    // for an observed defect. It is here because ONE of the walk's failure modes
+    // is silent: an unmatched `}` in a comment placed AFTER both palette reads
+    // would shrink the region without moving `reads` below 2, so an ungated read
+    // added later would escape. The other two modes (never balancing, balancing
+    // early enough to drop `reads`) already fail loudly. Requiring the landing
+    // line to be a top-level closing brace closes the silent one and cannot be
+    // broken by reindentation, unlike a frozen source-text match.
+    #expect(
+      lines[close] == "}",
+      """
+      the brace walk ended on \(lines[close].trimmingCharacters(in: .whitespaces)), \
+      not on OverlayCapsuleBackground's own closing brace. A stray brace in a comment \
+      or string literal has moved the region this guard checks.
+      """)
 
     var reads = 0
     for i in open..<close where lines[i].contains("PreviewPillPalette.") {
@@ -138,14 +228,15 @@ struct CapsuleBackgroundFreezeTests {
   /// mentioned at all, which would also make every line trivially "gated".
   @Test("the palette is actually used, so the gate check is not vacuous")
   func paletteIsActuallyReferenced() throws {
-    let source = try Self.overlaySource()
+    let source = try Self.capsuleSources()
     let count = source.components(separatedBy: "PreviewPillPalette.").count - 1
     #expect(
       count >= 8,
       """
-      only \(count) references to the preview palette in OverlayLegacyViews.swift. \
-      The gate check above passes vacuously when there is nothing to gate, so this \
-      pins that the wiring is really there.
+      only \(count) references to the preview palette across \
+      \(Self.capsuleSourcePaths.count) capsule source files. The gate check above \
+      passes vacuously when there is nothing to gate, so this pins that the wiring \
+      is really there.
       """)
   }
 }

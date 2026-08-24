@@ -11,10 +11,12 @@ import SwiftUI
 ///
 /// Two reasons, and the second is the load-bearing one.
 ///
-/// First, the overlay's view layer (`OverlayLegacyViews.swift`, extracted from
-/// `05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift` in #2292) is large and the pill's colours were
-/// scattered through it as literals. Collecting them makes "what does the
-/// preview pill look like" a question with one answer.
+/// First, the overlay's view layer was one large file and the pill's colours were
+/// scattered through it as literals. That file is gone — #2374 Phase 2 split it into
+/// focused files under `App/Overlay/Views/` — but the reason survives the split:
+/// the preview pill's own colours would otherwise be spread across
+/// `RecordingOverlayView.swift` and `OverlayCapsuleBackgrounds.swift`. Collecting
+/// them makes "what does the preview pill look like" a question with one answer.
 ///
 /// Second, and this is the isolation the whole epic turns on: **every modifier on
 /// `RecordingOverlayView`'s root is rendered by BOTH the preview pill and the
