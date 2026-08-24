@@ -3,30 +3,23 @@ import EnviousWisprCore
 import EnviousWisprPipeline
 import SwiftUI
 
-// MARK: - RainbowLipsIcon
+// MARK: - RainbowLevelMeter
 
-/// Lip/spectrum bar brand icon driven by real-time audio level during recording.
-/// Each of the 18 bars (9 upper + 9 lower) scales vertically in response to
-/// `audioLevel` (0.0–1.0). Per-bar variation factors make the motion organic
-/// rather than all bars moving in lockstep.
-///
-/// Scale formula (matches MenuBarIconAnimator.renderRecordingLips):
-///   scaleY = silenceScale + (peakScale - silenceScale) * level * perBarFactor
-///
-/// At silence (level ≈ 0) bars sit at their minimum compressed state (lips closed).
-/// At peak (level = 1.0) center bars reach maximum expansion (lips open/talking).
 /// #2202: the live level meter in the preview pill's header.
 ///
 /// **Replaces the lips mark in THIS box only.** The mark stays everywhere else —
 /// the menu bar, the polishing pill, settings. Founder direction, 2026-08-19: it
 /// is a logo doing a meter's job, a square block of nine bars that has to be read
 /// as a picture before it reads as movement, and it occupies the left edge the
-/// timer should own. Nine bars on a baseline say "I can hear you" in a shape
-/// everyone knows from every recorder ever made.
+/// timer should own. Bars on a baseline say "I can hear you" in a shape everyone
+/// knows from every recorder ever made.
 ///
-/// Nine bars, nine brand spectrum colours in order, red through violet — the same
-/// palette and the same order as `RainbowLipsIcon`, so the two read as one family
-/// while the pill transitions between layouts.
+/// `barCount` history bars — 24 today — interpolate across the NINE brand spectrum
+/// colours in order, red through violet, the same palette and the same order as
+/// `RainbowLipsIcon`, so the two read as one family while the pill transitions
+/// between layouts. An earlier version of this paragraph said "nine bars", which
+/// confused the palette's size with the strip's; `colour(at:of:)` blends between
+/// adjacent spectrum entries precisely so the two need not match.
 ///
 /// **Symmetric about a centre line rather than growing off a floor.** That echoes
 /// the mark it replaces, and it means the meter's visual weight does not shift

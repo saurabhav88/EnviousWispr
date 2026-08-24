@@ -151,7 +151,7 @@ final class MenuBarIconAnimator {
 
   /// Render rainbow lip bars at full height (static — see class doc for why
   /// this isn't audio-reactive). Bar geometry and colors match RainbowLipsIcon
-  /// in OverlayLegacyViews.swift.
+  /// in `App/Brand/RainbowLipsIcon.swift`.
   private func renderRecordingLips() -> NSImage {
     let size = NSSize(width: 22, height: 22)
     return NSImage(size: size, flipped: true) { rect in
@@ -307,7 +307,7 @@ final class MenuBarIconAnimator {
   }
 
   /// Render the processing spectrum wheel at the current rotation angle.
-  /// Bar geometry and colors match SpectrumWheelIcon in OverlayLegacyViews.swift.
+  /// Bar geometry and colors match SpectrumWheelIcon in `App/Brand/SpectrumWheelIcon.swift`.
   private func renderProcessingWheel() -> NSImage {
     let size = NSSize(width: 22, height: 22)
     let angle = rotationAngle

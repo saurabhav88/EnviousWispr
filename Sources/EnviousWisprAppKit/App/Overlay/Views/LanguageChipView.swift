@@ -3,8 +3,6 @@ import EnviousWisprCore
 import EnviousWisprPipeline
 import SwiftUI
 
-// MARK: - AccessibilityToastView
-
 // MARK: - LanguageChipView
 
 /// Passive language-detection chip surfaced post-dictation. Two visual states:

@@ -3,6 +3,24 @@ import EnviousWisprCore
 import EnviousWisprPipeline
 import SwiftUI
 
+// MARK: - RainbowLipsIcon
+
+/// Lip/spectrum bar brand icon driven by real-time audio level during recording.
+/// Each of the 18 bars (9 upper + 9 lower) scales vertically in response to
+/// `audioLevel` (0.0–1.0). Per-bar variation factors make the motion organic
+/// rather than all bars moving in lockstep.
+///
+/// `yScale(for:level:)` returns:
+///   silenceScale + peakRange * level * sensitivity[barIndex]
+///
+/// **It is NOT shared with the menu bar, and an earlier version of this line said it
+/// was.** `MenuBarIconAnimator.renderRecordingLips` draws hardcoded bar heights and is
+/// static by design — its own comment says so. The two match on GEOMETRY and colour,
+/// never on this formula. `peakScale` and `perBarFactor` named in that earlier version
+/// do not exist anywhere.
+///
+/// At silence (level ≈ 0) bars sit at their minimum compressed state (lips closed).
+/// At peak (level = 1.0) center bars reach maximum expansion (lips open/talking).
 struct RainbowLipsIcon: View {
   let size: CGFloat
   /// Normalised audio level 0.0-1.0, updated every ~50 ms by the parent view.
