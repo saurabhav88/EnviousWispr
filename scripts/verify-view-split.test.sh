@@ -6,13 +6,40 @@
 # against the real file, so arm 1 is a genuine clean split rather than a fixture
 # built to pass.
 set -u
-cd /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr || exit 2
+
+# The repo root is DERIVED from this script's own location, never pinned to one
+# workstation. An earlier version hardcoded the author's absolute path, so in every
+# other checkout — another Mac, CI, a sibling worktree — it exited 2 before running a
+# single control arm. A hardcoded absolute path is not a pin to a repository; it is a
+# pin to whatever branch one particular tree happens to be on.
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd) || exit 2
+cd "$ROOT" || exit 2
 
 SRC=Sources/EnviousWisprAppKit/App/Overlay/Views/OverlayLegacyViews.swift
-BASE=$(git rev-parse HEAD)
+
+# BASE must be a revision where the subject file still EXISTS, and the commit that
+# ships this harness is the one that DELETES it. So resolve rather than assume:
+# at or before the split, HEAD still has it; at or after, the last commit touching
+# that path is the deletion and its parent is the pre-split tree.
+if git cat-file -e "HEAD:$SRC" 2>/dev/null; then
+  BASE=$(git rev-parse HEAD)
+else
+  deletion=$(git rev-list -1 HEAD -- "$SRC")
+  [ -n "$deletion" ] || { echo "BLOCKED: $SRC is unknown to this history" >&2; exit 2; }
+  BASE=$(git rev-parse "${deletion}^")
+fi
+git cat-file -e "$BASE:$SRC" 2>/dev/null || {
+  echo "BLOCKED: resolved BASE $BASE does not contain $SRC" >&2; exit 2; }
+
 T=$(mktemp -d) || exit 2
 trap 'rm -rf "$T"' EXIT
 FAIL=0
+
+# Read the subject from the REVISION, never from the working tree. After the split the
+# working-tree path does not exist, so a harness that slices the file on disk cannot run
+# on the commit that ships it — which is the one commit where it has to.
+ORIG="$T/original.swift"
+git show "$BASE:$SRC" > "$ORIG" || exit 2
 
 check() {
   if [ "$2" = "$3" ]; then printf '  PASS  %s\n' "$1"
@@ -27,7 +54,7 @@ RANGES="5:37 48:144 145:297 298:310 311:429 430:533 534:572 573:968 969:1083 \
 ARGS=()
 for r in $RANGES; do
   a=${r%%:*}; b=${r##*:}
-  { echo "import AppKit"; echo "import SwiftUI"; echo; sed -n "${a},${b}p" "$SRC"; } \
+  { echo "import AppKit"; echo "import SwiftUI"; echo; sed -n "${a},${b}p" "$ORIG"; } \
     > "$T/p$a.swift"
   ARGS+=(--new "$T/p$a.swift")
 done

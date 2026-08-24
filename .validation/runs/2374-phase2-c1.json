@@ -1,6 +1,9 @@
 {
   "base": "f9b70283326254aad6974cceb33ca41316e493ec",
   "original": "Sources/EnviousWisprAppKit/App/Overlay/Views/OverlayLegacyViews.swift",
+  "verified_tree": "25941de17ab568e13831694bf6a3bea44f63c462",
+  "verified_tree_dirty": false,
+  "replay": "git checkout <verified_tree>, then re-run this tool with the same arguments. A replay against any OTHER tree may legitimately report CONTENT CHANGED and says nothing about the relocation.",
   "new_files": [
     "Sources/EnviousWisprAppKit/App/Overlay/OverlayObservableChannels.swift",
     "Sources/EnviousWisprAppKit/App/Brand/SpectrumWheelIcon.swift",

@@ -198,9 +198,26 @@ def main() -> int:
                if (d.startswith("+") or d.startswith("-"))
                and not d.startswith("+++") and not d.startswith("---")]
 
+    # WHICH TREE the destinations were read from. Without it a receipt is a verdict
+    # with no subject: a later commit that legitimately edits a comment makes a replay
+    # report CONTENT CHANGED, and a reader has no way to tell a stale receipt from a
+    # broken split. Cloud review found exactly that on #2374 — the receipt described the
+    # relocation commit and was replayed against a tree two commits further on.
+    verified_tree = subprocess.run(["git", "rev-parse", "HEAD"],
+                                   capture_output=True, text=True)
+    verified_tree = verified_tree.stdout.strip() if verified_tree.returncode == 0 else None
+    dirty = subprocess.run(["git", "status", "--porcelain", "--"] + list(args.new),
+                           capture_output=True, text=True)
+    tree_dirty = bool(dirty.stdout.strip()) if dirty.returncode == 0 else None
+
     receipt = {
         "base": args.base,
         "original": args.original,
+        "verified_tree": verified_tree,
+        "verified_tree_dirty": tree_dirty,
+        "replay": ("git checkout <verified_tree>, then re-run this tool with the same "
+                   "arguments. A replay against any OTHER tree may legitimately report "
+                   "CONTENT CHANGED and says nothing about the relocation."),
         "new_files": args.new,
         "allowed_widenings": args.allow_widen,
         "dropped_original_lines": args.drop_original_lines,
