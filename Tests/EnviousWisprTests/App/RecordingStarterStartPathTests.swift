@@ -40,7 +40,48 @@ import Testing
     let lockBox: TestRecordingLockedBox
     let lastRecordingResult: LastRecordingResult
     let overlay: OverlayDirector
+    /// The overlay's fake host, held so a case can press the button a user sees.
+    let overlayHost: WindowlessOverlayHost
     let settings: SettingsManager
+    /// What the recovery notice's Discard button reached, and whether the notice
+    /// was still up when it did (#2292 C4b).
+    let discards: DiscardProbe
+  }
+
+  /// What the pill is showing, as a person would describe it (#2292 C6).
+  ///
+  /// These replace `overlay.currentIntent`, a projection of reducer state that
+  /// this chunk deletes. They read the RENDER model, so they answer what reached
+  /// the screen rather than what the reducer decided — the two differ when a
+  /// render is refused or deferred, and for a suite asking "what did the start
+  /// path put in front of the user" the rendered answer is the one that matters.
+  ///
+  /// The cold-boot predicate asserts the ENGINE NAME too. It lives in the
+  /// notice's secondary line, which is the text the user actually reads, and
+  /// `currentIntent == .cachingModel(engineLabel:)` was the only thing checking
+  /// the label at all — through a value nobody sees.
+  private static func showsColdBoot(_ overlay: OverlayDirector, engine: String) -> Bool {
+    guard case .notice(let notice)? = overlay.renderModel.presentation?.content else { return false }
+    return notice.kind == .warmingUp
+      && notice.secondaryText == DictationNarrator.coldStartSubtitle(engineLabel: engine)
+  }
+
+  private static func showsRecoveryOffer(_ overlay: OverlayDirector) -> Bool {
+    guard case .notice(let notice)? = overlay.renderModel.presentation?.content else { return false }
+    return notice.kind == .recovery
+  }
+
+  private static func showsRecording(_ overlay: OverlayDirector) -> Bool {
+    if case .recording? = overlay.renderModel.presentation?.content { return true }
+    return false
+  }
+
+  /// Records Discard presses and what the overlay was showing at the instant of
+  /// each, so a case can pin OWNER-BEFORE-DISMISS rather than merely both.
+  @MainActor
+  private final class DiscardProbe {
+    var count = 0
+    var noticeWasStillUp: [Bool] = []
   }
 
   private static func makeFixture(
@@ -74,7 +115,7 @@ import Testing
     // no `modelUnloadPolicy` key, so it defaults to `.never` (SettingsDefaultValues).
     let settings = SettingsManager(
       defaults: UserDefaults(suiteName: "ew-test-\(UUID().uuidString)")!)
-    let overlay = OverlayTestDouble.headlessDirector()
+    let (overlay, overlayHost) = OverlayTestDouble.headlessDirectorWithHost()
     let permissions = PermissionsService(microphoneReader: { micStatus })
     let lockBox = TestRecordingLockedBox()
     let lockAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
@@ -82,7 +123,7 @@ import Testing
       set: { lockBox.isLocked = $0 }
     )
     let hcr = HeartControlRecovery(
-      hideOverlay: { overlay.send(.pipeline(.hidden), actions: nil) },
+      hideOverlay: { overlay.dismissCurrent(.announced) },
       setLocked: { locked in lockAccess.set(locked) },
       backend: { asr.activeBackendType.rawValue }
     )
@@ -96,6 +137,7 @@ import Testing
       languageSuggestionPresenter: nil
     )
     let lastRecordingResult = LastRecordingResult()
+    let discards = DiscardProbe()
     // `recovering` is a captured var both the arm closure (mutates) and the gate
     // closure (reads) share — lets a test flip recovery ON during the arm await
     // (#1063 PR2: the post-arm re-check). Both run on the MainActor.
@@ -132,8 +174,15 @@ import Testing
       lastRecordingResult: lastRecordingResult,
       dictationLifecycleCoordinator: nil,
       accessibilityRefresh: accessibilityRefresh,
-      makeRecoveryDirective: makeRecoveryDirective,
-      isRecovering: { recovering }
+      recovery: RecordingStarter.RecoveryAccess(
+        makeDirective: makeRecoveryDirective,
+        cleanupArm: { _ in },
+        isRecovering: { recovering },
+        signalPendingLiveStart: {},
+        discardActive: {
+          discards.count += 1
+          discards.noticeWasStillUp.append(Self.showsRecoveryOffer(overlay))
+        })
     )
     return Fixture(
       starter: starter,
@@ -146,7 +195,9 @@ import Testing
       lockBox: lockBox,
       lastRecordingResult: lastRecordingResult,
       overlay: overlay,
-      settings: settings
+      overlayHost: overlayHost,
+      settings: settings,
+      discards: discards
     )
   }
 
@@ -268,7 +319,9 @@ import Testing
     // No session minted: the kernel never left idle.
     #expect(fx.kernelDriver.state == .idle)
     // The honest cold-boot pill is shown (engine-named), not a recording pill.
-    #expect(fx.overlay.currentIntent == .cachingModel(engineLabel: "Parakeet v3"))
+    #expect(
+      Self.showsColdBoot(fx.overlay, engine: "Parakeet v3"),
+      "the honest cold-boot pill, naming the engine, is what the user must see")
   }
 
   // #1063 PR2 — the recovery hold. A press (PTT or toggle) while the crash-recovery
@@ -284,8 +337,39 @@ import Testing
 
     #expect(fx.kernelDriver.state == .idle, "no session minted while recovering")
     #expect(
-      fx.overlay.currentIntent == .recoveringLastRecording,
+      Self.showsRecoveryOffer(fx.overlay),
       "recovery hold takes precedence over the cold-engine pill")
+  }
+
+  /// **Discard reaches the recovery owner, and the answered notice goes.**
+  ///
+  /// REPRODUCIBLE: crash recovery holds the engine, the user presses Record, sees
+  /// the recovery notice, and presses Discard. Before C4b this travelled out
+  /// through a settable overlay sink to a router holding a WEAK recovery target,
+  /// so an unset target left a rendered button that reached nobody. The action is
+  /// now required at the presentation that draws it.
+  ///
+  /// Runs in both lanes. The starter presents internally and returns no receipt,
+  /// so this sends Discard to the presentation currently published by the hosted
+  /// root. Staleness is not this case's subject; receipt-scoped tests own that.
+  ///
+  /// What is unique to this case is that the STARTER supplies a real discard; the
+  /// ORDERING claim it also makes is covered by `PillRequestParityTests`
+  /// `discardRunsBeforeDismissal`, which builds its own request.
+  @Test func discardInvokesRecoveryOwner() async throws {
+    let fx = Self.makeFixture(isRecovering: true)
+    fx.asr.activeBackendType = .parakeet
+    _ = await fx.starter.start()
+
+    try fx.overlayHost.sendCurrentUserActionThroughRoot(.discardRecovery)
+
+    #expect(fx.discards.count == 1, "Discard reached nobody")
+    #expect(
+      fx.discards.noticeWasStillUp == [true],
+      "the notice was dismissed before its owner was told to discard")
+    #expect(
+      fx.overlay.renderModel.presentation == nil,
+      "the notice the user already answered is still on screen")
   }
 
   @Test func toggleWhileRecoveringMintsNoSessionAndShowsRecoveringPill() async {
@@ -295,7 +379,7 @@ import Testing
     await fx.starter.toggle(source: .toggleHotkey)
 
     #expect(fx.kernelDriver.state == .idle)
-    #expect(fx.overlay.currentIntent == .recoveringLastRecording)
+    #expect(Self.showsRecoveryOffer(fx.overlay), "the recovery pill is not on screen")
   }
 
   // #1063 PR2 (Codex code-diff r2 P2) — recovery can START during `start()`'s
@@ -310,7 +394,7 @@ import Testing
     _ = await fx.starter.start()
 
     #expect(fx.kernelDriver.state == .idle, "no session minted — recovery started during the arm")
-    #expect(fx.overlay.currentIntent == .recoveringLastRecording)
+    #expect(Self.showsRecoveryOffer(fx.overlay), "the recovery pill is not on screen")
   }
 
   @Test func toggleRechecksRecoveryAfterArmAndBails() async {
@@ -321,7 +405,7 @@ import Testing
     await fx.starter.toggle(source: .toggleHotkey)
 
     #expect(fx.kernelDriver.state == .idle)
-    #expect(fx.overlay.currentIntent == .recoveringLastRecording)
+    #expect(Self.showsRecoveryOffer(fx.overlay), "the recovery pill is not on screen")
   }
 
   @Test func coldToggleMintsNoSessionAndShowsCachingPill() async {
@@ -335,7 +419,9 @@ import Testing
     await fx.starter.toggle(source: .toggleHotkey)
 
     #expect(fx.kernelDriver.state == .idle)
-    #expect(fx.overlay.currentIntent == .cachingModel(engineLabel: "Parakeet v3"))
+    #expect(
+      Self.showsColdBoot(fx.overlay, engine: "Parakeet v3"),
+      "the honest cold-boot pill, naming the engine, is what the user must see")
   }
 
   @Test func warmPressSkipsColdBranch() async {
@@ -351,9 +437,9 @@ import Testing
     // path that returned early without recording also has no cold pill and
     // stayed green. Asserting the positive recording intent reddens that
     // early-return mutation while still proving the cold branch was skipped.
-    guard case .recording = fx.overlay.currentIntent else {
+    guard Self.showsRecording(fx.overlay) else {
       Issue.record(
-        "warm press must show the recording overlay; got \(fx.overlay.currentIntent)")
+        "warm press must show the recording overlay; got \(String(describing: fx.overlay.renderModel.presentation?.content))")
       return
     }
   }
@@ -433,9 +519,12 @@ import Testing
     // Marker consumed (single press) and NO cold pill — the PTT fall-through
     // shows the recording overlay instead.
     #expect(fx.kernelDriver.residentModelLostWhileIdle == false)
-    #expect(fx.overlay.currentIntent != .cachingModel(engineLabel: "Parakeet v3"))
-    guard case .recording = fx.overlay.currentIntent else {
-      Issue.record("warm-respawn must show the recording overlay; got \(fx.overlay.currentIntent)")
+    #expect(
+      Self.showsColdBoot(fx.overlay, engine: "Parakeet v3") == false,
+      "a warm engine showed the cold-boot pill")
+    guard Self.showsRecording(fx.overlay) else {
+      Issue.record(
+        "warm-respawn must show the recording overlay; got \(String(describing: fx.overlay.renderModel.presentation?.content))")
       return
     }
   }
@@ -450,7 +539,9 @@ import Testing
     await fx.starter.toggle(source: .toggleHotkey)
 
     #expect(fx.kernelDriver.residentModelLostWhileIdle == false)
-    #expect(fx.overlay.currentIntent != .cachingModel(engineLabel: "Parakeet v3"))
+    #expect(
+      Self.showsColdBoot(fx.overlay, engine: "Parakeet v3") == false,
+      "a warm engine showed the cold-boot pill")
   }
 
   /// The marker only short-circuits the pill when the user keeps the model
@@ -467,7 +558,9 @@ import Testing
     _ = await fx.starter.start()
 
     #expect(fx.kernelDriver.state == .idle)
-    #expect(fx.overlay.currentIntent == .cachingModel(engineLabel: "Parakeet v3"))
+    #expect(
+      Self.showsColdBoot(fx.overlay, engine: "Parakeet v3"),
+      "the honest cold-boot pill, naming the engine, is what the user must see")
     #expect(fx.kernelDriver.residentModelLostWhileIdle == true)  // not consumed on cold branch
   }
 
@@ -483,7 +576,9 @@ import Testing
     _ = await fx.starter.start()
 
     #expect(fx.kernelDriver.state == .idle)
-    #expect(fx.overlay.currentIntent == .cachingModel(engineLabel: "Parakeet v3"))
+    #expect(
+      Self.showsColdBoot(fx.overlay, engine: "Parakeet v3"),
+      "the honest cold-boot pill, naming the engine, is what the user must see")
   }
 
   /// Driver-level: the overlay latch is set by `beginWarmRespawnOverlay()`, and a

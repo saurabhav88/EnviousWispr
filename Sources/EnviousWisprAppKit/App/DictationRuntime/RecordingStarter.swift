@@ -33,41 +33,65 @@ final class RecordingStarter {
   let micPermissionDenied: @MainActor () -> Bool
 
   /// Arms the crash-recovery limb for a recording about to start, returning the
-  /// durable session id + opaque directive payload (nil when recovery is off or
-  /// could not arm). A bare closure so it stays off this start-path home's
-  /// collaborator count; `DictationRuntime` binds it to `RecoveryCoordinator`.
-  /// Default is a no-op (recovery off) so test/legacy construction is unchanged.
-  /// (#1063 PR1.)
-  let makeRecoveryDirective:
-    @MainActor (SettingsManager, ASRBackendType, Bool) async -> (
-      recoverySessionID: String, payload: Data
-    )?
+  /// Everything this start path needs from the crash-recovery limb, in ONE slot.
+  ///
+  /// **Packaged because the architectural ceiling caught the accretion**
+  /// (#2292 C4b). Adding Discard as a fifth recovery closure took this type to 11
+  /// closures against a cap of 10 and 17 stored dependencies against 16. Raising
+  /// a ceiling needs a Bible line and a grounded review; packaging is the
+  /// documented alternative and is the better answer here anyway, because these
+  /// five were always one collaborator wearing five hats — every one of them is
+  /// bound to `RecoveryCoordinator` by `DictationRuntime`.
+  ///
+  /// Still bare closures inside, for the reason each of them said individually:
+  /// the kernel never sees the coordinator, and this type does not name it.
+  struct RecoveryAccess {
+    /// Arms crash recovery for a start, returning the durable session id and an
+    /// opaque directive payload (nil when recovery is off or could not arm).
+    /// (#1063 PR1.)
+    let makeDirective:
+      @MainActor (SettingsManager, ASRBackendType, Bool) async -> (
+        recoverySessionID: String, payload: Data
+      )?
 
-  /// Cleans up a recovery key/spool armed for a start that never produced a
-  /// recording — a PTT release or a concurrent-toggle stop landing in the arm
-  /// window. Those paths mint no kernel session, so no terminal pipeline state
-  /// fires to drive the lifecycle coordinator's cleanup; the start path must
-  /// trigger it directly, passing the id armed for this start (nil ⇒ recovery was
-  /// off — no-op). A pre-start abort is always a DISCARD. Bare closure (off the
-  /// collaborator cap); bound to `RecoveryCoordinator
-  /// .handleRecordingEndedWithoutDurableSave(recoverySessionID:terminal:)`.
-  /// (#1063 PR1, Codex r3; id+terminal in PR2.)
-  let cleanupRecoveryArm: @MainActor (String?) -> Void
+    /// Cleans up a recovery key/spool armed for a start that never produced a
+    /// recording — a PTT release or a concurrent-toggle stop landing in the arm
+    /// window. Those paths mint no kernel session, so no terminal pipeline state
+    /// fires to drive the lifecycle coordinator's cleanup; the start path must
+    /// trigger it directly, passing the id armed for this start (nil ⇒ recovery
+    /// was off — no-op). A pre-start abort is always a DISCARD.
+    /// (#1063 PR1, Codex r3; id+terminal in PR2.)
+    let cleanupArm: @MainActor (String?) -> Void
 
-  /// Whether the crash-recovery limb is replaying a leftover recording behind the
-  /// blocking pill (#1063 PR2). A record-press while true mints NO session — the
-  /// gate shows the "recovering" pill and returns, exactly like the cold-engine
-  /// not-ready gate. Bare closure (off the collaborator cap); bound to
-  /// `RecoveryCoordinator.isRecovering`. Default `false` keeps recovery-off and
-  /// legacy/test construction unchanged.
-  let isRecovering: @MainActor () -> Bool
+    /// Whether the limb is replaying a leftover recording behind the blocking
+    /// pill (#1063 PR2). A record-press while true mints NO session — the gate
+    /// shows the "recovering" pill and returns, exactly like the cold-engine
+    /// not-ready gate.
+    let isRecovering: @MainActor () -> Bool
 
-  /// #1707 Phase 3 (§3.1) — set on every recovery-refusal read site so a
-  /// multi-item recovery scan yields the engine BETWEEN items instead of only
-  /// after the whole scan. Bare closure (off the collaborator cap); bound to
-  /// `RecoveryCoordinator.pendingLiveStartSignal = true`. Default no-op keeps
-  /// recovery-off and legacy/test construction unchanged.
-  let signalPendingLiveStart: @MainActor () -> Void
+    /// #1707 Phase 3 (§3.1) — set on every recovery-refusal read site so a
+    /// multi-item scan yields the engine BETWEEN items rather than only after
+    /// the whole scan.
+    let signalPendingLiveStart: @MainActor () -> Void
+
+    /// What the recovery notice's Discard button does (#2292 C4b).
+    ///
+    /// Required, and it arrives on the notice's own `PillRequest`. It used to
+    /// travel out through the overlay's settable effect sink to a router holding
+    /// a WEAK recovery target, so an unset target left a rendered button that
+    /// reached nobody.
+    let discardActive: @MainActor () -> Void
+
+    /// The recovery-off shape, for construction that is not about recovery.
+    static let disabled = RecoveryAccess(
+      makeDirective: { _, _, _ in nil },
+      cleanupArm: { _ in },
+      isRecovering: { false },
+      signalPendingLiveStart: {},
+      discardActive: {})
+  }
+
+  let recovery: RecoveryAccess
 
   /// #1171 — drives the SELECTED engine to ready (the coordinator owns the
   /// single-flight switch + warm) and returns the outcome (ready / notInstalled /
@@ -151,8 +175,12 @@ final class RecordingStarter {
   /// press timestamp of this episode for the pairing `recovery.press_unblocked`
   /// telemetry below, and emits the existing `recovery.press_blocked` event.
   private func handleRecoveryPressRefused(backend: ASRBackendType) {
-    recordingOverlay.presentRecoveryNotice()
-    signalPendingLiveStart()
+    // **Discard rides WITH the notice since C4b.** It used to travel out through
+    // the overlay's settable effect sink to a router that held a weak recovery
+    // target — a route that could be unset, leaving a rendered button that
+    // reached nobody. Required here, so the omission does not compile.
+    _ = recordingOverlay.present(.recoveryNotice(onDiscard: recovery.discardActive))
+    recovery.signalPendingLiveStart()
     if pendingBlockedPressInfo == nil {
       pendingBlockedPressInfo = (backend.rawValue, ContinuousClock.now)
     }
@@ -189,12 +217,7 @@ final class RecordingStarter {
     lastRecordingResult: LastRecordingResult,
     dictationLifecycleCoordinator: DictationLifecycleCoordinator?,
     accessibilityRefresh: (@MainActor () -> Void)? = nil,
-    makeRecoveryDirective: @escaping @MainActor (SettingsManager, ASRBackendType, Bool) async -> (
-      recoverySessionID: String, payload: Data
-    )? = { _, _, _ in nil },
-    cleanupRecoveryArm: @escaping @MainActor (String?) -> Void = { _ in },
-    isRecovering: @escaping @MainActor () -> Bool = { false },
-    signalPendingLiveStart: @escaping @MainActor () -> Void = {},
+    recovery: RecoveryAccess,
     ensureSelectedReadyForPress: @escaping @MainActor () async -> EngineCoordinator.PressReadiness =
       {
         .notReady
@@ -203,10 +226,7 @@ final class RecordingStarter {
     beginMinting: @escaping @MainActor () -> Void = {},
     endMinting: @escaping @MainActor () -> Void = {}
   ) {
-    self.makeRecoveryDirective = makeRecoveryDirective
-    self.cleanupRecoveryArm = cleanupRecoveryArm
-    self.isRecovering = isRecovering
-    self.signalPendingLiveStart = signalPendingLiveStart
+    self.recovery = recovery
     self.ensureSelectedReadyForPress = ensureSelectedReadyForPress
     self.isEngineSwitching = isEngineSwitching
     self.beginMinting = beginMinting
@@ -258,7 +278,7 @@ final class RecordingStarter {
     // the blocking pill, a record-press mints NO session: show the "recovering"
     // pill (with Discard) and bail, before warming the engine the recovery is
     // using. Takes precedence over the cold-engine gate below (same shape).
-    if isRecovering() {
+    if recovery.isRecovering() {
       handleRecoveryPressRefused(backend: backend)
       return .noRecording
     }
@@ -272,9 +292,8 @@ final class RecordingStarter {
     // gate, before any readiness/warm logic — a removal's first instants can
     // still read "ready", so the readiness path alone cannot cover this.
     guard isSelectedModelInstalled() else {
-      recordingOverlay.send(
-        .pipeline(.warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName))),
-        actions: nil)
+      recordingOverlay.present(
+        .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
       TelemetryService.shared.coldStartPressBlocked(
         asrBackend: backend.rawValue, warmupInFlight: false)
       return .noRecording
@@ -305,29 +324,29 @@ final class RecordingStarter {
     beginMinting()
     defer { endMinting() }
     accessibilityRefresh()
-    recordingOverlay.presentRecording(
-      audioLevel: 0,
-      audioLevelProvider: { [audioCapture] in audioCapture.audioLevel },
-      // #1393: this is the FIRST `.recording` push (fires before
-      // `DictationLifecycleCoordinator` sees any state change), so it must
-      // carry the real provider itself — a later duplicate morphs the SAME
-      // presentation, so whatever is installed here is what renders for the
-      // whole recording.
-      recordingElapsedProvider: { [weak active] in active?.recordingElapsedSeconds },
-      isRecordingLocked: false,
-      actions: nil
-    )
+    recordingOverlay.present(
+      .recording(
+        RecordingPillInput(
+          audioLevel: 0,
+          audioLevelProvider: { [audioCapture] in audioCapture.audioLevel },
+          // #1393: this is the FIRST `.recording` push (fires before
+          // `DictationLifecycleCoordinator` sees any state change), so it must
+          // carry the real provider itself — a later duplicate morphs the SAME
+          // presentation, so whatever is installed here is what renders for the
+          // whole recording.
+          recordingElapsedProvider: { [weak active] in active?.recordingElapsedSeconds },
+          isLocked: false)))
     let pttStart = ContinuousClock.now
     do {
       try await active.handle(event: .preWarm)
     } catch is CancellationError {
       audioCapture.abortPreWarm()
-      recordingOverlay.send(.pipeline(.hidden), actions: nil)
+      recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
       return .noRecording
     } catch {
       audioCapture.abortPreWarm()
-      recordingOverlay.send(.pipeline(.hidden), actions: nil)
+      recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
       SentryBreadcrumb.add(
         stage: "recording", message: "preWarm failed — start aborted",
@@ -352,7 +371,7 @@ final class RecordingStarter {
     }
     guard !Task.isCancelled else {
       audioCapture.abortPreWarm()
-      recordingOverlay.send(.pipeline(.hidden), actions: nil)
+      recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
       return .noRecording
     }
@@ -369,7 +388,7 @@ final class RecordingStarter {
     }()
     if userStoppedDuringPreWarm {
       audioCapture.abortPreWarm()
-      recordingOverlay.send(.pipeline(.hidden), actions: nil)
+      recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
       return .noRecording
     }
@@ -394,8 +413,8 @@ final class RecordingStarter {
         // A key was armed for this take but no session will start — no terminal
         // pipeline state fires, so clean the orphan spool/key here (Codex r3).
         // Pre-start abort is always a discard (#1063 PR2: pass this take's id).
-        cleanupRecoveryArm(config.recoverySessionID)
-        recordingOverlay.send(.pipeline(.hidden), actions: nil)
+        recovery.cleanupArm(config.recoverySessionID)
+        recordingOverlay.dismissCurrent(.announced)
         recordingLockedAccess.set(false)
         return .noRecording
       }
@@ -405,9 +424,9 @@ final class RecordingStarter {
       // recording can't contend with the recovery replay on the shared engine;
       // tear down the engine + clean the just-armed id, exactly like the guards
       // above.
-      if isRecovering() {
+      if recovery.isRecovering() {
         audioCapture.abortPreWarm()
-        cleanupRecoveryArm(config.recoverySessionID)
+        recovery.cleanupArm(config.recoverySessionID)
         handleRecoveryPressRefused(backend: backend)
         recordingLockedAccess.set(false)
         return .noRecording
@@ -445,13 +464,13 @@ final class RecordingStarter {
         category: .pipelinePostConditionFailed, stage: "recording",
         extra: ["backend": backend.rawValue]
       )
-      recordingOverlay.send(.pipeline(.hidden), actions: nil)
+      recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
       active.setTerminalReason(.modelWedged)
       return .noRecording
     }
     if !pipelineActive && !pipelineConcluded && userStoppedDuringStart {
-      recordingOverlay.send(.pipeline(.hidden), actions: nil)
+      recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
       return .noRecording
     }
@@ -509,7 +528,7 @@ final class RecordingStarter {
       // while recovery holds the engine mints no session: show the pill and bail.
       // A toggle that STOPS an active session is unaffected (guarded by
       // `isStartingFromIdle`).
-      if isRecovering() {
+      if recovery.isRecovering() {
         handleRecoveryPressRefused(backend: backend)
         return
       }
@@ -524,9 +543,8 @@ final class RecordingStarter {
       // STOPS an active session is unaffected (guarded by `isStartingFromIdle`).
       // #1386 PR-2c (founder): same removal/not-installed gate as the PTT path.
       guard isSelectedModelInstalled() else {
-        recordingOverlay.send(
-          .pipeline(.warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName))),
-        actions: nil)
+        recordingOverlay.present(
+          .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
         TelemetryService.shared.coldStartPressBlocked(
           asrBackend: backend.rawValue, warmupInFlight: false)
         return
@@ -568,11 +586,11 @@ final class RecordingStarter {
       // terminal state for the lifecycle coordinator's cleanup to observe).
       if isStartingFromIdle {
         if let lastStop = lastUserStopAccess.read(), lastStop > toggleStart {
-          cleanupRecoveryArm(config.recoverySessionID)
+          recovery.cleanupArm(config.recoverySessionID)
           return
         }
         if active.state.isActive {
-          cleanupRecoveryArm(config.recoverySessionID)
+          recovery.cleanupArm(config.recoverySessionID)
           try await active.handle(event: .requestStop)
           return
         }
@@ -580,8 +598,8 @@ final class RecordingStarter {
         // — launch recovery may have started in that window. Bail before minting a
         // session so it can't contend with the recovery replay; clean the just-
         // armed id.
-        if isRecovering() {
-          cleanupRecoveryArm(config.recoverySessionID)
+        if recovery.isRecovering() {
+          recovery.cleanupArm(config.recoverySessionID)
           handleRecoveryPressRefused(backend: backend)
           return
         }
@@ -636,7 +654,7 @@ final class RecordingStarter {
   {
     let recovery =
       armRecovery
-      ? await makeRecoveryDirective(
+      ? await recovery.makeDirective(
         settings, asrManager.activeBackendType, activeDriver.supportsLanguageDetection)
       : nil
     return DictationSessionConfigFactory.make(

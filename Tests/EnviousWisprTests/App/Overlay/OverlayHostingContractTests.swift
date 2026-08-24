@@ -21,13 +21,13 @@ import Testing
 /// and must not be encouraged to invent one. `OverlayWindowHostTests` owns those
 /// and always will.
 ///
-/// **THE SPLIT BELOW IS DELIBERATE, and this branch has already paid for getting
-/// it wrong once.** The cross-host comparisons read `presentedIDForTesting` and
-/// `currentPresentationForTesting`, which live inside `#if DEBUG` on the
-/// director, so they cannot exist in the Release lane — a Debug-only local run
-/// cannot see that by construction, and the failure is a COMPILE break with zero
-/// failure marks rather than a red test. The guard that matters most needs no
-/// seam at all, so it stays outside and runs in both lanes.
+/// **The split below used to be a LANE split and is now only a subject split.**
+/// The cross-host comparisons read `presentedIDForTesting` and
+/// `currentPresentationForTesting`, which lived inside `#if DEBUG` on the
+/// director, so the whole comparing half was Debug-only — and a Debug-only local
+/// run cannot see that by construction, because the failure is a COMPILE break
+/// with zero failure marks rather than a red test. C6 deleted those seams; both
+/// halves now read the render model and both lanes execute them.
 @MainActor
 @Suite(.tags(.productOutcome))
 struct OverlayHostingContractTests {
@@ -48,87 +48,85 @@ struct OverlayHostingContractTests {
   func theFakeNeverRefuses() {
     let host = WindowlessOverlayHost()
     let d = OverlayDirector(
-      host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in }, deferFirstRender: { $0() })
+      host: host,       announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      deferFirstRender: { $0() })
 
-    d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+    d.present(.warning(reason: .polishFailed))
 
     #expect(host.presented.count == 1, "the fake was never asked to present")
     #expect(host.isShowing, "the fake accepted a presentation and then reported nothing showing")
 
-    d.send(.pipeline(.hidden), actions: nil)
+    d.dismissCurrent(.announced)
 
     #expect(host.hideCount == 1, "the fake was never asked to hide")
     #expect(!host.isShowing, "the fake was hidden and still reports a presentation showing")
   }
 }
 
-#if DEBUG
-  /// The half that COMPARES the two hosts, and it needs the director's debug
-  /// seams to do it. See the note on the suite above for why that confines it to
-  /// the Debug lane rather than making it optional.
-  @MainActor
-  @Suite(.tags(.productOutcome))
-  struct OverlayHostingParityTests {
+/// The half that COMPARES the two hosts.
+///
+/// **Release-visible since C6.** It needed the director's debug seams to do the
+/// comparison, which confined it to the Debug lane; it now reads `renderModel`,
+/// which is production surface, so both hosts are compared in both lanes.
+@MainActor
+@Suite(.tags(.productOutcome))
+struct OverlayHostingParityTests {
 
-    init() { _ = NSApplication.shared }
+  init() { _ = NSApplication.shared }
 
-    private static var realHosts: [OverlayWindowHost] = []
+  private static var realHosts: [OverlayWindowHost] = []
 
-    private static let screen = ScreenGeometry(
-      id: ScreenID(rawValue: 1),
-      frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
-      visibleFrame: CGRect(x: 0, y: 85, width: 1512, height: 860))
+  private static let screen = ScreenGeometry(
+    id: ScreenID(rawValue: 1),
+    frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+    visibleFrame: CGRect(x: 0, y: 85, width: 1512, height: 860))
 
-    /// Both hosts, behind the protocol, so a case is written ONCE and runs
-    /// twice. A per-host copy is how the two definitions drift apart without
-    /// anything failing.
-    private static func hosts() -> [(name: String, host: any OverlayWindowHosting)] {
-      let real = OverlayWindowHost(screens: { OverlayScreenResolver { screen } })
-      realHosts.append(real)
-      return [("real", real), ("windowless", WindowlessOverlayHost())]
-    }
+  /// Both hosts, behind the protocol, so a case is written ONCE and runs
+  /// twice. A per-host copy is how the two definitions drift apart without
+  /// anything failing.
+  private static func hosts() -> [(name: String, host: any OverlayWindowHosting)] {
+    let real = OverlayWindowHost(screens: { OverlayScreenResolver { screen } })
+    realHosts.append(real)
+    return [("real", real), ("windowless", WindowlessOverlayHost())]
+  }
 
-    private static func closeRealHosts() {
-      for host in realHosts { host.hide() }
-      realHosts.removeAll()
-    }
+  private static func closeRealHosts() {
+    for host in realHosts { host.hide() }
+    realHosts.removeAll()
+  }
 
-    private static func director(on host: any OverlayWindowHosting) -> OverlayDirector {
-      OverlayDirector(
-        host: host, deliverEffect: { _ in }, deliverAppAction: { _ in }, announce: { _ in }, deferFirstRender: { $0() })
-    }
+  private static func director(on host: any OverlayWindowHosting) -> OverlayDirector {
+    OverlayDirector(
+      host: host,         announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      deferFirstRender: { $0() })
+  }
 
-    @Test("both hosts report a presentation they accepted")
-    func presentationSucceedsOnBothHosts() {
-      defer { Self.closeRealHosts() }
-      for (name, host) in Self.hosts() {
-        let d = Self.director(on: host)
+  @Test("both hosts report a presentation they accepted")
+  func presentationSucceedsOnBothHosts() {
+    defer { Self.closeRealHosts() }
+    for (name, host) in Self.hosts() {
+      let d = Self.director(on: host)
 
-        d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
+      d.present(.warning(reason: .polishFailed))
 
-        #expect(
-          d.presentedIDForTesting != nil,
-          "the \(name) host refused a presentation the other accepted")
-        #expect(
-          d.currentPresentationForTesting != nil,
-          "the \(name) host left the reducer without an occupant after a success")
-      }
-    }
-
-    @Test("both hosts release the slot when the overlay is hidden")
-    func hidingClearsOnBothHosts() {
-      defer { Self.closeRealHosts() }
-      for (name, host) in Self.hosts() {
-        let d = Self.director(on: host)
-        d.send(.pipeline(.warning(reason: .polishFailed)), actions: nil)
-
-        d.send(.pipeline(.hidden), actions: nil)
-
-        #expect(d.presentedIDForTesting == nil, "the \(name) host still claims a presentation")
-        #expect(
-          d.currentPresentationForTesting == nil,
-          "the \(name) host left an occupant behind after hiding")
-      }
+      #expect(
+        d.renderModel.presentation != nil,
+        "the \(name) host refused a presentation the other accepted")
     }
   }
-#endif
+
+  @Test("both hosts release the slot when the overlay is hidden")
+  func hidingClearsOnBothHosts() {
+    defer { Self.closeRealHosts() }
+    for (name, host) in Self.hosts() {
+      let d = Self.director(on: host)
+      d.present(.warning(reason: .polishFailed))
+
+      d.dismissCurrent(.announced)
+
+      #expect(
+        d.renderModel.presentation == nil,
+        "the \(name) host left a pill on screen after hiding")
+    }
+  }
+}

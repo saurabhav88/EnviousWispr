@@ -46,60 +46,6 @@ enum EscapeRecoveryWiring {
     }
   }
 
-  /// The pill's action handler, for the ONE call that presents it.
-  ///
-  /// **A binding that arrives WITH the presentation, not a lifetime field.** The
-  /// panel kept onEscapeRecoveryPaste alive for the app's life whether or not
-  /// a pill was showing; the director holds exactly one active binding, for the
-  /// presentation it belongs to, and drops it when the occupant changes.
-  ///
-  /// The payload is TAKEN from the director's custody rather than captured here.
-  /// The action carries the transcript id as a LOOKUP KEY only, and the take is
-  /// one-shot — which is what makes a stale Undo press safe: the second press
-  /// finds nothing rather than pasting twice.
-  ///
-  /// `paste` is a parameter with a production default for the same reason
-  /// `writer`'s `makeStore` is: without it this composition is untestable by
-  /// construction. The production closure reaches `TelemetryService.shared` and
-  /// the real paste cascade, so the only way to exercise the WRAPPER's own
-  /// contract — dismiss first, forward once — would be to fire real telemetry
-  /// and drive AX against whatever app happened to be frontmost. The seam is one
-  /// argument; a test copy of this closure would be a second definition that
-  /// passes while the real one is broken, which is the shape that let the
-  /// missing dismissal through in the first place.
-  @MainActor
-  static func pillActions(
-    director: OverlayDirector,
-    coordinator: TranscriptCoordinator,
-    paste: ((CancelUndoPayload) -> Void)? = nil
-  ) -> (OverlayAction) -> Void {
-    let paste =
-      paste ?? pasteAction(coordinator: coordinator, report: restoreReporter(source: .pill))
-    return { [weak director] action in
-      guard case .pasteEscapeRecovery(let transcriptID) = action,
-        let payload = director?.takeEscapeRecoveryPayload(matching: transcriptID)
-      else { return }
-      // **Finish tearing down OUR offer before handing control outside**, which
-      // is the shipped order and is load-bearing in two directions.
-      //
-      // Forwards: an accepted pill that stays on screen is an offer the user has
-      // already taken. It sits there until its dwell expires, and a second press
-      // does nothing at all, because the one-shot take above has already spent
-      // the payload — a button that looks live and is not.
-      //
-      // Backwards, and this is the half the shipped comment exists to record:
-      // the paste handler may PRESENT ITS OWN OVERLAY. Dismissing after the call
-      // would tear down the pill that handler just put up, so the offer the user
-      // is now looking at would be revoked by the one they just accepted.
-      //
-      // SILENT, matching shipped `hide()` rather than `show(intent: .hidden)`:
-      // the user pressed a button and their text is being restored, so a spoken
-      // "overlay hidden" is noise on top of the outcome they asked for.
-      director?.dismissSilently()
-      paste(payload)
-    }
-  }
-
   /// The pill's Paste action, bound to the coordinator that owns the row.
   ///
   /// Here rather than inline for the same reason `writer` is: the composition
@@ -141,9 +87,9 @@ enum EscapeRecoveryWiring {
   /// — the half-connection this feature has already produced twice.
   ///
   /// **It no longer binds the pill as a side effect**, because there is no
-  /// lifetime field to bind: the handler now travels with the presentation, from
-  /// `pillActions`, at the one site that presents it. The name used to say the
-  /// side effect out loud; now there is nothing to say.
+  /// lifetime field to bind: the handler travels with the presentation, on the
+  /// `.escapeRecovery` request the one presenting site builds. The name used to
+  /// say the side effect out loud; now there is nothing to say.
   ///
   /// Kept as a named call rather than inlining `writer()` for the reason it was
   /// extracted: this is where the feature's wiring lives, and the composition

@@ -79,93 +79,6 @@ enum OverlayContinuity: Equatable, Sendable {
     currentFrame: CGRect, anchoredScreen: ScreenID, outgoingWasContentSized: Bool)
 }
 
-// MARK: - Feature requests and actions
-
-/// A request from a FEATURE — something that is not the dictation pipeline.
-///
-/// The pipeline speaks `OverlayIntent`; features speak this. Keeping them as
-/// two types is what lets the reducer state the arbitration rule as a fact about
-/// types rather than as a convention: a feature may occupy the slot only while
-/// the pipeline is idle. Today that rule is spelled out separately at every
-/// feature — importStatusOwnsCurrentSlot reads
-/// `currentIntent == .hidden && …`, Bluetooth keeps its own `isPresented`
-/// flag, and the passive chip keeps a generation counter — and nothing holds
-/// them to the same answer.
-enum OverlayRequest: Equatable, Sendable {
-  case importStatus(message: String)
-  case bluetoothAwareness
-  case passiveChip(payload: LanguageChipPayload)
-  case accessibilityToast
-}
-
-/// Something the USER did to a live presentation.
-///
-/// Every one of these is a button the shipped pill already offers. They are
-/// gathered here because the director holds **exactly one** active action
-/// binding for the current presentation, rather than the eight
-/// `set*Handler` closure fields the panel keeps alive for the app's lifetime
-/// whether or not the pill that uses them is showing.
-/// **Every case here is a button the shipped pill offers, and every case carries
-/// the fact its handler needs.** Three rounds of review each found one place
-/// where a bare enum case had thrown away something the feature depends on, so
-/// the whole surface was then enumerated at once rather than waiting for a
-/// fourth. The panel's own handler fields are the authority
-/// (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`); each row below names the field it
-/// replaces.
-enum OverlayAction: Equatable, Sendable {
-  /// grantHandler.
-  case grantAccessibility
-  /// discardRecoveryHandler.
-  case discardRecovery
-  /// onEscapeRecoveryPaste, which takes the `CancelUndoPayload`.
-  ///
-  /// **Carries the transcript id, and the first version did not.** The panel
-  /// holds the payload itself and looks it up with
-  /// `takeEscapeRecoveryPayload(matching:)` — a one-shot take, so the
-  /// id is what makes the hand-off safe against a stale press. A bare case
-  /// would have delivered "the user pressed Undo" with nothing to undo.
-  case pasteEscapeRecovery(transcriptID: UUID)
-  /// passiveChipLockHandler.
-  case lockLanguage
-  /// passiveChipDismissHandler.
-  case dismissChip
-  /// bluetoothAwarenessGotItHandler.
-  ///
-  /// **Distinct from `closeBluetoothAwareness`, and collapsing them lost real
-  /// telemetry.** `BluetoothAwarenessPresenter` emits `.dismissed/.gotIt` versus
-  /// `.dismissed/.closed`: acknowledging the card and closing it
-  /// are different user answers and the dashboard reads them apart.
-  case acknowledgeBluetoothAwareness
-  /// bluetoothAwarenessCloseHandler.
-  case closeBluetoothAwareness
-  /// bluetoothAwarenessAdjustSettingsHandler.
-  case openBluetoothSettings
-}
-
-/// A side effect the director must forward to a feature owner, beyond changing
-/// what is on screen.
-///
-/// **These exist because a feature keeps state the overlay does not own, and
-/// clearing only the overlay's copy leaves the feature's stale.**
-/// `LanguageSuggestionPresenter.currentChip` is cleared by a
-/// generation-gated call, and the escape-recovery payload is taken
-/// by transcript id — neither is reachable from "the slot is now empty".
-///
-/// An array rather than a field per occasion: a field dedicated to expiry alone would
-/// needed a sibling the moment the recording-intent observer was wired, and
-/// accreting one field per occasion is how the type this migration deletes grew
-/// its 33 stored properties. Usually empty; at most a couple, emitted in order.
-enum OverlayEffect: Equatable, Sendable {
-  /// passiveChipAutoDismissHandler, which takes the generation.
-  case languageChipAutoDismissed(generation: UInt64)
-  /// The escape-recovery pill went away without the user pressing Undo, so the
-  /// owner must drop the payload it is holding.
-  case escapeRecoveryExpired(transcriptID: UUID)
-  /// setRecordingIntentObserver. Fires when the recording pill
-  /// arrives or leaves. Nothing in the first model expressed it at all.
-  case recordingIntentChanged(Bool)
-}
-
 // MARK: - What ends up on screen
 
 /// What a screen reader says when a presentation arrives, and how loudly.
@@ -317,7 +230,7 @@ struct NoticeModel: Equatable, Sendable {
   /// content-driven height. `.advisory` is the shipped case and its dwell is
   /// deliberately long enough to read (#1891).
   let isMultiline: Bool
-  let action: (label: String, action: OverlayAction)?
+  let action: (label: String, action: PillAction)?
 
   static func == (a: NoticeModel, b: NoticeModel) -> Bool {
     a.kind == b.kind && a.text == b.text && a.secondaryText == b.secondaryText
@@ -328,7 +241,7 @@ struct NoticeModel: Equatable, Sendable {
 
   init(
     kind: Kind, text: String, secondaryText: String? = nil, severity: Severity = .neutral,
-    isMultiline: Bool = false, action: (label: String, action: OverlayAction)? = nil
+    isMultiline: Bool = false, action: (label: String, action: PillAction)? = nil
   ) {
     self.kind = kind
     self.text = text

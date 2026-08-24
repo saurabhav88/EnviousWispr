@@ -109,18 +109,19 @@ public final class WisprBootstrapper {
     // composition root. This is the ONLY KeychainManager that gets `.live`; it carries
     // the sink for the legacy-key-cleanup (Q3.3) + cloud-prewarm (A6) quiet limbs.
     let keychainManager = KeychainManager(telemetrySink: .live)
-    let overlayOutputs = OverlayOutputRouter()
+    // **The host is built early and the DIRECTOR is not** (#2292 C2).
+    //
+    // `OverlayWindowHost.init` registers an active-Space observer and nothing
+    // else — no panel exists until the first `present` — so it costs nothing to
+    // sit here, and moving it would buy nothing.
+    //
+    // The director moved DOWN, to just after the Live Preview installation
+    // below. It needs that installation's bridge at construction, and the
+    // installer needs `audioCapture` and `settingsSync`, both of which are built
+    // further down this function. `PipelineSettingsSync` is downstream of both
+    // ASR pipelines, so hoisting the installer would mean hoisting those — the
+    // move that does work is this one.
     let overlayHost = OverlayWindowHost()
-    let recordingOverlay = OverlayDirector(
-      host: overlayHost, deliverEffect: { overlayOutputs.deliver($0) },
-      deliverAppAction: { overlayOutputs.deliver($0) },
-      position: { settings.overlayPillPosition },
-      accessibilityEligibility: OverlayAccessibilityEligibility(
-        warningDismissed: { [weak permissions] in
-          permissions?.accessibilityWarningDismissed ?? false
-        }))
-    overlayOutputs.overlay = recordingOverlay
-    overlayOutputs.permissions = permissions
     let audioDeviceList = AudioDeviceList()
     let inputDevicePreferenceReconciler = InputDevicePreferenceReconciler(settings: settings)
     audioDeviceList.onDevicesChanged = { [weak inputDevicePreferenceReconciler] devices in
@@ -135,24 +136,6 @@ public final class WisprBootstrapper {
     let contactsImportCoordinator = ContactsImportCoordinator(
       customWords: customWordsCoordinator,
       aliasSuggester: customWordsCoordinator.aliasSuggester)
-    // #1701 Chunk 2: bulk-import-enrichment producer, a sibling of
-    // `contactsImportCoordinator` on the same alias-suggester permit lane.
-    // Construction and scanning are both unconditional: without this wiring
-    // `onImportCommitted` stays nil and a committed import never enriches.
-    let bulkImportEnrichmentCoordinator = BulkImportEnrichmentCoordinator(
-      customWords: customWordsCoordinator,
-      aliasSuggester: customWordsCoordinator.aliasSuggester,
-      presentStatus: { [weak recordingOverlay] message in
-        recordingOverlay?.send(.featureRequest(.importStatus(message: message)), actions: nil)
-      })
-    customWordsCoordinator.onImportCommitted = { [weak bulkImportEnrichmentCoordinator] in
-      bulkImportEnrichmentCoordinator?.requestDrain()
-    }
-    customWordsCoordinator.cancelBulkImportEnrichment = {
-      [weak bulkImportEnrichmentCoordinator] in
-      bulkImportEnrichmentCoordinator?.cancel()
-    }
-    bulkImportEnrichmentCoordinator.requestDrain()
     let customWordsPropagator = CustomWordsPropagator()
     // #633 Phase 9: owns enabled vocabulary-pack state; merges pack terms into
     // the corrector lane (default OFF). Wired into `wireCustomWords` below.
@@ -340,14 +323,6 @@ public final class WisprBootstrapper {
     // construction would silently overwrite the first driver's VAD callback.
     let vadSource = KernelDictationDriverFactory.makeSharedVADSignalSource(
       audioCapture: audioCapture)
-    // #1224 (#1543): the VAD source reports a typed readiness FACT when the
-    // bundled model can't load. The App shell emits a typed in-panel notice and
-    // `DictationNarrator` owns the user-facing sentence (#1567). The notice
-    // no-ops when no recording panel is showing.
-    vadSource.onAutoStopUnavailableNotice = { [weak recordingOverlay] in
-      recordingOverlay?.send(
-        .inPanelNotice(.autoStopUnavailable, dismissAfter: 4.0), actions: nil)
-    }
 
     // PR-4b.4 of #827: Parakeet recordings flow through the kernel via the
     // driver constructed by `KernelDictationDriverFactory`. The factory
@@ -474,10 +449,87 @@ public final class WisprBootstrapper {
 
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
-    let livePreview = LivePreviewInstaller.install(
-      overlay: recordingOverlay, capture: audioCapture, settings: settings,
+    //
+    // **This runs BEFORE the director now** (#2292 C2) and hands back a bridge
+    // rather than pushing providers into an overlay that had to already exist.
+    let livePreviewInstallation = LivePreviewInstaller.install(
+      capture: audioCapture, settings: settings,
       settingsSync: settingsSync, modelDelivery: modelDelivery)
-    overlayOutputs.livePreview = livePreview
+    let livePreview = livePreviewInstallation.coordinator
+
+    // **The director is constructed HERE, roughly 360 lines below where it used
+    // to be, and this is the whole point of C2.** Its Live Preview seams are now
+    // required at construction, and they cannot exist any earlier: the installer
+    // needs `audioCapture` and `settingsSync`, and `PipelineSettingsSync` is
+    // downstream of both ASR pipelines. So the director moved to its
+    // dependencies rather than its dependencies moving to it.
+    //
+    // Nothing outside this function can observe the move: `EnviousWisprApp`
+    // completes `WisprBootstrapper()` before `appDelegate.attach(bootstrapper:)`,
+    // so the director exists before any lifecycle callback, any scene, or any
+    // recording. Its own `init` creates no panel, hosting view, status item or
+    // task.
+    let recordingOverlay = OverlayDirector(
+      host: overlayHost,
+      position: { settings.overlayPillPosition },
+      accessibilityEligibility: OverlayAccessibilityEligibility(
+        warningDismissed: { [weak permissions] in
+          permissions?.accessibilityWarningDismissed ?? false
+        }),
+      livePreview: livePreviewInstallation.bridge,
+      // Grant leaves the router in C2, captured STRONGLY on purpose. The
+      // router's targets were weak because they were settable and their feature
+      // owners anchored them; a REQUIRED construction argument has the opposite
+      // obligation — a weak capture reintroduces the silent failure this
+      // parameter exists to make unspellable, where the button renders and
+      // reaches nobody.
+      //
+      // No cycle: `PermissionsService` lives in `EnviousWisprServices`, which is
+      // downstream of this module and cannot name `OverlayDirector` — zero hits.
+      // Its one callback has a single assignment (`MenuBarController.swift:76`)
+      // and that captures weakly. `WisprBootstrapper` owns the service for the
+      // app's lifetime regardless.
+      grantAccessibility: { _ = permissions.requestAccessibilityAccess() })
+
+    // #1701 Chunk 2: bulk-import-enrichment producer, a sibling of
+    // `contactsImportCoordinator` on the same alias-suggester permit lane.
+    // Moved down with the director (#2292 C2). Construction and scanning are both
+    // unconditional: without this wiring `onImportCommitted` stays nil and a
+    // committed import never enriches.
+    //
+    // The WHOLE block moves because `presentStatus` closes over
+    // `recordingOverlay`; leaving it above the director would need the mutable
+    // forward-reference shape this chunk removes. `requestDrain()` stays after
+    // both callbacks and before `wireCustomWords`, unchanged from before the
+    // move — its MainActor task cannot run until this synchronous initializer
+    // yields, which it does not do before returning.
+    let bulkImportEnrichmentCoordinator = BulkImportEnrichmentCoordinator(
+      customWords: customWordsCoordinator,
+      aliasSuggester: customWordsCoordinator.aliasSuggester,
+      presentStatus: { [weak recordingOverlay] message in
+        recordingOverlay?.present(.importStatus(message: message))
+      })
+    customWordsCoordinator.onImportCommitted = { [weak bulkImportEnrichmentCoordinator] in
+      bulkImportEnrichmentCoordinator?.requestDrain()
+    }
+    customWordsCoordinator.cancelBulkImportEnrichment = {
+      [weak bulkImportEnrichmentCoordinator] in
+      bulkImportEnrichmentCoordinator?.cancel()
+    }
+    bulkImportEnrichmentCoordinator.requestDrain()
+
+    // #1224 (#1543): the VAD source reports a typed readiness FACT when the
+    // bundled model can't load. The App shell emits a typed in-panel notice and
+    // `DictationNarrator` owns the user-facing sentence (#1567). The notice
+    // no-ops when no recording panel is showing.
+    //
+    // `vadSource` itself stays where it is built, above; only this BINDING moved
+    // down with the director. The notice can only fire during a recording, which
+    // cannot start until bootstrap returns, so no reachable interval exists where
+    // it is unbound.
+    vadSource.onAutoStopUnavailableNotice = { [weak recordingOverlay] in
+      recordingOverlay?.update(.inPanelNotice(.autoStopUnavailable, dismissAfter: 4.0))
+    }
 
     // Custom-words propagator wiring (seed → register consumers → install
     // `onWordsChanged`). Phase D (#496). `wireCustomWords` strong-captures the
@@ -596,27 +648,14 @@ public final class WisprBootstrapper {
 
     let diagnosticsCoordinator = DiagnosticsCoordinator(engineMutationScope: engineMutationScope)
 
-    // PR4 of #763 construction-order constraint preserved: LanguageSuggestionPresenter
-    // captures `recordingOverlay` through narrow closures.
-    let overlay = recordingOverlay
+    // **Two arguments, and no self-reference problem to solve** (#2292 C3).
+    // This used to hand over three closures, one of which resolved the chip's
+    // buttons through the router BECAUSE the presenter they belonged to did not
+    // exist yet. The buttons now ride on the chip's own request, which the
+    // presenter builds in a method, so `self` is simply in scope.
     let languageSuggestionPresenter = LanguageSuggestionPresenter(
-      showOverlay: { [weak overlay, weak overlayOutputs, settings] intent in
-        // The chip is the one pipeline intent with buttons, so it is the one
-        // that carries a binding. Resolved through the router because the
-        // presenter this closure belongs to does not exist yet.
-        guard case .passiveChip = intent else {
-          overlay?.send(.pipeline(intent), actions: nil)
-          return
-        }
-        guard let presenter = overlayOutputs?.languageChips else { return }
-        overlay?.send(
-          .pipeline(intent),
-          actions: OverlayChipWiring.actions(presenter: presenter, settings: settings))
-      },
-      readCurrentIntent: { [weak overlay] in overlay?.currentIntent ?? .hidden },
-      // Silent hide for chip dismissal — bypasses the .hidden case's
-      // "Recording complete" AX announcement (PR4 Codex code-diff r5 [P3]).
-      hideOverlay: { [weak overlay] in overlay?.dismissSilently() }
+      overlay: recordingOverlay,
+      onLanguageAccepted: OverlayChipWiring.acceptedLanguage(settings: settings)
     )
     // Wires the `LanguageDetector` actor's passive-chip callback to the
     // presenter. The presenter is captured directly (App-lifetime `@State`).
@@ -629,7 +668,6 @@ public final class WisprBootstrapper {
       }
     }
 
-    overlayOutputs.languageChips = languageSuggestionPresenter
 
     let updateCoordinatorHolder = UpdateCoordinatorHolder()
     let sparkleUpdateController = SparkleUpdateController(holder: updateCoordinatorHolder)
@@ -715,9 +753,8 @@ public final class WisprBootstrapper {
 
     // #1464: after a leftover recording lands in History, post the standalone green
     // success notice (the `.recovered` path was silent before).
-    overlayOutputs.recovery = recoveryCoordinator
     recoveryCoordinator.onRecoverySucceeded = { [weak recordingOverlay] in
-      recordingOverlay?.send(.pipeline(.recoverySucceeded), actions: nil)
+      recordingOverlay?.present(.recoverySucceeded)
     }
     // #1171 — the single owner of ASR-engine selection, status, and switching.
     // Reads the user's choice + active engine + readiness LIVE (no stored "want"

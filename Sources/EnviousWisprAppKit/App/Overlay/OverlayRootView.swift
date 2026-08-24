@@ -74,7 +74,7 @@ struct OverlayRootView: View {
 
   /// Every leaf callback goes through here, so the presentation's own ID travels
   /// with the press instead of being looked up afterwards.
-  private func press(_ action: OverlayAction, on presentation: OverlayPresentation) {
+  private func press(_ action: PillAction, on presentation: OverlayPresentation) {
     sendEvent(.action(presentation.id, action))
   }
 

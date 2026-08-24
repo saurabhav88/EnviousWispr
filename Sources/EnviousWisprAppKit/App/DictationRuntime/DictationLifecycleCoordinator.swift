@@ -212,10 +212,25 @@ final class DictationLifecycleCoordinator {
   /// — flows through here so the providers and lock state are threaded
   /// identically; `OverlayReducer` dedups an identical intent (#930).
   ///
-  /// It SPLITS by what each intent needs installed: the toast carries a
-  /// once-per-session policy the director owns, a recording carries providers, a
-  /// lock and a layout that must arrive in the operation that presents it, and
-  /// everything else needs none of them.
+  /// **EXHAUSTIVE over `OverlayIntent` since C5a, and the refusals are the point.**
+  /// It used to fall through to a generic `send` for everything it did not
+  /// special-case, which meant this pipeline seam could construct ANY intent —
+  /// including the six that belong to a feature owner and carry buttons. Those
+  /// six are refused here rather than silently presented with nothing bound.
+  ///
+  /// Ten cases are legal at this seam. `cachingModel` is among them because the
+  /// kernel can emit it while arming, not only ColdPressGuard.
+  ///
+  /// The six refused are owner-only: `passiveChip` and `bluetoothAwareness`
+  /// belong to their presenters (C3), `escapeRecovery` to the lifecycle path that
+  /// holds the payload (C4a), and `recoveringLastRecording` to `RecordingStarter`
+  /// since C4b made its Discard owner required — this seam cannot construct it
+  /// honestly. `engineReady` and `recoverySucceeded` are raised by their own
+  /// owners and never arrive here.
+  ///
+  /// HYPOTHETICAL today: no production emitter sends the six through this seam.
+  /// The assertion earns its place anyway because the alternative is an
+  /// interactive pill on screen with no handler behind it, which fails silently.
   private func showOverlayIntent(_ intent: OverlayIntent) {
     let audioCapture = self.audioCapture
     // #1393: resolve the active driver the same way `activeTelemetryTarget()`
@@ -223,21 +238,48 @@ final class DictationLifecycleCoordinator {
     // actually recording.
     let backend = activeCaptureBackend() ?? lastCapturingBackend
     let driver = backend == .whisperKit ? whisperKitKernelDriver : kernelDriver
-    if case .accessibilityToast = intent {
-      recordingOverlay.presentAccessibilityNotice()
-      return
+
+    switch intent {
+    case .hidden:
+      // `.announced`, which is what `.pipeline(.hidden)` did. A dictation ending
+      // posts "Recording complete" to VoiceOver; only a chip or card dismissal is
+      // silent.
+      recordingOverlay.dismissCurrent(.announced)
+
+    case .recording(let level):
+      // The providers and the lock must arrive in the operation that PRESENTS,
+      // not afterwards: the shipped panel commits the lock before drawing, so
+      // supplying it separately renders unlocked and morphs a frame later.
+      recordingOverlay.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: level,
+            audioLevelProvider: { audioCapture.audioLevel },
+            recordingElapsedProvider: { [weak driver] in driver?.recordingElapsedSeconds },
+            isLocked: recordingLockedAccess.get())))
+
+    case .processing(let phase):
+      recordingOverlay.present(.processing(phase: phase))
+    case .clipboardFallback:
+      recordingOverlay.present(.clipboardFallback)
+    case .accessibilityToast:
+      // Carries a once-per-session showing policy the director owns.
+      recordingOverlay.present(.accessibilityNotice)
+    case .warning(let reason):
+      recordingOverlay.present(.warning(reason: reason))
+    case .error(let reason):
+      recordingOverlay.present(.error(reason: reason))
+    case .advisory(let reason):
+      recordingOverlay.present(.advisory(reason: reason))
+    case .interruption(let reason):
+      recordingOverlay.present(.interruption(reason: reason))
+    case .cachingModel(let engineLabel):
+      recordingOverlay.present(.cachingModel(engineLabel: engineLabel))
+
+    case .passiveChip, .engineReady, .recoveringLastRecording,
+      .recoverySucceeded, .bluetoothAwareness, .escapeRecovery:
+      assertionFailure("An owner-only overlay intent reached the pipeline display seam")
     }
-    guard case .recording(let level) = intent else {
-      recordingOverlay.send(.pipeline(intent), actions: nil)
-      return
-    }
-    recordingOverlay.presentRecording(
-      audioLevel: level,
-      audioLevelProvider: { audioCapture.audioLevel },
-      recordingElapsedProvider: { [weak driver] in driver?.recordingElapsedSeconds },
-      isRecordingLocked: recordingLockedAccess.get(),
-      actions: nil
-    )
   }
 
   /// #1060: within the last minute before the cap. Show a PERSISTENT in-panel
@@ -249,7 +291,7 @@ final class DictationLifecycleCoordinator {
   /// against the recording session that produced it — the coordinator forwards it
   /// and never re-derives one from an active driver.
   private func showApproachingCapWarning(remainingSeconds: TimeInterval, takeID: String) {
-    recordingOverlay.send(.inPanelNotice(.approachingCap, dismissAfter: nil), actions: nil)
+    recordingOverlay.update(.inPanelNotice(.approachingCap, dismissAfter: nil))
     TelemetryService.shared.recordingCapWarningShown(
       backend: lastCapturingBackend == .whisperKit ? "whisperKit" : "parakeet",
       capSeconds: TimingConstants.maxRecordingDuration,
@@ -460,7 +502,7 @@ final class DictationLifecycleCoordinator {
       let parakeetComplete = self.kernelDriver.state == .complete
       let whisperKitComplete = self.whisperKitKernelDriver.state == .complete
       guard parakeetComplete || whisperKitComplete else { return }
-      self.recordingOverlay.send(.pipeline(.warning(reason: reason)), actions: nil)
+      self.recordingOverlay.present(.warning(reason: reason))
     }
   }
 
@@ -491,10 +533,18 @@ final class DictationLifecycleCoordinator {
         // WITH the presentation, so a pill is never up with nothing behind it.
         presentEscapeRecoveryPill: { [weak self] payload in
           guard let self else { return }
-          self.recordingOverlay.presentEscapeRecovery(
-            payload,
-            actions: EscapeRecoveryWiring.pillActions(
-              director: self.recordingOverlay, coordinator: self.transcriptCoordinator))
+          // **The typed request is the only presentation path since C4a.** The
+          // wrapper that used to sit here — take the payload, dismiss, forward —
+          // is now the director's own binding, so there is exactly one place the
+          // order can be got wrong. The paste callback is the SAME production
+          // composition, so the cascade and its `.pill` telemetry source are
+          // unchanged.
+          _ = self.recordingOverlay.present(
+            .escapeRecovery(
+              payload: payload,
+              onPaste: EscapeRecoveryWiring.pasteAction(
+                coordinator: self.transcriptCoordinator,
+                report: EscapeRecoveryWiring.restoreReporter(source: .pill))))
         },
         // The SAME `append` an ordinary completion uses. A held row differs by
         // carrying an expiry stamp, not by needing a second insertion path, and

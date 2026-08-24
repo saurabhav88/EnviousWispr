@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import CoreGraphics
 import EnviousWisprCore
 import Testing
@@ -31,14 +32,47 @@ final class WindowlessOverlayHost: OverlayWindowHosting {
   /// state a caller can legitimately ask a windowless host about.
   private(set) var isShowing = false
 
+  /// The root view the director handed over, captured so a test can enter
+  /// through the SAME closure a click does (#2292 C5c).
+  private var hostedRoot: OverlayRootView?
+
   @discardableResult
   func present(
     _ view: NSView, width: OverlayWidth, fixedHeight: CGFloat?, isFresh: Bool,
     position: OverlayPillPosition
   ) -> Bool {
+    hostedRoot = (view as? NSHostingView<OverlayRootView>)?.rootView
     presented.append((width: width, fixedHeight: fixedHeight, isFresh: isFresh))
     isShowing = true
     return true
+  }
+
+  /// Deliver a user action through the root view's own event closure.
+  ///
+  /// **This is how a test presses a button since C5c**, and the name says what it
+  /// actually does: it enters through the ROOT, it does not click a SwiftUI
+  /// control. The director's generic event ingress is private now, and a
+  /// `package` press seam was rejected for a specific reason — a broken root
+  /// closure would leave every visible button dead while every test using such a
+  /// seam stayed green. Grant, Discard, Undo, the language chip and the Bluetooth
+  /// card all travel this closure when a user clicks, so they travel it here too.
+  func sendUserActionThroughRoot(
+    _ action: PillAction, for receipt: PillReceipt
+  ) throws {
+    let root = try #require(hostedRoot, "nothing was presented, so no root exists to press")
+    root.sendEvent(.action(receipt.presentationID, action))
+  }
+
+  /// Deliver an action to the presentation currently published by the hosted root.
+  ///
+  /// Use only when the production subject presents internally and returns no receipt.
+  /// Unlike a real leaf callback, this reads `model.presentation` at invocation time;
+  /// it therefore cannot prove stale, replacement, or queued-click behavior. Those
+  /// cases must use `sendUserActionThroughRoot(_:for:)`.
+  func sendCurrentUserActionThroughRoot(_ action: PillAction) throws {
+    let root = try #require(hostedRoot, "nothing was presented, so no root exists")
+    let id = try #require(root.model.presentation?.id, "no pill is currently presented")
+    root.sendEvent(.action(id, action))
   }
 
   func resizeCurrentPresentation(to size: CGSize) {

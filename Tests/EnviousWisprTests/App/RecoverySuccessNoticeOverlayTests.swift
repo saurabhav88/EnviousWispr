@@ -19,23 +19,34 @@ import Testing
   func recoverySucceededAcceptedFromLaunch() {
     let overlay = OverlayTestDouble.headlessDirector()
     // Nothing shown first — mirrors launch recovery with no live recording.
-    overlay.send(.pipeline(.recoverySucceeded), actions: nil)
+    overlay.present(.recoverySucceeded)
+    guard case .notice(let notice)? = overlay.renderModel.presentation?.content else {
+      Issue.record("the success notice never reached the screen at launch")
+      return
+    }
     #expect(
-      overlay.currentIntent == .recoverySucceeded,
-      "a dedicated intent routed through the standalone launch-visible notice path")
-    overlay.dismissSilently()
-    #expect(overlay.currentIntent == .hidden)
+      notice.text == DictationNarrator.recoverySucceededTitle,
+      "the launch-visible notice showed something other than the recovery sentence")
+    overlay.dismissCurrent(.silent)
+    #expect(overlay.renderModel.presentation == nil)
   }
 
   @Test("a recording supersedes the success notice synchronously (single slot)")
   func recordingSupersedesSuccessNotice() {
     let overlay = OverlayTestDouble.headlessDirector()
-    overlay.send(.pipeline(.recoverySucceeded), actions: nil)
-    overlay.presentRecording(
-      audioLevel: 0, audioLevelProvider: { 0 }, recordingElapsedProvider: { nil },
-      isRecordingLocked: false, actions: nil)
-    #expect(overlay.currentIntent == .recording(audioLevel: 0))
-    overlay.dismissSilently()
-    #expect(overlay.currentIntent == .hidden)
+    overlay.present(.recoverySucceeded)
+    overlay.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0,
+            audioLevelProvider: { 0 },
+            recordingElapsedProvider: { nil },
+            isLocked: false)))
+    guard case .recording? = overlay.renderModel.presentation?.content else {
+      Issue.record("the recording pill did not supersede the success notice")
+      return
+    }
+    overlay.dismissCurrent(.silent)
+    #expect(overlay.renderModel.presentation == nil)
   }
 }

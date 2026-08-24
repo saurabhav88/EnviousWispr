@@ -11,8 +11,10 @@ import Testing
 /// Controllable harness: every injected dependency is a mutable fact, and every
 /// side effect (show / hide / open-settings / emit) is recorded for assertions.
 @MainActor
-private final class Harness {
-  var currentIntent: OverlayIntent = .hidden
+private final class Harness: OverlayPresenting {
+  /// Whether the next `present` is admitted. False stands for "something else
+  /// owns the slot" — a recording, a processing pill, a warning.
+  var slotIsFree = true
   var isBluetooth = false
   var isIdle = true
   var onboardingDone = true
@@ -21,22 +23,142 @@ private final class Harness {
   var showCount = 0
   var hideCount = 0
   var openSettingsCount = 0
+  /// `dismissCurrent` calls. Nothing in C3b should ever produce one.
+  var unconditionalDismissals = 0
   var emitted: [(BluetoothAwarenessPresenter.Action, BluetoothAwarenessPresenter.DismissReason?)] =
     []
 
+  /// Whether the CARD is the presentation on screen — the exact question the
+  /// old `currentIntent == .bluetoothAwareness` asked.
+  private(set) var cardIsShowing = false
+
+  private var currentReceipt: PillReceipt?
+  private var onAcknowledge: (() -> Void)?
+  private var onClose: (() -> Void)?
+  private var onOpenSettings: (() -> Void)?
+
+  // MARK: - OverlayPresenting
+
+  var featureSlotIsAvailable: Bool { slotIsFree }
+
+  func present(_ request: PillRequest) -> PillReceipt? {
+    guard case .bluetoothAwareness(let ack, let close, let settings) = request else { return nil }
+    guard slotIsFree else { return nil }
+    showCount += 1
+    onAcknowledge = ack
+    onClose = close
+    onOpenSettings = settings
+    let receipt = PillReceipt(presentationID: PresentationID())
+    currentReceipt = receipt
+    cardIsShowing = true
+    slotIsFree = false
+    return receipt
+  }
+
+
+  // MARK: - Deferred results (PR #2370)
+
+  /// Hold the result instead of answering immediately, modelling the FIRST
+  /// presentation of a launch — the only window in which a receipt can exist
+  /// before the host has been asked.
+  var defersResult = false
+  /// What the host will say when the held result is released.
+  var deferredHostAccepts = true
+  private var heldResult: ((PillPresentationResult) -> Void)?
+  private var heldReceipt: PillReceipt?
+
+  /// Release a held result the way the director would once the run loop turned,
+  /// **including its identity gate** — without which this fake cannot represent a
+  /// card dismissed while it was still pending, and every assertion about one
+  /// would pass whatever the presenter did.
+  func releaseDeferredResult() {
+    guard let sink = heldResult else { return }
+    heldResult = nil
+    let receipt = heldReceipt
+    heldReceipt = nil
+    guard let receipt, receipt == currentReceipt else {
+      // Dismissed or superseded while we held it. The real director's deferred
+      // block drops on exactly this check and reports that it never rendered.
+      sink(.notPresented)
+      return
+    }
+    if deferredHostAccepts {
+      sink(.presented(receipt))
+    } else {
+      rollBackDeferredPresentation()
+      sink(.notPresented)
+    }
+  }
+
+  @discardableResult
+  func present(
+    _ request: PillRequest,
+    onResult: @escaping (PillPresentationResult) -> Void
+  ) -> PillReceipt? {
+    guard let receipt = present(request) else {
+      onResult(.notPresented)
+      return nil
+    }
+    guard defersResult else {
+      onResult(.presented(receipt))
+      return receipt
+    }
+    heldResult = onResult
+    heldReceipt = receipt
+    return receipt
+  }
+
+  /// The director rolls a refused presentation back through its own silent
+  /// dismiss path; the fake mirrors the OUTCOME rather than the mechanism.
+  private func rollBackDeferredPresentation() {
+    currentReceipt = nil
+    cardIsShowing = false
+    slotIsFree = true
+  }
+
+  func update(_ update: PillUpdate) {}
+
+  func dismissCurrent(_ mode: PillDismissal) {
+    unconditionalDismissals += 1
+    hideCount += 1
+    currentReceipt = nil
+    cardIsShowing = false
+    slotIsFree = true
+  }
+
+  func dismissIfCurrent(_ receipt: PillReceipt) {
+    guard receipt == currentReceipt else { return }
+    hideCount += 1
+    currentReceipt = nil
+    cardIsShowing = false
+    slotIsFree = true
+  }
+
+  func isCurrent(_ receipt: PillReceipt) -> Bool { receipt == currentReceipt }
+
+  // MARK: - Driving the card's own buttons
+
+  /// **The only route a press takes** (#2292 C3b). These used to be driven by
+  /// calling `presenter.handleUserAction(_:)`, which no longer exists outside
+  /// the presenter: the card carries its three callbacks, so a test presses the
+  /// button a user presses.
+  func pressGotIt() { onAcknowledge?() }
+  func pressClose() { onClose?() }
+  func pressAdjustSettings() { onOpenSettings?() }
+
+  /// Something else took the slot while the card was up.
+  ///
+  /// The callbacks deliberately survive, so a test can fire a stale press and
+  /// prove it takes nothing away.
+  func simulateReplacement() {
+    currentReceipt = PillReceipt(presentationID: PresentationID())
+    cardIsShowing = false
+    slotIsFree = false
+  }
+
   func makePresenter() -> BluetoothAwarenessPresenter {
     BluetoothAwarenessPresenter(
-      readCurrentIntent: { self.currentIntent },
-      showOverlay: {
-        self.showCount += 1
-        self.currentIntent = .bluetoothAwareness
-      },
-      hideIfCurrent: {
-        if self.currentIntent == .bluetoothAwareness {
-          self.hideCount += 1
-          self.currentIntent = .hidden
-        }
-      },
+      overlay: self,
       effectiveInputIsBluetooth: { self.isBluetooth },
       dictationIsIdle: { self.isIdle },
       onboardingCompleted: { self.onboardingDone },
@@ -70,7 +192,7 @@ private func emitEquals(
     let p = h.makePresenter()
     p.reconcile(trigger: .launch)
     #expect(h.showCount == 1)
-    #expect(h.currentIntent == .bluetoothAwareness)
+    #expect(h.cardIsShowing)
     #expect(emitEquals(h.lastEmit, .shown, nil))
     // Once per launch: a second reconcile does not re-show.
     p.reconcile(trigger: .deviceChanged)
@@ -122,11 +244,11 @@ private func emitEquals(
     let h = Harness()
     h.isBluetooth = true
     h.isIdle = true
-    h.currentIntent = .recording(audioLevel: 0)  // terminal overlay not sent yet
+    h.simulateReplacement()  // terminal overlay not sent yet
     let p = h.makePresenter()
     p.reconcile(trigger: .pipelineStateChanged)
     #expect(h.showCount == 0)  // slot not clear → no show
-    h.currentIntent = .hidden  // overlay handler cleared the pill
+    h.slotIsFree = true  // overlay handler cleared the pill
     p.reconcile(trigger: .pipelineStateChanged)  // the deferred re-check
     #expect(h.showCount == 1)
   }
@@ -134,7 +256,7 @@ private func emitEquals(
   @Test func gate_requiresHiddenSlot() {
     let h = Harness()
     h.isBluetooth = true
-    h.currentIntent = .warning(reason: .polishFailed)  // another overlay owns the slot
+    h.slotIsFree = false  // another overlay owns the slot
     let p = h.makePresenter()
     p.reconcile(trigger: .launch)
     #expect(h.showCount == 0)  // never replaces a live overlay
@@ -146,9 +268,9 @@ private func emitEquals(
     let h = Harness()
     h.isBluetooth = true
     let p = h.makePresenter()
-    p.reconcile(trigger: .launch)  // shown; currentIntent == .bluetoothAwareness
+    p.reconcile(trigger: .launch)  // the card is shown and holds the slot
     // Recording synchronously replaced the slot before this reconcile ran.
-    h.currentIntent = .recording(audioLevel: 0)
+    h.simulateReplacement()
     h.isIdle = false
     p.reconcile(trigger: .pipelineStateChanged)
     #expect(emitEquals(h.lastEmit, .dismissed, .recordStarted))
@@ -176,7 +298,7 @@ private func emitEquals(
     p.reconcile(trigger: .deviceChanged)
     #expect(emitEquals(h.lastEmit, .dismissed, .routeChanged))
     #expect(h.hideCount == 1)
-    #expect(h.currentIntent == .hidden)
+    #expect(!h.cardIsShowing)
   }
 
   @Test func anotherOverlayReplacedWhileIdle_releasesOwnershipSilently() {
@@ -186,10 +308,270 @@ private func emitEquals(
     p.reconcile(trigger: .launch)
     let emitCountAfterShow = h.emitted.count
     // A different overlay took the slot while still idle + BT.
-    h.currentIntent = .clipboardFallback
+    //
+    // **`simulateReplacement()`, not `slotIsFree = false`** (#2292 C3b). Under
+    // the receipt model a busy slot and a slot we no longer OWN are different
+    // facts, and only the second reaches the release branch this case exists
+    // for. Setting the flag alone leaves the card still current, so the
+    // presenter takes its everything-is-fine path and the assertions below pass
+    // without the branch ever running.
+    h.simulateReplacement()
     p.reconcile(trigger: .pipelineStateChanged)
     #expect(h.emitted.count == emitCountAfterShow)  // no dismiss emit
     #expect(h.hideCount == 0)  // does not touch the newer overlay
+    #expect(h.unconditionalDismissals == 0)
+  }
+
+  // MARK: - PR #2370 round 4: owned at admission, shown when drawn
+
+  /// **THE DEFECT: a card that is owned but not yet DRAWN was uncancellable.**
+  /// Committing on `.presented` is right — the allowance must wait for the host —
+  /// but it left `currentReceipt` nil during the deferral, so a reconcile in that
+  /// window found nothing to name, fell past the receipt block, and the guard at
+  /// the bottom simply returned. The card rendered anyway.
+  ///
+  /// REPRODUCIBLE: this card is requested from `reconcile(trigger: .launch)`,
+  /// which is the request most likely to be the deferred first presentation. Take
+  /// the headset off in that window and a NON-Bluetooth user is left looking at a
+  /// Bluetooth tip that nothing will take down.
+  @Test func aRouteChangeCancelsACardOwnedButNotYetDrawn() {
+    let h = Harness()
+    h.isBluetooth = true
+    h.defersResult = true
+    let p = h.makePresenter()
+
+    p.reconcile(trigger: .launch)
+    #expect(h.showCount == 1, "the card was never admitted, so this case never reaches its subject")
+
+    // The headset comes off before the host has drawn anything.
+    h.isBluetooth = false
+    p.reconcile(trigger: .deviceChanged)
+    h.releaseDeferredResult()
+
+    #expect(h.cardIsShowing == false, "a Bluetooth tip drew for a user with no Bluetooth device")
+    #expect(
+      h.emitted.isEmpty,
+      "a card nobody saw was recorded — a dismissal with no matching shown is a hole in the funnel")
+
+    // And the allowance survived, because the user never saw it: plug the headset
+    // back in and the card is still owed.
+    h.isBluetooth = true
+    h.defersResult = false
+    p.reconcile(trigger: .deviceChanged)
+    #expect(h.showCount == 2, "the launch allowance was spent on a card that was cancelled before it drew")
+    #expect(emitEquals(h.lastEmit, .shown, nil), "the card that DID draw was not recorded")
+  }
+
+  /// The paired case: while the card is still eligible, a second reconcile in the
+  /// deferral window leaves it alone. Without this, "cancels a pending card" is
+  /// also satisfied by a presenter that cancels every pending card, or by one that
+  /// asks for the slot twice.
+  @Test func aStillEligiblePendingCardIsNeitherCancelledNorRequestedTwice() {
+    let h = Harness()
+    h.isBluetooth = true
+    h.defersResult = true
+    let p = h.makePresenter()
+
+    p.reconcile(trigger: .launch)
+    p.reconcile(trigger: .deviceChanged)
+
+    #expect(h.showCount == 1, "the pending card was requested a second time")
+    #expect(h.emitted.isEmpty, "a verdict was recorded before the host drew anything")
+
+    h.releaseDeferredResult()
+
+    #expect(h.cardIsShowing, "a still-eligible pending card was cancelled")
+    #expect(h.emitted.count == 1, "the drawn card was not recorded exactly once")
+    #expect(emitEquals(h.lastEmit, .shown, nil))
+  }
+
+  // MARK: - PR #2370: the launch allowance is spent on a SEEN card
+
+  /// **THE DEFECT: a receipt is not proof the card was drawn.** `present`
+  /// returns synchronously, and the FIRST presentation of a launch reaches the
+  /// host a run loop later. This card is requested from
+  /// `reconcile(trigger: .launch)`, so it is the request most likely to BE that
+  /// first presentation.
+  ///
+  /// REPRODUCIBLE: the app is a login item. It launches while the display is
+  /// still waking, the host has no screen and refuses, and the old code had
+  /// already spent `hasShownThisLaunch` and emitted `.shown`. The user never
+  /// sees the tip that launch and the dashboard says they did.
+  @Test func deferredRefusalLeavesTheLaunchAllowanceUnspent() {
+    let h = Harness()
+    h.isBluetooth = true
+    h.defersResult = true
+    h.deferredHostAccepts = false
+    let p = h.makePresenter()
+
+    p.reconcile(trigger: .launch)
+    h.releaseDeferredResult()
+
+    #expect(h.emitted.isEmpty, "a card the host refused was recorded as shown")
+    #expect(h.cardIsShowing == false, "a refused card is still on screen")
+
+    // The allowance survived, so a later reconcile still gets the card — which
+    // is the user-visible half and the whole point of not committing early.
+    h.defersResult = false
+    p.reconcile(trigger: .deviceChanged)
+    #expect(h.showCount == 2, "the launch allowance was spent on a card nobody saw")
+    #expect(
+      emitEquals(h.lastEmit, .shown, nil),
+      "the card that DID reach the screen was not recorded")
+  }
+
+  /// The paired accepted case. Without it, "does not commit" is also satisfied
+  /// by a presenter that never commits at all.
+  @Test func deferredAcceptanceCommitsExactlyOnce() {
+    let h = Harness()
+    h.isBluetooth = true
+    h.defersResult = true
+    let p = h.makePresenter()
+
+    p.reconcile(trigger: .launch)
+    #expect(h.emitted.isEmpty, "the card was recorded as shown before the host answered")
+
+    h.releaseDeferredResult()
+
+    #expect(h.emitted.count == 1, "the accepted card was not recorded exactly once")
+    #expect(emitEquals(h.lastEmit, .shown, nil))
+    #expect(h.cardIsShowing, "the accepted card is not on screen")
+
+    // And the allowance IS spent now, so a later reconcile shows nothing more.
+    p.reconcile(trigger: .deviceChanged)
+    #expect(h.showCount == 1, "the launch allowance was not spent on a card that was seen")
+  }
+
+  /// The ordinary path — every presentation after the first — still commits, and
+  /// still exactly once. Without this the two cases above are satisfied by a
+  /// presenter that only works when a result is deferred.
+  @Test func immediatePresentationCommitsExactlyOnce() {
+    let h = Harness()
+    h.isBluetooth = true
+    let p = h.makePresenter()
+
+    p.reconcile(trigger: .launch)
+
+    #expect(h.showCount == 1)
+    #expect(h.emitted.count == 1, "the immediate path did not record exactly one shown")
+    #expect(emitEquals(h.lastEmit, .shown, nil))
+  }
+
+  // MARK: - #2292 C3b: admission is the overlay's answer
+
+  /// **A refused card must not spend the launch's one showing.**
+  ///
+  /// `hasShownThisLaunch` is committed only after a receipt comes back. Before
+  /// C3b the presenter called show and then re-read the intent to confirm; if
+  /// the answer and the commit ever drifted apart, a card nobody saw would burn
+  /// the launch.
+  ///
+  /// REPRODUCIBLE: a Bluetooth user launches while a warning owns the pill. The
+  /// warning clears. They must still get the card — it is the whole feature, and
+  /// it only fires once per launch.
+  @Test func refusedBluetoothCardRetriesWhenSlotClears() {
+    let h = Harness()
+    h.isBluetooth = true
+    h.slotIsFree = false
+    let p = h.makePresenter()
+
+    p.reconcile(trigger: .launch)
+    #expect(h.showCount == 0, "control: the card must have been refused")
+
+    h.slotIsFree = true
+    p.reconcile(trigger: .deviceChanged)
+
+    #expect(h.showCount == 1, "the refusal spent the launch's one showing")
+    #expect(h.cardIsShowing)
+  }
+
+  /// **The tips-disabled suppression metric keeps its eligibility snapshot.**
+  ///
+  /// NOT user-facing: nobody sees a card either way. What it protects is the
+  /// meaning of `suppressed_by_setting`, which counts users who WOULD have seen
+  /// the card and had it withheld by their setting. Dropping the slot check
+  /// silently inflates it with every opted-out user whose pill happened to be
+  /// busy, and a dashboard cannot tell the two populations apart afterwards.
+  ///
+  /// This is the one remaining legitimate read of `featureSlotIsAvailable`, and
+  /// this case is why it still exists.
+  @Test func tipsOffBusySlotDoesNotEmitSuppression() {
+    let h = Harness()
+    h.isBluetooth = true
+    h.tipsOn = false
+    h.slotIsFree = false
+    let p = h.makePresenter()
+
+    p.reconcile(trigger: .launch)
+
+    #expect(h.emitted.isEmpty, "an opted-out user with a busy slot was counted as suppressed")
+
+    h.slotIsFree = true
+    p.reconcile(trigger: .deviceChanged)
+    #expect(
+      emitEquals(h.lastEmit, .suppressedBySetting, nil),
+      "control: the same user with a clear slot MUST be counted")
+  }
+
+  /// **A card that was replaced must not dismiss its replacement.**
+  ///
+  /// REPRODUCIBLE: the card is up, the user starts dictating, and the recording
+  /// pill takes the slot. The next reconcile fires — it has to report the
+  /// dismissal for telemetry, and it must NOT take the recording pill off the
+  /// user's screen mid-dictation.
+  @Test func bluetoothReplacementDoesNotDismissRecording() {
+    let h = Harness()
+    h.isBluetooth = true
+    let p = h.makePresenter()
+    p.reconcile(trigger: .launch)
+    #expect(h.cardIsShowing, "control: the card must be up first")
+
+    h.simulateReplacement()
+    h.isIdle = false
+    p.reconcile(trigger: .pipelineStateChanged)
+
+    #expect(h.hideCount == 0, "the card's dismissal tore down the recording pill")
+    #expect(
+      h.unconditionalDismissals == 0,
+      "the card dismissed whatever was on screen instead of naming its own receipt")
+    #expect(
+      emitEquals(h.lastEmit, .dismissed, .recordStarted),
+      "control: the telemetry must still fire — that is why ownership, not visibility, is checked")
+  }
+
+  /// **Three buttons, three answers, and the dashboard reads them apart.**
+  ///
+  /// Got it, Close and Adjust Settings are different things a user said.
+  /// Collapsing any two — or crossing two of the three callbacks while wiring
+  /// the card's own request — merges two populations silently, and nothing in
+  /// the app looks wrong afterwards.
+  ///
+  /// Drives the callbacks the request carries, which is the only route a press
+  /// takes since C3b.
+  @Test func bluetoothActionsPreserveExactTelemetryIdentity() {
+    for (press, action, reason) in [
+      ("gotIt", BluetoothAwarenessPresenter.Action.dismissed, BluetoothAwarenessPresenter.DismissReason.gotIt),
+      ("close", .dismissed, .closed),
+      ("settings", .settingsOpened, nil),
+    ] as [(String, BluetoothAwarenessPresenter.Action, BluetoothAwarenessPresenter.DismissReason?)] {
+      let h = Harness()
+      h.isBluetooth = true
+      let p = h.makePresenter()
+      p.reconcile(trigger: .launch)
+      #expect(h.cardIsShowing, "control: \(press) needs a card on screen")
+
+      switch press {
+      case "gotIt": h.pressGotIt()
+      case "close": h.pressClose()
+      default: h.pressAdjustSettings()
+      }
+
+      #expect(
+        emitEquals(h.lastEmit, action, reason),
+        "\(press) did not emit its own action/reason pair")
+      #expect(h.hideCount == 1, "\(press) left the card the user answered on screen")
+      #expect(h.unconditionalDismissals == 0)
+    }
   }
 
   // MARK: - Setting suppression (§5 scenario 8)
@@ -240,7 +622,7 @@ private func emitEquals(
     p.reconcile(trigger: .settingChanged)
     #expect(emitEquals(h.lastEmit, .dismissed, .settingDisabled))
     #expect(h.hideCount == 1)
-    #expect(h.currentIntent == .hidden)
+    #expect(!h.cardIsShowing)
   }
 
   // MARK: - User actions (§11 user-action test)
@@ -251,8 +633,8 @@ private func emitEquals(
     let p = h.makePresenter()
     p.reconcile(trigger: .launch)
     let before = h.emitted.count
-    p.handleUserAction(.gotIt)
-    #expect(h.currentIntent == .hidden)
+    h.pressGotIt()
+    #expect(!h.cardIsShowing)
     #expect(h.hideCount == 1)
     #expect(h.emitted.count == before + 1)
     #expect(emitEquals(h.lastEmit, .dismissed, .gotIt))
@@ -263,7 +645,7 @@ private func emitEquals(
     h.isBluetooth = true
     let p = h.makePresenter()
     p.reconcile(trigger: .launch)
-    p.handleUserAction(.close)
+    h.pressClose()
     #expect(emitEquals(h.lastEmit, .dismissed, .closed))
     #expect(h.hideCount == 1)
   }
@@ -273,7 +655,7 @@ private func emitEquals(
     h.isBluetooth = true
     let p = h.makePresenter()
     p.reconcile(trigger: .launch)
-    p.handleUserAction(.adjustSettings)
+    h.pressAdjustSettings()
     #expect(h.openSettingsCount == 1)
     #expect(emitEquals(h.lastEmit, .settingsOpened, nil))
     #expect(h.hideCount == 1)
@@ -282,7 +664,7 @@ private func emitEquals(
   @Test func handleUserAction_whenNotPresented_isNoOp() {
     let h = Harness()
     let p = h.makePresenter()
-    p.handleUserAction(.gotIt)
+    h.pressGotIt()
     #expect(h.emitted.isEmpty)
     #expect(h.hideCount == 0)
     #expect(h.openSettingsCount == 0)
@@ -293,8 +675,8 @@ private func emitEquals(
     h.isBluetooth = true
     let p = h.makePresenter()
     p.reconcile(trigger: .launch)
-    h.currentIntent = .recording(audioLevel: 0)  // pill replaced the card
-    p.handleUserAction(.adjustSettings)
+    h.simulateReplacement()  // pill replaced the card
+    h.pressAdjustSettings()
     #expect(h.hideCount == 0)  // never tears down the recording pill
     #expect(h.openSettingsCount == 1)
     #expect(emitEquals(h.lastEmit, .settingsOpened, nil))

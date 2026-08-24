@@ -57,7 +57,7 @@
         set: { lockBox.isLocked = $0 }
       )
       let hcr = HeartControlRecovery(
-        hideOverlay: { overlay.send(.pipeline(.hidden), actions: nil) },
+        hideOverlay: { overlay.dismissCurrent(.announced) },
         setLocked: { locked in lockAccess.set(locked) },
         backend: { asr.activeBackendType.rawValue }
       )
@@ -251,16 +251,41 @@
 
     #endif
 
+    /// **Read off the RENDERED pill since C6**, which is where a person sees the
+    /// lock. `isRecordingLockedForTesting` exposed `reducer.state.isLocked` — the
+    /// value the director holds, not the one drawn — so a break between the two
+    /// would have left this green while the padlock never appeared.
     @Test func markLockedFlipsTheLockAndUpdatesOverlay() {
       let fx = Self.makeFixture()
+      // **A recording has to be ON SCREEN for the lock to be observable**, which
+      // is the point rather than setup noise: the lock is drawn on the recording
+      // pill and nowhere else, so a lock with no pill showing is a value the user
+      // cannot see. That case — the lock is REMEMBERED with nothing drawn — is
+      // asserted by `OverlayReducerTests.lockWithoutRecordingIsRemembered`.
+      fx.overlay.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0.2, audioLevelProvider: { 0.2 },
+            recordingElapsedProvider: { nil }, isLocked: false)))
       #expect(fx.lockBox.isLocked == false)
-      #expect(fx.overlay.isRecordingLockedForTesting == false)
+      #expect(Self.pillShowsLocked(fx.overlay) == false)
       fx.finalizer.markLocked()
       #expect(fx.lockBox.isLocked == true)
       // The test name promises the overlay is updated too — markLocked() calls
-      // recordingOverlay.updateLockState(true). The old test asserted only the
-      // shared lock setter, so deleting the overlay update left it green.
-      #expect(fx.overlay.isRecordingLockedForTesting == true)
+      // through to the overlay. The old test asserted only the shared lock
+      // setter, so deleting the overlay update left it green.
+      #expect(
+        Self.pillShowsLocked(fx.overlay) == true,
+        "the lock was set but the pill the user is looking at does not show it")
+    }
+
+    /// Whether the recording pill on screen is drawn locked. Returns false when
+    /// no recording is showing, which is the honest answer to "is the user
+    /// looking at a locked pill".
+    private static func pillShowsLocked(_ overlay: OverlayDirector) -> Bool {
+      guard case .recording(_, let isLocked, _)? = overlay.renderModel.presentation?.content
+      else { return false }
+      return isLocked
     }
 
     @Test func userStopClearsLockBeforeDispatch() async {

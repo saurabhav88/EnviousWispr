@@ -16,40 +16,36 @@ import Foundation
 /// when the occupant changes.
 enum OverlayChipWiring {
 
-  /// The chip's action handler.
+  /// What happens to a language the user chose to lock.
   ///
-  /// `.dismissChip` is the explicit dismissal — the user pressing the close
-  /// control. The chip's AUTO-dismissal is not a user action and does not arrive
-  /// here: the reducer expires the presentation and the director delivers
-  /// `OverlayEffect.languageChipAutoDismissed(generation:)` to the effect sink,
-  /// which is why that generation is carried on the effect rather than on an
-  /// action.
+  /// **Narrowed from a `PillAction` handler to this one callback** (#2292 C3).
+  /// The chip's buttons now ride on its own `PillRequest`, so Lock and Dismiss
+  /// reach the presenter directly and no longer pass through here; what is left
+  /// is the half this file has always owned, which is the SETTINGS write and its
+  /// telemetry.
+  ///
+  /// **The order below is the contract, not a style choice.** The presenter has
+  /// already cleared its state and dismissed its pill before calling this, and
+  /// the prior language mode is read BEFORE the mutation — reading it after
+  /// would report the new value as the old one, so every chip-driven lock would
+  /// claim the user moved from the language they moved to.
   @MainActor
-  static func actions(
-    presenter: LanguageSuggestionPresenter, settings: SettingsManager
-  ) -> (OverlayAction) -> Void {
-    { [weak settings] action in
-      switch action {
-      case .lockLanguage:
-        guard let lang = presenter.accept(), let settings else { return }
-        // Capture prior mode for telemetry before mutating settings.
-        let priorMode = settings.languageMode
-        let fromLang: String
-        switch priorMode {
-        case .auto: fromLang = "auto"
-        case .locked(let prev): fromLang = prev
-        }
-        settings.languageMode = .locked(lang)
-        // PR4 Codex code-diff r6 [P2]: chip-driven locks emit the same
-        // language.manual_lock_used event as Settings-driven locks.
-        TelemetryService.shared.trackManualLockUsed(
-          fromLang: fromLang, toLang: lang, reason: "after_bad_detect")
-      // `presenter.accept()` already hid the overlay; no extra hide needed.
-      case .dismissChip:
-        presenter.dismissExplicit()
-      default:
-        break
+  static func acceptedLanguage(
+    settings: SettingsManager
+  ) -> @MainActor (String) -> Void {
+    { [weak settings] lang in
+      guard let settings else { return }
+      let priorMode = settings.languageMode
+      let fromLang: String
+      switch priorMode {
+      case .auto: fromLang = "auto"
+      case .locked(let prev): fromLang = prev
       }
+      settings.languageMode = .locked(lang)
+      // PR4 Codex code-diff r6 [P2]: chip-driven locks emit the same
+      // language.manual_lock_used event as Settings-driven locks.
+      TelemetryService.shared.trackManualLockUsed(
+        fromLang: fromLang, toLang: lang, reason: "after_bad_detect")
     }
   }
 }

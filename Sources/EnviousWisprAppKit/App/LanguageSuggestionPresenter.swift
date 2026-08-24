@@ -27,23 +27,35 @@ import Foundation
 /// - `surfaceBufferedChipIfPossible(currentLanguageMode:)` is called by the
 ///   pipeline-completion site on transition to `.complete` (parakeet) or
 ///   `.complete` / `.ready` (whisperkit). Decides whether to surface the chip
-///   given current language mode and the overlay's current intent (read via
-///   the injected `readCurrentIntent` closure). Calls `showOverlay` internally
-///   when the chip is to surface — caller does not need to read state back.
+///   given the current language mode. Admission is the overlay's answer, not a
+///   question asked of it: `present` returns a receipt or nil, and a nil commits
+///   nothing (#2292 C3). Caller does not need to read state back.
 /// - `clearBuffer()` is called on cancel/error paths so a half-buffered trigger
 ///   does not linger.
 ///
-/// Constructor takes narrow overlay-presenting closures rather than an overlay
-/// reference so the presenter doesn't know `RecordingOverlayPanel`'s type
-/// (cleaner test seam; lets PR8/PR9 move the overlay's owner without changing
-/// this type's signature).
+/// Constructor takes `any OverlayPresenting` rather than the concrete director,
+/// so the presenter still does not know the overlay's type. It replaced three
+/// generic closures — show, read-current-intent, hide — whose problem was not
+/// their narrowness but that the middle one made this type a SECOND authority on
+/// whether a chip may appear (#2292 C3).
 @MainActor
 @Observable
 final class LanguageSuggestionPresenter {
   /// Currently visible chip payload (nil = none). Internal observers may read
-  /// this for UI state; the canonical "show this chip" call happens via the
-  /// injected `showOverlay` closure inside `surfaceBufferedChipIfPossible`.
+  /// this for UI state.
+  ///
+  /// **Committed only after the overlay ACCEPTS**, never before. A refused chip
+  /// leaves this nil, which is what stops the presenter believing it owns a pill
+  /// somebody else is showing.
   private(set) var currentChip: LanguageChipPayload?
+
+  /// The accepted presentation this chip owns, or nil when nothing is showing.
+  ///
+  /// **Every clearing path clears BOTH this and `currentChip`, and dismisses
+  /// through this rather than unconditionally.** The failure it prevents is
+  /// real: a chip replaced by a recording, then a Settings reset or a stale
+  /// cleanup, would otherwise dismiss the RECORDING pill.
+  private var currentReceipt: PillReceipt?
 
   // MARK: - Persisted state (UserDefaults)
 
@@ -75,23 +87,32 @@ final class LanguageSuggestionPresenter {
 
   // MARK: - Injected overlay dependencies (narrow closures)
 
-  private let showOverlay: @MainActor (OverlayIntent) -> Void
-  private let readCurrentIntent: @MainActor () -> OverlayIntent
-  /// Silent hide — does NOT post the "Recording complete" AX announcement.
-  /// Codex code-diff r5 [P3]: chip dismissal must not announce "Recording
-  /// complete" via the .hidden case's NSAccessibility.post, which would
-  /// fire a false second recording-complete announcement to VoiceOver users.
-  private let hideOverlay: @MainActor () -> Void
+  /// Held STRONGLY, and every callback this presenter hands to a request
+  /// captures `self` weakly.
+  ///
+  /// The cycle that shape breaks is real: the overlay retains the active
+  /// presentation's callbacks, so a strong capture there would make
+  /// presenter -> overlay -> binding -> presenter for as long as a chip is up.
+  /// Breaking it at the BINDING is right because the binding is the transient
+  /// half — it dies with the presentation — while the overlay is app-lifetime.
+  private let overlay: any OverlayPresenting
+
+  /// What to do with a language the user chose to lock.
+  ///
+  /// **The settings write and its telemetry stay with their owner**
+  /// (`OverlayChipWiring`), which is what keeps plan §5's required sequence —
+  /// clear state, dismiss, read prior mode, mutate, emit — preserved by
+  /// construction rather than re-derived here. This presenter owns the chip's
+  /// state machine and nothing about `SettingsManager`.
+  private let onLanguageAccepted: @MainActor (String) -> Void
 
   init(
-    showOverlay: @escaping @MainActor (OverlayIntent) -> Void,
-    readCurrentIntent: @escaping @MainActor () -> OverlayIntent,
-    hideOverlay: @escaping @MainActor () -> Void,
+    overlay: any OverlayPresenting,
+    onLanguageAccepted: @escaping @MainActor (String) -> Void,
     defaults: UserDefaults = .standard
   ) {
-    self.showOverlay = showOverlay
-    self.readCurrentIntent = readCurrentIntent
-    self.hideOverlay = hideOverlay
+    self.overlay = overlay
+    self.onLanguageAccepted = onLanguageAccepted
     self.defaults = defaults
     loadPersistedState()
   }
@@ -118,13 +139,13 @@ final class LanguageSuggestionPresenter {
   }
 
   /// Called on pipeline transition to `.complete` (parakeet) or
-  /// `.complete`/`.ready` (whisperkit). Decides whether to surface the buffered
-  /// trigger given the current language mode and the overlay's current intent
-  /// (read via the injected closure). Calls `showOverlay(.passiveChip(...))`
-  /// internally when surfacing.
+  /// `.complete`/`.ready` (whisperkit). Decides whether to OFFER the buffered
+  /// trigger, given the current language mode; whether it is then admitted is
+  /// the overlay's answer, returned by `present`.
   ///
   /// F5 locked-mode guard: no-op if `currentLanguageMode != .auto`.
-  /// F14 overlay-priority guard: chip surfaces ONLY when `readCurrentIntent()` returns `.hidden`.
+  /// F14 overlay-priority: the chip surfaces only when the overlay ADMITS it.
+  /// That decision lives in `present`, not here (#2292 C3).
   /// Different-lang reset: if a previously surfaced lang differs from the new one,
   /// clear that previous lang's suppression and dismissal count first.
   ///
@@ -158,15 +179,6 @@ final class LanguageSuggestionPresenter {
       prevLangChanged = false
     }
 
-    // F14: overlay-priority guard. Chip MUST NOT replace an active overlay
-    // (including .clipboardFallback) because the panel is single-intent.
-    let currentIntent = readCurrentIntent()
-    guard case .hidden = currentIntent else {
-      // Persist the prev-lang reset if it happened — its effect must survive.
-      if prevLangChanged { persistState() }
-      return
-    }
-
     guard !suppressedLanguages.contains(lang) else {
       // Suppressed; still persist the cleared previous lang state above
       // (lastShownLanguage stays at its prior value until we actually surface
@@ -185,26 +197,78 @@ final class LanguageSuggestionPresenter {
       state: state,
       generation: generationCounter
     )
-    currentChip = payload
-    lastShownLanguage = lang
-    persistState()
-    SentryBreadcrumb.add(
-      stage: "language_chip",
-      message: "chip_shown",
-      data: [
-        "lang": lang,
-        "state": state == .askToLock ? "askToLock" : "educateAboutSettings",
-        "dismissalCount": count,
-        "generation": Int(generationCounter),
-      ]
-    )
-    showOverlay(.passiveChip(payload: payload))
+    // **F14 overlay-priority, now asked ONCE and by the overlay.** The chip must
+    // not replace a recording, a processing pill or a clipboard hint, because the
+    // slot holds one presentation. That decision used to be made here by reading
+    // the current intent; it now lives inside `present`, beside the state change,
+    // and a refusal comes back as nil.
+    //
+    // **Nothing is committed before the answer.** A refused chip must not be
+    // recorded as shown — not in `currentChip`, not in `lastShownLanguage`, and
+    // not in the `chip_shown` breadcrumb. The previous-language reset above is
+    // the deliberate exception and still persists, because its effect is about
+    // the language the user has now dictated rather than about this chip.
+    //
+    // A refusal consumes a generation. Generations are equality/staleness
+    // tokens, never dense indices, so a gap costs nothing.
+    // **Committed on the RESULT, not on the receipt** (PR #2370). A receipt
+    // proves admission and ownership; it cannot prove the host drew anything,
+    // because the first presentation of a launch reaches the host a run loop
+    // later. `lastShownLanguage` PERSISTS, so a chip committed on a refusal
+    // would suppress that language across relaunches for a chip nobody saw.
+    //
+    // Production language chips are emitted only after a dictation presentation,
+    // so the hosting view already exists and this result is synchronous. Unlike
+    // launch-time Bluetooth, there is no pending-ownership window: the card in
+    // `BluetoothAwarenessPresenter` holds its receipt from admission so a
+    // reconcile can cancel a card that is owned but not yet drawn, and nothing
+    // here needs that because nothing here can be in that state.
+    //
+    // **If a pre-dictation chip ingress is added, it must add pending receipt
+    // ownership before shipping.** That is the activation condition, stated here
+    // rather than left as an unwritten ordering assumption — without it a chip
+    // admitted before the first render would be uncancellable by every path
+    // below, all of which key on `currentChip` or `currentReceipt`.
+    overlay.present(
+      .languageChip(
+        payload: payload,
+        onLock: { [weak self] in self?.acceptCurrentChip() },
+        onDismiss: { [weak self] in self?.dismissExplicit() },
+        onExpire: { [weak self] in self?.expireCurrentChip() }
+      ),
+      onResult: { [weak self] result in
+        guard let self else { return }
+        guard case .presented(let receipt) = result else {
+          if prevLangChanged { self.persistState() }
+          return
+        }
+        self.currentChip = payload
+        self.currentReceipt = receipt
+        self.lastShownLanguage = lang
+        self.persistState()
+        SentryBreadcrumb.add(
+          stage: "language_chip",
+          message: "chip_shown",
+          data: [
+            "lang": lang,
+            "state": state == .askToLock ? "askToLock" : "educateAboutSettings",
+            "dismissalCount": count,
+            "generation": Int(self.generationCounter),
+          ]
+        )
+      })
   }
 
   /// Clear the currently visible chip payload, e.g. when a new recording starts
-  /// or pipeline errors. Hides the overlay via the injected closure.
+  /// or pipeline errors.
+  ///
+  /// **Drops the receipt too, and deliberately does NOT dismiss.** The callers
+  /// are paths where something ELSE is taking the slot, so the presentation is
+  /// already being replaced; dismissing here would be this presenter acting on a
+  /// pill it no longer owns. Forgetting the receipt is the whole obligation.
   func clearCurrentChip() {
     currentChip = nil
+    currentReceipt = nil
   }
 
   /// Cancel/error path: drop any buffered trigger so it does not surface later.
@@ -214,29 +278,43 @@ final class LanguageSuggestionPresenter {
 
   // MARK: - User actions
 
-  /// User tapped Lock. Returns the language code so the caller can write
-  /// `settings.languageMode = .locked(lang)`. Hides the chip overlay.
-  @discardableResult
-  func accept() -> String? {
-    guard let chip = currentChip else { return nil }
+  /// User tapped Lock.
+  ///
+  /// **Order is load-bearing and plan §5 requires it exactly**: clear this
+  /// presenter's state, dismiss the pill silently through its own receipt, and
+  /// only then hand the language to its owner — which reads the PRIOR language
+  /// mode before mutating it and emits `language.manual_lock_used` with the same
+  /// `fromLang`, `toLang` and `reason` as a Settings-driven lock. Handing over
+  /// first would let the owner read a mode this call is about to change.
+  ///
+  /// Silent dismissal, not announced: a chip going away is not a dictation
+  /// ending, and `.hidden` would post a false second "Recording complete" to
+  /// VoiceOver users.
+  private func acceptCurrentChip() {
+    guard let chip = currentChip, let receipt = currentReceipt else { return }
     let prevCount = dismissalCounts[chip.lang] ?? 0
     dismissalCounts[chip.lang] = 0
     suppressedLanguages.remove(chip.lang)
     currentChip = nil
+    currentReceipt = nil
     persistState()
     SentryBreadcrumb.add(
       stage: "language_chip",
       message: "chip_locked",
       data: ["lang": chip.lang, "prevDismissalCount": prevCount]
     )
-    hideOverlay()
-    return chip.lang
+    overlay.dismissIfCurrent(receipt)
+    onLanguageAccepted(chip.lang)
   }
 
   /// User tapped the Dismiss button (explicit). Increments the dismissal count.
-  /// Crossing the State-B boundary suppresses the language. Hides the chip overlay.
-  func dismissExplicit() {
+  /// Crossing the State-B boundary suppresses the language.
+  ///
+  /// Receipt-scoped dismissal, same reason as everywhere else here: this must
+  /// only ever take away the pill this presenter was given.
+  private func dismissExplicit() {
     guard let chip = currentChip else { return }
+    let receipt = currentReceipt
     let prevCount = dismissalCounts[chip.lang] ?? 0
     let newCount = prevCount + 1
     dismissalCounts[chip.lang] = newCount
@@ -248,6 +326,7 @@ final class LanguageSuggestionPresenter {
       nowSuppressed = false
     }
     currentChip = nil
+    currentReceipt = nil
     persistState()
     SentryBreadcrumb.add(
       stage: "language_chip",
@@ -266,32 +345,40 @@ final class LanguageSuggestionPresenter {
         data: ["lang": chip.lang]
       )
     }
-    hideOverlay()
+    if let receipt { overlay.dismissIfCurrent(receipt) }
   }
 
-  /// Auto-dismiss timer fired. Per F2 council resolution: does NOT count as a
-  /// strike (user not looking is not user rejecting). Generation token guards
-  /// against acting on stale timers. Hides the chip overlay ONLY if the
-  /// overlay is still showing the chip — Codex code-diff r4 [P2]: a stale
-  /// auto-dismiss task from a chip that was replaced by recording/processing/
-  /// clipboardFallback would otherwise call .hidden and clobber the new overlay.
-  func autoDismiss(generation: UInt64) {
-    guard let chip = currentChip, chip.generation == generation else { return }
+  /// The chip's dwell elapsed.
+  ///
+  /// **Does NOT count as a strike** — per the F2 council resolution, a user not
+  /// looking is not a user rejecting.
+  ///
+  /// **No generation argument any more, and none is needed** (#2292 C3). This
+  /// arrives through the `onExpire` callback that travelled WITH the chip's own
+  /// request, so "which chip lapsed" is answered structurally: a superseded
+  /// presentation's binding is dropped by the director when identity changes, so
+  /// a stale timer cannot reach here at all. The generation lives on for the
+  /// reducer, which still uses it as an expiry token.
+  ///
+  /// Dismissal is receipt-scoped for the reason the old generation check
+  /// existed: a chip replaced by a recording, a processing pill or a clipboard
+  /// hint must not have its expiry clobber the successor.
+  private func expireCurrentChip() {
+    guard let chip = currentChip else { return }
+    let receipt = currentReceipt
     let prevCount = dismissalCounts[chip.lang] ?? 0
     currentChip = nil
+    currentReceipt = nil
     SentryBreadcrumb.add(
       stage: "language_chip",
       message: "chip_auto_dismissed",
       data: [
         "lang": chip.lang,
-        "generation": Int(generation),
+        "generation": Int(chip.generation),
         "prevDismissalCount": prevCount,
       ]
     )
-    // Only hide if the overlay still shows this chip — replacing-overlay race guard.
-    if case .passiveChip(let payload) = readCurrentIntent(), payload.generation == generation {
-      hideOverlay()
-    }
+    if let receipt { overlay.dismissIfCurrent(receipt) }
   }
 
   /// Settings reset: clear all chip state (counts, suppression, buffer, current,
@@ -300,12 +387,13 @@ final class LanguageSuggestionPresenter {
   func resetAllChipState() {
     let priorCounts = dismissalCounts.count
     let priorSuppressed = suppressedLanguages.count
-    let chipWasVisibleBeforeReset = currentChip != nil
+    let resetReceipt = currentReceipt
     dismissalCounts.removeAll()
     suppressedLanguages.removeAll()
     lastShownLanguage = nil
     bufferedTrigger = nil
     currentChip = nil
+    currentReceipt = nil
     // Codex grounded review 2026-05-18 Finding 4: explicit removeObject for
     // all three keys, so post-reset the persisted state is absent-keys (matches
     // first-run semantics) rather than empty-encoded-containers.
@@ -320,14 +408,16 @@ final class LanguageSuggestionPresenter {
         "priorSuppressedCount": priorSuppressed,
       ]
     )
-    // Codex code-diff review 2026-05-18 [P2]: only hide the overlay if the
-    // chip itself was visible. Reset is fired from Settings, which is
-    // independent of the chip's visibility — if another overlay (recording,
-    // processing, clipboardFallback) is active, hiding it would corrupt UI
-    // state during active dictation.
-    if chipWasVisibleBeforeReset, case .passiveChip = readCurrentIntent() {
-      hideOverlay()
-    }
+    // Codex code-diff review 2026-05-18 [P2]: reset is fired from Settings,
+    // which is independent of the chip's visibility. If another presentation
+    // (recording, processing, clipboardFallback) has taken the slot, dismissing
+    // would corrupt UI state during an active dictation.
+    //
+    // **The receipt subsumes both halves of the old test** (#2292 C3). It
+    // answers "was a chip showing" and "is that same chip still the current
+    // presentation" in one question the overlay owns, where the old form asked
+    // this presenter's own remembered flag and then re-read the overlay's intent.
+    if let receipt = resetReceipt { overlay.dismissIfCurrent(receipt) }
   }
 
   // MARK: - Helpers

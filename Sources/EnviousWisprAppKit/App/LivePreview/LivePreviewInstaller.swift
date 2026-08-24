@@ -18,27 +18,32 @@ import Foundation
 @MainActor
 enum LivePreviewInstaller {
 
-  /// Build the coordinator and hand the overlay its three seams: whether to size a
-  /// pill for preview text, what to render in it, and when a recording is live.
+  /// Build the coordinator and RETURN its three seams: whether to size a pill for
+  /// preview text, what to render in it, and when a recording is live.
   ///
-  /// The returned coordinator is captured strongly by those closures, so the
-  /// overlay owns its lifetime. The overlay lives as long as the app and is the
-  /// only consumer, so no separate retention is needed (same idiom as
-  /// `wireCustomWords`, which anchors its propagator to the coordinator that uses
-  /// it).
-  /// Returns the coordinator so the composition root can register it as a Custom
-  /// Words consumer. It is returned rather than registered here because
-  /// `wireCustomWords` seeds and registers every consumer in one non-reversible
-  /// order, and a second registration path would be a second source of truth for
-  /// when the preview learns a user's vocabulary.
-  @discardableResult
+  /// **It takes no overlay** (#2292 C2). It used to push two of those seams into a
+  /// director that had to already exist, which is precisely what forced the
+  /// director to be constructed before its own dependencies. Handing them back as
+  /// a `LivePreviewBridge` inverts that: the composition root installs the preview
+  /// FIRST and builds the director from the result.
+  ///
+  /// The coordinator is captured strongly by the bridge's closures, so whoever
+  /// holds the bridge owns its lifetime — the director, which lives as long as the
+  /// app. Same idiom as `wireCustomWords`, which anchors its propagator to the
+  /// coordinator that uses it.
+  ///
+  /// The coordinator is returned ALONGSIDE the bridge because it has a second
+  /// owner: the composition root registers it as a Custom Words consumer. It is
+  /// returned rather than registered here because `wireCustomWords` seeds and
+  /// registers every consumer in one non-reversible order, and a second
+  /// registration path would be a second source of truth for when the preview
+  /// learns a user's vocabulary.
   static func install(
-    overlay: OverlayDirector,
     capture: any AudioCaptureInterface,
     settings: SettingsManager,
     settingsSync: PipelineSettingsSync,
     modelDelivery: ModelDeliveryHome
-  ) -> LivePreviewCoordinator {
+  ) -> LivePreviewInstallation {
     // **Effective, not merely persisted** — the requirement this wiring exists
     // for, unchanged since #1988. A value saved as true on macOS 26 and then read
     // on an older system used to enlarge the pill on every recording and fill it
@@ -80,21 +85,18 @@ enum LivePreviewInstaller {
     // computation. The overlay creates its panel on the next run-loop cycle and
     // reads this inside that deferred work, so a live read here could size a pill
     // for one engine while the recording resolves another.
-    overlay.setLivePreviewProviders(
-      enabled: { coordinator.isEnabledForGeometry },
-      display: { coordinator.display }
-    )
-    // The recording-intent observer is gone: the director emits
-    // `.recordingIntentChanged` as a plan EFFECT, and the composition root's
-    // effect sink forwards it here. One channel instead of a bespoke field.
+    //
+    // **This installer no longer takes an overlay** (#2292 C2). It returns the
+    // three seams as a `LivePreviewBridge` and the director consumes them at
+    // CONSTRUCTION, which is what lets the director be built after this call
+    // instead of before it. Recording state rides on the same value rather than
+    // arriving separately through the effect router.
+    let bridge = LivePreviewBridge(coordinator: coordinator)
 
     // #2108: switching Live Preview OFF releases its cached engine, and with it a
-    // loaded 217 MB model. Wired HERE rather than in `WisprBootstrapper` for the
-    // reason this installer exists at all: the composition root carries a line
-    // ceiling whose purpose is to stop feature wiring accumulating in it, and the
-    // first version of this hook pushed it over — 1344 against 1340. Raising that
-    // ceiling for six lines of preview wiring would be exactly the trade this
-    // file was extracted to avoid.
+    // loaded model. Wired HERE because this installer owns the coordinator and
+    // its settings-driven teardown; the composition root only composes the
+    // result.
     //
     // Weak, because a settings hook must never be what keeps the limb alive.
     settingsSync.onLivePreviewDisabled = { [weak coordinator] in
@@ -117,7 +119,7 @@ enum LivePreviewInstaller {
     modelDelivery.previewRemovalDidFinish = { [weak coordinator] in
       coordinator?.endRemovalSuppression()
     }
-    return coordinator
+    return LivePreviewInstallation(coordinator: coordinator, bridge: bridge)
   }
 
   /// Which route serves a choice — pure, so the one decision that must never

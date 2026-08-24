@@ -120,14 +120,14 @@ final class RecordingFinalizer {
     guard active.state == .recording || active.state == .loadingModel else { return false }
     languageSuggestionPresenter?.clearCurrentChip()
     languageSuggestionPresenter?.clearBuffer()
-    recordingOverlay.dismissSilently()
+    recordingOverlay.dismissCurrent(.silent)
     await cancelRecordingDispatch(active, trigger)
     return false
   }
 
   func markLocked() {
     recordingLockedAccess.set(true)
-    recordingOverlay.send(.lockStateChanged(true), actions: nil)
+    recordingOverlay.update(.recordingLock(true))
     Task {
       await AppLogger.shared.log(
         "Hands-free mode activated — overlay expanding",
