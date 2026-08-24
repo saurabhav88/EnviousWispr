@@ -176,6 +176,20 @@ struct PracticeScreenV2: View {
       // than a settings opener, and the request is the better offer anyway: an
       // undetermined permission is granted in place, and a denied one lands the
       // person on the right pane instead of the top of System Settings.
+      // SCOPE, corrected after founder UAT 2026-08-24 and stated so nobody reads
+      // the near-zero count as the feature working: on a FIRST RUN this state is
+      // UNREACHABLE. The permissions step upstream disables Continue until both
+      // microphone and Accessibility are granted, with no skip
+      // (`OnboardingV2View.swift`, `.disabled(!bothGranted)`), and the founder
+      // confirmed that gate stays — "we aren't going to let people continue
+      // without granting us the basic permissions needed".
+      //
+      // It is reachable on exactly one path, which is real but rare: finish
+      // setup, later have a permission revoked, then reopen setup from the menu.
+      // That reopen resolves straight to `.ready` and never revisits
+      // permissions, so this screen is the first thing that would notice, and
+      // macOS does revoke Accessibility on its own after some app updates.
+      // A safety net for that path, not part of the first-run experience.
       if case .cannotHear(let reason, _) = viewModel.practiceState {
         Button {
           Task { await grantPermission(reason: reason) }
