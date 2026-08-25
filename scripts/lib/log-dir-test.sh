@@ -481,6 +481,54 @@ else
     "3001=$([ -d "$SANDBOX/build/lanes/3001" ] && echo kept || echo gone) 3002=$([ -d "$SANDBOX/build/lanes/3002" ] && echo kept || echo GONE)"
 fi
 
+echo "== a newline in a lane name cannot reach rm -rf =="
+# I flagged this myself as "would break it". The actual consequence is worse: a
+# line-delimited read splits `old<newline>Sources` into TWO records and the
+# second is `Sources` — a RELATIVE path — which resolves against the caller's
+# cwd. `xcode-test.sh` runs from the project root, so that is the repo's own
+# source tree.
+#
+# The victim here stands in for it: a `Sources` directory beside the sandbox,
+# reachable only if a relative record escapes.
+NL_ROOT="$SANDBOX/nl"
+mkdir -p "$NL_ROOT/build/lanes" "$NL_ROOT/Sources"
+: > "$NL_ROOT/Sources/precious.swift"
+mkdir -p "$NL_ROOT/build/lanes/$(printf 'old\nSources')"
+touch -t 202001010000 "$NL_ROOT/build/lanes/$(printf 'old\nSources')"
+( cd "$NL_ROOT" && ew_prune_stale_lanes "$NL_ROOT" "$NL_ROOT/build/lanes/none" 7 ) >/dev/null 2>&1
+if [ -f "$NL_ROOT/Sources/precious.swift" ]; then
+  ok "a newline-named lane cannot reach a relative path"
+else
+  bad "a newline-named lane cannot reach a relative path" "Sources/ was deleted"
+fi
+# The accepted twin: the newline-named lane is itself STALE and must still be
+# swept, or the row above is satisfied by a prune that refuses odd names.
+[ ! -d "$NL_ROOT/build/lanes/$(printf 'old\nSources')" ] \
+  && ok "the newline-named lane is still swept" \
+  || bad "the newline-named lane is still swept" "left behind"
+
+# And a relative path is unsafe by definition, whatever its shape — the class,
+# not just the route that produced it.
+ew_lane_component_is_unsafe "build/lanes/4242" \
+  && ok "a relative path is unsafe by definition" \
+  || bad "a relative path is unsafe by definition" "accepted"
+
+echo "== a removal failure reaches the caller =="
+# The `while` used to sit on the right of a PIPE, which runs it in a subshell, so
+# a failure recorded inside could not reach the caller — and the trailing
+# `printf` made the body succeed regardless. A prune that removed nothing
+# reported success.
+FAILDIR="$SANDBOX/faildir"
+mkdir -p "$FAILDIR/build/lanes/5001"
+touch -t 202001010000 "$FAILDIR/build/lanes/5001"
+chmod 500 "$FAILDIR/build/lanes"   # no write: the entry cannot be unlinked
+ew_prune_stale_lanes "$FAILDIR" "$FAILDIR/build/lanes/none" 7 >/dev/null 2>&1
+rc=$?
+chmod 700 "$FAILDIR/build/lanes"
+[ "$rc" -ne 0 ] \
+  && ok "a removal failure is reported to the caller" \
+  || bad "a removal failure is reported to the caller" "rc=$rc"
+
 echo "== both refuse rather than guessing =="
 ew_publish_latest_lane "$SANDBOX" "" >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "publish refuses a missing lane_dir" || bad "publish refuses a missing lane_dir" "rc=$?"

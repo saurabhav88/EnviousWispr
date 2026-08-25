@@ -142,6 +142,14 @@ ew_lane_is_mount_point() {
 # erases its contents, leaving only the busy mount root.
 #   ew_lane_component_is_unsafe <path>
 ew_lane_component_is_unsafe() {
+  # A RELATIVE path is unsafe by definition: it resolves against whatever the
+  # caller's cwd happens to be, and `xcode-test.sh` runs from the project root.
+  # Defence that does not depend on the delimiter — the NUL read above closes the
+  # route that produced one, this closes the CLASS.
+  case "$1" in
+    /*) ;;
+    *) return 0 ;;
+  esac
   [ -L "$1" ] && return 0
   ew_lane_is_mount_point "$1" && return 0
   return 1
@@ -311,14 +319,32 @@ ew_prune_stale_lanes() {
   # skipped rather than followed — but a MOUNT is a directory and `-type d`
   # matches it, so each candidate is checked before it is removed rather than
   # handed to `-exec rm -rf`.
-  local entry
-  /usr/bin/find "$lanes" -mindepth 1 -maxdepth 1 -type d -mtime "+$days" \
-    ! -path "$keep" -print | while IFS= read -r entry; do
+  # NUL-DELIMITED, AND THE NEWLINE CASE IS NOT MERELY "BROKEN" (#2408 review r5).
+  # A line-delimited read splits a directory named `old<newline>Sources` into TWO
+  # records, and the second is `Sources` — a RELATIVE path. `xcode-test.sh` runs
+  # from the project root, so that resolves to the repo's own `Sources/` and
+  # reaches `rm -rf`. I flagged this myself as "would break it"; the actual
+  # consequence is deleting the source tree.
+  #
+  # PROCESS SUBSTITUTION, not a pipe: a `while` on the right of a pipe runs in a
+  # SUBSHELL, so a failure recorded inside it cannot reach the caller — which is
+  # the second half of the same finding. `rm -rf` failing on one entry (a
+  # permission, an ACL) was swallowed and the trailing `printf` made the body
+  # succeed, so the whole prune reported success having removed nothing.
+  local entry rc=0
+  while IFS= read -r -d '' entry; do
     if ew_lane_component_is_unsafe "$entry"; then
       echo "ew_prune_stale_lanes: skipping an unsafe lane entry: $entry" >&2
       continue
     fi
-    rm -rf "$entry"
-    printf '%s\n' "$entry"
-  done
+    if rm -rf "$entry"; then
+      printf '%s\n' "$entry"
+    else
+      echo "ew_prune_stale_lanes: could not remove $entry" >&2
+      rc=1
+    fi
+  done < <(/usr/bin/find "$lanes" -mindepth 1 -maxdepth 1 -type d -mtime "+$days" \
+    ! -path "$keep" -print0)
+
+  return "$rc"
 }
