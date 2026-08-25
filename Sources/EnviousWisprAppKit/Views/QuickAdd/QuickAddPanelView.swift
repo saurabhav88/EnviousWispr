@@ -382,7 +382,19 @@ struct QuickAddPanelView: View {
     .padding(.top, 2)
     // The field takes focus the moment the stage appears. Without it the user reaches Create and
     // types into nothing — and the panel is key-capable precisely so that cannot happen.
+    //
+    // **BOTH, and the second is not belt-and-braces.** Measured on the running build, `.onAppear`
+    // alone left `AXFocusedUIElement` reporting the WINDOW rather than any field: entering compose
+    // removes the search field in the SAME update, and tearing down the focused field resolves
+    // focus to nothing afterwards. The assignment is not lost, it is overtaken — so it has to be
+    // re-asserted after that update, which is what the yield buys. `.onAppear` stays because it is
+    // correct whenever nothing is competing and keeps the common path synchronous; dropping it
+    // would make every entry into this stage focus a frame late.
     .onAppear { composeFocused = true }
+    .task {
+      await Task.yield()
+      composeFocused = true
+    }
   }
 
   /// Which sentence the group header is saying. Derived, never stored: a second copy of this on the
