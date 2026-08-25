@@ -943,14 +943,31 @@ struct QuickAddCoordinatorTests {
   ///
   /// The property is now structural rather than asserted: nothing is remembered, so nothing can be
   /// stale. What remains to test is the one closed decision.
-  @Test("The keyboard goes to our own window when we have one, and to the app behind us otherwise")
+  @Test("The keyboard goes back to whatever actually had it")
   func theKeyboardGoesWhereItBelongs() {
     #expect(
-      QuickAddPanelHost.focusRelease(hasOtherKeyableWindow: true) == .handToOurOwnWindow,
-      "another window of ours means the user is inside our app; deactivating would hide it")
+      QuickAddPanelHost.focusRelease(origin: .ourWindow) == .handToOurOwnWindow,
+      "a window of OURS had it, so deactivating would hide the user's own window")
     #expect(
-      QuickAddPanelHost.focusRelease(hasOtherKeyableWindow: false) == .deactivateApp,
-      "the panel alone means the user came from another app")
+      QuickAddPanelHost.focusRelease(origin: .otherApp) == .deactivateApp)
+  }
+
+  /// **The refutation that killed the previous version, kept as a case so it cannot come back.**
+  /// That version asked "do we have another window on screen", which is closed and WRONG: leave
+  /// Settings open BEHIND TextEdit, invoke the shortcut from TextEdit, and a window-list answer
+  /// sends the keyboard to Settings. Having a window is not the same fact as having come from it.
+  @Test("A visible window of ours is not evidence the user came from it")
+  func aVisibleWindowIsNotProvenance() {
+    // The state that case produces: our window exists and is visible, and the origin is another app.
+    #expect(QuickAddPanelHost.focusRelease(origin: .otherApp) == .deactivateApp)
+  }
+
+  /// Unknown deactivates, and the asymmetry is the point: guessing "our window" when the user came
+  /// from another app eats the keystrokes this mechanism exists to protect, while guessing
+  /// "deactivate" when they were in our app costs a click.
+  @Test("With nothing observed the panel gives the keyboard back rather than keeping it")
+  func anUnknownOriginDeactivates() {
+    #expect(QuickAddPanelHost.focusRelease(origin: .unknown) == .deactivateApp)
   }
 
   // MARK: - The created confirmation names what was written (#2391, r5)

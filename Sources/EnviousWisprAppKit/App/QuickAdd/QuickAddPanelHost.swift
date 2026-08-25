@@ -39,6 +39,14 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
 
   private var panel: NSPanel?
 
+  /// What held the keyboard before the panel took it, and the window if it was ours.
+  ///
+  /// Written by the two observers below and by nothing else, so there is no route to miss. Weak,
+  /// because a Settings window the user closed during the beat must not be resurrected or retained.
+  private var focusOrigin: FocusOriginKind = .unknown
+  private weak var originWindow: NSWindow?
+  private var focusObservers: [NSObjectProtocol] = []
+
 
   #if DEBUG
     /// How many panels this host has built. A second one means the reuse path broke, which is
@@ -129,21 +137,38 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
     panel.makeKeyAndOrderFront(nil)
   }
 
-  /// Where the keyboard should go when this panel gives it up.
+  /// What held the keyboard immediately before this panel took it.
   ///
-  /// Two values, and the question is CLOSED because it is about the world as it is now rather than
-  /// about a history of how the panel came to be key.
+  /// **Provenance, and the third attempt at where to capture it.** Recording it in `present` and
+  /// `raise` enumerates ROUTES, and routes are AppKit's set — a raise, a mouse click, command-tab,
+  /// the Dock — so three review rounds each found another one. Deriving it instead from "do we have
+  /// another window on screen" is closed and WRONG: leave Settings open behind TextEdit, invoke the
+  /// shortcut from TextEdit, and a window-list answer sends the keyboard to Settings.
+  ///
+  /// The closed capture point is not a list of routes at all. It is the two notifications AppKit
+  /// posts however focus moved, below.
+  package enum FocusOriginKind: Equatable, Sendable, CaseIterable {
+    /// Another application was frontmost.
+    case otherApp
+    /// One of OUR windows held key — Settings, reachable because the shortcut is global.
+    case ourWindow
+    /// Nothing observed yet. Reachable only before either notification has fired.
+    case unknown
+  }
+
+  /// Where the keyboard goes when the panel gives it up.
   package enum FocusRelease: Equatable, Sendable, CaseIterable {
-    /// Another window of ours is on screen and can take key: the user is inside our app, and
-    /// deactivating would hide their own window.
+    /// Hand key to the window of ours that had it. Deactivating would hide the user's own window.
     case handToOurOwnWindow
-    /// The panel is our only window, so the user came from another app and that is where the
-    /// keyboard belongs.
+    /// Give the app behind us the keyboard back.
     case deactivateApp
   }
 
-  package static func focusRelease(hasOtherKeyableWindow: Bool) -> FocusRelease {
-    hasOtherKeyableWindow ? .handToOurOwnWindow : .deactivateApp
+  /// **`unknown` deactivates, and the asymmetry is deliberate.** Guessing "our window" when the user
+  /// came from another app eats the keystrokes this whole mechanism exists to protect; guessing
+  /// "deactivate" when they were in our app costs them a click. The second is the cheaper error.
+  package static func focusRelease(origin: FocusOriginKind) -> FocusRelease {
+    origin == .ourWindow ? .handToOurOwnWindow : .deactivateApp
   }
 
 
@@ -177,18 +202,51 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// window is what gets it back — deactivating there would hide the user's own window instead.
   func releaseFocus() {
     guard let panel, panel.isVisible else { return }
-    // Asked HERE, of the live window list, rather than remembered at take time. `canBecomeKey`
-    // rather than mere visibility: an accessory window that cannot take the keyboard is not somewhere
-    // to leave it.
-    let other = NSApp.windows.first {
-      $0 !== panel && $0.isVisible && $0.canBecomeKey
-    }
-    switch Self.focusRelease(hasOtherKeyableWindow: other != nil) {
+    switch Self.focusRelease(origin: focusOrigin) {
     case .handToOurOwnWindow:
-      other?.makeKeyAndOrderFront(nil)
+      // A window that has since been closed leaves nothing to hand to; deactivating instead would
+      // be a guess about an app the user may not have come from, so do neither.
+      guard let originWindow, originWindow !== panel, originWindow.isVisible else { return }
+      originWindow.makeKeyAndOrderFront(nil)
     case .deactivateApp:
       NSApp.deactivate()
     }
+  }
+
+  /// Watch what holds the keyboard, so `releaseFocus` never has to know HOW the panel got it.
+  ///
+  /// **Two notifications, and between them they cover every route** — including the ones three
+  /// review rounds found one at a time. Last writer wins, which orders them without timestamps.
+  ///
+  /// The panel becoming key is deliberately IGNORED rather than recorded: a mouse click on the panel
+  /// activates us, and treating that as "the user is now in our app" is what would send their
+  /// keyboard to the wrong place afterwards. Clicking an accessory panel is not moving into an app.
+  private func installFocusObservers() {
+    guard focusObservers.isEmpty else { return }
+    focusObservers.append(
+      NSWorkspace.shared.notificationCenter.addObserver(
+        forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+      ) { [weak self] note in
+        // Extracted BEFORE entering the isolated block: reading `note` inside trips Swift 6's
+        // sending-risks-data-races on a task-isolated capture.
+        let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+        MainActor.assumeIsolated {
+          guard let self, let app, app != NSRunningApplication.current else { return }
+          self.focusOrigin = .otherApp
+          self.originWindow = nil
+        }
+      })
+    focusObservers.append(
+      NotificationCenter.default.addObserver(
+        forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+      ) { [weak self] note in
+        let window = note.object as? NSWindow
+        MainActor.assumeIsolated {
+          guard let self, let window, window !== self.panel else { return }
+          self.focusOrigin = .ourWindow
+          self.originWindow = window
+        }
+      })
   }
 
   /// Take the panel down. Idempotent.
@@ -290,6 +348,7 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
       self.onDismiss?()
     }
     panel = p
+    installFocusObservers()
     return p
   }
 

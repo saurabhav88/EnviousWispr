@@ -357,6 +357,10 @@ final class QuickAddWiring {
   /// a later invocation reusing the panel must not have its outcome cancelled by a stale closure.
   private func cancel(model: QuickAddPanelModel) {
     if activeModel === model { coordinator.cancel(from: model) }
+    // **Clicking the close control during a confirmation makes the panel key AGAIN**, so dismissing
+    // without releasing leaves us active with no useful key window and the next characters lost.
+    // The beat already released once; this is the second taking, by the user's own click.
+    panelHost.releaseFocus()
     dismiss()
   }
 
