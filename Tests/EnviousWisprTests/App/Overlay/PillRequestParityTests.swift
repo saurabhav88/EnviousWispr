@@ -82,7 +82,7 @@ struct PillRequestParityTests {
         livePreview: .disabled,
         grantAccessibility: { [self] in
           appActions.append(.grantAccessibility)
-          grantSawPresentation = director.renderModel.presentation != nil
+          grantSawPresentation = director.renderModel.state.presentation != nil
         },
         selections: { .shipped },
         deferFirstRender: { $0() })
@@ -364,7 +364,7 @@ struct PillRequestParityTests {
       rig.grantSawPresentation == true,
       "the notice was dismissed before Grant ran, racing the system prompt")
     #expect(
-      rig.director.renderModel.presentation == nil,
+      rig.director.renderModel.state.presentation == nil,
       "the notice the user already answered is still on screen")
   }
 
@@ -383,7 +383,7 @@ struct PillRequestParityTests {
     var discards = 0
     let onDiscard: () -> Void = {
       discards += 1
-      rig.discardSawPresentation = rig.director.renderModel.presentation != nil
+      rig.discardSawPresentation = rig.director.renderModel.state.presentation != nil
     }
     let receipt = try #require(rig.director.present(.recoveryNotice(onDiscard: onDiscard)))
 
@@ -394,7 +394,7 @@ struct PillRequestParityTests {
       rig.discardSawPresentation == true,
       "the notice was dismissed before its owner was told to discard")
     #expect(
-      rig.director.renderModel.presentation == nil,
+      rig.director.renderModel.state.presentation == nil,
       "the recovery notice the user answered is still on screen")
   }
 

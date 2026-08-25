@@ -20,7 +20,7 @@ import Testing
     let overlay = OverlayTestDouble.headlessDirector()
     // Nothing shown first — mirrors launch recovery with no live recording.
     overlay.present(.recoverySucceeded)
-    guard case .notice(let notice)? = overlay.renderModel.presentation?.content else {
+    guard case .notice(let notice)? = overlay.renderModel.state.presentation?.content else {
       Issue.record("the success notice never reached the screen at launch")
       return
     }
@@ -28,7 +28,7 @@ import Testing
       notice.text == DictationNarrator.recoverySucceededTitle,
       "the launch-visible notice showed something other than the recovery sentence")
     overlay.dismissCurrent(.silent)
-    #expect(overlay.renderModel.presentation == nil)
+    #expect(overlay.renderModel.state.presentation == nil)
   }
 
   @Test("a recording supersedes the success notice synchronously (single slot)")
@@ -42,11 +42,11 @@ import Testing
             audioLevelProvider: { 0 },
             recordingElapsedProvider: { nil },
             isLocked: false)))
-    guard case .recording? = overlay.renderModel.presentation?.content else {
+    guard case .recording? = overlay.renderModel.state.presentation?.content else {
       Issue.record("the recording pill did not supersede the success notice")
       return
     }
     overlay.dismissCurrent(.silent)
-    #expect(overlay.renderModel.presentation == nil)
+    #expect(overlay.renderModel.state.presentation == nil)
   }
 }

@@ -10,9 +10,10 @@ import SwiftUI
 /// mechanisms the shipped panel needs only because it destroys and rebuilds
 /// itself on every panel-replacing transition: the inherited-frame plumbing that
 /// carries Y across a rebuild, the drag-deferral that postpones work while the
-/// user holds the panel, the parallel `OverlayNoticeState` channel whose own doc
-/// comment says it exists so a notice can morph the live pill "WITHOUT tearing
-/// the panel down", and the generation counters.
+/// user holds the panel, the parallel notice channel whose own doc comment said
+/// it existed so a notice could morph the live pill "WITHOUT tearing the panel
+/// down" (deleted in #2377 Phase 5 C1; the reason is carried on
+/// `PillRenderState`), and the generation counters.
 ///
 /// ## What the probe established, 2026-08-21
 ///

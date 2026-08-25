@@ -110,7 +110,7 @@ struct OverlayHostingParityTests {
       d.present(.warning(reason: .polishFailed))
 
       #expect(
-        d.renderModel.presentation != nil,
+        d.renderModel.state.presentation != nil,
         "the \(name) host refused a presentation the other accepted")
     }
   }
@@ -125,7 +125,7 @@ struct OverlayHostingParityTests {
       d.dismissCurrent(.announced)
 
       #expect(
-        d.renderModel.presentation == nil,
+        d.renderModel.state.presentation == nil,
         "the \(name) host left a pill on screen after hiding")
     }
   }

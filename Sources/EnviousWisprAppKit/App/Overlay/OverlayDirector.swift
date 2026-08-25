@@ -437,7 +437,7 @@ final class OverlayDirector {
         return
       }
       installRecordingProviders(
-        for: presentation, design: design, position: model.recordingPosition,
+        for: presentation, design: design, position: model.stagedRecordingPosition,
         audioLevelProvider: audioLevelProvider,
         recordingElapsedProvider: recordingElapsedProvider)
       apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
@@ -722,8 +722,9 @@ final class OverlayDirector {
       armExpiry = { [weak self] in
         guard let self else { return }
         // The picture and the timer start together. Published here rather than
-        // beside `model.presentation` because THIS is the instant the dwell
-        // begins, and a view drawing a countdown has no other way to know it.
+        // inside `publish` because THIS is the instant the dwell begins, and a
+        // view drawing a countdown has no other way to know it. It replaces only
+        // the dwell field of the frame already on screen.
         self.model.markDwellStarted(
           OverlayDwellWindow(id: id, startedAt: Date(), seconds: seconds))
         self.armedExpiry = self.schedule.after(seconds) { [weak self] in
@@ -802,7 +803,11 @@ final class OverlayDirector {
         model.clearRecordingProviders()
       }
 
-      model.presentation = plan.presentation
+      // **ONE publication, carrying the whole frame** (#2377 Phase 5 C1). This
+      // used to write a presentation and leave the lock, the notice copy and the
+      // providers to reach the root by other routes, which is what let a leaf
+      // evaluate with a new presentation beside an outgoing lock.
+      model.publish(plan.presentation)
       // **The announcement travels WITH the render**, so the deferred first
       // presentation announces when it lands and a refused one never does.
       let announceOnSuccess: () -> Void = { [weak self] in
@@ -1070,7 +1075,7 @@ final class OverlayDirector {
     // could compose against one edge and place against another.
     let anchor: OverlayPillPosition
     if case .recording = presentation.content {
-      anchor = model.recordingPosition
+      anchor = model.stagedRecordingPosition
     } else {
       anchor = position()
     }

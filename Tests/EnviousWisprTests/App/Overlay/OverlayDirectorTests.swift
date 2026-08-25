@@ -277,12 +277,12 @@
       let staleTimer = try! #require(armed.work)
 
       Self.record(d, level: 0.4)
-      let live = try! #require(d.renderModel.presentation?.id)
+      let live = try! #require(d.renderModel.state.presentation?.id)
 
       staleTimer.fire()
 
       #expect(
-        d.renderModel.presentation?.id == live,
+        d.renderModel.state.presentation?.id == live,
         "a timer from a finished notice closed the live recording pill")
     }
 
@@ -327,7 +327,7 @@
 
       try! #require(armed.work).fire()
 
-      #expect(d.renderModel.presentation == nil)
+      #expect(d.renderModel.state.presentation == nil)
     }
 
     // MARK: - Exactly one action binding
@@ -482,12 +482,12 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       Self.record(d, level: 0.2)
-      let first = try! #require(d.renderModel.presentation?.id)
+      let first = try! #require(d.renderModel.state.presentation?.id)
 
       Self.record(d, level: 0.8)
 
       #expect(
-        d.renderModel.presentation?.id == first,
+        d.renderModel.state.presentation?.id == first,
         "a metering update changed the presented occupant")
     }
 
@@ -496,11 +496,11 @@
       let (d, _, _) = Self.director()
       defer { Self.closeAllWindows() }
       Self.record(d, level: 0.2)
-      let first = try! #require(d.renderModel.presentation?.id)
+      let first = try! #require(d.renderModel.state.presentation?.id)
 
       d.present(.warning(reason: .polishFailed))
 
-      #expect(d.renderModel.presentation?.id != first)
+      #expect(d.renderModel.state.presentation?.id != first)
     }
 
     /// Emptying the slot must release the recording providers, or a closure
@@ -516,9 +516,27 @@
 
       d.dismissCurrent(.announced)
 
-      #expect(d.renderModel.presentation == nil)
-      #expect(d.renderModel.audioLevelProvider() == 0, "a provider outlived its dictation")
-      #expect(d.renderModel.recordingElapsedProvider() == nil)
+      #expect(d.renderModel.state.presentation == nil)
+      // **Two claims, and the second is the one with teeth** (#2377 Phase 5 C1).
+      // Providers now travel in the published frame, so an empty slot carries no
+      // recording frame and there is nothing left to poll — that is the first.
+      // But the STAGED closures are what a later publication would fold in, so a
+      // release that emptied the frame and left staging alone would resurrect a
+      // finished dictation's closures on the next recording. The second row
+      // publishes one and requires the defaults.
+      #expect(d.renderModel.state.recording == nil, "a provider outlived its dictation")
+      let design = RecordingPillDesign.classic
+      d.renderModel.publish(
+        PillDefinition(
+          id: PresentationID(rawValue: UUID()),
+          content: .recording(audioLevel: 0, isLocked: false, notice: nil, design: design),
+          expiry: .untilReplaced,
+          requestedWidth: .fixed(design.width),
+          reservesFixedHeight: design.reservedHeight))
+      #expect(
+        d.renderModel.state.recording?.audioLevelProvider() == 0,
+        "the released dictation's level closure was staged and reappeared on the next pill")
+      #expect(d.renderModel.state.recording?.recordingElapsedProvider() == nil)
     }
 
     /// **A REPLACEMENT ends a recording as surely as an empty slot does.** The
@@ -538,9 +556,8 @@
       d.present(.processing(phase: .transcribing))
 
       #expect(
-        d.renderModel.audioLevelProvider() == 0,
+        d.renderModel.state.recording == nil,
         "the finished dictation's level closure is still being polled behind the processing pill")
-      #expect(d.renderModel.recordingElapsedProvider() == nil)
     }
 
     /// A same-id morph is the SAME recording, so it keeps what it installed. This
@@ -566,10 +583,10 @@
       Self.record(d, level: 0.7, elapsed: { 12 })
 
       #expect(
-        d.renderModel.audioLevelProvider() == 0.7,
+        d.renderModel.state.recording?.audioLevelProvider() == 0.7,
         "an audio tick emptied the meter it was reporting to")
       #expect(
-        d.renderModel.recordingElapsedProvider() == 12,
+        d.renderModel.state.recording?.recordingElapsedProvider() == 12,
         "an audio tick dropped the elapsed clock it was handed")
     }
 
@@ -619,7 +636,7 @@
 
       shown.present(.accessibilityNotice)
 
-      guard case .notice(let toast)? = shown.renderModel.presentation?.content else {
+      guard case .notice(let toast)? = shown.renderModel.state.presentation?.content else {
         Issue.record("expected a notice")
         return
       }
@@ -634,7 +651,7 @@
 
       suppressed.present(.accessibilityNotice)
 
-      guard case .notice(let fallback)? = suppressed.renderModel.presentation?.content else {
+      guard case .notice(let fallback)? = suppressed.renderModel.state.presentation?.content else {
         Issue.record("expected a notice")
         return
       }
@@ -664,13 +681,13 @@
       defer { Self.closeAllWindows() }
 
       d.present(.accessibilityNotice)
-      let first = d.renderModel.presentation?.id
+      let first = d.renderModel.state.presentation?.id
 
       d.present(.accessibilityNotice)
 
-      #expect(d.renderModel.presentation?.id == first, "a duplicate push replaced the toast")
+      #expect(d.renderModel.state.presentation?.id == first, "a duplicate push replaced the toast")
       #expect(sink.announcements.count == 1, "a duplicate push announced twice")
-      guard case .notice(let notice)? = d.renderModel.presentation?.content else {
+      guard case .notice(let notice)? = d.renderModel.state.presentation?.content else {
         Issue.record("expected the accessibility toast")
         return
       }
@@ -682,7 +699,7 @@
       // second one, because there is only ever one to spend.
       d.present(.processing(phase: .transcribing))
       d.present(.accessibilityNotice)
-      guard case .notice(let later)? = d.renderModel.presentation?.content else {
+      guard case .notice(let later)? = d.renderModel.state.presentation?.content else {
         Issue.record("expected a notice")
         return
       }
@@ -720,7 +737,7 @@
       // reducer suite can assert it directly and in the Release lane. What this
       // case keeps is the part a user meets: the picture is the clipboard
       // fallback and the sentence spoken is still the accessibility one.
-      guard case .notice(let notice)? = d.renderModel.presentation?.content else {
+      guard case .notice(let notice)? = d.renderModel.state.presentation?.content else {
         Issue.record("expected the clipboard fallback")
         return
       }
@@ -766,7 +783,7 @@
       let receipt = try #require(
         d.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {})))
 
-      guard case .bluetoothAwareness? = d.renderModel.presentation?.content else {
+      guard case .bluetoothAwareness? = d.renderModel.state.presentation?.content else {
         Issue.record("the card is not the pill on screen")
         return
       }
@@ -803,7 +820,7 @@
 
       d.present(.languageChip(payload: payload, onLock: {}, onDismiss: {}, onExpire: {}))
 
-      guard case .languageChip(let shown)? = d.renderModel.presentation?.content else {
+      guard case .languageChip(let shown)? = d.renderModel.state.presentation?.content else {
         Issue.record("the chip is not the pill on screen")
         return
       }
@@ -824,7 +841,7 @@
 
       d.present(.importStatus(message: "Importing 3 recordings"))
 
-      #expect(d.renderModel.presentation != nil, "the status pill never took the slot")
+      #expect(d.renderModel.state.presentation != nil, "the status pill never took the slot")
       #expect(
         d.featureSlotIsAvailable,
         "import status began BLOCKING other features, which the shipped panel never did")
@@ -899,7 +916,7 @@
       // authority later: the layout bundle it used to read is gone, and what the
       // pill can hold is now a property of the design the transaction captured.
       #expect(
-        d.renderModel.presentation?.recordingDesign?.canHoldWords == true,
+        d.renderModel.state.presentation?.recordingDesign?.canHoldWords == true,
         "geometry was resolved before the effect that freezes its input")
     }
 
@@ -934,7 +951,7 @@
         quietSink.announcements.isEmpty,
         "a silent dismissal announced a completed recording that never happened")
       #expect(
-        quiet.renderModel.presentation == nil,
+        quiet.renderModel.state.presentation == nil,
         "the silent dismissal did not actually empty the slot")
     }
 
@@ -965,7 +982,7 @@
 
       Self.record(d, locked: true)
 
-      guard case .recording(_, let locked, _, _)? = d.renderModel.presentation?.content else {
+      guard case .recording(_, let locked, _, _)? = d.renderModel.state.presentation?.content else {
         Issue.record("expected a recording presentation")
         return
       }
@@ -1068,7 +1085,7 @@
       deferral.fire()
 
       #expect(results == [.notPresented], "a refused card was reported as presented")
-      #expect(d.renderModel.presentation == nil, "a refused card is still published")
+      #expect(d.renderModel.state.presentation == nil, "a refused card is still published")
       #expect(d.featureSlotIsAvailable, "the refused card still holds the slot")
     }
 
@@ -1090,7 +1107,7 @@
       deferral.fire()
 
       #expect(results == [.presented(receipt)], "the accepted card was not reported once")
-      guard case .bluetoothAwareness? = d.renderModel.presentation?.content else {
+      guard case .bluetoothAwareness? = d.renderModel.state.presentation?.content else {
         Issue.record("the accepted card never reached the screen")
         return
       }
@@ -1134,7 +1151,7 @@
       #expect(
         cardResults == [.presented(receipt)],
         "the card rendered but its owner was never told, so its buttons have no target")
-      guard case .bluetoothAwareness? = d.renderModel.presentation?.content else {
+      guard case .bluetoothAwareness? = d.renderModel.state.presentation?.content else {
         Issue.record("the card never reached the screen")
         return
       }
@@ -1495,7 +1512,7 @@
       d.present(.importStatus(message: "Importing 3 recordings"))
 
       #expect(
-        d.renderModel.presentation != nil, "the status pill never took the slot")
+        d.renderModel.state.presentation != nil, "the status pill never took the slot")
       #expect(
         sink.announcements.isEmpty,
         "import status announced, which the shipped panel never did")
@@ -1589,7 +1606,7 @@
 
       d.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
 
-      #expect(d.renderModel.presentation == nil, "a refused card was published anyway")
+      #expect(d.renderModel.state.presentation == nil, "a refused card was published anyway")
       #expect(
         d.featureSlotIsAvailable,
         "the refused card still holds the slot, so every later feature is refused too")
@@ -1610,13 +1627,13 @@
       defer { Self.closeAllWindows() }
 
       d.present(.warning(reason: .polishFailed))
-      #expect(d.renderModel.presentation == nil, "the refusal did not take")
+      #expect(d.renderModel.state.presentation == nil, "the refusal did not take")
 
       hasScreen = true
       d.present(.warning(reason: .polishFailed))
 
       #expect(
-        d.renderModel.presentation != nil,
+        d.renderModel.state.presentation != nil,
         "the retry was deduplicated against the intent the refusal left behind")
     }
 
@@ -1638,16 +1655,13 @@
             recordingElapsedProvider: { 3 },
             isLocked: true)))
 
-      #expect(d.renderModel.presentation == nil, "a refused recording was published anyway")
-      // Asserted through the providers THEMSELVES rather than a test-only flag:
-      // a cleared model answers 0 and nil, and the installed ones answer 0.5 and
-      // 3, so this reads the thing that would actually still be running.
+      #expect(d.renderModel.state.presentation == nil, "a refused recording was published anyway")
+      // Asserted through the FRAME rather than a test-only flag: a refused
+      // recording that left its providers reachable would leave a recording
+      // frame published, and that frame is the only thing a leaf can poll.
       #expect(
-        d.renderModel.audioLevelProvider() == 0,
-        "a refused recording's audio-level provider is still being polled")
-      #expect(
-        d.renderModel.recordingElapsedProvider() == nil,
-        "a refused recording's elapsed provider is still being polled")
+        d.renderModel.state.recording == nil,
+        "a refused recording's providers are still reachable to poll")
       // **The lock is NOT part of the rollback, and that claim moved to the
       // reducer suite** (#2292 C6). It outlives any one presentation by design,
       // so a refused frame must not silently unlock a hands-free session that is

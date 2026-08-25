@@ -283,7 +283,7 @@
     /// no recording is showing, which is the honest answer to "is the user
     /// looking at a locked pill".
     private static func pillShowsLocked(_ overlay: OverlayDirector) -> Bool {
-      guard case .recording(_, let isLocked, _, _)? = overlay.renderModel.presentation?.content
+      guard case .recording(_, let isLocked, _, _)? = overlay.renderModel.state.presentation?.content
       else { return false }
       return isLocked
     }

@@ -30,7 +30,7 @@ import AppKit
       // test agreed with the code because both were written from the same
       // assumption. Asking what is ON SCREEN cannot go wrong that way — there is
       // no projection to get right, only the pill the user is looking at.
-      guard case .bluetoothAwareness? = overlay.renderModel.presentation?.content else {
+      guard case .bluetoothAwareness? = overlay.renderModel.state.presentation?.content else {
         Issue.record("the Bluetooth card did not take the slot")
         return
       }
@@ -42,14 +42,14 @@ import AppKit
             audioLevelProvider: { 0 },
             recordingElapsedProvider: { nil },
             isLocked: false)))
-      guard case .recording? = overlay.renderModel.presentation?.content else {
+      guard case .recording? = overlay.renderModel.state.presentation?.content else {
         Issue.record("the recording pill did not supersede the card")
         return
       }
 
       overlay.dismissCurrent(.silent)
       #expect(
-        overlay.renderModel.presentation == nil,
+        overlay.renderModel.state.presentation == nil,
         "a dismissed slot still shows a pill")
     }
 
@@ -57,6 +57,6 @@ import AppKit
       let overlay = OverlayTestDouble.headlessDirector()
       overlay.present(.bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
       overlay.dismissCurrent(.silent)
-      #expect(overlay.renderModel.presentation == nil)
+      #expect(overlay.renderModel.state.presentation == nil)
     }
   }

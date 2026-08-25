@@ -191,7 +191,7 @@ struct RenderedPillFreezeTests {
   /// Hands-free keeps recording after the key is released, so a design that renders
   /// identically in both states lets a user walk away from a live capture believing
   /// it ended. `.levelRail` shipped exactly that way: every visual property in its
-  /// branch was independent of `lockState.isLocked`, so the container's animation
+  /// branch was independent of the lock, so the container's animation
   /// had nothing to animate.
   ///
   /// **Nothing caught it because `levelRail` appears NOWHERE in the frozen

@@ -35,8 +35,6 @@ struct RecordingOverlayPreviewChromeTests {
     design: RecordingPillDesign = .readingWell
   ) throws -> CGFloat {
     let log = HeightLog()
-    let lockState = OverlayLockState()
-    lockState.isLocked = locked
 
     let view = RecordingOverlayView(
       audioLevelProvider: { 0.4 },
@@ -44,8 +42,8 @@ struct RecordingOverlayPreviewChromeTests {
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
       chrome: design.chrome,
-      lockState: lockState,
-      noticeState: OverlayNoticeState(),
+      isLocked: locked,
+      noticeText: nil,
       initialPreview: display
     )
     let host = NSHostingView(rootView: view.frame(width: Self.previewWidth))
@@ -148,16 +146,14 @@ struct RecordingOverlayPreviewChromeTests {
     let without = try pillHeight(locked: false, showing: text)
 
     let log = HeightLog()
-    let noticeState = OverlayNoticeState()
-    noticeState.message = "Recording stops in one minute."
     let view = RecordingOverlayView(
       audioLevelProvider: { 0.4 },
       recordingElapsedProvider: { 127 },
       livePreviewProvider: { text },
       onContentHeightChange: { log.record($0) },
       chrome: RecordingPillDesign.readingWell.chrome,
-      lockState: OverlayLockState(),
-      noticeState: noticeState,
+      isLocked: false,
+      noticeText: "Recording stops in one minute.",
       initialPreview: text
     )
     let host = NSHostingView(rootView: view.frame(width: Self.previewWidth))

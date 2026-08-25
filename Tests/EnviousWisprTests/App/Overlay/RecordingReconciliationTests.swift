@@ -148,7 +148,7 @@ struct RecordingReconciliationTests {
       bridge == [true, false],
       "expected the prepared recording effect followed by one reconciliation to the winner")
     #expect(
-      d.renderModel.presentation?.recordingDesign == nil,
+      d.renderModel.state.presentation?.recordingDesign == nil,
       "the stale recording reached the screen")
 
     // **The discarded definition is commit-free, render-free, announcement-free
@@ -224,7 +224,7 @@ struct RecordingReconciliationTests {
       "expected both recording effects followed by reconciliation to the newer recording")
     #expect(capabilityReads == 2, "both transitions were not resolved")
     #expect(
-      d.renderModel.presentation?.recordingDesign == .readingWell,
+      d.renderModel.state.presentation?.recordingDesign == .readingWell,
       "the stale outer recording overwrote the newer recording")
   }
 
@@ -295,7 +295,7 @@ struct RecordingReconciliationTests {
     #expect(queue.pending.isEmpty, "the reconciliation never converged")
     // And the last thing the bridge heard matches what is actually on screen.
     #expect(
-      bridge.last == (d.renderModel.presentation?.recordingDesign != nil),
+      bridge.last == (d.renderModel.state.presentation?.recordingDesign != nil),
       "the bridge and the screen disagree about whether a recording is up")
   }
 
@@ -470,14 +470,14 @@ struct RecordingReconciliationTests {
     // as `.recording`. This is the line that separates "the recording was
     // discarded" from "the recording quietly won", and every claim below is
     // about the wrong scenario without it.
-    guard case .notice? = d.renderModel.presentation?.content else {
+    guard case .notice? = d.renderModel.state.presentation?.content else {
       Issue.record(
-        "the winner did not take the slot, so the recording was never discarded: \(String(describing: d.renderModel.presentation?.content))")
+        "the winner did not take the slot, so the recording was never discarded: \(String(describing: d.renderModel.state.presentation?.content))")
       return
     }
     let winner = try #require(winnerReceipt, "the winner was itself refused, so it owns no receipt to inherit")
     #expect(
-      d.renderModel.presentation?.id == winner.presentationID,
+      d.renderModel.state.presentation?.id == winner.presentationID,
       "the pill on screen is not the winner, so this fixture is staging something else")
 
     #expect(
@@ -503,7 +503,7 @@ struct RecordingReconciliationTests {
             recordingElapsedProvider: { nil }, isLocked: false)),
         onResult: { results.append($0) }))
 
-    guard case .recording? = d.renderModel.presentation?.content else {
+    guard case .recording? = d.renderModel.state.presentation?.content else {
       Issue.record("no recording pill reached the screen, so the receipt names something else")
       return
     }

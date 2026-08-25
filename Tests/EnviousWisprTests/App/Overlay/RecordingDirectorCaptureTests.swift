@@ -36,7 +36,7 @@ struct RecordingDirectorCaptureTests {
     selections: PillDesignSelections = .shipped,
     host: any OverlayWindowHosting = WindowlessOverlayHost(),
     // **`.bottom`, not `.top`, and that is the whole point of the parameter.**
-    // `.top` is `OverlayRenderModel.recordingPosition`'s own default, so a
+    // `.top` is `OverlayRenderModel`'s own staged-position default, so a
     // director that ignored the captured position entirely would still leave the
     // model reading `.top` and every assertion would pass. The fixture has to sit
     // somewhere the default is not.
@@ -142,7 +142,7 @@ struct RecordingDirectorCaptureTests {
 
     Self.record(d)
 
-    let definition = try #require(d.renderModel.presentation, "no recording is showing")
+    let definition = try #require(d.renderModel.state.presentation, "no recording is showing")
     let design = try #require(definition.recordingDesign, "the accepted pill carries no design")
     let frozen = try #require(
       FrozenPillParity.recordingRows.first {
@@ -155,7 +155,7 @@ struct RecordingDirectorCaptureTests {
     // `.bottom` is not the model's default, so this fails against a director that
     // never installed the captured position at all.
     #expect(
-      d.renderModel.recordingPosition == .bottom,
+      d.renderModel.stagedRecordingPosition == .bottom,
       "the render model did not keep the captured position")
     // **And the WINDOW was asked for that geometry, which is the thing the user
     // sees.** The definition carrying the right numbers is necessary and not
@@ -188,8 +188,13 @@ struct RecordingDirectorCaptureTests {
     let d = Self.makeDirector(counts, capabilityHasWords: capabilityHasWords, host: host)
 
     Self.record(d)
-    _ = d.renderModel.livePreviewProvider()
-    d.renderModel.onContentHeightChange(123)
+    // **Read the PUBLISHED frame, not staged state** (#2377 Phase 5 C1). The
+    // providers are staged privately and folded into the snapshot at
+    // publication, so reading them here proves the gate survives the trip rather
+    // than only that `setRecordingProviders` applied it.
+    let frame = d.renderModel.state.recording
+    _ = frame?.livePreviewProvider()
+    frame?.onContentHeightChange(123)
 
     #expect(
       counts.displayReads == (capabilityHasWords ? 1 : 0),
@@ -239,8 +244,9 @@ struct RecordingDirectorCaptureTests {
       position: .top,
       onContentHeightChange: { host.resizeCurrentPresentation(to: CGSize(width: 400, height: $0)) })
 
-    _ = model.livePreviewProvider()
-    model.onContentHeightChange(123)
+    let frame = Self.publishedRecordingFrame(model, design: .readingWell)
+    _ = frame?.livePreviewProvider()
+    frame?.onContentHeightChange(123)
 
     #expect(counts.displayReads == 1, "the consumers gated on capability, not on the design")
     #expect(
@@ -268,11 +274,32 @@ struct RecordingDirectorCaptureTests {
       position: .top,
       onContentHeightChange: { host.resizeCurrentPresentation(to: CGSize(width: 185, height: $0)) })
 
-    #expect(model.livePreviewProvider() == .off, "a wordless design was handed a live display")
-    model.onContentHeightChange(123)
+    let frame = Self.publishedRecordingFrame(model, design: .classic)
+    #expect(frame?.livePreviewProvider() == .off, "a wordless design was handed a live display")
+    frame?.onContentHeightChange(123)
 
     #expect(counts.displayReads == 0, "the live provider was read for a pill that shows no words")
     #expect(host.resizes.isEmpty, "a pill that cannot grow asked its window to resize")
+  }
+
+  /// Publish a recording for `design` and hand back the frame the root would be
+  /// given.
+  ///
+  /// The staged providers are private, so the only honest way to read them is
+  /// through a published frame — which is also the only way they reach a leaf in
+  /// production.
+  @MainActor
+  private static func publishedRecordingFrame(
+    _ model: OverlayRenderModel, design: RecordingPillDesign
+  ) -> RecordingFrame? {
+    model.publish(
+      PillDefinition(
+        id: PresentationID(rawValue: UUID()),
+        content: .recording(audioLevel: 0, isLocked: false, notice: nil, design: design),
+        expiry: .untilReplaced,
+        requestedWidth: .fixed(design.width),
+        reservesFixedHeight: design.reservedHeight))
+    return model.state.recording
   }
 
   // MARK: - The bridge
