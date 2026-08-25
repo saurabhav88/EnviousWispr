@@ -7,7 +7,6 @@ import Foundation
 // AppKit: everything here is a value, so the reducer and the placement state
 // are testable with no windowing present, which is the property `OverlayReducer`
 // exists to have.
-
 // MARK: - Identity
 
 /// Identity for one presentation of the overlay slot.
@@ -29,54 +28,6 @@ struct PresentationID: Hashable, Sendable {
   /// Test seam only: a deterministic id, so a suite can assert on identity
   /// without threading a UUID factory through every call site.
   init(rawValue: UUID) { self.rawValue = rawValue }
-}
-
-// MARK: - Screens and geometry
-
-/// A screen's stable identity, so placement can say "the same screen" without
-/// holding an `NSScreen` and without AppKit being present in a test.
-struct ScreenID: Hashable, Sendable {
-  let rawValue: Int
-  init(rawValue: Int) { self.rawValue = rawValue }
-}
-
-/// Everything placement needs to know about a screen. A value, so the geometry
-/// rules are exercisable against invented screens — including the ones that are
-/// awkward to obtain on the dev machine, such as a display whose `visibleFrame`
-/// is inset by a notch or by a full-screen space.
-struct ScreenGeometry: Equatable, Sendable {
-  let id: ScreenID
-  /// Full display bounds.
-  let frame: CGRect
-  /// Bounds excluding menu bar and Dock.
-  let visibleFrame: CGRect
-  /// True when the screen currently shows a full-screen space, which is the
-  /// condition the Bottom rule keys off.
-  let hasFullScreenSpace: Bool
-
-  init(id: ScreenID, frame: CGRect, visibleFrame: CGRect, hasFullScreenSpace: Bool = false) {
-    self.id = id
-    self.frame = frame
-    self.visibleFrame = visibleFrame
-    self.hasFullScreenSpace = hasFullScreenSpace
-  }
-}
-
-/// Whether a presentation is arriving into an empty slot or replacing a live one.
-///
-/// **`continuing` carries the COMPLETE current frame, both axes.** That is the
-/// whole of the #2195 fix: the shipped path inherits only `y` and always
-/// recentres `x`, so a pill the user dragged horizontally jumps back to centre
-/// the moment its content changes. A single value carrying the whole rect makes
-/// the half-inheritance unrepresentable rather than merely discouraged.
-enum OverlayContinuity: Equatable, Sendable {
-  case fresh(position: OverlayPillPosition, screen: ScreenID)
-  /// `outgoingWasContentSized` is required, not optional: the shipped Top rule
-  /// re-anchors a content-sized outgoing panel by its TOP edge and a
-  /// fixed-frame one by its CENTRE, and getting that wrong moves the pill
-  /// vertically on an ordinary recording-to-polishing hand-off.
-  case continuing(
-    currentFrame: CGRect, anchoredScreen: ScreenID, outgoingWasContentSized: Bool)
 }
 
 // MARK: - What ends up on screen
@@ -160,18 +111,6 @@ enum OverlayRecordingLayout: Equatable, Sendable {
 enum OverlayWidth: Equatable, Sendable {
   case fixed(CGFloat)
   case measured
-}
-
-/// How long a presentation lives without further input.
-enum OverlayExpiry: Equatable, Sendable {
-  /// Stays until something replaces it. Recording and processing are persistent.
-  case untilReplaced
-  /// Dismisses itself after an interval, unless the user is hovering it.
-  case after(seconds: Double, pausesOnHover: Bool)
-
-  static func after(seconds: Double) -> OverlayExpiry {
-    .after(seconds: seconds, pausesOnHover: false)
-  }
 }
 
 /// The collapsed notice. Processing, clipboard fallback, warning, error,
@@ -335,38 +274,5 @@ struct OverlayPresentation: Equatable, Sendable {
     self.expiry = expiry
     self.requestedWidth = requestedWidth
     self.reservesFixedHeight = reservesFixedHeight
-  }
-}
-
-
-/// The dwell a countdown is drawing, as a WINDOW rather than a start signal
-/// (#2292, C20b).
-///
-/// **Publishing an identity and treating its delivery as the start is wrong, and
-/// subtly so.** SwiftUI processes a published change on a later render
-/// transaction -- normally the next one, arbitrarily later while the UI is busy.
-/// The director's timer is already running by then, so a rail that starts when
-/// the signal ARRIVES lags the clock it draws and gets cut off before its end.
-///
-/// Carrying `startedAt` lets a late reader compute how much of the dwell it has
-/// already missed and draw the REMAINDER, which is correct whenever it runs.
-///
-/// It also fixes a second case the identity form could not express: a hover-exit
-/// re-arms the same presentation, so an id-only signal does not change and the
-/// rail never restarts.
-struct OverlayDwellWindow: Equatable, Sendable {
-  let id: PresentationID
-  let startedAt: Date
-  let seconds: Double
-
-  /// What fraction has already elapsed at `now`, clamped to 0...1.
-  func elapsedFraction(at now: Date) -> Double {
-    guard seconds > 0 else { return 1 }
-    return min(1, max(0, now.timeIntervalSince(startedAt) / seconds))
-  }
-
-  /// How long is left to animate at `now`, never negative.
-  func remaining(at now: Date) -> Double {
-    max(0, seconds - now.timeIntervalSince(startedAt))
   }
 }
