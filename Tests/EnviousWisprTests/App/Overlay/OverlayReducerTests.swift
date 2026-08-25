@@ -40,7 +40,7 @@ struct OverlayReducerTests {
   @Test("a feature cannot take the slot while the pipeline is recording")
   func featureIsRefusedDuringRecording() {
     var r = Self.makeReducer()
-    _ = r.reduce(.pipeline(.recording(audioLevel: 0.4)))
+    _ = r.startRecordingForTests(audioLevel: 0.4)
 
     let plan = r.reduce(.importStatus(message: "Imported 12 words"))
 
@@ -85,7 +85,7 @@ struct OverlayReducerTests {
     // The defect this guards is not one feature getting it wrong; it is the
     // features DISAGREEING, which is what separate ownership flags produce.
     var busy = Self.makeReducer()
-    _ = busy.reduce(.pipeline(.recording(audioLevel: 0.1)))
+    _ = busy.startRecordingForTests(audioLevel: 0.1)
     #expect(busy.reduce(request).didChange == false)
 
     var idle = Self.makeReducer()
@@ -97,17 +97,17 @@ struct OverlayReducerTests {
   @Test("audio-level updates keep the recording pill's identity")
   func meteringDoesNotChurnIdentity() {
     var r = Self.makeReducer()
-    _ = r.reduce(.pipeline(.recording(audioLevel: 0.1)))
+    _ = r.startRecordingForTests(audioLevel: 0.1)
     let first = r.state.current?.id
 
     for level in [Float(0.2), 0.3, 0.9, 0.0] {
-      _ = r.reduce(.pipeline(.recording(audioLevel: level)))
+      _ = r.startRecordingForTests(audioLevel: level)
     }
 
     #expect(r.state.current?.id == first)
     // A new id per metering tick would re-arm expiry and re-measure the frame on
     // every audio callback, which is many times a second.
-    guard case .recording(let level, _, _)? = r.state.current?.content else {
+    guard case .recording(let level, _, _, _)? = r.state.current?.content else {
       Issue.record("expected a recording pill")
       return
     }
@@ -121,7 +121,7 @@ struct OverlayReducerTests {
     let stale = try! #require(r.state.current?.id)
 
     // A newer presentation takes the slot before the old timer fires.
-    _ = r.reduce(.pipeline(.recording(audioLevel: 0.5)))
+    _ = r.startRecordingForTests(audioLevel: 0.5)
     let live = try! #require(r.state.current?.id)
     #expect(stale != live)
 
@@ -151,7 +151,7 @@ struct OverlayReducerTests {
     var r = Self.makeReducer()
     _ = r.reduce(.pipeline(.accessibilityToast))
     let stale = try! #require(r.state.current?.id)
-    _ = r.reduce(.pipeline(.recording(audioLevel: 0.2)))
+    _ = r.startRecordingForTests(audioLevel: 0.2)
 
     let plan = r.reduce(.action(stale, .grantAccessibility))
 
@@ -172,14 +172,14 @@ struct OverlayReducerTests {
   @Test("an in-panel notice morphs the live recording pill rather than replacing it")
   func inPanelNoticeMorphsRatherThanReplaces() {
     var r = Self.makeReducer()
-    _ = r.reduce(.pipeline(.recording(audioLevel: 0.3)))
+    _ = r.startRecordingForTests(audioLevel: 0.3)
     let id = try! #require(r.state.current?.id)
 
     let plan = r.reduce(.inPanelNotice(.approachingCap, dismissAfter: nil))
 
     #expect(plan.didChange)
     #expect(plan.presentation?.id == id, "the notice replaced the pill instead of morphing it")
-    guard case .recording(let level, _, let notice)? = plan.presentation?.content else {
+    guard case .recording(let level, _, let notice, _)? = plan.presentation?.content else {
       Issue.record("expected the recording pill to survive")
       return
     }
@@ -227,7 +227,7 @@ struct OverlayReducerTests {
   @Test("hiding an occupied slot is a change")
   func hidingAnOccupiedSlotIsAChange() {
     var r = Self.makeReducer()
-    _ = r.reduce(.pipeline(.recording(audioLevel: 0.1)))
+    _ = r.startRecordingForTests(audioLevel: 0.1)
     let plan = r.reduce(.pipeline(.hidden))
     #expect(plan.didChange)
     #expect(plan.presentation == nil)
@@ -249,7 +249,7 @@ struct OverlayReducerTests {
     // yet tell the two apart — the preview flag is a provider the director owns
     // — so C3 adds that branch and this test gains its pair.
     var r = Self.makeReducer()
-    _ = r.reduce(.pipeline(.recording(audioLevel: 0.1)))
+    _ = r.startRecordingForTests(audioLevel: 0.1)
     #expect(r.state.current?.reservesFixedHeight == 92)
     #expect(r.state.current?.requestedWidth == .fixed(185))
 
@@ -285,7 +285,7 @@ struct OverlayReducerTests {
   @Test("an expiry cannot dismiss a presentation that has no timer")
   func expiryCannotDismissAPersistentPresentation() {
     var r = Self.makeReducer()
-    _ = r.reduce(.pipeline(.recording(audioLevel: 0.4)))
+    _ = r.startRecordingForTests(audioLevel: 0.4)
     let id = try! #require(r.state.current?.id)
 
     let plan = r.reduce(.expiryFired(id))
@@ -347,7 +347,7 @@ struct OverlayReducerTests {
   func persistentPresentationCancelsTheArmedTimer() {
     var r = Self.makeReducer()
     _ = r.reduce(.pipeline(.warning(reason: .polishFailed)))
-    let plan = r.reduce(.pipeline(.recording(audioLevel: 0.3)))
+    let plan = r.startRecordingForTests(audioLevel: 0.3)
     #expect(plan.expiryCommand == .cancel)
   }
 
@@ -394,10 +394,10 @@ struct OverlayReducerTests {
   func recordingIntentIsObservable() {
     var r = Self.makeReducer()
     #expect(
-      r.reduce(.pipeline(.recording(audioLevel: 0.2))).effects
+      r.startRecordingForTests(audioLevel: 0.2).effects
         == [.recordingStateChanged(true)])
     // A metering update is not a start: it must not re-notify.
-    #expect(r.reduce(.pipeline(.recording(audioLevel: 0.9))).effects.isEmpty)
+    #expect(r.startRecordingForTests(audioLevel: 0.9).effects.isEmpty)
     #expect(r.reduce(.pipeline(.hidden)).effects == [.recordingStateChanged(false)])
   }
 
@@ -406,14 +406,14 @@ struct OverlayReducerTests {
   @Test("hands-free lock morphs the live recording pill")
   func lockMorphsTheRecordingPill() {
     var r = Self.makeReducer()
-    _ = r.reduce(.pipeline(.recording(audioLevel: 0.5)))
+    _ = r.startRecordingForTests(audioLevel: 0.5)
     let id = try! #require(r.state.current?.id)
 
     let plan = r.reduce(.lockStateChanged(true))
 
     #expect(plan.didChange)
     #expect(plan.presentation?.id == id, "locking replaced the pill instead of morphing it")
-    guard case .recording(let level, let locked, _)? = plan.presentation?.content else {
+    guard case .recording(let level, let locked, _, _)? = plan.presentation?.content else {
       Issue.record("expected the recording pill to survive locking")
       return
     }
@@ -439,9 +439,9 @@ struct OverlayReducerTests {
     var r = Self.makeReducer()
     _ = r.reduce(.lockStateChanged(true))
 
-    let plan = r.reduce(.pipeline(.recording(audioLevel: 0.3)))
+    let plan = r.startRecordingForTests(audioLevel: 0.3)
 
-    guard case .recording(_, let locked, _)? = plan.presentation?.content else {
+    guard case .recording(_, let locked, _, _)? = plan.presentation?.content else {
       Issue.record("expected a recording pill")
       return
     }
@@ -451,8 +451,8 @@ struct OverlayReducerTests {
   @Test("a recording pill that starts unlocked is not born locked")
   func recordingIsNotBornLockedByDefault() {
     var r = Self.makeReducer()
-    let plan = r.reduce(.pipeline(.recording(audioLevel: 0.3)))
-    guard case .recording(_, let locked, _)? = plan.presentation?.content else {
+    let plan = r.startRecordingForTests(audioLevel: 0.3)
+    guard case .recording(_, let locked, _, _)? = plan.presentation?.content else {
       Issue.record("expected a recording pill")
       return
     }
@@ -704,7 +704,16 @@ struct OverlayReducerTests {
     // is primed with something else — the priming is what makes it a change, not
     // a workaround for a defect.
     if case .hidden = row.intent { _ = r.reduce(.pipeline(.engineReady)) }
-    let plan = r.reduce(.pipeline(row.intent))
+    // **Recording goes through the two-stage path since #2375 C3a**, because a
+    // fresh one needs a resolved design. The announcement is unchanged and still
+    // travels on the plan — it is carried on the PREPARE token and re-attached,
+    // so this row asserts the same observable fact as the other fifteen.
+    let plan: OverlayPlan
+    if case .recording(let level) = row.intent {
+      plan = r.startRecordingForTests(audioLevel: level)
+    } else {
+      plan = r.reduce(.pipeline(row.intent))
+    }
     guard let announcement = plan.announcement else {
       Issue.record("\(row.intent) announced nothing — a VoiceOver user hears silence")
       return
@@ -723,9 +732,9 @@ struct OverlayReducerTests {
   @Test("a repeated intent does not announce again")
   func repeatedIntentIsSilent() {
     var r = Self.makeReducer()
-    _ = r.reduce(.pipeline(.recording(audioLevel: 0)))
+    _ = r.startRecordingForTests(audioLevel: 0)
 
-    let second = r.reduce(.pipeline(.recording(audioLevel: 0)))
+    let second = r.startRecordingForTests(audioLevel: 0)
 
     #expect(
       second.announcement == nil,
@@ -779,7 +788,7 @@ struct OverlayReducerTests {
   @Test("a timed in-panel notice arms its own dwell and clears itself")
   func timedInPanelNoticeClears() {
     var r = Self.makeReducer()
-    _ = r.reduce(.pipeline(.recording(audioLevel: 0.2)))
+    _ = r.startRecordingForTests(audioLevel: 0.2)
     let id = try! #require(r.state.current?.id)
 
     let armed = r.reduce(.inPanelNotice(.autoStopUnavailable, dismissAfter: 4.0))
@@ -789,7 +798,7 @@ struct OverlayReducerTests {
 
     let fired = r.reduce(.inPanelNoticeExpiryFired(id))
 
-    guard case .recording(_, _, let notice)? = r.state.current?.content else {
+    guard case .recording(_, _, let notice, _)? = r.state.current?.content else {
       Issue.record("the expiry ended the whole recording instead of the banner")
       return
     }
@@ -804,7 +813,7 @@ struct OverlayReducerTests {
   @Test("an untimed in-panel notice arms nothing")
   func untimedInPanelNoticeIsPersistent() {
     var r = Self.makeReducer()
-    _ = r.reduce(.pipeline(.recording(audioLevel: 0.2)))
+    _ = r.startRecordingForTests(audioLevel: 0.2)
 
     let plan = r.reduce(.inPanelNotice(.approachingCap, dismissAfter: nil))
 

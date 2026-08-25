@@ -206,3 +206,52 @@ struct OverlayPlacementState: Equatable {
     min(requestedY, screen.visibleFrame.maxY - height - topClampMargin)
   }
 }
+
+// MARK: - Screens and geometry
+
+/// A screen's stable identity, so placement can say "the same screen" without
+/// holding an `NSScreen` and without AppKit being present in a test.
+struct ScreenID: Hashable, Sendable {
+  let rawValue: Int
+  init(rawValue: Int) { self.rawValue = rawValue }
+}
+
+/// Everything placement needs to know about a screen. A value, so the geometry
+/// rules are exercisable against invented screens — including the ones that are
+/// awkward to obtain on the dev machine, such as a display whose `visibleFrame`
+/// is inset by a notch or by a full-screen space.
+struct ScreenGeometry: Equatable, Sendable {
+  let id: ScreenID
+  /// Full display bounds.
+  let frame: CGRect
+  /// Bounds excluding menu bar and Dock.
+  let visibleFrame: CGRect
+  /// True when the screen currently shows a full-screen space, which is the
+  /// condition the Bottom rule keys off.
+  let hasFullScreenSpace: Bool
+
+  init(id: ScreenID, frame: CGRect, visibleFrame: CGRect, hasFullScreenSpace: Bool = false) {
+    self.id = id
+    self.frame = frame
+    self.visibleFrame = visibleFrame
+    self.hasFullScreenSpace = hasFullScreenSpace
+  }
+}
+
+/// Whether a presentation is arriving into an empty slot or replacing a live one.
+///
+/// **`continuing` carries the COMPLETE current frame, both axes.** That is the
+/// whole of the #2195 fix: the shipped path inherits only `y` and always
+/// recentres `x`, so a pill the user dragged horizontally jumps back to centre
+/// the moment its content changes. A single value carrying the whole rect makes
+/// the half-inheritance unrepresentable rather than merely discouraged.
+enum OverlayContinuity: Equatable, Sendable {
+  case fresh(position: OverlayPillPosition, screen: ScreenID)
+  /// `outgoingWasContentSized` is required, not optional: the shipped Top rule
+  /// re-anchors a content-sized outgoing panel by its TOP edge and a
+  /// fixed-frame one by its CENTRE, and getting that wrong moves the pill
+  /// vertically on an ordinary recording-to-polishing hand-off.
+  case continuing(
+    currentFrame: CGRect, anchoredScreen: ScreenID, outgoingWasContentSized: Bool)
+}
+

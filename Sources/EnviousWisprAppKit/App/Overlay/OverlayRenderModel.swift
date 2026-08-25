@@ -1,4 +1,5 @@
 import CoreGraphics
+import EnviousWisprCore
 import Foundation
 import SwiftUI
 
@@ -17,7 +18,7 @@ import SwiftUI
 final class OverlayRenderModel: ObservableObject {
 
   /// What the retained root should render, or `nil` for an empty slot.
-  @Published var presentation: OverlayPresentation?
+  @Published var presentation: PillDefinition?
 
   /// **The dwell a countdown is drawing**, published so a view starts from the
   /// same instant the director armed the real dismissal. `nil` while nothing is
@@ -56,8 +57,14 @@ final class OverlayRenderModel: ObservableObject {
   /// The capsule reports its measured height so the window can follow it. A
   /// callback rather than a value: it flows the other way.
   private(set) var onContentHeightChange: (CGFloat) -> Void = { _ in }
-  /// How the current recording pill is composed. See `OverlayRecordingLayout`
-  /// for the five decisions it carries and why they cannot be installed apart.
+  /// Where the current recording pill is anchored (#2375 C3b).
+  ///
+  /// **A POSITION, not a layout bundle.** It used to be an
+  /// OverlayRecordingLayout carrying position, width, height and preview
+  /// eligibility together — and the geometry half of that was a SECOND authority
+  /// that disagreed with the definition and won. The definition now carries its
+  /// own width and height; only the position needs a home here, because it is
+  /// resolved by the director and read by the placement anchor.
   ///
   /// **Resolved once per FRESH recording and then held, rather than re-read.**
   /// The shipped site reads the setting once at panel creation and the width is
@@ -65,24 +72,27 @@ final class OverlayRenderModel: ObservableObject {
   /// without a rebuild, and a rebuild is the #930 flicker. So a mid-dictation
   /// settings change must NOT resize the live pill, which is what re-reading a
   /// provider on every morph would do.
-  private(set) var recordingLayout: OverlayRecordingLayout = .compact(position: .top)
+  private(set) var recordingPosition: OverlayPillPosition = .top
 
   func setRecordingProviders(
     audioLevel: @escaping () -> Float,
     recordingElapsed: @escaping () -> TimeInterval?,
     livePreview: @escaping () -> LivePreviewDisplay,
-    layout: OverlayRecordingLayout,
+    design: RecordingPillDesign,
+    position: OverlayPillPosition,
     onContentHeightChange: @escaping (CGFloat) -> Void
   ) {
     audioLevelProvider = audioLevel
     recordingElapsedProvider = recordingElapsed
-    // **Gated exactly as the shipped site gates it.** With preview off it passes
-    // `{ .off }` rather than the live display provider, so a pill that shows no
-    // preview cannot be reading one.
-    livePreviewProvider = layout.usesPreview ? livePreview : { .off }
-    recordingLayout = layout
-    // Likewise `{ _ in }` off-preview: only the preview pill grows to its text.
-    self.onContentHeightChange = layout.usesPreview ? onContentHeightChange : { _ in }
+    // **Gated exactly as the shipped site gates it, off the DESIGN.** With a pill
+    // that cannot hold words it passes `{ .off }` rather than the live display
+    // provider, so a pill that shows no preview cannot be reading one. The gate
+    // used to key off a geometry bundle's preview flag, which is how one
+    // authority came to disagree with another about what was on screen.
+    livePreviewProvider = design.canHoldWords ? livePreview : { .off }
+    recordingPosition = position
+    // Likewise `{ _ in }` for a pill that holds no words: only that one grows.
+    self.onContentHeightChange = design.canHoldWords ? onContentHeightChange : { _ in }
   }
 
   /// Dropped when the recording pill goes, so a stale closure cannot outlive the
@@ -94,6 +104,6 @@ final class OverlayRenderModel: ObservableObject {
     recordingElapsedProvider = { nil }
     livePreviewProvider = { .off }
     onContentHeightChange = { _ in }
-    recordingLayout = .compact(position: .top)
+    recordingPosition = .top
   }
 }

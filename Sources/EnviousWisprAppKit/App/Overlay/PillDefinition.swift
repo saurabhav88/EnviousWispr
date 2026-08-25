@@ -7,7 +7,6 @@ import Foundation
 // AppKit: everything here is a value, so the reducer and the placement state
 // are testable with no windowing present, which is the property `OverlayReducer`
 // exists to have.
-
 // MARK: - Identity
 
 /// Identity for one presentation of the overlay slot.
@@ -31,52 +30,119 @@ struct PresentationID: Hashable, Sendable {
   init(rawValue: UUID) { self.rawValue = rawValue }
 }
 
-// MARK: - Screens and geometry
+// MARK: - The recording pill's design
 
-/// A screen's stable identity, so placement can say "the same screen" without
-/// holding an `NSScreen` and without AppKit being present in a test.
-struct ScreenID: Hashable, Sendable {
-  let rawValue: Int
-  init(rawValue: Int) { self.rawValue = rawValue }
-}
+/// Which recording pill the user gets (#2375 Phase 3, chunk C3a).
+///
+/// **A DESIGN, not a capability.** Whether the machine can show words as you
+/// speak is a capability the director reads; which pill is drawn is a choice.
+/// Until Phase 4 the two are locked together by a constant, and separating the
+/// vocabulary now is what lets Phase 4 change one without touching the other.
+///
+/// **`.readingWell`, deliberately not `.livePreview`.** Naming a design after
+/// the capability that enables it makes the settings group label and the card
+/// label the same word, and forecloses a second with-words design before one
+/// exists. The capability keeps its own name.
+enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
+  /// The rainbow-lips capsule: a fixed 185x92 interaction frame that holds the
+  /// normal capsule, the locked state and the #1060 notice expansion without
+  /// resizing on every morph.
+  case classic
+  /// The wide panel that shows words as you speak. Content-sized from the first
+  /// frame so it does not visibly snap as lines wrap.
+  case readingWell
 
-/// Everything placement needs to know about a screen. A value, so the geometry
-/// rules are exercisable against invented screens — including the ones that are
-/// awkward to obtain on the dev machine, such as a display whose `visibleFrame`
-/// is inset by a notch or by a full-screen space.
-struct ScreenGeometry: Equatable, Sendable {
-  let id: ScreenID
-  /// Full display bounds.
-  let frame: CGRect
-  /// Bounds excluding menu bar and Dock.
-  let visibleFrame: CGRect
-  /// True when the screen currently shows a full-screen space, which is the
-  /// condition the Bottom rule keys off.
-  let hasFullScreenSpace: Bool
+  /// Whether this design can display transcribed words while recording.
+  ///
+  /// **This is the authority for provider gating, and since C3b it is the only
+  /// one.** The consumers key directly off `canHoldWords`. Before that the
+  /// shipped code keyed off a layout value that also carried geometry and
+  /// position, which is why one authority could disagree with another about what
+  /// is on screen; C3a derived that value from this one and C3b deleted it.
+  var canHoldWords: Bool {
+    switch self {
+    case .classic: return false
+    case .readingWell: return true
+    }
+  }
 
-  init(id: ScreenID, frame: CGRect, visibleFrame: CGRect, hasFullScreenSpace: Bool = false) {
-    self.id = id
-    self.frame = frame
-    self.visibleFrame = visibleFrame
-    self.hasFullScreenSpace = hasFullScreenSpace
+  /// The width the window is sized to. Measured from
+  /// `RecordingOverlayPanel`: `showsPreview ? previewPillWidth : 185`.
+  var width: CGFloat {
+    switch self {
+    case .classic: return 185
+    case .readingWell: return 400
+    }
+  }
+
+  /// `nil` means content-sized, which is `fitToContent: true` at the shipped
+  /// site. The classic pill reserves a fixed box; the reading well does not.
+  var reservedHeight: CGFloat? {
+    switch self {
+    case .classic: return 92
+    case .readingWell: return nil
+    }
   }
 }
 
-/// Whether a presentation is arriving into an empty slot or replacing a live one.
+/// Which design the user has chosen for each capability state.
 ///
-/// **`continuing` carries the COMPLETE current frame, both axes.** That is the
-/// whole of the #2195 fix: the shipped path inherits only `y` and always
-/// recentres `x`, so a pill the user dragged horizontally jumps back to centre
-/// the moment its content changes. A single value carrying the whole rect makes
-/// the half-inheritance unrepresentable rather than merely discouraged.
-enum OverlayContinuity: Equatable, Sendable {
-  case fresh(position: OverlayPillPosition, screen: ScreenID)
-  /// `outgoingWasContentSized` is required, not optional: the shipped Top rule
-  /// re-anchors a content-sized outgoing panel by its TOP edge and a
-  /// fixed-frame one by its CENTRE, and getting that wrong moves the pill
-  /// vertically on an ordinary recording-to-polishing hand-off.
-  case continuing(
-    currentFrame: CGRect, anchoredScreen: ScreenID, outgoingWasContentSized: Bool)
+/// **Two selections, not one, because the two states are genuinely different
+/// products.** Without words the choice is cosmetic; with words the pill has to
+/// be able to hold them, which is why `resolve` may substitute.
+struct PillDesignSelections: Equatable, Sendable {
+  /// The design to use when the machine cannot show words as you speak.
+  let withoutWords: RecordingPillDesign
+  /// The design to use when it can.
+  let withWords: RecordingPillDesign
+
+  init(withoutWords: RecordingPillDesign, withWords: RecordingPillDesign) {
+    self.withoutWords = withoutWords
+    self.withWords = withWords
+  }
+
+  /// The pair the shipped code produces, and what Phase 3 injects everywhere.
+  ///
+  /// Phase 4 replaces the CLOSURE that returns this, never this constant's
+  /// meaning — it is the current behaviour written down, so a Phase 4 regression
+  /// is measurable against it.
+  static let shipped = PillDesignSelections(withoutWords: .classic, withWords: .readingWell)
+
+  /// Resolve the selection for a capability state, FAIL-CLOSED.
+  ///
+  /// **The fallback is a RETURNED VALUE rather than a promise.** An earlier
+  /// draft of this design said a mismatch "is recorded", which named no owner, no
+  /// event and no seam — a claim about observability that nothing would have made
+  /// true. `DesignResolution` cannot lie about which of the two happened, and a
+  /// caller may assert on it, log it, or ignore it.
+  ///
+  /// **No production caller can produce a mismatch this phase**, because
+  /// selections are constructed from `shipped`. That branch is covered by unit
+  /// tests only and ships no logging, telemetry or composition wiring. Phase 4
+  /// introduces the first real producer of an incompatible value and owns the
+  /// decision about what `substituted` should then cause.
+  func resolve(capabilityHasWords: Bool) -> DesignResolution {
+    let chosen = capabilityHasWords ? withWords : withoutWords
+    // Written as an `if` rather than a `guard`, because the mismatch is the
+    // EXCEPTIONAL case and a guard whose success path is the exception reads
+    // backwards to everyone after the author.
+    if capabilityHasWords, !chosen.canHoldWords {
+      // The capability can show words and the chosen design cannot hold them.
+      // Substituting the canonical with-words design is the fail-closed answer:
+      // the alternative is a pill that silently drops the feature it was enabled
+      // for.
+      return DesignResolution(design: .readingWell, substituted: true)
+    }
+    return DesignResolution(design: chosen, substituted: false)
+  }
+}
+
+/// What `PillDesignSelections.resolve` decided, and whether it had to override.
+struct DesignResolution: Equatable, Sendable {
+  let design: RecordingPillDesign
+  /// True when the group's selection could not hold the capability's content and
+  /// the canonical default was substituted.
+  let substituted: Bool
 }
 
 // MARK: - What ends up on screen
@@ -103,75 +169,12 @@ struct OverlayAnnouncement: Equatable, Sendable {
   }
 }
 
-/// How the recording pill is composed, which is FIVE decisions and not one.
-///
-/// The shipped site takes them together from a single showsPreview read, and
-/// porting them one at a time is how four of them went missing: the pill was
-/// carrying the compact width at the preview's content height, with no frame, no
-/// alignment, and the preview's own providers live in a pill that does not show a
-/// preview. They travel together here so a caller cannot install half of them.
-///
-/// - **width** 400 with preview, 185 without.
-/// - **height** content-driven with preview so the pill earns its size a line at
-///   a time; a reserved 92 without, which holds the normal 185x44, the locked
-///   120x64 and the #1060 notice expansion without resizing on every morph.
-/// - **alignment** #1341. In Bottom position the compact content is BOTTOM-
-///   aligned so the panel's Y origin is the capsule's visible bottom edge.
-///   Centred, the 92-point frame leaves ~24 points of invisible space below a
-///   ~44-point capsule, which mutes the Bottom offset and visibly misaligns the
-///   polishing pill that replaces it. Top keeps centring.
-/// - **the preview display provider**, which the shipped site replaces with
-///   `{ .off }` when preview is off rather than passing the live one.
-/// - **the content-height callback**, likewise `{ _ in }` when preview is off.
-enum OverlayRecordingLayout: Equatable, Sendable {
-  case compact(position: OverlayPillPosition)
-  case preview(position: OverlayPillPosition)
-
-  var usesPreview: Bool {
-    if case .preview = self { return true }
-    return false
-  }
-
-  var position: OverlayPillPosition {
-    switch self {
-    case .compact(let position), .preview(let position): return position
-    }
-  }
-
-  /// `RecordingOverlayPanel`: `showsPreview ? previewPillWidth : 185`.
-  var width: CGFloat {
-    switch self {
-    case .compact: return 185
-    case .preview: return 400
-    }
-  }
-
-  /// nil means content-sized, which is `fitToContent: true` at the shipped site.
-  var fixedHeight: CGFloat? {
-    switch self {
-    case .compact: return 92
-    case .preview: return nil
-    }
-  }
-}
 
 /// How a presentation's width is decided. `.measured` means the render model
 /// computes it; nothing may substitute a default for it.
 enum OverlayWidth: Equatable, Sendable {
   case fixed(CGFloat)
   case measured
-}
-
-/// How long a presentation lives without further input.
-enum OverlayExpiry: Equatable, Sendable {
-  /// Stays until something replaces it. Recording and processing are persistent.
-  case untilReplaced
-  /// Dismisses itself after an interval, unless the user is hovering it.
-  case after(seconds: Double, pausesOnHover: Bool)
-
-  static func after(seconds: Double) -> OverlayExpiry {
-    .after(seconds: seconds, pausesOnHover: false)
-  }
 }
 
 /// The collapsed notice. Processing, clipboard fallback, warning, error,
@@ -268,7 +271,17 @@ enum OverlayContent: Equatable, Sendable {
   /// rendered recording's lifetime. `recordingElapsedProvider` has no
   /// representation in this vocabulary at all and must not be forgotten because nothing
   /// here names it — which is precisely why it is named here.
-  case recording(audioLevel: Float, isLocked: Bool, notice: InPanelNotice?)
+  /// **The resolved design rides HERE, on the one content case that has one.**
+  /// Putting it on `PillDefinition` instead would let a notice carry a recording
+  /// design — representable, meaningless, and eventually read by accident. Here
+  /// the illegal state cannot be constructed.
+  ///
+  /// It also makes morph preservation a COMPILER obligation rather than a test
+  /// one: every same-id reconstruction has to bind and pass it, so a morph that
+  /// drops the design fails to build instead of silently dropping the pill back
+  /// to the other design's geometry mid-recording.
+  case recording(
+    audioLevel: Float, isLocked: Bool, notice: InPanelNotice?, design: RecordingPillDesign)
   case notice(NoticeModel)
   case languageChip(payload: LanguageChipPayload)
   case bluetoothAwareness
@@ -291,9 +304,21 @@ struct InPanelNotice: Equatable, Sendable {
 /// One occupancy of the overlay slot: what to show, how it is identified, and
 /// when it goes away. The director never holds a per-kind field collection —
 /// this value IS the state.
-struct OverlayPresentation: Equatable, Sendable {
+struct PillDefinition: Equatable, Sendable {
   let id: PresentationID
   let content: OverlayContent
+
+  /// The resolved recording design, or nil for every pill that is not a
+  /// recording.
+  ///
+  /// **This is the authority initial host sizing reads.** Before #2375 the
+  /// reducer emitted one geometry and `OverlayDirector.geometry(for:)`
+  /// substituted another for the preview case, so two values described one pill
+  /// and the reducer's was ignored. There is now one, and it is this.
+  var recordingDesign: RecordingPillDesign? {
+    guard case .recording(_, _, _, let design) = content else { return nil }
+    return design
+  }
   let expiry: OverlayExpiry
   /// How the presentation's width is decided.
   ///
@@ -335,38 +360,5 @@ struct OverlayPresentation: Equatable, Sendable {
     self.expiry = expiry
     self.requestedWidth = requestedWidth
     self.reservesFixedHeight = reservesFixedHeight
-  }
-}
-
-
-/// The dwell a countdown is drawing, as a WINDOW rather than a start signal
-/// (#2292, C20b).
-///
-/// **Publishing an identity and treating its delivery as the start is wrong, and
-/// subtly so.** SwiftUI processes a published change on a later render
-/// transaction -- normally the next one, arbitrarily later while the UI is busy.
-/// The director's timer is already running by then, so a rail that starts when
-/// the signal ARRIVES lags the clock it draws and gets cut off before its end.
-///
-/// Carrying `startedAt` lets a late reader compute how much of the dwell it has
-/// already missed and draw the REMAINDER, which is correct whenever it runs.
-///
-/// It also fixes a second case the identity form could not express: a hover-exit
-/// re-arms the same presentation, so an id-only signal does not change and the
-/// rail never restarts.
-struct OverlayDwellWindow: Equatable, Sendable {
-  let id: PresentationID
-  let startedAt: Date
-  let seconds: Double
-
-  /// What fraction has already elapsed at `now`, clamped to 0...1.
-  func elapsedFraction(at now: Date) -> Double {
-    guard seconds > 0 else { return 1 }
-    return min(1, max(0, now.timeIntervalSince(startedAt) / seconds))
-  }
-
-  /// How long is left to animate at `now`, never negative.
-  func remaining(at now: Date) -> Double {
-    max(0, seconds - now.timeIntervalSince(startedAt))
   }
 }

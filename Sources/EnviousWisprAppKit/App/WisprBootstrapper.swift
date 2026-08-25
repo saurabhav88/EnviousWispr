@@ -497,7 +497,19 @@ public final class WisprBootstrapper {
       // Its one callback has a single assignment (`MenuBarController.swift:76`)
       // and that captures weakly. `WisprBootstrapper` owns the service for the
       // app's lifetime regardless.
-      grantAccessibility: { _ = permissions.requestAccessibilityAccess() })
+      grantAccessibility: { _ = permissions.requestAccessibilityAccess() },
+      // **THE SEAM PHASE 4 REPLACES, and it is a closure so that it can be.**
+      // The director lives for the app's lifetime, so a stored pair would freeze
+      // the user's choice at launch: a picker would appear to work, change
+      // nothing, and only take effect after a relaunch.
+      //
+      // Phase 3 returns the constant the current code already produces — the
+      // classic capsule without words, the reading well with them. Phase 4
+      // replaces this closure's BODY with a settings-backed snapshot and nothing
+      // else: not `PillCatalog.entry`, not `DesignResolution`, not the call site,
+      // not where the director resolves capability. If Phase 4 finds itself
+      // changing any of those, this seam was wrong.
+      selections: { .shipped })
 
     // #1701 Chunk 2: bulk-import-enrichment producer, a sibling of
     // `contactsImportCoordinator` on the same alias-suggester permit lane.

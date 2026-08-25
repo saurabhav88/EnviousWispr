@@ -84,6 +84,7 @@ struct PillRequestParityTests {
           appActions.append(.grantAccessibility)
           grantSawPresentation = director.renderModel.presentation != nil
         },
+        selections: { .shipped },
         deferFirstRender: { $0() })
     }
 

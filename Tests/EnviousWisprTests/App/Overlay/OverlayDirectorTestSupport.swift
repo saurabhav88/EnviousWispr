@@ -34,7 +34,7 @@ enum OverlayTestDouble {
       host: WindowlessOverlayHost(),
       // Announcements go nowhere: a test that has not asked for a screen has not
       // asked for VoiceOver either, and the real post reaches the system.
-      announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      announce: { _ in }, livePreview: .disabled, grantAccessibility: {}, selections: { .shipped },
       deferFirstRender: { $0() })
   }
 
@@ -45,7 +45,7 @@ enum OverlayTestDouble {
     return (
       OverlayDirector(
         host: host, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {}, deferFirstRender: { $0() }),
+        livePreview: .disabled, grantAccessibility: {}, selections: { .shipped }, deferFirstRender: { $0() }),
       host
     )
   }

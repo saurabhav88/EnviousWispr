@@ -79,7 +79,7 @@ enum OverlayExpiryCommand: Equatable {
 /// window server, a run loop, or a clock.
 struct OverlayPlan: Equatable {
   /// What should occupy the slot now. `nil` means the slot is empty.
-  let presentation: OverlayPresentation?
+  let presentation: PillDefinition?
   /// True when the host must apply `presentation`.
   ///
   /// False leaves the window's content unchanged; it does NOT mean the plan is
@@ -117,7 +117,7 @@ struct OverlayPlan: Equatable {
   static let noChange = OverlayPlan(presentation: nil, didChange: false)
 
   init(
-    presentation: OverlayPresentation?, didChange: Bool,
+    presentation: PillDefinition?, didChange: Bool,
     expiryCommand: OverlayExpiryCommand = .unchanged,
     deliverAction: PillAction? = nil,
     effects: [PillEffect] = [],
@@ -136,7 +136,7 @@ struct OverlayPlan: Equatable {
 /// collection it has become the thing it replaced.
 struct OverlayState: Equatable {
   /// What occupies the slot, or nil.
-  private(set) var current: OverlayPresentation?
+  private(set) var current: PillDefinition?
   /// The last pipeline intent seen. A feature may take the slot only while this
   /// is `.hidden`, which is the arbitration rule the shipped code spells out
   /// separately at every feature.
@@ -175,10 +175,33 @@ struct OverlayState: Equatable {
     }
   }
 
+  /// How many times the SLOT has changed hands (#2375 C3a).
+  ///
+  /// **A slot revision, not a whole-state one, and the narrowing is a product
+  /// decision rather than an optimisation.** A prepared recording is discarded
+  /// when this moves between PREPARE and COMMIT. Two of `set`'s eleven callers
+  /// are a hover change and a lock-only change with no presentation; neither can
+  /// conflict with committing a fresh recording, and discarding on either means a
+  /// recording pill that never appears. `CLAUDE.md` puts "dictation works 100% of
+  /// the time it physically can" above every other audio decision, so an
+  /// over-eager invalidation is the more expensive error here.
+  ///
+  /// A lock morph on a LIVE recording changes `current` and therefore does
+  /// advance this, so no real slot conflict is missed.
+  private(set) var slotRevision: UInt64 = 0
+
   fileprivate mutating func set(
-    current: OverlayPresentation?, pipelineIntent: OverlayIntent? = nil, isHovered: Bool? = nil,
+    current: PillDefinition?, pipelineIntent: OverlayIntent? = nil, isHovered: Bool? = nil,
     isLocked: Bool? = nil
   ) {
+    // **Compare VALUES, never "was a parameter supplied".** `set(current:isHovered:)`
+    // passes the EXISTING current straight through on a hover change, and
+    // `set(current:isLocked:)` does the same on a lock-only change, so an
+    // increment keyed on the presence of an argument would advance on every hover
+    // and silently undo the narrowing above.
+    if current != self.current || (pipelineIntent != nil && pipelineIntent != self.pipelineIntent) {
+      slotRevision &+= 1
+    }
     self.current = current
     if let pipelineIntent { self.pipelineIntent = pipelineIntent }
     if let isHovered { self.isHovered = isHovered }
@@ -219,6 +242,138 @@ struct OverlayReducer {
     }
   }
 
+  // MARK: - The recording transaction
+
+  /// What PREPARE decided, when it decided a fresh recording should start.
+  ///
+  /// **One-shot, and it publishes NO definition.** It carries only what RESOLVE
+  /// and COMMIT need: the identity the pill will have, the effects the director
+  /// must route before it may read capability, the sentence to speak, and the
+  /// slot revision PREPARE observed. Nothing here has been applied to reducer
+  /// state — that is the point of the split.
+  struct PreparedRecordingTransition: Equatable, Sendable {
+    let id: PresentationID
+    let audioLevel: Float
+    let effects: [PillEffect]
+    let announcement: OverlayAnnouncement?
+    /// The slot revision at PREPARE time. COMMIT refuses if it has moved.
+    let observedSlotRevision: UInt64
+  }
+
+  /// The three things PREPARE can conclude.
+  enum RecordingPreparation {
+    /// The slot already holds a recording, so this is a same-id morph: the design
+    /// is preserved from the live pill, RESOLVE is skipped entirely, and the plan
+    /// is final and already applied.
+    case morphed(OverlayPlan)
+    /// Nothing to do.
+    case refused(OverlayPlan)
+    /// A fresh recording. Route `effects`, resolve a design, then COMMIT.
+    case prepared(PreparedRecordingTransition)
+  }
+
+  /// PREPARE: decide admission, identity and effects for a recording WITHOUT
+  /// minting a definition (#2375 C3a).
+  ///
+  /// **This exists because recording composition is not one transaction.** The
+  /// shipped ordering routes the recording effect BEFORE reading whether Live
+  /// Preview is on, and that ordering is load-bearing: `LivePreviewCoordinator`
+  /// applies its model-removal suppression inside `setRecording`, so a capability
+  /// read that beats the effect can pick the wide layout for a pill whose preview
+  /// is about to resolve disabled — a preview-sized window with nothing in it.
+  /// The catalog needs the resolved design as an INPUT to minting, so the mint
+  /// has to happen after the effect, which means it cannot happen here.
+  ///
+  /// **Mutates nothing on the `prepared` path.** A caller that prepares and never
+  /// commits leaves the reducer exactly as it found it.
+  mutating func prepareRecording(audioLevel: Float) -> RecordingPreparation {
+    let intent = OverlayIntent.recording(audioLevel: audioLevel)
+    let isNewIntent = state.pipelineIntent != intent
+    let announcement = isNewIntent ? PillCatalog.announcement(for: intent) : nil
+
+    // A live recording keeps its identity across audio-level updates, and keeps
+    // its DESIGN with it. An `NSPanel` cannot grow mid-recording without a
+    // rebuild and a rebuild is the #930 flicker, so re-resolving here would
+    // resize a live pill the moment the user changed the setting.
+    if let current = state.current,
+      case .recording(_, let isLocked, let notice, let design) = current.content
+    {
+      let updated = PillDefinition(
+        id: current.id,
+        content: .recording(
+          audioLevel: audioLevel, isLocked: isLocked, notice: notice, design: design),
+        expiry: current.expiry,
+        requestedWidth: current.requestedWidth,
+        reservesFixedHeight: current.reservesFixedHeight)
+      state.set(current: updated, pipelineIntent: intent)
+      return .morphed(
+        OverlayPlan(presentation: updated, didChange: true, announcement: announcement))
+    }
+
+    // Fresh. `.recordingStateChanged(true)` is emitted here and routed by the
+    // director BEFORE it reads capability; COMMIT emits no effects of its own.
+    let wasRecording = Self.isRecording(state.current)
+    return .prepared(
+      PreparedRecordingTransition(
+        id: makeID(), audioLevel: audioLevel,
+        effects: wasRecording ? [] : [.recordingStateChanged(true)],
+        announcement: announcement,
+        observedSlotRevision: state.slotRevision))
+  }
+
+  /// COMMIT: install the definition the director obtained from the catalog.
+  ///
+  /// Returns `nil` when the token is stale, which means a newer overlay event
+  /// reentered synchronously between PREPARE and COMMIT and is already
+  /// authoritative. **A discarded transition is not an error and must not be
+  /// retried** — retrying it would install an older pill over a newer one, which
+  /// is the stale-first-presentation defect this phase must not introduce.
+  ///
+  /// **The born-locked rule reads the reducer's CURRENT lock, never one captured
+  /// at PREPARE.** That is what makes the narrowed slot revision safe rather than
+  /// merely defensible: a lock-only event arriving inside the window does not
+  /// advance the slot revision, so it does not invalidate the transition — and
+  /// because the lock is read here, its effect is preserved in the pill that
+  /// commits rather than lost.
+  mutating func commitRecording(
+    _ token: PreparedRecordingTransition, definition: PillDefinition
+  ) -> OverlayPlan? {
+    guard state.slotRevision == token.observedSlotRevision else { return nil }
+
+    var committed = definition
+    if state.isLocked,
+      case .recording(let level, _, let notice, let design) = definition.content
+    {
+      committed = PillDefinition(
+        id: definition.id,
+        content: .recording(audioLevel: level, isLocked: true, notice: notice, design: design),
+        expiry: definition.expiry, requestedWidth: definition.requestedWidth,
+        reservesFixedHeight: definition.reservesFixedHeight)
+    }
+
+    state.set(
+      current: committed, pipelineIntent: .recording(audioLevel: token.audioLevel),
+      isHovered: false)
+    return OverlayPlan(
+      presentation: committed, didChange: true,
+      expiryCommand: Self.command(for: committed),
+      // The effects went out at RESOLVE, before the capability read. Emitting
+      // them again here would tell Live Preview a recording started twice.
+      effects: [],
+      announcement: token.announcement)
+  }
+
+  /// What the bridge reconciliation reads.
+  ///
+  /// **A snapshot rather than a bare boolean, because the exit condition is "did
+  /// the world move", which a boolean cannot answer.** Reconciliation routes
+  /// `.recordingStateChanged`, and routing calls back into the same boundary that
+  /// created the prepare/commit hazard, so reading the answer before the call
+  /// proves nothing about the answer after it.
+  var recordingReconciliationSnapshot: (revision: UInt64, isRecording: Bool) {
+    (state.slotRevision, Self.isRecording(state.current))
+  }
+
   // MARK: - Pipeline
 
   private mutating func reducePipeline(_ intent: OverlayIntent) -> OverlayPlan {
@@ -235,7 +390,7 @@ struct OverlayReducer {
     // and re-announcing a recording that never stopped is not behaviour worth
     // porting.
     let isNewIntent = state.pipelineIntent != intent
-    let announcement = isNewIntent ? Self.announcement(for: intent) : nil
+    let announcement = isNewIntent ? PillCatalog.announcement(for: intent) : nil
 
     // **The shipped dedup DROPS a repeated intent, it does not merely silence
     // it.** The first version returned a fresh presentation with a new ID and
@@ -248,21 +403,42 @@ struct OverlayReducer {
       return .noChange
     }
 
+    // **A bare `.pipeline(.recording)` may MORPH a live recording and may not
+    // START one.** The morph below preserves the current pill's design, so it
+    // needs nothing resolved. Starting one does, and `presentation(for:)` returns
+    // nil for `.recording`, so a fresh recording arriving here empties the slot
+    // rather than minting — which is why the guard after the morph refuses it
+    // loudly instead. Production never sends one: `OverlayDirector` uses
+    // `prepareRecording`.
+    //
     // A live recording pill must keep its identity across audio-level updates,
     // or every metering tick would look like a new presentation and re-arm
     // expiry, re-measure the frame and reset the in-panel notice.
     if case .recording(let level) = intent,
       let current = state.current,
-      case .recording(_, let isLocked, let notice) = current.content
+      case .recording(_, let isLocked, let notice, let design) = current.content
     {
-      let updated = OverlayPresentation(
+      let updated = PillDefinition(
         id: current.id,
-        content: .recording(audioLevel: level, isLocked: isLocked, notice: notice),
+        content: .recording(
+          audioLevel: level, isLocked: isLocked, notice: notice, design: design),
         expiry: current.expiry,
         requestedWidth: current.requestedWidth,
         reservesFixedHeight: current.reservesFixedHeight)
       state.set(current: updated, pipelineIntent: intent)
       return OverlayPlan(presentation: updated, didChange: true, announcement: announcement)
+    }
+
+    if Self.isRecordingIntent(intent) {
+      // Reached only when the slot does not already hold a recording, i.e. a
+      // FRESH one. Refusing loudly beats emptying the slot, which is what falling
+      // through to the nil branch below would do — a dictation that starts and
+      // shows nothing, on the one path `CLAUDE.md` says must work every time it
+      // physically can.
+      assertionFailure(
+        "a fresh recording cannot be started through reduce(.pipeline(.recording)); "
+          + "use prepareRecording(audioLevel:) so a design can be resolved")
+      return .noChange
     }
 
     guard var presentation = Self.presentation(for: intent, id: makeID()) else {
@@ -282,10 +458,10 @@ struct OverlayReducer {
     // Born locked if the lock is on. `show(...isRecordingLocked:)`
     // exists precisely so this is applied in the SAME transaction rather than
     // rendered unlocked and morphed a frame later.
-    if case .recording(let level, _, let notice) = presentation.content, state.isLocked {
-      presentation = OverlayPresentation(
+    if case .recording(let level, _, let notice, let design) = presentation.content, state.isLocked {
+      presentation = PillDefinition(
         id: presentation.id,
-        content: .recording(audioLevel: level, isLocked: true, notice: notice),
+        content: .recording(audioLevel: level, isLocked: true, notice: notice, design: design),
         expiry: presentation.expiry, requestedWidth: presentation.requestedWidth,
         reservesFixedHeight: presentation.reservesFixedHeight)
     }
@@ -325,7 +501,13 @@ struct OverlayReducer {
     let showToast = showingToast()
     let toast = reducePipeline(.accessibilityToast)
     guard !showToast, let shown = toast.presentation,
-      let fallback = Self.presentation(for: .clipboardFallback, id: shown.id)
+      // The SECOND catalog request of this transition, with the SAME id.
+      // Stated rather than left to be rediscovered: this path substitutes the
+      // clipboard DEFINITION while retaining the accessibility entry's
+      // ANNOUNCEMENT, which is the one place the two halves of an entry
+      // legitimately come from different requests. Neither request carries or
+      // resolves a recording design.
+      let fallback = PillCatalog.entry(for: .clipboardFallback, id: shown.id).definition
     else {
       return toast
     }
@@ -353,19 +535,25 @@ struct OverlayReducer {
   /// switch had no arm for it. A sentence here would be inventing a notice.
   private mutating func reduceImportStatus(message: String) -> OverlayPlan {
     guard state.featureSlotIsAvailable else { return .noChange }
+    // **REDUNDANT TODAY, and deliberately kept.** `featureSlotIsAvailable`
+    // already refuses whenever the pipeline is not idle, and the only occupants a
+    // feature route can install while it IS idle are the Bluetooth card, which
+    // that guard also refuses, and an import-status notice, which this one
+    // admits. So no reachable state distinguishes the two, and deleting either
+    // line alone changes nothing observable — a single-line mutant here survives
+    // by construction rather than for want of a test.
+    //
+    // Written down because that is exactly how a later tidy-up removes half of a
+    // pair: run one mutation, see green, delete the line. The pair states a rule
+    // the arbitration guard does not — a status pill may replace ITSELF and
+    // nothing else — and it becomes load-bearing the moment a third feature route
+    // installs a non-notice occupant.
     if let current = state.current {
       guard case .notice(let notice) = current.content, notice.kind == .importStatus else {
         return .noChange
       }
     }
-    return admit(
-      OverlayPresentation(
-        id: makeID(),
-        content: .notice(NoticeModel(kind: .importStatus, text: message, isMultiline: true)),
-        // `ImportStatusOverlayView` uses `.frame(maxWidth: 280)` — a BOUND, not a
-        // width — under `fitToContent`, so this is measured too.
-        expiry: .after(seconds: 3), requestedWidth: .measured),  // :1105, :1148
-      announcement: nil)
+    return admitEntry(PillCatalog.entry(for: .importStatus(message: message), id: makeID()))
   }
 
   /// **The card is announced at MEDIUM priority, read off the shipped switch.**
@@ -377,16 +565,28 @@ struct OverlayReducer {
   /// dismissed rather than expiring on its own.
   private mutating func reduceBluetoothAwareness() -> OverlayPlan {
     guard state.featureSlotIsAvailable else { return .noChange }
-    return admit(
-      OverlayPresentation(
-        id: makeID(), content: .bluetoothAwareness, expiry: .untilReplaced,
-        requestedWidth: .fixed(320)),  // :1790 — persistent
-      announcement: Self.announcement(for: .bluetoothAwareness))
+    return admitEntry(PillCatalog.entry(for: .bluetoothAwareness, id: makeID()))
+  }
+
+  /// Admit a catalog entry.
+  ///
+  /// **The `nil` branch cannot be reached and is loud rather than silent.**
+  /// `.hidden` is the only request whose entry carries no definition, and no
+  /// feature path asks for it — but a `return .noChange` alone would turn a
+  /// future mistake into a pill that quietly never appears, which is the hardest
+  /// overlay defect to notice. Debug builds trap; release leaves the slot as it
+  /// was.
+  private mutating func admitEntry(_ entry: PillCatalogEntry) -> OverlayPlan {
+    guard let definition = entry.definition else {
+      assertionFailure("a feature request resolved to no definition")
+      return .noChange
+    }
+    return admit(definition, announcement: entry.announcement)
   }
 
   /// The tail every feature shares: take the slot, arm the expiry, speak.
   private mutating func admit(
-    _ presentation: OverlayPresentation, announcement: OverlayAnnouncement?
+    _ presentation: PillDefinition, announcement: OverlayAnnouncement?
   ) -> OverlayPlan {
     state.set(current: presentation, isHovered: false)
     return OverlayPlan(
@@ -404,7 +604,7 @@ struct OverlayReducer {
   // there is no overload to resolve wrongly, and each feature names its own
   // sentence at the point it takes the slot.
 
-  private static func isRecording(_ p: OverlayPresentation?) -> Bool {
+  private static func isRecording(_ p: PillDefinition?) -> Bool {
     if case .recording? = p?.content { return true }
     return false
   }
@@ -421,15 +621,15 @@ struct OverlayReducer {
   private mutating func reduceLockState(_ locked: Bool) -> OverlayPlan {
     guard state.isLocked != locked else { return .noChange }
     guard let current = state.current,
-      case .recording(let level, _, let notice) = current.content
+      case .recording(let level, _, let notice, let design) = current.content
     else {
       state.set(current: state.current, isLocked: locked)
       return .noChange
     }
 
-    let updated = OverlayPresentation(
+    let updated = PillDefinition(
       id: current.id,
-      content: .recording(audioLevel: level, isLocked: locked, notice: notice),
+      content: .recording(audioLevel: level, isLocked: locked, notice: notice, design: design),
       expiry: current.expiry, requestedWidth: current.requestedWidth,
       reservesFixedHeight: current.reservesFixedHeight)
     state.set(current: updated, isLocked: locked)
@@ -446,14 +646,14 @@ struct OverlayReducer {
     // would have torn the panel down; with the panel retained, this is a field
     // on the presentation that owns it.
     guard let current = state.current,
-      case .recording(let level, let isLocked, _) = current.content
+      case .recording(let level, let isLocked, _, let design) = current.content
     else { return .noChange }
 
-    let updated = OverlayPresentation(
+    let updated = PillDefinition(
       id: current.id,
       content: .recording(
         audioLevel: level, isLocked: isLocked,
-        notice: InPanelNotice(reason: reason, dismissAfter: dismissAfter)),
+        notice: InPanelNotice(reason: reason, dismissAfter: dismissAfter), design: design),
       expiry: current.expiry,
       requestedWidth: current.requestedWidth,
       reservesFixedHeight: current.reservesFixedHeight)
@@ -472,12 +672,13 @@ struct OverlayReducer {
   /// outlives its banner.
   mutating func reduceInPanelNoticeExpiry(_ id: PresentationID) -> OverlayPlan {
     guard isCurrent(id), let current = state.current,
-      case .recording(let level, let isLocked, let notice) = current.content, notice != nil
+      case .recording(let level, let isLocked, let notice, let design) = current.content,
+      notice != nil
     else { return .noChange }
 
-    let updated = OverlayPresentation(
+    let updated = PillDefinition(
       id: current.id,
-      content: .recording(audioLevel: level, isLocked: isLocked, notice: nil),
+      content: .recording(audioLevel: level, isLocked: isLocked, notice: nil, design: design),
       expiry: current.expiry,
       requestedWidth: current.requestedWidth,
       reservesFixedHeight: current.reservesFixedHeight)
@@ -568,224 +769,65 @@ struct OverlayReducer {
   /// dwell, `.cancel` when it is persistent. Never `.unchanged` — leaving the
   /// previous occupant's timer running is how a stale dismissal reaches a live
   /// pill, which is the whole defect `PresentationID` exists to close.
-  private static func command(for p: OverlayPresentation) -> OverlayExpiryCommand {
+  private static func command(for p: PillDefinition) -> OverlayExpiryCommand {
     guard case .after(let seconds, _) = p.expiry else { return .cancel }
     return .arm(id: p.id, seconds: seconds, target: .presentation)
   }
 
-  /// The shipped widths and dwells, gathered.
+  /// What a pipeline intent occupies the slot with.
   ///
-  /// **Every value here was MEASURED at its shipped call site, and the first
-  /// version of this table was not.** It was written from the design and
-  /// described in the commit as "carried over", which was false: eleven of the
-  /// fifteen widths and six of the dwells were wrong. Cloud review caught it by
-  /// opening the panel and reading them. The sites are cited per row so the next
-  /// reader can re-check rather than trust this sentence.
+  /// **The table this used to hold now lives in `PillCatalog`**, moved byte for
+  /// byte with the comments citing the call sites each value was read off.
+  ///
+  ///
+  /// Listing the other fifteen rather than writing `default` is deliberate: a new
+  /// pipeline intent must fail to compile here as well as in the catalog.
   private static func presentation(for intent: OverlayIntent, id: PresentationID)
-    -> OverlayPresentation?
+    -> PillDefinition?
   {
     switch intent {
-    case .hidden:
+    case .hidden, .processing, .clipboardFallback, .accessibilityToast, .warning,
+      .error, .advisory, .interruption, .passiveChip, .cachingModel, .engineReady,
+      .recoveringLastRecording, .recoverySucceeded, .bluetoothAwareness, .escapeRecovery:
+      guard let request = PillCatalogRequest(nonRecording: intent) else {
+        // Unreachable: the initialiser refuses `.recording` only, and that arm
+        // returns above without reaching here.
+        assertionFailure("PillCatalogRequest(nonRecording:) refused a non-recording intent")
+        return nil
+      }
+      return PillCatalog.entry(for: request, id: id).definition
+
+    case .recording:
+      // **The reducer no longer mints a recording pill, and this is the whole of
+      // G3 closing.** The old arm here emitted 185x92 and said so in its own
+      // comment: "the 92 below is the NON-preview answer, and the director
+      // overrides it to content-sized when the render model says preview is on".
+      // Two authorities for one geometry, one of them ignored, documented as
+      // though it were a design.
+      //
+      // **`.recording` is deliberately not minted here.** C3a moved its factory
+      // into `PillCatalog`, and a fresh recording goes through
+      // `prepareRecording(audioLevel:)` — it needs a RESOLVED design, which needs
+      // a capability read, which must happen after the recording effect is
+      // routed. Nothing holding only an intent has resolved one.
       return nil
-
-    case .recording(let level):
-      // that site — the NON-PREVIEW recording pill, and only it, reserves a fixed
-      // 92-point interaction frame: it holds the normal 185x44, the locked
-      // 120x64 and the #1060 notice expansion without resizing on every morph.
-      //
-      // **This is NOT universal, and the first version of this table claimed it
-      // was.** With Live Preview on, that site takes a different branch —
-      // `fitToContent: true`, content-sized from the first frame so it does not
-      // visibly snap. Whether preview is on is a provider the DIRECTOR owns, so
-      // the reducer cannot decide it here, and it does not: the 92 below is the
-      // NON-preview answer, and `OverlayDirector.fixedHeight(for:)` overrides it
-      // to content-sized when the render model says preview is on.
-      return OverlayPresentation(
-        id: id, content: .recording(audioLevel: level, isLocked: false, notice: nil),
-        expiry: .untilReplaced, requestedWidth: .fixed(185), reservesFixedHeight: 92)
-
-    case .processing(let phase):
-      // `PolishingOverlayView` pins no width and that site passes `fitToContent: true`,
-      // so the `230` at that call site is DISCARDED and the real width is the
-      // view's `fittingSize`. Carrying the literal would have looked right.
-      return notice(
-        id: id, kind: .processing, text: DictationNarrator.copy(for: phase),
-        width: .measured)
-
-    case .clipboardFallback:
-      // that site via transitionToPolishingNow, dwell from
-      // `scheduleAutoDismiss`'s own default.
-      return notice(
-        // Routes through the same `PolishingOverlayView` path, so also measured.
-        id: id, kind: .processing, text: DictationNarrator.clipboardFallbackText, width: .measured,
-        expiry: .after(seconds: 2.5))
-
-    case .accessibilityToast:
-      return notice(
-        id: id, kind: .accessibilityToast, text: DictationNarrator.accessibilityToastText,
-        width: .fixed(300), fixedHeight: 56,  // :859 and :1118 both pass height: 56
-        expiry: .after(seconds: 6), isMultiline: true,
-        action: (label: "Grant", action: .grantAccessibility))
-
-    case .warning(let reason):
-      return notice(
-        id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
-        // A single-line notification is NOT `fitToContent`, so it takes
-        // `showPanel`'s own `height: 44` default and keeps the 280x44 box.
-        width: .fixed(280), fixedHeight: 44,
-        expiry: .after(seconds: 2.5), severity: .warning)  // NotificationStyle 2.5
-
-    case .error(let reason):
-      return notice(
-        id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
-        width: .fixed(280), fixedHeight: 44,
-        expiry: .after(seconds: 3), severity: .error)  // NotificationStyle 3.0
-
-    case .advisory(let reason):
-      // #1891. A user-setup advisory draws the mic-slash glyph in the secondary
-      // colour, not the red failure treatment, and `NotificationStyle` owns both
-      // — so it needs a severity of its own rather than inheriting the helper's
-      // `.neutral`, which `OverlayRootView.style(for:)` paints as a warning.
-      //
-      // **The ONLY notification that is content-sized**, because `showPanel` is
-      // called with `fitToContent: style.isMultiline` and this is the one style
-      // where that is true. No `fixedHeight` here is deliberate, not an omission.
-      return notice(
-        id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
-        width: .fixed(360),  // RecordingOverlayPanel.advisoryWidth
-        expiry: .after(seconds: 8), severity: .advisory, isMultiline: true)
-
-    case .interruption(let reason):
-      return notice(
-        id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
-        width: .fixed(280), fixedHeight: 44,
-        expiry: .after(seconds: 2), severity: .distress)  // NotificationStyle 2.0
-
-    case .passiveChip(let payload):
-      return OverlayPresentation(
-        id: id, content: .languageChip(payload: payload),
-        expiry: .after(seconds: 6, pausesOnHover: true),
-        requestedWidth: .fixed(340), reservesFixedHeight: 56)  // :1410
-
-    case .cachingModel(let engineLabel):
-      return notice(
-        id: id, kind: .warmingUp, text: DictationNarrator.coldStartTitle,
-        secondary: DictationNarrator.coldStartSubtitle(engineLabel: engineLabel),
-        width: .fixed(300), fixedHeight: 56,  // :483
-        expiry: .after(seconds: 2))  // :642
-
-    case .engineReady:
-      return notice(
-        id: id, kind: .ready, text: DictationNarrator.readyTitle,
-        width: .fixed(240), fixedHeight: 44,  // :498
-        expiry: .after(seconds: 1.5))  // :657
-
-    case .recoveringLastRecording:
-      return notice(
-        id: id, kind: .recovery, text: DictationNarrator.recoveryTitle,
-        secondary: DictationNarrator.recoverySubtitle,
-        width: .fixed(320), fixedHeight: 56,  // :530
-        // that site gives it a 6-second dwell. The first version said `.untilReplaced`,
-        // which would have left the recovery pill on screen forever.
-        expiry: .after(seconds: 6), isMultiline: true,
-        action: (label: "Discard", action: .discardRecovery))
-
-    case .recoverySucceeded:
-      // `.ready`, NOT `.notification`. The shipped site draws
-      // `ColdStartNoticeView(title:subtitle:icon: .ready)` — the same green
-      // success mark `.engineReady` uses — and routing it through
-      // `NotificationOverlayView` would have painted a success message as a
-      // warning, which is the exact failure this whole mapping exists to stop.
-      return notice(
-        id: id, kind: .ready, text: DictationNarrator.recoverySucceededTitle,
-        secondary: DictationNarrator.recoverySucceededSubtitle,
-        width: .fixed(300), fixedHeight: 56,  // :516
-        expiry: .after(seconds: 3))  // :675
-
-    case .bluetoothAwareness:
-      return OverlayPresentation(
-        // that site calls `showPanel` with NO `scheduleAutoDismiss`: the card is
-        // PERSISTENT until something replaces it. The first version gave it a
-        // 6-second dwell, which would have made it vanish on its own.
-        id: id, content: .bluetoothAwareness, expiry: .untilReplaced,
-        requestedWidth: .fixed(320))
-
-    case .escapeRecovery(let transcriptID):
-      return OverlayPresentation(
-        // **THIS expiry is the only one. The director owns it; the view draws
-        // it.** Three seconds, hover-pausable, exactly like any other dwell.
-        //
-        // The shipped panel could not do that -- it had no single owner of
-        // expiry, so a panel-level timer could not be paused by a hover only the
-        // view sees and the view kept its own. That reason died with the
-        // retained window, and this comment used to LEAD with it as though it
-        // were still true, correcting itself only at the end.
-        //
-        // It cost two independent three-second timers running side by side from
-        // the cutover until cloud review found the rail finishing while the pill
-        // was still on screen. The trap worth naming: a comment asserting a
-        // FUTURE state ("a later chunk removes the view's task") is invisible to
-        // every diff review, because nothing in a diff can contradict a promise.
-        // C4 was recorded as doing it and did not; C18 did.
-        id: id, content: .escapeRecovery(transcriptID: transcriptID),
-        expiry: .after(seconds: 3, pausesOnHover: true), requestedWidth: .measured)
     }
   }
 
   // **`presentation(for request:id:)` was DELETED with `OverlayRequest`**
-  // (#2292 C5c). Its four arms are now: import status and Bluetooth inline in
-  // their own reducers above, and `.passiveChip` / `.accessibilityToast` gone
-  // entirely — those were unreachable duplicates of the pipeline presentations
-  // `presentation(for intent:)` already builds, since the chip travels as
-  // `.pipeline(.passiveChip)` and the toast through `reduceAccessibilityNotice`.
-
-  /// `fixedHeight` is the shipped `showPanel(height:)` for this notice, and
-  /// omitting it means CONTENT-SIZED, which is what `fitToContent: true` does at
-  /// the shipped site.
-  ///
-  /// **It defaults to nil and that default is a trap worth naming.** Every
-  /// notice in the first port took it, so eight pills that reserve a fixed box
-  /// became content-sized — a geometry change with no compiler error, no test
-  /// failure and no mention in any diff. `noticeGeometryIsPinned` sweeps the
-  /// closed set against the shipped call sites so a new row cannot inherit the
-  /// default silently.
-  /// The spoken announcement for a pipeline intent, and its priority.
-  ///
-  /// **Both halves come from the shipped `apply(intent:)` switch, read one arm
-  /// at a time.** The TEXT is `DictationNarrator.announcement(for:)`, which is
-  /// already the sole author (#1569 E4). The PRIORITY is the panel's own choice
-  /// per case — nine `.high` and seven `.medium` — and it is not derivable from
-  /// severity: `.recording` and `.engineReady` are high while `.warning` is
-  /// medium, so it is enumerated rather than computed.
-  static func announcement(for intent: OverlayIntent) -> OverlayAnnouncement {
-    let text = DictationNarrator.announcement(for: intent)
-    switch intent {
-    case .recording, .clipboardFallback, .accessibilityToast, .error, .advisory,
-      .interruption, .engineReady, .recoverySucceeded, .recoveringLastRecording:
-      return .high(text)
-    case .hidden, .processing, .warning, .passiveChip, .cachingModel,
-      .bluetoothAwareness, .escapeRecovery:
-      return .medium(text)
-    }
-  }
+  // (#2292 C5c). Two of its four arms — `.passiveChip` and `.accessibilityToast`
+  // — went entirely, as unreachable duplicates of the pipeline presentations this
+  // reducer already built: the chip travels as `.pipeline(.passiveChip)` and the
+  // toast through `reduceAccessibilityNotice`.
+  //
+  // The other two, import status and Bluetooth, were minted INLINE in their own
+  // reducers until #2375 C2 moved them into `PillCatalog` with everything else.
+  // Stated in the past tense on purpose: this note is history, and an earlier
+  // revision of it said "inline in their own reducers above", which C2 made false
+  // on the same day it stopped being true.
 
   private static func isRecordingIntent(_ intent: OverlayIntent) -> Bool {
     if case .recording = intent { return true }
     return false
-  }
-
-  private static func notice(
-    id: PresentationID, kind: NoticeModel.Kind, text: String, secondary: String? = nil,
-    width: OverlayWidth, fixedHeight: CGFloat? = nil,
-    expiry: OverlayExpiry = .untilReplaced, severity: NoticeModel.Severity = .neutral,
-    isMultiline: Bool = false, action: (label: String, action: PillAction)? = nil
-  ) -> OverlayPresentation {
-    OverlayPresentation(
-      id: id,
-      content: .notice(
-        NoticeModel(
-          kind: kind, text: text, secondaryText: secondary, severity: severity,
-          isMultiline: isMultiline, action: action)),
-      expiry: expiry, requestedWidth: width, reservesFixedHeight: fixedHeight)
   }
 }

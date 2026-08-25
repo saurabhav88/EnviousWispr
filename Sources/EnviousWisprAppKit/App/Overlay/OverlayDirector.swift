@@ -30,6 +30,33 @@ final class OverlayDirector {
   private let model: OverlayRenderModel
   private let schedule: OverlayScheduler
 
+  /// **Which recording pill the user has chosen, read fresh per recording.**
+  ///
+  /// A CLOSURE and not a stored value: the director is constructed once and lives
+  /// for the application's lifetime, so an immutable pair would freeze the choice
+  /// at launch — Phase 4's picker would appear to work, change nothing, and only
+  /// take effect after a relaunch. That is a seam that looks correct and is not,
+  /// which is worse than an obviously missing one.
+  ///
+  /// Read ONCE PER FRESH RECORDING and never on a same-id morph, matching the
+  /// discipline capability already follows and for the same reason: an `NSPanel`
+  /// cannot grow mid-recording without a rebuild, and a rebuild is the #930
+  /// flicker. A live pill must not change design because the user opened Settings
+  /// mid-dictation.
+  private let selections: @MainActor () -> PillDesignSelections
+
+  /// How a bounded bridge reconciliation reaches the next run-loop turn.
+  private let scheduleReconciliation: (@escaping () -> Void) -> Void
+
+  /// **A closed state machine, not a latch.** It means "a continuation chain is
+  /// queued OR EXECUTING": true from the moment the first continuation is queued,
+  /// true throughout that chain including while a queued closure runs and the
+  /// queue is empty, and false only after a pass observes an unchanged slot
+  /// revision. A flag that only ever gets set is
+  /// a permanent mute wearing coalescing's name — the same shape this whole phase
+  /// exists to remove, one layer down.
+  private var reconciliationPending = false
+
   /// The ONE armed expiry. Replacing it cancels whatever was armed, which is
   /// what makes a stale dismissal structurally impossible rather than merely
   /// guarded against.
@@ -223,10 +250,9 @@ final class OverlayDirector {
   /// this is required, so forgetting it does not compile.
   ///
   /// Atomicity is untouched, and it never depended on how these arrived:
-  /// `presentRecording` still RESOLVES the layout by calling
-  /// `livePreview.isEnabledForGeometry()` at present time, so the geometry comes
-  /// from the setting at the moment the pill appears. That is a property of WHEN
-  /// the closure is called.
+  /// `presentRecording` reads capability and selections at presentation time and
+  /// resolves them once into a design, so the definition's geometry comes from
+  /// that captured pair.
   private let livePreview: LivePreviewBridge
 
   /// What the accessibility notice's Grant button does.
@@ -253,12 +279,27 @@ final class OverlayDirector {
     // about neither; choosing one is now visible in the source.
     livePreview: LivePreviewBridge,
     grantAccessibility: @escaping () -> Void,
+    // **No default either, for the reason directly above** (#2375 C3a). This is
+    // the seam Phase 4 replaces: a settings-backed snapshot at this same
+    // construction point, changing this closure's BODY and nothing else. A
+    // default would let a caller silently inherit the constant, so Phase 4 would
+    // end up editing the default instead of the seam — a seam that looks
+    // installed and is not.
+    selections: @escaping @MainActor () -> PillDesignSelections,
     makeID: @escaping () -> PresentationID = { PresentationID() },
     deferFirstRender: @escaping (@escaping () -> Void) -> Void = { work in
+      DispatchQueue.main.async(execute: work)
+    },
+    // A MECHANISM default, unlike the two above: production always wants the next
+    // main-run-loop turn, and a test wants to execute the queued continuation
+    // itself so the bound is asserted without a sleep.
+    scheduleReconciliation: @escaping (@escaping () -> Void) -> Void = { work in
       DispatchQueue.main.async(execute: work)
     }
   ) {
     self.deferFirstRender = deferFirstRender
+    self.selections = selections
+    self.scheduleReconciliation = scheduleReconciliation
     self.host = host
     self.announce = announce
     self.accessibilityEligibility = accessibilityEligibility
@@ -319,38 +360,35 @@ final class OverlayDirector {
     _ event: OverlayEvent, binding: BindingInput, relay: PresentationRelay? = nil
   ) {
     if case .pipeline(.recording) = event {
-      // **The wrong ORDER is what this refuses, not the wrong event.** A caller
-      // that sends first and installs providers afterwards renders one frame
-      // from whatever the model last held — the previous dictation's layout, or
-      // the `.compact(.top)` default on the first recording of the session — and
-      // a later mutation of the model is not published, so the wrong frame is
-      // also the final one.
+      // **The wrong ORDER is what this refuses, not the wrong event.** A bare
+      // event carries no providers and resolves no design or position.
       //
       // `assertionFailure` rather than a precondition: this is a programming
       // invariant, caught in Debug and in CI, and trapping a user's Release build
       // over a first-frame defect is worse than the defect.
       //
-      // **In Release this does NOT refuse.** `assertionFailure` compiles away and
-      // the call falls through to render with the layout the model already holds
-      // — correct for a morph, stale-but-plausible for a fresh recording. The
-      // step-4 caller sweep must therefore leave no such call; the assertion
-      // catches one during development, it does not defend against one shipping.
+      // In Release the assertion compiles away. A live recording may still morph
+      // using its preserved design, captured position and already-installed
+      // providers; a fresh recording is refused by the reducer and shows nothing.
+      // The caller sweep remains load-bearing because the assertion is
+      // diagnostic, not a Release defence.
       assertionFailure(
-        "use presentRecording(...) — a recording's providers and layout must be "
-          + "installed in the same operation that presents it")
+        "use presentRecording(...) — a recording's providers and its resolved design "
+          + "must be installed in the same operation that presents it")
     }
     apply(reducer.reduce(event), binding: binding, relay: relay)
   }
 
-  /// Present the recording pill with its providers and its layout installed in
-  /// ONE operation.
+  /// Present the recording pill with its providers and its resolved design
+  /// installed in ONE operation.
   ///
-  /// **Five things travel together and the shipped code installs them together.**
-  /// See `OverlayRecordingLayout`. Splitting them across `setRecordingProviders`
+  /// **The accepted definition, captured position and recording providers are
+  /// installed together.**
+  /// Splitting them across `setRecordingProviders`
   /// and `send` made a wrong first frame expressible, so this is the only way to
   /// express the right one.
   ///
-  /// A MORPH keeps the layout it was created with. The shipped panel reads the
+  /// A MORPH keeps the design it was created with. The shipped panel reads the
   /// preview setting once at creation and its width is fixed for that panel's
   /// life, because an `NSPanel` cannot grow mid-recording without a rebuild and a
   /// rebuild is the #930 flicker. Re-resolving here on every audio tick would
@@ -377,52 +415,190 @@ final class OverlayDirector {
     // morph that the recording plan below supersedes. What matters is the STATE
     // it sets, which the born-locked rule and the morph path both read.
     _ = reducer.reduce(.lockStateChanged(isRecordingLocked))
-    let plan = reducer.reduce(.pipeline(.recording(audioLevel: audioLevel)))
 
-    // **The effect goes out BEFORE the layout is resolved, not merely before the
-    // render.** Moving effects to the top of `apply` was half the fix: this
-    // method reads `livePreview.isEnabledForGeometry()` on its way to a layout, and
-    // happens before `apply` is ever called. `LivePreviewCoordinator` applies its
-    // model-removal suppression inside `setRecording`, so a geometry read that
-    // beats the effect can pick the 400-point preview layout for a pill whose
-    // preview is about to resolve DISABLED — a preview-sized window with no
-    // preview in it.
-    for effect in plan.effects {
-      route(effect)
-    }
-
-    guard let presentation = plan.presentation else {
-      // The reducer refused — a feature holds the slot, or nothing changed.
+    switch reducer.prepareRecording(audioLevel: audioLevel) {
+    case .refused(let plan):
+      // A feature holds the slot, or nothing changed.
       apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
-      return
-    }
 
-    let layout: OverlayRecordingLayout
-    if presentedID == presentation.id {
-      layout = model.recordingLayout
-    } else {
+    case .morphed(let plan):
+      // **A same-id morph skips RESOLVE ENTIRELY.** The live pill keeps its
+      // design, so there is nothing to read and nothing that could change: no
+      // capability read, no selections read, no position read. This is the
+      // shipped `presentedID == presentation.id` branch keeping its meaning.
+      guard let presentation = plan.presentation else {
+        apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
+        return
+      }
+      // A morph keeps the live pill's design and position: nothing was resolved,
+      // so there is nothing new to install.
+      guard let design = presentation.recordingDesign else {
+        assertionFailure("a morphed recording carries no design")
+        return
+      }
+      installRecordingProviders(
+        for: presentation, design: design, position: model.recordingPosition,
+        audioLevelProvider: audioLevelProvider,
+        recordingElapsedProvider: recordingElapsedProvider)
+      apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
+
+    case .prepared(let token):
+      // ---- RESOLVE ----------------------------------------------------------
+      // **The effect goes out BEFORE capability is read, not merely before the
+      // render**, and that ordering is the reason this whole boundary exists.
+      // `LivePreviewCoordinator` applies its model-removal suppression inside
+      // `setRecording`, so a capability read that beats the effect can pick the
+      // 400-point design for a pill whose preview is about to resolve DISABLED —
+      // a preview-sized window with no preview in it.
+      for effect in token.effects {
+        route(effect)
+      }
+
+      // Capability, selections and position: read ONCE, here, together.
+      let capabilityHasWords = livePreview.isEnabledForGeometry()
+      let resolution = selections().resolve(capabilityHasWords: capabilityHasWords)
       let at = position()
-      layout = livePreview.isEnabledForGeometry() ? .preview(position: at) : .compact(position: at)
-      // Read HERE, at present time — see the `livePreview` note.
-    }
 
+      let entry = PillCatalog.entry(
+        for: .recording(audioLevel: token.audioLevel, design: resolution.design), id: token.id)
+      // **Both guards run BEFORE COMMIT.** An earlier version validated the
+      // accepted design AFTER committing, so on failure the corrupt state had
+      // already landed and the guard could only report it. Reconciling the bridge
+      // here also covers the nil-definition case, which previously returned
+      // leaving Live Preview told a recording had started.
+      guard let definition = entry.definition,
+        let acceptedDesign = definition.recordingDesign
+      else {
+        assertionFailure("the catalog's recording arm returned no recording definition")
+        reconcileRecordingBridge()
+        return
+      }
+
+      // ---- COMMIT -----------------------------------------------------------
+      guard let plan = reducer.commitRecording(token, definition: definition) else {
+        // **DISCARDED, and the discard is not an error.** A newer overlay event
+        // reentered synchronously between PREPARE and COMMIT and is already
+        // authoritative, so retrying would install an older pill over a newer
+        // one. Nothing is committed, rendered, announced or armed.
+        //
+        // But RESOLVE already routed `.recordingStateChanged(true)`, so Live
+        // Preview has been told a recording started with nothing behind it. That
+        // is the leak this reconciliation closes, and it retries only the BRIDGE.
+        reconcileRecordingBridge()
+        return
+      }
+
+      // **From the ACCEPTED definition's design, never from `resolution`.**
+      // They are equal today, but passing `resolution.design` would reintroduce a
+      // second answer beside the definition that actually committed.
+      installRecordingProviders(
+        for: definition, design: acceptedDesign, position: at,
+        audioLevelProvider: audioLevelProvider,
+        recordingElapsedProvider: recordingElapsedProvider)
+      apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
+    }
+  }
+
+  /// The provider install, shared by the morph and commit paths so the two cannot
+  /// drift in what they hand the render model.
+  private func installRecordingProviders(
+    for presentation: PillDefinition,
+    design: RecordingPillDesign,
+    position: OverlayPillPosition,
+    audioLevelProvider: @escaping () -> Float,
+    recordingElapsedProvider: @escaping () -> TimeInterval?
+  ) {
     model.setRecordingProviders(
       audioLevel: audioLevelProvider,
       recordingElapsed: recordingElapsedProvider,
       livePreview: livePreview.display,
-      layout: layout,
+      design: design,
+      position: position,
       onContentHeightChange: { [weak self] height in
         // The preview pill grows a line at a time as words wrap. Keyed to the
         // presentation it was installed for, so a late callback from a finished
         // dictation cannot resize the pill that replaced it.
-        guard let self, self.presentedID == presentation.id,
-          self.model.recordingLayout.usesPreview
+        //
+        // **Width comes from the design CAPTURED in this transaction, never
+        // re-read** (#2375 C3b). Reading it back off the render model is what
+        // made this a second consumer of the geometry override, so a change to
+        // that override silently moved a live pill's growth width.
+        guard let self, self.presentedID == presentation.id, design.canHoldWords
         else { return }
-        self.host.resizeCurrentPresentation(
-          to: CGSize(width: self.model.recordingLayout.width, height: height))
+        self.host.resizeCurrentPresentation(to: CGSize(width: design.width, height: height))
       })
+  }
 
-    apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
+  /// Tell Live Preview what the reducer now says, and keep telling it until the
+  /// slot stops moving (#2375 C3a).
+  ///
+  /// **Bounded, and the bound is the point.** Routing calls back into the same
+  /// boundary that created the prepare/commit hazard, so reading the answer
+  /// before the call proves nothing about the answer after it — but "repeat until
+  /// stable" is a proof obligation dressed as an algorithm, and an unbounded
+  /// synchronous loop would spin on the RECORDING path, which `CLAUDE.md` says
+  /// must work every time it physically can.
+  ///
+  /// Neither escape is acceptable here: a silent give-up leaves Live Preview
+  /// wrong with nothing reporting it, and a `fatalError` turns a rare reentrancy
+  /// into a crash mid-dictation. So: at most TWO synchronous attempts, then
+  /// exactly one continuation onto the next turn, which schedules its own
+  /// successor only if the world moved again. It yields under sustained churn
+  /// rather than spinning, and it never abandons reconciliation.
+  ///
+  /// Every attempt is mint-free, render-free, announcement-free and expiry-free.
+  private func reconcileRecordingBridge() {
+    var attempts = 0
+    while attempts < 2 {
+      attempts += 1
+      let before = reducer.recordingReconciliationSnapshot
+      route(.recordingStateChanged(before.isRecording))
+      // **Converged. The flag is NOT touched here, and that is deliberate.** It
+      // means "a continuation chain is queued or executing", and this synchronous
+      // pass may be
+      // running while one already is — a second discard can arrive inside a
+      // route. Clearing a flag this pass did not set would let the next caller
+      // enqueue a duplicate, which is the one thing the flag exists to prevent.
+      if reducer.recordingReconciliationSnapshot.revision == before.revision { return }
+    }
+    scheduleReconciliationContinuation()
+  }
+
+  /// One continuation, coalesced. A call arriving while one is pending does not
+  /// enqueue another; the pending one reads the LATEST snapshot when it runs, so
+  /// a late continuation is harmless by construction — the danger is never a
+  /// wrong value, only a suppressed one.
+  ///
+  /// **`reconciliationPending` means a continuation chain is queued or executing.**
+  /// While a queued closure runs, the queue is empty and the flag is still true —
+  /// "queued" alone would be a claim the implementation does not make. One place
+  /// sets it and one place clears it. An earlier version had three sites
+  /// touching it, two of which could clear a flag they had not set: the
+  /// synchronous pass above, and the continuation clearing it before recursing
+  /// into that pass — which can route, reenter, discard, and reach here again
+  /// with the guard open.
+  private func scheduleReconciliationContinuation() {
+    guard !reconciliationPending else { return }
+    reconciliationPending = true
+    enqueueReconciliationPass()
+  }
+
+  /// The chain re-enqueues through here rather than through the guard above, so
+  /// the flag stays true for the whole chain and is cleared only by the pass that
+  /// finds the world has stopped moving.
+  private func enqueueReconciliationPass() {
+    // **Weak capture**, so teardown cancels the remaining work rather than having
+    // a pending reconciliation extend the director's lifetime.
+    scheduleReconciliation { [weak self] in
+      guard let self else { return }
+      let before = self.reducer.recordingReconciliationSnapshot
+      self.route(.recordingStateChanged(before.isRecording))
+      if self.reducer.recordingReconciliationSnapshot.revision == before.revision {
+        self.reconciliationPending = false
+        return
+      }
+      self.enqueueReconciliationPass()
+    }
   }
 
   /// Present the accessibility notice, showing the toast or falling back to the
@@ -725,19 +901,22 @@ final class OverlayDirector {
   /// its events. Every other presentation takes its own width and reserved height
   /// unchanged.
   private func geometry(
-    for presentation: OverlayPresentation
+    for presentation: PillDefinition
   ) -> (width: OverlayWidth, fixedHeight: CGFloat?) {
-    guard case .recording = presentation.content else {
-      return (presentation.requestedWidth, presentation.reservesFixedHeight)
-    }
-    // **BOTH axes come from the layout, and the width is the one that is easy to
-    // miss.** The shipped site reads `showsPreview ? previewPillWidth : 185` —
-    // 400 against 185 — before it picks the sizing branch, so carrying only the
-    // height still renders a preview pill at under half its intended width. The
-    // reducer's own 185/92 is the compact answer and is deliberately ignored
-    // here: the reducer cannot know which layout is in force.
-    let layout = model.recordingLayout
-    return (.fixed(layout.width), layout.fixedHeight)
+    // **THE RECORDING SPECIAL CASE IS GONE, AND THAT IS G3 CLOSED** (#2375 C3b).
+    //
+    // It substituted the layout bundle's width and height for the definition's,
+    // and its own comment said why: the reducer "cannot know which layout is in
+    // force", so its 185/92 was ignored. Two authorities for one geometry, the
+    // correct-looking one discarded, documented as though it were a design.
+    //
+    // A recording definition now carries its RESOLVED design's own width and
+    // height, so there is one answer and this function returns it like every
+    // other pill's. C3a proved the deletion was a no-op by asserting the adapter
+    // and the definition agreed for both designs; that assertion is deleted with
+    // the adapter, because once there is nothing to disagree with it asserts
+    // nothing.
+    return (presentation.requestedWidth, presentation.reservesFixedHeight)
   }
 
   /// Push the model's new occupant to the window.
@@ -759,7 +938,7 @@ final class OverlayDirector {
   /// Returns `false` ONLY when the host refused a presentation it was asked to
   /// show. Emptying the slot always succeeds, so the caller reads a `false` as
   /// "the occupant this plan installed is not on screen and never will be".
-  private static func isRecording(_ presentation: OverlayPresentation) -> Bool {
+  private static func isRecording(_ presentation: PillDefinition) -> Bool {
     if case .recording = presentation.content { return true }
     return false
   }
@@ -772,7 +951,7 @@ final class OverlayDirector {
 
   @discardableResult
   private func render(
-    _ presentation: OverlayPresentation?, onPresented: @escaping () -> Void = {},
+    _ presentation: PillDefinition?, onPresented: @escaping () -> Void = {},
     relay: PresentationRelay? = nil
   ) -> RenderOutcome {
     guard let presentation else {
@@ -851,7 +1030,7 @@ final class OverlayDirector {
 
   /// The synchronous half, so the deferred first call and every later one run
   /// exactly the same code rather than two copies that can drift.
-  private func performRender(_ presentation: OverlayPresentation) -> Bool {
+  private func performRender(_ presentation: PillDefinition) -> Bool {
     // **`isFresh` means NOTHING IS SHOWING, not "a different occupant".** The
     // comment here used to say the opposite and the code matched it, which made
     // every recording -> processing -> warning step a fresh presentation: the
@@ -887,13 +1066,11 @@ final class OverlayDirector {
     presentedID = presentation.id
     let recordingGeometry = geometry(for: presentation)
     // **One position per presentation, not two reads of a provider.** The
-    // recording layout captured the anchored edge when the pill was composed;
-    // re-reading here lets a setting changed in between compose against one edge
-    // and place against another, which is the same assembled-from-two-instants
-    // defect the layout value exists to close.
+    // recording position was captured when the pill was composed; re-reading here
+    // could compose against one edge and place against another.
     let anchor: OverlayPillPosition
     if case .recording = presentation.content {
-      anchor = model.recordingLayout.position
+      anchor = model.recordingPosition
     } else {
       anchor = position()
     }
@@ -1212,8 +1389,25 @@ extension OverlayDirector: OverlayPresenting {
     // Recording is the exception and it is not a refusal: a recording morph
     // keeps the identity it was created with, so the incumbent id IS the id this
     // request now owns.
+    //
+    // **BUT THE EXCEPTION IS ABOUT A MORPH, AND THE ID ALONE CANNOT TELL A MORPH
+    // FROM A REQUEST THAT NEVER COMMITTED.** Three recording paths reach here
+    // having installed nothing: a refusal because a feature holds the slot, a
+    // discard because a newer event won between PREPARE and COMMIT, and the
+    // catalog returning no definition. On all three the occupant is somebody
+    // else's pill, so an unconditional receipt hands the recording caller an
+    // error or a Bluetooth card to call `isCurrent` about and dismiss — which is
+    // the exact harm the paragraph above describes, arriving through the one
+    // branch written to skip it.
+    //
+    // Ask what the slot HOLDS rather than which request asked. A morph and a
+    // fresh commit both leave a recording current; nothing that failed to commit
+    // does.
     guard let current = reducer.state.current else { return nil }
-    if case .recording = request { return PillReceipt(presentationID: current.id) }
+    if case .recording = request {
+      guard case .recording = current.content else { return nil }
+      return PillReceipt(presentationID: current.id)
+    }
     guard current.id != incumbentID else { return nil }
     return PillReceipt(presentationID: current.id)
   }

@@ -43,10 +43,10 @@
     /// hand each test its own host instead of registering it here.
     private static nonisolated(unsafe) var hosts: [OverlayWindowHost] = []
 
-    /// Recordings go through `presentRecording`, never `send`, because providers
-    /// and layout must be installed in the SAME operation that presents the pill.
-    /// The director asserts on the wrong order, so this helper is what keeps the
-    /// suite expressing the right one.
+    /// Recordings go through `presentRecording`, never `send`, because providers,
+    /// the resolved design and captured position must be installed in the same
+    /// operation that presents the pill. The director asserts on the wrong order,
+    /// so this helper is what keeps the suite expressing the right one.
     private static func record(
       _ d: OverlayDirector, level: Float = 0.2, preview: Bool = false,
       locked: Bool = false,
@@ -90,6 +90,7 @@
           isEnabledForGeometry: { preview.isEnabled },
           display: { preview.display() }),
         grantAccessibility: { sink.appActions.append(.grantAccessibility) },
+        selections: { .shipped },
         deferFirstRender: { $0() })
       return (d, host, sink)
     }
@@ -160,7 +161,7 @@
         scheduler: .manual { _ in },
         announce: { _ in },
         livePreview: .disabled,
-        grantAccessibility: {},
+        grantAccessibility: {}, selections: { .shipped },
         deferFirstRender: { deferral.block = $0 })
     }
 
@@ -249,6 +250,7 @@
           isEnabledForGeometry: { preview.isEnabled },
           display: { preview.display() }),
         grantAccessibility: { sink.appActions.append(.grantAccessibility) },
+        selections: { .shipped },
         deferFirstRender: { $0() })
       hosts.append(host)
       return (d, armed, sink)
@@ -501,7 +503,7 @@
       defer { Self.closeAllWindows() }
       d.renderModel.setRecordingProviders(
         audioLevel: { 0.9 }, recordingElapsed: { 12 }, livePreview: { .off },
-        layout: .compact(position: .top), onContentHeightChange: { _ in })
+        design: .classic, position: .top, onContentHeightChange: { _ in })
       Self.record(d, level: 0.2)
 
       d.dismissCurrent(.announced)
@@ -522,7 +524,7 @@
       defer { Self.closeAllWindows() }
       d.renderModel.setRecordingProviders(
         audioLevel: { 0.9 }, recordingElapsed: { 12 }, livePreview: { .off },
-        layout: .compact(position: .top), onContentHeightChange: { _ in })
+        design: .classic, position: .top, onContentHeightChange: { _ in })
       Self.record(d, level: 0.2)
 
       d.present(.processing(phase: .transcribing))
@@ -563,14 +565,14 @@
         "an audio tick dropped the elapsed clock it was handed")
     }
 
-    /// **A morph keeps the LAYOUT it was created with, whatever the setting now
+    /// **A morph keeps the DESIGN it was created with, whatever the setting now
     /// says.** The shipped panel reads the preview setting once at creation and
     /// its width is fixed for that panel's life, because an `NSPanel` cannot grow
     /// mid-recording without a rebuild and a rebuild is the #930 flicker. So a
     /// user toggling Live Preview mid-dictation must not resize the live pill —
-    /// which re-resolving the layout on every tick would do.
+    /// which re-resolving the design on every tick would do.
     @Test("toggling Live Preview mid-dictation does not resize the live pill")
-    func morphKeepsTheLayoutItWasCreatedWith() {
+    func morphKeepsTheDesignItWasCreatedWith() {
       let setting = PreviewSetting()
       let (d, host, _) = Self.pressableDirector(preview: setting)
       Self.record(d, level: 0.2, preview: false, previewSetting: setting)
@@ -579,10 +581,10 @@
       Self.record(d, level: 0.6, preview: true, previewSetting: setting)
 
       // **Asserted on what the director ASKED FOR, not on the panel it got**
-      // (#2292 C6). The claim is about the director's arithmetic — it must not
-      // re-resolve the layout on a tick — and reading an `NSPanel` frame to check
-      // that tested it through AppKit, which is why this case could only run in
-      // the Debug lane. Whether a panel then honours the width it is handed is
+      // (#2292 C6). The claim is about the director's arithmetic — it must
+      // preserve the accepted design on a tick. Reading an `NSPanel` frame to
+      // check that tested it through AppKit, which is why this case could only
+      // run in the Debug lane. Whether a panel honours the width it is handed is
       // `OverlayWindowHostTests`' question.
       #expect(
         host.presented.map(\.width) == [.fixed(185), .fixed(185)],
@@ -840,22 +842,21 @@
 
     /// **The effect must beat the GEOMETRY READ, not merely the render.**
     ///
-    /// `presentRecording` reads `livePreviewEnabled()` on its way to a layout,
-    /// and that read happens before `apply` is entered — so moving effects to the
-    /// top of `apply` fixed only half of it. `LivePreviewCoordinator` applies its
-    /// model-removal suppression inside `setRecording`, so a geometry read that
-    /// beats the effect picks the 400-point preview layout for a pill whose
-    /// preview is about to resolve DISABLED: a preview-sized window with no
-    /// preview in it.
+    /// `presentRecording` reads capability on its way to resolving a design, and
+    /// that read happens before `apply` is entered — so moving effects to the top
+    /// of `apply` fixed only half of it. `LivePreviewCoordinator` applies its
+    /// model-removal suppression inside `setRecording`, so a read that beats the
+    /// effect can select `.readingWell` for a pill whose preview is about to
+    /// resolve DISABLED: a preview-sized window with no preview in it.
     ///
     /// The probe is the provider itself. It answers true only AFTER the effect
-    /// has been delivered, so `usesPreview` is true if and only if the ordering
+    /// has been delivered, so `canHoldWords` is true if and only if the ordering
     /// is right. Asserting the ORDER directly would need a clock; this needs none.
     ///
     /// **The host must PRESENT for this probe to survive**, and it did not have
     /// to before C7. The first version resolved no screen, so the presentation
-    /// was refused -- and the layout it asserts on outlived the refusal only
-    /// because a refused presentation used to leave its owner behind. Reading
+    /// was refused -- and the presentation asserted below outlived the refusal
+    /// only because refused presentations previously left their owner behind. Reading
     /// state that should not exist is not a weaker test, it is a test of the
     /// defect; with the rollback in place the same probe needs a real screen.
     @Test("a recording's effect is delivered before its geometry is resolved")
@@ -873,7 +874,7 @@
           recordingDidChange: { if $0 { recordingStarted = true } },
           isEnabledForGeometry: { recordingStarted },
           display: { .off }),
-        grantAccessibility: {}, deferFirstRender: { $0() })
+        grantAccessibility: {}, selections: { .shipped }, deferFirstRender: { $0() })
       Self.hosts.append(host)
       defer { Self.closeAllWindows() }
 
@@ -885,8 +886,11 @@
             recordingElapsedProvider: { nil },
             isLocked: false)))
 
+      // **Reads the DESIGN since #2375 C3b**, which is the same question one
+      // authority later: the layout bundle it used to read is gone, and what the
+      // pill can hold is now a property of the design the transaction captured.
       #expect(
-        d.renderModel.recordingLayout.usesPreview,
+        d.renderModel.presentation?.recordingDesign?.canHoldWords == true,
         "geometry was resolved before the effect that freezes its input")
     }
 
@@ -952,17 +956,17 @@
 
       Self.record(d, locked: true)
 
-      guard case .recording(_, let locked, _)? = d.renderModel.presentation?.content else {
+      guard case .recording(_, let locked, _, _)? = d.renderModel.presentation?.content else {
         Issue.record("expected a recording presentation")
         return
       }
       #expect(locked, "the recording rendered unlocked before a later lock morph")
     }
 
-    /// **One position per presentation, not two reads of a provider.** The layout
-    /// captures the anchored edge when the pill is composed; the host used to
-    /// re-read it, so a setting changed in between would compose against one edge
-    /// and place against another.
+    /// **One position per presentation, not two reads of a provider.** The
+    /// recording transaction captures the anchored edge when the pill is composed;
+    /// the host used to re-read it, allowing composition and placement against
+    /// different edges.
     ///
     /// Counting READS rather than comparing edges, because the defect is the
     /// second read itself — a test that compared two positions would pass
@@ -978,7 +982,9 @@
 
       Self.record(d)
 
-      #expect(reads == 1, "the host re-read a position already captured by the recording layout")
+      #expect(
+        reads == 1,
+        "the host re-read a position already captured by the recording transaction")
     }
 
     /// **The obligation `OverlayContent.recording` recorded, discharged.** The
@@ -1300,7 +1306,7 @@
       // The production `deferFirstRender` — the default — is the subject here.
       let d = OverlayDirector(
         host: host, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {})
+        livePreview: .disabled, grantAccessibility: {}, selections: { .shipped })
 
       d.present(.warning(reason: .polishFailed))
       #expect(
@@ -1326,7 +1332,7 @@
       let host = WindowlessOverlayHost()
       let d = OverlayDirector(
         host: host, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {})
+        livePreview: .disabled, grantAccessibility: {}, selections: { .shipped })
 
       // First request, deferred. A second replaces it before the run loop turns,
       // so the first drops on its identity gate and builds nothing.
@@ -1350,7 +1356,7 @@
       let host = WindowlessOverlayHost()
       let d = OverlayDirector(
         host: host, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {})
+        livePreview: .disabled, grantAccessibility: {}, selections: { .shipped })
       d.present(.warning(reason: .polishFailed))
       await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } }
 
@@ -1532,6 +1538,7 @@
         announce: { sink.announcements.append($0) },
         livePreview: .disabled,
         grantAccessibility: { sink.appActions.append(.grantAccessibility) },
+        selections: { .shipped },
         deferFirstRender: { $0() })
       hosts.append(host)
       return (d, sink, armed)

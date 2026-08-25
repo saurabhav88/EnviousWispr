@@ -48,7 +48,7 @@ struct OverlayHostingContractTests {
   func theFakeNeverRefuses() {
     let host = WindowlessOverlayHost()
     let d = OverlayDirector(
-      host: host,       announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      host: host,       announce: { _ in }, livePreview: .disabled, grantAccessibility: {}, selections: { .shipped },
       deferFirstRender: { $0() })
 
     d.present(.warning(reason: .polishFailed))
@@ -97,7 +97,7 @@ struct OverlayHostingParityTests {
 
   private static func director(on host: any OverlayWindowHosting) -> OverlayDirector {
     OverlayDirector(
-      host: host,         announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      host: host,         announce: { _ in }, livePreview: .disabled, grantAccessibility: {}, selections: { .shipped },
       deferFirstRender: { $0() })
   }
 
