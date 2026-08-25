@@ -179,6 +179,34 @@ struct KeybindsSettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(SettingsCardSurface())
       }
+
+      // ── Quick Add (#2381) ────────────────────────────────────────────
+      VStack(alignment: .leading, spacing: 10) {
+        eyebrow("Add a Word")
+
+        VStack(alignment: .leading, spacing: 14) {
+          ProminentHotkeyRow(
+            title: "Add-a-word keybind",
+            // Says what the user DOES and what they get, in that order, and names
+            // the one place it will not work rather than letting them discover it.
+            // Terminals are out of scope because a highlight drawn by a terminal
+            // program is not a selection anything outside it can read — a fact
+            // about the terminal, not a limitation we chose, and one a user who
+            // dictates into a terminal will otherwise hit and assume is a bug.
+            description:
+              "Select a misheard word anywhere, then press this to add it to Your Words. "
+              + "Terminal windows do not share their selection, so it will not work there.",
+            keyCode: $settings.quickAddKeyCode,
+            modifiers: $settings.quickAddModifiers,
+            defaultKeyCode: 13,
+            defaultModifiers: [.control, .option],
+            accessibilityLabel: "Add-a-word keybind"
+          )
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(SettingsCardSurface())
+      }
     }
   }
 
