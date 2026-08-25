@@ -77,16 +77,25 @@ LOG_DIR="$(ew_resolve_log_dir "$PROJECT_ROOT" "$LOG_DIR")"
 # means clearing it, or a debug-only run inherits the previous occupant's Release
 # receipt (#2408 review r2). Never for an explicit `--log-dir`: that directory
 # belongs to the caller and may be one they are deliberately filling.
-# REFUSING TO DELETE MUST NOT REFUSE TO RUN (#2408 review r3, P2).
+# A REFUSED LANE MUST NOT THEN BE USED (#2408 review r4, P1).
 #
-# This script runs `set -euo pipefail`, so a bare call returning 2 aborts the
-# lane before `xcodebuild` — turning "I will not delete through a symlink" into
-# "your tests do not run", which is a far worse answer to an unusual but legal
-# layout. An `if` condition suppresses errexit for the call, the same mechanism
-# #2401 needed for its judge.
+# The previous round made the refusal non-fatal so an unusual-but-legal layout
+# could still run its tests. That was right and it stopped one line too early: the
+# rejected path was then used anyway, and `run_lane` does `rm -rf "$bundle"` on
+# `$LOG_DIR/…xcresult` — so a planted link or mount still got deleted through, at
+# a different line. **My fix for the last round's P2 opened this P1**, which is
+# the fix-the-path-you-were-reading shape one more time: I asked whether refusing
+# should abort, and never asked what happens NEXT to the path I had refused.
+#
+# So an unsafe default lane is neither used nor fatal — the run moves to a
+# directory outside the tree, says so, and proceeds. Nothing is deleted through a
+# link or a mount, and the tests still run.
 if [ "$USING_DEFAULT_LOG_DIR" = "1" ]; then
   if ! ew_reset_lane_dir "$PROJECT_ROOT" "$LOG_DIR"; then
-    echo "==> not clearing this lane; a recycled pid may leave stale receipts here" >&2
+    LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ew-lane.XXXXXX")"
+    USING_DEFAULT_LOG_DIR=0
+    echo "==> build/ or build/lanes/ is a symlink or mount point; this lane is writing to $LOG_DIR instead" >&2
+    echo "==> no stable build/latest-lane link and no retention while that is true" >&2
   fi
 fi
 mkdir -p "$LOG_DIR"   # absent on a clean checkout

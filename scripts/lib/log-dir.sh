@@ -112,17 +112,28 @@ ew_resolve_log_dir() {
 # Shared by both deleting functions deliberately. Two copies of a rule this sharp
 # is how one of them stops matching the other.
 #   ew_lane_path_is_deletable <project_root> <lane_dir>
-# Is this path a MOUNT POINT? A directory whose device number differs from its
-# parent's is where a filesystem is mounted. `stat -f %d` is the macOS spelling;
-# a path that cannot be stat'd is reported as NOT a mount point, because the
-# callers already refuse a path they cannot resolve and an unreadable path must
-# not become an argument for deleting it.
+# Is this path a MOUNT POINT, or can we not tell? A directory whose device number
+# differs from its parent's is where a filesystem is mounted; `stat -f %d` is the
+# macOS spelling.
+#
+# **UNKNOWN IS TREATED AS MOUNTED, and my first version had this backwards.** I
+# wrote that an unreadable path should report NOT-a-mount "because an unreadable
+# path must not become an argument for deleting it" — which is the argument for
+# the OPPOSITE. A component that EXISTS and cannot be classified (an ACL, a
+# transient error, an unreadable mounted path) is exactly the case where guessing
+# safe means deleting through it. Failing closed costs an uncleaned lane; failing
+# open costs whatever is mounted there.
+#
+# A path that does NOT exist is a different answer and stays NOT-a-mount: absence
+# is the fresh-invocation case, and there is nothing there to descend into.
 #   ew_lane_is_mount_point <path>
 ew_lane_is_mount_point() {
   local path="$1" dev parent_dev
-  dev="$(/usr/bin/stat -f %d "$path" 2>/dev/null)" || return 1
-  parent_dev="$(/usr/bin/stat -f %d "$path/.." 2>/dev/null)" || return 1
-  [ -n "$dev" ] && [ -n "$parent_dev" ] && [ "$dev" != "$parent_dev" ]
+  [ -e "$path" ] || return 1
+  dev="$(/usr/bin/stat -f %d "$path" 2>/dev/null)" || return 0
+  parent_dev="$(/usr/bin/stat -f %d "$path/.." 2>/dev/null)" || return 0
+  [ -n "$dev" ] && [ -n "$parent_dev" ] || return 0
+  [ "$dev" != "$parent_dev" ]
 }
 
 # Can `rm -rf` escape the tree through this component? TWO ways, and `-L` sees
@@ -282,12 +293,14 @@ ew_prune_stale_lanes() {
   local lanes="$project_root/build/lanes"
   [ -d "$lanes" ] || return 0
 
-  # The SAME physical containment the reset applies, for the same reason: this
-  # also runs `rm -rf` unattended, and a symlinked `build` or `lanes` would let it
-  # walk out of the tree. Refusing the whole sweep is correct — a lane left
-  # unpruned costs disk, a lane deleted outside the tree costs somebody's work.
-  if [ -L "$project_root/build" ] || [ -L "$lanes" ]; then
-    echo "ew_prune_stale_lanes: refusing to prune through a symlinked build/ or lanes/" >&2
+  # THE SAME helper the reset uses, not a second copy of half of it (#2408 r4).
+  # The mount-aware check was added for the reset and this guard was left on `-L`
+  # alone — so a mounted `build` or `lanes` passed here while being refused three
+  # lines away. Two copies of one rule is how one of them stops matching, which
+  # this file already said and then demonstrated.
+  if ew_lane_component_is_unsafe "$project_root/build" \
+    || ew_lane_component_is_unsafe "$lanes"; then
+    echo "ew_prune_stale_lanes: refusing to prune through an unsafe build/ or lanes/" >&2
     return 2
   fi
 
@@ -295,7 +308,17 @@ ew_prune_stale_lanes() {
   # forms and its blindness is data-dependent
   # (validation-discipline.md, the silent-empty traps).
   # `-type d` excludes links to directories, so a planted link inside lanes/ is
-  # skipped rather than followed.
+  # skipped rather than followed — but a MOUNT is a directory and `-type d`
+  # matches it, so each candidate is checked before it is removed rather than
+  # handed to `-exec rm -rf`.
+  local entry
   /usr/bin/find "$lanes" -mindepth 1 -maxdepth 1 -type d -mtime "+$days" \
-    ! -path "$keep" -print -exec rm -rf {} +
+    ! -path "$keep" -print | while IFS= read -r entry; do
+    if ew_lane_component_is_unsafe "$entry"; then
+      echo "ew_prune_stale_lanes: skipping an unsafe lane entry: $entry" >&2
+      continue
+    fi
+    rm -rf "$entry"
+    printf '%s\n' "$entry"
+  done
 }

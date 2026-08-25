@@ -407,6 +407,80 @@ else
   ok "the shared safety check accepts an ordinary directory"
 fi
 
+echo "== unknown classification fails CLOSED =="
+# My first version had this backwards. I wrote that an unreadable path should
+# report NOT-a-mount "because an unreadable path must not become an argument for
+# deleting it" — which is the argument for the OPPOSITE. A component that EXISTS
+# and cannot be classified is exactly where guessing safe means deleting through
+# it.
+#
+# KNOWN GAP, STATED RATHER THAN FAKED: the `stat`-failed branch has no row.
+# A row was written for it and DELETED as vacuous — it replaced
+# `ew_lane_is_mount_point` with a stub and then asserted the stub, so a control
+# that reversed the real branch left the suite fully green. The scenario is also
+# not constructible without root: `[ -e ]` and `stat` both call stat(2), so a
+# path that cannot be stat'd is also reported absent, and the absence check
+# short-circuits first. The branch is correct by reading and unproven by test;
+# saying so is better than a row that proves nothing while looking like coverage.
+#
+# Absence stays SAFE, because absence is the fresh-invocation case and there
+# is nothing there to descend into. Without this row, "fail closed" is satisfied
+# by a function that refuses every fresh run.
+if ew_lane_is_mount_point "$SANDBOX/build/lanes/does-not-exist"; then
+  bad "an absent path is not treated as mounted" "reported as a mount"
+else
+  ok "an absent path is not treated as mounted"
+fi
+
+echo "== the prune uses the SAME safety check as the reset =="
+# The mount-aware helper was added for the reset and the prune was left on `-L`
+# alone, so a mounted parent passed here while being refused three lines away.
+# A SYMLINKED parent cannot distinguish the shared helper from a bare `-L`, and a
+# real MOUNT cannot be built without root — so the WIRING is tested by stubbing
+# the collaborator and asserting the caller. The helper's own behaviour has its
+# own rows above; this asks only whether the prune consults it.
+prune_with_stub() (
+  # The stub is called with ONE argument, so the target is closed over rather
+  # than passed — a `$2` here is unbound and `set -u` turns the row into an error
+  # that reads like a failing assertion.
+  local target="$2"
+  ew_lane_component_is_unsafe() { [ "$1" = "$target" ]; }
+  ew_prune_stale_lanes "$1" "$1/build/lanes/none" 7
+)
+mkdir -p "$SANDBOX/build/lanes/4001"
+touch -t 202001010000 "$SANDBOX/build/lanes/4001"
+prune_with_stub "$SANDBOX" "$SANDBOX/build" >/dev/null 2>&1
+[ "$?" -eq 2 ] && [ -d "$SANDBOX/build/lanes/4001" ] \
+  && ok "prune consults the shared check for build/" \
+  || bad "prune consults the shared check for build/" "swept anyway or wrong rc"
+prune_with_stub "$SANDBOX" "$SANDBOX/build/lanes" >/dev/null 2>&1
+[ "$?" -eq 2 ] && [ -d "$SANDBOX/build/lanes/4001" ] \
+  && ok "prune consults the shared check for lanes/" \
+  || bad "prune consults the shared check for lanes/" "swept anyway or wrong rc"
+
+# A stale ENTRY that is itself a link must be skipped rather than removed, and
+# the sweep must continue past it — a partial sweep that stops at the first
+# oddity is how old lanes accumulate silently.
+# The PER-ENTRY check, wired the same way and for the same reason: a symlinked
+# entry is filtered out by `find -type d` BEFORE the check can see it, so a
+# symlink row would pass without the check existing. A mount is a directory and
+# `-type d` does match it, which is exactly why the per-entry check is needed and
+# exactly what cannot be built without root.
+sweep_with_stub() (
+  local target="$2"
+  ew_lane_component_is_unsafe() { [ "$1" = "$target" ]; }
+  ew_prune_stale_lanes "$1" "$1/build/lanes/none" 7
+)
+mkdir -p "$SANDBOX/build/lanes/3001" "$SANDBOX/build/lanes/3002"
+touch -t 202001010000 "$SANDBOX/build/lanes/3001" "$SANDBOX/build/lanes/3002"
+sweep_with_stub "$SANDBOX" "$SANDBOX/build/lanes/3002" >/dev/null 2>&1
+if [ ! -d "$SANDBOX/build/lanes/3001" ] && [ -d "$SANDBOX/build/lanes/3002" ]; then
+  ok "the sweep removes stale lanes and steps over an unsafe entry"
+else
+  bad "the sweep removes stale lanes and steps over an unsafe entry" \
+    "3001=$([ -d "$SANDBOX/build/lanes/3001" ] && echo kept || echo gone) 3002=$([ -d "$SANDBOX/build/lanes/3002" ] && echo kept || echo GONE)"
+fi
+
 echo "== both refuse rather than guessing =="
 ew_publish_latest_lane "$SANDBOX" "" >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "publish refuses a missing lane_dir" || bad "publish refuses a missing lane_dir" "rc=$?"
