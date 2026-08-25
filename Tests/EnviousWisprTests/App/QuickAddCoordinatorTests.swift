@@ -520,4 +520,49 @@ struct QuickAddCoordinatorTests {
     #expect(recorder.savedSpellings == ["codecs"])
     #expect(recorder.saved.first?.aliases.contains("codecs") == true)
   }
+  // MARK: - Did the sheet's save actually produce a word (#2381, cloud review)
+
+  @Test("A blank-alias save onto an existing canonical is NOT a success")
+  func blankAliasOntoExistingCanonicalIsNotASuccess() {
+    // The state the inline version could not see. Quick Add opened without a readable selection has
+    // no heard spelling, so the sheet starts with one BLANK alias and there is nothing to confirm.
+    // The postcondition asked "did the kept spellings land", which is vacuously true of none — so a
+    // canonical that already existed took the success path while `add` silently no-oped. Nothing was
+    // created and the panel closed saying nothing.
+    #expect(
+      !QuickAddWiring.newWordLanded(
+        keptSpellings: [], missingSpellings: [], canonicalExistedBefore: true))
+  }
+
+  @Test("A blank-alias save of a genuinely new canonical IS a success")
+  func blankAliasOntoNewCanonicalIsASuccess() {
+    // The paired positive, and without it the fix reads as "refuse every blank-alias save", which
+    // would break creating a word by hand from a panel that could not read a selection — the one
+    // route that state has.
+    #expect(
+      QuickAddWiring.newWordLanded(
+        keptSpellings: [], missingSpellings: [], canonicalExistedBefore: false))
+  }
+
+  @Test("A spelling that landed is a success whether or not the canonical existed before")
+  func aLandedSpellingIsASuccessEitherWay() {
+    // With something to confirm, the confirmation is the whole answer. A canonical that already
+    // existed is not evidence of anything here: adding a spelling to a word you already have is the
+    // feature's main path, not a duplicate.
+    #expect(
+      QuickAddWiring.newWordLanded(
+        keptSpellings: ["codecs"], missingSpellings: [], canonicalExistedBefore: true))
+    #expect(
+      QuickAddWiring.newWordLanded(
+        keptSpellings: ["codecs"], missingSpellings: [], canonicalExistedBefore: false))
+  }
+
+  @Test("A spelling that vanished is never a success")
+  func aMissingSpellingIsNeverASuccess() {
+    // Outranks both other questions: if the user typed a spelling and it is not on the word, no
+    // amount of the canonical being new makes that a save.
+    #expect(
+      !QuickAddWiring.newWordLanded(
+        keptSpellings: ["codecs"], missingSpellings: ["codecs"], canonicalExistedBefore: false))
+  }
 }

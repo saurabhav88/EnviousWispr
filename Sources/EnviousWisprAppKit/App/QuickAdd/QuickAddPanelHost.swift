@@ -67,6 +67,18 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
     return true
   }
 
+  /// Bring an already-visible panel back to the front and give it key focus.
+  ///
+  /// Needed because `windowDidResignKey` is now a no-op, so a panel can be visible and unfocused —
+  /// a state that did not exist while focus loss dismissed it. A second shortcut press in that state
+  /// should answer "I am not sure that fired" by SHOWING the panel, not by silently doing nothing
+  /// and not by throwing away the selection it already holds.
+  func raise() {
+    guard let panel, panel.isVisible else { return }
+    NSApp.activate(ignoringOtherApps: true)
+    panel.makeKeyAndOrderFront(nil)
+  }
+
   /// Take the panel down. Idempotent.
   ///
   /// `orderOut`, never `close`: closing is what forces a rebuild, and this panel is reused.

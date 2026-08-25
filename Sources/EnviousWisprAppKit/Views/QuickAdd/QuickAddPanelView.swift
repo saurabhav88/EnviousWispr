@@ -332,7 +332,20 @@ struct QuickAddPanelView: View {
       if !model.ranking.candidates.isEmpty {
         legendItem("\u{2191}\u{2193}", QuickAddPanelCopy.legendMove)
       }
-      legendItem("esc", QuickAddPanelCopy.legendClose)
+      // **A BUTTON, and it is the only mouse path off this panel.** The standard close control is
+      // hidden because `.fullSizeContentView` puts the hosting view over the titlebar, so unhiding
+      // it produces nothing — measured. And `windowDidResignKey` is deliberately a no-op now, so
+      // clicking away no longer dismisses either. That left Escape as the sole exit, which is
+      // exactly the founder's original complaint arriving through a different door: a keyboard-only
+      // way out is invisible to anyone who does not already know it, and unusable for anyone who
+      // cannot reach that key.
+      //
+      // The legend is where it belongs rather than in new chrome: it already names this key, so a
+      // user reading "esc close" and clicking it is doing the obvious thing.
+      Button(action: onCancel) { legendItem("esc", QuickAddPanelCopy.legendClose) }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .accessibilityLabel(QuickAddPanelCopy.legendClose)
       Spacer(minLength: 0)
     }
     .padding(.horizontal, 16)

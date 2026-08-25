@@ -96,11 +96,25 @@ final class QuickAddWiring {
   /// replaced by a refusal, the first `opened` event never resolves, and the funnel gains an open it
   /// can never close.
   ///
-  /// Doing nothing is the whole behaviour, and it is correct rather than lazy: the panel dismisses
-  /// itself when it resigns key, so a visible panel is a FOCUSED panel and there is nothing to raise.
-  /// The guard is on both doors because either can be fired while the other's panel is up — naming
-  /// only the one review pointed at would leave the twin.
-  private func notAlreadyOpen() -> Bool { !panelHost.isVisible }
+  /// **The "doing nothing is correct" half of this rested on a premise that a later fix removed.**
+  /// It read: the panel dismisses itself when it resigns key, so a visible panel is a FOCUSED panel
+  /// and there is nothing to raise. `windowDidResignKey` is now deliberately a no-op — because
+  /// treating focus loss as a dismissal cancelled the panel 339 ms after opening — so a panel can now
+  /// be visible and NOT key. In that state every later hotkey and Services invocation returned false
+  /// here and did nothing at all: no raise, no new capture, no reason given.
+  ///
+  /// Two correct fixes composing into a defect neither had alone, which is why the reason is written
+  /// down beside the code rather than in the commit that changed the other one.
+  ///
+  /// Raising rather than re-capturing is deliberate. The panel already holds a selection the user
+  /// made; a second press is "I am not sure that fired", and answering it by throwing away their
+  /// word to read whatever is frontmost NOW — which is our own panel — is the defect this guard was
+  /// added to prevent in the first place.
+  private func notAlreadyOpen() -> Bool {
+    guard panelHost.isVisible else { return true }
+    panelHost.raise()
+    return false
+  }
 
   private func present(_ model: QuickAddPanelModel?) {
     guard let model else {
@@ -184,6 +198,12 @@ final class QuickAddWiring {
   /// carries the spellings the user kept — which is the one check that covers both branches and any
   /// third one nobody has found yet.
   private func saveNewWord(_ word: CustomWord, usedSearch: Bool) -> String? {
+    // Snapshotted BEFORE the write, because it is the only way to tell "created" from "was already
+    // there". See the vacuity note on the guard below.
+    let canonicalExistedBefore = customWords.customWords.contains {
+      $0.canonical.caseInsensitiveCompare(
+        word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+    }
     if let message = customWords.add(word) { return message }
     // Compare against the TRIMMED canonical, because that is what `add` stores. Comparing the raw
     // one reports a correct save as a failure whenever the user typed a leading space.
@@ -204,9 +224,49 @@ final class QuickAddWiring {
     guard missing.isEmpty else {
       return QuickAddPanelCopy.newWordAlreadyExists(canonical: stored.canonical)
     }
+    // **AND THE GUARD ABOVE IS VACUOUS WHEN THERE IS NOTHING TO CONFIRM.** Quick Add opened without
+    // a readable selection has no heard spelling, so the sheet starts with one BLANK alias, `kept`
+    // is empty, and `missing.isEmpty` is trivially true. A canonical that already existed then took
+    // the success path: `add` silently no-ops on a duplicate, the word the user typed was never
+    // created, and the panel closed saying nothing.
+    //
+    // Seventh instance of this feature's one class, and it arrived INSIDE the fix for the fifth —
+    // the postcondition was written for the case where a spelling exists to look for, and the state
+    // with no spelling is exactly the state it cannot see. So the existence question is asked
+    // separately: with nothing to confirm, "was this canonical already here before I wrote" is the
+    // only evidence available.
+    guard
+      Self.newWordLanded(
+        keptSpellings: kept, missingSpellings: missing,
+        canonicalExistedBefore: canonicalExistedBefore)
+    else {
+      return QuickAddPanelCopy.newWordAlreadyExists(canonical: stored.canonical)
+    }
     coordinator.didCreateNew(usedSearch: usedSearch)
     dismiss()
     return nil
+  }
+
+  /// Whether the sheet's save actually produced the word the user asked for.
+  ///
+  /// **Split out because the version inline could not be tested, and it was wrong in exactly the
+  /// state no test could reach.** The postcondition asks "did the spellings the user kept land on
+  /// the word", which is the right question whenever there ARE spellings. Quick Add opened without a
+  /// readable selection has none — the sheet starts with one blank alias — so the check passed
+  /// trivially, and a canonical that already existed took the success path while `add` silently
+  /// no-oped. Nothing was created and the panel closed saying nothing.
+  ///
+  /// So there are two questions, not one, and which applies depends on whether there is anything to
+  /// confirm. With spellings: did they land. Without: was this canonical already here before the
+  /// write, because that is then the only evidence available.
+  ///
+  /// Seventh instance of this feature's one class, and it arrived INSIDE the fix for the fifth.
+  package static func newWordLanded(
+    keptSpellings: [String], missingSpellings: [String], canonicalExistedBefore: Bool
+  ) -> Bool {
+    guard missingSpellings.isEmpty else { return false }
+    guard keptSpellings.isEmpty else { return true }
+    return !canonicalExistedBefore
   }
 
   /// Write a word and PROVE the spelling is on it afterwards.
