@@ -375,7 +375,17 @@ final class QuickAddCoordinator {
     //
     // The flag stays on `Candidate` and the VIEW still reads it: dimming a row and choosing a header
     // are display, and display from the ranking is what the user is looking at. The DECISION is live.
+    // **The CANONICAL counts as already covering the spelling, not just the aliases.** A word whose
+    // canonical IS the selected text is covered by it; appending it again stores the canonical as an
+    // alias of itself and reports `"Codex" added to Codex` — a false sentence over a junk write.
+    // Reachable two ways: the word is renamed in Settings while the panel sits open, or the user
+    // types past the already-covered notice, comes back to the list and selects the same row.
+    //
+    // This is the ranker's question (`QuickAddRanker` seeds `alreadyHasHeardSpelling` from the
+    // canonical before reading aliases) and the compose path's rule (`draftWord` drops a
+    // self-alias). Three sites, one rule — it was two out of three.
     guard
+      word.canonical.caseInsensitiveCompare(model.spellingToWrite) != .orderedSame,
       !word.aliases.contains(where: {
         $0.caseInsensitiveCompare(model.spellingToWrite) == .orderedSame
       })

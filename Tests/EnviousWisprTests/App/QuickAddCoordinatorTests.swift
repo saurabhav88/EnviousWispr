@@ -482,6 +482,38 @@ struct QuickAddCoordinatorTests {
     #expect(recorder.outcomes == [.alreadySaved])
   }
 
+  /// **A word IS its canonical, so selecting that text adds nothing.** The live guard read the
+  /// aliases only, so this appended the canonical as an alias of itself and reported a save — a
+  /// junk write into the user's words file under a sentence reading `"Codex" added to Codex`.
+  ///
+  /// The fixture has NO aliases deliberately: with one, the row could pass on the alias check and
+  /// the canonical comparison would never be reached, which is the shape that lets a guard look
+  /// covered while asserting nothing.
+  @Test("Selecting a word's own canonical reports that it is already there, and writes nothing")
+  func theCanonicalCountsAsAlreadyCovered() throws {
+    let (coordinator, recorder) = makeCoordinator(
+      selection: .text("Codex"), userWords: [word("Codex")])
+    let model = try #require(beginAndShow(coordinator))
+    let target = try #require(model.ranking.candidates.first)
+
+    #expect(coordinator.accept(target, from: model) == .alreadyHad(word: "Codex"))
+    #expect(recorder.outcomes == [.alreadySaved])
+    #expect(
+      recorder.saved.isEmpty,
+      "nothing may be written: a canonical is already the spelling it is being asked to carry")
+  }
+
+  /// **Case-insensitively, matching the ranker and the alias check either side of it.**
+  @Test("A differently-cased canonical is still already covered")
+  func theCanonicalComparisonIgnoresCase() throws {
+    let (coordinator, _) = makeCoordinator(
+      selection: .text("codex"), userWords: [word("Codex")])
+    let model = try #require(beginAndShow(coordinator))
+    let target = try #require(model.ranking.candidates.first)
+
+    #expect(coordinator.accept(target, from: model) == .alreadyHad(word: "Codex"))
+  }
+
   /// **The staleness the confirmation could reintroduce, in the direction that matters.** The row
   /// said `already has this` when the panel opened; the user then removed that alias in Settings and
   /// pressed Return. The write happens, and a confirmation composed from the snapshot would tell
