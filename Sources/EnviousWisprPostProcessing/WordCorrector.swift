@@ -134,6 +134,12 @@ public struct WordCorrector: Sendable {
     public let lowercasedCanonicals: [String]
     public let singleFuzzyCandidates: [SurfaceCanonical]
     public let multiAliasByCount: [Int: [AliasCanonical]]
+    /// #2406 review r6: the NON-pack multi-word alias keys, needed to answer
+    /// "is this exact multi match a pack term" at Pass 1. `nonPackExactKeys`
+    /// cannot answer it — that set is built from SINGLE alias keys and
+    /// canonicals only (see its construction), so a multi-word phrase is absent
+    /// from it whatever its authority.
+    public let nonPackMultiAliasMap: [String: String]
     /// #992 pack fuzzy tier (LOWER authority than the non-pack pools above).
     /// Single-word pack ALIAS surfaces (lowercased, length ≥ packFuzzyMinLength)
     /// for the pack Pass-4 scan; pack CANONICALS (length ≥ packFuzzyMinLength)
@@ -651,6 +657,7 @@ public struct WordCorrector: Sendable {
       lowercasedCanonicals: lowercasedCanonicals,
       singleFuzzyCandidates: singleFuzzyCandidates,
       multiAliasByCount: multiAliasByCount,
+      nonPackMultiAliasMap: nonPackMultiAliasMap,
       packSingleFuzzyCandidates: packSingleFuzzyCandidates,
       packCanonicals: packCanonicals,
       packLowercasedCanonicals: packLowercasedCanonicals,
@@ -690,6 +697,7 @@ public struct WordCorrector: Sendable {
   ) {
     let singleAliasMap = lookups.singleAliasMap
     let multiAliasMap = lookups.multiAliasMap
+    let nonPackMultiAliasMap = lookups.nonPackMultiAliasMap
     let nospaceCanonicalMap = lookups.nospaceCanonicalMap
     let canonicalToID = lookups.canonicalToID
     let canonicalToWord = lookups.canonicalToWord
@@ -764,12 +772,57 @@ public struct WordCorrector: Sendable {
       }
     }
 
+    // Token ranges the multi-word passes declared ALREADY CORRECT (#2406 r7).
+    //
+    // Reserving a span stopped the multi-word scan walking back into it, and
+    // stopped there: Passes 3-5 map over every token independently and knew
+    // nothing about it, so a single-word alias could rewrite one token of a span
+    // this pass had just certified. Protection that ends at the pass boundary is
+    // not protection — the user sees the same corruption, one pass later.
+    //
+    // Recorded in FINAL array coordinates and safe to do so: a reserved span is
+    // never replaced, so it keeps its N tokens, and every later iteration acts
+    // only at positions at or beyond its end.
+    var reservedTokenRanges: [Range<Int>] = []
+
     // Pass 1 + 2: multi-word (exact then fuzzy)
     if !multiAliasMap.isEmpty {
       let maxSpan = multiAliasMap.keys.reduce(0) { max($0, $1.components(separatedBy: " ").count) }
       var i = 0
       while i < tokens.count {
-        var matched = false
+        // ONE state answers "is this position settled, and by how far"
+        // (#2406 review r9).
+        //
+        // It was TWO: `matched` for a replacement and `reservedSpan` for an
+        // already-correct span. Both mean Pass 2 must not touch this position,
+        // and Pass 2's gate consulted only the first — so reserving a span left
+        // `matched` false and the fuzzy pass ran on text Pass 1 had just
+        // certified. A settled position expressed as two booleans that must both
+        // be remembered is the shape that produces exactly this omission; a
+        // single value has nothing to forget.
+        //
+        // #2406 review r2: how far to advance when a span is left ALONE.
+        //
+        // A MATCHED span collapses to one token, so `i += 1` steps past it. An
+        // ALREADY-CORRECT span does not — it keeps its N tokens — so advancing by
+        // one lands back INSIDE text just declared protected, where a shorter
+        // overlapping alias can rewrite it. `Alpha Beta Gamma.com` is correct as a
+        // three-token span, and a `beta gamma` alias then rewrote it to
+        // `Alpha Wrong.com`. Reserve the whole span instead.
+        // `.replaced` advances by ONE because the span collapsed to a single
+        // token; `.reserved(n)` advances by N because the span kept all of them.
+        enum SpanOutcome {
+          case replaced
+          case reserved(Int)
+
+          var advance: Int {
+            switch self {
+            case .replaced: return 1
+            case .reserved(let span): return span
+            }
+          }
+        }
+        var outcome: SpanOutcome?
 
         for span in stride(from: min(maxSpan, tokens.count - i), through: 2, by: -1) {
           let slice = tokens[i..<(i + span)]
@@ -781,24 +834,111 @@ public struct WordCorrector: Sendable {
             continue
           }
 
-          // Pass 1: exact multi-word alias
-          if let canonical = multiAliasMap[phrase], rawPhrase != canonical {
+          // The peel, computed once for both the unpeeled and peeled slots.
+          // Peeling can EXPOSE a reserved trigger word this guard could not see:
+          // `emoji.com` is not `emoji` until the suffix comes off, so a peel that
+          // exposes one yields no peeled slot rather than a forbidden match.
+          let strippedCores = slice.map { stripPunctuation($0) }
+          let domainSplit = strippedCores.last.flatMap { Self.splitDomainSuffix($0) }
+          var peeledRawPhrase: String?
+          if let domainSplit {
+            var peeledCores = strippedCores
+            peeledCores[peeledCores.count - 1] = domainSplit.bare
+            if !peeledCores.contains(where: {
+              Self.emojiTriggerReservedWords.contains($0.lowercased())
+            }) {
+              peeledRawPhrase = peeledCores.joined(separator: " ")
+            }
+          }
+
+          // PASS 1 IS THE ONE PLACE EXACT MULTI-WORD MATCHING HAPPENS
+          // (#2406 review r8, and the reason rounds 6, 7 and 8 each found a new
+          // leak).
+          //
+          // Those three rounds were one root, and it was not any of the
+          // individual holes they named. Exact matching had been SPLIT across
+          // two passes — unpeeled here, peeled in Pass 2 — so this pass could
+          // only DECLINE and hope the right thing picked the span up. Every
+          // round found another thing that picked it up first:
+          //
+          //   r6  a pack unpeeled exact accepted before the user's peeled exact
+          //   r7  declining fell through to a SHORTER span in this same loop
+          //   r8  `break` handed off to Pass 2, which restarts at maxSpan, so a
+          //       LONGER fuzzy candidate preempted the deferred exact
+          //
+          // Declining is not a decision. A pass that hands work away has to name
+          // the destination, and there is always one more route to it — which is
+          // this repo's own "describing a set instead of enumerating one".
+          //
+          // So the split is removed. All four (attempt x authority) slots are
+          // resolved HERE, in one fixed order, and Pass 2 is fuzzy only:
+          //
+          //   1. unpeeled non-pack   the user's own word, as dictated
+          //   2. peeled   non-pack   the user's own word, suffix peeled
+          //   3. unpeeled pack       a pack term, as dictated
+          //   4. peeled   pack       a pack term, suffix peeled
+          //
+          // This is Pass 4's ladder (#2281 round 7) ported wholesale rather than
+          // approximated, which is what the reviewer meant from round 5 on by
+          // "as the single-word path already does". Slot 4 is no longer a known
+          // limit: this pass holds the wide map, so it can be expressed here at
+          // no extra cost, and leaving it out was only ever an artifact of the
+          // split.
+          //
+          // Non-pack membership is decided by `nonPackMultiAliasMap`, not by
+          // `nonPackExactKeys` — that set is built from SINGLE alias keys and
+          // canonicals only, so a multi-word phrase is absent from it whatever
+          // its authority.
+          var exactHit: (canonical: String, source: String, peeled: Bool)?
+          let peeledKey = peeledRawPhrase?.lowercased()
+
+          if let canonical = nonPackMultiAliasMap[phrase] {
+            exactHit = (canonical, rawPhrase, false)
+          } else if let key = peeledKey, let raw = peeledRawPhrase,
+            let canonical = nonPackMultiAliasMap[key]
+          {
+            exactHit = (canonical, raw, true)
+          } else if let canonical = multiAliasMap[phrase] {
+            exactHit = (canonical, rawPhrase, false)
+          } else if let key = peeledKey, let raw = peeledRawPhrase,
+            let canonical = multiAliasMap[key]
+          {
+            exactHit = (canonical, raw, true)
+          }
+
+          if let exactHit {
+            // ALREADY CORRECT RESERVES THE SPAN. Previously this pass fell
+            // through to a shorter span when the text already equalled its
+            // canonical — round 3's defect, which was fixed in Pass 2 and left
+            // standing here because nothing had reached it yet.
+            if exactHit.source == exactHit.canonical {
+              outcome = .reserved(span)
+              break
+            }
             let (firstPrefix, _, _) = splitPunctuation(tokens[i])
             let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
-            tokens.replaceSubrange(i..<(i + span), with: [firstPrefix + canonical + lastSuffix])
-            appendReplacement(forCanonical: canonical)
-            matched = true
+            // Reattached UNLESS the canonical already specifies its own domain —
+            // the same rule Pass 4 and Pass 2's accept branch apply.
+            let reattach =
+              exactHit.peeled && !Self.isDomainShaped(exactHit.canonical)
+              ? (domainSplit?.suffix ?? "") : ""
+            tokens.replaceSubrange(
+              i..<(i + span),
+              with: [firstPrefix + exactHit.canonical + reattach + lastSuffix])
+            appendReplacement(forCanonical: exactHit.canonical)
+            outcome = .replaced
             #if DEBUG
               Self.logger.debug(
-                "WordCorrector: type=multi-word-exact source='\(rawPhrase)' target='\(canonical)'")
+                "WordCorrector: type=multi-word-exact source='\(exactHit.source)' target='\(exactHit.canonical)' peeled=\(exactHit.peeled)"
+              )
             #endif
             break
           }
         }
 
         // Pass 2: fuzzy multi-word fallback (only if exact missed for all spans)
-        if !matched {
-          for span in stride(from: min(maxSpan, tokens.count - i), through: 2, by: -1) {
+        if outcome == nil {
+          spanLoop: for span in stride(from: min(maxSpan, tokens.count - i), through: 2, by: -1) {
             let slice = tokens[i..<(i + span)]
             let phrase = slice.map { stripPunctuation($0).lowercased() }.joined(separator: " ")
             let rawPhrase = slice.map { stripPunctuation($0) }.joined(separator: " ")
@@ -809,78 +949,130 @@ public struct WordCorrector: Sendable {
             }
 
             if let candidates = multiAliasByCount[span] {
-              var bestScore = 0.0
-              var secondBest = 0.0
-              var bestCanonical = ""
-              var bestAlias = ""
+              // #2312: TWO attempts when the span's LAST token carries a glued
+              // domain suffix, mirroring the single-word path's proven shape.
+              //
+              // The bug this fixes is not "the peeled form was never tried" — it
+              // is that the UNPEELED form already scores above threshold and
+              // wins. `international platforn.com` against the alias
+              // `international platform` scores 0.890, clears 0.85, and the
+              // accept branch then rebuilds the span from `lastSuffix`, which is
+              // EMPTY because the token ends in a letter. The dictated `.com` is
+              // destroyed by a correction meant only to fix a spelling.
+              //
+              // So a "try peeled only if unpeeled failed" rule would not fix
+              // anything. Both attempts are scored, then compared.
+              let strippedCores = slice.map { stripPunctuation($0) }
+              let domainSplit = strippedCores.last.flatMap { Self.splitDomainSuffix($0) }
 
-              for entry in candidates {
-                let alias = entry.alias
-                let canonical = entry.canonical
-                let s = score(phrase, against: alias)
-                if s > bestScore {
-                  if bestCanonical != canonical { secondBest = bestScore }
-                  bestScore = s
-                  bestCanonical = canonical
-                  bestAlias = alias
-                } else if s > secondBest && canonical != bestCanonical {
-                  secondBest = s
+              // The peel is computed ONCE, above both the exact lookup and the
+              // fuzzy attempts, because both need it. Peeling can EXPOSE a
+              // reserved trigger word the slice guard above could not see:
+              // `emoji.com` is not `emoji` until the suffix comes off. Re-check
+              // what the peel actually produced.
+              var peeledRawPhrase: String?
+              if let domainSplit {
+                var peeledCores = strippedCores
+                peeledCores[peeledCores.count - 1] = domainSplit.bare
+                let exposesReservedWord = peeledCores.contains {
+                  Self.emojiTriggerReservedWords.contains($0.lowercased())
                 }
+                if !exposesReservedWord { peeledRawPhrase = peeledCores.joined(separator: " ") }
               }
 
-              let margin = bestScore - secondBest
-              // Phase 2 (#638) §8.2 item 1: lift multi-word threshold by +0.05
-              // when the candidate span includes any common stopword. Prevents
-              // "and we said" → "Andre" type degeneration.
-              let phraseTokens = Set(phrase.components(separatedBy: " "))
-              let hasStopword = !phraseTokens.isDisjoint(with: Self.stopwords)
-              let stopwordPenalty = hasStopword ? 0.05 : 0.0
-              // Phase 2 (#638) §8.2 item 4: per-term override for the matched
-              // canonical, if any. Override is the absolute bar.
-              let multiOverride = canonicalToWord[bestCanonical.lowercased()]?
-                .minSimilarityOverride
-              let multiThreshold = multiOverride ?? (Self.multiWordThreshold + stopwordPenalty)
-              if bestScore >= multiThreshold,
-                margin >= Self.ambiguityMargin,
-                rawPhrase != bestCanonical
-              {
-                let (firstPrefix, _, _) = splitPunctuation(tokens[i])
-                let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
-                tokens.replaceSubrange(
-                  i..<(i + span), with: [firstPrefix + bestCanonical + lastSuffix])
-                appendReplacement(forCanonical: bestCanonical)
-                matched = true
-                #if DEBUG
-                  Self.logger.debug(
-                    "WordCorrector: type=multi-word-fuzzy source='\(rawPhrase)' target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(margin, format: .fixed(precision: 3)) stopword=\(hasStopword) override=\(multiOverride.map { String($0) } ?? "nil")"
-                  )
-                #endif
-                break
-              } else if bestScore > 0 {
-                #if DEBUG
-                  let reason: String
-                  if bestScore < multiThreshold {
-                    reason = "below_threshold"
-                  } else if margin < Self.ambiguityMargin {
-                    reason = "below_margin"
-                  } else {
-                    reason = "same_as_input"
-                  }
-                  Self.logger.debug(
-                    "WordCorrector: REJECT pass=multi-word-fuzzy source='\(rawPhrase)' best_target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(margin, format: .fixed(precision: 3)) threshold=\(multiThreshold, format: .fixed(precision: 3)) stopword=\(hasStopword) reason=\(reason)"
-                  )
-                #endif
+              // Exact matching is entirely Pass 1's now (#2406 r8). This pass is
+              // fuzzy only, so there is no exact answer here for a fuzzy
+              // candidate to preempt and no span handed across a pass boundary.
+              let unpeeledOutcome = multiWordFuzzyAttempt(
+                phrase: phrase, rawPhrase: rawPhrase, candidates: candidates,
+                canonicalToWord: canonicalToWord,
+                // Restricted only when a peel is available: with no suffix to
+                // swallow there is nothing for the restriction to protect, and
+                // narrowing the pool would silently drop today's ordinary matches.
+                domainShapedOnly: domainSplit != nil)
+
+              var peeledOutcome: MultiWordFuzzyAttemptOutcome = .noCandidate
+              if let peeledRaw = peeledRawPhrase {
+                peeledOutcome = multiWordFuzzyAttempt(
+                  phrase: peeledRaw.lowercased(), rawPhrase: peeledRaw,
+                  candidates: candidates, canonicalToWord: canonicalToWord,
+                  domainShapedOnly: false)
               }
+
+              let winner: (candidate: MultiWordFuzzyCandidate, peeled: Bool)
+              switch (unpeeledOutcome, peeledOutcome) {
+              case (.alreadyCorrect, _), (_, .alreadyCorrect):
+                // Already right as dictated. RESERVE the span — not `continue`,
+                // which only tries a shorter one and then lets the outer loop walk
+                // back into it.
+                outcome = .reserved(span)
+                // Labelled: a bare `break` inside a `switch` exits the SWITCH, falling
+                // through to code that reads an uninitialised `winner`.
+                break spanLoop
+              case (.ambiguous, _), (_, .ambiguous):
+                // An ambiguous attempt is NOT "found nothing": letting the other
+                // attempt decide a span this one already judged uncertain is the
+                // defect PR #2298 round 17 fixed one pass over.
+                continue
+              case (.candidate(let unpeeled), .candidate(let peeled)):
+                // Cross-attempt ambiguity, which neither attempt's own margin can
+                // see: two internally-clear winners can still disagree with each
+                // other by less than the margin.
+                if unpeeled.canonical != peeled.canonical,
+                  abs(unpeeled.score - peeled.score) < Self.ambiguityMargin
+                {
+                  continue
+                }
+                winner = unpeeled.score >= peeled.score ? (unpeeled, false) : (peeled, true)
+              case (.candidate(let unpeeled), .noCandidate):
+                winner = (unpeeled, false)
+              case (.noCandidate, .candidate(let peeled)):
+                winner = (peeled, true)
+              case (.noCandidate, .noCandidate):
+                continue
+              }
+
+              let (firstPrefix, _, _) = splitPunctuation(tokens[i])
+              let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
+              // Reattached UNLESS the canonical already specifies its own domain,
+              // the same rule Pass 4 applies — and BEFORE `lastSuffix`, so
+              // `platforn.com!` becomes canonical + `.com` + `!`.
+              let reattachedDomainSuffix =
+                winner.peeled && !Self.isDomainShaped(winner.candidate.canonical)
+                ? (domainSplit?.suffix ?? "") : ""
+
+              tokens.replaceSubrange(
+                i..<(i + span),
+                with: [
+                  firstPrefix + winner.candidate.canonical + reattachedDomainSuffix + lastSuffix
+                ])
+              appendReplacement(forCanonical: winner.candidate.canonical)
+              outcome = .replaced
+              #if DEBUG
+                let winningSource = winner.peeled ? (peeledRawPhrase ?? rawPhrase) : rawPhrase
+                Self.logger.debug(
+                  "WordCorrector: type=multi-word-fuzzy source='\(winningSource)' target='\(winner.candidate.canonical)' alias='\(winner.candidate.alias)' score=\(winner.candidate.score, format: .fixed(precision: 3)) margin=\(winner.candidate.margin, format: .fixed(precision: 3)) threshold=\(winner.candidate.threshold, format: .fixed(precision: 3)) stopword=\(winner.candidate.hasStopword) peeled=\(winner.peeled)"
+                )
+              #endif
+              break
             }
           }
         }
 
-        i += 1
+        if case .reserved(let span) = outcome {
+          reservedTokenRanges.append(i..<(i + span))
+        }
+        i += outcome?.advance ?? 1
       }
     }
 
     // Passes 3-5: single-word (per token)
-    let corrected = tokens.map { token -> String in
+    let corrected = tokens.enumerated().map { index, token -> String in
+      // A span the multi-word passes certified as already correct is not offered
+      // to the single-word passes at all (#2406 r7). Returning the token
+      // untouched is the whole mechanism: there is no correction to make to text
+      // that is already what the vocabulary says it should be.
+      if reservedTokenRanges.contains(where: { $0.contains(index) }) { return token }
       let (prefix, core, suffix) = splitPunctuation(token)
       guard !core.isEmpty, core.count >= 2 else { return token }
 
@@ -1225,6 +1417,129 @@ public struct WordCorrector: Sendable {
   /// uncertain -- the identical shape round 16 fixed one layer up, for the
   /// cross-attempt (unpeeled vs. peeled) comparison instead of this
   /// within-attempt one.
+  /// One Pass 2 fuzzy attempt's result (#2312).
+  ///
+  /// Mirrors `SingleAttemptFuzzyOutcome` deliberately, including its three-way
+  /// shape: "genuinely ambiguous" must stay distinguishable from "nothing scored
+  /// close", because collapsing them lets an in-attempt ambiguity read as "this
+  /// attempt found nothing" and hands the decision to the other attempt — the
+  /// defect round 17 of PR #2298 fixed one pass over.
+  ///
+  /// Carries more than the single-word version because Pass 2's debug line
+  /// reports alias, margin, threshold and stopword state, and recomputing those
+  /// at the call site would be a second place for them to drift.
+  private struct MultiWordFuzzyCandidate {
+    let canonical: String
+    let alias: String
+    let score: Double
+    let margin: Double
+    let threshold: Double
+    let hasStopword: Bool
+  }
+
+  private enum MultiWordFuzzyAttemptOutcome {
+    case candidate(MultiWordFuzzyCandidate)
+    case ambiguous
+    /// The phrase ALREADY equals its canonical — correct as dictated, nothing to
+    /// do. TERMINAL for the span, and distinct from `.noCandidate` for the same
+    /// reason `.ambiguous` is (#2406 cloud review).
+    ///
+    /// Collapsing it into `.noCandidate` let the OTHER attempt win and replace
+    /// text that was already right: with `International Platform.com` dictated,
+    /// the peeled attempt matches its canonical perfectly while an unrelated
+    /// domain-shaped distractor can clear the threshold unpeeled — and the
+    /// switch would accept the distractor. A hazard this PR's two-attempt design
+    /// created; the single-attempt version had no other branch to hand it to.
+    case alreadyCorrect
+    case noCandidate
+  }
+
+  /// Score one phrase against the Pass 2 pool, applying every gate this pass
+  /// already applied — stopword penalty, per-term override, best-vs-second
+  /// ambiguity margin — to THIS attempt independently (#2312).
+  ///
+  /// `domainShapedOnly` gates the pool exactly as it does for the single-word
+  /// path: the UNPEELED attempt passes `true`, because fuzzy is only safe
+  /// unpeeled when compared against an equally domain-shaped candidate — both
+  /// sides then carry a suffix, so nothing is silently swallowed. The PEELED
+  /// attempt passes `false` and sees the ordinary pool.
+  ///
+  /// The stopword check is recomputed per attempt rather than shared: peeling
+  /// can CHANGE it. `alpha and.com` carries the token `and.com` unpeeled and
+  /// `and` once peeled, and the check is exact token membership — so a shared
+  /// value would apply the wrong threshold to one of the two attempts.
+  private func multiWordFuzzyAttempt(
+    phrase: String,
+    rawPhrase: String,
+    candidates: [Lookups.AliasCanonical],
+    canonicalToWord: [String: CustomWord],
+    domainShapedOnly: Bool
+  ) -> MultiWordFuzzyAttemptOutcome {
+    var bestScore = 0.0
+    var secondBest = 0.0
+    var bestCanonical = ""
+    var bestAlias = ""
+
+    for entry in candidates {
+      if domainShapedOnly, !Self.isDomainShaped(entry.alias) { continue }
+      let candidateScore = score(phrase, against: entry.alias)
+      if candidateScore > bestScore {
+        if bestCanonical != entry.canonical { secondBest = bestScore }
+        bestScore = candidateScore
+        bestCanonical = entry.canonical
+        bestAlias = entry.alias
+      } else if candidateScore > secondBest, entry.canonical != bestCanonical {
+        secondBest = candidateScore
+      }
+    }
+
+    guard bestScore > 0 else { return .noCandidate }
+
+    let phraseTokens = Set(phrase.components(separatedBy: " "))
+    let hasStopword = !phraseTokens.isDisjoint(with: Self.stopwords)
+    let stopwordPenalty = hasStopword ? 0.05 : 0.0
+    let override = canonicalToWord[bestCanonical.lowercased()]?.minSimilarityOverride
+    let threshold = override ?? (Self.multiWordThreshold + stopwordPenalty)
+    let margin = bestScore - secondBest
+
+    // SELF-IDENTITY FIRST, ahead of both gates (#2406 review r3).
+    //
+    // "This text is already the canonical" is a fact about the INPUT. The
+    // threshold and margin gates describe a COMPETITION between candidates, and a
+    // competition cannot make correct text incorrect.
+    //
+    // Ordered last, the margin gate reached it first: with `Alpha Beta Gamma.com`
+    // dictated and a near-twin alias present, the attempt returned `.ambiguous`
+    // rather than `.alreadyCorrect` — and `.ambiguous` does not reserve the span,
+    // so an overlapping `beta gamma` alias rewrote text that was already right.
+    //
+    // Safe to hoist above the threshold too: an exact self-match scores ~1.0, so
+    // it clears any threshold it could have been measured against.
+    guard rawPhrase != bestCanonical else { return .alreadyCorrect }
+
+    guard bestScore >= threshold else {
+      #if DEBUG
+        Self.logger.debug(
+          "WordCorrector: REJECT pass=multi-word-fuzzy source='\(rawPhrase)' best_target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) threshold=\(threshold, format: .fixed(precision: 3)) stopword=\(hasStopword) domain_only=\(domainShapedOnly) reason=below_threshold"
+        )
+      #endif
+      return .noCandidate
+    }
+    guard margin >= Self.ambiguityMargin else {
+      #if DEBUG
+        Self.logger.debug(
+          "WordCorrector: REJECT pass=multi-word-fuzzy source='\(rawPhrase)' best_target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(margin, format: .fixed(precision: 3)) stopword=\(hasStopword) domain_only=\(domainShapedOnly) reason=below_margin"
+        )
+      #endif
+      return .ambiguous
+    }
+
+    return .candidate(
+      MultiWordFuzzyCandidate(
+        canonical: bestCanonical, alias: bestAlias, score: bestScore,
+        margin: margin, threshold: threshold, hasStopword: hasStopword))
+  }
+
   private enum SingleAttemptFuzzyOutcome {
     case candidate(canonical: String, score: Double)
     case ambiguous
