@@ -760,14 +760,41 @@ public actor ModelDeliveryController {
     setState(identity, .preparing(validatingExistingCache: true))
   }
 
+  /// **The local log and telemetry legitimately disagree here, and only here.**
+  ///
+  /// Awaiting this call orders it against the `fetchTask.run()` continuation. It
+  /// does NOT order it against a concurrent `cancel()`: both enter this actor,
+  /// and a cancel serviced first bumps the generation, after which the guard
+  /// below discards the event (#2135 cloud review, round 2).
+  ///
+  /// Dropping it is CORRECT for telemetry and WRONG for the log, because the two
+  /// answer different questions. **A telemetry event is a claim about an
+  /// attempt**, so an event belonging to a superseded generation must not be
+  /// attributed to the live one — that is exactly what the guard is for.
+  /// **A log line is a record of an occurrence**, and the failover genuinely
+  /// happened, before the cancel, whatever the generation did afterwards.
+  /// Suppressing it makes the log lie by omission about a real event — and a
+  /// missing line reads as "it did not happen", which is the direction that
+  /// produces confidently wrong conclusions.
+  ///
+  /// So the line is written unconditionally and the EMIT stays guarded. This is
+  /// the one place these two channels diverge; everywhere else the switch inside
+  /// `emit` serves both. Do not "tidy" this by moving the log back below the
+  /// guard, and do not fix it by relaxing the guard — the guard is right about
+  /// its own question.
   private func noteFailover(
     _ identity: ModelIdentity, reason: DeliveryFailureClass, fromSourceID: String,
     toSourceID: String, generation: Int
   ) {
-    guard entries[identity]?.generation == generation else { return }
-    emit(
-      identity,
-      .sourceFailover(reason: reason, fromSourceID: fromSourceID, toSourceID: toSourceID))
+    let event = DeliveryEvent.sourceFailover(
+      reason: reason, fromSourceID: fromSourceID, toSourceID: toSourceID)
+    guard entries[identity]?.generation == generation else {
+      #if DEBUG
+        enqueueDeliveryLog(identity, event)
+      #endif
+      return
+    }
+    emit(identity, event)
   }
 
   private func setState(
