@@ -246,10 +246,15 @@ final class MenuBarController: NSObject {
   ///
   /// TWO limits, because they bound different things. Characters are what the user counts;
   /// scalars bound the pathological case where a handful of characters carry hundreds of scalars.
-  /// How long the menu will wait for the frontmost application to answer.
+  /// How long the menu will wait for the frontmost application to answer EACH Accessibility
+  /// operation.
+  ///
+  /// **Per operation, and the read makes two** — the focused-element lookup and the selected-text
+  /// read — so the worst case is 0.5s total, which is the bound the menu was always meant to hold
+  /// to. An earlier version set 0.5 here and claimed 0.5 total, which was wrong by a factor of two.
   ///
   /// Longer than any healthy Accessibility read, shorter than a user tolerates a menu not opening.
-  static let quickAddReadTimeout: Float = 0.5
+  static let quickAddReadTimeout: Float = 0.25
 
   static let quickAddTitleCharacters = 24
   static let quickAddTitleScalars = 96
@@ -548,7 +553,8 @@ extension MenuBarController: NSMenuDelegate {
         //
         // **Bounded, because `menuNeedsUpdate` must be synchronous.** A frontmost application whose
         // Accessibility provider stalls would otherwise hold the main actor and the menu would not
-        // open at all. Half a second is longer than any healthy read and shorter than a user waits.
+        // open at all. The bound is PER OPERATION and the read makes two, so the worst case is
+        // 0.5s — longer than any healthy read, shorter than a user tolerates a dead menu.
         //
         // All three outcomes are carried. A refusal is NOT an empty selection — collapsing them is
         // what made a missing Accessibility permission look identical to having selected nothing.

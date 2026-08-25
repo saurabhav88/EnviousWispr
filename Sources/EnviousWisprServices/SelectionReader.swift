@@ -97,7 +97,15 @@ public enum SelectionReader {
   /// Per-application, never system-wide: `AXUIElementCreateSystemWide()` can answer for a different
   /// process than the one the user is looking at, and the whole point here is to read the app they
   /// just made a selection in.
-  /// `timeout` bounds the Accessibility round trip, in seconds. Nil keeps the system default.
+  /// `timeout` bounds EACH Accessibility operation, in seconds. Nil keeps the system default.
+  ///
+  /// **PER OPERATION, not per call.** This makes two round trips — the focused-element lookup and
+  /// the selected-text read — so the worst case a caller should plan for is TWICE this value. An
+  /// earlier version's comment claimed it bounded how long the menu waits; it did not.
+  ///
+  /// **Zero is refused rather than honoured.** Accessibility reads a zero messaging timeout as
+  /// "use the system default", so `timeout: 0` would REMOVE the bound rather than tighten it — the
+  /// most obviously safe number producing the least safe behaviour.
   ///
   /// **A caller that must not block passes one.** The menu-bar door renders inside
   /// `menuNeedsUpdate`, which AppKit requires to be synchronous — so a frontmost application whose
@@ -105,6 +113,7 @@ public enum SelectionReader {
   /// The default is far longer than a menu can wait.
   @MainActor
   public static func read(timeout: Float? = nil) -> Result {
+    precondition(timeout.map { $0 > 0 } ?? true, "a zero or negative AX timeout removes the bound")
     // Frontmost is read here rather than inside the check because it is the LIVE half. Current
     // because this runs on the main run loop from a hotkey or a Service, with events flowing;
     // `NSWorkspace.frontmostApplication` is stale only where nothing is pumping the run loop, which
@@ -117,13 +126,20 @@ public enum SelectionReader {
     }
     // Safe: `refusalBeforeReading` returns non-nil for a nil or non-positive pid.
     guard let pid = frontmost else { return .refused(.noFocusedElement) }
-    if let timeout {
-      // Bound the application handle, which is what the focused-element query messages.
-      AXUIElementSetMessagingTimeout(AXUIElementCreateApplication(pid), timeout)
-    }
-    guard let focused = PasteService.focusedElementQuery(pid: pid) else {
+    // **Handed to the query rather than set here.** `focusedElementQuery` creates its OWN
+    // application element, so a timeout set on a handle made here reaches nothing — it did not, and
+    // the line that tried is gone. The parameter has existed all along.
+    guard
+      let focused = timeout.map({ PasteService.focusedElementQuery(pid: pid, messagingTimeout: Double($0)) })
+        ?? PasteService.focusedElementQuery(pid: pid)
+    else {
       return .refused(.noFocusedElement)
     }
+    // **And the FOCUSED handle separately, because a descendant does not inherit one.** This repo
+    // learned that in #1332 — `PasteService.firstPasteItem`: "Descendant handles do NOT inherit an
+    // ancestor's messaging timeout", and `findPasteMenuItem`: "The timeout binds ONE element, so
+    // every handle we message has to be bounded, not just this one."
+    if let timeout { AXUIElementSetMessagingTimeout(focused, timeout) }
     // **And bound the FOCUSED handle separately, because a descendant does not inherit it.** This
     // repo learned that in #1332 and wrote it down twice — `PasteService.firstPasteItem`:
     // "Descendant handles do NOT inherit an ancestor's messaging timeout", and
