@@ -346,6 +346,17 @@ final class QuickAddCoordinator {
     finish(.createdNew, usedSearch: usedSearch, rank: nil, kind: nil)
   }
 
+  /// The sheet's canonical was already in the library and already carried every spelling the user
+  /// kept, so `CustomWordsManager.add` wrote nothing and nothing needed writing.
+  ///
+  /// A separate entry point rather than a flag on `didCreateNew`, because the two differ in the one
+  /// way the funnel cares about: whether a word was created. `alreadySaved` is not new vocabulary
+  /// for this — it already means "the word carried this spelling, so there was nothing to write",
+  /// and it is the same fact arriving through the other door.
+  func didFindAlreadySaved(usedSearch: Bool) {
+    finish(.alreadySaved, usedSearch: usedSearch, rank: nil, kind: nil)
+  }
+
   /// Escape, clicking away, or the panel closing.
   func cancel(from model: QuickAddPanelModel) {
     finish(.cancelled, usedSearch: model.isSearching, rank: nil, kind: nil)

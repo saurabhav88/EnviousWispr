@@ -208,9 +208,11 @@ final class QuickAddWiring {
     // Compare against the TRIMMED canonical, because that is what `add` stores. Comparing the raw
     // one reports a correct save as a failure whenever the user typed a leading space.
     let canonical = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard let stored = customWords.customWords.first(where: {
-      $0.canonical.caseInsensitiveCompare(canonical) == .orderedSame
-    }) else {
+    guard
+      let stored = customWords.customWords.first(where: {
+        $0.canonical.caseInsensitiveCompare(canonical) == .orderedSame
+      })
+    else {
       return QuickAddPanelCopy.newWordNotSaved
     }
     // Blank rows are ordinary trimming, not a lost edit — the editor leaves them behind. A NON-blank
@@ -235,14 +237,20 @@ final class QuickAddWiring {
     // with no spelling is exactly the state it cannot see. So the existence question is asked
     // separately: with nothing to confirm, "was this canonical already here before I wrote" is the
     // only evidence available.
-    guard
-      Self.newWordLanded(
-        keptSpellings: kept, missingSpellings: missing,
-        canonicalExistedBefore: canonicalExistedBefore)
-    else {
+    switch Self.newWordOutcome(
+      keptSpellings: kept, missingSpellings: missing,
+      canonicalExistedBefore: canonicalExistedBefore)
+    {
+    case .created:
+      coordinator.didCreateNew(usedSearch: usedSearch)
+    case .alreadyComplete:
+      // NOT `didCreateNew`. Nothing was created, so counting one puts a write that did not happen in
+      // the numerator of every rate computed off this funnel — and `alreadySaved` already means
+      // exactly this, on the accept route, for exactly this reason.
+      coordinator.didFindAlreadySaved(usedSearch: usedSearch)
+    case .refused:
       return QuickAddPanelCopy.newWordAlreadyExists(canonical: stored.canonical)
     }
-    coordinator.didCreateNew(usedSearch: usedSearch)
     dismiss()
     return nil
   }
@@ -260,13 +268,41 @@ final class QuickAddWiring {
   /// confirm. With spellings: did they land. Without: was this canonical already here before the
   /// write, because that is then the only evidence available.
   ///
-  /// Seventh instance of this feature's one class, and it arrived INSIDE the fix for the fifth.
-  package static func newWordLanded(
+  /// **AND A BOOL WAS THE WRONG RETURN TYPE, which round five found.** The first version answered
+  /// true for "the canonical already existed and already carried the spelling", on the stated
+  /// reasoning that adding a spelling to a word you already have is the feature's main path. That
+  /// reasoning is about the ACCEPT route and is false here: through Create New, an existing
+  /// canonical means `CustomWordsManager.add` silently wrote NOTHING, always. So the panel reported
+  /// a creation, and the funnel counted a `created_new`, for a write that did not happen.
+  ///
+  /// The desired end state was nonetheless already true, which is why the answer is not `false`
+  /// either — refusing would hand the user a message telling them to go and add a spelling the word
+  /// already has. Three states, and the third is the one a Bool cannot hold: this is the same
+  /// three-valued shape as `QuickAddCoordinator.mergeTarget`, which is what `validation-discipline`
+  /// means by an unhandled input still landing somewhere, usually in the permissive branch.
+  package enum NewWordOutcome: Equatable {
+    /// The write produced the word the user asked for.
+    case created
+    /// The canonical was already there and already carried every spelling the user kept. Nothing was
+    /// written and nothing needed to be: report it as already saved rather than as a creation.
+    case alreadyComplete
+    /// Nothing was written and the user did not get what they asked for. Say so, keep the panel up.
+    case refused
+  }
+
+  package static func newWordOutcome(
     keptSpellings: [String], missingSpellings: [String], canonicalExistedBefore: Bool
-  ) -> Bool {
-    guard missingSpellings.isEmpty else { return false }
-    guard keptSpellings.isEmpty else { return true }
-    return !canonicalExistedBefore
+  ) -> NewWordOutcome {
+    // Outranks everything below: a spelling the user typed that is not on the word is a lost edit,
+    // whatever else is true.
+    guard missingSpellings.isEmpty else { return .refused }
+    // Through this route `add` no-ops on a duplicate canonical, so a canonical that was NOT there
+    // before is the only evidence a creation happened.
+    guard canonicalExistedBefore else { return .created }
+    // It was already there. With a spelling to confirm, and nothing missing, the end state the user
+    // asked for holds — nothing to do. With NO spelling, nothing was created and nothing was added,
+    // so there is nothing to report as done.
+    return keptSpellings.isEmpty ? .refused : .alreadyComplete
   }
 
   /// Write a word and PROVE the spelling is on it afterwards.

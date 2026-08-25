@@ -633,47 +633,64 @@ struct QuickAddCoordinatorTests {
   }
   // MARK: - Did the sheet's save actually produce a word (#2381, cloud review)
 
-  @Test("A blank-alias save onto an existing canonical is NOT a success")
-  func blankAliasOntoExistingCanonicalIsNotASuccess() {
+  @Test("A blank-alias save onto an existing canonical is refused")
+  func blankAliasOntoExistingCanonicalIsRefused() {
     // The state the inline version could not see. Quick Add opened without a readable selection has
     // no heard spelling, so the sheet starts with one BLANK alias and there is nothing to confirm.
     // The postcondition asked "did the kept spellings land", which is vacuously true of none — so a
     // canonical that already existed took the success path while `add` silently no-oped. Nothing was
     // created and the panel closed saying nothing.
     #expect(
-      !QuickAddWiring.newWordLanded(
-        keptSpellings: [], missingSpellings: [], canonicalExistedBefore: true))
+      QuickAddWiring.newWordOutcome(
+        keptSpellings: [], missingSpellings: [], canonicalExistedBefore: true) == .refused)
   }
 
-  @Test("A blank-alias save of a genuinely new canonical IS a success")
-  func blankAliasOntoNewCanonicalIsASuccess() {
+  @Test("A blank-alias save of a genuinely new canonical IS a creation")
+  func blankAliasOntoNewCanonicalIsACreation() {
     // The paired positive, and without it the fix reads as "refuse every blank-alias save", which
     // would break creating a word by hand from a panel that could not read a selection — the one
     // route that state has.
     #expect(
-      QuickAddWiring.newWordLanded(
-        keptSpellings: [], missingSpellings: [], canonicalExistedBefore: false))
+      QuickAddWiring.newWordOutcome(
+        keptSpellings: [], missingSpellings: [], canonicalExistedBefore: false) == .created)
   }
 
-  @Test("A spelling that landed is a success whether or not the canonical existed before")
-  func aLandedSpellingIsASuccessEitherWay() {
-    // With something to confirm, the confirmation is the whole answer. A canonical that already
-    // existed is not evidence of anything here: adding a spelling to a word you already have is the
-    // feature's main path, not a duplicate.
+  @Test("A spelling landing on a NEW canonical is a creation")
+  func aLandedSpellingOnANewCanonicalIsACreation() {
     #expect(
-      QuickAddWiring.newWordLanded(
-        keptSpellings: ["codecs"], missingSpellings: [], canonicalExistedBefore: true))
-    #expect(
-      QuickAddWiring.newWordLanded(
-        keptSpellings: ["codecs"], missingSpellings: [], canonicalExistedBefore: false))
+      QuickAddWiring.newWordOutcome(
+        keptSpellings: ["codecs"], missingSpellings: [], canonicalExistedBefore: false) == .created)
   }
 
-  @Test("A spelling that vanished is never a success")
-  func aMissingSpellingIsNeverASuccess() {
+  @Test("A spelling already on an EXISTING canonical is already-saved, never a creation")
+  func aSpellingAlreadyOnAnExistingCanonicalIsAlreadySaved() {
+    // REWRITTEN in round five, and the previous version is why. It asserted this as a success, on a
+    // comment reading "adding a spelling to a word you already have is the feature's main path, not
+    // a duplicate". That is true of the ACCEPT route and false here: through Create New, `add`
+    // no-ops on a duplicate canonical, so an existing canonical means NOTHING was written. The panel
+    // reported a creation and the funnel counted a `created_new` for a write that never happened.
+    //
+    // Not `.refused` either, which is the half that makes this three states rather than a flipped
+    // Bool: the end state the user asked for already holds, so refusing would hand them a message
+    // telling them to go and add a spelling the word already has.
+    #expect(
+      QuickAddWiring.newWordOutcome(
+        keptSpellings: ["codecs"], missingSpellings: [], canonicalExistedBefore: true)
+        == .alreadyComplete)
+  }
+
+  @Test("A spelling that vanished is refused however new the canonical is")
+  func aMissingSpellingIsAlwaysRefused() {
     // Outranks both other questions: if the user typed a spelling and it is not on the word, no
-    // amount of the canonical being new makes that a save.
+    // amount of the canonical being new makes that a save. Asserted BOTH ways, because a guard that
+    // only ever sees one value of the thing it is said to outrank has not been shown to outrank it.
     #expect(
-      !QuickAddWiring.newWordLanded(
-        keptSpellings: ["codecs"], missingSpellings: ["codecs"], canonicalExistedBefore: false))
+      QuickAddWiring.newWordOutcome(
+        keptSpellings: ["codecs"], missingSpellings: ["codecs"], canonicalExistedBefore: false)
+        == .refused)
+    #expect(
+      QuickAddWiring.newWordOutcome(
+        keptSpellings: ["codecs"], missingSpellings: ["codecs"], canonicalExistedBefore: true)
+        == .refused)
   }
 }
