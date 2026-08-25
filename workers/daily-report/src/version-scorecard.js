@@ -162,22 +162,93 @@ export function compareVersions(a, b) {
   return a1 - b1 || a2 - b2 || a3 - b3;
 }
 
-/** A 403 is transient ONLY when GitHub says the rate limit is exhausted.
- * Treating every forbidden response as transient would retry a genuine
- * permission or configuration failure three times and then report it as a
- * temporary blip. */
-function isTransientGitHubStatus(res) {
+/** THREE outcomes, because "transient" was hiding two different things (#2411).
+ *
+ * A 403 is temporary ONLY when GitHub says the rate limit is exhausted; treating
+ * every forbidden response as temporary would retry a genuine permission or
+ * configuration failure and then report it as a blip. That part is unchanged.
+ *
+ * What changed is that a rate limit is no longer RETRIED. Its window resets at
+ * the top of an hour and a Worker cannot wait that long, so the two extra
+ * requests spend more of an already-exhausted budget and fail anyway - three
+ * attempts inside a few milliseconds is arithmetically one attempt against
+ * anything with a recovery time. It stays TEMPORARY, so the section still
+ * degrades rather than killing the run; only the retry is dropped.
+ *
+ * Returns "retry" | "rate-limited" | "fatal".
+ */
+function classifyGitHubStatus(res) {
   const status = res.status;
-  if (status === 429 || status >= 500) return true;
-  if (status !== 403) return false;
-  const remaining = res.headers?.get?.("x-ratelimit-remaining");
-  return remaining === "0";
+  if (status >= 500) return "retry";
+  if (status === 429) return "rate-limited";
+  if (status !== 403) return "fatal";
+  return res.headers?.get?.("x-ratelimit-remaining") === "0" ? "rate-limited" : "fatal";
+}
+
+/** How long until the rate-limit window resets, in SECONDS FROM NOW.
+ *
+ * Deliberately not a formatted instant. The first version returned
+ * `new Date(ms).toISOString()` and the suite's source guardrail refused it -
+ * correctly, because that guard exists to keep `parseGitHubTimestamp` the ONLY
+ * date authority in this file, and a second one would drift. Seconds-from-now
+ * needs no date construction, and it is the more useful number in a log anyway:
+ * an operator reading the failure wants "how long", not a timestamp to subtract.
+ *
+ * `x-ratelimit-reset` is unix SECONDS. Absent, unparseable, or already past
+ * yields null rather than a guess - an invented reset is worse than an unknown
+ * one, because the next reader plans around it. */
+function rateLimitResetInSeconds(res, nowFn = Date.now) {
+  const raw = res.headers?.get?.("x-ratelimit-reset");
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) return null;
+  const resetSec = Number(raw);
+  if (!Number.isSafeInteger(resetSec) || resetSec <= 0) return null;
+  const delta = resetSec - Math.floor(nowFn() / 1000);
+  return delta > 0 ? delta : null;
+}
+
+/** Backoff between RETRYABLE attempts. Was `0`, which made the retry loop three
+ * requests inside a few milliseconds - the shape of a retry with none of the
+ * effect. Deliberately small: the founder's `curl` is waiting on this request,
+ * and ~2s total is what a connection reset or a 5xx blip needs. A rate limit
+ * needs minutes and is no longer retried at all, so nothing here is trying to
+ * outwait one. */
+const GITHUB_RETRY_DELAYS_MS = [500, 1500];
+
+/** OPTIONAL authentication, matching what `workers/weekly-digest` already does
+ * (`src/index.js`, its `fetchGitHubDownloads`).
+ *
+ * A token is not needed to READ a public repo - authorization was never the
+ * question. It is what raises the RATE LIMIT: unauthenticated GitHub allows 60
+ * requests an hour PER IP (measured, `x-ratelimit-limit: 60`), and a Cloudflare
+ * Worker's outbound requests leave from a shared egress pool, so that ceiling is
+ * shared with every other tenant on the same address. Our own usage is one
+ * request a day, so nothing about our call rate reaches it.
+ *
+ * `wrangler.toml` claimed this lookup "needs no token and no secret - the same
+ * unauthenticated pattern workers/weekly-digest already uses". The second half
+ * was false: the sibling has had this header since it was written. Corrected
+ * there rather than deleted.
+ *
+ * INERT until the secret exists, which is deliberate. This is the code half of
+ * #2411; installing `GITHUB_TOKEN` is a separate, founder-owned action, and the
+ * diagnostic added in this same change is what will say whether it is needed. */
+function githubHeaders(env) {
+  const headers = { "User-Agent": USER_AGENT, Accept: "application/vnd.github+json" };
+  const token = env?.GITHUB_TOKEN;
+  // A blank or whitespace-only secret is ABSENT, not a credential. Sending
+  // `Authorization: token ` makes GitHub answer 401, which classifies fatal and
+  // would turn a missing secret into a whole-run failure - the loud-but-wrong
+  // direction, from a value nobody meant to set.
+  if (typeof token === "string" && token.trim() !== "") {
+    headers.Authorization = `token ${token.trim()}`;
+  }
+  return headers;
 }
 
 /** Fetches published, non-draft, non-prerelease releases. Newest is decided by
  * `published_at`, never by the API's array order (which is creation order and
  * can disagree after a re-publish). */
-async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep } = {}) {
+async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep, nowFn = Date.now } = {}) {
   // Checked BEFORE any request: configuration is not a blip, and must never
   // consume retries or look transient. Validated as a real owner/repo slug
   // rather than merely truthy - a value like "EnviousWispr" would otherwise
@@ -199,7 +270,7 @@ async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep } 
     let res;
     try {
       res = await fetchFn(`${GITHUB_API}/repos/${repo}/releases`, {
-        headers: { "User-Agent": USER_AGENT, Accept: "application/vnd.github+json" },
+        headers: githubHeaders(env),
       });
     } catch (_) {
       // A network-level rejection (DNS, reset, abort) never produces a response
@@ -209,7 +280,7 @@ async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep } 
       // original error: it can carry a URL or body.
       lastStatus = "network error";
       if (attempt < GITHUB_MAX_ATTEMPTS) {
-        await sleepFn(0);
+        await sleepFn(GITHUB_RETRY_DELAYS_MS[attempt - 1]);
         continue;
       }
       break;
@@ -289,12 +360,25 @@ async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep } 
       }
     }
 
-    if (!isTransientGitHubStatus(res)) {
+    const disposition = classifyGitHubStatus(res);
+    if (disposition === "fatal") {
       throw new ReleaseResolutionError(`GitHub releases request failed: HTTP ${lastStatus}`, {
         transient: false,
       });
     }
-    if (attempt < GITHUB_MAX_ATTEMPTS) await sleepFn(0);
+    if (disposition === "rate-limited") {
+      // Reported at once rather than after two more refusals. The reset instant
+      // is the fact that decides what to do about it, so it is in the message
+      // and not only in a header nobody will see.
+      const resetIn = rateLimitResetInSeconds(res, nowFn);
+      throw new ReleaseResolutionError(
+        `GitHub releases rate-limited: HTTP ${lastStatus}` +
+          (resetIn === null ? ", reset not reported" : `, resets in ${resetIn}s`) +
+          " (not retried: the window is far longer than a request can wait)",
+        { transient: true }
+      );
+    }
+    if (attempt < GITHUB_MAX_ATTEMPTS) await sleepFn(GITHUB_RETRY_DELAYS_MS[attempt - 1]);
   }
 
   throw new ReleaseResolutionError(
@@ -1508,13 +1592,29 @@ const SCORECARD_QUERIES = [
 ];
 
 /** Classification is by TYPE, never by message text: a substring match on an
- * error message is a contract nobody declared and every reword breaks. */
+ * error message is a contract nobody declared and every reword breaks. That is
+ * unchanged and is why the `instanceof` below is the only thing deciding
+ * severity.
+ *
+ * THE MESSAGE NOW CARRIES THE REASON, WHICH IT DID NOT (#2411). The fixed
+ * strings alone cost five days of failures nobody could attribute: the worker
+ * knew the status - `HTTP 403`, `HTTP 503`, `network error` - and this boundary
+ * replaced it with "release resolution exhausted its retries", putting the
+ * original in `cause` where nothing reads it. The fetch handler returns
+ * `err.message` (index.js), the ping workflow prints that body, and the one fact
+ * that decides whether this is rate limiting, an outage or a shape change was
+ * discarded one line before it would have been printed.
+ *
+ * Safe to print: every message these paths produce is built from a status code,
+ * an attempt count, a reset timestamp, the public repo slug or a release tag.
+ * None carries a credential or a URL, and the workflow masks URLs regardless. */
 function releaseFailure(reason) {
   const transient = reason instanceof ReleaseResolutionError && reason.transient === true;
+  const detail = reason instanceof Error && reason.message ? `: ${reason.message}` : "";
   return new ScorecardSectionError(
-    transient
+    (transient
       ? "release resolution exhausted its retries"
-      : "release resolution failed its contract",
+      : "release resolution failed its contract") + detail,
     { wholeRun: !transient, cause: reason }
   );
 }
