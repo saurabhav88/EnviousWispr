@@ -742,6 +742,69 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("hotkey.pressed", properties: props)
   }
 
+  /// Quick Add opened (#2381). Shape only.
+  ///
+  /// **The selected word is NEVER a property here, and this is the event where it would be easiest
+  /// to add.** `CLAUDE.md` puts the privacy boundary at the network and the test is whether USER
+  /// CONTENT crosses it: `heard_length` is a scalar count, `top_score` is a number about a match, and
+  /// the bundle id names an APP rather than anything the user wrote. The word itself never leaves the
+  /// machine, and it is not in the local log either.
+  ///
+  /// `top_score` ships RAW rather than bucketed. It is a similarity between two strings, not a
+  /// property of either; bucketing it would destroy the only signal that says whether the confidence
+  /// bar is set right, which is the number this feature will actually be tuned on.
+  public func quickAddOpened(
+    door: String, hadSelection: Bool, refuseReason: String?, candidateCount: Int,
+    preselected: Bool, topScore: Double?, sourceBundleID: String?, heardLength: Int
+  ) {
+    var props: [String: Any] = [
+      "door": door, "had_selection": hadSelection, "candidate_count": candidateCount,
+      "preselected": preselected, "heard_length": heardLength,
+      "refuse_reason": refuseReason ?? "none",
+      "source_bundle_id": sourceBundleID ?? "unknown",
+    ]
+    if let topScore { props["top_score"] = (topScore * 100).rounded() / 100 }
+    #if DEBUG
+      // DERIVED from `props`, never re-listed — the #1987 lesson. A projection built independently
+      // of the real payload lets a test assert a property the shipped event does not carry, and it
+      // also hides a leak: an added non-String value would reach PostHog while a string-only hook
+      // dropped it, leaving a privacy test green.
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "quick_add.opened",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("quick_add.opened", properties: props)
+  }
+
+  /// Quick Add ended (#2381). Shape only; the same privacy boundary as `quick_add.opened`.
+  ///
+  /// `candidate_rank` is the POSITION the user accepted, which is what says whether the ranking is
+  /// earning its place: rank 0 is the guess landing, anything else is the user correcting it.
+  public func quickAddResolved(
+    outcome: String, usedSearch: Bool, candidateRank: Int?, targetKind: String?,
+    elapsedMilliseconds: Int
+  ) {
+    var props: [String: Any] = [
+      "outcome": outcome, "used_search": usedSearch, "elapsed_ms": elapsedMilliseconds,
+      "target_kind": targetKind ?? "none",
+    ]
+    if let candidateRank { props["candidate_rank"] = candidateRank }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "quick_add.resolved",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("quick_add.resolved", properties: props)
+  }
+
   /// #1631: a recorded hands-free intent reached a publication decision. Sibling
   /// of `hotkey.pressed`, NOT a replacement — `hotkey.pressed` keeps meaning "a
   /// press was received" and every one of its values is unchanged. This event
