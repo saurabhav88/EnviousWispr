@@ -1612,25 +1612,33 @@ def _line_timestamp(line):
         return None
 
 
-def _merge_sweeps(first, second, inodes_matched):
+def _merge_sweeps(first, second):
     """Combine two passes over the log shelf into the evidence to trust.
 
     Extracted so the decision is testable without staging a real rotation - the
     surviving mutant is what asked for it, since nothing could reach this logic
     while it lived inside a closure.
 
-    SELECTING THE SECOND PASS WAS WRONG, and the reasoning that produced it was
-    wrong too: "bounded at two, a second rotation needs 10 MiB twice". It takes
-    only ONE rotation, occurring during the VALIDATION pass, for that pass to be
-    the incomplete one - and its differing inode map is exactly what selected it.
+    ALWAYS THE UNION, AND THE INODE COMPARISON IS GONE. Three revisions landed
+    here and the first two both tried to CHOOSE a pass:
 
-    The UNION cannot omit. A line present in either pass is real evidence, its
-    timestamp survived the rename, and every caller does a membership or an
-    emptiness test, so a duplicate costs nothing. Choosing between two passes
-    requires knowing which is complete; taking both requires knowing nothing.
+      select the second when inodes differ - wrong, because one rotation during
+      the validation pass makes that pass the incomplete one and its differing
+      inode map is exactly what selects it;
+
+      keep the first when inodes match - also wrong, because inode equality
+      proves only that nothing was RENAMED. The app appends constantly, so a
+      marker written between the two passes is present in the second and absent
+      from the first, with both maps identical. In the per-attempt check that
+      hides a late `Double press` and licenses a destructive retry; in the final
+      check it reports a successful gesture as missing its stop marker.
+
+    Both failures come from the same move: deciding which pass to trust. The
+    union needs no such decision. A line in either pass is real evidence whose
+    timestamp survived any rename, and every caller does a membership or an
+    emptiness test, so a duplicate costs nothing. **Choosing between two passes
+    requires knowing which is complete; taking both requires knowing nothing.**
     """
-    if inodes_matched:
-        return first
     seen, merged = set(), []
     for line in first + second:
         if line not in seen:
@@ -1751,14 +1759,15 @@ def log_lines_since(start, strictly_after=False):
     names = [f"app.{i}.log" for i in range(5, 0, -1)] + ["app.log"]
 
     def sweep():
-        """One pass: (lines, inode per name). The inodes are what make a second
-        pass decidable rather than merely reassuring."""
+        """One pass over the shelf. Returns (lines, unused) - the second element
+        was an inode map, kept only so the call site reads as a pair; comparing
+        inodes was retired because equality proves nothing was renamed and says
+        nothing about what was appended."""
         found, inodes = [], {}
         for name in names:
             path = os.path.join(directory, name)
             try:
                 with open(path, "rb") as fh:
-                    inodes[name] = os.fstat(fh.fileno()).st_ino
                     text = fh.read().decode("utf-8", "replace")
             except OSError:
                 continue
@@ -1788,9 +1797,11 @@ def log_lines_since(start, strictly_after=False):
     # or an emptiness test, so a duplicate costs nothing. Choosing between two
     # passes requires knowing which is complete; taking both requires knowing
     # nothing.
-    first, first_inodes = sweep()
-    second, second_inodes = sweep()
-    return _merge_sweeps(first, second, first_inodes == second_inodes)
+    # Two passes, always merged. The inode maps are no longer compared: equality
+    # proves nothing was renamed, and the app appends between passes regardless.
+    first, _ = sweep()
+    second, _ = sweep()
+    return _merge_sweeps(first, second)
 
 
 def launch_banners_since(start):
@@ -2008,6 +2019,31 @@ def double_press_record_key(attempts=3):
     return False
 
 
+def stop_after_short_hold(hold):
+    """Stop a recording this helper locked but is about to refuse to judge.
+
+    A REFUSAL MUST NOT LEAVE A RECORDING RUNNING. This path is reached only after
+    the double press has locked hands-free, so an early `return` left the app
+    recording indefinitely - capturing ambient audio and poisoning every later run
+    in the session. That is precisely what the Escape Recovery UAT did on
+    2026-08-18, where the founder ended the recording by hand.
+
+    Waits out the remainder of the lock cooldown first: `HotkeyService` ignores a
+    press within 500ms of locking, so a stop posted too early is swallowed and the
+    refusal leaves the same mess it was written to avoid.
+
+    A separate function so a row can reach it. The in-line version survived its
+    mutant - the fourth in this PR to survive for want of reachability rather than
+    for want of a correct guard.
+    """
+    remaining_cooldown = _CHAIN_WINDOW_S * 2 - hold
+    if remaining_cooldown > 0:
+        time.sleep(remaining_cooldown)
+    print("  stopping the locked recording before returning")
+    single_press_record_key()
+    time.sleep(1.0)
+
+
 def single_press_record_key():
     """One press AFTER the lock cooldown — the hands-free stop (#2410).
 
@@ -2157,8 +2193,17 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     # because a future caller passing hold=0.2 would otherwise get a confusing
     # failure in the app rather than a clear one here.
     if hold < _CHAIN_WINDOW_S * 2:
+        # STOP THE RECORDING BEFORE REFUSING. This branch is reached only AFTER
+        # the double press has locked hands-free and the hold has elapsed, so
+        # returning here left the app recording indefinitely - capturing ambient
+        # audio and poisoning every later run in the session. That is the exact
+        # failure the Escape Recovery UAT produced on 2026-08-18, where the
+        # founder ended the recording by hand.
+        # Wait out the lock cooldown first, or the stop press is swallowed and
+        # the refusal leaves the same mess it was written to avoid.
         print(f"BLOCKED: hold={hold:.2f}s is inside the {_CHAIN_WINDOW_S * 2:.1f}s "
               f"lock cooldown; the stop press would be swallowed")
+        stop_after_short_hold(hold)
         end_test()
         return False
     print(f"\n--- SINGLE PRESS (stop) ---")
@@ -2897,14 +2942,20 @@ def _self_test():
     # retry's next press stops the locked recording. Asking what the WINDOW
     # produced answers it without a file check and without a timing assumption.
     for name, args, want in [
-        ("a stable shelf returns the first pass unchanged",
-         (["a", "b"], ["a", "b"], True), ["a", "b"]),
-        # The rotation case: the SECOND pass is the incomplete one, and its
-        # differing inode map is what used to select it.
-        ("a moved shelf returns the UNION, never the later pass",
-         (["a", "b"], ["b", "c"], False), ["a", "b", "c"]),
+        ("identical passes merge to themselves",
+         (["a", "b"], ["a", "b"]), ["a", "b"]),
+        # The rotation case: the SECOND pass is the incomplete one, and a
+        # differing inode map is what used to select exactly it.
+        ("a pass missing a line still contributes the others",
+         (["a", "b"], ["b", "c"]), ["a", "b", "c"]),
+        # The APPEND case, which no inode comparison can see: the app wrote a
+        # marker between the passes, so the second has a line the first does not
+        # and both inode maps are identical. Keeping the first pass here hides a
+        # late marker and licenses a destructive retry.
+        ("a line appended between passes is kept",
+         (["a"], ["a", "late-marker"]), ["a", "late-marker"]),
         ("the union keeps first-seen order and drops duplicates",
-         (["x", "y"], ["y", "x", "z"], False), ["x", "y", "z"]),
+         (["x", "y"], ["y", "x", "z"]), ["x", "y", "z"]),
     ]:
         got_merge = _merge_sweeps(*args)
         if got_merge != want:
@@ -2923,6 +2974,27 @@ def _self_test():
         else:
             print(f"  ok      {name}")
         file_rows += 1
+
+    # A REFUSAL MUST NOT LEAVE A RECORDING RUNNING. Reached only after the
+    # gesture has locked hands-free, so an early return leaves the app recording
+    # indefinitely - the Escape Recovery UAT did exactly this on 2026-08-18 and
+    # the founder ended it by hand.
+    stops = []
+    real_stop = globals()["single_press_record_key"]
+    real_sleep = time.sleep
+    globals()["single_press_record_key"] = lambda: stops.append(1)
+    time.sleep = lambda *_a, **_k: None
+    try:
+        stop_after_short_hold(0.2)
+    finally:
+        globals()["single_press_record_key"] = real_stop
+        time.sleep = real_sleep
+    name = "refusing a short hold still stops the recording it locked"
+    if len(stops) != 1:
+        failures.append(f"{name}: {len(stops)} stop presses, want 1")
+    else:
+        print(f"  ok      {name}")
+    file_rows += 1
 
     name = "with no readable log the gesture is driven ONCE and never retried"
     if len(presses) != 2 or not engaged:
