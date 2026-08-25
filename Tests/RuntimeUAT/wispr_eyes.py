@@ -2190,3 +2190,99 @@ def record_with_fault(scenario_name, **kwargs):
     through `run_scenario` directly."""
     connect()
     return run_scenario(scenario_name, **kwargs)
+
+
+def _self_test():
+    """Control for the single-instance guard - a HARNESS CONTRACT test.
+
+    It protects the INSTRUMENT and says nothing about whether hands-free works
+    (testing-philosophy.md RULE: every-test-declares-which-of-four-things-it-protects).
+
+    NOTHING RUNS THIS AUTOMATICALLY, stated rather than implied because a suite no
+    gate invokes reports nothing. The sibling `--self-test` modules that CI does
+    run (`ptt_binding.py`, `faultInjection.py`) are wired in on the stated grounds
+    that "neither module imports Quartz". This one does, transitively through
+    `ui_helpers`, so wiring it to the required check would rest on an untested
+    assumption about the hosted runner's PyObjC - and a CI addition that fails
+    reddens the required check for everybody. Run it by hand:
+
+        python3 Tests/RuntimeUAT/wispr_eyes.py --self-test
+
+    Every row drives the real function with an injected `ps` table, and the set is
+    two-way: three rows must REFUSE and two must PASS, so a guard that stopped
+    classifying anything fails here rather than looking clean.
+    """
+    import types
+    real_run = subprocess.run
+    me = str(os.getpid())
+
+    def fake(rows):
+        def _run(cmd, *a, **k):
+            if list(cmd[:2]) == ["ps", "-eo"]:
+                return types.SimpleNamespace(stdout="\n".join(rows), returncode=0)
+            return real_run(cmd, *a, **k)
+        return _run
+
+    ONE = ["  111 /Users/x/EW/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"]
+    cases = [
+        ("one dev instance", ONE, 1, True),
+        ("two dev instances", ONE + [
+            "  222 /Users/x/wt/.derivedData/Dev/Build/Products/Dev/EnviousWispr Local.app"
+            "/Contents/MacOS/EnviousWispr"], 2, False),
+        # The Release test host carries the PRODUCTION bundle id and answers the same
+        # global hotkey, and a pattern scoped to `EnviousWispr Local.app` cannot see
+        # it - which is the instance you most want counted.
+        ("dev + Release test host", ONE + [
+            "  333 /Users/x/wt/.derivedData/Release/Build/Products/Release/EnviousWispr.app"
+            "/Contents/MacOS/EnviousWispr"], 2, False),
+        # The probe's own argv carries `EnviousWispr` (a worktree path) AND
+        # `.app/Contents/MacOS/` (it runs under Python.app). A command-line
+        # substring test finds itself; excluding `python3` does not help, because
+        # the interpreter's binary is named `Python`.
+        ("one instance + this probe's own argv", ONE + [
+            f"  {me} /opt/homebrew/Frameworks/Python.framework/Versions/3.13/Resources"
+            f"/Python.app/Contents/MacOS/Python -u /tmp/EnviousWispr/probe.py"], 1, True),
+        # The row above does NOT bind the pid exclusion, and a mutant proved it: a
+        # Python probe's executable is `.../Python`, which the basename test
+        # already rejects, so removing `if pid == me` left the self-test green.
+        # This row is the one that binds it - our own pid wearing an executable
+        # the basename test WOULD accept. Contrived as a process, exact as a
+        # requirement: the two mechanisms answer different questions ("is this an
+        # EnviousWispr app" and "is this me"), and only this row can tell whether
+        # the second one is still there.
+        ("our own pid wearing a matching executable", ONE + [
+            f"  {me} /Users/x/EW/build/EnviousWispr Local.app"
+            f"/Contents/MacOS/EnviousWispr"], 1, True),
+        ("no instance at all", ["  999 /usr/bin/vim"], 0, False),
+    ]
+
+    failures = []
+    for name, rows, want_n, want_pass in cases:
+        subprocess.run = fake(rows)
+        try:
+            n = len(running_enviouswispr_instances())
+            got_pass = _require_single_instance("self-test") is not None
+        finally:
+            subprocess.run = real_run
+        if n != want_n or got_pass != want_pass:
+            failures.append(f"{name}: count={n} (want {want_n}), "
+                            f"guard={'PASS' if got_pass else 'REFUSED'} "
+                            f"(want {'PASS' if want_pass else 'REFUSED'})")
+        else:
+            print(f"  ok      {name}")
+
+    if failures:
+        for f in failures:
+            print(f"  FAIL    {f}")
+        print(f"\nwispr_eyes self-test: {len(failures)} of {len(cases)} FAILED")
+        return 1
+    print(f"\nwispr_eyes self-test: {len(cases)}/{len(cases)} passed")
+    return 0
+
+
+if __name__ == "__main__":
+    if "--self-test" in sys.argv:
+        sys.exit(_self_test())
+    print("wispr_eyes is a library. Run `--self-test` for the harness control, "
+          "or import it from a REPL/script for UAT.")
+    sys.exit(2)
