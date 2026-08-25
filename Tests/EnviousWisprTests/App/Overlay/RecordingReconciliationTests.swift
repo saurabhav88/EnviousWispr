@@ -402,4 +402,93 @@ struct RecordingReconciliationTests {
     }
     #expect(queue.pending.isEmpty, "the second reconciliation never converged")
   }
+
+  // MARK: - The receipt names what the slot holds
+
+  /// **A discarded recording must not be handed the winner's receipt**
+  /// (#2404 cloud review, P2).
+  ///
+  /// `admit` refuses to return the incumbent's receipt for a stated reason: a
+  /// caller holding a receipt calls `isCurrent` about it and dismisses it, so
+  /// naming somebody else's pill lets one presenter dismiss another's. The
+  /// recording arm was written as an exception to that guard, justified by a
+  /// same-id MORPH keeping the identity it was created with. That is true of a
+  /// morph and false of a recording that never committed — and the discard staged
+  /// by the rest of this suite is exactly such a recording.
+  ///
+  /// The assertion is on WHICH pill the receipt names. A receipt naming the
+  /// recording would be correct; the defect is a receipt naming the terminal
+  /// notice that won the slot, which the recording caller can then dismiss.
+  @Test("a discarded recording is not handed the winner's receipt")
+  func discardedRecordingDoesNotInheritTheWinnersReceipt() throws {
+    let queue = Queue()
+    var director: OverlayDirector?
+    var winnerFired = false
+    var winnerReceipt: PillReceipt?
+
+    let d = Self.makeDirector(
+      queue: queue,
+      bridge: { _ in },
+      onCapabilityRead: {
+        guard let director, !winnerFired else { return }
+        winnerFired = true
+        winnerReceipt = director.present(.error(reason: .asrFailed))
+      })
+    director = d
+
+    var results: [PillPresentationResult] = []
+    let recordingReceipt = d.present(
+      .recording(
+        RecordingPillInput(
+          audioLevel: 0, audioLevelProvider: { 0 },
+          recordingElapsedProvider: { nil }, isLocked: false)),
+      onResult: { results.append($0) })
+
+    // **The fixture asserts it reached its subject before the claim is read.**
+    // A recording that quietly committed would leave a recording pill current,
+    // and every assertion below would then be about the wrong scenario.
+    #expect(winnerFired, "the reentrant winner never fired, so nothing was discarded")
+    // A terminal notice renders as `.notice`; a committed recording would render
+    // as `.recording`. This is the line that separates "the recording was
+    // discarded" from "the recording quietly won", and every claim below is
+    // about the wrong scenario without it.
+    guard case .notice? = d.renderModel.presentation?.content else {
+      Issue.record(
+        "the winner did not take the slot, so the recording was never discarded: \(String(describing: d.renderModel.presentation?.content))")
+      return
+    }
+    let winner = try #require(winnerReceipt, "the winner was itself refused, so it owns no receipt to inherit")
+    #expect(
+      d.renderModel.presentation?.id == winner.presentationID,
+      "the pill on screen is not the winner, so this fixture is staging something else")
+
+    #expect(
+      recordingReceipt == nil,
+      "the discarded recording was handed a receipt naming \(String(describing: recordingReceipt?.presentationID))")
+    #expect(results == [.notPresented], "the discarded recording was told it was presented")
+  }
+
+  /// The paired accepted case, in the same rig with the winner disarmed. Without
+  /// it, a director that returned nil for every recording receipt would satisfy
+  /// the case above.
+  @Test("an accepted recording still receives its own receipt")
+  func acceptedRecordingStillReceivesItsOwnReceipt() throws {
+    let queue = Queue()
+    let d = Self.makeDirector(queue: queue, bridge: { _ in }, onCapabilityRead: {})
+
+    var results: [PillPresentationResult] = []
+    let receipt = try #require(
+      d.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0, audioLevelProvider: { 0 },
+            recordingElapsedProvider: { nil }, isLocked: false)),
+        onResult: { results.append($0) }))
+
+    guard case .recording? = d.renderModel.presentation?.content else {
+      Issue.record("no recording pill reached the screen, so the receipt names something else")
+      return
+    }
+    #expect(results == [.presented(receipt)], "an accepted recording was not reported presented")
+  }
 }

@@ -1389,8 +1389,25 @@ extension OverlayDirector: OverlayPresenting {
     // Recording is the exception and it is not a refusal: a recording morph
     // keeps the identity it was created with, so the incumbent id IS the id this
     // request now owns.
+    //
+    // **BUT THE EXCEPTION IS ABOUT A MORPH, AND THE ID ALONE CANNOT TELL A MORPH
+    // FROM A REQUEST THAT NEVER COMMITTED.** Three recording paths reach here
+    // having installed nothing: a refusal because a feature holds the slot, a
+    // discard because a newer event won between PREPARE and COMMIT, and the
+    // catalog returning no definition. On all three the occupant is somebody
+    // else's pill, so an unconditional receipt hands the recording caller an
+    // error or a Bluetooth card to call `isCurrent` about and dismiss — which is
+    // the exact harm the paragraph above describes, arriving through the one
+    // branch written to skip it.
+    //
+    // Ask what the slot HOLDS rather than which request asked. A morph and a
+    // fresh commit both leave a recording current; nothing that failed to commit
+    // does.
     guard let current = reducer.state.current else { return nil }
-    if case .recording = request { return PillReceipt(presentationID: current.id) }
+    if case .recording = request {
+      guard case .recording = current.content else { return nil }
+      return PillReceipt(presentationID: current.id)
+    }
     guard current.id != incumbentID else { return nil }
     return PillReceipt(presentationID: current.id)
   }
