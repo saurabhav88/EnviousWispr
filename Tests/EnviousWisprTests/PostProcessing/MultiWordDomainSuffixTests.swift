@@ -85,6 +85,23 @@ struct MultiWordDomainSuffixTests {
     #expect(replacements.isEmpty, "nothing should have been replaced")
   }
 
+  /// An already-correct span must be RESERVED, not merely skipped (#2406 r2).
+  ///
+  /// `continue` only tried a shorter span, and the outer loop then advanced one
+  /// token — back INSIDE the protected text — where a shorter overlapping alias
+  /// rewrote it. A matched span collapses to one token so `i += 1` steps past it;
+  /// an already-correct span keeps all N.
+  @Test("an already-correct span is not rewritten by a shorter overlapping alias")
+  func alreadyCorrectSpanIsReservedFromOverlappingAliases() {
+    let full = CustomWord(canonical: "Alpha Beta Gamma", aliases: ["alpha beta gamma"])
+    let overlapping = CustomWord(canonical: "Wrong", aliases: ["beta gamma"])
+    let (result, _) = corrector.correct(
+      "see Alpha Beta Gamma.com now", against: [full, overlapping])
+    #expect(
+      result == "see Alpha Beta Gamma.com now",
+      "the whole already-correct span must be reserved; got: \(result)")
+  }
+
   /// A canonical that already specifies its own domain does NOT get the dictated
   /// suffix reattached — otherwise the user sees it twice. Same rule the
   /// single-word path applies.

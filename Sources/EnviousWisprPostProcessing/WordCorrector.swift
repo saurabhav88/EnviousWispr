@@ -770,6 +770,15 @@ public struct WordCorrector: Sendable {
       var i = 0
       while i < tokens.count {
         var matched = false
+        // #2406 review r2: how far to advance when a span is left ALONE.
+        //
+        // A MATCHED span collapses to one token, so `i += 1` steps past it. An
+        // ALREADY-CORRECT span does not — it keeps its N tokens — so advancing by
+        // one lands back INSIDE text just declared protected, where a shorter
+        // overlapping alias can rewrite it. `Alpha Beta Gamma.com` is correct as a
+        // three-token span, and a `beta gamma` alias then rewrote it to
+        // `Alpha Wrong.com`. Reserve the whole span instead.
+        var reservedSpan: Int?
 
         for span in stride(from: min(maxSpan, tokens.count - i), through: 2, by: -1) {
           let slice = tokens[i..<(i + span)]
@@ -798,7 +807,7 @@ public struct WordCorrector: Sendable {
 
         // Pass 2: fuzzy multi-word fallback (only if exact missed for all spans)
         if !matched {
-          for span in stride(from: min(maxSpan, tokens.count - i), through: 2, by: -1) {
+          spanLoop: for span in stride(from: min(maxSpan, tokens.count - i), through: 2, by: -1) {
             let slice = tokens[i..<(i + span)]
             let phrase = slice.map { stripPunctuation($0).lowercased() }.joined(separator: " ")
             let rawPhrase = slice.map { stripPunctuation($0) }.joined(separator: " ")
@@ -858,9 +867,13 @@ public struct WordCorrector: Sendable {
               let winner: (candidate: MultiWordFuzzyCandidate, peeled: Bool)
               switch (unpeeledOutcome, peeledOutcome) {
               case (.alreadyCorrect, _), (_, .alreadyCorrect):
-                // Already right as dictated. Leave the span alone rather than
-                // letting the other attempt replace correct text.
-                continue
+                // Already right as dictated. RESERVE the span — not `continue`,
+                // which only tries a shorter one and then lets the outer loop walk
+                // back into it.
+                reservedSpan = span
+                // Labelled: a bare `break` inside a `switch` exits the SWITCH, falling
+                // through to code that reads an uninitialised `winner`.
+                break spanLoop
               case (.ambiguous, _), (_, .ambiguous):
                 // An ambiguous attempt is NOT "found nothing": letting the other
                 // attempt decide a span this one already judged uncertain is the
@@ -911,7 +924,7 @@ public struct WordCorrector: Sendable {
           }
         }
 
-        i += 1
+        i += reservedSpan ?? 1
       }
     }
 
