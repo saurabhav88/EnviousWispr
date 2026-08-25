@@ -772,6 +772,19 @@ public struct WordCorrector: Sendable {
       }
     }
 
+    // Token ranges the multi-word passes declared ALREADY CORRECT (#2406 r7).
+    //
+    // Reserving a span stopped the multi-word scan walking back into it, and
+    // stopped there: Passes 3-5 map over every token independently and knew
+    // nothing about it, so a single-word alias could rewrite one token of a span
+    // this pass had just certified. Protection that ends at the pass boundary is
+    // not protection — the user sees the same corruption, one pass later.
+    //
+    // Recorded in FINAL array coordinates and safe to do so: a reserved span is
+    // never replaced, so it keeps its N tokens, and every later iteration acts
+    // only at positions at or beyond its end.
+    var reservedTokenRanges: [Range<Int>] = []
+
     // Pass 1 + 2: multi-word (exact then fuzzy)
     if !multiAliasMap.isEmpty {
       let maxSpan = multiAliasMap.keys.reduce(0) { max($0, $1.components(separatedBy: " ").count) }
@@ -827,12 +840,22 @@ public struct WordCorrector: Sendable {
           // slot, so its absence can only under-match, never override a
           // higher-authority answer — and adding it would mean giving Pass 2 a
           // pack pool, which is a larger change than this defect requires.
-          if let canonical = multiAliasMap[phrase], rawPhrase != canonical,
-            !Self.nonPackPeeledExactExists(
+          //
+          // DEFERRING MUST END THE EXACT SCAN FOR THIS POSITION, not fall to a
+          // SHORTER span (#2406 r7). Folded into the `if` condition, a deferral
+          // was indistinguishable from a miss, so Pass 1 simply tried span-1 —
+          // where a SHORTER pack alias at the same position could match and win,
+          // reinstating the inversion this deferral exists to prevent, one span
+          // down. Same shape as r3 one pass over: `continue` only ever tries a
+          // shorter span, and the protection has to stop the scan instead.
+          if let canonical = multiAliasMap[phrase], rawPhrase != canonical {
+            if Self.nonPackPeeledExactExists(
               slice: slice, nonPackMultiAliasMap: nonPackMultiAliasMap,
               isPackMatch: nonPackMultiAliasMap[phrase] == nil,
               stripPunctuation: stripPunctuation)
-          {
+            {
+              break  // hand this position to Pass 2, which owns the peeled exact
+            }
             let (firstPrefix, _, _) = splitPunctuation(tokens[i])
             let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
             tokens.replaceSubrange(i..<(i + span), with: [firstPrefix + canonical + lastSuffix])
@@ -1023,12 +1046,18 @@ public struct WordCorrector: Sendable {
           }
         }
 
+        if let reservedSpan { reservedTokenRanges.append(i..<(i + reservedSpan)) }
         i += reservedSpan ?? 1
       }
     }
 
     // Passes 3-5: single-word (per token)
-    let corrected = tokens.map { token -> String in
+    let corrected = tokens.enumerated().map { index, token -> String in
+      // A span the multi-word passes certified as already correct is not offered
+      // to the single-word passes at all (#2406 r7). Returning the token
+      // untouched is the whole mechanism: there is no correction to make to text
+      // that is already what the vocabulary says it should be.
+      if reservedTokenRanges.contains(where: { $0.contains(index) }) { return token }
       let (prefix, core, suffix) = splitPunctuation(token)
       guard !core.isEmpty, core.count >= 2 else { return token }
 

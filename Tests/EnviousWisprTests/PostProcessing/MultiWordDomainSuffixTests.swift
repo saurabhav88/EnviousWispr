@@ -192,6 +192,62 @@ struct MultiWordDomainSuffixTests {
       "an uncontested pack exact must still be applied; got: \(result)")
   }
 
+  /// A reserved span survives into the SINGLE-word passes (#2406 r7).
+  ///
+  /// Reserving the span stopped the multi-word scan walking back into it, and
+  /// stopped there: Passes 3-5 map every token independently and knew nothing
+  /// about the reservation, so a single-word alias could rewrite one token of a
+  /// span the multi-word passes had just certified as already correct.
+  ///
+  /// Protection that ends at a pass boundary is not protection — the user sees
+  /// the same corruption, one pass later.
+  @Test("an already-correct span is not rewritten by a single-word alias either")
+  func reservedSpanSurvivesIntoSingleWordPasses() {
+    let full = CustomWord(canonical: "Alpha Beta Gamma", aliases: ["alpha beta gamma"])
+    let singleWord = CustomWord(canonical: "Wrong", aliases: ["gamma"])
+    let (result, _) = corrector.correct(
+      "see Alpha Beta Gamma.com now", against: [full, singleWord])
+    #expect(
+      result == "see Alpha Beta Gamma.com now",
+      "a reserved span must be invisible to the single-word passes; got: \(result)")
+  }
+
+  /// The other direction: a single-word alias OUTSIDE any reserved span must
+  /// still apply. Alone, the case above is satisfiable by an implementation that
+  /// disabled the single-word passes entirely.
+  @Test("a single-word alias outside a reserved span still applies")
+  func singleWordAliasOutsideReservedSpanStillApplies() {
+    let full = CustomWord(canonical: "Alpha Beta Gamma", aliases: ["alpha beta gamma"])
+    let elsewhere = CustomWord(canonical: "Later", aliases: ["now"])
+    let (result, _) = corrector.correct(
+      "see Alpha Beta Gamma.com now", against: [full, elsewhere])
+    #expect(
+      result == "see Alpha Beta Gamma.com Later",
+      "only the reserved span is protected, not the rest of the line; got: \(result)")
+  }
+
+  /// Deferring to Pass 2 must END the exact scan for this position, not fall to
+  /// a SHORTER Pass 1 span (#2406 r7).
+  ///
+  /// Folded into the accept condition, a deferral was indistinguishable from a
+  /// miss, so Pass 1 simply tried the next span down — where a SHORTER pack
+  /// alias at the same position could match and win, reinstating the very
+  /// authority inversion the deferral exists to prevent, one span lower.
+  @Test("deferring a pack span does not let a shorter pack alias win instead")
+  func deferringDoesNotFallToAShorterPackSpan() {
+    let longPack = CustomWord(
+      canonical: "Long Pack", aliases: ["alpha beta gamma.com"], source: .pack)
+    let shortPack = CustomWord(
+      canonical: "Short Pack", aliases: ["alpha beta"], source: .pack)
+    let user = CustomWord(canonical: "User Choice", aliases: ["alpha beta gamma"])
+    let (result, replacements) = corrector.correct(
+      "see alpha beta gamma.com now", against: [longPack, shortPack, user])
+    #expect(
+      result == "see User Choice.com now",
+      "the deferred span belongs to Pass 2, not to a shorter pack alias; got: \(result)")
+    #expect(replacements.first?.sourceID == user.id)
+  }
+
   /// A canonical that already specifies its own domain does NOT get the dictated
   /// suffix reattached — otherwise the user sees it twice. Same rule the
   /// single-word path applies.
