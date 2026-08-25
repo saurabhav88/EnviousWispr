@@ -35,9 +35,7 @@ struct RecordingPollingLifetimeTests {
   private final class ManualCadence {
     private var gate: CheckedContinuation<Void, Never>?
     private var parkWaiter: CheckedContinuation<Void, Never>?
-    private var cancelWaiter: CheckedContinuation<Void, Never>?
     private(set) var parks = 0
-    private(set) var cancelled = false
 
     /// **Which of the two things happened first after `hide()`.**
     ///
@@ -75,26 +73,9 @@ struct RecordingPollingLifetimeTests {
     }
 
     private func releaseOnCancel() {
-      cancelled = true
       finishPostHide(.cancelled)
       gate?.resume()
       gate = nil
-      cancelWaiter?.resume()
-      cancelWaiter = nil
-    }
-
-    /// Suspend until the poll's wait is cancelled.
-    ///
-    /// **Awaited, not read straight after `hide()`.** Releasing the hosting view
-    /// cancels the task, and the cancellation handler hops back to the main actor
-    /// to record it — so the flag is a beat behind the call that causes it, and a
-    /// synchronous read measures the hop rather than the teardown. Still a signal
-    /// from the SUBJECT: nothing here waits on a clock.
-    func awaitCancelled() async {
-      if cancelled { return }
-      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-        cancelWaiter = c
-      }
     }
 
     /// Suspend until the view parks. Resolves immediately if it already has more
@@ -142,9 +123,9 @@ struct RecordingPollingLifetimeTests {
     frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
     visibleFrame: CGRect(x: 0, y: 85, width: 1512, height: 860))
 
-  /// The time limit is a HANG GUARD, not a latency bound: if hiding never
-  /// cancels the poll, `awaitCancelled()` would suspend for ever and wedge the
-  /// lane instead of failing it. No assertion here reads a clock.
+  /// The time limit is a final harness guard, not part of the proof. The row
+  /// resolves from either cancellation or another completed poll, with no
+  /// elapsed-time assertion.
   @Test("a hidden recording pill stops reading its providers", .timeLimit(.minutes(1)))
   func hidingTheHostStopsThePoll() async throws {
     let counts = Counts()
