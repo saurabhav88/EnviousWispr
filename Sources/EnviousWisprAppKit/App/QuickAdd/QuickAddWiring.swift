@@ -47,13 +47,8 @@ final class QuickAddWiring {
         refreshWords: { customWords.refreshFromDiskIfPossible() },
         userWords: { customWords.customWords },
         packTerms: { packManager.enabledPackTerms() },
-        saveWord: { word in
-          // `add` when the word is new to the user library, `update` when it is already there. A
-          // converted pack term is NEW here even though its id is the pack's, which is why the
-          // decision is by membership rather than by `source`.
-          customWords.customWords.contains { $0.id == word.id }
-            ? customWords.update(word)
-            : customWords.add(word)
+        saveWord: { word, spelling in
+          Self.saveAndConfirm(word, carrying: spelling, through: customWords)
         },
         presentNewWordSheet: { _ in },
         emit: QuickAddTelemetryBridge.handler))
@@ -83,13 +78,29 @@ final class QuickAddWiring {
   // MARK: - The two doors
 
   private func beginFromHotkey() {
+    guard notAlreadyOpen() else { return }
     present(coordinator.begin(door: .hotkey))
   }
 
   /// Door B. Separate from the hotkey path only because the Service is HANDED its text.
   func beginFromService(text: String) {
+    guard notAlreadyOpen() else { return }
     present(coordinator.begin(door: .service, selectionOverride: text))
   }
+
+  /// Whether a new capture may start at all.
+  ///
+  /// **Pressing the shortcut again while the panel is up is an ordinary thing to do** — the user is
+  /// not sure it fired — and without this it started a SECOND capture whose frontmost application is
+  /// our own panel. The new read finds no selection, so the word the user actually selected is
+  /// replaced by a refusal, the first `opened` event never resolves, and the funnel gains an open it
+  /// can never close.
+  ///
+  /// Doing nothing is the whole behaviour, and it is correct rather than lazy: the panel dismisses
+  /// itself when it resigns key, so a visible panel is a FOCUSED panel and there is nothing to raise.
+  /// The guard is on both doors because either can be fired while the other's panel is up — naming
+  /// only the one review pointed at would leave the twin.
+  private func notAlreadyOpen() -> Bool { !panelHost.isVisible }
 
   private func present(_ model: QuickAddPanelModel?) {
     guard let model else {
@@ -179,6 +190,36 @@ final class QuickAddWiring {
     if let model = activeModel { coordinator.didCreateNew(from: model) }
     dismiss()
     return nil
+  }
+
+  /// Write a word and PROVE the spelling is on it afterwards.
+  ///
+  /// **A nil return from the words coordinator is not evidence the write happened**, and this is the
+  /// third distinct way that has been true in this feature. `add` returns silently for a duplicate
+  /// canonical and for a deleted-built-in restore; `update` opens
+  /// `guard let index = words.firstIndex(where: { $0.id == word.id }) else { return }`, so a word
+  /// another instance removed while this panel was open is written NOWHERE and reported as saved.
+  /// The panel then closes on a spelling that was never stored.
+  ///
+  /// Every one of those is invisible to the caller and all of them have one observable: is the
+  /// spelling on the word now. So that is what this asks, instead of asking three questions about
+  /// how the write was routed.
+  ///
+  /// `add` when the word is new to the user library, `update` when it is already there. A converted
+  /// pack term is NEW here even though its id is the pack's, which is why the decision is by
+  /// membership rather than by `source`.
+  private static func saveAndConfirm(
+    _ word: CustomWord, carrying spelling: String, through customWords: CustomWordsCoordinator
+  ) -> String? {
+    let existing = customWords.customWords.contains { $0.id == word.id }
+    if let message = existing ? customWords.update(word) : customWords.add(word) { return message }
+
+    let wanted = spelling.trimmingCharacters(in: .whitespacesAndNewlines)
+    let landed = customWords.customWords.contains { stored in
+      stored.canonical.caseInsensitiveCompare(word.canonical) == .orderedSame
+        && stored.aliases.contains { $0.caseInsensitiveCompare(wanted) == .orderedSame }
+    }
+    return landed ? nil : QuickAddPanelCopy.newWordNotSaved
   }
 
   private func dismiss() {

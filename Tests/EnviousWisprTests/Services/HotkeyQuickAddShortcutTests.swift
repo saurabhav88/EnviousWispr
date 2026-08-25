@@ -330,4 +330,53 @@ struct HotkeyQuickAddShortcutTests {
     #expect(sink.presses.last?.trigger == "toggle_hotkey")
     #expect(sink.presses.last?.keyShape == "modifier_only")
   }
+  // MARK: - A chord two roles share (#2381 review r2)
+
+  @Test("Cancel outranks Quick Add on a shared chord, for as long as cancel is armed")
+  func cancelWinsASharedChord() {
+    // `RegisterEventHotKey` REFUSES a duplicate chord, and Quick Add registers at start() and holds
+    // it for the whole session — so with both bound to one chord, cancel arrives second during a
+    // recording, is refused, and the user's cancel key opens the Quick Add panel while the recording
+    // keeps running. The bare-modifier matcher already refused this by checking Quick Add last; the
+    // Carbon path had no answer at all.
+    let shared = ShortcutBinding.keyboard(keyCode: 53, modifiers: [])
+
+    #expect(
+      !HotkeyService.quickAddMayHoldItsChord(
+        isEnabled: true, isSuspended: false, quickAdd: shared, cancel: shared, isCancelArmed: true))
+    // Disarmed, the chord is Quick Add's again. Without this the fix would be "Quick Add never works
+    // if it ever collided", which is a different defect.
+    #expect(
+      HotkeyService.quickAddMayHoldItsChord(
+        isEnabled: true, isSuspended: false, quickAdd: shared, cancel: shared, isCancelArmed: false))
+  }
+
+  @Test("A chord cancel does not share is Quick Add's whether or not a recording is running")
+  func differentChordsDoNotContend() {
+    // The paired accepted case. A rule that refused whenever cancel was armed would pass the test
+    // above and break Quick Add for every user who never rebound anything.
+    let quickAdd = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .option])
+    let cancel = ShortcutBinding.keyboard(keyCode: 53, modifiers: [])
+
+    #expect(
+      HotkeyService.quickAddMayHoldItsChord(
+        isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel, isCancelArmed: true))
+  }
+
+  @Test("A stopped or suspended service holds no Quick Add chord, collision or not")
+  func stoppedOrSuspendedHoldsNothing() {
+    let quickAdd = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .option])
+    let cancel = ShortcutBinding.keyboard(keyCode: 53, modifiers: [])
+
+    #expect(
+      !HotkeyService.quickAddMayHoldItsChord(
+        isEnabled: false, isSuspended: false, quickAdd: quickAdd, cancel: cancel,
+        isCancelArmed: false))
+    // Suspended is the shortcut recorder being open. Holding a chord then is what makes a rebind
+    // capture our own hotkey instead of the user's keypress.
+    #expect(
+      !HotkeyService.quickAddMayHoldItsChord(
+        isEnabled: true, isSuspended: true, quickAdd: quickAdd, cancel: cancel,
+        isCancelArmed: false))
+  }
 }

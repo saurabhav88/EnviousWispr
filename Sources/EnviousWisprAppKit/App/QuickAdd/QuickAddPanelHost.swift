@@ -73,6 +73,13 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   // MARK: - NSWindowDelegate
 
   func windowDidResignKey(_ notification: Notification) {
+    // **A SHEET TAKING KEY IS NOT THE USER CLICKING AWAY, and treating it as one made "Create a new
+    // word" tear down its own editor.** A SwiftUI `.sheet` on this panel is a real attached window;
+    // presenting it makes the sheet key and sends this to the parent, which is still visible — so
+    // the visibility guard below passes and the panel orders itself out, taking the hosting view and
+    // the sheet with it. The route the feature offers for a word you do not have yet ended in an
+    // empty screen.
+    guard panel?.attachedSheet == nil else { return }
     // Clicking away is a dismissal. The panel holds no unsaved state the user could lose — the word
     // is written on Return and not before — so there is nothing to confirm.
     guard panel?.isVisible == true else { return }

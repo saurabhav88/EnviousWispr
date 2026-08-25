@@ -82,8 +82,13 @@ final class QuickAddCoordinator {
     var refreshWords: () -> Bool
     var userWords: () -> [CustomWord]
     var packTerms: () -> [CustomWord]
-    /// Persist a word. Returns nil on success, or a user-facing message.
-    var saveWord: (CustomWord) -> String?
+    /// Persist a word and CONFIRM the spelling is on it afterwards. Returns nil only when both
+    /// happened, or a user-facing message.
+    ///
+    /// The spelling is a separate parameter rather than read off `word.aliases.last`, because the
+    /// postcondition would then depend on the caller having appended last — a fact no signature
+    /// states and one edit could change without anything failing.
+    var saveWord: (CustomWord, String) -> String?
     /// Open the existing edit sheet on a new word carrying the heard spelling as its first alias.
     var presentNewWordSheet: (String) -> Void
     var emit: (QuickAddEvent) -> Void
@@ -217,7 +222,7 @@ final class QuickAddCoordinator {
     var word = candidate.word.ownedByUser()
     word.aliases.append(model.spellingToWrite)
 
-    if let message = environment.saveWord(word) {
+    if let message = environment.saveWord(word, model.spellingToWrite) {
       // `reason` stays a fixed token, never the message: the message is authored for a human and
       // can quote what they selected, which is the one thing telemetry may not carry.
       environment.emit(.failed(stage: "save", reason: "refused"))

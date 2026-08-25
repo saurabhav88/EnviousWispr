@@ -21,6 +21,7 @@ struct QuickAddCoordinatorTests {
   private final class Recorder {
     var events: [QuickAddEvent] = []
     var saved: [CustomWord] = []
+    var savedSpellings: [String] = []
     var sheetsFor: [String] = []
     var refreshCalls = 0
 
@@ -57,9 +58,13 @@ struct QuickAddCoordinatorTests {
       },
       userWords: { userWords },
       packTerms: { packTerms },
-      saveWord: { candidate in
+      saveWord: { candidate, spelling in
         if let saveFailure { return saveFailure }
         recorder.saved.append(candidate)
+        // Recorded so a test can assert the coordinator hands over the SELECTION, never the query.
+        // The postcondition the real one checks lives in the wiring; what is checkable here is that
+        // the spelling it would check is the right string.
+        recorder.savedSpellings.append(spelling)
         return nil
       },
       presentNewWordSheet: { recorder.sheetsFor.append($0) },
@@ -403,4 +408,20 @@ struct QuickAddCoordinatorTests {
     #expect(recorder.outcomes == [.createdNew])
   }
 
+  @Test("The spelling handed to the write path is the SELECTION, never the search query")
+  func theWritePathIsGivenTheSelection() throws {
+    // The write path now takes the spelling as its own parameter so it can prove that spelling
+    // landed. That check is only worth anything if the string it is given is the right one — and the
+    // search field exists precisely to let the user type something else.
+    let (coordinator, recorder) = makeCoordinator(
+      selection: .text("codecs"), userWords: [word("Codex"), word("Kubernetes")])
+    let model = try #require(coordinator.begin(door: .hotkey))
+    model.updateQuery("kub")
+    let target = try #require(model.ranking.candidates.first)
+
+    coordinator.accept(target, from: model)
+
+    #expect(recorder.savedSpellings == ["codecs"])
+    #expect(recorder.saved.first?.aliases.contains("codecs") == true)
+  }
 }

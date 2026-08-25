@@ -323,10 +323,13 @@ public final class HotkeyService {
     guard !isEnabled else { return }
     installCarbonEventHandler()
     registerToggleHotkey()
-    registerQuickAddHotkey()
+    // `isEnabled` is set BEFORE the reconciler, which reads it: the rule it enforces is "not while
+    // stopped or suspended", and a reconciler run against a service that has not yet admitted it is
+    // running would refuse the registration it was called to make.
+    isEnabled = true
+    reconcileQuickAddRegistration()
     installModifierMonitors()
     // Cancel hotkey is NOT registered here — only during recording
-    isEnabled = true
   }
 
   public func stop() {
@@ -370,9 +373,11 @@ public final class HotkeyService {
     registerToggleHotkey()
     // No armed-state snapshot, unlike cancel: Quick Add is armed whenever the service is, so
     // restoring it is unconditional and there is nothing that could outlive its own recording.
-    registerQuickAddHotkey()
-    installModifierMonitors()
+    // WHETHER it may hold its chord is still the reconciler's call, because a recording can be in
+    // flight and cancel may own that chord — `resume()` re-arms cancel two lines below.
     isSuspended = false
+    reconcileQuickAddRegistration()
+    installModifierMonitors()
     if cancelArmedBeforeSuspend { registerCancelHotkey() }
     cancelArmedBeforeSuspend = false
   }
@@ -388,6 +393,11 @@ public final class HotkeyService {
   /// stored, displayed, and inert.
   public func registerCancelHotkey() {
     isCancelArmed = true
+    // Quick Add yields FIRST, before cancel asks Carbon. `RegisterEventHotKey` refuses a duplicate
+    // chord, and Quick Add is registered at `start()` and holds its registration for the whole
+    // session — so with both bound to one chord, cancel arrives second, is refused, and the user's
+    // cancel key opens the Quick Add panel while the recording keeps running.
+    reconcileQuickAddRegistration()
     guard cancelBinding.isCarbonRegistrable else { return }
     guard cancelHotkeyRef == nil else { return }
     cancelHotkeyRef = registerHotkey(
@@ -412,6 +422,10 @@ public final class HotkeyService {
       UnregisterEventHotKey(ref)
       cancelHotkeyRef = nil
     }
+    // Cancel has released the chord, so Quick Add may have it back. Unconditional rather than
+    // guarded on a collision: the reconciler decides, and asking the question here as well would be
+    // the same rule written twice.
+    reconcileQuickAddRegistration()
   }
 
   /// Arm or disarm the cancel hotkey from a single decision (#2087).
@@ -973,6 +987,45 @@ public final class HotkeyService {
   /// Asked through the BINDING, exactly as the toggle and cancel paths ask it — a bare modifier
   /// cannot go to Carbon, and for that shape the already-installed `NSEvent` monitors observe it
   /// instead. Two spellings of that question is how the record and cancel paths drifted apart.
+  /// The ONE place that decides whether Quick Add may hold its Carbon chord.
+  ///
+  /// **A shared chord is a policy question, and the event-tap path already answered it while the
+  /// Carbon path had no answer at all.** `ShortcutMatcher.role(forBareModifierKeyCode:...)` checks
+  /// Quick Add LAST precisely because it is the least severe of the three roles
+  /// (`ShortcutRole`'s declaration order is severity order, and load-bearing). This is the same
+  /// ruling for the other dispatch mechanism: cancel outranks Quick Add on a chord they share, for
+  /// as long as cancel is armed.
+  ///
+  /// Every caller that used to call `registerQuickAddHotkey()` calls this instead, so the rule lives
+  /// in one function rather than being asked again at each site — which is how the three shortcut
+  /// defaults came to disagree in the first place (#1991 blocker 2, reproduced during this build).
+  private func reconcileQuickAddRegistration() {
+    if Self.quickAddMayHoldItsChord(
+      isEnabled: isEnabled, isSuspended: isSuspended,
+      quickAdd: quickAddBinding, cancel: cancelBinding, isCancelArmed: isCancelArmed)
+    {
+      registerQuickAddHotkey()
+    } else {
+      unregisterQuickAddHotkey()
+    }
+  }
+
+  /// The decision itself, pure.
+  ///
+  /// Split out for the same reason `SelectionReader.refusalBeforeReading` is: the surrounding
+  /// function talks to Carbon, and a rule reachable only through `RegisterEventHotKey` is a rule no
+  /// test can state. Every branch here is one a user can produce by rebinding a shortcut.
+  package static func quickAddMayHoldItsChord(
+    isEnabled: Bool, isSuspended: Bool,
+    quickAdd: ShortcutBinding, cancel: ShortcutBinding, isCancelArmed: Bool
+  ) -> Bool {
+    guard isEnabled, !isSuspended else { return false }
+    // Cancel outranks Quick Add on a shared chord, for as long as cancel is armed — the same
+    // severity order `ShortcutRole` declares and the bare-modifier matcher already applies.
+    return !(quickAdd == cancel && isCancelArmed)
+  }
+
+  /// Pure mechanism, no policy: `reconcileQuickAddRegistration` above decides whether to call it.
   private func registerQuickAddHotkey() {
     guard quickAddBinding.isCarbonRegistrable else { return }
     guard quickAddHotkeyRef == nil else { return }
@@ -998,8 +1051,11 @@ public final class HotkeyService {
   /// stored, displayed, and inert.
   public func reapplyQuickAddBinding() {
     unregisterQuickAddHotkey()
+    // The reconciler owns both questions the two guards below used to ask separately — may we
+    // register at all, and may we hold THIS chord. Rebinding Quick Add onto the cancel chord during
+    // a recording is exactly the case a bare `registerQuickAddHotkey()` here would get wrong.
+    reconcileQuickAddRegistration()
     guard isEnabled, !isSuspended else { return }
-    registerQuickAddHotkey()
     installModifierMonitors()
   }
 
