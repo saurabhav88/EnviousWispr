@@ -206,14 +206,9 @@ struct RecordingOverlayPreviewSizingTests {
 
   @Test("the notice banner contributes to the measured height")
   func noticeBannerAddsHeight() throws {
-    // **Two hosted measurements, not one host mutated mid-flight** (#2377 Phase 5
-    // C1). This used to mutate the deleted notice side-channel on a live
-    // `@Observable` and re-lay-out the same host, which was the only way to
-    // change a notice while it arrived by that route. The notice is now part of
-    // the frame the view is BUILT with, so changing it means building another
-    // frame — which is what production does too.
-    //
-    // The claim is unchanged: a notice makes the content taller.
+    // Two hosted measurements, because the notice is part of the frame the view
+    // is BUILT with: changing it means building another frame, which is what
+    // production does too. The claim is that a notice makes the content taller.
     let display = LivePreviewDisplay.text(Self.oneLine)
     let withoutNotice = try measuredHeight(showing: display, inPanelOfHeight: 65)
     let withNotice = try measuredHeight(

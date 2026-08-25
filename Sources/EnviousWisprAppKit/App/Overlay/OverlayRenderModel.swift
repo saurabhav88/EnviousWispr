@@ -26,9 +26,9 @@ final class OverlayRenderModel: ObservableObject {
   /// different moments, which is the defect this whole chunk removes wearing a
   /// different name.
   ///
-  /// Defaults mirror what `clearRecordingProviders` restores, so a recording
-  /// published with nothing staged renders exactly as it did before this
-  /// snapshot existed: a silent meter, no clock, no words, no growth.
+  /// Defaults mirror what `clearRecordingProviders` restores: a recording
+  /// published with nothing staged draws a silent meter, no clock, no words and
+  /// reports no growth.
   private var staged = StagedRecordingInputs()
 
   private struct StagedRecordingInputs {
@@ -77,21 +77,10 @@ final class OverlayRenderModel: ObservableObject {
   /// makes the lock, the notice copy and the providers arrive in the same
   /// transaction as the presentation that owns them.
   ///
-  /// **A dwell survives a SAME-ID publication and dies on any other**, and the
-  /// distinction is the reducer's: three same-id recording morphs — an audio
-  /// tick, a lock change, a notice change — emit `.unchanged` for the expiry,
-  /// which means "the clock keeps running" and arms nothing. Clearing the dwell
-  /// on every publication silently discarded a window the director had armed,
-  /// twenty times a second during a live recording with a timed #1060 banner.
-  ///
-  /// Invisible today, because the only view that reads a dwell is the Escape
-  /// Recovery rail and no recording is one. That is exactly why it is worth
-  /// fixing here rather than when a second countdown appears: the model was
-  /// throwing away state the director owned, and nothing would have said so.
-  ///
-  /// Both ids must EXIST and match. Two nil presentations comparing equal would
-  /// carry a window across an empty slot, which is the stale-countdown defect
-  /// `PresentationID` exists to close.
+  /// A dwell survives only when the incoming and current presentation IDs both
+  /// exist and match. Same-ID recording morphs leave expiry unchanged, so their
+  /// active clock continues. Replacement or dismissal clears it so another
+  /// occupant cannot inherit the countdown.
   func publish(_ presentation: PillDefinition?) {
     let carriedDwell: OverlayDwellWindow?
     if let id = presentation?.id, state.presentation?.id == id {

@@ -168,14 +168,8 @@ struct PillAtomicFrameTests {
     }
   }
 
-  /// **A dwell survives a same-id publication and dies on a replacement.**
-  ///
-  /// Paired deliberately: the surviving half alone is satisfied by a `publish`
-  /// that never clears a dwell at all, which is the stale-countdown defect in the
-  /// other direction. Three same-id recording morphs emit `.unchanged` for the
-  /// expiry — an audio tick, a lock change, a notice change — so a `publish` that
-  /// cleared unconditionally discarded a window the director had armed, twenty
-  /// times a second during a live recording with a timed banner.
+  /// Same-ID `.unchanged` morphs preserve dwell; replacement clears it.
+  /// The paired assertions reject unconditional clearing and unconditional carrying.
   @Test("a dwell survives a same-id publication and dies on a replacement")
   func dwellSurvivesAMorphAndDiesOnAReplacement() throws {
     let model = OverlayRenderModel()

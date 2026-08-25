@@ -811,10 +811,9 @@ final class OverlayDirector {
         model.clearRecordingProviders()
       }
 
-      // **ONE publication, carrying the whole frame** (#2377 Phase 5 C1). This
-      // used to write a presentation and leave the lock, the notice copy and the
-      // providers to reach the root by other routes, which is what let a leaf
-      // evaluate with a new presentation beside an outgoing lock.
+      // ONE publication carries the whole frame: the presentation, the lock, the
+      // resolved notice copy and the providers reach the root together, so no
+      // leaf can be built from a new presentation and an outgoing lock.
       model.publish(plan.presentation)
       // **The announcement travels WITH the render**, so the deferred first
       // presentation announces when it lands and a refused one never does.

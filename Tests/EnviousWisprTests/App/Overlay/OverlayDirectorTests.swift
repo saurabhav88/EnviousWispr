@@ -43,23 +43,9 @@
     /// hand each test its own host instead of registering it here.
     private static nonisolated(unsafe) var hosts: [OverlayWindowHost] = []
 
-    /// Recordings go through `presentRecording`, never `send`, because providers,
-    /// the resolved design and captured position must be installed in the same
-    /// operation that presents the pill. The director asserts on the wrong order,
-    /// so this helper is what keeps the suite expressing the right one.
-    /// A released dictation's closures must not come back on the NEXT pill.
-    ///
-    /// **This is the row with teeth, and asserting an empty frame is not enough**
-    /// (#2377 Phase 5 C1, Codex round 1). Providers travel in the published
-    /// frame, so "no recording frame" says only that nothing is reachable RIGHT
-    /// NOW. The staged closures are what a later publication folds in, so a
-    /// release that emptied the frame and left staging alone would resurrect a
-    /// finished dictation's level and clock behind the next recording — and every
-    /// empty-frame assertion would still pass.
-    ///
-    /// Publishes a bare recording and requires the DEFAULTS. Called from every
-    /// release path — hide, replacement and refusal — because a check applied to
-    /// one of three proves nothing about the other two.
+    /// Publishes a recording after release and requires provider defaults.
+    /// An empty frame alone cannot prove staged closures were cleared, because a
+    /// later recording could publish them again. Used by hide, replacement and refusal.
     @MainActor
     private static func expectReleasedProvidersDoNotReappear(_ model: OverlayRenderModel) {
       let design = RecordingPillDesign.classic
@@ -78,6 +64,10 @@
         "the released dictation's elapsed clock was staged and reappeared on the next pill")
     }
 
+    /// Recordings go through `presentRecording`, never `send`, because providers,
+    /// the resolved design and captured position must be installed in the same
+    /// operation that presents the pill. The director asserts on the wrong order,
+    /// so this helper is what keeps the suite expressing the right one.
     private static func record(
       _ d: OverlayDirector, level: Float = 0.2, preview: Bool = false,
       locked: Bool = false,

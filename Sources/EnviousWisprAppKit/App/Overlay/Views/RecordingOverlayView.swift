@@ -255,13 +255,9 @@ struct RecordingOverlayView: View {
 
   /// Hands-free lock, and the #1060 in-panel notice's already-resolved copy.
   ///
-  /// **Plain immutable inputs, arriving in the same frame as everything else**
-  /// (#2377 Phase 5 C1). These were two `@Observable` side-channels the root
-  /// wrote AFTER publishing the presentation, so this leaf evaluated once with
-  /// the outgoing pill's lock and notice before they caught up. The channels'
-  /// own reason was real and is recorded on `PillRenderState`: they existed so a
-  /// notice could morph a live pill without tearing the panel down, which
-  /// stopped being necessary when #2292 retained the panel.
+  /// Plain immutable inputs, arriving in the same frame as the providers and the
+  /// chrome, so this leaf cannot draw a new presentation beside a previous pill's
+  /// lock or banner.
   ///
   /// `noticeText` is COPY, already resolved by the publisher. This view renders
   /// a string and asks nobody what it should say.

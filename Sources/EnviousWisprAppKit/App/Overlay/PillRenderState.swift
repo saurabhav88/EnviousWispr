@@ -22,18 +22,15 @@ struct PillRenderState {
   /// What the retained root should render, or `nil` for an empty slot.
   let presentation: PillDefinition?
 
-  /// The dwell a countdown is drawing, **already matched to `presentation`**.
+  /// The dwell a countdown is drawing, already matched to `presentation`.
   ///
-  /// The match used to be made in the root (`model.dwellWindow?.id ==
-  /// presentation.id ? … : nil`), which is a policy read in the one place the
-  /// plan says holds no policy. Resolving it at publication means a window left
-  /// by a previous pill cannot reach this frame at all, rather than being
-  /// filtered out by the view that draws it.
+  /// Matched at publication rather than by the view, so a window belonging to a
+  /// previous pill cannot reach this frame at all. The root holds no policy.
   ///
   /// See `OverlayDwellWindow` for why this carries a TIME rather than an
   /// identity: SwiftUI delivers a published change on a later render
-  /// transaction, so a rail that started when the signal ARRIVED would lag the
-  /// timer it draws and be cut off before its end.
+  /// transaction, so a rail keyed to the signal's arrival would lag the timer it
+  /// draws and be cut off before its end.
   let dwell: OverlayDwellWindow?
 
   /// Everything a recording leaf needs, or `nil` when the frame is not a
@@ -85,11 +82,11 @@ struct RecordingFrame {
   /// Hands-free lock, taken from the presentation being published.
   let isLocked: Bool
 
-  /// The #1060 banner's copy, **already resolved**.
+  /// The #1060 banner's copy, already resolved by the publisher.
   ///
-  /// `DictationNarrator.copy(for:)` used to run inside the root. The plan gives
-  /// the root exhaustive routing and no copy, so the sentence is decided here
-  /// and the leaf renders a string it is handed.
+  /// `DictationNarrator` is the one authority for this sentence. It is asked here
+  /// because the root holds exhaustive routing and no copy, and the leaf renders
+  /// a string it is handed.
   let noticeText: String?
 
   /// PULLS, not pushes. A snapshot pushed through the reducer would either lag
