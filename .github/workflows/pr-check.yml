@@ -203,12 +203,20 @@ jobs:
           # "passed" text even for an empty bundle, so a presence-grep would
           # green a run where nothing executed. Require a positive executed
           # count (summed across the Swift Testing per-target run summaries).
-          TESTS_RUN=$(grep -oE "Test run with [0-9]+ test" xcode-test-debug.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
-          if [ "$TESTS_RUN" -lt 1 ]; then
-            echo "::error::Xcode executed 0 tests (empty/misconfigured bundle) — failing the gate"
-            exit 1
-          fi
-          echo "==> Xcode executed $TESTS_RUN tests (debug)"
+          #
+          # #2401: that reasoning is complete about the EMPTY case and is kept
+          # unchanged inside the shared owner. What it cannot see is a TRUNCATED
+          # one — a crashed bundle was measured reporting `** TEST SUCCEEDED **`
+          # at 2,557 of 6,664 tests with exit 0, and a crash prints zero failure
+          # marks, so every signal a reader checks agreed and every one was
+          # wrong. `ew_lane_verdict` keeps the count guard and additionally reads
+          # the named .xcresult, where a crashed case carries a typed `Failed`
+          # result that no amount of test output can forge.
+          . "$GITHUB_WORKSPACE/scripts/lib/lane-verdict.sh"
+          ew_lane_verdict \
+            "xcode-test-debug.log" \
+            "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" \
+            "PR Debug lane"
 
       # #2162: a red `build-debug` was undiagnosable from CI BY CONSTRUCTION, and both halves of that
       # had to be true at once. This lane writes `xcode-test-debug.log` and an `.xcresult` and then
@@ -703,6 +711,22 @@ jobs:
           set -euo pipefail
           scripts/ci/classify-changes.sh --self-test
           scripts/ci/check-pr-check-fetch-depth.sh
+
+      - name: Lane verdict self-test (#2401)
+        run: |
+          set -euo pipefail
+          # The owner that decides whether a test lane counts as passing is
+          # itself only as good as its own suite, and a suite nothing invokes
+          # first fires in someone else's run. It lives HERE, inside the
+          # required aggregator, because that is the gate this owner protects.
+          #
+          # Runs on Linux deliberately: every case either drives the judge
+          # directly on a JSON payload or exercises a shell path that
+          # short-circuits before `xcrun`, so it needs no Xcode. The sibling
+          # scripts/lib suites are NOT wired in yet — a real gap, stated rather
+          # than papered over by adding suites whose macOS assumptions have not
+          # been checked on this runner.
+          bash scripts/lib/lane-verdict-test.sh
 
       - name: Download-link lint (doorway tagging + on-site /#download)
         run: |
