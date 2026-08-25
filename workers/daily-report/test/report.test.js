@@ -1889,6 +1889,43 @@ test("malformed tags, versions and usage rows are refused, never silently absorb
   }
 });
 
+test("resolveReleases: GITHUB_TOKEN is optional, and a blank one is ABSENT not a credential", async () => {
+  // #2411. A token is not needed to READ a public repo - it is what raises the
+  // rate limit from 60 requests an hour per shared IP to 5,000. Inert until the
+  // secret exists, which is the point: installing it is a separate action.
+  const sent = async (env) => {
+    let headers = null;
+    await resolveReleases(env, [usage("2.4.1", 1)], {
+      windowEndExclusive: "2026-07-29",
+      fetchFn: async (_url, init) => {
+        headers = init.headers;
+        return ghResponse(200, [release("v2.4.1", "2026-07-24T00:00:00Z")]);
+      },
+      sleepFn: async () => {},
+    });
+    return headers;
+  };
+
+  const none = await sent({ GITHUB_REPO: "o/r" });
+  assert.equal(none.Authorization, undefined, "no secret means no Authorization header");
+  assert.equal(none["User-Agent"], "EnviousWispr-Daily-Report", "the UA is unconditional");
+
+  const withToken = await sent({ GITHUB_REPO: "o/r", GITHUB_TOKEN: "ghp_example" });
+  assert.equal(withToken.Authorization, "token ghp_example");
+
+  // The rejected twin, and it is the one that would hurt: `Authorization: token `
+  // makes GitHub answer 401, which classifies FATAL and fails the whole run. An
+  // unset secret must never turn into a loud failure by way of an empty string.
+  for (const blank of ["", "   ", "\n"]) {
+    const h = await sent({ GITHUB_REPO: "o/r", GITHUB_TOKEN: blank });
+    assert.equal(h.Authorization, undefined, `a blank token (${JSON.stringify(blank)}) is absent`);
+  }
+  // A token with surrounding whitespace is a real secret someone pasted with a
+  // trailing newline - trimmed, not refused.
+  const padded = await sent({ GITHUB_REPO: "o/r", GITHUB_TOKEN: "  ghp_padded\n" });
+  assert.equal(padded.Authorization, "token ghp_padded");
+});
+
 test("resolveReleases: uses GITHUB_REPO + User-Agent, drops draft/prerelease, newest by published_at", async () => {
   let seenUrl = null;
   let seenUA = null;
@@ -1986,10 +2023,11 @@ test("resolveReleases: bad configuration and malformed release data fail loud, n
   );
 });
 
-test("resolveReleases: rate-limited 403, 429 and 5xx retry to exactly 3 attempts then signal transient", async () => {
+test("resolveReleases: a RETRYABLE failure takes 3 attempts with real backoff between them", async () => {
   // A network-level rejection produces no response to inspect, so without
   // explicit handling it escapes unretried AND unclassified.
   let netAttempts = 0;
+  const netSleeps = [];
   await assert.rejects(
     () =>
       resolveReleases({ GITHUB_REPO: "o/r" }, [], {
@@ -1998,33 +2036,287 @@ test("resolveReleases: rate-limited 403, 429 and 5xx retry to exactly 3 attempts
           netAttempts += 1;
           throw new TypeError("network failure");
         },
-        sleepFn: async () => {},
+        sleepFn: async (ms) => netSleeps.push(ms),
       }),
     (err) => err instanceof ReleaseResolutionError && err.transient === true,
     "network rejection"
   );
   assert.equal(netAttempts, 3, "a network rejection must retry to exactly 3 attempts");
+  // THE DELAYS MUST BE REAL AND GROWING (#2411). They were `0`, which is the
+  // shape of a retry with none of the effect: three requests inside a few
+  // milliseconds is arithmetically one attempt against anything with a recovery
+  // time. Asserting the VALUES, not merely that sleep was called - a call with 0
+  // is exactly the defect.
+  assert.deepEqual(netSleeps, [500, 1500], "network retries must back off");
 
-  for (const [status, headers] of [
-    [403, { "x-ratelimit-remaining": "0" }],
-    [429, {}],
-    [503, {}],
+  let attempts = 0;
+  const sleeps = [];
+  await assert.rejects(
+    () =>
+      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+        windowEndExclusive: "2026-07-29",
+        fetchFn: async () => {
+          attempts += 1;
+          return ghResponse(503, null, { headers: {} });
+        },
+        sleepFn: async (ms) => sleeps.push(ms),
+      }),
+    (err) => err instanceof ReleaseResolutionError && err.transient === true,
+    "status 503"
+  );
+  assert.equal(attempts, 3, "a 5xx must make exactly 3 attempts");
+  assert.deepEqual(sleeps, [500, 1500], "5xx retries must back off");
+});
+
+test("a rate limit's 500 body says WHY, and never claims a retry loop that did not run", async () => {
+  // #2415 review r1. The section prefix used to read "exhausted its retries",
+  // true while every temporary failure was retried three times - and false the
+  // moment a rate limit started failing after ONE attempt, which is what this
+  // same change did. The body a human reads is the only place that shows.
+  const mock = mockPostHog({ github: 429 });
+  try {
+    const res = await trigger("&date=2026-07-17");
+    assert.equal(res.status, 500);
+    const body = await res.text();
+    assert.match(body, /rate-limited/, "the body names the mechanism");
+    assert.doesNotMatch(body, /exhausted its retries/,
+      "and does not claim a retry loop that never ran");
+    assert.equal(mock.requests.filter((u) => u.startsWith(GITHUB_HOST)).length, 1,
+      "one attempt, because retrying a rate limit cannot help");
+    // Still only the SECTION: a rate limit must not cost the adoption numbers.
+    assert.equal(mock.discordPayloads.length, 1);
+    const [adoption, scorecard] = mock.discordPayloads[0].embeds;
+    assert.match(adoption.description, /Total users:/);
+    assert.match(scorecard.title, /unavailable today/);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("resolveReleases: a SHORT Retry-After is honoured once; a long one is declined out loud", async () => {
+  // #2415 review r2. The primary hourly limit resets at the top of an hour and
+  // no request can wait for it - that is why this change stopped retrying. The
+  // SECONDARY limit is a different animal: it carries `Retry-After`, the value
+  // can be a second, and refusing it threw away a recovery the server offered.
+  const NOW_MS = 1_787_670_000_000;
+  const nowFn = () => NOW_MS;
+  const resetAt = String(Math.floor(NOW_MS / 1000) + 1800);
+
+  // 1. A one-second secondary limit RECOVERS, and the request succeeds.
+  let calls = 0;
+  const sleeps = [];
+  const out = await resolveReleases({ GITHUB_REPO: "o/r" }, [usage("2.4.1", 1)], {
+    windowEndExclusive: "2026-07-29",
+    fetchFn: async () => {
+      calls += 1;
+      if (calls === 1) return ghResponse(429, null, { headers: { "retry-after": "1" } });
+      return ghResponse(200, [release("v2.4.1", "2026-07-24T00:00:00Z")]);
+    },
+    sleepFn: async (ms) => sleeps.push(ms),
+    nowFn,
+  });
+  assert.equal(calls, 2, "the offered wait is taken and the request retried");
+  assert.deepEqual(sleeps, [1000], "it waits exactly what the server asked for");
+  assert.ok(out.releases.length > 0, "and the lookup succeeds");
+
+  // 2. ONCE, not per attempt. A server that keeps answering "wait one second"
+  // would otherwise turn a bounded budget into a multiple of it.
+  let repeat = 0;
+  const repeatSleeps = [];
+  await assert.rejects(
+    () =>
+      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+        windowEndExclusive: "2026-07-29",
+        fetchFn: async () => {
+          repeat += 1;
+          return ghResponse(429, null, { headers: { "retry-after": "1", "x-ratelimit-reset": resetAt } });
+        },
+        sleepFn: async (ms) => repeatSleeps.push(ms),
+        nowFn,
+      }),
+    (err) =>
+      err instanceof ReleaseResolutionError &&
+      err.transient === true &&
+      /already waited once on Retry-After/.test(err.message),
+    "a repeated Retry-After is obeyed once"
+  );
+  assert.equal(repeat, 2, "two requests: the original and the one honoured wait");
+  assert.deepEqual(repeatSleeps, [1000]);
+
+  // 3. A wait longer than the budget is DECLINED, and the message says so.
+  // "GitHub said 900 seconds" and "GitHub did not say" send a reader to
+  // different places, so they must not collapse into one sentence.
+  let longCalls = 0;
+  await assert.rejects(
+    () =>
+      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+        windowEndExclusive: "2026-07-29",
+        fetchFn: async () => {
+          longCalls += 1;
+          return ghResponse(429, null, { headers: { "retry-after": "900", "x-ratelimit-reset": resetAt } });
+        },
+        sleepFn: async () => {},
+        nowFn,
+      }),
+    (err) =>
+      err instanceof ReleaseResolutionError &&
+      /Retry-After 900s exceeds the 2s budget/.test(err.message),
+    "a long Retry-After is named, not silently ignored"
+  );
+  assert.equal(longCalls, 1, "and it is not waited on");
+
+  // 4. `Retry-After` also has an HTTP-date form. GitHub sends seconds here, and
+  // a date we half-parsed would be a guess wearing a measurement's clothes - so
+  // it reads as no usable wait rather than as a number.
+  let dateCalls = 0;
+  await assert.rejects(
+    () =>
+      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+        windowEndExclusive: "2026-07-29",
+        fetchFn: async () => {
+          dateCalls += 1;
+          return ghResponse(429, null, {
+            headers: { "retry-after": "Wed, 21 Oct 2026 07:28:00 GMT", "x-ratelimit-reset": resetAt },
+          });
+        },
+        sleepFn: async () => {},
+        nowFn,
+      }),
+    (err) => err instanceof ReleaseResolutionError && err.transient === true,
+    "an HTTP-date Retry-After is not parsed as a number"
+  );
+  assert.equal(dateCalls, 1, "an unusable Retry-After is not waited on");
+
+  // 5. A FRACTIONAL value, and this row exists because a mutant found that
+  // nothing else needed the digit check: an HTTP-date already dies at
+  // `Number.isSafeInteger`, so dropping the regex changed nothing observable
+  // there - two mechanisms covering one outcome. `1.5` is the input where the
+  // regex does unique work: without it, `Number("1.5") * 1000` is a safe integer
+  // and a fractional header would be honoured as a real wait.
+  let fracCalls = 0;
+  await assert.rejects(
+    () =>
+      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+        windowEndExclusive: "2026-07-29",
+        fetchFn: async () => {
+          fracCalls += 1;
+          return ghResponse(429, null, {
+            headers: { "retry-after": "1.5", "x-ratelimit-reset": resetAt },
+          });
+        },
+        sleepFn: async () => {},
+        nowFn,
+      }),
+    (err) => err instanceof ReleaseResolutionError && err.transient === true,
+    "a fractional Retry-After is not a wait we honour"
+  );
+  assert.equal(fracCalls, 1, "a fractional Retry-After is not waited on");
+
+  // 6. A SECONDARY LIMIT CAN ARRIVE AS 403 WITH `x-ratelimit-remaining` NONZERO
+  // (#2415 review r3). Keying only on that header called it FATAL - and fatal
+  // means `wholeRun`, so the founder loses the ENTIRE report over a condition
+  // that resolves in seconds. Strictly worse than the defect this PR started on.
+  let secCalls = 0;
+  const secSleeps = [];
+  const secOut = await resolveReleases({ GITHUB_REPO: "o/r" }, [usage("2.4.1", 1)], {
+    windowEndExclusive: "2026-07-29",
+    fetchFn: async () => {
+      secCalls += 1;
+      if (secCalls === 1) {
+        return ghResponse(403, null, {
+          headers: { "retry-after": "1", "x-ratelimit-remaining": "57" },
+        });
+      }
+      return ghResponse(200, [release("v2.4.1", "2026-07-24T00:00:00Z")]);
+    },
+    sleepFn: async (ms) => secSleeps.push(ms),
+    nowFn,
+  });
+  assert.equal(secCalls, 2, "a 403 carrying Retry-After is a rate limit, and recovers");
+  assert.deepEqual(secSleeps, [1000]);
+  assert.ok(secOut.releases.length > 0);
+
+  // 7. `Retry-After: 0` is a VALID delta-seconds value meaning "retry now"
+  // (#2415 review r4). A `> 0` test rejected it and threw away the cheapest
+  // recovery there is - no wait at all - reporting the section unavailable
+  // instead. The row asserts the retry happens AND that the wait is zero, since
+  // "recovered" alone would also be true of a version that slept a default.
+  let zeroCalls = 0;
+  const zeroSleeps = [];
+  const zeroOut = await resolveReleases({ GITHUB_REPO: "o/r" }, [usage("2.4.1", 1)], {
+    windowEndExclusive: "2026-07-29",
+    fetchFn: async () => {
+      zeroCalls += 1;
+      if (zeroCalls === 1) return ghResponse(429, null, { headers: { "retry-after": "0" } });
+      return ghResponse(200, [release("v2.4.1", "2026-07-24T00:00:00Z")]);
+    },
+    sleepFn: async (ms) => zeroSleeps.push(ms),
+    nowFn,
+  });
+  assert.equal(zeroCalls, 2, "Retry-After: 0 is honoured, not discarded");
+  assert.deepEqual(zeroSleeps, [0], "and it waits for exactly no time");
+  assert.ok(zeroOut.releases.length > 0);
+});
+
+test("resolveReleases: a RATE LIMIT is temporary but NOT retried, and says when it resets", async () => {
+  // #2411. This used to retry three times like any other transient status. The
+  // window resets at the top of an hour and a request cannot wait that long, so
+  // the two extra attempts only spend more of an already-exhausted budget and
+  // fail anyway. It stays TEMPORARY - the section degrades, the run survives -
+  // and only the retry is dropped.
+  const NOW_MS = 1_787_670_000_000;
+  const nowFn = () => NOW_MS;
+  const resetAt = String(Math.floor(NOW_MS / 1000) + 1800);
+
+  for (const [label, status, headers] of [
+    ["primary limit", 403, { "x-ratelimit-remaining": "0", "x-ratelimit-reset": resetAt }],
+    ["secondary limit", 429, { "x-ratelimit-reset": resetAt }],
   ]) {
     let attempts = 0;
+    const sleeps = [];
     await assert.rejects(
       () =>
         resolveReleases({ GITHUB_REPO: "o/r" }, [], {
           windowEndExclusive: "2026-07-29",
-        fetchFn: async () => {
+          fetchFn: async () => {
             attempts += 1;
             return ghResponse(status, null, { headers });
           },
-          sleepFn: async () => {},
+          sleepFn: async (ms) => sleeps.push(ms),
+          nowFn,
         }),
-      (err) => err instanceof ReleaseResolutionError && err.transient === true,
-      `status ${status}`
+      (err) =>
+        err instanceof ReleaseResolutionError &&
+        err.transient === true &&
+        /rate-limited/.test(err.message) &&
+        /resets in 1800s/.test(err.message),
+      label
     );
-    assert.equal(attempts, 3, `status ${status} must make exactly 3 attempts`);
+    assert.equal(attempts, 1, `${label} must not retry`);
+    assert.deepEqual(sleeps, [], `${label} must not sleep`);
+  }
+
+  // A reset we cannot read is reported as unknown, never guessed: the next
+  // reader plans around whatever this says.
+  for (const [label, headers] of [
+    ["absent", { "x-ratelimit-remaining": "0" }],
+    ["not a number", { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "soon" }],
+    ["already past", { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1" }],
+  ]) {
+    await assert.rejects(
+      () =>
+        resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+          windowEndExclusive: "2026-07-29",
+          fetchFn: async () => ghResponse(403, null, { headers }),
+          sleepFn: async () => {},
+          nowFn,
+        }),
+      (err) =>
+        err instanceof ReleaseResolutionError &&
+        err.transient === true &&
+        /reset not reported/.test(err.message),
+      `reset ${label}`
+    );
   }
 });
 
@@ -2033,6 +2325,10 @@ test("resolveReleases: a non-transient 4xx fails loud after ONE attempt", async 
     [404, {}],
     // A forbidden response that is NOT rate-limit exhaustion is a real failure,
     // not a blip - retrying it would report a permission problem as temporary.
+    // THE REJECTED TWIN of the Retry-After widening (#2415 review r3): a 403
+    // WITHOUT that header is still "you may not", not "slow down". GitHub does
+    // not send Retry-After for a permission failure, which is what makes the
+    // header a discriminator rather than a loosening.
     [403, { "x-ratelimit-remaining": "57" }],
   ]) {
     let attempts = 0;
@@ -3462,6 +3758,21 @@ test("exhausted TRANSIENT release resolution loses only the scorecard, and never
   try {
     const res = await trigger("&date=2026-07-17");
     assert.equal(res.status, 500);
+    // THE 500 BODY MUST NAME WHAT FAILED (#2411). It read only "release
+    // resolution exhausted its retries" for five days of failures nobody could
+    // attribute: the worker knew the status, and this boundary replaced it with
+    // a fixed string and put the original in `cause`, where nothing reads it.
+    // The trigger's body is the only channel the reason reaches a human through.
+    const body = await res.text();
+    assert.match(body, /release resolution failed temporarily/,
+      "the classification survives");
+    // The prefix must not claim a MECHANISM. It said "exhausted its retries",
+    // which this same change made false for a rate limit - one attempt, no loop
+    // (#2415 review r1). A label asserting behaviour it does not control drifts
+    // the moment that behaviour changes, and it changed in the same commit.
+    assert.doesNotMatch(body, /exhausted its retries/,
+      "the prefix does not assert a retry loop it does not control");
+    assert.match(body, /HTTP 503/, "and it now carries the status that caused it");
     assert.equal(mock.requests.filter((u) => u.startsWith(GITHUB_HOST)).length, 3,
       "three attempts, then give up");
     assert.equal(mock.discordPayloads.length, 1);

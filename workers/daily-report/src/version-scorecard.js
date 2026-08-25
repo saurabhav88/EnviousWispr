@@ -162,22 +162,151 @@ export function compareVersions(a, b) {
   return a1 - b1 || a2 - b2 || a3 - b3;
 }
 
-/** A 403 is transient ONLY when GitHub says the rate limit is exhausted.
- * Treating every forbidden response as transient would retry a genuine
- * permission or configuration failure three times and then report it as a
- * temporary blip. */
-function isTransientGitHubStatus(res) {
+/** THREE outcomes, because "transient" was hiding two different things (#2411).
+ *
+ * A 403 is temporary ONLY when GitHub says the rate limit is exhausted; treating
+ * every forbidden response as temporary would retry a genuine permission or
+ * configuration failure and then report it as a blip. That part is unchanged.
+ *
+ * What changed is that a rate limit is no longer RETRIED. Its window resets at
+ * the top of an hour and a Worker cannot wait that long, so the two extra
+ * requests spend more of an already-exhausted budget and fail anyway - three
+ * attempts inside a few milliseconds is arithmetically one attempt against
+ * anything with a recovery time. It stays TEMPORARY, so the section still
+ * degrades rather than killing the run; only the retry is dropped.
+ *
+ * Returns "retry" | "rate-limited" | "fatal".
+ */
+function classifyGitHubStatus(res) {
   const status = res.status;
-  if (status === 429 || status >= 500) return true;
-  if (status !== 403) return false;
-  const remaining = res.headers?.get?.("x-ratelimit-remaining");
-  return remaining === "0";
+  if (status >= 500) return "retry";
+  if (status === 429) return "rate-limited";
+  if (status !== 403) return "fatal";
+  // A SECONDARY RATE LIMIT CAN ARRIVE AS 403 WITH `x-ratelimit-remaining`
+  // NONZERO (#2415 review r3). Keying only on that header called it FATAL, which
+  // is the worst outcome available here: fatal means `wholeRun`, so the founder
+  // loses the entire report - not just the scorecard - over a condition that
+  // resolves in seconds, and the `Retry-After` recovery never runs.
+  //
+  // `Retry-After` is the precise discriminator rather than a widening: GitHub
+  // sends it for rate limiting and NOT for a genuine permission failure, so a
+  // 403 carrying it is the server saying "slow down", and a 403 without it is
+  // still "you may not" and still fatal. Presence is what is tested, not
+  // usability - an unparseable value degrades to reported-and-not-retried, never
+  // to killing the run.
+  if (typeof res.headers?.get?.("retry-after") === "string") return "rate-limited";
+  return res.headers?.get?.("x-ratelimit-remaining") === "0" ? "rate-limited" : "fatal";
+}
+
+/** A `Retry-After` we can actually honour, in MILLISECONDS, or null.
+ *
+ * **A SECONDARY RATE LIMIT IS NOT THE SAME ANIMAL AS THE HOURLY ONE (#2415 review
+ * r2).** The primary limit resets at the top of an hour and no request can wait
+ * for it, which is why this change stopped retrying. GitHub's SECONDARY limit is
+ * different: it carries `Retry-After`, and the value can be a second or two - a
+ * wait we can afford, and the only case where a rate limit is recoverable inside
+ * one request. Refusing it threw away a recovery the server had explicitly
+ * offered.
+ *
+ * Two ways this returns null, and they are different situations rather than one:
+ * the header is ABSENT or unparseable, and the wait is LONGER than the budget.
+ * The caller reports which, because "GitHub did not say" and "GitHub said 900
+ * seconds" send a reader to different places.
+ *
+ * Integer seconds only. `Retry-After` also has an HTTP-date form; GitHub sends
+ * seconds here, and a date we half-parsed would be a guess wearing a
+ * measurement's clothes. An unrecognised value is reported as unusable, never
+ * silently treated as absent. */
+function retryAfterMs(res) {
+  const raw = res.headers?.get?.("retry-after");
+  if (typeof raw !== "string" || !/^\d+$/.test(raw.trim())) return null;
+  const ms = Number(raw.trim()) * 1000;
+  // `>= 0`, not `> 0`. **`Retry-After: 0` IS A VALID DELTA-SECONDS VALUE** and it
+  // means "you may retry immediately" (#2415 review r4). Rejecting it threw away
+  // the CHEAPEST recovery available - no wait at all - and reported the section
+  // unavailable instead. The negative branch is unreachable given the `^\d+$`
+  // above and is kept as a floor, not as live logic.
+  if (!Number.isSafeInteger(ms) || ms < 0) return null;
+  return ms;
+}
+
+/** How long until the rate-limit window resets, in SECONDS FROM NOW.
+ *
+ * Deliberately not a formatted instant. The first version returned
+ * `new Date(ms).toISOString()` and the suite's source guardrail refused it -
+ * correctly, because that guard exists to keep `parseGitHubTimestamp` the ONLY
+ * date authority in this file, and a second one would drift. Seconds-from-now
+ * needs no date construction, and it is the more useful number in a log anyway:
+ * an operator reading the failure wants "how long", not a timestamp to subtract.
+ *
+ * `x-ratelimit-reset` is unix SECONDS. Absent, unparseable, or already past
+ * yields null rather than a guess - an invented reset is worse than an unknown
+ * one, because the next reader plans around it. */
+function rateLimitResetInSeconds(res, nowFn = Date.now) {
+  const raw = res.headers?.get?.("x-ratelimit-reset");
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) return null;
+  const resetSec = Number(raw);
+  if (!Number.isSafeInteger(resetSec) || resetSec <= 0) return null;
+  const delta = resetSec - Math.floor(nowFn() / 1000);
+  return delta > 0 ? delta : null;
+}
+
+/** ONE waiting budget for this lookup, and everything that waits derives from it.
+ *
+ * The delays below and the `Retry-After` ceiling started as three separate
+ * numbers I had chosen and nothing had measured (#2415 review r1, my own
+ * question). Reducing them to one leaves one thing to justify: **how long may a
+ * daily report's release lookup block a request somebody is waiting on.** The
+ * ping workflow's `curl` sets no `--max-time` and the job budget is hours, so the
+ * real constraint is that a human reading a failed run should not be waiting on
+ * arithmetic - 2 seconds is beneath notice beside the PostHog, Sentry and Discord
+ * work the same run already does.
+ *
+ * Stated so the next reader can disagree with the number rather than reverse-
+ * engineer it: nothing measured 2000. It is a ceiling chosen to be small.
+ */
+const GITHUB_MAX_WAIT_MS = 2000;
+
+/** Backoff between RETRYABLE attempts. Was `0`, which made the retry loop three
+ * requests inside a few milliseconds - the shape of a retry with none of the
+ * effect. Sums to exactly the budget above. */
+const GITHUB_RETRY_DELAYS_MS = [500, 1500];
+
+/** OPTIONAL authentication, matching what `workers/weekly-digest` already does
+ * (`src/index.js`, its `fetchGitHubDownloads`).
+ *
+ * A token is not needed to READ a public repo - authorization was never the
+ * question. It is what raises the RATE LIMIT: unauthenticated GitHub allows 60
+ * requests an hour PER IP (measured, `x-ratelimit-limit: 60`), and a Cloudflare
+ * Worker's outbound requests leave from a shared egress pool, so that ceiling is
+ * shared with every other tenant on the same address. Our own usage is one
+ * request a day, so nothing about our call rate reaches it.
+ *
+ * `wrangler.toml` claimed this lookup "needs no token and no secret - the same
+ * unauthenticated pattern workers/weekly-digest already uses". The second half
+ * was false: the sibling has had this header since it was written. Corrected
+ * there rather than deleted.
+ *
+ * INERT until the secret exists, which is deliberate. This is the code half of
+ * #2411; installing `GITHUB_TOKEN` is a separate, founder-owned action, and the
+ * diagnostic added in this same change is what will say whether it is needed. */
+function githubHeaders(env) {
+  const headers = { "User-Agent": USER_AGENT, Accept: "application/vnd.github+json" };
+  const token = env?.GITHUB_TOKEN;
+  // A blank or whitespace-only secret is ABSENT, not a credential. Sending
+  // `Authorization: token ` makes GitHub answer 401, which classifies fatal and
+  // would turn a missing secret into a whole-run failure - the loud-but-wrong
+  // direction, from a value nobody meant to set.
+  if (typeof token === "string" && token.trim() !== "") {
+    headers.Authorization = `token ${token.trim()}`;
+  }
+  return headers;
 }
 
 /** Fetches published, non-draft, non-prerelease releases. Newest is decided by
  * `published_at`, never by the API's array order (which is creation order and
  * can disagree after a re-publish). */
-async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep } = {}) {
+async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep, nowFn = Date.now } = {}) {
   // Checked BEFORE any request: configuration is not a blip, and must never
   // consume retries or look transient. Validated as a real owner/repo slug
   // rather than merely truthy - a value like "EnviousWispr" would otherwise
@@ -195,11 +324,15 @@ async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep } 
   }
 
   let lastStatus = null;
+  // ONCE, not per attempt. A server that keeps answering "wait one second" would
+  // otherwise be obeyed for as many attempts as the loop has, turning a bounded
+  // budget into a multiple of it.
+  let honouredRetryAfter = false;
   for (let attempt = 1; attempt <= GITHUB_MAX_ATTEMPTS; attempt += 1) {
     let res;
     try {
       res = await fetchFn(`${GITHUB_API}/repos/${repo}/releases`, {
-        headers: { "User-Agent": USER_AGENT, Accept: "application/vnd.github+json" },
+        headers: githubHeaders(env),
       });
     } catch (_) {
       // A network-level rejection (DNS, reset, abort) never produces a response
@@ -209,7 +342,7 @@ async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep } 
       // original error: it can carry a URL or body.
       lastStatus = "network error";
       if (attempt < GITHUB_MAX_ATTEMPTS) {
-        await sleepFn(0);
+        await sleepFn(GITHUB_RETRY_DELAYS_MS[attempt - 1]);
         continue;
       }
       break;
@@ -289,12 +422,49 @@ async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep } 
       }
     }
 
-    if (!isTransientGitHubStatus(res)) {
+    const disposition = classifyGitHubStatus(res);
+    if (disposition === "fatal") {
       throw new ReleaseResolutionError(`GitHub releases request failed: HTTP ${lastStatus}`, {
         transient: false,
       });
     }
-    if (attempt < GITHUB_MAX_ATTEMPTS) await sleepFn(0);
+    if (disposition === "rate-limited") {
+      // A SHORT `Retry-After` IS A RECOVERY THE SERVER OFFERED, so take it once
+      // (#2415 review r2). Only once, and only inside the budget: this is the
+      // secondary-limit case, where the wait is seconds. The primary hourly limit
+      // carries no such header and still fails immediately, which is the whole
+      // point of not retrying it.
+      const waitMs = retryAfterMs(res);
+      if (waitMs !== null && waitMs <= GITHUB_MAX_WAIT_MS && !honouredRetryAfter) {
+        honouredRetryAfter = true;
+        lastStatus = res.status;
+        await sleepFn(waitMs);
+        continue;
+      }
+      // Reported at once rather than after two more refusals. The reset instant
+      // is the fact that decides what to do about it, so it is in the message
+      // and not only in a header nobody will see.
+      const resetIn = rateLimitResetInSeconds(res, nowFn);
+      // Three facts, each of which sends a reader somewhere different: the
+      // status, when the window reopens, and whether the server offered a wait
+      // we could not afford. A `Retry-After` that was present and too long is
+      // NOT the same situation as one that was absent - the first says GitHub
+      // knows and we declined, the second says nobody knows.
+      const declined =
+        waitMs !== null && waitMs > GITHUB_MAX_WAIT_MS
+          ? `, Retry-After ${waitMs / 1000}s exceeds the ${GITHUB_MAX_WAIT_MS / 1000}s budget`
+          : honouredRetryAfter
+            ? ", already waited once on Retry-After"
+            : "";
+      throw new ReleaseResolutionError(
+        `GitHub releases rate-limited: HTTP ${lastStatus}` +
+          (resetIn === null ? ", reset not reported" : `, resets in ${resetIn}s`) +
+          declined +
+          " (not retried: the window is far longer than a request can wait)",
+        { transient: true }
+      );
+    }
+    if (attempt < GITHUB_MAX_ATTEMPTS) await sleepFn(GITHUB_RETRY_DELAYS_MS[attempt - 1]);
   }
 
   throw new ReleaseResolutionError(
@@ -1508,13 +1678,40 @@ const SCORECARD_QUERIES = [
 ];
 
 /** Classification is by TYPE, never by message text: a substring match on an
- * error message is a contract nobody declared and every reword breaks. */
+ * error message is a contract nobody declared and every reword breaks. That is
+ * unchanged and is why the `instanceof` below is the only thing deciding
+ * severity.
+ *
+ * THE MESSAGE NOW CARRIES THE REASON, WHICH IT DID NOT (#2411). The fixed
+ * strings alone cost five days of failures nobody could attribute: the worker
+ * knew the status - `HTTP 403`, `HTTP 503`, `network error` - and this boundary
+ * replaced it with "release resolution exhausted its retries", putting the
+ * original in `cause` where nothing reads it. The fetch handler returns
+ * `err.message` (index.js), the ping workflow prints that body, and the one fact
+ * that decides whether this is rate limiting, an outage or a shape change was
+ * discarded one line before it would have been printed.
+ *
+ * Safe to print: every message these paths produce is built from a status code,
+ * an attempt count, a reset timestamp, the public repo slug or a release tag.
+ * None carries a credential or a URL, and the workflow masks URLs regardless. */
 function releaseFailure(reason) {
   const transient = reason instanceof ReleaseResolutionError && reason.transient === true;
+  const detail = reason instanceof Error && reason.message ? `: ${reason.message}` : "";
+  // THE PREFIX MUST NOT CLAIM A MECHANISM (#2415 review r1). It read "exhausted
+  // its retries", which was true when every temporary failure was retried three
+  // times - and this same change made a rate limit fail after ONE attempt, so the
+  // label started asserting a retry loop that no longer ran. A fixed string
+  // describing behaviour it does not control is the comment-that-retires-a-check
+  // shape wearing an error message.
+  //
+  // Deriving two prefixes from the cause would be a SECOND classifier keyed on
+  // the message, which the note above rejects. So the prefix names only what
+  // failed and how severe it is; the mechanism lives in `detail`, which comes
+  // from the code that actually performed it.
   return new ScorecardSectionError(
-    transient
-      ? "release resolution exhausted its retries"
-      : "release resolution failed its contract",
+    (transient
+      ? "release resolution failed temporarily"
+      : "release resolution failed its contract") + detail,
     { wholeRun: !transient, cause: reason }
   );
 }

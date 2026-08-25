@@ -9,8 +9,15 @@ compatibility_date = "2026-07-09"
 
 [vars]
 POSTHOG_PROJECT_ID = "354235"
-# Public repo, so the version scorecard's release lookup needs no token and no
-# secret - the same unauthenticated pattern workers/weekly-digest already uses.
+# The version scorecard's release lookup. Public repo, so no token is needed to
+# READ it; a token is what raises the RATE LIMIT, and the lookup sends one when
+# GITHUB_TOKEN is present (#2411).
+#
+# The line this replaces said the lookup needs no secret, "the same
+# unauthenticated pattern workers/weekly-digest already uses". The second half
+# was false - that worker has sent an optional Authorization header since it was
+# written - and the sentence is why nobody looked at the limit for five days of
+# failures.
 GITHUB_REPO = "saurabhav88/EnviousWispr"
 # Sentry section (#1965). Identifiers only, no credential.
 SENTRY_ORG = "envious-labs-llc"
@@ -23,6 +30,13 @@ SENTRY_PROJECT_SLUG = "enviouswispr"
 #   TRIGGER_SECRET            - gates the public `fetch` trigger; the GitHub Action sends it as
 #                               the `x-trigger-secret` header (the workers.dev URL is public, so
 #                               the trigger fails closed without it)
+#   GITHUB_TOKEN              - OPTIONAL (#2411). Absent, the release lookup is
+#     unauthenticated and shares a 60-request-per-hour ceiling with every other
+#     tenant on the Worker's outbound IP; present, the ceiling is 5,000. Read
+#     access to a PUBLIC repo needs no scopes at all, so a fine-grained token
+#     with none is correct here. The lookup degrades to an unavailable scorecard
+#     either way and never fails the run, so this is a reliability setting rather
+#     than a requirement.
 #   SENTRY_AUTH_TOKEN         - reads the Sentry section's aggregates (#1965).
 #     GCP secret `sentry-workers-readonly-token`, scoped to exactly
 #     `event:read` + `org:read`. Install the SAME token on all three Sentry
