@@ -22,6 +22,22 @@ final class PillExpiryClock {
   /// The ONE armed expiry.
   private var armed: OverlayScheduledWork?
 
+  /// Which prepared arm is still allowed to start.
+  ///
+  /// **A start closure that has been superseded must not be able to arm**, and
+  /// nothing about holding one prevents that. The director prepares before it
+  /// renders and starts only from a successful presentation, so a DEFERRED first
+  /// render leaves a start closure outstanding while a second plan runs to
+  /// completion — prepare A, prepare B, start B, then A's deferral fires. Both
+  /// timers would then be live while `armed` names only the later one, which is
+  /// the sole-clock invariant broken by the very mechanism that defers arming to
+  /// keep the dwell honest.
+  ///
+  /// Cleared by a cancel, replaced by the next arm, and consumed on start, so a
+  /// start closure can arm at most once and only while it is still the current
+  /// one.
+  private var pendingArmToken: UUID?
+
   private let schedule: OverlayScheduler
   private let now: () -> Date
   private let publishDwell: (OverlayDwellWindow?) -> Void
@@ -58,6 +74,7 @@ final class PillExpiryClock {
       return {}
 
     case .cancel:
+      pendingArmToken = nil
       armed?.cancel()
       armed = nil
       publishDwell(nil)
@@ -66,8 +83,11 @@ final class PillExpiryClock {
     case .arm(let id, let seconds, let target):
       armed?.cancel()
       armed = nil
+      let token = UUID()
+      pendingArmToken = token
       return { [weak self] in
-        guard let self else { return }
+        guard let self, self.pendingArmToken == token else { return }
+        self.pendingArmToken = nil
         // The picture and the timer start together: this is the instant the
         // dwell begins, and a view drawing a countdown has no other way to know
         // it.

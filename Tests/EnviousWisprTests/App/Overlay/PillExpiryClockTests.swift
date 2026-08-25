@@ -99,6 +99,37 @@ struct PillExpiryClockTests {
     #expect(rig.dispatches.isEmpty, "a cancelled timer still dispatched an expiry")
   }
 
+  /// A start closure that has been superseded must not arm, and starting the live
+  /// one twice must not arm twice.
+  ///
+  /// The sequence is reachable: the director prepares before it renders and starts
+  /// only from a successful presentation, so a DEFERRED first render leaves a
+  /// start closure outstanding while a second plan runs to completion. Without the
+  /// token both timers are live while the clock names only one of them.
+  @Test("a superseded prepared arm cannot start or create a second timer")
+  func supersededPreparedArmCannotStart() throws {
+    let rig = Rig()
+    let first = Self.id()
+    let second = Self.id()
+
+    let staleStart = rig.clock.prepare(
+      .arm(id: first, seconds: 3, target: .presentation),
+      onExpiry: { rig.recordFired($0, $1) })
+    let liveStart = rig.clock.prepare(
+      .arm(id: second, seconds: 3, target: .inPanelNotice),
+      onExpiry: { rig.recordFired($0, $1) })
+
+    staleStart()
+    liveStart()
+    liveStart()
+
+    #expect(rig.scheduled.count == 1, "the clock armed \(rig.scheduled.count) timers")
+    try #require(rig.scheduled.first).fire()
+    #expect(rig.dispatches.count == 1, "firing dispatched \(rig.dispatches.count) expiries")
+    #expect(rig.dispatches.first?.id == second, "a superseded arm's pill was dismissed")
+    #expect(rig.dispatches.first?.target == .inPanelNotice)
+  }
+
   // MARK: - What the live work dispatches
 
   @Test(
