@@ -28,7 +28,11 @@ final class OverlayDirector {
   private var reducer: OverlayReducer
   private let host: any OverlayWindowHosting
   private let model: OverlayRenderModel
-  private let schedule: OverlayScheduler
+
+  /// The ONE dismissal clock. The director owns no timer and no dwell window of
+  /// its own; `PillExpiryClock` owns both, and a second clock has nowhere to
+  /// live.
+  private let expiryClock: PillExpiryClock
 
   /// **Which recording pill the user has chosen, read fresh per recording.**
   ///
@@ -56,11 +60,6 @@ final class OverlayDirector {
   /// a permanent mute wearing coalescing's name — the same shape this whole phase
   /// exists to remove, one layer down.
   private var reconciliationPending = false
-
-  /// The ONE armed expiry. Replacing it cancels whatever was armed, which is
-  /// what makes a stale dismissal structurally impossible rather than merely
-  /// guarded against.
-  private var armedExpiry: OverlayScheduledWork?
 
   /// The ONE active action binding. The shipped panel keeps eight `set*Handler`
   /// closures alive for the app's lifetime whether or not the pill that uses
@@ -307,7 +306,8 @@ final class OverlayDirector {
     self.grantAccessibility = grantAccessibility
     self.position = position
     self.model = model
-    self.schedule = scheduler
+    self.expiryClock = PillExpiryClock(
+      schedule: scheduler, publishDwell: { [weak model] in model?.markDwellStarted($0) })
     self.reducer = OverlayReducer(makeID: makeID)
   }
 
@@ -703,48 +703,14 @@ final class OverlayDirector {
         route(effect)
       }
     }
-    // **A DWELL STARTS WHEN THE PILL IS VISIBLE, NOT WHEN THE PLAN IS APPLIED.**
-    // The shipped panel armed its auto-dismiss INSIDE the deferred creation,
-    // after `showPanel`; arming here instead spends part of a transient pill's
-    // dwell before anything is on screen. With the first render deferred a run
-    // loop that is small, and it is not nothing: Escape Recovery draws a
-    // COUNTDOWN RAIL from the same dwell, so a clock that starts early finishes
-    // early and the rail disagrees with the pill it is drawn on.
-    //
-    // **Cancelling stays immediate.** A cancel is about the OUTGOING pill, which
-    // is already gone; making it wait for the incoming one to land would leave a
-    // dead timer live across the gap — the stale-dismissal defect `PresentationID`
-    // exists to close.
-    let armExpiry: () -> Void
-    switch plan.expiryCommand {
-    case .unchanged:
-      armExpiry = {}
-    case .cancel:
-      armedExpiry?.cancel()
-      armedExpiry = nil
-      model.markDwellStarted(nil)
-      armExpiry = {}
-    case .arm(let id, let seconds, let target):
-      armedExpiry?.cancel()
-      armedExpiry = nil
-      armExpiry = { [weak self] in
-        guard let self else { return }
-        // The picture and the timer start together. Published here rather than
-        // inside `publish` because THIS is the instant the dwell begins, and a
-        // view drawing a countdown has no other way to know it. It replaces only
-        // the dwell field of the frame already on screen.
-        self.model.markDwellStarted(
-          OverlayDwellWindow(id: id, startedAt: Date(), seconds: seconds))
-        self.armedExpiry = self.schedule.after(seconds) { [weak self] in
-          // The id is captured, never re-read: a timer fires for the presentation
-          // it was armed for or it is dropped. The reducer's own identity gate
-          // makes a late arrival inert. The TARGET says what ends — the whole
-          // presentation, or only the #1060 banner inside a live recording.
-          switch target {
-          case .presentation: self?.handle(.expiryFired(id), binding: .none)
-          case .inPanelNotice: self?.handle(.inPanelNoticeExpiryFired(id), binding: .none)
-          }
-        }
+    // The expiry rules — a dwell starts when the pill is VISIBLE, a cancel takes
+    // effect immediately, one armed timer at a time — are owned by
+    // `PillExpiryClock`. The director decides WHAT the plan is and hands the
+    // command over; it holds no timer of its own.
+    let armExpiry = expiryClock.prepare(plan.expiryCommand) { [weak self] id, target in
+      switch target {
+      case .presentation: self?.handle(.expiryFired(id), binding: .none)
+      case .inPanelNotice: self?.handle(.inPanelNoticeExpiryFired(id), binding: .none)
       }
     }
 
@@ -1126,60 +1092,6 @@ final class OverlayDirector {
   // assert the effect instead: a binding that outlives its pill shows up as a
   // callback firing for a pill nobody can see, and a payload that outlives its
   // offer shows up as Undo restoring a finished dictation.
-}
-
-/// A piece of scheduled work that can be cancelled.
-///
-/// A seam rather than a raw `Task` or `DispatchWorkItem` so a test can fire the
-/// expiry deterministically. `testing-philosophy.md`
-/// RULE: never-guess-when-the-subject-is-finished forbids waiting on a clock;
-/// with this, a test does not wait at all — it fires the timer itself.
-@MainActor
-final class OverlayScheduledWork {
-  private var cancelled = false
-  private let body: () -> Void
-
-  init(body: @escaping () -> Void) { self.body = body }
-
-  func cancel() { cancelled = true }
-  var isCancelled: Bool { cancelled }
-
-  /// Run the work now, unless it has been cancelled.
-  ///
-  /// **Not a test hatch.** `OverlayScheduler.live` calls this from its own timer
-  /// callback, so it is the one path a dwell fires through in production as well
-  /// as under a manual clock — which is the point: a test that fires a dwell
-  /// exercises the same cancellation check a real one does. It replaced a
-  /// `fireForTesting` that only tests called, and whose name claimed the
-  /// cancellation guard was a testing convenience.
-  func fire() {
-    guard !cancelled else { return }
-    body()
-  }
-}
-
-/// How the director arms its single expiry.
-@MainActor
-struct OverlayScheduler {
-  let after: (Double, @escaping () -> Void) -> OverlayScheduledWork
-
-  static let live = OverlayScheduler { seconds, body in
-    let work = OverlayScheduledWork(body: body)
-    DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak work] in
-      work?.fire()
-    }
-    return work
-  }
-
-  /// Arms nothing. The test fires the returned handle itself, so no interval
-  /// exists anywhere in the assertion.
-  static func manual(_ armed: @escaping (OverlayScheduledWork) -> Void) -> OverlayScheduler {
-    OverlayScheduler { _, body in
-      let work = OverlayScheduledWork(body: body)
-      armed(work)
-      return work
-    }
-  }
 }
 
 // MARK: - The typed façade (#2292 Phase 1, chunk C1)

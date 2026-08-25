@@ -285,6 +285,51 @@
       return (d, armed, sink)
     }
 
+    // MARK: - The clock starts when the pill is visible
+
+    /// **A dwell starts when the pill is ON SCREEN, not when the plan is applied**
+    /// (#2377 Phase 5, C2).
+    ///
+    /// `PillExpiryClockTests` proves the clock separates preparing from starting.
+    /// This proves the DIRECTOR uses that split: it must prepare at plan time and
+    /// start only from the successful-presentation callback, so a pill whose
+    /// first render is deferred spends none of its dwell before anything is
+    /// visible. Escape Recovery draws a countdown rail from this same dwell, so a
+    /// clock that starts early finishes early and the rail disagrees with the
+    /// pill it is drawn on.
+    ///
+    /// Both halves are asserted. The "nothing yet" half alone is satisfied by a
+    /// director that never arms at all.
+    @Test("a deferred timed pill arms no clock and publishes no dwell until it lands")
+    func aDeferredPillArmsNothingUntilItIsOnScreen() throws {
+      let host = RefusingWindowlessHost()
+      let deferral = Deferral()
+      let armed = Armed()
+      let d = OverlayDirector(
+        host: host,
+        scheduler: .manual { armed.work = $0 },
+        announce: { _ in },
+        livePreview: .disabled,
+        grantAccessibility: {}, selections: { .shipped },
+        deferFirstRender: { deferral.block = $0 })
+
+      d.present(.warning(reason: .polishFailed))
+
+      #expect(armed.work == nil, "the clock armed before the pill reached the screen")
+      #expect(
+        d.renderModel.state.dwell == nil,
+        "a dwell was published before the pill reached the screen")
+
+      deferral.fire()
+
+      #expect(armed.work != nil, "the pill landed and no clock armed")
+      let window = try #require(
+        d.renderModel.state.dwell, "the pill landed and no dwell was published")
+      #expect(
+        window.id == d.renderModel.state.presentation?.id,
+        "the published dwell names a pill other than the one on screen")
+    }
+
     // MARK: - Exactly one expiry
 
     /// **The defect `PresentationID` exists to close.** Seven independently owned
