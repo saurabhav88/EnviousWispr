@@ -1494,38 +1494,73 @@ def press_record_key():
     Two implementations of this already existed; a third is how they drift.
     """
     import simulate_input as _si
+    import ptt_binding as _ptt
 
-    kc = _si.MODIFIER_KEYS[RECORD_KEY]
-    _si.modifier_down(kc)
+    # RESOLVE the binding; never assume it. `RECORD_KEY` is only the DEFAULT, and
+    # the settings UI persists both a different key and a different recording
+    # mode. Pressing right Option at a profile bound to Globe, or driving a
+    # multi-press chain in toggle mode - where `HotkeyService` does not route
+    # hands-free at all - produces silence, and the caller reports that silence as
+    # a PRODUCT failure. That is the exact class `ptt_binding` exists for, and it
+    # refuses rather than guessing.
+    binding = _ptt.resolve()
+    if not binding.is_modifier_only:
+        raise _ptt.PTTBindingError(
+            f"the record key is bound to {binding.key_name!r} (keycode "
+            f"{binding.keycode}), which is not a standalone modifier. Multi-press "
+            "chain detection runs on the modifier event tap; an ordinary key is "
+            "registered with Carbon, which does not deliver synthetic events."
+        )
+
+    _si.modifier_down(binding.keycode)
     time.sleep(0.04)
-    _si.modifier_up(kc)
+    _si.modifier_up(binding.keycode)
 
 
 def running_enviouswispr_instances():
     """Every running EnviousWispr app bundle, as {pid: executable path}.
 
-    Matches on the EXECUTABLE, never on the whole command line: a caller's own
-    argv routinely contains both `EnviousWispr` (a worktree path) and
-    `.app/Contents/MacOS/` (a script run under `Python.app`), so a substring test
-    over the line finds the probe itself. Excluding `python3` does not save it -
-    the interpreter's binary is named `Python`.
+    Reads `comm`, NOT `command`. `command` is the executable PLUS its arguments
+    with no delimiter between them, so recovering the executable means guessing
+    where the arguments begin - and every guess is wrong for some legal path. An
+    earlier version split on the first `" -"`, which silently truncates
+    `/Users/x/EW - issue/build/EnviousWispr Local.app/...` to `/Users/x/EW` and
+    drops that instance from the count. `comm` is the executable alone, so there
+    is nothing to parse. (Verified here: on macOS it is the full path, unlike
+    Linux where `comm` is the basename.)
+
+    Still excludes our own pid. A caller's argv routinely carries both
+    `EnviousWispr` (a worktree path) and `.app/Contents/MacOS/` (a script running
+    under `Python.app`), and excluding `python3` does not help - the interpreter's
+    binary is named `Python`. The basename test already rejects `.../Python`, so
+    the pid check is the second of two mechanisms rather than the only one; the
+    self-test carries a row that binds it, because a mutant proved the obvious row
+    did not.
 
     Deliberately NOT scoped to `EnviousWispr Local.app`. A Release-configuration
     test host is named `EnviousWispr.app`, carries the PRODUCTION bundle id, and
     answers the same global hotkey; a `Local.app` pattern cannot see it, which is
     exactly the instance you most want counted.
     """
-    out = subprocess.run(["ps", "-eo", "pid=,command="],
+    # `-ww` asks for unlimited width. macOS `ps(1)` documents that output can be
+    # truncated to the terminal width and that a second `-w` lifts the bound. It
+    # did NOT reproduce here - piped output stayed intact at 88,841 characters
+    # even with COLUMNS=60 - so this is insurance, not a fix for an observed
+    # truncation. It earns its place because the failure would be SILENT and in
+    # the dangerous direction: a truncated suffix drops a real instance, and the
+    # verdict becomes unattributable with nothing to indicate it.
+    out = subprocess.run(["ps", "-eww", "-o", "pid=,comm="],
                          capture_output=True, text=True).stdout
     me = str(os.getpid())
     found = {}
     for line in out.splitlines():
         if not line.strip():
             continue
-        pid, cmd = line.strip().split(None, 1)
+        pid, exe = line.strip().split(None, 1)
         if pid == me:
             continue
-        exe = cmd.split(" -")[0].strip()
+        # An EXACT suffix, so the app's own XPC service and `llama-server` - both
+        # inside the same bundle and both in this listing - are excluded.
         if exe.endswith(".app/Contents/MacOS/EnviousWispr"):
             found[pid] = exe
     return found
@@ -1552,6 +1587,49 @@ def _require_single_instance(what):
               f"found {len(found)}.\n{rows}")
         return None
     return found
+
+
+# One per launch of a debug build. Chosen over `[Recovery] #1 scan pass 1 started
+# (launch)` by measurement rather than taste: 437 occurrences against 112 in the
+# same log, because the recovery line is conditional and this one is not. It also
+# fires when a user toggles Debug Mode by hand, which OVER-reports - and
+# over-reporting means refusing a verdict that might have been fine, which is the
+# safe direction.
+_LAUNCH_BANNER = "[AppLogger] Debug mode enabled"
+
+
+def instances_stayed_single(before, log_slice_lines, samples):
+    """Did exactly one EnviousWispr own this window, start to finish?
+
+    TWO SNAPSHOTS CANNOT ANSWER THIS, and a review round is what established it:
+    an instance that starts after the opening check and exits before the closing
+    one leaves both endpoints reading the same single pid, while its markers sat
+    in the shared log for the whole interval. The comparison passes and the
+    verdict is exactly as unattributable as if the guard were absent.
+
+    So the window is covered by two mechanisms that fail differently:
+
+      SAMPLES   the instance set read repeatedly DURING the window rather than
+                only at its ends. Closes the hole down to the sampling gap.
+      BANNER    the log slice itself, scanned for another app's launch line. The
+                better of the two, because it is evidence from the SAME artifact
+                the verdict is drawn from: a process that wrote into this window
+                announced itself IN it, whatever the process table happened to
+                say at the instants we looked.
+
+    Returns `(ok, reason)`. The reason names which mechanism objected, because "a
+    second app launched mid-window" and "the app was replaced" are different
+    things to go and look at.
+    """
+    for snap in samples:
+        if set(snap) != set(before):
+            return False, (f"the running set changed mid-window "
+                           f"({sorted(before)} -> {sorted(snap)})")
+    launches = sum(1 for line in log_slice_lines if _LAUNCH_BANNER in line)
+    if launches:
+        return False, (f"{launches} app launch banner(s) appeared inside this "
+                       f"window; another instance wrote into this same log")
+    return True, ""
 
 
 def double_press_record_key():
@@ -1660,6 +1738,10 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     instances_before = _require_single_instance("test_hands_free")
     if instances_before is None:
         return False
+    # Sampled DURING the window, not only at its ends - see
+    # `instances_stayed_single`. An instance that starts after the opening check
+    # and exits before the closing one is invisible to two snapshots.
+    instance_samples = []
 
     begin_test(f"hands-free{' +audio' if audio else ''}")
     close_window()
@@ -1685,6 +1767,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     recording_started = False
     for _ in range(10):
         time.sleep(0.3)
+        instance_samples.append(running_enviouswispr_instances())
         if _find_match(_app, "Stop Recording", "AXMenuItem"):
             recording_started = True
             break
@@ -1708,6 +1791,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     # Phase 3: Let it record, with mid-recording check
     mid_check_at = min(hold / 2, 2.0)
     time.sleep(mid_check_at)
+    instance_samples.append(running_enviouswispr_instances())
 
     # Mid-recording check: verify STILL recording (the hands-free test)
     still_recording_mid = _find_match(_app, "Stop Recording", "AXMenuItem") is not None
@@ -1716,6 +1800,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     remaining = hold - mid_check_at - start_latency
     if remaining > 0:
         time.sleep(remaining)
+    instance_samples.append(running_enviouswispr_instances())
 
     # Final pre-stop check
     still_recording_end = _find_match(_app, "Stop Recording", "AXMenuItem") is not None
@@ -1780,10 +1865,11 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     # count at one while swapping the instance, and a second app that shared this
     # log for part of the run makes every number above unattributable. Refuse the
     # verdict rather than reporting one.
-    instances_after = running_enviouswispr_instances()
-    if set(instances_after) != set(instances_before):
-        print(f"\n  BLOCKED: the running EnviousWispr set changed during this test "
-              f"({sorted(instances_before)} -> {sorted(instances_after)}).")
+    instance_samples.append(running_enviouswispr_instances())
+    single, why = instances_stayed_single(instances_before, log_lines or [],
+                                          instance_samples)
+    if not single:
+        print(f"\n  BLOCKED: {why}.")
         print(f"  Every marker count above is unattributable: each instance answers "
               f"the same global hotkey and writes this same log.")
         print(f"  This is NOT a product failure. Re-run against one instance.")
@@ -2218,7 +2304,7 @@ def _self_test():
 
     def fake(rows):
         def _run(cmd, *a, **k):
-            if list(cmd[:2]) == ["ps", "-eo"]:
+            if list(cmd[:1]) == ["ps"]:
                 return types.SimpleNamespace(stdout="\n".join(rows), returncode=0)
             return real_run(cmd, *a, **k)
         return _run
@@ -2254,6 +2340,23 @@ def _self_test():
             f"  {me} /Users/x/EW/build/EnviousWispr Local.app"
             f"/Contents/MacOS/EnviousWispr"], 1, True),
         ("no instance at all", ["  999 /usr/bin/vim"], 0, False),
+        # A worktree or parent directory may legally contain " - ". An earlier
+        # version recovered the executable by splitting `command` on the first
+        # `" -"`, which truncates this to `/Users/x/EW` and drops the instance -
+        # a real second app going uncounted, which is the one failure this guard
+        # exists to prevent. Reading `comm` removes the parse entirely; this row
+        # is what stops anyone reintroducing one.
+        ("a path containing a space-hyphen is still counted", ONE + [
+            "  444 /Users/x/EW - issue/build/EnviousWispr Local.app"
+            "/Contents/MacOS/EnviousWispr"], 2, False),
+        # Same bundle, sibling executables. `comm` lists them, and an EXACT
+        # suffix is what keeps them out of the count; a substring test would
+        # treble every instance.
+        ("the app's own XPC service and llama-server are not instances", ONE + [
+            "  555 /Users/x/EW/build/EnviousWispr Local.app/Contents/XPCServices"
+            "/EnviousWisprASRService.xpc/Contents/MacOS/EnviousWisprASRService",
+            "  556 /Users/x/EW/build/EnviousWispr Local.app/Contents/Resources"
+            "/llama-server"], 1, True),
     ]
 
     failures = []
@@ -2271,12 +2374,37 @@ def _self_test():
         else:
             print(f"  ok      {name}")
 
+    # `instances_stayed_single` answers a question no snapshot pair can: did one
+    # instance own the WHOLE window. Rows 2 and 3 are the review finding that
+    # produced it - an app that starts after the opening check and exits before
+    # the closing one leaves both endpoints identical.
+    BEFORE = {"111": "/Users/x/EW/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"}
+    OTHER = dict(BEFORE, **{"222": "/Users/y/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"})
+    BANNER = "[2026-01-01T00:00:00-00:00] [INFO] " + _LAUNCH_BANNER
+    window_cases = [
+        ("a quiet window is single", BEFORE, [], [BEFORE, BEFORE], True),
+        ("a sample catching a second instance is not single",
+         BEFORE, [], [BEFORE, OTHER, BEFORE], False),
+        ("a launch banner in the log slice is not single, even with every "
+         "sample clean", BEFORE, [BANNER], [BEFORE, BEFORE], False),
+        ("a replaced instance is not single (same COUNT, different pid)",
+         BEFORE, [], [BEFORE, {"999": BEFORE["111"]}], False),
+    ]
+    for name, before, log_lines, samples, want_ok in window_cases:
+        ok, _why = instances_stayed_single(before, log_lines, samples)
+        if ok != want_ok:
+            failures.append(f"{name}: got {'single' if ok else 'NOT single'}, "
+                            f"want {'single' if want_ok else 'NOT single'}")
+        else:
+            print(f"  ok      {name}")
+
+    total = len(cases) + len(window_cases)
     if failures:
         for f in failures:
             print(f"  FAIL    {f}")
-        print(f"\nwispr_eyes self-test: {len(failures)} of {len(cases)} FAILED")
+        print(f"\nwispr_eyes self-test: {len(failures)} of {total} FAILED")
         return 1
-    print(f"\nwispr_eyes self-test: {len(cases)}/{len(cases)} passed")
+    print(f"\nwispr_eyes self-test: {total}/{total} passed")
     return 0
 
 
