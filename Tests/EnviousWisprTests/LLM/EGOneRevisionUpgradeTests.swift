@@ -106,8 +106,14 @@ import Testing
       defaults: defaults,
       trustedArtifact: .init(name: "eg-1-v1.gguf", sizeBytes: 11, sha256: "unused-here"),
       isOnboardingComplete: isOnboardingComplete,
-      ensureCurrentModel: {
+      ensureCurrentModel: { onWillRequestFetch, onFetchDecision in
         probe.ensureCount += 1
+        onWillRequestFetch()
+        // Report STARTED, as the real controller does the moment it decides
+        // (#2110). A closure reporting nothing would leave the attempt
+        // `.pending`, which now REFUSES a cancel — correct behaviour, and not
+        // what these cases are about.
+        onFetchDecision(.started)
         return probe.ensureOutcome
       },
       currentModelIsAdmitted: { probe.admitted },
@@ -627,15 +633,12 @@ import Testing
   /// with NOTHING in flight. The settings row's own Cancel reaches the same hook as ours, so a
   /// cancel that is not attributable to us must not switch off the automatic path.
   ///
-  /// **SCOPE — the NAME is broader than the coverage, and than the code (#2110).** A cancel of a
-  /// download the user started while the coordinator has JOINED it does still write a decline:
-  /// `ModelDeliveryController` single-flights, so `ensureCurrentModel()` joins the user's fetch
-  /// while `automaticUpgradeInFlightCount` is positive, and `.cancel` reads that counter. This
-  /// test does not reach that case and passes today either way. The plan carries the same
-  /// correction (issue-2096 §3.2, amended 2026-08-16); this comment is its twin, and the twin was
-  /// missed. Do not read a green run here as evidence for the joined case, and do not write that
-  /// case against today's behaviour — #2110 has two candidate designs and the test belongs with
-  /// whichever lands.
+  /// **SCOPE — this case stages a cancel with NOTHING in flight, and that is all it proves.**
+  /// It used to carry a note saying the JOINED case was uncovered and must not be written against
+  /// then-current behaviour, because #2110 had two candidate designs. That is now settled and the
+  /// joined case is covered by `joinedCancelDoesNotDeclineAndPendingAttributionRefuses` below.
+  /// This case is kept as the third arm — no attempt registered at all — which neither of the
+  /// other two reaches.
   @MainActor
   @Test func userInitiatedCancelDoesNotRecordDecline() async throws {
     let root = try makeRoot()
@@ -677,8 +680,14 @@ import Testing
       installDirectory: installDirectory(root),
       defaults: store,
       trustedArtifact: .init(name: "eg-1-v1.gguf", sizeBytes: 11, sha256: "unused-here"),
-      ensureCurrentModel: {
+      ensureCurrentModel: { onWillRequestFetch, onFetchDecision in
         probe.ensureCount += 1
+        onWillRequestFetch()
+        // STARTED first, then the cancel — the real order. The controller reports
+        // its decision when it decides, and Cancel arrives later, during the
+        // fetch. Reporting it is what makes this case about ATTRIBUTION rather
+        // than about the `.pending` refusal (#2110).
+        onFetchDecision(.started)
         _ = box.coordinator?.recordUserDecline(source: .cancel)
         return .failed(DeliveryFailure(reason: .unknown, detail: "cancelled"))
       },
@@ -691,6 +700,93 @@ import Testing
     #expect(
       FileManager.default.fileExists(atPath: declineMarker(root).path),
       "a cancel during OUR upgrade is a decline of the upgrade")
+  }
+
+  /// The defect this issue names, and the fail-closed state that replaced the guess (#2110).
+  ///
+  /// `ModelDeliveryController` single-flights per identity, so an automatic ensure can JOIN a
+  /// download the user started from the settings row. Before this, that made the user's own Cancel
+  /// write a revision decline — suppressing the next automatic upgrade they had never refused.
+  ///
+  /// **Three arms, because each is satisfiable by the opposite bug.**
+  ///
+  /// - JOINED must write NO decline. Alone, this passes against a coordinator that never records
+  ///   anything, which would break the feature to fix the bug.
+  /// - STARTED must still write one. That arm lives in
+  ///   `cancelDuringAutomaticUpgradeRecordsDecline` and is the reason this case does not repeat it.
+  /// - PENDING — the decision has not reached the main actor — must REFUSE, returning `false` so
+  ///   the caller blocks rather than guessing. Both guesses are wrong in a way the user notices:
+  ///   assuming ours suppresses upgrades never refused; assuming theirs drops a real refusal and
+  ///   re-fetches on the next launch, contradicting the Cancel just pressed. Refusing is the same
+  ///   fail-closed direction C14 takes when a decline cannot be persisted.
+  ///
+  /// **Attribution is driven through the production seam**, the decision handler the controller
+  /// invokes at the instant it decides start-vs-join. That the controller actually reports
+  /// `.joined` on its join branch is a property of the controller, not of this coordinator, and is
+  /// asserted separately — see the recipe filed with this change.
+  @MainActor
+  @Test func joinedCancelDoesNotDeclineAndPendingAttributionRefuses() async throws {
+    let root = try makeRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (store, suite) = try defaults()
+    defer { store.removePersistentDomain(forName: suite) }
+
+    try stagePriorAdmission(root: root)
+    let probe = Probe()
+    let box = CancelBox()
+
+    // Records what `recordUserDecline` ANSWERED, not merely whether a marker exists:
+    // a refusal and a permitted-but-not-declining cancel both leave no marker, and
+    // only the return value separates them.
+    final class Answers: @unchecked Sendable {
+      var whileJoined: Bool?
+      var whilePending: Bool?
+      var beforeEnteringController: Bool?
+    }
+    let answers = Answers()
+
+    let subject = EGOneUpgradeCoordinator(
+      appSupportDirectory: root,
+      identity: Self.identity(),
+      installDirectory: installDirectory(root),
+      defaults: store,
+      trustedArtifact: .init(name: "eg-1-v1.gguf", sizeBytes: 11, sha256: "unused-here"),
+      ensureCurrentModel: { onWillRequestFetch, onFetchDecision in
+        probe.ensureCount += 1
+        // BEFORE entering the controller — this is the retirement-preparation
+        // window, which can hash a 2.9 GB monolith. Nothing has been joined or
+        // started, so a cancel here is the user's own and must be PERMITTED.
+        // Registering `.pending` ahead of this refused it for the whole hash
+        // (#2110 cloud review P2).
+        answers.beforeEnteringController = box.coordinator?.recordUserDecline(source: .cancel)
+        onWillRequestFetch()
+        // Now inside the controller, decision not yet back: genuinely `.pending`.
+        answers.whilePending = box.coordinator?.recordUserDecline(source: .cancel)
+        // Now the controller's answer arrives: we joined someone else's download.
+        onFetchDecision(.joined)
+        answers.whileJoined = box.coordinator?.recordUserDecline(source: .cancel)
+        return .failed(DeliveryFailure(reason: .unknown, detail: "cancelled"))
+      },
+      currentModelIsAdmitted: { probe.admitted })
+    box.coordinator = subject
+
+    await subject.runLaunch()
+
+    #expect(probe.ensureCount == 1, "the ensure must actually have run, or the arms prove nothing")
+
+    #expect(
+      answers.beforeEnteringController == true,
+      "before the ensure enters the controller nothing can have been joined, so the user's own cancel must be permitted, not refused while we hash a 2.9 GB file")
+    #expect(
+      answers.whilePending == false,
+      "with attribution still pending a cancel must be REFUSED, not guessed either way")
+
+    #expect(
+      answers.whileJoined == true,
+      "a joined cancel is permitted; it simply does not decline the revision")
+    #expect(
+      !FileManager.default.fileExists(atPath: declineMarker(root).path),
+      "cancelling a download WE joined is the user cancelling THEIRS, and declines nothing")
   }
 
   @MainActor
@@ -822,8 +918,10 @@ import Testing
       installDirectory: installDirectory(root),
       defaults: store,
       trustedArtifact: .init(name: "eg-1-v1.gguf", sizeBytes: 11, sha256: "unused-here"),
-      ensureCurrentModel: {
+      ensureCurrentModel: { onWillRequestFetch, onFetchDecision in
         probe.ensureCount += 1
+        onWillRequestFetch()
+        onFetchDecision(.started)
         if probe.ensureCount == 1 {
           // Re-enter while THIS attempt is still in flight, and let the inner one finish.
           await box.coordinator?.runLaunch()

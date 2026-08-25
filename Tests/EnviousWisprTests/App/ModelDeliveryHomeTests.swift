@@ -404,10 +404,40 @@ struct ModelDeliveryHomeTests {
         appSupportOverride: try Self.tempAppSupport(),
         deliveryFlagDefaults: suite)
     }
+    /// Take the baseline once the SUBJECT says its launch probe has finished.
+    ///
+    /// Construction runs that probe in an unstructured `Task`, and it is what
+    /// moves `previewStateUpdatesForTests`. A baseline read before it completes is
+    /// stale, and the assertion below then fails `2 == 1` — a confident accusation
+    /// against production code that is correct.
+    ///
+    /// It failed exactly that way on CI (`build-debug`, #2400) while passing
+    /// locally twice, after #2135 added a task per delivery event and pushed the
+    /// probe past the old fixed 400-yield wait on a contended runner.
+    ///
+    /// **The first fix was also wrong, and wrong in the interesting way:** it
+    /// waited for the counter to stop changing across 50 yields and called that
+    /// stability. Still a COUNT — the counter is equally quiet when the task has
+    /// not started, or is suspended inside `attachPreviewObserver` or
+    /// `recordFirstRunBaseline`, neither of which touches it. And 50 is SHORTER
+    /// than the 400 it replaced, so it widened the race it was meant to close.
+    /// Cloud review caught that on the fix rather than on the original.
+    ///
+    /// The bound below is a HANG GUARD, not a settle budget: it can only fire when
+    /// the subject never reports, and it says so instead of returning a guess.
+    func baselineAfterLaunchProbe(_ home: ModelDeliveryHome) async -> Int {
+      for _ in 0..<100_000 where !home.previewLaunchProbeDidFinishForTests {
+        await Task.yield()
+      }
+      if !home.previewLaunchProbeDidFinishForTests {
+        Issue.record(
+          "the preview launch probe never reported completion; any baseline is a guess")
+      }
+      return home.previewStateUpdatesForTests
+    }
 
     let off = try home(enabled: false)
-    for _ in 0..<400 { await Task.yield() }
-    let offBaseline = off.previewStateUpdatesForTests
+    let offBaseline = await baselineAfterLaunchProbe(off)
     off.startPreviewDownload()
     for _ in 0..<2000 { await Task.yield() }
     #expect(
@@ -415,8 +445,7 @@ struct ModelDeliveryHomeTests {
       "the kill switch is off but the download door still reached delivery")
 
     let on = try home(enabled: true)
-    for _ in 0..<400 { await Task.yield() }
-    let onBaseline = on.previewStateUpdatesForTests
+    let onBaseline = await baselineAfterLaunchProbe(on)
     on.startPreviewDownload()
     for _ in 0..<4000 where on.previewStateUpdatesForTests == onBaseline { await Task.yield() }
     #expect(

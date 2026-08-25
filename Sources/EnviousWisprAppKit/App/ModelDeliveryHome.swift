@@ -72,6 +72,21 @@ public final class ModelDeliveryHome {
   package private(set) var previewStateUpdatesForTests = 0
   package private(set) var parakeetStateUpdatesForTests = 0
 
+  /// The launch probe above has RUN TO COMPLETION.
+  ///
+  /// A test seam, and the only honest one for this question. A test that needs a
+  /// baseline of `previewStateUpdatesForTests` must know the probe is finished,
+  /// because the probe is what moves that counter — and it runs in an
+  /// unstructured `Task` whose publish can land at any yield.
+  ///
+  /// **A quiet period is not a completion signal, which is what the first fix for
+  /// this got wrong.** Waiting for the counter to stop changing looks like
+  /// stability and is still a count: the counter is equally quiet when the task
+  /// has not STARTED, or is suspended inside `attachPreviewObserver` or
+  /// `recordFirstRunBaseline`, neither of which touches it. Set on the probe's
+  /// exit path, this is a claim by the SUBJECT about the subject.
+  package private(set) var previewLaunchProbeDidFinishForTests = false
+
   /// How many times the Parakeet Resume door has REFUSED on the family kill
   /// switch, from EITHER of its two checks. A test seam, and specifically a
   /// POSITIVE one: without it the flag-OFF arm could only assert two absences —
@@ -265,6 +280,7 @@ public final class ModelDeliveryHome {
         await previewHome.attachPreviewObserver(identity: previewIdentity)
         await previewHome.recordFirstRunBaseline(for: registration)
         _ = await previewHome.controller.admitIfComplete(registration)
+        previewHome.previewLaunchProbeDidFinishForTests = true
       }
     } catch {
       Task {

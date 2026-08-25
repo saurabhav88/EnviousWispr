@@ -94,7 +94,20 @@ public final class EGOneDeliveryAdapter {
   /// existing cache is already admitted (the server may use trusted bytes),
   /// else a limb-not-ready failure (dictation raw-fallbacks). The bypass fires
   /// `flag_active` from its one taking site (D5 §1).
-  public func ensureAvailable() async -> ModelDeliveryController.DeliveryOutcome {
+  /// - Parameters:
+  ///   - onWillRequestFetch: fired immediately before this call enters the
+  ///     controller, and AFTER retirement preparation. A caller attributing a
+  ///     Cancel needs the two separated, because preparation can hash a 2.9 GB
+  ///     monolith: treating that window as "we might have joined" would refuse a
+  ///     user's cancel of their OWN unrelated download for the whole hash, when
+  ///     in fact this call had not touched the controller yet (#2110 cloud
+  ///     review). Before this fires, nothing here can have joined anything.
+  ///   - onFetchDecision: the controller's start-vs-join answer, once it lands.
+  public func ensureAvailable(
+    onWillRequestFetch: (@MainActor @Sendable () -> Void)? = nil,
+    onFetchDecision:
+      (@MainActor @Sendable (ModelDeliveryController.FetchDecision) -> Void)? = nil
+  ) async -> ModelDeliveryController.DeliveryOutcome {
     if !isEnabled() {
       controllerNoteDisabled()
       if await controller.isAdmitted(registration) { return .admitted }
@@ -109,7 +122,20 @@ public final class EGOneDeliveryAdapter {
         DeliveryFailure(reason: .cacheRepairFailed, detail: "legacy_retirement"))
     }
 
-    let outcome = await controller.ensureModelAvailable(registration)
+    // Preparation is done; the next statement enters the controller. Awaited,
+    // not spawned, so the coordinator is registered BEFORE any decision can be
+    // reported — a `.pending` that arrived after its own resolution would be a
+    // stuck attempt nothing ever clears.
+    if let onWillRequestFetch { await MainActor.run { onWillRequestFetch() } }
+
+    let outcome = await controller.ensureModelAvailable(registration) { decision in
+      guard let onFetchDecision else { return }
+      // The controller fires this on its own actor; the coordinator is
+      // @MainActor. The hop is why the coordinator has a `.pending` state at all
+      // — it is not bounded, so the coordinator refuses to attribute a Cancel
+      // until the answer lands rather than guessing (#2110).
+      Task { @MainActor in onFetchDecision(decision) }
+    }
     if case .admitted = outcome {
       legacyDidAdmit?()
     }
