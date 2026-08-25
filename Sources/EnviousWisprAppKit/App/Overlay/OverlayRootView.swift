@@ -78,6 +78,26 @@ struct OverlayRootView: View {
     sendEvent(.action(presentation.id, action))
   }
 
+  /// Send a NOTICE's own action (#2376 Phase 4, C3).
+  ///
+  /// **The literal is gone, and that is the point.** This site used to dispatch
+  /// `.discardRecovery` and `.grantAccessibility` by name while `PillCatalog`
+  /// carried the same two values on the model, so `NoticeModel.action` had no
+  /// production reader at all — a field set by two rows and read by nothing but
+  /// the model's own `==`.
+  ///
+  /// **There is no `??` fallback to the old literal, deliberately.** A fallback
+  /// would reinstate exactly the duplicate authority this deletes, and would do
+  /// it silently: a row that lost its action would keep working and nothing would
+  /// say so. A button with no action does not render at all
+  /// (`RecoveryNoticeView` and `AccessibilityToastView` both bind `if let
+  /// action`), and `noticeActionsAreCarriedByEveryKindThatDrawsAButton` sweeps the
+  /// catalog's closed set so a row cannot lose one unnoticed.
+  private func dispatch(_ action: NoticeAction?, on presentation: PillDefinition) {
+    guard let action else { return }
+    press(action.action, on: presentation)
+  }
+
   @ViewBuilder
   private func content(for presentation: PillDefinition) -> some View {
     switch presentation.content {
@@ -182,13 +202,21 @@ struct OverlayRootView: View {
     case .ready:
       ColdStartNoticeView(title: notice.text, subtitle: notice.secondaryText, icon: .ready)
     case .notification:
-      NotificationOverlayView(message: notice.text, style: Self.style(for: notice.severity))
+      NotificationOverlayView(
+        message: notice.text, style: Self.style(for: notice.severity),
+        isMultiline: notice.isMultiline)
     case .importStatus:
       ImportStatusOverlayView(message: notice.text)
     case .recovery:
-      RecoveryNoticeView(onDiscard: { press(.discardRecovery, on: presentation) })
+      RecoveryNoticeView(
+        title: notice.text, subtitle: notice.secondaryText,
+        accessibilityLabel: notice.accessibilityLabel ?? notice.text,
+        action: notice.action,
+        onAction: { dispatch(notice.action, on: presentation) })
     case .accessibilityToast:
-      AccessibilityToastView(onGrant: { press(.grantAccessibility, on: presentation) })
+      AccessibilityToastView(
+        text: notice.text, action: notice.action,
+        onAction: { dispatch(notice.action, on: presentation) })
     }
   }
 

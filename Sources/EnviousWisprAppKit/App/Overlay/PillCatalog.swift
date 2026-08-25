@@ -171,7 +171,7 @@ enum PillCatalog {
         id: id, kind: .accessibilityToast, text: DictationNarrator.accessibilityToastText,
         width: .fixed(300), fixedHeight: 56,  // :859 and :1118 both pass height: 56
         expiry: .after(seconds: 6), isMultiline: true,
-        action: (label: "Grant", action: .grantAccessibility))
+        action: NoticeAction(label: "Grant", action: .grantAccessibility))
 
     case .warning(let reason):
       return notice(
@@ -199,6 +199,13 @@ enum PillCatalog {
       return notice(
         id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
         width: .fixed(360),  // RecordingOverlayPanel.advisoryWidth
+        // **The 8 seconds is READING TIME, and the reason moved here from the
+        // dead table it used to live in** (#2376 C3). `NotificationStyle`
+        // carried an `autoDismissSeconds` table with no reader at all, and its
+        // #1891 note is the only place this number was ever justified: the
+        // advisory sentence is ~23 words, which at roughly 200 wpm needs about
+        // seven seconds to read, so the 3-second error dwell would show a
+        // message the user physically cannot finish.
         expiry: .after(seconds: 8), severity: .advisory, isMultiline: true)
 
     case .interruption(let reason):
@@ -230,11 +237,22 @@ enum PillCatalog {
       return notice(
         id: id, kind: .recovery, text: DictationNarrator.recoveryTitle,
         secondary: DictationNarrator.recoverySubtitle,
+        // Deliberately NOT the title. The spoken label drops the title's
+        // ellipsis, and `DictationNarratorTests` pins the two as different
+        // strings — the leaf used to read this constant itself, which is the
+        // duplication this chunk removes.
+        accessibilityLabel: DictationNarrator.recoveryAccessibilityLabel,
         width: .fixed(320), fixedHeight: 56,  // :530
         // that site gives it a 6-second dwell. The first version said `.untilReplaced`,
         // which would have left the recovery pill on screen forever.
         expiry: .after(seconds: 6), isMultiline: true,
-        action: (label: "Discard", action: .discardRecovery))
+        action: NoticeAction(
+          label: "Discard",
+          // The button's own spoken label, which the leaf used to spell as a bare
+          // literal with no model field behind it. "Discard" alone is ambiguous
+          // out of context; this says what is being discarded.
+          accessibilityLabel: "Discard recovering recording",
+          action: .discardRecovery))
 
     case .recoverySucceeded:
       // `.ready`, NOT `.notification`. The shipped site draws
@@ -327,15 +345,17 @@ enum PillCatalog {
   /// default silently.
   private static func notice(
     id: PresentationID, kind: NoticeModel.Kind, text: String, secondary: String? = nil,
+    accessibilityLabel: String? = nil,
     width: OverlayWidth, fixedHeight: CGFloat? = nil,
     expiry: OverlayExpiry = .untilReplaced, severity: NoticeModel.Severity = .neutral,
-    isMultiline: Bool = false, action: (label: String, action: PillAction)? = nil
+    isMultiline: Bool = false, action: NoticeAction? = nil
   ) -> PillDefinition {
     PillDefinition(
       id: id,
       content: .notice(
         NoticeModel(
-          kind: kind, text: text, secondaryText: secondary, severity: severity,
+          kind: kind, text: text, secondaryText: secondary,
+          accessibilityLabel: accessibilityLabel, severity: severity,
           isMultiline: isMultiline, action: action)),
       expiry: expiry, requestedWidth: width, reservesFixedHeight: fixedHeight)
   }

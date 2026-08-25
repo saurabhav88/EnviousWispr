@@ -177,6 +177,39 @@ enum OverlayWidth: Equatable, Sendable {
   case measured
 }
 
+/// The one button a notice may carry.
+///
+/// **A struct rather than the tuple it replaces, because the button needs a
+/// THIRD value and a tuple cannot grow one** (#2376 Phase 4, C3). The shipped
+/// recovery pill spells its button's accessibility label as a bare literal
+/// inside the view — "Discard recovering recording" — with no field behind it, so
+/// nothing could read it, nothing could check it, and it was invisible to the
+/// catalog that owns every other word on that pill. A tuple's third element would
+/// have had to be restated positionally at every site; a struct names it once.
+///
+/// It is also what lets `NoticeModel`'s hand-written `==` shrink rather than
+/// grow: the tuple is why that operator had to compare two members by hand.
+struct NoticeAction: Equatable, Sendable {
+  /// What is printed on the button.
+  let label: String
+  /// What a screen reader says instead, where the printed label is too terse to
+  /// stand alone. `nil` means the label speaks for itself.
+  let accessibilityLabel: String?
+  /// What pressing it sends.
+  let action: PillAction
+
+  init(label: String, accessibilityLabel: String? = nil, action: PillAction) {
+    self.label = label
+    self.accessibilityLabel = accessibilityLabel
+    self.action = action
+  }
+
+  /// What VoiceOver should read: the explicit label where one is given, and the
+  /// printed one otherwise. Resolved HERE rather than at each leaf, so two leaves
+  /// cannot answer it differently.
+  var spokenLabel: String { accessibilityLabel ?? label }
+}
+
 /// The collapsed notice. Processing, clipboard fallback, warning, error,
 /// advisory, interruption, caching, ready, recovery-success, the accessibility
 /// toast and import status are all THIS — a sentence, a visual severity, and
@@ -228,27 +261,50 @@ struct NoticeModel: Equatable, Sendable {
   let kind: Kind
   let text: String
   let secondaryText: String?
+  /// What VoiceOver reads for the pill AS A WHOLE, where that is deliberately
+  /// different from what is printed on it.
+  ///
+  /// **Required rather than tidy, and exactly one pill needs it.**
+  /// `DictationNarrator.recoveryAccessibilityLabel` is pinned as deliberately
+  /// DIFFERENT from `recoveryTitle` — the title carries an ellipsis and the
+  /// spoken label does not — so folding it into `text` would ship an ellipsis
+  /// into VoiceOver and break a test that exists to keep them apart. `nil` means
+  /// the pill's own contents are what a screen reader should compose.
+  let accessibilityLabel: String?
   let severity: Severity
   /// A notice long enough to need wrapping renders multiline with a
   /// content-driven height. `.advisory` is the shipped case and its dwell is
   /// deliberately long enough to read (#1891).
+  ///
+  /// **Read by `NotificationOverlayView`, which is the leaf whose wrapping it
+  /// decides** (#2376 Phase 4, C3). That leaf used to re-derive the same fact
+  /// from its own style table as `self == .advisory`, so one pill's wrapping was
+  /// stated twice and the model's copy was the one nobody read; the style's copy
+  /// is deleted and this is the survivor.
+  ///
+  /// `.importStatus` also sets it, and its leaf pins a two-line CAP of its own.
+  /// Those are not the same question — this says the text wraps rather than being
+  /// clipped to one line, and the cap says how far — so the row is accurate and
+  /// the leaf is not duplicating it.
   let isMultiline: Bool
-  let action: (label: String, action: PillAction)?
+  let action: NoticeAction?
 
   static func == (a: NoticeModel, b: NoticeModel) -> Bool {
     a.kind == b.kind && a.text == b.text && a.secondaryText == b.secondaryText
+      && a.accessibilityLabel == b.accessibilityLabel
       && a.severity == b.severity
-      && a.isMultiline == b.isMultiline && a.action?.label == b.action?.label
-      && a.action?.action == b.action?.action
+      && a.isMultiline == b.isMultiline && a.action == b.action
   }
 
   init(
-    kind: Kind, text: String, secondaryText: String? = nil, severity: Severity = .neutral,
-    isMultiline: Bool = false, action: (label: String, action: PillAction)? = nil
+    kind: Kind, text: String, secondaryText: String? = nil, accessibilityLabel: String? = nil,
+    severity: Severity = .neutral,
+    isMultiline: Bool = false, action: NoticeAction? = nil
   ) {
     self.kind = kind
     self.text = text
     self.secondaryText = secondaryText
+    self.accessibilityLabel = accessibilityLabel
     self.severity = severity
     self.isMultiline = isMultiline
     self.action = action
