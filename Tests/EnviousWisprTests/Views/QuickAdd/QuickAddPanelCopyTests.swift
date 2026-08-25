@@ -14,23 +14,56 @@ import Testing
 @Suite("Quick Add panel copy — #2381", .tags(.driftGuard))
 struct QuickAddPanelCopyTests {
 
-  @Test("The row subtitle says what accepting does, then how much that word already carries")
-  func rowSubtitleShape() {
-    #expect(
-      QuickAddPanelCopy.rowSubtitle(spellingCount: 4)
-        == "add as a new spelling · 4 spellings already saved")
+  @Test("A row's meta is a count, and the verb is not on the row")
+  func rowMetaIsACount() {
+    // The verb moved to the group header, said once. That structural difference is what makes five
+    // candidates cost five lines instead of the ten that four wrapped subtitles cost.
+    #expect(QuickAddPanelCopy.spellingCount(4) == "4 spellings")
+    #expect(!QuickAddPanelCopy.spellingCount(4).contains("add"))
   }
 
   @Test("One spelling is singular")
-  func rowSubtitleIsSingularForOne() {
-    // "1 spellings already saved" is the kind of thing users screenshot.
-    #expect(QuickAddPanelCopy.rowSubtitle(spellingCount: 1).contains("1 spelling already saved"))
-    #expect(!QuickAddPanelCopy.rowSubtitle(spellingCount: 1).contains("spellings"))
+  func countIsSingularForOne() {
+    // "1 spellings" is the kind of thing users screenshot.
+    #expect(QuickAddPanelCopy.spellingCount(1) == "1 spelling")
+    #expect(QuickAddPanelCopy.spellingCount(0) == "0 spellings")
   }
 
-  @Test("A word with no spellings yet reads as plural, which is correct for zero")
-  func rowSubtitleIsPluralForZero() {
-    #expect(QuickAddPanelCopy.rowSubtitle(spellingCount: 0).contains("0 spellings already saved"))
+  @Test("The group header names the selected word and states the verb once")
+  func groupHeaderCarriesTheVerb() {
+    let confident = QuickAddPanelCopy.groupHeader(.confident, heard: "codecs")
+    #expect(confident.contains("codecs"))
+    #expect(confident.contains("Add"))
+  }
+
+  @Test("Low confidence says so in words, not only by withholding a highlight")
+  func lowConfidenceHeaderSaysSo() {
+    // Below the bar nothing is preselected. A list that looks identical either way leaves the user
+    // inferring the difference from a missing tint, which nobody reads.
+    let low = QuickAddPanelCopy.groupHeader(.lowConfidence, heard: "kubernets")
+    #expect(!low.contains("Add"), "there is nothing to add yet, so do not use the verb")
+    #expect(low.lowercased().contains("no close match"))
+  }
+
+  @Test("The already-saved header states the outcome and offers no verb")
+  func alreadySavedHeaderOffersNothing() {
+    let already = QuickAddPanelCopy.groupHeader(.alreadySaved, heard: "codecs")
+    #expect(already.contains("codecs"))
+    #expect(already.lowercased().contains("nothing to add"))
+  }
+
+  @Test("Searching keeps the confident sentence, so the header cannot change mid-keystroke")
+  func searchingKeepsTheVerb() {
+    // Four states, three distinct sentences, and the collision is deliberate: a header that also
+    // carries state must not rewrite itself under someone who is typing.
+    let all = QuickAddPanelCopy.GroupHeaderState.allCases.map {
+      QuickAddPanelCopy.groupHeader($0, heard: "codecs")
+    }
+    #expect(Set(all).count == 3)
+    #expect(all.allSatisfy { !$0.isEmpty })
+    #expect(
+      QuickAddPanelCopy.groupHeader(.searching, heard: "codecs")
+        == QuickAddPanelCopy.groupHeader(.confident, heard: "codecs"))
   }
 
   @Test("Every refusal has its own sentence")
@@ -76,9 +109,13 @@ struct QuickAddPanelCopyTests {
     let all =
       SelectionReader.Refusal.allCases.map(QuickAddPanelCopy.refusalMessage)
       + [
-        QuickAddPanelCopy.heardLabel, QuickAddPanelCopy.searchPlaceholder,
-        QuickAddPanelCopy.createNewWord, QuickAddPanelCopy.returnHint,
-        QuickAddPanelCopy.rowSubtitle(spellingCount: 3),
+        QuickAddPanelCopy.searchPlaceholder, QuickAddPanelCopy.createNewWord,
+        QuickAddPanelCopy.spellingCount(3), QuickAddPanelCopy.alreadyHasThisSpelling,
+        QuickAddPanelCopy.legendAccept, QuickAddPanelCopy.legendMove,
+        QuickAddPanelCopy.legendClose,
+        QuickAddPanelCopy.groupHeader(.confident, heard: "codecs"),
+        QuickAddPanelCopy.groupHeader(.lowConfidence, heard: "codecs"),
+        QuickAddPanelCopy.groupHeader(.alreadySaved, heard: "codecs"),
         // A member of the copy set like any other. Sweeping the SET rather than the strings that
         // existed when this was written is what makes a later addition visible here.
         QuickAddPanelCopy.writeFailure("That word cannot be saved."),
@@ -142,26 +179,10 @@ struct QuickAddPanelCopyTests {
   @Test("A word that already has the spelling does not promise to add it")
   func aWordThatAlreadyHasItSaysSo() {
     // The live defect the design pass found by reading the view against the model: the flag existed,
-    // the coordinator branched on it, and the view never read it — so the row said "add as a new
+    // the coordinator branched on it, and the view never read it — so every row said "add as a new
     // spelling", Return wrote nothing, and the panel closed silently. Reachable on the first thing a
-    // user tries, because any word they have corrected once scores 1.00 and lands here.
-    let promises = QuickAddPanelCopy.rowSubtitle(spellingCount: 3)
-    let states = QuickAddPanelCopy.rowSubtitleAlreadyHas(spellingCount: 3)
-
-    #expect(promises.contains("add as a new spelling"))
-    #expect(!states.contains("add"), "a row that cannot add must not use the verb")
-    #expect(states.contains("already has this spelling"))
-    // Both still carry the count, which is the half that was always true.
-    #expect(promises.contains("3 spellings"))
-    #expect(states.contains("3 spellings"))
-  }
-
-  @Test("Singular and plural are right in both subtitles")
-  func bothSubtitlesCountCorrectly() {
-    // "1 spellings already saved" is the kind of thing users screenshot.
-    #expect(QuickAddPanelCopy.rowSubtitle(spellingCount: 1).contains("1 spelling "))
-    #expect(QuickAddPanelCopy.rowSubtitleAlreadyHas(spellingCount: 1).contains("1 spelling "))
-    #expect(QuickAddPanelCopy.rowSubtitle(spellingCount: 2).contains("2 spellings"))
-    #expect(QuickAddPanelCopy.rowSubtitleAlreadyHas(spellingCount: 2).contains("2 spellings"))
+    // user tries, because any word corrected once scores 1.00 and lands here.
+    #expect(!QuickAddPanelCopy.alreadyHasThisSpelling.contains("add"))
+    #expect(QuickAddPanelCopy.alreadyHasThisSpelling.contains("already has"))
   }
 }

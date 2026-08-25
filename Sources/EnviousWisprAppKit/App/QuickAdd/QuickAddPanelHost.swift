@@ -127,11 +127,16 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
       defer: false)
     p.titleVisibility = .hidden
     p.titlebarAppearsTransparent = true
-    // **VISIBLE, and it was hidden until the founder said "there's no way to close out the window".**
-    // The bet was that Escape plus click-away made a close control redundant; both were broken, and
-    // even working they are invisible. A control where the eye already looks for one is a stronger
-    // answer than any amount of hint text.
-    p.standardWindowButton(.closeButton)?.isHidden = false
+    // **STILL HIDDEN, and unhiding it is a change that LOOKS like a fix and is not.** Measured:
+    // setting `isHidden = false` produced no visible control, because `.fullSizeContentView` puts
+    // the hosting view over the titlebar area and the standard buttons sit behind it. A screenshot
+    // of the running panel shows no close control at all.
+    //
+    // So the answer to the founder's "there's no way to close out the window" cannot come from the
+    // window at all — it has to be drawn IN the content, which is what the chosen design does with
+    // its own chrome. Left hidden deliberately rather than left `false` as a line that reads as a
+    // fix and does nothing.
+    p.standardWindowButton(.closeButton)?.isHidden = true
     p.standardWindowButton(.miniaturizeButton)?.isHidden = true
     p.standardWindowButton(.zoomButton)?.isHidden = true
     p.isMovableByWindowBackground = true

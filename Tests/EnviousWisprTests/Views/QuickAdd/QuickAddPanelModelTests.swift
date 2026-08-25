@@ -250,4 +250,63 @@ struct QuickAddPanelModelTests {
 
     #expect(model.ranking.candidates.contains { $0.id == id })
   }
+  // MARK: - Which sentence the group header says (#2381, the command-bar layout)
+
+  private func headerState(
+    heard: String = "codecs",
+    refusal: SelectionReader.Refusal? = nil,
+    heardRanking: QuickAddRanker.Ranking,
+    query: String = ""
+  ) -> QuickAddPanelCopy.GroupHeaderState {
+    let (model, _) = makeModel(
+      heard: heard, refusal: refusal, heardRanking: heardRanking, searchRanking: heardRanking)
+    if !query.isEmpty { model.updateQuery(query) }
+    let view = QuickAddPanelView(
+      model: model, onAccept: { _ in }, onCreateNew: {}, onCancel: {})
+    return view.headerState
+  }
+
+  @Test("A preselected row means the header states the verb")
+  func headerIsConfidentWhenARowIsPreselected() {
+    #expect(headerState(heardRanking: ranking(["Codex"], preselecting: 0)) == .confident)
+  }
+
+  @Test("No preselection means the header says there is no close match")
+  func headerIsLowConfidenceWithNoPreselection() {
+    // The confidence bar's whole job, said in words. Without this the two states look identical
+    // apart from a missing tint, which is not a signal anyone reads.
+    #expect(headerState(heardRanking: ranking(["Codex"], preselecting: nil)) == .lowConfidence)
+  }
+
+  @Test("Typing keeps the verb, so the header cannot rewrite itself mid-keystroke")
+  func headerStaysConfidentWhileSearching() {
+    #expect(
+      headerState(heardRanking: ranking(["Codex"], preselecting: 0), query: "cod") == .searching)
+  }
+
+  @Test("A preselected row that already has the spelling changes what the header says")
+  func headerIsAlreadySavedWhenTheTopRowHasIt() {
+    // The state the view never used to read at all. It outranks the others deliberately: if the
+    // preselected row cannot add anything, a header promising an add is the defect this closes.
+    let owned = QuickAddRanker.Candidate(
+      word: CustomWord(canonical: "Codex", aliases: ["codecs"]),
+      score: 1.0,
+      alreadyHasHeardSpelling: true)
+    let r = QuickAddRanker.Ranking(candidates: [owned], preselectedID: owned.id)
+
+    #expect(headerState(heardRanking: r) == .alreadySaved)
+  }
+
+  @Test("Already-saved outranks searching, because typing does not make the row addable")
+  func alreadySavedOutranksSearching() {
+    // The paired ordering case. Without it the four-way `if` could be written in any order and
+    // still pass every test above.
+    let owned = QuickAddRanker.Candidate(
+      word: CustomWord(canonical: "Codex", aliases: ["codecs"]),
+      score: 1.0,
+      alreadyHasHeardSpelling: true)
+    let r = QuickAddRanker.Ranking(candidates: [owned], preselectedID: owned.id)
+
+    #expect(headerState(heardRanking: r, query: "cod") == .alreadySaved)
+  }
 }
