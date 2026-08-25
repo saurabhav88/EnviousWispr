@@ -77,27 +77,9 @@ LOG_DIR="$(ew_resolve_log_dir "$PROJECT_ROOT" "$LOG_DIR")"
 # means clearing it, or a debug-only run inherits the previous occupant's Release
 # receipt (#2408 review r2). Never for an explicit `--log-dir`: that directory
 # belongs to the caller and may be one they are deliberately filling.
-# A REFUSED LANE MUST NOT THEN BE USED (#2408 review r4, P1).
-#
-# The previous round made the refusal non-fatal so an unusual-but-legal layout
-# could still run its tests. That was right and it stopped one line too early: the
-# rejected path was then used anyway, and `run_lane` does `rm -rf "$bundle"` on
-# `$LOG_DIR/…xcresult` — so a planted link or mount still got deleted through, at
-# a different line. **My fix for the last round's P2 opened this P1**, which is
-# the fix-the-path-you-were-reading shape one more time: I asked whether refusing
-# should abort, and never asked what happens NEXT to the path I had refused.
-#
-# So an unsafe default lane is neither used nor fatal — the run moves to a
-# directory outside the tree, says so, and proceeds. Nothing is deleted through a
-# link or a mount, and the tests still run.
-if [ "$USING_DEFAULT_LOG_DIR" = "1" ]; then
-  if ! ew_reset_lane_dir "$PROJECT_ROOT" "$LOG_DIR"; then
-    LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ew-lane.XXXXXX")"
-    USING_DEFAULT_LOG_DIR=0
-    echo "==> build/ or build/lanes/ is a symlink or mount point; this lane is writing to $LOG_DIR instead" >&2
-    echo "==> no stable build/latest-lane link and no retention while that is true" >&2
-  fi
-fi
+# NO RESET HERE ANY MORE (#2408 review r7). The lane name carries the SECOND as
+# well as the pid, so it cannot recur — two runs sharing both are the same
+# process. The take path has nothing to clear and does not delete.
 mkdir -p "$LOG_DIR"   # absent on a clean checkout
 APP_LOG_DIR="$LOG_DIR/app-logger"
 mkdir -p "$APP_LOG_DIR"

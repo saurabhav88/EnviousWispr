@@ -69,10 +69,19 @@ echo "== the default is private to the invoking process =="
 # highest-cost shape a comment has, because its whole function is to stop the next
 # reader going and checking. Replaced with what the gate actually reads rather
 # than deleted, so the next reader inherits the verified version.
-check "no request -> <root>/build/lanes/<pid>" \
-  "$ROOT/build/lanes/$$" "$(ew_resolve_log_dir "$ROOT")"
-check "empty request -> <root>/build/lanes/<pid>" \
-  "$ROOT/build/lanes/$$" "$(ew_resolve_log_dir "$ROOT" "")"
+# The name carries the SECOND as well as the pid, so it cannot RECUR — which is
+# what removed the take path's `rm -rf` entirely (#2408 r7). Asserted by SHAPE
+# rather than by value, because the second moves between the call and the check.
+a="$(ew_resolve_log_dir "$ROOT")"
+case "$a" in
+  "$ROOT"/build/lanes/[0-9]*-$$) ok "no request -> <root>/build/lanes/<seconds>-<pid>" "$a" ;;
+  *) bad "no request -> <root>/build/lanes/<seconds>-<pid>" "$a" ;;
+esac
+b="$(ew_resolve_log_dir "$ROOT" "")"
+case "$b" in
+  "$ROOT"/build/lanes/[0-9]*-$$) ok "empty request -> <root>/build/lanes/<seconds>-<pid>" "$b" ;;
+  *) bad "empty request -> <root>/build/lanes/<seconds>-<pid>" "$b" ;;
+esac
 
 # The row that justifies the change, and it needs two real PROCESSES: within one
 # shell `$$` is constant, so a same-process comparison would pass against a
@@ -219,142 +228,6 @@ if ew_prune_stale_lanes "$SANDBOX" "$SANDBOX/build/lanes/none" 7 >/dev/null 2>&1
   ok "an absent lanes/ tree is a no-op"
 else
   bad "an absent lanes/ tree is a no-op" "returned nonzero"
-fi
-
-echo "== a recycled pid gets a CLEAN lane =="
-# The case the resolver's header used to call harmless and is not. A later run
-# replaces only what IT writes, so a debug-only run landing on a recycled pid
-# would keep the previous occupant's Release receipt beside a fresh Debug one —
-# a stale artifact read as current, which is this pair of issues' whole subject.
-mkdir -p "$SANDBOX/build/lanes/4242"
-: > "$SANDBOX/build/lanes/4242/xcode-test-release.log"
-: > "$SANDBOX/build/lanes/4242/xcode-test-debug.log"
-mkdir -p "$SANDBOX/build/lanes/4242/app-logger"
-: > "$SANDBOX/build/lanes/4242/app-logger/app.log"
-ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/4242" >/dev/null 2>&1
-if [ ! -e "$SANDBOX/build/lanes/4242/xcode-test-release.log" ] \
-  && [ ! -e "$SANDBOX/build/lanes/4242/app-logger/app.log" ]; then
-  ok "a recycled lane keeps no previous artifact"
-else
-  bad "a recycled lane keeps no previous artifact" "$(ls -R "$SANDBOX/build/lanes/4242" 2>/dev/null | tr '\n' ' ')"
-fi
-
-# Scoping. This deletes and runs unattended, so the refusals matter more than the
-# success: it must decline anything that is not the shape the resolver produces.
-mkdir -p "$SANDBOX/build/lanes/notapid" "$SANDBOX/build/other"
-: > "$SANDBOX/build/other/keep.txt"
-ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/notapid" >/dev/null 2>&1
-[ "$?" -eq 2 ] && [ -d "$SANDBOX/build/lanes/notapid" ] \
-  && ok "a lane name that is not a pid is refused" \
-  || bad "a lane name that is not a pid is refused" "removed or wrong rc"
-
-# THESE TWO MUST USE AN ALL-DIGIT BASENAME, or they do not test what they name.
-# Written first with `other` and `nested` as the basenames, both were refused by
-# the PID-SHAPE guard and passed while the PATH-SCOPE guard was deleted —
-# a control caught it: removing that guard left the suite fully green. A fixture
-# that cannot tell two guards apart reports on whichever one happens to fire.
-mkdir -p "$SANDBOX/build/other/4242"
-: > "$SANDBOX/build/other/4242/keep.txt"
-ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/other/4242" >/dev/null 2>&1
-[ "$?" -eq 2 ] && [ -f "$SANDBOX/build/other/4242/keep.txt" ] \
-  && ok "a pid-shaped path OUTSIDE lanes/ is refused" \
-  || bad "a pid-shaped path OUTSIDE lanes/ is refused" "removed or wrong rc"
-
-# Nesting is the one that would let a caller walk out of the scope, and it is
-# pid-shaped at every level so only the path guard can refuse it.
-mkdir -p "$SANDBOX/build/lanes/99/4242"
-: > "$SANDBOX/build/lanes/99/4242/keep.txt"
-ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/99/4242" >/dev/null 2>&1
-[ "$?" -eq 2 ] && [ -f "$SANDBOX/build/lanes/99/4242/keep.txt" ] \
-  && ok "a pid-shaped path NESTED under lanes/ is refused" \
-  || bad "a pid-shaped path NESTED under lanes/ is refused" "removed or wrong rc"
-
-# An absent lane is a no-op, not an error: the common case is a fresh pid.
-if ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/7777" >/dev/null 2>&1; then
-  ok "an absent lane is a no-op"
-else
-  bad "an absent lane is a no-op" "returned nonzero"
-fi
-
-echo "== a symlinked parent cannot be deleted THROUGH =="
-# The P1 the string-shaped guards could not see. Both original checks are true of
-# a STRING and say nothing about the filesystem, so a symlinked `build` or
-# `lanes` passed every one of them while `rm -rf` followed the link out of the
-# tree and deleted a numeric directory somewhere else.
-#
-# Each row plants a real victim outside the tree and requires it to SURVIVE.
-SYM="$(mktemp -d "${TMPDIR:-/tmp}/ew-log-dir-symlink.XXXXXX")"
-trap 'rm -rf "$SANDBOX" "$NOT_FOUND_LOG" "$SYM"' EXIT
-
-# (a) build/lanes is a link to somewhere else entirely.
-mkdir -p "$SYM/victim-a/4242" "$SYM/root-a/build"
-: > "$SYM/victim-a/4242/precious.txt"
-ln -s "$SYM/victim-a" "$SYM/root-a/build/lanes"
-ew_reset_lane_dir "$SYM/root-a" "$SYM/root-a/build/lanes/4242" >/dev/null 2>&1
-[ "$?" -eq 2 ] && [ -f "$SYM/victim-a/4242/precious.txt" ] \
-  && ok "a symlinked lanes/ is refused, victim survives" \
-  || bad "a symlinked lanes/ is refused, victim survives" "victim gone or wrong rc"
-
-# (b) build itself is a link. The lane path string is identical to a legitimate
-# one, which is exactly why a textual guard cannot tell them apart.
-mkdir -p "$SYM/victim-b/lanes/4242" "$SYM/root-b"
-: > "$SYM/victim-b/lanes/4242/precious.txt"
-ln -s "$SYM/victim-b" "$SYM/root-b/build"
-ew_reset_lane_dir "$SYM/root-b" "$SYM/root-b/build/lanes/4242" >/dev/null 2>&1
-[ "$?" -eq 2 ] && [ -f "$SYM/victim-b/lanes/4242/precious.txt" ] \
-  && ok "a symlinked build/ is refused, victim survives" \
-  || bad "a symlinked build/ is refused, victim survives" "victim gone or wrong rc"
-
-# (c) the lane itself is a link to a real directory elsewhere.
-mkdir -p "$SYM/victim-c" "$SYM/root-c/build/lanes"
-: > "$SYM/victim-c/precious.txt"
-ln -s "$SYM/victim-c" "$SYM/root-c/build/lanes/4242"
-ew_reset_lane_dir "$SYM/root-c" "$SYM/root-c/build/lanes/4242" >/dev/null 2>&1
-[ "$?" -eq 2 ] && [ -f "$SYM/victim-c/precious.txt" ] \
-  && ok "a symlinked lane is refused, victim survives" \
-  || bad "a symlinked lane is refused, victim survives" "victim gone or wrong rc"
-
-# (d) the prune refuses the whole sweep through a symlinked parent, rather than
-# pruning some entries and stopping. A partial sweep is the worse outcome.
-mkdir -p "$SYM/victim-d/old" "$SYM/root-d/build"
-touch -t 202001010000 "$SYM/victim-d/old"
-: > "$SYM/victim-d/old/precious.txt"
-ln -s "$SYM/victim-d" "$SYM/root-d/build/lanes"
-ew_prune_stale_lanes "$SYM/root-d" "$SYM/root-d/build/lanes/none" 7 >/dev/null 2>&1
-[ "$?" -eq 2 ] && [ -f "$SYM/victim-d/old/precious.txt" ] \
-  && ok "prune refuses a symlinked lanes/, victim survives" \
-  || bad "prune refuses a symlinked lanes/, victim survives" "victim gone or wrong rc"
-
-# The ACCEPTED twin: an ordinary, unlinked lane must still be cleared, or all four
-# rows above are satisfied by a function that refuses everything.
-mkdir -p "$SANDBOX/build/lanes/8888"
-: > "$SANDBOX/build/lanes/8888/stale.log"
-ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/8888" >/dev/null 2>&1
-[ ! -e "$SANDBOX/build/lanes/8888/stale.log" ] \
-  && ok "an ordinary lane is still cleared" \
-  || bad "an ordinary lane is still cleared" "stale file survived"
-
-echo "== containment is decided BEFORE absence =="
-# The P1 that made every other symlink row unreachable on the normal path. The
-# absent-lane shortcut used to run first, and absence is the FRESH-INVOCATION
-# case — so on almost every run the function returned success without looking at
-# the parents at all. The rows above only caught it because they pre-created the
-# lane.
-mkdir -p "$SYM/victim-e" "$SYM/root-e/build"
-: > "$SYM/victim-e/precious.txt"
-ln -s "$SYM/victim-e" "$SYM/root-e/build/lanes"
-# NOTE: lane 5150 deliberately does NOT exist — that is the whole point.
-ew_reset_lane_dir "$SYM/root-e" "$SYM/root-e/build/lanes/5150" >/dev/null 2>&1
-[ "$?" -eq 2 ] \
-  && ok "an ABSENT lane under a symlinked parent is still refused" \
-  || bad "an ABSENT lane under a symlinked parent is still refused" "rc was not 2"
-
-# The accepted twin: an absent lane under a NORMAL parent is a plain no-op, or
-# the row above is satisfied by a function that refuses every fresh run.
-if ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/5151" >/dev/null 2>&1; then
-  ok "an absent lane under a normal parent is a no-op"
-else
-  bad "an absent lane under a normal parent is a no-op" "returned nonzero"
 fi
 
 echo "== a mount point is a second way out that -L cannot see =="

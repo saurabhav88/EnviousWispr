@@ -47,15 +47,25 @@
 # CONTRACT
 #   ew_resolve_log_dir <project_root> [requested]
 # Echoes an ABSOLUTE directory path. An empty `requested` yields a
-# CONCURRENCY-ISOLATED directory, `<project_root>/build/lanes/$$`. That is the
-# honest name for it: two concurrent processes cannot share a pid, which is the
-# whole defect, while a LATER run can revisit a recycled pid. It is not globally
-# unique and no timestamp is needed to make it so — the caller CLEARS the
-# directory instead, via `ew_reset_lane_dir`.
-# An earlier version of this comment called reuse HARMLESS. It is not: a
-# debug-only run replaces only the debug artifacts, so a recycled lane keeps the
-# previous occupant's Release log and bundle beside fresh Debug ones, and
-# `app-logger` appends. Clearing is part of taking the directory.
+# directory named `<seconds>-<pid>`, which cannot recur.
+#
+# **THIS WAS `$$` ALONE, AND EVERY DELETION THE TAKE PATH ONCE PERFORMED EXISTED
+# TO COMPENSATE FOR THAT CHOICE (#2408 review r7).** Two concurrent processes
+# cannot share a pid — that is the defect — but pids RECYCLE, and a later run
+# replaces only what IT writes, so a debug-only run landing on a recycled lane
+# kept the previous occupant's Release log and bundle beside fresh Debug ones
+# while `app-logger` appended. The answer was an `rm -rf` at take time, guarded by
+# shape, by three link checks, by mount detection and by an absoluteness check —
+# five guards, and review found a defect in that arrangement on FOUR CONSECUTIVE
+# ROUNDS, the last of which was a bind mount no device comparison can see.
+#
+# Adding the SECOND removes the need for all of it: two runs cannot share both a
+# pid and a second, because that is the same process. No reuse, no stale receipt,
+# nothing to clear. **The take path no longer deletes at all**, and one of the two
+# `rm -rf` sites in this file is gone rather than better guarded.
+#
+# The paved road rather than a sixth guard: a guard fires after the mistake is
+# possible; a name that cannot recur makes it impossible.
 # A relative `requested` is taken as relative to the project root, never to the
 # caller's cwd — a lane's log belongs to the WORKTREE being tested, and cwd is
 # not a stable identity on a machine running five of them
@@ -86,7 +96,12 @@ ew_lane_probe_mv_flag() {
   done
   rm -rf "$d"
 }
-ew_lane_probe_mv_flag
+# `|| true`: this runs at SOURCE time and `xcode-test.sh` sets `set -e` BEFORE
+# sourcing, so a probe that cannot create its temp directory — a missing,
+# unwritable or full `TMPDIR` — would abort the whole lane before `xcodebuild`
+# (#2408 review r7). A failed probe leaves the flag empty, which publication
+# already refuses on; that degradation must be allowed to happen.
+ew_lane_probe_mv_flag || true
 
 ew_resolve_log_dir() {
   local project_root="$1" requested="${2:-}"
@@ -97,7 +112,7 @@ ew_resolve_log_dir() {
   fi
 
   if [ -z "$requested" ]; then
-    printf '%s\n' "$project_root/build/lanes/$$"
+    printf '%s\n' "$project_root/build/lanes/$(date +%s)-$$"
     return 0
   fi
 
@@ -110,33 +125,19 @@ ew_resolve_log_dir() {
 
   printf '%s\n' "$project_root/$requested"
 }
+# WHY THIS FILE STILL CARRIES CONTAINMENT CHECKS AT ALL, now that the take path
+# does not delete (#2408 review r7).
+#
+# One `rm -rf` remains: the retention sweep. It runs unattended on every default
+# lane, so the same reasoning applies to it — **a string-shaped guard on a
+# filesystem operation is not a guard**, and being wrong there costs somebody's
+# directory rather than a rerun.
+#
+# The guard that decided a whole PATH was deletable is gone with the function it
+# served: it had no other caller, and dead code inside a safety file reads as
+# protection nobody can verify — which is the argument this PR already made for
+# deleting an unreachable check rather than keeping it with a note.
 
-# The two SIDE-EFFECTING halves of the same subject. They live here rather than
-# inline in `xcode-test.sh` for the reason this file's header already gives about
-# the resolver: inlined, they could only be exercised by running `xcodebuild`, so
-# in practice they would never be tested at all — and both of them delete or
-# replace things. The resolver stays side-effect free; these are separate
-# functions so that property is not quietly lost.
-
-# THE ONE PLACE THAT DECIDES WHETHER A PATH MAY BE DELETED (#2408 review r3, P1).
-#
-# The first version of this scoping was TEXTUAL — direct child of
-# `<root>/build/lanes/`, basename all digits. Both are true of a string and say
-# nothing about the filesystem, so if `<root>/build` or `<root>/build/lanes` is a
-# SYMLINK the path passes every check and `rm -rf` follows the link out of the
-# tree, deleting a numeric directory somewhere else entirely.
-#
-# **A string-shaped guard on a filesystem operation is not a guard**, and this is
-# the one that runs unattended on every default lane, so being wrong here costs
-# somebody's directory rather than a rerun.
-#
-# So containment is decided PHYSICALLY: no link anywhere on the way down, and the
-# lane's real parent must BE the real lanes directory. `pwd -P` resolves what the
-# string cannot.
-#
-# Shared by both deleting functions deliberately. Two copies of a rule this sharp
-# is how one of them stops matching the other.
-#   ew_lane_path_is_deletable <project_root> <lane_dir>
 # Is this path a MOUNT POINT, or can we not tell? A directory whose device number
 # differs from its parent's is where a filesystem is mounted; `stat -f %d` is the
 # macOS spelling.
@@ -180,9 +181,23 @@ ew_lane_device_of() {
   esac
 }
 
+# KNOWN LIMIT and the reason the take path stopped deleting: a device-number
+# comparison cannot see a SAME-DEVICE bind mount, which Linux allows.
+# `/proc/self/mountinfo` is consulted where it exists, which closes the Linux
+# case; no portable shell primitive covers the remainder. This is defence in
+# depth for the ONE remaining `rm -rf`, not a proof.
 ew_lane_is_mount_point() {
-  local path="$1" dev parent_dev
+  local path="$1" dev parent_dev resolved
   [ -e "$path" ] || return 1
+
+  # Linux: the authoritative list, which sees a bind mount whatever its device.
+  if [ -r /proc/self/mountinfo ]; then
+    resolved="$(cd "$path" 2>/dev/null && pwd -P)" || return 0
+    if /usr/bin/awk -v p="$resolved" '"'"'$5 == p { f = 1 } END { exit !f }'"'"' \
+      /proc/self/mountinfo 2>/dev/null; then
+      return 0
+    fi
+  fi
   dev="$(ew_lane_device_of "$path")" || return 0
   parent_dev="$(ew_lane_device_of "$path/..")" || return 0
   [ -n "$dev" ] && [ -n "$parent_dev" ] || return 0
@@ -207,95 +222,6 @@ ew_lane_component_is_unsafe() {
   ew_lane_is_mount_point "$1" && return 0
   return 1
 }
-
-ew_lane_path_is_deletable() {
-  local project_root="$1" lane_dir="$2"
-  local base="${lane_dir##*/}"
-
-  # Shape first, because it is the cheap half and it rejects the obvious.
-  case "$lane_dir" in
-    "$project_root/build/lanes/$base") ;;
-    *) return 1 ;;
-  esac
-  case "$base" in
-    "" | *[!0-9]*) return 1 ;;
-  esac
-
-  # Then the filesystem. ONE question asked at each of the three levels: can
-  # `rm -rf` leave the tree through this component. Asked through a single helper
-  # rather than two checks per level, and that is a COVERAGE decision as much as a
-  # tidiness one — a real mount cannot be constructed in a portable suite without
-  # sudo, so a `-L` check and a separate mount check at each level would leave the
-  # mount half of every level untestable. With one helper, the rows that prove the
-  # guard consults it (the symlink victims below) and the rows that prove the
-  # helper catches a mount (against real devfs) compose into coverage of both.
-  ew_lane_component_is_unsafe "$project_root/build" && return 1
-  ew_lane_component_is_unsafe "$project_root/build/lanes" && return 1
-  ew_lane_component_is_unsafe "$lane_dir" && return 1
-
-  # NO `pwd -P` PARENT-EQUALITY CHECK HERE, AND ITS ABSENCE IS DELIBERATE.
-  # One was written and removed: with the three link checks above passing, the
-  # shape guard already forces the lane to be a direct child of a real
-  # `build/lanes`, so the physical parent IS the physical lanes directory by
-  # construction — and where `project_root` itself contains a link, BOTH sides
-  # resolve through it and compare equal anyway. A control proved it: deleting
-  # the comparison left all 31 rows green, because nothing can reach it.
-  # **An unreachable guard inside a deleting function is worse than no guard** —
-  # it reads as protection that nobody can verify, and the next reader trusts it.
-  return 0
-}
-
-# Give a recycled pid a CLEAN lane (#2408 review r2).
-#
-# The resolver's own header calls pid reuse harmless, and that was WRONG in one
-# case I asked about and answered badly. A later run replaces only what it
-# writes: a DEBUG-only invocation landing on a recycled pid overwrites the debug
-# log and bundle and leaves the previous occupant's `xcode-test-release.log` and
-# release `.xcresult` sitting beside them, while `app-logger` appends rather than
-# replaces. So a reader of `latest-lane` would find a stale Release receipt next
-# to a fresh Debug one and no way to tell — which is this pair of issues' whole
-# subject, arriving through the fix for it.
-#
-# Clearing is therefore part of taking the directory, not an optimisation.
-#
-# SCOPED HARD, because this deletes and it runs unattended: the path must sit
-# directly under `<project_root>/build/lanes/` and its basename must be all
-# digits, which is the shape the resolver produces and nothing a caller can talk
-# it into. Anything else is refused rather than cleaned — a wrong refusal costs a
-# stale file, a wrong delete costs someone's work.
-#   ew_reset_lane_dir <project_root> <lane_dir>
-ew_reset_lane_dir() {
-  local project_root="$1" lane_dir="$2"
-
-  if [ -z "$project_root" ] || [ -z "$lane_dir" ]; then
-    echo "ew_reset_lane_dir: project_root and lane_dir are required" >&2
-    return 2
-  fi
-
-  # CONTAINMENT IS DECIDED BEFORE ABSENCE (#2408 review r3, P1).
-  #
-  # The absent-lane shortcut used to run FIRST, and absence is the NORMAL
-  # fresh-invocation case — so on almost every run this returned success without
-  # ever looking at the parents, and the caller then `mkdir -p`'d straight through
-  # a symlinked `build` or `lanes`. The early return was added for a good reason
-  # and put upstream of the guard, which is this repo's own
-  # fix-the-path-that-runs-first shape: the check that matters was correct and
-  # unreachable.
-  #
-  # Ordering is safe because none of the containment checks require the lane to
-  # exist — they ask about its NAME and about its parents.
-  if ! ew_lane_path_is_deletable "$project_root" "$lane_dir"; then
-    echo "ew_reset_lane_dir: refusing to clear a path that is not a contained lane: $lane_dir" >&2
-    return 2
-  fi
-
-  # Nothing to clean is success, and it is checked AFTER containment so a
-  # fresh run still validates the tree it is about to write into.
-  [ -e "$lane_dir" ] || return 0
-
-  rm -rf "$lane_dir"
-}
-
 # Publish "the last lane I ran" at a stable address (#2396).
 #
 # The default log directory is no longer predictable, so a human needs one place
