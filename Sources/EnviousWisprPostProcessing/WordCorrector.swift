@@ -857,6 +857,10 @@ public struct WordCorrector: Sendable {
 
               let winner: (candidate: MultiWordFuzzyCandidate, peeled: Bool)
               switch (unpeeledOutcome, peeledOutcome) {
+              case (.alreadyCorrect, _), (_, .alreadyCorrect):
+                // Already right as dictated. Leave the span alone rather than
+                // letting the other attempt replace correct text.
+                continue
               case (.ambiguous, _), (_, .ambiguous):
                 // An ambiguous attempt is NOT "found nothing": letting the other
                 // attempt decide a span this one already judged uncertain is the
@@ -1280,6 +1284,17 @@ public struct WordCorrector: Sendable {
   private enum MultiWordFuzzyAttemptOutcome {
     case candidate(MultiWordFuzzyCandidate)
     case ambiguous
+    /// The phrase ALREADY equals its canonical — correct as dictated, nothing to
+    /// do. TERMINAL for the span, and distinct from `.noCandidate` for the same
+    /// reason `.ambiguous` is (#2406 cloud review).
+    ///
+    /// Collapsing it into `.noCandidate` let the OTHER attempt win and replace
+    /// text that was already right: with `International Platform.com` dictated,
+    /// the peeled attempt matches its canonical perfectly while an unrelated
+    /// domain-shaped distractor can clear the threshold unpeeled — and the
+    /// switch would accept the distractor. A hazard this PR's two-attempt design
+    /// created; the single-attempt version had no other branch to hand it to.
+    case alreadyCorrect
     case noCandidate
   }
 
@@ -1347,7 +1362,7 @@ public struct WordCorrector: Sendable {
       #endif
       return .ambiguous
     }
-    guard rawPhrase != bestCanonical else { return .noCandidate }
+    guard rawPhrase != bestCanonical else { return .alreadyCorrect }
 
     return .candidate(
       MultiWordFuzzyCandidate(

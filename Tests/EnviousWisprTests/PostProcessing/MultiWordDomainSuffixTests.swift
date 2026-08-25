@@ -61,6 +61,30 @@ struct MultiWordDomainSuffixTests {
     #expect(replacements.count == 1)
   }
 
+  /// Text that is ALREADY correct must survive a competing distractor (#2406).
+  ///
+  /// With `International Platform.com` dictated, the PEELED attempt matches its
+  /// canonical perfectly — nothing to do — while an unrelated domain-shaped
+  /// distractor can clear the threshold on the UNPEELED attempt. Treating
+  /// "already correct" as "found nothing" handed the span to the distractor and
+  /// replaced correct text.
+  ///
+  /// This hazard is specific to the two-attempt design: the single-attempt
+  /// version had no other branch to hand the span to.
+  @Test("already-correct text is not replaced by a competing distractor")
+  func alreadyCorrectTextSurvivesADistractor() {
+    let real = CustomWord(
+      canonical: "International Platform", aliases: ["international platform"])
+    let distractor = CustomWord(
+      canonical: "Unrelated Thing", aliases: ["international plxxform.com"])
+    let (result, replacements) = corrector.correct(
+      "visit International Platform.com today", against: [real, distractor])
+    #expect(
+      result == "visit International Platform.com today",
+      "already-correct text must be left alone, not replaced; got: \(result)")
+    #expect(replacements.isEmpty, "nothing should have been replaced")
+  }
+
   /// A canonical that already specifies its own domain does NOT get the dictated
   /// suffix reattached — otherwise the user sees it twice. Same rule the
   /// single-word path applies.
