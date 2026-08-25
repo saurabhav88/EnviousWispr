@@ -187,17 +187,26 @@ public final class HotkeyService {
 
   public var recordingMode: RecordingMode = .toggle
 
-  /// Toggle-mode hotkey key code (default: Right Option = 61, modifier-only).
-  public var toggleKeyCode: UInt16 = ModifierKeyCodes.rightOption
+  // Every fallback below reads `ShortcutRole.defaultBinding`, the one owner of what a shortcut ships
+  // as. These are the value a service carries before `HotkeyController` pushes the user's settings,
+  // so a hard-coded one here does not show up as a wrong default anywhere a test looks — it shows up
+  // as a newly constructed service holding a stale binding until synchronisation runs.
+  //
+  // Converting Quick Add and leaving these two was the first attempt, which is the partial migration
+  // this repo's own rule refuses: old code removed and new code wired in the SAME change, never a
+  // shim and a follow-up.
 
-  /// Toggle-mode required modifiers (default: none — modifier-only hotkey).
-  public var toggleModifiers: NSEvent.ModifierFlags = []
+  /// Toggle-mode hotkey key code. Right Option, a bare modifier.
+  public var toggleKeyCode: UInt16 = ShortcutRole.record.defaultKeyCode
 
-  /// Key code for the cancel hotkey. Default: Escape (53).
-  public var cancelKeyCode: UInt16 = 53
+  /// Toggle-mode required modifiers — none, because a bare modifier stores empty modifiers.
+  public var toggleModifiers: NSEvent.ModifierFlags = ShortcutRole.record.defaultModifiers
 
-  /// Required modifiers for cancel hotkey. Default: none (bare Escape).
-  public var cancelModifiers: NSEvent.ModifierFlags = []
+  /// Key code for the cancel hotkey. Escape.
+  public var cancelKeyCode: UInt16 = ShortcutRole.cancel.defaultKeyCode
+
+  /// Required modifiers for cancel hotkey — none, bare Escape.
+  public var cancelModifiers: NSEvent.ModifierFlags = ShortcutRole.cancel.defaultModifiers
 
   /// Key code for the Quick Add hotkey (#2381). The shipped value, read from its one owner.
   public var quickAddKeyCode: UInt16 = ShortcutRole.quickAdd.defaultKeyCode

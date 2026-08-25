@@ -81,6 +81,20 @@ struct KeybindRowDefaultsTests {
     #expect(settings.quickAddModifiers == ShortcutRole.quickAdd.defaultModifiers)
   }
 
+  @MainActor
+  @Test("A newly constructed service carries the shipped shortcuts, before any settings arrive")
+  func serviceFallbacksMatchTheOwner() {
+    // The gap that hid an incomplete migration: converting one fallback and leaving two produced no
+    // failure anywhere, because no case built a service. A hard-coded fallback is invisible in every
+    // other assertion here — it shows up only as a fresh service holding a stale binding until
+    // `HotkeyController` pushes settings over it.
+    let service = HotkeyService()
+
+    #expect(service.recordBinding == ShortcutRole.record.defaultBinding)
+    #expect(service.cancelBinding == ShortcutRole.cancel.defaultBinding)
+    #expect(service.quickAddBinding == ShortcutRole.quickAdd.defaultBinding)
+  }
+
   // MARK: - No literal creeps back into a row
 
   /// Each row's own source block, keyed by its accessibility label.
@@ -97,7 +111,15 @@ struct KeybindRowDefaultsTests {
       Issue.record(Comment(rawValue: "no ProminentHotkeyRow labelled '\(label)'"))
       return ""
     }
-    return block
+    // COMMENTS STRIPPED, and that is not tidiness. These rows are heavily commented, and a comment
+    // MENTIONING `ShortcutRole.quickAdd.defaultKeyCode` would satisfy every assertion below while
+    // the executable line beneath it held a literal — a guard passing on prose about the thing it
+    // is meant to check. Line comments only; this file has no block comments inside a row.
+    return
+      block
+      .split(separator: "\n", omittingEmptySubsequences: false)
+      .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+      .joined(separator: "\n")
   }
 
   @Test(
