@@ -3,6 +3,7 @@ Usage:  python3 -c "from wispr_eyes import *; connect(); see()"
         python3 -c "from wispr_eyes import *; connect(); tap('AI Polish')"
 """
 import os, sys, subprocess, time
+import datetime as _dt
 sys.path.insert(0, os.path.dirname(__file__))
 from ui_helpers import (find_app_pid, get_ax_app, get_attr, set_attr, perform_action,
     find_element, find_all_elements, find_control_for_label, wait_for_condition,
@@ -1598,7 +1599,78 @@ def _require_single_instance(what):
 _LAUNCH_BANNER = "[AppLogger] Debug mode enabled"
 
 
-def instances_stayed_single(before, log_slice_lines, samples):
+def _line_timestamp(line):
+    """The ISO-8601 stamp `AppLogger` puts at the head of every line, or None."""
+    if not line.startswith("["):
+        return None
+    end = line.find("]")
+    if end < 0:
+        return None
+    try:
+        return _dt.datetime.fromisoformat(line[1:end])
+    except ValueError:
+        return None
+
+
+def launch_banners_since(start):
+    """Launch banners at or after `start`, across the live log AND its rotated
+    predecessors.
+
+    READS THE FILES, NOT A CURSOR, and both halves of that are review findings.
+
+    A cursor taken after the ownership check leaves a gap in front of it - here
+    `begin_test`, `close_window` and TTS synthesis, which is seconds, not
+    milliseconds - and a banner written in that gap is outside the slice. Passing
+    a TIMESTAMP instead means the window starts where ownership was established
+    rather than where somebody happened to open the file.
+
+    And a cursor cannot survive ROTATION. `AppLogger.rotateIfNeeded` moves
+    `app.log` to `app.1.log` (and shifts `app.N` to `app.N+1`) the moment the file
+    passes its size bound, so a second launch's banner can be pushed into
+    `app.1.log` while every marker that follows lands in the new `app.log`. A
+    reader that follows the inode reads the new file only and sees a complete-
+    looking slice with the banner missing. Scanning the predecessors costs one
+    open each and removes the whole question.
+    """
+    directory = os.path.dirname(_APP_LOG_PATH)
+    texts = []
+    # `maxFileCount` is 5 in `AppLogger.swift`; reading one more than exists is
+    # free, and reading one FEWER is the silent-miss this function exists to stop.
+    for name in ["app.log"] + [f"app.{i}.log" for i in range(1, 6)]:
+        try:
+            with open(os.path.join(directory, name), "rb") as fh:
+                texts.append(fh.read().decode("utf-8", "replace"))
+        except OSError:
+            continue
+    return count_launch_banners(texts, start)
+
+
+def count_launch_banners(texts, start):
+    """The pure half of `launch_banners_since`: count banners at or after `start`.
+
+    Split out so the self-test can drive it with synthetic text. The FILE
+    LOCATIONS deliberately stay inside `launch_banners_since` and are not a
+    parameter - a caller able to redirect where this guard looks could aim it at
+    an empty directory and be handed a clean verdict, which is a bypass wearing a
+    test seam's clothes.
+    """
+    seen = 0
+    for text in texts:
+        for line in text.splitlines():
+            if _LAUNCH_BANNER not in line:
+                continue
+            stamp = _line_timestamp(line)
+            # A line whose stamp will not parse is NOT counted. That is the
+            # permissive direction and it is deliberate: `AppLogger` writes a
+            # well-formed stamp on every line, so an unparseable one is a mangled
+            # line rather than a launch, and the SAMPLES remain the mechanism that
+            # does not depend on the log being readable at all.
+            if stamp is not None and stamp >= start:
+                seen += 1
+    return seen
+
+
+def instances_stayed_single(before, window_start, samples):
     """Did exactly one EnviousWispr own this window, start to finish?
 
     TWO SNAPSHOTS CANNOT ANSWER THIS, and a review round is what established it:
@@ -1611,28 +1683,50 @@ def instances_stayed_single(before, log_slice_lines, samples):
 
       SAMPLES   the instance set read repeatedly DURING the window rather than
                 only at its ends. Closes the hole down to the sampling gap.
-      BANNER    the log slice itself, scanned for another app's launch line. The
-                better of the two, because it is evidence from the SAME artifact
-                the verdict is drawn from: a process that wrote into this window
-                announced itself IN it, whatever the process table happened to
-                say at the instants we looked.
+      BANNER    the log FILES, scanned by TIMESTAMP for another app's launch
+                line from `window_start` onward, across the rotated predecessors
+                too. The better of the two, because it is evidence from the SAME
+                artifact the verdict is drawn from: a process that wrote into
+                this window announced itself IN it, whatever the process table
+                happened to say at the instants we looked.
+                Reading files rather than a cursor is deliberate - see
+                `launch_banners_since`, whose docstring carries the two ways a
+                cursor loses the banner.
 
     Returns `(ok, reason)`. The reason names which mechanism objected, because "a
     second app launched mid-window" and "the app was replaced" are different
     things to go and look at.
+
+    KNOWN RESIDUAL, stated rather than implied, because "two mechanisms" reads as
+    "closed" and this is not. Both must fail together, and they can: a second
+    instance that launches AND exits entirely between two samples, whose launch
+    banner is ALSO lost to the concurrent-writer line loss `AppLogger` suffers -
+    and the moment a second app launches is precisely when there are two writers,
+    so the banner is the line most at risk. The scenario is narrow and it is not
+    impossible.
+
+    What is NOT in that residual any more, because a review round closed both: a
+    banner written before the log cursor was taken, and a banner carried into a
+    rotated file. Neither depends on a cursor now.
+
+    What is NOT claimed: that this proves one instance owned the window. What is
+    claimed: two independent mechanisms must both miss, where before one snapshot
+    pair had a hole a whole app could live in. If a verdict from this ever has to
+    be defended, defend it on the samples plus the banner plus what the log slice
+    actually contains - never on this function returning True.
     """
     for snap in samples:
         if set(snap) != set(before):
             return False, (f"the running set changed mid-window "
                            f"({sorted(before)} -> {sorted(snap)})")
-    launches = sum(1 for line in log_slice_lines if _LAUNCH_BANNER in line)
+    launches = launch_banners_since(window_start)
     if launches:
         return False, (f"{launches} app launch banner(s) appeared inside this "
                        f"window; another instance wrote into this same log")
     return True, ""
 
 
-def double_press_record_key():
+def double_press_record_key(attempts=3):
     """Two presses inside the app's chain window — the hands-free gesture (#2410).
 
     The window is measured from the moment RECORDING STARTS, not from the first
@@ -1668,9 +1762,47 @@ def double_press_record_key():
     with a reproduction. Distinct session ids are what separate "two recordings"
     from "one duplicated log line".
     """
-    press_record_key()
-    time.sleep(0.12)
-    press_record_key()
+    # THE SYNTHETIC CHAIN IS ~80% RELIABLE AND NO GAP FIXES IT. Measured
+    # 2026-08-25 against the live dev build, 24 trials at four gaps:
+    #
+    #     0.04s  5/6     0.08s  4/6     0.12s  5/6     0.20s  3/5     0.30s  0/5
+    #
+    # So the first four are one population around 80% and 0.30s is outside the
+    # window entirely. Tuning the number is not available - it was tried first,
+    # and the measurement is what stopped it.
+    #
+    # A SIGNAL-BASED WAIT WAS TRIED AND IS WORSE, which is why this is a retry and
+    # not the seam fix the flake rules would otherwise ask for. Waiting for the
+    # first press's `Recording started` before posting the second failed 4 out of
+    # 4: that line is written AFTER the key-up has already ended the push-to-talk
+    # take, so the second press lands during teardown rather than after it. The
+    # subject does emit a signal; it is not a signal that means "ready".
+    #
+    # What a missed attempt costs is nothing: the orphan take is discarded by the
+    # app as `Recording discarded - too short`, so the state is self-clearing and a
+    # retry starts clean.
+    #
+    # THE ATTEMPT COUNT IS PRINTED, ALWAYS. A retry that hides itself turns a
+    # degrading delivery path into a silent slowdown, and the next person to
+    # measure this needs to see 1 become 3 before it becomes a failure.
+    for attempt in range(1, attempts + 1):
+        log_state = _snapshot_log_size()
+        press_record_key()
+        time.sleep(0.12)
+        press_record_key()
+        time.sleep(0.6)
+        seen = any("Double press" in line
+                   for line in (_read_new_log_lines(log_state)[0] or []))
+        if seen:
+            if attempt > 1:
+                print(f"  double press engaged on attempt {attempt} of {attempts}")
+            return True
+        if attempt < attempts:
+            print(f"  attempt {attempt} did not register a chain; retrying")
+            # Let the orphan take finish being discarded before pressing again.
+            time.sleep(1.2)
+    print(f"  double press did not register after {attempts} attempts")
+    return False
 
 
 def single_press_record_key():
@@ -1742,6 +1874,12 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     # `instances_stayed_single`. An instance that starts after the opening check
     # and exits before the closing one is invisible to two snapshots.
     instance_samples = []
+    # STAMPED HERE, at the moment ownership was established, and NOT at the log
+    # cursor taken further down. Everything between the two - `begin_test`,
+    # `close_window`, TTS synthesis - is seconds, and a review round found that a
+    # second app launching in that gap has its banner outside the slice entirely.
+    # The window starts where the claim starts.
+    window_start = _dt.datetime.now().astimezone()
 
     begin_test(f"hands-free{' +audio' if audio else ''}")
     close_window()
@@ -1866,7 +2004,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     # log for part of the run makes every number above unattributable. Refuse the
     # verdict rather than reporting one.
     instance_samples.append(running_enviouswispr_instances())
-    single, why = instances_stayed_single(instances_before, log_lines or [],
+    single, why = instances_stayed_single(instances_before, window_start,
                                           instance_samples)
     if not single:
         print(f"\n  BLOCKED: {why}.")
@@ -2298,7 +2436,7 @@ def _self_test():
     two-way: three rows must REFUSE and two must PASS, so a guard that stopped
     classifying anything fails here rather than looking clean.
     """
-    import types
+    import types, pathlib, shutil
     real_run = subprocess.run
     me = str(os.getpid())
 
@@ -2374,31 +2512,104 @@ def _self_test():
         else:
             print(f"  ok      {name}")
 
+    # The banner counter's PURE half, driven with synthetic text. This is where
+    # the two review findings on the log side live: a banner written before
+    # anyone took a cursor, and a banner carried into a rotated file.
+    T0 = _dt.datetime.fromisoformat("2026-01-01T12:00:00-05:00")
+    def banner_at(when):
+        return f"[{when}] [INFO] {_LAUNCH_BANNER}"
+    banner_cases = [
+        ("a banner BEFORE the window is not counted",
+         [banner_at("2026-01-01T11:59:59-05:00")], 0),
+        ("a banner AFTER the window is counted",
+         [banner_at("2026-01-01T12:00:01-05:00")], 1),
+        # The rotation finding: the banner sits in a PREDECESSOR while every
+        # marker that follows it lands in the new `app.log`. A cursor that
+        # follows the inode reads the new file only and sees a complete-looking
+        # slice with the banner missing.
+        ("a banner in a ROTATED predecessor is still counted",
+         ["nothing here", banner_at("2026-01-01T12:00:02-05:00")], 1),
+        ("a banner exactly AT the window start is counted",
+         [banner_at("2026-01-01T12:00:00-05:00")], 1),
+        # A different UTC offset must compare correctly rather than
+        # lexicographically - 17:00:01Z is 12:00:01-05:00, inside the window.
+        ("a banner written under a different UTC offset compares by INSTANT",
+         [banner_at("2026-01-01T17:00:01+00:00")], 1),
+        ("an unparseable stamp is not counted and does not raise",
+         ["[not-a-date] [INFO] " + _LAUNCH_BANNER], 0),
+        ("an ordinary line is not a banner",
+         ["[2026-01-01T12:00:01-05:00] [INFO] [Pipeline] Recording started."], 0),
+    ]
+    for name, texts, want in banner_cases:
+        got = count_launch_banners(texts, T0)
+        if got != want:
+            failures.append(f"{name}: counted {got}, want {want}")
+        else:
+            print(f"  ok      {name}")
+
+    # The FILE half of the banner scan, which the rows above cannot reach: they
+    # drive the pure counter with a list of texts and never touch the loop that
+    # decides WHICH files get read. A mutant proved it - dropping the rotated
+    # predecessors from that loop survived every row above, because none of them
+    # opens a file.
+    #
+    # `_APP_LOG_PATH` is rebound in-process rather than made a parameter. A
+    # directory argument would let any caller aim this guard at an empty folder
+    # and be handed a clean verdict, which is a bypass wearing a test seam's
+    # clothes; a module global that only an in-process test can rebind is not
+    # reachable from a call site at all. Same technique as the `subprocess.run`
+    # stub above.
+    import tempfile as _tf
+    real_log_path = _APP_LOG_PATH
+    tmpdir = _tf.mkdtemp()
+    try:
+        pathlib.Path(tmpdir, "app.log").write_text(
+            "[2026-01-01T12:00:05-05:00] [INFO] [Pipeline] Recording started.\n")
+        # The rotation case exactly: the banner is in the PREDECESSOR while every
+        # marker that follows it lands in the new `app.log`.
+        pathlib.Path(tmpdir, "app.1.log").write_text(
+            banner_at("2026-01-01T12:00:01-05:00") + "\n")
+        globals()["_APP_LOG_PATH"] = str(pathlib.Path(tmpdir, "app.log"))
+        got = launch_banners_since(T0)
+    finally:
+        globals()["_APP_LOG_PATH"] = real_log_path
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    name = "a banner that rotation moved into app.1.log is still read off disk"
+    if got != 1:
+        failures.append(f"{name}: counted {got}, want 1")
+    else:
+        print(f"  ok      {name}")
+    file_rows = 1
+
     # `instances_stayed_single` answers a question no snapshot pair can: did one
     # instance own the WHOLE window. Rows 2 and 3 are the review finding that
     # produced it - an app that starts after the opening check and exits before
     # the closing one leaves both endpoints identical.
     BEFORE = {"111": "/Users/x/EW/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"}
     OTHER = dict(BEFORE, **{"222": "/Users/y/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"})
-    BANNER = "[2026-01-01T00:00:00-00:00] [INFO] " + _LAUNCH_BANNER
     window_cases = [
-        ("a quiet window is single", BEFORE, [], [BEFORE, BEFORE], True),
+        ("a quiet window is single", BEFORE, 0, [BEFORE, BEFORE], True),
         ("a sample catching a second instance is not single",
-         BEFORE, [], [BEFORE, OTHER, BEFORE], False),
-        ("a launch banner in the log slice is not single, even with every "
-         "sample clean", BEFORE, [BANNER], [BEFORE, BEFORE], False),
+         BEFORE, 0, [BEFORE, OTHER, BEFORE], False),
+        ("a launch banner in the window is not single, even with every "
+         "sample clean", BEFORE, 1, [BEFORE, BEFORE], False),
         ("a replaced instance is not single (same COUNT, different pid)",
-         BEFORE, [], [BEFORE, {"999": BEFORE["111"]}], False),
+         BEFORE, 0, [BEFORE, {"999": BEFORE["111"]}], False),
     ]
-    for name, before, log_lines, samples, want_ok in window_cases:
-        ok, _why = instances_stayed_single(before, log_lines, samples)
+    real_count = globals()["launch_banners_since"]
+    for name, before, banners, samples, want_ok in window_cases:
+        globals()["launch_banners_since"] = lambda _start, _n=banners: _n
+        try:
+            ok, _why = instances_stayed_single(before, T0, samples)
+        finally:
+            globals()["launch_banners_since"] = real_count
         if ok != want_ok:
             failures.append(f"{name}: got {'single' if ok else 'NOT single'}, "
                             f"want {'single' if want_ok else 'NOT single'}")
         else:
             print(f"  ok      {name}")
 
-    total = len(cases) + len(window_cases)
+    total = len(cases) + len(banner_cases) + file_rows + len(window_cases)
     if failures:
         for f in failures:
             print(f"  FAIL    {f}")
