@@ -594,7 +594,7 @@ struct QuickAddCoordinatorTests {
     #expect(recorder.outcomes == [.cancelled])
   }
 
-  @Test("Both doors are reported, and they are the only two")
+  @Test("Every door is reported, and the set is closed")
   func bothDoorsAreReported() throws {
     let (coordinator, recorder) = makeCoordinator()
 
@@ -602,7 +602,10 @@ struct QuickAddCoordinatorTests {
     guard case .opened(let door, _, _, _, _, _, _) = try #require(recorder.opened) else { return }
 
     #expect(door == .service)
-    #expect(QuickAddDoor.allCases.count == 2)
+    // Three since #2412 added the status-item menu. The count is here so a new door cannot be added
+    // without someone reading the funnel — which is what happened.
+    #expect(QuickAddDoor.allCases.count == 3)
+    #expect(QuickAddDoor.allCases.contains(.menuBar))
   }
 
   @Test("The Service door uses the pasteboard text and does not read Accessibility")

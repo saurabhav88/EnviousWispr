@@ -121,6 +121,32 @@ final class MenuBarController: NSObject {
 
   // MARK: - Menu rendering
 
+  /// What the Quick Add item says, and whether it can be chosen.
+  ///
+  /// **Disabled with a generic title when there is nothing to add, rather than enabled onto a
+  /// refusal.** An item that opens a panel only to say "nothing selected" spends a click to deliver
+  /// news the menu already had — and this cluster has produced three separate defects where a
+  /// sentence was composed from a neighbouring value rather than from what actually happened.
+  ///
+  /// Truncated for display. `SelectionReader` admits up to 512 scalars, and a menu item is not where
+  /// 512 characters belong; the panel shows the whole thing.
+  static func quickAddItem(selection: String?) -> (title: String, enabled: Bool) {
+    guard let selection, !selection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      return ("Add Selected Word", false)
+    }
+    let trimmed = selection.trimmingCharacters(in: .whitespacesAndNewlines)
+    let shown =
+      trimmed.unicodeScalars.count > Self.quickAddTitleScalars
+      ? String(String.UnicodeScalarView(trimmed.unicodeScalars.prefix(Self.quickAddTitleScalars)))
+        + "\u{2026}"
+      : trimmed
+    return ("Add \u{201C}\(shown)\u{201D}", true)
+  }
+
+  /// How much of the selection the title shows. Not a limit on what can be ADDED — the reader's
+  /// ceiling is that — only on what fits a menu without pushing the rest of it off screen.
+  static let quickAddTitleScalars = 24
+
   /// Pure menu builder. Fills `menu` from `state`. Logic byte-identical to the
   /// pre-PR-B.3 `AppDelegate.populateMenu(_:)`. Internal (not private) so
   /// `MenuBarControllerTests` can drive it with `MenuBarViewState` fixtures.
@@ -187,6 +213,26 @@ final class MenuBarController: NSObject {
     recordItem.target = self
     recordItem.isEnabled = !(state.pipelineState.isActive && !isRecording)
     menu.addItem(recordItem)
+
+    // Quick Add (#2412). Beside Start Recording because both act on what the user is doing RIGHT
+    // NOW, and above the Settings separator because neither is configuration.
+    let quickAdd = Self.quickAddItem(selection: state.quickAddSelection)
+    let quickAddItem = NSMenuItem(
+      title: quickAdd.title, action: #selector(addSelectedWordAction), keyEquivalent: "w")
+    // Shown, never registered: the real chord is a global hotkey owned by `HotkeyService`, and a
+    // menu key equivalent would be a SECOND registration of one gesture. This displays `⌃⌥W` so the
+    // menu teaches the fast path, which is the discoverability half of this issue.
+    quickAddItem.keyEquivalentModifierMask = [.control, .option]
+    quickAddItem.image = NSImage(
+      systemSymbolName: "text.badge.plus", accessibilityDescription: "Add selected word")
+    quickAddItem.target = self
+    quickAddItem.isEnabled = quickAdd.enabled
+    // **The selection rides on the ITEM, which is AppKit's own place for it.** A field on the
+    // controller would be one value shared by every render, and could drift from the title sitting
+    // beside it; this cannot, because they are set together and thrown away together. It also keeps
+    // this class off its stored-property ceiling, which refused the field and was right to.
+    quickAddItem.representedObject = state.quickAddSelection
+    menu.addItem(quickAddItem)
 
     // Auto-stop on silence indicator
     if state.vadAutoStop {
@@ -276,7 +322,13 @@ final class MenuBarController: NSObject {
   /// Snapshot the live homes into a value the pure renderer/mapper consume.
   /// Reads are byte-identical to the pre-PR-B.3 `AppDelegate.populateMenu` /
   /// `updateIcon` reads.
-  private func currentViewState() -> MenuBarViewState {
+  /// **`quickAddSelection` is a PARAMETER, not a read taken here, and that is deliberate.** This
+  /// builder feeds three paths — the initial menu build, every icon refresh, and the menu-open path —
+  /// and only the last is licensed to read the world: opening a status menu leaves the user's own
+  /// application frontmost (measured twice, #2412), which is exactly what makes the answer theirs.
+  /// An Accessibility round trip on an icon refresh would be work nobody asked for, against a
+  /// frontmost app that may well be us.
+  private func currentViewState(quickAddSelection: String? = nil) -> MenuBarViewState {
     // #1019: read the pending-update state (non-critical only — critical routes
     // to Sparkle's own UX) and the active-dictation guard.
     let pending: UpdateAvailabilityService.AvailableUpdate? = {
@@ -296,6 +348,7 @@ final class MenuBarController: NSObject {
       sparkleUpdateController.updateCoordinator?.installRefusedNow ?? false
 
     return MenuBarViewState(
+      quickAddSelection: quickAddSelection,
       pipelineState: liveRecordingState.pipelineState,
       asrLabel: backendMetadata.modelLabel,
       llmLabel: backendMetadata.llmLabel,
@@ -312,6 +365,14 @@ final class MenuBarController: NSObject {
   }
 
   // MARK: - Menu actions
+
+  /// **Reads nothing. The selection was captured when the menu was RENDERED**, while the user's own
+  /// application was still frontmost; by the time this fires the menu has closed and a read would be
+  /// about us. That ordering is the whole reason this door works.
+  @objc private func addSelectedWordAction(_ sender: NSMenuItem) {
+    guard let selection = sender.representedObject as? String else { return }
+    actions.addSelectedWord(selection)
+  }
 
   @objc private func continueOnboardingAction() {
     actions.continueOnboarding()
@@ -366,16 +427,23 @@ extension MenuBarController: NSMenuDelegate {
   nonisolated func menuNeedsUpdate(_ menu: NSMenu) {
     MainActor.assumeIsolated {
       if let currentMenu = statusItem?.menu {
-        renderMenu(into: currentMenu, state: currentViewState())
+        // The one read, at the one moment it is about the user's document rather than about us.
+        let selection: String? = {
+          if case .text(let text) = SelectionReader.read() { return text }
+          return nil
+        }()
+        renderMenu(into: currentMenu, state: currentViewState(quickAddSelection: selection))
       }
       updateIcon()
     }
   }
 }
 
-/// The five menu-action callbacks, packaged into one `Sendable` struct so the
+/// The menu-action callbacks, packaged into one `Sendable` struct so the
 /// architecture ceiling parser scores them as a single collaborator slot.
 struct MenuBarActions: Sendable {
+  /// Open Quick Add on the text the menu read while the user's own app was still frontmost (#2412).
+  let addSelectedWord: @MainActor (String) -> Void
   let continueOnboarding: @MainActor () -> Void
   let openSettings: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void
@@ -387,6 +455,12 @@ struct MenuBarActions: Sendable {
 /// `renderMenu` / `iconState` pure functions over a value, which is what makes
 /// the menu surface deterministically golden-testable.
 struct MenuBarViewState: Equatable {
+  /// The selection Quick Add would act on, or nil when there is nothing readable (#2412).
+  ///
+  /// **Carried on the state rather than read inside `renderMenu`, deliberately.** That function is
+  /// pure over this value, which is what makes the entire menu surface golden-testable; a world read
+  /// inside it would end that on the surface where a wrong item is most visible.
+  let quickAddSelection: String?
   let pipelineState: PipelineState
   let asrLabel: String
   let llmLabel: String

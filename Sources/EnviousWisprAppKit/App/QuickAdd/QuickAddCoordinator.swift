@@ -35,6 +35,9 @@ enum QuickAddEvent: Equatable, Sendable {
 enum QuickAddDoor: String, Equatable, Sendable, CaseIterable {
   case hotkey
   case service
+  /// The status-item menu (#2412). A third door, and the only one no OS registration, cache or
+  /// default can filter out — which is what went wrong with `service`.
+  case menuBar
 }
 
 /// How the panel ended. A closed set, so a new ending cannot inherit another's name.

@@ -101,6 +101,17 @@ final class QuickAddWiring {
   }
 
   /// Door B. Separate from the hotkey path only because the Service is HANDED its text.
+  /// The status-item menu handed us text it read while the menu was open.
+  ///
+  /// **Takes the text rather than reading it here, and that is the whole point of the door.** The
+  /// menu is rendered while the user's own application is still frontmost — measured, twice — so the
+  /// read happens there, at the one moment the answer is about their document. Reading it from this
+  /// side would run after the click, by which time the menu has closed and the answer is ours.
+  func beginFromMenuBar(text: String) {
+    guard notAlreadyOpen() else { return }
+    present(coordinator.begin(door: .menuBar, selectionOverride: text))
+  }
+
   func beginFromService(text: String) {
     guard notAlreadyOpen() else { return }
     present(coordinator.begin(door: .service, selectionOverride: text))
