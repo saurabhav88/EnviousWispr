@@ -436,8 +436,16 @@ final class OverlayDirector {
         assertionFailure("a morphed recording carries no design")
         return
       }
+      // **The position comes off the PUBLISHED frame, not from staged state.**
+      // A morph is the same pill, so the frame on screen already carries the
+      // position this pill was composed with — and reading it there means the
+      // leaf and the host cannot consume positions taken at two moments.
+      guard let position = model.state.recording?.position else {
+        assertionFailure("a morphed recording has no published frame")
+        return
+      }
       installRecordingProviders(
-        for: presentation, design: design, position: model.stagedRecordingPosition,
+        for: presentation, design: design, position: position,
         audioLevelProvider: audioLevelProvider,
         recordingElapsedProvider: recordingElapsedProvider)
       apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
@@ -1075,7 +1083,15 @@ final class OverlayDirector {
     // could compose against one edge and place against another.
     let anchor: OverlayPillPosition
     if case .recording = presentation.content {
-      anchor = model.stagedRecordingPosition
+      // Read from the frame ALREADY PUBLISHED for this presentation. `apply`
+      // publishes before it renders, so the matching frame exists by now; a
+      // mismatch means the host is being asked to place a pill nobody published.
+      let frame = model.state
+      guard frame.presentation?.id == presentation.id, let recording = frame.recording else {
+        assertionFailure("the recording host has no matching published frame")
+        return false
+      }
+      anchor = recording.position
     } else {
       anchor = position()
     }

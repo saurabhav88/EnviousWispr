@@ -149,6 +149,11 @@ struct PillAtomicFrameTests {
       let beforeMorph = rig.frames.count
       rig.publish(Self.recording(id: id, locked: false, notice: Self.capNotice))
       let afterMorph = Array(rig.frames.dropFirst(beforeMorph))
+      // **`allSatisfy` is VACUOUSLY TRUE on an empty array**, so without this the
+      // row passes on a leaf that stopped evaluating after the morph — a green
+      // that means "nothing was observed", which is the one result that must
+      // never read as a pass.
+      try #require(!afterMorph.isEmpty, "the morph produced no observed leaf frame")
       #expect(
         afterMorph.allSatisfy { $0.noticeText == Self.capCopy },
         "the banner morph drew \(afterMorph) — at least one frame still had no banner")
@@ -156,10 +161,52 @@ struct PillAtomicFrameTests {
       let beforeClear = rig.frames.count
       rig.publish(Self.recording(id: id, locked: false, notice: nil))
       let afterClear = Array(rig.frames.dropFirst(beforeClear))
+      try #require(!afterClear.isEmpty, "the clear produced no observed leaf frame")
       #expect(
         afterClear.allSatisfy { $0.noticeText == nil },
         "the banner clear drew \(afterClear) — at least one frame still had the banner")
     }
+  }
+
+  /// **A dwell survives a same-id publication and dies on a replacement.**
+  ///
+  /// Paired deliberately: the surviving half alone is satisfied by a `publish`
+  /// that never clears a dwell at all, which is the stale-countdown defect in the
+  /// other direction. Three same-id recording morphs emit `.unchanged` for the
+  /// expiry — an audio tick, a lock change, a notice change — so a `publish` that
+  /// cleared unconditionally discarded a window the director had armed, twenty
+  /// times a second during a live recording with a timed banner.
+  @Test("a dwell survives a same-id publication and dies on a replacement")
+  func dwellSurvivesAMorphAndDiesOnAReplacement() throws {
+    let model = OverlayRenderModel()
+    let id = PresentationID(rawValue: UUID())
+    let other = PresentationID(rawValue: UUID())
+
+    model.publish(Self.recording(id: id, locked: false, notice: nil))
+    let window = OverlayDwellWindow(id: id, startedAt: Date(), seconds: 4)
+    model.markDwellStarted(window)
+    try #require(model.state.dwell == window, "the dwell was never armed, so this row proves nothing")
+
+    // A same-id morph: an audio tick carrying a new level.
+    model.publish(Self.recording(id: id, locked: true, notice: nil))
+    #expect(model.state.dwell == window, "a same-id morph discarded the running clock")
+
+    // A different pill takes the slot.
+    model.publish(Self.recording(id: other, locked: false, notice: nil))
+    #expect(model.state.dwell == nil, "a replacement inherited the outgoing pill's clock")
+  }
+
+  /// A window naming a pill that is not current never reaches a frame.
+  @Test("a dwell for a pill that is no longer current is dropped at publication")
+  func aStaleDwellIsDroppedRatherThanFiltered() {
+    let model = OverlayRenderModel()
+    let current = PresentationID(rawValue: UUID())
+    let stale = PresentationID(rawValue: UUID())
+
+    model.publish(Self.recording(id: current, locked: false, notice: nil))
+    model.markDwellStarted(OverlayDwellWindow(id: stale, startedAt: Date(), seconds: 3))
+
+    #expect(model.state.dwell == nil, "a window for another pill reached the frame")
   }
 
   /// **The negative control, and without it the two rows above pass on a leaf

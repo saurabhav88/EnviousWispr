@@ -47,6 +47,37 @@
     /// the resolved design and captured position must be installed in the same
     /// operation that presents the pill. The director asserts on the wrong order,
     /// so this helper is what keeps the suite expressing the right one.
+    /// A released dictation's closures must not come back on the NEXT pill.
+    ///
+    /// **This is the row with teeth, and asserting an empty frame is not enough**
+    /// (#2377 Phase 5 C1, Codex round 1). Providers travel in the published
+    /// frame, so "no recording frame" says only that nothing is reachable RIGHT
+    /// NOW. The staged closures are what a later publication folds in, so a
+    /// release that emptied the frame and left staging alone would resurrect a
+    /// finished dictation's level and clock behind the next recording — and every
+    /// empty-frame assertion would still pass.
+    ///
+    /// Publishes a bare recording and requires the DEFAULTS. Called from every
+    /// release path — hide, replacement and refusal — because a check applied to
+    /// one of three proves nothing about the other two.
+    @MainActor
+    private static func expectReleasedProvidersDoNotReappear(_ model: OverlayRenderModel) {
+      let design = RecordingPillDesign.classic
+      model.publish(
+        PillDefinition(
+          id: PresentationID(rawValue: UUID()),
+          content: .recording(audioLevel: 0, isLocked: false, notice: nil, design: design),
+          expiry: .untilReplaced,
+          requestedWidth: .fixed(design.width),
+          reservesFixedHeight: design.reservedHeight))
+      #expect(
+        model.state.recording?.audioLevelProvider() == 0,
+        "the released dictation's level closure was staged and reappeared on the next pill")
+      #expect(
+        model.state.recording?.recordingElapsedProvider() == nil,
+        "the released dictation's elapsed clock was staged and reappeared on the next pill")
+    }
+
     private static func record(
       _ d: OverlayDirector, level: Float = 0.2, preview: Bool = false,
       locked: Bool = false,
@@ -517,26 +548,8 @@
       d.dismissCurrent(.announced)
 
       #expect(d.renderModel.state.presentation == nil)
-      // **Two claims, and the second is the one with teeth** (#2377 Phase 5 C1).
-      // Providers now travel in the published frame, so an empty slot carries no
-      // recording frame and there is nothing left to poll — that is the first.
-      // But the STAGED closures are what a later publication would fold in, so a
-      // release that emptied the frame and left staging alone would resurrect a
-      // finished dictation's closures on the next recording. The second row
-      // publishes one and requires the defaults.
       #expect(d.renderModel.state.recording == nil, "a provider outlived its dictation")
-      let design = RecordingPillDesign.classic
-      d.renderModel.publish(
-        PillDefinition(
-          id: PresentationID(rawValue: UUID()),
-          content: .recording(audioLevel: 0, isLocked: false, notice: nil, design: design),
-          expiry: .untilReplaced,
-          requestedWidth: .fixed(design.width),
-          reservesFixedHeight: design.reservedHeight))
-      #expect(
-        d.renderModel.state.recording?.audioLevelProvider() == 0,
-        "the released dictation's level closure was staged and reappeared on the next pill")
-      #expect(d.renderModel.state.recording?.recordingElapsedProvider() == nil)
+      Self.expectReleasedProvidersDoNotReappear(d.renderModel)
     }
 
     /// **A REPLACEMENT ends a recording as surely as an empty slot does.** The
@@ -558,6 +571,7 @@
       #expect(
         d.renderModel.state.recording == nil,
         "the finished dictation's level closure is still being polled behind the processing pill")
+      Self.expectReleasedProvidersDoNotReappear(d.renderModel)
     }
 
     /// A same-id morph is the SAME recording, so it keeps what it installed. This
@@ -1662,6 +1676,7 @@
       #expect(
         d.renderModel.state.recording == nil,
         "a refused recording's providers are still reachable to poll")
+      Self.expectReleasedProvidersDoNotReappear(d.renderModel)
       // **The lock is NOT part of the rollback, and that claim moved to the
       // reducer suite** (#2292 C6). It outlives any one presentation by design,
       // so a refused frame must not silently unlock a hands-free session that is

@@ -36,7 +36,7 @@ struct RecordingDirectorCaptureTests {
     selections: PillDesignSelections = .shipped,
     host: any OverlayWindowHosting = WindowlessOverlayHost(),
     // **`.bottom`, not `.top`, and that is the whole point of the parameter.**
-    // `.top` is `OverlayRenderModel`'s own staged-position default, so a
+    // `.top` is `RecordingFrame`'s own position default, so a
     // director that ignored the captured position entirely would still leave the
     // model reading `.top` and every assertion would pass. The fixture has to sit
     // somewhere the default is not.
@@ -155,8 +155,8 @@ struct RecordingDirectorCaptureTests {
     // `.bottom` is not the model's default, so this fails against a director that
     // never installed the captured position at all.
     #expect(
-      d.renderModel.stagedRecordingPosition == .bottom,
-      "the render model did not keep the captured position")
+      d.renderModel.state.recording?.position == .bottom,
+      "the published frame did not keep the captured position")
     // **And the WINDOW was asked for that geometry, which is the thing the user
     // sees.** The definition carrying the right numbers is necessary and not
     // sufficient: `geometry(for:)` sits between the definition and the host, and

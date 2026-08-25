@@ -10,8 +10,7 @@ import SwiftUI
 ///
 /// The recording providers are STAGED privately and folded into the snapshot at
 /// publication, so there is no window in which the root can read a new
-/// presentation beside an old provider set — the arrangement that made the
-/// deleted lock and notice channels tear.
+/// presentation beside an old provider set.
 @MainActor
 final class OverlayRenderModel: ObservableObject {
 
@@ -64,16 +63,6 @@ final class OverlayRenderModel: ObservableObject {
     staged.onContentHeightChange = design.canHoldWords ? onContentHeightChange : { _ in }
   }
 
-  /// The position staged for the live recording.
-  ///
-  /// **Read by the DIRECTOR, never by the root.** The director installed it and
-  /// needs it back for two decisions the frame does not carry: re-installing
-  /// providers on a same-id morph without re-resolving the setting, and
-  /// anchoring the host. The root reads the position off the frame it was
-  /// handed, so it can never assemble a leaf from a new presentation and a
-  /// staged position that has not been published yet.
-  var stagedRecordingPosition: OverlayPillPosition { staged.position }
-
   /// Drop the providers, so a stale closure cannot outlive the dictation it was
   /// reading. Staging only; the publication that follows carries the result.
   func clearRecordingProviders() {
@@ -88,14 +77,31 @@ final class OverlayRenderModel: ObservableObject {
   /// makes the lock, the notice copy and the providers arrive in the same
   /// transaction as the presentation that owns them.
   ///
-  /// The dwell resets to `nil` on every publication: a dwell belongs to the pill
-  /// it was armed for, and the director republishes it through
-  /// `markDwellStarted` at the instant that pill becomes visible. Carrying the
-  /// previous frame's window across a publication is the stale-countdown defect
+  /// **A dwell survives a SAME-ID publication and dies on any other**, and the
+  /// distinction is the reducer's: three same-id recording morphs — an audio
+  /// tick, a lock change, a notice change — emit `.unchanged` for the expiry,
+  /// which means "the clock keeps running" and arms nothing. Clearing the dwell
+  /// on every publication silently discarded a window the director had armed,
+  /// twenty times a second during a live recording with a timed #1060 banner.
+  ///
+  /// Invisible today, because the only view that reads a dwell is the Escape
+  /// Recovery rail and no recording is one. That is exactly why it is worth
+  /// fixing here rather than when a second countdown appears: the model was
+  /// throwing away state the director owned, and nothing would have said so.
+  ///
+  /// Both ids must EXIST and match. Two nil presentations comparing equal would
+  /// carry a window across an empty slot, which is the stale-countdown defect
   /// `PresentationID` exists to close.
   func publish(_ presentation: PillDefinition?) {
+    let carriedDwell: OverlayDwellWindow?
+    if let id = presentation?.id, state.presentation?.id == id {
+      carriedDwell = state.dwell
+    } else {
+      carriedDwell = nil
+    }
     state = PillRenderState(
-      presentation: presentation, dwell: nil, recording: recordingFrame(for: presentation))
+      presentation: presentation, dwell: carriedDwell,
+      recording: recordingFrame(for: presentation))
   }
 
   /// Republish the same frame with its dwell filled in.

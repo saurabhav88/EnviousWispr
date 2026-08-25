@@ -641,11 +641,8 @@ struct OverlayReducer {
   private mutating func reduceInPanelNotice(
     _ reason: RecordingNoticeReason, dismissAfter: Double?
   ) -> OverlayPlan {
-    // It morphs a LIVE recording pill and does nothing otherwise. The shipped
-    // parallel notice channel existed only because a replacement would have
-    // torn the panel down; with the panel retained, this is a field on the
-    // presentation that owns it. That channel is deleted (#2377 Phase 5 C1) and
-    // its recorded reason lives on `PillRenderState`.
+    // An in-panel notice belongs to the live recording presentation and morphs
+    // it in place; it does nothing when no recording holds the slot.
     guard let current = state.current,
       case .recording(let level, let isLocked, _, let design) = current.content
     else { return .noChange }

@@ -452,15 +452,11 @@ enum OverlayContent: Equatable, Sendable {
   case escapeRecovery(transcriptID: UUID)
 }
 
-/// The in-panel notice that morphs a LIVE recording pill without replacing it.
+/// An optional notice that belongs to, and morphs with, a live recording.
 ///
-/// It is modelled as part of `recording` rather than as its own presentation
-/// because that is what it is: the shipped notice channel existed as a parallel
-/// channel purely so a notice could change the pill "WITHOUT tearing the panel
-/// down", which was only ever necessary because every other change DID tear it
-/// down. Once the panel is retained, the parallel channel has no reason to exist
-/// and this is a field on the presentation that owns it. Deleted in #2377 Phase
-/// 5 C1; `PillRenderState` carries the full reason.
+/// A field on the presentation rather than a presentation of its own, because
+/// the pill it changes is the pill that owns it — a notice never occupies the
+/// slot by itself.
 struct InPanelNotice: Equatable, Sendable {
   let reason: RecordingNoticeReason
   let dismissAfter: Double?

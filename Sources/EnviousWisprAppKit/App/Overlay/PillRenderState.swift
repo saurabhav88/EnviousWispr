@@ -3,31 +3,20 @@ import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
 
-/// One atomic snapshot containing everything required for one frame (#2377
-/// Phase 5, C1).
+/// One atomic snapshot containing everything required for one rendered frame
+/// (#2377 Phase 5, C1).
 ///
-/// **The point is that it is ONE value.** Before this, a frame was assembled
-/// from four sources that changed at four different moments: a published
-/// presentation, a separately published dwell window, and two `@Observable`
-/// side-channels the root wrote AFTER the presentation had already been
-/// published. `OverlayRootView` ran `sync(_:)` from `.onChange`, so the body
-/// evaluated once with the OUTGOING lock and notice before the channels caught
-/// up — a one-frame tear, structural rather than occasional.
+/// **Recording facts and providers publish TOGETHER.** The lock, the resolved
+/// notice copy and the four per-frame providers reach a leaf in the same value
+/// as the presentation that owns them, so no leaf can be built from a new
+/// presentation and a previous pill's lock.
 ///
-/// Their own doc comments recorded why they existed and are carried here rather
-/// than deleted with them, because the reason is the thing worth keeping:
-/// `OverlayNoticeState` existed so a notice could morph a live recording pill
-/// "WITHOUT tearing the panel down", and `OverlayLockState` came out of
-/// `RecordingOverlayPanel` for the same reason. Every other notice path rebuilt
-/// the single panel and lost the `.recording` state, so a side-channel was the
-/// only way to change one field without destroying the window. #2292 retained
-/// the panel, which made every change a morph and left both channels solving a
-/// problem that no longer exists.
+/// **The dwell is the one field that may update later**, because its clock
+/// starts only after the host accepts the presentation — see `replacingDwell`.
 ///
 /// **Not `Equatable`, deliberately.** It carries per-frame closures, and the one
-/// consumer that used to need equality — the root's `.onChange(of:)` — is what
-/// this type deletes. Anything reaching for `==` here is reintroducing the
-/// post-publication comparison the tear came from.
+/// consumer that would have needed equality is a post-publication comparison,
+/// which is the shape a single atomic value exists to remove.
 struct PillRenderState {
 
   /// What the retained root should render, or `nil` for an empty slot.
