@@ -258,6 +258,15 @@ final class QuickAddWiring {
       guard !Task.isCancelled, let self else { return }
       guard self.activeModel === model, model.isShowingSearchableNotice else { return }
       self.coordinator.didFindAlreadySaved(usedSearch: false)
+      // **The keyboard goes back here too, and forgetting it is worse on THIS path than on the
+      // confirmation's.** `present` takes activation with `NSApp.activate(ignoringOtherApps:)`, so
+      // ordering the panel out leaves our app active with no key window and the user's next
+      // keystrokes land nowhere. The confirmation releases at the START of its beat because the user
+      // has already pressed Return and gone back to their sentence; here the user has pressed
+      // nothing — the panel is still theirs to type into, which is the whole point of a SEARCHABLE
+      // notice — so it releases at dismissal instead. Same obligation, opposite moment, and the
+      // asymmetry is why it did not travel with the code that already had it.
+      self.panelHost.releaseFocus()
       self.dismiss()
     }
   }

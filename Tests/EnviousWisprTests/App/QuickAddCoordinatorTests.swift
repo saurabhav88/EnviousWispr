@@ -638,10 +638,10 @@ struct QuickAddCoordinatorTests {
     #expect(!model.ranking.candidates.isEmpty)
   }
 
-  @Test("Opening the new-word sheet resolves nothing, because an intention is not an outcome")
+  @Test("Reaching the compose field resolves nothing, because an intention is not an outcome")
   func createNewDoesNotResolve() throws {
-    // Emitting createdNew on the click counted opening a sheet as a save: cancelling the sheet left
-    // the panel up, and cancelling the panel then emitted a SECOND resolved event for one open.
+    // Emitting createdNew on the click counted the INTENTION as a save: backing out left the
+    // panel up, and cancelling the panel then emitted a SECOND resolved event for one open.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
     let model = try #require(beginAndShow(coordinator))
 
@@ -651,8 +651,8 @@ struct QuickAddCoordinatorTests {
     #expect(recorder.outcomes.isEmpty)
   }
 
-  @Test("Cancelling after opening the sheet resolves exactly once, as cancelled")
-  func cancellingAfterTheSheetResolvesOnce() throws {
+  @Test("Cancelling after reaching the compose field resolves exactly once, as cancelled")
+  func cancellingAfterComposingResolvesOnce() throws {
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
     let model = try #require(beginAndShow(coordinator))
 
@@ -706,8 +706,11 @@ struct QuickAddCoordinatorTests {
 
   @Test("A confirmed new word resolves even when the panel has already gone")
   func createdNewResolvesWithoutAModel() throws {
-    // The sheet outlives the panel in at least one ordering, and the call site used to read
-    // `if let model = activeModel`, so a CONFIRMED save emitted nothing at all.
+    // The call site used to read `if let model = activeModel`, so a CONFIRMED save emitted
+    // nothing at all. **The ordering that made this reachable is gone** — composing is a stage
+    // of the panel now, and a stage cannot outlive it, which is why `usedSearch` is read live.
+    // Kept because the coordinator is still callable this way and the funnel hole it closed is
+    // the expensive kind: a save that happened and was never counted.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
     let model = try #require(beginAndShow(coordinator))
     coordinator.createNew(from: model)
@@ -733,12 +736,14 @@ struct QuickAddCoordinatorTests {
     #expect(recorder.savedSpellings == ["codecs"])
     #expect(recorder.saved.first?.aliases.contains("codecs") == true)
   }
-  // MARK: - Did the sheet's save actually produce a word (#2381, cloud review)
+  // MARK: - Did the create actually produce a word (#2381, cloud review)
 
   @Test("A blank-alias save onto an existing canonical is refused")
   func blankAliasOntoExistingCanonicalIsRefused() {
     // The state the inline version could not see. Quick Add opened without a readable selection has
-    // no heard spelling, so the sheet starts with one BLANK alias and there is nothing to confirm.
+    // no heard spelling, so there is nothing to confirm. The sheet reached it by starting with one
+    // BLANK alias; `QuickAddPanelModel.draftWord` now refuses to build one, so the compose route no
+    // longer arrives here — this guard covers the OUTCOME rule, which every route still shares.
     // The postcondition asked "did the kept spellings land", which is vacuously true of none — so a
     // canonical that already existed took the success path while `add` silently no-oped. Nothing was
     // created and the panel closed saying nothing.
