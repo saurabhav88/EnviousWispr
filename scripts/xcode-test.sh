@@ -70,10 +70,37 @@ cd "$PROJECT_ROOT"
 # Owner: scripts/lib/log-dir.sh, which has its own two-way suite. Creating the
 # directory is deliberately the caller's job — a resolver with a side effect
 # cannot be tested without one.
+USING_DEFAULT_LOG_DIR=0
+[ -z "$LOG_DIR" ] && USING_DEFAULT_LOG_DIR=1
 LOG_DIR="$(ew_resolve_log_dir "$PROJECT_ROOT" "$LOG_DIR")"
-mkdir -p "$LOG_DIR"   # absent on a clean checkout
+# Owner: scripts/lib/log-dir.sh ew_take_default_lane, which has its own rows. A
+# default lane is TAKEN atomically rather than assumed unique — the reasoning,
+# and the review finding that produced it, live at the function.
+if [ "$USING_DEFAULT_LOG_DIR" = "1" ]; then
+  ew_take_default_lane "$LOG_DIR" || exit 2
+else
+  # `-p` stays right for an explicit `--log-dir`: that directory belongs to the
+  # caller, who may be deliberately filling it across several runs.
+  mkdir -p "$LOG_DIR"
+fi
 APP_LOG_DIR="$LOG_DIR/app-logger"
 mkdir -p "$APP_LOG_DIR"
+
+# Both owned by scripts/lib/log-dir.sh, which has its own two-way suite. Neither
+# runs for an explicit `--log-dir`: that caller asked for a durable receipt at an
+# address it already knows, and moving a shared pointer or pruning on its behalf
+# would make a battery's rows fight over it.
+if [ "$USING_DEFAULT_LOG_DIR" = "1" ]; then
+  # Both are conveniences and neither may abort the lane under `set -e`: a link
+  # that cannot be repointed and a sweep that will not run through a symlink are
+  # both worth saying out loud and neither is worth refusing to test over.
+  if ! ew_publish_latest_lane "$PROJECT_ROOT" "$LOG_DIR"; then
+    echo "==> could not publish build/latest-lane; the lane itself is unaffected" >&2
+  fi
+  if ! ew_prune_stale_lanes "$PROJECT_ROOT" "$LOG_DIR"; then
+    echo "==> not pruning old lanes; build/lanes will grow until this is resolved" >&2
+  fi
+fi
 
 # Generate the Xcode project (gitignored, never committed) — only when a
 # generation input actually changed (#2157 chunk C).

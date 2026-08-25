@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Two-way suite for scripts/lib/log-dir.sh (#2165).
 #
-# The point of the flag is that two lanes can no longer share one log, because
-# `run_lane` SUMS every `Test run with N tests` line it finds. So this asserts
-# BOTH halves: the historical default is unchanged, AND two distinct requests
-# genuinely resolve apart. A flag that resolves everything to the same place
-# would pass a default-only test while fixing nothing.
+# The point of the DEFAULT (#2396) is that two lanes can no longer share one
+# directory, because `run_lane` sums every `Test run with N tests` line in its log
+# AND reads its verdict from a result bundle it removes before the run. So this
+# asserts BOTH halves: independent default invocations resolve apart, AND two
+# distinct explicit requests still resolve apart. A resolver that isolated only
+# one of those would leave the other collision reachable.
 #
 # Run: bash scripts/lib/log-dir-test.sh
 set -uo pipefail
@@ -15,8 +16,41 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/log-dir.sh"
 
 PASS=0
+SKIP=0
 FAIL=0
 ROOT="/tmp/ew-fake-worktree"
+
+# A ROW THAT DOES NOT RUN MUST NOT REPORT GREEN (#2396).
+#
+# Measured in this file: rows written with helpers this suite does not define
+# printed `ok: command not found` to STDERR, incremented nothing, and the suite
+# ended `PASS=11 FAIL=0`. Every new row was invisible and the verdict was clean —
+# a harness reporting a green it cannot see, in the file whose whole job is to be
+# believed about a path.
+#
+# **AND THE OBVIOUS GUARD FOR IT HAS THE SAME DEFECT: bash runs
+# `command_not_found_handle` IN A SUBSHELL**, so a `FAIL=$((FAIL + 1))` inside it
+# is discarded. Measured two-way on bash 5.3: the handler prints `F=1` and the
+# caller then reads `F=0`. The first version of this guard therefore PRINTED a
+# failure line and left the verdict at `FAIL=0` — reporting without gating, which
+# is the very thing it was written to prevent, one level down.
+#
+# So the handler records to a FILE, which is what survives a subshell, and the
+# count is folded in at the end where it can reach the verdict.
+NOT_FOUND_LOG="$(mktemp "${TMPDIR:-/tmp}/ew-log-dir-test-notfound.XXXXXX")"
+command_not_found_handle() {
+  printf "  FAIL  %-56s %s\n" "a row invoked a command that does not exist" "$1"
+  printf '%s\n' "$1" >> "$NOT_FOUND_LOG"
+  return 127
+}
+
+ok() { PASS=$((PASS + 1)); printf "  ok    %-56s %s\n" "$1" "${2:-}"; }
+bad() { FAIL=$((FAIL + 1)); printf "  FAIL  %-56s %s\n" "$1" "${2:-}"; }
+# A SKIP IS NOT A PASS, so it gets its own counter and its own line in the
+# verdict. A row that needs a resource this machine does not have must say so
+# where a reader looking for coverage will see it - folding it into PASS is how a
+# suite reports coverage it never had.
+skip() { SKIP=$((SKIP + 1)); printf "  skip  %-56s %s\n" "$1" "${2:-}"; }
 
 check() {  # <label> <expected> <actual>
   local label="$1" expected="$2" actual="$3"
@@ -29,12 +63,50 @@ check() {  # <label> <expected> <actual>
   fi
 }
 
-echo "== the historical default is unchanged =="
-# `build/xcode-test-debug.log` under the worktree is what every existing caller,
-# every rule that names the path, and check-push-discipline's freshness read all
-# expect. If this row moves, something else breaks somewhere nobody is looking.
-check "no request -> <root>/build" "$ROOT/build" "$(ew_resolve_log_dir "$ROOT")"
-check "empty request -> <root>/build" "$ROOT/build" "$(ew_resolve_log_dir "$ROOT" "")"
+echo "== the default is private to the invoking process =="
+# THIS ROW USED TO ASSERT `<root>/build`, AND ITS STATED JUSTIFICATION WAS FALSE:
+# it claimed check-push-discipline's freshness read expects
+# `build/xcode-test-debug.log`. That gate never names the file. For app changes it
+# reads the deployed and DerivedData dev-build artifacts
+# (`check-push-discipline.sh:382-383`); for test changes it reads the Debug xctest
+# executable (`:403`) and compares it against files under `Tests/` (`:420`).
+#
+# Left in place, that sentence made the default look immovable — which is the
+# highest-cost shape a comment has, because its whole function is to stop the next
+# reader going and checking. Replaced with what the gate actually reads rather
+# than deleted, so the next reader inherits the verified version.
+# The name carries the SECOND as well as the pid, so it cannot RECUR — which is
+# what removed the take path's `rm -rf` entirely (#2408 r7). Asserted by SHAPE
+# rather than by value, because the second moves between the call and the check.
+a="$(ew_resolve_log_dir "$ROOT")"
+case "$a" in
+  "$ROOT"/build/lanes/[0-9]*-$$) ok "no request -> <root>/build/lanes/<seconds>-<pid>" "$a" ;;
+  *) bad "no request -> <root>/build/lanes/<seconds>-<pid>" "$a" ;;
+esac
+b="$(ew_resolve_log_dir "$ROOT" "")"
+case "$b" in
+  "$ROOT"/build/lanes/[0-9]*-$$) ok "empty request -> <root>/build/lanes/<seconds>-<pid>" "$b" ;;
+  *) bad "empty request -> <root>/build/lanes/<seconds>-<pid>" "$b" ;;
+esac
+
+# The row that justifies the change, and it needs two real PROCESSES: within one
+# shell `$$` is constant, so a same-process comparison would pass against a
+# resolver that isolated nothing.
+a=$(/bin/bash -c '. "$1"; ew_resolve_log_dir "$2"' _ "$HERE/log-dir.sh" "$ROOT")
+b=$(/bin/bash -c '. "$1"; ew_resolve_log_dir "$2"' _ "$HERE/log-dir.sh" "$ROOT")
+if [ "$a" != "$b" ]; then
+  PASS=$((PASS + 1)); printf "  ok    %-56s %s != %s\n" "two default invocations resolve apart" "$a" "$b"
+else
+  FAIL=$((FAIL + 1)); printf "  FAIL  %-56s both resolved to %s\n" "two default invocations resolve apart" "$a"
+fi
+
+# And the default must not collide with the OLD default's directory, or a lane
+# would still be writing where the shared file used to live.
+if [ "$(ew_resolve_log_dir "$ROOT")" != "$ROOT/build" ]; then
+  PASS=$((PASS + 1)); printf "  ok    %-56s\n" "the default is no longer the shared <root>/build"
+else
+  FAIL=$((FAIL + 1)); printf "  FAIL  %-56s\n" "the default is no longer the shared <root>/build"
+fi
 
 echo "== an explicit request is honoured =="
 check "absolute stays absolute" "/tmp/rowlog" "$(ew_resolve_log_dir "$ROOT" "/tmp/rowlog")"
@@ -61,7 +133,7 @@ else
   FAIL=$((FAIL + 1)); printf "  FAIL  %-56s both resolved to %s\n" "two relative requests resolve apart" "$a"
 fi
 # And a request must not collide with the DEFAULT either, or a caller asking for
-# its own directory would silently land back in the shared one.
+# its own directory would silently land back in the lane the script picked.
 d=$(ew_resolve_log_dir "$ROOT")
 r=$(ew_resolve_log_dir "$ROOT" "/tmp/row-a")
 if [ "$d" != "$r" ]; then
@@ -93,6 +165,667 @@ else
   rmdir "$probe" 2>/dev/null
 fi
 
+echo "== the stable address points at THIS lane, and survives a repoint =="
+# These two functions exist in the lib rather than inline in xcode-test.sh for
+# the reason the resolver does: inlined they could only be exercised by running
+# xcodebuild, so in practice they would never be tested — and both of them delete
+# or replace things.
+SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/ew-log-dir-sandbox.XXXXXX")"
+trap 'rm -rf "$SANDBOX" "$NOT_FOUND_LOG"' EXIT
+mkdir -p "$SANDBOX/build/lanes/111" "$SANDBOX/build/lanes/222"
+
+ew_publish_latest_lane "$SANDBOX" "$SANDBOX/build/lanes/111" >/dev/null 2>&1
+if [ "$(readlink "$SANDBOX/build/latest-lane")" = "lanes/111" ]; then
+  ok "the link points at the lane it was given"
+else
+  bad "the link points at the lane it was given" "got $(readlink "$SANDBOX/build/latest-lane")"
+fi
+
+# THE ROW THAT MATTERS: repointing must replace the LINK, not write inside the
+# directory the old link pointed at. `mv` without `-h` follows the link and
+# creates `lanes/111/latest-lane`, which leaves the pointer stale AND litters the
+# previous lane.
+ew_publish_latest_lane "$SANDBOX" "$SANDBOX/build/lanes/222" >/dev/null 2>&1
+if [ "$(readlink "$SANDBOX/build/latest-lane")" = "lanes/222" ] \
+  && [ ! -e "$SANDBOX/build/lanes/111/latest-lane" ]; then
+  ok "repointing replaces the link, never writes through it"
+else
+  bad "repointing replaces the link, never writes through it" \
+    "link=$(readlink "$SANDBOX/build/latest-lane") stray=$(ls "$SANDBOX/build/lanes/111" 2>/dev/null)"
+fi
+
+# No temp link is left behind, or a later run inherits a half-published state.
+if [ -z "$(ls -A "$SANDBOX/build" | /usr/bin/grep '^\.latest-lane\.' || true)" ]; then
+  ok "no temporary link survives publication"
+else
+  bad "no temporary link survives publication" "$(ls -A "$SANDBOX/build")"
+fi
+
+echo "== retention deletes only what it is scoped to =="
+mkdir -p "$SANDBOX/build/lanes/old" "$SANDBOX/build/lanes/fresh" "$SANDBOX/build/lanes/current"
+touch -t 202001010000 "$SANDBOX/build/lanes/old"
+# A file OUTSIDE lanes/ must be untouched: the prune is scoped to one directory
+# and this row is what proves the scope rather than the age.
+touch "$SANDBOX/build/bystander.log"
+ew_prune_stale_lanes "$SANDBOX" "$SANDBOX/build/lanes/current" 7 >/dev/null 2>&1
+
+[ ! -d "$SANDBOX/build/lanes/old" ] \
+  && ok "a lane untouched past the window is removed" \
+  || bad "a lane untouched past the window is removed" "still present"
+[ -d "$SANDBOX/build/lanes/fresh" ] \
+  && ok "a recent lane is kept" \
+  || bad "a recent lane is kept" "was removed"
+[ -f "$SANDBOX/build/bystander.log" ] \
+  && ok "nothing outside lanes/ is touched" \
+  || bad "nothing outside lanes/ is touched" "bystander removed"
+
+# The current lane must survive even if its mtime is ancient — a long-running
+# lane is exactly the case where deleting it costs the most.
+mkdir -p "$SANDBOX/build/lanes/inuse"
+touch -t 202001010000 "$SANDBOX/build/lanes/inuse"
+ew_prune_stale_lanes "$SANDBOX" "$SANDBOX/build/lanes/inuse" 7 >/dev/null 2>&1
+[ -d "$SANDBOX/build/lanes/inuse" ] \
+  && ok "the lane in use is never pruned, however old it looks" \
+  || bad "the lane in use is never pruned, however old it looks" "removed"
+
+# Absent tree is a no-op, not an error: a clean checkout has no lanes/ yet.
+rm -rf "$SANDBOX/build/lanes"
+if ew_prune_stale_lanes "$SANDBOX" "$SANDBOX/build/lanes/none" 7 >/dev/null 2>&1; then
+  ok "an absent lanes/ tree is a no-op"
+else
+  bad "an absent lanes/ tree is a no-op" "returned nonzero"
+fi
+
+echo "== a mount point is a second way out that -L cannot see =="
+# `/dev` is devfs on every macOS machine this runs on, so the detector is
+# exercised against a REAL mount rather than a constructed one.
+#
+# Deliberately NOT `/`: root IS a mount point and this method cannot see it,
+# because `/..` is `/` and the devices compare equal. That is a real limit of
+# comparing against the parent, and it costs nothing here — a lane path can never
+# be `/`, since the shape guard requires it to sit under `<root>/build/lanes/`
+# with a numeric basename. Written as `/` first, and the row failed, which is how
+# the limit was found rather than assumed.
+if ew_lane_is_mount_point /dev ; then
+  ok "the detector recognises a real mount point"
+else
+  bad "the detector recognises a real mount point" "/dev not detected"
+fi
+# The accepted twin: an ordinary directory is NOT a mount point, or the detector
+# refuses everything and the guard above is vacuous.
+if ew_lane_is_mount_point "$SANDBOX/build/lanes" ; then
+  bad "an ordinary directory is not a mount point" "false positive"
+else
+  ok "an ordinary directory is not a mount point"
+fi
+# And an unreadable path must not be reported as a mount point: the callers
+# refuse what they cannot resolve, and an unreadable path must never become an
+# argument for deleting it.
+if ew_lane_is_mount_point "$SANDBOX/no/such/path" ; then
+  bad "an unresolvable path is not called a mount point" "false positive"
+else
+  ok "an unresolvable path is not called a mount point"
+fi
+
+# THE COMPOSITION, which is what makes the mount half reachable at all. A real
+# mount cannot be built in a portable suite without sudo, so the guard's mount
+# branch is covered in two pieces: these rows prove the shared helper answers YES
+# for BOTH ways out, and the symlink-victim rows above prove the guard consults
+# the helper at all three levels.
+ln -s "$SANDBOX" "$SANDBOX/a-link"
+ew_lane_component_is_unsafe "$SANDBOX/a-link" \
+  && ok "the shared safety check refuses a link" \
+  || bad "the shared safety check refuses a link" "accepted"
+ew_lane_component_is_unsafe /dev \
+  && ok "the shared safety check refuses a mount point" \
+  || bad "the shared safety check refuses a mount point" "accepted"
+# Accepted twin, or the helper refuses everything and both rows are vacuous.
+if ew_lane_component_is_unsafe "$SANDBOX/build/lanes" ; then
+  bad "the shared safety check accepts an ordinary directory" "refused"
+else
+  ok "the shared safety check accepts an ordinary directory"
+fi
+
+echo "== unknown classification fails CLOSED =="
+# My first version had this backwards. I wrote that an unreadable path should
+# report NOT-a-mount "because an unreadable path must not become an argument for
+# deleting it" — which is the argument for the OPPOSITE. A component that EXISTS
+# and cannot be classified is exactly where guessing safe means deleting through
+# it.
+#
+# KNOWN GAP, STATED RATHER THAN FAKED: the `stat`-failed branch has no row.
+# A row was written for it and DELETED as vacuous — it replaced
+# `ew_lane_is_mount_point` with a stub and then asserted the stub, so a control
+# that reversed the real branch left the suite fully green. The scenario is also
+# not constructible without root: `[ -e ]` and `stat` both call stat(2), so a
+# path that cannot be stat'd is also reported absent, and the absence check
+# short-circuits first. The branch is correct by reading and unproven by test;
+# saying so is better than a row that proves nothing while looking like coverage.
+#
+# Absence stays SAFE, because absence is the fresh-invocation case and there
+# is nothing there to descend into. Without this row, "fail closed" is satisfied
+# by a function that refuses every fresh run.
+if ew_lane_is_mount_point "$SANDBOX/build/lanes/does-not-exist"; then
+  bad "an absent path is not treated as mounted" "reported as a mount"
+else
+  ok "an absent path is not treated as mounted"
+fi
+
+echo "== the prune uses the SAME safety check as the reset =="
+# The mount-aware helper was added for the reset and the prune was left on `-L`
+# alone, so a mounted parent passed here while being refused three lines away.
+# A SYMLINKED parent cannot distinguish the shared helper from a bare `-L`, and a
+# real MOUNT cannot be built without root — so the WIRING is tested by stubbing
+# the collaborator and asserting the caller. The helper's own behaviour has its
+# own rows above; this asks only whether the prune consults it.
+prune_with_stub() (
+  # The stub is called with ONE argument, so the target is closed over rather
+  # than passed — a `$2` here is unbound and `set -u` turns the row into an error
+  # that reads like a failing assertion.
+  local target="$2"
+  ew_lane_component_is_unsafe() { [ "$1" = "$target" ]; }
+  ew_prune_stale_lanes "$1" "$1/build/lanes/none" 7
+)
+mkdir -p "$SANDBOX/build/lanes/4001"
+touch -t 202001010000 "$SANDBOX/build/lanes/4001"
+prune_with_stub "$SANDBOX" "$SANDBOX/build" >/dev/null 2>&1
+[ "$?" -eq 2 ] && [ -d "$SANDBOX/build/lanes/4001" ] \
+  && ok "prune consults the shared check for build/" \
+  || bad "prune consults the shared check for build/" "swept anyway or wrong rc"
+prune_with_stub "$SANDBOX" "$SANDBOX/build/lanes" >/dev/null 2>&1
+[ "$?" -eq 2 ] && [ -d "$SANDBOX/build/lanes/4001" ] \
+  && ok "prune consults the shared check for lanes/" \
+  || bad "prune consults the shared check for lanes/" "swept anyway or wrong rc"
+
+# A stale ENTRY that is itself a link must be skipped rather than removed, and
+# the sweep must continue past it — a partial sweep that stops at the first
+# oddity is how old lanes accumulate silently.
+# The PER-ENTRY check, wired the same way and for the same reason: a symlinked
+# entry is filtered out by `find -type d` BEFORE the check can see it, so a
+# symlink row would pass without the check existing. A mount is a directory and
+# `-type d` does match it, which is exactly why the per-entry check is needed and
+# exactly what cannot be built without root.
+sweep_with_stub() (
+  local target="$2"
+  ew_lane_component_is_unsafe() { [ "$1" = "$target" ]; }
+  ew_prune_stale_lanes "$1" "$1/build/lanes/none" 7
+)
+mkdir -p "$SANDBOX/build/lanes/3001" "$SANDBOX/build/lanes/3002"
+touch -t 202001010000 "$SANDBOX/build/lanes/3001" "$SANDBOX/build/lanes/3002"
+sweep_with_stub "$SANDBOX" "$SANDBOX/build/lanes/3002" >/dev/null 2>&1
+if [ ! -d "$SANDBOX/build/lanes/3001" ] && [ -d "$SANDBOX/build/lanes/3002" ]; then
+  ok "the sweep removes stale lanes and steps over an unsafe entry"
+else
+  bad "the sweep removes stale lanes and steps over an unsafe entry" \
+    "3001=$([ -d "$SANDBOX/build/lanes/3001" ] && echo kept || echo gone) 3002=$([ -d "$SANDBOX/build/lanes/3002" ] && echo kept || echo GONE)"
+fi
+
+echo "== a newline in a lane name cannot reach rm -rf =="
+# I flagged this myself as "would break it". The actual consequence is worse: a
+# line-delimited read splits `old<newline>Sources` into TWO records and the
+# second is `Sources` — a RELATIVE path — which resolves against the caller's
+# cwd. `xcode-test.sh` runs from the project root, so that is the repo's own
+# source tree.
+#
+# The victim here stands in for it: a `Sources` directory beside the sandbox,
+# reachable only if a relative record escapes.
+NL_ROOT="$SANDBOX/nl"
+mkdir -p "$NL_ROOT/build/lanes" "$NL_ROOT/Sources"
+: > "$NL_ROOT/Sources/precious.swift"
+mkdir -p "$NL_ROOT/build/lanes/$(printf 'old\nSources')"
+touch -t 202001010000 "$NL_ROOT/build/lanes/$(printf 'old\nSources')"
+( cd "$NL_ROOT" && ew_prune_stale_lanes "$NL_ROOT" "$NL_ROOT/build/lanes/none" 7 ) >/dev/null 2>&1
+if [ -f "$NL_ROOT/Sources/precious.swift" ]; then
+  ok "a newline-named lane cannot reach a relative path"
+else
+  bad "a newline-named lane cannot reach a relative path" "Sources/ was deleted"
+fi
+# The accepted twin: the newline-named lane is itself STALE and must still be
+# swept, or the row above is satisfied by a prune that refuses odd names.
+[ ! -d "$NL_ROOT/build/lanes/$(printf 'old\nSources')" ] \
+  && ok "the newline-named lane is still swept" \
+  || bad "the newline-named lane is still swept" "left behind"
+
+# And a relative path is unsafe by definition, whatever its shape — the class,
+# not just the route that produced it.
+ew_lane_component_is_unsafe "build/lanes/4242" \
+  && ok "a relative path is unsafe by definition" \
+  || bad "a relative path is unsafe by definition" "accepted"
+
+echo "== a removal failure reaches the caller =="
+# The `while` used to sit on the right of a PIPE, which runs it in a subshell, so
+# a failure recorded inside could not reach the caller — and the trailing
+# `printf` made the body succeed regardless. A prune that removed nothing
+# reported success.
+FAILDIR="$SANDBOX/faildir"
+mkdir -p "$FAILDIR/build/lanes/5001"
+touch -t 202001010000 "$FAILDIR/build/lanes/5001"
+chmod 500 "$FAILDIR/build/lanes"   # no write: the entry cannot be unlinked
+ew_prune_stale_lanes "$FAILDIR" "$FAILDIR/build/lanes/none" 7 >/dev/null 2>&1
+rc=$?
+chmod 700 "$FAILDIR/build/lanes"
+[ "$rc" -ne 0 ] \
+  && ok "a removal failure is reported to the caller" \
+  || bad "a removal failure is reported to the caller" "rc=$rc"
+
+echo "== portability is DETECTED, not assumed =="
+# The P1 pair. `stat -f %d` is BSD; on GNU `-f` means file-system status and `%d`
+# is parsed as a FILENAME, so the call fails — and with the fail-closed direction
+# this file adopted, every existing component would have been classified unsafe
+# on Linux. `mv -h` is BSD too; GNU has no `-h` and errors, so the link was never
+# published and the temp file was left behind.
+#
+# I asked whether process substitution needed bash and never asked whether `stat`
+# and `mv` were the same programs — on a suite this PR's sibling deliberately
+# wired into a Linux job.
+case "$EW_LANE_STAT_DEV_STYLE" in
+  bsd | gnu) ok "a working stat style was detected" "$EW_LANE_STAT_DEV_STYLE" ;;
+  *) bad "a working stat style was detected" "got '$EW_LANE_STAT_DEV_STYLE'" ;;
+esac
+# The detection must actually WORK here, not merely pick a name: devfs is a real
+# mount and an ordinary directory is not.
+ew_lane_is_mount_point /dev \
+  && ok "the detected stat style reads a real device number" \
+  || bad "the detected stat style reads a real device number" "/dev not seen as a mount"
+
+case "$EW_LANE_MV_NOFOLLOW" in
+  -h | -T) ok "a no-follow mv flag was detected" "$EW_LANE_MV_NOFOLLOW" ;;
+  *) bad "a no-follow mv flag was detected" "got '$EW_LANE_MV_NOFOLLOW'" ;;
+esac
+# And the flag it picked must be the one that does not follow — the probe asserts
+# behaviour rather than parsing an error string, so this row asserts the probe
+# reached a conclusion the publish rows then depend on.
+[ -n "$EW_LANE_MV_NOFOLLOW" ] \
+  && ok "publication has a usable rename" \
+  || bad "publication has a usable rename" "empty"
+
+echo "== the mountinfo branch is EXERCISED, not merely written =="
+# The branch I told the reviewer I could not execute, and it was broken in
+# exactly the way an unexecutable branch gets broken: literal quote characters
+# reached the shell, `$5` was expanded before awk saw it, and the command
+# succeeded for EVERY path — reporting everything as a mount.
+#
+# It is now a shell `while read`, which this suite CAN drive: the reader takes
+# the table as an ARGUMENT, so these rows point the SHIPPED function at a fixture
+# in mountinfo's own format while production passes /proc/self/mountinfo. That
+# does not prove the real /proc parse on Linux, but it proves the comparison,
+# which is what was wrong.
+#
+# The first version of these rows called a COPY of the loop declared here. A
+# reimplemented matcher measures the copy — it would have gone green against the
+# escape defect below while the shipped code got it wrong (#2408 review r9).
+MI="$SANDBOX/mountinfo"
+cat > "$MI" <<'MIEOF'
+25 30 0:23 / /proc rw,nosuid shared:5 - proc proc rw
+26 30 0:24 / /mnt/bound rw,relatime shared:6 - ext4 /dev/sda1 rw
+27 30 0:25 / /mnt/with\040space rw,relatime shared:7 - ext4 /dev/sdb1 rw
+28 30 0:26 / /mnt/tab\011sep rw,relatime shared:8 - ext4 /dev/sdc1 rw
+29 30 0:27 / /mnt/back\134slash rw,relatime shared:9 - ext4 /dev/sdd1 rw
+MIEOF
+ew_lane_mountinfo_lists "$MI" /mnt/bound \
+  && ok "a mountinfo entry is recognised by its mount point field" \
+  || bad "a mountinfo entry is recognised by its mount point field" "missed"
+# The accepted twin, and it is the one the broken awk failed: a path that is NOT
+# in the table must not match. That version returned true for everything.
+if ew_lane_mountinfo_lists "$MI" /not/a/mount; then
+  bad "a path absent from mountinfo does not match" "matched anyway"
+else
+  ok "a path absent from mountinfo does not match"
+fi
+
+echo "== the kernel's escapes are decoded before the comparison =="
+# `pwd -P` returns these characters literally and mountinfo does not, so an
+# undecoded comparison reports NOT-a-mount for a path that IS one — fail-open, on
+# the check that stops `rm -rf` descending into a mounted filesystem. A macOS
+# checkout under a directory with a space in its name is entirely ordinary.
+ew_lane_mountinfo_lists "$MI" "/mnt/with space" \
+  && ok "an escaped space in a mount point is decoded" \
+  || bad "an escaped space in a mount point is decoded" "did not match"
+ew_lane_mountinfo_lists "$MI" "$(printf '/mnt/tab\tsep')" \
+  && ok "an escaped tab in a mount point is decoded" \
+  || bad "an escaped tab in a mount point is decoded" "did not match"
+ew_lane_mountinfo_lists "$MI" '/mnt/back\slash' \
+  && ok "an escaped backslash in a mount point is decoded" \
+  || bad "an escaped backslash in a mount point is decoded" "did not match"
+# The REJECTED twin for each, or a decoder that simply deleted every backslash
+# would pass all three above. The literal table text must NOT match.
+for raw in '/mnt/with\040space' '/mnt/tab\011sep' '/mnt/back\134slash'; do
+  if ew_lane_mountinfo_lists "$MI" "$raw"; then
+    bad "the raw escaped form does not match a decoded path" "$raw matched"
+  else
+    ok "the raw escaped form does not match a decoded path ($raw)"
+  fi
+done
+# `\134` must be decoded LAST. A literal backslash in a real path reaches
+# mountinfo as `\134`, so a path whose real name is `back\040slash` is written
+# `back\134040slash` — decoding the backslash first would turn it into
+# `back\040slash` and the space rule would then read an escape that was never
+# there, matching `back slash` instead.
+# Written by a QUOTED heredoc, never `printf`: printf reads `\134` as an octal
+# escape and would write a real backslash, so the fixture would carry the DECODED
+# form and these two rows would silently be about a different string. Caught by
+# the rows themselves — they failed against correct code.
+cat >> "$MI" <<'MIEOF'
+30 30 0:28 / /mnt/back\134040slash rw - ext4 /dev/sde1 rw
+MIEOF
+ew_lane_mountinfo_lists "$MI" '/mnt/back\040slash' \
+  && ok "backslash is decoded last, so an escape-looking literal survives" \
+  || bad "backslash is decoded last, so an escape-looking literal survives" "did not match"
+if ew_lane_mountinfo_lists "$MI" "/mnt/back slash"; then
+  bad "backslash decoded last does not manufacture a space" "matched"
+else
+  ok "backslash decoded last does not manufacture a space"
+fi
+
+echo "== a resolved path keeps a trailing newline its own name owns =="
+# `$(...)` strips trailing newlines, so a directory whose name ends in one could
+# never equal its `\012`-decoded mountinfo row - fail-OPEN, on the same
+# comparison the escape decoding above fixes, one layer under it.
+NL=$'\n'   # a bash LITERAL, never `$(printf ...)` - see below
+NLDIR="$SANDBOX/nl$NL"
+mkdir -p "$NLDIR"
+if ew_lane_resolved_path "$NLDIR"; then
+  # **THE FIRST VERSION OF THIS ROW WAS VACUOUS AND A MUTANT FOUND IT.** It built
+  # the expected value with `$(printf '\n')` - which is a command substitution,
+  # so the newline was stripped from the EXPECTATION by the very mechanism under
+  # test. Both sides were equally truncated and the row passed against code with
+  # the sentinel removed. `$'\n'` is a shell literal and no capture is involved.
+  EXPECT="$(cd "$SANDBOX" && pwd -P)/nl$NL"
+  [ "$EW_LANE_RESOLVED" = "$EXPECT" ] \
+    && ok "a trailing newline in the directory's own name survives" \
+    || bad "a trailing newline in the directory's own name survives" \
+           "got $(printf '%q' "$EW_LANE_RESOLVED")"
+else
+  bad "a trailing newline in the directory's own name survives" "resolve refused"
+fi
+# The accepted twin: an ordinary path must NOT gain a stray newline from the
+# sentinel, or every normal comparison breaks in the other direction.
+if ew_lane_resolved_path "$SANDBOX"; then
+  [ "$EW_LANE_RESOLVED" = "$(cd "$SANDBOX" && pwd -P)" ] \
+    && ok "an ordinary path gains nothing from the sentinel" \
+    || bad "an ordinary path gains nothing from the sentinel" \
+           "got $(printf '%q' "$EW_LANE_RESOLVED")"
+else
+  bad "an ordinary path gains nothing from the sentinel" "resolve refused"
+fi
+if ew_lane_resolved_path "$SANDBOX/definitely-absent" 2>/dev/null; then
+  bad "resolving an absent path refuses" "accepted"
+else
+  ok "resolving an absent path refuses"
+fi
+
+echo "== removal is judged by the WORLD, not by find's exit code =="
+# Measured against a real APFS volume mounted three levels inside a lane:
+# `rm -rf` erased the mounted data and exited 1; `find -xdev -delete` left it
+# intact. `find -delete` ALSO exits 0 while printing unlink errors, so success
+# has to be "is it gone", never "how did find feel about it".
+GONE="$SANDBOX/rm-ok/app-logger/deep"
+mkdir -p "$GONE"; touch "$GONE/f"
+ew_lane_remove_tree "$SANDBOX/rm-ok" \
+  && ok "an ordinary tree is removed and reported removed" \
+  || bad "an ordinary tree is removed and reported removed" "reported failure"
+[ -e "$SANDBOX/rm-ok" ] \
+  && bad "an ordinary tree is actually gone" "still present" \
+  || ok "an ordinary tree is actually gone"
+# The rejected twin, and it is the whole point: a tree that SURVIVES must be
+# reported as a failure even though `find -delete` returns 0.
+STUCK="$SANDBOX/rm-stuck/locked"
+mkdir -p "$STUCK"; touch "$STUCK/f"; chmod 500 "$STUCK"
+if ew_lane_remove_tree "$SANDBOX/rm-stuck" 2>/dev/null; then
+  bad "a tree that survives is reported as a failure" "reported success"
+else
+  ok "a tree that survives is reported as a failure"
+fi
+chmod 700 "$STUCK"
+
+echo "== the mount question is asked of the WHOLE SUBTREE, not one directory =="
+# Six review rounds each found a new way a mount could be inside the tree being
+# deleted: the lane is a mount; a parent is; a same-device bind mount defeats a
+# device comparison; the mount is BELOW the lane; a same-device bind mount below
+# the lane defeats `-xdev` too. Each fix exposed the next, which is the signature
+# of describing a set instead of enumerating one.
+#
+# `subtree` mode stops testing a PROPERTY and reads the kernel's own finite list,
+# so a mount anywhere beneath a lane is found without anyone predicting where.
+SUBMI="$SANDBOX/mountinfo-sub"
+cat > "$SUBMI" <<'MIEOF'
+25 30 0:23 / /proc rw,nosuid shared:5 - proc proc rw
+26 30 0:24 / /build/lanes/111/app-logger/external rw,relatime shared:6 - ext4 /dev/sda1 rw
+MIEOF
+ew_lane_mountinfo_lists "$SUBMI" /build/lanes/111 subtree \
+  && ok "a mount BELOW the path is found in subtree mode" \
+  || bad "a mount BELOW the path is found in subtree mode" "missed"
+# The rejected twin for the MODE: exact mode must still answer only about the
+# path itself, or the mount-point check one layer up starts reporting every
+# ancestor of every mount as a mount.
+if ew_lane_mountinfo_lists "$SUBMI" /build/lanes/111 exact; then
+  bad "exact mode still answers only about the path itself" "matched a descendant"
+else
+  ok "exact mode still answers only about the path itself"
+fi
+# The rejected twin for the PREFIX: a sibling that merely shares a name prefix is
+# not below it. `/build/lanes/1110` must not match `/build/lanes/111`.
+if ew_lane_mountinfo_lists "$SUBMI" /build/lanes/11 subtree; then
+  bad "a name-prefix sibling is not treated as a descendant" "matched /build/lanes/11"
+else
+  ok "a name-prefix sibling is not treated as a descendant"
+fi
+# And the path ITSELF still matches in subtree mode - it is at-or-below.
+ew_lane_mountinfo_lists "$SUBMI" /build/lanes/111/app-logger/external subtree \
+  && ok "subtree mode still matches the path itself" \
+  || bad "subtree mode still matches the path itself" "missed"
+
+echo "== the removal cannot cross a filesystem boundary =="
+# THE PROPERTY THE WHOLE FUNCTION EXISTS FOR, and nothing short of a REAL mount
+# can bind it: `rm -rf` and `find -xdev -delete` are indistinguishable on any
+# single-device tree. `hdiutil` attaches one without sudo, so this runs on the
+# dev machine and reports SKIPPED on a Linux runner rather than pretending.
+#
+# Measured when this was written: with an APFS volume mounted three levels inside
+# a lane, `rm -rf` erased the mounted file and exited 1, while `find -xdev
+# -delete` left it intact. The row below is that comparison's positive half.
+if command -v hdiutil >/dev/null 2>&1 && command -v diskutil >/dev/null 2>&1; then
+  MDIR="$SANDBOX/mountcase"
+  mkdir -p "$MDIR/lane/app-logger/external"
+  echo "lane-own" > "$MDIR/lane/app-logger/own.txt"
+  MDMG="$MDIR/vol.dmg"
+  MDEV=""
+  mount_cleanup() {
+    [ -n "$MDEV" ] || return 0
+    diskutil unmount force "$MDIR/lane/app-logger/external" >/dev/null 2>&1
+    hdiutil detach "$MDEV" -force -quiet >/dev/null 2>&1
+  }
+  trap mount_cleanup EXIT
+  if hdiutil create -size 10m -fs APFS -volname EWLANEPROOF -quiet "$MDMG" >/dev/null 2>&1 \
+     && hdiutil attach -nobrowse -nomount "$MDMG" >/dev/null 2>&1; then
+    MDEV=$(hdiutil info 2>/dev/null \
+      | awk -v img="$MDMG" '$0 ~ img {f=1} f && /\/dev\/disk[0-9]+s[0-9]+/ {print $1}' | tail -1)
+  fi
+  if [ -n "$MDEV" ] \
+     && diskutil mount -mountPoint "$MDIR/lane/app-logger/external" "$MDEV" >/dev/null 2>&1; then
+    echo "PRECIOUS" > "$MDIR/lane/app-logger/external/precious.txt"
+    ew_lane_remove_tree "$MDIR/lane" 2>/dev/null
+    # It MUST report failure - the lane cannot be emptied while something is
+    # mounted inside it - and the mounted data must be untouched. Asserting both
+    # halves: "reported failure" alone would also be true of a removal that
+    # destroyed everything and then tripped on the busy mount root, which is
+    # precisely what `rm -rf` does.
+    [ -f "$MDIR/lane/app-logger/external/precious.txt" ] \
+      && ok "a mount nested below a lane is not descended into" \
+      || bad "a mount nested below a lane is not descended into" "the mounted file was destroyed"
+    [ -e "$MDIR/lane" ] \
+      && ok "a lane holding a mount survives and is reported unremoved" \
+      || bad "a lane holding a mount survives and is reported unremoved" "the lane was removed"
+    mount_cleanup
+    MDEV=""
+  else
+    skip "a mount nested below a lane is not descended into" "could not attach a scratch volume"
+  fi
+  trap - EXIT
+else
+  skip "a mount nested below a lane is not descended into" "hdiutil/diskutil absent"
+fi
+
+echo "== the CREATE path refuses a linked parent, not just the removal path =="
+# Round 8 removed a deletion and its containment check together - and that check
+# was ALSO guarding the create. Every round since argued about the removal path,
+# because that is where the `rm -rf` was, while the take path wrote straight
+# through a symlinked `build`: the lane lands OUTSIDE the worktree and publish
+# then replaces the external parent's `latest-lane`.
+ESC="$SANDBOX/escapee"           # stands in for somewhere else entirely
+mkdir -p "$ESC"
+LINKROOT="$SANDBOX/linked-root"
+mkdir -p "$LINKROOT"
+ln -s "$ESC" "$LINKROOT/build"   # build is a symlink out of the tree
+if ew_take_default_lane "$LINKROOT/build/lanes/1787000000-7" 2>/dev/null; then
+  bad "the take refuses a symlinked build" "created through the link"
+else
+  ok "the take refuses a symlinked build"
+fi
+# Asserting the REFUSAL alone would also be true of a version that created the
+# directory and then returned nonzero, so check the world: nothing may have
+# appeared on the far side of the link.
+[ -e "$ESC/lanes" ] \
+  && bad "and nothing was created outside the worktree" "$ESC/lanes exists" \
+  || ok "and nothing was created outside the worktree"
+# The twin: publish writes into the same `build`, so guarding one and not the
+# other leaves the identical symlink exposed one command later.
+if ew_publish_latest_lane "$LINKROOT" "$LINKROOT/build/lanes/1787000000-7" 2>/dev/null; then
+  bad "publish refuses a symlinked build" "published through the link"
+else
+  ok "publish refuses a symlinked build"
+fi
+[ -e "$ESC/latest-lane" ] \
+  && bad "and no pointer was written outside the worktree" "$ESC/latest-lane exists" \
+  || ok "and no pointer was written outside the worktree"
+# A SYMLINKED `lanes` is the other component and must be refused too - the
+# reviewer named both.
+LINKROOT2="$SANDBOX/linked-lanes"
+mkdir -p "$LINKROOT2/build" "$SANDBOX/escapee2"
+ln -s "$SANDBOX/escapee2" "$LINKROOT2/build/lanes"
+if ew_take_default_lane "$LINKROOT2/build/lanes/1787000000-8" 2>/dev/null; then
+  bad "the take refuses a symlinked lanes" "created through the link"
+else
+  ok "the take refuses a symlinked lanes"
+fi
+# The ACCEPTED twin, or "refuses" is indistinguishable from "never creates":
+# an ordinary parent chain must still be taken.
+if ew_take_default_lane "$SANDBOX/plain-root/build/lanes/1787000000-9"; then
+  ok "an ordinary parent chain is still taken"
+else
+  bad "an ordinary parent chain is still taken" "refused a clean tree"
+fi
+
+echo "== the removal REFUSES when the mount table names anything below the lane =="
+# The check that closes the six-round class, and on macOS its branch is
+# unreachable: `/proc/self/mountinfo` does not exist, so `ew_lane_contains_a_mount`
+# always answers no and a mutant that deletes the call survives. That is exactly
+# how rounds 6, 7 and 9 of this PR each shipped a defect - a fix inside a branch
+# the suite cannot drive.
+#
+# Driven through a PRIVATE COPY of the lib with the table path repointed, never
+# by giving the shipped function an env knob: a knob on a guard is an unlogged
+# way to disable it, and pointing it at an empty file is precisely the bypass.
+# The rewrite FAILS CLOSED - a `sed` that matched nothing would leave the copy
+# reading the real `/proc` path and the row would pass having proved nothing.
+COPY="$SANDBOX/log-dir-mountcheck.sh"
+FAKEMI="$SANDBOX/fake-mountinfo"
+sed 's#/proc/self/mountinfo#'"$FAKEMI"'#g' "$HERE/log-dir.sh" > "$COPY"
+if [ "$(/usr/bin/grep -c "$FAKEMI" "$COPY")" -ge 3 ]; then
+  (
+    # shellcheck disable=SC1090
+    . "$COPY"
+    LANE="$SANDBOX/refusal/build/lanes/1787000000-9"
+    mkdir -p "$LANE/app-logger/external"
+    echo "not-ours" > "$LANE/app-logger/external/precious.txt"
+    RESOLVED="$(cd "$LANE" && pwd -P)"
+    printf '26 30 0:24 / %s/app-logger/external rw - ext4 /dev/sda1 rw\n' "$RESOLVED" > "$FAKEMI"
+    if ew_lane_remove_tree "$LANE" 2>/dev/null; then
+      echo "MOUNTCHECK-FAIL removal reported success"
+    elif [ ! -f "$LANE/app-logger/external/precious.txt" ]; then
+      echo "MOUNTCHECK-FAIL removal refused but had already deleted"
+    else
+      echo "MOUNTCHECK-OK"
+    fi
+    # The accepted twin, in the same rig: with NOTHING listed below the lane the
+    # removal must still work, or "refuses" would be indistinguishable from
+    # "never removes anything".
+    : > "$FAKEMI"
+    if ew_lane_remove_tree "$LANE" 2>/dev/null && [ ! -e "$LANE" ]; then
+      echo "MOUNTCHECK-CLEAR-OK"
+    else
+      echo "MOUNTCHECK-CLEAR-FAIL"
+    fi
+  ) > "$SANDBOX/mountcheck.out" 2>&1
+  if /usr/bin/grep -q "MOUNTCHECK-OK" "$SANDBOX/mountcheck.out"; then
+    ok "a lane with a mount listed below it is not removed"
+  else
+    bad "a lane with a mount listed below it is not removed" \
+        "$(tr '\n' ' ' < "$SANDBOX/mountcheck.out")"
+  fi
+  if /usr/bin/grep -q "MOUNTCHECK-CLEAR-OK" "$SANDBOX/mountcheck.out"; then
+    ok "a lane with nothing mounted below it is still removed"
+  else
+    bad "a lane with nothing mounted below it is still removed" \
+        "$(tr '\n' ' ' < "$SANDBOX/mountcheck.out")"
+  fi
+else
+  bad "the mount-check copy was repointed" "sed did not rewrite the table path"
+fi
+
+echo "== taking a default lane is atomic, not assumed =="
+# The claim this replaces was that `<seconds>-<pid>` cannot recur. It can, in a
+# constrained pid namespace, and the cost was silent: the later run inherits the
+# earlier occupant's Release log and bundle beside fresh Debug ones. A bare
+# `mkdir` cannot be talked into reusing a directory.
+TAKE="$SANDBOX/take/build/lanes/1787000000-4242"
+ew_take_default_lane "$TAKE" \
+  && ok "a fresh lane is taken, parents and all" \
+  || bad "a fresh lane is taken, parents and all" "refused a fresh name"
+[ -d "$TAKE" ] \
+  && ok "the taken lane exists afterwards" \
+  || bad "the taken lane exists afterwards" "not created"
+# The rejected twin, and it is the whole point: the SECOND take of one name must
+# refuse. `mkdir -p` would return success here and hand over a used directory.
+if ew_take_default_lane "$TAKE" 2>/dev/null; then
+  bad "a second take of one lane name is refused" "accepted a used lane"
+else
+  ok "a second take of one lane name is refused"
+fi
+# A refusal must not be indistinguishable from a bad argument.
+if ew_take_default_lane "" 2>/dev/null; then
+  bad "take refuses a missing lane_dir" "accepted empty"
+else
+  ok "take refuses a missing lane_dir"
+fi
+
+echo "== find failing is not an empty sweep =="
+# A process substitution's exit status is invisible to the loop, so a `find` that
+# could not enumerate lanes/ produced no iterations, left rc at 0, and the prune
+# reported a clean sweep having looked at nothing.
+NOREAD="$SANDBOX/noread"
+mkdir -p "$NOREAD/build/lanes/6001"
+touch -t 202001010000 "$NOREAD/build/lanes/6001"
+chmod 100 "$NOREAD/build/lanes"   # traversable, NOT readable: stat checks pass, find fails
+ew_prune_stale_lanes "$NOREAD" "$NOREAD/build/lanes/none" 7 >/dev/null 2>&1
+rc=$?
+chmod 700 "$NOREAD/build/lanes"
+[ "$rc" -ne 0 ] \
+  && ok "an unreadable lanes/ is reported, not swept silently" \
+  || bad "an unreadable lanes/ is reported, not swept silently" "rc=$rc"
+
+echo "== both refuse rather than guessing =="
+ew_publish_latest_lane "$SANDBOX" "" >/dev/null 2>&1
+[ "$?" -eq 2 ] && ok "publish refuses a missing lane_dir" || bad "publish refuses a missing lane_dir" "rc=$?"
+ew_prune_stale_lanes "" "x" >/dev/null 2>&1
+[ "$?" -eq 2 ] && ok "prune refuses a missing project_root" || bad "prune refuses a missing project_root" "rc=$?"
+
+# Folded in HERE because the handler runs in a subshell and cannot reach $FAIL.
+if [ -s "$NOT_FOUND_LOG" ]; then
+  FAIL=$((FAIL + $(/usr/bin/wc -l < "$NOT_FOUND_LOG")))
+fi
+rm -f "$NOT_FOUND_LOG"
+
 echo
-printf "PASS=%d FAIL=%d\n" "$PASS" "$FAIL"
+printf "PASS=%d FAIL=%d SKIP=%d\n" "$PASS" "$FAIL" "$SKIP"
 [ "$FAIL" -eq 0 ] || exit 1
