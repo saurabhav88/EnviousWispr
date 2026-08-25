@@ -219,7 +219,6 @@ extension RecordingPillDesign {
 
 // MARK: - RecordingOverlayView
 
-/// Compact recording indicator overlay.
 /// How the recording poll waits between reads (#2377 Phase 5, C5).
 ///
 /// **A seam because the alternative is a timed wait, and the question is about
@@ -246,6 +245,7 @@ struct RecordingPollCadence: Sendable {
   }
 }
 
+/// Compact recording indicator overlay.
 struct RecordingOverlayView: View {
   let audioLevelProvider: () -> Float
   /// #1393: monotonic elapsed recording time, read from the shared kernel

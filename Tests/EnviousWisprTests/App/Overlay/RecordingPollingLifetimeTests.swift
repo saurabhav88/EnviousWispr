@@ -23,8 +23,14 @@ import Testing
 @MainActor
 struct RecordingPollingLifetimeTests {
 
-  /// A cadence the test drives, with the three receipts the probe needs: it has
-  /// PARKED, it may ADVANCE, and it was CANCELLED while parked.
+  private enum PostHideOutcome: Equatable {
+    case cancelled
+    case repolled
+  }
+
+  /// A cadence the test drives, with the receipts the probe needs: it has PARKED,
+  /// it may ADVANCE, it was CANCELLED, and — after `hide()` — which of
+  /// cancellation and another poll came first.
   @MainActor
   private final class ManualCadence {
     private var gate: CheckedContinuation<Void, Never>?
@@ -32,6 +38,17 @@ struct RecordingPollingLifetimeTests {
     private var cancelWaiter: CheckedContinuation<Void, Never>?
     private(set) var parks = 0
     private(set) var cancelled = false
+
+    /// **Which of the two things happened first after `hide()`.**
+    ///
+    /// Awaiting cancellation alone cannot fail FAST: a host that never releases
+    /// its content simply never cancels, so the row hits its hang guard and
+    /// reports a timeout instead of the poll that carried on. Racing the two
+    /// outcomes reports whichever the code actually did, promptly, with no
+    /// elapsed time involved either way.
+    private var observingPostHide = false
+    private var postHideOutcome: PostHideOutcome?
+    private var postHideWaiter: CheckedContinuation<PostHideOutcome, Never>?
 
     var cadence: RecordingPollCadence {
       RecordingPollCadence { [weak self] in
@@ -43,6 +60,8 @@ struct RecordingPollingLifetimeTests {
     /// Called by the view's poll loop in place of its 50 ms wait.
     private func park() async {
       parks += 1
+      // A park AFTER hide is the pill completing another poll.
+      if observingPostHide { finishPostHide(.repolled) }
       // A waiter that asked BEFORE this park gets its answer now.
       parkWaiter?.resume()
       parkWaiter = nil
@@ -57,6 +76,7 @@ struct RecordingPollingLifetimeTests {
 
     private func releaseOnCancel() {
       cancelled = true
+      finishPostHide(.cancelled)
       gate?.resume()
       gate = nil
       cancelWaiter?.resume()
@@ -84,6 +104,23 @@ struct RecordingPollingLifetimeTests {
       await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
         parkWaiter = c
       }
+    }
+
+    private func finishPostHide(_ outcome: PostHideOutcome) {
+      guard postHideOutcome == nil else { return }
+      postHideOutcome = outcome
+      postHideWaiter?.resume(returning: outcome)
+      postHideWaiter = nil
+    }
+
+    /// Start watching for whichever happens first once the host is hidden.
+    func beginPostHideObservation() {
+      observingPostHide = true
+    }
+
+    func awaitPostHideOutcome() async -> PostHideOutcome {
+      if let postHideOutcome { return postHideOutcome }
+      return await withCheckedContinuation { postHideWaiter = $0 }
     }
 
     /// Let the poll loop run one more iteration.
@@ -135,9 +172,14 @@ struct RecordingPollingLifetimeTests {
       cadence: manual.cadence)
 
     let hosted = NSHostingView(rootView: AnyView(view))
-    _ = host.present(
-      hosted, width: .fixed(RecordingPillDesign.classic.width),
-      fixedHeight: RecordingPillDesign.classic.reservedHeight, isFresh: true, position: .top)
+    // Required, not ignored: a refused presentation would otherwise surface as an
+    // unrelated hang-guard timeout rather than as the thing that went wrong.
+    try #require(
+      host.present(
+        hosted, width: .fixed(RecordingPillDesign.classic.width),
+        fixedHeight: RecordingPillDesign.classic.reservedHeight,
+        isFresh: true, position: .top),
+      "the recording pill never reached the host")
 
     // 1. The first poll runs immediately, then the loop parks.
     await manual.awaitPark(after: 0)
@@ -155,17 +197,19 @@ struct RecordingPollingLifetimeTests {
       afterOneTick == [2, 2, 2],
       "one advance moved the counts to \(afterOneTick), so the poll is not running")
 
-    // 3. Take the content away, which is what `hide()` does in production.
+    // 3. Take the content away — what `hide()` does in production — and push the
+    //    loop at the same time. Whichever happens first is the answer: the wait
+    //    is cancelled, or the pill completes another poll.
+    manual.beginPostHideObservation()
     host.hide()
-    await manual.awaitCancelled()
-    #expect(manual.cancelled, "hiding the host did not cancel the poll")
+    manual.advance()
 
-    // 4. Nothing more may be read, however hard the test pushes.
-    manual.advance()
-    manual.advance()
-    let afterHide = counts.all
+    let outcome = await manual.awaitPostHideOutcome()
+    #expect(outcome == .cancelled, "the hidden pill completed another poll")
+
+    // 4. And nothing was read on the way.
     #expect(
-      afterHide == afterOneTick,
-      "a hidden pill kept polling: \(afterOneTick) became \(afterHide)")
+      counts.all == afterOneTick,
+      "a hidden pill kept polling: \(afterOneTick) became \(counts.all)")
   }
 }
