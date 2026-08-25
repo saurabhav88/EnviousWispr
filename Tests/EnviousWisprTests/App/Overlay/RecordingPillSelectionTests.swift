@@ -59,8 +59,12 @@ struct RecordingPillSelectionTests {
 
     // 2. Choose the level rail for the wordless side.
     settings.recordingPillDesignWithoutWords = .levelRail
+    // Reads the design rather than repeating its width: this suite's claim is
+     // WHICH DESIGN reached the pill, and the number was only ever a stand-in for
+     // identity. Written as a literal it broke when the level rail widened for a
+     // reason that has nothing to do with selection memory.
     #expect(
-      Self.width(settings, hasWords: false) == 260,
+      Self.width(settings, hasWords: false) == RecordingPillDesign.levelRail.width,
       "the chosen design did not reach the pill")
 
     // 3. Words become available: the OTHER group's choice decides, untouched.
@@ -68,10 +72,10 @@ struct RecordingPillSelectionTests {
       Self.width(settings, hasWords: true) == 400,
       "choosing a wordless design changed what the with-words group renders")
 
-    // 4. Words go away again. THIS is the memory claim: 260, not the 185 a
-    //    single shared key or a reset would give back.
+    // 4. Words go away again. THIS is the memory claim: the level rail's own
+     //    width, not the 185 a single shared key or a reset would give back.
     #expect(
-      Self.width(settings, hasWords: false) == 260,
+      Self.width(settings, hasWords: false) == RecordingPillDesign.levelRail.width,
       """
       the wordless group came back at a different width after a capability flip, \
       so the user's choice on that side was lost or overwritten by the other \
@@ -90,7 +94,7 @@ struct RecordingPillSelectionTests {
     settings.recordingPillDesignWithWords = .readingWell
 
     #expect(Self.width(settings, hasWords: true) == 400)
-    #expect(Self.width(settings, hasWords: false) == 260)
+    #expect(Self.width(settings, hasWords: false) == RecordingPillDesign.levelRail.width)
     #expect(
       suite.string(forKey: "recordingPillDesignWithoutWords") == "levelRail",
       "the with-words write reached the wordless key")

@@ -185,6 +185,88 @@ struct RenderedPillFreezeTests {
       """)
   }
 
+  /// **THE LEVEL RAIL MUST NOT LOOK THE SAME WHEN THE MICROPHONE STAYS OPEN**
+  /// (#2376 Phase 4, cloud review round 5, P1).
+  ///
+  /// Hands-free keeps recording after the key is released, so a design that renders
+  /// identically in both states lets a user walk away from a live capture believing
+  /// it ended. `.levelRail` shipped exactly that way: every visual property in its
+  /// branch was independent of `lockState.isLocked`, so the container's animation
+  /// had nothing to animate.
+  ///
+  /// **Nothing caught it because `levelRail` appears NOWHERE in the frozen
+  /// recording table** — the design this phase ADDED is the one the fixture never
+  /// grew a row for. Ask of any fixture what it makes impossible, not what it
+  /// covers.
+  ///
+  /// A relation between two measurements in one process, so it is portable.
+  @Test("the level rail announces hands-free by asking for more room")
+  func theLevelRailAnnouncesHandsFree() throws {
+    // WIDTH, not height, and that is forced rather than chosen: the badge is
+    // INLINE — the reserved-box guard refused a second row — so it adds no height
+    // at all. Width is the observable the inline form preserves.
+    let unlocked = RenderedPillHarness.recordingContentNaturalWidth(
+      design: .levelRail, locked: false)
+    let locked = RenderedPillHarness.recordingContentNaturalWidth(
+      design: .levelRail, locked: true)
+
+    try #require(
+      unlocked > 0 && locked > 0,
+      "measured \(unlocked)/\(locked) — the harness returned nothing, which is not a pass")
+
+    #expect(
+      locked > unlocked,
+      """
+      the level rail wants \(locked)pt locked and \(unlocked)pt unlocked, so it looks \
+      IDENTICAL in hands-free. That mode keeps the microphone open after the key is \
+      released, and this design would give the user nothing to read it from. Add a \
+      treatment; do not relax this.
+      """)
+
+    // And it must still FIT, or the badge is announced into a clipped region. The
+    // pill's width is fixed, so content wider than it is silently cut.
+    #expect(
+      locked <= RecordingPillDesign.levelRail.width,
+      """
+      locked content wants \(locked)pt inside a \(RecordingPillDesign.levelRail.width)pt \
+      pill, so the badge or the rail is CLIPPED with nothing reporting it. Shorten the \
+      copy or widen the design; do not relax this.
+      """)
+  }
+
+  /// **KNOWN LIMIT, STATED SO THE NEXT READER DOES NOT REDISCOVER IT BY WRITING THE
+  /// TEST ABOVE FOR ALL THREE DESIGNS.** The obvious generalisation — every design
+  /// renders differently when locked — goes RED on `.classic` and `.readingWell`,
+  /// and BOTH of them have a treatment:
+  ///
+  /// | design | treatment | why height cannot see it |
+  /// |---|---|---|
+  /// | `.classic` | lips icon `.scaleEffect(2.0)`, clock hidden | a scale is a RENDER transform, not a layout change; 44pt either way |
+  /// | `.readingWell` | filled badge replaces the quiet mode text | same font, same row; 34pt either way |
+  /// | `.levelRail` | badge on a NEW row | genuinely taller, which is what the case above reads |
+  ///
+  /// `RenderedPillHarness` already records why there is no better probe here:
+  /// `fittingSize` is blind to paint and `scaleEffect`, and the accessibility tree
+  /// is not readable from a hosted view. So "the pill LOOKS different" has no
+  /// complete in-process observer, and a version of the case above that passed for
+  /// all three would be binding nothing. Those two are Live UAT rows.
+  ///
+  /// This case is the CONTROL for that claim rather than prose about it: it holds
+  /// lock CONSTANT and requires the same answer twice, so a harness returning a
+  /// different number per call could not have produced the table above.
+  @Test(
+    "the same design at the same lock state measures the same twice",
+    arguments: RecordingPillDesign.allCases)
+  func contentHeightIsStable(design: RecordingPillDesign) throws {
+    let first = try RenderedPillHarness.recordingContentHeight(
+      design: design, locked: true, width: design.width)
+    let second = try RenderedPillHarness.recordingContentHeight(
+      design: design, locked: true, width: design.width)
+    #expect(
+      first == second,
+      "\(design) measured \(first) then \(second) with nothing changed between them")
+  }
+
   // MARK: - The instrument's own controls
 
   /// **An empty slot must be distinguishable from every pill**, or a harness

@@ -38,7 +38,11 @@ struct LevelRailDesignTests {
       regression shipped as a feature.
       """)
     #expect(rail != well, "the level rail measures the same as the reading well: \(rail)")
-    #expect(rail.width == 260, "the level rail is \(rail.width)pt wide, not the 260 it declares")
+    // 288 since round 5: the hands-free badge is inline and the locked row
+    // measured 279pt of content, so 260 clipped the one thing that says the
+    // microphone is still open. Pinned rather than derived, deliberately — a pin
+    // that reads `design.width` would agree with any future value.
+    #expect(rail.width == 288, "the level rail is \(rail.width)pt wide, not the 288 it declares")
     #expect(rail.height == 92, "the level rail reserved \(rail.height)pt, not 92")
   }
 
@@ -91,9 +95,10 @@ struct LevelRailDesignTests {
   @Test("a notice grows the level rail at all")
   func aNoticeGrowsTheRail() throws {
     let bare = try RenderedPillHarness.recordingContentHeight(
-      design: .levelRail, width: 260)
+      design: .levelRail, width: RecordingPillDesign.levelRail.width)
     let withNotice = try RenderedPillHarness.recordingContentHeight(
-      design: .levelRail, notice: DictationNarrator.copy(for: .approachingCap), width: 260)
+      design: .levelRail, notice: DictationNarrator.copy(for: .approachingCap),
+      width: RecordingPillDesign.levelRail.width)
     #expect(withNotice > bare, "a notice measured \(withNotice)pt against a bare \(bare)pt")
   }
 
@@ -166,7 +171,7 @@ struct LevelRailDesignTests {
       PillCatalog.entry(
         for: .recording(audioLevel: 0, design: .levelRail), id: RenderedPillHarness.id()
       ).definition)
-    #expect(definition.requestedWidth == .fixed(260))
+    #expect(definition.requestedWidth == .fixed(288))
     #expect(definition.reservesFixedHeight == 92)
     #expect(definition.recordingDesign == .levelRail)
   }

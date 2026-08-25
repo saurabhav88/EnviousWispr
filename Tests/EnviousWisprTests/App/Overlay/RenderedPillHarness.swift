@@ -199,4 +199,51 @@ enum RenderedPillHarness {
       log.reported.last,
       "the recording leaf never reported a height — the measurement is missing, not failing")
   }
+
+  /// What the recording leaf's content WOULD take if nothing constrained it.
+  ///
+  /// **`recordingRootSize` cannot answer this and that is the reason this exists.**
+  /// It proposes the design's own fixed width, so it returns 185 or 288 whatever
+  /// the content wants — pinned by construction, and therefore blind to anything
+  /// that changes how much room the content needs.
+  ///
+  /// Written for the hands-free treatment (#2376 Phase 4, round 5): the badge sits
+  /// INLINE, so it adds no height, and height is what every other recording probe
+  /// here reads. Width is the observable the inline form preserves.
+  ///
+  /// Same blindness as the rest of this harness, restated so it is not assumed
+  /// away: this measures LAYOUT, never paint. A treatment that recolours or scales
+  /// without changing what the content needs is invisible to it.
+  static func recordingContentNaturalWidth(
+    design: RecordingPillDesign,
+    locked: Bool = false,
+    notice: String? = nil,
+    display: LivePreviewDisplay = .off
+  ) -> CGFloat {
+    let lockState = OverlayLockState()
+    lockState.isLocked = locked
+    let noticeState = OverlayNoticeState()
+    noticeState.message = notice
+
+    let view = RecordingOverlayView(
+      audioLevelProvider: { 0.4 },
+      recordingElapsedProvider: { 127 },
+      livePreviewProvider: { display },
+      onContentHeightChange: { _ in },
+      chrome: design.chrome,
+      lockState: lockState,
+      noticeState: noticeState,
+      initialPreview: display)
+
+    // No `.frame(width:)`, which is the whole point — an unproposed hosting view
+    // reports what the content ideally wants.
+    let host = NSHostingView(rootView: view)
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 2000, height: 400),
+      styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    return host.fittingSize.width
+  }
 }

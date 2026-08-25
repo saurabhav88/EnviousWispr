@@ -76,7 +76,11 @@ struct PillCatalogRecordingParityTests {
 
     #expect(classic.requestedWidth == .fixed(185))
     #expect(readingWell.requestedWidth == .fixed(400))
-    #expect(levelRail.requestedWidth == .fixed(260))
+    // 288 since #2376 round 5, measured from 279pt of locked content rather than
+    // chosen. LITERAL on purpose: this suite is the guard ON the number, so a pin
+    // that read `RecordingPillDesign.levelRail.width` would agree with whatever
+    // that becomes and guard nothing.
+    #expect(levelRail.requestedWidth == .fixed(288))
     #expect(classic.reservesFixedHeight == 92)
     #expect(readingWell.reservesFixedHeight == nil)
     // **The same 92 as the capsule, and that is inherited rather than repeated.**

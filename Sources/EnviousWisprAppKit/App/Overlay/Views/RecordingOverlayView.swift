@@ -182,10 +182,16 @@ extension RecordingPillDesign {
         levelAnimation: .none,
         showsListeningSentence: false,
         noticeInk: .capsuleWhite,
-        // 260 less the 14pt root inset either side. Stated as the arithmetic it
-        // is, because a bare 232 beside a 260-wide design reads as a second
+        // 288 less the 14pt root inset either side. Stated as the arithmetic it
+        // is, because a bare 260 beside a 288-wide design reads as a second
         // measurement nobody took.
-        noticeMaxWidth: 232,
+        //
+        // **This is the site the round-5 width change nearly missed.** Nothing
+        // fails if it keeps the old 232 — notices would just wrap 28pt early,
+        // for ever, with no test red anywhere. It was found by grepping the
+        // VALUE rather than the symbol, which is the only thing that reaches a
+        // number carrying someone else's arithmetic.
+        noticeMaxWidth: 260,
         noticeInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
         wellInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
         wellInk: .capsuleWhite,
@@ -385,6 +391,40 @@ struct RecordingOverlayView: View {
           // the audio-reactive element, and two of them would compete.
           RainbowLevelMeter(
             audioLevel: audioLevel, tick: audioTick, height: 24, barWidth: 3, spacing: 2)
+
+          // **The hands-free badge, and without it this design was the one that
+          // never said the microphone stays open** (#2376 Phase 4, cloud review
+          // round 5, P1). Every other visual property here is independent of
+          // `lockState.isLocked`, so the container's animation had nothing to
+          // animate and the locked pill was pixel-identical to the unlocked one.
+          // The cost is not cosmetic: hands-free keeps recording after the key is
+          // released, so a user with no confirmation can leave a capture running.
+          //
+          // Treatment is the reading well's, verbatim, for the reason recorded
+          // there: a filled badge because the mode PERSISTS, where a size change
+          // is only legible to someone who saw the other size a second earlier.
+          //
+          // **INLINE rather than on a row of its own, and the reserved-box guard is
+          // what decided that.** A second row put the pill at 104pt with a #1060
+          // banner also showing, against the 92pt box this design reserves — and a
+          // without-words pill is handed a no-op growth callback, so that overflow
+          // is CLIPPED with nothing reporting it. The box is the inherited notice
+          // budget rather than a number this phase gets to pick, so the badge
+          // gives up the row instead.
+          //
+          // No leading dot, unlike the reading well's: this row is a ~45pt clock
+          // plus 24 bars at 3pt-and-2pt, and the dot is 11pt of the margin that
+          // keeps the rail from being squeezed. Measured locked: 279pt of content,
+          // which is what moved this design's width to 288.
+          if lockState.isLocked {
+            Text(LivePreviewCopy.handsFreeMode)
+              .font(.system(size: 11, weight: .semibold))
+              .foregroundStyle(PreviewPillPalette.badgeText)
+              .padding(.horizontal, 9)
+              .padding(.vertical, 3)
+              .background(Capsule().fill(PreviewPillPalette.badgeFill))
+              .transition(.opacity)
+          }
         }
 
       case .mark:

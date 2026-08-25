@@ -61,7 +61,21 @@ extension RecordingPillDesign {
     // beside the clock, and unmistakably not 185 at a glance. A CHOSEN number,
     // not a measured one — there is no mockup in the tree — and the one value in
     // this design a founder should move before it ships.
-    case .levelRail: return 260
+    // 288, not the 260 this design was drawn at, and the 28 is MEASURED rather
+    // than chosen (#2376 Phase 4, round 5). The hands-free badge is inline —
+    // the reserved-box guard refused it a row of its own — and the locked row
+    // then wants 279pt: a ~45pt clock, 24 bars at 3pt with 2pt gaps, and a
+    // ~90pt badge. At 260 the badge or the rail is CLIPPED with nothing
+    // reporting it, and the thing being clipped is the only confirmation that
+    // the microphone stays open after the key is released.
+    //
+    // Three alternatives were measured and refused: shortening the label splits
+    // one mode across two names, since the reading well already says
+    // "Hands-free"; cutting the rail to 20 bars takes 20pt out of the audio
+    // history that is this design's whole point, and `barCount` is shared with
+    // the reading well; dropping the clock contradicts the 2026-08-19 founder
+    // decision that hands-free is the mode that needs one.
+    case .levelRail: return 288
     }
   }
 
