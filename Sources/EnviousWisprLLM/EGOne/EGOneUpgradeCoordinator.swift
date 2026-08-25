@@ -107,6 +107,10 @@ public final class EGOneUpgradeCoordinator {
   package typealias FetchDecisionHandler =
     @MainActor @Sendable (ModelDeliveryController.FetchDecision) -> Void
 
+  /// Fired when an ensure is about to enter the controller — after preparation,
+  /// before any join can happen. See `runLaunch` for why the two are separate.
+  package typealias WillRequestFetchHandler = @MainActor @Sendable () -> Void
+
   /// What each in-flight automatic ensure turned out to BE, keyed per attempt.
   ///
   /// **A dictionary rather than a count, because the count could not express the
@@ -168,8 +172,8 @@ public final class EGOneUpgradeCoordinator {
   private var deferredForOnboarding = false
 
   private let ensureCurrentModel:
-    @MainActor @Sendable (@escaping FetchDecisionHandler) async ->
-      ModelDeliveryController.DeliveryOutcome
+    @MainActor @Sendable (@escaping WillRequestFetchHandler, @escaping FetchDecisionHandler)
+      async -> ModelDeliveryController.DeliveryOutcome
   private let currentModelIsAdmitted: @MainActor @Sendable () async -> Bool
 
   /// nil in production: `LegacyRetirement` then hashes the descriptor it verified, so the
@@ -199,11 +203,12 @@ public final class EGOneUpgradeCoordinator {
         ?? .standard,
       trustedArtifact: trustedArtifact,
       isOnboardingComplete: isOnboardingComplete,
-      ensureCurrentModel: { [weak adapter] onFetchDecision in
+      ensureCurrentModel: { [weak adapter] onWillRequestFetch, onFetchDecision in
         guard let adapter else {
           return .failed(DeliveryFailure(reason: .unknown, detail: "adapter_released"))
         }
-        return await adapter.ensureAvailable(onFetchDecision: onFetchDecision)
+        return await adapter.ensureAvailable(
+          onWillRequestFetch: onWillRequestFetch, onFetchDecision: onFetchDecision)
       },
       currentModelIsAdmitted: { [weak adapter] in
         guard let adapter else { return false }
@@ -229,8 +234,9 @@ public final class EGOneUpgradeCoordinator {
     trustedArtifact: TrustedArtifact,
     isOnboardingComplete: @escaping @MainActor @Sendable () -> Bool = { true },
     ensureCurrentModel:
-      @escaping @MainActor @Sendable (@escaping FetchDecisionHandler) async ->
-        ModelDeliveryController.DeliveryOutcome,
+      @escaping @MainActor @Sendable (
+        @escaping WillRequestFetchHandler, @escaping FetchDecisionHandler
+      ) async -> ModelDeliveryController.DeliveryOutcome,
     currentModelIsAdmitted: @escaping @MainActor @Sendable () async -> Bool,
     hashFile: (@Sendable (URL) async throws -> String)? = nil,
     writeMarker: (@MainActor @Sendable (URL) -> Bool)? = nil,
@@ -409,17 +415,26 @@ public final class EGOneUpgradeCoordinator {
     //
     // Marked in-flight across the fetch so a Cancel arriving through the adapter's shared
     // decline hook is attributable to US rather than to the settings row.
-    // Registered as `.pending` BEFORE the call, so a Cancel arriving in the gap
-    // is refused rather than attributed by guess (#2110).
+    // Registered as `.pending` when the call ENTERS the controller, never before
+    // (#2110 cloud review). The adapter first awaits retirement preparation,
+    // which can hash a 2.9 GB monolith; registering ahead of that would refuse a
+    // user's cancel of their OWN unrelated download for the whole hash, on the
+    // strength of a join that had not happened and could not yet have happened.
+    //
+    // Before the signal arrives this attempt is simply absent, which reads as
+    // "not ours" — correct, because it is not: nothing has been joined or
+    // started. `.pending` covers only the genuine unknown, between entering the
+    // controller and its answer landing here.
     let attemptID = UUID()
-    automaticFetchDecisions[attemptID] = .pending
-    let outcome = await ensureCurrentModel { [weak self] decision in
-      guard let self, self.automaticFetchDecisions[attemptID] != nil else { return }
-      switch decision {
-      case .started: self.automaticFetchDecisions[attemptID] = .started
-      case .joined: self.automaticFetchDecisions[attemptID] = .joined
-      }
-    }
+    let outcome = await ensureCurrentModel(
+      { [weak self] in self?.automaticFetchDecisions[attemptID] = .pending },
+      { [weak self] decision in
+        guard let self, self.automaticFetchDecisions[attemptID] != nil else { return }
+        switch decision {
+        case .started: self.automaticFetchDecisions[attemptID] = .started
+        case .joined: self.automaticFetchDecisions[attemptID] = .joined
+        }
+      })
     automaticFetchDecisions.removeValue(forKey: attemptID)
 
     if case .admitted = outcome {

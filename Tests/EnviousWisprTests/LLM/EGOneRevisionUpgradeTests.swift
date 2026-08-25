@@ -106,8 +106,9 @@ import Testing
       defaults: defaults,
       trustedArtifact: .init(name: "eg-1-v1.gguf", sizeBytes: 11, sha256: "unused-here"),
       isOnboardingComplete: isOnboardingComplete,
-      ensureCurrentModel: { onFetchDecision in
+      ensureCurrentModel: { onWillRequestFetch, onFetchDecision in
         probe.ensureCount += 1
+        onWillRequestFetch()
         // Report STARTED, as the real controller does the moment it decides
         // (#2110). A closure reporting nothing would leave the attempt
         // `.pending`, which now REFUSES a cancel — correct behaviour, and not
@@ -679,8 +680,9 @@ import Testing
       installDirectory: installDirectory(root),
       defaults: store,
       trustedArtifact: .init(name: "eg-1-v1.gguf", sizeBytes: 11, sha256: "unused-here"),
-      ensureCurrentModel: { onFetchDecision in
+      ensureCurrentModel: { onWillRequestFetch, onFetchDecision in
         probe.ensureCount += 1
+        onWillRequestFetch()
         // STARTED first, then the cancel — the real order. The controller reports
         // its decision when it decides, and Cancel arrives later, during the
         // fetch. Reporting it is what makes this case about ATTRIBUTION rather
@@ -739,6 +741,7 @@ import Testing
     final class Answers: @unchecked Sendable {
       var whileJoined: Bool?
       var whilePending: Bool?
+      var beforeEnteringController: Bool?
     }
     let answers = Answers()
 
@@ -748,9 +751,16 @@ import Testing
       installDirectory: installDirectory(root),
       defaults: store,
       trustedArtifact: .init(name: "eg-1-v1.gguf", sizeBytes: 11, sha256: "unused-here"),
-      ensureCurrentModel: { onFetchDecision in
+      ensureCurrentModel: { onWillRequestFetch, onFetchDecision in
         probe.ensureCount += 1
-        // BEFORE any decision lands, the attempt is `.pending`.
+        // BEFORE entering the controller — this is the retirement-preparation
+        // window, which can hash a 2.9 GB monolith. Nothing has been joined or
+        // started, so a cancel here is the user's own and must be PERMITTED.
+        // Registering `.pending` ahead of this refused it for the whole hash
+        // (#2110 cloud review P2).
+        answers.beforeEnteringController = box.coordinator?.recordUserDecline(source: .cancel)
+        onWillRequestFetch()
+        // Now inside the controller, decision not yet back: genuinely `.pending`.
         answers.whilePending = box.coordinator?.recordUserDecline(source: .cancel)
         // Now the controller's answer arrives: we joined someone else's download.
         onFetchDecision(.joined)
@@ -764,6 +774,9 @@ import Testing
 
     #expect(probe.ensureCount == 1, "the ensure must actually have run, or the arms prove nothing")
 
+    #expect(
+      answers.beforeEnteringController == true,
+      "before the ensure enters the controller nothing can have been joined, so the user's own cancel must be permitted, not refused while we hash a 2.9 GB file")
     #expect(
       answers.whilePending == false,
       "with attribution still pending a cancel must be REFUSED, not guessed either way")
@@ -905,8 +918,9 @@ import Testing
       installDirectory: installDirectory(root),
       defaults: store,
       trustedArtifact: .init(name: "eg-1-v1.gguf", sizeBytes: 11, sha256: "unused-here"),
-      ensureCurrentModel: { onFetchDecision in
+      ensureCurrentModel: { onWillRequestFetch, onFetchDecision in
         probe.ensureCount += 1
+        onWillRequestFetch()
         onFetchDecision(.started)
         if probe.ensureCount == 1 {
           // Re-enter while THIS attempt is still in flight, and let the inner one finish.

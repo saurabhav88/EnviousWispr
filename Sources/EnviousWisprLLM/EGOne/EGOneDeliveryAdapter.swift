@@ -94,7 +94,17 @@ public final class EGOneDeliveryAdapter {
   /// existing cache is already admitted (the server may use trusted bytes),
   /// else a limb-not-ready failure (dictation raw-fallbacks). The bypass fires
   /// `flag_active` from its one taking site (D5 §1).
+  /// - Parameters:
+  ///   - onWillRequestFetch: fired immediately before this call enters the
+  ///     controller, and AFTER retirement preparation. A caller attributing a
+  ///     Cancel needs the two separated, because preparation can hash a 2.9 GB
+  ///     monolith: treating that window as "we might have joined" would refuse a
+  ///     user's cancel of their OWN unrelated download for the whole hash, when
+  ///     in fact this call had not touched the controller yet (#2110 cloud
+  ///     review). Before this fires, nothing here can have joined anything.
+  ///   - onFetchDecision: the controller's start-vs-join answer, once it lands.
   public func ensureAvailable(
+    onWillRequestFetch: (@MainActor @Sendable () -> Void)? = nil,
     onFetchDecision:
       (@MainActor @Sendable (ModelDeliveryController.FetchDecision) -> Void)? = nil
   ) async -> ModelDeliveryController.DeliveryOutcome {
@@ -111,6 +121,12 @@ public final class EGOneDeliveryAdapter {
       return .failed(
         DeliveryFailure(reason: .cacheRepairFailed, detail: "legacy_retirement"))
     }
+
+    // Preparation is done; the next statement enters the controller. Awaited,
+    // not spawned, so the coordinator is registered BEFORE any decision can be
+    // reported — a `.pending` that arrived after its own resolution would be a
+    // stuck attempt nothing ever clears.
+    if let onWillRequestFetch { await MainActor.run { onWillRequestFetch() } }
 
     let outcome = await controller.ensureModelAvailable(registration) { decision in
       guard let onFetchDecision else { return }
