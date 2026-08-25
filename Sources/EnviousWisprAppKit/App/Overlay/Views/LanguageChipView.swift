@@ -9,18 +9,15 @@ import SwiftUI
 /// - `.askToLock`: "Detected <Lang>. Lock it?" with Lock + Dismiss buttons.
 /// - `.educateAboutSettings`: "Detected <Lang>. This can be changed in Settings." with Dismiss only.
 ///
-/// Auto-dismiss timer: 6 seconds. Paused while the cursor hovers over the chip.
-/// Auto-dismiss callback is gated on a generation token (race protection).
+/// **It owns no clock and no hover state** (#2377 Phase 5, C3). Dismissal at six
+/// seconds, and the pause while the cursor is over it, are the director's:
+/// `PillCatalog` gives this chip `.after(seconds: 6, pausesOnHover: true)`,
+/// `OverlayRootView` forwards hover as an event, and `PillExpiryClock` is the one
+/// thing that arms, cancels and re-arms. This view renders and reports presses.
 struct LanguageChipView: View {
   let payload: LanguageChipPayload
   let onLock: () -> Void
   let onDismiss: () -> Void
-  let onAutoDismiss: () -> Void
-
-  @State private var hovering: Bool = false
-  @State private var dismissTask: Task<Void, Never>?
-
-  private static let autoDismissSeconds: Double = 6.0
 
   var body: some View {
     HStack(spacing: 10) {
@@ -37,10 +34,7 @@ struct LanguageChipView: View {
       Spacer(minLength: 6)
 
       if payload.state == .askToLock {
-        Button(action: {
-          dismissTask?.cancel()
-          onLock()
-        }) {
+        Button(action: onLock) {
           Text("Lock")
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.white)
@@ -52,10 +46,7 @@ struct LanguageChipView: View {
         .buttonStyle(.plain)
       }
 
-      Button(action: {
-        dismissTask?.cancel()
-        onDismiss()
-      }) {
+      Button(action: onDismiss) {
         Text("Dismiss")
           .font(.system(size: 12, weight: .medium))
           .foregroundStyle(.white.opacity(0.9))
@@ -69,20 +60,6 @@ struct LanguageChipView: View {
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
     .background(OverlayCapsuleBackground())
-    .onHover { isHovering in
-      hovering = isHovering
-      if isHovering {
-        dismissTask?.cancel()
-      } else {
-        scheduleAutoDismiss()
-      }
-    }
-    .onAppear {
-      scheduleAutoDismiss()
-    }
-    .onDisappear {
-      dismissTask?.cancel()
-    }
   }
 
   private var promptText: String {
@@ -91,15 +68,6 @@ struct LanguageChipView: View {
       return "Detected \(payload.displayName). Lock it?"
     case .educateAboutSettings:
       return "Detected \(payload.displayName). This can be changed in Settings."
-    }
-  }
-
-  private func scheduleAutoDismiss() {
-    dismissTask?.cancel()
-    dismissTask = Task { @MainActor in
-      try? await Task.sleep(for: .seconds(Self.autoDismissSeconds))
-      guard !Task.isCancelled else { return }
-      onAutoDismiss()
     }
   }
 }

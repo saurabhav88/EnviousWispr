@@ -145,8 +145,7 @@ struct OverlayRootView: View {
       LanguageChipView(
         payload: payload,
         onLock: { press(.lockLanguage, on: presentation) },
-        onDismiss: { press(.dismissChip, on: presentation) },
-        onAutoDismiss: {})
+        onDismiss: { press(.dismissChip, on: presentation) })
 
     case .bluetoothAwareness:
       BluetoothAwarenessCardView(
