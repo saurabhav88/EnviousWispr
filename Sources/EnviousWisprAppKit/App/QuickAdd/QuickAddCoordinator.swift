@@ -87,8 +87,14 @@ final class QuickAddCoordinator {
     /// postcondition would then depend on the caller having appended last — a fact no signature
     /// states and one edit could change without anything failing.
     var saveWord: (CustomWord, String) -> String?
-    /// Open the existing edit sheet on a new word carrying the heard spelling as its first alias.
-    var presentNewWordSheet: (String) -> Void
+    /// Move the panel to its compose stage, where the user authors the word by hand.
+    ///
+    /// **Takes no spelling, and that is the whole shape of the #2391 fix.** It used to present a
+    /// SwiftUI `.sheet` seeded with the heard spelling — which presented NOTHING, because the panel
+    /// refuses main status and AppKit refuses `beginSheet` on such a window, silently. The word is
+    /// now assembled by the panel model, which already holds the heard spelling, so there is no
+    /// second copy of it to hand anywhere and no second place that could disagree about trimming.
+    var beginNewWord: () -> Void
     var emit: (QuickAddEvent) -> Void
     /// Injected so elapsed time is measurable without waiting.
     var now: () -> Date = Date.init
@@ -101,14 +107,14 @@ final class QuickAddCoordinator {
     self.environment = environment
   }
 
-  /// Supply the create-new presenter after construction.
+  /// Supply the create-new entry point after construction.
   ///
-  /// Needed because the object that presents the sheet is the one that BUILDS this coordinator, so
+  /// Needed because the object that owns the live panel is the one that BUILDS this coordinator, so
   /// it cannot capture itself while doing so. Kept to this one seam rather than making the whole
   /// environment mutable: everything else is known at construction, and a settable environment is an
   /// invitation to change the rules at runtime.
-  func setPresentNewWordSheet(_ present: @escaping (String) -> Void) {
-    environment.presentNewWordSheet = present
+  func setBeginNewWord(_ begin: @escaping () -> Void) {
+    environment.beginNewWord = begin
   }
 
   /// One Quick Add invocation, from either door.
@@ -372,14 +378,20 @@ final class QuickAddCoordinator {
     return nil
   }
 
-  /// The user chose to create a new word. **Opens the sheet and resolves NOTHING.**
+  /// The user chose to create a new word. **Moves the panel to its compose stage and resolves
+  /// NOTHING.**
   ///
-  /// Emitting `createdNew` here counted an intention as an outcome: cancelling the sheet left the
-  /// panel up, and cancelling the panel then emitted a SECOND resolved event for one open. The
+  /// Emitting `createdNew` here counted an intention as an outcome: backing out of composing leaves
+  /// the panel up, and cancelling the panel then emitted a SECOND resolved event for one open. The
   /// funnel is one `opened` and one `resolved`, and a rate computed over a denominator that
   /// double-counts is worse than no rate.
+  ///
+  /// Takes the model it does nothing with, deliberately: every other outcome on this type is
+  /// reported against the panel the user was looking at, and a signature that quietly stopped
+  /// naming one would be the only place a reader has to check which panel is meant.
   func createNew(from model: QuickAddPanelModel) {
-    environment.presentNewWordSheet(model.spellingToWrite)
+    _ = model
+    environment.beginNewWord()
   }
 
   /// The sheet saved, and the word is confirmed present. Called by the caller that checked.

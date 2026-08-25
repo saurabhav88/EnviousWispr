@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import EnviousWisprPostProcessing
 import EnviousWisprServices
 import SwiftUI
@@ -10,6 +11,22 @@ import SwiftUI
 enum QuickAddPanelCopy {
   static let searchPlaceholder = "Search your words"
   static let createNewWord = "Create a new word"
+
+  /// The compose stage's one instruction, and the only place the panel names what it is about to
+  /// create.
+  ///
+  /// **Two sentences because there are two situations, not because one needed softening.** With a
+  /// readable selection the user is correcting a specific mishearing and the field means "what
+  /// should this have been". With no selection there is nothing to correct — Create is then the
+  /// panel's ONLY working control — and a header quoting an empty string would read as a bug.
+  static func composeHeader(heard: String) -> String {
+    heard.isEmpty ? "New word" : "Correct spelling for \"\(heard)\""
+  }
+
+  /// What the compose field says when empty. Names the thing to type, never the action.
+  static func composePlaceholder(heard: String) -> String {
+    heard.isEmpty ? "The word to add" : "The correct spelling"
+  }
 
   /// Shown when the library refused the write, above the rows so the panel that stayed open says
   /// why. The message comes from the words authority itself rather than being reworded here: it is
@@ -98,6 +115,12 @@ enum QuickAddPanelCopy {
   static let legendMove = "move"
   static let legendClose = "close"
 
+  /// The compose stage's two caps. `back` and not `close`, because Escape means something different
+  /// there — the legend is the contract made visible, and a legend that says `close` over a field
+  /// whose Escape returns to the list is the panel promising a key it will not answer.
+  static let legendCreate = "create"
+  static let legendBack = "back"
+
   /// The one line shown instead of a ranking when we could not read a selection.
   ///
   /// Every refusal gets its own sentence. A single "could not read your selection" would be
@@ -155,54 +178,131 @@ struct QuickAddPanelView: View {
 
   /// Accept a candidate: add the heard spelling to that word.
   let onAccept: (QuickAddRanker.Candidate) -> Void
-  /// Create a new word carrying the heard spelling as its first alias.
+  /// Move to the compose stage. The word itself is built by the model, not here.
   let onCreateNew: () -> Void
+  /// Commit the authored word. Handed the word rather than the typed text, so the view cannot
+  /// assemble a different one than the model validated.
+  let onCreate: (CustomWord) -> Void
   /// Escape, or anything else that means "never mind".
   let onCancel: () -> Void
 
   @FocusState private var searchFocused: Bool
+  @FocusState private var composeFocused: Bool
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      searchWell
-      if let refusal = model.refusal {
-        Text(QuickAddPanelCopy.refusalMessage(refusal))
-          .font(.stBody)
-          .foregroundStyle(.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-          .padding(.horizontal, 16)
-          .padding(.top, 14)
-      }
-      if let failure = model.writeFailure {
-        Text(QuickAddPanelCopy.writeFailure(failure))
-          .font(.stBody)
-          .foregroundStyle(.stError)
-          .fixedSize(horizontal: false, vertical: true)
-          .padding(.horizontal, 16)
-          .padding(.top, 14)
-      }
-      if !model.ranking.candidates.isEmpty {
-        Text(QuickAddPanelCopy.groupHeader(headerState, heard: model.heard))
-          .font(.stSectionHeader)
-          .tracking(0.5)
-          .foregroundStyle(headerState == .lowConfidence ? .stTextTertiary : .stAccent)
-          .padding(.horizontal, 16)
-          .padding(.top, 14)
-          .padding(.bottom, 6)
-        candidateRows
+      switch model.stage {
+      case .picking: pickingContent
+      case .composing: composingContent
       }
       Divider().overlay(Color.stDivider).padding(.top, 10)
-      createNewRow
+      if model.stage == .picking { createNewRow }
       legend
     }
     .frame(width: 360)
-    // The field takes focus on open, so typing is always the immediate alternative to accepting —
-    // which is what makes a wrong-but-confident ranking recoverable without reaching for the mouse.
-    .onAppear { searchFocused = true }
     // NO `.onExitCommand`. It sat here and never fired: the search field takes focus on open and its
     // field editor claims `cancelOperation(_:)` first. Escape is handled on the panel itself, where
     // nothing can intercept it — and leaving it here as well would give one keypress two dismissal
     // paths, which the coordinator's double-resolution guard would then report as a defect.
+    //
+    // Escape now has TWO meanings and the window still cannot tell them apart, which is why the
+    // decision stayed on the model (`consumeCancel`) rather than moving back here.
+  }
+
+  /// The ranked list, the search field, and the refusal or failure above them.
+  @ViewBuilder
+  private var pickingContent: some View {
+    searchWell
+    if let refusal = model.refusal {
+      Text(QuickAddPanelCopy.refusalMessage(refusal))
+        .font(.stBody)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+    }
+    failureBanner
+    if !model.ranking.candidates.isEmpty {
+      Text(QuickAddPanelCopy.groupHeader(headerState, heard: model.heard))
+        .font(.stSectionHeader)
+        .tracking(0.5)
+        .foregroundStyle(headerState == .lowConfidence ? .stTextTertiary : .stAccent)
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 6)
+      candidateRows
+    }
+  }
+
+  /// One field, and the sentence saying what it is for.
+  ///
+  /// **No category, no strictness, no AI suggestions, no delete.** Those are a Settings affordance
+  /// for someone curating a library; this is someone who highlighted a misspelling two seconds ago.
+  /// All three take their defaults and are editable in Settings afterwards, which is stated here
+  /// rather than in a commit nobody will read.
+  @ViewBuilder
+  private var composingContent: some View {
+    Text(QuickAddPanelCopy.composeHeader(heard: model.heard))
+      .font(.stSectionHeader)
+      .tracking(0.5)
+      .foregroundStyle(.stAccent)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.horizontal, 16)
+      .padding(.top, 14)
+      .padding(.bottom, 6)
+    composeWell
+    failureBanner
+  }
+
+  /// Why the last write did not happen. Shared by both stages: the library refuses through the same
+  /// channel whichever field the user was in, and a second banner would be a second wording.
+  @ViewBuilder
+  private var failureBanner: some View {
+    if let failure = model.writeFailure {
+      Text(QuickAddPanelCopy.writeFailure(failure))
+        .font(.stBody)
+        .foregroundStyle(.stError)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+    }
+  }
+
+  private var composeWell: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "plus")
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.stTextTertiary)
+      TextField(
+        QuickAddPanelCopy.composePlaceholder(heard: model.heard),
+        // Explicit closures, NOT a bare method reference — see the note on `searchWell`. Swift
+        // 6.3.3 crashes emitting the reabstraction thunk, with no source diagnostic.
+        text: Binding(get: { model.draftCanonical }, set: { model.updateDraft($0) })
+      )
+      .textFieldStyle(.plain)
+      .font(.system(size: 15))
+      .foregroundStyle(.stTextPrimary)
+      .focused($composeFocused)
+      // **Return creates only when there is something to create.** An empty field does nothing,
+      // which is the same rule the picking stage applies below the confidence bar, and the legend
+      // says so by omitting the cap.
+      .onSubmit {
+        guard let word = model.draftWord else { return }
+        onCreate(word)
+      }
+    }
+    .padding(.horizontal, 12)
+    .frame(height: 38)
+    .background(RoundedRectangle(cornerRadius: 8).fill(Color.stSectionBg))
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .strokeBorder(composeFocused ? Color.stAccentSolid : Color.stDivider, lineWidth: 1)
+    )
+    .padding(.horizontal, 12)
+    .padding(.top, 2)
+    // The field takes focus the moment the stage appears. Without it the user reaches Create and
+    // types into nothing — and the panel is key-capable precisely so that cannot happen.
+    .onAppear { composeFocused = true }
   }
 
   /// Which sentence the group header is saying. Derived, never stored: a second copy of this on the
@@ -273,6 +373,11 @@ struct QuickAddPanelView: View {
     )
     .padding(.horizontal, 12)
     .padding(.top, 12)
+    // The field takes focus when the stage appears, so typing is always the immediate alternative
+    // to accepting — which is what makes a wrong-but-confident ranking recoverable without reaching
+    // for the mouse. Moved off the body when the body gained a second stage: left there it fired
+    // once, at open, and returning from Compose left the panel with no focused field at all.
+    .onAppear { searchFocused = true }
   }
 
   private var candidateRows: some View {
@@ -345,11 +450,17 @@ struct QuickAddPanelView: View {
   /// user who would otherwise have to discover it by accident.
   private var legend: some View {
     HStack(spacing: 14) {
-      if model.acceptTarget != nil {
-        legendItem("\u{23CE}", QuickAddPanelCopy.legendAccept)
-      }
-      if !model.ranking.candidates.isEmpty {
-        legendItem("\u{2191}\u{2193}", QuickAddPanelCopy.legendMove)
+      if model.stage == .composing {
+        if model.draftWord != nil {
+          legendItem("\u{23CE}", QuickAddPanelCopy.legendCreate)
+        }
+      } else {
+        if model.acceptTarget != nil {
+          legendItem("\u{23CE}", QuickAddPanelCopy.legendAccept)
+        }
+        if !model.ranking.candidates.isEmpty {
+          legendItem("\u{2191}\u{2193}", QuickAddPanelCopy.legendMove)
+        }
       }
       // **A BUTTON, and it is the only mouse path off this panel.** The standard close control is
       // hidden because `.fullSizeContentView` puts the hosting view over the titlebar, so unhiding
@@ -361,15 +472,30 @@ struct QuickAddPanelView: View {
       //
       // The legend is where it belongs rather than in new chrome: it already names this key, so a
       // user reading "esc close" and clicking it is doing the obvious thing.
-      Button(action: onCancel) { legendItem("esc", QuickAddPanelCopy.legendClose) }
+      // Escape's label and its action both follow the stage, from ONE derived value. Two
+      // independent `if`s here is how a button comes to say `back` and dismiss the panel.
+      Button(action: escapeAction) { legendItem("esc", escapeLabel) }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
-        .accessibilityLabel(QuickAddPanelCopy.legendClose)
+        .accessibilityLabel(escapeLabel)
       Spacer(minLength: 0)
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 9)
     .background(Color.stSectionBg)
+  }
+
+  /// What Escape says, and what it does. Derived together so they cannot disagree.
+  private var escapeLabel: String {
+    model.stage == .composing ? QuickAddPanelCopy.legendBack : QuickAddPanelCopy.legendClose
+  }
+
+  private func escapeAction() {
+    if model.stage == .composing {
+      model.cancelComposing()
+    } else {
+      onCancel()
+    }
   }
 
   private func legendItem(_ cap: String, _ label: String) -> some View {

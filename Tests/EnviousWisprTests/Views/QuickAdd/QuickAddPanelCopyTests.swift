@@ -148,6 +148,11 @@ struct QuickAddPanelCopyTests {
         // A member of the copy set like any other. Sweeping the SET rather than the strings that
         // existed when this was written is what makes a later addition visible here.
         QuickAddPanelCopy.writeFailure("That word cannot be saved."),
+        QuickAddPanelCopy.legendCreate, QuickAddPanelCopy.legendBack,
+        QuickAddPanelCopy.composeHeader(heard: "clawwed"),
+        QuickAddPanelCopy.composeHeader(heard: ""),
+        QuickAddPanelCopy.composePlaceholder(heard: "clawwed"),
+        QuickAddPanelCopy.composePlaceholder(heard: ""),
       ]
 
     for text in all {
@@ -213,5 +218,38 @@ struct QuickAddPanelCopyTests {
     // user tries, because any word corrected once scores 1.00 and lands here.
     #expect(!QuickAddPanelCopy.alreadyHasThisSpelling.contains("add"))
     #expect(QuickAddPanelCopy.alreadyHasThisSpelling.contains("already has"))
+  }
+
+  // MARK: - Composing a new word (#2391 §2)
+
+  /// **Two situations, two sentences.** With a selection the user is correcting a specific
+  /// mishearing; with none — the state where Create is the panel's only working control — there is
+  /// nothing to correct, and a header quoting an empty string reads as a bug.
+  @Test("The compose header quotes the selection, and says something else when there is none")
+  func composeHeaderAdaptsToTheSelection() {
+    #expect(QuickAddPanelCopy.composeHeader(heard: "clawwed").contains("\"clawwed\""))
+    let noSelection = QuickAddPanelCopy.composeHeader(heard: "")
+    #expect(!noSelection.contains("\"\""), "an empty quotation reads as a defect")
+    #expect(!noSelection.isEmpty)
+    #expect(noSelection != QuickAddPanelCopy.composeHeader(heard: "clawwed"))
+  }
+
+  @Test("The compose placeholder names the thing to type, in both situations")
+  func composePlaceholderNamesWhatToType() {
+    for heard in ["clawwed", ""] {
+      let text = QuickAddPanelCopy.composePlaceholder(heard: heard)
+      #expect(!text.isEmpty)
+      #expect(!text.contains("\"\""))
+    }
+  }
+
+  /// The legend is the keyboard contract made visible, so Escape's cap must state what Escape does
+  /// THERE. `close` over a field whose Escape returns to the list is the panel promising a key it
+  /// will not answer.
+  @Test("Escape is labelled back while composing, never close")
+  func escapeIsLabelledBackWhileComposing() {
+    #expect(QuickAddPanelCopy.legendBack != QuickAddPanelCopy.legendClose)
+    #expect(!QuickAddPanelCopy.legendBack.isEmpty)
+    #expect(QuickAddPanelCopy.legendCreate != QuickAddPanelCopy.legendAccept)
   }
 }

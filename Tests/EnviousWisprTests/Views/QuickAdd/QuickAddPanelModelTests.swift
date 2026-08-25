@@ -262,7 +262,7 @@ struct QuickAddPanelModelTests {
       heard: heard, refusal: refusal, heardRanking: heardRanking, searchRanking: heardRanking)
     if !query.isEmpty { model.updateQuery(query) }
     let view = QuickAddPanelView(
-      model: model, onAccept: { _ in }, onCreateNew: {}, onCancel: {})
+      model: model, onAccept: { _ in }, onCreateNew: {}, onCreate: { _ in }, onCancel: {})
     return view.headerState
   }
 
@@ -350,5 +350,173 @@ struct QuickAddPanelModelTests {
     model.updateQuery("  cod  ")
 
     #expect(model.isSearching)
+  }
+
+  // MARK: - Composing a new word (#2391 §2)
+
+  /// The whole reason this stage exists. `Create a new word` presented a SwiftUI `.sheet`, and a
+  /// sheet cannot present on a window that refuses main status — silently, with no exception and no
+  /// log line. The button ran its action, set its binding, and changed nothing on screen. For a user
+  /// with no readable selection it was the panel's ONLY control, so the panel had no working action
+  /// at all.
+  @Test("Create moves the panel to its compose stage")
+  func createBeginsComposing() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.beginComposing()
+
+    #expect(model.stage == .composing)
+  }
+
+  /// Someone who typed a word, found nothing, and reached for Create has already said what they
+  /// mean. Making them type it again is the panel forgetting.
+  @Test("A search in progress seeds the draft, trimmed")
+  func composingSeedsFromTheSearch() {
+    let (model, _) = makeModel(
+      heardRanking: ranking(["Codex"], preselecting: 0),
+      searchRanking: ranking(["Codex"], preselecting: nil))
+
+    model.updateQuery("  Qwen  ")
+    model.beginComposing()
+
+    #expect(model.draftCanonical == "Qwen")
+  }
+
+  /// **The misspelling is precisely what the new word must NOT be called**, so an empty field is the
+  /// correct start. Seeding it with `heard` would put `clawwed` in the library as a canonical.
+  @Test("With nothing typed the draft starts empty, never at the misspelling")
+  func composingDoesNotSeedTheMisspelling() {
+    let (model, _) = makeModel(
+      heard: "clawwed", heardRanking: ranking(["Claude"], preselecting: 0))
+
+    model.beginComposing()
+
+    #expect(model.draftCanonical.isEmpty)
+  }
+
+  /// Whitespace is not a search. The same trimming rule `isSearching` owns, reaching the one place
+  /// where getting it wrong writes a word rather than merely re-ranking a list.
+  @Test("A whitespace-only field seeds nothing")
+  func whitespaceQueryDoesNotSeedTheDraft() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.updateQuery("   ")
+    model.beginComposing()
+
+    #expect(model.draftCanonical.isEmpty)
+  }
+
+  /// Escape has two meanings and the window cannot tell them apart, so the model answers.
+  @Test("Escape belongs to the content while composing and to the window otherwise")
+  func escapeIsConsumedOnlyWhileComposing() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    #expect(model.consumeCancel() == false, "picking: the panel closes")
+
+    model.beginComposing()
+    #expect(model.consumeCancel() == true, "composing: back to the list")
+    #expect(model.stage == .picking)
+  }
+
+  /// Backing out must not leave the next visit to Compose holding the last attempt's text or the
+  /// last attempt's error.
+  @Test("Backing out of composing clears the draft and the refusal")
+  func cancellingComposingClearsState() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.beginComposing()
+    model.updateDraft("Qwen")
+    model.noteWriteFailure("nope")
+    model.cancelComposing()
+
+    #expect(model.stage == .picking)
+    #expect(model.draftCanonical.isEmpty)
+    #expect(model.writeFailure == nil)
+  }
+
+  /// **The list is still ranked and still carries a preselected row while composing — only the view
+  /// has stopped showing it.** A legend derived from `acceptTarget` would advertise `add spelling`
+  /// over a compose field, and a stray Return would write to a row the user can no longer see.
+  @Test("Return cannot accept a hidden row while composing")
+  func composingWithdrawsTheAcceptTarget() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+    #expect(model.acceptTarget != nil)
+
+    model.beginComposing()
+
+    #expect(model.acceptTarget == nil)
+    #expect(model.ranking.preselectedID != nil, "the ranking itself is untouched")
+  }
+
+  @Test("An empty or whitespace draft creates nothing")
+  func anEmptyDraftIsNotAWord() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.beginComposing()
+    #expect(model.draftWord == nil)
+
+    model.updateDraft("   ")
+    #expect(model.draftWord == nil)
+  }
+
+  /// The whole point of authoring the word from HERE rather than from Settings: it arrives carrying
+  /// the spelling the user selected.
+  @Test("The authored word carries the heard spelling as its alias")
+  func theDraftWordCarriesTheHeardSpelling() throws {
+    let (model, _) = makeModel(
+      heard: "clawwed", heardRanking: ranking(["Claude"], preselecting: 0))
+
+    model.beginComposing()
+    model.updateDraft("  Claude  ")
+    let word = try #require(model.draftWord)
+
+    #expect(word.canonical == "Claude")
+    // "Claude" heard as "clawwed" — the alias is the mishearing, not the word.
+    #expect(word.aliases == ["clawwed"])
+  }
+
+  /// A spelling identical to the canonical is not a mishearing, it is the word. Storing it as an
+  /// alias of itself is a duplicate the library would carry forever, and nothing else would refuse
+  /// it: `CustomWordsManager.add` has no rule against a word aliasing its own name.
+  @Test("A spelling equal to the word is not stored as its own alias")
+  func theDraftWordDropsASelfAlias() throws {
+    let (model, _) = makeModel(
+      heard: "Codex", heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.beginComposing()
+    model.updateDraft("codex")
+    let word = try #require(model.draftWord)
+
+    #expect(word.aliases.isEmpty)
+  }
+
+  /// **The state with no readable selection, which is the one Create exists for.** A blank alias
+  /// here is what made `QuickAddWiring.newWordOutcome`'s postcondition vacuous — `kept` was empty,
+  /// `missing.isEmpty` was trivially true, and a duplicate canonical took the success path having
+  /// written nothing.
+  @Test("With no selection the word is created carrying no spellings, not one blank one")
+  func theDraftWordCarriesNoBlankAlias() throws {
+    let (model, _) = makeModel(
+      heard: "", refusal: .nothingSelected, heardRanking: .empty)
+
+    model.beginComposing()
+    model.updateDraft("Qwen")
+    let word = try #require(model.draftWord)
+
+    #expect(word.canonical == "Qwen")
+    #expect(word.aliases.isEmpty)
+  }
+
+  /// A second `beginComposing` must not wipe what the user has typed. Reachable by clicking the
+  /// create row again, which is still on screen in some layouts, and by any future caller.
+  @Test("Composing is idempotent and does not discard the draft")
+  func beginComposingTwiceKeepsTheDraft() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.beginComposing()
+    model.updateDraft("Qwen")
+    model.beginComposing()
+
+    #expect(model.draftCanonical == "Qwen")
   }
 }

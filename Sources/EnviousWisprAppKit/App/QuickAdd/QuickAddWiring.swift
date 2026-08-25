@@ -30,9 +30,6 @@ final class QuickAddWiring {
   /// user was actually looking at, and a second invocation must reuse rather than stack.
   private var activeModel: QuickAddPanelModel?
 
-  /// A new word the user asked to create, which drives the edit sheet's presentation.
-  private var pendingNewWord: CustomWord?
-
   init(
     hotkeyService: HotkeyService,
     customWords: CustomWordsCoordinator,
@@ -50,17 +47,19 @@ final class QuickAddWiring {
         saveWord: { word, spelling in
           Self.saveAndConfirm(word, carrying: spelling, through: customWords)
         },
-        presentNewWordSheet: { _ in },
+        beginNewWord: {},
         emit: QuickAddTelemetryBridge.handler))
 
     // Assigned AFTER init rather than captured during it. `self` does not exist while the
     // coordinator is being built, and Swift says so; a placeholder that stayed would be a
     // Create-a-new-word button that renders, records its outcome, and opens nothing.
     //
-    // Canonical EMPTY and focused: the user knows the misspelling, because they selected it. What
-    // they have to supply is the correct form.
-    coordinator.setPresentNewWordSheet { [weak self] spelling in
-      self?.pendingNewWord = CustomWord(canonical: "", aliases: [spelling])
+    // **Which is what shipped, for a different reason, and is what #2391 fixes.** The placeholder
+    // was replaced correctly and the mechanism it was replaced with could not work: a SwiftUI
+    // `.sheet` over a panel that refuses main status presents nothing, silently. The button ran its
+    // action, set its binding, and changed no pixel.
+    coordinator.setBeginNewWord { [weak self] in
+      self?.activeModel?.beginComposing()
     }
   }
 
@@ -73,6 +72,9 @@ final class QuickAddWiring {
     provider.install()
     serviceProvider = provider
     panelHost.onDismiss = { [weak self] in self?.panelDismissed() }
+    // Escape means "back to the list" while composing and "close" otherwise, and only the model
+    // knows which. A missing wire here dismisses, which is the shipped behaviour rather than a trap.
+    panelHost.shouldConsumeCancel = { [weak self] in self?.activeModel?.consumeCancel() ?? false }
   }
 
   // MARK: - The two doors
@@ -123,21 +125,12 @@ final class QuickAddWiring {
     }
     activeModel = model
     let shown = panelHost.present(
-      QuickAddRoot(
+      QuickAddPanelView(
         model: model,
         onAccept: { [weak self] candidate in self?.accept(candidate, model: model) },
         onCreateNew: { [weak self] in self?.createNew(model: model) },
-        onCancel: { [weak self] in self?.cancel(model: model) },
-        newWord: Binding(
-          get: { [weak self] in self?.pendingNewWord },
-          set: { [weak self] in self?.pendingNewWord = $0 }),
-        // `usedSearch` is captured HERE, from the model this panel was built with, rather than
-        // read back off `activeModel` at save time. The sheet outlives the panel in at least one
-        // ordering, and a nil lookup defaulting to false would report a search-assisted save as an
-        // unassisted one — quietly, and in the direction that flatters the ranking.
-        onSaveNewWord: { [weak self] word in
-          self?.saveNewWord(word, usedSearch: model.isSearching)
-        }))
+        onCreate: { [weak self] word in self?.createWord(word, model: model) },
+        onCancel: { [weak self] in self?.cancel(model: model) }))
 
     // The host refuses to present a panel it could not measure, because an unmeasurable panel is an
     // invisible window that reports success. Clearing `activeModel` matters as much as the event:
@@ -164,9 +157,22 @@ final class QuickAddWiring {
   }
 
   private func createNew(model: QuickAddPanelModel) {
-    // NOT dismissed: the edit sheet presents OVER this panel, and tearing the panel down would take
-    // its presenter with it.
+    // NOT dismissed: composing is a STAGE of this panel now, so tearing it down would take the
+    // field the user is about to type into with it.
     coordinator.createNew(from: model)
+  }
+
+  /// The user pressed Return on the compose field.
+  ///
+  /// **A refusal keeps the panel up carrying the reason**, exactly as the accept route does — which
+  /// is the rule the sheet route already followed and the one thing worth preserving from it.
+  private func createWord(_ word: CustomWord, model: QuickAddPanelModel) {
+    // Read LIVE rather than captured at present time. The old capture existed because the sheet
+    // outlived the panel in at least one ordering; a stage of the panel cannot, and the honest
+    // answer to "did the ranking need rescuing" is the state the user was in when they committed.
+    if let message = saveNewWord(word, usedSearch: model.isSearching) {
+      model.noteWriteFailure(message)
+    }
   }
 
   private func cancel(model: QuickAddPanelModel) {
@@ -337,30 +343,6 @@ final class QuickAddWiring {
 
   private func dismiss() {
     activeModel = nil
-    pendingNewWord = nil
     panelHost.dismiss()
-  }
-}
-
-/// The panel's content plus the edit sheet it can present over itself.
-///
-/// A real SwiftUI `.sheet`, not the edit view hosted directly: `CustomWordEditSheet` dismisses itself
-/// through `@Environment(\.dismiss)`, which is supplied by a presenting context. Hosted bare in a
-/// panel there is no such context, so its Cancel button would render, be clickable, and do nothing.
-private struct QuickAddRoot: View {
-  @Bindable var model: QuickAddPanelModel
-  let onAccept: (QuickAddRanker.Candidate) -> Void
-  let onCreateNew: () -> Void
-  let onCancel: () -> Void
-  @Binding var newWord: CustomWord?
-  let onSaveNewWord: (CustomWord) -> String?
-
-  var body: some View {
-    QuickAddPanelView(
-      model: model, onAccept: onAccept, onCreateNew: onCreateNew, onCancel: onCancel
-    )
-    .sheet(item: $newWord) { word in
-      CustomWordEditSheet(word: word, onSave: onSaveNewWord)
-    }
   }
 }

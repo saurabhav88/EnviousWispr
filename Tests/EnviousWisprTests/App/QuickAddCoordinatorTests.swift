@@ -22,7 +22,10 @@ struct QuickAddCoordinatorTests {
     var events: [QuickAddEvent] = []
     var saved: [CustomWord] = []
     var savedSpellings: [String] = []
-    var sheetsFor: [String] = []
+    /// How many times the panel was asked to move to its compose stage. A COUNT, not the heard
+    /// spelling: the coordinator stopped handing one over when the sheet was replaced by a stage of
+    /// the panel, and the model that already holds it is the only thing that assembles the word.
+    var beganNewWord = 0
     var refreshCalls = 0
 
     /// The user library, LIVE. Held here rather than captured by value so a test can change it
@@ -96,7 +99,7 @@ struct QuickAddCoordinatorTests {
         recorder.savedSpellings.append(spelling)
         return nil
       },
-      presentNewWordSheet: { recorder.sheetsFor.append($0) },
+      beginNewWord: { recorder.beganNewWord += 1 },
       emit: { recorder.events.append($0) },
       now: {
         clock.addTimeInterval(0.01)
@@ -507,19 +510,19 @@ struct QuickAddCoordinatorTests {
 
   // MARK: - The other two endings
 
-  @Test("Create-new opens the edit sheet on the heard spelling")
-  func createNewOpensTheSheet() throws {
+  @Test("Create-new moves the panel to its compose stage and writes nothing")
+  func createNewBeginsComposing() throws {
     let (coordinator, recorder) = makeCoordinator()
     let model = try #require(beginAndShow(coordinator))
 
     coordinator.createNew(from: model)
 
-    #expect(recorder.sheetsFor == ["codecs"])
-    // `createdNew` deliberately does NOT fire here any more — opening a sheet is an intention, and
-    // emitting on the click double-counted every open where the user then cancelled. The outcome is
+    #expect(recorder.beganNewWord == 1)
+    // `createdNew` deliberately does NOT fire here — reaching the compose field is an intention, and
+    // emitting on the click double-counted every open where the user then backed out. The outcome is
     // asserted in `didCreateNewResolvesOnce`, after the save is confirmed.
     #expect(recorder.outcomes.isEmpty)
-    #expect(recorder.saved.isEmpty, "the sheet writes, not this")
+    #expect(recorder.saved.isEmpty, "composing writes nothing")
   }
 
   @Test("Cancelling writes nothing and says so")
@@ -618,7 +621,7 @@ struct QuickAddCoordinatorTests {
 
     coordinator.createNew(from: model)
 
-    #expect(recorder.sheetsFor == ["codecs"])
+    #expect(recorder.beganNewWord == 1)
     #expect(recorder.outcomes.isEmpty)
   }
 

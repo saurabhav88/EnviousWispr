@@ -24,6 +24,19 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// window closing under it. The coordinator treats all three as "the user is done".
   var onDismiss: (() -> Void)?
 
+  /// Asked before Escape takes the panel down. Returning true means the CONTENT consumed the
+  /// keypress and the window must not dismiss.
+  ///
+  /// **The window is where Escape arrives and the window is the one place that cannot decide what
+  /// it means.** `cancelOperation` is overridden on the panel because a focused text field's field
+  /// editor claims Escape first, so a view-level handler never sees it — and the panel now has two
+  /// stages where Escape means two different things. Asking the content, rather than teaching the
+  /// window about stages, keeps every keyboard rule in the model that already owns the rest of them.
+  ///
+  /// Defaults to "not consumed", which is the shipped behaviour: an unset seam dismisses, so a
+  /// caller that forgets to wire this loses a feature rather than trapping the user in a panel.
+  var shouldConsumeCancel: () -> Bool = { false }
+
   private var panel: NSPanel?
 
   #if DEBUG
@@ -46,17 +59,33 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   @discardableResult
   func present(_ content: some View) -> Bool {
     let panel = ensurePanel()
-    let host = NSHostingView(rootView: AnyView(content))
-    panel.contentView = host
+    // **An `NSHostingController` rather than a bare `NSHostingView`, and the reason is that the
+    // content can now change SHAPE while it is on screen.** The panel used to render one thing —
+    // a search field over a ranked list — and its size was decided once, here, at present time.
+    // It now has stages (pick, compose), and a stage change makes the ideal height jump; a window
+    // sized once shows the new stage floating in the old stage's space.
+    //
+    // `sizingOptions = .preferredContentSize` is the mechanism AppKit provides for exactly this:
+    // the controller republishes its ideal size whenever the SwiftUI content's changes, and the
+    // window follows. Doing it by hand would mean the caller re-measuring after every mutation, on
+    // a later run loop pass, which is a race with SwiftUI's own layout.
+    let controller = NSHostingController(rootView: AnyView(content))
+    controller.sizingOptions = [.preferredContentSize]
+    // Force the view to load and lay out BEFORE measuring. `fittingSize` on an unloaded view is
+    // zero, which this method's own guard would then read as an unmeasurable panel.
+    controller.view.layoutSubtreeIfNeeded()
 
-    guard let size = resolvedSize(of: host) else {
+    guard let size = resolvedSize(of: controller.view) else {
       // **A zero fitting size is an INVISIBLE panel that reports success**, which the overlay work
       // found by fixture rather than by review. Refusing to present is the honest outcome: the
       // caller gets no panel and the user gets nothing, rather than a window that is up, focused,
       // swallowing Return, and blank.
-      panel.contentView = nil
+      //
+      // Refused BEFORE the controller is installed, so a failed present leaves the panel exactly as
+      // it was rather than half-swapped.
       return false
     }
+    panel.contentViewController = controller
     panel.setContentSize(size)
     panel.center()
 
@@ -85,7 +114,7 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   func dismiss() {
     guard let panel, panel.isVisible else { return }
     panel.orderOut(nil)
-    panel.contentView = nil
+    panel.contentViewController = nil
   }
 
   // MARK: - NSWindowDelegate
@@ -121,8 +150,21 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// false, so the panel survives to be reused; clearing the hosting view is what stops the old
   /// content being handed back on the next present.
   func windowWillClose(_ notification: Notification) {
-    panel?.contentView = nil
+    panel?.contentViewController = nil
     onDismiss?()
+  }
+
+  /// Keep the panel centred when its content changes stage.
+  ///
+  /// An `NSWindow` resizes about its BOTTOM-LEFT corner, so a panel that shrinks appears to slide
+  /// down the screen and one that grows appears to climb. That is fine for a window the user is
+  /// dragging and wrong for one that changes height because the user pressed a button: the panel
+  /// opened centred, and it should still look centred after it changes what it is asking.
+  ///
+  /// `center()` moves the origin and never the size, so this cannot recurse.
+  func windowDidResize(_ notification: Notification) {
+    guard let panel, panel.isVisible else { return }
+    panel.center()
   }
 
   // MARK: - Ownership
@@ -159,6 +201,8 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
     p.delegate = self
     p.onCancelOperation = { [weak self] in
       guard let self, self.isVisible else { return }
+      // The content gets first refusal. See `shouldConsumeCancel`.
+      guard !self.shouldConsumeCancel() else { return }
       self.dismiss()
       self.onDismiss?()
     }
