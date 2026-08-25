@@ -40,6 +40,20 @@ enum QuickAddPanelCopy {
     return "add as a new spelling · \(spellingCount) \(noun) \(alreadySaved)"
   }
 
+  /// The subtitle for a word that ALREADY carries the heard spelling.
+  ///
+  /// **The row promised an add it could not make.** `QuickAddRanker.Candidate` has carried
+  /// `alreadyHasHeardSpelling` since the first chunk and the coordinator branches on it — accepting
+  /// such a row writes NOTHING and resolves `alreadySaved` — but the view never read the flag, so the
+  /// row said "add as a new spelling", the user pressed Return, and the panel closed having done
+  /// nothing and said nothing. Reported success, one file away from the code that refuses to report
+  /// it, and reachable on the very first thing a user tries: any word they have already corrected
+  /// once scores 1.00 and lands here.
+  static func rowSubtitleAlreadyHas(spellingCount: Int) -> String {
+    let noun = spellingCount == 1 ? "spelling" : "spellings"
+    return "already has this spelling · \(spellingCount) \(noun) saved"
+  }
+
   /// The one line shown instead of a ranking when we could not read a selection.
   ///
   /// Every refusal gets its own sentence. A single "could not read your selection" would be
@@ -123,7 +137,10 @@ struct QuickAddPanelView: View {
     // The field takes focus on open, so typing is always the immediate alternative to accepting —
     // which is what makes a wrong-but-confident ranking recoverable without reaching for the mouse.
     .onAppear { searchFocused = true }
-    .onExitCommand(perform: onCancel)
+    // NO `.onExitCommand`. It sat here and never fired: the search field takes focus on open and its
+    // field editor claims `cancelOperation(_:)` first. Escape is handled on the panel itself, where
+    // nothing can intercept it — and leaving it here as well would give one keypress two dismissal
+    // paths, which the coordinator's double-resolution guard would then report as a defect.
   }
 
   // MARK: - Regions
@@ -188,7 +205,7 @@ struct QuickAddPanelView: View {
           Text(candidate.word.canonical)
             .font(.stRowLabel)
             .foregroundStyle(.stTextPrimary)
-          Text(QuickAddPanelCopy.rowSubtitle(spellingCount: candidate.word.aliases.count))
+          Text(Self.subtitle(for: candidate))
             .font(.stHelper)
             .foregroundStyle(.stTextSecondary)
         }
@@ -207,9 +224,15 @@ struct QuickAddPanelView: View {
     }
     .buttonStyle(.plain)
     .contentShape(Rectangle())
-    .accessibilityLabel(
-      "\(candidate.word.canonical), \(QuickAddPanelCopy.rowSubtitle(spellingCount: candidate.word.aliases.count))"
-    )
+    .accessibilityLabel("\(candidate.word.canonical), \(Self.subtitle(for: candidate))")
+  }
+
+  /// One owner for what a row says about itself, read by the visible label AND the accessibility
+  /// one. Two call sites computing this independently is how they came to disagree elsewhere.
+  static func subtitle(for candidate: QuickAddRanker.Candidate) -> String {
+    candidate.alreadyHasHeardSpelling
+      ? QuickAddPanelCopy.rowSubtitleAlreadyHas(spellingCount: candidate.word.aliases.count)
+      : QuickAddPanelCopy.rowSubtitle(spellingCount: candidate.word.aliases.count)
   }
 
   private var createNewRow: some View {

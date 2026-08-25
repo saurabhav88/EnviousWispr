@@ -94,11 +94,27 @@ struct QuickAddPanelCopyTests {
     // The field is hidden on a refusal because `updateQuery` will not re-rank without a heard
     // string. Three messages used to say "You can search for the word below", which named a
     // control that is not on screen and would not have answered if it were.
+    //
+    // **WIDENED past the literal word "search", and the reason generalises past this guard.** The
+    // first version matched `contains("search")` only, so "you can look for the word below" or
+    // "type the word below" would have passed while being the identical defect. A pattern narrower
+    // than the LANGUAGE reports clean on a synonym, and that is a guard returning empty and having
+    // empty read as an answer. The question to ask of any text guard is not what a scanner might
+    // mis-lex but what a WRITER could legitimately say instead.
+    //
+    // Two-way controlled before shipping the widening, because "no new false positives" is a claim
+    // about the whole copy table that costs one command to check and is otherwise optimism: the
+    // term set below matches ZERO of today's seven messages and still catches the exact wording
+    // that was removed. (Framing owed to a peer session hitting the same shape in
+    // `check-language-count.mjs`, where "99-lang" slipped a pattern requiring "language".)
+    let pointsAtTheField = ["search", "look for", "find", "filter", "type"]
     for refusal in SelectionReader.Refusal.allCases {
-      let message = QuickAddPanelCopy.refusalMessage(refusal)
-      #expect(
-        !message.lowercased().contains("search"),
-        "\(refusal.rawValue) points at a control that does nothing in this state")
+      let message = QuickAddPanelCopy.refusalMessage(refusal).lowercased()
+      for term in pointsAtTheField {
+        #expect(
+          !message.contains(term),
+          "\(refusal.rawValue) says \"\(term)\", pointing at a control that is not on screen")
+      }
       #expect(!message.isEmpty)
     }
   }
@@ -122,5 +138,30 @@ struct QuickAddPanelCopyTests {
     // the reason here would give the user two vocabularies for one refusal.
     #expect(rendered.hasPrefix("Not saved."))
     #expect(rendered.contains("That word cannot be saved."))
+  }
+  @Test("A word that already has the spelling does not promise to add it")
+  func aWordThatAlreadyHasItSaysSo() {
+    // The live defect the design pass found by reading the view against the model: the flag existed,
+    // the coordinator branched on it, and the view never read it — so the row said "add as a new
+    // spelling", Return wrote nothing, and the panel closed silently. Reachable on the first thing a
+    // user tries, because any word they have corrected once scores 1.00 and lands here.
+    let promises = QuickAddPanelCopy.rowSubtitle(spellingCount: 3)
+    let states = QuickAddPanelCopy.rowSubtitleAlreadyHas(spellingCount: 3)
+
+    #expect(promises.contains("add as a new spelling"))
+    #expect(!states.contains("add"), "a row that cannot add must not use the verb")
+    #expect(states.contains("already has this spelling"))
+    // Both still carry the count, which is the half that was always true.
+    #expect(promises.contains("3 spellings"))
+    #expect(states.contains("3 spellings"))
+  }
+
+  @Test("Singular and plural are right in both subtitles")
+  func bothSubtitlesCountCorrectly() {
+    // "1 spellings already saved" is the kind of thing users screenshot.
+    #expect(QuickAddPanelCopy.rowSubtitle(spellingCount: 1).contains("1 spelling "))
+    #expect(QuickAddPanelCopy.rowSubtitleAlreadyHas(spellingCount: 1).contains("1 spelling "))
+    #expect(QuickAddPanelCopy.rowSubtitle(spellingCount: 2).contains("2 spellings"))
+    #expect(QuickAddPanelCopy.rowSubtitleAlreadyHas(spellingCount: 2).contains("2 spellings"))
   }
 }

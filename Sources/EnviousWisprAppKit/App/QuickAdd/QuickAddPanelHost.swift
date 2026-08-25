@@ -78,21 +78,36 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
 
   // MARK: - NSWindowDelegate
 
-  func windowDidResignKey(_ notification: Notification) {
-    // **A SHEET TAKING KEY IS NOT THE USER CLICKING AWAY, and treating it as one made "Create a new
-    // word" tear down its own editor.** A SwiftUI `.sheet` on this panel is a real attached window;
-    // presenting it makes the sheet key and sends this to the parent, which is still visible — so
-    // the visibility guard below passes and the panel orders itself out, taking the hosting view and
-    // the sheet with it. The route the feature offers for a word you do not have yet ended in an
-    // empty screen.
-    guard panel?.attachedSheet == nil else { return }
-    // Clicking away is a dismissal. The panel holds no unsaved state the user could lose — the word
-    // is written on Return and not before — so there is nothing to confirm.
-    guard panel?.isVisible == true else { return }
-    dismiss()
-    onDismiss?()
-  }
+  /// **DELIBERATELY EMPTY. Losing key focus is not the user saying they are done.**
+  ///
+  /// This used to dismiss, and Live UAT measured what that costs: the panel cancelled itself after
+  /// 339 ms on one run and 19.7 seconds on the next, both times because an unrelated process took
+  /// key — a terminal reclaiming focus, then a screenshot tool. Neither was a user decision. On a
+  /// real machine the same list includes a notification, Spotlight, a background app waking, and the
+  /// Services system handing focus back to the app the selection came from. The user's selected word
+  /// was discarded and the panel evaporated, which from their side is indistinguishable from the
+  /// shortcut doing nothing.
+  ///
+  /// **The two arrival times looked like variance and were not.** Each panel died at the FIRST focus
+  /// event after opening; only when that arrived differed. So there is nothing to tune here — no
+  /// grace period, no debounce. The signal was wrong, not slow, and a timing-shaped fix would have
+  /// been tuned to whichever arm got measured.
+  ///
+  /// The founder's complaint arrived from the opposite direction — "there's no way to close out the
+  /// window" — and it is the SAME mistake: key state was chosen as the done-signal because it was
+  /// available, so it fires when the user is not done and it is the only exit when it does not fire.
+  /// Leaving is now something the user does on purpose: Escape (`cancelOperation`, below) or the
+  /// close control.
+  ///
+  /// Kept as an explicit no-op rather than deleted, because an absent delegate method is
+  /// indistinguishable from one nobody thought about.
+  func windowDidResignKey(_ notification: Notification) {}
 
+  /// The close control, and anything else that genuinely closes the window.
+  ///
+  /// Reachable for the first time now that the close button is visible. `isReleasedWhenClosed` is
+  /// false, so the panel survives to be reused; clearing the hosting view is what stops the old
+  /// content being handed back on the next present.
   func windowWillClose(_ notification: Notification) {
     panel?.contentView = nil
     onDismiss?()
@@ -112,7 +127,11 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
       defer: false)
     p.titleVisibility = .hidden
     p.titlebarAppearsTransparent = true
-    p.standardWindowButton(.closeButton)?.isHidden = true
+    // **VISIBLE, and it was hidden until the founder said "there's no way to close out the window".**
+    // The bet was that Escape plus click-away made a close control redundant; both were broken, and
+    // even working they are invisible. A control where the eye already looks for one is a stronger
+    // answer than any amount of hint text.
+    p.standardWindowButton(.closeButton)?.isHidden = false
     p.standardWindowButton(.miniaturizeButton)?.isHidden = true
     p.standardWindowButton(.zoomButton)?.isHidden = true
     p.isMovableByWindowBackground = true
@@ -121,6 +140,11 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
     p.level = .floating
     p.hidesOnDeactivate = false
     p.delegate = self
+    p.onCancelOperation = { [weak self] in
+      guard let self, self.isVisible else { return }
+      self.dismiss()
+      self.onDismiss?()
+    }
     panel = p
     return p
   }
@@ -148,4 +172,17 @@ private final class KeyCapablePanel: NSPanel {
   /// Not main: this is an accessory over whatever the user was working in, and taking main status
   /// would reorder their windows behind it.
   override var canBecomeMain: Bool { false }
+
+  /// What Escape should do, handled HERE rather than in the view.
+  ///
+  /// The view had `.onExitCommand`, and the search field takes focus the moment the panel opens. An
+  /// `NSTextField`'s field editor claims `cancelOperation(_:)` first and treats Escape as "cancel
+  /// field editing", so the SwiftUI modifier only ever saw what the responder chain handed back —
+  /// which is why the panel's one documented keyboard exit did not work.
+  ///
+  /// A window-level override cannot be intercepted by a field editor, and it keeps working whatever
+  /// gains focus later. That last part is the reason to prefer it even after the field is fixed: a
+  /// future control that also swallows Escape would silently break the view-level version again.
+  var onCancelOperation: (() -> Void)?
+  override func cancelOperation(_ sender: Any?) { onCancelOperation?() }
 }
