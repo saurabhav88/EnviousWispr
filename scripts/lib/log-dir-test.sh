@@ -16,6 +16,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/log-dir.sh"
 
 PASS=0
+SKIP=0
 FAIL=0
 ROOT="/tmp/ew-fake-worktree"
 
@@ -45,6 +46,11 @@ command_not_found_handle() {
 
 ok() { PASS=$((PASS + 1)); printf "  ok    %-56s %s\n" "$1" "${2:-}"; }
 bad() { FAIL=$((FAIL + 1)); printf "  FAIL  %-56s %s\n" "$1" "${2:-}"; }
+# A SKIP IS NOT A PASS, so it gets its own counter and its own line in the
+# verdict. A row that needs a resource this machine does not have must say so
+# where a reader looking for coverage will see it - folding it into PASS is how a
+# suite reports coverage it never had.
+skip() { SKIP=$((SKIP + 1)); printf "  skip  %-56s %s\n" "$1" "${2:-}"; }
 
 check() {  # <label> <expected> <actual>
   local label="$1" expected="$2" actual="$3"
@@ -511,6 +517,118 @@ else
   ok "backslash decoded last does not manufacture a space"
 fi
 
+echo "== a resolved path keeps a trailing newline its own name owns =="
+# `$(...)` strips trailing newlines, so a directory whose name ends in one could
+# never equal its `\012`-decoded mountinfo row - fail-OPEN, on the same
+# comparison the escape decoding above fixes, one layer under it.
+NL=$'\n'   # a bash LITERAL, never `$(printf ...)` - see below
+NLDIR="$SANDBOX/nl$NL"
+mkdir -p "$NLDIR"
+if ew_lane_resolved_path "$NLDIR"; then
+  # **THE FIRST VERSION OF THIS ROW WAS VACUOUS AND A MUTANT FOUND IT.** It built
+  # the expected value with `$(printf '\n')` - which is a command substitution,
+  # so the newline was stripped from the EXPECTATION by the very mechanism under
+  # test. Both sides were equally truncated and the row passed against code with
+  # the sentinel removed. `$'\n'` is a shell literal and no capture is involved.
+  EXPECT="$(cd "$SANDBOX" && pwd -P)/nl$NL"
+  [ "$EW_LANE_RESOLVED" = "$EXPECT" ] \
+    && ok "a trailing newline in the directory's own name survives" \
+    || bad "a trailing newline in the directory's own name survives" \
+           "got $(printf '%q' "$EW_LANE_RESOLVED")"
+else
+  bad "a trailing newline in the directory's own name survives" "resolve refused"
+fi
+# The accepted twin: an ordinary path must NOT gain a stray newline from the
+# sentinel, or every normal comparison breaks in the other direction.
+if ew_lane_resolved_path "$SANDBOX"; then
+  [ "$EW_LANE_RESOLVED" = "$(cd "$SANDBOX" && pwd -P)" ] \
+    && ok "an ordinary path gains nothing from the sentinel" \
+    || bad "an ordinary path gains nothing from the sentinel" \
+           "got $(printf '%q' "$EW_LANE_RESOLVED")"
+else
+  bad "an ordinary path gains nothing from the sentinel" "resolve refused"
+fi
+if ew_lane_resolved_path "$SANDBOX/definitely-absent" 2>/dev/null; then
+  bad "resolving an absent path refuses" "accepted"
+else
+  ok "resolving an absent path refuses"
+fi
+
+echo "== removal is judged by the WORLD, not by find's exit code =="
+# Measured against a real APFS volume mounted three levels inside a lane:
+# `rm -rf` erased the mounted data and exited 1; `find -xdev -delete` left it
+# intact. `find -delete` ALSO exits 0 while printing unlink errors, so success
+# has to be "is it gone", never "how did find feel about it".
+GONE="$SANDBOX/rm-ok/app-logger/deep"
+mkdir -p "$GONE"; touch "$GONE/f"
+ew_lane_remove_tree "$SANDBOX/rm-ok" \
+  && ok "an ordinary tree is removed and reported removed" \
+  || bad "an ordinary tree is removed and reported removed" "reported failure"
+[ -e "$SANDBOX/rm-ok" ] \
+  && bad "an ordinary tree is actually gone" "still present" \
+  || ok "an ordinary tree is actually gone"
+# The rejected twin, and it is the whole point: a tree that SURVIVES must be
+# reported as a failure even though `find -delete` returns 0.
+STUCK="$SANDBOX/rm-stuck/locked"
+mkdir -p "$STUCK"; touch "$STUCK/f"; chmod 500 "$STUCK"
+if ew_lane_remove_tree "$SANDBOX/rm-stuck" 2>/dev/null; then
+  bad "a tree that survives is reported as a failure" "reported success"
+else
+  ok "a tree that survives is reported as a failure"
+fi
+chmod 700 "$STUCK"
+
+echo "== the removal cannot cross a filesystem boundary =="
+# THE PROPERTY THE WHOLE FUNCTION EXISTS FOR, and nothing short of a REAL mount
+# can bind it: `rm -rf` and `find -xdev -delete` are indistinguishable on any
+# single-device tree. `hdiutil` attaches one without sudo, so this runs on the
+# dev machine and reports SKIPPED on a Linux runner rather than pretending.
+#
+# Measured when this was written: with an APFS volume mounted three levels inside
+# a lane, `rm -rf` erased the mounted file and exited 1, while `find -xdev
+# -delete` left it intact. The row below is that comparison's positive half.
+if command -v hdiutil >/dev/null 2>&1 && command -v diskutil >/dev/null 2>&1; then
+  MDIR="$SANDBOX/mountcase"
+  mkdir -p "$MDIR/lane/app-logger/external"
+  echo "lane-own" > "$MDIR/lane/app-logger/own.txt"
+  MDMG="$MDIR/vol.dmg"
+  MDEV=""
+  mount_cleanup() {
+    [ -n "$MDEV" ] || return 0
+    diskutil unmount force "$MDIR/lane/app-logger/external" >/dev/null 2>&1
+    hdiutil detach "$MDEV" -force -quiet >/dev/null 2>&1
+  }
+  trap mount_cleanup EXIT
+  if hdiutil create -size 10m -fs APFS -volname EWLANEPROOF -quiet "$MDMG" >/dev/null 2>&1 \
+     && hdiutil attach -nobrowse -nomount "$MDMG" >/dev/null 2>&1; then
+    MDEV=$(hdiutil info 2>/dev/null \
+      | awk -v img="$MDMG" '$0 ~ img {f=1} f && /\/dev\/disk[0-9]+s[0-9]+/ {print $1}' | tail -1)
+  fi
+  if [ -n "$MDEV" ] \
+     && diskutil mount -mountPoint "$MDIR/lane/app-logger/external" "$MDEV" >/dev/null 2>&1; then
+    echo "PRECIOUS" > "$MDIR/lane/app-logger/external/precious.txt"
+    ew_lane_remove_tree "$MDIR/lane" 2>/dev/null
+    # It MUST report failure - the lane cannot be emptied while something is
+    # mounted inside it - and the mounted data must be untouched. Asserting both
+    # halves: "reported failure" alone would also be true of a removal that
+    # destroyed everything and then tripped on the busy mount root, which is
+    # precisely what `rm -rf` does.
+    [ -f "$MDIR/lane/app-logger/external/precious.txt" ] \
+      && ok "a mount nested below a lane is not descended into" \
+      || bad "a mount nested below a lane is not descended into" "the mounted file was destroyed"
+    [ -e "$MDIR/lane" ] \
+      && ok "a lane holding a mount survives and is reported unremoved" \
+      || bad "a lane holding a mount survives and is reported unremoved" "the lane was removed"
+    mount_cleanup
+    MDEV=""
+  else
+    skip "a mount nested below a lane is not descended into" "could not attach a scratch volume"
+  fi
+  trap - EXIT
+else
+  skip "a mount nested below a lane is not descended into" "hdiutil/diskutil absent"
+fi
+
 echo "== taking a default lane is atomic, not assumed =="
 # The claim this replaces was that `<seconds>-<pid>` cannot recur. It can, in a
 # constrained pid namespace, and the cost was silent: the later run inherits the
@@ -565,5 +683,5 @@ fi
 rm -f "$NOT_FOUND_LOG"
 
 echo
-printf "PASS=%d FAIL=%d\n" "$PASS" "$FAIL"
+printf "PASS=%d FAIL=%d SKIP=%d\n" "$PASS" "$FAIL" "$SKIP"
 [ "$FAIL" -eq 0 ] || exit 1

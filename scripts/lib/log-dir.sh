@@ -128,7 +128,8 @@ ew_resolve_log_dir() {
 # WHY THIS FILE STILL CARRIES CONTAINMENT CHECKS AT ALL, now that the take path
 # does not delete (#2408 review r7).
 #
-# One `rm -rf` remains: the retention sweep. It runs unattended on every default
+# One RECURSIVE REMOVAL remains: the retention sweep, and since r10 it is
+# `find -xdev -delete` rather than `rm -rf`. It runs unattended on every default
 # lane, so the same reasoning applies to it — **a string-shaped guard on a
 # filesystem operation is not a guard**, and being wrong there costs somebody's
 # directory rather than a rerun.
@@ -209,6 +210,36 @@ ew_lane_device_of() {
 # `read -r` is required: without it the shell would consume those backslashes
 # before any rule ran.
 #   ew_lane_mountinfo_lists <mountinfo-file> <resolved-path>
+# A path's physical location, WITH any trailing newline in its own name intact.
+#
+# **`$(...)` STRIPS TRAILING NEWLINES (#2408 review r10, P1).** A directory whose
+# name ends in a newline is written `\012` in mountinfo and decodes back to a
+# trailing newline, so it would never equal a `pwd -P` result that had it removed
+# - the fail-OPEN direction again, one layer under the escape fix, on the same
+# comparison.
+#
+# The `printf x` sentinel is the portable way to keep them: strip the `x`, then
+# strip exactly the ONE newline `pwd` itself adds. Everything the path owns
+# survives.
+#
+# **IT SETS A GLOBAL RATHER THAN ECHOING, and that is part of the fix rather than
+# a style choice.** The whole defect is that `$(...)` eats trailing newlines, so
+# handing the answer back through a command substitution would reintroduce it at
+# the call site - a correct function whose only caller undoes it.
+#
+# Split out rather than left inline so the suite can drive it on macOS,
+# where `/proc/self/mountinfo` does not exist and its caller's whole branch is
+# unreachable - a fix inside an unexecutable branch is how rounds 6, 7 and 9 of
+# this PR each shipped a defect.
+#   ew_lane_resolved_path <path>
+EW_LANE_RESOLVED=""
+ew_lane_resolved_path() {
+  local out
+  out="$(cd "$1" 2>/dev/null && pwd -P && printf x)" || return 1
+  out="${out%x}"
+  EW_LANE_RESOLVED="${out%$'\n'}"
+}
+
 ew_lane_mountinfo_lists() {
   local mi_target
   while read -r _ _ _ _ mi_target _; do
@@ -238,7 +269,8 @@ ew_lane_is_mount_point() {
   # awk so there is no second language to quote through, and so the comparison is
   # the shell's own `=` on a variable this function already holds.
   if [ -r /proc/self/mountinfo ]; then
-    resolved="$(cd "$path" 2>/dev/null && pwd -P)" || return 0
+    ew_lane_resolved_path "$path" || return 0
+    resolved="$EW_LANE_RESOLVED"
     ew_lane_mountinfo_lists /proc/self/mountinfo "$resolved" && return 0
   fi
   dev="$(ew_lane_device_of "$path")" || return 0
@@ -297,6 +329,40 @@ ew_take_default_lane() {
     echo "  Two runs reached one lane name. Re-run; a new second gives a new lane." >&2
     return 2
   fi
+}
+
+# Remove ONE stale lane, with no ability to cross a filesystem boundary.
+#
+# **THIS REPLACES `rm -rf`, AND THE DIFFERENCE IS MEASURED RATHER THAN REASONED
+# (#2408 review r10, P1).** The containment checks above inspect `build`, `lanes`
+# and the lane ENTRY. A mount nested BELOW an entry - `<lane>/app-logger/external`
+# - passes all of them, because the entry is an ordinary directory, and `rm -rf`
+# then descends into the mounted filesystem and erases its contents.
+#
+# Two-way, against a real APFS volume attached with `hdiutil` and mounted three
+# levels down (devices 16777231 vs 16777239):
+#
+#   rm -rf              precious.txt GONE, "Directory not empty", exit 1
+#   find -xdev -delete  precious.txt INTACT, lane survives, own files removed
+#
+# So the current code destroys the data and THEN reports a failure. `-xdev` is
+# the closed answer rather than a sixth guard: it refuses to descend past a
+# device boundary at ANY depth, so it does not need to be told where the mount
+# is. That is the same move as removing the take-path deletion in round 8 -
+# a question whose answer set is closed, one level down.
+#
+# **THE EXIT CODE IS NOT THE ORACLE, and this is the half that would have gone
+# unnoticed.** Measured: `find -delete` prints
+# `rmdir(...): Resource busy` to stderr and STILL EXITS 0. So success is decided
+# by asking the world whether the directory is gone, not by asking find how it
+# felt about the attempt. stderr is deliberately not suppressed - it names WHICH
+# path refused, which the caller's own message cannot.
+#   ew_lane_remove_tree <entry>
+ew_lane_remove_tree() {
+  local entry="$1"
+  [ -n "$entry" ] || return 2
+  /usr/bin/find "$entry" -xdev -delete
+  [ ! -e "$entry" ]
 }
 
 # Publish "the last lane I ran" at a stable address (#2396).
@@ -387,17 +453,19 @@ ew_prune_stale_lanes() {
   # `-type d` excludes links to directories, so a planted link inside lanes/ is
   # skipped rather than followed — but a MOUNT is a directory and `-type d`
   # matches it, so each candidate is checked before it is removed rather than
-  # handed to `-exec rm -rf`.
+  # handed straight to a removal. That check covers the ENTRY; a mount nested
+  # BELOW one is covered by the removal itself refusing to cross a device
+  # boundary (ew_lane_remove_tree).
   # NUL-DELIMITED, AND THE NEWLINE CASE IS NOT MERELY "BROKEN" (#2408 review r5).
   # A line-delimited read splits a directory named `old<newline>Sources` into TWO
   # records, and the second is `Sources` — a RELATIVE path. `xcode-test.sh` runs
   # from the project root, so that resolves to the repo's own `Sources/` and
-  # reaches `rm -rf`. I flagged this myself as "would break it"; the actual
+  # reaches the removal. I flagged this myself as "would break it"; the actual
   # consequence is deleting the source tree.
   #
   # PROCESS SUBSTITUTION, not a pipe: a `while` on the right of a pipe runs in a
   # SUBSHELL, so a failure recorded inside it cannot reach the caller — which is
-  # the second half of the same finding. `rm -rf` failing on one entry (a
+  # the second half of the same finding. A removal failing on one entry (a
   # permission, an ACL) was swallowed and the trailing `printf` made the body
   # succeed, so the whole prune reported success having removed nothing.
   local entry rc=0 find_failed=0
@@ -410,7 +478,7 @@ ew_prune_stale_lanes() {
       echo "ew_prune_stale_lanes: skipping an unsafe lane entry: $entry" >&2
       continue
     fi
-    if rm -rf "$entry"; then
+    if ew_lane_remove_tree "$entry"; then
       printf '%s\n' "$entry"
     else
       echo "ew_prune_stale_lanes: could not remove $entry" >&2
