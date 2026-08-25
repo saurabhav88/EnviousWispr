@@ -1611,9 +1611,20 @@ const SCORECARD_QUERIES = [
 function releaseFailure(reason) {
   const transient = reason instanceof ReleaseResolutionError && reason.transient === true;
   const detail = reason instanceof Error && reason.message ? `: ${reason.message}` : "";
+  // THE PREFIX MUST NOT CLAIM A MECHANISM (#2415 review r1). It read "exhausted
+  // its retries", which was true when every temporary failure was retried three
+  // times - and this same change made a rate limit fail after ONE attempt, so the
+  // label started asserting a retry loop that no longer ran. A fixed string
+  // describing behaviour it does not control is the comment-that-retires-a-check
+  // shape wearing an error message.
+  //
+  // Deriving two prefixes from the cause would be a SECOND classifier keyed on
+  // the message, which the note above rejects. So the prefix names only what
+  // failed and how severe it is; the mechanism lives in `detail`, which comes
+  // from the code that actually performed it.
   return new ScorecardSectionError(
     (transient
-      ? "release resolution exhausted its retries"
+      ? "release resolution failed temporarily"
       : "release resolution failed its contract") + detail,
     { wholeRun: !transient, cause: reason }
   );

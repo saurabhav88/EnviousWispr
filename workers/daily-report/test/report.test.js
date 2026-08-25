@@ -2068,6 +2068,31 @@ test("resolveReleases: a RETRYABLE failure takes 3 attempts with real backoff be
   assert.deepEqual(sleeps, [500, 1500], "5xx retries must back off");
 });
 
+test("a rate limit's 500 body says WHY, and never claims a retry loop that did not run", async () => {
+  // #2415 review r1. The section prefix used to read "exhausted its retries",
+  // true while every temporary failure was retried three times - and false the
+  // moment a rate limit started failing after ONE attempt, which is what this
+  // same change did. The body a human reads is the only place that shows.
+  const mock = mockPostHog({ github: 429 });
+  try {
+    const res = await trigger("&date=2026-07-17");
+    assert.equal(res.status, 500);
+    const body = await res.text();
+    assert.match(body, /rate-limited/, "the body names the mechanism");
+    assert.doesNotMatch(body, /exhausted its retries/,
+      "and does not claim a retry loop that never ran");
+    assert.equal(mock.requests.filter((u) => u.startsWith(GITHUB_HOST)).length, 1,
+      "one attempt, because retrying a rate limit cannot help");
+    // Still only the SECTION: a rate limit must not cost the adoption numbers.
+    assert.equal(mock.discordPayloads.length, 1);
+    const [adoption, scorecard] = mock.discordPayloads[0].embeds;
+    assert.match(adoption.description, /Total users:/);
+    assert.match(scorecard.title, /unavailable today/);
+  } finally {
+    mock.restore();
+  }
+});
+
 test("resolveReleases: a RATE LIMIT is temporary but NOT retried, and says when it resets", async () => {
   // #2411. This used to retry three times like any other transient status. The
   // window resets at the top of an hour and a request cannot wait that long, so
@@ -3570,8 +3595,14 @@ test("exhausted TRANSIENT release resolution loses only the scorecard, and never
     // a fixed string and put the original in `cause`, where nothing reads it.
     // The trigger's body is the only channel the reason reaches a human through.
     const body = await res.text();
-    assert.match(body, /release resolution exhausted its retries/,
+    assert.match(body, /release resolution failed temporarily/,
       "the classification survives");
+    // The prefix must not claim a MECHANISM. It said "exhausted its retries",
+    // which this same change made false for a rate limit - one attempt, no loop
+    // (#2415 review r1). A label asserting behaviour it does not control drifts
+    // the moment that behaviour changes, and it changed in the same commit.
+    assert.doesNotMatch(body, /exhausted its retries/,
+      "the prefix does not assert a retry loop it does not control");
     assert.match(body, /HTTP 503/, "and it now carries the status that caused it");
     assert.equal(mock.requests.filter((u) => u.startsWith(GITHUB_HOST)).length, 3,
       "three attempts, then give up");
