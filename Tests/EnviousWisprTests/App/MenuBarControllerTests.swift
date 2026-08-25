@@ -227,6 +227,26 @@ struct MenuBarControllerTests {
       "the action must carry the text the TITLE quoted, not a fresh read taken after the menu closed")
   }
 
+  // Re-homed from `QuickAddMenuItemTests`, which owns the PURE title decisions and has no
+  // controller, no fixture and no way to click anything. `the-rig-decides-where-a-test-lives`: this
+  // case needs a rendered menu and an action spy, and those live here.
+  /// The pairing: what the menu SHOWS is normalised, what the action CARRIES is not.
+  @Test("The action receives the original selection, newline and all")
+  func theActionCarriesTheUnmodifiedSelection() {
+    let spy = ActionSpy()
+    let controller = makeController(spy: spy)
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu, state: fixture(pipelineState: .idle, quickAddSelection: "clawwed\nmachine"))
+
+    let row = itemPrefixed(menu, "Add \u{201C}clawwed machine\u{201D}")
+    #expect(row != nil, "the TITLE is collapsed")
+    perform(row)
+    #expect(
+      spy.fired == ["addSelectedWord:clawwed\nmachine"],
+      "the ACTION carries the original, because that is what the user selected")
+  }
+
   /// **The shortcut is user-editable, so advertising a hard-coded one teaches a lie after a
   /// rebind.** Shown as text rather than as a key equivalent — see `quickAddShortcutLabel`.
   @Test("A rebound shortcut is what the menu advertises")
@@ -557,6 +577,19 @@ struct QuickAddMenuItemTests {
   @Test("Surrounding whitespace does not reach the title")
   func whitespaceIsTrimmed() {
     #expect(MenuBarController.quickAddItem(selection: "  clawwed \n").title == "Add \u{201C}clawwed\u{201D}")
+  }
+
+  /// **A selection spanning two lines carries a newline, and a newline in a native menu title
+  /// renders as a malformed multi-line row.** Collapsed for DISPLAY only — the original still
+  /// reaches the panel, so what gets added is what was selected rather than what fitted in a menu.
+  @Test("Internal line breaks and tabs are collapsed for display")
+  func internalWhitespaceIsCollapsed() {
+    #expect(
+      MenuBarController.quickAddItem(selection: "clawwed\nmachine").title
+        == "Add \u{201C}clawwed machine\u{201D}")
+    #expect(
+      MenuBarController.quickAddItem(selection: "one\ttwo   three").title
+        == "Add \u{201C}one two three\u{201D}")
   }
 
   /// **The reader admits 512 scalars and a menu is not where 512 characters belong.** This bounds

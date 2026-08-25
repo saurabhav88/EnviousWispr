@@ -158,11 +158,23 @@ final class MenuBarController: NSObject {
       return ("Add Selected Word", false)
     }
     let trimmed = selection.trimmingCharacters(in: .whitespacesAndNewlines)
+    // **Collapse INTERNAL whitespace, not just the ends.** A selection spanning two document lines
+    // carries a newline, and a newline in an `NSMenuItem` title renders as a malformed, multi-line
+    // row. Tabs and runs of spaces are the same problem, one character over.
+    //
+    // **Display only.** `representedObject` still carries the ORIGINAL selection, so what gets added
+    // is what the user selected rather than what fitted in a menu — the same separation this cluster
+    // has had to relearn three times, where a sentence was composed from a neighbouring value
+    // instead of from what the write path was given.
+    //
+    // Collapsed BEFORE truncating, so the limit counts characters the user can actually see.
+    let collapsed = trimmed.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+      .joined(separator: " ")
     let shown =
-      trimmed.unicodeScalars.count > Self.quickAddTitleScalars
-      ? String(String.UnicodeScalarView(trimmed.unicodeScalars.prefix(Self.quickAddTitleScalars)))
+      collapsed.unicodeScalars.count > Self.quickAddTitleScalars
+      ? String(String.UnicodeScalarView(collapsed.unicodeScalars.prefix(Self.quickAddTitleScalars)))
         + "\u{2026}"
-      : trimmed
+      : collapsed
     return ("Add \u{201C}\(shown)\u{201D}", true)
   }
 
