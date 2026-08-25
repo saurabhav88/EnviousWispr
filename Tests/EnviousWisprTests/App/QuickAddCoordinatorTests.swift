@@ -931,4 +931,49 @@ struct QuickAddCoordinatorTests {
   func aPanelThatIsAskingAnnouncesNothing() {
     #expect(QuickAddWiring.announcement(notice: nil, writeFailure: nil) == nil)
   }
+
+  // MARK: - What a focus-taking call actually takes (#2391, r5)
+
+  /// **The case a SECOND shortcut press lands on, and the one that takes nothing.**
+  ///
+  /// Making one owner for taking focus was right; writing it as if every call takes something was
+  /// not. Raising an already-key panel recomputes "were we active" as true — because THIS PANEL made
+  /// it true — so the debt owed to the app the user actually came from is discarded, and the
+  /// confirmation then leaves us active with their next keystrokes going nowhere.
+  @Test("Raising an already-key panel takes nothing, so the standing debt survives")
+  func raisingAnAlreadyKeyPanelTakesNothing() {
+    #expect(
+      QuickAddPanelHost.focusTake(wasActive: true, keyWindowIsThePanel: true) == .nothing)
+  }
+
+  /// The paired positives, without which a rule that never classifies anything looks clean.
+  @Test("Every other combination names what it took")
+  func everyOtherCombinationNamesWhatItTook() {
+    // Not active: both came from outside, whatever held key.
+    #expect(
+      QuickAddPanelHost.focusTake(wasActive: false, keyWindowIsThePanel: false) == .fromAnotherApp)
+    #expect(
+      QuickAddPanelHost.focusTake(wasActive: false, keyWindowIsThePanel: true) == .fromAnotherApp)
+    // Active, and one of OUR windows held key — Settings, reachable because the shortcut is global.
+    #expect(
+      QuickAddPanelHost.focusTake(wasActive: true, keyWindowIsThePanel: false) == .fromOurOwnWindow)
+  }
+
+  // MARK: - The created confirmation names what was written (#2391, r5)
+
+  /// **Selecting a word that is already spelled correctly and authoring it is ordinary**, and
+  /// `draftWord` correctly declines to store a word as an alias of itself. Choosing the sentence by
+  /// "was the selection non-empty" then claims an add that did not happen.
+  @Test("A word created with no alias attached is not confirmed as a spelling that was added")
+  func aSelfNamedCreationDoesNotClaimAnAdd() {
+    let model = QuickAddPanelModel(
+      heard: "Claude", refusal: nil, rankHeard: { _ in .empty }, searchLibrary: { _, _ in .empty })
+    model.beginComposing()
+    model.updateDraft("Claude")
+    let authored = model.draftWord
+
+    #expect(authored?.aliases.isEmpty == true, "a word is not an alias of itself")
+    // The selection is NON-empty, which is exactly what the old rule read.
+    #expect(!model.spellingToWrite.isEmpty)
+  }
 }

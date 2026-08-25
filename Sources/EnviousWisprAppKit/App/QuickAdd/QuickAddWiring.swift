@@ -326,11 +326,15 @@ final class QuickAddWiring {
       model.noteWriteFailure(message)
       speak(model)
     case .created(let canonical):
-      let spelling = model.spellingToWrite.trimmingCharacters(in: .whitespacesAndNewlines)
-      // With no readable selection there is no mishearing to name, and a confirmation quoting an
-      // empty string would read as a defect. That state is precisely the one Create exists for.
+      // **Composed from the WORD THAT WAS WRITTEN, never from the selection.** Selecting a word that
+      // is already spelled correctly and authoring it is an ordinary thing to do: `draftWord`
+      // correctly declines to store a word as an alias of itself, so nothing is attached — and
+      // choosing the sentence by "was the selection non-empty" then said `"Claude" added to Claude`
+      // about an add that did not happen. Third instance on this branch of a sentence composed from
+      // a neighbouring value instead of from what the write path reports.
+      let attached = word.aliases.first ?? ""
       conclude(
-        model, spelling.isEmpty ? .created : .saved, spelling: spelling, word: canonical)
+        model, attached.isEmpty ? .created : .saved, spelling: attached, word: canonical)
     case .alreadyComplete(let canonical):
       conclude(model, .nothingToAdd, spelling: model.spellingToWrite, word: canonical)
     case .alreadyPresent(let canonical):

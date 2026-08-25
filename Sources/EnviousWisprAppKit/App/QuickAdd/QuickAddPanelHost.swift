@@ -138,13 +138,44 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// rather than the two lines being repeated.
   private func takeFocus(_ panel: NSPanel) {
     // Both read BEFORE anything is taken, which is the only moment either answer exists.
-    activatedForThisPresentation = !NSApp.isActive
+    let wasActive = NSApp.isActive
     let key = NSApp.keyWindow
-    // Never record OUR OWN panel as the window to hand back to: a raise while the panel is already
-    // key would otherwise make `releaseFocus` restore the panel it is trying to release.
-    previousKeyWindow = key === panel ? previousKeyWindow : key
+    switch Self.focusTake(wasActive: wasActive, keyWindowIsThePanel: key === panel) {
+    case .fromAnotherApp:
+      activatedForThisPresentation = true
+      previousKeyWindow = nil
+    case .fromOurOwnWindow:
+      activatedForThisPresentation = false
+      previousKeyWindow = key
+    case .nothing:
+      // **Records untouched, and this is the case a second press lands on.** Recomputing them here
+      // reads a world THIS PANEL already changed: we are active because we activated ourselves, and
+      // key because we took it. The presentation that actually took still owes the debt.
+      break
+    }
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
+  }
+
+  /// What a focus-taking call is actually taking, which is not always something.
+  ///
+  /// **The whole decision, extracted so the case that takes NOTHING is statable.** Making `takeFocus`
+  /// the single owner of taking was right and writing it as if every call takes something was not:
+  /// pressing the shortcut while the panel is already key recomputes `!NSApp.isActive` as false, and
+  /// the debt owed to the app the user actually came from is discarded — so the confirmation leaves
+  /// us active and their next keystrokes go nowhere.
+  package enum FocusTake: Equatable, Sendable, CaseIterable {
+    /// Not active: activation and key status both came from outside.
+    case fromAnotherApp
+    /// Active, and another of OUR windows held key. Activation was never ours to take.
+    case fromOurOwnWindow
+    /// Already active and already key. Nothing is taken and the standing debt is unchanged.
+    case nothing
+  }
+
+  package static func focusTake(wasActive: Bool, keyWindowIsThePanel: Bool) -> FocusTake {
+    guard wasActive else { return .fromAnotherApp }
+    return keyWindowIsThePanel ? .nothing : .fromOurOwnWindow
   }
 
   /// Bring an already-visible panel back to the front and give it key focus.
