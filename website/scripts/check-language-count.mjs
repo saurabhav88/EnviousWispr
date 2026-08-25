@@ -99,19 +99,38 @@ const SITES = [
 // deliberately kept narrow (see ANCHORS below) after broad scanning produced
 // three false positives on correct prose, and a guard that cries wolf on correct
 // code trains people to skip it. This does not reopen that trade.
-// The leading `(?<![-\d])` excludes ISO designators: in "ISO 639-1 lang code"
-// the `1` is part of the standard's name, not a count, and without this the
-// guard fails the website prebuild on correct prose (#2368 cloud review P2).
+// TWO checks, and the split is the point (#2368 cloud review, rounds 1-3).
 //
-// That hole predates the `langs?` branch — "ISO 639-1 language code" matched the
-// ORIGINAL pattern too. It was unreachable only because no anchored block
-// contained an ISO reference; anchoring a third file is what made it reachable.
+// Rounds 1 and 2 both found a new ISO SPELLING the pattern mis-read as a count:
+// first "ISO 639-1 lang code" matching `1 lang`, then "ISO 639 lang code"
+// matching `639 lang` once the hyphenated form was excluded. That is review
+// finding a new MEMBER of a set each round, which means the defect is that the
+// set is being DESCRIBED rather than enumerated — and a description always has a
+// next counterexample.
 //
-// Paired accept/reject table, all verified, because a check that stopped
+// So the question was inverted. Enumerating "every way prose can spell a count"
+// is open and unbounded. Enumerating "which numbers are LEGITIMATE here" is
+// CLOSED: the ISO 639 family has a fixed, externally-defined part list, and it is
+// the only numeric vocabulary the guarded blocks legitimately carry — verified by
+// reading all three, which contain `ISO 639-1` and `ISO 639-3` and nothing else
+// numeric.
+//
+// Allowed designators are removed FIRST, then what remains is checked for a
+// count. A genuine count in the same sentence as an ISO reference still fires,
+// which is what stops this being a blanket exemption.
+//
+// Paired accept/reject table, all verified, because a check that quietly stopped
 // classifying anything also reports clean:
 //   MATCH:  "99-lang set" · "(99 languages)" · "99-language set"
 //           "All 99 Whisper-supported languages" · "25 European languages"
-//   REJECT: "ISO 639-1 lang code" · "ISO 639-1 language code"
+//           "a 54-language list" · "ISO 639-3 entries and 99 languages"
+//   REJECT: "ISO 639-1 lang code" · "ISO 639 lang code" · "ISO 639 language code"
+//           "Accepted language codes: ISO 639-1, plus the ISO 639-3 entries"
+//
+// A FOURTH finding here would have to be a number that is neither an ISO 639
+// designator nor a count. Stating that so the closure is falsifiable rather than
+// hopeful.
+const ISO_DESIGNATOR = /\bISO[\s ]*639(?:-[1-5])?\b/gi;
 const COUNT_IN_PROSE = /(?<![-\d])\d{1,3}\+?[\s-]*([A-Za-z-]+\s+){0,2}(languages?|langs?)\b/i;
 
 // The two declarations where the count used to live. The doc block directly
@@ -204,7 +223,7 @@ for (const { file, label, declRe, commentRe } of ANCHORS) {
     failures.push(`${file}:${idx + 1}: no doc comment directly above "${label}" — restore the explanation; this guard verifies it carries no count`);
     continue;
   }
-  const m = block.join('\n').match(COUNT_IN_PROSE);
+  const m = block.join('\n').replace(ISO_DESIGNATOR, 'ISO-STD').match(COUNT_IN_PROSE);
   if (m) {
     failures.push(`${file}:${idx + 1 - block.length}..${idx}: doc block above "${label}" carries a language count ("${m[0]}") — the set's size is not a marketed figure (#2368); describe what it is, with no number`);
   }
