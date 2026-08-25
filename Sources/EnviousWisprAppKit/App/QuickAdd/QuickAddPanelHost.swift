@@ -120,12 +120,31 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
 
     // Activate BEFORE making key, and only now — the selection was read while the other app was
     // still frontmost, which is the whole reason this happens here rather than at capture time.
+    takeFocus(panel)
+    return true
+  }
+
+  /// Take activation and key status, recording what was taken so `releaseFocus` can give back
+  /// exactly that.
+  ///
+  /// **One owner, because there are TWO takers and the second was missed by three review rounds.**
+  /// `present` and `raise` both activate and both call `makeKeyAndOrderFront`; only the first
+  /// recorded it, so after a raise both records described the PREVIOUS presentation. Reachable:
+  /// open from another app, click into our Settings window, press the shortcut again — the raise
+  /// takes key status from Settings while the records still say the app was activated from outside,
+  /// and the release then deactivates, hiding the user's own window.
+  ///
+  /// A third taker cannot be added without coming through here, which is the point of it existing
+  /// rather than the two lines being repeated.
+  private func takeFocus(_ panel: NSPanel) {
     // Both read BEFORE anything is taken, which is the only moment either answer exists.
     activatedForThisPresentation = !NSApp.isActive
-    previousKeyWindow = NSApp.keyWindow
+    let key = NSApp.keyWindow
+    // Never record OUR OWN panel as the window to hand back to: a raise while the panel is already
+    // key would otherwise make `releaseFocus` restore the panel it is trying to release.
+    previousKeyWindow = key === panel ? previousKeyWindow : key
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
-    return true
   }
 
   /// Bring an already-visible panel back to the front and give it key focus.
@@ -136,8 +155,7 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// and not by throwing away the selection it already holds.
   func raise() {
     guard let panel, panel.isVisible else { return }
-    NSApp.activate(ignoringOtherApps: true)
-    panel.makeKeyAndOrderFront(nil)
+    takeFocus(panel)
   }
 
   /// Hand keyboard focus back to whatever the user was working in, WITHOUT taking the panel down.

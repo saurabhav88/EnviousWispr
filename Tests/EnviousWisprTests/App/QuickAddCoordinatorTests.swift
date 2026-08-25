@@ -775,6 +775,35 @@ struct QuickAddCoordinatorTests {
         canonicalExistedBefore: true) == .alreadyComplete)
   }
 
+  /// **The argument that CLOSES the class, so it is a test rather than a paragraph.**
+  ///
+  /// Root B of this branch's review rounds is "an outcome that keeps the panel open must name an
+  /// action the panel can perform". The panel opened WITHOUT a readable selection cannot perform
+  /// any: its ranking is empty and its search field disabled by construction. So the enumeration is
+  /// only closed if no panel-keeping outcome is REACHABLE from that state.
+  ///
+  /// `.refused` is the only panel-keeping outcome, and it needs a missing spelling. With no heard
+  /// word `QuickAddPanelModel.draftWord` attaches no alias, so `keptSpellings` is empty, so
+  /// `missingSpellings` is empty, so `.refused` cannot arise. That chain is three files long and
+  /// entirely invisible from either end — which is exactly the kind of claim that decays into a
+  /// comment nobody rechecks.
+  @Test("A no-selection panel cannot reach an outcome that keeps it open")
+  func aRefusalPanelCannotReachAPanelKeepingOutcome() {
+    // What `draftWord` produces with no heard spelling: a word carrying no aliases.
+    let authored = CustomWord(canonical: "Qwen", aliases: [])
+    let kept = authored.aliases
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    #expect(kept.isEmpty, "no heard spelling means nothing to keep")
+
+    // Every canonical-existed value, since that is the only other axis.
+    for existedBefore in [true, false] {
+      let outcome = QuickAddWiring.newWordOutcome(
+        keptSpellings: kept, missingSpellings: [], canonicalExistedBefore: existedBefore)
+      #expect(outcome != .refused, "a state with no way forward must not keep the panel open")
+    }
+  }
+
   /// The paired NEGATIVE, and it is what stops the change above collapsing the enum: `.refused` is
   /// still reachable, and it is reachable for the one reason that outranks everything — a spelling
   /// the user typed that is not on the word afterwards is a lost edit, whatever else is true.
