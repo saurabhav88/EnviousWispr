@@ -40,6 +40,9 @@ struct FrozenPillParityFixtureTests {
     // here would enlarge the very population C1b's sweep must drive to zero.
     "Overlay" + "Presentation",
     "PillDefinition",
+    // Retired by C3b, and kept on this list deliberately. A forbidden name for a
+    // type that no longer exists costs nothing and still stops the fixture
+    // resurrecting it — removing it as dead would reopen the hole.
     "OverlayRecordingLayout",
     "RecordingPillDesign",
     "PillCatalog",

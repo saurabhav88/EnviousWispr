@@ -250,10 +250,9 @@ final class OverlayDirector {
   /// this is required, so forgetting it does not compile.
   ///
   /// Atomicity is untouched, and it never depended on how these arrived:
-  /// `presentRecording` still RESOLVES the layout by calling
-  /// `livePreview.isEnabledForGeometry()` at present time, so the geometry comes
-  /// from the setting at the moment the pill appears. That is a property of WHEN
-  /// the closure is called.
+  /// `presentRecording` reads capability and selections at presentation time and
+  /// resolves them once into a design, so the definition's geometry comes from
+  /// that captured pair.
   private let livePreview: LivePreviewBridge
 
   /// What the accessibility notice's Grant button does.
@@ -361,38 +360,35 @@ final class OverlayDirector {
     _ event: OverlayEvent, binding: BindingInput, relay: PresentationRelay? = nil
   ) {
     if case .pipeline(.recording) = event {
-      // **The wrong ORDER is what this refuses, not the wrong event.** A caller
-      // that sends first and installs providers afterwards renders one frame
-      // from whatever the model last held — the previous dictation's layout, or
-      // the `.compact(.top)` default on the first recording of the session — and
-      // a later mutation of the model is not published, so the wrong frame is
-      // also the final one.
+      // **The wrong ORDER is what this refuses, not the wrong event.** A bare
+      // event carries no providers and resolves no design or position.
       //
       // `assertionFailure` rather than a precondition: this is a programming
       // invariant, caught in Debug and in CI, and trapping a user's Release build
       // over a first-frame defect is worse than the defect.
       //
-      // **In Release this does NOT refuse.** `assertionFailure` compiles away and
-      // the call falls through to render with the layout the model already holds
-      // — correct for a morph, stale-but-plausible for a fresh recording. The
-      // step-4 caller sweep must therefore leave no such call; the assertion
-      // catches one during development, it does not defend against one shipping.
+      // In Release the assertion compiles away. A live recording may still morph
+      // using its preserved design, captured position and already-installed
+      // providers; a fresh recording is refused by the reducer and shows nothing.
+      // The caller sweep remains load-bearing because the assertion is
+      // diagnostic, not a Release defence.
       assertionFailure(
-        "use presentRecording(...) — a recording's providers and layout must be "
-          + "installed in the same operation that presents it")
+        "use presentRecording(...) — a recording's providers and its resolved design "
+          + "must be installed in the same operation that presents it")
     }
     apply(reducer.reduce(event), binding: binding, relay: relay)
   }
 
-  /// Present the recording pill with its providers and its layout installed in
-  /// ONE operation.
+  /// Present the recording pill with its providers and its resolved design
+  /// installed in ONE operation.
   ///
-  /// **Five things travel together and the shipped code installs them together.**
-  /// See `OverlayRecordingLayout`. Splitting them across `setRecordingProviders`
+  /// **The accepted definition, captured position and recording providers are
+  /// installed together.**
+  /// Splitting them across `setRecordingProviders`
   /// and `send` made a wrong first frame expressible, so this is the only way to
   /// express the right one.
   ///
-  /// A MORPH keeps the layout it was created with. The shipped panel reads the
+  /// A MORPH keeps the design it was created with. The shipped panel reads the
   /// preview setting once at creation and its width is fixed for that panel's
   /// life, because an `NSPanel` cannot grow mid-recording without a rebuild and a
   /// rebuild is the #930 flicker. Re-resolving here on every audio tick would
@@ -434,8 +430,14 @@ final class OverlayDirector {
         apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
         return
       }
+      // A morph keeps the live pill's design and position: nothing was resolved,
+      // so there is nothing new to install.
+      guard let design = presentation.recordingDesign else {
+        assertionFailure("a morphed recording carries no design")
+        return
+      }
       installRecordingProviders(
-        for: presentation, layout: model.recordingLayout,
+        for: presentation, design: design, position: model.recordingPosition,
         audioLevelProvider: audioLevelProvider,
         recordingElapsedProvider: recordingElapsedProvider)
       apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
@@ -486,14 +488,11 @@ final class OverlayDirector {
         return
       }
 
-      // **From the ACCEPTED definition's design, never from `resolution`.** They
-      // are equal today, which is exactly why the difference matters: the
-      // constraint is that the adapter can only ever describe the pill that
-      // actually committed, so it cannot drift into computing its own answer. An
-      // adapter that can compute its own answer is not an adapter.
-      let layout = OverlayRecordingLayout(design: acceptedDesign, position: at)
+      // **From the ACCEPTED definition's design, never from `resolution`.**
+      // They are equal today, but passing `resolution.design` would reintroduce a
+      // second answer beside the definition that actually committed.
       installRecordingProviders(
-        for: definition, layout: layout,
+        for: definition, design: acceptedDesign, position: at,
         audioLevelProvider: audioLevelProvider,
         recordingElapsedProvider: recordingElapsedProvider)
       apply(plan, binding: .none, effectsAlreadyDelivered: true, relay: relay)
@@ -504,7 +503,8 @@ final class OverlayDirector {
   /// drift in what they hand the render model.
   private func installRecordingProviders(
     for presentation: PillDefinition,
-    layout: OverlayRecordingLayout,
+    design: RecordingPillDesign,
+    position: OverlayPillPosition,
     audioLevelProvider: @escaping () -> Float,
     recordingElapsedProvider: @escaping () -> TimeInterval?
   ) {
@@ -512,23 +512,20 @@ final class OverlayDirector {
       audioLevel: audioLevelProvider,
       recordingElapsed: recordingElapsedProvider,
       livePreview: livePreview.display,
-      layout: layout,
+      design: design,
+      position: position,
       onContentHeightChange: { [weak self] height in
         // The preview pill grows a line at a time as words wrap. Keyed to the
         // presentation it was installed for, so a late callback from a finished
         // dictation cannot resize the pill that replaced it.
         //
-        // **STILL READS THE RETAINED ADAPTER, and that is C3a's boundary rather
-        // than an oversight.** This callback is one of the three replacements
-        // §3.5 names, and all three land together in C3b because they are one
-        // value being taken apart — a partial landing leaves a consumer reading a
-        // deleted field. Moving it early would make C3b's deletion the visual
-        // change this chunk is supposed not to be.
-        guard let self, self.presentedID == presentation.id,
-          self.model.recordingLayout.usesPreview
+        // **Width comes from the design CAPTURED in this transaction, never
+        // re-read** (#2375 C3b). Reading it back off the render model is what
+        // made this a second consumer of the geometry override, so a change to
+        // that override silently moved a live pill's growth width.
+        guard let self, self.presentedID == presentation.id, design.canHoldWords
         else { return }
-        self.host.resizeCurrentPresentation(
-          to: CGSize(width: self.model.recordingLayout.width, height: height))
+        self.host.resizeCurrentPresentation(to: CGSize(width: design.width, height: height))
       })
   }
 
@@ -906,26 +903,20 @@ final class OverlayDirector {
   private func geometry(
     for presentation: PillDefinition
   ) -> (width: OverlayWidth, fixedHeight: CGFloat?) {
-    guard case .recording = presentation.content else {
-      return (presentation.requestedWidth, presentation.reservesFixedHeight)
-    }
-    // **THIS OVERRIDE IS NOW A NO-OP, AND C3B DELETES IT** (#2375 C3a).
+    // **THE RECORDING SPECIAL CASE IS GONE, AND THAT IS G3 CLOSED** (#2375 C3b).
     //
-    // Its old comment said the reducer's 185/92 was "the compact answer and is
-    // deliberately ignored here: the reducer cannot know which layout is in
-    // force". That was true and it was the whole of G3 — two authorities for one
-    // geometry, the correct-looking one ignored, with the arrangement documented
-    // as though it were a design.
+    // It substituted the layout bundle's width and height for the definition's,
+    // and its own comment said why: the reducer "cannot know which layout is in
+    // force", so its 185/92 was ignored. Two authorities for one geometry, the
+    // correct-looking one discarded, documented as though it were a design.
     //
-    // The definition now carries the RESOLVED design and its own width and
-    // height, and `model.recordingLayout` is derived from that same design, so
-    // both sides of this function agree by construction. It is kept for exactly
-    // one chunk so C3a stays a structural change rather than a visual one, and
-    // `recordingAdapterMatchesTheAcceptedDefinition` asserts the agreement for
-    // both designs — which is what makes C3b's deletion provably a no-op rather
-    // than argued to be one.
-    let layout = model.recordingLayout
-    return (.fixed(layout.width), layout.fixedHeight)
+    // A recording definition now carries its RESOLVED design's own width and
+    // height, so there is one answer and this function returns it like every
+    // other pill's. C3a proved the deletion was a no-op by asserting the adapter
+    // and the definition agreed for both designs; that assertion is deleted with
+    // the adapter, because once there is nothing to disagree with it asserts
+    // nothing.
+    return (presentation.requestedWidth, presentation.reservesFixedHeight)
   }
 
   /// Push the model's new occupant to the window.
@@ -1075,13 +1066,11 @@ final class OverlayDirector {
     presentedID = presentation.id
     let recordingGeometry = geometry(for: presentation)
     // **One position per presentation, not two reads of a provider.** The
-    // recording layout captured the anchored edge when the pill was composed;
-    // re-reading here lets a setting changed in between compose against one edge
-    // and place against another, which is the same assembled-from-two-instants
-    // defect the layout value exists to close.
+    // recording position was captured when the pill was composed; re-reading here
+    // could compose against one edge and place against another.
     let anchor: OverlayPillPosition
     if case .recording = presentation.content {
-      anchor = model.recordingLayout.position
+      anchor = model.recordingPosition
     } else {
       anchor = position()
     }

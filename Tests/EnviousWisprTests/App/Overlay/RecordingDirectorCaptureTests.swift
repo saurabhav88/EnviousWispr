@@ -6,8 +6,8 @@ import Testing
 @testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
 
-/// **Table 3b: what the director captures, and the adapter equivalence that
-/// makes C3b's deletion provable** (#2375 Phase 3, chunk C3a).
+/// **Table 3b: what the director captures and what the resulting composition
+/// drives** (#2375 Phase 3).
 ///
 /// Capability, selections and position are read through callbacks, so "read
 /// once" is a countable fact rather than an argument. Provider gating and the
@@ -35,13 +35,19 @@ struct RecordingDirectorCaptureTests {
     capabilityHasWords: Bool,
     selections: PillDesignSelections = .shipped,
     host: any OverlayWindowHosting = WindowlessOverlayHost(),
+    // **`.bottom`, not `.top`, and that is the whole point of the parameter.**
+    // `.top` is `OverlayRenderModel.recordingPosition`'s own default, so a
+    // director that ignored the captured position entirely would still leave the
+    // model reading `.top` and every assertion would pass. The fixture has to sit
+    // somewhere the default is not.
+    position: OverlayPillPosition = .bottom,
     scheduleReconciliation: @escaping (@escaping () -> Void) -> Void = { $0() }
   ) -> OverlayDirector {
     OverlayDirector(
       host: host,
       position: {
         counts.position += 1
-        return .top
+        return position
       },
       announce: { _ in },
       livePreview: LivePreviewBridge(
@@ -110,53 +116,65 @@ struct RecordingDirectorCaptureTests {
     #expect(counts.position == afterFirst.2, "a morph re-read position")
   }
 
-  // MARK: - Adapter equivalence
+  // MARK: - The frozen geometries, straight from the definition
 
-  /// **The assertion that makes C3b's deletion provably a no-op rather than
-  /// argued to be one.**
+  /// **recordingAdapterMatchesTheAcceptedDefinition was DELETED here** (#2375
+  /// C3b), and the deletion is the plan's own instruction rather than a
+  /// convenience.
   ///
-  /// `OverlayRecordingLayout` survives C3a as a derived adapter. If every field
-  /// it exposes already equals the accepted definition's own, deleting it changes
-  /// nothing — and this is deleted with it.
+  /// It existed to prove that OverlayRecordingLayout said exactly what the
+  /// accepted definition said, so that deleting the layout could be shown to be a
+  /// no-op instead of argued to be one. The layout is now gone. A test comparing
+  /// a value against itself asserts nothing, and keeping it would leave a green
+  /// row that reads as coverage.
+  ///
+  /// What it was really protecting — that the geometry on screen is the FROZEN
+  /// geometry — survives here, now read from the one authority.
   @Test(
-    "the surviving layout adapter agrees with the accepted definition, both designs",
+    "the composed recording carries the frozen geometry for its capability",
     arguments: [false, true])
-  func recordingAdapterMatchesTheAcceptedDefinition(capabilityHasWords: Bool) throws {
+  func composedRecordingMatchesTheFrozenGeometry(capabilityHasWords: Bool) throws {
     let counts = Counts()
-    let d = Self.makeDirector(counts, capabilityHasWords: capabilityHasWords)
+    let host = WindowlessOverlayHost()
+    let d = Self.makeDirector(counts, capabilityHasWords: capabilityHasWords, host: host)
 
     Self.record(d)
 
     let definition = try #require(d.renderModel.presentation, "no recording is showing")
     let design = try #require(definition.recordingDesign, "the accepted pill carries no design")
-    let layout = d.renderModel.recordingLayout
-
-    #expect(
-      definition.requestedWidth == .fixed(layout.width),
-      "the adapter's width disagrees with the definition's")
-    #expect(
-      definition.reservesFixedHeight == layout.fixedHeight,
-      "the adapter's height disagrees with the definition's")
-    #expect(
-      design.canHoldWords == layout.usesPreview,
-      "provider gating and the adapter disagree about showing words")
-    #expect(layout.position == .top, "the adapter did not use the captured position")
-
-    // And the frozen row for this capability is what both of them say.
     let frozen = try #require(
       FrozenPillParity.recordingRows.first {
         $0.capability == (capabilityHasWords ? .withWords : .withoutWords)
       })
+
     #expect(definition.requestedWidth == .fixed(frozen.effectiveWidth))
     #expect(definition.reservesFixedHeight == frozen.fixedHeight)
     #expect(design.canHoldWords == frozen.usesPreviewLayout)
+    // `.bottom` is not the model's default, so this fails against a director that
+    // never installed the captured position at all.
+    #expect(
+      d.renderModel.recordingPosition == .bottom,
+      "the render model did not keep the captured position")
+    // **And the WINDOW was asked for that geometry, which is the thing the user
+    // sees.** The definition carrying the right numbers is necessary and not
+    // sufficient: `geometry(for:)` sits between the definition and the host, and
+    // it is exactly where the deleted override used to substitute its own answer.
+    // Without this the override could come back and every assertion above would
+    // still pass.
+    let asked = try #require(host.presented.last, "the host was never asked to present")
+    #expect(
+      asked.width == .fixed(frozen.effectiveWidth),
+      "the window was sized to something other than the frozen width")
+    #expect(
+      asked.fixedHeight == frozen.fixedHeight,
+      "the window reserved something other than the frozen height")
   }
 
-  /// **Table 3b's actual subject: the CONSUMERS, not the adapter beside them.**
+  /// **Table 3b's actual subject: the CONSUMERS, not field agreement alone.**
   ///
-  /// The equivalence check above compares fields. This drives the two things
-  /// those fields feed — the provider gate and the preview-growth callback — and
-  /// asserts what they do. A pill that cannot hold words must not be reading a
+  /// The geometry check above compares fields. This drives the two things those
+  /// fields feed — the provider gate and the preview-growth callback — and asserts
+  /// what they do. A pill that cannot hold words must not be reading a
   /// live preview at all, and must not resize itself when the content reports a
   /// height.
   @Test(

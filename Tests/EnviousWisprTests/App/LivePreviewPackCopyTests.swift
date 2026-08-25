@@ -14,8 +14,8 @@ import Testing
 @MainActor
 struct LivePreviewPackCopyTests {
 
-  /// The pill's real numbers, read from `OverlayRecordingLayout`: 400 pt wide with 14 pt of
-  /// horizontal padding each side, text at system 12.
+  /// The pill's real numbers, read from `RecordingPillDesign.readingWell`: 400 pt wide with
+  /// 14 pt of horizontal padding each side, text at system 12.
   private static let availableWidth: CGFloat = 400 - (14 * 2)
   private static let font = NSFont.systemFont(ofSize: 12)
 
@@ -60,7 +60,7 @@ struct LivePreviewPackCopyTests {
       overflowing.isEmpty,
       """
       These languages overflow the pill's 2-line cap for the unavailable state. \
-      Either shorten the copy or raise the cap in OverlayRecordingLayout deliberately: \
+      Either shorten the copy or raise the cap in RecordingPillDesign deliberately: \
       \(overflowing.map { "\($0.0)=\($0.1) lines" }.joined(separator: ", "))
       """)
   }

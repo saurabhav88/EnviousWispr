@@ -40,7 +40,7 @@ struct RecordingOverlayPreviewSizingTests {
 
   init() { _ = NSApplication.shared }
 
-  /// Width the preview pill is created at (`OverlayRecordingLayout.preview`).
+  /// Width the preview pill is created at (`RecordingPillDesign.readingWell`).
   private static let previewWidth: CGFloat = 400
 
   /// Collects every height the view reports. The LAST value is what the panel

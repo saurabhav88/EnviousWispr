@@ -81,7 +81,7 @@ struct OverlayRootView: View {
   @ViewBuilder
   private func content(for presentation: PillDefinition) -> some View {
     switch presentation.content {
-    case .recording:
+    case .recording(_, _, _, let design):
       // The LEVEL on the presentation is a snapshot the reducer carries for
       // identity and morph decisions; the view reads the live provider instead,
       // which is why it is not bound here.
@@ -92,8 +92,9 @@ struct OverlayRootView: View {
       // size itself inside a 92-point window: the #1341 Bottom case in
       // particular depends on the ALIGNMENT here, because bottom-aligning the
       // content is what makes the panel's Y origin the capsule's visible bottom
-      // edge. `OverlayRecordingLayout` owns all of it.
-      recording(model.recordingLayout)
+      // edge. The DESIGN owns the size and the captured position owns the
+      // alignment; nothing bundles them together any more.
+      recording(design: design, position: model.recordingPosition)
 
     case .notice(let notice):
       notices(notice, on: presentation)
@@ -121,28 +122,41 @@ struct OverlayRootView: View {
     }
   }
 
+  /// **`usesPreviewLayout` SURVIVES this chunk, and that is the boundary rather
+  /// than an oversight** (#2375 C3b). Two adapters existed and only one is
+  /// deleted: the layout bundle is gone, and this boolean is still handed to
+  /// `RecordingOverlayView` with its internal uses untouched. It is DERIVED —
+  /// its only input is the captured design — so it cannot disagree with the
+  /// catalog independently. Phase 4 replaces it with the design itself.
+  ///
+  /// **The design is NON-OPTIONAL, and an earlier version of this took an
+  /// optional and fell back to `.classic`.** The definition's own recording case
+  /// carries the design, so the caller binds it there and nothing here can
+  /// substitute a second answer — which is exactly the arrangement this chunk
+  /// deletes, and I had rebuilt a small one inside the fix for it.
   @ViewBuilder
-  private func recording(_ layout: OverlayRecordingLayout) -> some View {
+  private func recording(
+    design: RecordingPillDesign, position: OverlayPillPosition
+  ) -> some View {
     let view = RecordingOverlayView(
       audioLevelProvider: model.audioLevelProvider,
       recordingElapsedProvider: model.recordingElapsedProvider,
       livePreviewProvider: model.livePreviewProvider,
       onContentHeightChange: model.onContentHeightChange,
-      usesPreviewLayout: layout.usesPreview,
+      usesPreviewLayout: design.canHoldWords,
       lockState: lockState.value,
       noticeState: noticeState.value)
 
-    switch layout {
-    case .preview(_):
+    if design.canHoldWords {
       // Width only. The height is content-driven so the pill earns its size a
       // line at a time rather than snapping once the real height is measured.
-      view.frame(width: layout.width)
-    case .compact(let position):
+      view.frame(width: design.width)
+    } else {
       // #1341: Bottom bottom-aligns, Top centres. Centring in Bottom leaves ~24
       // points of invisible space under a ~44-point capsule, which mutes the
       // Bottom offset and visibly misaligns the polishing pill that replaces it.
       view.frame(
-        width: layout.width, height: layout.fixedHeight,
+        width: design.width, height: design.reservedHeight,
         alignment: position == .bottom ? .bottom : .center)
     }
   }

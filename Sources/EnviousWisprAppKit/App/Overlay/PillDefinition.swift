@@ -54,11 +54,11 @@ enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
 
   /// Whether this design can display transcribed words while recording.
   ///
-  /// **This is the semantic authority for provider gating.** During C3a the
-  /// retained layout derives `usesPreview` from it; C3b removes that adapter and
-  /// keys the consumers directly from `canHoldWords`. The shipped code keyed off
-  /// a layout value that also carried geometry and position, which is why one
-  /// authority could disagree with another about what is on screen.
+  /// **This is the authority for provider gating, and since C3b it is the only
+  /// one.** The consumers key directly off `canHoldWords`. Before that the
+  /// shipped code keyed off a layout value that also carried geometry and
+  /// position, which is why one authority could disagree with another about what
+  /// is on screen; C3a derived that value from this one and C3b deleted it.
   var canHoldWords: Bool {
     switch self {
     case .classic: return false
@@ -169,73 +169,6 @@ struct OverlayAnnouncement: Equatable, Sendable {
   }
 }
 
-/// How the recording pill is composed, which is FIVE decisions and not one.
-///
-/// The shipped site takes them together from a single showsPreview read, and
-/// porting them one at a time is how four of them went missing: the pill was
-/// carrying the compact width at the preview's content height, with no frame, no
-/// alignment, and the preview's own providers live in a pill that does not show a
-/// preview. They travel together here so a caller cannot install half of them.
-///
-/// - **width** 400 with preview, 185 without.
-/// - **height** content-driven with preview so the pill earns its size a line at
-///   a time; a reserved 92 without, which holds the normal 185x44, the locked
-///   120x64 and the #1060 notice expansion without resizing on every morph.
-/// - **alignment** #1341. In Bottom position the compact content is BOTTOM-
-///   aligned so the panel's Y origin is the capsule's visible bottom edge.
-///   Centred, the 92-point frame leaves ~24 points of invisible space below a
-///   ~44-point capsule, which mutes the Bottom offset and visibly misaligns the
-///   polishing pill that replaces it. Top keeps centring.
-/// - **the preview display provider**, which the shipped site replaces with
-///   `{ .off }` when preview is off rather than passing the live one.
-/// - **the content-height callback**, likewise `{ _ in }` when preview is off.
-enum OverlayRecordingLayout: Equatable, Sendable {
-  case compact(position: OverlayPillPosition)
-  case preview(position: OverlayPillPosition)
-
-  /// **A DERIVED adapter, and C3b deletes it** (#2375 C3a).
-  ///
-  /// Its only inputs are the accepted definition's resolved design and the
-  /// position captured in the same transaction. It never rereads capability,
-  /// never rereads selections, and has no default — an adapter that can compute
-  /// its own answer is not an adapter, it is the second authority coming back
-  /// wearing a local variable's name.
-  ///
-  /// It survives C3a only so geometry is unchanged and that chunk stays a
-  /// structural change rather than a visual one. C3b deletes it together with all
-  /// three of its replacements, because they are one value being taken apart and
-  /// a partial landing leaves a consumer reading a deleted field.
-  init(design: RecordingPillDesign, position: OverlayPillPosition) {
-    self = design.canHoldWords ? .preview(position: position) : .compact(position: position)
-  }
-
-  var usesPreview: Bool {
-    if case .preview = self { return true }
-    return false
-  }
-
-  var position: OverlayPillPosition {
-    switch self {
-    case .compact(let position), .preview(let position): return position
-    }
-  }
-
-  /// `RecordingOverlayPanel`: `showsPreview ? previewPillWidth : 185`.
-  var width: CGFloat {
-    switch self {
-    case .compact: return 185
-    case .preview: return 400
-    }
-  }
-
-  /// nil means content-sized, which is `fitToContent: true` at the shipped site.
-  var fixedHeight: CGFloat? {
-    switch self {
-    case .compact: return 92
-    case .preview: return nil
-    }
-  }
-}
 
 /// How a presentation's width is decided. `.measured` means the render model
 /// computes it; nothing may substitute a default for it.
