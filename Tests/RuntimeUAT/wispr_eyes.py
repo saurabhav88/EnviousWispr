@@ -1612,6 +1612,64 @@ def _line_timestamp(line):
         return None
 
 
+def _line_in_window(line, start):
+    """Is this log line stamped at or after `start`?
+
+    ONE implementation, two callers. The consolidation that gave the harness a
+    single log reader briefly left this test written twice - in the reader and in
+    the banner counter - and the mutation control caught it as a DUPLICATED ANCHOR
+    rather than as a survivor. That is the cheaper of the two ways to find out.
+
+    A line whose stamp will not parse answers NO. `AppLogger` writes a well-formed
+    stamp on every line, so an unparseable one is a mangled line rather than an
+    event, and the process SAMPLES remain the mechanism that does not depend on
+    the log being readable at all.
+    """
+    stamp = _line_timestamp(line)
+    return stamp is not None and stamp >= start
+
+
+def log_lines_since(start):
+    """Every `app.log` line stamped at or after `start`, oldest first, across the
+    rotated predecessors.
+
+    THE ONE READER. Rotation produced a finding in three consecutive review
+    rounds, at three different call sites - the banner scan, the retry's own
+    check, and the final marker check - and each was correct and each exposed the
+    next. That is the signature of fixing sites rather than the question.
+
+    The question every one of them was asking is "what did the app log during this
+    window", and `_read_new_log_lines` cannot answer it: it follows the inode, so
+    when `AppLogger.rotateIfNeeded` moves `app.log` to `app.1.log` at its 10 MiB
+    bound, everything before the move is silently absent and the result still
+    looks like a complete slice. A timestamp cannot be moved by a rename, so
+    asking by time has no such failure.
+
+    Cost is one open per file, five files, on a bounded read. That is cheaper than
+    the fourth site nobody has found yet.
+
+    KNOWN AND UNFIXABLE HERE: a RELEASE build writes nothing at all -
+    `AppLogger.swift` gates the whole file sink behind `#if DEBUG`. So no reader
+    of this log can see a Release instance, and no amount of reading better fixes
+    that. The process SAMPLES are the only mechanism that sees one.
+    """
+    directory = os.path.dirname(_APP_LOG_PATH)
+    lines = []
+    # Oldest first: `app.5.log` down to `app.1.log`, then the live file.
+    # `maxFileCount` is 5 in `AppLogger.swift`; reading one more than exists is
+    # free, and reading one FEWER is the silent miss this function exists to stop.
+    for name in [f"app.{i}.log" for i in range(5, 0, -1)] + ["app.log"]:
+        try:
+            with open(os.path.join(directory, name), "rb") as fh:
+                text = fh.read().decode("utf-8", "replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if _line_in_window(line, start):
+                lines.append(line)
+    return lines
+
+
 def launch_banners_since(start):
     """Launch banners at or after `start`, across the live log AND its rotated
     predecessors.
@@ -1632,17 +1690,7 @@ def launch_banners_since(start):
     looking slice with the banner missing. Scanning the predecessors costs one
     open each and removes the whole question.
     """
-    directory = os.path.dirname(_APP_LOG_PATH)
-    texts = []
-    # `maxFileCount` is 5 in `AppLogger.swift`; reading one more than exists is
-    # free, and reading one FEWER is the silent-miss this function exists to stop.
-    for name in ["app.log"] + [f"app.{i}.log" for i in range(1, 6)]:
-        try:
-            with open(os.path.join(directory, name), "rb") as fh:
-                texts.append(fh.read().decode("utf-8", "replace"))
-        except OSError:
-            continue
-    return count_launch_banners(texts, start)
+    return count_launch_banners(["\n".join(log_lines_since(start))], start)
 
 
 def count_launch_banners(texts, start):
@@ -1659,13 +1707,7 @@ def count_launch_banners(texts, start):
         for line in text.splitlines():
             if _LAUNCH_BANNER not in line:
                 continue
-            stamp = _line_timestamp(line)
-            # A line whose stamp will not parse is NOT counted. That is the
-            # permissive direction and it is deliberate: `AppLogger` writes a
-            # well-formed stamp on every line, so an unparseable one is a mangled
-            # line rather than a launch, and the SAMPLES remain the mechanism that
-            # does not depend on the log being readable at all.
-            if stamp is not None and stamp >= start:
+            if _line_in_window(line, start):
                 seen += 1
     return seen
 
@@ -1698,12 +1740,20 @@ def instances_stayed_single(before, window_start, samples):
     things to go and look at.
 
     KNOWN RESIDUAL, stated rather than implied, because "two mechanisms" reads as
-    "closed" and this is not. Both must fail together, and they can: a second
-    instance that launches AND exits entirely between two samples, whose launch
-    banner is ALSO lost to the concurrent-writer line loss `AppLogger` suffers -
-    and the moment a second app launches is precisely when there are two writers,
-    so the banner is the line most at risk. The scenario is narrow and it is not
-    impossible.
+    "closed" and this is not.
+
+    THE LARGEST MEMBER IS A RELEASE BUILD, and an earlier version of this note got
+    it wrong by describing a narrow line-loss race instead. `AppLogger.swift` gates
+    the ENTIRE file sink behind `#if DEBUG`, so a Release instance writes no banner
+    at all - not one at risk of being lost, one that never exists. Meanwhile
+    `running_enviouswispr_instances` counts Release bundles deliberately, because
+    they answer the same global hotkey. So for a Release instance the banner
+    mechanism contributes NOTHING and the samples are the only cover, which makes
+    the residual the whole sampling gap rather than a rare coincidence.
+    A debug instance is the narrow case: it must launch AND exit between two
+    samples, with its banner ALSO lost to the concurrent-writer line loss
+    `AppLogger` suffers - and the moment a second app launches is exactly when
+    there are two writers, so the banner is the line most at risk.
 
     What is NOT in that residual any more, because a review round closed both: a
     banner written before the log cursor was taken, and a banner carried into a
@@ -1785,14 +1835,38 @@ def double_press_record_key(attempts=3):
     # THE ATTEMPT COUNT IS PRINTED, ALWAYS. A retry that hides itself turns a
     # degrading delivery path into a silent slowdown, and the next person to
     # measure this needs to see 1 become 3 before it becomes a failure.
+    # A RETRY IS ONLY SAFE WHILE THE LOG CAN CONTRADICT IT, and that is not a
+    # detail - it is the difference between a retry and a saboteur. If the marker
+    # cannot be read, an attempt that SUCCEEDED reads as a failure, and the
+    # retry's first press is then delivered to an app that is already locked,
+    # where `HotkeyService` reads it as the STOP gesture. The harness would
+    # dismantle its own successful attempt and report a product failure.
+    #
+    # No file log means no evidence: `AppLogger` gates the whole file sink behind
+    # `#if DEBUG` and, within a debug build, behind the in-app Debug Mode switch.
+    # So drive the gesture ONCE, say plainly that it could not be verified, and
+    # leave the verdict to the caller's own marker check rather than pressing
+    # again into an unknown state.
+    if _snapshot_log_size() is None:
+        print("  NOTE: no readable app.log, so an attempt cannot be verified; "
+              "driving the gesture ONCE and not retrying - a retry into an "
+              "already-locked recording is read as the stop gesture")
+        press_record_key()
+        time.sleep(0.12)
+        press_record_key()
+        return True
+
     for attempt in range(1, attempts + 1):
-        log_state = _snapshot_log_size()
+        attempt_start = _dt.datetime.now().astimezone()
         press_record_key()
         time.sleep(0.12)
         press_record_key()
         time.sleep(0.6)
+        # `log_lines_since`, NOT a cursor: a rotation between the snapshot and
+        # this read would hide the marker, and a hidden marker here is what turns
+        # the retry into the saboteur described above.
         seen = any("Double press" in line
-                   for line in (_read_new_log_lines(log_state)[0] or []))
+                   for line in log_lines_since(attempt_start))
         if seen:
             if attempt > 1:
                 print(f"  double press engaged on attempt {attempt} of {attempts}")
@@ -1990,7 +2064,13 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
         "Hands-free mode activated": False,
         "Single press while locked": False,
     }
-    for line in log_lines or []:
+    # Read from the FILES by timestamp rather than from the accumulated slice.
+    # `_wait_for_pipeline_completion` follows the inode, so a rotation crossing
+    # the 10 MiB bound mid-run leaves every marker in `app.1.log` and the slice
+    # looks complete without them - which fails a SUCCESSFUL single-instance run
+    # and reports it as missing hands-free markers. Same root as the banner scan
+    # and the retry check; one reader now answers all three.
+    for line in log_lines_since(window_start):
         for m in markers:
             if m in line:
                 markers[m] = True
@@ -2580,6 +2660,57 @@ def _self_test():
     else:
         print(f"  ok      {name}")
     file_rows = 1
+
+    # THE ONE READER, ordered. Three review rounds produced a rotation finding at
+    # three different call sites, so what is asserted here is the property that
+    # made them one bug: history survives a rename, and it comes back in the order
+    # it was written.
+    real_log_path = _APP_LOG_PATH
+    tmpdir = _tf.mkdtemp()
+    try:
+        pathlib.Path(tmpdir, "app.2.log").write_text(
+            "[2026-01-01T12:00:01-05:00] [INFO] oldest\n")
+        pathlib.Path(tmpdir, "app.1.log").write_text(
+            "[2026-01-01T11:59:59-05:00] [INFO] before the window\n"
+            "[2026-01-01T12:00:02-05:00] [INFO] middle\n")
+        pathlib.Path(tmpdir, "app.log").write_text(
+            "[2026-01-01T12:00:03-05:00] [INFO] newest\n")
+        globals()["_APP_LOG_PATH"] = str(pathlib.Path(tmpdir, "app.log"))
+        got_lines = log_lines_since(T0)
+    finally:
+        globals()["_APP_LOG_PATH"] = real_log_path
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    name = "the reader returns rotated history oldest-first and drops pre-window lines"
+    tails = [l.split("] ")[-1] for l in got_lines]
+    if tails != ["oldest", "middle", "newest"]:
+        failures.append(f"{name}: got {tails}")
+    else:
+        print(f"  ok      {name}")
+    file_rows += 1
+
+    # THE DESTRUCTIVE PATH, and it is the one row here that protects a person
+    # rather than a number. With no readable log an attempt cannot be verified, so
+    # a retry would deliver its first press into an already-locked recording,
+    # where `HotkeyService` reads it as the STOP gesture - the harness dismantling
+    # its own success and reporting a product failure. Exactly two presses, no
+    # retry.
+    presses = []
+    real_press = globals()["press_record_key"]
+    real_snap = globals()["_snapshot_log_size"]
+    globals()["press_record_key"] = lambda: presses.append(1)
+    globals()["_snapshot_log_size"] = lambda: None
+    try:
+        engaged = double_press_record_key(attempts=3)
+    finally:
+        globals()["press_record_key"] = real_press
+        globals()["_snapshot_log_size"] = real_snap
+    name = "with no readable log the gesture is driven ONCE and never retried"
+    if len(presses) != 2 or not engaged:
+        failures.append(f"{name}: {len(presses)} presses, engaged={engaged}; "
+                        f"want 2 presses and engaged=True")
+    else:
+        print(f"  ok      {name}")
+    file_rows += 1
 
     # `instances_stayed_single` answers a question no snapshot pair can: did one
     # instance own the WHOLE window. Rows 2 and 3 are the review finding that
