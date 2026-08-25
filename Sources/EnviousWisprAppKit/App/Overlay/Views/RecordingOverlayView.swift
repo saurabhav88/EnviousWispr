@@ -220,6 +220,32 @@ extension RecordingPillDesign {
 // MARK: - RecordingOverlayView
 
 /// Compact recording indicator overlay.
+/// How the recording poll waits between reads (#2377 Phase 5, C5).
+///
+/// **A seam because the alternative is a timed wait, and the question is about
+/// what the poll does over TIME.** `testing-philosophy.md`
+/// RULE: never-guess-when-the-subject-is-finished forbids inferring that a
+/// subject is finished from elapsed time; with this, a test learns the loop has
+/// parked from a signal the loop sends, and releases it itself.
+///
+/// **Available in Release, not `#if DEBUG`.** Phase 5's proofs must execute in
+/// both configurations, and a DEBUG-only seam forecloses that.
+struct RecordingPollCadence: Sendable {
+
+  /// Returns when it is time to read the providers again.
+  let wait: @Sendable () async -> Void
+
+  /// 50 ms, which is what shipped and what `RainbowLevelMeter`'s history depth
+  /// is scaled to.
+  ///
+  /// **`try?` here does NOT swallow cancellation into another read.** A cancelled
+  /// sleep returns immediately and the loop's own `while !Task.isCancelled` is
+  /// what ends it, so a cancelled poll performs no further provider read.
+  static let live = RecordingPollCadence {
+    try? await Task.sleep(for: .milliseconds(50))
+  }
+}
+
 struct RecordingOverlayView: View {
   let audioLevelProvider: () -> Float
   /// #1393: monotonic elapsed recording time, read from the shared kernel
@@ -263,6 +289,9 @@ struct RecordingOverlayView: View {
   /// a string and asks nobody what it should say.
   let isLocked: Bool
   let noticeText: String?
+
+  /// How long the poll waits between reads. Production never passes this.
+  let cadence: RecordingPollCadence
   @State private var audioLevel: Float = 0
 
   /// Counts polls, not level changes. #2216: the meter's history needs a sample
@@ -292,7 +321,8 @@ struct RecordingOverlayView: View {
     chrome: RecordingPillChrome,
     isLocked: Bool,
     noticeText: String?,
-    initialPreview: LivePreviewDisplay = .off
+    initialPreview: LivePreviewDisplay = .off,
+    cadence: RecordingPollCadence = .live
   ) {
     self.audioLevelProvider = audioLevelProvider
     self.recordingElapsedProvider = recordingElapsedProvider
@@ -301,6 +331,7 @@ struct RecordingOverlayView: View {
     self.chrome = chrome
     self.isLocked = isLocked
     self.noticeText = noticeText
+    self.cadence = cadence
     _preview = State(initialValue: initialPreview)
   }
 
@@ -554,7 +585,7 @@ struct RecordingOverlayView: View {
         audioTick &+= 1
         elapsed = recordingElapsedProvider() ?? 0
         preview = livePreviewProvider()
-        try? await Task.sleep(for: .milliseconds(50))
+        await cadence.wait()
       }
     }
   }
