@@ -80,6 +80,21 @@ struct QuickAddPanelCopyTests {
       rendered.contains("Create it as a new word"), "the way forward the open panel still has")
   }
 
+  @Test("The commonest refusal blames nobody and names the one thing that fixes it")
+  func nothingSelectedBlamesNobody() {
+    // Highlighting nothing is the likeliest way to reach a refusal at all, and it is the only one
+    // where NOTHING went wrong. It used to borrow `selectionUnavailable`'s sentence, which names
+    // terminals and accuses the frontmost app of withholding a selection — a confident diagnosis
+    // handed to someone whose only mistake was not selecting a word.
+    let message = QuickAddPanelCopy.refusalMessage(.nothingSelected)
+    let accusatory = QuickAddPanelCopy.refusalMessage(.selectionUnavailable)
+
+    #expect(message != accusatory, "the whole point is that these two are different sentences")
+    #expect(!message.lowercased().contains("terminal"), "no app is at fault here")
+    #expect(!message.lowercased().contains("will not share"), "nothing was withheld")
+    #expect(message.lowercased().contains("select"), "and the way out is stated, not implied")
+  }
+
   @Test("Every refusal has its own sentence")
   func everyRefusalHasItsOwnSentence() {
     // A single "could not read your selection" would be technically true for all of them and useless

@@ -153,10 +153,16 @@ final class QuickAddCoordinator {
       refusal = nil
     case .noSelection:
       heard = ""
-      // No selection is not an error and not a success. It reaches the panel as the one refusal
-      // meaning "you have not told me anything yet"; the panel then states it and offers the
-      // by-hand route, which is the only control that can do anything without a heard word.
-      refusal = .selectionUnavailable
+      // No selection is not an error and not a success: the read SUCCEEDED and there was nothing to
+      // read. It reaches the panel as the refusal meaning "you have not told me anything yet", the
+      // panel states it, and the by-hand route is the only control that can do anything without a
+      // heard word.
+      //
+      // **This used to be `.selectionUnavailable`, whose sentence names TERMINALS and accuses the
+      // frontmost app of withholding a selection.** Pressing the shortcut having highlighted nothing
+      // is the likeliest way to reach a refusal at all, so the commonest case got a confident
+      // diagnosis of an app that had done nothing wrong instead of "select a word first".
+      refusal = .nothingSelected
     case .refused(let reason):
       heard = ""
       refusal = reason
@@ -256,6 +262,27 @@ final class QuickAddCoordinator {
     // the ranking by exactly this id set, so a pack row reaching this line has no live twin.
     if let current = userWords.first(where: { $0.id == candidate.word.id }) {
       return .live(current)
+    }
+    // **A pack row whose CANONICAL the user already owns under a different id.** `ownedByUser()`
+    // keeps the pack's id, and `packTermsNotOverridden` filters the ranking by ID, so a user word
+    // called "Codec" and an enabled pack term called "Codec" are two rows with two ids and one name.
+    // Converting the pack snapshot then hands `CustomWordsManager.add` a colliding canonical, which
+    // it refuses SILENTLY (`guard !words.contains(sameCanonical) else { return }`) — and the
+    // post-write confirmation then finds the spelling on the USER word and reports success for an
+    // override that was never created.
+    //
+    // Merging into the user's own entry is not a consolation prize, it is the only action that can
+    // succeed: while that canonical is taken, no override under it is writable, and the end state
+    // the user asked for — this spelling maps to that word — is exactly what this produces.
+    //
+    // Scoped to pack rows deliberately. A USER candidate missing by id is `.gone`, which is a
+    // deletion the panel must not paper over by matching on a name that happens to be reused.
+    if candidate.isPackTerm,
+      let sameName = userWords.first(where: {
+        $0.canonical.caseInsensitiveCompare(candidate.word.canonical) == .orderedSame
+      })
+    {
+      return .live(sameName)
     }
     // A PACK term cannot be written through the words coordinator: `CustomWordsManager.update` looks
     // the id up in the user library, does not find it, and returns having written NOTHING. Convert

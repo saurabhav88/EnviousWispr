@@ -132,6 +132,15 @@ enum QuickAddPanelCopy {
       // The plan's exact wording (§3, "Refresh before ranking"). Capital W on Words because that is
       // what the feature is called in Settings, and a user reading this has to find it there.
       "Your Words could not be refreshed, so there is nothing to match against yet. Try again."
+    case .nothingSelected:
+      // The likeliest refusal of the eight, and the only one where NOTHING went wrong. It used to
+      // borrow `selectionUnavailable`'s sentence, which names terminals and blames the frontmost
+      // app — a confident diagnosis handed to someone whose only mistake was not highlighting a
+      // word. So this one names no app, assigns no fault, and says the single thing that fixes it.
+      // No route named ("press the shortcut again"), because BOTH doors reach here: the hotkey with
+      // nothing highlighted, and the Services menu handed whitespace. A sentence naming one of them
+      // is wrong half the time it is shown.
+      "Nothing was selected. Highlight the word you want and try again, or add it by hand below."
     }
   }
 }

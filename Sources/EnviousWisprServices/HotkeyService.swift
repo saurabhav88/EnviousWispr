@@ -862,6 +862,20 @@ public final class HotkeyService {
   /// drives on `.recording` entry and exit. The Carbon path gets this for free —
   /// an unregistered hotkey delivers no event — but the modifier monitors stay
   /// installed the whole time, so the modifier path has to ask.
+  /// The bare-modifier keyCode whose press cancel consumed, until its aggregate flag drops.
+  ///
+  /// Exists because `isPress` is derived from a device-INDEPENDENT flag: with Left Option held,
+  /// releasing Right Option leaves `.option` set, so the release is indistinguishable from a press
+  /// at this layer. Cancel closes its own double-fire by disarming, which is correct and is exactly
+  /// what lets a second role claim the re-entry — see the note at the disarm.
+  ///
+  /// **Deliberately NOT cleared by `unregisterCancelHotkey()`, and that is load-bearing rather than
+  /// an omission.** That teardown runs on the way out of a cancel, which is inside the window this
+  /// marker exists to cover, so clearing it there would make the whole thing dead code that still
+  /// reads as a fix. The aggregate flag dropping is the only signal that the gesture is actually
+  /// over, so it is the only thing that clears this.
+  private var keyCodeConsumedByCancel: UInt16?
+
   private var armedRoles: Set<ShortcutRole> {
     // Quick Add is unconditional: it belongs to the app, not to a recording.
     isCancelArmed ? [.record, .cancel, .quickAdd] : [.record, .quickAdd]
@@ -1167,6 +1181,20 @@ public final class HotkeyService {
     // Determine press vs. release by checking whether the flag is present
     let isPress = currentFlags.contains(flag)
 
+    // **Swallow the tail of a gesture cancel already consumed.** With the opposite-side modifier
+    // held, `isPress` stays true through this key's physical release (the mask is aggregate and
+    // device-independent), so the release re-enters looking exactly like a press — and cancel has
+    // disarmed itself by then, so the matcher hands the same key to the next role that claims it.
+    //
+    // Cleared when the aggregate flag finally drops, which is the only signal available that the
+    // whole gesture is over. Swallowing a genuine second tap of this key while the other side is
+    // still held is the accepted cost and it is the safe direction: the recording is already gone,
+    // and the alternative is opening a panel the user did not ask for on the way out of losing it.
+    if keyCodeConsumedByCancel == keyCode {
+      if !isPress { keyCodeConsumedByCancel = nil }
+      return
+    }
+
     // #1991, blocker 1. This was `guard keyCode == toggleKeyCode`, which asked
     // "is this the RECORD key" and returned early for everything else — so a
     // bare modifier bound to CANCEL reached here and was dropped on the floor.
@@ -1223,6 +1251,17 @@ public final class HotkeyService {
       // dependent left/right masks and would change heart-path dispatch, so it
       // is not folded into a cancel-key fix.
       isCancelArmed = false
+      // **AND DISARMING IS WHAT MAKES THE STRAY RELEASE DANGEROUS RATHER THAN HARMLESS, once a
+      // SECOND role can claim this key.** The comment above is right that the release "finds nothing
+      // to cancel" — it then falls through to the `.quickAdd` arm, which #2381 added, matches the
+      // same bare modifier when the user has bound both to it, and fires on `isPress`. So one cancel
+      // gesture discarded the recording AND opened the panel.
+      //
+      // Not a pre-existing residual: this branch introduced the second claimant. Marking the key is
+      // what lets the TAIL of a consumed gesture be swallowed instead of reinterpreted as a
+      // lower-priority role, and it is per-key rather than a flag because the aggregate mask cannot
+      // tell us which physical key came up.
+      keyCodeConsumedByCancel = keyCode
       performCleanup()
       Task { await onCancelRecording?() }
       emitHotkeyPressed(.cancel, trigger: .cancel)

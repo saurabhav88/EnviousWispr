@@ -166,13 +166,18 @@ struct QuickAddCoordinatorTests {
     #expect(recorder.opened != nil, "the panel opens on a stated reason, never a silent no-op")
   }
 
-  @Test("No selection is a reason, not an error")
-  func noSelectionIsAReason() throws {
+  @Test("No selection gets its OWN reason, never the one that blames the app")
+  func noSelectionGetsItsOwnReason() throws {
+    // This used to map onto `selectionUnavailable`, whose sentence names terminals and accuses the
+    // frontmost app of withholding a selection. Pressing the shortcut having highlighted nothing is
+    // the likeliest way to reach a refusal at all, so the commonest case got a confident diagnosis
+    // of an app that had done nothing wrong. The old test asserted `refusal != nil`, which is true
+    // of every member and so could not see it.
     let (coordinator, _) = makeCoordinator(selection: .noSelection)
 
     let model = try #require(beginAndShow(coordinator))
 
-    #expect(model.refusal != nil, "the search field is the way forward, and the panel says so")
+    #expect(model.refusal == .nothingSelected)
     #expect(model.heard.isEmpty)
   }
 
@@ -302,6 +307,35 @@ struct QuickAddCoordinatorTests {
     // And the funnel says what was WRITTEN. The snapshot still calls this a pack term; a user word
     // is what landed, so reporting `pack_term` would be a metric asserting the opposite.
     #expect(recorder.targetKinds == [.userWord])
+  }
+
+  @Test("A pack row whose NAME the user already owns merges into their word, not a doomed override")
+  func aPackRowCollidingByNameMergesIntoTheUserWord() throws {
+    // `ownedByUser()` keeps the pack term's id and `packTermsNotOverridden` filters the ranking by
+    // ID, so a user word and an enabled pack term can share a canonical and differ by id — two rows,
+    // one name. Converting the pack snapshot hands `add` a colliding canonical, which it refuses
+    // SILENTLY, and the post-write confirmation then finds the spelling on the USER word and reports
+    // success for an override that was never created.
+    let pack = word("Codec", source: .pack)
+    let mine = word("Codec", aliases: ["kodek"])
+    #expect(pack.id != mine.id, "the whole case is one name under two identities")
+
+    let (coordinator, recorder) = makeCoordinator(userWords: [mine], packTerms: [pack])
+    let model = try #require(beginAndShow(coordinator))
+    // Reached through SEARCH, not the heard ranking, and the difference is load-bearing. Pack terms
+    // enter the heard list only when the user's best score misses the confidence bar, so a strong
+    // user match hides them; the search population is `userWords + packTermsNotOverridden`
+    // unconditionally, so both rows are on screen the moment the user types the shared name.
+    model.updateQuery("Codec")
+    let packRow = try #require(model.ranking.candidates.first { $0.isPackTerm })
+
+    coordinator.accept(packRow, from: model)
+
+    let saved = try #require(recorder.saved.first)
+    #expect(saved.id == mine.id, "written to the entry that can actually take it")
+    #expect(saved.aliases.contains("kodek"), "and their own spelling survived the merge")
+    #expect(saved.aliases.contains("codecs"))
+    #expect(recorder.targetKinds == [.userWord], "a user word is what was written, so say so")
   }
 
   @Test("A word deleted while the panel sat open is not resurrected by accepting its row")
@@ -541,7 +575,11 @@ struct QuickAddCoordinatorTests {
     let model = try #require(beginAndShow(coordinator, door: .service, selectionOverride: "   "))
 
     #expect(model.heard.isEmpty)
-    #expect(model.refusal == .selectionUnavailable)
+    // The TWIN of the hotkey case, and it moved with it: whitespace classifies as no selection, so
+    // both doors now land on the reason that blames nobody rather than on the one naming terminals.
+    // Its sentence deliberately names no route, because a message telling a Services user to "press
+    // the shortcut again" is wrong about how they got here.
+    #expect(model.refusal == .nothingSelected)
     #expect(model.ranking.candidates.isEmpty)
     #expect(recorder.outcomes.isEmpty)
   }

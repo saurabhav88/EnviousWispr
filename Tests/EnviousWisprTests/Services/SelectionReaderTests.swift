@@ -64,12 +64,14 @@ struct SelectionReaderTests {
 
   @Test("A selection comes back as text")
   func aSelectionIsReturned() {
-    #expect(SelectionReader.resolve(error: .success, value: "codecs" as CFString) == .text("codecs"))
+    #expect(
+      SelectionReader.resolve(error: .success, value: "codecs" as CFString) == .text("codecs"))
   }
 
   @Test("A selection is trimmed, because a drag routinely picks up the surrounding space")
   func aSelectionIsTrimmed() {
-    #expect(SelectionReader.resolve(error: .success, value: "  codecs \n" as CFString) == .text("codecs"))
+    #expect(
+      SelectionReader.resolve(error: .success, value: "  codecs \n" as CFString) == .text("codecs"))
   }
 
   @Test("Whitespace only is nothing selected, not a selection of spaces")
@@ -115,7 +117,8 @@ struct SelectionReaderTests {
     for value in notStrings {
       #expect(
         SelectionReader.resolve(error: .success, value: value) == .refused(.unreadable),
-        "a \(CFCopyTypeIDDescription(CFGetTypeID(value)) as String? ?? "?") answer must not read as an empty selection")
+        "a \(CFCopyTypeIDDescription(CFGetTypeID(value)) as String? ?? "?") answer must not read as an empty selection"
+      )
     }
 
     // The paired ACCEPTED case, in the same test rather than a duplicate of `aSelectionIsReturned`:
@@ -154,7 +157,8 @@ struct SelectionReaderTests {
   @Test("An error wins over a value, so a stale string cannot be offered as a selection")
   func anErrorIsNotOverriddenByAValue() {
     #expect(
-      SelectionReader.resolve(error: .cannotComplete, value: "codecs" as CFString) == .refused(.unreadable))
+      SelectionReader.resolve(error: .cannotComplete, value: "codecs" as CFString)
+        == .refused(.unreadable))
   }
 
   // MARK: - Too long to be a word
@@ -165,7 +169,8 @@ struct SelectionReaderTests {
     let tooLong = String(repeating: "a", count: SelectionReader.maximumSelectionScalars + 1)
 
     #expect(
-      SelectionReader.resolve(error: .success, value: tooLong as CFString) == .refused(.selectionTooLong))
+      SelectionReader.resolve(error: .success, value: tooLong as CFString)
+        == .refused(.selectionTooLong))
   }
 
   @Test("A selection exactly at the store's ceiling is accepted")
@@ -195,12 +200,15 @@ struct SelectionReaderTests {
 
     let underCeiling = String(repeating: family, count: SelectionReader.maximumSelectionScalars / 5)
     #expect(underCeiling.unicodeScalars.count <= SelectionReader.maximumSelectionScalars)
-    #expect(SelectionReader.resolve(error: .success, value: underCeiling as CFString) == .text(underCeiling))
+    #expect(
+      SelectionReader.resolve(error: .success, value: underCeiling as CFString)
+        == .text(underCeiling))
 
     let overCeiling = underCeiling + family
     #expect(overCeiling.unicodeScalars.count > SelectionReader.maximumSelectionScalars)
     #expect(
-      SelectionReader.resolve(error: .success, value: overCeiling as CFString) == .refused(.selectionTooLong),
+      SelectionReader.resolve(error: .success, value: overCeiling as CFString)
+        == .refused(.selectionTooLong),
       "the ceiling counted characters rather than scalars")
   }
 
@@ -237,11 +245,17 @@ struct SelectionReaderTests {
     #expect(SelectionReader.classify("   codecs   ") == .text("codecs"))
   }
 
-  @Test("No reader outcome is wordsUnavailable — that member has a different producer")
-  func noReadOutcomeIsWordsUnavailable() {
-    // `Refusal` is the panel's one reason line AND the telemetry refuse_reason, so it holds a case
+  @Test("No reader outcome is a coordinator-owned refusal — those members have other producers")
+  func noReadOutcomeIsCoordinatorOwned() {
+    // `Refusal` is the panel's one reason line AND the telemetry refuse_reason, so it holds cases
     // the reader cannot produce. Asserting the boundary is what keeps that from decaying into "the
     // reader might return anything in here".
+    //
+    // TWO members now, and the second is why this asserts a SET rather than a name. `nothingSelected`
+    // is minted by the coordinator from `.noSelection`, exactly as `wordsUnavailable` is minted from
+    // a failed refresh — and it exists because mapping `.noSelection` onto `selectionUnavailable`
+    // handed the commonest refusal a sentence blaming the frontmost app for withholding a selection.
+    let coordinatorOwned: [SelectionReader.Refusal] = [.wordsUnavailable, .nothingSelected]
     var seen: [SelectionReader.Result] = [
       SelectionReader.classify(""),
       SelectionReader.classify("codecs"),
@@ -261,8 +275,10 @@ struct SelectionReaderTests {
       if let refusal { seen.append(.refused(refusal)) }
     }
 
-    #expect(!seen.contains(.refused(.wordsUnavailable)))
-    // Paired positive: a sweep that produced no refusals at all would pass the line above.
+    for owned in coordinatorOwned {
+      #expect(!seen.contains(.refused(owned)), "the reader minted \(owned), which it does not own")
+    }
+    // Paired positive: a sweep that produced no refusals at all would pass every line above.
     #expect(seen.contains { if case .refused = $0 { true } else { false } })
   }
 

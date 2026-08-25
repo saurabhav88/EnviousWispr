@@ -188,6 +188,36 @@ struct HotkeyQuickAddShortcutTests {
     #expect(sink.cancels == 0)
   }
 
+  @Test("One cancel gesture does not also open Quick Add when the other side is held")
+  func aConsumedCancelGestureDoesNotFallThroughToQuickAdd() async {
+    // `.command` is AGGREGATE and device-independent: with Left Command held, releasing Right
+    // Command leaves it set, so the release re-enters reading exactly like a press. Cancel closes
+    // its own double-fire by disarming — correct, and precisely what lets the NEXT claimant of this
+    // key take the re-entry. With both bound to it, one cancel gesture discarded the recording and
+    // opened the panel on the way out.
+    let (service, sink, quickAdd, cancel, _) = makeService(
+      recordKey: chordKeyCode, cancelKey: rightCommand, quickAddKey: rightCommand)
+    service.registerCancelHotkey()
+
+    service.handleFlagsChangedValues(keyCode: rightCommand, flags: .command)
+    await cancel.wait()
+    #expect(sink.cancels == 1)
+
+    // Right Command physically UP, Left still down, so the flag survives.
+    service.handleFlagsChangedValues(keyCode: rightCommand, flags: .command)
+
+    #expect(sink.quickAdds == 0, "the tail of a consumed cancel is not a Quick Add gesture")
+    #expect(sink.cancels == 1, "and it is not a second cancel either")
+
+    // PAIRED POSITIVE, and without it "swallow this key forever" passes everything above. The
+    // aggregate flag dropping is the only evidence the gesture is over; after that the key is live.
+    service.handleFlagsChangedValues(keyCode: rightCommand, flags: [])
+    service.handleFlagsChangedValues(keyCode: rightCommand, flags: .command)
+    await quickAdd.wait()
+
+    #expect(sink.quickAdds == 1, "swallowing is bounded to the one gesture, not to the key")
+  }
+
   @Test("A Quick Add modifier that is part of the record chord is refused, not accepted")
   func quickAddSharingTheRecordChordIsRefused() async {
     // Accepting would open a panel that TAKES KEY FOCUS the instant the user pressed the first
@@ -348,7 +378,8 @@ struct HotkeyQuickAddShortcutTests {
     // if it ever collided", which is a different defect.
     #expect(
       HotkeyService.quickAddMayHoldItsChord(
-        isEnabled: true, isSuspended: false, quickAdd: shared, cancel: shared, isCancelArmed: false))
+        isEnabled: true, isSuspended: false, quickAdd: shared, cancel: shared, isCancelArmed: false)
+    )
   }
 
   @Test("A chord cancel does not share is Quick Add's whether or not a recording is running")
@@ -360,7 +391,8 @@ struct HotkeyQuickAddShortcutTests {
 
     #expect(
       HotkeyService.quickAddMayHoldItsChord(
-        isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel, isCancelArmed: true))
+        isEnabled: true, isSuspended: false, quickAdd: quickAdd, cancel: cancel, isCancelArmed: true
+      ))
   }
 
   @Test("A stopped or suspended service holds no Quick Add chord, collision or not")

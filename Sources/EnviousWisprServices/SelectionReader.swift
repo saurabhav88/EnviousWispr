@@ -60,6 +60,20 @@ public enum SelectionReader {
     /// asserted instead of assumed: `noReadOutcomeIsWordsUnavailable` requires every reader path to
     /// stay out of this case.
     case wordsUnavailable = "words_unavailable"
+    /// The read SUCCEEDED and the user had selected nothing. The ordinary case, not a fault.
+    ///
+    /// **The second member `SelectionReader` never produces, for the same reason as the one above**
+    /// — this set is the panel's reason line and the telemetry `refuse_reason`, and there is one of
+    /// each — but it is worth its own entry because of what it replaced. `.noSelection` used to be
+    /// mapped onto `selectionUnavailable`, whose sentence names TERMINALS and accuses the frontmost
+    /// app of withholding a selection. Pressing the shortcut in TextEdit having highlighted nothing
+    /// is the most likely way to reach a refusal at all, and it got a confident diagnosis of an app
+    /// that had done nothing wrong, instead of "select a word first".
+    ///
+    /// Two states, one slot, and the collapse pointed at the accusatory member: exactly the
+    /// three-valued shape `validation-discipline` describes, where the unhandled input lands in a
+    /// neighbouring branch and inherits a claim that was never about it.
+    case nothingSelected = "nothing_selected"
   }
 
   /// The longest selection worth reading, in Unicode scalars.
@@ -69,7 +83,9 @@ public enum SelectionReader {
   /// saved and a panel offering it would be confidently wrong. It is also a real bound on work —
   /// the scorer's edit distance builds an (m+1)x(n+1) matrix PER CANDIDATE, so a document-sized
   /// selection against a few hundred words is not a slow ranking, it is a frozen app.
-  public static var maximumSelectionScalars: Int { CustomWordsImportLimits.maximumStoredValueScalars }
+  public static var maximumSelectionScalars: Int {
+    CustomWordsImportLimits.maximumStoredValueScalars
+  }
 
   // MARK: - The live read
 
@@ -89,7 +105,8 @@ public enum SelectionReader {
     // is not a state this entry point can be called from.
     let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier
 
-    if let refusal = refusalBeforeReading(isTrusted: AXIsProcessTrusted(), frontmostPID: frontmost) {
+    if let refusal = refusalBeforeReading(isTrusted: AXIsProcessTrusted(), frontmostPID: frontmost)
+    {
       return .refused(refusal)
     }
     // Safe: `refusalBeforeReading` returns non-nil for a nil or non-positive pid.
