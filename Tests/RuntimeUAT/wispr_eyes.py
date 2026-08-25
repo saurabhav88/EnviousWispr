@@ -1460,12 +1460,103 @@ def test_cancel(hold=2.0):
     return menu_ok and clip_ok
 
 
-def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30.0):
-    """Test hands-free (persistent) recording mode via menu items.
+# Right Option, the shipped default record key. `simulate_input._MODIFIER_FLAGS`
+# already maps it; this constant exists so the helpers below read as a hotkey
+# rather than as a keycode.
+RECORD_KEY = "ropt"
 
-    Menu-based recording IS hands-free: tap Start Recording -> recording persists
-    until Stop Recording is tapped. This test verifies that flow works and that
-    recording stays active over time (not auto-stopping).
+# The app's own chain window, `TimingConstants.handsFreeDebounceDelayMs = 500`.
+# Named rather than inlined so a future change to that constant has one place to
+# meet here — a hard-coded 0.5 in three call sites is how a harness quietly stops
+# reaching the behaviour it tests.
+_CHAIN_WINDOW_S = 0.5
+
+
+def press_record_key():
+    """Post ONE press of the record hotkey, the way the app can actually see it.
+
+    The record key is a BARE MODIFIER, so it is delivered as `kCGEventFlagsChanged`
+    rather than keyDown/keyUp, and it is handled through an event tap rather than
+    Carbon (`tools-and-apps.md` FACT: the-record-hotkey-IS-drivable-synthetically-only-cancel-is-not).
+
+    **This delegates to `simulate_input.modifier_down`/`modifier_up`, which have
+    carried the correct mechanism all along** — including
+    `CGEventSetIntegerValueField(kCGKeyboardEventKeycode)`, because the keycode
+    does NOT survive the type change on its own. #2410 proposed a fresh helper
+    "so nobody re-derives this"; the snippet it proposed was itself a
+    re-derivation, and it omitted that line. A press missing it produces a pill on
+    screen and ZERO chain detections — events demonstrably arriving and being
+    acted on, so the only conclusion available is that the app's chain detection
+    is broken, which is false. A half-working result that indicts production code
+    is strictly worse than a silent one.
+
+    Do not inline a `CGEventSetType` call here or anywhere else in this harness.
+    Two implementations of this already existed; a third is how they drift.
+    """
+    import simulate_input as _si
+
+    kc = _si.MODIFIER_KEYS[RECORD_KEY]
+    _si.modifier_down(kc)
+    time.sleep(0.04)
+    _si.modifier_up(kc)
+
+
+def double_press_record_key():
+    """Two presses inside the app's chain window — the hands-free gesture (#2410).
+
+    The window is measured from the moment RECORDING STARTS, not from the first
+    press, so the gap here is deliberately well inside 500ms rather than close to
+    it.
+
+    PRECONDITION: NOT YET MEASURED. Whether the event tap needs EnviousWispr
+    frontmost is unestablished — a global hotkey works because the tap is not
+    frontmost-scoped, which is an argument from architecture and not a
+    measurement. This docstring will carry either an explicit precondition or an
+    explicit "no precondition, measured <date>, Settings-focused arm" once the
+    two-arm run has happened. It will not carry silence: an absent statement here
+    reads as examined-and-fine, which is the failure this whole pair of issues is
+    about.
+    """
+    press_record_key()
+    time.sleep(0.12)
+    press_record_key()
+
+
+def single_press_record_key():
+    """One press AFTER the lock cooldown — the hands-free stop (#2410).
+
+    `HotkeyService` ignores presses within 500ms of locking, so a stop posted
+    too early is swallowed by the cooldown and reads as "the app ignored the
+    stop". The caller is responsible for having recorded for longer than that;
+    this helper only refuses to be the reason it was too soon.
+    """
+    press_record_key()
+
+
+def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30.0):
+    """Drive the real hands-free gesture: double-press to lock, single-press to stop.
+
+    **THE OLD DOCSTRING SAID "Menu-based recording IS hands-free" AND THE APP HAS
+    NEVER AGREED (#2409).** Measured across all five rotated logs, 434,924 lines:
+    650 `Hands-free mode activated` against 652 `Double press`, so the double
+    press accounts for effectively every activation and the menu path has produced
+    none. (The two-line gap is line loss, not a product gap: `AppLogger` opens
+    without `O_APPEND` and concurrent writers overwrite each other - this repo has
+    measured 48 of 80 lines lost that way.)
+
+    That sentence did not merely mislead, it RETIRED THE CHECK: anyone asking
+    "does our suite cover hands-free" read it, got an answer, and stopped looking,
+    while the helper drove an ordinary menu recording and reported it as
+    hands-free coverage.
+
+    Menu start/stop is still covered - by `test_recording`, which has always done
+    exactly that. So this is not a lost capability; it was a duplicate wearing a
+    name that promised something else.
+
+    ASSERTS THE HANDS-FREE MARKERS, not merely that a recording persisted. Any
+    recording persists; only this gesture produces `Double press`,
+    `Hands-free mode activated` and `Single press while locked`. Without that
+    check the test would still be measuring the wrong thing with the right input.
 
     Args:
         audio:    Path to audio file to play during recording (or None to use TTS).
@@ -1503,12 +1594,9 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     log_size_before = _snapshot_log_size()
     clip_before = get_clipboard_text() or ""
 
-    # Phase 1: Start recording via menu
-    print(f"\n--- START RECORDING (hands-free) ---")
-    if not tap("Start Recording"):
-        print("BLOCKED: Could not tap 'Start Recording'")
-        end_test()
-        return False
+    # Phase 1: the REAL gesture - two presses inside the app's chain window.
+    print(f"\n--- DOUBLE PRESS (hands-free lock) ---")
+    double_press_record_key()
 
     # Wait for recording to engage — menu should flip to "Stop Recording"
     t_start = time.time()
@@ -1554,9 +1642,19 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     if audio_proc and audio_proc.poll() is None:
         audio_proc.terminate()
 
-    # Phase 4: Stop recording via menu
-    print(f"\n--- STOP RECORDING ---")
-    tap("Stop Recording")
+    # Phase 4: single press to stop. `HotkeyService` ignores presses within
+    # 500ms of locking, so a stop posted inside that cooldown is swallowed and
+    # reads as "the app ignored it". `hold` is at least a second in every path
+    # above, so the cooldown has long expired - asserted rather than assumed,
+    # because a future caller passing hold=0.2 would otherwise get a confusing
+    # failure in the app rather than a clear one here.
+    if hold < _CHAIN_WINDOW_S * 2:
+        print(f"BLOCKED: hold={hold:.2f}s is inside the {_CHAIN_WINDOW_S * 2:.1f}s "
+              f"lock cooldown; the stop press would be swallowed")
+        end_test()
+        return False
+    print(f"\n--- SINGLE PRESS (stop) ---")
+    single_press_record_key()
 
     # Phase 5: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
@@ -1578,8 +1676,34 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     if completion_line:
         print(f"Log line:       {completion_line}")
 
+    # THE HANDS-FREE-SPECIFIC ASSERTION, and it is why this helper exists (#2409).
+    # "Recording persisted" is true of EVERY recording, which is exactly how the
+    # old menu-driven version passed while covering nothing. These three lines
+    # are produced by the chain detection and by nothing else.
+    markers = {
+        "Double press": False,
+        "Hands-free mode activated": False,
+        "Single press while locked": False,
+    }
+    for line in log_lines or []:
+        for m in markers:
+            if m in line:
+                markers[m] = True
+    print(f"\nHands-free markers in app.log:")
+    for m, seen in markers.items():
+        print(f"  {'YES' if seen else 'NO ':3}  {m}")
+    hands_free_proven = all(markers.values())
+    if not hands_free_proven:
+        # Name what is MISSING rather than reporting a bare false: a marker absent
+        # because the gesture never landed and one absent because a concurrent
+        # writer ate the line are different problems, and only the list
+        # distinguishes them for the reader.
+        missing = [m for m, seen in markers.items() if not seen]
+        print(f"  FAIL: hands-free was not proven - missing: {', '.join(missing)}")
+        print(f"  A recording may still have completed; that is not the same thing.")
+
     result_text = _extract_transcript_text(signal, log_size_before, clip_seen, log_lines)
-    overall_pass = _report_result(completed, audio, expect, result_text)
+    overall_pass = _report_result(completed, audio, expect, result_text) and hands_free_proven
     print(f"{'='*60}")
     end_test()
     return overall_pass
