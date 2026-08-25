@@ -73,8 +73,7 @@ struct KeybindsSettingsView: View {
             description: "This keybind starts and stops recording.",
             keyCode: $settings.toggleKeyCode,
             modifiers: $settings.toggleModifiers,
-            defaultKeyCode: ShortcutRole.record.defaultKeyCode,
-            defaultModifiers: ShortcutRole.record.defaultModifiers,
+            role: .record,
             accessibilityLabel: "Recording keybind",
             onBindingAccepted: { code, _ in
               // The claim is owned by SettingsManager, not by this view: onboarding
@@ -129,8 +128,7 @@ struct KeybindsSettingsView: View {
               + "from the next recording you start.",
             keyCode: $settings.cancelKeyCode,
             modifiers: $settings.cancelModifiers,
-            defaultKeyCode: ShortcutRole.cancel.defaultKeyCode,
-            defaultModifiers: ShortcutRole.cancel.defaultModifiers,
+            role: .cancel,
             accessibilityLabel: "Cancel keybind"
           )
 
@@ -198,8 +196,7 @@ struct KeybindsSettingsView: View {
               + "Terminal windows do not share their selection, so it will not work there.",
             keyCode: $settings.quickAddKeyCode,
             modifiers: $settings.quickAddModifiers,
-            defaultKeyCode: ShortcutRole.quickAdd.defaultKeyCode,
-            defaultModifiers: ShortcutRole.quickAdd.defaultModifiers,
+            role: .quickAdd,
             accessibilityLabel: "Add-a-word keybind"
           )
         }
@@ -325,9 +322,22 @@ private struct ProminentHotkeyRow: View {
   let description: String
   @Binding var keyCode: UInt16
   @Binding var modifiers: NSEvent.ModifierFlags
-  let defaultKeyCode: UInt16
-  let defaultModifiers: NSEvent.ModifierFlags
+  /// Which shortcut this row edits. **The row derives its Reset default from this rather than being
+  /// handed one**, so no call site has a default to get wrong.
+  ///
+  /// Three review rounds found the same defect one member at a time — a hard-coded number, then the
+  /// same number surviving in a full-line comment, then in a trailing one — because a guard over
+  /// source text is a DESCRIPTION of a set and the next counterexample always exists.
+  ///
+  /// Precisely what this buys, since "unwriteable" would be an overclaim: a literal is still
+  /// writeable HERE, in the two accessors below. What is gone is a literal at each of three CALL
+  /// SITES, where it applies to one row, reads as ordinary, and drifts alone. One here would apply
+  /// to every row at once, which is the difference between a quiet wrong default and an obvious one.
+  let role: ShortcutRole
   let accessibilityLabel: String
+
+  private var defaultKeyCode: UInt16 { role.defaultKeyCode }
+  private var defaultModifiers: NSEvent.ModifierFlags { role.defaultModifiers }
   /// #1987 — nil on rows that are not the recording keybind, so only the toggle
   /// row can ever present the Globe guidance.
   var onBindingAccepted: ((UInt16, NSEvent.ModifierFlags) -> Void)?

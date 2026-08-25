@@ -1,5 +1,7 @@
 import AppKit
 import Foundation
+import SwiftParser
+import SwiftSyntax
 import Testing
 
 @testable import EnviousWisprServices
@@ -95,56 +97,86 @@ struct KeybindRowDefaultsTests {
     #expect(service.quickAddBinding == ShortcutRole.quickAdd.defaultBinding)
   }
 
-  // MARK: - No literal creeps back into a row
+  // MARK: - The one source question left
 
-  /// Each row's own source block, keyed by its accessibility label.
+  /// Comment-free source, from a real parse.
   ///
-  /// Scoped per ROW rather than searched whole-file: a whole-file `contains` passes when a token
-  /// moves to the WRONG row, which is the defect a location-insensitive guard is least able to see
-  /// and the one that puts the wrong Reset on the wrong shortcut.
-  private static func rowBlock(labelled label: String) throws -> String {
+  /// **A hand-rolled comment strip was tried twice and found wanting twice** — first it handled only
+  /// full-line comments, then a trailing `// ...` walked past it, and block selection happened before
+  /// stripping so a commented label could pick the wrong row. That is a DESCRIPTION of Swift's
+  /// comment grammar, and a description always has a next counterexample.
+  ///
+  /// `swift-patterns.md` RULE: scan-swift-source-with-swiftparser-never-a-hand-rolled-lexer settles
+  /// it: `swift-syntax` is already a test-target dependency, comments are TRIVIA, and dropping
+  /// trivia removes every spelling of a comment at once rather than one at a time.
+  private static func executableSource() throws -> String {
     let url = RepoRoot.sourceURL(
       "Sources/EnviousWisprAppKit/Views/Settings/KeybindsSettingsView.swift")
-    let source = try String(contentsOf: url, encoding: .utf8)
-    let blocks = source.components(separatedBy: "ProminentHotkeyRow(").dropFirst()
+    let parsed = Parser.parse(source: try String(contentsOf: url, encoding: .utf8))
+    return CommentStripper().rewrite(parsed).description
+  }
+
+  /// Each row's own source block, keyed by its accessibility label, comments already gone.
+  ///
+  /// Scoped per ROW rather than searched whole-file: a whole-file `contains` passes when a token
+  /// moves to the WRONG row, which is the defect that puts one shortcut's controls on another's.
+  private static func rowBlock(labelled label: String) throws -> String {
+    let blocks = try executableSource().components(separatedBy: "ProminentHotkeyRow(").dropFirst()
     guard let block = blocks.first(where: { $0.contains("accessibilityLabel: \"\(label)\"") }) else {
       Issue.record(Comment(rawValue: "no ProminentHotkeyRow labelled '\(label)'"))
       return ""
     }
-    // COMMENTS STRIPPED, and that is not tidiness. These rows are heavily commented, and a comment
-    // MENTIONING `ShortcutRole.quickAdd.defaultKeyCode` would satisfy every assertion below while
-    // the executable line beneath it held a literal — a guard passing on prose about the thing it
-    // is meant to check. Line comments only; this file has no block comments inside a row.
-    return
-      block
-      .split(separator: "\n", omittingEmptySubsequences: false)
-      .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-      .joined(separator: "\n")
-  }
-
-  @Test(
-    "Every row reads its role's default rather than repeating the number",
-    arguments: [
-      ("Recording keybind", "record"),
-      ("Cancel keybind", "cancel"),
-      ("Add-a-word keybind", "quickAdd"),
-    ])
-  func everyRowReadsTheOwner(label: String, role: String) throws {
-    let block = try Self.rowBlock(labelled: label)
-
-    #expect(block.contains("defaultKeyCode: ShortcutRole.\(role).defaultKeyCode"))
-    #expect(block.contains("defaultModifiers: ShortcutRole.\(role).defaultModifiers"))
+    return block
   }
 
   @Test("Every row binds its own setting, so no shortcut is edited from two rows")
   func everyRowBindsItsOwnSetting() throws {
-    for (label, setting) in [
-      ("Recording keybind", "toggle"), ("Cancel keybind", "cancel"),
-      ("Add-a-word keybind", "quickAdd"),
+    // The one property the type system does not carry. A row's ROLE now decides its Reset default,
+    // but nothing links that role to the settings binding beside it, so a row can still be given
+    // `.quickAdd` and wired to `$settings.cancelKeyCode`.
+    for (label, role, setting) in [
+      ("Recording keybind", "record", "toggle"), ("Cancel keybind", "cancel", "cancel"),
+      ("Add-a-word keybind", "quickAdd", "quickAdd"),
     ] {
       let block = try Self.rowBlock(labelled: label)
+      #expect(block.contains("role: .\(role)"))
       #expect(block.contains("keyCode: $settings.\(setting)KeyCode"))
       #expect(block.contains("modifiers: $settings.\(setting)Modifiers"))
     }
+  }
+
+  @Test("A comment cannot satisfy the row check")
+  func commentsCannotSatisfyTheRowCheck() throws {
+    // The control for the parser above, asserted rather than assumed: the file HAS comments inside
+    // its rows, and none of them survives into what the check reads. Without this, a stripper that
+    // silently did nothing would look identical to one that works.
+    let block = try Self.rowBlock(labelled: "Add-a-word keybind")
+
+    #expect(!block.contains("//"))
+    #expect(block.contains("role: .quickAdd"), "the strip must not have eaten the code too")
+  }
+}
+
+/// Drops every COMMENT and nothing else.
+///
+/// Comments are trivia in SwiftSyntax, so filtering the comment PIECES removes all of their
+/// spellings at once — line, block, doc, and trailing — while spaces and newlines survive untouched.
+/// Dropping trivia wholesale was tried first and is wrong for this job: it collapses the spacing the
+/// assertions read, so `accessibilityLabel: "x"` comes back as `accessibilityLabel : "x"` and every
+/// match fails. The failure was loud, which is the only reason that draft cost minutes.
+private final class CommentStripper: SyntaxRewriter {
+  private func withoutComments(_ trivia: Trivia) -> Trivia {
+    Trivia(pieces: trivia.filter { piece in
+      switch piece {
+      case .lineComment, .blockComment, .docLineComment, .docBlockComment: false
+      default: true
+      }
+    })
+  }
+
+  override func visit(_ token: TokenSyntax) -> TokenSyntax {
+    token
+      .with(\.leadingTrivia, withoutComments(token.leadingTrivia))
+      .with(\.trailingTrivia, withoutComments(token.trailingTrivia))
   }
 }
