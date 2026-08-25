@@ -20,6 +20,39 @@ enum WhatsNewContent {
   static let entries: [Entry] = [
     // MARK: - v2.4.6
 
+    // #2376. FIRST in the 2.4.6 group because order is the hierarchy
+    // (whats-new-protocol.md RULE: whats-new-content-rules): headline feature,
+    // then supporting features, then fixes. This is the feature; the entry below
+    // is a removal.
+    //
+    // The 2.4.6 group is already open and already matches
+    // `WhatsNewConstants.currentContentVersion`, so this needs no Core edit —
+    // bumping it here would invent a release.
+    //
+    // **The copy names what a user GAINS, not what moved underneath.** Most of
+    // this phase is a refactor nobody should be able to see, and saying so would
+    // be talking about our code on a page about their app. What is genuinely new
+    // is a choice they did not have and a meter most of them have never seen: it
+    // has shipped since #2216 with exactly one construction site, inside the live
+    // preview pill, so only users who can and do run that feature have ever laid
+    // eyes on it.
+    //
+    // It deliberately does NOT promise the meter to everyone: it is one of two
+    // options, and the capsule stays the default so nobody's pill changes on
+    // upgrade. No dash characters, per GR-NO-DASHES.
+    //
+    // TITLE NOT YET FOUNDER-EDITED. He read and edited every title in the 2.4.5
+    // group by hand on 2026-08-20; this one was written without him and is the
+    // obvious thing for him to change.
+    Entry(
+      id: "recording-pill-designs",
+      icon: "waveform.badge.mic",
+      title: "Choose how your recording pill looks",
+      description:
+        "The pill that appears while you dictate now comes in more than one shape, and you pick which one you see. Appearance settings has a new Recording Pill section with two groups: pills that show your words as you speak, and pills that do not. Alongside the capsule you already know there is a new Level Rail, a wider pill carrying your timer beside a live rainbow meter of your voice. That meter has been in the app for a while, but until now only people running Live Preview ever saw it. Each group remembers its own choice, so if you switch Live Preview off and on again you get back the pill you picked for each. The group that does not apply to you right now stays visible and greyed, and tells you why rather than leaving you to guess.",
+      version: "2.4.6"
+    ),
+
     // #1831. OPENS THE 2.4.6 GROUP, and that placement is load-bearing.
     //
     // v2.4.5 shipped 2026-08-20. Anyone who has opened What's New since
