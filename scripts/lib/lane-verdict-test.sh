@@ -214,6 +214,28 @@ else
   bad "a non-numeric expected-count warns and is ignored" "rc=$jrc out=$junk"
 fi
 
+echo "== a refusal still REPORTS under errexit =="
+# The row this suite could not previously express. Its own harness runs
+# `set -uo pipefail` with no `errexit`, so nothing in it could see that all three
+# workflow steps run under `set -e` and call the function as a simple command —
+# where a bare judge invocation aborts the shell the instant it rejects, before
+# the verdict line is printed and before the payload is cleaned up. CI still goes
+# red, which is why it is easy to miss; it goes red with no reason attached.
+#
+# Driven in a SUBSHELL with errexit genuinely on, because asserting this any
+# other way asserts something else.
+errexit_out=$(
+  set -e
+  . "$HERE/lane-verdict.sh"
+  ew_lane_verdict "$TMP/zero.log" "$TMP/bundle" "errexit probe" 2>&1
+  echo "REACHED-END"
+)
+if printf '%s' "$errexit_out" | /usr/bin/grep -q "verdict: FAIL"; then
+  ok "a refusal prints its verdict even under errexit"
+else
+  bad "a refusal prints its verdict even under errexit" "out=$errexit_out"
+fi
+
 echo
 printf "PASS=%d FAIL=%d\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -105,10 +105,28 @@ ew_lane_verdict() {
     return 1
   fi
 
-  # Unchanged from the guard this replaces: sum the Swift Testing per-target run
-  # summaries. Kept as the empty-run detector, not as the verdict.
-  n=$(/usr/bin/grep -oE "Test run with [0-9]+ test" "$log" \
-    | /usr/bin/grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
+  # Sum the Swift Testing per-target run summaries — the same quantity the guard
+  # this replaces computed, kept as the empty-run detector rather than the verdict.
+  #
+  # ONE awk PASS, not the original `grep | grep | awk`. Under `errexit` — which
+  # all three workflow steps set — a no-match `grep` exits 1, the pipeline fails,
+  # and the assignment ABORTS THE SHELL. On an empty lane, which is precisely the
+  # case the count exists to catch, so the guard would die instead of reporting.
+  # Found by this file's own new errexit row, not by review; awk exits 0 whether
+  # or not it matches, so the failure has nowhere to come from.
+  n=$(LC_ALL=C awk '
+    {
+      rest = $0
+      while (match(rest, /Test run with [0-9]+ test/)) {
+        hit = substr(rest, RSTART, RLENGTH)
+        sub(/^Test run with /, "", hit)
+        sub(/ test$/, "", hit)
+        total += hit + 0
+        rest = substr(rest, RSTART + RLENGTH)
+      }
+    }
+    END { print total + 0 }
+  ' "$log")
 
   # Reported before any refusal, because a reader diagnosing a FAIL wants the
   # number as much as a reader confirming a PASS does.
@@ -149,8 +167,17 @@ ew_lane_verdict() {
 
   # `get test-results tests` is the MODERN subcommand. The one most sessions
   # reach for first, `get test-report tests`, is deprecated and refuses outright.
-  if ! xcrun xcresulttool get test-results tests --path "$bundle" >"$payload" 2>/dev/null; then
+  #
+  # NOT `if ! cmd; then rc=$?`: inside that branch `$?` is the status of the `!`
+  # EXPRESSION, which is 0 exactly when the command failed. The message would
+  # have read "exited 0" for every real failure — a diagnostic that is wrong
+  # precisely when it is read (#2407 review r2).
+  if xcrun xcresulttool get test-results tests --path "$bundle" >"$payload" 2>/dev/null; then
+    rc=0
+  else
     rc=$?
+  fi
+  if [ "$rc" -ne 0 ]; then
     rm -f "$payload"
     echo "ERROR: $label could not read the result bundle at $bundle (xcresulttool exited $rc)" >&2
     echo "==> $label verdict: FAIL"
@@ -166,9 +193,25 @@ ew_lane_verdict() {
     return 1
   fi
 
-  EW_LANE_LABEL="$label" EW_LANE_ACCEPTED="$EW_LANE_ACCEPTED_RESULTS" \
+  # RUN IT AS AN `if` CONDITION, which suppresses `errexit` for this command.
+  #
+  # All three workflow steps run under `set -e` and call this as a simple
+  # command, so a bare invocation would abort the shell THE INSTANT the judge
+  # rejected — before the temp file is removed and before the `verdict: FAIL`
+  # line is printed. CI would still go red, which is why this is easy to miss,
+  # but red with no verdict, no reason and a leaked payload: the failure mode is
+  # a MISSING EXPLANATION exactly when someone needs one (#2407 review r2).
+  #
+  # Invisible to this file's own suite by construction — that harness runs
+  # `set -uo pipefail` with no `errexit`, so no row it contains could express the
+  # question. The suite now sets it explicitly for one row.
+  if EW_LANE_LABEL="$label" EW_LANE_ACCEPTED="$EW_LANE_ACCEPTED_RESULTS" \
     python3 "$EW_LANE_JUDGE" "$payload"
-  rc=$?
+  then
+    rc=0
+  else
+    rc=$?
+  fi
   rm -f "$payload"
 
   if [ "$rc" -ne 0 ]; then
