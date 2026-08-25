@@ -1359,6 +1359,21 @@ public struct WordCorrector: Sendable {
     let threshold = override ?? (Self.multiWordThreshold + stopwordPenalty)
     let margin = bestScore - secondBest
 
+    // SELF-IDENTITY FIRST, ahead of both gates (#2406 review r3).
+    //
+    // "This text is already the canonical" is a fact about the INPUT. The
+    // threshold and margin gates describe a COMPETITION between candidates, and a
+    // competition cannot make correct text incorrect.
+    //
+    // Ordered last, the margin gate reached it first: with `Alpha Beta Gamma.com`
+    // dictated and a near-twin alias present, the attempt returned `.ambiguous`
+    // rather than `.alreadyCorrect` — and `.ambiguous` does not reserve the span,
+    // so an overlapping `beta gamma` alias rewrote text that was already right.
+    //
+    // Safe to hoist above the threshold too: an exact self-match scores ~1.0, so
+    // it clears any threshold it could have been measured against.
+    guard rawPhrase != bestCanonical else { return .alreadyCorrect }
+
     guard bestScore >= threshold else {
       #if DEBUG
         Self.logger.debug(
@@ -1375,7 +1390,6 @@ public struct WordCorrector: Sendable {
       #endif
       return .ambiguous
     }
-    guard rawPhrase != bestCanonical else { return .alreadyCorrect }
 
     return .candidate(
       MultiWordFuzzyCandidate(

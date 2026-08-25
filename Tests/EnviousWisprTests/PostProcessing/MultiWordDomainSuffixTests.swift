@@ -102,6 +102,25 @@ struct MultiWordDomainSuffixTests {
       "the whole already-correct span must be reserved; got: \(result)")
   }
 
+  /// Already-correct text survives even when a NEAR-TWIN alias exists (#2406 r3).
+  ///
+  /// Self-identity is a fact about the input; threshold and margin are about a
+  /// competition between candidates, and a competition cannot make correct text
+  /// incorrect. Checked last, the margin gate reached it first and returned
+  /// `.ambiguous` — which does not reserve the span, so an overlapping alias
+  /// rewrote text that was already right.
+  @Test("already-correct text survives a near-twin distractor and an overlapping alias")
+  func alreadyCorrectSurvivesNearTwinAndOverlap() {
+    let full = CustomWord(canonical: "Alpha Beta Gamma", aliases: ["alpha beta gamma"])
+    let nearTwin = CustomWord(canonical: "Alpha Beta Gammaa", aliases: ["alpha beta gammaa"])
+    let overlapping = CustomWord(canonical: "Wrong", aliases: ["beta gamma"])
+    let (result, _) = corrector.correct(
+      "see Alpha Beta Gamma.com now", against: [full, nearTwin, overlapping])
+    #expect(
+      result == "see Alpha Beta Gamma.com now",
+      "a near-twin must not turn already-correct text into an ambiguous span; got: \(result)")
+  }
+
   /// A canonical that already specifies its own domain does NOT get the dictated
   /// suffix reattached — otherwise the user sees it twice. Same rule the
   /// single-word path applies.
