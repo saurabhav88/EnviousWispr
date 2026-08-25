@@ -352,9 +352,9 @@ struct QuickAddCoordinatorTests {
 
     recorder.userWords = []
 
-    let message = coordinator.accept(target, from: model)
+    let result = coordinator.accept(target, from: model)
 
-    #expect(message == QuickAddPanelCopy.wordNoLongerExists)
+    #expect(result == .refused(QuickAddPanelCopy.wordNoLongerExists))
     #expect(recorder.saved.isEmpty, "nothing may be written for a word that is gone")
     #expect(
       recorder.outcomes.isEmpty,
@@ -395,13 +395,13 @@ struct QuickAddCoordinatorTests {
     let model = try #require(beginAndShow(coordinator))
     let target = try #require(model.ranking.candidates.first)
 
-    let message = coordinator.accept(target, from: model)
+    let result = coordinator.accept(target, from: model)
 
     // The RETURNED message is the assertion that matters, and the first version of this test did
     // not make it. It asserted the TELEMETRY outcome, which is a fact about a dashboard; what the
     // comment above promises — "the user must be told" — is only true if the caller is handed
     // something to show, and the caller dismissed the panel regardless until this was added.
-    #expect(message == "That word cannot be saved.")
+    #expect(result == .refused("That word cannot be saved."))
     #expect(recorder.events.contains { if case .failed = $0 { true } else { false } })
     // NOT resolved. The panel is still open, so the invocation has not ended — `resolved` means
     // ENDED, and the second version of this test asserted `[.writeFailed]` here, which was the
@@ -452,29 +452,55 @@ struct QuickAddCoordinatorTests {
       })
   }
 
-  @Test("A save that succeeds returns nothing to show, which is what licenses the dismiss")
-  func aSuccessfulWriteReturnsNil() throws {
+  @Test("A save that succeeds names the word it wrote to")
+  func aSuccessfulWriteNamesItsTarget() throws {
     // The paired accepted case for the refusal above. Without it the caller could dismiss on any
-    // non-nil-ness rule and still pass, and a check that never classifies anything looks clean.
+    // non-refusal rule and still pass, and a check that never classifies anything looks clean.
+    //
+    // The NAME is what the panel's confirmation quotes, so a result that merely said "fine" would
+    // send the caller back to the row the user clicked — a snapshot taken when the panel opened.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
     let model = try #require(beginAndShow(coordinator))
     let target = try #require(model.ranking.candidates.first)
 
-    #expect(coordinator.accept(target, from: model) == nil)
+    #expect(coordinator.accept(target, from: model) == .saved(word: "Codex"))
     #expect(recorder.outcomes == [.accepted])
   }
 
-  @Test("A word that already carries the spelling returns nothing to show")
-  func alreadySavedReturnsNil() throws {
-    // Nothing went wrong, so there is nothing to keep the panel open for. Distinguished from the
-    // refusal above only by the return value, which is why both are asserted.
+  @Test("A word that already carries the spelling reports that, not a save")
+  func alreadySavedIsDistinctFromSaved() throws {
+    // Nothing went wrong, so there is nothing to keep the panel open for — and nothing was written,
+    // so a confirmation reading `"codecs" added to Codex` would be a false sentence. The two
+    // successes are distinguished HERE because the caller cannot tell them apart: the row's
+    // `alreadyHasHeardSpelling` is the ranking's snapshot, and the decision is made live.
     let (coordinator, recorder) = makeCoordinator(
       selection: .text("codecs"), userWords: [word("Codex", aliases: ["codecs"])])
     let model = try #require(beginAndShow(coordinator))
     let target = try #require(model.ranking.candidates.first)
 
-    #expect(coordinator.accept(target, from: model) == nil)
+    #expect(coordinator.accept(target, from: model) == .alreadyHad(word: "Codex"))
     #expect(recorder.outcomes == [.alreadySaved])
+  }
+
+  /// **The staleness the confirmation could reintroduce, in the direction that matters.** The row
+  /// said `already has this` when the panel opened; the user then removed that alias in Settings and
+  /// pressed Return. The write happens, and a confirmation composed from the snapshot would tell
+  /// them nothing was added.
+  @Test("The result follows the live library, never the row the user clicked")
+  func theResultIsLiveNotSnapshotted() throws {
+    let (coordinator, recorder) = makeCoordinator(
+      selection: .text("codecs"), userWords: [word("Codex", aliases: ["codecs"])])
+    let model = try #require(beginAndShow(coordinator))
+    let target = try #require(model.ranking.candidates.first)
+    #expect(target.alreadyHasHeardSpelling, "the snapshot says there is nothing to add")
+
+    // The user deletes that spelling in Settings while the panel sits open.
+    recorder.userWords = [
+      CustomWord(id: target.word.id, canonical: "Codex", aliases: [])
+    ]
+
+    #expect(coordinator.accept(target, from: model) == .saved(word: "Codex"))
+    #expect(recorder.outcomes == [.accepted])
   }
 
   @Test("Accepting after searching is a distinct outcome from accepting the top row")
@@ -768,5 +794,29 @@ struct QuickAddCoordinatorTests {
       QuickAddWiring.newWordOutcome(
         keptSpellings: ["codecs"], missingSpellings: ["codecs"], canonicalExistedBefore: true)
         == .refused)
+  }
+
+  // MARK: - Whether a second press starts a fresh capture (#2391 §1)
+
+  /// **The regression the confirmation could have introduced, and it lands on the commonest way to
+  /// use this feature: adding two words in a row.**
+  ///
+  /// A confirmation stays on screen for two seconds after Return, with the invocation already
+  /// resolved. A visibility test alone would raise that confirmation and refuse the new capture —
+  /// indistinguishable, from the user's side, from the shortcut not firing.
+  ///
+  /// Paired with the case it must NOT break: a genuinely live panel still raises rather than
+  /// throwing away the selection the user already made, which is the #2381 fix this sits beside.
+  @Test("A fading confirmation yields to a new capture; a live panel does not")
+  func aFadingConfirmationDoesNotBlockTheNextCapture() {
+    #expect(
+      QuickAddWiring.mayBeginCapture(panelVisible: true, hasLiveInvocation: false),
+      "a resolved panel is a confirmation fading out, not a capture in progress")
+    #expect(
+      !QuickAddWiring.mayBeginCapture(panelVisible: true, hasLiveInvocation: true),
+      "a live panel is raised, never re-captured against our own window")
+    #expect(QuickAddWiring.mayBeginCapture(panelVisible: false, hasLiveInvocation: false))
+    // Nothing on screen wins outright. A stale live flag with no panel must not wedge the shortcut.
+    #expect(QuickAddWiring.mayBeginCapture(panelVisible: false, hasLiveInvocation: true))
   }
 }

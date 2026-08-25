@@ -45,13 +45,49 @@ final class QuickAddPanelModel {
   /// The panel must refuse main status — taking it reorders the windows the user was working in
   /// behind an accessory — so the fix is to stop needing a sheet rather than to flip a flag.
   ///
-  /// Closed, so a third stage cannot inherit either of these two's rules by falling into whichever
-  /// branch is nearest.
-  enum Stage: Equatable, Sendable, CaseIterable {
+  /// Closed, so a new stage cannot inherit another's rules by falling into whichever branch is
+  /// nearest.
+  enum Stage: Equatable, Sendable {
     /// The ranked list plus the search field.
     case picking
     /// One field: the correct spelling for `heard`. Reached from the create row.
     case composing
+    /// Nothing left to ask. The panel states what happened and takes itself away.
+    case notice(Notice)
+  }
+
+  /// What the panel says when it has nothing further to ask.
+  ///
+  /// **Two situations reach this and they differ in ONE property, which is why it is a flag rather
+  /// than two cases.** After Return the user has committed and gone back to their sentence, so the
+  /// panel must give keyboard focus back before it fades — a confirmation that eats the first letter
+  /// of their next word is worse than no confirmation. Opened onto a word that is already covered,
+  /// the user has typed nothing and is looking straight at the panel, so the search field stays and
+  /// typing returns them to the full list.
+  ///
+  /// Getting that backwards in either direction is a real defect — a terminal notice holding focus
+  /// swallows keystrokes, and a searchable one that dropped focus would make the escape hatch
+  /// unreachable — so the two are one value the callers cannot forget to set.
+  struct Notice: Equatable, Sendable {
+    /// Which of the three things happened. Closed, so a fourth cannot borrow another's sentence.
+    enum Kind: Equatable, Sendable, CaseIterable {
+      /// The spelling was written onto `word`.
+      case saved
+      /// `word` already carried the spelling, so nothing was written.
+      case nothingToAdd
+      /// `word` was created and there was no spelling to attach, because the panel opened without
+      /// a readable selection. `spelling` is empty here.
+      case created
+    }
+
+    let kind: Kind
+    /// What the user selected. Empty for `.created`.
+    let spelling: String
+    /// The library word, as it is NOW — never the ranking's snapshot of it.
+    let word: String
+    /// Whether the invocation is still LIVE behind the notice: the search field is shown, typing
+    /// returns to the full list, and nothing has been resolved yet.
+    let searchable: Bool
   }
 
   private(set) var stage: Stage = .picking
@@ -77,6 +113,20 @@ final class QuickAddPanelModel {
     // A refusal has no heard string to rank, so the panel opens on an empty list and a stated
     // reason rather than on a ranking of nothing.
     self.ranking = refusal == nil ? rankHeard(heard) : .empty
+    // **Opened onto a word that is already covered, the panel says so and leaves (#2391 §3).**
+    // The header already said `nothing to add` and the rest of the panel contradicted it: a
+    // highlighted row whose only action is a no-op, four unrelated words offered as if they were
+    // choices, a legend advertising `add spelling` in a state where nothing can be added, and a
+    // dismissal the user had to perform by hand.
+    //
+    // Decided HERE rather than in the view, because it is not a rendering question: it changes what
+    // Return does, whether the create row is offered, and whether this invocation resolves as
+    // `already_saved` or as a cancel.
+    if let top = self.ranking.preselected, top.alreadyHasHeardSpelling {
+      self.stage = .notice(
+        Notice(
+          kind: .nothingToAdd, spelling: heard, word: top.word.canonical, searchable: true))
+    }
   }
 
   // MARK: - The search field
@@ -89,6 +139,15 @@ final class QuickAddPanelModel {
     query = newQuery
     // A refusal describes the LAST accept. Typing is the user moving on from it.
     writeFailure = nil
+    // **Typing is how the user says the notice was wrong about them.** A word already covered is
+    // not the same as a user with nothing to do: the ranking can be wrong, and the search field is
+    // the escape hatch built for exactly that. Reaching for it returns the full list and, because
+    // the invocation has not resolved, cancels the pending auto-dismiss at its own guard.
+    if case .notice(let notice) = stage, notice.searchable,
+      !newQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+      stage = .picking
+    }
     guard refusal == nil else { return }
     let trimmed = newQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     ranking =
@@ -174,6 +233,11 @@ final class QuickAddPanelModel {
   /// Clamped rather than wrapping: wrapping from the last row to the first is a surprise when the
   /// list is short and the user is holding the key, and this list is at most a handful of rows.
   func moveHighlight(by offset: Int) {
+    // **An arrow press past a searchable notice means the same thing typing does: show me the
+    // options.** The field is on screen and focused there, so both keys are available and only one
+    // of them answered — pressing Down and watching nothing happen is the panel ignoring a key it
+    // is visibly offering.
+    if isShowingSearchableNotice { stage = .picking }
     guard !ranking.candidates.isEmpty else { return }
     let current = ranking.candidates.firstIndex { $0.id == ranking.preselectedID }
     // No highlight yet means the bar was not cleared, so an arrow press is the user OPTING IN to a
@@ -216,6 +280,34 @@ final class QuickAddPanelModel {
   /// Record that the library refused the write. Set by the coordinator's caller, never here: the
   /// model does not know what a words file is and must not learn.
   func noteWriteFailure(_ message: String) { writeFailure = message }
+
+  /// Return has been pressed and something happened. Say what, then the caller takes the panel away.
+  ///
+  /// **`searchable` is set HERE rather than taken as an argument, and it is always false.** This is
+  /// reached only after Return, when the user is already back in their sentence — a terminal notice
+  /// offering a focused field is the exact keystroke-eating defect that nearly sent the confirmation
+  /// to the dictation overlay instead of the panel. A caller that could pass `true` is a caller that
+  /// can reintroduce it.
+  func showNotice(_ kind: Notice.Kind, spelling: String, word: String) {
+    writeFailure = nil
+    stage = .notice(Notice(kind: kind, spelling: spelling, word: word, searchable: false))
+  }
+
+  /// Whether the panel is showing a notice the user can still type past.
+  ///
+  /// Read by the auto-dismiss before it resolves this invocation: the user may have typed in the
+  /// meantime, which puts the panel back on its list and makes the invocation live again.
+  var isShowingSearchableNotice: Bool {
+    if case .notice(let notice) = stage { return notice.searchable }
+    return false
+  }
+
+  /// The notice currently on screen, or nil. One accessor, so the view and the timer cannot disagree
+  /// about which stage counts as a notice.
+  var notice: Notice? {
+    if case .notice(let notice) = stage { return notice }
+    return nil
+  }
 
   /// What gets written if the user accepts. **Always the original selection, never the query.**
   ///

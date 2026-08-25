@@ -519,4 +519,121 @@ struct QuickAddPanelModelTests {
 
     #expect(model.draftCanonical == "Qwen")
   }
+
+  // MARK: - Saying what happened and leaving (#2391 §1 and §3)
+
+  private func covered(_ canonical: String) -> QuickAddRanker.Candidate {
+    QuickAddRanker.Candidate(
+      word: CustomWord(canonical: canonical, aliases: ["codecs"]),
+      score: 1.0,
+      alreadyHasHeardSpelling: true)
+  }
+
+  private func rankingCovered(preselecting: Bool) -> QuickAddRanker.Ranking {
+    let rows = [covered("Codex"), candidate("Claude Code"), candidate("Qualtrics")]
+    return QuickAddRanker.Ranking(
+      candidates: rows, preselectedID: preselecting ? rows[0].id : nil)
+  }
+
+  /// The founder selected a word already covered and got a full picker offering nothing: a
+  /// highlighted row whose only action is a no-op, three unrelated words presented as choices, and a
+  /// dismissal he had to perform by hand — under a header that already said `nothing to add`.
+  @Test("Opening onto a covered word says so instead of offering a picker")
+  func openingOntoACoveredWordShowsANotice() throws {
+    let (model, _) = makeModel(heardRanking: rankingCovered(preselecting: true))
+
+    let notice = try #require(model.notice)
+    #expect(notice.kind == .nothingToAdd)
+    #expect(notice.word == "Codex")
+    #expect(notice.spelling == "codecs")
+    // The invocation has NOT resolved: the ranking can be wrong, and typing is how the user says so.
+    #expect(notice.searchable)
+  }
+
+  /// **Below the confidence bar nothing is preselected, and the user must choose.** A notice there
+  /// would answer a question the ranking deliberately refused to answer — and it would do it on the
+  /// strength of a row that was never offered as the answer.
+  @Test("A covered row that was not preselected does not shortcut the panel")
+  func anUnpreselectedCoveredRowStillShowsTheList() {
+    let (model, _) = makeModel(heardRanking: rankingCovered(preselecting: false))
+
+    #expect(model.stage == .picking)
+    #expect(model.notice == nil)
+  }
+
+  /// The escape hatch #2381 built for a wrong ranking has to survive a notice, or the notice becomes
+  /// a dead end the user can only escape by pressing the shortcut again and seeing it again.
+  @Test("Typing past the notice returns the full list")
+  func typingLeavesTheNotice() {
+    let (model, _) = makeModel(
+      heardRanking: rankingCovered(preselecting: true),
+      searchRanking: ranking(["Qualtrics"], preselecting: 0))
+
+    model.updateQuery("qual")
+
+    #expect(model.stage == .picking)
+    #expect(model.notice == nil)
+  }
+
+  /// The same trimming rule `isSearching` owns. A space bar is not the user saying the ranking was
+  /// wrong about them.
+  @Test("Whitespace does not count as typing past the notice")
+  func whitespaceDoesNotLeaveTheNotice() {
+    let (model, _) = makeModel(heardRanking: rankingCovered(preselecting: true))
+
+    model.updateQuery("   ")
+
+    #expect(model.notice?.searchable == true)
+  }
+
+  /// The search field is on screen and focused during a searchable notice, so both ways into the
+  /// list have to work. Only typing did — pressing Down watched nothing happen, on a panel visibly
+  /// offering the key.
+  @Test("An arrow past the notice opens the list, the same as typing")
+  func arrowsLeaveTheNotice() {
+    let (model, _) = makeModel(heardRanking: rankingCovered(preselecting: true))
+
+    model.moveHighlight(by: 1)
+
+    #expect(model.stage == .picking)
+    #expect(model.notice == nil)
+    #expect(model.acceptTarget != nil, "and the row it lands on is acceptable")
+  }
+
+  /// A notice is the panel saying it has nothing to ask. A Return arriving from anywhere while one
+  /// is up must not write to the row still sitting preselected behind it.
+  @Test("Return cannot accept a row behind a notice")
+  func aNoticeWithdrawsTheAcceptTarget() {
+    let (model, _) = makeModel(heardRanking: rankingCovered(preselecting: true))
+
+    #expect(model.acceptTarget == nil)
+    #expect(model.ranking.preselectedID != nil, "the ranking itself is untouched")
+  }
+
+  /// **A confirmation is NEVER searchable, and getting this backwards is the defect that nearly sent
+  /// it to the dictation overlay instead.** It is shown after Return, when the user has gone back to
+  /// their sentence; a focused field would eat the first letters of their next word.
+  @Test("A post-Return confirmation offers no field to type into")
+  func aConfirmationIsNotSearchable() throws {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.noteWriteFailure("stale")
+    model.showNotice(.saved, spelling: "codecs", word: "Codex")
+
+    let notice = try #require(model.notice)
+    #expect(notice.searchable == false)
+    #expect(notice.kind == .saved)
+    #expect(model.writeFailure == nil, "the failure it replaces must not render underneath it")
+  }
+
+  /// A refusal has nothing to rank, so there is no covered row to shortcut on. Guards the branch
+  /// order in the initialiser: reading the ranking before the refusal is handled would crash or,
+  /// worse, notice on an empty string.
+  @Test("A refusal never opens onto a notice")
+  func aRefusalNeverNotices() {
+    let (model, _) = makeModel(heard: "", refusal: .nothingSelected, heardRanking: .empty)
+
+    #expect(model.stage == .picking)
+    #expect(model.notice == nil)
+  }
 }

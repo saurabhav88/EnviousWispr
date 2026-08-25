@@ -153,6 +153,9 @@ struct QuickAddPanelCopyTests {
         QuickAddPanelCopy.composeHeader(heard: ""),
         QuickAddPanelCopy.composePlaceholder(heard: "clawwed"),
         QuickAddPanelCopy.composePlaceholder(heard: ""),
+        QuickAddPanelCopy.savedNotice(spelling: "codecs", word: "Codex"),
+        QuickAddPanelCopy.nothingToAddNotice(spelling: "codecs", word: "Codex"),
+        QuickAddPanelCopy.createdNotice(word: "Codex"),
       ]
 
     for text in all {
@@ -251,5 +254,66 @@ struct QuickAddPanelCopyTests {
     #expect(QuickAddPanelCopy.legendBack != QuickAddPanelCopy.legendClose)
     #expect(!QuickAddPanelCopy.legendBack.isEmpty)
     #expect(QuickAddPanelCopy.legendCreate != QuickAddPanelCopy.legendAccept)
+  }
+
+  // MARK: - Saying what happened (#2391 §1 and §3)
+
+  /// **States what happened to the LIBRARY and promises nothing about future behaviour.** "will be
+  /// corrected from now on" is a sentence the code cannot back: a spelling belongs to one word, and
+  /// whether a future dictation reaches this one depends on the rest of the library.
+  @Test("The save confirmation names both the spelling and the word, and promises nothing else")
+  func theSaveConfirmationNamesBothHalves() {
+    let text = QuickAddPanelCopy.savedNotice(spelling: "codecs", word: "Codex")
+
+    #expect(text.contains("\"codecs\""))
+    #expect(text.contains("Codex"))
+    for promise in ["from now on", "will be", "always", "every time", "future"] {
+      #expect(!text.lowercased().contains(promise), "promises \(promise)")
+    }
+  }
+
+  /// The two successes must not read the same. Nothing was written in one of them, and a
+  /// confirmation that said otherwise would be the reported-success class this feature spent seven
+  /// review rounds closing, arriving through the sentence written to reassure the user.
+  @Test("Nothing-to-add does not read as a save")
+  func nothingToAddDoesNotClaimASave() {
+    let saved = QuickAddPanelCopy.savedNotice(spelling: "codecs", word: "Codex")
+    let nothing = QuickAddPanelCopy.nothingToAddNotice(spelling: "codecs", word: "Codex")
+
+    #expect(saved != nothing)
+    #expect(!nothing.lowercased().contains("added"))
+    #expect(nothing.contains("Codex"))
+    #expect(nothing.contains("\"codecs\""))
+  }
+
+  /// The state Create exists for: no readable selection, so no mishearing to name. A confirmation
+  /// quoting an empty string reads as a defect.
+  @Test("A word created with no spelling is confirmed without an empty quotation")
+  func theCreatedConfirmationQuotesNothing() {
+    let text = QuickAddPanelCopy.createdNotice(word: "Codex")
+
+    #expect(text.contains("Codex"))
+    #expect(!text.contains("\"\""))
+  }
+
+  /// **The dispatcher is the whole reason the model carries facts rather than a sentence.** Handing
+  /// a string in at the call site is how a new outcome ships wearing another one's wording; a
+  /// `switch` over a closed `Kind` makes the compiler ask instead. This asserts the mapping is
+  /// distinct and non-empty for every member, which is the property a `default:` would quietly lose.
+  @Test("Every notice kind renders its own sentence")
+  func everyNoticeKindHasItsOwnSentence() {
+    var rendered: Set<String> = []
+    for kind in QuickAddPanelModel.Notice.Kind.allCases {
+      let text = QuickAddPanelCopy.notice(
+        QuickAddPanelModel.Notice(
+          kind: kind, spelling: kind == .created ? "" : "codecs", word: "Codex",
+          searchable: false))
+      #expect(!text.isEmpty, "\(kind) renders nothing")
+      #expect(!text.contains("\"\""), "\(kind) quotes an empty string")
+      rendered.insert(text)
+    }
+    #expect(
+      rendered.count == QuickAddPanelModel.Notice.Kind.allCases.count,
+      "two kinds render the same sentence")
   }
 }

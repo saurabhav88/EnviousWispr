@@ -108,6 +108,23 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
     panel.makeKeyAndOrderFront(nil)
   }
 
+  /// Hand keyboard focus back to whatever the user was working in, WITHOUT taking the panel down.
+  ///
+  /// **The one property that made the confirmation safe to put in the panel at all.** This panel is
+  /// key-capable because Return is the whole feature, so a panel that lingers for a beat after
+  /// Return is a panel that owns the keyboard for that beat — and the user has already gone back to
+  /// their sentence. The first letters of their next word would land in our search field. That cost
+  /// nearly sent the confirmation to the dictation overlay instead, which is non-activating by
+  /// construction.
+  ///
+  /// `NSApp.deactivate()` gives focus to the app behind us. The panel stays visible because
+  /// `hidesOnDeactivate` is false and it sits at `.floating` — both set for their own reasons long
+  /// before this needed them.
+  func releaseFocus() {
+    guard let panel, panel.isVisible else { return }
+    NSApp.deactivate()
+  }
+
   /// Take the panel down. Idempotent.
   ///
   /// `orderOut`, never `close`: closing is what forces a rebuild, and this panel is reused.

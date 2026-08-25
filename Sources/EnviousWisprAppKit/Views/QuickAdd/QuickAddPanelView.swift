@@ -28,6 +28,48 @@ enum QuickAddPanelCopy {
     heard.isEmpty ? "The word to add" : "The correct spelling"
   }
 
+  /// The confirmation shown for a beat after Return (#2391 §1).
+  ///
+  /// **States what happened to the LIBRARY and promises nothing about future behaviour.** Not
+  /// "saved", which says nothing about where; not "will be corrected from now on", which is a
+  /// sentence the code cannot back — a spelling belongs to ONE word, and whether a future dictation
+  /// reaches this one depends on the rest of the library.
+  ///
+  /// The asymmetry this closes: a refused write already kept the panel open and stated the reason,
+  /// so the user learned more from failing than from succeeding, on a feature whose whole promise is
+  /// that succeeding is invisible.
+  static func savedNotice(spelling: String, word: String) -> String {
+    "\"\(spelling)\" added to \(word)"
+  }
+
+  /// The word already carries this spelling, so there is nothing to add (#2391 §3).
+  ///
+  /// Names the WORD first, because that is the fact the user does not have: they know what they
+  /// selected and are asking who owns it.
+  static func nothingToAddNotice(spelling: String, word: String) -> String {
+    "\(word) already knows \"\(spelling)\""
+  }
+
+  /// A word authored by hand with no spelling to attach, which is the state Create exists for: the
+  /// panel opened without a readable selection, so there is no mishearing to name.
+  static func createdNotice(word: String) -> String {
+    "\(word) added to your words"
+  }
+
+  /// The one place a `Notice` becomes English.
+  ///
+  /// **Exhaustive over `Kind` on purpose.** The model carries the FACTS — which thing happened, to
+  /// which word, with which spelling — and never a sentence, so a new outcome cannot ship borrowing
+  /// another's wording by being handed a string at the call site. A `switch` here is what makes the
+  /// compiler ask.
+  static func notice(_ notice: QuickAddPanelModel.Notice) -> String {
+    switch notice.kind {
+    case .saved: savedNotice(spelling: notice.spelling, word: notice.word)
+    case .nothingToAdd: nothingToAddNotice(spelling: notice.spelling, word: notice.word)
+    case .created: createdNotice(word: notice.word)
+    }
+  }
+
   /// Shown when the library refused the write, above the rows so the panel that stayed open says
   /// why. The message comes from the words authority itself rather than being reworded here: it is
   /// the same sentence the editor shows for the same refusal, and a second wording would be a
@@ -191,9 +233,16 @@ struct QuickAddPanelView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      // **Hoisted out of the stages, and that is structural rather than cosmetic.** A searchable
+      // notice shows the field too, and typing in it returns the panel to its list — so a field
+      // rendered inside each branch would be a DIFFERENT view to SwiftUI on either side of that
+      // transition. It would be torn down and rebuilt at the exact keystroke that causes the
+      // transition, losing focus and the character that triggered it.
+      if showsSearchField { searchWell }
       switch model.stage {
       case .picking: pickingContent
       case .composing: composingContent
+      case .notice(let notice): noticeContent(notice)
       }
       Divider().overlay(Color.stDivider).padding(.top, 10)
       if model.stage == .picking { createNewRow }
@@ -209,10 +258,15 @@ struct QuickAddPanelView: View {
     // decision stayed on the model (`consumeCancel`) rather than moving back here.
   }
 
-  /// The ranked list, the search field, and the refusal or failure above them.
+  /// Whether the search field is on screen. `.picking` always, and a searchable notice because the
+  /// escape hatch is the whole reason that notice is not simply a dismissal.
+  private var showsSearchField: Bool {
+    model.stage == .picking || model.notice?.searchable == true
+  }
+
+  /// The ranked list, and the refusal or failure above it.
   @ViewBuilder
   private var pickingContent: some View {
-    searchWell
     if let refusal = model.refusal {
       Text(QuickAddPanelCopy.refusalMessage(refusal))
         .font(.stBody)
@@ -252,6 +306,27 @@ struct QuickAddPanelView: View {
       .padding(.bottom, 6)
     composeWell
     failureBanner
+  }
+
+  /// The panel with nothing left to ask: one sentence, and then it takes itself away.
+  ///
+  /// **Three lines where the shipped panel rendered nine.** Opened onto a word already covered, the
+  /// header said `nothing to add` and the rest of the panel contradicted it — a highlighted row
+  /// whose only action was a no-op, four unrelated words offered as if they were choices, and a
+  /// legend advertising a verb the state could not perform.
+  ///
+  /// The search field above this stays for a searchable notice, because the ranking can be wrong
+  /// and typing is how the user says so.
+  @ViewBuilder
+  private func noticeContent(_ notice: QuickAddPanelModel.Notice) -> some View {
+    let message = QuickAddPanelCopy.notice(notice)
+    Text(message)
+      .font(.stBody)
+      .foregroundStyle(.stTextPrimary)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.horizontal, 16)
+      .padding(.top, 14)
+      .accessibilityLabel(message)
   }
 
   /// Why the last write did not happen. Shared by both stages: the library refuses through the same
@@ -450,17 +525,24 @@ struct QuickAddPanelView: View {
   /// user who would otherwise have to discover it by accident.
   private var legend: some View {
     HStack(spacing: 14) {
-      if model.stage == .composing {
+      // Switched on the stage rather than tested for one, so a new stage cannot inherit whichever
+      // branch happens to be the `else`. A notice offers no keys of its own: the ranking behind it
+      // still HAS a preselected row, and an `↑↓ move` cap over a sentence would name a control that
+      // is not on screen.
+      switch model.stage {
+      case .composing:
         if model.draftWord != nil {
           legendItem("\u{23CE}", QuickAddPanelCopy.legendCreate)
         }
-      } else {
+      case .picking:
         if model.acceptTarget != nil {
           legendItem("\u{23CE}", QuickAddPanelCopy.legendAccept)
         }
         if !model.ranking.candidates.isEmpty {
           legendItem("\u{2191}\u{2193}", QuickAddPanelCopy.legendMove)
         }
+      case .notice:
+        EmptyView()
       }
       // **A BUTTON, and it is the only mouse path off this panel.** The standard close control is
       // hidden because `.fullSizeContentView` puts the hosting view over the titlebar, so unhiding
@@ -490,12 +572,12 @@ struct QuickAddPanelView: View {
     model.stage == .composing ? QuickAddPanelCopy.legendBack : QuickAddPanelCopy.legendClose
   }
 
+  /// **Asks the model the same question the WINDOW asks.** Escape arrives twice by two routes —
+  /// `KeyCapablePanel.cancelOperation` for the key, this button for the mouse — and a second copy of
+  /// the rule here is how the two came to mean different things in the compose stage.
   private func escapeAction() {
-    if model.stage == .composing {
-      model.cancelComposing()
-    } else {
-      onCancel()
-    }
+    guard !model.consumeCancel() else { return }
+    onCancel()
   }
 
   private func legendItem(_ cap: String, _ label: String) -> some View {
