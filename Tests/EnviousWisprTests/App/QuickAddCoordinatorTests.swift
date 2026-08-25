@@ -217,6 +217,30 @@ struct QuickAddCoordinatorTests {
     #expect(recorder.outcomes == [.alreadySaved], "a distinct outcome: nothing went wrong")
   }
 
+  @Test("A spelling removed while the panel sat open is written again, not reported as saved")
+  func aSpellingRemovedInBetweenIsWrittenAgain() throws {
+    // The MIRROR of the de-dup below, and the direction the first version of this fix missed. The
+    // snapshot's `alreadyHasHeardSpelling` was consulted BEFORE the live lookup, so a spelling the
+    // user removed in Settings while the panel sat open still short-circuited to "already saved" —
+    // the panel reporting a spelling was there, having written nothing, about a word that no longer
+    // had it. Same family as the P1, arriving through the guard that runs first.
+    let codex = word("Codex", aliases: ["codecs"])
+    let (coordinator, recorder) = makeCoordinator(userWords: [codex])
+    let model = try #require(beginAndShow(coordinator))
+    let target = try #require(model.ranking.candidates.first)
+    #expect(target.alreadyHasHeardSpelling, "the snapshot says it is already there")
+
+    var edited = codex
+    edited.aliases = []
+    recorder.userWords = [edited]
+
+    coordinator.accept(target, from: model)
+
+    let saved = try #require(recorder.saved.first)
+    #expect(saved.aliases.contains("codecs"), "it is not there any more, so it gets written")
+    #expect(recorder.outcomes == [.accepted], "never alreadySaved for a spelling that is absent")
+  }
+
   @Test("Accepting merges into the word as it is NOW, not the snapshot the panel was ranked from")
   func acceptingMergesIntoTheLiveWord() throws {
     // The panel is deliberately persistent — it survives losing focus — so the user can open it,

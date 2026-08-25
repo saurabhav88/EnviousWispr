@@ -279,13 +279,6 @@ final class QuickAddCoordinator {
     let rank = model.ranking.candidates.firstIndex { $0.id == candidate.id }
     let kind: QuickAddTargetKind = candidate.isPackTerm ? .packTerm : .userWord
 
-    guard !candidate.alreadyHasHeardSpelling else {
-      // Writing again would add a duplicate and report success. Saying so is the honest outcome, and
-      // it is a distinct one from a refusal because nothing went wrong.
-      finish(.alreadySaved, usedSearch: usedSearch, rank: rank, kind: kind)
-      return nil
-    }
-
     var word: CustomWord
     switch Self.mergeTarget(for: candidate, in: environment.userWords()) {
     case .override(let converted): word = converted
@@ -295,10 +288,21 @@ final class QuickAddCoordinator {
       return QuickAddPanelCopy.wordNoLongerExists
     }
 
-    // The guard above answers this from the ranking taken when the panel OPENED. The library can
-    // have gained the spelling since — added in Settings, or by a sibling accept while this panel
-    // sat open — and appending it again would store it twice and report success. One outcome, two
-    // sources, and the live source is the one that decides.
+    // **ONE already-has question, asked of the LIVE word, and it replaces a guard that ran BEFORE
+    // the resolver on `candidate.alreadyHasHeardSpelling`.** That flag is a fact about the ranking
+    // taken when the panel opened, and the panel is persistent, so it is wrong in BOTH directions by
+    // the time Return is pressed: the library can have GAINED the spelling (appending again stores
+    // it twice and reports success) or LOST it (the user removed that alias in Settings, and the
+    // panel then reports "already saved" about a spelling that is no longer there, having written
+    // nothing).
+    //
+    // The first version of this fix kept the snapshot guard and added a live check below it, which
+    // closed only the gained direction — the snapshot guard runs FIRST, so `alreadyHasHeardSpelling
+    // == true` returned before the resolver could ever load the current entry. `fix-the-path-that-
+    // runs-first`, inside the fix for a defect of the same family, one round later.
+    //
+    // The flag stays on `Candidate` and the VIEW still reads it: dimming a row and choosing a header
+    // are display, and display from the ranking is what the user is looking at. The DECISION is live.
     guard
       !word.aliases.contains(where: {
         $0.caseInsensitiveCompare(model.spellingToWrite) == .orderedSame
