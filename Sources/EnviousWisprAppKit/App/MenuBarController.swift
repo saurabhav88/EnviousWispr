@@ -166,6 +166,30 @@ final class MenuBarController: NSObject {
     return ("Add \u{201C}\(shown)\u{201D}", true)
   }
 
+  /// The Quick Add chord as a menu key equivalent, or nil when it cannot be shown exactly.
+  ///
+  /// **The shortcut is user-editable** (`settings.quickAddKeyCode` / `quickAddModifiers`), so a
+  /// hard-coded `⌃⌥W` teaches the wrong chord the moment anyone rebinds it — and keeps answering the
+  /// old one, because a key equivalent is live rather than decorative.
+  ///
+  /// **Nil rather than an approximation.** A key equivalent is a CHARACTER plus a mask, which is
+  /// narrower than a hotkey: a bare modifier has no character, and neither does an arrow or a
+  /// function key. A menu that teaches NOTHING is recoverable; one that teaches a chord the user has
+  /// reassigned is not, because they have no reason to doubt it.
+  ///
+  /// Letters and digits are the representable set, and the shipped default (W) is in it.
+  /// `KeySymbols.nameForKeyCode` is the shipped table rather than a second copy of it.
+  static func quickAddKeyEquivalent(
+    keyCode: UInt16, modifiers: NSEvent.ModifierFlags
+  ) -> MenuChord? {
+    guard !modifiers.isEmpty, !ModifierKeyCodes.isModifierOnly(keyCode) else { return nil }
+    let name = KeySymbols.nameForKeyCode(keyCode)
+    guard name.count == 1, let scalar = name.unicodeScalars.first,
+      CharacterSet.alphanumerics.contains(scalar), scalar.isASCII
+    else { return nil }
+    return MenuChord(key: name.lowercased(), modifiers: modifiers)
+  }
+
   /// How much of the selection the title shows. Not a limit on what can be ADDED — the reader's
   /// ceiling is that — only on what fits a menu without pushing the rest of it off screen.
   static let quickAddTitleScalars = 24
@@ -240,12 +264,14 @@ final class MenuBarController: NSObject {
     // Quick Add (#2412). Beside Start Recording because both act on what the user is doing RIGHT
     // NOW, and above the Settings separator because neither is configuration.
     let quickAdd = Self.quickAddItem(selection: state.quickAddSelection)
+    let chord = state.quickAddChord
     let quickAddItem = NSMenuItem(
-      title: quickAdd.title, action: #selector(addSelectedWordAction), keyEquivalent: "w")
-    // Shown, never registered: the real chord is a global hotkey owned by `HotkeyService`, and a
-    // menu key equivalent would be a SECOND registration of one gesture. This displays `⌃⌥W` so the
-    // menu teaches the fast path, which is the discoverability half of this issue.
-    quickAddItem.keyEquivalentModifierMask = [.control, .option]
+      title: quickAdd.title, action: #selector(addSelectedWordAction),
+      keyEquivalent: chord?.key ?? "")
+    // Derived from the user's own binding, and absent when it cannot be represented exactly — see
+    // `quickAddKeyEquivalent`. The menu teaches the fast path, which is the discoverability half of
+    // this issue, and teaches nothing rather than something false.
+    quickAddItem.keyEquivalentModifierMask = chord?.modifiers ?? []
     quickAddItem.image = NSImage(
       systemSymbolName: "text.badge.plus", accessibilityDescription: "Add selected word")
     quickAddItem.target = self
@@ -371,6 +397,8 @@ final class MenuBarController: NSObject {
       sparkleUpdateController.updateCoordinator?.installRefusedNow ?? false
 
     return MenuBarViewState(
+      quickAddChord: Self.quickAddKeyEquivalent(
+        keyCode: settings.quickAddKeyCode, modifiers: settings.quickAddModifiers),
       quickAddSelection: quickAddSelection,
       pipelineState: liveRecordingState.pipelineState,
       asrLabel: backendMetadata.modelLabel,
@@ -474,10 +502,25 @@ struct MenuBarActions: Sendable {
   let quit: @MainActor () -> Void
 }
 
+/// A chord a menu item can actually display: a character plus a modifier mask.
+///
+/// A named type rather than a tuple because `MenuBarViewState` is `Equatable` and Swift does not
+/// synthesise that through a tuple field.
+struct MenuChord: Equatable {
+  let key: String
+  let modifiers: NSEvent.ModifierFlags
+}
+
 /// Immutable snapshot the menu and icon render from. Extracting it makes
 /// `renderMenu` / `iconState` pure functions over a value, which is what makes
 /// the menu surface deterministically golden-testable.
 struct MenuBarViewState: Equatable {
+  /// The Quick Add chord as a menu key equivalent, or nil when it cannot be shown exactly (#2412).
+  ///
+  /// On the state for the same reason as the selection: `renderMenu` is pure over this value, and
+  /// reading `settings` inside it would end that.
+  let quickAddChord: MenuChord?
+
   /// The selection Quick Add would act on, or nil when there is nothing readable (#2412).
   ///
   /// **Carried on the state rather than read inside `renderMenu`, deliberately.** That function is

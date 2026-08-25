@@ -215,8 +215,8 @@ struct MenuBarControllerTests {
     let live = item(ready, "Add \u{201C}clawwed\u{201D}")
     #expect(live?.isEnabled == true)
     #expect(live?.target as AnyObject? === controller)
-    // Shown, never registered — the real chord is a global hotkey, and a menu key equivalent would
-    // be a second registration of one gesture.
+    // Derived from the CONFIGURED binding, never hard-coded — the fixture's default is the shipped
+    // chord, and the rebind cases are asserted separately below.
     #expect(live?.keyEquivalent == "w")
     #expect(live?.keyEquivalentModifierMask == [.control, .option])
 
@@ -224,6 +224,54 @@ struct MenuBarControllerTests {
     #expect(
       spy.fired == ["addSelectedWord:clawwed"],
       "the action must carry the text the TITLE quoted, not a fresh read taken after the menu closed")
+  }
+
+  /// **The shortcut is user-editable, so advertising a hard-coded one teaches a lie after a
+  /// rebind** — and keeps answering the old chord, because a key equivalent is live rather than
+  /// decorative.
+  @Test("A rebound shortcut is what the menu advertises")
+  func theMenuFollowsTheConfiguredBinding() {
+    let controller = makeController()
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu,
+      state: fixture(
+        pipelineState: .idle, quickAddSelection: "clawwed",
+        quickAddChord: MenuChord(key: "j", modifiers: [.command, .shift])))
+
+    let row = item(menu, "Add \u{201C}clawwed\u{201D}")
+    #expect(row?.keyEquivalent == "j")
+    #expect(row?.keyEquivalentModifierMask == [.command, .shift])
+  }
+
+  /// **Nothing rather than an approximation.** A menu that teaches no shortcut is recoverable; one
+  /// that teaches a chord the user reassigned is not, because they have no reason to doubt it.
+  @Test("An unrepresentable chord advertises nothing at all")
+  func anUnrepresentableChordShowsNothing() {
+    let controller = makeController()
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu,
+      state: fixture(pipelineState: .idle, quickAddSelection: "clawwed", quickAddChord: nil))
+
+    let row = item(menu, "Add \u{201C}clawwed\u{201D}")
+    #expect(row?.keyEquivalent == "")
+    #expect(row?.keyEquivalentModifierMask == [])
+  }
+
+  /// The mapping itself: what a menu can show exactly, and what it must decline to.
+  @Test("Only a modified letter or digit becomes a key equivalent")
+  func onlyRepresentableChordsMap() {
+    // 13 is W, the shipped default.
+    #expect(
+      MenuBarController.quickAddKeyEquivalent(keyCode: 13, modifiers: [.control, .option])
+        == MenuChord(key: "w", modifiers: [.control, .option]))
+    // A bare modifier has no character to be.
+    #expect(MenuBarController.quickAddKeyEquivalent(keyCode: 61, modifiers: []) == nil)
+    // An arrow has a symbol, not a character a key equivalent can carry.
+    #expect(MenuBarController.quickAddKeyEquivalent(keyCode: 123, modifiers: [.command]) == nil)
+    // No modifiers at all is not a chord a menu should claim.
+    #expect(MenuBarController.quickAddKeyEquivalent(keyCode: 13, modifiers: []) == nil)
   }
 
   @Test("renderMenu (b): recording → Stop Recording, record item enabled")
@@ -386,9 +434,11 @@ struct MenuBarControllerTests {
     updateDisplayVersion: String? = nil,
     installEnabled: Bool = false,
     appearancePreference: AppearancePreference = .system,
-    quickAddSelection: String? = nil
+    quickAddSelection: String? = nil,
+    quickAddChord: MenuChord? = MenuChord(key: "w", modifiers: [.control, .option])
   ) -> MenuBarViewState {
     MenuBarViewState(
+      quickAddChord: quickAddChord,
       quickAddSelection: quickAddSelection,
       pipelineState: pipelineState,
       asrLabel: "Parakeet v3",
