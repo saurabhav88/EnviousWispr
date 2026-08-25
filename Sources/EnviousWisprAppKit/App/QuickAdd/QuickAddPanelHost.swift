@@ -108,41 +108,33 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
 
     // Activate BEFORE making key, and only now — the selection was read while the other app was
     // still frontmost, which is the whole reason this happens here rather than at capture time.
-    takeFocus(panel, capturingOrigin: true)
+    takeFocus(panel)
     return true
   }
 
-  /// Take activation and key status, recording what was taken so `releaseFocus` can give back
-  /// exactly that.
-  ///
-  /// **One owner, because there are TWO takers and the second was missed by three review rounds.**
-  /// `present` and `raise` both activate and both call `makeKeyAndOrderFront`; only the first
-  /// recorded it, so after a raise both records described the PREVIOUS presentation. Reachable:
-  /// open from another app, click into our Settings window, press the shortcut again — the raise
-  /// takes key status from Settings while the records still say the app was activated from outside,
-  /// and the release then deactivates, hiding the user's own window.
-  ///
-  /// A third taker cannot be added without coming through here, which is the point of it existing
-  /// rather than the two lines being repeated.
   /// Bring the panel forward and give it the keyboard, recording what held it first.
   ///
-  /// **`capturingOrigin` is true exactly once per invocation, and the reason is that there is only
-  /// one uncontaminated instant.** Five review rounds found five ways to get this wrong, and they
-  /// share a cause: every attempt OBSERVED focus from inside a process whose own activation moves it.
-  /// Hooking the routes misses routes (a raise, a mouse click, the Dock). Deriving from the current
-  /// window list answers a different question — a visible window of ours is not evidence the user
-  /// came from it. Watching AppKit's notifications catches our OWN `NSApp.activate` making Settings
-  /// key on its way to activating us.
+  /// **One owner for both takers.** `present` and `raise` both activate and both call
+  /// `makeKeyAndOrderFront`, so a third taker cannot be added without coming through here — which
+  /// is the point of this existing rather than the two lines being repeated at each site.
   ///
-  /// The instant before this invocation touches anything is not contaminated, because nothing has
-  /// happened yet. `QuickAddCoordinator.begin` already depends on exactly that instant to read the
-  /// selection, for exactly this reason.
+  /// **Capture iff we do not already hold focus, and that predicate is the sixth answer to one
+  /// question.** The five before it each described something unbounded. Hooking the ROUTES misses
+  /// routes, because the set of ways a window becomes key is AppKit's rather than ours. Deriving
+  /// from the current window list answers a different question — a visible window of ours is not
+  /// evidence the user came from it. Naming the one uncontaminated INSTANT is a claim about time,
+  /// and `raise` falsifies it: `windowDidResignKey` is a no-op, so the panel can sit visible and
+  /// unfocused while the user works somewhere else, and a second shortcut press is then a genuinely
+  /// new origin rather than a repeat of the first.
   ///
-  /// `raise` passes false: a second shortcut press is the same invocation, and the user has not gone
-  /// anywhere between the two.
-  private func takeFocus(_ panel: NSPanel, capturingOrigin: Bool) {
-    if capturingOrigin {
-      // Read BEFORE the activate below, which is the only line in this method that moves focus.
+  /// `panel.isKeyWindow` is AppKit's own answer, read at the transition, with two values. If we do
+  /// not hold focus we are about to take it from whoever does, so record them; if we already hold
+  /// it, nothing is being taken and the existing record still describes who we took it from.
+  ///
+  /// The read happens BEFORE the activate below, which is the only line here that moves focus —
+  /// `QuickAddCoordinator.begin` depends on the same ordering to read the selection.
+  private func takeFocus(_ panel: NSPanel) {
+    if Self.shouldCaptureOrigin(panelIsKey: panel.isKeyWindow) {
       if NSApp.isActive, let key = NSApp.keyWindow, key !== panel {
         focusOrigin = .ourWindow
         originWindow = key
@@ -155,17 +147,31 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
     panel.makeKeyAndOrderFront(nil)
   }
 
+  /// Whether taking focus should record who held it first.
+  ///
+  /// Holding it already means nothing is being taken, so the standing record — who we took it from
+  /// when we did — is still the right answer.
+  package static func shouldCaptureOrigin(panelIsKey: Bool) -> Bool { !panelIsKey }
+
+  /// Whether taking the panel down should hand focus back.
+  ///
+  /// **Gated rather than unconditional, and the gate is load-bearing.** After a confirmation the
+  /// beat has already released, so the panel is not key when the fade fires; releasing again there
+  /// would re-raise a Settings window the user may have left in the meantime. Not holding focus
+  /// means there is nothing to give back.
+  package static func shouldReleaseOnDismiss(panelIsKey: Bool) -> Bool { panelIsKey }
+
   /// What held the keyboard immediately before this panel took it.
   ///
-  /// **Provenance, and the third attempt at where to capture it.** Recording it in `present` and
-  /// `raise` enumerates ROUTES, and routes are AppKit's set — a raise, a mouse click, command-tab,
-  /// the Dock — so three review rounds each found another one. Deriving it instead from "do we have
-  /// another window on screen" is closed and WRONG: leave Settings open behind TextEdit, invoke the
-  /// shortcut from TextEdit, and a window-list answer sends the keyboard to Settings.
+  /// **Provenance, and six review rounds went into where to capture it.** Recording at the ROUTES
+  /// enumerates AppKit's set rather than ours — a raise, a mouse click, command-tab, the Dock — so
+  /// three rounds each found another one. Deriving instead from "do we have another window on
+  /// screen" is closed and WRONG: leave Settings open behind TextEdit, invoke the shortcut from
+  /// TextEdit, and a window-list answer sends the keyboard to Settings.
   ///
-  /// The closed capture point is not a list of routes and not a derivation from the current world.
-  /// It is the one INSTANT at which this process has provably not touched focus yet — see
-  /// `takeFocus(_:capturingOrigin:)`.
+  /// The closed capture point is not a list of routes, not a derivation from the current world,
+  /// and not an instant. It is the panel's own key status at the transition — see
+  /// `shouldCaptureOrigin(panelIsKey:)`.
   package enum FocusOriginKind: Equatable, Sendable, CaseIterable {
     /// Another application was frontmost.
     case otherApp
@@ -199,8 +205,10 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// and not by throwing away the selection it already holds.
   func raise() {
     guard let panel, panel.isVisible else { return }
-    // NOT recapturing: a second press is the same invocation and the user has not moved.
-    takeFocus(panel, capturingOrigin: false)
+    // Recaptures iff the panel is not key. A press while it IS key is the same invocation and
+    // changes nothing; a press while it is visible-but-unfocused means the user moved, and the
+    // origin has to move with them.
+    takeFocus(panel)
   }
 
   /// Hand keyboard focus back to whatever the user was working in, WITHOUT taking the panel down.
@@ -239,6 +247,12 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// `orderOut`, never `close`: closing is what forces a rebuild, and this panel is reused.
   func dismiss() {
     guard let panel, panel.isVisible else { return }
+    // **Every dismissal route passes through here, which is why the release lives here rather than
+    // at the routes.** Escape on a notice the user clicked back into does not reach the wiring's
+    // cancel path at all — that invocation already resolved and `activeModel` is nil — so a release
+    // placed at the visible close control left the app active with no key window and the next
+    // characters going nowhere.
+    if Self.shouldReleaseOnDismiss(panelIsKey: panel.isKeyWindow) { releaseFocus() }
     panel.orderOut(nil)
     panel.contentViewController = nil
   }

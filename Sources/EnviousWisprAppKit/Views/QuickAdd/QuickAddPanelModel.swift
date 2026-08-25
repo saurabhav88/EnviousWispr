@@ -305,6 +305,20 @@ final class QuickAddPanelModel {
     return false
   }
 
+  /// Whether the search field belongs on screen.
+  ///
+  /// **A refusal hides it, and the copy depends on that.** `updateQuery` will not re-rank without a
+  /// heard string, so under a refusal the field can be typed into and answers nothing. The refusal
+  /// messages were rewritten precisely to stop pointing at it, and `noRefusalPointsAtTheSearchField`
+  /// guards that wording — a disabled field left on screen is the control those messages were
+  /// forbidden from naming, still sitting there.
+  ///
+  /// A searchable notice shows it, because typing past that notice is the whole reason it is a
+  /// notice rather than a dismissal.
+  var showsSearchField: Bool {
+    (stage == .picking && refusal == nil) || isShowingSearchableNotice
+  }
+
   /// The notice currently on screen, or nil. One accessor, so the view and the timer cannot disagree
   /// about which stage counts as a notice.
   var notice: Notice? {

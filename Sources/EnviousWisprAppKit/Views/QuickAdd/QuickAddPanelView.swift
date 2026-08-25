@@ -59,9 +59,9 @@ enum QuickAddPanelCopy {
   /// The user authored a word by hand that was already in the library, with no spelling to attach.
   ///
   /// **Not a refusal, and it used to be one.** The panel that reaches this opened WITHOUT a readable
-  /// selection, so its ranking is empty and its search field disabled — and the refusal's copy told
-  /// the user to choose the word from a list that cannot exist there. Nothing is wrong in this
-  /// state: they asked for the word to be in their words, and it is.
+  /// selection, so its ranking is empty and its search field is not on screen — and the refusal's
+  /// copy told the user to choose the word from a list that cannot exist there. Nothing is wrong
+  /// in this state: they asked for the word to be in their words, and it is.
   static func alreadyInWordsNotice(word: String) -> String {
     "\(word) is already in your words"
   }
@@ -249,7 +249,7 @@ struct QuickAddPanelView: View {
       // rendered inside each branch would be a DIFFERENT view to SwiftUI on either side of that
       // transition. It would be torn down and rebuilt at the exact keystroke that causes the
       // transition, losing focus and the character that triggered it.
-      if showsSearchField { searchWell }
+      if model.showsSearchField { searchWell }
       switch model.stage {
       case .picking: pickingContent
       case .composing: composingContent
@@ -267,12 +267,6 @@ struct QuickAddPanelView: View {
     //
     // Escape now has TWO meanings and the window still cannot tell them apart, which is why the
     // decision stayed on the model (`consumeCancel`) rather than moving back here.
-  }
-
-  /// Whether the search field is on screen. `.picking` always, and a searchable notice because the
-  /// escape hatch is the whole reason that notice is not simply a dismissal.
-  private var showsSearchField: Bool {
-    model.stage == .picking || model.notice?.searchable == true
   }
 
   /// The ranked list, and the refusal or failure above it.
@@ -430,6 +424,9 @@ struct QuickAddPanelView: View {
       .font(.system(size: 15))
       .foregroundStyle(.stTextPrimary)
       .focused($searchFocused)
+      // Unreachable today — `showsSearchField` hides the field under a refusal — and kept as the
+      // floor: any future state that shows the field without a rankable heard string gets an inert
+      // control rather than a silent one.
       .disabled(model.refusal != nil)
       // Arrows move the highlight WITHOUT leaving the field, which is what lets the user keep typing
       // after correcting the selection.

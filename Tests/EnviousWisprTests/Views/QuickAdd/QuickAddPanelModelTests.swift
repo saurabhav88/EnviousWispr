@@ -177,6 +177,20 @@ struct QuickAddPanelModelTests {
     #expect(model.writeFailure == nil)
   }
 
+  /// **The field is HIDDEN under a refusal, not merely inert, and the copy guard depends on it.**
+  /// `noRefusalPointsAtTheSearchField` forbids the refusal messages from naming a control the user
+  /// cannot use; leaving a disabled field on screen is that control, still there. The test below
+  /// covers the model half — the query text survives — and this covers whether it is shown at all.
+  @Test("A refusal takes the search field off screen")
+  func aRefusalHidesTheSearchField() {
+    let (refused, _) = makeModel(
+      heard: "", refusal: .accessibilityNotTrusted, heardRanking: .empty)
+    #expect(!refused.showsSearchField)
+
+    let (ordinary, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+    #expect(ordinary.showsSearchField, "the ordinary panel is the two-way half of this")
+  }
+
   @Test("A refusal leaves the search field inert rather than ranking an empty selection")
   func searchIsInertUnderARefusal() {
     let (model, calls) = makeModel(

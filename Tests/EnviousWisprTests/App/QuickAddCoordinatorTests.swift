@@ -962,6 +962,26 @@ struct QuickAddCoordinatorTests {
     #expect(QuickAddPanelHost.focusRelease(origin: .otherApp) == .deactivateApp)
   }
 
+  /// **The refutation of the instant argument, kept so "a second press is the same invocation"
+  /// cannot come back.** `windowDidResignKey` is a no-op, so the panel sits visible and unfocused
+  /// while the user works elsewhere. A shortcut press in that state takes focus from somewhere new,
+  /// and reusing the first press's origin sends the keyboard to an app the user has left.
+  @Test("A press while the panel is visible but unfocused records a new origin")
+  func aRaiseOntoAnUnfocusedPanelRecapturesTheOrigin() {
+    #expect(QuickAddPanelHost.shouldCaptureOrigin(panelIsKey: false))
+    #expect(
+      !QuickAddPanelHost.shouldCaptureOrigin(panelIsKey: true),
+      "already holding focus means nothing is being taken, so the standing record still holds")
+  }
+
+  /// **The gate is what stops a fade re-raising a window the user has left.** After a confirmation
+  /// the beat has already released, so the panel is not key when the fade fires.
+  @Test("Dismissal hands focus back only when the panel is actually holding it")
+  func dismissalReleasesOnlyWhatItHolds() {
+    #expect(QuickAddPanelHost.shouldReleaseOnDismiss(panelIsKey: true))
+    #expect(!QuickAddPanelHost.shouldReleaseOnDismiss(panelIsKey: false))
+  }
+
   /// **The case AppKit's own notifications got wrong, kept so the observer version cannot return.**
   /// `NSApp.activate` can make Settings key on its way to activating us, so a notification observer
   /// records `.ourWindow` for an invocation that started in TextEdit. Capturing before anything
