@@ -77,6 +77,13 @@ struct ModelDeliveryHomeTests {
     #expect(box.wakeCalls == 0, "a refused claim never owes a wake")
   }
 
+  /// The flag store is INJECTED and explicitly ENABLED, which this test did not
+  /// need before #2139 and does now. `resumeParakeetDownload` reads the parakeet
+  /// family kill switch, so without an injected suite it reads the real
+  /// operational one — and on a machine where a developer has that switch set
+  /// false the door refuses before the claim and this test fails on MACHINE
+  /// STATE rather than on code. Found by cloud review; the omission was harmless
+  /// only for as long as this door read no flag.
   @Test("a gate-refused resume reports the site and never releases or wakes")
   func aGateRefusedResumeReportsTheSiteAndNeverReleasesOrWakes() async throws {
     final class Box: @unchecked Sendable {
@@ -85,6 +92,8 @@ struct ModelDeliveryHomeTests {
       var refusedSites: [String] = []
     }
     let box = Box()
+    let suite = try #require(UserDefaults(suiteName: "ew-2139-resume-\(UUID().uuidString)"))
+    suite.set(true, forKey: "modelDelivery.parakeet.enabled")
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { false },
@@ -95,7 +104,8 @@ struct ModelDeliveryHomeTests {
         wake: { box.wakeCalls += 1 },
         onRefused: { box.refusedSites.append($0) }),
       manifestBundle: try Self.manifestBundle(),
-      appSupportOverride: try Self.tempAppSupport())
+      appSupportOverride: try Self.tempAppSupport(),
+      deliveryFlagDefaults: suite)
 
     home.resumeParakeetDownload()
     // Signal, not clock: wait for the gate's own refusal telemetry, proving

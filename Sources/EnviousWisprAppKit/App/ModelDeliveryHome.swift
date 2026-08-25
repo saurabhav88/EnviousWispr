@@ -73,13 +73,17 @@ public final class ModelDeliveryHome {
   package private(set) var parakeetStateUpdatesForTests = 0
 
   /// How many times the Parakeet Resume door has REFUSED on the family kill
-  /// switch. A test seam, and specifically a POSITIVE one: the refusal path
-  /// returns before any `Task` is created, so this is incremented synchronously
-  /// on the main actor and is already true when `resumeParakeetDownload()`
-  /// returns. Without it the flag-OFF arm could only assert two absences — no
-  /// claim taken, no delivery reached — and an absence cannot distinguish "the
-  /// guard refused" from "the door has not run yet", which is the vacuity this
-  /// counter exists to remove.
+  /// switch, from EITHER of its two checks. A test seam, and specifically a
+  /// POSITIVE one: without it the flag-OFF arm could only assert two absences —
+  /// no claim taken, no delivery reached — and an absence cannot distinguish
+  /// "the guard refused" from "the door has not run yet", which is the vacuity
+  /// this counter exists to remove.
+  ///
+  /// A flag that is off when the button is pressed takes the SYNCHRONOUS check,
+  /// which returns before any `Task` is created, so the count is already correct
+  /// when `resumeParakeetDownload()` returns and the flag-OFF arm needs no wait.
+  /// The second check can only fire on a flag that flipped inside the window
+  /// between the two, which no test stages today.
   package private(set) var parakeetResumeRefusalsForTests = 0
   /// Monotonic apply guard (EG-1 `installStateSeqApplied` precedent, made
   /// REAL per exhaustive r7 finding 7): the sequence is minted at observer-
@@ -581,10 +585,22 @@ public final class ModelDeliveryHome {
   /// flags once per attempt — so flipping it mid-download leaves the Settings row
   /// showing progress and Cancel, exactly as before.
   ///
-  /// **Before the mutation claim, not inside it.** Taking
-  /// `engineMutationScope.withClaim` and then refusing would serialise a refused
-  /// download against a dictation's engine switch — the limb interfering with the
-  /// heart — for work that was never going to happen.
+  /// **Checked TWICE, and the pair is deliberate.**
+  ///
+  /// The synchronous check is the one that matters for the ordinary case: it
+  /// refuses before any `Task` exists, so a refused download never takes an
+  /// engine mutation claim and never serialises against a dictation's engine
+  /// switch — the limb interfering with the heart, for work that was never going
+  /// to happen.
+  ///
+  /// The re-read inside the `Task`, immediately before the claim, closes what the
+  /// synchronous check alone leaves open: the flag is read on the main actor and
+  /// the `Task` runs later, so an operator flip landing in that window would
+  /// otherwise start the fetch on a stale answer. It NARROWS rather than closes —
+  /// the controller snapshots flags once per attempt, so some window always
+  /// remains between the last read and the bytes moving, and there is no site
+  /// that removes it. It is here because it is three lines and the failure is
+  /// SILENT: a fetch begins that an operator asked to stop, and nothing says so.
   ///
   /// `cancelParakeetDownload` is deliberately NOT gated, and must stay that way: a
   /// delivery kill switch must never strand someone mid-download with no way to
@@ -617,6 +633,17 @@ public final class ModelDeliveryHome {
     }
     Task { [weak self] in
       guard let self else { return }
+      // The re-read (see the doc comment above). Still BEFORE the claim, for the
+      // same reason the synchronous one is: a refusal must not take the claim.
+      guard handle.isEnabled() else {
+        self.parakeetResumeRefusalsForTests += 1
+        await AppLogger.shared.log(
+          "Parakeet resume refused: the parakeet delivery kill switch went off "
+            + "between the button and the download starting "
+            + "(modelDelivery.parakeet.enabled = false)",
+          level: .info, category: "Delivery")
+        return
+      }
       // #1707 Phase 3 (§3.2, row 17): hold a mutation claim for the FULL
       // download.
       _ = await self.engineMutationScope.withClaim(site: "parakeetResumeDownload") {
