@@ -116,7 +116,7 @@ struct MenuBarControllerTests {
         "Version: \(AppConstants.appVersion)",
         "",  // separator
         "Start Recording",
-        "Add Selected Word",  // #2412, disabled with no selection
+        "Add Selected Word  \u{2303}\u{2325} W",  // #2412, disabled; the chord rides in the title
         "",  // separator
         "Settings...",
         "Appearance",  // #1047 submenu parent
@@ -206,19 +206,20 @@ struct MenuBarControllerTests {
 
     let empty = NSMenu()
     controller.renderMenu(into: empty, state: fixture(pipelineState: .idle))
-    let inert = item(empty, "Add Selected Word")
+    let inert = itemPrefixed(empty, "Add Selected Word")
     #expect(inert?.isEnabled == false)
 
     let ready = NSMenu()
     controller.renderMenu(
       into: ready, state: fixture(pipelineState: .idle, quickAddSelection: "clawwed"))
-    let live = item(ready, "Add \u{201C}clawwed\u{201D}")
+    let live = itemPrefixed(ready, "Add \u{201C}clawwed\u{201D}")
     #expect(live?.isEnabled == true)
     #expect(live?.target as AnyObject? === controller)
-    // Derived from the CONFIGURED binding, never hard-coded — the fixture's default is the shipped
-    // chord, and the rebind cases are asserted separately below.
-    #expect(live?.keyEquivalent == "w")
-    #expect(live?.keyEquivalentModifierMask == [.control, .option])
+    // **No key equivalent at all.** A global hotkey is a physical key code; a key equivalent is a
+    // character matched against the active layout. On AZERTY they are different keys, so an item
+    // carrying one can respond to a chord that is not the user's.
+    #expect(live?.keyEquivalent == "")
+    #expect(live?.keyEquivalentModifierMask == [])
 
     perform(live)
     #expect(
@@ -227,8 +228,7 @@ struct MenuBarControllerTests {
   }
 
   /// **The shortcut is user-editable, so advertising a hard-coded one teaches a lie after a
-  /// rebind** — and keeps answering the old chord, because a key equivalent is live rather than
-  /// decorative.
+  /// rebind.** Shown as text rather than as a key equivalent — see `quickAddShortcutLabel`.
   @Test("A rebound shortcut is what the menu advertises")
   func theMenuFollowsTheConfiguredBinding() {
     let controller = makeController()
@@ -236,12 +236,11 @@ struct MenuBarControllerTests {
     controller.renderMenu(
       into: menu,
       state: fixture(
-        pipelineState: .idle, quickAddSelection: "clawwed",
-        quickAddChord: MenuChord(key: "j", modifiers: [.command, .shift])))
+        pipelineState: .idle, quickAddSelection: "clawwed", quickAddShortcut: "\u{2318}\u{21E7} J"))
 
-    let row = item(menu, "Add \u{201C}clawwed\u{201D}")
-    #expect(row?.keyEquivalent == "j")
-    #expect(row?.keyEquivalentModifierMask == [.command, .shift])
+    let row = itemPrefixed(menu, "Add \u{201C}clawwed\u{201D}")
+    #expect(row?.title == "Add \u{201C}clawwed\u{201D}  \u{2318}\u{21E7} J")
+    #expect(row?.keyEquivalent == "", "never a key equivalent, whatever the binding")
   }
 
   /// **Nothing rather than an approximation.** A menu that teaches no shortcut is recoverable; one
@@ -252,26 +251,32 @@ struct MenuBarControllerTests {
     let menu = NSMenu()
     controller.renderMenu(
       into: menu,
-      state: fixture(pipelineState: .idle, quickAddSelection: "clawwed", quickAddChord: nil))
+      state: fixture(pipelineState: .idle, quickAddSelection: "clawwed", quickAddShortcut: nil))
 
-    let row = item(menu, "Add \u{201C}clawwed\u{201D}")
-    #expect(row?.keyEquivalent == "")
-    #expect(row?.keyEquivalentModifierMask == [])
+    #expect(item(menu, "Add \u{201C}clawwed\u{201D}") != nil, "the title carries no trailing hint")
   }
 
-  /// The mapping itself: what a menu can show exactly, and what it must decline to.
-  @Test("Only a modified letter or digit becomes a key equivalent")
-  func onlyRepresentableChordsMap() {
-    // 13 is W, the shipped default.
+  /// The mapping itself: what is worth showing, and what is not.
+  @Test("An unknown key code advertises nothing rather than `Key 999`")
+  func onlyKnownChordsAreAdvertised() {
     #expect(
-      MenuBarController.quickAddKeyEquivalent(keyCode: 13, modifiers: [.control, .option])
-        == MenuChord(key: "w", modifiers: [.control, .option]))
-    // A bare modifier has no character to be.
-    #expect(MenuBarController.quickAddKeyEquivalent(keyCode: 61, modifiers: []) == nil)
-    // An arrow has a symbol, not a character a key equivalent can carry.
-    #expect(MenuBarController.quickAddKeyEquivalent(keyCode: 123, modifiers: [.command]) == nil)
-    // No modifiers at all is not a chord a menu should claim.
-    #expect(MenuBarController.quickAddKeyEquivalent(keyCode: 13, modifiers: []) == nil)
+      MenuBarController.quickAddShortcutLabel(keyCode: 13, modifiers: [.control, .option])
+        == "\u{2303}\u{2325} W")
+    #expect(MenuBarController.quickAddShortcutLabel(keyCode: 999, modifiers: [.command]) == nil)
+  }
+
+  /// The title composer, paired so a missing hint cannot leave trailing whitespace.
+  @Test("The chord is appended, and its absence leaves the title untouched")
+  func theTitleCarriesTheChord() {
+    #expect(
+      MenuBarController.quickAddTitle(base: "Add Selected Word", shortcut: "\u{2303}\u{2325} W")
+        == "Add Selected Word  \u{2303}\u{2325} W")
+    #expect(
+      MenuBarController.quickAddTitle(base: "Add Selected Word", shortcut: nil)
+        == "Add Selected Word")
+    #expect(
+      MenuBarController.quickAddTitle(base: "Add Selected Word", shortcut: "")
+        == "Add Selected Word", "an empty hint must not leave trailing spaces")
   }
 
   @Test("renderMenu (b): recording → Stop Recording, record item enabled")
@@ -435,10 +440,10 @@ struct MenuBarControllerTests {
     installEnabled: Bool = false,
     appearancePreference: AppearancePreference = .system,
     quickAddSelection: String? = nil,
-    quickAddChord: MenuChord? = MenuChord(key: "w", modifiers: [.control, .option])
+    quickAddShortcut: String? = "\u{2303}\u{2325} W"
   ) -> MenuBarViewState {
     MenuBarViewState(
-      quickAddChord: quickAddChord,
+      quickAddShortcut: quickAddShortcut,
       quickAddSelection: quickAddSelection,
       pipelineState: pipelineState,
       asrLabel: "Parakeet v3",
@@ -502,6 +507,15 @@ struct MenuBarControllerTests {
 
   private func item(_ menu: NSMenu, _ title: String) -> NSMenuItem? {
     menu.items.first { $0.title == title }
+  }
+
+  /// Find by what the item SAYS IT DOES, ignoring the shortcut hint appended to its title.
+  ///
+  /// The Quick Add row carries its chord as trailing text rather than as a key equivalent (#2412),
+  /// so an exact-title lookup finds nothing the moment a binding changes — which is a property of
+  /// the test, not of the menu.
+  private func itemPrefixed(_ menu: NSMenu, _ prefix: String) -> NSMenuItem? {
+    menu.items.first { $0.title.hasPrefix(prefix) }
   }
 
   private func perform(_ menuItem: NSMenuItem?) {

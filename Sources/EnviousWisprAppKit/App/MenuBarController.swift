@@ -166,28 +166,36 @@ final class MenuBarController: NSObject {
     return ("Add \u{201C}\(shown)\u{201D}", true)
   }
 
-  /// The Quick Add chord as a menu key equivalent, or nil when it cannot be shown exactly.
+  /// The Quick Add chord as READABLE TEXT, or nil when there is nothing sensible to show.
   ///
-  /// **The shortcut is user-editable** (`settings.quickAddKeyCode` / `quickAddModifiers`), so a
-  /// hard-coded `⌃⌥W` teaches the wrong chord the moment anyone rebinds it — and keeps answering the
-  /// old one, because a key equivalent is live rather than decorative.
+  /// **Text, never a key equivalent, and two review rounds went into learning why.** A global hotkey
+  /// is a PHYSICAL key code registered with the system; a menu key equivalent is a CHARACTER matched
+  /// against the active keyboard layout. They coincide on ANSI and diverge on AZERTY or Dvorak — so
+  /// an item carrying a key equivalent can respond to a different physical key than the shortcut it
+  /// claims to advertise. That is not cosmetic, and it is unique to key equivalents.
   ///
-  /// **Nil rather than an approximation.** A key equivalent is a CHARACTER plus a mask, which is
-  /// narrower than a hotkey: a bare modifier has no character, and neither does an arrow or a
-  /// function key. A menu that teaches NOTHING is recoverable; one that teaches a chord the user has
-  /// reassigned is not, because they have no reason to doubt it.
-  ///
-  /// Letters and digits are the representable set, and the shipped default (W) is in it.
-  /// `KeySymbols.nameForKeyCode` is the shipped table rather than a second copy of it.
-  static func quickAddKeyEquivalent(
+  /// Formatted by `KeySymbols.format`, which is what `HotkeyRecorderView`, `MainWindowView` and
+  /// onboarding already use for this same binding, so the menu says exactly what Settings says. Any
+  /// residual inaccuracy on an exotic layout is the app-wide one and belongs where that formatter
+  /// lives — fixing it HERE alone would make the menu disagree with the Keybinds screen, which is
+  /// worse than being consistently approximate.
+  static func quickAddShortcutLabel(
     keyCode: UInt16, modifiers: NSEvent.ModifierFlags
-  ) -> MenuChord? {
-    guard !modifiers.isEmpty, !ModifierKeyCodes.isModifierOnly(keyCode) else { return nil }
-    let name = KeySymbols.nameForKeyCode(keyCode)
-    guard name.count == 1, let scalar = name.unicodeScalars.first,
-      CharacterSet.alphanumerics.contains(scalar), scalar.isASCII
-    else { return nil }
-    return MenuChord(key: name.lowercased(), modifiers: modifiers)
+  ) -> String? {
+    let formatted = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
+    // `nameForKeyCode` falls back to `Key <n>` for anything it does not know, which teaches nothing
+    // and looks like a bug. Say nothing instead.
+    guard !formatted.isEmpty, !formatted.contains("Key ") else { return nil }
+    return formatted
+  }
+
+  /// The rendered title: what the item does, then the chord that does it faster.
+  ///
+  /// Two spaces rather than one, which is the convention AppKit itself uses when a menu title
+  /// carries its own trailing hint — a single space reads as part of the sentence.
+  static func quickAddTitle(base: String, shortcut: String?) -> String {
+    guard let shortcut, !shortcut.isEmpty else { return base }
+    return "\(base)  \(shortcut)"
   }
 
   /// How much of the selection the title shows. Not a limit on what can be ADDED — the reader's
@@ -264,14 +272,16 @@ final class MenuBarController: NSObject {
     // Quick Add (#2412). Beside Start Recording because both act on what the user is doing RIGHT
     // NOW, and above the Settings separator because neither is configuration.
     let quickAdd = Self.quickAddItem(selection: state.quickAddSelection)
-    let chord = state.quickAddChord
+    // **No key equivalent, deliberately** — see `quickAddShortcutLabel`. The chord rides in the
+    // title as text, so the menu teaches the fast path without registering a second way to fire it.
     let quickAddItem = NSMenuItem(
-      title: quickAdd.title, action: #selector(addSelectedWordAction),
-      keyEquivalent: chord?.key ?? "")
-    // Derived from the user's own binding, and absent when it cannot be represented exactly — see
-    // `quickAddKeyEquivalent`. The menu teaches the fast path, which is the discoverability half of
-    // this issue, and teaches nothing rather than something false.
-    quickAddItem.keyEquivalentModifierMask = chord?.modifiers ?? []
+      title: Self.quickAddTitle(base: quickAdd.title, shortcut: state.quickAddShortcut),
+      action: #selector(addSelectedWordAction), keyEquivalent: "")
+    // **Cleared explicitly, because AppKit does not default it to empty.** A fresh `NSMenuItem`
+    // carries `.command` in its mask whatever its key equivalent is — measured, 1048576 — so leaving
+    // it means the item is one future `keyEquivalent` assignment away from silently claiming a ⌘
+    // chord nobody chose. Found by a test asserting the item carries no chord at all.
+    quickAddItem.keyEquivalentModifierMask = []
     quickAddItem.image = NSImage(
       systemSymbolName: "text.badge.plus", accessibilityDescription: "Add selected word")
     quickAddItem.target = self
@@ -397,7 +407,7 @@ final class MenuBarController: NSObject {
       sparkleUpdateController.updateCoordinator?.installRefusedNow ?? false
 
     return MenuBarViewState(
-      quickAddChord: Self.quickAddKeyEquivalent(
+      quickAddShortcut: Self.quickAddShortcutLabel(
         keyCode: settings.quickAddKeyCode, modifiers: settings.quickAddModifiers),
       quickAddSelection: quickAddSelection,
       pipelineState: liveRecordingState.pipelineState,
@@ -502,24 +512,15 @@ struct MenuBarActions: Sendable {
   let quit: @MainActor () -> Void
 }
 
-/// A chord a menu item can actually display: a character plus a modifier mask.
-///
-/// A named type rather than a tuple because `MenuBarViewState` is `Equatable` and Swift does not
-/// synthesise that through a tuple field.
-struct MenuChord: Equatable {
-  let key: String
-  let modifiers: NSEvent.ModifierFlags
-}
-
 /// Immutable snapshot the menu and icon render from. Extracting it makes
 /// `renderMenu` / `iconState` pure functions over a value, which is what makes
 /// the menu surface deterministically golden-testable.
 struct MenuBarViewState: Equatable {
-  /// The Quick Add chord as a menu key equivalent, or nil when it cannot be shown exactly (#2412).
+  /// The Quick Add chord as readable text, or nil when there is nothing sensible to show (#2412).
   ///
   /// On the state for the same reason as the selection: `renderMenu` is pure over this value, and
   /// reading `settings` inside it would end that.
-  let quickAddChord: MenuChord?
+  let quickAddShortcut: String?
 
   /// The selection Quick Add would act on, or nil when there is nothing readable (#2412).
   ///
