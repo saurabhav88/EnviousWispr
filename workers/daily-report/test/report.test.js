@@ -2211,6 +2211,30 @@ test("resolveReleases: a SHORT Retry-After is honoured once; a long one is decli
     "a fractional Retry-After is not a wait we honour"
   );
   assert.equal(fracCalls, 1, "a fractional Retry-After is not waited on");
+
+  // 6. A SECONDARY LIMIT CAN ARRIVE AS 403 WITH `x-ratelimit-remaining` NONZERO
+  // (#2415 review r3). Keying only on that header called it FATAL - and fatal
+  // means `wholeRun`, so the founder loses the ENTIRE report over a condition
+  // that resolves in seconds. Strictly worse than the defect this PR started on.
+  let secCalls = 0;
+  const secSleeps = [];
+  const secOut = await resolveReleases({ GITHUB_REPO: "o/r" }, [usage("2.4.1", 1)], {
+    windowEndExclusive: "2026-07-29",
+    fetchFn: async () => {
+      secCalls += 1;
+      if (secCalls === 1) {
+        return ghResponse(403, null, {
+          headers: { "retry-after": "1", "x-ratelimit-remaining": "57" },
+        });
+      }
+      return ghResponse(200, [release("v2.4.1", "2026-07-24T00:00:00Z")]);
+    },
+    sleepFn: async (ms) => secSleeps.push(ms),
+    nowFn,
+  });
+  assert.equal(secCalls, 2, "a 403 carrying Retry-After is a rate limit, and recovers");
+  assert.deepEqual(secSleeps, [1000]);
+  assert.ok(secOut.releases.length > 0);
 });
 
 test("resolveReleases: a RATE LIMIT is temporary but NOT retried, and says when it resets", async () => {
@@ -2280,6 +2304,10 @@ test("resolveReleases: a non-transient 4xx fails loud after ONE attempt", async 
     [404, {}],
     // A forbidden response that is NOT rate-limit exhaustion is a real failure,
     // not a blip - retrying it would report a permission problem as temporary.
+    // THE REJECTED TWIN of the Retry-After widening (#2415 review r3): a 403
+    // WITHOUT that header is still "you may not", not "slow down". GitHub does
+    // not send Retry-After for a permission failure, which is what makes the
+    // header a discriminator rather than a loosening.
     [403, { "x-ratelimit-remaining": "57" }],
   ]) {
     let attempts = 0;

@@ -182,6 +182,19 @@ function classifyGitHubStatus(res) {
   if (status >= 500) return "retry";
   if (status === 429) return "rate-limited";
   if (status !== 403) return "fatal";
+  // A SECONDARY RATE LIMIT CAN ARRIVE AS 403 WITH `x-ratelimit-remaining`
+  // NONZERO (#2415 review r3). Keying only on that header called it FATAL, which
+  // is the worst outcome available here: fatal means `wholeRun`, so the founder
+  // loses the entire report - not just the scorecard - over a condition that
+  // resolves in seconds, and the `Retry-After` recovery never runs.
+  //
+  // `Retry-After` is the precise discriminator rather than a widening: GitHub
+  // sends it for rate limiting and NOT for a genuine permission failure, so a
+  // 403 carrying it is the server saying "slow down", and a 403 without it is
+  // still "you may not" and still fatal. Presence is what is tested, not
+  // usability - an unparseable value degrades to reported-and-not-retried, never
+  // to killing the run.
+  if (typeof res.headers?.get?.("retry-after") === "string") return "rate-limited";
   return res.headers?.get?.("x-ratelimit-remaining") === "0" ? "rate-limited" : "fatal";
 }
 
