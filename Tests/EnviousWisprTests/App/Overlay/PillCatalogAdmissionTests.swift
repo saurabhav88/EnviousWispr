@@ -39,7 +39,9 @@ struct PillCatalogAdmissionTests {
     case .emptySlot:
       break
     case .pipelineBusy:
-      _ = reducer.reduce(.pipeline(.recording(audioLevel: 0)))
+      // The real two-stage path: a fresh recording cannot be started through
+      // `reduce`, because starting one needs a resolved design.
+      reducer.startRecordingForTests(audioLevel: 0)
     case .featureHoldsSlot:
       _ = reducer.reduce(.bluetoothAwareness)
     }
@@ -49,10 +51,19 @@ struct PillCatalogAdmissionTests {
   private static let chip = LanguageChipPayload(
     lang: "es", displayName: "Spanish", state: .askToLock, generation: 1)
 
-  /// Every request a caller can make of the slot, feature routes included.
+  /// Every request a caller can make of the slot THROUGH `reduce`, feature routes
+  /// included.
+  ///
+  /// **Starting a recording is deliberately absent since C3a, and its absence is
+  /// a fact about the API rather than a gap in this table.** A fresh recording
+  /// needs a resolved design, so it goes through `prepareRecording` and
+  /// `commitRecording`; `reduce(.pipeline(.recording(_:)))` can now only morph a
+  /// live one. Admission for a fresh recording is asserted where it happens, in
+  /// the director's transaction tests — and the `pipelineBusy` starting state
+  /// below is built with the real two-stage path, so every row here is still run
+  /// against a slot a recording occupies.
   private static let events: [(label: String, event: OverlayEvent)] = [
     ("hidden", .pipeline(.hidden)),
-    ("recording", .pipeline(.recording(audioLevel: 0))),
     ("processing", .pipeline(.processing(phase: .transcribing))),
     ("clipboardFallback", .pipeline(.clipboardFallback)),
     ("accessibilityToast", .pipeline(.accessibilityToast)),
@@ -142,18 +153,13 @@ struct PillCatalogAdmissionTests {
           #expect(
             reducer.state.current == plan.presentation,
             "\(label) in \(state.rawValue) reported a presentation without committing it")
-          if state == .pipelineBusy, case .pipeline(.recording) = event {
-            // The one legitimate no-change admission: a repeated recording push
-            // at the same audio level rebuilds an EQUAL definition and must keep
-            // its identity, or every metering tick would look like a new pill.
-            #expect(
-              reducer.state.current == before,
-              "the repeated recording morph lost its identity")
-          } else {
-            #expect(
-              reducer.state.current != before,
-              "\(label) in \(state.rawValue) reported admission without replacing the prior occupant")
-          }
+          // **The repeated-recording carve-out is GONE with the row it existed
+          // for.** It read: an identical recording push rebuilds an EQUAL
+          // definition and must keep its identity. That is still true and is now
+          // asserted where the morph lives, not here.
+          #expect(
+            reducer.state.current != before,
+            "\(label) in \(state.rawValue) reported admission without replacing the prior occupant")
         }
       }
     }
@@ -161,12 +167,13 @@ struct PillCatalogAdmissionTests {
     // **The sweep must prove it generated something.** Every branch above is a
     // conditional, so a mis-specified axis — one state, one event, a predicate
     // that never fires — leaves this test green while asserting nothing. The
-    // three counts are arithmetic over the axes: 18 requests x 3 states = 54
-    // cells, of which the 2 feature routes are refused in the 2 non-empty states
-    // (4), `.hidden` empties in all 3, and the remaining 47 are admitted.
+    // three counts are arithmetic over the axes.
+    // 17 requests x 3 states = 51 cells: the 2 feature routes refused in the 2
+    // non-empty states (4), `.hidden` emptying in all 3, and the remaining 44
+    // admitted.
     #expect(refused == 4, "the refusal half of this sweep is not being exercised")
     #expect(emptied == 3, "the emptying half of this sweep is not being exercised")
-    #expect(admitted == 47, "the admission half of this sweep is not being exercised")
+    #expect(admitted == 44, "the admission half of this sweep is not being exercised")
     #expect(refused + emptied + admitted == StartingState.allCases.count * Self.events.count)
   }
 
@@ -229,7 +236,7 @@ struct PillCatalogAdmissionTests {
   func requestAxisIsComplete() {
     let labels = Self.events.map(\.label)
     let expected: Set<String> = [
-      "hidden", "recording", "processing", "clipboardFallback", "accessibilityToast",
+      "hidden", "processing", "clipboardFallback", "accessibilityToast",
       "warning", "error", "advisory", "interruption", "passiveChip", "cachingModel",
       "engineReady", "recoveringLastRecording", "recoverySucceeded",
       "bluetoothAwareness.pipelineRoute", "escapeRecovery",
@@ -249,7 +256,6 @@ struct PillCatalogAdmissionTests {
     for (label, event) in Self.events {
       switch (label, event) {
       case ("hidden", .pipeline(.hidden)),
-        ("recording", .pipeline(.recording(audioLevel: _))),
         ("processing", .pipeline(.processing(phase: _))),
         ("clipboardFallback", .pipeline(.clipboardFallback)),
         ("accessibilityToast", .pipeline(.accessibilityToast)),

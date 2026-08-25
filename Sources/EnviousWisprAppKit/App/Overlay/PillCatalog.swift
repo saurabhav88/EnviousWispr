@@ -23,6 +23,12 @@ import Foundation
 /// earlier port of this same table wrote it from the design instead and got
 /// eleven of fifteen widths and six dwells wrong.
 enum PillCatalogRequest: Equatable, Sendable {
+  /// **The design rides on THIS case and no other.** A `design:` parameter on
+  /// `entry` would force every import, Bluetooth, notice, language, recovery and
+  /// `.hidden` lookup to supply a recording design that means nothing to them —
+  /// an argument whose only correct value is "ignore me", which is the shape that
+  /// later gets read by accident. Here the illegal call is unrepresentable.
+  case recording(audioLevel: Float, design: RecordingPillDesign)
   case hidden
   case processing(phase: ProcessingPhase)
   case clipboardFallback
@@ -43,15 +49,15 @@ enum PillCatalogRequest: Equatable, Sendable {
   /// path rather than by the pipeline, which is why it announces nothing.
   case importStatus(message: String)
 
-  // **SIXTEEN cases, and `.recording` is deliberately absent until C3a.** The
-  // catalog's recording arm needs a RESOLVED design, and no production caller
-  // can supply one before the recording transaction exists. A `.recording` case
-  // landing here early would need either an unimplemented arm or a placeholder
-  // design, and a placeholder would make a preview-capable definition disagree
-  // with its own rendered layout — a wrong value that type-checks, in the chunk
-  // whose entire receipt is parity.
+  // **SEVENTEEN cases: `.recording` plus sixteen non-recording.** C2 staged
+  // `.recording` out because the catalog's recording arm needs a RESOLVED design
+  // and no production caller could supply one before the recording transaction
+  // existed. C3a builds that transaction, so the arm and its first caller land
+  // together — no chunk ever contained an unimplemented case or a placeholder
+  // design.
   //
-  // **The count is sixteen, not seventeen, and the difference is G2 itself.**
+  // **The non-recording count is sixteen, not seventeen, and the difference is
+  // G2 itself.**
   // `bluetoothAwareness` is a pipeline intent AND is minted a second time by
   // `reduceBluetoothAwareness`; those are two ROUTES to one VALUE, not two
   // requests. C0 froze both routes as separate rows and they are identical field
@@ -270,6 +276,27 @@ enum PillCatalog {
         id: id, content: .escapeRecovery(transcriptID: transcriptID),
         expiry: .after(seconds: 3, pausesOnHover: true), requestedWidth: .measured)
 
+    case .recording(let level, let design):
+      // Moved from `OverlayReducer.presentation(for:id:)` in C3a with its own
+      // comment, which is repaired rather than carried: the reducer's version
+      // said the 92 was "the NON-preview answer" and that the DIRECTOR overrode
+      // it to content-sized when preview was on. That was true and was the whole
+      // of G3 — two authorities for one geometry, one of them ignored. There is
+      // now one. The definition carries the RESOLVED design's own width and
+      // height, so nothing downstream has anything left to override.
+      //
+      // The values are unchanged: classic is 185 wide with a fixed 92-point
+      // interaction frame that holds the normal capsule, the locked state and the
+      // #1060 notice expansion without resizing on every morph; the reading well
+      // is 400 wide and content-sized from the first frame so it does not visibly
+      // snap. Both are properties of `RecordingPillDesign`, measured at the sites
+      // its own doc comments cite.
+      return PillDefinition(
+        id: id,
+        content: .recording(audioLevel: level, isLocked: false, notice: nil, design: design),
+        expiry: .untilReplaced, requestedWidth: .fixed(design.width),
+        reservesFixedHeight: design.reservedHeight)
+
     case .importStatus(let message):
       // Lifted from `reduceImportStatus`, where it was minted inline. The
       // ADMISSION rule around it — that a status pill may only replace itself —
@@ -325,6 +352,7 @@ enum PillCatalog {
 extension PillCatalogRequest {
   var matchingIntent: OverlayIntent? {
     switch self {
+    case .recording(let level, _): return .recording(audioLevel: level)
     case .hidden: return .hidden
     case .processing(let phase): return .processing(phase: phase)
     case .clipboardFallback: return .clipboardFallback
@@ -344,14 +372,18 @@ extension PillCatalogRequest {
     }
   }
 
-  /// The request a pipeline intent resolves to.
+  /// The request a NON-RECORDING pipeline intent resolves to.
   ///
-  /// **`nil` for `.recording` ONLY, and that is a staging fact rather than a
-  /// silent fallthrough.** C3a adds `.recording(audioLevel:design:)` with its
-  /// first production caller and this initialiser stops being failable. The
-  /// reducer handles `.recording` in its own arm above this call, so the `nil`
-  /// is never observed there.
-  init?(pipeline intent: OverlayIntent) {
+  /// **`nil` for `.recording` and only for `.recording`, and since C3a that is a
+  /// permanent fact rather than a staging one.** A recording pill cannot be
+  /// requested without a resolved design; a caller holding only an intent has not
+  /// resolved one and has no business minting one. The recording request is built
+  /// from its case directly, at the one site that has a design to give it.
+  ///
+  /// The name says `nonRecording` rather than `pipeline` so the refusal is
+  /// legible at the call site instead of looking like a failure that might mean
+  /// something else.
+  init?(nonRecording intent: OverlayIntent) {
     switch intent {
     case .recording: return nil
     case .hidden: self = .hidden

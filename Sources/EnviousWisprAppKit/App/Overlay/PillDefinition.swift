@@ -30,6 +30,121 @@ struct PresentationID: Hashable, Sendable {
   init(rawValue: UUID) { self.rawValue = rawValue }
 }
 
+// MARK: - The recording pill's design
+
+/// Which recording pill the user gets (#2375 Phase 3, chunk C3a).
+///
+/// **A DESIGN, not a capability.** Whether the machine can show words as you
+/// speak is a capability the director reads; which pill is drawn is a choice.
+/// Until Phase 4 the two are locked together by a constant, and separating the
+/// vocabulary now is what lets Phase 4 change one without touching the other.
+///
+/// **`.readingWell`, deliberately not `.livePreview`.** Naming a design after
+/// the capability that enables it makes the settings group label and the card
+/// label the same word, and forecloses a second with-words design before one
+/// exists. The capability keeps its own name.
+enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
+  /// The rainbow-lips capsule: a fixed 185x92 interaction frame that holds the
+  /// normal capsule, the locked state and the #1060 notice expansion without
+  /// resizing on every morph.
+  case classic
+  /// The wide panel that shows words as you speak. Content-sized from the first
+  /// frame so it does not visibly snap as lines wrap.
+  case readingWell
+
+  /// Whether this design can display transcribed words while recording.
+  ///
+  /// **This is the semantic authority for provider gating.** During C3a the
+  /// retained layout derives `usesPreview` from it; C3b removes that adapter and
+  /// keys the consumers directly from `canHoldWords`. The shipped code keyed off
+  /// a layout value that also carried geometry and position, which is why one
+  /// authority could disagree with another about what is on screen.
+  var canHoldWords: Bool {
+    switch self {
+    case .classic: return false
+    case .readingWell: return true
+    }
+  }
+
+  /// The width the window is sized to. Measured from
+  /// `RecordingOverlayPanel`: `showsPreview ? previewPillWidth : 185`.
+  var width: CGFloat {
+    switch self {
+    case .classic: return 185
+    case .readingWell: return 400
+    }
+  }
+
+  /// `nil` means content-sized, which is `fitToContent: true` at the shipped
+  /// site. The classic pill reserves a fixed box; the reading well does not.
+  var reservedHeight: CGFloat? {
+    switch self {
+    case .classic: return 92
+    case .readingWell: return nil
+    }
+  }
+}
+
+/// Which design the user has chosen for each capability state.
+///
+/// **Two selections, not one, because the two states are genuinely different
+/// products.** Without words the choice is cosmetic; with words the pill has to
+/// be able to hold them, which is why `resolve` may substitute.
+struct PillDesignSelections: Equatable, Sendable {
+  /// The design to use when the machine cannot show words as you speak.
+  let withoutWords: RecordingPillDesign
+  /// The design to use when it can.
+  let withWords: RecordingPillDesign
+
+  init(withoutWords: RecordingPillDesign, withWords: RecordingPillDesign) {
+    self.withoutWords = withoutWords
+    self.withWords = withWords
+  }
+
+  /// The pair the shipped code produces, and what Phase 3 injects everywhere.
+  ///
+  /// Phase 4 replaces the CLOSURE that returns this, never this constant's
+  /// meaning — it is the current behaviour written down, so a Phase 4 regression
+  /// is measurable against it.
+  static let shipped = PillDesignSelections(withoutWords: .classic, withWords: .readingWell)
+
+  /// Resolve the selection for a capability state, FAIL-CLOSED.
+  ///
+  /// **The fallback is a RETURNED VALUE rather than a promise.** An earlier
+  /// draft of this design said a mismatch "is recorded", which named no owner, no
+  /// event and no seam — a claim about observability that nothing would have made
+  /// true. `DesignResolution` cannot lie about which of the two happened, and a
+  /// caller may assert on it, log it, or ignore it.
+  ///
+  /// **No production caller can produce a mismatch this phase**, because
+  /// selections are constructed from `shipped`. That branch is covered by unit
+  /// tests only and ships no logging, telemetry or composition wiring. Phase 4
+  /// introduces the first real producer of an incompatible value and owns the
+  /// decision about what `substituted` should then cause.
+  func resolve(capabilityHasWords: Bool) -> DesignResolution {
+    let chosen = capabilityHasWords ? withWords : withoutWords
+    // Written as an `if` rather than a `guard`, because the mismatch is the
+    // EXCEPTIONAL case and a guard whose success path is the exception reads
+    // backwards to everyone after the author.
+    if capabilityHasWords, !chosen.canHoldWords {
+      // The capability can show words and the chosen design cannot hold them.
+      // Substituting the canonical with-words design is the fail-closed answer:
+      // the alternative is a pill that silently drops the feature it was enabled
+      // for.
+      return DesignResolution(design: .readingWell, substituted: true)
+    }
+    return DesignResolution(design: chosen, substituted: false)
+  }
+}
+
+/// What `PillDesignSelections.resolve` decided, and whether it had to override.
+struct DesignResolution: Equatable, Sendable {
+  let design: RecordingPillDesign
+  /// True when the group's selection could not hold the capability's content and
+  /// the canonical default was substituted.
+  let substituted: Bool
+}
+
 // MARK: - What ends up on screen
 
 /// What a screen reader says when a presentation arrives, and how loudly.
@@ -77,6 +192,22 @@ struct OverlayAnnouncement: Equatable, Sendable {
 enum OverlayRecordingLayout: Equatable, Sendable {
   case compact(position: OverlayPillPosition)
   case preview(position: OverlayPillPosition)
+
+  /// **A DERIVED adapter, and C3b deletes it** (#2375 C3a).
+  ///
+  /// Its only inputs are the accepted definition's resolved design and the
+  /// position captured in the same transaction. It never rereads capability,
+  /// never rereads selections, and has no default — an adapter that can compute
+  /// its own answer is not an adapter, it is the second authority coming back
+  /// wearing a local variable's name.
+  ///
+  /// It survives C3a only so geometry is unchanged and that chunk stays a
+  /// structural change rather than a visual one. C3b deletes it together with all
+  /// three of its replacements, because they are one value being taken apart and
+  /// a partial landing leaves a consumer reading a deleted field.
+  init(design: RecordingPillDesign, position: OverlayPillPosition) {
+    self = design.canHoldWords ? .preview(position: position) : .compact(position: position)
+  }
 
   var usesPreview: Bool {
     if case .preview = self { return true }
@@ -207,7 +338,17 @@ enum OverlayContent: Equatable, Sendable {
   /// rendered recording's lifetime. `recordingElapsedProvider` has no
   /// representation in this vocabulary at all and must not be forgotten because nothing
   /// here names it — which is precisely why it is named here.
-  case recording(audioLevel: Float, isLocked: Bool, notice: InPanelNotice?)
+  /// **The resolved design rides HERE, on the one content case that has one.**
+  /// Putting it on `PillDefinition` instead would let a notice carry a recording
+  /// design — representable, meaningless, and eventually read by accident. Here
+  /// the illegal state cannot be constructed.
+  ///
+  /// It also makes morph preservation a COMPILER obligation rather than a test
+  /// one: every same-id reconstruction has to bind and pass it, so a morph that
+  /// drops the design fails to build instead of silently dropping the pill back
+  /// to the other design's geometry mid-recording.
+  case recording(
+    audioLevel: Float, isLocked: Bool, notice: InPanelNotice?, design: RecordingPillDesign)
   case notice(NoticeModel)
   case languageChip(payload: LanguageChipPayload)
   case bluetoothAwareness
@@ -233,6 +374,18 @@ struct InPanelNotice: Equatable, Sendable {
 struct PillDefinition: Equatable, Sendable {
   let id: PresentationID
   let content: OverlayContent
+
+  /// The resolved recording design, or nil for every pill that is not a
+  /// recording.
+  ///
+  /// **This is the authority initial host sizing reads.** Before #2375 the
+  /// reducer emitted one geometry and `OverlayDirector.geometry(for:)`
+  /// substituted another for the preview case, so two values described one pill
+  /// and the reducer's was ignored. There is now one, and it is this.
+  var recordingDesign: RecordingPillDesign? {
+    guard case .recording(_, _, _, let design) = content else { return nil }
+    return design
+  }
   let expiry: OverlayExpiry
   /// How the presentation's width is decided.
   ///

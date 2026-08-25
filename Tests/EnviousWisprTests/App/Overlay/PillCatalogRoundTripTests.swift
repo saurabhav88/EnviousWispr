@@ -8,7 +8,7 @@ import Testing
 /// The bijection between `OverlayIntent` and `PillCatalogRequest`, checked
 /// rather than intended (#2375 Phase 3, chunk C2).
 ///
-/// **Two mappings exist and they must agree.** `PillCatalogRequest(pipeline:)`
+/// **Two mappings exist and they must agree.** `PillCatalogRequest(nonRecording:)`
 /// converts an intent into a request; `matchingIntent` converts it back so the
 /// catalog can ask `DictationNarrator` — still the sole author of announcement
 /// TEXT — for the sentence. Written twice, they are a duplicate-authority risk of
@@ -53,11 +53,13 @@ struct PillCatalogRoundTripTests {
   @Test("every intent except recording round-trips through a catalog request")
   func intentRoundTrip() {
     for intent in Self.intents {
-      guard let request = PillCatalogRequest(pipeline: intent) else {
-        // The ONE legal refusal. C3a removes it along with the failability.
+      guard let request = PillCatalogRequest(nonRecording: intent) else {
+        // The ONE legal refusal: recording is permanently outside this
+        // initialiser's domain, because a recording request needs a resolved
+        // design and an intent alone has not resolved one.
         #expect(
           Self.isRecording(intent),
-          "PillCatalogRequest(pipeline:) refused a non-recording intent")
+          "PillCatalogRequest(nonRecording:) refused a non-recording intent")
         continue
       }
       #expect(
@@ -70,7 +72,7 @@ struct PillCatalogRoundTripTests {
   func onlyImportStatusHasNoIntent() {
     #expect(PillCatalogRequest.importStatus(message: "x").matchingIntent == nil)
     for intent in Self.intents where !Self.isRecording(intent) {
-      let request = PillCatalogRequest(pipeline: intent)
+      let request = PillCatalogRequest(nonRecording: intent)
       #expect(request?.matchingIntent != nil, "a pipeline-derived request lost its intent")
     }
   }
@@ -96,7 +98,7 @@ struct PillCatalogRoundTripTests {
     #expect(Set(names) == expected, "an OverlayIntent arm is missing or duplicated")
     #expect(names.count == expected.count, "the intent list contains a duplicate")
 
-    let converted = Self.intents.compactMap { PillCatalogRequest(pipeline: $0) }
+    let converted = Self.intents.compactMap { PillCatalogRequest(nonRecording: $0) }
     #expect(converted.count == 15, "exactly one arm — recording — may refuse conversion")
     #expect(Self.intents.filter(Self.isRecording).count == 1)
   }
@@ -135,7 +137,7 @@ struct PillCatalogRoundTripTests {
   @Test("the staged catalog covers sixteen non-recording requests")
   func stagedCaseCount() {
     let requests: [PillCatalogRequest] =
-      Self.intents.compactMap { PillCatalogRequest(pipeline: $0) } + [.importStatus(message: "x")]
+      Self.intents.compactMap { PillCatalogRequest(nonRecording: $0) } + [.importStatus(message: "x")]
     #expect(requests.count == 16)
 
     // Every one of them resolves, and only `.hidden` empties the slot.
@@ -173,13 +175,18 @@ struct PillCatalogRoundTripTests {
       guard text.hasPrefix("case ") else { return nil }
       return String(text.dropFirst(5).prefix { $0.isLetter || $0.isNumber || $0 == "_" })
     }
+    // **Updated DELIBERATELY by C3a, which is what this guard is for.** It went
+    // red the moment `.recording` was added, which is the designed behaviour: the
+    // set is frozen so a case cannot arrive unnoticed, and unfreezing it is an
+    // edit someone has to make on purpose.
     let expected: Set<String> = [
+      "recording",
       "hidden", "processing", "clipboardFallback", "accessibilityToast", "warning",
       "error", "advisory", "interruption", "passiveChip", "cachingModel",
       "engineReady", "recoveringLastRecording", "recoverySucceeded",
       "bluetoothAwareness", "escapeRecovery", "importStatus",
     ]
-    #expect(Set(names) == expected, "the staged case set changed")
+    #expect(Set(names) == expected, "the catalog case set changed")
     #expect(names.count == expected.count, "a catalog case is duplicated")
   }
 

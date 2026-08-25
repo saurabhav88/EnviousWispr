@@ -175,10 +175,33 @@ struct OverlayState: Equatable {
     }
   }
 
+  /// How many times the SLOT has changed hands (#2375 C3a).
+  ///
+  /// **A slot revision, not a whole-state one, and the narrowing is a product
+  /// decision rather than an optimisation.** A prepared recording is discarded
+  /// when this moves between PREPARE and COMMIT. Two of `set`'s eleven callers
+  /// are a hover change and a lock-only change with no presentation; neither can
+  /// conflict with committing a fresh recording, and discarding on either means a
+  /// recording pill that never appears. `CLAUDE.md` puts "dictation works 100% of
+  /// the time it physically can" above every other audio decision, so an
+  /// over-eager invalidation is the more expensive error here.
+  ///
+  /// A lock morph on a LIVE recording changes `current` and therefore does
+  /// advance this, so no real slot conflict is missed.
+  private(set) var slotRevision: UInt64 = 0
+
   fileprivate mutating func set(
     current: PillDefinition?, pipelineIntent: OverlayIntent? = nil, isHovered: Bool? = nil,
     isLocked: Bool? = nil
   ) {
+    // **Compare VALUES, never "was a parameter supplied".** `set(current:isHovered:)`
+    // passes the EXISTING current straight through on a hover change, and
+    // `set(current:isLocked:)` does the same on a lock-only change, so an
+    // increment keyed on the presence of an argument would advance on every hover
+    // and silently undo the narrowing above.
+    if current != self.current || (pipelineIntent != nil && pipelineIntent != self.pipelineIntent) {
+      slotRevision &+= 1
+    }
     self.current = current
     if let pipelineIntent { self.pipelineIntent = pipelineIntent }
     if let isHovered { self.isHovered = isHovered }
@@ -219,6 +242,138 @@ struct OverlayReducer {
     }
   }
 
+  // MARK: - The recording transaction
+
+  /// What PREPARE decided, when it decided a fresh recording should start.
+  ///
+  /// **One-shot, and it publishes NO definition.** It carries only what RESOLVE
+  /// and COMMIT need: the identity the pill will have, the effects the director
+  /// must route before it may read capability, the sentence to speak, and the
+  /// slot revision PREPARE observed. Nothing here has been applied to reducer
+  /// state — that is the point of the split.
+  struct PreparedRecordingTransition: Equatable, Sendable {
+    let id: PresentationID
+    let audioLevel: Float
+    let effects: [PillEffect]
+    let announcement: OverlayAnnouncement?
+    /// The slot revision at PREPARE time. COMMIT refuses if it has moved.
+    let observedSlotRevision: UInt64
+  }
+
+  /// The three things PREPARE can conclude.
+  enum RecordingPreparation {
+    /// The slot already holds a recording, so this is a same-id morph: the design
+    /// is preserved from the live pill, RESOLVE is skipped entirely, and the plan
+    /// is final and already applied.
+    case morphed(OverlayPlan)
+    /// Nothing to do.
+    case refused(OverlayPlan)
+    /// A fresh recording. Route `effects`, resolve a design, then COMMIT.
+    case prepared(PreparedRecordingTransition)
+  }
+
+  /// PREPARE: decide admission, identity and effects for a recording WITHOUT
+  /// minting a definition (#2375 C3a).
+  ///
+  /// **This exists because recording composition is not one transaction.** The
+  /// shipped ordering routes the recording effect BEFORE reading whether Live
+  /// Preview is on, and that ordering is load-bearing: `LivePreviewCoordinator`
+  /// applies its model-removal suppression inside `setRecording`, so a capability
+  /// read that beats the effect can pick the wide layout for a pill whose preview
+  /// is about to resolve disabled — a preview-sized window with nothing in it.
+  /// The catalog needs the resolved design as an INPUT to minting, so the mint
+  /// has to happen after the effect, which means it cannot happen here.
+  ///
+  /// **Mutates nothing on the `prepared` path.** A caller that prepares and never
+  /// commits leaves the reducer exactly as it found it.
+  mutating func prepareRecording(audioLevel: Float) -> RecordingPreparation {
+    let intent = OverlayIntent.recording(audioLevel: audioLevel)
+    let isNewIntent = state.pipelineIntent != intent
+    let announcement = isNewIntent ? PillCatalog.announcement(for: intent) : nil
+
+    // A live recording keeps its identity across audio-level updates, and keeps
+    // its DESIGN with it. An `NSPanel` cannot grow mid-recording without a
+    // rebuild and a rebuild is the #930 flicker, so re-resolving here would
+    // resize a live pill the moment the user changed the setting.
+    if let current = state.current,
+      case .recording(_, let isLocked, let notice, let design) = current.content
+    {
+      let updated = PillDefinition(
+        id: current.id,
+        content: .recording(
+          audioLevel: audioLevel, isLocked: isLocked, notice: notice, design: design),
+        expiry: current.expiry,
+        requestedWidth: current.requestedWidth,
+        reservesFixedHeight: current.reservesFixedHeight)
+      state.set(current: updated, pipelineIntent: intent)
+      return .morphed(
+        OverlayPlan(presentation: updated, didChange: true, announcement: announcement))
+    }
+
+    // Fresh. `.recordingStateChanged(true)` is emitted here and routed by the
+    // director BEFORE it reads capability; COMMIT emits no effects of its own.
+    let wasRecording = Self.isRecording(state.current)
+    return .prepared(
+      PreparedRecordingTransition(
+        id: makeID(), audioLevel: audioLevel,
+        effects: wasRecording ? [] : [.recordingStateChanged(true)],
+        announcement: announcement,
+        observedSlotRevision: state.slotRevision))
+  }
+
+  /// COMMIT: install the definition the director obtained from the catalog.
+  ///
+  /// Returns `nil` when the token is stale, which means a newer overlay event
+  /// reentered synchronously between PREPARE and COMMIT and is already
+  /// authoritative. **A discarded transition is not an error and must not be
+  /// retried** — retrying it would install an older pill over a newer one, which
+  /// is the stale-first-presentation defect this phase must not introduce.
+  ///
+  /// **The born-locked rule reads the reducer's CURRENT lock, never one captured
+  /// at PREPARE.** That is what makes the narrowed slot revision safe rather than
+  /// merely defensible: a lock-only event arriving inside the window does not
+  /// advance the slot revision, so it does not invalidate the transition — and
+  /// because the lock is read here, its effect is preserved in the pill that
+  /// commits rather than lost.
+  mutating func commitRecording(
+    _ token: PreparedRecordingTransition, definition: PillDefinition
+  ) -> OverlayPlan? {
+    guard state.slotRevision == token.observedSlotRevision else { return nil }
+
+    var committed = definition
+    if state.isLocked,
+      case .recording(let level, _, let notice, let design) = definition.content
+    {
+      committed = PillDefinition(
+        id: definition.id,
+        content: .recording(audioLevel: level, isLocked: true, notice: notice, design: design),
+        expiry: definition.expiry, requestedWidth: definition.requestedWidth,
+        reservesFixedHeight: definition.reservesFixedHeight)
+    }
+
+    state.set(
+      current: committed, pipelineIntent: .recording(audioLevel: token.audioLevel),
+      isHovered: false)
+    return OverlayPlan(
+      presentation: committed, didChange: true,
+      expiryCommand: Self.command(for: committed),
+      // The effects went out at RESOLVE, before the capability read. Emitting
+      // them again here would tell Live Preview a recording started twice.
+      effects: [],
+      announcement: token.announcement)
+  }
+
+  /// What the bridge reconciliation reads.
+  ///
+  /// **A snapshot rather than a bare boolean, because the exit condition is "did
+  /// the world move", which a boolean cannot answer.** Reconciliation routes
+  /// `.recordingStateChanged`, and routing calls back into the same boundary that
+  /// created the prepare/commit hazard, so reading the answer before the call
+  /// proves nothing about the answer after it.
+  var recordingReconciliationSnapshot: (revision: UInt64, isRecording: Bool) {
+    (state.slotRevision, Self.isRecording(state.current))
+  }
+
   // MARK: - Pipeline
 
   private mutating func reducePipeline(_ intent: OverlayIntent) -> OverlayPlan {
@@ -248,21 +403,42 @@ struct OverlayReducer {
       return .noChange
     }
 
+    // **A bare `.pipeline(.recording)` may MORPH a live recording and may not
+    // START one.** The morph below preserves the current pill's design, so it
+    // needs nothing resolved. Starting one does, and `presentation(for:)` returns
+    // nil for `.recording`, so a fresh recording arriving here empties the slot
+    // rather than minting — which is why the guard after the morph refuses it
+    // loudly instead. Production never sends one: `OverlayDirector` uses
+    // `prepareRecording`.
+    //
     // A live recording pill must keep its identity across audio-level updates,
     // or every metering tick would look like a new presentation and re-arm
     // expiry, re-measure the frame and reset the in-panel notice.
     if case .recording(let level) = intent,
       let current = state.current,
-      case .recording(_, let isLocked, let notice) = current.content
+      case .recording(_, let isLocked, let notice, let design) = current.content
     {
       let updated = PillDefinition(
         id: current.id,
-        content: .recording(audioLevel: level, isLocked: isLocked, notice: notice),
+        content: .recording(
+          audioLevel: level, isLocked: isLocked, notice: notice, design: design),
         expiry: current.expiry,
         requestedWidth: current.requestedWidth,
         reservesFixedHeight: current.reservesFixedHeight)
       state.set(current: updated, pipelineIntent: intent)
       return OverlayPlan(presentation: updated, didChange: true, announcement: announcement)
+    }
+
+    if Self.isRecordingIntent(intent) {
+      // Reached only when the slot does not already hold a recording, i.e. a
+      // FRESH one. Refusing loudly beats emptying the slot, which is what falling
+      // through to the nil branch below would do — a dictation that starts and
+      // shows nothing, on the one path `CLAUDE.md` says must work every time it
+      // physically can.
+      assertionFailure(
+        "a fresh recording cannot be started through reduce(.pipeline(.recording)); "
+          + "use prepareRecording(audioLevel:) so a design can be resolved")
+      return .noChange
     }
 
     guard var presentation = Self.presentation(for: intent, id: makeID()) else {
@@ -282,10 +458,10 @@ struct OverlayReducer {
     // Born locked if the lock is on. `show(...isRecordingLocked:)`
     // exists precisely so this is applied in the SAME transaction rather than
     // rendered unlocked and morphed a frame later.
-    if case .recording(let level, _, let notice) = presentation.content, state.isLocked {
+    if case .recording(let level, _, let notice, let design) = presentation.content, state.isLocked {
       presentation = PillDefinition(
         id: presentation.id,
-        content: .recording(audioLevel: level, isLocked: true, notice: notice),
+        content: .recording(audioLevel: level, isLocked: true, notice: notice, design: design),
         expiry: presentation.expiry, requestedWidth: presentation.requestedWidth,
         reservesFixedHeight: presentation.reservesFixedHeight)
     }
@@ -445,7 +621,7 @@ struct OverlayReducer {
   private mutating func reduceLockState(_ locked: Bool) -> OverlayPlan {
     guard state.isLocked != locked else { return .noChange }
     guard let current = state.current,
-      case .recording(let level, _, let notice) = current.content
+      case .recording(let level, _, let notice, let design) = current.content
     else {
       state.set(current: state.current, isLocked: locked)
       return .noChange
@@ -453,7 +629,7 @@ struct OverlayReducer {
 
     let updated = PillDefinition(
       id: current.id,
-      content: .recording(audioLevel: level, isLocked: locked, notice: notice),
+      content: .recording(audioLevel: level, isLocked: locked, notice: notice, design: design),
       expiry: current.expiry, requestedWidth: current.requestedWidth,
       reservesFixedHeight: current.reservesFixedHeight)
     state.set(current: updated, isLocked: locked)
@@ -470,14 +646,14 @@ struct OverlayReducer {
     // would have torn the panel down; with the panel retained, this is a field
     // on the presentation that owns it.
     guard let current = state.current,
-      case .recording(let level, let isLocked, _) = current.content
+      case .recording(let level, let isLocked, _, let design) = current.content
     else { return .noChange }
 
     let updated = PillDefinition(
       id: current.id,
       content: .recording(
         audioLevel: level, isLocked: isLocked,
-        notice: InPanelNotice(reason: reason, dismissAfter: dismissAfter)),
+        notice: InPanelNotice(reason: reason, dismissAfter: dismissAfter), design: design),
       expiry: current.expiry,
       requestedWidth: current.requestedWidth,
       reservesFixedHeight: current.reservesFixedHeight)
@@ -496,12 +672,13 @@ struct OverlayReducer {
   /// outlives its banner.
   mutating func reduceInPanelNoticeExpiry(_ id: PresentationID) -> OverlayPlan {
     guard isCurrent(id), let current = state.current,
-      case .recording(let level, let isLocked, let notice) = current.content, notice != nil
+      case .recording(let level, let isLocked, let notice, let design) = current.content,
+      notice != nil
     else { return .noChange }
 
     let updated = PillDefinition(
       id: current.id,
-      content: .recording(audioLevel: level, isLocked: isLocked, notice: nil),
+      content: .recording(audioLevel: level, isLocked: isLocked, notice: nil, design: design),
       expiry: current.expiry,
       requestedWidth: current.requestedWidth,
       reservesFixedHeight: current.reservesFixedHeight)
@@ -602,11 +779,6 @@ struct OverlayReducer {
   /// **The table this used to hold now lives in `PillCatalog`**, moved byte for
   /// byte with the comments citing the call sites each value was read off.
   ///
-  /// **`.recording` is the ONE arm still minted here.** The catalog's recording
-  /// arm needs a RESOLVED design and no production caller can supply one until
-  /// C3a builds the recording transaction; a placeholder would make a
-  /// preview-capable definition disagree with its own rendered layout, which is
-  /// a wrong value that type-checks. C3a moves this arm and its comment together.
   ///
   /// Listing the other fifteen rather than writing `default` is deliberate: a new
   /// pipeline intent must fail to compile here as well as in the catalog.
@@ -617,29 +789,28 @@ struct OverlayReducer {
     case .hidden, .processing, .clipboardFallback, .accessibilityToast, .warning,
       .error, .advisory, .interruption, .passiveChip, .cachingModel, .engineReady,
       .recoveringLastRecording, .recoverySucceeded, .bluetoothAwareness, .escapeRecovery:
-      guard let request = PillCatalogRequest(pipeline: intent) else {
+      guard let request = PillCatalogRequest(nonRecording: intent) else {
         // Unreachable: the initialiser refuses `.recording` only, and that arm
-        // returns below without reaching here.
-        assertionFailure("PillCatalogRequest(pipeline:) refused a non-recording intent")
+        // returns above without reaching here.
+        assertionFailure("PillCatalogRequest(nonRecording:) refused a non-recording intent")
         return nil
       }
       return PillCatalog.entry(for: request, id: id).definition
 
-    case .recording(let level):
-      // that site — the NON-PREVIEW recording pill, and only it, reserves a fixed
-      // 92-point interaction frame: it holds the normal 185x44, the locked
-      // 120x64 and the #1060 notice expansion without resizing on every morph.
+    case .recording:
+      // **The reducer no longer mints a recording pill, and this is the whole of
+      // G3 closing.** The old arm here emitted 185x92 and said so in its own
+      // comment: "the 92 below is the NON-preview answer, and the director
+      // overrides it to content-sized when the render model says preview is on".
+      // Two authorities for one geometry, one of them ignored, documented as
+      // though it were a design.
       //
-      // **This is NOT universal, and the first version of this table claimed it
-      // was.** With Live Preview on, that site takes a different branch —
-      // `fitToContent: true`, content-sized from the first frame so it does not
-      // visibly snap. Whether preview is on is a provider the DIRECTOR owns, so
-      // the reducer cannot decide it here, and it does not: the 92 below is the
-      // NON-preview answer, and `OverlayDirector.fixedHeight(for:)` overrides it
-      // to content-sized when the render model says preview is on.
-      return PillDefinition(
-        id: id, content: .recording(audioLevel: level, isLocked: false, notice: nil),
-        expiry: .untilReplaced, requestedWidth: .fixed(185), reservesFixedHeight: 92)
+      // **`.recording` is deliberately not minted here.** C3a moved its factory
+      // into `PillCatalog`, and a fresh recording goes through
+      // `prepareRecording(audioLevel:)` — it needs a RESOLVED design, which needs
+      // a capability read, which must happen after the recording effect is
+      // routed. Nothing holding only an intent has resolved one.
+      return nil
     }
   }
 

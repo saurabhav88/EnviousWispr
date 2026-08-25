@@ -90,6 +90,7 @@
           isEnabledForGeometry: { preview.isEnabled },
           display: { preview.display() }),
         grantAccessibility: { sink.appActions.append(.grantAccessibility) },
+        selections: { .shipped },
         deferFirstRender: { $0() })
       return (d, host, sink)
     }
@@ -160,7 +161,7 @@
         scheduler: .manual { _ in },
         announce: { _ in },
         livePreview: .disabled,
-        grantAccessibility: {},
+        grantAccessibility: {}, selections: { .shipped },
         deferFirstRender: { deferral.block = $0 })
     }
 
@@ -249,6 +250,7 @@
           isEnabledForGeometry: { preview.isEnabled },
           display: { preview.display() }),
         grantAccessibility: { sink.appActions.append(.grantAccessibility) },
+        selections: { .shipped },
         deferFirstRender: { $0() })
       hosts.append(host)
       return (d, armed, sink)
@@ -873,7 +875,7 @@
           recordingDidChange: { if $0 { recordingStarted = true } },
           isEnabledForGeometry: { recordingStarted },
           display: { .off }),
-        grantAccessibility: {}, deferFirstRender: { $0() })
+        grantAccessibility: {}, selections: { .shipped }, deferFirstRender: { $0() })
       Self.hosts.append(host)
       defer { Self.closeAllWindows() }
 
@@ -952,7 +954,7 @@
 
       Self.record(d, locked: true)
 
-      guard case .recording(_, let locked, _)? = d.renderModel.presentation?.content else {
+      guard case .recording(_, let locked, _, _)? = d.renderModel.presentation?.content else {
         Issue.record("expected a recording presentation")
         return
       }
@@ -1300,7 +1302,7 @@
       // The production `deferFirstRender` — the default — is the subject here.
       let d = OverlayDirector(
         host: host, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {})
+        livePreview: .disabled, grantAccessibility: {}, selections: { .shipped })
 
       d.present(.warning(reason: .polishFailed))
       #expect(
@@ -1326,7 +1328,7 @@
       let host = WindowlessOverlayHost()
       let d = OverlayDirector(
         host: host, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {})
+        livePreview: .disabled, grantAccessibility: {}, selections: { .shipped })
 
       // First request, deferred. A second replaces it before the run loop turns,
       // so the first drops on its identity gate and builds nothing.
@@ -1350,7 +1352,7 @@
       let host = WindowlessOverlayHost()
       let d = OverlayDirector(
         host: host, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {})
+        livePreview: .disabled, grantAccessibility: {}, selections: { .shipped })
       d.present(.warning(reason: .polishFailed))
       await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } }
 
@@ -1532,6 +1534,7 @@
         announce: { sink.announcements.append($0) },
         livePreview: .disabled,
         grantAccessibility: { sink.appActions.append(.grantAccessibility) },
+        selections: { .shipped },
         deferFirstRender: { $0() })
       hosts.append(host)
       return (d, sink, armed)

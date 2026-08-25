@@ -63,7 +63,7 @@ struct OverlayRootView: View {
   }
 
   private func sync(_ presentation: PillDefinition?) {
-    guard case .recording(_, let isLocked, let notice)? = presentation?.content else {
+    guard case .recording(_, let isLocked, let notice, _)? = presentation?.content else {
       lockState.value.isLocked = false
       noticeState.value.message = nil
       return
