@@ -33,6 +33,48 @@ package enum ShortcutRole: String, Sendable, CaseIterable {
   }
 }
 
+/// What each shortcut is bound to on a fresh install.
+///
+/// **One owner, because this value was previously written in three places that nothing linked.**
+/// `SettingsDefaultValues` decides what a fresh install stores, `HotkeyService` carries a
+/// compiled-in fallback, and each Settings row hard-codes what its Reset button offers. Any one of
+/// them could move without the others, and the visible symptom is the worst kind: Reset takes the
+/// user to a shortcut no fresh install has, so their "back to how it shipped" stops matching a
+/// colleague's, every screenshot, and every support answer. Nothing fails, nothing is red.
+///
+/// A guard over those three literals was written first and then deleted in favour of this. A guard
+/// fires after the mistake is made; one constant makes it unwriteable.
+extension ShortcutRole {
+  /// The shipped binding for this role. A switch, so a new role must declare one.
+  package var defaultBinding: ShortcutBinding {
+    switch self {
+    // Right Option, a bare modifier: the record key is held or tapped constantly, so it earns the
+    // one shape that needs no chord.
+    case .record: .keyboard(keyCode: ModifierKeyCodes.rightOption, modifiers: [])
+    // Escape, bare.
+    case .cancel: .keyboard(keyCode: 53, modifiers: [])
+    // Control-Option-W (#2381). A CHORD deliberately: it takes the Carbon path, and the persona
+    // review's hard requirement is that a user who has never heard of this feature never triggers
+    // it by accident. Still reachable with one hand.
+    case .quickAdd: .keyboard(keyCode: 13, modifiers: [.control, .option])
+    }
+  }
+
+  /// The shipped key code, for callers that store the two halves separately.
+  package var defaultKeyCode: UInt16 {
+    switch defaultBinding {
+    case .keyboard(let keyCode, _): keyCode
+    }
+  }
+
+  /// The shipped modifiers, for callers that store the two halves separately.
+  package var defaultModifiers: NSEvent.ModifierFlags {
+    switch defaultBinding {
+    case .keyboard(_, let modifiers): modifiers
+    }
+  }
+}
+
 /// One shortcut, whatever kind it is.
 ///
 /// Today this is keyboard-only. It exists as an enum rather than a struct

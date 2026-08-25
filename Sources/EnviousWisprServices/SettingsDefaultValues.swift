@@ -41,16 +41,16 @@ enum SettingsDefaultValues {
   static let vadSensitivity: Float = 0.5
   static let vadEnergyGate = true
 
-  static let cancelKeyCode: Int = 53  // Escape
-  static let cancelModifiersRaw: UInt = 0
-  /// Quick Add (#2381): Control-Option-W. Awkward enough that nobody reaches it by accident —
-  /// the persona review's hard requirement is that a user who has never heard of this feature
-  /// never triggers it — and still reachable with one hand.
-  static let quickAddKeyCode: Int = 13  // W
-  static let quickAddModifiersRaw: UInt =
-    NSEvent.ModifierFlags([.control, .option]).rawValue
-  static let toggleKeyCode: Int = Int(ModifierKeyCodes.rightOption)
-  static let toggleModifiersRaw: UInt = 0
+  // The three shortcut defaults are OWNED by `ShortcutRole.defaultBinding` and read here, rather
+  // than written here and repeated in the service and in each Settings row. See that extension for
+  // why: three unlinked copies of one value, whose drift symptom is a Reset button that takes the
+  // user somewhere no fresh install goes.
+  static let cancelKeyCode: Int = Int(ShortcutRole.cancel.defaultKeyCode)
+  static let cancelModifiersRaw: UInt = ShortcutRole.cancel.defaultModifiers.rawValue
+  static let quickAddKeyCode: Int = Int(ShortcutRole.quickAdd.defaultKeyCode)
+  static let quickAddModifiersRaw: UInt = ShortcutRole.quickAdd.defaultModifiers.rawValue
+  static let toggleKeyCode: Int = Int(ShortcutRole.record.defaultKeyCode)
+  static let toggleModifiersRaw: UInt = ShortcutRole.record.defaultModifiers.rawValue
   static let pushToTalkKeyCode: Int = 49  // Space
   static let pushToTalkModifiersRaw: UInt = NSEvent.ModifierFlags.option.rawValue
 

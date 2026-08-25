@@ -199,12 +199,11 @@ public final class HotkeyService {
   /// Required modifiers for cancel hotkey. Default: none (bare Escape).
   public var cancelModifiers: NSEvent.ModifierFlags = []
 
-  /// Key code for the Quick Add hotkey (#2381). Default: W (13).
-  public var quickAddKeyCode: UInt16 = 13
+  /// Key code for the Quick Add hotkey (#2381). The shipped value, read from its one owner.
+  public var quickAddKeyCode: UInt16 = ShortcutRole.quickAdd.defaultKeyCode
 
-  /// Required modifiers for the Quick Add hotkey. Default: Control-Option, which is awkward enough
-  /// that nobody reaches it by accident and reachable one-handed.
-  public var quickAddModifiers: NSEvent.ModifierFlags = [.control, .option]
+  /// Required modifiers for the Quick Add hotkey, read from the same owner.
+  public var quickAddModifiers: NSEvent.ModifierFlags = ShortcutRole.quickAdd.defaultModifiers
 
   // MARK: - Lifecycle
 

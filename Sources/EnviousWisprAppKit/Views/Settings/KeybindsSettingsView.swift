@@ -73,8 +73,8 @@ struct KeybindsSettingsView: View {
             description: "This keybind starts and stops recording.",
             keyCode: $settings.toggleKeyCode,
             modifiers: $settings.toggleModifiers,
-            defaultKeyCode: ModifierKeyCodes.rightOption,
-            defaultModifiers: [],
+            defaultKeyCode: ShortcutRole.record.defaultKeyCode,
+            defaultModifiers: ShortcutRole.record.defaultModifiers,
             accessibilityLabel: "Recording keybind",
             onBindingAccepted: { code, _ in
               // The claim is owned by SettingsManager, not by this view: onboarding
@@ -129,8 +129,8 @@ struct KeybindsSettingsView: View {
               + "from the next recording you start.",
             keyCode: $settings.cancelKeyCode,
             modifiers: $settings.cancelModifiers,
-            defaultKeyCode: 53,
-            defaultModifiers: [],
+            defaultKeyCode: ShortcutRole.cancel.defaultKeyCode,
+            defaultModifiers: ShortcutRole.cancel.defaultModifiers,
             accessibilityLabel: "Cancel keybind"
           )
 
@@ -198,8 +198,8 @@ struct KeybindsSettingsView: View {
               + "Terminal windows do not share their selection, so it will not work there.",
             keyCode: $settings.quickAddKeyCode,
             modifiers: $settings.quickAddModifiers,
-            defaultKeyCode: 13,
-            defaultModifiers: [.control, .option],
+            defaultKeyCode: ShortcutRole.quickAdd.defaultKeyCode,
+            defaultModifiers: ShortcutRole.quickAdd.defaultModifiers,
             accessibilityLabel: "Add-a-word keybind"
           )
         }
