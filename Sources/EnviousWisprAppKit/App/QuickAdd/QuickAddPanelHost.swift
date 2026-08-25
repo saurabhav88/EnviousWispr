@@ -41,12 +41,23 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
 
   /// Whether THIS presentation is what brought EnviousWispr forward.
   ///
-  /// `releaseFocus()` reads it, and without it that method is usually right rather than right: the
-  /// Quick Add shortcut is global, so it fires while our own Settings window is frontmost too. There
-  /// we were already active, took nothing, and handing activation away would push the user's own
-  /// window behind an unrelated app. Set on every presentation, so a reused panel cannot inherit the
-  /// previous invocation's answer.
+  /// The Quick Add shortcut is global, so it fires while our own Settings window is frontmost too.
+  /// There we were already active, took nothing, and handing activation away would push the user's
+  /// own window behind an unrelated app. Set on every presentation, so a reused panel cannot inherit
+  /// the previous invocation's answer.
   private var activatedForThisPresentation = false
+
+  /// Whoever held key status when this presentation took it.
+  ///
+  /// **`present` takes TWO things and they are independent, which is the whole reason this exists
+  /// beside the flag above.** Activation is taken only when we were not already active;
+  /// `makeKeyAndOrderFront` takes key status ALWAYS, from whatever held it. Releasing only the first
+  /// left the confirmation key for two seconds inside our own app — the keystroke-eating defect the
+  /// flag was added to prevent, in the one case the flag made silent.
+  ///
+  /// Weak on purpose: a Settings window the user closed during the beat must not be resurrected, and
+  /// must not be kept alive by us.
+  private weak var previousKeyWindow: NSWindow?
 
   #if DEBUG
     /// How many panels this host has built. A second one means the reuse path broke, which is
@@ -109,8 +120,9 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
 
     // Activate BEFORE making key, and only now — the selection was read while the other app was
     // still frontmost, which is the whole reason this happens here rather than at capture time.
-    // Read BEFORE activating, which is the only moment the answer exists.
+    // Both read BEFORE anything is taken, which is the only moment either answer exists.
     activatedForThisPresentation = !NSApp.isActive
+    previousKeyWindow = NSApp.keyWindow
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
     return true
@@ -141,12 +153,21 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// `hidesOnDeactivate` is false and it sits at `.floating` — both set for their own reasons long
   /// before this needed them.
   ///
-  /// **Conditional on having TAKEN activation, which is the half that makes it correct rather than
-  /// usually correct.** See `activatedForThisPresentation`: opened from our own Settings window,
-  /// there is nothing to give back and giving it anyway hides the user's own window.
+  /// **Returns exactly what `present` took, which is TWO things rather than one.** Opened from
+  /// another app it took activation, and giving that back returns key status with it. Opened from
+  /// our own Settings window it took activation from nobody and key status from that window, so the
+  /// window is what gets it back — deactivating there would hide the user's own window instead.
   func releaseFocus() {
-    guard let panel, panel.isVisible, activatedForThisPresentation else { return }
-    NSApp.deactivate()
+    guard let panel, panel.isVisible else { return }
+    let previous = previousKeyWindow
+    previousKeyWindow = nil
+    if activatedForThisPresentation {
+      NSApp.deactivate()
+      return
+    }
+    // Already active: activation was never ours to give. Key status was, and it came from here.
+    guard let previous, previous !== panel, previous.isVisible else { return }
+    previous.makeKeyAndOrderFront(nil)
   }
 
   /// Take the panel down. Idempotent.

@@ -78,6 +78,9 @@ final class QuickAddPanelModel {
       /// `word` was created and there was no spelling to attach, because the panel opened without
       /// a readable selection. `spelling` is empty here.
       case created
+      /// `word` was already in the library and there was no spelling to attach — the same state as
+      /// `created`, arriving at a canonical that already existed. `spelling` is empty here.
+      case alreadyInWords
     }
 
     let kind: Kind

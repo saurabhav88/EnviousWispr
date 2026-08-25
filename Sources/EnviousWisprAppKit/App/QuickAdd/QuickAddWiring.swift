@@ -295,8 +295,12 @@ final class QuickAddWiring {
       conclude(
         model, spelling.isEmpty ? .created : .saved, spelling: spelling, word: canonical)
     case .alreadyComplete(let canonical):
-      conclude(
-        model, .nothingToAdd, spelling: model.spellingToWrite, word: canonical)
+      conclude(model, .nothingToAdd, spelling: model.spellingToWrite, word: canonical)
+    case .alreadyPresent(let canonical):
+      // Split by OUTCOME rather than by re-testing the spelling here, which is the same rule the
+      // confirmation follows: the sentence is composed from what the write path REPORTS. There is no
+      // mishearing to name in this cell by construction, so `X already knows ""` cannot arise.
+      conclude(model, .alreadyInWords, spelling: "", word: canonical)
     }
   }
 
@@ -345,6 +349,8 @@ final class QuickAddWiring {
     case created(canonical: String)
     /// The canonical was already there and already carried every spelling the user kept.
     case alreadyComplete(canonical: String)
+    /// The canonical was already there and there was no spelling to attach.
+    case alreadyPresent(canonical: String)
     /// Nothing was written and the user did not get what they asked for.
     case refused(String)
   }
@@ -402,6 +408,9 @@ final class QuickAddWiring {
       // exactly this, on the accept route, for exactly this reason.
       coordinator.didFindAlreadySaved(usedSearch: usedSearch)
       return .alreadyComplete(canonical: stored.canonical)
+    case .alreadyPresent:
+      coordinator.didFindAlreadySaved(usedSearch: usedSearch)
+      return .alreadyPresent(canonical: stored.canonical)
     case .refused:
       return .refused(QuickAddPanelCopy.newWordAlreadyExists(canonical: stored.canonical))
     }
@@ -440,6 +449,21 @@ final class QuickAddWiring {
     case alreadyComplete
     /// Nothing was written and the user did not get what they asked for. Say so, keep the panel up.
     case refused
+    /// The canonical was already there and there was no spelling to attach, so nothing was written
+    /// and nothing needed to be — and unlike `refused`, there is nothing the user can DO about it.
+    ///
+    /// **Its own case rather than either neighbour, and both alternatives were tried.** It was
+    /// `refused`, which is honest about the write and wrong about the panel: only the invocation
+    /// that opened WITHOUT a readable selection can reach this cell, and that panel's ranking is
+    /// empty and its search field disabled, so the refusal's copy sent the user to a list that
+    /// cannot exist. Folding it into `alreadyComplete` fixes that and retires a distinction a review
+    /// round established — that cell has no spelling to confirm, so `alreadyComplete`'s
+    /// postcondition is vacuous there, which is the whole reason it was split out.
+    ///
+    /// Reports as `alreadySaved` like `alreadyComplete` does: nothing was created either way, so the
+    /// funnel does not care, and inventing a fifth outcome for it would put a distinction in the
+    /// telemetry that nobody asked a question about.
+    case alreadyPresent
   }
 
   package static func newWordOutcome(
@@ -451,10 +475,12 @@ final class QuickAddWiring {
     // Through this route `add` no-ops on a duplicate canonical, so a canonical that was NOT there
     // before is the only evidence a creation happened.
     guard canonicalExistedBefore else { return .created }
-    // It was already there. With a spelling to confirm, and nothing missing, the end state the user
-    // asked for holds — nothing to do. With NO spelling, nothing was created and nothing was added,
-    // so there is nothing to report as done.
-    return keptSpellings.isEmpty ? .refused : .alreadyComplete
+    // It was already there, and nothing the user kept is missing, so the end state they asked for
+    // holds either way. The two differ in whether there was a spelling to confirm, and that is the
+    // distinction round three drew — kept, because `alreadyComplete`'s postcondition is vacuous
+    // without one. What changed is only its NAME for the no-spelling half: `refused` was honest
+    // about the write and wrong about the panel. See the case docs above.
+    return keptSpellings.isEmpty ? .alreadyPresent : .alreadyComplete
   }
 
   /// Write a word and PROVE the spelling is on it afterwards.

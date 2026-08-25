@@ -738,18 +738,54 @@ struct QuickAddCoordinatorTests {
   }
   // MARK: - Did the create actually produce a word (#2381, cloud review)
 
-  @Test("A blank-alias save onto an existing canonical is refused")
-  func blankAliasOntoExistingCanonicalIsRefused() {
-    // The state the inline version could not see. Quick Add opened without a readable selection has
-    // no heard spelling, so there is nothing to confirm. The sheet reached it by starting with one
-    // BLANK alias; `QuickAddPanelModel.draftWord` now refuses to build one, so the compose route no
-    // longer arrives here — this guard covers the OUTCOME rule, which every route still shares.
-    // The postcondition asked "did the kept spellings land", which is vacuously true of none — so a
-    // canonical that already existed took the success path while `add` silently no-oped. Nothing was
-    // created and the panel closed saying nothing.
+  @Test("A no-spelling save onto an existing canonical is its own outcome, not a refusal")
+  func noSpellingOntoExistingCanonicalIsAlreadyPresent() {
+    // **This cell was `.refused` and its REASON has been removed rather than overruled.** The
+    // postcondition asks "did the kept spellings land", which is vacuously true of none — so a
+    // canonical that already existed took the success path while `add` silently no-oped, and the
+    // panel closed saying nothing. Refusing was how that silence was made audible.
+    //
+    // #2391 §1 gave the panel something to say on EVERY ending, so the silence is gone and the
+    // refusal became a dead end: only the panel opened WITHOUT a readable selection can produce this
+    // cell, its ranking is empty and its search field disabled by construction, and the refusal's
+    // copy told the user to choose the word from a list that cannot exist there.
+    //
+    // Nothing is wrong in this state. They asked for the word to be in their words, and it is.
+    //
+    // **It did NOT become `.alreadyComplete`, and the case below is why.** Renaming the cell is a
+    // claim about the panel; merging it is a claim about the postcondition, and only the first is
+    // true.
     #expect(
       QuickAddWiring.newWordOutcome(
-        keptSpellings: [], missingSpellings: [], canonicalExistedBefore: true) == .refused)
+        keptSpellings: [], missingSpellings: [], canonicalExistedBefore: true) == .alreadyPresent)
+  }
+
+  /// **The distinction round three drew, restated as the thing that must not collapse.** The
+  /// no-spelling cell has nothing for `alreadyComplete`'s postcondition to confirm, which is why it
+  /// was split out; folding the two together makes that postcondition vacuous exactly where it
+  /// already was once. A guard on #2403 mutates one into the other, and this is the test it fires.
+  @Test("The two already-there cells stay distinct, because only one has a spelling to confirm")
+  func theTwoAlreadyThereCellsAreDistinct() {
+    #expect(
+      QuickAddWiring.newWordOutcome(
+        keptSpellings: [], missingSpellings: [], canonicalExistedBefore: true) == .alreadyPresent)
+    #expect(
+      QuickAddWiring.newWordOutcome(
+        keptSpellings: ["codecs"], missingSpellings: [],
+        canonicalExistedBefore: true) == .alreadyComplete)
+  }
+
+  /// The paired NEGATIVE, and it is what stops the change above collapsing the enum: `.refused` is
+  /// still reachable, and it is reachable for the one reason that outranks everything — a spelling
+  /// the user typed that is not on the word afterwards is a lost edit, whatever else is true.
+  @Test("A missing spelling is still refused, whatever else holds")
+  func aMissingSpellingIsStillRefused() {
+    for existedBefore in [true, false] {
+      #expect(
+        QuickAddWiring.newWordOutcome(
+          keptSpellings: ["codecs"], missingSpellings: ["codecs"],
+          canonicalExistedBefore: existedBefore) == .refused)
+    }
   }
 
   @Test("A blank-alias save of a genuinely new canonical IS a creation")

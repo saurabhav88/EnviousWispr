@@ -156,6 +156,7 @@ struct QuickAddPanelCopyTests {
         QuickAddPanelCopy.savedNotice(spelling: "codecs", word: "Codex"),
         QuickAddPanelCopy.nothingToAddNotice(spelling: "codecs", word: "Codex"),
         QuickAddPanelCopy.createdNotice(word: "Codex"),
+        QuickAddPanelCopy.alreadyInWordsNotice(word: "Codex"),
       ]
 
     for text in all {
@@ -306,7 +307,11 @@ struct QuickAddPanelCopyTests {
     for kind in QuickAddPanelModel.Notice.Kind.allCases {
       let text = QuickAddPanelCopy.notice(
         QuickAddPanelModel.Notice(
-          kind: kind, spelling: kind == .created ? "" : "codecs", word: "Codex",
+          kind: kind,
+          // The two no-selection kinds carry no spelling BY CONSTRUCTION, so handing them one would
+          // test a value the app cannot produce and hide a sentence that quotes an empty string.
+          spelling: [.created, .alreadyInWords].contains(kind) ? "" : "codecs",
+          word: "Codex",
           searchable: false))
       #expect(!text.isEmpty, "\(kind) renders nothing")
       #expect(!text.contains("\"\""), "\(kind) quotes an empty string")
@@ -315,5 +320,23 @@ struct QuickAddPanelCopyTests {
     #expect(
       rendered.count == QuickAddPanelModel.Notice.Kind.allCases.count,
       "two kinds render the same sentence")
+  }
+
+  /// **The state the refusal used to own, and the reason it must not read as a failure.** The panel
+  /// that reaches this opened WITHOUT a readable selection, so its ranking is empty and its search
+  /// field disabled — the old copy told the user to choose the word from a list that cannot exist.
+  @Test("A word already in the library is reported plainly, naming no route the user cannot take")
+  func alreadyInWordsNamesNoImpossibleRoute() {
+    let text = QuickAddPanelCopy.alreadyInWordsNotice(word: "Codex")
+
+    #expect(text.contains("Codex"))
+    #expect(!text.contains("\"\""))
+    // Same term set the refusal guard uses, for the same reason one layer over: with no heard word
+    // there is nothing to rank, so every one of these names a control that is not on screen.
+    for pointsAtTheList in ["choose", "list", "search", "pick", "select"] {
+      #expect(
+        !text.lowercased().contains(pointsAtTheList),
+        "says \(pointsAtTheList), which names a control this state does not have")
+    }
   }
 }

@@ -56,6 +56,16 @@ enum QuickAddPanelCopy {
     "\(word) added to your words"
   }
 
+  /// The user authored a word by hand that was already in the library, with no spelling to attach.
+  ///
+  /// **Not a refusal, and it used to be one.** The panel that reaches this opened WITHOUT a readable
+  /// selection, so its ranking is empty and its search field disabled — and the refusal's copy told
+  /// the user to choose the word from a list that cannot exist there. Nothing is wrong in this
+  /// state: they asked for the word to be in their words, and it is.
+  static func alreadyInWordsNotice(word: String) -> String {
+    "\(word) is already in your words"
+  }
+
   /// The one place a `Notice` becomes English.
   ///
   /// **Exhaustive over `Kind` on purpose.** The model carries the FACTS — which thing happened, to
@@ -67,6 +77,7 @@ enum QuickAddPanelCopy {
     case .saved: savedNotice(spelling: notice.spelling, word: notice.word)
     case .nothingToAdd: nothingToAddNotice(spelling: notice.spelling, word: notice.word)
     case .created: createdNotice(word: notice.word)
+    case .alreadyInWords: alreadyInWordsNotice(word: notice.word)
     }
   }
 
