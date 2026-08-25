@@ -108,7 +108,7 @@ final class QuickAddWiring {
       return
     }
     activeModel = model
-    panelHost.present(
+    let shown = panelHost.present(
       QuickAddRoot(
         model: model,
         onAccept: { [weak self] candidate in self?.accept(candidate, model: model) },
@@ -118,6 +118,17 @@ final class QuickAddWiring {
           get: { [weak self] in self?.pendingNewWord },
           set: { [weak self] in self?.pendingNewWord = $0 }),
         onSaveNewWord: { [weak self] word in self?.saveNewWord(word) }))
+
+    // The host refuses to present a panel it could not measure, because an unmeasurable panel is an
+    // invisible window that reports success. Clearing `activeModel` matters as much as the event:
+    // a stale model here is what a later dismiss would resolve, attributing a cancel to an open that
+    // never happened.
+    guard shown else {
+      activeModel = nil
+      coordinator.failedToOpen()
+      return
+    }
+    coordinator.didOpen()
   }
 
   // MARK: - Outcomes
@@ -187,7 +198,7 @@ final class QuickAddWiring {
     guard missing.isEmpty else {
       return QuickAddPanelCopy.newWordAlreadyExists(canonical: stored.canonical)
     }
-    if let model = activeModel { coordinator.didCreateNew(from: model) }
+    coordinator.didCreateNew(usedSearch: !(activeModel?.query.isEmpty ?? true))
     dismiss()
     return nil
   }

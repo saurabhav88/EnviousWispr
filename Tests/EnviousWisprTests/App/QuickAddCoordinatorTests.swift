@@ -40,6 +40,20 @@ struct QuickAddCoordinatorTests {
     CustomWord(canonical: canonical, aliases: aliases, source: source)
   }
 
+  /// `begin` plus the presentation callback, which is what the wiring does and what a test asserting
+  /// an `opened` event must reproduce.
+  ///
+  /// The two are separate in production on purpose: `opened` names an event the user can SEE, so it
+  /// fires when a panel is on screen. Emitting it from `begin` made a panel that could not be
+  /// measured leave an open with nothing to resolve it.
+  private func beginAndShow(
+    _ coordinator: QuickAddCoordinator, door: QuickAddDoor = .hotkey, selectionOverride: String? = nil
+  ) -> QuickAddPanelModel? {
+    let model = coordinator.begin(door: door, selectionOverride: selectionOverride)
+    if model != nil { coordinator.didOpen() }
+    return model
+  }
+
   private func makeCoordinator(
     selection: SelectionReader.Result = .text("codecs"),
     refreshSucceeds: Bool = true,
@@ -84,7 +98,7 @@ struct QuickAddCoordinatorTests {
     // snapshot offers words that no longer exist and hides ones that do.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
 
-    _ = coordinator.begin(door: .hotkey)
+    _ = beginAndShow(coordinator)
 
     #expect(recorder.refreshCalls == 1)
   }
@@ -98,7 +112,7 @@ struct QuickAddCoordinatorTests {
     let (coordinator, recorder) = makeCoordinator(
       refreshSucceeds: false, userWords: [word("Codex")])
 
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
 
     #expect(model.refusal == .wordsUnavailable)
     // The stale snapshot half of the name is the part that was always right.
@@ -114,7 +128,7 @@ struct QuickAddCoordinatorTests {
     // count is shape; the string is not.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
 
-    _ = coordinator.begin(door: .hotkey)
+    _ = beginAndShow(coordinator)
     let opened = try #require(recorder.opened)
 
     guard case .opened(let door, let refusal, let bundle, let count, _, _, _) = opened else {
@@ -131,7 +145,7 @@ struct QuickAddCoordinatorTests {
   func aRefusalStillOpens() throws {
     let (coordinator, recorder) = makeCoordinator(selection: .refused(.accessibilityNotTrusted))
 
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
 
     #expect(model.refusal == .accessibilityNotTrusted)
     #expect(recorder.opened != nil, "the panel opens on a stated reason, never a silent no-op")
@@ -141,7 +155,7 @@ struct QuickAddCoordinatorTests {
   func noSelectionIsAReason() throws {
     let (coordinator, _) = makeCoordinator(selection: .noSelection)
 
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
 
     #expect(model.refusal != nil, "the search field is the way forward, and the panel says so")
     #expect(model.heard.isEmpty)
@@ -153,7 +167,7 @@ struct QuickAddCoordinatorTests {
   func acceptingWritesTheHeardSpelling() throws {
     let codex = word("Codex", aliases: ["codeks"])
     let (coordinator, recorder) = makeCoordinator(userWords: [codex])
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
     let target = try #require(model.ranking.candidates.first)
 
     coordinator.accept(target, from: model)
@@ -171,7 +185,7 @@ struct QuickAddCoordinatorTests {
     // the call returns having written nothing and reporting success — a save that silently does not.
     let pack = word("codec", source: .pack)
     let (coordinator, recorder) = makeCoordinator(userWords: [], packTerms: [pack])
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
     let target = try #require(model.ranking.candidates.first)
     #expect(target.isPackTerm)
 
@@ -187,7 +201,7 @@ struct QuickAddCoordinatorTests {
   func anAlreadySavedWordIsNotWrittenAgain() throws {
     let codex = word("Codex", aliases: ["codecs"])
     let (coordinator, recorder) = makeCoordinator(userWords: [codex])
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
     let target = try #require(model.ranking.candidates.first)
 
     coordinator.accept(target, from: model)
@@ -202,7 +216,7 @@ struct QuickAddCoordinatorTests {
     // override passes the reader and is refused here. The user must be told.
     let (coordinator, recorder) = makeCoordinator(
       userWords: [word("Codex")], saveFailure: "That word cannot be saved.")
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
     let target = try #require(model.ranking.candidates.first)
 
     let message = coordinator.accept(target, from: model)
@@ -221,7 +235,7 @@ struct QuickAddCoordinatorTests {
     // The paired accepted case for the refusal above. Without it the caller could dismiss on any
     // non-nil-ness rule and still pass, and a check that never classifies anything looks clean.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
     let target = try #require(model.ranking.candidates.first)
 
     #expect(coordinator.accept(target, from: model) == nil)
@@ -234,7 +248,7 @@ struct QuickAddCoordinatorTests {
     // refusal above only by the return value, which is why both are asserted.
     let (coordinator, recorder) = makeCoordinator(
       selection: .text("codecs"), userWords: [word("Codex", aliases: ["codecs"])])
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
     let target = try #require(model.ranking.candidates.first)
 
     #expect(coordinator.accept(target, from: model) == nil)
@@ -247,7 +261,7 @@ struct QuickAddCoordinatorTests {
     // user rescuing it. A single `accepted` would hide how often the ranking is wrong.
     let (coordinator, recorder) = makeCoordinator(
       userWords: [word("Codex"), word("Claude Code")])
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
     model.updateQuery("claude")
     let target = try #require(model.ranking.candidates.first)
 
@@ -260,7 +274,7 @@ struct QuickAddCoordinatorTests {
   func searchingNeverChangesWhatIsWritten() throws {
     let (coordinator, recorder) = makeCoordinator(
       userWords: [word("Codex"), word("Claude Code")])
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
     model.updateQuery("claude")
     let target = try #require(model.ranking.candidates.first)
 
@@ -277,7 +291,7 @@ struct QuickAddCoordinatorTests {
   @Test("Create-new opens the edit sheet on the heard spelling")
   func createNewOpensTheSheet() throws {
     let (coordinator, recorder) = makeCoordinator()
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
 
     coordinator.createNew(from: model)
 
@@ -292,7 +306,7 @@ struct QuickAddCoordinatorTests {
   @Test("Cancelling writes nothing and says so")
   func cancellingWritesNothing() throws {
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
 
     coordinator.cancel(from: model)
 
@@ -304,7 +318,7 @@ struct QuickAddCoordinatorTests {
   func bothDoorsAreReported() throws {
     let (coordinator, recorder) = makeCoordinator()
 
-    _ = coordinator.begin(door: .service, selectionOverride: "codecs")
+    _ = beginAndShow(coordinator, door: .service, selectionOverride: "codecs")
     guard case .opened(let door, _, _, _, _, _, _) = try #require(recorder.opened) else { return }
 
     #expect(door == .service)
@@ -317,7 +331,7 @@ struct QuickAddCoordinatorTests {
     // whose answer is about whatever is frontmost now, which by then may be us.
     let (coordinator, _) = makeCoordinator(selection: .refused(.accessibilityNotTrusted))
 
-    let model = try #require(coordinator.begin(door: .service, selectionOverride: "sarag"))
+    let model = try #require(beginAndShow(coordinator, door: .service, selectionOverride: "sarag"))
 
     #expect(model.heard == "sarag")
     #expect(model.refusal == nil, "the AX refusal is irrelevant when the text was handed to us")
@@ -339,7 +353,7 @@ struct QuickAddCoordinatorTests {
     // opened a panel reading `Heard: ` with the search field up, from which Return could write an
     // alias the store then stripped while reporting success.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
-    let model = try #require(coordinator.begin(door: .service, selectionOverride: "   "))
+    let model = try #require(beginAndShow(coordinator, door: .service, selectionOverride: "   "))
 
     #expect(model.heard.isEmpty)
     #expect(model.refusal == .selectionUnavailable)
@@ -353,7 +367,7 @@ struct QuickAddCoordinatorTests {
     // and sent to the scorer through the other — where edit distance builds a matrix per candidate.
     let huge = String(repeating: "a", count: SelectionReader.maximumSelectionScalars + 1)
     let (coordinator, _) = makeCoordinator(userWords: [word("Codex")])
-    let model = try #require(coordinator.begin(door: .service, selectionOverride: huge))
+    let model = try #require(beginAndShow(coordinator, door: .service, selectionOverride: huge))
 
     #expect(model.refusal == .selectionTooLong)
     #expect(model.ranking.candidates.isEmpty)
@@ -364,7 +378,7 @@ struct QuickAddCoordinatorTests {
     // The paired accepted case. Without it every assertion above passes against a door that refuses
     // everything, which is a check that never classifies anything.
     let (coordinator, _) = makeCoordinator(userWords: [word("Codex")])
-    let model = try #require(coordinator.begin(door: .service, selectionOverride: "  codecs  "))
+    let model = try #require(beginAndShow(coordinator, door: .service, selectionOverride: "  codecs  "))
 
     #expect(model.heard == "codecs")
     #expect(model.refusal == nil)
@@ -376,7 +390,7 @@ struct QuickAddCoordinatorTests {
     // Emitting createdNew on the click counted opening a sheet as a save: cancelling the sheet left
     // the panel up, and cancelling the panel then emitted a SECOND resolved event for one open.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
 
     coordinator.createNew(from: model)
 
@@ -387,7 +401,7 @@ struct QuickAddCoordinatorTests {
   @Test("Cancelling after opening the sheet resolves exactly once, as cancelled")
   func cancellingAfterTheSheetResolvesOnce() throws {
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
 
     coordinator.createNew(from: model)
     coordinator.cancel(from: model)
@@ -400,10 +414,52 @@ struct QuickAddCoordinatorTests {
     // The paired positive: the outcome still exists and is still reachable. Moving the emission
     // without this would be indistinguishable from deleting it.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
 
     coordinator.createNew(from: model)
-    coordinator.didCreateNew(from: model)
+    coordinator.didCreateNew(usedSearch: false)
+
+    #expect(recorder.outcomes == [.createdNew])
+  }
+
+  @Test("A panel that could not be shown leaves no open event behind")
+  func aPanelThatCannotBeShownEmitsNoOpen() throws {
+    // Found by ENUMERATING the ways a Quick Add can end, not by a review round. The host refuses to
+    // present a panel it could not measure — an unmeasurable panel is an invisible window reporting
+    // success — and `opened` used to fire before that, so the one path that cannot report a reason
+    // of its own left an open with nothing to resolve it.
+    let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
+
+    _ = try #require(coordinator.begin(door: .hotkey))
+    coordinator.failedToOpen()
+
+    #expect(recorder.opened == nil)
+    // And NOT a resolved either: nothing opened, so there is nothing to resolve, and inventing an
+    // outcome would put a phantom row in the denominator of every rate built on this funnel.
+    #expect(recorder.outcomes.isEmpty)
+    #expect(recorder.events.contains { if case .failed = $0 { true } else { false } })
+  }
+
+  @Test("A panel that IS shown emits exactly one open")
+  func aPanelThatIsShownEmitsOneOpen() throws {
+    // The paired positive. Deferring the emission is indistinguishable from deleting it without
+    // something that still requires it to arrive, exactly once.
+    let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
+
+    _ = try #require(beginAndShow(coordinator))
+
+    #expect(recorder.events.filter { if case .opened = $0 { true } else { false } }.count == 1)
+  }
+
+  @Test("A confirmed new word resolves even when the panel has already gone")
+  func createdNewResolvesWithoutAModel() throws {
+    // The sheet outlives the panel in at least one ordering, and the call site used to read
+    // `if let model = activeModel`, so a CONFIRMED save emitted nothing at all.
+    let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
+    let model = try #require(beginAndShow(coordinator))
+    coordinator.createNew(from: model)
+
+    coordinator.didCreateNew(usedSearch: false)
 
     #expect(recorder.outcomes == [.createdNew])
   }
@@ -415,7 +471,7 @@ struct QuickAddCoordinatorTests {
     // search field exists precisely to let the user type something else.
     let (coordinator, recorder) = makeCoordinator(
       selection: .text("codecs"), userWords: [word("Codex"), word("Kubernetes")])
-    let model = try #require(coordinator.begin(door: .hotkey))
+    let model = try #require(beginAndShow(coordinator))
     model.updateQuery("kub")
     let target = try #require(model.ranking.candidates.first)
 

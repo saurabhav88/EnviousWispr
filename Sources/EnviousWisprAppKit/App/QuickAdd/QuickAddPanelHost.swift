@@ -39,7 +39,12 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// **Reuse, not a second panel.** Pressing the shortcut again while the panel is open is an
   /// ordinary thing to do — the user is not sure it fired — and opening a second identical panel on
   /// top of the first looks exactly like nothing happening while leaving a window nobody can reach.
-  func present(_ content: some View) {
+  /// - Returns: whether a panel is now on screen. **The caller MUST read it.** A refusal here used
+  ///   to be invisible: the coordinator had already emitted `opened`, nothing resolved it, and the
+  ///   user got no window — the same shape as the refresh failure that returned no panel, reached
+  ///   through the one path that cannot report a reason.
+  @discardableResult
+  func present(_ content: some View) -> Bool {
     let panel = ensurePanel()
     let host = NSHostingView(rootView: AnyView(content))
     panel.contentView = host
@@ -50,7 +55,7 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
       // caller gets no panel and the user gets nothing, rather than a window that is up, focused,
       // swallowing Return, and blank.
       panel.contentView = nil
-      return
+      return false
     }
     panel.setContentSize(size)
     panel.center()
@@ -59,6 +64,7 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
     // still frontmost, which is the whole reason this happens here rather than at capture time.
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
+    return true
   }
 
   /// Take the panel down. Idempotent.

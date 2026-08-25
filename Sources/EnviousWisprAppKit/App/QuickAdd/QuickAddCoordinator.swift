@@ -178,7 +178,11 @@ final class QuickAddCoordinator {
           packTerms: environment.packTerms())
       })
 
-    environment.emit(
+    // HELD, not emitted. `opened` names an event the user can see, so it fires when a panel is
+    // actually on screen — see `didOpen()`. Emitting it here made presentation failure the one
+    // remaining way to leave an open with nothing to resolve it, and it is the only such path that
+    // cannot report a reason of its own.
+    pendingOpen =
       .opened(
         door: door,
         refusal: refusal,
@@ -188,10 +192,30 @@ final class QuickAddCoordinator {
         heardScalarCount: heard.unicodeScalars.count,
         candidateCount: model.ranking.candidates.count,
         preselected: model.ranking.preselectedID != nil,
-        topScore: model.ranking.topScore))
+        topScore: model.ranking.topScore)
 
     self.startedAt = startedAt
     return model
+  }
+
+  /// The panel is on screen. Emits the held `opened` event.
+  ///
+  /// Split from `begin` so the funnel counts panels rather than attempts: one `opened`, one
+  /// `resolved`, and no way to have the first without the second.
+  func didOpen() {
+    guard let event = pendingOpen else { return }
+    pendingOpen = nil
+    environment.emit(event)
+  }
+
+  /// The panel could NOT be shown. Discards the held `opened` and reports why.
+  ///
+  /// Never a `resolved`: nothing opened, so there is nothing to resolve, and inventing an outcome
+  /// here would put a phantom row in the denominator of every rate computed from this funnel.
+  func failedToOpen() {
+    pendingOpen = nil
+    startedAt = nil
+    environment.emit(.failed(stage: "present", reason: "unmeasurable_panel"))
   }
 
   /// The user accepted a row.
@@ -246,8 +270,12 @@ final class QuickAddCoordinator {
   }
 
   /// The sheet saved, and the word is confirmed present. Called by the caller that checked.
-  func didCreateNew(from model: QuickAddPanelModel) {
-    finish(.createdNew, usedSearch: !model.query.isEmpty, rank: nil, kind: nil)
+  ///
+  /// Takes `usedSearch` rather than a model because the panel may already be gone — the sheet
+  /// outlives it in at least one ordering — and an `if let model` at the call site made a CONFIRMED
+  /// save emit nothing at all, which is the funnel hole this whole split exists to close.
+  func didCreateNew(usedSearch: Bool) {
+    finish(.createdNew, usedSearch: usedSearch, rank: nil, kind: nil)
   }
 
   /// Escape, clicking away, or the panel closing.
@@ -258,6 +286,9 @@ final class QuickAddCoordinator {
   // MARK: - Internals
 
   private var startedAt: Date?
+
+  /// The `opened` event for a panel that has been built and not yet shown.
+  private var pendingOpen: QuickAddEvent?
 
   private func finish(
     _ outcome: QuickAddOutcome, usedSearch: Bool, rank: Int?, kind: QuickAddTargetKind?
