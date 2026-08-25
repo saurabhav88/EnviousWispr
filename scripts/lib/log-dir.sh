@@ -63,6 +63,31 @@
 # The directory is NOT created here; creating it is the caller's business, and a
 # resolver with a side effect cannot be tested cheaply.
 
+# Which flag makes `mv` replace a SYMLINK rather than FOLLOW it: `-h` on BSD,
+# `-T` on GNU. Probed against a real link in a temp directory rather than by
+# parsing an error message, because an error string is a different thing to be
+# wrong about than a behaviour. An unrecognised `mv` leaves this empty and
+# publication refuses rather than writing through the old link.
+EW_LANE_MV_NOFOLLOW=""
+ew_lane_probe_mv_flag() {
+  local d f
+  d="$(mktemp -d "${TMPDIR:-/tmp}/ew-mvprobe.XXXXXX")" || return 1
+  mkdir -p "$d/target"
+  ln -s target "$d/link"
+  ln -s elsewhere "$d/tmp"
+  for f in -h -T; do
+    if /bin/mv -f "$f" "$d/tmp" "$d/link" 2>/dev/null; then
+      # It must have replaced the LINK, not written inside `target/`.
+      if [ ! -e "$d/target/link" ] && [ "$(readlink "$d/link")" = "elsewhere" ]; then
+        EW_LANE_MV_NOFOLLOW="$f"
+      fi
+      break
+    fi
+  done
+  rm -rf "$d"
+}
+ew_lane_probe_mv_flag
+
 ew_resolve_log_dir() {
   local project_root="$1" requested="${2:-}"
 
@@ -127,11 +152,39 @@ ew_resolve_log_dir() {
 # A path that does NOT exist is a different answer and stays NOT-a-mount: absence
 # is the fresh-invocation case, and there is nothing there to descend into.
 #   ew_lane_is_mount_point <path>
+# Read a path's DEVICE NUMBER, on either stat (#2408 review r6).
+#
+# `stat -f %d` is BSD. On GNU `-f` means "display file system status" and `%d` is
+# parsed as another FILENAME, so the call fails — and with the fail-closed
+# direction this file adopted last round, every existing component would have
+# been classified unsafe on Linux. **I asked whether process substitution needed
+# bash and never asked whether `stat` was the same program**, on a suite this PR's
+# sibling deliberately wired into a Linux job.
+#
+# Detected ONCE at source time against `/`, which exists everywhere, rather than
+# per call. An unrecognised `stat` yields an empty command, and the caller fails
+# closed on that — unknown stays unsafe.
+if /usr/bin/stat -f %d / >/dev/null 2>&1; then
+  EW_LANE_STAT_DEV_STYLE=bsd
+elif stat -c %d / >/dev/null 2>&1; then
+  EW_LANE_STAT_DEV_STYLE=gnu
+else
+  EW_LANE_STAT_DEV_STYLE=unknown
+fi
+
+ew_lane_device_of() {
+  case "$EW_LANE_STAT_DEV_STYLE" in
+    bsd) /usr/bin/stat -f %d "$1" 2>/dev/null ;;
+    gnu) stat -c %d "$1" 2>/dev/null ;;
+    *) return 1 ;;
+  esac
+}
+
 ew_lane_is_mount_point() {
   local path="$1" dev parent_dev
   [ -e "$path" ] || return 1
-  dev="$(/usr/bin/stat -f %d "$path" 2>/dev/null)" || return 0
-  parent_dev="$(/usr/bin/stat -f %d "$path/.." 2>/dev/null)" || return 0
+  dev="$(ew_lane_device_of "$path")" || return 0
+  parent_dev="$(ew_lane_device_of "$path/..")" || return 0
   [ -n "$dev" ] && [ -n "$parent_dev" ] || return 0
   [ "$dev" != "$parent_dev" ]
 }
@@ -275,7 +328,20 @@ ew_publish_latest_lane() {
   mkdir -p "$project_root/build" || return 1
   rm -f "$tmp"
   ln -s "lanes/${lane_dir##*/}" "$tmp" || return 1
-  /bin/mv -fh "$tmp" "$link"
+
+  # `-h` is BSD, `-T` is GNU, and both mean the same thing here: replace the LINK
+  # rather than following it into the directory it points at. `mv -f` alone
+  # follows on both, which writes `latest-lane` INSIDE the previous lane and
+  # leaves the pointer stale (#2408 review r6 — `-fh` simply errors on GNU, so the
+  # link was never published at all and the temp file was left behind).
+  case "$EW_LANE_MV_NOFOLLOW" in
+    -h | -T) /bin/mv -f "$EW_LANE_MV_NOFOLLOW" "$tmp" "$link" ;;
+    *)
+      rm -f "$tmp"
+      echo "ew_publish_latest_lane: no no-follow rename available on this mv" >&2
+      return 1
+      ;;
+  esac
 }
 
 # Bounded retention for lane directories (#2396).
@@ -331,8 +397,12 @@ ew_prune_stale_lanes() {
   # the second half of the same finding. `rm -rf` failing on one entry (a
   # permission, an ACL) was swallowed and the trailing `printf` made the body
   # succeed, so the whole prune reported success having removed nothing.
-  local entry rc=0
+  local entry rc=0 find_failed=0
   while IFS= read -r -d '' entry; do
+    if [ "$entry" = "FIND-FAILED" ]; then
+      find_failed=1
+      continue
+    fi
     if ew_lane_component_is_unsafe "$entry"; then
       echo "ew_prune_stale_lanes: skipping an unsafe lane entry: $entry" >&2
       continue
@@ -344,7 +414,18 @@ ew_prune_stale_lanes() {
       rc=1
     fi
   done < <(/usr/bin/find "$lanes" -mindepth 1 -maxdepth 1 -type d -mtime "+$days" \
-    ! -path "$keep" -print0)
+    ! -path "$keep" -print0 || printf 'FIND-FAILED\0')
+
+  # `find` FAILING IS NOT AN EMPTY SWEEP (#2408 review r6). A process
+  # substitution's exit status is not visible to the loop, so a `find` that could
+  # not enumerate `lanes` — a permission or an ACL that allows the stat checks and
+  # denies the directory read — produced no iterations, left `rc` at 0, and the
+  # prune reported a clean sweep having looked at nothing. The sentinel is the
+  # only channel that survives the substitution.
+  if [ "$find_failed" = "1" ]; then
+    echo "ew_prune_stale_lanes: could not enumerate $lanes" >&2
+    return 1
+  fi
 
   return "$rc"
 }

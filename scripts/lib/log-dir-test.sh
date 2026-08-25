@@ -529,6 +529,52 @@ chmod 700 "$FAILDIR/build/lanes"
   && ok "a removal failure is reported to the caller" \
   || bad "a removal failure is reported to the caller" "rc=$rc"
 
+echo "== portability is DETECTED, not assumed =="
+# The P1 pair. `stat -f %d` is BSD; on GNU `-f` means file-system status and `%d`
+# is parsed as a FILENAME, so the call fails — and with the fail-closed direction
+# this file adopted, every existing component would have been classified unsafe
+# on Linux. `mv -h` is BSD too; GNU has no `-h` and errors, so the link was never
+# published and the temp file was left behind.
+#
+# I asked whether process substitution needed bash and never asked whether `stat`
+# and `mv` were the same programs — on a suite this PR's sibling deliberately
+# wired into a Linux job.
+case "$EW_LANE_STAT_DEV_STYLE" in
+  bsd | gnu) ok "a working stat style was detected" "$EW_LANE_STAT_DEV_STYLE" ;;
+  *) bad "a working stat style was detected" "got '$EW_LANE_STAT_DEV_STYLE'" ;;
+esac
+# The detection must actually WORK here, not merely pick a name: devfs is a real
+# mount and an ordinary directory is not.
+ew_lane_is_mount_point /dev \
+  && ok "the detected stat style reads a real device number" \
+  || bad "the detected stat style reads a real device number" "/dev not seen as a mount"
+
+case "$EW_LANE_MV_NOFOLLOW" in
+  -h | -T) ok "a no-follow mv flag was detected" "$EW_LANE_MV_NOFOLLOW" ;;
+  *) bad "a no-follow mv flag was detected" "got '$EW_LANE_MV_NOFOLLOW'" ;;
+esac
+# And the flag it picked must be the one that does not follow — the probe asserts
+# behaviour rather than parsing an error string, so this row asserts the probe
+# reached a conclusion the publish rows then depend on.
+[ -n "$EW_LANE_MV_NOFOLLOW" ] \
+  && ok "publication has a usable rename" \
+  || bad "publication has a usable rename" "empty"
+
+echo "== find failing is not an empty sweep =="
+# A process substitution's exit status is invisible to the loop, so a `find` that
+# could not enumerate lanes/ produced no iterations, left rc at 0, and the prune
+# reported a clean sweep having looked at nothing.
+NOREAD="$SANDBOX/noread"
+mkdir -p "$NOREAD/build/lanes/6001"
+touch -t 202001010000 "$NOREAD/build/lanes/6001"
+chmod 100 "$NOREAD/build/lanes"   # traversable, NOT readable: stat checks pass, find fails
+ew_prune_stale_lanes "$NOREAD" "$NOREAD/build/lanes/none" 7 >/dev/null 2>&1
+rc=$?
+chmod 700 "$NOREAD/build/lanes"
+[ "$rc" -ne 0 ] \
+  && ok "an unreadable lanes/ is reported, not swept silently" \
+  || bad "an unreadable lanes/ is reported, not swept silently" "rc=$rc"
+
 echo "== both refuse rather than guessing =="
 ew_publish_latest_lane "$SANDBOX" "" >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "publish refuses a missing lane_dir" || bad "publish refuses a missing lane_dir" "rc=$?"
