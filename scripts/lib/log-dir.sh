@@ -93,6 +93,56 @@ ew_resolve_log_dir() {
 # replace things. The resolver stays side-effect free; these are separate
 # functions so that property is not quietly lost.
 
+# THE ONE PLACE THAT DECIDES WHETHER A PATH MAY BE DELETED (#2408 review r3, P1).
+#
+# The first version of this scoping was TEXTUAL — direct child of
+# `<root>/build/lanes/`, basename all digits. Both are true of a string and say
+# nothing about the filesystem, so if `<root>/build` or `<root>/build/lanes` is a
+# SYMLINK the path passes every check and `rm -rf` follows the link out of the
+# tree, deleting a numeric directory somewhere else entirely.
+#
+# **A string-shaped guard on a filesystem operation is not a guard**, and this is
+# the one that runs unattended on every default lane, so being wrong here costs
+# somebody's directory rather than a rerun.
+#
+# So containment is decided PHYSICALLY: no link anywhere on the way down, and the
+# lane's real parent must BE the real lanes directory. `pwd -P` resolves what the
+# string cannot.
+#
+# Shared by both deleting functions deliberately. Two copies of a rule this sharp
+# is how one of them stops matching the other.
+#   ew_lane_path_is_deletable <project_root> <lane_dir>
+ew_lane_path_is_deletable() {
+  local project_root="$1" lane_dir="$2"
+  local base="${lane_dir##*/}"
+
+  # Shape first, because it is the cheap half and it rejects the obvious.
+  case "$lane_dir" in
+    "$project_root/build/lanes/$base") ;;
+    *) return 1 ;;
+  esac
+  case "$base" in
+    "" | *[!0-9]*) return 1 ;;
+  esac
+
+  # Then the filesystem. A link ANYWHERE on the way down means `rm -rf` can leave
+  # the tree, and `-L` is the only thing that sees that.
+  [ -L "$project_root/build" ] && return 1
+  [ -L "$project_root/build/lanes" ] && return 1
+  [ -L "$lane_dir" ] && return 1
+
+  # NO `pwd -P` PARENT-EQUALITY CHECK HERE, AND ITS ABSENCE IS DELIBERATE.
+  # One was written and removed: with the three link checks above passing, the
+  # shape guard already forces the lane to be a direct child of a real
+  # `build/lanes`, so the physical parent IS the physical lanes directory by
+  # construction — and where `project_root` itself contains a link, BOTH sides
+  # resolve through it and compare equal anyway. A control proved it: deleting
+  # the comparison left all 31 rows green, because nothing can reach it.
+  # **An unreachable guard inside a deleting function is worse than no guard** —
+  # it reads as protection that nobody can verify, and the next reader trusts it.
+  return 0
+}
+
 # Give a recycled pid a CLEAN lane (#2408 review r2).
 #
 # The resolver's own header calls pid reuse harmless, and that was WRONG in one
@@ -120,20 +170,15 @@ ew_reset_lane_dir() {
     return 2
   fi
 
-  local base="${lane_dir##*/}"
-  case "$lane_dir" in
-    "$project_root/build/lanes/$base") ;;
-    *)
-      echo "ew_reset_lane_dir: refusing a path outside <root>/build/lanes: $lane_dir" >&2
-      return 2
-      ;;
-  esac
-  case "$base" in
-    "" | *[!0-9]*)
-      echo "ew_reset_lane_dir: refusing a lane name that is not a pid: $base" >&2
-      return 2
-      ;;
-  esac
+  # An ABSENT lane is the common case and is nothing to clean. Checked before
+  # containment because the containment probe cannot resolve a path that is not
+  # there, and "not there" must not read as "refused".
+  [ -e "$lane_dir" ] || return 0
+
+  if ! ew_lane_path_is_deletable "$project_root" "$lane_dir"; then
+    echo "ew_reset_lane_dir: refusing to clear a path that is not a contained lane: $lane_dir" >&2
+    return 2
+  fi
 
   rm -rf "$lane_dir"
 }
@@ -196,9 +241,20 @@ ew_prune_stale_lanes() {
   local lanes="$project_root/build/lanes"
   [ -d "$lanes" ] || return 0
 
+  # The SAME physical containment the reset applies, for the same reason: this
+  # also runs `rm -rf` unattended, and a symlinked `build` or `lanes` would let it
+  # walk out of the tree. Refusing the whole sweep is correct — a lane left
+  # unpruned costs disk, a lane deleted outside the tree costs somebody's work.
+  if [ -L "$project_root/build" ] || [ -L "$lanes" ]; then
+    echo "ew_prune_stale_lanes: refusing to prune through a symlinked build/ or lanes/" >&2
+    return 2
+  fi
+
   # `/usr/bin/find`, not `find`: the shim on this machine rejects some predicate
   # forms and its blindness is data-dependent
   # (validation-discipline.md, the silent-empty traps).
+  # `-type d` excludes links to directories, so a planted link inside lanes/ is
+  # skipped rather than followed.
   /usr/bin/find "$lanes" -mindepth 1 -maxdepth 1 -type d -mtime "+$days" \
     ! -path "$keep" -print -exec rm -rf {} +
 }

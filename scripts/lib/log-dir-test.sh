@@ -276,6 +276,64 @@ else
   bad "an absent lane is a no-op" "returned nonzero"
 fi
 
+echo "== a symlinked parent cannot be deleted THROUGH =="
+# The P1 the string-shaped guards could not see. Both original checks are true of
+# a STRING and say nothing about the filesystem, so a symlinked `build` or
+# `lanes` passed every one of them while `rm -rf` followed the link out of the
+# tree and deleted a numeric directory somewhere else.
+#
+# Each row plants a real victim outside the tree and requires it to SURVIVE.
+SYM="$(mktemp -d "${TMPDIR:-/tmp}/ew-log-dir-symlink.XXXXXX")"
+trap 'rm -rf "$SANDBOX" "$NOT_FOUND_LOG" "$SYM"' EXIT
+
+# (a) build/lanes is a link to somewhere else entirely.
+mkdir -p "$SYM/victim-a/4242" "$SYM/root-a/build"
+: > "$SYM/victim-a/4242/precious.txt"
+ln -s "$SYM/victim-a" "$SYM/root-a/build/lanes"
+ew_reset_lane_dir "$SYM/root-a" "$SYM/root-a/build/lanes/4242" >/dev/null 2>&1
+[ "$?" -eq 2 ] && [ -f "$SYM/victim-a/4242/precious.txt" ] \
+  && ok "a symlinked lanes/ is refused, victim survives" \
+  || bad "a symlinked lanes/ is refused, victim survives" "victim gone or wrong rc"
+
+# (b) build itself is a link. The lane path string is identical to a legitimate
+# one, which is exactly why a textual guard cannot tell them apart.
+mkdir -p "$SYM/victim-b/lanes/4242" "$SYM/root-b"
+: > "$SYM/victim-b/lanes/4242/precious.txt"
+ln -s "$SYM/victim-b" "$SYM/root-b/build"
+ew_reset_lane_dir "$SYM/root-b" "$SYM/root-b/build/lanes/4242" >/dev/null 2>&1
+[ "$?" -eq 2 ] && [ -f "$SYM/victim-b/lanes/4242/precious.txt" ] \
+  && ok "a symlinked build/ is refused, victim survives" \
+  || bad "a symlinked build/ is refused, victim survives" "victim gone or wrong rc"
+
+# (c) the lane itself is a link to a real directory elsewhere.
+mkdir -p "$SYM/victim-c" "$SYM/root-c/build/lanes"
+: > "$SYM/victim-c/precious.txt"
+ln -s "$SYM/victim-c" "$SYM/root-c/build/lanes/4242"
+ew_reset_lane_dir "$SYM/root-c" "$SYM/root-c/build/lanes/4242" >/dev/null 2>&1
+[ "$?" -eq 2 ] && [ -f "$SYM/victim-c/precious.txt" ] \
+  && ok "a symlinked lane is refused, victim survives" \
+  || bad "a symlinked lane is refused, victim survives" "victim gone or wrong rc"
+
+# (d) the prune refuses the whole sweep through a symlinked parent, rather than
+# pruning some entries and stopping. A partial sweep is the worse outcome.
+mkdir -p "$SYM/victim-d/old" "$SYM/root-d/build"
+touch -t 202001010000 "$SYM/victim-d/old"
+: > "$SYM/victim-d/old/precious.txt"
+ln -s "$SYM/victim-d" "$SYM/root-d/build/lanes"
+ew_prune_stale_lanes "$SYM/root-d" "$SYM/root-d/build/lanes/none" 7 >/dev/null 2>&1
+[ "$?" -eq 2 ] && [ -f "$SYM/victim-d/old/precious.txt" ] \
+  && ok "prune refuses a symlinked lanes/, victim survives" \
+  || bad "prune refuses a symlinked lanes/, victim survives" "victim gone or wrong rc"
+
+# The ACCEPTED twin: an ordinary, unlinked lane must still be cleared, or all four
+# rows above are satisfied by a function that refuses everything.
+mkdir -p "$SANDBOX/build/lanes/8888"
+: > "$SANDBOX/build/lanes/8888/stale.log"
+ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/8888" >/dev/null 2>&1
+[ ! -e "$SANDBOX/build/lanes/8888/stale.log" ] \
+  && ok "an ordinary lane is still cleared" \
+  || bad "an ordinary lane is still cleared" "stale file survived"
+
 echo "== both refuse rather than guessing =="
 ew_publish_latest_lane "$SANDBOX" "" >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "publish refuses a missing lane_dir" || bad "publish refuses a missing lane_dir" "rc=$?"
