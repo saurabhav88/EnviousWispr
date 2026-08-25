@@ -405,9 +405,38 @@ struct ModelDeliveryHomeTests {
         deliveryFlagDefaults: suite)
     }
 
+    /// Wait for the mirror to STOP changing, rather than yielding a fixed number
+    /// of times and hoping.
+    ///
+    /// Construction runs a launch probe (`admitIfComplete`) in an unstructured
+    /// `Task`, and its state publish can land at ANY yield. A fixed budget makes
+    /// the baseline a race: if the probe publishes at yield 401, the baseline is
+    /// stale and the assertion below fails `2 == 1` — reporting that the refused
+    /// door reached delivery, which is a confident wrong subject.
+    ///
+    /// It failed exactly that way on CI (`build-debug`, #2400) while passing
+    /// locally, and the trigger was #2135 adding a task per delivery event, which
+    /// pushed the probe past 400 yields on a slower, contended runner. The race
+    /// was always there; that change only made it likely.
+    ///
+    /// Stability has no budget to get wrong: it asks the world to stop moving
+    /// rather than asserting how long that takes.
+    func settledPreviewUpdates(_ home: ModelDeliveryHome) async -> Int {
+      var last = -1
+      var stableFor = 0
+      for _ in 0..<5_000 {
+        let now = home.previewStateUpdatesForTests
+        stableFor = (now == last) ? stableFor + 1 : 0
+        last = now
+        if stableFor >= 50 { return now }
+        await Task.yield()
+      }
+      Issue.record("the preview mirror never settled; baseline would be a guess")
+      return last
+    }
+
     let off = try home(enabled: false)
-    for _ in 0..<400 { await Task.yield() }
-    let offBaseline = off.previewStateUpdatesForTests
+    let offBaseline = await settledPreviewUpdates(off)
     off.startPreviewDownload()
     for _ in 0..<2000 { await Task.yield() }
     #expect(
@@ -415,8 +444,7 @@ struct ModelDeliveryHomeTests {
       "the kill switch is off but the download door still reached delivery")
 
     let on = try home(enabled: true)
-    for _ in 0..<400 { await Task.yield() }
-    let onBaseline = on.previewStateUpdatesForTests
+    let onBaseline = await settledPreviewUpdates(on)
     on.startPreviewDownload()
     for _ in 0..<4000 where on.previewStateUpdatesForTests == onBaseline { await Task.yield() }
     #expect(
