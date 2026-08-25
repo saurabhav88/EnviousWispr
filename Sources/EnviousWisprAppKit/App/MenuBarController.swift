@@ -64,8 +64,7 @@ final class MenuBarController: NSObject {
 
     iconAnimator.configure(button: button)
 
-    let menu = NSMenu()
-    menu.delegate = self
+    let menu = Self.makeStatusMenu(delegate: self)
     statusItem?.menu = menu
     renderMenu(into: menu, state: currentViewState())
 
@@ -117,6 +116,30 @@ final class MenuBarController: NSObject {
       // overrides a higher-priority state.
       return state.updateAvailable ? .updatePending : .idle
     }
+  }
+
+  /// Build the status-item menu with auto-enabling OFF.
+  ///
+  /// **Without that, every `isEnabled = false` in `renderMenu` is silently ignored.** `NSMenu`
+  /// auto-enables by default: an item with a valid target and action is enabled whatever the
+  /// property says, unless the target implements `validateMenuItem`. Nothing here did.
+  ///
+  /// Found by Live UAT on #2412 — the Quick Add item rendered ENABLED with no selection, which is
+  /// the one thing it must never be, while its unit test correctly reported the DECISION as false.
+  /// Decision tested, wiring not.
+  ///
+  /// **It was never only the new item.** `recordItem.isEnabled = !(state.pipelineState.isActive &&
+  /// !isRecording)` has been inert for as long as it has existed, so Start Recording stayed
+  /// clickable mid-transcription. Turning auto-enabling off makes every one of those assignments
+  /// mean what it says.
+  ///
+  /// A factory rather than two lines inside `installStatusItem`, so the property is assertable
+  /// without a test seam, a stored property, or a way to tear the status item back down.
+  static func makeStatusMenu(delegate: NSMenuDelegate) -> NSMenu {
+    let menu = NSMenu()
+    menu.autoenablesItems = false
+    menu.delegate = delegate
+    return menu
   }
 
   // MARK: - Menu rendering

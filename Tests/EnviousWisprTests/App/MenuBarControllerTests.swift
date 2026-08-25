@@ -177,6 +177,25 @@ struct MenuBarControllerTests {
     }
   }
 
+  /// **The property has to MEAN something, and for the life of this menu it did not.** `NSMenu`
+  /// auto-enables by default, so an item with a target and an action is enabled whatever
+  /// `isEnabled` says. Live UAT caught the Quick Add item rendering enabled with no selection while
+  /// this file's own assertions read false — they inspect the property on a menu AppKit never
+  /// validated, which is a claim about the decision and not about the menu the user sees.
+  ///
+  /// Asserted on the FACTORY the status item is built from, which is where the property is set —
+  /// a detached `NSMenu()` would assert AppKit's default and prove nothing about our menu.
+  @Test("The status-item menu does not auto-enable, so a disabled item is really disabled")
+  func theMenuDoesNotAutoEnable() {
+    let controller = makeController()
+    let menu = MenuBarController.makeStatusMenu(delegate: controller)
+
+    #expect(
+      menu.autoenablesItems == false,
+      "with auto-enabling on, every isEnabled=false in renderMenu is silently ignored")
+    #expect(menu.delegate as AnyObject? === controller, "and it still repopulates on open")
+  }
+
   /// **The item is inert with nothing selected, and live with something.** Both halves matter: an
   /// enabled item over no selection spends a click to report a refusal the menu already knew about,
   /// and a disabled item over a real selection is the door not opening at all.
