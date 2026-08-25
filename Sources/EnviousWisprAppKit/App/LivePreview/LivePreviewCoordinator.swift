@@ -297,7 +297,16 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// So the two properties AGREE outside a recording and may DIVERGE during one,
   /// which is asserted in both directions by
   /// `PillWordsCapabilityTests` rather than left to intention.
+  /// **The claim this makes is exact and is what the tests hold it to: this is
+  /// what `setRecording(true)` WOULD freeze if a recording started right now.**
+  /// Stated that way rather than as "the live settings" because the first
+  /// correction here fixed the liveness and still missed a condition — the
+  /// suppression below — and a property described by its INPUTS invites exactly
+  /// that, while one described by the decision it mirrors names its own
+  /// completeness criterion. The order matches the freeze's, so removal outranks
+  /// the rest here for the same reason it does there.
   var wordsCapability: PillWordsCapability {
+    guard !isRemovingModel else { return .modelBeingRemoved }
     guard selectedRoute().isSupportedOnThisSystem() else { return .engineUnsupported }
     return isPreviewOn() ? .available : .previewOff
   }

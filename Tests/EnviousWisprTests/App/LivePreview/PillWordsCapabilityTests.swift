@@ -50,9 +50,13 @@ struct PillWordsCapabilityTests {
   /// **Generated over the cross-product**, so a third input added later is swept
   /// with no edit here, and both directions are asserted: `.available` if and only
   /// if the geometry verdict is true.
-  /// **Scoped to OUTSIDE a recording, which is the only place the two answer the
-  /// same question.** During one they deliberately diverge; that is the case
-  /// below.
+  /// **Scoped to OUTSIDE a recording and to NO REMOVAL IN FLIGHT**, which is where
+  /// the two answer the same question. Both exclusions are real divergences with a
+  /// case of their own below, not conditions swept under the rug: during a
+  /// recording the verdict is frozen and this is not, and during a removal drain
+  /// this refuses while the verdict's live branch does not read the suppression at
+  /// all. Fresh coordinators are never mid-removal, so every row here is inside
+  /// the scope by construction.
   @Test(
     "outside a recording, the reason says available exactly when the verdict says enabled",
     arguments: [true, false], [true, false])
@@ -122,7 +126,7 @@ struct PillWordsCapabilityTests {
   /// **The reason must actually DISCRIMINATE**, or it is a `Bool` in a costume and
   /// the picker would show one sentence to two different users. A machine that
   /// cannot run the engine must not be told to turn a switch on.
-  @Test("the two unavailable reasons are told apart")
+  @Test("the two settings-shaped causes are told apart")
   func unavailableReasonsAreDistinct() {
     let engineCannotRun = Self.coordinator(supported: false, previewOn: true)
     let userTurnedItOff = Self.coordinator(supported: true, previewOn: false)
@@ -135,6 +139,53 @@ struct PillWordsCapabilityTests {
       both unavailable states report the same reason, so the picker would tell a \
       user whose engine cannot run here to switch a preview on.
       """)
+  }
+
+  /// **THIS PROPERTY'S COMPLETENESS CRITERION, asserted rather than described:
+  /// what it reports is what `setRecording(true)` would freeze right now.**
+  ///
+  /// Cloud review's THIRD finding on this one property, and the first two are why
+  /// it is written this way. The original read a frozen snapshot, which made it
+  /// answer the wrong recording. The correction made it read live and still missed
+  /// a condition, because "read the live settings" names the INPUTS and a
+  /// condition absent from that list is invisible to it. Mirroring a decision
+  /// names the decision instead, so the test can hold the two side by side.
+  ///
+  /// The user's sequence is real: press Remove on the selected model, and while
+  /// the drain is still running start another recording. That recording is frozen
+  /// wordless by `setRecording`. Appearance said the with-words designs were
+  /// available.
+  @Test("mid-removal, the picker reports what the next recording would actually get")
+  func removalSuppressionReachesThePicker() async {
+    let c = Self.coordinator(supported: true, previewOn: true)
+    #expect(c.wordsCapability == .available, "control: words are available before the removal")
+
+    await c.releaseAndDrainForRemoval()
+
+    #expect(
+      c.wordsCapability == .modelBeingRemoved,
+      """
+      the picker still offers the with-words designs during a removal drain, so a \
+      user starting a recording now gets a wordless pill while Appearance says \
+      otherwise.
+      """)
+    #expect(!c.wordsCapability.hasWords)
+
+    // The mirror claim itself: what the picker reports is what the freeze does.
+    c.setRecording(true)
+    #expect(
+      !c.isEnabledForGeometry,
+      """
+      the recording started during a removal drain was NOT frozen wordless, so the \
+      premise this property mirrors is false and its reason is the wrong one.
+      """)
+    c.setRecording(false)
+
+    // And the suppression lifts, so the reason is transient rather than sticky.
+    c.endRemovalSuppression()
+    #expect(
+      c.wordsCapability == .available,
+      "the removal reason outlived the removal, so the picker stays wrong afterwards")
   }
 
   /// The paired positive, so the case above cannot pass by reporting a reason for

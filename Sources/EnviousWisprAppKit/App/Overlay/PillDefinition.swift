@@ -135,13 +135,17 @@ extension RecordingPillDesign {
 /// Live Preview off that their words will still be shown.
 /// `PillWordsCapabilityTests` asserts the agreement outside a recording and the
 /// divergence during one.
-enum PillWordsCapability: Equatable, Sendable {
+enum PillWordsCapability: Equatable, Sendable, CaseIterable {
   /// Words are available: an engine that runs here, and the preview turned on.
   case available
   /// The engine would run here; the user has the preview switched off.
   case previewOff
   /// The selected engine cannot run on this machine, so the switch would not help.
   case engineUnsupported
+  /// The selected model is being removed, so the next recording is frozen wordless
+  /// however the switch is set. Transient, and the only cause here that resolves
+  /// itself: it lasts as long as the removal drain.
+  case modelBeingRemoved
 
   var hasWords: Bool { self == .available }
 }

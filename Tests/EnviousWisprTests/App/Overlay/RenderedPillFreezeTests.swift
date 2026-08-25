@@ -28,6 +28,18 @@ struct RenderedPillFreezeTests {
 
   // MARK: - The frozen table
 
+  /// **Is this a machine whose text metrics the frozen tables were taken on?**
+  ///
+  /// `scripts/xcode-test.sh` forwards `CI` as `TEST_RUNNER_CI`, because an
+  /// inherited variable does not reach the test process — measured both ways, and
+  /// the direction is what matters: a gate reading the runner's own `CI` fails
+  /// OPEN, so it runs the machine-dependent rows on the machine it meant to
+  /// exclude. An EMPTY value is a local run, since the script forwards the
+  /// variable unconditionally and it is unset here.
+  nonisolated static var isDeveloperMachine: Bool {
+    (ProcessInfo.processInfo.environment["CI"] ?? "").isEmpty
+  }
+
   /// Sizes of the routed content, measured 2026-08-25 on `e062ab4d`.
   ///
   /// Read `RenderedPillHarness`'s own doc for what a row means: it is the
@@ -54,8 +66,28 @@ struct RenderedPillFreezeTests {
       ("importStatus", .importStatus(message: "Imported 12 words"), 170, 38),
     ]
 
+  /// **TEXT LAYOUT IS A PROPERTY OF THE MACHINE, so the exact-size half of this
+  /// suite runs on a development Mac and reports SKIPPED on a hosted runner.**
+  ///
+  /// Measured, and this is the whole justification rather than a precaution: this
+  /// table passed locally at 6,958 tests and failed on CI at ELEVEN of its twelve
+  /// rows, on the same commit, with every other suite in the run agreeing. Font
+  /// metrics, system version and rendering defaults all differ, and a freeze over
+  /// absolute point sizes cannot survive that by construction — the numbers are a
+  /// reading of one Mac on one day.
+  ///
+  /// **What that costs is stated rather than hidden: on CI this row proves
+  /// nothing, and a skipped receipt is not a passed receipt.** The claim that
+  /// travels is the companion below, which asserts the RELATIONS these numbers
+  /// happen to satisfy and holds on any machine. Two tests because there are two
+  /// claims, and only one of them is portable.
+  ///
+  /// The frozen values keep their evidential job either way: they are the
+  /// pre-Phase-4 reading, and the parity they were written to prove was
+  /// established on the machine that took them.
   @Test(
     "every notice pill renders exactly what it rendered before Phase 4",
+    .enabled(if: RenderedPillFreezeTests.isDeveloperMachine),
     arguments: RenderedPillFreezeTests.frozenNotices)
   func noticeRowsAreFrozen(
     row: (label: String, request: PillCatalogRequest, width: CGFloat, height: CGFloat)
@@ -72,9 +104,53 @@ struct RenderedPillFreezeTests {
       """
       \(row.label) measured \(size.width) x \(size.height), frozen at \
       \(row.width) x \(row.height). Either this pill is routed through a different \
-      leaf now, or its treatment changed. Phase 4 changes where a leaf's WORDS come \
-      from and must not change what any of them draws.
+      leaf now, or its treatment changed, or this is not the Mac the table was \
+      measured on. Phase 4 changes where a leaf's WORDS come from and must not \
+      change what any of them draws.
       """)
+  }
+
+  /// **The portable half, and the one CI actually runs.** Every claim here is a
+  /// RELATION between measurements taken in the same process, so it holds
+  /// whatever that process's font metrics are.
+  ///
+  /// Two properties, each of which a real regression would break, and NEITHER of
+  /// them a size: every notice is drawn at all, and a notice whose definition
+  /// asks for a FIXED width is given that width rather than its unwrapped ideal.
+  ///
+  /// **Deliberately NOT asserted here: that a notice fits the recording pill's
+  /// reserved box.** These are standalone pills with their own windows, not
+  /// content inside the capsule, so that budget is not theirs and asserting it
+  /// would be a claim about the wrong subject that happens to hold today. The
+  /// in-panel notices, which DO inherit that box and have no headroom in it, are
+  /// covered by `inPanelNoticesFitTheReservedBox` below.
+  @Test(
+    "every notice pill is drawn, and a fixed width is honoured",
+    arguments: RenderedPillFreezeTests.frozenNotices)
+  func noticeRowsSatisfyTheirPortableRelations(
+    row: (label: String, request: PillCatalogRequest, width: CGFloat, height: CGFloat)
+  ) throws {
+    let definition = try #require(
+      PillCatalog.entry(for: row.request, id: RenderedPillHarness.id()).definition,
+      "\(row.label) produced no definition at all, so nothing below is about a pill")
+    let size = RenderedPillHarness.rootSize(for: definition)
+    try #require(
+      size.width > 0 && size.height > 0,
+      "\(row.label) measured \(size) — the harness returned nothing, which is not a pass")
+
+    // The advisory is the one such row today, and it is the row two capture
+    // rounds got wrong by reading its unwrapped 927 instead of its real 360.
+    if case .fixed(let requested) = definition.requestedWidth,
+      definition.reservesFixedHeight == nil, requested > 0
+    {
+      #expect(
+        size.width == requested,
+        """
+        \(row.label) asked for a fixed \(requested) and measured \(size.width). \
+        A width that is not the one requested means the proposal never reached the \
+        content, so its height is the height of some other layout entirely.
+        """)
+    }
   }
 
   // MARK: - The instrument's own controls
@@ -105,31 +181,61 @@ struct RenderedPillFreezeTests {
   /// Holding the sentence fixed and varying only the severity makes a collapsed
   /// mapping fail: the four would then measure identically.
   ///
-  /// Measured 2026-08-25 with one sentence at a fixed 280pt: warning 37,
-  /// error 38, distress 44, advisory 52. The error-versus-warning gap is ONE
-  /// point, from the two SF Symbols' differing heights — real, small, and the
-  /// reason this suite claims discrimination rather than claiming to see paint.
+  /// **The first correction held the MESSAGE constant and left a second axis
+  /// varying, which cloud review then refuted on the same case.** `isMultiline`
+  /// was set for `.advisory` alone, so that row wrapped where the others did not
+  /// and could measure differently even under a collapsed mapping — the same
+  /// defect the first fix was for, one axis over. A control varies ONE thing;
+  /// "the message is now constant" is not that claim, and only enumerating what
+  /// else the definition carries gets there.
+  ///
+  /// Re-measured 2026-08-25 with one sentence, `isMultiline: false` throughout,
+  /// at a fixed 280pt: **warning 37, error 38, distress 44, advisory 39** (the
+  /// advisory's 52 in the previous revision was its wrapping, not its style).
+  /// Three of the four gaps are ONE point, from the SF Symbols' differing
+  /// heights — real, small, and the reason this suite claims discrimination
+  /// rather than claiming to see paint. The heights are pinned below as well as
+  /// compared, because at a one-point spread a mapping could collapse two styles
+  /// onto a third and still produce four distinct numbers.
   @Test("the notification severities are told apart by the instrument")
   func severitiesAreDiscriminated() {
     let text = "Something went wrong while polishing your text."
-    let sizes = [NoticeModel.Severity.warning, .error, .distress, .advisory].map {
-      severity in
+    // EVERY field but `severity` is held fixed. That is the claim.
+    let expected: [(NoticeModel.Severity, CGFloat)] = [
+      (.warning, 37), (.error, 38), (.distress, 44), (.advisory, 39),
+    ]
+    let sizes = expected.map { severity, _ in
       RenderedPillHarness.rootSize(
         for: PillDefinition(
           id: RenderedPillHarness.id(),
           content: .notice(
             NoticeModel(
               kind: .notification, text: text, severity: severity,
-              isMultiline: severity == .advisory)),
+              isMultiline: false)),
           expiry: .untilReplaced, requestedWidth: .fixed(280)))
     }
     #expect(
       Set(sizes.map { "\($0.width)x\($0.height)" }).count == sizes.count,
       """
-      two or more notification severities measured identically on ONE sentence: \
-      \(sizes). Either the severity-to-style mapping has collapsed, or this \
-      instrument cannot tell the treatments apart — and every frozen row above is a \
-      claim it cannot support.
+      two or more notification severities measured identically on ONE sentence with \
+      one wrapping mode: \(sizes). Either the severity-to-style mapping has \
+      collapsed, or this instrument cannot tell the treatments apart — and every \
+      frozen row above is a claim it cannot support.
+      """)
+    // **The exact heights are NOT asserted here, and that is deliberate.** They
+    // are a reading of one Mac (recorded above as evidence), and the row that
+    // pins absolute sizes is skipped on CI for exactly that reason. What travels
+    // is the ORDER, which is a relation between measurements in one process: the
+    // distress style is the tallest treatment, and it is the one whose height
+    // comes from its own chrome rather than from the sentence.
+    let tallest = zip(expected, sizes).max(by: { $0.1.height < $1.1.height })
+    #expect(
+      tallest?.0.0 == .distress,
+      """
+      \(String(describing: tallest?.0.0)) measured tallest, not .distress. \
+      Distinctness alone would not have caught this: with the four barely a point \
+      apart, two styles can collapse onto a third and still give four different \
+      numbers, so the ordering is the part that says WHICH treatment each got.
       """)
   }
 

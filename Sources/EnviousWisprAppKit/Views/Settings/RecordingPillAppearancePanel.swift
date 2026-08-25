@@ -87,6 +87,8 @@ struct RecordingPillAppearancePanel: View {
           "These need Live Preview, which is currently off. Turn it on in Live Preview settings."
       case .engineUnsupported:
         return "These need Live Preview, which the engine you have selected cannot run on this Mac."
+      case .modelBeingRemoved:
+        return "These need Live Preview, which is unavailable while the model you removed finishes clearing."
       }
     }
     // The wordless group is inactive exactly when words ARE available.
