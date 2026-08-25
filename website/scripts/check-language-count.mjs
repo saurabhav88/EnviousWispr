@@ -82,10 +82,24 @@ const SITES = [
 ];
 
 // A language count in prose: a 1-3 digit number (optionally +) within two
-// words of "language/languages". Catches "(99 languages)", "All 99
-// Whisper-supported languages", "99-language set"; does not catch ISO designators
-// like "639-1" (a digit cannot continue the match past "-1").
-const COUNT_IN_PROSE = /\b\d{1,3}\+?[\s-]*([A-Za-z-]+\s+){0,2}languages?\b/i;
+// words of "language/languages" OR its abbreviation "lang/langs". Catches
+// "(99 languages)", "All 99 Whisper-supported languages", "99-language set",
+// and "99-lang set"; does not catch ISO designators like "639-1" (a digit
+// cannot continue the match past "-1").
+//
+// The abbreviation was added by #2368's follow-up, and the omission is why the
+// guard could scan a file and report it clean: the stale comment read
+// "the Whisper-supported 99-lang set", so a pattern requiring the whole word
+// matched nothing and empty read as an answer. Adding the file to ANCHORS
+// without this would have changed nothing.
+//
+// Widening was two-way controlled before shipping rather than assumed safe: run
+// over every `//` comment in `Sources/`, the wider alternation newly matches
+// EXACTLY ONE line — the defect itself. That matters because this guard was
+// deliberately kept narrow (see ANCHORS below) after broad scanning produced
+// three false positives on correct prose, and a guard that cries wolf on correct
+// code trains people to skip it. This does not reopen that trade.
+const COUNT_IN_PROSE = /\b\d{1,3}\+?[\s-]*([A-Za-z-]+\s+){0,2}(languages?|langs?)\b/i;
 
 // The two declarations where the count used to live. The doc block directly
 // above each must carry no count. Deliberately NARROW: the other seven
@@ -107,6 +121,22 @@ const ANCHORS = [
     file: 'Sources/EnviousWisprAppKit/Views/Settings/LanguageCatalog.swift',
     label: 'all:',
     declRe: /static let all: \[Entry\]/,
+  },
+  // The CONSUMER, added by #2368's follow-up (Codex post-merge review on #2372).
+  //
+  // `SettingsManager` describes the same `LanguageTypes.isSupported` validation
+  // and had drifted to "the Whisper-supported 99-lang set" — the stale count this
+  // issue set out to remove, in a file the guard did not read.
+  //
+  // Its comment is a `//` block INSIDE a function body rather than a `///` doc
+  // block above a declaration, which is why this entry carries its own
+  // `commentRe`. Anchoring on the `let` the block introduces keeps the guard
+  // narrow: it reads that block and nothing else in a 1,000-line file.
+  {
+    file: 'Sources/EnviousWisprServices/SettingsManager.swift',
+    label: 'resolvedLanguageMode',
+    declRe: /let resolvedLanguageMode: LanguageMode = \{/,
+    commentRe: /^\s*\/\//,
   },
 ];
 
@@ -141,7 +171,9 @@ if (readableSites === 0) {
   failures.push(`no claim-site files could be read under ${ROOT} — the guard cannot see its subject, refusing to pass`);
 }
 
-for (const { file, label, declRe } of ANCHORS) {
+for (const { file, label, declRe, commentRe } of ANCHORS) {
+  // `///` unless the entry says otherwise — see the SettingsManager entry.
+  const commentLine = commentRe ?? /^\s*\/\/\//;
   const text = read(file);
   if (text === null) {
     failures.push(`${file}: file not found — anchor "${label}" cannot be verified`);
@@ -154,7 +186,7 @@ for (const { file, label, declRe } of ANCHORS) {
     continue;
   }
   const block = [];
-  for (let i = idx - 1; i >= 0 && /^\s*\/\/\//.test(lines[i]); i--) block.unshift(lines[i]);
+  for (let i = idx - 1; i >= 0 && commentLine.test(lines[i]); i--) block.unshift(lines[i]);
   if (block.length === 0) {
     failures.push(`${file}:${idx + 1}: no doc comment directly above "${label}" — restore the explanation; this guard verifies it carries no count`);
     continue;
