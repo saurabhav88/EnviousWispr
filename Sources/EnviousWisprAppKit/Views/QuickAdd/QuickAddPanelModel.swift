@@ -27,6 +27,12 @@ final class QuickAddPanelModel {
   /// What the user has typed. Navigation only.
   private(set) var query: String = ""
 
+  /// Why the last accept did not save, or nil. **The panel stays open when this is set**, which is
+  /// the whole point: the write path can refuse (the character policy, the 512-scalar ceiling, a
+  /// words file that will not write) and a panel that dismissed on refusal reported success for a
+  /// word that was never saved.
+  private(set) var writeFailure: String?
+
   /// The rows on screen, and which one Return would accept.
   private(set) var ranking: QuickAddRanker.Ranking
 
@@ -56,6 +62,8 @@ final class QuickAddPanelModel {
   /// not an empty list, and not the last search's results.
   func updateQuery(_ newQuery: String) {
     query = newQuery
+    // A refusal describes the LAST accept. Typing is the user moving on from it.
+    writeFailure = nil
     guard refusal == nil else { return }
     let trimmed = newQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     ranking =
@@ -87,6 +95,10 @@ final class QuickAddPanelModel {
 
   /// The row Return would accept, or nil when Return must write nothing.
   var acceptTarget: QuickAddRanker.Candidate? { ranking.preselected }
+
+  /// Record that the library refused the write. Set by the coordinator's caller, never here: the
+  /// model does not know what a words file is and must not learn.
+  func noteWriteFailure(_ message: String) { writeFailure = message }
 
   /// What gets written if the user accepts. **Always the original selection, never the query.**
   ///

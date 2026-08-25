@@ -8,8 +8,8 @@ import AppKit
 /// **Declaration order is SEVERITY order, and it is load-bearing.** `allCases` is iterated to answer
 /// "which role dies if the modifier monitors are missing", and the field holds one value, so the most
 /// severe loss must come first: record kills dictation entirely, cancel kills the ability to abort one,
-/// Quick Add is a limb. `ShortcutRoleOrderTests` pins it — reordering these cases silently mislabels
-/// that telemetry rather than failing to compile.
+/// Quick Add is a limb. `roleOrderIsSeverityOrder` in `HotkeyQuickAddShortcutTests` pins it —
+/// reordering these cases silently mislabels that telemetry rather than failing to compile.
 package enum ShortcutRole: String, Sendable, CaseIterable {
   case record
   case cancel

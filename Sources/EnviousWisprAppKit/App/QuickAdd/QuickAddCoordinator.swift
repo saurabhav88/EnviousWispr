@@ -182,7 +182,15 @@ final class QuickAddCoordinator {
   }
 
   /// The user accepted a row.
-  func accept(_ candidate: QuickAddRanker.Candidate, from model: QuickAddPanelModel) {
+  ///
+  /// **Returns the refusal message when the library would not take the word, and nil otherwise.**
+  /// The return value is what tells the caller whether it may dismiss: `saveWord` can refuse for
+  /// reasons that have nothing to do with this feature — the stored-value character policy, the
+  /// 512-scalar ceiling, a words file that will not write — and dismissing regardless is a panel
+  /// reporting success for a word that was never saved. The sibling path through the edit sheet
+  /// already had this shape; this one did not.
+  @discardableResult
+  func accept(_ candidate: QuickAddRanker.Candidate, from model: QuickAddPanelModel) -> String? {
     let usedSearch = !model.query.isEmpty
     let rank = model.ranking.candidates.firstIndex { $0.id == candidate.id }
     let kind: QuickAddTargetKind = candidate.isPackTerm ? .packTerm : .userWord
@@ -191,7 +199,7 @@ final class QuickAddCoordinator {
       // Writing again would add a duplicate and report success. Saying so is the honest outcome, and
       // it is a distinct one from a refusal because nothing went wrong.
       finish(.alreadySaved, usedSearch: usedSearch, rank: rank, kind: kind)
-      return
+      return nil
     }
 
     // A PACK term cannot be written through the words coordinator: `CustomWordsManager.update` looks
@@ -202,14 +210,16 @@ final class QuickAddCoordinator {
     word.aliases.append(model.spellingToWrite)
 
     if let message = environment.saveWord(word) {
+      // `reason` stays a fixed token, never the message: the message is authored for a human and
+      // can quote what they selected, which is the one thing telemetry may not carry.
       environment.emit(.failed(stage: "save", reason: "refused"))
-      _ = message
       finish(.writeFailed, usedSearch: usedSearch, rank: rank, kind: kind)
-      return
+      return message
     }
     finish(
       usedSearch ? .acceptedAfterSearch : .accepted,
       usedSearch: usedSearch, rank: rank, kind: kind)
+    return nil
   }
 
   /// The user chose to create a new word.

@@ -156,6 +156,27 @@ struct QuickAddPanelModelTests {
     #expect(model.heard == "codecs")
   }
 
+  @Test("A refused write is held on the model, so the panel that stayed open can say why")
+  func aRefusedWriteIsHeld() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    #expect(model.writeFailure == nil)
+    model.noteWriteFailure("That word cannot be saved.")
+    #expect(model.writeFailure == "That word cannot be saved.")
+  }
+
+  @Test("Typing clears a write failure, because it describes the accept the user has moved on from")
+  func typingClearsAWriteFailure() {
+    let (model, _) = makeModel(
+      heardRanking: ranking(["Codex"], preselecting: 0),
+      searchRanking: ranking(["Codex"], preselecting: nil))
+    model.noteWriteFailure("That word cannot be saved.")
+
+    model.updateQuery("cod")
+
+    #expect(model.writeFailure == nil)
+  }
+
   @Test("A refusal leaves the search field inert rather than ranking an empty selection")
   func searchIsInertUnderARefusal() {
     let (model, calls) = makeModel(

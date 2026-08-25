@@ -111,8 +111,13 @@ final class QuickAddWiring {
 
   // MARK: - Outcomes
 
+  /// Dismiss only when the word was actually saved. The same rule `saveNewWord` below already
+  /// followed — a refused write leaves the panel up, carrying the reason.
   private func accept(_ candidate: QuickAddRanker.Candidate, model: QuickAddPanelModel) {
-    coordinator.accept(candidate, from: model)
+    if let message = coordinator.accept(candidate, from: model) {
+      model.noteWriteFailure(message)
+      return
+    }
     dismiss()
   }
 

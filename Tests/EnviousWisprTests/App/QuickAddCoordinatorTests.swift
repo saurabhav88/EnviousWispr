@@ -194,10 +194,40 @@ struct QuickAddCoordinatorTests {
     let model = try #require(coordinator.begin(door: .hotkey))
     let target = try #require(model.ranking.candidates.first)
 
-    coordinator.accept(target, from: model)
+    let message = coordinator.accept(target, from: model)
 
+    // The RETURNED message is the assertion that matters, and the first version of this test did
+    // not make it. Telemetry going out under `writeFailed` is a fact about a dashboard; what the
+    // comment above promises — "the user must be told" — is only true if the caller is handed
+    // something to show, and the caller dismissed the panel regardless until this was added.
+    #expect(message == "That word cannot be saved.")
     #expect(recorder.outcomes == [.writeFailed])
     #expect(recorder.events.contains { if case .failed = $0 { true } else { false } })
+  }
+
+  @Test("A save that succeeds returns nothing to show, which is what licenses the dismiss")
+  func aSuccessfulWriteReturnsNil() throws {
+    // The paired accepted case for the refusal above. Without it the caller could dismiss on any
+    // non-nil-ness rule and still pass, and a check that never classifies anything looks clean.
+    let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
+    let model = try #require(coordinator.begin(door: .hotkey))
+    let target = try #require(model.ranking.candidates.first)
+
+    #expect(coordinator.accept(target, from: model) == nil)
+    #expect(recorder.outcomes == [.accepted])
+  }
+
+  @Test("A word that already carries the spelling returns nothing to show")
+  func alreadySavedReturnsNil() throws {
+    // Nothing went wrong, so there is nothing to keep the panel open for. Distinguished from the
+    // refusal above only by the return value, which is why both are asserted.
+    let (coordinator, recorder) = makeCoordinator(
+      selection: .text("codecs"), userWords: [word("Codex", aliases: ["codecs"])])
+    let model = try #require(coordinator.begin(door: .hotkey))
+    let target = try #require(model.ranking.candidates.first)
+
+    #expect(coordinator.accept(target, from: model) == nil)
+    #expect(recorder.outcomes == [.alreadySaved])
   }
 
   @Test("Accepting after searching is a distinct outcome from accepting the top row")

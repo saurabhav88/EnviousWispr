@@ -14,6 +14,12 @@ enum QuickAddPanelCopy {
   static let returnHint = "Return"
   static let alreadySaved = "already saved"
 
+  /// Shown when the library refused the write, above the rows so the panel that stayed open says
+  /// why. The message comes from the words authority itself rather than being reworded here: it is
+  /// the same sentence the editor shows for the same refusal, and a second wording would be a
+  /// second set of rules for the user to reconcile.
+  static func writeFailure(_ message: String) -> String { "Not saved. \(message)" }
+
   /// The subtitle under a candidate: what accepting it would do, then how much that word already
   /// carries. Singular matters — "1 spellings already saved" is the kind of thing users screenshot.
   static func rowSubtitle(spellingCount: Int) -> String {
@@ -25,6 +31,13 @@ enum QuickAddPanelCopy {
   ///
   /// Every refusal gets its own sentence. A single "could not read your selection" would be
   /// technically true for all of them and useless for the only one the user can act on.
+  ///
+  /// **Every sentence points at a control that actually works in this state, and three of them
+  /// used to point at one that does not.** With no heard spelling there is nothing to rank and
+  /// nothing to add a spelling TO, so `QuickAddPanelModel.updateQuery` deliberately does not
+  /// re-rank and the view hides the field — and the earlier wording, "You can search for the word
+  /// below", sent the user to a field that would not have answered. The one thing that does work
+  /// here is authoring the word by hand, which is the row below the divider.
   static func refusalMessage(_ refusal: SelectionReader.Refusal) -> String {
     switch refusal {
     case .accessibilityNotTrusted:
@@ -35,12 +48,13 @@ enum QuickAddPanelCopy {
     case .noFocusedElement:
       "That app did not tell us where the cursor is. Click into the text and try again."
     case .selectionUnsupported:
-      "That app does not share its selection with other apps. You can search for the word below."
+      "That app does not share its selection with other apps. You can still add the word by hand "
+        + "below."
     case .selectionUnavailable:
-      "That app reports a selection it will not share. Terminals do this. You can search for the "
-        + "word below."
+      "That app reports a selection it will not share. Terminals do this. You can still add the "
+        + "word by hand below."
     case .unreadable:
-      "Your selection could not be read. You can search for the word below."
+      "Your selection could not be read. You can still add the word by hand below."
     case .selectionTooLong:
       "That selection is too long to be a word. Select just the word and try again."
     }
@@ -67,11 +81,20 @@ struct QuickAddPanelView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       heardHeader
-      searchField
+      // Hidden on a refusal rather than rendered dead. `updateQuery` does not re-rank without a
+      // heard string — correctly, since there would be nothing to add a spelling to — so a field
+      // shown here is a control the user can type into and watch do nothing.
+      if model.refusal == nil { searchField }
       if let refusal = model.refusal {
         Text(QuickAddPanelCopy.refusalMessage(refusal))
           .font(.stBody)
           .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      if let failure = model.writeFailure {
+        Text(QuickAddPanelCopy.writeFailure(failure))
+          .font(.stBody)
+          .foregroundStyle(.stError)
           .fixedSize(horizontal: false, vertical: true)
       }
       candidateRows

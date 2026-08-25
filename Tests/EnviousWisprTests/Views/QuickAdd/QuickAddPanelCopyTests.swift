@@ -79,11 +79,48 @@ struct QuickAddPanelCopyTests {
         QuickAddPanelCopy.heardLabel, QuickAddPanelCopy.searchPlaceholder,
         QuickAddPanelCopy.createNewWord, QuickAddPanelCopy.returnHint,
         QuickAddPanelCopy.rowSubtitle(spellingCount: 3),
+        // A member of the copy set like any other. Sweeping the SET rather than the strings that
+        // existed when this was written is what makes a later addition visible here.
+        QuickAddPanelCopy.writeFailure("That word cannot be saved."),
       ]
 
     for text in all {
       #expect(!text.contains("\u{2014}"), "em-dash in: \(text)")
       #expect(!text.contains("\u{2013}"), "en-dash in: \(text)")
     }
+  }
+  @Test("No refusal sends the user to the search field, which is hidden in exactly that state")
+  func noRefusalPointsAtTheSearchField() {
+    // The field is hidden on a refusal because `updateQuery` will not re-rank without a heard
+    // string. Three messages used to say "You can search for the word below", which named a
+    // control that is not on screen and would not have answered if it were.
+    for refusal in SelectionReader.Refusal.allCases {
+      let message = QuickAddPanelCopy.refusalMessage(refusal)
+      #expect(
+        !message.lowercased().contains("search"),
+        "\(refusal.rawValue) points at a control that does nothing in this state")
+      #expect(!message.isEmpty)
+    }
+  }
+
+  @Test("Three refusals point at authoring the word by hand, which is the control that does work")
+  func unreadableRefusalsPointAtCreatingAWord() {
+    // The paired positive case for the assertion above: a check that only ever refuses a word
+    // would pass just as happily against messages that name no way forward at all.
+    for refusal in [
+      SelectionReader.Refusal.selectionUnsupported, .selectionUnavailable, .unreadable,
+    ] {
+      #expect(QuickAddPanelCopy.refusalMessage(refusal).contains("add the word by hand"))
+    }
+  }
+
+  @Test("A write failure is presented as not-saved, carrying the library's own sentence")
+  func writeFailureCarriesTheLibrarysMessage() {
+    let rendered = QuickAddPanelCopy.writeFailure("That word cannot be saved.")
+
+    // Both halves matter: the verdict is ours, the reason is the words authority's, and rewording
+    // the reason here would give the user two vocabularies for one refusal.
+    #expect(rendered.hasPrefix("Not saved."))
+    #expect(rendered.contains("That word cannot be saved."))
   }
 }
