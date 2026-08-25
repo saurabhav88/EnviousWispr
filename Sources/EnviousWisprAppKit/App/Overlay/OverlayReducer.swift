@@ -79,7 +79,7 @@ enum OverlayExpiryCommand: Equatable {
 /// window server, a run loop, or a clock.
 struct OverlayPlan: Equatable {
   /// What should occupy the slot now. `nil` means the slot is empty.
-  let presentation: OverlayPresentation?
+  let presentation: PillDefinition?
   /// True when the host must apply `presentation`.
   ///
   /// False leaves the window's content unchanged; it does NOT mean the plan is
@@ -117,7 +117,7 @@ struct OverlayPlan: Equatable {
   static let noChange = OverlayPlan(presentation: nil, didChange: false)
 
   init(
-    presentation: OverlayPresentation?, didChange: Bool,
+    presentation: PillDefinition?, didChange: Bool,
     expiryCommand: OverlayExpiryCommand = .unchanged,
     deliverAction: PillAction? = nil,
     effects: [PillEffect] = [],
@@ -136,7 +136,7 @@ struct OverlayPlan: Equatable {
 /// collection it has become the thing it replaced.
 struct OverlayState: Equatable {
   /// What occupies the slot, or nil.
-  private(set) var current: OverlayPresentation?
+  private(set) var current: PillDefinition?
   /// The last pipeline intent seen. A feature may take the slot only while this
   /// is `.hidden`, which is the arbitration rule the shipped code spells out
   /// separately at every feature.
@@ -176,7 +176,7 @@ struct OverlayState: Equatable {
   }
 
   fileprivate mutating func set(
-    current: OverlayPresentation?, pipelineIntent: OverlayIntent? = nil, isHovered: Bool? = nil,
+    current: PillDefinition?, pipelineIntent: OverlayIntent? = nil, isHovered: Bool? = nil,
     isLocked: Bool? = nil
   ) {
     self.current = current
@@ -255,7 +255,7 @@ struct OverlayReducer {
       let current = state.current,
       case .recording(_, let isLocked, let notice) = current.content
     {
-      let updated = OverlayPresentation(
+      let updated = PillDefinition(
         id: current.id,
         content: .recording(audioLevel: level, isLocked: isLocked, notice: notice),
         expiry: current.expiry,
@@ -283,7 +283,7 @@ struct OverlayReducer {
     // exists precisely so this is applied in the SAME transaction rather than
     // rendered unlocked and morphed a frame later.
     if case .recording(let level, _, let notice) = presentation.content, state.isLocked {
-      presentation = OverlayPresentation(
+      presentation = PillDefinition(
         id: presentation.id,
         content: .recording(audioLevel: level, isLocked: true, notice: notice),
         expiry: presentation.expiry, requestedWidth: presentation.requestedWidth,
@@ -359,7 +359,7 @@ struct OverlayReducer {
       }
     }
     return admit(
-      OverlayPresentation(
+      PillDefinition(
         id: makeID(),
         content: .notice(NoticeModel(kind: .importStatus, text: message, isMultiline: true)),
         // `ImportStatusOverlayView` uses `.frame(maxWidth: 280)` — a BOUND, not a
@@ -378,7 +378,7 @@ struct OverlayReducer {
   private mutating func reduceBluetoothAwareness() -> OverlayPlan {
     guard state.featureSlotIsAvailable else { return .noChange }
     return admit(
-      OverlayPresentation(
+      PillDefinition(
         id: makeID(), content: .bluetoothAwareness, expiry: .untilReplaced,
         requestedWidth: .fixed(320)),  // :1790 — persistent
       announcement: Self.announcement(for: .bluetoothAwareness))
@@ -386,7 +386,7 @@ struct OverlayReducer {
 
   /// The tail every feature shares: take the slot, arm the expiry, speak.
   private mutating func admit(
-    _ presentation: OverlayPresentation, announcement: OverlayAnnouncement?
+    _ presentation: PillDefinition, announcement: OverlayAnnouncement?
   ) -> OverlayPlan {
     state.set(current: presentation, isHovered: false)
     return OverlayPlan(
@@ -404,7 +404,7 @@ struct OverlayReducer {
   // there is no overload to resolve wrongly, and each feature names its own
   // sentence at the point it takes the slot.
 
-  private static func isRecording(_ p: OverlayPresentation?) -> Bool {
+  private static func isRecording(_ p: PillDefinition?) -> Bool {
     if case .recording? = p?.content { return true }
     return false
   }
@@ -427,7 +427,7 @@ struct OverlayReducer {
       return .noChange
     }
 
-    let updated = OverlayPresentation(
+    let updated = PillDefinition(
       id: current.id,
       content: .recording(audioLevel: level, isLocked: locked, notice: notice),
       expiry: current.expiry, requestedWidth: current.requestedWidth,
@@ -449,7 +449,7 @@ struct OverlayReducer {
       case .recording(let level, let isLocked, _) = current.content
     else { return .noChange }
 
-    let updated = OverlayPresentation(
+    let updated = PillDefinition(
       id: current.id,
       content: .recording(
         audioLevel: level, isLocked: isLocked,
@@ -475,7 +475,7 @@ struct OverlayReducer {
       case .recording(let level, let isLocked, let notice) = current.content, notice != nil
     else { return .noChange }
 
-    let updated = OverlayPresentation(
+    let updated = PillDefinition(
       id: current.id,
       content: .recording(audioLevel: level, isLocked: isLocked, notice: nil),
       expiry: current.expiry,
@@ -568,7 +568,7 @@ struct OverlayReducer {
   /// dwell, `.cancel` when it is persistent. Never `.unchanged` — leaving the
   /// previous occupant's timer running is how a stale dismissal reaches a live
   /// pill, which is the whole defect `PresentationID` exists to close.
-  private static func command(for p: OverlayPresentation) -> OverlayExpiryCommand {
+  private static func command(for p: PillDefinition) -> OverlayExpiryCommand {
     guard case .after(let seconds, _) = p.expiry else { return .cancel }
     return .arm(id: p.id, seconds: seconds, target: .presentation)
   }
@@ -582,7 +582,7 @@ struct OverlayReducer {
   /// opening the panel and reading them. The sites are cited per row so the next
   /// reader can re-check rather than trust this sentence.
   private static func presentation(for intent: OverlayIntent, id: PresentationID)
-    -> OverlayPresentation?
+    -> PillDefinition?
   {
     switch intent {
     case .hidden:
@@ -600,7 +600,7 @@ struct OverlayReducer {
       // the reducer cannot decide it here, and it does not: the 92 below is the
       // NON-preview answer, and `OverlayDirector.fixedHeight(for:)` overrides it
       // to content-sized when the render model says preview is on.
-      return OverlayPresentation(
+      return PillDefinition(
         id: id, content: .recording(audioLevel: level, isLocked: false, notice: nil),
         expiry: .untilReplaced, requestedWidth: .fixed(185), reservesFixedHeight: 92)
 
@@ -662,7 +662,7 @@ struct OverlayReducer {
         expiry: .after(seconds: 2), severity: .distress)  // NotificationStyle 2.0
 
     case .passiveChip(let payload):
-      return OverlayPresentation(
+      return PillDefinition(
         id: id, content: .languageChip(payload: payload),
         expiry: .after(seconds: 6, pausesOnHover: true),
         requestedWidth: .fixed(340), reservesFixedHeight: 56)  // :1410
@@ -703,7 +703,7 @@ struct OverlayReducer {
         expiry: .after(seconds: 3))  // :675
 
     case .bluetoothAwareness:
-      return OverlayPresentation(
+      return PillDefinition(
         // that site calls `showPanel` with NO `scheduleAutoDismiss`: the card is
         // PERSISTENT until something replaces it. The first version gave it a
         // 6-second dwell, which would have made it vanish on its own.
@@ -711,7 +711,7 @@ struct OverlayReducer {
         requestedWidth: .fixed(320))
 
     case .escapeRecovery(let transcriptID):
-      return OverlayPresentation(
+      return PillDefinition(
         // **THIS expiry is the only one. The director owns it; the view draws
         // it.** Three seconds, hover-pausable, exactly like any other dwell.
         //
@@ -779,8 +779,8 @@ struct OverlayReducer {
     width: OverlayWidth, fixedHeight: CGFloat? = nil,
     expiry: OverlayExpiry = .untilReplaced, severity: NoticeModel.Severity = .neutral,
     isMultiline: Bool = false, action: (label: String, action: PillAction)? = nil
-  ) -> OverlayPresentation {
-    OverlayPresentation(
+  ) -> PillDefinition {
+    PillDefinition(
       id: id,
       content: .notice(
         NoticeModel(

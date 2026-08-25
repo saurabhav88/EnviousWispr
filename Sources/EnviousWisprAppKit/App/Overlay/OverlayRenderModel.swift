@@ -17,7 +17,7 @@ import SwiftUI
 final class OverlayRenderModel: ObservableObject {
 
   /// What the retained root should render, or `nil` for an empty slot.
-  @Published var presentation: OverlayPresentation?
+  @Published var presentation: PillDefinition?
 
   /// **The dwell a countdown is drawing**, published so a view starts from the
   /// same instant the director armed the real dismissal. `nil` while nothing is

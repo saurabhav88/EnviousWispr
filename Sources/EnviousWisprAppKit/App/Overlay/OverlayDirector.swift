@@ -725,7 +725,7 @@ final class OverlayDirector {
   /// its events. Every other presentation takes its own width and reserved height
   /// unchanged.
   private func geometry(
-    for presentation: OverlayPresentation
+    for presentation: PillDefinition
   ) -> (width: OverlayWidth, fixedHeight: CGFloat?) {
     guard case .recording = presentation.content else {
       return (presentation.requestedWidth, presentation.reservesFixedHeight)
@@ -759,7 +759,7 @@ final class OverlayDirector {
   /// Returns `false` ONLY when the host refused a presentation it was asked to
   /// show. Emptying the slot always succeeds, so the caller reads a `false` as
   /// "the occupant this plan installed is not on screen and never will be".
-  private static func isRecording(_ presentation: OverlayPresentation) -> Bool {
+  private static func isRecording(_ presentation: PillDefinition) -> Bool {
     if case .recording = presentation.content { return true }
     return false
   }
@@ -772,7 +772,7 @@ final class OverlayDirector {
 
   @discardableResult
   private func render(
-    _ presentation: OverlayPresentation?, onPresented: @escaping () -> Void = {},
+    _ presentation: PillDefinition?, onPresented: @escaping () -> Void = {},
     relay: PresentationRelay? = nil
   ) -> RenderOutcome {
     guard let presentation else {
@@ -851,7 +851,7 @@ final class OverlayDirector {
 
   /// The synchronous half, so the deferred first call and every later one run
   /// exactly the same code rather than two copies that can drift.
-  private func performRender(_ presentation: OverlayPresentation) -> Bool {
+  private func performRender(_ presentation: PillDefinition) -> Bool {
     // **`isFresh` means NOTHING IS SHOWING, not "a different occupant".** The
     // comment here used to say the opposite and the code matched it, which made
     // every recording -> processing -> warning step a fresh presentation: the

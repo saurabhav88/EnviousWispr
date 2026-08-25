@@ -230,7 +230,7 @@ struct InPanelNotice: Equatable, Sendable {
 /// One occupancy of the overlay slot: what to show, how it is identified, and
 /// when it goes away. The director never holds a per-kind field collection —
 /// this value IS the state.
-struct OverlayPresentation: Equatable, Sendable {
+struct PillDefinition: Equatable, Sendable {
   let id: PresentationID
   let content: OverlayContent
   let expiry: OverlayExpiry

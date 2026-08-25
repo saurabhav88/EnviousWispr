@@ -5,7 +5,7 @@ import SwiftUI
 ///
 /// **View construction lives HERE, not in the render model and not in the
 /// director.** The model holds values and providers; the director decides; this
-/// switches over `OverlayPresentation.content` and builds the EXISTING leaf
+/// switches over `PillDefinition.content` and builds the EXISTING leaf
 /// views. Putting the `switch` in the model would make the model know about
 /// SwiftUI, and putting it in the director would make the director know about
 /// pixels — both are the god-object shape this migration is removing, relocated.
@@ -62,7 +62,7 @@ struct OverlayRootView: View {
     .onChange(of: model.presentation) { _, new in sync(new) }
   }
 
-  private func sync(_ presentation: OverlayPresentation?) {
+  private func sync(_ presentation: PillDefinition?) {
     guard case .recording(_, let isLocked, let notice)? = presentation?.content else {
       lockState.value.isLocked = false
       noticeState.value.message = nil
@@ -74,12 +74,12 @@ struct OverlayRootView: View {
 
   /// Every leaf callback goes through here, so the presentation's own ID travels
   /// with the press instead of being looked up afterwards.
-  private func press(_ action: PillAction, on presentation: OverlayPresentation) {
+  private func press(_ action: PillAction, on presentation: PillDefinition) {
     sendEvent(.action(presentation.id, action))
   }
 
   @ViewBuilder
-  private func content(for presentation: OverlayPresentation) -> some View {
+  private func content(for presentation: PillDefinition) -> some View {
     switch presentation.content {
     case .recording:
       // The LEVEL on the presentation is a snapshot the reducer carries for
@@ -151,7 +151,7 @@ struct OverlayRootView: View {
   /// keeps their appearance intact — the model says what to say, the kind says
   /// which pill says it.
   @ViewBuilder
-  private func notices(_ notice: NoticeModel, on presentation: OverlayPresentation) -> some View {
+  private func notices(_ notice: NoticeModel, on presentation: PillDefinition) -> some View {
     switch notice.kind {
     case .processing:
       PolishingOverlayView(label: notice.text)
