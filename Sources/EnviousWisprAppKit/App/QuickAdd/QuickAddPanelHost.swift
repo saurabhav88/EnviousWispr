@@ -45,7 +45,6 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// because a Settings window the user closed during the beat must not be resurrected or retained.
   private var focusOrigin: FocusOriginKind = .unknown
   private weak var originWindow: NSWindow?
-  private var focusObservers: [NSObjectProtocol] = []
 
 
   #if DEBUG
@@ -109,7 +108,7 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
 
     // Activate BEFORE making key, and only now — the selection was read while the other app was
     // still frontmost, which is the whole reason this happens here rather than at capture time.
-    takeFocus(panel)
+    takeFocus(panel, capturingOrigin: true)
     return true
   }
 
@@ -125,14 +124,33 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   ///
   /// A third taker cannot be added without coming through here, which is the point of it existing
   /// rather than the two lines being repeated.
-  /// Bring the panel forward and give it the keyboard.
+  /// Bring the panel forward and give it the keyboard, recording what held it first.
   ///
-  /// **Records nothing, deliberately.** An earlier revision remembered who focus was taken FROM so
-  /// it could be handed back, and three review rounds each found another way for the panel to gain
-  /// focus without passing through here — a raise, a mouse click, and whatever comes next. That set
-  /// is AppKit's rather than ours. `releaseFocus` now derives its answer from the live world instead,
-  /// so there is no record that can go stale.
-  private func takeFocus(_ panel: NSPanel) {
+  /// **`capturingOrigin` is true exactly once per invocation, and the reason is that there is only
+  /// one uncontaminated instant.** Five review rounds found five ways to get this wrong, and they
+  /// share a cause: every attempt OBSERVED focus from inside a process whose own activation moves it.
+  /// Hooking the routes misses routes (a raise, a mouse click, the Dock). Deriving from the current
+  /// window list answers a different question — a visible window of ours is not evidence the user
+  /// came from it. Watching AppKit's notifications catches our OWN `NSApp.activate` making Settings
+  /// key on its way to activating us.
+  ///
+  /// The instant before this invocation touches anything is not contaminated, because nothing has
+  /// happened yet. `QuickAddCoordinator.begin` already depends on exactly that instant to read the
+  /// selection, for exactly this reason.
+  ///
+  /// `raise` passes false: a second shortcut press is the same invocation, and the user has not gone
+  /// anywhere between the two.
+  private func takeFocus(_ panel: NSPanel, capturingOrigin: Bool) {
+    if capturingOrigin {
+      // Read BEFORE the activate below, which is the only line in this method that moves focus.
+      if NSApp.isActive, let key = NSApp.keyWindow, key !== panel {
+        focusOrigin = .ourWindow
+        originWindow = key
+      } else {
+        focusOrigin = .otherApp
+        originWindow = nil
+      }
+    }
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
   }
@@ -145,8 +163,9 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// another window on screen" is closed and WRONG: leave Settings open behind TextEdit, invoke the
   /// shortcut from TextEdit, and a window-list answer sends the keyboard to Settings.
   ///
-  /// The closed capture point is not a list of routes at all. It is the two notifications AppKit
-  /// posts however focus moved, below.
+  /// The closed capture point is not a list of routes and not a derivation from the current world.
+  /// It is the one INSTANT at which this process has provably not touched focus yet — see
+  /// `takeFocus(_:capturingOrigin:)`.
   package enum FocusOriginKind: Equatable, Sendable, CaseIterable {
     /// Another application was frontmost.
     case otherApp
@@ -180,7 +199,8 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// and not by throwing away the selection it already holds.
   func raise() {
     guard let panel, panel.isVisible else { return }
-    takeFocus(panel)
+    // NOT recapturing: a second press is the same invocation and the user has not moved.
+    takeFocus(panel, capturingOrigin: false)
   }
 
   /// Hand keyboard focus back to whatever the user was working in, WITHOUT taking the panel down.
@@ -213,41 +233,6 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
     }
   }
 
-  /// Watch what holds the keyboard, so `releaseFocus` never has to know HOW the panel got it.
-  ///
-  /// **Two notifications, and between them they cover every route** — including the ones three
-  /// review rounds found one at a time. Last writer wins, which orders them without timestamps.
-  ///
-  /// The panel becoming key is deliberately IGNORED rather than recorded: a mouse click on the panel
-  /// activates us, and treating that as "the user is now in our app" is what would send their
-  /// keyboard to the wrong place afterwards. Clicking an accessory panel is not moving into an app.
-  private func installFocusObservers() {
-    guard focusObservers.isEmpty else { return }
-    focusObservers.append(
-      NSWorkspace.shared.notificationCenter.addObserver(
-        forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
-      ) { [weak self] note in
-        // Extracted BEFORE entering the isolated block: reading `note` inside trips Swift 6's
-        // sending-risks-data-races on a task-isolated capture.
-        let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-        MainActor.assumeIsolated {
-          guard let self, let app, app != NSRunningApplication.current else { return }
-          self.focusOrigin = .otherApp
-          self.originWindow = nil
-        }
-      })
-    focusObservers.append(
-      NotificationCenter.default.addObserver(
-        forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
-      ) { [weak self] note in
-        let window = note.object as? NSWindow
-        MainActor.assumeIsolated {
-          guard let self, let window, window !== self.panel else { return }
-          self.focusOrigin = .ourWindow
-          self.originWindow = window
-        }
-      })
-  }
 
   /// Take the panel down. Idempotent.
   ///
@@ -348,7 +333,6 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
       self.onDismiss?()
     }
     panel = p
-    installFocusObservers()
     return p
   }
 

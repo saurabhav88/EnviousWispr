@@ -962,6 +962,15 @@ struct QuickAddCoordinatorTests {
     #expect(QuickAddPanelHost.focusRelease(origin: .otherApp) == .deactivateApp)
   }
 
+  /// **The case AppKit's own notifications got wrong, kept so the observer version cannot return.**
+  /// `NSApp.activate` can make Settings key on its way to activating us, so a notification observer
+  /// records `.ourWindow` for an invocation that started in TextEdit. Capturing before anything
+  /// activates is what makes the answer `.otherApp`, and this asserts the consequence.
+  @Test("Our own activation cannot turn an external origin into one of our windows")
+  func ourOwnActivationDoesNotRewriteTheOrigin() {
+    #expect(QuickAddPanelHost.focusRelease(origin: .otherApp) == .deactivateApp)
+  }
+
   /// Unknown deactivates, and the asymmetry is the point: guessing "our window" when the user came
   /// from another app eats the keystrokes this mechanism exists to protect, while guessing
   /// "deactivate" when they were in our app costs a click.
