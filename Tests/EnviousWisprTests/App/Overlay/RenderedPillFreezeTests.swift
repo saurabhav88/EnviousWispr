@@ -153,6 +153,38 @@ struct RenderedPillFreezeTests {
     }
   }
 
+  /// **The one product CONSTANT the frozen table was silently carrying, pinned
+  /// where a hosted runner can see it** (#2376 Phase 4, round 4).
+  ///
+  /// Gating `noticeRowsAreFrozen` to a development Mac was right — its numbers are
+  /// rendered measurements — but it took a real guard with it. That table was the
+  /// only thing binding the advisory's 360pt REQUEST, and a request is not a
+  /// measurement: it is a value in the catalog, identical on every machine. So it
+  /// belongs in an always-enabled case, and narrowing it is caught everywhere
+  /// rather than only here.
+  ///
+  /// Note what the portable relations case CANNOT do instead: it asserts the
+  /// rendered width equals the REQUESTED one, so moving the request moves both
+  /// sides and it stays green. A test that follows the value it is checking binds
+  /// nothing.
+  @Test("the advisory asks for the width the panel reserves for it")
+  func advisoryWidthIsPinned() throws {
+    let definition = try #require(
+      PillCatalog.entry(for: .advisory(reason: .zeroSignal), id: RenderedPillHarness.id())
+        .definition)
+    guard case .fixed(let requested) = definition.requestedWidth else {
+      Issue.record("the advisory no longer asks for a fixed width at all")
+      return
+    }
+    #expect(
+      requested == 360,
+      """
+      the advisory asks for \(requested)pt, not the 360 the overlay panel reserves. \
+      #1891: unconstrained it measures 927 and wraps to nothing sensible, so this \
+      number is what makes the pill legible rather than a style choice.
+      """)
+  }
+
   // MARK: - The instrument's own controls
 
   /// **An empty slot must be distinguishable from every pill**, or a harness

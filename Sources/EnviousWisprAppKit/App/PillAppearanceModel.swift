@@ -28,8 +28,28 @@ final class PillAppearanceModel {
     self.capability = capability
   }
 
+  /// Bumped whenever the coordinator reports that capability may have moved for
+  /// a reason no settings key records. Observed rather than merely stored: it is
+  /// READ by `wordsCapability` below, which is what puts a SwiftUI page reading
+  /// that property into this object's dependency graph.
+  private var capabilityGeneration = 0
+
   /// Why words are or are not available right now.
-  var wordsCapability: PillWordsCapability { capability() }
+  ///
+  /// **The discard is load-bearing, not tidying.** Reading `capabilityGeneration`
+  /// is what registers the dependency; the closure behind `capability` reaches a
+  /// class that is not `@Observable`, so a page that read only its result would
+  /// never be invalidated when removal suppression begins or ends.
+  var wordsCapability: PillWordsCapability {
+    _ = capabilityGeneration
+    return capability()
+  }
+
+  /// The coordinator reporting a change no settings key can announce.
+  func capabilityDidChange() {
+    capabilityGeneration &+= 1
+  }
+
 
   /// The designs in one group, in the catalog's own order.
   func designs(holdingWords: Bool) -> [RecordingPillDesign] {

@@ -527,6 +527,12 @@ public final class WisprBootstrapper {
     // same capability the director does rather than re-deriving one.
     let pillAppearance = PillAppearanceModel(
       settings: settings, capability: livePreviewInstallation.bridge.wordsCapability)
+    // Removal suppression is the one capability input no settings key records, so
+    // it has to be pushed. Weak, for the reason every other hook into this limb is
+    // weak: a settings page must never be what keeps it alive.
+    livePreview.onWordsCapabilityMayHaveChanged = { [weak pillAppearance] in
+      pillAppearance?.capabilityDidChange()
+    }
 
     // #1701 Chunk 2: bulk-import-enrichment producer, a sibling of
     // `contactsImportCoordinator` on the same alias-suggester permit lane.

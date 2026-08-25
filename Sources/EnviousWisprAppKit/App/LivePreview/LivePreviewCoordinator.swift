@@ -244,6 +244,24 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// starting a competing one.
   private var removalDrain: Task<Void, Never>?
 
+  /// **Called when `wordsCapability` may have changed for a reason no observable
+  /// setting records** (#2376 Phase 4, round 4).
+  ///
+  /// Every other input to that property is settings-backed, so a SwiftUI page
+  /// reading it registers a dependency and refreshes by itself. Removal
+  /// suppression is the exception: it is a private field on a class that is not
+  /// `@Observable`, and the capability's guard returns on it BEFORE any settings
+  /// read — so during a drain the page has no dependency on anything at all, and
+  /// `endRemovalSuppression()` cannot invalidate it. The Appearance picker would
+  /// keep the with-words designs greyed with the removal sentence until some
+  /// unrelated redraw, and the inverse stale state is reachable too.
+  ///
+  /// A callback rather than making this class `@Observable`: the whole heart path
+  /// reads it at 20 Hz, and changing its invalidation semantics to publish one
+  /// settings page is a blast radius nobody asked for. Weak at the call site, so
+  /// a settings page can never be what keeps the limb alive.
+  var onWordsCapabilityMayHaveChanged: (@MainActor () -> Void)?
+
   /// `selectedRoute` answers "which engine is chosen right now" and is read once
   /// per recording. `isPreviewOn` is the user's toggle ALONE — support is the
   /// route's own answer (`isSupportedOnThisSystem`), so combining them here is
@@ -684,6 +702,9 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     }
 
     isRemovingModel = true
+    // The suppression BEGINS here, so a page already on screen stops offering
+    // what the next recording will not deliver.
+    onWordsCapabilityMayHaveChanged?()
 
     // **CAPTURE EVERY HOLDER BEFORE RELEASING ANYTHING.** The shared teardown
     // clears `preparationTask` on its way through, so reading it afterwards
@@ -718,6 +739,10 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// Removal is over: previews may run again.
   func endRemovalSuppression() {
     isRemovingModel = false
+    // And it ENDS here. Without this the picker keeps the removal sentence up
+    // after the files are gone, which is the direction a user actually meets:
+    // the drain finishes while they are looking at the page.
+    onWordsCapabilityMayHaveChanged?()
   }
 
   /// The shared teardown: stop the live session, then drop the cached engine.

@@ -151,6 +151,50 @@ struct AppearancePillPickerTests {
     }
   }
 
+  /// **THE PAGE MUST BE INVALIDATED, not merely able to compute the right answer
+  /// if something else happens to ask it again** (cloud review round 4).
+  ///
+  /// Every other input to `wordsCapability` is settings-backed, so a page reading
+  /// it registers a dependency and refreshes on its own. Model-removal
+  /// suppression is the exception: a private field on a coordinator that is not
+  /// `@Observable`, which the capability's guard returns on BEFORE any settings
+  /// read. During a drain the page therefore depends on nothing at all, and the
+  /// end of the drain cannot invalidate it — the removal sentence stays over
+  /// designs that are available again.
+  ///
+  /// Asserted with `withObservationTracking`, the mechanism SwiftUI itself uses,
+  /// so this fails if `wordsCapability` ever stops consuming the generation. That
+  /// discard in its body reads like tidying and IS the registration.
+  ///
+  /// Lives here rather than beside the coordinator because this suite already
+  /// builds a model with its own defaults suite; the capability suite has a
+  /// coordinator rig and no settings rig, and a second fixture for a state one
+  /// already stages is the cost worth not paying.
+  @Test("a reader of the capability is invalidated when the coordinator announces")
+  func aCapabilityReaderIsInvalidated() {
+    let model = Self.model(.available)
+
+    // A reference box because `onChange` is `@Sendable`. It fires synchronously on
+    // the mutating thread, which here is the main actor throughout.
+    final class Flag: @unchecked Sendable { var fired = false }
+    let flag = Flag()
+    withObservationTracking {
+      _ = model.wordsCapability
+    } onChange: {
+      flag.fired = true
+    }
+
+    #expect(!flag.fired, "control: nothing has changed yet")
+    model.capabilityDidChange()
+    #expect(
+      flag.fired,
+      """
+      a reader of wordsCapability was not invalidated by an announced change, so \
+      the Appearance page renders whatever it computed last and corrects itself \
+      only on an unrelated redraw.
+      """)
+  }
+
   @Test("choosing a design writes its own group and leaves the other alone")
   func choosingWritesOneGroup() {
     let m = Self.model(.previewOff)

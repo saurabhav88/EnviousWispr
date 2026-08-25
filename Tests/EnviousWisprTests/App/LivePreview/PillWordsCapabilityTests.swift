@@ -210,6 +210,45 @@ struct PillWordsCapabilityTests {
       "previewOn=\(previewOn) changed the reason on a machine that cannot run the engine")
   }
 
+  /// **A CAPABILITY NOBODY IS TOLD ABOUT IS A STALE PAGE, and this is the input
+  /// that has no settings key to announce it** (cloud review round 4).
+  ///
+  /// Every other input to `wordsCapability` is settings-backed, so a page reading
+  /// it registers a dependency and refreshes on its own. Removal suppression is a
+  /// private field on a class that is not `@Observable`, and the capability's
+  /// guard returns on it BEFORE any settings read — so during a drain the page
+  /// depends on nothing, and the end of the drain cannot invalidate it.
+  ///
+  /// Both transitions are asserted because the user meets them in both
+  /// directions: removal starting while the page is open, and finishing while
+  /// they are looking at it.
+  @Test("both ends of a removal are announced to whoever is watching")
+  func removalTransitionsAreAnnounced() async {
+    let c = Self.coordinator(supported: true, previewOn: true)
+    var announcements = 0
+    c.onWordsCapabilityMayHaveChanged = { announcements += 1 }
+
+    await c.releaseAndDrainForRemoval()
+    #expect(
+      announcements >= 1,
+      """
+      the removal began and nothing was announced, so a page already showing the \
+      with-words designs keeps offering what the next recording will not deliver.
+      """)
+    #expect(c.wordsCapability == .modelBeingRemoved, "control: the state did change")
+
+    let afterBegin = announcements
+    c.endRemovalSuppression()
+    #expect(
+      announcements > afterBegin,
+      """
+      the removal ENDED and nothing was announced. This is the direction a user \
+      actually meets: the drain finishes while they are on the page, and the \
+      removal sentence stays up over designs that are available again.
+      """)
+    #expect(c.wordsCapability == .available, "control: the state changed back")
+  }
+
   /// The bridge carries the reason to its one consumer, and carries the REAL one.
   /// Every other overlay suite builds its own bridge from test closures, so
   /// nothing else can see the production mapping — the same gap
