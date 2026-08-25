@@ -36,6 +36,14 @@ struct QuickAddCoordinatorTests {
         return nil
       }
     }
+    /// The `targetKind` of every resolution, which is a claim about WHAT WAS WRITTEN rather than
+    /// about what the ranking showed — so it has to be asserted separately from the outcome.
+    var targetKinds: [QuickAddTargetKind] {
+      events.compactMap {
+        if case .resolved(_, _, _, let kind, _) = $0 { return kind }
+        return nil
+      }
+    }
     var opened: QuickAddEvent? { events.first { if case .opened = $0 { true } else { false } } }
   }
 
@@ -291,6 +299,9 @@ struct QuickAddCoordinatorTests {
     #expect(saved.canonical == "Codec", "their edit to the override survived")
     #expect(saved.aliases.contains("kodek"), "and so did the spelling they put on it")
     #expect(saved.aliases.contains("codecs"))
+    // And the funnel says what was WRITTEN. The snapshot still calls this a pack term; a user word
+    // is what landed, so reporting `pack_term` would be a metric asserting the opposite.
+    #expect(recorder.targetKinds == [.userWord])
   }
 
   @Test("A word deleted while the panel sat open is not resurrected by accepting its row")

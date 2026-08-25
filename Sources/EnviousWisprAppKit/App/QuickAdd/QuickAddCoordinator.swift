@@ -277,12 +277,26 @@ final class QuickAddCoordinator {
   func accept(_ candidate: QuickAddRanker.Candidate, from model: QuickAddPanelModel) -> String? {
     let usedSearch = model.isSearching
     let rank = model.ranking.candidates.firstIndex { $0.id == candidate.id }
-    let kind: QuickAddTargetKind = candidate.isPackTerm ? .packTerm : .userWord
 
+    // **`kind` comes from the RESOLVED target, not from `candidate.isPackTerm`**, and this is the
+    // third and last member of the class rounds four and six each found one of: a decision in this
+    // function reading a value captured when the panel was RANKED rather than when Return was
+    // pressed. Enumerated rather than waited for — `model.isSearching` is live, `rank` is a fact
+    // about the ranking shown and is correctly a snapshot, and `spellingToWrite` is the user's
+    // selection rather than library state and must NOT be re-read. That leaves this one.
+    //
+    // A pack term the user overrode while the panel sat open resolves to `.live`, so a USER word is
+    // written while the snapshot still says pack. `pack_term` is a claim about what was written, so
+    // reporting it there is a metric asserting the opposite of what happened.
     var word: CustomWord
+    let kind: QuickAddTargetKind
     switch Self.mergeTarget(for: candidate, in: environment.userWords()) {
-    case .override(let converted): word = converted
-    case .live(let current): word = current
+    case .override(let converted):
+      word = converted
+      kind = .packTerm
+    case .live(let current):
+      word = current
+      kind = .userWord
     case .gone:
       environment.emit(.failed(stage: "save", reason: "target_gone"))
       return QuickAddPanelCopy.wordNoLongerExists
