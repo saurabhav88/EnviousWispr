@@ -148,7 +148,21 @@ public final class EGOneUpgradeCoordinator {
   /// same fail-closed direction C14 already takes when a decline cannot be
   /// persisted.
   private enum AutomaticFetchDecision {
-    /// The start-vs-join answer has not reached the main actor yet.
+    /// Registered, but the ensure has NOT reached the controller yet — it is
+    /// still in retirement preparation, which can hash a 2.9 GB monolith.
+    ///
+    /// **Present but not attributable, and the two are different questions.**
+    /// Presence is what stops `prepareForEnsure()` clearing a decline another
+    /// attempt recorded durably while this one was suspended in preparation
+    /// (#2110 cloud review, round 3). Attribution is what a Cancel asks, and the
+    /// honest answer here is "not ours": nothing has been joined or started yet,
+    /// so the user's own cancel must go through.
+    ///
+    /// Round 2 of this change collapsed the two by leaving the attempt absent
+    /// during preparation. That fixed attribution and broke presence.
+    case preparing
+    /// Inside the controller; the start-vs-join answer has not reached the main
+    /// actor yet.
     case pending
     /// This automatic attempt STARTED the shared fetch. A Cancel is ours.
     case started
@@ -426,6 +440,11 @@ public final class EGOneUpgradeCoordinator {
     // started. `.pending` covers only the genuine unknown, between entering the
     // controller and its answer landing here.
     let attemptID = UUID()
+    // Registered as `.preparing` from HERE, so presence is true across the whole
+    // ensure — including retirement preparation — and `prepareForEnsure()` will
+    // not clear a decline recorded meanwhile. Attribution starts later, at the
+    // controller boundary, because only then can anything have been joined.
+    automaticFetchDecisions[attemptID] = .preparing
     let outcome = await ensureCurrentModel(
       { [weak self] in self?.automaticFetchDecisions[attemptID] = .pending },
       { [weak self] decision in
@@ -695,6 +714,8 @@ public final class EGOneUpgradeCoordinator {
       if automaticFetchDecisions.values.contains(.started) {
         declinesRevision = true
       } else if automaticFetchDecisions.values.contains(.pending) {
+        // NOTE `.preparing` deliberately does NOT reach here: it is present for
+        // the presence question and not attributable for this one.
         // Fail closed. The start-vs-join answer has not landed, and both guesses
         // are wrong in a way the user would notice. Returning false blocks the
         // action, exactly as a failed decline WRITE does (C14) — the caller sees
