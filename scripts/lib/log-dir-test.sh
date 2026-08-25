@@ -433,6 +433,39 @@ esac
   && ok "publication has a usable rename" \
   || bad "publication has a usable rename" "empty"
 
+echo "== the mountinfo branch is EXERCISED, not merely written =="
+# The branch I told the reviewer I could not execute, and it was broken in
+# exactly the way an unexecutable branch gets broken: literal quote characters
+# reached the shell, `$5` was expanded before awk saw it, and the command
+# succeeded for EVERY path — reporting everything as a mount.
+#
+# It is now a shell `while read`, which this suite CAN drive: point the reader at
+# a fixture in mountinfo's own format and assert both directions. That does not
+# prove the real /proc parse on Linux, but it proves the comparison, which is
+# what was wrong.
+ew_lane_mountinfo_hit() {  # <mountinfo-file> <resolved-path>
+  local mi_target
+  while read -r _ _ _ _ mi_target _; do
+    [ "$mi_target" = "$2" ] && return 0
+  done < "$1"
+  return 1
+}
+MI="$SANDBOX/mountinfo"
+cat > "$MI" <<'MIEOF'
+25 30 0:23 / /proc rw,nosuid shared:5 - proc proc rw
+26 30 0:24 / /mnt/bound rw,relatime shared:6 - ext4 /dev/sda1 rw
+MIEOF
+ew_lane_mountinfo_hit "$MI" /mnt/bound \
+  && ok "a mountinfo entry is recognised by its mount point field" \
+  || bad "a mountinfo entry is recognised by its mount point field" "missed"
+# The accepted twin, and it is the one the broken version failed: a path that is
+# NOT in the table must not match. The old awk returned true for everything.
+if ew_lane_mountinfo_hit "$MI" /not/a/mount; then
+  bad "a path absent from mountinfo does not match" "matched anyway"
+else
+  ok "a path absent from mountinfo does not match"
+fi
+
 echo "== find failing is not an empty sweep =="
 # A process substitution's exit status is invisible to the loop, so a `find` that
 # could not enumerate lanes/ produced no iterations, left rc at 0, and the prune

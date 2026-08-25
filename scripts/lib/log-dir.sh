@@ -191,12 +191,23 @@ ew_lane_is_mount_point() {
   [ -e "$path" ] || return 1
 
   # Linux: the authoritative list, which sees a bind mount whatever its device.
+  #
+  # THE AWK PROGRAM MUST REACH AWK. A previous version carried literal quote
+  # characters from the tool that generated it, so BASH expanded `$5` before awk
+  # ever saw it and awk received a constant expression — which is true for every
+  # line, so the command succeeded for EVERY path and reported everything as a
+  # mount. Exactly the branch I told the reviewer I could not execute, broken in
+  # exactly the way an unexecutable branch gets broken (#2408 review r8).
+  #
+  # Field 5 of mountinfo is the mount point. Read with `while read` rather than
+  # awk so there is no second language to quote through, and so the comparison is
+  # the shell's own `=` on a variable this function already holds.
   if [ -r /proc/self/mountinfo ]; then
     resolved="$(cd "$path" 2>/dev/null && pwd -P)" || return 0
-    if /usr/bin/awk -v p="$resolved" '"'"'$5 == p { f = 1 } END { exit !f }'"'"' \
-      /proc/self/mountinfo 2>/dev/null; then
-      return 0
-    fi
+    local mi_target
+    while read -r _ _ _ _ mi_target _; do
+      [ "$mi_target" = "$resolved" ] && return 0
+    done < /proc/self/mountinfo
   fi
   dev="$(ew_lane_device_of "$path")" || return 0
   parent_dev="$(ew_lane_device_of "$path/..")" || return 0
