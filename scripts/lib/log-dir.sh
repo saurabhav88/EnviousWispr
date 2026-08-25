@@ -187,29 +187,6 @@ ew_lane_device_of() {
 # `/proc/self/mountinfo` is consulted where it exists, which closes the Linux
 # case; no portable shell primitive covers the remainder. This is defence in
 # depth for the ONE remaining `rm -rf`, not a proof.
-# Does this mountinfo table list <path> as a mount point?
-#
-# **EXTRACTED SO THE SUITE CAN DRIVE THE REAL COMPARISON (#2408 review r9).** The
-# first version of this loop lived inline and the suite tested a COPY of it — a
-# reimplemented matcher, which measures the copy and says nothing about the code
-# that ships. Taking the table as an argument lets the row point it at a fixture
-# in mountinfo's own format while the production caller passes /proc/self/mountinfo.
-#
-# **THE TWO SIDES ARE IN DIFFERENT ALPHABETS (#2408 review r9, P1).** The kernel
-# escapes space, tab, newline and backslash in field 5 as `\040`, `\011`, `\012`
-# and `\134`, while `pwd -P` returns them literally — so a lane under a path
-# containing a space compares unequal against its own mountinfo row and the check
-# reports NOT-a-mount. That is the fail-OPEN direction, on the one branch whose
-# entire job is to stop `rm -rf` descending into a mounted filesystem, and a
-# checkout under a directory with a space in it is ordinary on macOS.
-#
-# `\134` is decoded LAST. A literal backslash in a real path arrives as `\134`, so
-# decoding it first would turn `\134040` into `\040` and the next rule would then
-# read a backslash-escape the path never contained.
-#
-# `read -r` is required: without it the shell would consume those backslashes
-# before any rule ran.
-#   ew_lane_mountinfo_lists <mountinfo-file> <resolved-path>
 # A path's physical location, WITH any trailing newline in its own name intact.
 #
 # **`$(...)` STRIPS TRAILING NEWLINES (#2408 review r10, P1).** A directory whose
@@ -240,14 +217,45 @@ ew_lane_resolved_path() {
   EW_LANE_RESOLVED="${out%$'\n'}"
 }
 
+# Does this mountinfo table list <path> as a mount point?
+#
+# **EXTRACTED SO THE SUITE CAN DRIVE THE REAL COMPARISON (#2408 review r9).** The
+# first version of this loop lived inline and the suite tested a COPY of it — a
+# reimplemented matcher, which measures the copy and says nothing about the code
+# that ships. Taking the table as an argument lets the row point it at a fixture
+# in mountinfo's own format while the production caller passes /proc/self/mountinfo.
+#
+# **THE TWO SIDES ARE IN DIFFERENT ALPHABETS (#2408 review r9, P1).** The kernel
+# escapes space, tab, newline and backslash in field 5 as `\040`, `\011`, `\012`
+# and `\134`, while `pwd -P` returns them literally — so a lane under a path
+# containing a space compares unequal against its own mountinfo row and the check
+# reports NOT-a-mount. That is the fail-OPEN direction, on the one branch whose
+# entire job is to stop `rm -rf` descending into a mounted filesystem, and a
+# checkout under a directory with a space in it is ordinary on macOS.
+#
+# `\134` is decoded LAST. A literal backslash in a real path arrives as `\134`, so
+# decoding it first would turn `\134040` into `\040` and the next rule would then
+# read a backslash-escape the path never contained.
+#
+# `read -r` is required: without it the shell would consume those backslashes
+# before any rule ran.
+# `mode` is `exact` or `subtree`. `subtree` matches the path ITSELF or anything
+# BELOW it, which is what turns this from a predicate to keep extending into a
+# closed question - see ew_lane_contains_a_mount.
+#   ew_lane_mountinfo_lists <mountinfo-file> <resolved-path> [exact|subtree]
 ew_lane_mountinfo_lists() {
-  local mi_target
+  local mode="${3:-exact}" mi_target
   while read -r _ _ _ _ mi_target _; do
     mi_target="${mi_target//\\040/ }"
     mi_target="${mi_target//\\011/$'\t'}"
     mi_target="${mi_target//\\012/$'\n'}"
     mi_target="${mi_target//\\134/\\}"
     [ "$mi_target" = "$2" ] && return 0
+    if [ "$mode" = "subtree" ]; then
+      case "$mi_target" in
+        "$2"/*) return 0 ;;
+      esac
+    fi
   done < "$1"
   return 1
 }
@@ -277,6 +285,40 @@ ew_lane_is_mount_point() {
   parent_dev="$(ew_lane_device_of "$path/..")" || return 0
   [ -n "$dev" ] && [ -n "$parent_dev" ] || return 0
   [ "$dev" != "$parent_dev" ]
+}
+
+# Is ANY filesystem mounted at this path or anywhere beneath it?
+#
+# **THIS IS THE SIXTH CONSECUTIVE REVIEW ROUND ON ONE ROOT, AND THE ROOT IS THAT I
+# KEPT DESCRIBING THE SET INSTEAD OF ENUMERATING IT (#2408 review r11).** The
+# members, in the order review found them: the lane itself is a mount; `build` or
+# `lanes` is a mount; a same-device bind mount defeats a device-number
+# comparison; a mount sits BELOW the lane rather than at it; and a same-device
+# bind mount below the lane defeats `-xdev` as well. Each fix was correct and
+# each exposed the next, which is the signature this repo already names.
+#
+# **The closed question is not "is this directory a mount", which is a property I
+# have to keep testing better. It is "what does the kernel say is mounted", which
+# is a FINITE LIST I can read.** One pass over that table answers every member
+# above and every member nobody has thought of yet, because it does not test a
+# property at all.
+#
+# `-xdev` stays on the removal and is NOT redundant: it is the only protection
+# where this table cannot be read.
+#
+# PLATFORM BOUNDARY, stated rather than implied. `/proc/self/mountinfo` is Linux,
+# and Linux is where `mount --bind` exists - so the case this closes and the means
+# of closing it arrive together. macOS has no same-device bind mount in the
+# ordinary configuration, and there `-xdev` plus the entry check carry it.
+# `/sbin/mount` is deliberately NOT parsed as a fallback: its output is
+# `dev on /path (fs, opts)`, which cannot be split unambiguously for a path
+# containing " on " or " (", and a mount check that is WRONG about a path is
+# worse than one that is honest about its scope.
+#   ew_lane_contains_a_mount <path>
+ew_lane_contains_a_mount() {
+  [ -r /proc/self/mountinfo ] || return 1
+  ew_lane_resolved_path "$1" || return 1
+  ew_lane_mountinfo_lists /proc/self/mountinfo "$EW_LANE_RESOLVED" subtree
 }
 
 # Can `rm -rf` escape the tree through this component? TWO ways, and `-L` sees
@@ -361,6 +403,13 @@ ew_take_default_lane() {
 ew_lane_remove_tree() {
   local entry="$1"
   [ -n "$entry" ] || return 2
+  # ASK THE KERNEL WHAT IS MOUNTED UNDER HERE BEFORE REMOVING ANYTHING. This is
+  # the check that closes the class; `-xdev` below is the floor for where the
+  # table cannot be read.
+  if ew_lane_contains_a_mount "$entry"; then
+    echo "ew_lane_remove_tree: something is mounted at or below $entry - refusing" >&2
+    return 1
+  fi
   /usr/bin/find "$entry" -xdev -delete
   [ ! -e "$entry" ]
 }

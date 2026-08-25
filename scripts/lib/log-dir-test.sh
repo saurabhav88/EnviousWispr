@@ -578,6 +578,43 @@ else
 fi
 chmod 700 "$STUCK"
 
+echo "== the mount question is asked of the WHOLE SUBTREE, not one directory =="
+# Six review rounds each found a new way a mount could be inside the tree being
+# deleted: the lane is a mount; a parent is; a same-device bind mount defeats a
+# device comparison; the mount is BELOW the lane; a same-device bind mount below
+# the lane defeats `-xdev` too. Each fix exposed the next, which is the signature
+# of describing a set instead of enumerating one.
+#
+# `subtree` mode stops testing a PROPERTY and reads the kernel's own finite list,
+# so a mount anywhere beneath a lane is found without anyone predicting where.
+SUBMI="$SANDBOX/mountinfo-sub"
+cat > "$SUBMI" <<'MIEOF'
+25 30 0:23 / /proc rw,nosuid shared:5 - proc proc rw
+26 30 0:24 / /build/lanes/111/app-logger/external rw,relatime shared:6 - ext4 /dev/sda1 rw
+MIEOF
+ew_lane_mountinfo_lists "$SUBMI" /build/lanes/111 subtree \
+  && ok "a mount BELOW the path is found in subtree mode" \
+  || bad "a mount BELOW the path is found in subtree mode" "missed"
+# The rejected twin for the MODE: exact mode must still answer only about the
+# path itself, or the mount-point check one layer up starts reporting every
+# ancestor of every mount as a mount.
+if ew_lane_mountinfo_lists "$SUBMI" /build/lanes/111 exact; then
+  bad "exact mode still answers only about the path itself" "matched a descendant"
+else
+  ok "exact mode still answers only about the path itself"
+fi
+# The rejected twin for the PREFIX: a sibling that merely shares a name prefix is
+# not below it. `/build/lanes/1110` must not match `/build/lanes/111`.
+if ew_lane_mountinfo_lists "$SUBMI" /build/lanes/11 subtree; then
+  bad "a name-prefix sibling is not treated as a descendant" "matched /build/lanes/11"
+else
+  ok "a name-prefix sibling is not treated as a descendant"
+fi
+# And the path ITSELF still matches in subtree mode - it is at-or-below.
+ew_lane_mountinfo_lists "$SUBMI" /build/lanes/111/app-logger/external subtree \
+  && ok "subtree mode still matches the path itself" \
+  || bad "subtree mode still matches the path itself" "missed"
+
 echo "== the removal cannot cross a filesystem boundary =="
 # THE PROPERTY THE WHOLE FUNCTION EXISTS FOR, and nothing short of a REAL mount
 # can bind it: `rm -rf` and `find -xdev -delete` are indistinguishable on any
@@ -627,6 +664,63 @@ if command -v hdiutil >/dev/null 2>&1 && command -v diskutil >/dev/null 2>&1; th
   trap - EXIT
 else
   skip "a mount nested below a lane is not descended into" "hdiutil/diskutil absent"
+fi
+
+echo "== the removal REFUSES when the mount table names anything below the lane =="
+# The check that closes the six-round class, and on macOS its branch is
+# unreachable: `/proc/self/mountinfo` does not exist, so `ew_lane_contains_a_mount`
+# always answers no and a mutant that deletes the call survives. That is exactly
+# how rounds 6, 7 and 9 of this PR each shipped a defect - a fix inside a branch
+# the suite cannot drive.
+#
+# Driven through a PRIVATE COPY of the lib with the table path repointed, never
+# by giving the shipped function an env knob: a knob on a guard is an unlogged
+# way to disable it, and pointing it at an empty file is precisely the bypass.
+# The rewrite FAILS CLOSED - a `sed` that matched nothing would leave the copy
+# reading the real `/proc` path and the row would pass having proved nothing.
+COPY="$SANDBOX/log-dir-mountcheck.sh"
+FAKEMI="$SANDBOX/fake-mountinfo"
+sed 's#/proc/self/mountinfo#'"$FAKEMI"'#g' "$HERE/log-dir.sh" > "$COPY"
+if [ "$(/usr/bin/grep -c "$FAKEMI" "$COPY")" -ge 3 ]; then
+  (
+    # shellcheck disable=SC1090
+    . "$COPY"
+    LANE="$SANDBOX/refusal/build/lanes/1787000000-9"
+    mkdir -p "$LANE/app-logger/external"
+    echo "not-ours" > "$LANE/app-logger/external/precious.txt"
+    RESOLVED="$(cd "$LANE" && pwd -P)"
+    printf '26 30 0:24 / %s/app-logger/external rw - ext4 /dev/sda1 rw\n' "$RESOLVED" > "$FAKEMI"
+    if ew_lane_remove_tree "$LANE" 2>/dev/null; then
+      echo "MOUNTCHECK-FAIL removal reported success"
+    elif [ ! -f "$LANE/app-logger/external/precious.txt" ]; then
+      echo "MOUNTCHECK-FAIL removal refused but had already deleted"
+    else
+      echo "MOUNTCHECK-OK"
+    fi
+    # The accepted twin, in the same rig: with NOTHING listed below the lane the
+    # removal must still work, or "refuses" would be indistinguishable from
+    # "never removes anything".
+    : > "$FAKEMI"
+    if ew_lane_remove_tree "$LANE" 2>/dev/null && [ ! -e "$LANE" ]; then
+      echo "MOUNTCHECK-CLEAR-OK"
+    else
+      echo "MOUNTCHECK-CLEAR-FAIL"
+    fi
+  ) > "$SANDBOX/mountcheck.out" 2>&1
+  if /usr/bin/grep -q "MOUNTCHECK-OK" "$SANDBOX/mountcheck.out"; then
+    ok "a lane with a mount listed below it is not removed"
+  else
+    bad "a lane with a mount listed below it is not removed" \
+        "$(tr '\n' ' ' < "$SANDBOX/mountcheck.out")"
+  fi
+  if /usr/bin/grep -q "MOUNTCHECK-CLEAR-OK" "$SANDBOX/mountcheck.out"; then
+    ok "a lane with nothing mounted below it is still removed"
+  else
+    bad "a lane with nothing mounted below it is still removed" \
+        "$(tr '\n' ' ' < "$SANDBOX/mountcheck.out")"
+  fi
+else
+  bad "the mount-check copy was repointed" "sed did not rewrite the table path"
 fi
 
 echo "== taking a default lane is atomic, not assumed =="
