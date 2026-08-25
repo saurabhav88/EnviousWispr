@@ -73,6 +73,11 @@ cd "$PROJECT_ROOT"
 USING_DEFAULT_LOG_DIR=0
 [ -z "$LOG_DIR" ] && USING_DEFAULT_LOG_DIR=1
 LOG_DIR="$(ew_resolve_log_dir "$PROJECT_ROOT" "$LOG_DIR")"
+# A DEFAULT lane is named by pid, and pids recycle — so taking the directory
+# means clearing it, or a debug-only run inherits the previous occupant's Release
+# receipt (#2408 review r2). Never for an explicit `--log-dir`: that directory
+# belongs to the caller and may be one they are deliberately filling.
+[ "$USING_DEFAULT_LOG_DIR" = "1" ] && ew_reset_lane_dir "$PROJECT_ROOT" "$LOG_DIR"
 mkdir -p "$LOG_DIR"   # absent on a clean checkout
 APP_LOG_DIR="$LOG_DIR/app-logger"
 mkdir -p "$APP_LOG_DIR"

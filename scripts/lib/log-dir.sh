@@ -49,9 +49,13 @@
 # Echoes an ABSOLUTE directory path. An empty `requested` yields a
 # CONCURRENCY-ISOLATED directory, `<project_root>/build/lanes/$$`. That is the
 # honest name for it: two concurrent processes cannot share a pid, which is the
-# whole defect, while a LATER run can revisit a recycled pid — harmless, because
-# `tee` replaces the lane log and the bundle is deliberately replaced. It is not
-# globally unique and no timestamp is needed to make it so.
+# whole defect, while a LATER run can revisit a recycled pid. It is not globally
+# unique and no timestamp is needed to make it so — the caller CLEARS the
+# directory instead, via `ew_reset_lane_dir`.
+# An earlier version of this comment called reuse HARMLESS. It is not: a
+# debug-only run replaces only the debug artifacts, so a recycled lane keeps the
+# previous occupant's Release log and bundle beside fresh Debug ones, and
+# `app-logger` appends. Clearing is part of taking the directory.
 # A relative `requested` is taken as relative to the project root, never to the
 # caller's cwd — a lane's log belongs to the WORKTREE being tested, and cwd is
 # not a stable identity on a machine running five of them
@@ -88,6 +92,51 @@ ew_resolve_log_dir() {
 # in practice they would never be tested at all — and both of them delete or
 # replace things. The resolver stays side-effect free; these are separate
 # functions so that property is not quietly lost.
+
+# Give a recycled pid a CLEAN lane (#2408 review r2).
+#
+# The resolver's own header calls pid reuse harmless, and that was WRONG in one
+# case I asked about and answered badly. A later run replaces only what it
+# writes: a DEBUG-only invocation landing on a recycled pid overwrites the debug
+# log and bundle and leaves the previous occupant's `xcode-test-release.log` and
+# release `.xcresult` sitting beside them, while `app-logger` appends rather than
+# replaces. So a reader of `latest-lane` would find a stale Release receipt next
+# to a fresh Debug one and no way to tell — which is this pair of issues' whole
+# subject, arriving through the fix for it.
+#
+# Clearing is therefore part of taking the directory, not an optimisation.
+#
+# SCOPED HARD, because this deletes and it runs unattended: the path must sit
+# directly under `<project_root>/build/lanes/` and its basename must be all
+# digits, which is the shape the resolver produces and nothing a caller can talk
+# it into. Anything else is refused rather than cleaned — a wrong refusal costs a
+# stale file, a wrong delete costs someone's work.
+#   ew_reset_lane_dir <project_root> <lane_dir>
+ew_reset_lane_dir() {
+  local project_root="$1" lane_dir="$2"
+
+  if [ -z "$project_root" ] || [ -z "$lane_dir" ]; then
+    echo "ew_reset_lane_dir: project_root and lane_dir are required" >&2
+    return 2
+  fi
+
+  local base="${lane_dir##*/}"
+  case "$lane_dir" in
+    "$project_root/build/lanes/$base") ;;
+    *)
+      echo "ew_reset_lane_dir: refusing a path outside <root>/build/lanes: $lane_dir" >&2
+      return 2
+      ;;
+  esac
+  case "$base" in
+    "" | *[!0-9]*)
+      echo "ew_reset_lane_dir: refusing a lane name that is not a pid: $base" >&2
+      return 2
+      ;;
+  esac
+
+  rm -rf "$lane_dir"
+}
 
 # Publish "the last lane I ran" at a stable address (#2396).
 #

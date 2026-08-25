@@ -221,6 +221,61 @@ else
   bad "an absent lanes/ tree is a no-op" "returned nonzero"
 fi
 
+echo "== a recycled pid gets a CLEAN lane =="
+# The case the resolver's header used to call harmless and is not. A later run
+# replaces only what IT writes, so a debug-only run landing on a recycled pid
+# would keep the previous occupant's Release receipt beside a fresh Debug one —
+# a stale artifact read as current, which is this pair of issues' whole subject.
+mkdir -p "$SANDBOX/build/lanes/4242"
+: > "$SANDBOX/build/lanes/4242/xcode-test-release.log"
+: > "$SANDBOX/build/lanes/4242/xcode-test-debug.log"
+mkdir -p "$SANDBOX/build/lanes/4242/app-logger"
+: > "$SANDBOX/build/lanes/4242/app-logger/app.log"
+ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/4242" >/dev/null 2>&1
+if [ ! -e "$SANDBOX/build/lanes/4242/xcode-test-release.log" ] \
+  && [ ! -e "$SANDBOX/build/lanes/4242/app-logger/app.log" ]; then
+  ok "a recycled lane keeps no previous artifact"
+else
+  bad "a recycled lane keeps no previous artifact" "$(ls -R "$SANDBOX/build/lanes/4242" 2>/dev/null | tr '\n' ' ')"
+fi
+
+# Scoping. This deletes and runs unattended, so the refusals matter more than the
+# success: it must decline anything that is not the shape the resolver produces.
+mkdir -p "$SANDBOX/build/lanes/notapid" "$SANDBOX/build/other"
+: > "$SANDBOX/build/other/keep.txt"
+ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/notapid" >/dev/null 2>&1
+[ "$?" -eq 2 ] && [ -d "$SANDBOX/build/lanes/notapid" ] \
+  && ok "a lane name that is not a pid is refused" \
+  || bad "a lane name that is not a pid is refused" "removed or wrong rc"
+
+# THESE TWO MUST USE AN ALL-DIGIT BASENAME, or they do not test what they name.
+# Written first with `other` and `nested` as the basenames, both were refused by
+# the PID-SHAPE guard and passed while the PATH-SCOPE guard was deleted —
+# a control caught it: removing that guard left the suite fully green. A fixture
+# that cannot tell two guards apart reports on whichever one happens to fire.
+mkdir -p "$SANDBOX/build/other/4242"
+: > "$SANDBOX/build/other/4242/keep.txt"
+ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/other/4242" >/dev/null 2>&1
+[ "$?" -eq 2 ] && [ -f "$SANDBOX/build/other/4242/keep.txt" ] \
+  && ok "a pid-shaped path OUTSIDE lanes/ is refused" \
+  || bad "a pid-shaped path OUTSIDE lanes/ is refused" "removed or wrong rc"
+
+# Nesting is the one that would let a caller walk out of the scope, and it is
+# pid-shaped at every level so only the path guard can refuse it.
+mkdir -p "$SANDBOX/build/lanes/99/4242"
+: > "$SANDBOX/build/lanes/99/4242/keep.txt"
+ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/99/4242" >/dev/null 2>&1
+[ "$?" -eq 2 ] && [ -f "$SANDBOX/build/lanes/99/4242/keep.txt" ] \
+  && ok "a pid-shaped path NESTED under lanes/ is refused" \
+  || bad "a pid-shaped path NESTED under lanes/ is refused" "removed or wrong rc"
+
+# An absent lane is a no-op, not an error: the common case is a fresh pid.
+if ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/7777" >/dev/null 2>&1; then
+  ok "an absent lane is a no-op"
+else
+  bad "an absent lane is a no-op" "returned nonzero"
+fi
+
 echo "== both refuse rather than guessing =="
 ew_publish_latest_lane "$SANDBOX" "" >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "publish refuses a missing lane_dir" || bad "publish refuses a missing lane_dir" "rc=$?"
