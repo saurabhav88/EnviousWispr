@@ -51,6 +51,26 @@ enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
   /// The wide panel that shows words as you speak. Content-sized from the first
   /// frame so it does not visibly snap as lines wrap.
   case readingWell
+  /// A wider capsule carrying the clock beside a live rainbow level rail, and no
+  /// lips mark (#2376 Phase 4, C5).
+  ///
+  /// **Named for what it DRAWS, following `.readingWell`'s own reasoning.** A
+  /// design named for a capability makes the settings group label and the card
+  /// label the same word; `.levelRail` says nothing about words, preview or live
+  /// anything, so it survives a capability rename and can never be read as the
+  /// with-words option. `.compact` or `.minimal` would name what it LACKS, and
+  /// `.waveform` collides with the ASR vocabulary already in the tree.
+  ///
+  /// **It closes a real gap rather than adding a variation.**
+  /// `RainbowLevelMeter` has exactly one production construction site — inside the
+  /// reading well's header — so the meter shipped in #2216 is reachable only by
+  /// users who can and do run live preview. This offers it to everyone else.
+  ///
+  /// It cannot hold words BY CONSTRUCTION rather than by policy: `canHoldWords`
+  /// is false, so `OverlayRenderModel` installs `{ .off }` and the leaf renders
+  /// no well at all, and its chrome carries no well insets and no fade — there is
+  /// nowhere for text to go even if a provider were installed.
+  case levelRail
 
   /// Whether this design can display transcribed words while recording.
   ///
@@ -61,7 +81,7 @@ enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
   /// is on screen; C3a derived that value from this one and C3b deleted it.
   var canHoldWords: Bool {
     switch self {
-    case .classic: return false
+    case .classic, .levelRail: return false
     case .readingWell: return true
     }
   }
@@ -72,6 +92,11 @@ enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
     switch self {
     case .classic: return 185
     case .readingWell: return 400
+    // Wide enough that the rail is the pill's subject rather than an ornament
+    // beside the clock, and unmistakably not 185 at a glance. A CHOSEN number,
+    // not a measured one — there is no mockup in the tree — and the one value in
+    // this design a founder should move before it ships.
+    case .levelRail: return 260
     }
   }
 
@@ -79,7 +104,17 @@ enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
   /// site. The classic pill reserves a fixed box; the reading well does not.
   var reservedHeight: CGFloat? {
     switch self {
-    case .classic: return 92
+    // **92 IS THE WITHOUT-WORDS NOTICE BUDGET, and it is inherited rather than
+    // chosen.** The #1060 in-panel banner is rendered by every layout from one
+    // `Text` inside the root stack, and a design that cannot hold words is handed
+    // a no-op growth callback by `OverlayRenderModel` — so it CANNOT resize its
+    // window when the banner arrives mid-recording. Measured 2026-08-25: the
+    // longest shipped banner fills this box EXACTLY, with zero headroom, and a
+    // three-line sentence measures 120 and would be clipped in silence. A 40 or
+    // 44-point box would clip the graceful-cap warning on a shipping path with no
+    // test able to see it, which is why `.levelRail` takes the same number as
+    // `.classic` rather than one sized to its own contents.
+    case .classic, .levelRail: return 92
     case .readingWell: return nil
     }
   }

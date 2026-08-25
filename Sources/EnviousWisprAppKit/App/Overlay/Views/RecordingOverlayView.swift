@@ -91,6 +91,11 @@ struct RecordingPillChrome: Equatable, Sendable {
     case mark
     /// The ruled strip: clock, live meter, mode badge (#2202).
     case meterStrip
+    /// The clock beside a full-width level rail, with the clock visible in BOTH
+    /// lock states (#2376 C5). That is the founder call already recorded for the
+    /// reading well's header: hands-free is the mode that runs for minutes, so it
+    /// is the one that needs a clock.
+    case clockAndRail
   }
 
   let header: Header
@@ -157,6 +162,30 @@ extension RecordingPillDesign {
         showsListeningSentence: true,
         noticeInk: .capsuleWhite,
         noticeMaxWidth: 170,
+        noticeInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
+        wellInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
+        wellInk: .capsuleWhite,
+        fadesWhenWellIsFull: false,
+        isContentSizedVertically: reservedHeight == nil)
+
+    case .levelRail:
+      // Every value here is `.classic`'s, except the header and the notice cap.
+      // That is deliberate rather than lazy: this is a without-words capsule, so
+      // it inherits the group's insets, corner, ink, animation and notice budget,
+      // and differs only in what it DRAWS. A design that also moved its paddings
+      // would be changing two things at once with one of them unmotivated.
+      return RecordingPillChrome(
+        header: .clockAndRail,
+        stackSpacing: 6,
+        rootInsets: EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14),
+        cornerStyle: .capsule,
+        levelAnimation: .none,
+        showsListeningSentence: false,
+        noticeInk: .capsuleWhite,
+        // 260 less the 14pt root inset either side. Stated as the arithmetic it
+        // is, because a bare 232 beside a 260-wide design reads as a second
+        // measurement nobody took.
+        noticeMaxWidth: 232,
         noticeInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
         wellInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
         wellInk: .capsuleWhite,
@@ -343,6 +372,21 @@ struct RecordingOverlayView: View {
       switch chrome.header {
       case .meterStrip:
         previewHeader
+      case .clockAndRail:
+        HStack(spacing: 10) {
+          // The clock in BOTH lock states, unlike the capsule which hides it when
+          // locked. Same treatment as the capsule's own clock so the two designs
+          // are not gratuitously different where they agree.
+          Text(FormattingConstants.formatDuration(elapsed))
+            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+            .foregroundStyle(.white)
+          // Taller and wider-barred than the reading well's, so the rail rather
+          // than the clock is what the eye lands on. No lips mark: the rail IS
+          // the audio-reactive element, and two of them would compete.
+          RainbowLevelMeter(
+            audioLevel: audioLevel, tick: audioTick, height: 24, barWidth: 3, spacing: 2)
+        }
+
       case .mark:
         HStack(spacing: 10) {
           // Rainbow lips icon — audio-reactive during recording.

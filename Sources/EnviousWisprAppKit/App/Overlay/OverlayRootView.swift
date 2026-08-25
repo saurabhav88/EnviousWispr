@@ -179,7 +179,11 @@ struct OverlayRootView: View {
       // Width only. The height is content-driven so the pill earns its size a
       // line at a time rather than snapping once the real height is measured.
       view.frame(width: design.width)
-    case .classic:
+    case .classic, .levelRail:
+      // The shared without-words arm: both reserve a fixed interaction frame, and
+      // both do it for the same reason — the #1060 banner has to fit a box neither
+      // can grow out of.
+      //
       // #1341: Bottom bottom-aligns, Top centres. Centring in Bottom leaves ~24
       // points of invisible space under a ~44-point capsule, which mutes the
       // Bottom offset and visibly misaligns the polishing pill that replaces it.
