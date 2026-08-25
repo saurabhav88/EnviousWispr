@@ -3,6 +3,185 @@ import EnviousWisprCore
 import EnviousWisprPipeline
 import SwiftUI
 
+// MARK: - What a design tells the recording leaf to draw
+
+/// Which ink a piece of the recording pill is painted in (#2376 Phase 4, C2).
+///
+/// **An enum, not a `Color`, and the reason is that ONE INK HAS TWO ROLES.** An
+/// earlier version of this comment said a `Color` would leave the treatment
+/// unassertable; that is false and worth stating plainly, because SwiftUI's
+/// `Color` is both `Equatable` and `Sendable` and a stored one would compare
+/// fine. The real reason is structural: a design's ink has to answer for the
+/// #1060 notice AND for the reading well's text in two dimming states, so a
+/// `Color` field could not carry it without two or three fields that are free to
+/// disagree about which palette this pill is in. A case names the palette once.
+///
+/// Resolved to a `Color` here, once per case, so the capsule's frozen notice
+/// literal keeps its single occurrence across the two files
+/// `CapsuleBackgroundFreezeTests.capsuleSourcePaths` names.
+enum PillInk: Equatable, Sendable {
+  /// The capsule's own white, as every without-words pill has always drawn it.
+  case capsuleWhite
+  /// The light reading-well palette (#2204).
+  case previewPalette
+
+  /// The #1060 in-panel notice's colour.
+  var notice: Color {
+    switch self {
+    case .capsuleWhite: return Color.white.opacity(0.95)
+    case .previewPalette: return PreviewPillPalette.notice
+    }
+  }
+
+  /// The reading well's text colour, which has a dimmed variant for the
+  /// "listening" and "unavailable" states.
+  func well(dimmed: Bool) -> Color {
+    switch self {
+    case .capsuleWhite: return .white.opacity(dimmed ? 0.5 : 0.92)
+    case .previewPalette: return dimmed ? PreviewPillPalette.textDimmed : PreviewPillPalette.text
+    }
+  }
+}
+
+/// Whether the container animates when the audio level ticks.
+///
+/// **A case rather than an `Animation?`, and NOT because `Animation` cannot be
+/// compared — it is `Equatable` and `Sendable`.** The reason is that a stored
+/// `nil` says nothing: it records that this design animates nothing and loses
+/// WHY, which here is a measured constraint rather than a taste. A case carries
+/// the policy and its reason to every design that selects it.
+enum PillLevelAnimation: Equatable, Sendable {
+  /// No container animation on the level. The reading well selects this: the
+  /// level is repolled every 50 ms, so a container animation fires ~20 times a
+  /// second and animates whatever else changed in the same update — including
+  /// the preview text, and therefore the pill's HEIGHT (#2201).
+  case none
+  /// The capsule's shipped 80 ms ease-out.
+  case capsuleEaseOut
+
+  var resolved: Animation? {
+    switch self {
+    case .none: return nil
+    case .capsuleEaseOut: return .easeOut(duration: 0.08)
+    }
+  }
+}
+
+/// Everything about the recording pill's appearance that varies by DESIGN.
+///
+/// **This replaces eighteen reads of a `usesPreviewLayout` boolean**, which
+/// expressed exactly two designs and would have needed a branch per design for a
+/// third — and every one of those branches is a place where one design can be
+/// wrong in isolation while the others look fine. The leaf is now HANDED what to
+/// draw and reads no capability of its own.
+///
+/// **`canHoldWords` is NOT here and must never be.** It is a capability fact the
+/// director reads to decide whether to install a live-preview provider at all
+/// (`OverlayRenderModel.setRecordingProviders`); it is not a look. Whether the
+/// well has any words in it is decided upstream, and this value only says what
+/// the well looks like when it does.
+///
+/// Every field is a per-design literal except `isContentSizedVertically`, whose
+/// derivation is documented at its own declaration.
+struct RecordingPillChrome: Equatable, Sendable {
+
+  /// What sits above the preview area.
+  enum Header: Equatable, Sendable {
+    /// The rainbow-lips mark beside the clock, the clock hidden when locked.
+    case mark
+    /// The ruled strip: clock, live meter, mode badge (#2202).
+    case meterStrip
+  }
+
+  let header: Header
+  /// #2202 row 1 of the shared-root table: the capsule wants 6pt between its
+  /// stacked pieces; the preview puts a ruled header directly against its
+  /// reading well and supplies its own spacing inside each section.
+  let stackSpacing: CGFloat
+  /// #2202 row 8. The capsule keeps its uniform inset; the preview zeroes it and
+  /// each section supplies its own, because a header strip over a reading well
+  /// does not want one rectangle of padding wrapped around both.
+  let rootInsets: EdgeInsets
+  let cornerStyle: OverlayCapsuleBackground.CornerStyle
+  let levelAnimation: PillLevelAnimation
+  /// #2202: the preview layout's header already says `Listening`, so repeating
+  /// the sentence in the well would greet a first-time user with the same word
+  /// twice in one small box. The capsule has no header, so it keeps it.
+  let showsListeningSentence: Bool
+  /// #2204: the notice is rendered by every layout from one `Text`, and white is
+  /// invisible on a light pill.
+  let noticeInk: PillInk
+  /// `nil` means the notice may use the pill's full width. 170pt suits the 185pt
+  /// capsule; the reading well is 400pt wide, so the same cap would wrap a
+  /// one-line warning into three inside a box with room to spare.
+  let noticeMaxWidth: CGFloat?
+  /// #2202 row 4. The notice's ONLY inset came from the shared root padding,
+  /// which the preview zeroes — without a replacement it sits flush against the
+  /// pill's bottom edge.
+  let noticeInsets: EdgeInsets
+  /// #2202: the well's own inset, replacing what the shared root padding used to
+  /// give it.
+  let wellInsets: EdgeInsets
+  let wellInk: PillInk
+  /// #2203: fade the well's top edge when something is scrolling off it.
+  let fadesWhenWellIsFull: Bool
+  /// #2201: whether the root stack reports its IDEAL height whatever it is
+  /// offered, so the pill's height is a function of what it is SHOWING rather
+  /// than of how tall it happens to be already.
+  ///
+  /// **DERIVED from the design's own `reservedHeight`, never typed twice.** A
+  /// design that reserves a fixed box is not content-sized by definition, and the
+  /// two answers disagreeing is how a pill comes to be measured inside the panel
+  /// that is being sized from that measurement — the loop #2201 settled.
+  let isContentSizedVertically: Bool
+}
+
+extension RecordingPillDesign {
+
+  /// What this design tells the leaf to draw.
+  ///
+  /// **Every value was read off the base revision's own branches, not designed
+  /// here.** `.classic` is the `false` side of all eighteen `usesPreviewLayout`
+  /// reads and `.readingWell` the `true` side, so this table is the shipped
+  /// behaviour written down — which is what makes the C1 frozen rows a real
+  /// receipt rather than an agreement between two things I wrote today.
+  var chrome: RecordingPillChrome {
+    switch self {
+    case .classic:
+      return RecordingPillChrome(
+        header: .mark,
+        stackSpacing: 6,
+        rootInsets: EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14),
+        cornerStyle: .capsule,
+        levelAnimation: .capsuleEaseOut,
+        showsListeningSentence: true,
+        noticeInk: .capsuleWhite,
+        noticeMaxWidth: 170,
+        noticeInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
+        wellInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
+        wellInk: .capsuleWhite,
+        fadesWhenWellIsFull: false,
+        isContentSizedVertically: reservedHeight == nil)
+
+    case .readingWell:
+      return RecordingPillChrome(
+        header: .meterStrip,
+        stackSpacing: 0,
+        rootInsets: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0),
+        cornerStyle: .rounded,
+        levelAnimation: .none,
+        showsListeningSentence: false,
+        noticeInk: .previewPalette,
+        noticeMaxWidth: nil,
+        noticeInsets: EdgeInsets(top: 0, leading: 16, bottom: 12, trailing: 16),
+        wellInsets: EdgeInsets(top: 12, leading: 16, bottom: 15, trailing: 16),
+        wellInk: .previewPalette,
+        fadesWhenWellIsFull: true,
+        isContentSizedVertically: reservedHeight == nil)
+    }
+  }
+}
+
 // MARK: - RecordingOverlayView
 
 /// Compact recording indicator overlay.
@@ -19,16 +198,25 @@ struct RecordingOverlayView: View {
   /// showing anything more.
   let livePreviewProvider: () -> LivePreviewDisplay
   /// #1988: reports the capsule's measured height so the panel can follow it as the
-  /// preview grows. No-op when the preview is off.
-  var onContentHeightChange: (CGFloat) -> Void = { _ in }
-  /// #1988: whether this pill is the tall preview layout. Passed in rather than
-  /// derived from the display state, which remains `.off` until the polling task
-  /// first runs and would flash the capsule shape before that first read.
+  /// preview grows.
   ///
-  /// #2201: the previous wording said "for one 50 ms poll", which names a duration
-  /// the code does not have — the task reads its providers BEFORE its first sleep,
-  /// so the window is until it is first scheduled, not a fixed 50 ms.
-  var usesPreviewLayout: Bool = false
+  /// **No default, deliberately** (#2376 C2). A property default plus an init
+  /// default leaves NO TOKEN at the call site, so a caller that meant to pass one
+  /// and did not compiles and ships a pill whose window never follows its
+  /// content. `OverlayRenderModel` already substitutes a no-op for a design that
+  /// cannot grow, which is the one place that decision belongs.
+  let onContentHeightChange: (CGFloat) -> Void
+  /// What this pill DRAWS, handed in by the root from the resolved design.
+  ///
+  /// **This replaces `usesPreviewLayout`, and the replacement is a value rather
+  /// than a wider boolean** (#2376 C2). The old flag was read eighteen times and
+  /// branched on nearly all of them; a third design would have made every one of
+  /// those a place where one design could be wrong while the others looked right. It was
+  /// also passed in rather than derived from the display state — which remains
+  /// `.off` until the polling task first runs and would flash the capsule shape
+  /// before that first read — and that reasoning transfers unchanged: the chrome
+  /// is decided upstream and this view never asks what the pill is capable of.
+  let chrome: RecordingPillChrome
   var lockState: OverlayLockState
   /// #1060: transient notice banner shown inside the recording capsule.
   var noticeState: OverlayNoticeState
@@ -57,8 +245,8 @@ struct RecordingOverlayView: View {
     audioLevelProvider: @escaping () -> Float,
     recordingElapsedProvider: @escaping () -> TimeInterval? = { nil },
     livePreviewProvider: @escaping () -> LivePreviewDisplay,
-    onContentHeightChange: @escaping (CGFloat) -> Void = { _ in },
-    usesPreviewLayout: Bool = false,
+    onContentHeightChange: @escaping (CGFloat) -> Void,
+    chrome: RecordingPillChrome,
     lockState: OverlayLockState,
     noticeState: OverlayNoticeState,
     initialPreview: LivePreviewDisplay = .off
@@ -67,7 +255,7 @@ struct RecordingOverlayView: View {
     self.recordingElapsedProvider = recordingElapsedProvider
     self.livePreviewProvider = livePreviewProvider
     self.onContentHeightChange = onContentHeightChange
-    self.usesPreviewLayout = usesPreviewLayout
+    self.chrome = chrome
     self.lockState = lockState
     self.noticeState = noticeState
     _preview = State(initialValue: initialPreview)
@@ -147,10 +335,15 @@ struct RecordingOverlayView: View {
     // #2202 row 1 of the shared-root table: the capsule wants 6pt between its
     // stacked pieces; the preview puts a ruled header directly against its
     // reading well and supplies its own spacing inside each section.
-    VStack(spacing: usesPreviewLayout ? 0 : 6) {
-      if usesPreviewLayout {
+    VStack(spacing: chrome.stackSpacing) {
+      // EXHAUSTIVE over the chrome's header, with no `default:`. A default here
+      // would let a header added later render as whichever neighbour the compiler
+      // happened to fall through to, which is this phase's named regression
+      // wearing a new case.
+      switch chrome.header {
+      case .meterStrip:
         previewHeader
-      } else {
+      case .mark:
         HStack(spacing: 10) {
           // Rainbow lips icon — audio-reactive during recording.
           // Scales to 2x in hands-free (locked) mode.
@@ -178,22 +371,19 @@ struct RecordingOverlayView: View {
           // #2204: the notice is rendered by BOTH layouts from this one `Text`,
           // and white is invisible on a light pill. Gated rather than made
           // dynamic, so the capsule's paint is unchanged to the byte.
-          .foregroundStyle(
-            usesPreviewLayout ? PreviewPillPalette.notice : Color.white.opacity(0.95)
-          )
+          .foregroundStyle(chrome.noticeInk.notice)
           .multilineTextAlignment(.center)
           .fixedSize(horizontal: false, vertical: true)
           // 170pt suits the 185pt capsule. The preview pill is 400pt wide, so the
           // same cap would wrap a one-line warning into three inside a box with
           // room to spare.
-          .frame(maxWidth: usesPreviewLayout ? .infinity : 170)
+          .frame(maxWidth: chrome.noticeMaxWidth ?? .infinity)
           // #2202 row 4 of the shared-root table. The notice is rendered by BOTH
           // layouts and its ONLY inset came from the shared root padding, which
           // the preview now zeroes — so without this it sits flush against the
           // pill's bottom edge. The header and the reading well each received
           // replacement padding; this is the third section and it was missed.
-          .padding(.horizontal, usesPreviewLayout ? 16 : 0)
-          .padding(.bottom, usesPreviewLayout ? 12 : 0)
+          .padding(chrome.noticeInsets)
           .transition(.opacity)
       }
     }
@@ -207,18 +397,17 @@ struct RecordingOverlayView: View {
     // preview text, and therefore the capsule's HEIGHT. That turned each genuine
     // resize into a smoothly animated one and drove `setFrame` once per frame.
     //
-    // The trigger VALUE is kept rather than deleted, so the non-preview capsule's
-    // animation is visibly untouched in the diff and the two branches sit side by
-    // side. Audio-reactive PAINT is unaffected in both: `RainbowLipsIcon` reads
-    // `audioLevel` directly and redraws without needing this.
+    // The trigger VALUE is kept rather than deleted, so the capsule's animation is
+    // visibly untouched. **There is no branch here any more** (#2376 C2): the
+    // policy is a field on the design's chrome, so each design states its own
+    // answer once instead of both answers sitting inline. Audio-reactive PAINT is
+    // unaffected either way: `RainbowLipsIcon` reads `audioLevel` directly and
+    // redraws without needing this.
     //
     // Not a violation of swift-patterns.md RULE: animate-the-container-not-children
     // — that forbids per-child `.animation(value:)`, and this adds none. The
     // container keeps its `lockState` and `noticeState` triggers in both layouts.
-    .animation(
-      usesPreviewLayout ? nil : .easeOut(duration: 0.08),
-      value: audioLevel
-    )
+    .animation(chrome.levelAnimation.resolved, value: audioLevel)
     .animation(.easeInOut(duration: 0.25), value: noticeState.message)
     // #2202 row 8 of the shared-root table. The capsule keeps its uniform inset;
     // the preview zeroes it and each section supplies its own, because a header
@@ -226,8 +415,7 @@ struct RecordingOverlayView: View {
     // around both. Migrated ATOMICALLY with the section padding above and below:
     // split across two commits, whatever shipped in between would have had no
     // insets at all.
-    .padding(.horizontal, usesPreviewLayout ? 0 : 14)
-    .padding(.vertical, usesPreviewLayout ? 0 : 10)
+    .padding(chrome.rootInsets)
     // #2201: the preview pill's height must be a function of what it is SHOWING,
     // never of how tall it happens to be already.
     //
@@ -250,11 +438,14 @@ struct RecordingOverlayView: View {
     // The 185pt capsule sits inside a fixed 92pt frame and is out of scope for
     // #2198; `vertical: false` leaves it exactly as it was.
     //
-    // **Order is load-bearing:** after both paddings, before both backgrounds. The
+    // **Order is load-bearing:** after the root inset, before both backgrounds.
+    // (It was "after both paddings" while the root applied a horizontal and a
+    // vertical modifier separately; #2376 C2 collapsed those into one
+    // `EdgeInsets`, and the ordering constraint is unchanged.) The
     // measurement is taken on the padded stack, so moving this either side of it
     // measures a different view than the one that was proven.
-    .fixedSize(horizontal: false, vertical: usesPreviewLayout)
-    .background(OverlayCapsuleBackground(cornerStyle: usesPreviewLayout ? .rounded : .capsule))
+    .fixedSize(horizontal: false, vertical: chrome.isContentSizedVertically)
+    .background(OverlayCapsuleBackground(cornerStyle: chrome.cornerStyle))
     // #1988: report the capsule's real height so the panel can follow it. Measured
     // on the capsule rather than computed from a line count, because only the text
     // engine knows how many lines a sentence wraps to at this width in this script.
@@ -314,10 +505,10 @@ struct RecordingOverlayView: View {
       // HAS a well; the defect was asking for a well to hold nothing. Fixed at the
       // call site rather than by making the shared padding conditional, which would
       // put an emptiness test inside a view that should not care.
-      if usesPreviewLayout {
-        EmptyView()
-      } else {
+      if chrome.showsListeningSentence {
         previewText(LivePreviewCopy.listening, dimmed: true, lines: 1)
+      } else {
+        EmptyView()
       }
     case .unavailable(let reason):
       // Say why rather than sitting blank. A blank preview reads as "it did not
@@ -353,7 +544,9 @@ struct RecordingOverlayView: View {
   /// measurement.
   private func previewText(_ message: String, dimmed: Bool, lines: Int) -> some View {
     PreviewWellText(
-      message: message, dimmed: dimmed, lines: lines, usesPreviewLayout: usesPreviewLayout)
+      message: message, dimmed: dimmed, lines: lines,
+      insets: chrome.wellInsets, ink: chrome.wellInk,
+      fadesWhenFull: chrome.fadesWhenWellIsFull)
   }
 
   /// #2203: ONE authority for preview typography. The `Text` and the cap both read
@@ -406,7 +599,13 @@ struct PreviewWellText: View {
   let message: String
   let dimmed: Bool
   let lines: Int
-  let usesPreviewLayout: Bool
+  /// The three chrome values this view needs, handed down rather than a copy of
+  /// the whole thing. **It used to carry `usesPreviewLayout` itself**, which made
+  /// it a second style authority one level below the leaf: the same boolean, read
+  /// again, free to disagree.
+  let insets: EdgeInsets
+  let ink: PillInk
+  let fadesWhenFull: Bool
 
   /// Whether the well is at its cap, and so whether anything is scrolling off the
   /// top. Written from a `GeometryReader` in the BACKGROUND of the capped frame,
@@ -422,11 +621,7 @@ struct PreviewWellText: View {
     Text(message)
       .font(.system(size: RecordingOverlayView.previewFontSize))
       .lineSpacing(RecordingOverlayView.previewLineSpacing)
-      .foregroundStyle(
-        usesPreviewLayout
-          ? (dimmed ? PreviewPillPalette.textDimmed : PreviewPillPalette.text)
-          : .white.opacity(dimmed ? 0.5 : 0.92)
-      )
+      .foregroundStyle(ink.well(dimmed: dimmed))
       .multilineTextAlignment(.leading)
       .fixedSize(horizontal: false, vertical: true)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -468,14 +663,12 @@ struct PreviewWellText: View {
       // box would clip at four-and-a-bit lines and the founder's five-line rule
       // would quietly stop holding — a number that looks like it means lines
       // while meaning something else.
-      .padding(.horizontal, usesPreviewLayout ? 16 : 0)
-      .padding(.top, usesPreviewLayout ? 12 : 0)
-      .padding(.bottom, usesPreviewLayout ? 15 : 0)
+      .padding(insets)
   }
 
   @ViewBuilder
   private var fadeMask: some View {
-    if usesPreviewLayout && wellIsFull {
+    if fadesWhenFull && wellIsFull {
       LinearGradient(
         stops: [
           .init(color: .clear, location: 0),

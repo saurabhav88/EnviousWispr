@@ -85,9 +85,16 @@ struct FrozenRecordingRow: Equatable, Sendable {
   /// reducer returns for the with-words case.
   let effectiveWidth: CGFloat
   let fixedHeight: CGFloat?
-  /// Captured so the surviving leaf adapter's equivalence is a measured row
-  /// rather than an argument. It outlives C3b: C3b deletes the layout value,
-  /// not the boolean the leaf still receives.
+  /// Captured so the design-versus-capability equivalence is a measured row
+  /// rather than an argument.
+  ///
+  /// **The NAME is base-revision vocabulary and is deliberately not renamed**: it
+  /// records what the base revision observed, and editing a frozen capture to
+  /// match today's names destroys the evidence it exists to be. What it means is
+  /// the CAPABILITY — whether that pill showed words — which is what
+  /// `RecordingPillDesign.canHoldWords` answers today. #2376 C2 deleted the leaf
+  /// API of the same name, so no leaf receives a boolean any more; this row is
+  /// unaffected because it never described the leaf.
   let usesPreviewLayout: Bool
 }
 

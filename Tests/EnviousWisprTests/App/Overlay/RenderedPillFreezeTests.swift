@@ -120,7 +120,7 @@ struct RenderedPillFreezeTests {
   @Test("the classic capsule measures what its own suite already pins")
   func classicAgreesWithTheIndependentPin() throws {
     let contentHeight = try RenderedPillHarness.recordingContentHeight(
-      usesPreviewLayout: false, width: 185)
+      design: .classic, width: 185)
     #expect(
       contentHeight == 44,
       """
@@ -192,7 +192,7 @@ struct RenderedPillFreezeTests {
     let budget = try #require(RecordingPillDesign.classic.reservedHeight)
     for locked in [false, true] {
       let height = try RenderedPillHarness.recordingContentHeight(
-        usesPreviewLayout: false, locked: locked,
+        design: .classic, locked: locked,
         notice: DictationNarrator.copy(for: reason), width: RecordingPillDesign.classic.width)
       #expect(
         height <= budget,
@@ -211,9 +211,9 @@ struct RenderedPillFreezeTests {
   @Test("a notice is what makes the capsule grow at all")
   func aNoticeGrowsTheCapsule() throws {
     let bare = try RenderedPillHarness.recordingContentHeight(
-      usesPreviewLayout: false, width: 185)
+      design: .classic, width: 185)
     let withNotice = try RenderedPillHarness.recordingContentHeight(
-      usesPreviewLayout: false,
+      design: .classic,
       notice: DictationNarrator.copy(for: .approachingCap), width: 185)
     #expect(
       withNotice > bare,

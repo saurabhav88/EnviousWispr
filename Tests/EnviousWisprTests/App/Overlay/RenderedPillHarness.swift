@@ -164,7 +164,7 @@ enum RenderedPillHarness {
   /// without-words design is also handed `onContentHeightChange = { _ in }` by
   /// `OverlayRenderModel`, so nothing in production reports this either.
   static func recordingContentHeight(
-    usesPreviewLayout: Bool,
+    design: RecordingPillDesign,
     locked: Bool = false,
     notice: String? = nil,
     display: LivePreviewDisplay = .off,
@@ -181,7 +181,7 @@ enum RenderedPillHarness {
       recordingElapsedProvider: { 127 },
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
-      usesPreviewLayout: usesPreviewLayout,
+      chrome: design.chrome,
       lockState: lockState,
       noticeState: noticeState,
       initialPreview: display)

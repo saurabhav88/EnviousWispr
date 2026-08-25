@@ -31,7 +31,7 @@ struct RecordingOverlayPreviewChromeTests {
   private func pillHeight(
     locked: Bool,
     showing display: LivePreviewDisplay,
-    usesPreviewLayout: Bool = true
+    design: RecordingPillDesign = .readingWell
   ) throws -> CGFloat {
     let log = HeightLog()
     let lockState = OverlayLockState()
@@ -42,7 +42,7 @@ struct RecordingOverlayPreviewChromeTests {
       recordingElapsedProvider: { 127 },
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
-      usesPreviewLayout: usesPreviewLayout,
+      chrome: design.chrome,
       lockState: lockState,
       noticeState: OverlayNoticeState(),
       initialPreview: display
@@ -118,13 +118,13 @@ struct RecordingOverlayPreviewChromeTests {
     "the capsule's height is untouched by this chunk, in both modes",
     arguments: [false, true])
   func capsuleHeightIsPinned(locked: Bool) throws {
-    let height = try pillHeight(locked: locked, showing: .off, usesPreviewLayout: false)
+    let height = try pillHeight(locked: locked, showing: .off, design: .classic)
     #expect(
       height == Self.capsuleContentHeight,
       """
       the capsule measured \(height)pt (locked: \(locked)), not the \
       \(Self.capsuleContentHeight)pt it has always been. This chunk is gated on \
-      usesPreviewLayout and must not reach the layout the founder reserved.
+      its own chrome and must not reach the layout the founder reserved.
       """)
   }
 
@@ -154,7 +154,7 @@ struct RecordingOverlayPreviewChromeTests {
       recordingElapsedProvider: { 127 },
       livePreviewProvider: { text },
       onContentHeightChange: { log.record($0) },
-      usesPreviewLayout: true,
+      chrome: RecordingPillDesign.readingWell.chrome,
       lockState: OverlayLockState(),
       noticeState: noticeState,
       initialPreview: text
@@ -230,8 +230,8 @@ struct RecordingOverlayPreviewChromeTests {
   /// would report clean after silently deleting it.
   @Test("the capsule still says something while waiting, because it has no header")
   func capsuleWaitingKeepsItsSentence() throws {
-    let waiting = try pillHeight(locked: false, showing: .waiting, usesPreviewLayout: false)
-    let off = try pillHeight(locked: false, showing: .off, usesPreviewLayout: false)
+    let waiting = try pillHeight(locked: false, showing: .waiting, design: .classic)
+    let off = try pillHeight(locked: false, showing: .off, design: .classic)
 
     #expect(
       waiting > off,

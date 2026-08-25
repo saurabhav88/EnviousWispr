@@ -122,18 +122,25 @@ struct OverlayRootView: View {
     }
   }
 
-  /// **`usesPreviewLayout` SURVIVES this chunk, and that is the boundary rather
-  /// than an oversight** (#2375 C3b). Two adapters existed and only one is
-  /// deleted: the layout bundle is gone, and this boolean is still handed to
-  /// `RecordingOverlayView` with its internal uses untouched. It is DERIVED —
-  /// its only input is the captured design — so it cannot disagree with the
-  /// catalog independently. Phase 4 replaces it with the design itself.
+  /// **`usesPreviewLayout` IS GONE, and the design itself is what the leaf gets**
+  /// (#2376 Phase 4, C2). #2375 C3b deleted the layout bundle and left this
+  /// boolean as the declared boundary; it is now replaced by
+  /// `RecordingPillChrome`, a value carrying what the pill DRAWS. `canHoldWords`
+  /// survives untouched as a CAPABILITY fact, read by
+  /// `OverlayRenderModel.setRecordingProviders` to decide whether a live-preview
+  /// provider is installed at all. It never reaches a view.
   ///
   /// **The design is NON-OPTIONAL, and an earlier version of this took an
   /// optional and fell back to `.classic`.** The definition's own recording case
   /// carries the design, so the caller binds it there and nothing here can
-  /// substitute a second answer — which is exactly the arrangement this chunk
-  /// deletes, and I had rebuilt a small one inside the fix for it.
+  /// substitute a second answer — which is exactly the arrangement #2375 C3b
+  /// deleted, and a small one had been rebuilt inside the fix for it.
+  ///
+  /// **The framing switch is EXHAUSTIVE over `RecordingPillDesign` and carries no
+  /// `default:`.** A default would let a design added later render inside a
+  /// neighbour's frame — correct model data with the wrong geometry, which is
+  /// this phase's named regression arriving through the one construct that hides
+  /// it from the compiler.
   @ViewBuilder
   private func recording(
     design: RecordingPillDesign, position: OverlayPillPosition
@@ -143,15 +150,16 @@ struct OverlayRootView: View {
       recordingElapsedProvider: model.recordingElapsedProvider,
       livePreviewProvider: model.livePreviewProvider,
       onContentHeightChange: model.onContentHeightChange,
-      usesPreviewLayout: design.canHoldWords,
+      chrome: design.chrome,
       lockState: lockState.value,
       noticeState: noticeState.value)
 
-    if design.canHoldWords {
+    switch design {
+    case .readingWell:
       // Width only. The height is content-driven so the pill earns its size a
       // line at a time rather than snapping once the real height is measured.
       view.frame(width: design.width)
-    } else {
+    case .classic:
       // #1341: Bottom bottom-aligns, Top centres. Centring in Bottom leaves ~24
       // points of invisible space under a ~44-point capsule, which mutes the
       // Bottom offset and visibly misaligns the polishing pill that replaces it.

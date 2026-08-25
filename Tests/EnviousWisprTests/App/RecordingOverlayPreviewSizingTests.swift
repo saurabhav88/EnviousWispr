@@ -60,7 +60,7 @@ struct RecordingOverlayPreviewSizingTests {
     inPanelOfHeight startingHeight: CGFloat,
     notice: String? = nil,
     locked: Bool = false,
-    usesPreviewLayout: Bool = true
+    design: RecordingPillDesign = .readingWell
   ) throws -> CGFloat {
     let log = HeightLog()
     let lockState = OverlayLockState()
@@ -73,7 +73,7 @@ struct RecordingOverlayPreviewSizingTests {
       recordingElapsedProvider: { 41 },
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
-      usesPreviewLayout: usesPreviewLayout,
+      chrome: design.chrome,
       lockState: lockState,
       noticeState: noticeState,
       initialPreview: display
@@ -217,7 +217,7 @@ struct RecordingOverlayPreviewSizingTests {
       recordingElapsedProvider: { 41 },
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
-      usesPreviewLayout: true,
+      chrome: RecordingPillDesign.readingWell.chrome,
       lockState: OverlayLockState(),
       noticeState: noticeState,
       initialPreview: display
@@ -265,7 +265,7 @@ struct RecordingOverlayPreviewSizingTests {
       recordingElapsedProvider: { 41 },
       livePreviewProvider: { .text(Self.threeLines) },
       onContentHeightChange: { log.record($0) },
-      usesPreviewLayout: true,
+      chrome: RecordingPillDesign.readingWell.chrome,
       lockState: OverlayLockState(),
       noticeState: OverlayNoticeState(),
       initialPreview: .text(Self.threeLines)
@@ -312,7 +312,7 @@ struct RecordingOverlayPreviewSizingTests {
       recordingElapsedProvider: { 41 },
       livePreviewProvider: { .off },
       onContentHeightChange: { log.record($0) },
-      usesPreviewLayout: false,
+      chrome: RecordingPillDesign.classic.chrome,
       lockState: OverlayLockState(),
       noticeState: OverlayNoticeState(),
       initialPreview: .off
