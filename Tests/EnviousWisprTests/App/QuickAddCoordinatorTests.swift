@@ -222,12 +222,52 @@ struct QuickAddCoordinatorTests {
     let message = coordinator.accept(target, from: model)
 
     // The RETURNED message is the assertion that matters, and the first version of this test did
-    // not make it. Telemetry going out under `writeFailed` is a fact about a dashboard; what the
+    // not make it. It asserted the TELEMETRY outcome, which is a fact about a dashboard; what the
     // comment above promises — "the user must be told" — is only true if the caller is handed
     // something to show, and the caller dismissed the panel regardless until this was added.
     #expect(message == "That word cannot be saved.")
-    #expect(recorder.outcomes == [.writeFailed])
     #expect(recorder.events.contains { if case .failed = $0 { true } else { false } })
+    // NOT resolved. The panel is still open, so the invocation has not ended — `resolved` means
+    // ENDED, and the second version of this test asserted `[.writeFailed]` here, which was the
+    // defect written down as a contract one layer up from the first version's.
+    #expect(recorder.outcomes.isEmpty)
+  }
+
+  @Test("A refused write then a cancel is ONE resolution, not two")
+  func aRefusedWriteThenCancelResolvesOnce() throws {
+    // The axis-A member the enumeration missed, and the reason it missed it: I enumerated which
+    // ENDINGS exist and checked each in isolation, when the generating dimension is which ordered
+    // PAIRS are reachable in one open. Only a refused write leaves the panel up, so only it can be
+    // followed by a second ending.
+    let (coordinator, recorder) = makeCoordinator(
+      userWords: [word("Codex")], saveFailure: "That word cannot be saved.")
+    let model = try #require(beginAndShow(coordinator))
+    let target = try #require(model.ranking.candidates.first)
+
+    _ = coordinator.accept(target, from: model)
+    coordinator.cancel(from: model)
+
+    #expect(recorder.outcomes == [.cancelled])
+    #expect(!recorder.events.contains { if case .failed(let stage, _) = $0 { stage == "resolve" } else { false } })
+  }
+
+  @Test("A second resolution is refused loudly rather than invented")
+  func aSecondResolutionIsRefused() throws {
+    // Removing the REASON and removing the POSSIBILITY are different jobs. `finish` used to
+    // substitute `environment.now()` for a cleared start time, which gave a second terminal event a
+    // plausible elapsed time and no way to tell it apart from a real one.
+    let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
+    let model = try #require(beginAndShow(coordinator))
+
+    coordinator.cancel(from: model)
+    coordinator.cancel(from: model)
+
+    #expect(recorder.outcomes == [.cancelled])
+    #expect(
+      recorder.events.contains {
+        if case .failed(let stage, let reason) = $0 { stage == "resolve" && reason == "double_resolution" }
+        else { false }
+      })
   }
 
   @Test("A save that succeeds returns nothing to show, which is what licenses the dismiss")

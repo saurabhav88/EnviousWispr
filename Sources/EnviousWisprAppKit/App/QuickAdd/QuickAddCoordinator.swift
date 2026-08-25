@@ -47,8 +47,6 @@ enum QuickAddOutcome: String, Equatable, Sendable, CaseIterable {
   case createdNew = "created_new"
   /// Escape, clicking away, or closing the panel.
   case cancelled
-  /// The user accepted, and the write was refused.
-  case writeFailed = "write_failed"
   /// The word already carried this spelling, so there was nothing to write.
   case alreadySaved = "already_saved"
 }
@@ -250,7 +248,12 @@ final class QuickAddCoordinator {
       // `reason` stays a fixed token, never the message: the message is authored for a human and
       // can quote what they selected, which is the one thing telemetry may not carry.
       environment.emit(.failed(stage: "save", reason: "refused"))
-      finish(.writeFailed, usedSearch: usedSearch, rank: rank, kind: kind)
+      // **DELIBERATELY NOT A RESOLUTION, and the outcome member it used to emit is gone.** A refused
+      // write leaves the panel OPEN — that is the whole point of the fix that introduced it — so the
+      // invocation has not ended and the user can still succeed or give up. Resolving here emitted
+      // `write_failed` and then a second `resolved` when they did either, which is two terminal
+      // events for one open. `resolved` means ENDED; the refusal is reported by the `failed` event
+      // above, which is what that channel is for.
       return message
     }
     finish(
@@ -293,7 +296,16 @@ final class QuickAddCoordinator {
   private func finish(
     _ outcome: QuickAddOutcome, usedSearch: Bool, rank: Int?, kind: QuickAddTargetKind?
   ) {
-    let started = startedAt ?? environment.now()
+    // **A SECOND RESOLUTION IS REFUSED, LOUDLY, rather than substituted for.** The old
+    // `startedAt ?? environment.now()` invented a start time for an invocation that had already
+    // ended, which is what let one open produce two terminal events with plausible elapsed times on
+    // both. Removing the reason (above) and removing the possibility are different jobs: this is the
+    // second, and it reports rather than swallows, because a silent drop is how the funnel would
+    // come to disagree with reality without anyone learning why.
+    guard let started = startedAt else {
+      environment.emit(.failed(stage: "resolve", reason: "double_resolution"))
+      return
+    }
     startedAt = nil
     environment.emit(
       .resolved(

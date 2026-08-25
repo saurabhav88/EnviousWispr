@@ -117,7 +117,13 @@ final class QuickAddWiring {
         newWord: Binding(
           get: { [weak self] in self?.pendingNewWord },
           set: { [weak self] in self?.pendingNewWord = $0 }),
-        onSaveNewWord: { [weak self] word in self?.saveNewWord(word) }))
+        // `usedSearch` is captured HERE, from the model this panel was built with, rather than
+        // read back off `activeModel` at save time. The sheet outlives the panel in at least one
+        // ordering, and a nil lookup defaulting to false would report a search-assisted save as an
+        // unassisted one — quietly, and in the direction that flatters the ranking.
+        onSaveNewWord: { [weak self] word in
+          self?.saveNewWord(word, usedSearch: !model.query.isEmpty)
+        }))
 
     // The host refuses to present a panel it could not measure, because an unmeasurable panel is an
     // invisible window that reports success. Clearing `activeModel` matters as much as the event:
@@ -177,7 +183,7 @@ final class QuickAddWiring {
   /// So this asserts the OUTCOME rather than the call's return value — the word is there and it
   /// carries the spellings the user kept — which is the one check that covers both branches and any
   /// third one nobody has found yet.
-  private func saveNewWord(_ word: CustomWord) -> String? {
+  private func saveNewWord(_ word: CustomWord, usedSearch: Bool) -> String? {
     if let message = customWords.add(word) { return message }
     // Compare against the TRIMMED canonical, because that is what `add` stores. Comparing the raw
     // one reports a correct save as a failure whenever the user typed a leading space.
@@ -198,7 +204,7 @@ final class QuickAddWiring {
     guard missing.isEmpty else {
       return QuickAddPanelCopy.newWordAlreadyExists(canonical: stored.canonical)
     }
-    coordinator.didCreateNew(usedSearch: !(activeModel?.query.isEmpty ?? true))
+    coordinator.didCreateNew(usedSearch: usedSearch)
     dismiss()
     return nil
   }

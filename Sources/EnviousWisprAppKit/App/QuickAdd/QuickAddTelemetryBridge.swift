@@ -11,8 +11,15 @@ import Foundation
 ///
 /// **THE ROUTING IS THE DECISION, and the three destinations answer different questions.** PostHog
 /// gets the two shape-only events, because they are about how the feature performs across users.
-/// Sentry gets FAILURES only, because they are about something being broken. The local log gets a
-/// support line — and the heard word is NOT in it, including under Debug Mode.
+/// Sentry gets a BREADCRUMB TRAIL — open, resolve and failure — because its job is to explain a crash
+/// that happens next, and a trail with only the failures in it cannot say how the user got there. It
+/// gets no Sentry EVENT and no `ErrorCategory`, which is the part that stays true. The local log gets
+/// a support line — and the heard word is NOT in it, including under Debug Mode.
+///
+/// That distinction was wrong in this comment until the confirming review round: it read "Sentry gets
+/// FAILURES only", which described the code and contradicted §3e, and the code was the thing that was
+/// wrong. A comment agreeing with defective code is the shape that retires the check instead of
+/// failing it.
 ///
 /// That last one was argued the other way first: `CORRECTION_DEBUG` already writes full transcripts
 /// to `app.log` behind the Debug Mode gate, so a heard word there looked like it widened nothing.
@@ -38,10 +45,28 @@ enum QuickAddTelemetryBridge {
           topScore: topScore,
           sourceBundleID: bundleID,
           heardLength: heardScalarCount)
+        // §3e: "Breadcrumbs on open and resolve so a crash inside the panel arrives with the door,
+        // the candidate count, and the outcome attached." Only `failed` was leaving a breadcrumb, so
+        // a crash while the panel was up arrived with no trail of how it got there.
+        SentryBreadcrumb.add(
+          stage: "quick_add",
+          message: "quick_add opened",
+          data: [
+            "door": door.rawValue, "candidate_count": candidateCount,
+            "refuse_reason": refusal?.rawValue ?? "none",
+          ])
+        // `top=` and `reason=` are BOTH required by §3e's own sample line, and both were missing.
+        // Without the score a wrong-preselection report cannot show whether the confidence bar was
+        // crossed, which is the single number this feature will be tuned on; without the reason a
+        // support reader sees `selection=no` and cannot tell a terminal apart from a missing
+        // permission. Vendor telemetry carried both all along — this is the artifact for ONE
+        // person's report, which is a different job.
         log(
           "opened door=\(door.rawValue) app=\(bundleID ?? "unknown") "
-            + "selection=\(refusal == nil ? "yes" : "no") len=\(heardScalarCount) "
-            + "candidates=\(candidateCount) preselect=\(preselected ? "yes" : "no")")
+            + "selection=\(refusal == nil ? "yes" : "no") reason=\(refusal?.rawValue ?? "none") "
+            + "len=\(heardScalarCount) candidates=\(candidateCount) "
+            + "top=\(topScore.map { String(format: "%.2f", $0) } ?? "none") "
+            + "preselect=\(preselected ? "yes" : "no")")
 
       case .resolved(
         let outcome, let usedSearch, let candidateRank, let targetKind, let elapsed):
@@ -51,6 +76,10 @@ enum QuickAddTelemetryBridge {
           candidateRank: candidateRank,
           targetKind: targetKind?.rawValue,
           elapsedMilliseconds: elapsed)
+        SentryBreadcrumb.add(
+          stage: "quick_add",
+          message: "quick_add resolved",
+          data: ["outcome": outcome.rawValue, "used_search": usedSearch])
         log(
           "resolved outcome=\(outcome.rawValue) search=\(usedSearch ? "yes" : "no") "
             + "rank=\(candidateRank.map(String.init) ?? "none") "
