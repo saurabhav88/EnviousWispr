@@ -70,10 +70,21 @@ cd "$PROJECT_ROOT"
 # Owner: scripts/lib/log-dir.sh, which has its own two-way suite. Creating the
 # directory is deliberately the caller's job — a resolver with a side effect
 # cannot be tested without one.
+USING_DEFAULT_LOG_DIR=0
+[ -z "$LOG_DIR" ] && USING_DEFAULT_LOG_DIR=1
 LOG_DIR="$(ew_resolve_log_dir "$PROJECT_ROOT" "$LOG_DIR")"
 mkdir -p "$LOG_DIR"   # absent on a clean checkout
 APP_LOG_DIR="$LOG_DIR/app-logger"
 mkdir -p "$APP_LOG_DIR"
+
+# Both owned by scripts/lib/log-dir.sh, which has its own two-way suite. Neither
+# runs for an explicit `--log-dir`: that caller asked for a durable receipt at an
+# address it already knows, and moving a shared pointer or pruning on its behalf
+# would make a battery's rows fight over it.
+if [ "$USING_DEFAULT_LOG_DIR" = "1" ]; then
+  ew_publish_latest_lane "$PROJECT_ROOT" "$LOG_DIR"
+  ew_prune_stale_lanes "$PROJECT_ROOT" "$LOG_DIR"
+fi
 
 # Generate the Xcode project (gitignored, never committed) — only when a
 # generation input actually changed (#2157 chunk C).

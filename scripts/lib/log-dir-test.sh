@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Two-way suite for scripts/lib/log-dir.sh (#2165).
 #
-# The point of the flag is that two lanes can no longer share one log, because
-# `run_lane` SUMS every `Test run with N tests` line it finds. So this asserts
-# BOTH halves: the historical default is unchanged, AND two distinct requests
-# genuinely resolve apart. A flag that resolves everything to the same place
-# would pass a default-only test while fixing nothing.
+# The point of the DEFAULT (#2396) is that two lanes can no longer share one
+# directory, because `run_lane` sums every `Test run with N tests` line in its log
+# AND reads its verdict from a result bundle it removes before the run. So this
+# asserts BOTH halves: independent default invocations resolve apart, AND two
+# distinct explicit requests still resolve apart. A resolver that isolated only
+# one of those would leave the other collision reachable.
 #
 # Run: bash scripts/lib/log-dir-test.sh
 set -uo pipefail
@@ -18,6 +19,33 @@ PASS=0
 FAIL=0
 ROOT="/tmp/ew-fake-worktree"
 
+# A ROW THAT DOES NOT RUN MUST NOT REPORT GREEN (#2396).
+#
+# Measured in this file: rows written with helpers this suite does not define
+# printed `ok: command not found` to STDERR, incremented nothing, and the suite
+# ended `PASS=11 FAIL=0`. Every new row was invisible and the verdict was clean —
+# a harness reporting a green it cannot see, in the file whose whole job is to be
+# believed about a path.
+#
+# **AND THE OBVIOUS GUARD FOR IT HAS THE SAME DEFECT: bash runs
+# `command_not_found_handle` IN A SUBSHELL**, so a `FAIL=$((FAIL + 1))` inside it
+# is discarded. Measured two-way on bash 5.3: the handler prints `F=1` and the
+# caller then reads `F=0`. The first version of this guard therefore PRINTED a
+# failure line and left the verdict at `FAIL=0` — reporting without gating, which
+# is the very thing it was written to prevent, one level down.
+#
+# So the handler records to a FILE, which is what survives a subshell, and the
+# count is folded in at the end where it can reach the verdict.
+NOT_FOUND_LOG="$(mktemp "${TMPDIR:-/tmp}/ew-log-dir-test-notfound.XXXXXX")"
+command_not_found_handle() {
+  printf "  FAIL  %-56s %s\n" "a row invoked a command that does not exist" "$1"
+  printf '%s\n' "$1" >> "$NOT_FOUND_LOG"
+  return 127
+}
+
+ok() { PASS=$((PASS + 1)); printf "  ok    %-56s %s\n" "$1" "${2:-}"; }
+bad() { FAIL=$((FAIL + 1)); printf "  FAIL  %-56s %s\n" "$1" "${2:-}"; }
+
 check() {  # <label> <expected> <actual>
   local label="$1" expected="$2" actual="$3"
   if [ "$expected" = "$actual" ]; then
@@ -29,12 +57,41 @@ check() {  # <label> <expected> <actual>
   fi
 }
 
-echo "== the historical default is unchanged =="
-# `build/xcode-test-debug.log` under the worktree is what every existing caller,
-# every rule that names the path, and check-push-discipline's freshness read all
-# expect. If this row moves, something else breaks somewhere nobody is looking.
-check "no request -> <root>/build" "$ROOT/build" "$(ew_resolve_log_dir "$ROOT")"
-check "empty request -> <root>/build" "$ROOT/build" "$(ew_resolve_log_dir "$ROOT" "")"
+echo "== the default is private to the invoking process =="
+# THIS ROW USED TO ASSERT `<root>/build`, AND ITS STATED JUSTIFICATION WAS FALSE:
+# it claimed check-push-discipline's freshness read expects
+# `build/xcode-test-debug.log`. That gate never names the file. For app changes it
+# reads the deployed and DerivedData dev-build artifacts
+# (`check-push-discipline.sh:382-383`); for test changes it reads the Debug xctest
+# executable (`:403`) and compares it against files under `Tests/` (`:420`).
+#
+# Left in place, that sentence made the default look immovable — which is the
+# highest-cost shape a comment has, because its whole function is to stop the next
+# reader going and checking. Replaced with what the gate actually reads rather
+# than deleted, so the next reader inherits the verified version.
+check "no request -> <root>/build/lanes/<pid>" \
+  "$ROOT/build/lanes/$$" "$(ew_resolve_log_dir "$ROOT")"
+check "empty request -> <root>/build/lanes/<pid>" \
+  "$ROOT/build/lanes/$$" "$(ew_resolve_log_dir "$ROOT" "")"
+
+# The row that justifies the change, and it needs two real PROCESSES: within one
+# shell `$$` is constant, so a same-process comparison would pass against a
+# resolver that isolated nothing.
+a=$(/bin/bash -c '. "$1"; ew_resolve_log_dir "$2"' _ "$HERE/log-dir.sh" "$ROOT")
+b=$(/bin/bash -c '. "$1"; ew_resolve_log_dir "$2"' _ "$HERE/log-dir.sh" "$ROOT")
+if [ "$a" != "$b" ]; then
+  PASS=$((PASS + 1)); printf "  ok    %-56s %s != %s\n" "two default invocations resolve apart" "$a" "$b"
+else
+  FAIL=$((FAIL + 1)); printf "  FAIL  %-56s both resolved to %s\n" "two default invocations resolve apart" "$a"
+fi
+
+# And the default must not collide with the OLD default's directory, or a lane
+# would still be writing where the shared file used to live.
+if [ "$(ew_resolve_log_dir "$ROOT")" != "$ROOT/build" ]; then
+  PASS=$((PASS + 1)); printf "  ok    %-56s\n" "the default is no longer the shared <root>/build"
+else
+  FAIL=$((FAIL + 1)); printf "  FAIL  %-56s\n" "the default is no longer the shared <root>/build"
+fi
 
 echo "== an explicit request is honoured =="
 check "absolute stays absolute" "/tmp/rowlog" "$(ew_resolve_log_dir "$ROOT" "/tmp/rowlog")"
@@ -61,7 +118,7 @@ else
   FAIL=$((FAIL + 1)); printf "  FAIL  %-56s both resolved to %s\n" "two relative requests resolve apart" "$a"
 fi
 # And a request must not collide with the DEFAULT either, or a caller asking for
-# its own directory would silently land back in the shared one.
+# its own directory would silently land back in the lane the script picked.
 d=$(ew_resolve_log_dir "$ROOT")
 r=$(ew_resolve_log_dir "$ROOT" "/tmp/row-a")
 if [ "$d" != "$r" ]; then
@@ -92,6 +149,89 @@ else
   FAIL=$((FAIL + 1)); printf "  FAIL  %-56s %s was created\n" "resolving does not mkdir" "$probe"
   rmdir "$probe" 2>/dev/null
 fi
+
+echo "== the stable address points at THIS lane, and survives a repoint =="
+# These two functions exist in the lib rather than inline in xcode-test.sh for
+# the reason the resolver does: inlined they could only be exercised by running
+# xcodebuild, so in practice they would never be tested — and both of them delete
+# or replace things.
+SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/ew-log-dir-sandbox.XXXXXX")"
+trap 'rm -rf "$SANDBOX" "$NOT_FOUND_LOG"' EXIT
+mkdir -p "$SANDBOX/build/lanes/111" "$SANDBOX/build/lanes/222"
+
+ew_publish_latest_lane "$SANDBOX" "$SANDBOX/build/lanes/111" >/dev/null 2>&1
+if [ "$(readlink "$SANDBOX/build/latest-lane")" = "lanes/111" ]; then
+  ok "the link points at the lane it was given"
+else
+  bad "the link points at the lane it was given" "got $(readlink "$SANDBOX/build/latest-lane")"
+fi
+
+# THE ROW THAT MATTERS: repointing must replace the LINK, not write inside the
+# directory the old link pointed at. `mv` without `-h` follows the link and
+# creates `lanes/111/latest-lane`, which leaves the pointer stale AND litters the
+# previous lane.
+ew_publish_latest_lane "$SANDBOX" "$SANDBOX/build/lanes/222" >/dev/null 2>&1
+if [ "$(readlink "$SANDBOX/build/latest-lane")" = "lanes/222" ] \
+  && [ ! -e "$SANDBOX/build/lanes/111/latest-lane" ]; then
+  ok "repointing replaces the link, never writes through it"
+else
+  bad "repointing replaces the link, never writes through it" \
+    "link=$(readlink "$SANDBOX/build/latest-lane") stray=$(ls "$SANDBOX/build/lanes/111" 2>/dev/null)"
+fi
+
+# No temp link is left behind, or a later run inherits a half-published state.
+if [ -z "$(ls -A "$SANDBOX/build" | /usr/bin/grep '^\.latest-lane\.' || true)" ]; then
+  ok "no temporary link survives publication"
+else
+  bad "no temporary link survives publication" "$(ls -A "$SANDBOX/build")"
+fi
+
+echo "== retention deletes only what it is scoped to =="
+mkdir -p "$SANDBOX/build/lanes/old" "$SANDBOX/build/lanes/fresh" "$SANDBOX/build/lanes/current"
+touch -t 202001010000 "$SANDBOX/build/lanes/old"
+# A file OUTSIDE lanes/ must be untouched: the prune is scoped to one directory
+# and this row is what proves the scope rather than the age.
+touch "$SANDBOX/build/bystander.log"
+ew_prune_stale_lanes "$SANDBOX" "$SANDBOX/build/lanes/current" 7 >/dev/null 2>&1
+
+[ ! -d "$SANDBOX/build/lanes/old" ] \
+  && ok "a lane untouched past the window is removed" \
+  || bad "a lane untouched past the window is removed" "still present"
+[ -d "$SANDBOX/build/lanes/fresh" ] \
+  && ok "a recent lane is kept" \
+  || bad "a recent lane is kept" "was removed"
+[ -f "$SANDBOX/build/bystander.log" ] \
+  && ok "nothing outside lanes/ is touched" \
+  || bad "nothing outside lanes/ is touched" "bystander removed"
+
+# The current lane must survive even if its mtime is ancient — a long-running
+# lane is exactly the case where deleting it costs the most.
+mkdir -p "$SANDBOX/build/lanes/inuse"
+touch -t 202001010000 "$SANDBOX/build/lanes/inuse"
+ew_prune_stale_lanes "$SANDBOX" "$SANDBOX/build/lanes/inuse" 7 >/dev/null 2>&1
+[ -d "$SANDBOX/build/lanes/inuse" ] \
+  && ok "the lane in use is never pruned, however old it looks" \
+  || bad "the lane in use is never pruned, however old it looks" "removed"
+
+# Absent tree is a no-op, not an error: a clean checkout has no lanes/ yet.
+rm -rf "$SANDBOX/build/lanes"
+if ew_prune_stale_lanes "$SANDBOX" "$SANDBOX/build/lanes/none" 7 >/dev/null 2>&1; then
+  ok "an absent lanes/ tree is a no-op"
+else
+  bad "an absent lanes/ tree is a no-op" "returned nonzero"
+fi
+
+echo "== both refuse rather than guessing =="
+ew_publish_latest_lane "$SANDBOX" "" >/dev/null 2>&1
+[ "$?" -eq 2 ] && ok "publish refuses a missing lane_dir" || bad "publish refuses a missing lane_dir" "rc=$?"
+ew_prune_stale_lanes "" "x" >/dev/null 2>&1
+[ "$?" -eq 2 ] && ok "prune refuses a missing project_root" || bad "prune refuses a missing project_root" "rc=$?"
+
+# Folded in HERE because the handler runs in a subshell and cannot reach $FAIL.
+if [ -s "$NOT_FOUND_LOG" ]; then
+  FAIL=$((FAIL + $(/usr/bin/wc -l < "$NOT_FOUND_LOG")))
+fi
+rm -f "$NOT_FOUND_LOG"
 
 echo
 printf "PASS=%d FAIL=%d\n" "$PASS" "$FAIL"
