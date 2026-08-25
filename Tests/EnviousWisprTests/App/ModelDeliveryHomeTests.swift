@@ -77,6 +77,13 @@ struct ModelDeliveryHomeTests {
     #expect(box.wakeCalls == 0, "a refused claim never owes a wake")
   }
 
+  /// The flag store is INJECTED and explicitly ENABLED, which this test did not
+  /// need before #2139 and does now. `resumeParakeetDownload` reads the parakeet
+  /// family kill switch, so without an injected suite it reads the real
+  /// operational one — and on a machine where a developer has that switch set
+  /// false the door refuses before the claim and this test fails on MACHINE
+  /// STATE rather than on code. Found by cloud review; the omission was harmless
+  /// only for as long as this door read no flag.
   @Test("a gate-refused resume reports the site and never releases or wakes")
   func aGateRefusedResumeReportsTheSiteAndNeverReleasesOrWakes() async throws {
     final class Box: @unchecked Sendable {
@@ -85,6 +92,8 @@ struct ModelDeliveryHomeTests {
       var refusedSites: [String] = []
     }
     let box = Box()
+    let suite = try #require(UserDefaults(suiteName: "ew-2139-resume-\(UUID().uuidString)"))
+    suite.set(true, forKey: "modelDelivery.parakeet.enabled")
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
         tryBegin: { false },
@@ -95,7 +104,8 @@ struct ModelDeliveryHomeTests {
         wake: { box.wakeCalls += 1 },
         onRefused: { box.refusedSites.append($0) }),
       manifestBundle: try Self.manifestBundle(),
-      appSupportOverride: try Self.tempAppSupport())
+      appSupportOverride: try Self.tempAppSupport(),
+      deliveryFlagDefaults: suite)
 
     home.resumeParakeetDownload()
     // Signal, not clock: wait for the gate's own refusal telemetry, proving
@@ -412,6 +422,84 @@ struct ModelDeliveryHomeTests {
     #expect(
       on.previewStateUpdatesForTests > onBaseline,
       "with the flag ON the door must still reach delivery; a welded-shut door would pass the assertion above"
+    )
+  }
+
+  /// The Parakeet Resume door honours `modelDelivery.parakeet.enabled` (#2139).
+  ///
+  /// The flag is enforced per FETCH door by the caller — the controller's own
+  /// snapshot drives revalidation, source order and telemetry, never a refusal —
+  /// so a door that omits the check ignores the flag rather than weakening it.
+  /// Automatic warm-up checks it; this door did not, so an operator who had frozen
+  /// delivery could still start a multi-gigabyte fetch from Settings.
+  ///
+  /// **Both directions in one case**, because either half alone is satisfiable by
+  /// the opposite bug: flag-off must not reach the mutation claim, and flag-on
+  /// must still reach it. A one-way test passes against a door welded shut, which
+  /// breaks Resume for every user in order to honour a flag almost nobody sets.
+  ///
+  /// **The claim is the observable, and the gate is deliberately set to REFUSE.**
+  /// `withClaim` calls `tryBegin` before anything else and reports the site
+  /// through `onRefused`, so a refused claim proves control reached the claim —
+  /// which is the statement immediately after the guard — while `ensureAvailable()`
+  /// is never called. That last part is not a convenience: unlike its two
+  /// siblings, Parakeet's install directory is deliberately NOT rerouted by
+  /// `appSupportOverride` (it comes from `AsrModels.defaultCacheDirectory`), so a
+  /// flag-on arm that reached real delivery would validate or fetch against the
+  /// developer's own model cache and the network.
+  ///
+  /// **The flag-off arm asserts a POSITIVE.** `parakeetResumeRefusalsForTests` is
+  /// incremented synchronously inside the guard, on the main actor, before any
+  /// `Task` exists — so it is already true when the call returns and there is
+  /// nothing to wait for. The companion `refusedSites` assertion is a genuine
+  /// absence and is safe for the same structural reason: the refusal path creates
+  /// no `Task`, so nothing could ever append to it later.
+  ///
+  /// The flag store is injected. Reading the real one would mean writing an
+  /// operational delivery kill switch onto a developer's machine.
+  @Test("the Parakeet Resume door honours the parakeet kill switch, both ways")
+  func parakeetResumeHonoursTheKillSwitch() async throws {
+    final class Box: @unchecked Sendable {
+      var refusedSites: [String] = []
+    }
+
+    func makeHome(enabled: Bool, box: Box) throws -> ModelDeliveryHome {
+      let suite = try #require(UserDefaults(suiteName: "ew-2139-killswitch-\(UUID().uuidString)"))
+      suite.set(enabled, forKey: "modelDelivery.parakeet.enabled")
+      return ModelDeliveryHome(
+        engineMutationScope: .live(
+          tryBegin: { false },
+          end: { false },
+          wake: {},
+          onRefused: { box.refusedSites.append($0) }),
+        manifestBundle: try Self.manifestBundle(),
+        appSupportOverride: try Self.tempAppSupport(),
+        deliveryFlagDefaults: suite)
+    }
+
+    let offBox = Box()
+    let off = try makeHome(enabled: false, box: offBox)
+    off.resumeParakeetDownload()
+    #expect(
+      off.parakeetResumeRefusalsForTests == 1,
+      "with the kill switch off the door must refuse synchronously, before any Task exists")
+    #expect(
+      offBox.refusedSites.isEmpty,
+      "a refused door must not reach the mutation claim: a download that is never going to happen must not serialise against a dictation's engine switch"
+    )
+
+    let onBox = Box()
+    let on = try makeHome(enabled: true, box: onBox)
+    on.resumeParakeetDownload()
+    // Signal, not clock: wait for the gate's own refusal telemetry, which the
+    // subject fires from inside the door's Task.
+    for _ in 0..<400 where onBox.refusedSites.isEmpty { await Task.yield() }
+    #expect(
+      on.parakeetResumeRefusalsForTests == 0,
+      "with the flag ON nothing may refuse on the kill switch")
+    #expect(
+      onBox.refusedSites == ["parakeetResumeDownload"],
+      "with the flag ON the door must still reach delivery; a welded-shut door would pass the assertions above"
     )
   }
 

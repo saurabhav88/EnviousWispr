@@ -71,6 +71,20 @@ public final class ModelDeliveryHome {
   /// a deleted one or one filtered on the wrong identity.
   package private(set) var previewStateUpdatesForTests = 0
   package private(set) var parakeetStateUpdatesForTests = 0
+
+  /// How many times the Parakeet Resume door has REFUSED on the family kill
+  /// switch, from EITHER of its two checks. A test seam, and specifically a
+  /// POSITIVE one: without it the flag-OFF arm could only assert two absences —
+  /// no claim taken, no delivery reached — and an absence cannot distinguish
+  /// "the guard refused" from "the door has not run yet", which is the vacuity
+  /// this counter exists to remove.
+  ///
+  /// A flag that is off when the button is pressed takes the SYNCHRONOUS check,
+  /// which returns before any `Task` is created, so the count is already correct
+  /// when `resumeParakeetDownload()` returns and the flag-OFF arm needs no wait.
+  /// The second check can only fire on a flag that flipped inside the window
+  /// between the two, which no test stages today.
+  package private(set) var parakeetResumeRefusalsForTests = 0
   /// Monotonic apply guard (EG-1 `installStateSeqApplied` precedent, made
   /// REAL per exhaustive r7 finding 7): the sequence is minted at observer-
   /// receive time (controller actor, in publish order) and a MainActor hop
@@ -141,7 +155,14 @@ public final class ModelDeliveryHome {
       parakeetRegistration = registration
       // #2119: reclaim staging abandoned by a superseded revision of THIS model.
       Task { await controller.sweepSupersededStaging(registration) }
-      parakeetHandle = ParakeetDeliveryHandle(controller: controller, registration: registration)
+      // The kill-switch store is INJECTED, exactly as its two siblings below
+      // are (`:whisperKitHandle`, `:whisperPreviewHandle`). Omitting it made
+      // this handle resolve `nil` to the real operational suite, so no test
+      // could exercise the family flag without writing a live delivery kill
+      // switch onto a developer's machine (#2139). Production is unchanged:
+      // the only caller that passes a non-nil value is the test suite.
+      parakeetHandle = ParakeetDeliveryHandle(
+        controller: controller, registration: registration, defaults: deliveryFlagDefaults)
       wireObservers(identity: identity)
     } catch {
       Task {
@@ -355,8 +376,6 @@ public final class ModelDeliveryHome {
     }
   }
 
-  /// Settings-row Resume / Try Again: re-enters the single door (resume-aware
-  /// by construction — staged partials survive a cancel).
   // MARK: - #2123: the preview model's own controls
 
   /// Start, resume or retry the preview model's download — one method, because
@@ -539,10 +558,92 @@ public final class ModelDeliveryHome {
     Task { await handle.cancelActiveFetch() }
   }
 
+  /// Settings-row Resume / Try Again: re-enters the single door (resume-aware
+  /// by construction — staged partials survive a cancel).
+  ///
+  /// **Honours the parakeet family kill switch** (#2139). `ensureAvailable()` does
+  /// NOT enforce the flag — it is a straight pass-through to
+  /// `ModelDeliveryController.ensureModelAvailable`, and the controller's flag
+  /// snapshot drives revalidation, source selection and telemetry, never a
+  /// refusal. So for FETCH the enforcement is caller-owned, and a door that omits
+  /// the check does not weaken the flag, it ignores it. (Deletion is different and
+  /// is guarded centrally inside `sweepSupersededStaging` — do not read this
+  /// comment as a claim about the whole controller.)
+  ///
+  /// **Three delivery-managed doors reach a Parakeet fetch, and this was the only
+  /// unguarded one.** Automatic warm-up checks `isEnabled()` immediately before
+  /// its own `ensureAvailable()`; the one-shot load-miss `repair()` in the same
+  /// warm-up runs under that call's own already-taken answer, deliberately, so it
+  /// is not re-checked here or there; this door checked nothing at all, so an
+  /// operator who had frozen delivery could still start a multi-gigabyte fetch
+  /// from Settings.
+  ///
+  /// **What the flag does NOT do**, so nobody reads this guard as more than it is:
+  /// it stands owned delivery down and hands Parakeet back to the legacy
+  /// FluidAudio path, which fetches on its own (`parakeetCacheOnly = false`). It
+  /// also does not stop an attempt already in flight — the controller snapshots
+  /// flags once per attempt — so flipping it mid-download leaves the Settings row
+  /// showing progress and Cancel, exactly as before.
+  ///
+  /// **Checked TWICE, and the pair is deliberate.**
+  ///
+  /// The synchronous check is the one that matters for the ordinary case: it
+  /// refuses before any `Task` exists, so a refused download never takes an
+  /// engine mutation claim and never serialises against a dictation's engine
+  /// switch — the limb interfering with the heart, for work that was never going
+  /// to happen.
+  ///
+  /// The re-read inside the `Task`, immediately before the claim, closes what the
+  /// synchronous check alone leaves open: the flag is read on the main actor and
+  /// the `Task` runs later, so an operator flip landing in that window would
+  /// otherwise start the fetch on a stale answer. It NARROWS rather than closes —
+  /// the controller snapshots flags once per attempt, so some window always
+  /// remains between the last read and the bytes moving, and there is no site
+  /// that removes it. It is here because it is three lines and the failure is
+  /// SILENT: a fetch begins that an operator asked to stop, and nothing says so.
+  ///
+  /// `cancelParakeetDownload` is deliberately NOT gated, and must stay that way: a
+  /// delivery kill switch must never strand someone mid-download with no way to
+  /// stop it, and cancelling starts no network work. Same shape as
+  /// `WhisperKitDeliveryHandle.cancelActiveFetch()`
+  /// (`WhisperKitModelDelivery.swift:111`), which is ungated for that stated reason.
   public func resumeParakeetDownload() {
     guard let handle = parakeetHandle else { return }
+    guard handle.isEnabled() else {
+      parakeetResumeRefusalsForTests += 1
+      // A DEBUG diagnostic, and it is worth being exact about that rather than
+      // calling it "logging the refusal": `AppLogger.log` compiles to a no-op in
+      // release, so this reaches a developer reproducing the report and never a
+      // shipping user. It earns its place anyway — the flag is set remotely, so
+      // whoever debugs this would otherwise have no way to tell a refused Resume
+      // from a broken one.
+      //
+      // KNOWN LIMIT, deliberately not fixed here: in a shipping build the row
+      // still offers Resume and pressing it now does nothing visible. Giving the
+      // row a disabled state would be a user-facing change to a surface whose
+      // whole point is that the flag ships absent, so it belongs to whoever
+      // decides that, not to this internal rollback fix.
+      Task {
+        await AppLogger.shared.log(
+          "Parakeet resume refused: the parakeet delivery kill switch is off "
+            + "(modelDelivery.parakeet.enabled = false)",
+          level: .info, category: "Delivery")
+      }
+      return
+    }
     Task { [weak self] in
       guard let self else { return }
+      // The re-read (see the doc comment above). Still BEFORE the claim, for the
+      // same reason the synchronous one is: a refusal must not take the claim.
+      guard handle.isEnabled() else {
+        self.parakeetResumeRefusalsForTests += 1
+        await AppLogger.shared.log(
+          "Parakeet resume refused: the parakeet delivery kill switch went off "
+            + "between the button and the download starting "
+            + "(modelDelivery.parakeet.enabled = false)",
+          level: .info, category: "Delivery")
+        return
+      }
       // #1707 Phase 3 (§3.2, row 17): hold a mutation claim for the FULL
       // download.
       _ = await self.engineMutationScope.withClaim(site: "parakeetResumeDownload") {
