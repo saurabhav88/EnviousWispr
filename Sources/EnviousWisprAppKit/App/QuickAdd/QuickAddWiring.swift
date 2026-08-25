@@ -266,10 +266,7 @@ final class QuickAddWiring {
   ) {
     activeModel = nil
     model.showNotice(kind, spelling: spelling, word: word)
-    // Spoken BEFORE focus is released, because releasing it is what makes the sentence unreachable
-    // by exploration — after this line there is no element for VoiceOver to visit.
     speak(model)
-    panelHost.releaseFocus()
     noticeDismissal?.cancel()
     noticeDismissal = Task { [weak self] in
       try? await Task.sleep(for: .seconds(Self.noticeSeconds))
@@ -294,15 +291,6 @@ final class QuickAddWiring {
       guard !Task.isCancelled, let self else { return }
       guard self.activeModel === model, model.isShowingSearchableNotice else { return }
       self.coordinator.didFindAlreadySaved(usedSearch: false)
-      // **The keyboard goes back here too, and forgetting it is worse on THIS path than on the
-      // confirmation's.** `present` takes activation with `NSApp.activate(ignoringOtherApps:)`, so
-      // ordering the panel out leaves our app active with no key window and the user's next
-      // keystrokes land nowhere. The confirmation releases at the START of its beat because the user
-      // has already pressed Return and gone back to their sentence; here the user has pressed
-      // nothing — the panel is still theirs to type into, which is the whole point of a SEARCHABLE
-      // notice — so it releases at dismissal instead. Same obligation, opposite moment, and the
-      // asymmetry is why it did not travel with the code that already had it.
-      self.panelHost.releaseFocus()
       self.dismiss()
     }
   }
@@ -357,9 +345,6 @@ final class QuickAddWiring {
   /// a later invocation reusing the panel must not have its outcome cancelled by a stale closure.
   private func cancel(model: QuickAddPanelModel) {
     if activeModel === model { coordinator.cancel(from: model) }
-    // No explicit release. Clicking the close control during a confirmation makes the panel key
-    // again, and `panelHost.dismiss` now hands that back on every route rather than on this one —
-    // which is what fixed the Escape twin this line could not reach.
     dismiss()
   }
 

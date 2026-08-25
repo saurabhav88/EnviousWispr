@@ -932,72 +932,19 @@ struct QuickAddCoordinatorTests {
     #expect(QuickAddWiring.announcement(notice: nil, writeFailure: nil) == nil)
   }
 
-  // MARK: - Where the keyboard goes when the panel gives it up (#2391, r6)
+  // MARK: - Focus hand-back: REMOVED (#2391, founder 2026-08-25)
 
-  /// **This replaces three tests about who focus was TAKEN from, and the replacement is the point.**
-  ///
-  /// Those tests protected "give back exactly what you took", which needed the panel to remember —
-  /// and three review rounds each found another way for it to become key without recording anything:
-  /// a raise on an already-key panel, and a mouse click, with command-tab and the Dock waiting. That
-  /// set is AppKit's, so it has a next member however many are handled.
-  ///
-  /// The property is now structural rather than asserted: nothing is remembered, so nothing can be
-  /// stale. What remains to test is the one closed decision.
-  @Test("The keyboard goes back to whatever actually had it")
-  func theKeyboardGoesWhereItBelongs() {
-    #expect(
-      QuickAddPanelHost.focusRelease(origin: .ourWindow) == .handToOurOwnWindow,
-      "a window of OURS had it, so deactivating would hide the user's own window")
-    #expect(
-      QuickAddPanelHost.focusRelease(origin: .otherApp) == .deactivateApp)
-  }
-
-  /// **The refutation that killed the previous version, kept as a case so it cannot come back.**
-  /// That version asked "do we have another window on screen", which is closed and WRONG: leave
-  /// Settings open BEHIND TextEdit, invoke the shortcut from TextEdit, and a window-list answer
-  /// sends the keyboard to Settings. Having a window is not the same fact as having come from it.
-  @Test("A visible window of ours is not evidence the user came from it")
-  func aVisibleWindowIsNotProvenance() {
-    // The state that case produces: our window exists and is visible, and the origin is another app.
-    #expect(QuickAddPanelHost.focusRelease(origin: .otherApp) == .deactivateApp)
-  }
-
-  /// **The refutation of the instant argument, kept so "a second press is the same invocation"
-  /// cannot come back.** `windowDidResignKey` is a no-op, so the panel sits visible and unfocused
-  /// while the user works elsewhere. A shortcut press in that state takes focus from somewhere new,
-  /// and reusing the first press's origin sends the keyboard to an app the user has left.
-  @Test("A press while the panel is visible but unfocused records a new origin")
-  func aRaiseOntoAnUnfocusedPanelRecapturesTheOrigin() {
-    #expect(QuickAddPanelHost.shouldCaptureOrigin(panelIsKey: false))
-    #expect(
-      !QuickAddPanelHost.shouldCaptureOrigin(panelIsKey: true),
-      "already holding focus means nothing is being taken, so the standing record still holds")
-  }
-
-  /// **The gate is what stops a fade re-raising a window the user has left.** After a confirmation
-  /// the beat has already released, so the panel is not key when the fade fires.
-  @Test("Dismissal hands focus back only when the panel is actually holding it")
-  func dismissalReleasesOnlyWhatItHolds() {
-    #expect(QuickAddPanelHost.shouldReleaseOnDismiss(panelIsKey: true))
-    #expect(!QuickAddPanelHost.shouldReleaseOnDismiss(panelIsKey: false))
-  }
-
-  /// **The case AppKit's own notifications got wrong, kept so the observer version cannot return.**
-  /// `NSApp.activate` can make Settings key on its way to activating us, so a notification observer
-  /// records `.ourWindow` for an invocation that started in TextEdit. Capturing before anything
-  /// activates is what makes the answer `.otherApp`, and this asserts the consequence.
-  @Test("Our own activation cannot turn an external origin into one of our windows")
-  func ourOwnActivationDoesNotRewriteTheOrigin() {
-    #expect(QuickAddPanelHost.focusRelease(origin: .otherApp) == .deactivateApp)
-  }
-
-  /// Unknown deactivates, and the asymmetry is the point: guessing "our window" when the user came
-  /// from another app eats the keystrokes this mechanism exists to protect, while guessing
-  /// "deactivate" when they were in our app costs a click.
-  @Test("With nothing observed the panel gives the keyboard back rather than keeping it")
-  func anUnknownOriginDeactivates() {
-    #expect(QuickAddPanelHost.focusRelease(origin: .unknown) == .deactivateApp)
-  }
+  // **The focus-return tests are GONE with the mechanism they guarded (founder, 2026-08-25).**
+  // `theKeyboardGoesWhereItBelongs`, `aVisibleWindowIsNotProvenance`,
+  // `ourOwnActivationDoesNotRewriteTheOrigin`, `aRaiseOntoAnUnfocusedPanelRecapturesTheOrigin`,
+  // `dismissalReleasesOnlyWhatItHolds` and `anUnknownOriginDeactivates` all asserted decisions about
+  // where to hand the keyboard back, and there is no longer anywhere to hand it back to.
+  //
+  // Per `deleting-a-test-carries-the-burden-of-adding-one`: what they protected was the correctness
+  // of a mechanism that has been REMOVED, not a user-facing outcome that still exists. The three
+  // refutations they carried — a visible window is not provenance, our own activation must not
+  // rewrite the origin, a second press onto an unfocused panel is a new origin — were all facts
+  // about that mechanism. Nothing else asserts them because nothing else needs them.
 
   // MARK: - The created confirmation names what was written (#2391, r5)
 

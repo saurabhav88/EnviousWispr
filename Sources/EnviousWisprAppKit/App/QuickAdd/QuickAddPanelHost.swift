@@ -1,7 +1,4 @@
 import AppKit
-import EnviousWisprCore
-import EnviousWisprServices
-import Foundation
 import SwiftUI
 
 /// The Quick Add panel's window, and nothing else (#2381).
@@ -42,26 +39,6 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
 
   private var panel: NSPanel?
 
-  /// What held the keyboard before the panel took it, and the window if it was ours.
-  ///
-  /// Written by the two observers below and by nothing else, so there is no route to miss. Weak,
-  /// because a Settings window the user closed during the beat must not be resurrected or retained.
-  private var focusOrigin: FocusOriginKind = .unknown
-  private weak var originWindow: NSWindow?
-  /// The process id of the application that was frontmost when we took focus.
-  ///
-  /// **Named, because `NSApp.deactivate()` does not hand activation to anyone.** Measured: four
-  /// seconds after the panel closed we were still active with zero windows, and every keystroke was
-  /// being discarded. Activation is cooperative since macOS 14 — resigning is not transferring, and
-  /// with nothing else asking we simply stay in front.
-  ///
-  /// **A pid rather than the `NSRunningApplication`, and the first version got this wrong in a way
-  /// only the log line caught.** Held `weak`, the object returned by `frontmostApplication` is
-  /// deallocated immediately — nothing else retains it — so the release always took the branch with
-  /// nothing to name and behaved exactly like the defect it was fixing. Held STRONG it would pin a
-  /// process object for the life of the host. A pid is neither: it is resolved at release time, and
-  /// if that app has quit the lookup fails, which is the honest answer rather than a stale one.
-  private var originAppPID: pid_t?
 
 
   #if DEBUG
@@ -129,41 +106,16 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
     return true
   }
 
-  /// Bring the panel forward and give it the keyboard, recording what held it first.
+  /// Bring the panel forward and give it the keyboard.
+  ///
+  /// **Takes focus and does NOT record where it came from.** Seven review rounds went into giving it
+  /// back, and the founder retired the requirement rather than the bug (2026-08-25): after adding a
+  /// word the user is already reaching for the place they want to type, so putting the caret
+  /// somewhere on their behalf competes with the click they were going to make.
   ///
   /// **One owner for both takers.** `present` and `raise` both activate and both call
-  /// `makeKeyAndOrderFront`, so a third taker cannot be added without coming through here — which
-  /// is the point of this existing rather than the two lines being repeated at each site.
-  ///
-  /// **Capture iff we do not already hold focus, and that predicate is the sixth answer to one
-  /// question.** The five before it each described something unbounded. Hooking the ROUTES misses
-  /// routes, because the set of ways a window becomes key is AppKit's rather than ours. Deriving
-  /// from the current window list answers a different question — a visible window of ours is not
-  /// evidence the user came from it. Naming the one uncontaminated INSTANT is a claim about time,
-  /// and `raise` falsifies it: `windowDidResignKey` is a no-op, so the panel can sit visible and
-  /// unfocused while the user works somewhere else, and a second shortcut press is then a genuinely
-  /// new origin rather than a repeat of the first.
-  ///
-  /// `panel.isKeyWindow` is AppKit's own answer, read at the transition, with two values. If we do
-  /// not hold focus we are about to take it from whoever does, so record them; if we already hold
-  /// it, nothing is being taken and the existing record still describes who we took it from.
-  ///
-  /// The read happens BEFORE the activate below, which is the only line here that moves focus —
-  /// `QuickAddCoordinator.begin` depends on the same ordering to read the selection.
+  /// `makeKeyAndOrderFront`, so a third taker cannot be added without coming through here.
   private func takeFocus(_ panel: NSPanel) {
-    if Self.shouldCaptureOrigin(panelIsKey: panel.isKeyWindow) {
-      if NSApp.isActive, let key = NSApp.keyWindow, key !== panel {
-        focusOrigin = .ourWindow
-        originWindow = key
-        originAppPID = nil
-      } else {
-        focusOrigin = .otherApp
-        originWindow = nil
-        // Read at the same instant as everything else here, and for the same reason: a moment later
-        // the frontmost application is us.
-        originAppPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-      }
-    }
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
   }
@@ -172,64 +124,7 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   ///
   /// Holding it already means nothing is being taken, so the standing record — who we took it from
   /// when we did — is still the right answer.
-  /// Which release BRANCH ran, so a Live UAT can read it instead of inferring it.
-  ///
-  /// **Inferring it from which app ends up in front does not work, and two versions of that harness
-  /// were unfailable before this line existed** — our app can legitimately be frontmost either way,
-  /// so the observed value and the defect value were the same string. This names the branch.
-  ///
-  /// `#if DEBUG` and the same category as the funnel: a release build writes no `app.log` at all.
-  /// It carries no word, no spelling and no selection — only which of three paths was taken.
-  private func logFocus(_ line: String) {
-    #if DEBUG
-      Task { await AppLogger.shared.log("[QuickAdd] \(line)", level: .info, category: "QuickAdd") }
-    #endif
-  }
 
-  package static func shouldCaptureOrigin(panelIsKey: Bool) -> Bool { !panelIsKey }
-
-  /// Whether taking the panel down should hand focus back.
-  ///
-  /// **Gated rather than unconditional, and the gate is load-bearing.** After a confirmation the
-  /// beat has already released, so the panel is not key when the fade fires; releasing again there
-  /// would re-raise a Settings window the user may have left in the meantime. Not holding focus
-  /// means there is nothing to give back.
-  package static func shouldReleaseOnDismiss(panelIsKey: Bool) -> Bool { panelIsKey }
-
-  /// What held the keyboard immediately before this panel took it.
-  ///
-  /// **Provenance, and six review rounds went into where to capture it.** Recording at the ROUTES
-  /// enumerates AppKit's set rather than ours — a raise, a mouse click, command-tab, the Dock — so
-  /// three rounds each found another one. Deriving instead from "do we have another window on
-  /// screen" is closed and WRONG: leave Settings open behind TextEdit, invoke the shortcut from
-  /// TextEdit, and a window-list answer sends the keyboard to Settings.
-  ///
-  /// The closed capture point is not a list of routes, not a derivation from the current world,
-  /// and not an instant. It is the panel's own key status at the transition — see
-  /// `shouldCaptureOrigin(panelIsKey:)`.
-  package enum FocusOriginKind: Equatable, Sendable, CaseIterable {
-    /// Another application was frontmost.
-    case otherApp
-    /// One of OUR windows held key — Settings, reachable because the shortcut is global.
-    case ourWindow
-    /// Nothing observed yet. Reachable only before either notification has fired.
-    case unknown
-  }
-
-  /// Where the keyboard goes when the panel gives it up.
-  package enum FocusRelease: Equatable, Sendable, CaseIterable {
-    /// Hand key to the window of ours that had it. Deactivating would hide the user's own window.
-    case handToOurOwnWindow
-    /// Give the app behind us the keyboard back.
-    case deactivateApp
-  }
-
-  /// **`unknown` deactivates, and the asymmetry is deliberate.** Guessing "our window" when the user
-  /// came from another app eats the keystrokes this whole mechanism exists to protect; guessing
-  /// "deactivate" when they were in our app costs them a click. The second is the cheaper error.
-  package static func focusRelease(origin: FocusOriginKind) -> FocusRelease {
-    origin == .ourWindow ? .handToOurOwnWindow : .deactivateApp
-  }
 
 
   /// Bring an already-visible panel back to the front and give it key focus.
@@ -246,63 +141,11 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
     takeFocus(panel)
   }
 
-  /// Hand keyboard focus back to whatever the user was working in, WITHOUT taking the panel down.
-  ///
-  /// **The one property that made the confirmation safe to put in the panel at all.** This panel is
-  /// key-capable because Return is the whole feature, so a panel that lingers for a beat after
-  /// Return is a panel that owns the keyboard for that beat — and the user has already gone back to
-  /// their sentence. The first letters of their next word would land in our search field. That cost
-  /// nearly sent the confirmation to the dictation overlay instead, which is non-activating by
-  /// construction.
-  ///
-  /// `NSApp.deactivate()` gives focus to the app behind us. The panel stays visible because
-  /// `hidesOnDeactivate` is false and it sits at `.floating` — both set for their own reasons long
-  /// before this needed them.
-  ///
-  /// **Returns exactly what `present` took, which is TWO things rather than one.** Opened from
-  /// another app it took activation, and giving that back returns key status with it. Opened from
-  /// our own Settings window it took activation from nobody and key status from that window, so the
-  /// window is what gets it back — deactivating there would hide the user's own window instead.
-  func releaseFocus() {
-    guard let panel, panel.isVisible else { return }
-    switch Self.focusRelease(origin: focusOrigin) {
-    case .handToOurOwnWindow:
-      // A window that has since been closed leaves nothing to hand to; deactivating instead would
-      // be a guess about an app the user may not have come from, so do neither.
-      guard let originWindow, originWindow !== panel, originWindow.isVisible else { return }
-      originWindow.makeKeyAndOrderFront(nil)
-      logFocus("focus released to our own window")
-    case .deactivateApp:
-      // **Activate the app BY NAME. `NSApp.deactivate()` alone does not hand activation to anyone**
-      // — measured as four seconds still frontmost with zero windows, keystrokes going nowhere.
-      // This mirrors the branch above, which always named its destination and always worked.
-      if let pid = originAppPID,
-        let originApp = NSRunningApplication(processIdentifier: pid),
-        !originApp.isTerminated
-      {
-        originApp.activate()
-        logFocus("focus released to the origin app")
-      } else {
-        // Nothing to name: an origin taken before a frontmost app could be read, or one that has
-        // quit. Worse than naming a destination, better than keeping a keyboard nobody can use.
-        NSApp.deactivate()
-        logFocus("focus released with no origin app to name")
-      }
-    }
-  }
-
-
   /// Take the panel down. Idempotent.
   ///
   /// `orderOut`, never `close`: closing is what forces a rebuild, and this panel is reused.
   func dismiss() {
     guard let panel, panel.isVisible else { return }
-    // **Every dismissal route passes through here, which is why the release lives here rather than
-    // at the routes.** Escape on a notice the user clicked back into does not reach the wiring's
-    // cancel path at all — that invocation already resolved and `activeModel` is nil — so a release
-    // placed at the visible close control left the app active with no key window and the next
-    // characters going nowhere.
-    if Self.shouldReleaseOnDismiss(panelIsKey: panel.isKeyWindow) { releaseFocus() }
     panel.orderOut(nil)
     panel.contentViewController = nil
   }
