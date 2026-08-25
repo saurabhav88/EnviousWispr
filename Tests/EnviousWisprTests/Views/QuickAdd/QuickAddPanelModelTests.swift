@@ -177,6 +177,20 @@ struct QuickAddPanelModelTests {
     #expect(model.writeFailure == nil)
   }
 
+  /// **The field is HIDDEN under a refusal, not merely inert, and the copy guard depends on it.**
+  /// `noRefusalPointsAtTheSearchField` forbids the refusal messages from naming a control the user
+  /// cannot use; leaving a disabled field on screen is that control, still there. The test below
+  /// covers the model half — the query text survives — and this covers whether it is shown at all.
+  @Test("A refusal takes the search field off screen")
+  func aRefusalHidesTheSearchField() {
+    let (refused, _) = makeModel(
+      heard: "", refusal: .accessibilityNotTrusted, heardRanking: .empty)
+    #expect(!refused.showsSearchField)
+
+    let (ordinary, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+    #expect(ordinary.showsSearchField, "the ordinary panel is the two-way half of this")
+  }
+
   @Test("A refusal leaves the search field inert rather than ranking an empty selection")
   func searchIsInertUnderARefusal() {
     let (model, calls) = makeModel(
@@ -262,7 +276,7 @@ struct QuickAddPanelModelTests {
       heard: heard, refusal: refusal, heardRanking: heardRanking, searchRanking: heardRanking)
     if !query.isEmpty { model.updateQuery(query) }
     let view = QuickAddPanelView(
-      model: model, onAccept: { _ in }, onCreateNew: {}, onCancel: {})
+      model: model, onAccept: { _ in }, onCreateNew: {}, onCreate: { _ in }, onCancel: {})
     return view.headerState
   }
 
@@ -350,5 +364,290 @@ struct QuickAddPanelModelTests {
     model.updateQuery("  cod  ")
 
     #expect(model.isSearching)
+  }
+
+  // MARK: - Composing a new word (#2391 §2)
+
+  /// The whole reason this stage exists. `Create a new word` presented a SwiftUI `.sheet`, and a
+  /// sheet cannot present on a window that refuses main status — silently, with no exception and no
+  /// log line. The button ran its action, set its binding, and changed nothing on screen. For a user
+  /// with no readable selection it was the panel's ONLY control, so the panel had no working action
+  /// at all.
+  @Test("Create moves the panel to its compose stage")
+  func createBeginsComposing() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.beginComposing()
+
+    #expect(model.stage == .composing)
+  }
+
+  /// Someone who typed a word, found nothing, and reached for Create has already said what they
+  /// mean. Making them type it again is the panel forgetting.
+  @Test("A search in progress seeds the draft, trimmed")
+  func composingSeedsFromTheSearch() {
+    let (model, _) = makeModel(
+      heardRanking: ranking(["Codex"], preselecting: 0),
+      searchRanking: ranking(["Codex"], preselecting: nil))
+
+    model.updateQuery("  Qwen  ")
+    model.beginComposing()
+
+    #expect(model.draftCanonical == "Qwen")
+  }
+
+  /// **The misspelling is precisely what the new word must NOT be called**, so an empty field is the
+  /// correct start. Seeding it with `heard` would put `clawwed` in the library as a canonical.
+  @Test("With nothing typed the draft starts empty, never at the misspelling")
+  func composingDoesNotSeedTheMisspelling() {
+    let (model, _) = makeModel(
+      heard: "clawwed", heardRanking: ranking(["Claude"], preselecting: 0))
+
+    model.beginComposing()
+
+    #expect(model.draftCanonical.isEmpty)
+  }
+
+  /// Whitespace is not a search. The same trimming rule `isSearching` owns, reaching the one place
+  /// where getting it wrong writes a word rather than merely re-ranking a list.
+  @Test("A whitespace-only field seeds nothing")
+  func whitespaceQueryDoesNotSeedTheDraft() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.updateQuery("   ")
+    model.beginComposing()
+
+    #expect(model.draftCanonical.isEmpty)
+  }
+
+  /// Escape has two meanings and the window cannot tell them apart, so the model answers.
+  @Test("Escape belongs to the content while composing and to the window otherwise")
+  func escapeIsConsumedOnlyWhileComposing() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    #expect(model.consumeCancel() == false, "picking: the panel closes")
+
+    model.beginComposing()
+    #expect(model.consumeCancel() == true, "composing: back to the list")
+    #expect(model.stage == .picking)
+  }
+
+  /// Backing out must not leave the next visit to Compose holding the last attempt's text or the
+  /// last attempt's error.
+  @Test("Backing out of composing clears the draft and the refusal")
+  func cancellingComposingClearsState() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.beginComposing()
+    model.updateDraft("Qwen")
+    model.noteWriteFailure("nope")
+    model.cancelComposing()
+
+    #expect(model.stage == .picking)
+    #expect(model.draftCanonical.isEmpty)
+    #expect(model.writeFailure == nil)
+  }
+
+  /// **The list is still ranked and still carries a preselected row while composing — only the view
+  /// has stopped showing it.** A legend derived from `acceptTarget` would advertise `add spelling`
+  /// over a compose field, and a stray Return would write to a row the user can no longer see.
+  @Test("Return cannot accept a hidden row while composing")
+  func composingWithdrawsTheAcceptTarget() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+    #expect(model.acceptTarget != nil)
+
+    model.beginComposing()
+
+    #expect(model.acceptTarget == nil)
+    #expect(model.ranking.preselectedID != nil, "the ranking itself is untouched")
+  }
+
+  @Test("An empty or whitespace draft creates nothing")
+  func anEmptyDraftIsNotAWord() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.beginComposing()
+    #expect(model.draftWord == nil)
+
+    model.updateDraft("   ")
+    #expect(model.draftWord == nil)
+  }
+
+  /// The whole point of authoring the word from HERE rather than from Settings: it arrives carrying
+  /// the spelling the user selected.
+  @Test("The authored word carries the heard spelling as its alias")
+  func theDraftWordCarriesTheHeardSpelling() throws {
+    let (model, _) = makeModel(
+      heard: "clawwed", heardRanking: ranking(["Claude"], preselecting: 0))
+
+    model.beginComposing()
+    model.updateDraft("  Claude  ")
+    let word = try #require(model.draftWord)
+
+    #expect(word.canonical == "Claude")
+    // "Claude" heard as "clawwed" — the alias is the mishearing, not the word.
+    #expect(word.aliases == ["clawwed"])
+  }
+
+  /// A spelling identical to the canonical is not a mishearing, it is the word. Storing it as an
+  /// alias of itself is a duplicate the library would carry forever, and nothing else would refuse
+  /// it: `CustomWordsManager.add` has no rule against a word aliasing its own name.
+  @Test("A spelling equal to the word is not stored as its own alias")
+  func theDraftWordDropsASelfAlias() throws {
+    let (model, _) = makeModel(
+      heard: "Codex", heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.beginComposing()
+    model.updateDraft("codex")
+    let word = try #require(model.draftWord)
+
+    #expect(word.aliases.isEmpty)
+  }
+
+  /// **The state with no readable selection, which is the one Create exists for.** A blank alias
+  /// here is what made `QuickAddWiring.newWordOutcome`'s postcondition vacuous — `kept` was empty,
+  /// `missing.isEmpty` was trivially true, and a duplicate canonical took the success path having
+  /// written nothing.
+  @Test("With no selection the word is created carrying no spellings, not one blank one")
+  func theDraftWordCarriesNoBlankAlias() throws {
+    let (model, _) = makeModel(
+      heard: "", refusal: .nothingSelected, heardRanking: .empty)
+
+    model.beginComposing()
+    model.updateDraft("Qwen")
+    let word = try #require(model.draftWord)
+
+    #expect(word.canonical == "Qwen")
+    #expect(word.aliases.isEmpty)
+  }
+
+  /// A second `beginComposing` must not wipe what the user has typed. Reachable by clicking the
+  /// create row again, which is still on screen in some layouts, and by any future caller.
+  @Test("Composing is idempotent and does not discard the draft")
+  func beginComposingTwiceKeepsTheDraft() {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.beginComposing()
+    model.updateDraft("Qwen")
+    model.beginComposing()
+
+    #expect(model.draftCanonical == "Qwen")
+  }
+
+  // MARK: - Saying what happened and leaving (#2391 §1 and §3)
+
+  private func covered(_ canonical: String) -> QuickAddRanker.Candidate {
+    QuickAddRanker.Candidate(
+      word: CustomWord(canonical: canonical, aliases: ["codecs"]),
+      score: 1.0,
+      alreadyHasHeardSpelling: true)
+  }
+
+  private func rankingCovered(preselecting: Bool) -> QuickAddRanker.Ranking {
+    let rows = [covered("Codex"), candidate("Claude Code"), candidate("Qualtrics")]
+    return QuickAddRanker.Ranking(
+      candidates: rows, preselectedID: preselecting ? rows[0].id : nil)
+  }
+
+  /// The founder selected a word already covered and got a full picker offering nothing: a
+  /// highlighted row whose only action is a no-op, three unrelated words presented as choices, and a
+  /// dismissal he had to perform by hand — under a header that already said `nothing to add`.
+  @Test("Opening onto a covered word says so instead of offering a picker")
+  func openingOntoACoveredWordShowsANotice() throws {
+    let (model, _) = makeModel(heardRanking: rankingCovered(preselecting: true))
+
+    let notice = try #require(model.notice)
+    #expect(notice.kind == .nothingToAdd)
+    #expect(notice.word == "Codex")
+    #expect(notice.spelling == "codecs")
+    // The invocation has NOT resolved: the ranking can be wrong, and typing is how the user says so.
+    #expect(notice.searchable)
+  }
+
+  /// **Below the confidence bar nothing is preselected, and the user must choose.** A notice there
+  /// would answer a question the ranking deliberately refused to answer — and it would do it on the
+  /// strength of a row that was never offered as the answer.
+  @Test("A covered row that was not preselected does not shortcut the panel")
+  func anUnpreselectedCoveredRowStillShowsTheList() {
+    let (model, _) = makeModel(heardRanking: rankingCovered(preselecting: false))
+
+    #expect(model.stage == .picking)
+    #expect(model.notice == nil)
+  }
+
+  /// The escape hatch #2381 built for a wrong ranking has to survive a notice, or the notice becomes
+  /// a dead end the user can only escape by pressing the shortcut again and seeing it again.
+  @Test("Typing past the notice returns the full list")
+  func typingLeavesTheNotice() {
+    let (model, _) = makeModel(
+      heardRanking: rankingCovered(preselecting: true),
+      searchRanking: ranking(["Qualtrics"], preselecting: 0))
+
+    model.updateQuery("qual")
+
+    #expect(model.stage == .picking)
+    #expect(model.notice == nil)
+  }
+
+  /// The same trimming rule `isSearching` owns. A space bar is not the user saying the ranking was
+  /// wrong about them.
+  @Test("Whitespace does not count as typing past the notice")
+  func whitespaceDoesNotLeaveTheNotice() {
+    let (model, _) = makeModel(heardRanking: rankingCovered(preselecting: true))
+
+    model.updateQuery("   ")
+
+    #expect(model.notice?.searchable == true)
+  }
+
+  /// The search field is on screen and focused during a searchable notice, so both ways into the
+  /// list have to work. Only typing did — pressing Down watched nothing happen, on a panel visibly
+  /// offering the key.
+  @Test("An arrow past the notice opens the list, the same as typing")
+  func arrowsLeaveTheNotice() {
+    let (model, _) = makeModel(heardRanking: rankingCovered(preselecting: true))
+
+    model.moveHighlight(by: 1)
+
+    #expect(model.stage == .picking)
+    #expect(model.notice == nil)
+    #expect(model.acceptTarget != nil, "and the row it lands on is acceptable")
+  }
+
+  /// A notice is the panel saying it has nothing to ask. A Return arriving from anywhere while one
+  /// is up must not write to the row still sitting preselected behind it.
+  @Test("Return cannot accept a row behind a notice")
+  func aNoticeWithdrawsTheAcceptTarget() {
+    let (model, _) = makeModel(heardRanking: rankingCovered(preselecting: true))
+
+    #expect(model.acceptTarget == nil)
+    #expect(model.ranking.preselectedID != nil, "the ranking itself is untouched")
+  }
+
+  /// **A confirmation is NEVER searchable, and getting this backwards is the defect that nearly sent
+  /// it to the dictation overlay instead.** It is shown after Return, when the user has gone back to
+  /// their sentence; a focused field would eat the first letters of their next word.
+  @Test("A post-Return confirmation offers no field to type into")
+  func aConfirmationIsNotSearchable() throws {
+    let (model, _) = makeModel(heardRanking: ranking(["Codex"], preselecting: 0))
+
+    model.noteWriteFailure("stale")
+    model.showNotice(.saved, spelling: "codecs", word: "Codex")
+
+    let notice = try #require(model.notice)
+    #expect(notice.searchable == false)
+    #expect(notice.kind == .saved)
+    #expect(model.writeFailure == nil, "the failure it replaces must not render underneath it")
+  }
+
+  /// A refusal has nothing to rank, so there is no covered row to shortcut on. Guards the branch
+  /// order in the initialiser: reading the ranking before the refusal is handled would crash or,
+  /// worse, notice on an empty string.
+  @Test("A refusal never opens onto a notice")
+  func aRefusalNeverNotices() {
+    let (model, _) = makeModel(heard: "", refusal: .nothingSelected, heardRanking: .empty)
+
+    #expect(model.stage == .picking)
+    #expect(model.notice == nil)
   }
 }

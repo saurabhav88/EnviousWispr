@@ -87,8 +87,14 @@ final class QuickAddCoordinator {
     /// postcondition would then depend on the caller having appended last — a fact no signature
     /// states and one edit could change without anything failing.
     var saveWord: (CustomWord, String) -> String?
-    /// Open the existing edit sheet on a new word carrying the heard spelling as its first alias.
-    var presentNewWordSheet: (String) -> Void
+    /// Move the panel to its compose stage, where the user authors the word by hand.
+    ///
+    /// **Takes no spelling, and that is the whole shape of the #2391 fix.** It used to present a
+    /// SwiftUI `.sheet` seeded with the heard spelling — which presented NOTHING, because the panel
+    /// refuses main status and AppKit refuses `beginSheet` on such a window, silently. The word is
+    /// now assembled by the panel model, which already holds the heard spelling, so there is no
+    /// second copy of it to hand anywhere and no second place that could disagree about trimming.
+    var beginNewWord: () -> Void
     var emit: (QuickAddEvent) -> Void
     /// Injected so elapsed time is measurable without waiting.
     var now: () -> Date = Date.init
@@ -101,14 +107,14 @@ final class QuickAddCoordinator {
     self.environment = environment
   }
 
-  /// Supply the create-new presenter after construction.
+  /// Supply the create-new entry point after construction.
   ///
-  /// Needed because the object that presents the sheet is the one that BUILDS this coordinator, so
+  /// Needed because the object that owns the live panel is the one that BUILDS this coordinator, so
   /// it cannot capture itself while doing so. Kept to this one seam rather than making the whole
   /// environment mutable: everything else is known at construction, and a settable environment is an
   /// invitation to change the rules at runtime.
-  func setPresentNewWordSheet(_ present: @escaping (String) -> Void) {
-    environment.presentNewWordSheet = present
+  func setBeginNewWord(_ begin: @escaping () -> Void) {
+    environment.beginNewWord = begin
   }
 
   /// One Quick Add invocation, from either door.
@@ -292,16 +298,41 @@ final class QuickAddCoordinator {
     return .gone
   }
 
+  /// What accepting a row actually did, which is not always what the row promised.
+  ///
+  /// **Three cases rather than an optional message, because the caller now has to SAY what
+  /// happened.** The panel confirms a save before it leaves (#2391 §1), and the confirmation is a
+  /// claim: `"clawwed" added to Claude` is false when the word already carried that spelling and
+  /// nothing was written.
+  ///
+  /// The caller cannot work this out for itself. `candidate.alreadyHasHeardSpelling` is a fact about
+  /// the ranking taken when the panel OPENED, and the panel is persistent — the whole reason the
+  /// already-has question is asked of the live word below. A confirmation composed from the snapshot
+  /// would be the same stale-read defect the accept path has now produced three times, arriving
+  /// through the sentence written to reassure the user.
+  ///
+  /// The canonical rides along for the same reason: the user can have renamed the word in Settings
+  /// while the panel sat open, and naming the snapshot's spelling would confirm a word that no
+  /// longer exists under that name.
+  enum AcceptResult: Equatable {
+    /// The spelling was written onto this word.
+    case saved(word: String)
+    /// The live word already carried the spelling, so nothing was written and nothing needed to be.
+    case alreadyHad(word: String)
+    /// The library refused. Carries the user-facing reason; the panel stays open.
+    case refused(String)
+  }
+
   /// The user accepted a row.
   ///
-  /// **Returns the refusal message when the library would not take the word, and nil otherwise.**
-  /// The return value is what tells the caller whether it may dismiss: `saveWord` can refuse for
-  /// reasons that have nothing to do with this feature — the stored-value character policy, the
-  /// 512-scalar ceiling, a words file that will not write — and dismissing regardless is a panel
-  /// reporting success for a word that was never saved. The sibling path through the edit sheet
-  /// already had this shape; this one did not.
+  /// **Returns what happened, and `.refused` is what tells the caller it may NOT dismiss.**
+  /// `saveWord` can refuse for reasons that have nothing to do with this feature — the stored-value
+  /// character policy, the 512-scalar ceiling, a words file that will not write — and dismissing
+  /// regardless is a panel reporting success for a word that was never saved. The sibling path
+  /// through Create already had this shape; this one did not.
   @discardableResult
-  func accept(_ candidate: QuickAddRanker.Candidate, from model: QuickAddPanelModel) -> String? {
+  func accept(_ candidate: QuickAddRanker.Candidate, from model: QuickAddPanelModel) -> AcceptResult
+  {
     let usedSearch = model.isSearching
     let rank = model.ranking.candidates.firstIndex { $0.id == candidate.id }
 
@@ -326,7 +357,7 @@ final class QuickAddCoordinator {
       kind = .userWord
     case .gone:
       environment.emit(.failed(stage: "save", reason: "target_gone"))
-      return QuickAddPanelCopy.wordNoLongerExists
+      return .refused(QuickAddPanelCopy.wordNoLongerExists)
     }
 
     // **ONE already-has question, asked of the LIVE word, and it replaces a guard that ran BEFORE
@@ -344,13 +375,23 @@ final class QuickAddCoordinator {
     //
     // The flag stays on `Candidate` and the VIEW still reads it: dimming a row and choosing a header
     // are display, and display from the ranking is what the user is looking at. The DECISION is live.
+    // **The CANONICAL counts as already covering the spelling, not just the aliases.** A word whose
+    // canonical IS the selected text is covered by it; appending it again stores the canonical as an
+    // alias of itself and reports `"Codex" added to Codex` — a false sentence over a junk write.
+    // Reachable two ways: the word is renamed in Settings while the panel sits open, or the user
+    // types past the already-covered notice, comes back to the list and selects the same row.
+    //
+    // This is the ranker's question (`QuickAddRanker` seeds `alreadyHasHeardSpelling` from the
+    // canonical before reading aliases) and the compose path's rule (`draftWord` drops a
+    // self-alias). Three sites, one rule — it was two out of three.
     guard
+      word.canonical.caseInsensitiveCompare(model.spellingToWrite) != .orderedSame,
       !word.aliases.contains(where: {
         $0.caseInsensitiveCompare(model.spellingToWrite) == .orderedSame
       })
     else {
       finish(.alreadySaved, usedSearch: usedSearch, rank: rank, kind: kind)
-      return nil
+      return .alreadyHad(word: word.canonical)
     }
     word.aliases.append(model.spellingToWrite)
 
@@ -364,22 +405,28 @@ final class QuickAddCoordinator {
       // `write_failed` and then a second `resolved` when they did either, which is two terminal
       // events for one open. `resolved` means ENDED; the refusal is reported by the `failed` event
       // above, which is what that channel is for.
-      return message
+      return .refused(message)
     }
     finish(
       usedSearch ? .acceptedAfterSearch : .accepted,
       usedSearch: usedSearch, rank: rank, kind: kind)
-    return nil
+    return .saved(word: word.canonical)
   }
 
-  /// The user chose to create a new word. **Opens the sheet and resolves NOTHING.**
+  /// The user chose to create a new word. **Moves the panel to its compose stage and resolves
+  /// NOTHING.**
   ///
-  /// Emitting `createdNew` here counted an intention as an outcome: cancelling the sheet left the
-  /// panel up, and cancelling the panel then emitted a SECOND resolved event for one open. The
+  /// Emitting `createdNew` here counted an intention as an outcome: backing out of composing leaves
+  /// the panel up, and cancelling the panel then emitted a SECOND resolved event for one open. The
   /// funnel is one `opened` and one `resolved`, and a rate computed over a denominator that
   /// double-counts is worse than no rate.
+  ///
+  /// Takes the model it does nothing with, deliberately: every other outcome on this type is
+  /// reported against the panel the user was looking at, and a signature that quietly stopped
+  /// naming one would be the only place a reader has to check which panel is meant.
   func createNew(from model: QuickAddPanelModel) {
-    environment.presentNewWordSheet(model.spellingToWrite)
+    _ = model
+    environment.beginNewWord()
   }
 
   /// The sheet saved, and the word is confirmed present. Called by the caller that checked.
@@ -391,13 +438,16 @@ final class QuickAddCoordinator {
     finish(.createdNew, usedSearch: usedSearch, rank: nil, kind: nil)
   }
 
-  /// The sheet's canonical was already in the library and already carried every spelling the user
-  /// kept, so `CustomWordsManager.add` wrote nothing and nothing needed writing.
+  /// Nothing was written and nothing needed to be.
+  ///
+  /// **Two callers, one fact.** Create's canonical was already in the library and already carried
+  /// every spelling the user kept, so `CustomWordsManager.add` wrote nothing; or the panel opened
+  /// onto a word that already knows the selection and the user let the notice fade (#2391 §3).
   ///
   /// A separate entry point rather than a flag on `didCreateNew`, because the two differ in the one
   /// way the funnel cares about: whether a word was created. `alreadySaved` is not new vocabulary
   /// for this — it already means "the word carried this spelling, so there was nothing to write",
-  /// and it is the same fact arriving through the other door.
+  /// and it is the same fact arriving through the other doors.
   func didFindAlreadySaved(usedSearch: Bool) {
     finish(.alreadySaved, usedSearch: usedSearch, rank: nil, kind: nil)
   }

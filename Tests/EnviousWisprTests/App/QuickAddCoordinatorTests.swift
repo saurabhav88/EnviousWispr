@@ -22,7 +22,10 @@ struct QuickAddCoordinatorTests {
     var events: [QuickAddEvent] = []
     var saved: [CustomWord] = []
     var savedSpellings: [String] = []
-    var sheetsFor: [String] = []
+    /// How many times the panel was asked to move to its compose stage. A COUNT, not the heard
+    /// spelling: the coordinator stopped handing one over when the sheet was replaced by a stage of
+    /// the panel, and the model that already holds it is the only thing that assembles the word.
+    var beganNewWord = 0
     var refreshCalls = 0
 
     /// The user library, LIVE. Held here rather than captured by value so a test can change it
@@ -96,7 +99,7 @@ struct QuickAddCoordinatorTests {
         recorder.savedSpellings.append(spelling)
         return nil
       },
-      presentNewWordSheet: { recorder.sheetsFor.append($0) },
+      beginNewWord: { recorder.beganNewWord += 1 },
       emit: { recorder.events.append($0) },
       now: {
         clock.addTimeInterval(0.01)
@@ -349,9 +352,9 @@ struct QuickAddCoordinatorTests {
 
     recorder.userWords = []
 
-    let message = coordinator.accept(target, from: model)
+    let result = coordinator.accept(target, from: model)
 
-    #expect(message == QuickAddPanelCopy.wordNoLongerExists)
+    #expect(result == .refused(QuickAddPanelCopy.wordNoLongerExists))
     #expect(recorder.saved.isEmpty, "nothing may be written for a word that is gone")
     #expect(
       recorder.outcomes.isEmpty,
@@ -392,13 +395,13 @@ struct QuickAddCoordinatorTests {
     let model = try #require(beginAndShow(coordinator))
     let target = try #require(model.ranking.candidates.first)
 
-    let message = coordinator.accept(target, from: model)
+    let result = coordinator.accept(target, from: model)
 
     // The RETURNED message is the assertion that matters, and the first version of this test did
     // not make it. It asserted the TELEMETRY outcome, which is a fact about a dashboard; what the
     // comment above promises — "the user must be told" — is only true if the caller is handed
     // something to show, and the caller dismissed the panel regardless until this was added.
-    #expect(message == "That word cannot be saved.")
+    #expect(result == .refused("That word cannot be saved."))
     #expect(recorder.events.contains { if case .failed = $0 { true } else { false } })
     // NOT resolved. The panel is still open, so the invocation has not ended — `resolved` means
     // ENDED, and the second version of this test asserted `[.writeFailed]` here, which was the
@@ -449,29 +452,87 @@ struct QuickAddCoordinatorTests {
       })
   }
 
-  @Test("A save that succeeds returns nothing to show, which is what licenses the dismiss")
-  func aSuccessfulWriteReturnsNil() throws {
+  @Test("A save that succeeds names the word it wrote to")
+  func aSuccessfulWriteNamesItsTarget() throws {
     // The paired accepted case for the refusal above. Without it the caller could dismiss on any
-    // non-nil-ness rule and still pass, and a check that never classifies anything looks clean.
+    // non-refusal rule and still pass, and a check that never classifies anything looks clean.
+    //
+    // The NAME is what the panel's confirmation quotes, so a result that merely said "fine" would
+    // send the caller back to the row the user clicked — a snapshot taken when the panel opened.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
     let model = try #require(beginAndShow(coordinator))
     let target = try #require(model.ranking.candidates.first)
 
-    #expect(coordinator.accept(target, from: model) == nil)
+    #expect(coordinator.accept(target, from: model) == .saved(word: "Codex"))
     #expect(recorder.outcomes == [.accepted])
   }
 
-  @Test("A word that already carries the spelling returns nothing to show")
-  func alreadySavedReturnsNil() throws {
-    // Nothing went wrong, so there is nothing to keep the panel open for. Distinguished from the
-    // refusal above only by the return value, which is why both are asserted.
+  @Test("A word that already carries the spelling reports that, not a save")
+  func alreadySavedIsDistinctFromSaved() throws {
+    // Nothing went wrong, so there is nothing to keep the panel open for — and nothing was written,
+    // so a confirmation reading `"codecs" added to Codex` would be a false sentence. The two
+    // successes are distinguished HERE because the caller cannot tell them apart: the row's
+    // `alreadyHasHeardSpelling` is the ranking's snapshot, and the decision is made live.
     let (coordinator, recorder) = makeCoordinator(
       selection: .text("codecs"), userWords: [word("Codex", aliases: ["codecs"])])
     let model = try #require(beginAndShow(coordinator))
     let target = try #require(model.ranking.candidates.first)
 
-    #expect(coordinator.accept(target, from: model) == nil)
+    #expect(coordinator.accept(target, from: model) == .alreadyHad(word: "Codex"))
     #expect(recorder.outcomes == [.alreadySaved])
+  }
+
+  /// **A word IS its canonical, so selecting that text adds nothing.** The live guard read the
+  /// aliases only, so this appended the canonical as an alias of itself and reported a save — a
+  /// junk write into the user's words file under a sentence reading `"Codex" added to Codex`.
+  ///
+  /// The fixture has NO aliases deliberately: with one, the row could pass on the alias check and
+  /// the canonical comparison would never be reached, which is the shape that lets a guard look
+  /// covered while asserting nothing.
+  @Test("Selecting a word's own canonical reports that it is already there, and writes nothing")
+  func theCanonicalCountsAsAlreadyCovered() throws {
+    let (coordinator, recorder) = makeCoordinator(
+      selection: .text("Codex"), userWords: [word("Codex")])
+    let model = try #require(beginAndShow(coordinator))
+    let target = try #require(model.ranking.candidates.first)
+
+    #expect(coordinator.accept(target, from: model) == .alreadyHad(word: "Codex"))
+    #expect(recorder.outcomes == [.alreadySaved])
+    #expect(
+      recorder.saved.isEmpty,
+      "nothing may be written: a canonical is already the spelling it is being asked to carry")
+  }
+
+  /// **Case-insensitively, matching the ranker and the alias check either side of it.**
+  @Test("A differently-cased canonical is still already covered")
+  func theCanonicalComparisonIgnoresCase() throws {
+    let (coordinator, _) = makeCoordinator(
+      selection: .text("codex"), userWords: [word("Codex")])
+    let model = try #require(beginAndShow(coordinator))
+    let target = try #require(model.ranking.candidates.first)
+
+    #expect(coordinator.accept(target, from: model) == .alreadyHad(word: "Codex"))
+  }
+
+  /// **The staleness the confirmation could reintroduce, in the direction that matters.** The row
+  /// said `already has this` when the panel opened; the user then removed that alias in Settings and
+  /// pressed Return. The write happens, and a confirmation composed from the snapshot would tell
+  /// them nothing was added.
+  @Test("The result follows the live library, never the row the user clicked")
+  func theResultIsLiveNotSnapshotted() throws {
+    let (coordinator, recorder) = makeCoordinator(
+      selection: .text("codecs"), userWords: [word("Codex", aliases: ["codecs"])])
+    let model = try #require(beginAndShow(coordinator))
+    let target = try #require(model.ranking.candidates.first)
+    #expect(target.alreadyHasHeardSpelling, "the snapshot says there is nothing to add")
+
+    // The user deletes that spelling in Settings while the panel sits open.
+    recorder.userWords = [
+      CustomWord(id: target.word.id, canonical: "Codex", aliases: [])
+    ]
+
+    #expect(coordinator.accept(target, from: model) == .saved(word: "Codex"))
+    #expect(recorder.outcomes == [.accepted])
   }
 
   @Test("Accepting after searching is a distinct outcome from accepting the top row")
@@ -507,19 +568,19 @@ struct QuickAddCoordinatorTests {
 
   // MARK: - The other two endings
 
-  @Test("Create-new opens the edit sheet on the heard spelling")
-  func createNewOpensTheSheet() throws {
+  @Test("Create-new moves the panel to its compose stage and writes nothing")
+  func createNewBeginsComposing() throws {
     let (coordinator, recorder) = makeCoordinator()
     let model = try #require(beginAndShow(coordinator))
 
     coordinator.createNew(from: model)
 
-    #expect(recorder.sheetsFor == ["codecs"])
-    // `createdNew` deliberately does NOT fire here any more — opening a sheet is an intention, and
-    // emitting on the click double-counted every open where the user then cancelled. The outcome is
+    #expect(recorder.beganNewWord == 1)
+    // `createdNew` deliberately does NOT fire here — reaching the compose field is an intention, and
+    // emitting on the click double-counted every open where the user then backed out. The outcome is
     // asserted in `didCreateNewResolvesOnce`, after the save is confirmed.
     #expect(recorder.outcomes.isEmpty)
-    #expect(recorder.saved.isEmpty, "the sheet writes, not this")
+    #expect(recorder.saved.isEmpty, "composing writes nothing")
   }
 
   @Test("Cancelling writes nothing and says so")
@@ -609,21 +670,21 @@ struct QuickAddCoordinatorTests {
     #expect(!model.ranking.candidates.isEmpty)
   }
 
-  @Test("Opening the new-word sheet resolves nothing, because an intention is not an outcome")
+  @Test("Reaching the compose field resolves nothing, because an intention is not an outcome")
   func createNewDoesNotResolve() throws {
-    // Emitting createdNew on the click counted opening a sheet as a save: cancelling the sheet left
-    // the panel up, and cancelling the panel then emitted a SECOND resolved event for one open.
+    // Emitting createdNew on the click counted the INTENTION as a save: backing out left the
+    // panel up, and cancelling the panel then emitted a SECOND resolved event for one open.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
     let model = try #require(beginAndShow(coordinator))
 
     coordinator.createNew(from: model)
 
-    #expect(recorder.sheetsFor == ["codecs"])
+    #expect(recorder.beganNewWord == 1)
     #expect(recorder.outcomes.isEmpty)
   }
 
-  @Test("Cancelling after opening the sheet resolves exactly once, as cancelled")
-  func cancellingAfterTheSheetResolvesOnce() throws {
+  @Test("Cancelling after reaching the compose field resolves exactly once, as cancelled")
+  func cancellingAfterComposingResolvesOnce() throws {
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
     let model = try #require(beginAndShow(coordinator))
 
@@ -677,8 +738,11 @@ struct QuickAddCoordinatorTests {
 
   @Test("A confirmed new word resolves even when the panel has already gone")
   func createdNewResolvesWithoutAModel() throws {
-    // The sheet outlives the panel in at least one ordering, and the call site used to read
-    // `if let model = activeModel`, so a CONFIRMED save emitted nothing at all.
+    // The call site used to read `if let model = activeModel`, so a CONFIRMED save emitted
+    // nothing at all. **The ordering that made this reachable is gone** — composing is a stage
+    // of the panel now, and a stage cannot outlive it, which is why `usedSearch` is read live.
+    // Kept because the coordinator is still callable this way and the funnel hole it closed is
+    // the expensive kind: a save that happened and was never counted.
     let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
     let model = try #require(beginAndShow(coordinator))
     coordinator.createNew(from: model)
@@ -704,18 +768,85 @@ struct QuickAddCoordinatorTests {
     #expect(recorder.savedSpellings == ["codecs"])
     #expect(recorder.saved.first?.aliases.contains("codecs") == true)
   }
-  // MARK: - Did the sheet's save actually produce a word (#2381, cloud review)
+  // MARK: - Did the create actually produce a word (#2381, cloud review)
 
-  @Test("A blank-alias save onto an existing canonical is refused")
-  func blankAliasOntoExistingCanonicalIsRefused() {
-    // The state the inline version could not see. Quick Add opened without a readable selection has
-    // no heard spelling, so the sheet starts with one BLANK alias and there is nothing to confirm.
-    // The postcondition asked "did the kept spellings land", which is vacuously true of none — so a
-    // canonical that already existed took the success path while `add` silently no-oped. Nothing was
-    // created and the panel closed saying nothing.
+  @Test("A no-spelling save onto an existing canonical is its own outcome, not a refusal")
+  func noSpellingOntoExistingCanonicalIsAlreadyPresent() {
+    // **This cell was `.refused` and its REASON has been removed rather than overruled.** The
+    // postcondition asks "did the kept spellings land", which is vacuously true of none — so a
+    // canonical that already existed took the success path while `add` silently no-oped, and the
+    // panel closed saying nothing. Refusing was how that silence was made audible.
+    //
+    // #2391 §1 gave the panel something to say on EVERY ending, so the silence is gone and the
+    // refusal became a dead end: only the panel opened WITHOUT a readable selection can produce this
+    // cell, its ranking is empty and its search field disabled by construction, and the refusal's
+    // copy told the user to choose the word from a list that cannot exist there.
+    //
+    // Nothing is wrong in this state. They asked for the word to be in their words, and it is.
+    //
+    // **It did NOT become `.alreadyComplete`, and the case below is why.** Renaming the cell is a
+    // claim about the panel; merging it is a claim about the postcondition, and only the first is
+    // true.
     #expect(
       QuickAddWiring.newWordOutcome(
-        keptSpellings: [], missingSpellings: [], canonicalExistedBefore: true) == .refused)
+        keptSpellings: [], missingSpellings: [], canonicalExistedBefore: true) == .alreadyPresent)
+  }
+
+  /// **The distinction round three drew, restated as the thing that must not collapse.** The
+  /// no-spelling cell has nothing for `alreadyComplete`'s postcondition to confirm, which is why it
+  /// was split out; folding the two together makes that postcondition vacuous exactly where it
+  /// already was once. A guard on #2403 mutates one into the other, and this is the test it fires.
+  @Test("The two already-there cells stay distinct, because only one has a spelling to confirm")
+  func theTwoAlreadyThereCellsAreDistinct() {
+    #expect(
+      QuickAddWiring.newWordOutcome(
+        keptSpellings: [], missingSpellings: [], canonicalExistedBefore: true) == .alreadyPresent)
+    #expect(
+      QuickAddWiring.newWordOutcome(
+        keptSpellings: ["codecs"], missingSpellings: [],
+        canonicalExistedBefore: true) == .alreadyComplete)
+  }
+
+  /// **The argument that CLOSES the class, so it is a test rather than a paragraph.**
+  ///
+  /// Root B of this branch's review rounds is "an outcome that keeps the panel open must name an
+  /// action the panel can perform". The panel opened WITHOUT a readable selection cannot perform
+  /// any: its ranking is empty and its search field disabled by construction. So the enumeration is
+  /// only closed if no panel-keeping outcome is REACHABLE from that state.
+  ///
+  /// `.refused` is the only panel-keeping outcome, and it needs a missing spelling. With no heard
+  /// word `QuickAddPanelModel.draftWord` attaches no alias, so `keptSpellings` is empty, so
+  /// `missingSpellings` is empty, so `.refused` cannot arise. That chain is three files long and
+  /// entirely invisible from either end — which is exactly the kind of claim that decays into a
+  /// comment nobody rechecks.
+  @Test("A no-selection panel cannot reach an outcome that keeps it open")
+  func aRefusalPanelCannotReachAPanelKeepingOutcome() {
+    // What `draftWord` produces with no heard spelling: a word carrying no aliases.
+    let authored = CustomWord(canonical: "Qwen", aliases: [])
+    let kept = authored.aliases
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    #expect(kept.isEmpty, "no heard spelling means nothing to keep")
+
+    // Every canonical-existed value, since that is the only other axis.
+    for existedBefore in [true, false] {
+      let outcome = QuickAddWiring.newWordOutcome(
+        keptSpellings: kept, missingSpellings: [], canonicalExistedBefore: existedBefore)
+      #expect(outcome != .refused, "a state with no way forward must not keep the panel open")
+    }
+  }
+
+  /// The paired NEGATIVE, and it is what stops the change above collapsing the enum: `.refused` is
+  /// still reachable, and it is reachable for the one reason that outranks everything — a spelling
+  /// the user typed that is not on the word afterwards is a lost edit, whatever else is true.
+  @Test("A missing spelling is still refused, whatever else holds")
+  func aMissingSpellingIsStillRefused() {
+    for existedBefore in [true, false] {
+      #expect(
+        QuickAddWiring.newWordOutcome(
+          keptSpellings: ["codecs"], missingSpellings: ["codecs"],
+          canonicalExistedBefore: existedBefore) == .refused)
+    }
   }
 
   @Test("A blank-alias save of a genuinely new canonical IS a creation")
@@ -765,5 +896,103 @@ struct QuickAddCoordinatorTests {
       QuickAddWiring.newWordOutcome(
         keptSpellings: ["codecs"], missingSpellings: ["codecs"], canonicalExistedBefore: true)
         == .refused)
+  }
+
+  // MARK: - Whether a second press starts a fresh capture (#2391 §1)
+
+  /// **The regression the confirmation could have introduced, and it lands on the commonest way to
+  /// use this feature: adding two words in a row.**
+  ///
+  /// A confirmation stays on screen for two seconds after Return, with the invocation already
+  /// resolved. A visibility test alone would raise that confirmation and refuse the new capture —
+  /// indistinguishable, from the user's side, from the shortcut not firing.
+  ///
+  /// Paired with the case it must NOT break: a genuinely live panel still raises rather than
+  /// throwing away the selection the user already made, which is the #2381 fix this sits beside.
+  @Test("A fading confirmation yields to a new capture; a live panel does not")
+  func aFadingConfirmationDoesNotBlockTheNextCapture() {
+    #expect(
+      QuickAddWiring.mayBeginCapture(panelVisible: true, hasLiveInvocation: false),
+      "a resolved panel is a confirmation fading out, not a capture in progress")
+    #expect(
+      !QuickAddWiring.mayBeginCapture(panelVisible: true, hasLiveInvocation: true),
+      "a live panel is raised, never re-captured against our own window")
+    #expect(QuickAddWiring.mayBeginCapture(panelVisible: false, hasLiveInvocation: false))
+    // Nothing on screen wins outright. A stale live flag with no panel must not wedge the shortcut.
+    #expect(QuickAddWiring.mayBeginCapture(panelVisible: false, hasLiveInvocation: true))
+  }
+
+  // MARK: - What a VoiceOver user hears (#2391, confirming round)
+
+  /// **A spoken confirmation that differs from the visible one is two answers to "what happened",
+  /// and the blind user has no way to notice.** So the announcement is not a paraphrase — it is the
+  /// string the view renders, and this asserts that rather than trusting one derivation.
+  @Test("Every message the panel shows is spoken with the words it shows")
+  func theAnnouncementIsTheRenderedSentence() {
+    for kind in QuickAddPanelModel.Notice.Kind.allCases {
+      let notice = QuickAddPanelModel.Notice(
+        kind: kind,
+        spelling: [.created, .alreadyInWords].contains(kind) ? "" : "codecs",
+        word: "Codex", searchable: false)
+      #expect(
+        QuickAddWiring.announcement(notice: notice, writeFailure: nil)
+          == QuickAddPanelCopy.notice(notice))
+    }
+    #expect(
+      QuickAddWiring.announcement(notice: nil, writeFailure: "That word cannot be saved.")
+        == QuickAddPanelCopy.writeFailure("That word cannot be saved."))
+  }
+
+  /// The member the confirming round did NOT name, found by enumerating the channel axis rather than
+  /// fixing the two sites it did name. A refusal is the only message the user has to ACT on, and it
+  /// appears after a keypress while focus sits in the search field — so it is a dynamic status
+  /// change with nothing focused on it, exactly like the two notices.
+  @Test("A refusal is spoken too, and outranks a notice")
+  func aRefusalIsSpokenAndOutranksANotice() {
+    let notice = QuickAddPanelModel.Notice(
+      kind: .saved, spelling: "codecs", word: "Codex", searchable: false)
+
+    #expect(
+      QuickAddWiring.announcement(notice: notice, writeFailure: "nope")
+        == QuickAddPanelCopy.writeFailure("nope"))
+  }
+
+  /// The panel ASKING is not the panel TELLING. A ranked list with nothing refused and no notice has
+  /// no status change to announce, and speaking there would talk over the user exploring the rows.
+  @Test("A panel that is asking rather than telling says nothing")
+  func aPanelThatIsAskingAnnouncesNothing() {
+    #expect(QuickAddWiring.announcement(notice: nil, writeFailure: nil) == nil)
+  }
+
+  // MARK: - Focus hand-back: REMOVED (#2391, founder 2026-08-25)
+
+  // **The focus-return tests are GONE with the mechanism they guarded (founder, 2026-08-25).**
+  // `theKeyboardGoesWhereItBelongs`, `aVisibleWindowIsNotProvenance`,
+  // `ourOwnActivationDoesNotRewriteTheOrigin`, `aRaiseOntoAnUnfocusedPanelRecapturesTheOrigin`,
+  // `dismissalReleasesOnlyWhatItHolds` and `anUnknownOriginDeactivates` all asserted decisions about
+  // where to hand the keyboard back, and there is no longer anywhere to hand it back to.
+  //
+  // Per `deleting-a-test-carries-the-burden-of-adding-one`: what they protected was the correctness
+  // of a mechanism that has been REMOVED, not a user-facing outcome that still exists. The three
+  // refutations they carried — a visible window is not provenance, our own activation must not
+  // rewrite the origin, a second press onto an unfocused panel is a new origin — were all facts
+  // about that mechanism. Nothing else asserts them because nothing else needs them.
+
+  // MARK: - The created confirmation names what was written (#2391, r5)
+
+  /// **Selecting a word that is already spelled correctly and authoring it is ordinary**, and
+  /// `draftWord` correctly declines to store a word as an alias of itself. Choosing the sentence by
+  /// "was the selection non-empty" then claims an add that did not happen.
+  @Test("A word created with no alias attached is not confirmed as a spelling that was added")
+  func aSelfNamedCreationDoesNotClaimAnAdd() {
+    let model = QuickAddPanelModel(
+      heard: "Claude", refusal: nil, rankHeard: { _ in .empty }, searchLibrary: { _, _ in .empty })
+    model.beginComposing()
+    model.updateDraft("Claude")
+    let authored = model.draftWord
+
+    #expect(authored?.aliases.isEmpty == true, "a word is not an alias of itself")
+    // The selection is NON-empty, which is exactly what the old rule read.
+    #expect(!model.spellingToWrite.isEmpty)
   }
 }

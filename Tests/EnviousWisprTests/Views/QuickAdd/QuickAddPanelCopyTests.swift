@@ -148,6 +148,15 @@ struct QuickAddPanelCopyTests {
         // A member of the copy set like any other. Sweeping the SET rather than the strings that
         // existed when this was written is what makes a later addition visible here.
         QuickAddPanelCopy.writeFailure("That word cannot be saved."),
+        QuickAddPanelCopy.legendCreate, QuickAddPanelCopy.legendBack,
+        QuickAddPanelCopy.composeHeader(heard: "clawwed"),
+        QuickAddPanelCopy.composeHeader(heard: ""),
+        QuickAddPanelCopy.composePlaceholder(heard: "clawwed"),
+        QuickAddPanelCopy.composePlaceholder(heard: ""),
+        QuickAddPanelCopy.savedNotice(spelling: "codecs", word: "Codex"),
+        QuickAddPanelCopy.nothingToAddNotice(spelling: "codecs", word: "Codex"),
+        QuickAddPanelCopy.createdNotice(word: "Codex"),
+        QuickAddPanelCopy.alreadyInWordsNotice(word: "Codex"),
       ]
 
     for text in all {
@@ -213,5 +222,121 @@ struct QuickAddPanelCopyTests {
     // user tries, because any word corrected once scores 1.00 and lands here.
     #expect(!QuickAddPanelCopy.alreadyHasThisSpelling.contains("add"))
     #expect(QuickAddPanelCopy.alreadyHasThisSpelling.contains("already has"))
+  }
+
+  // MARK: - Composing a new word (#2391 §2)
+
+  /// **Two situations, two sentences.** With a selection the user is correcting a specific
+  /// mishearing; with none — the state where Create is the panel's only working control — there is
+  /// nothing to correct, and a header quoting an empty string reads as a bug.
+  @Test("The compose header quotes the selection, and says something else when there is none")
+  func composeHeaderAdaptsToTheSelection() {
+    #expect(QuickAddPanelCopy.composeHeader(heard: "clawwed").contains("\"clawwed\""))
+    let noSelection = QuickAddPanelCopy.composeHeader(heard: "")
+    #expect(!noSelection.contains("\"\""), "an empty quotation reads as a defect")
+    #expect(!noSelection.isEmpty)
+    #expect(noSelection != QuickAddPanelCopy.composeHeader(heard: "clawwed"))
+  }
+
+  @Test("The compose placeholder names the thing to type, in both situations")
+  func composePlaceholderNamesWhatToType() {
+    for heard in ["clawwed", ""] {
+      let text = QuickAddPanelCopy.composePlaceholder(heard: heard)
+      #expect(!text.isEmpty)
+      #expect(!text.contains("\"\""))
+    }
+  }
+
+  /// The legend is the keyboard contract made visible, so Escape's cap must state what Escape does
+  /// THERE. `close` over a field whose Escape returns to the list is the panel promising a key it
+  /// will not answer.
+  @Test("Escape is labelled back while composing, never close")
+  func escapeIsLabelledBackWhileComposing() {
+    #expect(QuickAddPanelCopy.legendBack != QuickAddPanelCopy.legendClose)
+    #expect(!QuickAddPanelCopy.legendBack.isEmpty)
+    #expect(QuickAddPanelCopy.legendCreate != QuickAddPanelCopy.legendAccept)
+  }
+
+  // MARK: - Saying what happened (#2391 §1 and §3)
+
+  /// **States what happened to the LIBRARY and promises nothing about future behaviour.** "will be
+  /// corrected from now on" is a sentence the code cannot back: a spelling belongs to one word, and
+  /// whether a future dictation reaches this one depends on the rest of the library.
+  @Test("The save confirmation names both the spelling and the word, and promises nothing else")
+  func theSaveConfirmationNamesBothHalves() {
+    let text = QuickAddPanelCopy.savedNotice(spelling: "codecs", word: "Codex")
+
+    #expect(text.contains("\"codecs\""))
+    #expect(text.contains("Codex"))
+    for promise in ["from now on", "will be", "always", "every time", "future"] {
+      #expect(!text.lowercased().contains(promise), "promises \(promise)")
+    }
+  }
+
+  /// The two successes must not read the same. Nothing was written in one of them, and a
+  /// confirmation that said otherwise would be the reported-success class this feature spent seven
+  /// review rounds closing, arriving through the sentence written to reassure the user.
+  @Test("Nothing-to-add does not read as a save")
+  func nothingToAddDoesNotClaimASave() {
+    let saved = QuickAddPanelCopy.savedNotice(spelling: "codecs", word: "Codex")
+    let nothing = QuickAddPanelCopy.nothingToAddNotice(spelling: "codecs", word: "Codex")
+
+    #expect(saved != nothing)
+    #expect(!nothing.lowercased().contains("added"))
+    #expect(nothing.contains("Codex"))
+    #expect(nothing.contains("\"codecs\""))
+  }
+
+  /// The state Create exists for: no readable selection, so no mishearing to name. A confirmation
+  /// quoting an empty string reads as a defect.
+  @Test("A word created with no spelling is confirmed without an empty quotation")
+  func theCreatedConfirmationQuotesNothing() {
+    let text = QuickAddPanelCopy.createdNotice(word: "Codex")
+
+    #expect(text.contains("Codex"))
+    #expect(!text.contains("\"\""))
+  }
+
+  /// **The dispatcher is the whole reason the model carries facts rather than a sentence.** Handing
+  /// a string in at the call site is how a new outcome ships wearing another one's wording; a
+  /// `switch` over a closed `Kind` makes the compiler ask instead. This asserts the mapping is
+  /// distinct and non-empty for every member, which is the property a `default:` would quietly lose.
+  @Test("Every notice kind renders its own sentence")
+  func everyNoticeKindHasItsOwnSentence() {
+    var rendered: Set<String> = []
+    for kind in QuickAddPanelModel.Notice.Kind.allCases {
+      let text = QuickAddPanelCopy.notice(
+        QuickAddPanelModel.Notice(
+          kind: kind,
+          // The two no-selection kinds carry no spelling BY CONSTRUCTION, so handing them one would
+          // test a value the app cannot produce and hide a sentence that quotes an empty string.
+          spelling: [.created, .alreadyInWords].contains(kind) ? "" : "codecs",
+          word: "Codex",
+          searchable: false))
+      #expect(!text.isEmpty, "\(kind) renders nothing")
+      #expect(!text.contains("\"\""), "\(kind) quotes an empty string")
+      rendered.insert(text)
+    }
+    #expect(
+      rendered.count == QuickAddPanelModel.Notice.Kind.allCases.count,
+      "two kinds render the same sentence")
+  }
+
+  /// **The state the refusal used to own, and the reason it must not read as a failure.** The panel
+  /// that reaches this opened WITHOUT a readable selection, so its ranking is empty and its search
+  /// field disabled — the old copy told the user to choose the word from a list that cannot exist.
+  @Test("A word already in the library is reported plainly, naming no route the user cannot take")
+  func alreadyInWordsNamesNoImpossibleRoute() {
+    let text = QuickAddPanelCopy.alreadyInWordsNotice(word: "Codex")
+
+    #expect(text.contains("Codex"))
+    #expect(!text.contains("\"\""))
+    // Same term set the refusal guard uses, for the same reason one layer over: with no heard word
+    // there is nothing to rank, so every one of these names a control that is not on screen.
+    for pointsAtTheList in ["choose", "list", "search", "pick", "select"] {
+      #expect(
+        !text.lowercased().contains(pointsAtTheList),
+        "says \(pointsAtTheList), which names a control this state does not have")
+    }
   }
 }

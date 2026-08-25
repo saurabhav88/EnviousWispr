@@ -26,12 +26,25 @@ final class QuickAddWiring {
   private let hotkeyService: HotkeyService
   private let customWords: CustomWordsCoordinator
 
+  /// How long a confirmation stays up after Return. The founder's number: *"fade away by itself
+  /// after two seconds"*.
+  private static let noticeSeconds: Double = 2
+
+  /// How long the opened-onto-a-covered-word notice stays up.
+  ///
+  /// Longer than the confirmation, and for a reason rather than for feel: that notice ASKS
+  /// something. The user has to read it, decide whether the ranking was right about them, and reach
+  /// for the search field if it was not. A confirmation asks nothing — it reports a decision the
+  /// user already made — so it can be as brief as it is legible.
+  private static let searchableNoticeSeconds: Double = 3
+
+  /// The pending fade. Cancelled by anything that takes the panel down first, so a stale timer can
+  /// never resolve or dismiss the NEXT invocation.
+  private var noticeDismissal: Task<Void, Never>?
+
   /// The panel currently up, if any. Held because the coordinator's outcome calls need the model the
   /// user was actually looking at, and a second invocation must reuse rather than stack.
   private var activeModel: QuickAddPanelModel?
-
-  /// A new word the user asked to create, which drives the edit sheet's presentation.
-  private var pendingNewWord: CustomWord?
 
   init(
     hotkeyService: HotkeyService,
@@ -50,17 +63,19 @@ final class QuickAddWiring {
         saveWord: { word, spelling in
           Self.saveAndConfirm(word, carrying: spelling, through: customWords)
         },
-        presentNewWordSheet: { _ in },
+        beginNewWord: {},
         emit: QuickAddTelemetryBridge.handler))
 
     // Assigned AFTER init rather than captured during it. `self` does not exist while the
     // coordinator is being built, and Swift says so; a placeholder that stayed would be a
     // Create-a-new-word button that renders, records its outcome, and opens nothing.
     //
-    // Canonical EMPTY and focused: the user knows the misspelling, because they selected it. What
-    // they have to supply is the correct form.
-    coordinator.setPresentNewWordSheet { [weak self] spelling in
-      self?.pendingNewWord = CustomWord(canonical: "", aliases: [spelling])
+    // **Which is what shipped, for a different reason, and is what #2391 fixes.** The placeholder
+    // was replaced correctly and the mechanism it was replaced with could not work: a SwiftUI
+    // `.sheet` over a panel that refuses main status presents nothing, silently. The button ran its
+    // action, set its binding, and changed no pixel.
+    coordinator.setBeginNewWord { [weak self] in
+      self?.activeModel?.beginComposing()
     }
   }
 
@@ -73,6 +88,9 @@ final class QuickAddWiring {
     provider.install()
     serviceProvider = provider
     panelHost.onDismiss = { [weak self] in self?.panelDismissed() }
+    // Escape means "back to the list" while composing and "close" otherwise, and only the model
+    // knows which. A missing wire here dismisses, which is the shipped behaviour rather than a trap.
+    panelHost.shouldConsumeCancel = { [weak self] in self?.activeModel?.consumeCancel() ?? false }
   }
 
   // MARK: - The two doors
@@ -111,9 +129,64 @@ final class QuickAddWiring {
   /// word to read whatever is frontmost NOW — which is our own panel — is the defect this guard was
   /// added to prevent in the first place.
   private func notAlreadyOpen() -> Bool {
-    guard panelHost.isVisible else { return true }
-    panelHost.raise()
-    return false
+    guard
+      Self.mayBeginCapture(
+        panelVisible: panelHost.isVisible, hasLiveInvocation: activeModel != nil)
+    else {
+      panelHost.raise()
+      return false
+    }
+    // Replacing a fading confirmation rather than raising it means its timer must not survive to
+    // dismiss the panel the new capture is about to fill.
+    noticeDismissal?.cancel()
+    noticeDismissal = nil
+    return true
+  }
+
+  /// What a VoiceOver user must HEAR when the panel changes what it is telling them, or nil when
+  /// the panel is asking rather than telling.
+  ///
+  /// **One derivation, so the two channels cannot disagree.** It returns the string the view
+  /// renders — not a paraphrase — because a spoken confirmation that differs from the visible one is
+  /// two answers to "what happened", and the blind user has no way to notice.
+  ///
+  /// A write failure outranks a notice. They are mutually exclusive today (`showNotice` clears the
+  /// failure), and stating the order closes the case rather than leaving it to that invariant.
+  package static func announcement(
+    notice: QuickAddPanelModel.Notice?, writeFailure: String?
+  ) -> String? {
+    if let writeFailure { return QuickAddPanelCopy.writeFailure(writeFailure) }
+    if let notice { return QuickAddPanelCopy.notice(notice) }
+    return nil
+  }
+
+  /// Speak the panel's current message, if it has one.
+  ///
+  /// **`.accessibilityLabel` is not this.** A label names an element when it is VISITED; every
+  /// message this panel shows is a dynamic status change, and two of the three vanish on a timer
+  /// while focus is somewhere else entirely — the terminal confirmation deliberately releases focus,
+  /// and the searchable notice gives it to the search field rather than to the sentence.
+  private func speak(_ model: QuickAddPanelModel) {
+    guard let text = Self.announcement(notice: model.notice, writeFailure: model.writeFailure)
+    else { return }
+    OverlayDirector.postAnnouncement(.medium(text))
+  }
+
+  /// Whether a fresh capture may start.
+  ///
+  /// **A confirmation fading out is NOT a live panel, and treating it as one costs the user their
+  /// next word.** `conclude` clears `activeModel` because the invocation has already resolved; the
+  /// window then stays up for two seconds carrying `"clawwed" added to Claude`. Inside that window
+  /// the visibility test alone raises the confirmation and refuses the capture — which from the
+  /// user's side is the shortcut not firing, on the second word they try to add in a row. Adding two
+  /// words in a row is the ordinary way to use this feature, so the window is not rare.
+  ///
+  /// Split out for the same reason `newWordOutcome` was: the version inline could not be tested, and
+  /// the state it gets wrong is one no test could reach. Two Bools, because those are the only two
+  /// facts the decision turns on and naming them is what makes the case above statable at all.
+  package static func mayBeginCapture(panelVisible: Bool, hasLiveInvocation: Bool) -> Bool {
+    guard panelVisible else { return true }
+    return !hasLiveInvocation
   }
 
   private func present(_ model: QuickAddPanelModel?) {
@@ -122,22 +195,16 @@ final class QuickAddWiring {
       return
     }
     activeModel = model
+    // A previous invocation's fade must not reach this panel.
+    noticeDismissal?.cancel()
+    noticeDismissal = nil
     let shown = panelHost.present(
-      QuickAddRoot(
+      QuickAddPanelView(
         model: model,
         onAccept: { [weak self] candidate in self?.accept(candidate, model: model) },
         onCreateNew: { [weak self] in self?.createNew(model: model) },
-        onCancel: { [weak self] in self?.cancel(model: model) },
-        newWord: Binding(
-          get: { [weak self] in self?.pendingNewWord },
-          set: { [weak self] in self?.pendingNewWord = $0 }),
-        // `usedSearch` is captured HERE, from the model this panel was built with, rather than
-        // read back off `activeModel` at save time. The sheet outlives the panel in at least one
-        // ordering, and a nil lookup defaulting to false would report a search-assisted save as an
-        // unassisted one — quietly, and in the direction that flatters the ranking.
-        onSaveNewWord: { [weak self] word in
-          self?.saveNewWord(word, usedSearch: model.isSearching)
-        }))
+        onCreate: { [weak self] word in self?.createWord(word, model: model) },
+        onCancel: { [weak self] in self?.cancel(model: model) }))
 
     // The host refuses to present a panel it could not measure, because an unmeasurable panel is an
     // invisible window that reports success. Clearing `activeModel` matters as much as the event:
@@ -149,28 +216,135 @@ final class QuickAddWiring {
       return
     }
     coordinator.didOpen()
+    // Opened onto a word that already knows this spelling: the panel says so and fades, unless the
+    // user types (#2391 §3).
+    if model.isShowingSearchableNotice {
+      speak(model)
+      scheduleSearchableNoticeFade(for: model)
+    }
   }
 
   // MARK: - Outcomes
 
-  /// Dismiss only when the word was actually saved. The same rule `saveNewWord` below already
-  /// followed — a refused write leaves the panel up, carrying the reason.
+  /// Confirm what happened, then leave. A refused write leaves the panel up carrying the reason —
+  /// the same rule `saveNewWord` below already followed.
+  ///
+  /// **The confirmation exists because failure was handled better than success (#2391 §1).** A
+  /// refusal kept the panel open and stated why; a save called `dismiss()` and that was the entire
+  /// behaviour. So the user learned more from failing than from succeeding, on a feature whose whole
+  /// promise is that succeeding is invisible — what they were told would happen only shows up in a
+  /// future dictation.
+  ///
+  /// The sentence is composed from what the coordinator REPORTS, never from the row the user
+  /// clicked: the row is a snapshot taken when the panel opened, and the panel is persistent.
   private func accept(_ candidate: QuickAddRanker.Candidate, model: QuickAddPanelModel) {
-    if let message = coordinator.accept(candidate, from: model) {
+    switch coordinator.accept(candidate, from: model) {
+    case .refused(let message):
       model.noteWriteFailure(message)
-      return
+      speak(model)
+    case .saved(let word):
+      conclude(model, .saved, spelling: model.spellingToWrite, word: word)
+    case .alreadyHad(let word):
+      conclude(model, .nothingToAdd, spelling: model.spellingToWrite, word: word)
     }
-    dismiss()
+  }
+
+  /// The invocation is over. Say what happened, hand the keyboard back, and fade.
+  ///
+  /// **`activeModel` is cleared FIRST, and that is what makes the beat safe.** The coordinator has
+  /// already resolved; leaving the model live would let the fade — or an Escape during it — report a
+  /// SECOND outcome for one open, which the double-resolution guard would then record as a defect
+  /// rather than as the ordinary thing the user just did.
+  ///
+  /// Focus goes back before the panel does. The user has already returned to their sentence, and a
+  /// key-capable panel that lingers for two seconds eats the first letters of their next word — a
+  /// confirmation that costs a keystroke is worse than no confirmation, which is what nearly sent
+  /// this to the dictation overlay instead of the panel.
+  private func conclude(
+    _ model: QuickAddPanelModel, _ kind: QuickAddPanelModel.Notice.Kind, spelling: String,
+    word: String
+  ) {
+    activeModel = nil
+    model.showNotice(kind, spelling: spelling, word: word)
+    speak(model)
+    noticeDismissal?.cancel()
+    noticeDismissal = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(Self.noticeSeconds))
+      guard !Task.isCancelled else { return }
+      self?.dismiss()
+    }
+  }
+
+  /// Fade the opened-onto-a-covered-word notice, resolving it as the non-event it is.
+  ///
+  /// **This one HAS to resolve, and the shipped `cancelled` would have been wrong.** Nothing was
+  /// written, but the user did not abandon anything either — there was nothing to abandon. The
+  /// funnel already has the word for it.
+  ///
+  /// Re-checked at fire time rather than cancelled on every keystroke: the user can type, which
+  /// returns the panel to its full list and makes this invocation live again. One guard beats a
+  /// cancellation the model would have to remember to request.
+  private func scheduleSearchableNoticeFade(for model: QuickAddPanelModel) {
+    noticeDismissal?.cancel()
+    noticeDismissal = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(Self.searchableNoticeSeconds))
+      guard !Task.isCancelled, let self else { return }
+      guard self.activeModel === model, model.isShowingSearchableNotice else { return }
+      self.coordinator.didFindAlreadySaved(usedSearch: false)
+      self.dismiss()
+    }
   }
 
   private func createNew(model: QuickAddPanelModel) {
-    // NOT dismissed: the edit sheet presents OVER this panel, and tearing the panel down would take
-    // its presenter with it.
+    // NOT dismissed: composing is a STAGE of this panel now, so tearing it down would take the
+    // field the user is about to type into with it.
     coordinator.createNew(from: model)
   }
 
+  /// The user pressed Return on the compose field.
+  ///
+  /// **A refusal keeps the panel up carrying the reason**, exactly as the accept route does — which
+  /// is the rule the sheet route already followed and the one thing worth preserving from it.
+  private func createWord(_ word: CustomWord, model: QuickAddPanelModel) {
+    // Read LIVE rather than captured at present time. The old capture existed because the sheet
+    // outlived the panel in at least one ordering; a stage of the panel cannot, and the honest
+    // answer to "did the ranking need rescuing" is the state the user was in when they committed.
+    switch saveNewWord(word, usedSearch: model.isSearching) {
+    case .refused(let message):
+      model.noteWriteFailure(message)
+      speak(model)
+    case .created(let canonical):
+      // **Composed from the WORD THAT WAS WRITTEN, never from the selection.** Selecting a word that
+      // is already spelled correctly and authoring it is an ordinary thing to do: `draftWord`
+      // correctly declines to store a word as an alias of itself, so nothing is attached — and
+      // choosing the sentence by "was the selection non-empty" then said `"Claude" added to Claude`
+      // about an add that did not happen. Third instance on this branch of a sentence composed from
+      // a neighbouring value instead of from what the write path reports.
+      let attached = word.aliases.first ?? ""
+      conclude(
+        model, attached.isEmpty ? .created : .saved, spelling: attached, word: canonical)
+    case .alreadyComplete(let canonical):
+      conclude(model, .nothingToAdd, spelling: model.spellingToWrite, word: canonical)
+    case .alreadyPresent(let canonical):
+      // Split by OUTCOME rather than by re-testing the spelling here, which is the same rule the
+      // confirmation follows: the sentence is composed from what the write path REPORTS. There is no
+      // mishearing to name in this cell by construction, so `X already knows ""` cannot arise.
+      conclude(model, .alreadyInWords, spelling: "", word: canonical)
+    }
+  }
+
+  /// Only a LIVE invocation can be cancelled.
+  ///
+  /// **The close control stays on screen underneath a confirmation, deliberately** — dismissing the
+  /// beat early is a reasonable thing to want — and `conclude` has already resolved by then. Without
+  /// this the button emits a SECOND terminal event for one open, which the coordinator reports as
+  /// `double_resolution`: a defect that never reaches the screen and quietly disagrees with the
+  /// funnel.
+  ///
+  /// Identity, not a Bool: the captured `model` belongs to the panel this button was built for, and
+  /// a later invocation reusing the panel must not have its outcome cancelled by a stale closure.
   private func cancel(model: QuickAddPanelModel) {
-    coordinator.cancel(from: model)
+    if activeModel === model { coordinator.cancel(from: model) }
     dismiss()
   }
 
@@ -185,7 +359,9 @@ final class QuickAddWiring {
   /// validation, its error message and its change notification are the ones the rest of the app
   /// already relies on — a second write path here would be a second set of rules.
   ///
-  /// Returns nil on success or a user-facing message, which is the sheet's own contract.
+  /// **Returns what happened rather than dismissing**, because the caller now has a sentence to
+  /// say and cannot say it from a nil. Taking the panel down here would also mean the confirmation
+  /// had nowhere to appear.
   ///
   /// **A nil return from `add` is not proof the word was saved, and this is the second time that
   /// assumption cost this feature a false success.** `CustomWordsManager.add` RETURNS silently,
@@ -197,14 +373,25 @@ final class QuickAddWiring {
   /// So this asserts the OUTCOME rather than the call's return value — the word is there and it
   /// carries the spellings the user kept — which is the one check that covers both branches and any
   /// third one nobody has found yet.
-  private func saveNewWord(_ word: CustomWord, usedSearch: Bool) -> String? {
+  private enum NewWordSaveResult: Equatable {
+    /// The word is in the library and it was not there before.
+    case created(canonical: String)
+    /// The canonical was already there and already carried every spelling the user kept.
+    case alreadyComplete(canonical: String)
+    /// The canonical was already there and there was no spelling to attach.
+    case alreadyPresent(canonical: String)
+    /// Nothing was written and the user did not get what they asked for.
+    case refused(String)
+  }
+
+  private func saveNewWord(_ word: CustomWord, usedSearch: Bool) -> NewWordSaveResult {
     // Snapshotted BEFORE the write, because it is the only way to tell "created" from "was already
     // there". See the vacuity note on the guard below.
     let canonicalExistedBefore = customWords.customWords.contains {
       $0.canonical.caseInsensitiveCompare(
         word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
     }
-    if let message = customWords.add(word) { return message }
+    if let message = customWords.add(word) { return .refused(message) }
     // Compare against the TRIMMED canonical, because that is what `add` stores. Comparing the raw
     // one reports a correct save as a failure whenever the user typed a leading space.
     let canonical = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -213,7 +400,7 @@ final class QuickAddWiring {
         $0.canonical.caseInsensitiveCompare(canonical) == .orderedSame
       })
     else {
-      return QuickAddPanelCopy.newWordNotSaved
+      return .refused(QuickAddPanelCopy.newWordNotSaved)
     }
     // Blank rows are ordinary trimming, not a lost edit — the editor leaves them behind. A NON-blank
     // spelling that vanished is the lie worth catching.
@@ -224,7 +411,7 @@ final class QuickAddWiring {
       !stored.aliases.contains { $0.caseInsensitiveCompare(alias) == .orderedSame }
     }
     guard missing.isEmpty else {
-      return QuickAddPanelCopy.newWordAlreadyExists(canonical: stored.canonical)
+      return .refused(QuickAddPanelCopy.newWordAlreadyExists(canonical: stored.canonical))
     }
     // **AND THE GUARD ABOVE IS VACUOUS WHEN THERE IS NOTHING TO CONFIRM.** Quick Add opened without
     // a readable selection has no heard spelling, so the sheet starts with one BLANK alias, `kept`
@@ -243,16 +430,19 @@ final class QuickAddWiring {
     {
     case .created:
       coordinator.didCreateNew(usedSearch: usedSearch)
+      return .created(canonical: stored.canonical)
     case .alreadyComplete:
       // NOT `didCreateNew`. Nothing was created, so counting one puts a write that did not happen in
       // the numerator of every rate computed off this funnel — and `alreadySaved` already means
       // exactly this, on the accept route, for exactly this reason.
       coordinator.didFindAlreadySaved(usedSearch: usedSearch)
+      return .alreadyComplete(canonical: stored.canonical)
+    case .alreadyPresent:
+      coordinator.didFindAlreadySaved(usedSearch: usedSearch)
+      return .alreadyPresent(canonical: stored.canonical)
     case .refused:
-      return QuickAddPanelCopy.newWordAlreadyExists(canonical: stored.canonical)
+      return .refused(QuickAddPanelCopy.newWordAlreadyExists(canonical: stored.canonical))
     }
-    dismiss()
-    return nil
   }
 
   /// Whether the sheet's save actually produced the word the user asked for.
@@ -288,6 +478,21 @@ final class QuickAddWiring {
     case alreadyComplete
     /// Nothing was written and the user did not get what they asked for. Say so, keep the panel up.
     case refused
+    /// The canonical was already there and there was no spelling to attach, so nothing was written
+    /// and nothing needed to be — and unlike `refused`, there is nothing the user can DO about it.
+    ///
+    /// **Its own case rather than either neighbour, and both alternatives were tried.** It was
+    /// `refused`, which is honest about the write and wrong about the panel: only the invocation
+    /// that opened WITHOUT a readable selection can reach this cell, and that panel's ranking is
+    /// empty and its search field disabled, so the refusal's copy sent the user to a list that
+    /// cannot exist. Folding it into `alreadyComplete` fixes that and retires a distinction a review
+    /// round established — that cell has no spelling to confirm, so `alreadyComplete`'s
+    /// postcondition is vacuous there, which is the whole reason it was split out.
+    ///
+    /// Reports as `alreadySaved` like `alreadyComplete` does: nothing was created either way, so the
+    /// funnel does not care, and inventing a fifth outcome for it would put a distinction in the
+    /// telemetry that nobody asked a question about.
+    case alreadyPresent
   }
 
   package static func newWordOutcome(
@@ -299,10 +504,12 @@ final class QuickAddWiring {
     // Through this route `add` no-ops on a duplicate canonical, so a canonical that was NOT there
     // before is the only evidence a creation happened.
     guard canonicalExistedBefore else { return .created }
-    // It was already there. With a spelling to confirm, and nothing missing, the end state the user
-    // asked for holds — nothing to do. With NO spelling, nothing was created and nothing was added,
-    // so there is nothing to report as done.
-    return keptSpellings.isEmpty ? .refused : .alreadyComplete
+    // It was already there, and nothing the user kept is missing, so the end state they asked for
+    // holds either way. The two differ in whether there was a spelling to confirm, and that is the
+    // distinction round three drew — kept, because `alreadyComplete`'s postcondition is vacuous
+    // without one. What changed is only its NAME for the no-spelling half: `refused` was honest
+    // about the write and wrong about the panel. See the case docs above.
+    return keptSpellings.isEmpty ? .alreadyPresent : .alreadyComplete
   }
 
   /// Write a word and PROVE the spelling is on it afterwards.
@@ -337,30 +544,8 @@ final class QuickAddWiring {
 
   private func dismiss() {
     activeModel = nil
-    pendingNewWord = nil
+    noticeDismissal?.cancel()
+    noticeDismissal = nil
     panelHost.dismiss()
-  }
-}
-
-/// The panel's content plus the edit sheet it can present over itself.
-///
-/// A real SwiftUI `.sheet`, not the edit view hosted directly: `CustomWordEditSheet` dismisses itself
-/// through `@Environment(\.dismiss)`, which is supplied by a presenting context. Hosted bare in a
-/// panel there is no such context, so its Cancel button would render, be clickable, and do nothing.
-private struct QuickAddRoot: View {
-  @Bindable var model: QuickAddPanelModel
-  let onAccept: (QuickAddRanker.Candidate) -> Void
-  let onCreateNew: () -> Void
-  let onCancel: () -> Void
-  @Binding var newWord: CustomWord?
-  let onSaveNewWord: (CustomWord) -> String?
-
-  var body: some View {
-    QuickAddPanelView(
-      model: model, onAccept: onAccept, onCreateNew: onCreateNew, onCancel: onCancel
-    )
-    .sheet(item: $newWord) { word in
-      CustomWordEditSheet(word: word, onSave: onSaveNewWord)
-    }
   }
 }
