@@ -623,8 +623,16 @@ public actor ModelDeliveryController {
             identity, bytes: bytes, total: total, generation: generation)
         }
       },
-      onSourceFailover: { reason in
-        Task { await controller.noteFailover(identity, reason: reason, generation: generation) }
+      onSourceFailover: { reason, fromSourceID, toSourceID in
+        // Awaited rather than spawned. See `onSourceFailover`'s own doc: a
+        // detached Task here is unordered against the `fetchTask.run()`
+        // continuation below, which can publish a terminal event first or let a
+        // cancel bump the generation so this call's guard drops the failover.
+        // Re-entering the actor is safe: the controller is SUSPENDED at that
+        // await, so it is not held.
+        await controller.noteFailover(
+          identity, reason: reason, fromSourceID: fromSourceID, toSourceID: toSourceID,
+          generation: generation)
       })
 
     do {
@@ -662,8 +670,10 @@ public actor ModelDeliveryController {
       // abandoned before this launch; this one catches anything superseded by
       // the admission that just happened.
       sweepSupersededStaging(registration)
-      await AppLogger.shared.log(
-        "Model delivery admitted \(identity.cacheKey)", level: .info, category: "Delivery")
+      // The local line is written by the `.attemptCompleted` arm of
+      // `deliveryLogLine` (#2135). An ad-hoc call here as well would print TWO
+      // lines for one admission, and a doubled line invites reading one
+      // occurrence as two — the misreading this issue exists to prevent.
       return .admitted
     } catch let failure as DeliveryFailure where failure.reason == .cancelled {
       return finishCancelled(identity, generation: generation)
@@ -700,10 +710,9 @@ public actor ModelDeliveryController {
       identity,
       .attemptFailed(
         reason: failure.reason, failingSourceID: failure.failingSourceID, detail: failure.detail))
-    let detailSuffix = failure.detail.map { " (\($0))" } ?? ""
-    await AppLogger.shared.log(
-      "Model delivery failed \(identity.cacheKey): \(failure.reason.rawValue)\(detailSuffix)",
-      level: .info, category: "Delivery")
+    // The local line is written by the `.attemptFailed` arm of
+    // `deliveryLogLine` (#2135), from the emit two statements above. It carries
+    // the failing source id as well, which this call could not.
     return .failed(failure)
   }
 
@@ -751,11 +760,41 @@ public actor ModelDeliveryController {
     setState(identity, .preparing(validatingExistingCache: true))
   }
 
+  /// **The local log and telemetry legitimately disagree here, and only here.**
+  ///
+  /// Awaiting this call orders it against the `fetchTask.run()` continuation. It
+  /// does NOT order it against a concurrent `cancel()`: both enter this actor,
+  /// and a cancel serviced first bumps the generation, after which the guard
+  /// below discards the event (#2135 cloud review, round 2).
+  ///
+  /// Dropping it is CORRECT for telemetry and WRONG for the log, because the two
+  /// answer different questions. **A telemetry event is a claim about an
+  /// attempt**, so an event belonging to a superseded generation must not be
+  /// attributed to the live one — that is exactly what the guard is for.
+  /// **A log line is a record of an occurrence**, and the failover genuinely
+  /// happened, before the cancel, whatever the generation did afterwards.
+  /// Suppressing it makes the log lie by omission about a real event — and a
+  /// missing line reads as "it did not happen", which is the direction that
+  /// produces confidently wrong conclusions.
+  ///
+  /// So the line is written unconditionally and the EMIT stays guarded. This is
+  /// the one place these two channels diverge; everywhere else the switch inside
+  /// `emit` serves both. Do not "tidy" this by moving the log back below the
+  /// guard, and do not fix it by relaxing the guard — the guard is right about
+  /// its own question.
   private func noteFailover(
-    _ identity: ModelIdentity, reason: DeliveryFailureClass, generation: Int
+    _ identity: ModelIdentity, reason: DeliveryFailureClass, fromSourceID: String,
+    toSourceID: String, generation: Int
   ) {
-    guard entries[identity]?.generation == generation else { return }
-    emit(identity, .sourceFailover(reason: reason))
+    let event = DeliveryEvent.sourceFailover(
+      reason: reason, fromSourceID: fromSourceID, toSourceID: toSourceID)
+    guard entries[identity]?.generation == generation else {
+      #if DEBUG
+        enqueueDeliveryLog(identity, event)
+      #endif
+      return
+    }
+    emit(identity, event)
   }
 
   private func setState(
@@ -782,6 +821,9 @@ public actor ModelDeliveryController {
   }
 
   private func emit(_ identity: ModelIdentity, _ event: DeliveryEvent) {
+    #if DEBUG
+      enqueueDeliveryLog(identity, event)
+    #endif
     guard !eventObservers.isEmpty else {
       // Pre-attach buffer (drained by the first `addEventObserver`). Bounded:
       // a launch window emits a handful of events; if something pathological
@@ -792,6 +834,116 @@ public actor ModelDeliveryController {
     }
     for observer in eventObservers { observer(identity, event) }
   }
+
+  // MARK: - Local log (#2135)
+
+  #if DEBUG
+
+    /// Emit order, minted on this actor. Present in every line so a reader can
+    /// see a gap, and so a residual reordering is legible rather than silently
+    /// wrong.
+    private var deliveryLogSequence: UInt64 = 0
+
+    /// The tail of a chain of writes. Each write awaits its predecessor, so the
+    /// FILE order matches emit order. Separate unstructured `Task`s are not
+    /// FIFO, and this log's whole value is that a sequence can be read top to
+    /// bottom — a sequence number alone would make disorder auditable, never
+    /// readable.
+    ///
+    /// Best-effort at process termination, stated rather than hidden:
+    /// `applicationWillTerminate` is synchronous and cannot await this tail, so
+    /// a rapid quit or a `kill -9` can discard unwritten lines. Guaranteeing a
+    /// drain needs a wider asynchronous-termination design, which is not
+    /// justified for a debug diagnostic.
+    private var deliveryLogTail: Task<Void, Never>?
+
+    /// Test seam. A recorder installed HERE observes the production enqueue
+    /// path — the same rendering, the same chain, the same call site — rather
+    /// than a substitute renderer, which would prove a stub instead of the
+    /// production body.
+    private var deliveryLogSinkForTesting: (@Sendable (String) async -> Void)?
+
+    package func setDeliveryLogSinkForTesting(_ sink: (@Sendable (String) async -> Void)?) {
+      deliveryLogSinkForTesting = sink
+    }
+
+    /// Await the write chain. Tests need this because the assertion is about
+    /// what LANDED, and the chain is the thing that decides when that is true.
+    package func flushDeliveryLogsForTesting() async {
+      await deliveryLogTail?.value
+    }
+
+    /// Render on the actor, in emit order, then hand the finished string off.
+    /// The string is therefore correct whatever the writer does.
+    private func enqueueDeliveryLog(_ identity: ModelIdentity, _ event: DeliveryEvent) {
+      deliveryLogSequence &+= 1
+      let line = Self.deliveryLogLine(
+        identity: identity, event: event, sequence: deliveryLogSequence)
+      let previous = deliveryLogTail
+      let sink = deliveryLogSinkForTesting
+      deliveryLogTail = Task {
+        await previous?.value
+        if let sink {
+          await sink(line)
+        } else {
+          await AppLogger.shared.log(line, level: .info, category: "Delivery")
+        }
+      }
+    }
+
+    /// The ONE place a `DeliveryEvent` becomes a local log line.
+    ///
+    /// A `switch` rather than a list of call sites, and that is the mechanism
+    /// rather than a preference: the compiler owns exhaustiveness, so a ninth
+    /// event fails to BUILD here until someone decides its line. A hand-written
+    /// list is a convention, and a convention with a comment claiming it is
+    /// exhaustive is how a new enum member gets silently dropped (#2207).
+    ///
+    /// `Model delivery admitted` and `Model delivery failed` reproduce the
+    /// wording of the two ad-hoc lines this replaces, verbatim, because those
+    /// are what someone greps for today.
+    package static func deliveryLogLine(
+      identity: ModelIdentity, event: DeliveryEvent, sequence: UInt64
+    ) -> String {
+      let prefix = "[delivery #\(sequence)]"
+      let key = identity.cacheKey
+      switch event {
+      case .attemptStarted(let resumed):
+        return "\(prefix) Model delivery attempt started \(key): resumed=\(resumed)"
+      case .attemptCompleted(
+        let durationBucket, let bytesDownloadedBucket, let sourcesUsed, let finalSourceID,
+        let repairedComponentsCount):
+        return
+          "\(prefix) Model delivery admitted \(key): duration=\(durationBucket) "
+          + "bytes=\(bytesDownloadedBucket) sources=\(sourcesUsed) "
+          + "final_source=\(finalSourceID) repaired=\(repairedComponentsCount)"
+      case .attemptFailed(let reason, let failingSourceID, let detail):
+        let detailSuffix = detail.map { " (\($0))" } ?? ""
+        let sourceSuffix = failingSourceID.map { " source=\($0)" } ?? ""
+        return
+          "\(prefix) Model delivery failed \(key): \(reason.rawValue)\(detailSuffix)"
+          + sourceSuffix
+      case .sourceFailover(let reason, let fromSourceID, let toSourceID):
+        return
+          "\(prefix) Model delivery source failover \(key): \(fromSourceID) -> "
+          + "\(toSourceID), reason=\(reason.rawValue)"
+      case .validationRepair(let componentsCount, let trigger):
+        return
+          "\(prefix) Model delivery validation repair \(key): "
+          + "components=\(componentsCount) trigger=\(trigger.rawValue)"
+      case .cancel(let phaseAtCancel, let resumable):
+        return
+          "\(prefix) Model delivery cancelled \(key): phase=\(phaseAtCancel) "
+          + "resumable=\(resumable)"
+      case .flagActive(let flag, let value):
+        return "\(prefix) Model delivery flag active \(key): \(flag)=\(value)"
+      case .admittedWithoutFetch(let reason):
+        return
+          "\(prefix) Model delivery admitted \(key) without fetch: reason=\(reason.rawValue)"
+      }
+    }
+
+  #endif
 
   // MARK: - Paths + disk
 

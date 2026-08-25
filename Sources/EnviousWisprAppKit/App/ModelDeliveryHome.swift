@@ -721,7 +721,10 @@ enum ModelDeliveryTelemetryBridge {
         props["source_id"] = failingSourceID
       }
       if let detail { props["detail"] = detail }
-    case .sourceFailover(let reason):
+    // The two source ids are LOCAL-LOG ONLY (#2135) and are deliberately
+    // dropped here: adding them would change this event's PostHog shape,
+    // which this issue's subject is not.
+    case .sourceFailover(let reason, _, _):
       name = "source_failover"
       props["reason"] = reason.rawValue
     case .validationRepair(let componentsCount, let trigger):

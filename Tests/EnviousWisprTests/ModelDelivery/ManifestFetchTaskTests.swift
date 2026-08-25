@@ -127,7 +127,9 @@ final class DeliveryStubProtocol: URLProtocol {
     manifest: DeliveryManifest, staging: URL, components: Set<String>? = nil,
     backoffSleep: @escaping @Sendable (TimeInterval) async throws -> Void = { _ in },
     jitter: @escaping @Sendable () -> Double = { 1.0 },
-    onFailover: @escaping @Sendable (DeliveryFailureClass) -> Void = { _ in }
+    onFailover: @escaping @Sendable (DeliveryFailureClass, String, String) -> Void = {
+      _, _, _ in
+    }
   ) -> ManifestFetchTask {
     ManifestFetchTask(
       manifest: manifest, stagingDirectory: staging, sources: manifest.sources,
@@ -177,24 +179,39 @@ final class DeliveryStubProtocol: URLProtocol {
           .init(
             status: 200, headers: ["Content-Length": String(f.content.count)], body: f.content))
       }
+      /// Records the whole failover, not just its reason (#2135). The source
+      /// transition is the diagnostic — "a failover happened" cannot say which
+      /// mirror fell over — and a value no test reads is a value that can be
+      /// wrong without anything noticing.
       final class FailoverLog: @unchecked Sendable {
-        private let lock = NSLock()
-        private var reasons: [DeliveryFailureClass] = []
-        func record(_ reason: DeliveryFailureClass) {
-          lock.withLock { reasons.append(reason) }
+        struct Entry: Equatable {
+          let reason: DeliveryFailureClass
+          let from: String
+          let to: String
         }
-        var all: [DeliveryFailureClass] { lock.withLock { reasons } }
+        private let lock = NSLock()
+        private var entries: [Entry] = []
+        func record(_ reason: DeliveryFailureClass, _ from: String, _ to: String) {
+          lock.withLock { entries.append(Entry(reason: reason, from: from, to: to)) }
+        }
+        var all: [Entry] { lock.withLock { entries } }
+        var reasons: [DeliveryFailureClass] { all.map(\.reason) }
       }
       let failovers = FailoverLog()
       let fetchTask = ManifestFetchTask(
         manifest: manifest, stagingDirectory: staging, sources: manifest.sources,
         componentsToFetch: Set(manifest.files.map(\.component)), verifiedInPlaceBytes: 0,
         onProgress: { _, _ in },
-        onSourceFailover: { failovers.record($0) })
+        onSourceFailover: { failovers.record($0, $1, $2) })
       let outcome = try await fetchTask.run()
       #expect(outcome.sourcesUsed == 2)
       #expect(outcome.finalSourceID == "backup")
-      #expect(failovers.all == [.source4xx])
+      #expect(failovers.reasons == [.source4xx])
+      #expect(
+        failovers.all == [
+          FailoverLog.Entry(reason: .source4xx, from: "our_copy", to: "backup")
+        ],
+        "the failover must name the mirror it left and the one it moved to")
     }
   }
 
@@ -346,7 +363,7 @@ final class DeliveryStubProtocol: URLProtocol {
     let fetchTask = ManifestFetchTask(
       manifest: manifest, stagingDirectory: FileManager.default.temporaryDirectory,
       sources: manifest.sources, componentsToFetch: [], verifiedInPlaceBytes: 0,
-      onProgress: { _, _ in }, onSourceFailover: { _ in })
+      onProgress: { _, _ in }, onSourceFailover: { _, _, _ in })
     // (recordedETag, recordedLength, headETag, headLength, existing, expected) -> discard?
     let cases: [(String??, Int64??, String?, Int64?, Int64, Int64, Bool, String)] = [
       (nil, nil, "\"e\"", 10, 5, 10, true, "no identity recorded"),
@@ -495,7 +512,7 @@ final class DeliveryStubProtocol: URLProtocol {
       DeliveryStubProtocol.enqueue(url: mirrorURL(file), okStub(file))
       let failovers = FailoverBox()
       let outcome = try await task(
-        manifest: manifest, staging: staging, onFailover: { failovers.record($0) }
+        manifest: manifest, staging: staging, onFailover: { failovers.record($0, $1, $2) }
       ).run()
       #expect(outcome.sourcesUsed == 1)
       #expect(outcome.finalSourceID == "our_copy")
@@ -511,7 +528,7 @@ final class DeliveryStubProtocol: URLProtocol {
       DeliveryStubProtocol.enqueue(url: backupURL(file), okStub(file))
       let failovers = FailoverBox()
       let outcome = try await task(
-        manifest: manifest, staging: staging, onFailover: { failovers.record($0) }
+        manifest: manifest, staging: staging, onFailover: { failovers.record($0, $1, $2) }
       ).run()
       #expect(outcome.sourcesUsed == 2)
       #expect(outcome.finalSourceID == "backup")
@@ -530,7 +547,7 @@ final class DeliveryStubProtocol: URLProtocol {
       DeliveryStubProtocol.enqueue(url: backupURL(file), okStub(file))
       let failovers = FailoverBox()
       let outcome = try await task(
-        manifest: manifest, staging: staging, onFailover: { failovers.record($0) }
+        manifest: manifest, staging: staging, onFailover: { failovers.record($0, $1, $2) }
       ).run()
       #expect(outcome.sourcesUsed == 2)
       #expect(outcome.finalSourceID == "backup")
@@ -553,7 +570,7 @@ final class DeliveryStubProtocol: URLProtocol {
       DeliveryStubProtocol.enqueue(url: backupURL(file), okStub(file))
       let failovers = FailoverBox()
       let outcome = try await task(
-        manifest: manifest, staging: staging, onFailover: { failovers.record($0) }
+        manifest: manifest, staging: staging, onFailover: { failovers.record($0, $1, $2) }
       ).run()
       #expect(outcome.sourcesUsed == 2, "offline must fail over, not retry the mirror")
       #expect(outcome.finalSourceID == "backup")
@@ -650,7 +667,7 @@ final class DeliveryStubProtocol: URLProtocol {
       DeliveryStubProtocol.enqueue(url: url, okStub(file))
       let failovers = FailoverBox()
       let outcome = try await task(
-        manifest: manifest, staging: staging, onFailover: { failovers.record($0) }
+        manifest: manifest, staging: staging, onFailover: { failovers.record($0, $1, $2) }
       ).run()
       #expect(outcome.sourcesUsed == 1, "independent budgets keep it on one source")
       #expect(failovers.all.isEmpty)
@@ -669,7 +686,7 @@ final class DeliveryStubProtocol: URLProtocol {
       let delays = DelayBox()
       let outcome = try await task(
         manifest: manifest, staging: staging, backoffSleep: { delays.record($0) },
-        onFailover: { _ in }
+        onFailover: { _, _, _ in }
       ).run()
       #expect(delays.all.isEmpty, "a long Retry-After must not wait")
       #expect(outcome.sourcesUsed == 2)
@@ -778,10 +795,21 @@ private actor TestSignal {
 
 /// Records source-failover reasons across the concurrent fetch.
 private final class FailoverBox: @unchecked Sendable {
+  /// `all` stays the REASON list so the assertions written against it keep their
+  /// exact meaning; the transition is recorded alongside it for the cases that
+  /// care which mirror was left (#2135).
+  struct Entry: Equatable {
+    let reason: DeliveryFailureClass
+    let from: String
+    let to: String
+  }
   private let lock = NSLock()
-  private var reasons: [DeliveryFailureClass] = []
-  func record(_ reason: DeliveryFailureClass) { lock.withLock { reasons.append(reason) } }
-  var all: [DeliveryFailureClass] { lock.withLock { reasons } }
+  private var entries: [Entry] = []
+  func record(_ reason: DeliveryFailureClass, _ from: String, _ to: String) {
+    lock.withLock { entries.append(Entry(reason: reason, from: from, to: to)) }
+  }
+  var all: [DeliveryFailureClass] { lock.withLock { entries.map(\.reason) } }
+  var transitions: [Entry] { lock.withLock { entries } }
 }
 
 /// Records the backoff delays the retry loop asked the (injected) sleep for.

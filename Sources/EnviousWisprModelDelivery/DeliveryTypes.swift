@@ -86,7 +86,14 @@ public enum DeliveryEvent: Sendable, Equatable {
     durationBucket: String, bytesDownloadedBucket: String, sourcesUsed: Int,
     finalSourceID: String, repairedComponentsCount: Int)
   case attemptFailed(reason: DeliveryFailureClass, failingSourceID: String?, detail: String?)
-  case sourceFailover(reason: DeliveryFailureClass)
+  /// `fromSourceID`/`toSourceID` exist for the LOCAL log and nothing else
+  /// (#2135). `reason` alone cannot say which mirror fell over or which took
+  /// over, and "a mirror fell over" is the whole diagnostic value of this
+  /// event — the values are discarded inside `ManifestFetchTask` before the
+  /// event is built, so `emit` cannot recover them. The telemetry bridge
+  /// deliberately ignores both, so no PostHog name or property changes.
+  case sourceFailover(
+    reason: DeliveryFailureClass, fromSourceID: String, toSourceID: String)
   case validationRepair(componentsCount: Int, trigger: ValidationTrigger)
   case cancel(phaseAtCancel: String, resumable: Bool)
   case flagActive(flag: String, value: String)
