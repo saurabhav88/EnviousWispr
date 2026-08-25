@@ -211,7 +211,7 @@ struct MenuBarControllerTests {
 
     let ready = NSMenu()
     controller.renderMenu(
-      into: ready, state: fixture(pipelineState: .idle, quickAddSelection: "clawwed"))
+      into: ready, state: fixture(pipelineState: .idle, quickAdd: .ready("clawwed")))
     let live = itemPrefixed(ready, "Add \u{201C}clawwed\u{201D}")
     #expect(live?.isEnabled == true)
     #expect(live?.target as AnyObject? === controller)
@@ -237,7 +237,7 @@ struct MenuBarControllerTests {
     let controller = makeController(spy: spy)
     let menu = NSMenu()
     controller.renderMenu(
-      into: menu, state: fixture(pipelineState: .idle, quickAddSelection: "clawwed\nmachine"))
+      into: menu, state: fixture(pipelineState: .idle, quickAdd: .ready("clawwed\nmachine")))
 
     let row = itemPrefixed(menu, "Add \u{201C}clawwed machine\u{201D}")
     #expect(row != nil, "the TITLE is collapsed")
@@ -256,7 +256,7 @@ struct MenuBarControllerTests {
     controller.renderMenu(
       into: menu,
       state: fixture(
-        pipelineState: .idle, quickAddSelection: "clawwed", quickAddShortcut: "\u{2318}\u{21E7} J"))
+        pipelineState: .idle, quickAdd: .ready("clawwed"), quickAddShortcut: "\u{2318}\u{21E7} J"))
 
     let row = itemPrefixed(menu, "Add \u{201C}clawwed\u{201D}")
     #expect(row?.title == "Add \u{201C}clawwed\u{201D}  \u{2318}\u{21E7} J")
@@ -271,7 +271,7 @@ struct MenuBarControllerTests {
     let menu = NSMenu()
     controller.renderMenu(
       into: menu,
-      state: fixture(pipelineState: .idle, quickAddSelection: "clawwed", quickAddShortcut: nil))
+      state: fixture(pipelineState: .idle, quickAdd: .ready("clawwed"), quickAddShortcut: nil))
 
     #expect(item(menu, "Add \u{201C}clawwed\u{201D}") != nil, "the title carries no trailing hint")
   }
@@ -459,12 +459,12 @@ struct MenuBarControllerTests {
     updateDisplayVersion: String? = nil,
     installEnabled: Bool = false,
     appearancePreference: AppearancePreference = .system,
-    quickAddSelection: String? = nil,
+    quickAdd: QuickAddMenuState = .nothingSelected,
     quickAddShortcut: String? = "\u{2303}\u{2325} W"
   ) -> MenuBarViewState {
     MenuBarViewState(
       quickAddShortcut: quickAddShortcut,
-      quickAddSelection: quickAddSelection,
+      quickAdd: quickAdd,
       pipelineState: pipelineState,
       asrLabel: "Parakeet v3",
       llmLabel: "LLM Deactivated",
@@ -514,7 +514,7 @@ struct MenuBarControllerTests {
       settings: settings,
       permissions: PermissionsService(),
       actions: MenuBarActions(
-        addSelectedWord: { spy.fired.append("addSelectedWord:\($0)") },
+        addSelectedWord: { spy.fired.append("addSelectedWord:\($0 ?? "<none>")") },
         continueOnboarding: { spy.fired.append("continueOnboarding") },
         openSettings: { spy.fired.append("openSettings") },
         openPermissions: { spy.fired.append("openPermissions") },
@@ -556,7 +556,7 @@ struct QuickAddMenuItemTests {
   /// can still correct it; the menu should not be a guess.
   @Test("A readable selection is named in the title, and the item can be chosen")
   func aSelectionIsNamedAndEnabled() {
-    let item = MenuBarController.quickAddItem(selection: "clawwed")
+    let item = MenuBarController.quickAddItem(.ready("clawwed"))
     #expect(item.title == "Add \u{201C}clawwed\u{201D}")
     #expect(item.enabled)
   }
@@ -565,10 +565,14 @@ struct QuickAddMenuItemTests {
   /// "nothing selected" spends a click to deliver news the menu already had.
   @Test("Nothing to add leaves the item disabled and generically titled")
   func nothingSelectedIsDisabled() {
-    for selection in [nil, "", "   ", "\n\t "] as [String?] {
-      let item = MenuBarController.quickAddItem(selection: selection)
-      #expect(item.title == "Add Selected Word", "for \(String(describing: selection))")
-      #expect(!item.enabled, "for \(String(describing: selection))")
+    #expect(MenuBarController.quickAddItem(.nothingSelected).title == "Add Selected Word")
+    #expect(!MenuBarController.quickAddItem(.nothingSelected).enabled)
+    // A `.ready` carrying only whitespace is the same non-event: the reader trims, so this is the
+    // belt to that brace rather than a state the reader can actually produce.
+    for blank in ["", "   ", "\n\t "] {
+      let item = MenuBarController.quickAddItem(.ready(blank))
+      #expect(item.title == "Add Selected Word", "for \(blank.debugDescription)")
+      #expect(!item.enabled, "for \(blank.debugDescription)")
     }
   }
 
@@ -576,7 +580,7 @@ struct QuickAddMenuItemTests {
   /// boundary is the ordinary case, not an edge one.
   @Test("Surrounding whitespace does not reach the title")
   func whitespaceIsTrimmed() {
-    #expect(MenuBarController.quickAddItem(selection: "  clawwed \n").title == "Add \u{201C}clawwed\u{201D}")
+    #expect(MenuBarController.quickAddItem(.ready("  clawwed \n")).title == "Add \u{201C}clawwed\u{201D}")
   }
 
   /// **A selection spanning two lines carries a newline, and a newline in a native menu title
@@ -585,11 +589,45 @@ struct QuickAddMenuItemTests {
   @Test("Internal line breaks and tabs are collapsed for display")
   func internalWhitespaceIsCollapsed() {
     #expect(
-      MenuBarController.quickAddItem(selection: "clawwed\nmachine").title
+      MenuBarController.quickAddItem(.ready("clawwed\nmachine")).title
         == "Add \u{201C}clawwed machine\u{201D}")
     #expect(
-      MenuBarController.quickAddItem(selection: "one\ttwo   three").title
+      MenuBarController.quickAddItem(.ready("one\ttwo   three")).title
         == "Add \u{201C}one two three\u{201D}")
+  }
+
+  /// **A refused read is NOT an empty selection, and collapsing them hid a missing permission.**
+  /// With Accessibility off the user HAS selected something and we could not read it; a greyed row
+  /// tells them nothing. Enabled, so the panel opens and states the reason.
+  @Test("A refused read stays clickable so the panel can say why")
+  func aRefusedReadIsNotAnEmptySelection() {
+    let blocked = MenuBarController.quickAddItem(.blocked)
+    #expect(blocked.enabled, "the door that must be reliable cannot fail silently")
+    #expect(blocked.title == "Add Selected Word")
+
+    let empty = MenuBarController.quickAddItem(.nothingSelected)
+    #expect(!empty.enabled, "and genuinely nothing selected is still inert")
+    #expect(
+      blocked.title == empty.title,
+      "the titles match; it is the ENABLED state that separates them, which is the whole finding")
+  }
+
+  /// **Cutting on scalars can land inside a character.** A family emoji is several scalars and one
+  /// glyph; splitting it renders as rubble.
+  @Test("Truncation never splits a character")
+  func truncationRespectsGraphemes() {
+    let families = String(repeating: "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}", count: 40)
+    let title = MenuBarController.quickAddItem(.ready(families)).title
+
+    #expect(title.hasSuffix("\u{2026}\u{201D}"))
+    // Every character between the quotes is a whole family, never a fragment of one.
+    let inner = title.dropFirst(5).dropLast(2)
+    #expect(
+      inner.allSatisfy { $0 == "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}" },
+      "a split grapheme would appear here as a lone person or a stray joiner: \(inner)")
+    #expect(
+      title.unicodeScalars.count <= MenuBarController.quickAddTitleScalars + 7,
+      "and the scalar ceiling still bounds the pathological case")
   }
 
   /// **The reader admits 512 scalars and a menu is not where 512 characters belong.** This bounds
@@ -597,21 +635,21 @@ struct QuickAddMenuItemTests {
   @Test("A long selection is truncated for display, with an ellipsis")
   func aLongSelectionIsTruncated() {
     let long = String(repeating: "a", count: 200)
-    let item = MenuBarController.quickAddItem(selection: long)
+    let item = MenuBarController.quickAddItem(.ready(long))
 
     #expect(item.enabled)
     #expect(item.title.hasSuffix("\u{2026}\u{201D}"), "the user is told it was cut")
     #expect(
-      item.title.unicodeScalars.count == MenuBarController.quickAddTitleScalars + 7,
-      "`Add ` is four scalars, plus two quotes and the ellipsis")
+      item.title.count == MenuBarController.quickAddTitleCharacters + 7,
+      "`Add ` is four characters, plus two quotes and the ellipsis")
   }
 
   /// A selection exactly at the boundary is NOT truncated — the paired case, without which the row
   /// above passes for a truncation that fires one scalar early.
   @Test("A selection exactly at the display limit keeps all of it")
   func theBoundaryIsNotTruncated() {
-    let exact = String(repeating: "a", count: MenuBarController.quickAddTitleScalars)
-    let item = MenuBarController.quickAddItem(selection: exact)
+    let exact = String(repeating: "a", count: MenuBarController.quickAddTitleCharacters)
+    let item = MenuBarController.quickAddItem(.ready(exact))
 
     #expect(!item.title.contains("\u{2026}"))
     #expect(item.title == "Add \u{201C}\(exact)\u{201D}")

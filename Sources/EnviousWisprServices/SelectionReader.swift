@@ -97,8 +97,14 @@ public enum SelectionReader {
   /// Per-application, never system-wide: `AXUIElementCreateSystemWide()` can answer for a different
   /// process than the one the user is looking at, and the whole point here is to read the app they
   /// just made a selection in.
+  /// `timeout` bounds the Accessibility round trip, in seconds. Nil keeps the system default.
+  ///
+  /// **A caller that must not block passes one.** The menu-bar door renders inside
+  /// `menuNeedsUpdate`, which AppKit requires to be synchronous — so a frontmost application whose
+  /// Accessibility provider stalls would hold the main actor and the menu simply would not open.
+  /// The default is far longer than a menu can wait.
   @MainActor
-  public static func read() -> Result {
+  public static func read(timeout: Float? = nil) -> Result {
     // Frontmost is read here rather than inside the check because it is the LIVE half. Current
     // because this runs on the main run loop from a hotkey or a Service, with events flowing;
     // `NSWorkspace.frontmostApplication` is stale only where nothing is pumping the run loop, which
@@ -110,7 +116,13 @@ public enum SelectionReader {
       return .refused(refusal)
     }
     // Safe: `refusalBeforeReading` returns non-nil for a nil or non-positive pid.
-    guard let pid = frontmost, let focused = PasteService.focusedElementQuery(pid: pid) else {
+    guard let pid = frontmost else { return .refused(.noFocusedElement) }
+    if let timeout {
+      // Set on the APPLICATION element, which is what the focused-element query goes through, and
+      // before that query rather than after it — the stall this bounds can happen on either call.
+      AXUIElementSetMessagingTimeout(AXUIElementCreateApplication(pid), timeout)
+    }
+    guard let focused = PasteService.focusedElementQuery(pid: pid) else {
       return .refused(.noFocusedElement)
     }
 

@@ -153,10 +153,29 @@ final class MenuBarController: NSObject {
   ///
   /// Truncated for display. `SelectionReader` admits up to 512 scalars, and a menu item is not where
   /// 512 characters belong; the panel shows the whole thing.
-  static func quickAddItem(selection: String?) -> (title: String, enabled: Bool) {
-    guard let selection, !selection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+  static func quickAddItem(_ state: QuickAddMenuState) -> (title: String, enabled: Bool) {
+    switch state {
+    case .nothingSelected:
       return ("Add Selected Word", false)
+    case .blocked:
+      // **Enabled, and that is the point.** A refused read is not an empty selection: the user has
+      // selected something and we could not read it, usually because Accessibility is off. A greyed
+      // row tells them nothing, so this one opens the panel, which exists to state the reason. The
+      // door that is meant to be the reliable one must not fail silently.
+      return ("Add Selected Word", true)
+    case .ready(let selection):
+      // **A `.ready` carrying only whitespace is the empty case wearing the wrong label.** The
+      // reader trims, so this is not a state it can produce — but the type permits it, and a row
+      // reading `Add “”` that opens a panel on nothing is worse than an inert one.
+      guard !selection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return ("Add Selected Word", false)
+      }
+      return (Self.readyTitle(selection), true)
     }
+  }
+
+  /// The title for a readable selection.
+  private static func readyTitle(_ selection: String) -> String {
     let trimmed = selection.trimmingCharacters(in: .whitespacesAndNewlines)
     // **Collapse INTERNAL whitespace, not just the ends.** A selection spanning two document lines
     // carries a newline, and a newline in an `NSMenuItem` title renders as a malformed, multi-line
@@ -170,12 +189,24 @@ final class MenuBarController: NSObject {
     // Collapsed BEFORE truncating, so the limit counts characters the user can actually see.
     let collapsed = trimmed.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
       .joined(separator: " ")
-    let shown =
-      collapsed.unicodeScalars.count > Self.quickAddTitleScalars
-      ? String(String.UnicodeScalarView(collapsed.unicodeScalars.prefix(Self.quickAddTitleScalars)))
-        + "\u{2026}"
-      : collapsed
-    return ("Add \u{201C}\(shown)\u{201D}", true)
+    // **Truncate on CHARACTERS, not scalars.** A family emoji, a flag, or a letter written as a
+    // base plus a combining mark is several scalars and one character; cutting between them renders
+    // a broken glyph. The scalar ceiling still bounds the worst case, because a character can carry
+    // many scalars — both limits, and the tighter one wins.
+    let shown: String = {
+      guard collapsed.count > Self.quickAddTitleCharacters
+        || collapsed.unicodeScalars.count > Self.quickAddTitleScalars
+      else { return collapsed }
+      var out = ""
+      for character in collapsed {
+        guard out.count < Self.quickAddTitleCharacters,
+          out.unicodeScalars.count + character.unicodeScalars.count <= Self.quickAddTitleScalars
+        else { break }
+        out.append(character)
+      }
+      return out + "\u{2026}"
+    }()
+    return "Add \u{201C}\(shown)\u{201D}"
   }
 
   /// The Quick Add chord as READABLE TEXT, or nil when there is nothing sensible to show.
@@ -212,7 +243,16 @@ final class MenuBarController: NSObject {
 
   /// How much of the selection the title shows. Not a limit on what can be ADDED — the reader's
   /// ceiling is that — only on what fits a menu without pushing the rest of it off screen.
-  static let quickAddTitleScalars = 24
+  ///
+  /// TWO limits, because they bound different things. Characters are what the user counts;
+  /// scalars bound the pathological case where a handful of characters carry hundreds of scalars.
+  /// How long the menu will wait for the frontmost application to answer.
+  ///
+  /// Longer than any healthy Accessibility read, shorter than a user tolerates a menu not opening.
+  static let quickAddReadTimeout: Float = 0.5
+
+  static let quickAddTitleCharacters = 24
+  static let quickAddTitleScalars = 96
 
   /// Pure menu builder. Fills `menu` from `state`. Logic byte-identical to the
   /// pre-PR-B.3 `AppDelegate.populateMenu(_:)`. Internal (not private) so
@@ -283,7 +323,7 @@ final class MenuBarController: NSObject {
 
     // Quick Add (#2412). Beside Start Recording because both act on what the user is doing RIGHT
     // NOW, and above the Settings separator because neither is configuration.
-    let quickAdd = Self.quickAddItem(selection: state.quickAddSelection)
+    let quickAdd = Self.quickAddItem(state.quickAdd)
     // **No key equivalent, deliberately** — see `quickAddShortcutLabel`. The chord rides in the
     // title as text, so the menu teaches the fast path without registering a second way to fire it.
     let quickAddItem = NSMenuItem(
@@ -302,7 +342,10 @@ final class MenuBarController: NSObject {
     // controller would be one value shared by every render, and could drift from the title sitting
     // beside it; this cannot, because they are set together and thrown away together. It also keeps
     // this class off its stored-property ceiling, which refused the field and was right to.
-    quickAddItem.representedObject = state.quickAddSelection
+    // Only a READY row carries text. A blocked row is enabled precisely so the panel can state the
+    // refusal, and it must reach `begin` with no override so the panel reads the live reason rather
+    // than being handed a stale one.
+    if case .ready(let selection) = state.quickAdd { quickAddItem.representedObject = selection }
     menu.addItem(quickAddItem)
 
     // Auto-stop on silence indicator
@@ -393,13 +436,13 @@ final class MenuBarController: NSObject {
   /// Snapshot the live homes into a value the pure renderer/mapper consume.
   /// Reads are byte-identical to the pre-PR-B.3 `AppDelegate.populateMenu` /
   /// `updateIcon` reads.
-  /// **`quickAddSelection` is a PARAMETER, not a read taken here, and that is deliberate.** This
+  /// **`quickAdd` is a PARAMETER, not a read taken here, and that is deliberate.** This
   /// builder feeds three paths — the initial menu build, every icon refresh, and the menu-open path —
   /// and only the last is licensed to read the world: opening a status menu leaves the user's own
   /// application frontmost (measured twice, #2412), which is exactly what makes the answer theirs.
   /// An Accessibility round trip on an icon refresh would be work nobody asked for, against a
   /// frontmost app that may well be us.
-  private func currentViewState(quickAddSelection: String? = nil) -> MenuBarViewState {
+  private func currentViewState(quickAdd: QuickAddMenuState = .nothingSelected) -> MenuBarViewState {
     // #1019: read the pending-update state (non-critical only — critical routes
     // to Sparkle's own UX) and the active-dictation guard.
     let pending: UpdateAvailabilityService.AvailableUpdate? = {
@@ -421,7 +464,7 @@ final class MenuBarController: NSObject {
     return MenuBarViewState(
       quickAddShortcut: Self.quickAddShortcutLabel(
         keyCode: settings.quickAddKeyCode, modifiers: settings.quickAddModifiers),
-      quickAddSelection: quickAddSelection,
+      quickAdd: quickAdd,
       pipelineState: liveRecordingState.pipelineState,
       asrLabel: backendMetadata.modelLabel,
       llmLabel: backendMetadata.llmLabel,
@@ -443,8 +486,9 @@ final class MenuBarController: NSObject {
   /// application was still frontmost; by the time this fires the menu has closed and a read would be
   /// about us. That ordering is the whole reason this door works.
   @objc private func addSelectedWordAction(_ sender: NSMenuItem) {
-    guard let selection = sender.representedObject as? String else { return }
-    actions.addSelectedWord(selection)
+    // A blocked row carries nothing, and passing nil is what lets the panel read the refusal LIVE
+    // and say why — rather than repeating a reason captured when the menu was drawn.
+    actions.addSelectedWord(sender.representedObject as? String)
   }
 
   @objc private func continueOnboardingAction() {
@@ -501,11 +545,21 @@ extension MenuBarController: NSMenuDelegate {
     MainActor.assumeIsolated {
       if let currentMenu = statusItem?.menu {
         // The one read, at the one moment it is about the user's document rather than about us.
-        let selection: String? = {
-          if case .text(let text) = SelectionReader.read() { return text }
-          return nil
+        //
+        // **Bounded, because `menuNeedsUpdate` must be synchronous.** A frontmost application whose
+        // Accessibility provider stalls would otherwise hold the main actor and the menu would not
+        // open at all. Half a second is longer than any healthy read and shorter than a user waits.
+        //
+        // All three outcomes are carried. A refusal is NOT an empty selection — collapsing them is
+        // what made a missing Accessibility permission look identical to having selected nothing.
+        let quickAdd: QuickAddMenuState = {
+          switch SelectionReader.read(timeout: Self.quickAddReadTimeout) {
+          case .text(let text): return .ready(text)
+          case .noSelection: return .nothingSelected
+          case .refused: return .blocked
+          }
         }()
-        renderMenu(into: currentMenu, state: currentViewState(quickAddSelection: selection))
+        renderMenu(into: currentMenu, state: currentViewState(quickAdd: quickAdd))
       }
       updateIcon()
     }
@@ -516,12 +570,27 @@ extension MenuBarController: NSMenuDelegate {
 /// architecture ceiling parser scores them as a single collaborator slot.
 struct MenuBarActions: Sendable {
   /// Open Quick Add on the text the menu read while the user's own app was still frontmost (#2412).
-  let addSelectedWord: @MainActor (String) -> Void
+  let addSelectedWord: @MainActor (String?) -> Void
   let continueOnboarding: @MainActor () -> Void
   let openSettings: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void
   let toggleRecording: @MainActor () async -> Void
   let quit: @MainActor () -> Void
+}
+
+/// What the Quick Add row has to say, in the three states a selection read can produce.
+///
+/// **Three, because a `String?` can only hold two** — and the two it collapsed were "you selected
+/// nothing" and "we could not read what you selected", which need opposite treatment. The first is
+/// nothing to report; the second is the user's Accessibility permission being off, which is exactly
+/// the thing this door exists to be reliable about.
+enum QuickAddMenuState: Equatable {
+  /// A readable selection. The row names it and can be chosen.
+  case ready(String)
+  /// The read succeeded and there was nothing selected. Inert.
+  case nothingSelected
+  /// The read was refused. Enabled, so the panel can state the reason.
+  case blocked
 }
 
 /// Immutable snapshot the menu and icon render from. Extracting it makes
@@ -534,12 +603,11 @@ struct MenuBarViewState: Equatable {
   /// reading `settings` inside it would end that.
   let quickAddShortcut: String?
 
-  /// The selection Quick Add would act on, or nil when there is nothing readable (#2412).
+  /// What the Quick Add row has to say (#2412).
   ///
-  /// **Carried on the state rather than read inside `renderMenu`, deliberately.** That function is
-  /// pure over this value, which is what makes the entire menu surface golden-testable; a world read
-  /// inside it would end that on the surface where a wrong item is most visible.
-  let quickAddSelection: String?
+  /// On the state rather than read inside `renderMenu`, which is pure over this value — that purity
+  /// is what makes the whole menu surface golden-testable.
+  let quickAdd: QuickAddMenuState
   let pipelineState: PipelineState
   let asrLabel: String
   let llmLabel: String

@@ -107,8 +107,11 @@ final class QuickAddWiring {
   /// menu is rendered while the user's own application is still frontmost — measured, twice — so the
   /// read happens there, at the one moment the answer is about their document. Reading it from this
   /// side would run after the click, by which time the menu has closed and the answer is ours.
-  func beginFromMenuBar(text: String) {
+  func beginFromMenuBar(text: String?) {
     guard notAlreadyOpen() else { return }
+    // **Nil is not an error, it is the refusal case.** The menu row is enabled when the read was
+    // REFUSED precisely so the panel can state the reason; passing no override is what makes
+    // `begin` read live and produce that reason rather than a stale one.
     present(coordinator.begin(door: .menuBar, selectionOverride: text))
   }
 
