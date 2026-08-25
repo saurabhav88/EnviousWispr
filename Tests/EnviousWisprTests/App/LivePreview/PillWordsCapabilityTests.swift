@@ -5,18 +5,26 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLivePreview
 
-/// The capability's REASON agrees with the capability's VERDICT (#2376 Phase 4, C4).
+/// The pill's VERDICT and the picker's REASON, and where they must part company
+/// (#2376 Phase 4, C4; scope corrected by cloud review on C7).
 ///
-/// **Two properties answering one question, bound in both directions by this
-/// suite rather than by intention.** `isEnabledForGeometry` is what the director
-/// reads to decide whether to size a pill for words; `wordsCapability` is what
-/// the appearance picker reads, because greying out a group of designs without
-/// saying WHY is the shape this repo already records as "visible and inaudible",
-/// and a `Bool` cannot carry a reason.
+/// **TWO PROPERTIES ANSWERING TWO QUESTIONS, and an earlier version of this suite
+/// asserted they were one.** `isEnabledForGeometry` answers "what is THIS
+/// recording doing" and reads a frozen snapshot, so a pill on screen cannot
+/// resize when a setting moves underneath it. `wordsCapability` answers "what
+/// will the NEXT recording do", which is what the Appearance picker has to say,
+/// and reads live.
 ///
-/// Phase 3's seam comment forbids Phase 4 from changing where the director
-/// resolves capability, so the verdict is untouched and the reason is additive.
-/// The cost of additive is a second authority, and this is what pays it.
+/// They agree outside a recording and DIVERGE during one. Both directions are
+/// asserted here, because the agreement was the easy half to write and the
+/// divergence is the half a user can be lied to by.
+///
+/// The picker needs a reason at all because greying out a group of designs
+/// without saying WHY is the shape this repo already records as "visible and
+/// inaudible", and a `Bool` cannot carry one. Phase 3's seam comment forbids
+/// Phase 4 from changing where the DIRECTOR resolves capability, so the verdict
+/// is untouched and the reason is additive; the cost of additive is a second
+/// authority, and this suite is what pays it.
 ///
 /// **Product Outcome.** When these fail, a settings page tells a user to turn on
 /// a switch that cannot help them, or greys out designs their machine can render.
@@ -42,8 +50,11 @@ struct PillWordsCapabilityTests {
   /// **Generated over the cross-product**, so a third input added later is swept
   /// with no edit here, and both directions are asserted: `.available` if and only
   /// if the geometry verdict is true.
+  /// **Scoped to OUTSIDE a recording, which is the only place the two answer the
+  /// same question.** During one they deliberately diverge; that is the case
+  /// below.
   @Test(
-    "the reason says available exactly when the verdict says enabled",
+    "outside a recording, the reason says available exactly when the verdict says enabled",
     arguments: [true, false], [true, false])
   func wordsCapabilityAgreesWithTheGeometryVerdict(supported: Bool, previewOn: Bool) {
     let c = Self.coordinator(supported: supported, previewOn: previewOn)
@@ -56,19 +67,56 @@ struct PillWordsCapabilityTests {
       """)
   }
 
-  /// The same equivalence DURING a recording, where the verdict reads a frozen
-  /// snapshot rather than the live setting. A reason that answered live here would
-  /// agree outside a recording and diverge inside one, which is the window a
-  /// cross-product over live inputs alone cannot see.
-  @Test(
-    "the reason honours the recording freeze the verdict honours",
-    arguments: [true, false], [true, false])
-  func wordsCapabilityHonoursTheRecordingFreeze(supported: Bool, previewOn: Bool) {
-    let c = Self.coordinator(supported: supported, previewOn: previewOn)
+  /// **THE TWO DELIBERATELY DIVERGE DURING A RECORDING, and this is the case
+  /// cloud review's second P2 exists as.**
+  ///
+  /// `isEnabledForGeometry` answers "what is THIS recording doing" and reads the
+  /// frozen snapshot, because a pill already on screen must not resize when a
+  /// setting moves underneath it. `wordsCapability` answers "what will the NEXT
+  /// recording do", which is what the Appearance picker has to say.
+  ///
+  /// Settings is reachable WHILE recording — the menu item carries no recording
+  /// gate and the Live Preview toggle is disabled only when no engine is
+  /// available — so this sequence is a real user's, not a contrived one: start a
+  /// take, switch Live Preview off, open Appearance. An earlier version honoured
+  /// the snapshot here and would have told that user "Live Preview is on, so the
+  /// pill shows your words" about a recording where it will not be, contradicting
+  /// the panel's own promise that changes apply the next time you record.
+  @Test("mid-recording, the pill keeps its frozen verdict and the picker does not")
+  func thePickerAnswersTheNextRecordingNotThisOne() {
+    var previewOn = true
+    let c = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { previewOn },
+      languageMode: { .locked("en") },
+      selectedRoute: {
+        LivePreviewEngineRoute(
+          telemetryEngineID: "universal",
+          isSupportedOnThisSystem: { true },
+          resolve: { _ in .blocked(.unsupportedSystem) })
+      })
+
     c.setRecording(true)
+    #expect(c.isEnabledForGeometry, "control: this recording began with words available")
+    #expect(c.wordsCapability == .available, "control: so does the next one, so far")
+
+    // The user opens Settings mid-take and switches Live Preview off.
+    previewOn = false
+
     #expect(
-      c.wordsCapability.hasWords == c.isEnabledForGeometry,
-      "supported=\(supported) previewOn=\(previewOn) mid-recording: \(c.wordsCapability)")
+      c.isEnabledForGeometry,
+      """
+      the LIVE pill's verdict moved when the setting did. A recording already on \
+      screen must keep the geometry it was sized for; re-reading here is what makes \
+      a pill resize mid-dictation.
+      """)
+    #expect(
+      c.wordsCapability == .previewOff,
+      """
+      the picker still reports words available for the NEXT recording after the user \
+      turned Live Preview off. It would enable the wrong group and print a reason \
+      that is false by the time the user records again.
+      """)
   }
 
   /// **The reason must actually DISCRIMINATE**, or it is a `Bool` in a costume and

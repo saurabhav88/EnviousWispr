@@ -268,32 +268,36 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     return selectedRoute().isSupportedOnThisSystem() && isPreviewOn()
   }
 
-  /// The same question with its REASON attached (#2376 Phase 4, C4).
+  /// Why the NEXT recording can or cannot show words, with its reason attached
+  /// (#2376 Phase 4, C4; corrected by cloud review on C7).
   ///
-  /// **A SIBLING of `isEnabledForGeometry`, not a replacement for it.** Phase 3's
-  /// seam comment states that Phase 4 must not change where the director resolves
-  /// capability, so that property is untouched and this reads the same two inputs
-  /// and honours the same per-recording freeze. The appearance picker needs a
-  /// reason a `Bool` cannot carry: a user whose engine cannot run here must not be
-  /// told to turn a switch on.
+  /// **This answers a DIFFERENT QUESTION from `isEnabledForGeometry`, and the
+  /// difference is the whole point.** That property answers "what is THIS
+  /// recording doing", so it reads the frozen snapshot — a pill already on screen
+  /// must not resize because a setting moved underneath it. This answers "what
+  /// will the NEXT recording do", which is what a settings page has to say, and
+  /// so it reads LIVE and ignores the snapshot entirely.
   ///
-  /// **The two are bound by a test rather than by intention.**
-  /// `wordsCapabilityAgreesWithTheGeometryVerdict` sweeps the cross-product of
-  /// route support, preview setting and snapshot presence and requires
-  /// `.available` if and only if `isEnabledForGeometry`.
+  /// **An earlier version honoured the snapshot and that was a user-visible
+  /// defect, found by cloud review rather than by the equivalence test that was
+  /// supposed to protect this.** Settings is reachable while recording — the menu
+  /// item carries no recording gate, and the Live Preview toggle is disabled only
+  /// when no engine is available — so a user could start a take, switch Live
+  /// Preview off, open Appearance, and be told "Live Preview is on, so the pill
+  /// shows your words" about a next recording where it will not be. That
+  /// contradicts the panel's own promise that changes apply the next time you
+  /// record.
   ///
-  /// KNOWN LIMIT, recorded rather than discovered later: a recording frozen by the
-  /// model-removal path carries `enabled: false` with a route that may well be
-  /// supported and a preview that may well be on, so during THAT recording this
-  /// reports `.previewOff` for a third reason it has no case for. The picker reads
-  /// this from Settings, outside a recording, where no snapshot exists — and
-  /// adding a `.modelRemoval` case would put a transient engine state in front of
-  /// a user choosing how a pill looks.
+  /// **The comment that made it survive is worth naming, because it is the shape
+  /// this repo ranks worst.** The known-limit note here used to say the picker
+  /// "reads this from Settings, outside a recording, where no snapshot exists".
+  /// That sentence asserted a premise nobody checked and told the next reader the
+  /// question was closed. It was false: Settings is available during a recording.
+  ///
+  /// So the two properties AGREE outside a recording and may DIVERGE during one,
+  /// which is asserted in both directions by
+  /// `PillWordsCapabilityTests` rather than left to intention.
   var wordsCapability: PillWordsCapability {
-    if let snapshot = recordingSnapshot {
-      if snapshot.enabled { return .available }
-      return snapshot.route.isSupportedOnThisSystem() ? .previewOff : .engineUnsupported
-    }
     guard selectedRoute().isSupportedOnThisSystem() else { return .engineUnsupported }
     return isPreviewOn() ? .available : .previewOff
   }

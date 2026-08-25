@@ -123,10 +123,18 @@ extension RecordingPillDesign {
 ///
 /// **Additive, and the verdict it sits beside is untouched.** Phase 3's seam
 /// comment forbids Phase 4 from changing where the director resolves capability,
-/// so this reads the same two inputs and honours the same per-recording freeze
-/// rather than replacing the property the director reads.
-/// `wordsCapabilityAgreesWithTheGeometryVerdict` binds the two in both directions
-/// so they cannot drift.
+/// so this is produced alongside the property the director reads rather than
+/// replacing it.
+///
+/// **It reads LIVE while that verdict reads a frozen snapshot, and the difference
+/// is deliberate** (corrected by cloud review). The verdict answers "what is THIS
+/// recording doing", so a pill on screen keeps the geometry it was sized for.
+/// This answers "what will the NEXT recording do", which is the only question a
+/// settings page can honestly answer — and Settings is reachable DURING a
+/// recording, so a snapshot-backed answer would tell a user who just switched
+/// Live Preview off that their words will still be shown.
+/// `PillWordsCapabilityTests` asserts the agreement outside a recording and the
+/// divergence during one.
 enum PillWordsCapability: Equatable, Sendable {
   /// Words are available: an engine that runs here, and the preview turned on.
   case available
