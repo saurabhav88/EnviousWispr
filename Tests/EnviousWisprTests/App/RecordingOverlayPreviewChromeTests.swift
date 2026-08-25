@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 import SwiftUI
 import Testing
 

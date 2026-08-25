@@ -125,7 +125,14 @@ enum SettingsProjection {
       .selectedInputDeviceUID, .preferredInputDeviceIDOverride,
       // #1480: the popover's own lifecycle telemetry (`bt_awareness.*`) owns this
       // signal, incl. `suppressed_by_setting`; no separate settings.changed delta.
-      .showBluetoothTips:
+      .showBluetoothTips,
+      // #2376: which recording pill a user picked. NOT instrumented, and that is
+      // a decision rather than an omission. Adding a `Logical` would auto-emit the
+      // value into the `settings.snapshot` config block, which iterates
+      // `Logical.allCases`, and no consumer exists for it. A closed enum value is
+      // shape rather than content, so `CLAUDE.md`'s privacy test permits it
+      // whenever a consumer appears; it simply has not.
+      .recordingPillDesignWithoutWords, .recordingPillDesignWithWords:
       return []
     }
   }

@@ -32,45 +32,10 @@ struct PresentationID: Hashable, Sendable {
 
 // MARK: - The recording pill's design
 
-/// Which recording pill the user gets (#2375 Phase 3, chunk C3a).
-///
-/// **A DESIGN, not a capability.** Whether the machine can show words as you
-/// speak is a capability the director reads; which pill is drawn is a choice.
-/// Until Phase 4 the two are locked together by a constant, and separating the
-/// vocabulary now is what lets Phase 4 change one without touching the other.
-///
-/// **`.readingWell`, deliberately not `.livePreview`.** Naming a design after
-/// the capability that enables it makes the settings group label and the card
-/// label the same word, and forecloses a second with-words design before one
-/// exists. The capability keeps its own name.
-enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
-  /// The rainbow-lips capsule: a fixed 185x92 interaction frame that holds the
-  /// normal capsule, the locked state and the #1060 notice expansion without
-  /// resizing on every morph.
-  case classic
-  /// The wide panel that shows words as you speak. Content-sized from the first
-  /// frame so it does not visibly snap as lines wrap.
-  case readingWell
-  /// A wider capsule carrying the clock beside a live rainbow level rail, and no
-  /// lips mark (#2376 Phase 4, C5).
-  ///
-  /// **Named for what it DRAWS, following `.readingWell`'s own reasoning.** A
-  /// design named for a capability makes the settings group label and the card
-  /// label the same word; `.levelRail` says nothing about words, preview or live
-  /// anything, so it survives a capability rename and can never be read as the
-  /// with-words option. `.compact` or `.minimal` would name what it LACKS, and
-  /// `.waveform` collides with the ASR vocabulary already in the tree.
-  ///
-  /// **It closes a real gap rather than adding a variation.**
-  /// `RainbowLevelMeter` has exactly one production construction site — inside the
-  /// reading well's header — so the meter shipped in #2216 is reachable only by
-  /// users who can and do run live preview. This offers it to everyone else.
-  ///
-  /// It cannot hold words BY CONSTRUCTION rather than by policy: `canHoldWords`
-  /// is false, so `OverlayRenderModel` installs `{ .off }` and the leaf renders
-  /// no well at all, and its chrome carries no well insets and no fade — there is
-  /// nowhere for text to go even if a provider were installed.
-  case levelRail
+/// The PIXELS of a recording design. Its identity lives in `EnviousWisprCore`,
+/// because a setting persists it and `SettingsManager` is in Services; everything
+/// here is what AppKit knows and Core must not.
+extension RecordingPillDesign {
 
   /// Whether this design can display transcribed words while recording.
   ///
@@ -97,6 +62,33 @@ enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
     // not a measured one — there is no mockup in the tree — and the one value in
     // this design a founder should move before it ships.
     case .levelRail: return 260
+    }
+  }
+
+  /// What the Appearance picker calls this design.
+  ///
+  /// **On the design rather than in the picker, deliberately.** A per-design
+  /// table in the view would be a second one on day one — the drift shape this
+  /// phase exists to remove, one field over — and a design added later would
+  /// render with a blank card until somebody remembered the other list.
+  var displayName: String {
+    switch self {
+    case .classic: return "Capsule"
+    case .readingWell: return "Reading Well"
+    case .levelRail: return "Level Rail"
+    }
+  }
+
+  /// One sentence on the card, in the user's terms rather than ours. No em or en
+  /// dashes (GR-NO-DASHES).
+  var summary: String {
+    switch self {
+    case .classic:
+      return "A small capsule with the rainbow mark and a timer. The pill EnviousWispr has always shown."
+    case .readingWell:
+      return "A wide panel that shows your words as you speak, growing a line at a time."
+    case .levelRail:
+      return "A wider capsule with a live rainbow meter of your voice beside the timer."
     }
   }
 

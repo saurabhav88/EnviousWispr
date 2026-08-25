@@ -49,6 +49,8 @@ public final class SettingsManager {
     case warmEnginePolicy
     case appearance
     case overlayPillPosition
+    case recordingPillDesignWithoutWords
+    case recordingPillDesignWithWords
     case showBluetoothTips
     case playRecordingSounds
     case recordingSoundPairing
@@ -92,6 +94,7 @@ public final class SettingsManager {
     "useStreamingASR", "livePreviewEnabled", "livePreviewEngine",
     "warmEnginePolicy", "appearancePreference",
     "overlayPillPosition",
+    "recordingPillDesignWithoutWords", "recordingPillDesignWithWords",
     "showBluetoothTips", "playRecordingSounds", "recordingSoundPairing",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
     globeGuidanceClaimKey,
@@ -534,6 +537,37 @@ public final class SettingsManager {
     }
   }
 
+  /// #2376: which recording pill is drawn when the machine cannot show words as
+  /// you speak, and when it can.
+  ///
+  /// **TWO keys rather than one, and that is the feature rather than an
+  /// implementation detail.** Without words the choice is cosmetic; with words the
+  /// pill has to be able to hold them, so the two states are genuinely different
+  /// products. Persisting them separately is what lets a user turn Live Preview
+  /// off and back on and get the pill they last chose on that side, instead of
+  /// whichever one a single shared key happened to hold.
+  ///
+  /// Nothing is written on a capability flip: `PillCatalog` reads whichever side
+  /// the capability selects. A value that has somehow crossed groups — a
+  /// hand-edited plist, a downgrade — cannot render wrong, because
+  /// `PillDesignSelections.resolve` fails closed in both directions.
+  ///
+  /// UI-only: read at the start of each FRESH recording through the director's
+  /// selections closure, never live-patched into a pill already on screen.
+  package var recordingPillDesignWithoutWords: RecordingPillDesign {
+    didSet {
+      defaults.set(recordingPillDesignWithoutWords.rawValue, forKey: "recordingPillDesignWithoutWords")
+      onChange?(.recordingPillDesignWithoutWords)
+    }
+  }
+
+  package var recordingPillDesignWithWords: RecordingPillDesign {
+    didSet {
+      defaults.set(recordingPillDesignWithWords.rawValue, forKey: "recordingPillDesignWithWords")
+      onChange?(.recordingPillDesignWithWords)
+    }
+  }
+
   /// #1480: show the once-per-launch Bluetooth cold-start education popover.
   /// UI-only — no pipeline sync; `BluetoothAwarenessPresenter` reads it via the
   /// injected `tipsEnabled` closure and reconciles a visible card off when it
@@ -927,6 +961,16 @@ public final class SettingsManager {
       OverlayPillPosition(
         rawValue: defaults.string(forKey: "overlayPillPosition") ?? ""
       ) ?? SettingsDefaultValues.overlayPillPosition
+
+    recordingPillDesignWithoutWords =
+      RecordingPillDesign(
+        rawValue: defaults.string(forKey: "recordingPillDesignWithoutWords") ?? ""
+      ) ?? SettingsDefaultValues.recordingPillDesignWithoutWords
+
+    recordingPillDesignWithWords =
+      RecordingPillDesign(
+        rawValue: defaults.string(forKey: "recordingPillDesignWithWords") ?? ""
+      ) ?? SettingsDefaultValues.recordingPillDesignWithWords
 
     showBluetoothTips =
       defaults.object(forKey: "showBluetoothTips") as? Bool

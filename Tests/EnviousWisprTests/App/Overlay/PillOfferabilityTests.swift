@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Testing
 
 @testable import EnviousWisprAppKit

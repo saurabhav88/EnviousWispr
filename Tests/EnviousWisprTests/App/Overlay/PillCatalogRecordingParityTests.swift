@@ -1,4 +1,5 @@
 import CoreGraphics
+import EnviousWisprCore
 import Foundation
 import Testing
 
