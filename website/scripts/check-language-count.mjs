@@ -82,10 +82,82 @@ const SITES = [
 ];
 
 // A language count in prose: a 1-3 digit number (optionally +) within two
-// words of "language/languages". Catches "(99 languages)", "All 99
-// Whisper-supported languages", "99-language set"; does not catch ISO designators
-// like "639-1" (a digit cannot continue the match past "-1").
-const COUNT_IN_PROSE = /\b\d{1,3}\+?[\s-]*([A-Za-z-]+\s+){0,2}languages?\b/i;
+// words of "language/languages" OR its abbreviation "lang/langs". Catches
+// "(99 languages)", "All 99 Whisper-supported languages", "99-language set",
+// and "99-lang set"; does not catch ISO designators like "639-1" (a digit
+// cannot continue the match past "-1").
+//
+// The abbreviation was added by #2368's follow-up, and the omission is why the
+// guard could scan a file and report it clean: the stale comment read
+// "the Whisper-supported 99-lang set", so a pattern requiring the whole word
+// matched nothing and empty read as an answer. Adding the file to ANCHORS
+// without this would have changed nothing.
+//
+// Widening was two-way controlled before shipping rather than assumed safe: run
+// over every `//` comment in `Sources/`, the wider alternation newly matches
+// EXACTLY ONE line — the defect itself. That matters because this guard was
+// deliberately kept narrow (see ANCHORS below) after broad scanning produced
+// three false positives on correct prose, and a guard that cries wolf on correct
+// code trains people to skip it. This does not reopen that trade.
+// The guard asks whether a block restates the SIZE OF THE SET, and it derives
+// that size by COUNTING the set rather than by describing prose (#2368 cloud
+// review, rounds 1-4).
+//
+// Four rounds each found a different numeric idiom the pattern mis-read as a
+// count: `ISO 639-1`, then bare `ISO 639`, then `2-letter language code` and
+// `BCP 47 language tag`. Each round I extended an exclusion list. **That is
+// describing a set, and a description always has a next member** — round 3's
+// comment even wrote down what a fourth finding would have to look like, and
+// round 4 produced exactly that on the first try. The prediction was falsifiable
+// and it was falsified, so the answer is not a fifth exclusion.
+//
+// The closed question was in the DATA. These blocks may not restate how big the
+// accepted-code set is; that size is countable from the set itself, so a number
+// is suspicious only when it is NEAR it. `639`, `47`, `2` and `1` are not, and
+// fall out with no exemption list at all.
+//
+// Self-updating by construction: the band is computed from the live set, so if
+// the set grows the guard follows it. A hardcoded 100 would be one more number
+// that must track code and would go stale silently.
+//
+// STATED TRADE, because narrowing a guard deserves saying out loud: a wrong count
+// FAR from the set size — "the 25-language set" inside a block about the Whisper
+// set — is no longer caught. That is a real gap and it is the deliberate price of
+// never crying wolf on correct prose describing a code format, which this guard's
+// own header says trains people to skip it. The blocks are about THIS set, so a
+// drifted count in them lands near its size.
+//
+// Paired accept/reject, all verified:
+//   MATCH:  "99 languages" · "99-lang set" · "100+ languages" · "99+ languages"
+//           "All 99 Whisper-supported languages"
+//   REJECT: "ISO 639-1 lang code" · "ISO 639 lang code" · "2-letter language code"
+//           "BCP 47 language tag" · "ISO 639-3 entries"
+const ACCEPTED_SET_FILE = 'Sources/EnviousWisprCore/LanguageTypes.swift';
+
+function acceptedSetSize() {
+  const text = read(ACCEPTED_SET_FILE);
+  if (text === null) return null;
+  const open = text.indexOf('whisperSupportedLanguages: Set<String> = [');
+  if (open === -1) return null;
+  const close = text.indexOf(']', open);
+  if (close === -1) return null;
+  const codes = text.slice(open, close).match(/"[a-z]{2,3}"/g) || [];
+  return codes.length || null;
+}
+
+// +/- 2 around the live size: wide enough to catch the four numbers this issue
+// found in the wild (98, 99, 100, and their `+` forms), narrow enough to exclude
+// every identifier idiom above.
+function countInProseFor(size) {
+  const lo = size - 2;
+  const hi = size + 2;
+  const alts = [];
+  for (let n = lo; n <= hi; n++) alts.push(String(n));
+  return new RegExp(
+    String.raw`(?<![-\d])(?:${alts.join('|')})\+?[\s-]*([A-Za-z-]+\s+){0,2}(languages?|langs?)\b`,
+    'i'
+  );
+}
 
 // The two declarations where the count used to live. The doc block directly
 // above each must carry no count. Deliberately NARROW: the other seven
@@ -107,6 +179,22 @@ const ANCHORS = [
     file: 'Sources/EnviousWisprAppKit/Views/Settings/LanguageCatalog.swift',
     label: 'all:',
     declRe: /static let all: \[Entry\]/,
+  },
+  // The CONSUMER, added by #2368's follow-up (Codex post-merge review on #2372).
+  //
+  // `SettingsManager` describes the same `LanguageTypes.isSupported` validation
+  // and had drifted to "the Whisper-supported 99-lang set" — the stale count this
+  // issue set out to remove, in a file the guard did not read.
+  //
+  // Its comment is a `//` block INSIDE a function body rather than a `///` doc
+  // block above a declaration, which is why this entry carries its own
+  // `commentRe`. Anchoring on the `let` the block introduces keeps the guard
+  // narrow: it reads that block and nothing else in a 1,000-line file.
+  {
+    file: 'Sources/EnviousWisprServices/SettingsManager.swift',
+    label: 'resolvedLanguageMode',
+    declRe: /let resolvedLanguageMode: LanguageMode = \{/,
+    commentRe: /^\s*\/\//,
   },
 ];
 
@@ -141,7 +229,20 @@ if (readableSites === 0) {
   failures.push(`no claim-site files could be read under ${ROOT} — the guard cannot see its subject, refusing to pass`);
 }
 
-for (const { file, label, declRe } of ANCHORS) {
+const setSize = acceptedSetSize();
+if (setSize === null) {
+  // Fail CLOSED: if the set cannot be counted the guard cannot know what a wrong
+  // number looks like, and reporting clean would be an answer it has not earned.
+  failures.push(
+    `${ACCEPTED_SET_FILE}: could not count whisperSupportedLanguages — the guard derives its ` +
+      `suspicious range from that set and cannot run without it`
+  );
+}
+const countPattern = setSize === null ? null : countInProseFor(setSize);
+
+for (const { file, label, declRe, commentRe } of ANCHORS) {
+  // `///` unless the entry says otherwise — see the SettingsManager entry.
+  const commentLine = commentRe ?? /^\s*\/\/\//;
   const text = read(file);
   if (text === null) {
     failures.push(`${file}: file not found — anchor "${label}" cannot be verified`);
@@ -154,12 +255,12 @@ for (const { file, label, declRe } of ANCHORS) {
     continue;
   }
   const block = [];
-  for (let i = idx - 1; i >= 0 && /^\s*\/\/\//.test(lines[i]); i--) block.unshift(lines[i]);
+  for (let i = idx - 1; i >= 0 && commentLine.test(lines[i]); i--) block.unshift(lines[i]);
   if (block.length === 0) {
     failures.push(`${file}:${idx + 1}: no doc comment directly above "${label}" — restore the explanation; this guard verifies it carries no count`);
     continue;
   }
-  const m = block.join('\n').match(COUNT_IN_PROSE);
+  const m = countPattern === null ? null : block.join('\n').match(countPattern);
   if (m) {
     failures.push(`${file}:${idx + 1 - block.length}..${idx}: doc block above "${label}" carries a language count ("${m[0]}") — the set's size is not a marketed figure (#2368); describe what it is, with no number`);
   }

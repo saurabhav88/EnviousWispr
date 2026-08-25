@@ -835,7 +835,7 @@ public final class SettingsManager {
       defaults.string(forKey: "whisperKitLanguage") ?? SettingsDefaultValues.whisperKitLanguage
     // Load languageMode, or migrate from whisperKitLanguage on first launch
     // (Multilingual v1). Both paths normalize (lowercase) and validate against
-    // the Whisper-supported 99-lang set; unsupported, empty, or case-variant
+    // the accepted-code set in `LanguageTypes`; unsupported, empty, or case-variant
     // codes fall back to .auto so a stale or bogus persisted value cannot
     // lock the user into a non-existent language.
     let resolvedLanguageMode: LanguageMode = {
