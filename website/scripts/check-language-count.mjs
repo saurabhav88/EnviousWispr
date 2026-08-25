@@ -99,39 +99,65 @@ const SITES = [
 // deliberately kept narrow (see ANCHORS below) after broad scanning produced
 // three false positives on correct prose, and a guard that cries wolf on correct
 // code trains people to skip it. This does not reopen that trade.
-// TWO checks, and the split is the point (#2368 cloud review, rounds 1-3).
+// The guard asks whether a block restates the SIZE OF THE SET, and it derives
+// that size by COUNTING the set rather than by describing prose (#2368 cloud
+// review, rounds 1-4).
 //
-// Rounds 1 and 2 both found a new ISO SPELLING the pattern mis-read as a count:
-// first "ISO 639-1 lang code" matching `1 lang`, then "ISO 639 lang code"
-// matching `639 lang` once the hyphenated form was excluded. That is review
-// finding a new MEMBER of a set each round, which means the defect is that the
-// set is being DESCRIBED rather than enumerated — and a description always has a
-// next counterexample.
+// Four rounds each found a different numeric idiom the pattern mis-read as a
+// count: `ISO 639-1`, then bare `ISO 639`, then `2-letter language code` and
+// `BCP 47 language tag`. Each round I extended an exclusion list. **That is
+// describing a set, and a description always has a next member** — round 3's
+// comment even wrote down what a fourth finding would have to look like, and
+// round 4 produced exactly that on the first try. The prediction was falsifiable
+// and it was falsified, so the answer is not a fifth exclusion.
 //
-// So the question was inverted. Enumerating "every way prose can spell a count"
-// is open and unbounded. Enumerating "which numbers are LEGITIMATE here" is
-// CLOSED: the ISO 639 family has a fixed, externally-defined part list, and it is
-// the only numeric vocabulary the guarded blocks legitimately carry — verified by
-// reading all three, which contain `ISO 639-1` and `ISO 639-3` and nothing else
-// numeric.
+// The closed question was in the DATA. These blocks may not restate how big the
+// accepted-code set is; that size is countable from the set itself, so a number
+// is suspicious only when it is NEAR it. `639`, `47`, `2` and `1` are not, and
+// fall out with no exemption list at all.
 //
-// Allowed designators are removed FIRST, then what remains is checked for a
-// count. A genuine count in the same sentence as an ISO reference still fires,
-// which is what stops this being a blanket exemption.
+// Self-updating by construction: the band is computed from the live set, so if
+// the set grows the guard follows it. A hardcoded 100 would be one more number
+// that must track code and would go stale silently.
 //
-// Paired accept/reject table, all verified, because a check that quietly stopped
-// classifying anything also reports clean:
-//   MATCH:  "99-lang set" · "(99 languages)" · "99-language set"
-//           "All 99 Whisper-supported languages" · "25 European languages"
-//           "a 54-language list" · "ISO 639-3 entries and 99 languages"
-//   REJECT: "ISO 639-1 lang code" · "ISO 639 lang code" · "ISO 639 language code"
-//           "Accepted language codes: ISO 639-1, plus the ISO 639-3 entries"
+// STATED TRADE, because narrowing a guard deserves saying out loud: a wrong count
+// FAR from the set size — "the 25-language set" inside a block about the Whisper
+// set — is no longer caught. That is a real gap and it is the deliberate price of
+// never crying wolf on correct prose describing a code format, which this guard's
+// own header says trains people to skip it. The blocks are about THIS set, so a
+// drifted count in them lands near its size.
 //
-// A FOURTH finding here would have to be a number that is neither an ISO 639
-// designator nor a count. Stating that so the closure is falsifiable rather than
-// hopeful.
-const ISO_DESIGNATOR = /\bISO[\s ]*639(?:-[1-5])?\b/gi;
-const COUNT_IN_PROSE = /(?<![-\d])\d{1,3}\+?[\s-]*([A-Za-z-]+\s+){0,2}(languages?|langs?)\b/i;
+// Paired accept/reject, all verified:
+//   MATCH:  "99 languages" · "99-lang set" · "100+ languages" · "99+ languages"
+//           "All 99 Whisper-supported languages"
+//   REJECT: "ISO 639-1 lang code" · "ISO 639 lang code" · "2-letter language code"
+//           "BCP 47 language tag" · "ISO 639-3 entries"
+const ACCEPTED_SET_FILE = 'Sources/EnviousWisprCore/LanguageTypes.swift';
+
+function acceptedSetSize() {
+  const text = read(ACCEPTED_SET_FILE);
+  if (text === null) return null;
+  const open = text.indexOf('whisperSupportedLanguages: Set<String> = [');
+  if (open === -1) return null;
+  const close = text.indexOf(']', open);
+  if (close === -1) return null;
+  const codes = text.slice(open, close).match(/"[a-z]{2,3}"/g) || [];
+  return codes.length || null;
+}
+
+// +/- 2 around the live size: wide enough to catch the four numbers this issue
+// found in the wild (98, 99, 100, and their `+` forms), narrow enough to exclude
+// every identifier idiom above.
+function countInProseFor(size) {
+  const lo = size - 2;
+  const hi = size + 2;
+  const alts = [];
+  for (let n = lo; n <= hi; n++) alts.push(String(n));
+  return new RegExp(
+    String.raw`(?<![-\d])(?:${alts.join('|')})\+?[\s-]*([A-Za-z-]+\s+){0,2}(languages?|langs?)\b`,
+    'i'
+  );
+}
 
 // The two declarations where the count used to live. The doc block directly
 // above each must carry no count. Deliberately NARROW: the other seven
@@ -203,6 +229,17 @@ if (readableSites === 0) {
   failures.push(`no claim-site files could be read under ${ROOT} — the guard cannot see its subject, refusing to pass`);
 }
 
+const setSize = acceptedSetSize();
+if (setSize === null) {
+  // Fail CLOSED: if the set cannot be counted the guard cannot know what a wrong
+  // number looks like, and reporting clean would be an answer it has not earned.
+  failures.push(
+    `${ACCEPTED_SET_FILE}: could not count whisperSupportedLanguages — the guard derives its ` +
+      `suspicious range from that set and cannot run without it`
+  );
+}
+const countPattern = setSize === null ? null : countInProseFor(setSize);
+
 for (const { file, label, declRe, commentRe } of ANCHORS) {
   // `///` unless the entry says otherwise — see the SettingsManager entry.
   const commentLine = commentRe ?? /^\s*\/\/\//;
@@ -223,7 +260,7 @@ for (const { file, label, declRe, commentRe } of ANCHORS) {
     failures.push(`${file}:${idx + 1}: no doc comment directly above "${label}" — restore the explanation; this guard verifies it carries no count`);
     continue;
   }
-  const m = block.join('\n').replace(ISO_DESIGNATOR, 'ISO-STD').match(COUNT_IN_PROSE);
+  const m = countPattern === null ? null : block.join('\n').match(countPattern);
   if (m) {
     failures.push(`${file}:${idx + 1 - block.length}..${idx}: doc block above "${label}" carries a language count ("${m[0]}") — the set's size is not a marketed figure (#2368); describe what it is, with no number`);
   }
