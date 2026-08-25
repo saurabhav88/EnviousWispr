@@ -32,9 +32,17 @@ struct ManifestFetchTask {
   /// denominator baseline so the UI fraction covers the WHOLE set honestly.
   let verifiedInPlaceBytes: Int64
   let onProgress: @Sendable (_ bytesWritten: Int64, _ totalBytes: Int64) -> Void
+  /// AWAITED, not fire-and-forget (#2135 cloud review P2). Emitting this from
+  /// an unstructured `Task` leaves it unordered against the continuation the
+  /// controller is awaiting here, so a fast backup or a cancel could publish a
+  /// TERMINAL event first — and a cancel that bumps the generation first makes
+  /// the controller's own guard drop the failover entirely. Awaiting makes the
+  /// notification part of the fetch path, which is where it already belonged:
+  /// this is the slow branch by construction, since it runs only when a mirror
+  /// has already failed and another is about to be tried.
   let onSourceFailover:
     @Sendable (_ reason: DeliveryFailureClass, _ fromSourceID: String, _ toSourceID: String)
-      -> Void
+      async -> Void
 
   /// Phase 2 (#1405): the inter-attempt backoff sleep, injectable so tests
   /// advance it without wall-clock waits (`swift-patterns` timing-seam-shapes;
@@ -243,7 +251,7 @@ struct ManifestFetchTask {
           networkRetriesUsed = 0
           // In bounds: the guard above returns unless `sourceIndex + 1` is a
           // valid index, so reading AFTER the increment is safe (#2135).
-          onSourceFailover(failure.reason, fromSourceID, sources[sourceIndex].id)
+          await onSourceFailover(failure.reason, fromSourceID, sources[sourceIndex].id)
         }
       }
     }

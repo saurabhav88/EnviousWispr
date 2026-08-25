@@ -624,11 +624,15 @@ public actor ModelDeliveryController {
         }
       },
       onSourceFailover: { reason, fromSourceID, toSourceID in
-        Task {
-          await controller.noteFailover(
-            identity, reason: reason, fromSourceID: fromSourceID, toSourceID: toSourceID,
-            generation: generation)
-        }
+        // Awaited rather than spawned. See `onSourceFailover`'s own doc: a
+        // detached Task here is unordered against the `fetchTask.run()`
+        // continuation below, which can publish a terminal event first or let a
+        // cancel bump the generation so this call's guard drops the failover.
+        // Re-entering the actor is safe: the controller is SUSPENDED at that
+        // await, so it is not held.
+        await controller.noteFailover(
+          identity, reason: reason, fromSourceID: fromSourceID, toSourceID: toSourceID,
+          generation: generation)
       })
 
     do {
