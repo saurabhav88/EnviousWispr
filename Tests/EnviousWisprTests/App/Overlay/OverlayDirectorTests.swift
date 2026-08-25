@@ -88,6 +88,10 @@
         livePreview: LivePreviewBridge(
           recordingDidChange: { sink.recordingStates.append($0) },
           isEnabledForGeometry: { preview.isEnabled },
+          // Derived from this fixture's own verdict, never typed beside it: a
+          // fixture stating both independently can contradict itself, and no
+          // assertion would catch it.
+          wordsCapability: { preview.isEnabled ? .available : .previewOff },
           display: { preview.display() }),
         grantAccessibility: { sink.appActions.append(.grantAccessibility) },
         selections: { .shipped },
@@ -248,6 +252,10 @@
             sink.order.append("effect")
           },
           isEnabledForGeometry: { preview.isEnabled },
+          // Derived from this fixture's own verdict, never typed beside it: a
+          // fixture stating both independently can contradict itself, and no
+          // assertion would catch it.
+          wordsCapability: { preview.isEnabled ? .available : .previewOff },
           display: { preview.display() }),
         grantAccessibility: { sink.appActions.append(.grantAccessibility) },
         selections: { .shipped },
@@ -873,6 +881,7 @@
         livePreview: LivePreviewBridge(
           recordingDidChange: { if $0 { recordingStarted = true } },
           isEnabledForGeometry: { recordingStarted },
+          wordsCapability: { recordingStarted ? .available : .previewOff },
           display: { .off }),
         grantAccessibility: {}, selections: { .shipped }, deferFirstRender: { $0() })
       Self.hosts.append(host)

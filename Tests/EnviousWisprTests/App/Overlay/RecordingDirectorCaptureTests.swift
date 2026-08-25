@@ -56,6 +56,8 @@ struct RecordingDirectorCaptureTests {
           counts.capability += 1
           return capabilityHasWords
         },
+        // Derived from this fixture's own verdict, never typed beside it.
+        wordsCapability: { capabilityHasWords ? .available : .previewOff },
         display: {
           counts.displayReads += 1
           return .off
@@ -205,23 +207,72 @@ struct RecordingDirectorCaptureTests {
   /// capability, which is the arrangement this whole phase exists to remove.
   /// Separating them is the only way to tell which one the consumers actually
   /// follow.
-  @Test("reading well drives its consumers even without word capability")
+  ///
+  /// **REWRITTEN IN #2376 C4, AND THE REASON IS THAT ITS OLD ROUTE STOPPED
+  /// EXISTING.** It used to drive the DIRECTOR with a selections pair of
+  /// `.readingWell` / `.readingWell` at `capabilityHasWords: false`, and what it
+  /// measured was real: one display read and a resize to 400x123, on a machine
+  /// with no preview — a wide panel with nothing to put in it. C4 closed that
+  /// direction of `PillDesignSelections.resolve`, so the director now substitutes
+  /// `.classic` and the mismatch is no longer reachable through it.
+  ///
+  /// The PROPERTY is worth keeping and is not about the director: the render
+  /// model's consumers must follow the DESIGN they were handed rather than
+  /// re-deriving capability for themselves. So it is driven at
+  /// `setRecordingProviders` directly, which takes the design as an argument and
+  /// is the type under test. Losing the production route to the mismatch is the
+  /// point of C4; losing the observation would have been an accident of it.
+  @Test("the render model's consumers follow the design they are handed")
   func consumersFollowDesignRatherThanCapability() {
     let counts = Counts()
     let host = WindowlessOverlayHost()
-    let selections = PillDesignSelections(withoutWords: .readingWell, withWords: .readingWell)
-    let d = Self.makeDirector(
-      counts, capabilityHasWords: false, selections: selections, host: host)
+    let model = OverlayRenderModel()
 
-    Self.record(d)
-    #expect(d.renderModel.presentation?.recordingDesign == .readingWell)
-    _ = d.renderModel.livePreviewProvider()
-    d.renderModel.onContentHeightChange(123)
+    model.setRecordingProviders(
+      audioLevel: { 0 },
+      recordingElapsed: { nil },
+      livePreview: {
+        counts.displayReads += 1
+        return .text("words")
+      },
+      design: .readingWell,
+      position: .top,
+      onContentHeightChange: { host.resizeCurrentPresentation(to: CGSize(width: 400, height: $0)) })
+
+    _ = model.livePreviewProvider()
+    model.onContentHeightChange(123)
 
     #expect(counts.displayReads == 1, "the consumers gated on capability, not on the design")
     #expect(
       host.resizes == [CGSize(width: 400, height: 123)],
       "preview growth followed capability rather than the captured design")
+  }
+
+  /// The paired negative, which is what makes the case above a discriminator
+  /// rather than a demonstration: a design that cannot hold words is handed a
+  /// live provider and a growth callback, and must reach neither.
+  @Test("a design that holds no words reaches neither consumer")
+  func aWordlessDesignReachesNeitherConsumer() {
+    let counts = Counts()
+    let host = WindowlessOverlayHost()
+    let model = OverlayRenderModel()
+
+    model.setRecordingProviders(
+      audioLevel: { 0 },
+      recordingElapsed: { nil },
+      livePreview: {
+        counts.displayReads += 1
+        return .text("words")
+      },
+      design: .classic,
+      position: .top,
+      onContentHeightChange: { host.resizeCurrentPresentation(to: CGSize(width: 185, height: $0)) })
+
+    #expect(model.livePreviewProvider() == .off, "a wordless design was handed a live display")
+    model.onContentHeightChange(123)
+
+    #expect(counts.displayReads == 0, "the live provider was read for a pill that shows no words")
+    #expect(host.resizes.isEmpty, "a pill that cannot grow asked its window to resize")
   }
 
   // MARK: - The bridge
@@ -243,6 +294,7 @@ struct RecordingDirectorCaptureTests {
           bridgeAtCapabilityRead = counts.bridge
           return true
         },
+        wordsCapability: { .available },
         display: { .off }),
       grantAccessibility: {},
       selections: { .shipped },

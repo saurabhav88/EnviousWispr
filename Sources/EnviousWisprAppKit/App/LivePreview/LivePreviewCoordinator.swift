@@ -268,6 +268,36 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     return selectedRoute().isSupportedOnThisSystem() && isPreviewOn()
   }
 
+  /// The same question with its REASON attached (#2376 Phase 4, C4).
+  ///
+  /// **A SIBLING of `isEnabledForGeometry`, not a replacement for it.** Phase 3's
+  /// seam comment states that Phase 4 must not change where the director resolves
+  /// capability, so that property is untouched and this reads the same two inputs
+  /// and honours the same per-recording freeze. The appearance picker needs a
+  /// reason a `Bool` cannot carry: a user whose engine cannot run here must not be
+  /// told to turn a switch on.
+  ///
+  /// **The two are bound by a test rather than by intention.**
+  /// `wordsCapabilityAgreesWithTheGeometryVerdict` sweeps the cross-product of
+  /// route support, preview setting and snapshot presence and requires
+  /// `.available` if and only if `isEnabledForGeometry`.
+  ///
+  /// KNOWN LIMIT, recorded rather than discovered later: a recording frozen by the
+  /// model-removal path carries `enabled: false` with a route that may well be
+  /// supported and a preview that may well be on, so during THAT recording this
+  /// reports `.previewOff` for a third reason it has no case for. The picker reads
+  /// this from Settings, outside a recording, where no snapshot exists — and
+  /// adding a `.modelRemoval` case would put a transient engine state in front of
+  /// a user choosing how a pill looks.
+  var wordsCapability: PillWordsCapability {
+    if let snapshot = recordingSnapshot {
+      if snapshot.enabled { return .available }
+      return snapshot.route.isSupportedOnThisSystem() ? .previewOff : .engineUnsupported
+    }
+    guard selectedRoute().isSupportedOnThisSystem() else { return .engineUnsupported }
+    return isPreviewOn() ? .available : .previewOff
+  }
+
   // MARK: - Lifecycle
 
   /// Start or stop the preview for the current recording.

@@ -39,6 +39,12 @@ struct LivePreviewBridge {
   /// Whether to SIZE a pill for preview text.
   let isEnabledForGeometry: () -> Bool
 
+  /// The same answer with its REASON, for the surface that has to explain itself
+  /// (#2376 Phase 4, C4). The director reads the verdict above; the appearance
+  /// picker reads this, because greying out a group of designs without saying why
+  /// is the shape this repo already records as "visible and inaudible".
+  let wordsCapability: () -> PillWordsCapability
+
   /// What to render in it.
   let display: () -> LivePreviewDisplay
 
@@ -53,16 +59,24 @@ struct LivePreviewBridge {
     self.init(
       recordingDidChange: { coordinator.setRecording($0) },
       isEnabledForGeometry: { coordinator.isEnabledForGeometry },
+      wordsCapability: { coordinator.wordsCapability },
       display: { coordinator.display })
   }
 
   init(
     recordingDidChange: @escaping (Bool) -> Void,
     isEnabledForGeometry: @escaping () -> Bool,
+    // **NO DEFAULT, for the reason this file already states about the bridge as a
+    // whole.** A defaulted parameter leaves no token at the call site, so a caller
+    // that meant to supply a real capability and did not compiles and silently
+    // reports `.previewOff` — which a picker would render as "turn the preview on"
+    // to a user whose engine cannot run here at all.
+    wordsCapability: @escaping () -> PillWordsCapability,
     display: @escaping () -> LivePreviewDisplay
   ) {
     self.recordingDidChange = recordingDidChange
     self.isEnabledForGeometry = isEnabledForGeometry
+    self.wordsCapability = wordsCapability
     self.display = display
   }
 
@@ -81,6 +95,7 @@ struct LivePreviewBridge {
   static let disabled = LivePreviewBridge(
     recordingDidChange: { _ in },
     isEnabledForGeometry: { false },
+    wordsCapability: { .previewOff },
     display: { .off })
 }
 

@@ -82,6 +82,31 @@ struct PillCatalogEntry: Equatable, Sendable {
 
 enum PillCatalog {
 
+  // MARK: - Which designs may be offered
+
+  /// Whether a design may be OFFERED for a capability state (#2376 Phase 4, C4).
+  ///
+  /// **Defined in terms of `resolve`, and that definition IS the anti-drift
+  /// mechanism.** A design the picker greys out is exactly a design `resolve`
+  /// would substitute, so the two cannot disagree without `resolve` disagreeing
+  /// with itself. The plan names catalog-versus-Settings drift as the risk to
+  /// watch, and a parallel `allCases.filter { $0.canHoldWords == x }` would be a
+  /// second derivation of the same rule even while it happened to agree.
+  static func offers(_ design: RecordingPillDesign, capabilityHasWords: Bool) -> Bool {
+    PillDesignSelections(withoutWords: design, withWords: design)
+      .resolve(capabilityHasWords: capabilityHasWords)
+      .substituted == false
+  }
+
+  /// The designs in one compatibility group, for the picker's ORDER only.
+  ///
+  /// **Every enabled-or-greyed decision goes through `offers`, never through
+  /// this.** Grouping is presentation; offerability is policy, and keeping them
+  /// separate is what stops the group list quietly becoming a second answer.
+  static func designs(holdingWords: Bool) -> [RecordingPillDesign] {
+    RecordingPillDesign.allCases.filter { $0.canHoldWords == holdingWords }
+  }
+
   /// The one entry point.
   static func entry(for request: PillCatalogRequest, id: PresentationID) -> PillCatalogEntry {
     PillCatalogEntry(

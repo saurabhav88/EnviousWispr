@@ -85,6 +85,32 @@ enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
   }
 }
 
+/// Why the recording pill can or cannot show words as you speak (#2376 Phase 4).
+///
+/// **A REASON, where `LivePreviewBridge.isEnabledForGeometry` is a verdict.** The
+/// director only needs to know whether to size a pill for words; a settings page
+/// that greys out a whole group of designs has to say WHY, and a `Bool` cannot
+/// carry that. One sentence for both causes would be worse than none: it would
+/// tell a user on an unsupported machine to turn on a setting that would not help
+/// them.
+///
+/// **Additive, and the verdict it sits beside is untouched.** Phase 3's seam
+/// comment forbids Phase 4 from changing where the director resolves capability,
+/// so this reads the same two inputs and honours the same per-recording freeze
+/// rather than replacing the property the director reads.
+/// `wordsCapabilityAgreesWithTheGeometryVerdict` binds the two in both directions
+/// so they cannot drift.
+enum PillWordsCapability: Equatable, Sendable {
+  /// Words are available: an engine that runs here, and the preview turned on.
+  case available
+  /// The engine would run here; the user has the preview switched off.
+  case previewOff
+  /// The selected engine cannot run on this machine, so the switch would not help.
+  case engineUnsupported
+
+  var hasWords: Bool { self == .available }
+}
+
 /// Which design the user has chosen for each capability state.
 ///
 /// **Two selections, not one, because the two states are genuinely different
@@ -101,12 +127,23 @@ struct PillDesignSelections: Equatable, Sendable {
     self.withWords = withWords
   }
 
-  /// The pair the shipped code produces, and what Phase 3 injects everywhere.
+  /// The pair the shipped code produces, and the FROZEN REFERENCE tests measure
+  /// against.
   ///
-  /// Phase 4 replaces the CLOSURE that returns this, never this constant's
-  /// meaning — it is the current behaviour written down, so a Phase 4 regression
-  /// is measurable against it.
+  /// **Production no longer reads it** (#2376 Phase 4). The bootstrapper's
+  /// selections closure is settings-backed, and this constant's job is to be the
+  /// thing those defaults are asserted to equal — one production authority, one
+  /// frozen reference, and a test saying they agree. It is kept rather than
+  /// deleted because 22 test call sites across 8 files use it as the neutral pair
+  /// for a director that is not about design selection.
   static let shipped = PillDesignSelections(withoutWords: .classic, withWords: .readingWell)
+
+  /// The design substituted when the chosen one cannot hold the capability's
+  /// content. Stated ONCE each rather than spelled at the branch that needs it.
+  static let canonicalWithWords: RecordingPillDesign = .readingWell
+  /// The design substituted when a with-words design is chosen for a pill that
+  /// will show no words.
+  static let canonicalWithoutWords: RecordingPillDesign = .classic
 
   /// Resolve the selection for a capability state, FAIL-CLOSED.
   ///
@@ -116,22 +153,40 @@ struct PillDesignSelections: Equatable, Sendable {
   /// true. `DesignResolution` cannot lie about which of the two happened, and a
   /// caller may assert on it, log it, or ignore it.
   ///
-  /// **No production caller can produce a mismatch this phase**, because
-  /// selections are constructed from `shipped`. That branch is covered by unit
-  /// tests only and ships no logging, telemetry or composition wiring. Phase 4
-  /// introduces the first real producer of an incompatible value and owns the
-  /// decision about what `substituted` should then cause.
+  /// **What `substituted` CAUSES is nothing, and that is the decision rather than
+  /// an omission** (#2376 Phase 4). Phase 3 recorded that Phase 4 introduces the
+  /// first real producer and owns this call. It does: two independently persisted
+  /// selections. But the picker cannot OFFER an incompatible design — it asks
+  /// `PillCatalog.offers`, which is defined in terms of this very function — so a
+  /// substitution is reachable only from a hand-edited plist or a downgrade. It
+  /// stays a returned value with no logging and no telemetry, and its
+  /// unreachability is asserted by the picker's cross-product rather than watched
+  /// for at runtime.
   func resolve(capabilityHasWords: Bool) -> DesignResolution {
     let chosen = capabilityHasWords ? withWords : withoutWords
-    // Written as an `if` rather than a `guard`, because the mismatch is the
-    // EXCEPTIONAL case and a guard whose success path is the exception reads
+    // Written as `if`s rather than `guard`s, because the mismatches are the
+    // EXCEPTIONAL cases and a guard whose success path is the exception reads
     // backwards to everyone after the author.
     if capabilityHasWords, !chosen.canHoldWords {
       // The capability can show words and the chosen design cannot hold them.
       // Substituting the canonical with-words design is the fail-closed answer:
       // the alternative is a pill that silently drops the feature it was enabled
       // for.
-      return DesignResolution(design: .readingWell, substituted: true)
+      return DesignResolution(design: Self.canonicalWithWords, substituted: true)
+    }
+    // **THE MIRROR DIRECTION, CLOSED IN #2376 C4, AND IT WAS NOT HYPOTHETICAL.**
+    // Phase 3 guarded only the case above, so a with-words design sitting in the
+    // without-words slot was accepted with `substituted: false` —
+    // `RecordingDirectorCaptureTests` MEASURES that combination installing a live
+    // display provider and resizing the window to 400x123 on a machine with no
+    // preview: a wide empty panel with nothing to put in it.
+    //
+    // C6 introduces the first producer that can reach this — two independently
+    // persisted selections, either of which a hand-edited plist or a downgrade
+    // can cross — so the guard lands one chunk BEFORE the thing that can trip it
+    // rather than one chunk after.
+    if !capabilityHasWords, chosen.canHoldWords {
+      return DesignResolution(design: Self.canonicalWithoutWords, substituted: true)
     }
     return DesignResolution(design: chosen, substituted: false)
   }
