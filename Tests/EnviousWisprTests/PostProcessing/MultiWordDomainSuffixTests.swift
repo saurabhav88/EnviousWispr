@@ -272,6 +272,28 @@ struct MultiWordDomainSuffixTests {
     #expect(replacements.first?.sourceID == user.id)
   }
 
+  /// Reserving a span must also stop the FUZZY pass (#2406 r9).
+  ///
+  /// The loop carried two states meaning "this position is settled" — one for a
+  /// replacement, one for an already-correct span — and the fuzzy pass's gate
+  /// consulted only the first. So reserving a span left the position looking
+  /// unsettled and the fuzzy pass ran on text the exact pass had just certified.
+  ///
+  /// Reached here through a PACK already-correct match, because that is the case
+  /// where a non-pack fuzzy alias of the same token count is still waiting.
+  @Test("a reserved span is not rewritten by the fuzzy pass")
+  func reservedSpanStopsTheFuzzyPass() {
+    let packExact = CustomWord(
+      canonical: "Alpha Beta Gamma", aliases: ["alpha beta gamma"], source: .pack)
+    let fuzzyDistractor = CustomWord(
+      canonical: "Fuzzy Wrong", aliases: ["alpha beta gammaa"])
+    let (result, _) = corrector.correct(
+      "see Alpha Beta Gamma now", against: [packExact, fuzzyDistractor])
+    #expect(
+      result == "see Alpha Beta Gamma now",
+      "text certified by the exact pass must be invisible to the fuzzy pass; got: \(result)")
+  }
+
   /// A canonical that already specifies its own domain does NOT get the dictated
   /// suffix reattached — otherwise the user sees it twice. Same rule the
   /// single-word path applies.

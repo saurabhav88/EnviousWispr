@@ -790,7 +790,17 @@ public struct WordCorrector: Sendable {
       let maxSpan = multiAliasMap.keys.reduce(0) { max($0, $1.components(separatedBy: " ").count) }
       var i = 0
       while i < tokens.count {
-        var matched = false
+        // ONE state answers "is this position settled, and by how far"
+        // (#2406 review r9).
+        //
+        // It was TWO: `matched` for a replacement and `reservedSpan` for an
+        // already-correct span. Both mean Pass 2 must not touch this position,
+        // and Pass 2's gate consulted only the first — so reserving a span left
+        // `matched` false and the fuzzy pass ran on text Pass 1 had just
+        // certified. A settled position expressed as two booleans that must both
+        // be remembered is the shape that produces exactly this omission; a
+        // single value has nothing to forget.
+        //
         // #2406 review r2: how far to advance when a span is left ALONE.
         //
         // A MATCHED span collapses to one token, so `i += 1` steps past it. An
@@ -799,7 +809,20 @@ public struct WordCorrector: Sendable {
         // overlapping alias can rewrite it. `Alpha Beta Gamma.com` is correct as a
         // three-token span, and a `beta gamma` alias then rewrote it to
         // `Alpha Wrong.com`. Reserve the whole span instead.
-        var reservedSpan: Int?
+        // `.replaced` advances by ONE because the span collapsed to a single
+        // token; `.reserved(n)` advances by N because the span kept all of them.
+        enum SpanOutcome {
+          case replaced
+          case reserved(Int)
+
+          var advance: Int {
+            switch self {
+            case .replaced: return 1
+            case .reserved(let span): return span
+            }
+          }
+        }
+        var outcome: SpanOutcome?
 
         for span in stride(from: min(maxSpan, tokens.count - i), through: 2, by: -1) {
           let slice = tokens[i..<(i + span)]
@@ -889,7 +912,7 @@ public struct WordCorrector: Sendable {
             // canonical — round 3's defect, which was fixed in Pass 2 and left
             // standing here because nothing had reached it yet.
             if exactHit.source == exactHit.canonical {
-              reservedSpan = span
+              outcome = .reserved(span)
               break
             }
             let (firstPrefix, _, _) = splitPunctuation(tokens[i])
@@ -903,7 +926,7 @@ public struct WordCorrector: Sendable {
               i..<(i + span),
               with: [firstPrefix + exactHit.canonical + reattach + lastSuffix])
             appendReplacement(forCanonical: exactHit.canonical)
-            matched = true
+            outcome = .replaced
             #if DEBUG
               Self.logger.debug(
                 "WordCorrector: type=multi-word-exact source='\(exactHit.source)' target='\(exactHit.canonical)' peeled=\(exactHit.peeled)"
@@ -914,7 +937,7 @@ public struct WordCorrector: Sendable {
         }
 
         // Pass 2: fuzzy multi-word fallback (only if exact missed for all spans)
-        if !matched {
+        if outcome == nil {
           spanLoop: for span in stride(from: min(maxSpan, tokens.count - i), through: 2, by: -1) {
             let slice = tokens[i..<(i + span)]
             let phrase = slice.map { stripPunctuation($0).lowercased() }.joined(separator: " ")
@@ -982,7 +1005,7 @@ public struct WordCorrector: Sendable {
                 // Already right as dictated. RESERVE the span — not `continue`,
                 // which only tries a shorter one and then lets the outer loop walk
                 // back into it.
-                reservedSpan = span
+                outcome = .reserved(span)
                 // Labelled: a bare `break` inside a `switch` exits the SWITCH, falling
                 // through to code that reads an uninitialised `winner`.
                 break spanLoop
@@ -1024,7 +1047,7 @@ public struct WordCorrector: Sendable {
                   firstPrefix + winner.candidate.canonical + reattachedDomainSuffix + lastSuffix
                 ])
               appendReplacement(forCanonical: winner.candidate.canonical)
-              matched = true
+              outcome = .replaced
               #if DEBUG
                 let winningSource = winner.peeled ? (peeledRawPhrase ?? rawPhrase) : rawPhrase
                 Self.logger.debug(
@@ -1036,8 +1059,10 @@ public struct WordCorrector: Sendable {
           }
         }
 
-        if let reservedSpan { reservedTokenRanges.append(i..<(i + reservedSpan)) }
-        i += reservedSpan ?? 1
+        if case .reserved(let span) = outcome {
+          reservedTokenRanges.append(i..<(i + span))
+        }
+        i += outcome?.advance ?? 1
       }
     }
 
