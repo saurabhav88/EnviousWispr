@@ -136,7 +136,7 @@ final class QuickAddWiring {
         // ordering, and a nil lookup defaulting to false would report a search-assisted save as an
         // unassisted one — quietly, and in the direction that flatters the ranking.
         onSaveNewWord: { [weak self] word in
-          self?.saveNewWord(word, usedSearch: !model.query.isEmpty)
+          self?.saveNewWord(word, usedSearch: model.isSearching)
         }))
 
     // The host refuses to present a panel it could not measure, because an unmeasurable panel is an

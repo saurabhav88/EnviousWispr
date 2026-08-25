@@ -436,20 +436,52 @@ def assert_canonical_defaults_match_swift() -> None:
 
     raw_keycode = swift.get("toggleKeyCode", "")
     match = re.fullmatch(r"Int\(ModifierKeyCodes\.(\w+)\)", raw_keycode)
-    if match is None:
-        raise AssertionError(
-            f"toggleKeyCode default is no longer Int(ModifierKeyCodes.x): {raw_keycode!r}"
+    if match is not None:
+        symbol = match.group(1)
+    else:
+        # #2381 moved every shortcut default onto ONE owner, `ShortcutRole`, because three files
+        # each holding their own copy is what shipped a stored, displayed, inert Quick Add binding
+        # (#1991 blocker 2, reproduced during that build). So `SettingsDefaultValues.toggleKeyCode`
+        # is now `Int(ShortcutRole.record.defaultKeyCode)` and this check has one more hop to make.
+        #
+        # FOLLOWED, not relaxed. Widening the regex to accept any expression would keep this case
+        # green while it stopped checking anything, which is the shape it exists to prevent one
+        # module over — a guard that runs, matches, and has matching read as agreement. The hop is
+        # resolved to a real `ModifierKeyCodes` symbol or this still fails.
+        role_match = re.fullmatch(r"Int\(ShortcutRole\.(\w+)\.defaultKeyCode\)", raw_keycode)
+        if role_match is None:
+            raise AssertionError(
+                "toggleKeyCode default is neither Int(ModifierKeyCodes.x) nor "
+                f"Int(ShortcutRole.<role>.defaultKeyCode): {raw_keycode!r}"
+            )
+        symbol = _shortcut_role_default_key_symbol(
+            root / "Sources/EnviousWisprServices/ShortcutBinding.swift", role_match.group(1)
         )
-    expected = modifier_codes.get(match.group(1))
+    expected = modifier_codes.get(symbol)
     if expected != DEFAULT_TOGGLE_KEY_CODE:
         raise AssertionError(
             f"DEFAULT_TOGGLE_KEY_CODE={DEFAULT_TOGGLE_KEY_CODE} but Swift ships "
-            f"{match.group(1)}={expected}"
+            f"{symbol}={expected}"
         )
-    if swift.get("toggleModifiersRaw") != str(DEFAULT_TOGGLE_MODIFIERS_RAW):
+    raw_modifiers = swift.get("toggleModifiersRaw", "")
+    role_modifiers = re.fullmatch(
+        r"ShortcutRole\.(\w+)\.defaultModifiers\.rawValue", raw_modifiers
+    )
+    if role_modifiers is not None:
+        # Same #2381 indirection as the key code above, and followed the same way: resolved to the
+        # actual modifier LIST in `defaultBinding`, never accepted as "some expression".
+        shipped_modifiers = _shortcut_role_default_modifier_names(
+            root / "Sources/EnviousWisprServices/ShortcutBinding.swift", role_modifiers.group(1)
+        )
+        if shipped_modifiers:
+            raise AssertionError(
+                f"DEFAULT_TOGGLE_MODIFIERS_RAW={DEFAULT_TOGGLE_MODIFIERS_RAW} means NO modifiers, "
+                f"but Swift ships {shipped_modifiers}"
+            )
+    elif raw_modifiers != str(DEFAULT_TOGGLE_MODIFIERS_RAW):
         raise AssertionError(
             f"DEFAULT_TOGGLE_MODIFIERS_RAW={DEFAULT_TOGGLE_MODIFIERS_RAW} but Swift "
-            f"ships {swift.get('toggleModifiersRaw')!r}"
+            f"ships {raw_modifiers!r}"
         )
     if swift.get("recordingMode") != f".{DEFAULT_RECORDING_MODE}":
         raise AssertionError(
@@ -684,6 +716,58 @@ def _case_domain_export_is_read_once() -> None:
 
 def _case_swift_python_modifier_parity() -> None:
     assert_modifier_table_parity()
+
+
+def _shortcut_role_default_key_symbol(path: Path, role: str) -> str:
+    """The `ModifierKeyCodes` symbol a `ShortcutRole` case resolves to.
+
+    Reads `defaultBinding`'s switch, which is the ONE place a shortcut default is written since
+    #2381. Refuses rather than guesses: a case that ships a bare integer, or a role this cannot
+    find, raises — because the caller's whole job is to prove Python and Swift agree on a number,
+    and a resolver that shrugs turns that proof into a formality.
+    """
+    source = path.read_text(encoding="utf-8")
+    body = re.search(
+        r"var defaultBinding: ShortcutBinding \{(.*?)\n  \}", source, re.S
+    )
+    if body is None:
+        raise AssertionError("ShortcutRole.defaultBinding not found in ShortcutBinding.swift")
+    case_match = re.search(
+        rf"case \.{re.escape(role)}:\s*\.keyboard\(keyCode:\s*([^,]+),", body.group(1)
+    )
+    if case_match is None:
+        raise AssertionError(f"ShortcutRole.{role} has no .keyboard default in defaultBinding")
+    expression = case_match.group(1).strip()
+    symbol = re.fullmatch(r"ModifierKeyCodes\.(\w+)", expression)
+    if symbol is None:
+        raise AssertionError(
+            f"ShortcutRole.{role} ships {expression!r}, not a ModifierKeyCodes symbol, so this "
+            "check cannot resolve it to a key code"
+        )
+    return symbol.group(1)
+
+
+def _shortcut_role_default_modifier_names(path: Path, role: str) -> list[str]:
+    """The modifier names a `ShortcutRole` case ships, or [] for a bare key.
+
+    Returns names rather than a raw value on purpose: this file cannot evaluate
+    `NSEvent.ModifierFlags`, and inventing an arithmetic model of it here would be a second
+    implementation of a thing Swift already owns. The caller only needs to know whether the set is
+    EMPTY, which is a question the source answers directly.
+    """
+    source = path.read_text(encoding="utf-8")
+    body = re.search(
+        r"var defaultBinding: ShortcutBinding \{(.*?)\n  \}", source, re.S
+    )
+    if body is None:
+        raise AssertionError("ShortcutRole.defaultBinding not found in ShortcutBinding.swift")
+    case_match = re.search(
+        rf"case \.{re.escape(role)}:\s*\.keyboard\([^)]*modifiers:\s*\[([^\]]*)\]",
+        body.group(1),
+    )
+    if case_match is None:
+        raise AssertionError(f"ShortcutRole.{role} has no modifiers list in defaultBinding")
+    return [m.strip() for m in case_match.group(1).split(",") if m.strip()]
 
 
 def _case_canonical_defaults_match_swift() -> None:

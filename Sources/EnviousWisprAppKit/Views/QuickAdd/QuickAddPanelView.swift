@@ -190,7 +190,7 @@ struct QuickAddPanelView: View {
   /// model is a second thing to keep in step with the ranking.
   var headerState: QuickAddPanelCopy.GroupHeaderState {
     if model.ranking.preselected?.alreadyHasHeardSpelling == true { return .alreadySaved }
-    if !model.query.isEmpty { return .searching }
+    if model.isSearching { return .searching }
     return model.ranking.preselectedID == nil ? .lowConfidence : .confident
   }
 

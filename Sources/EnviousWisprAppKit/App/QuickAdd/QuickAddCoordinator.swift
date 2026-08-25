@@ -226,7 +226,7 @@ final class QuickAddCoordinator {
   /// already had this shape; this one did not.
   @discardableResult
   func accept(_ candidate: QuickAddRanker.Candidate, from model: QuickAddPanelModel) -> String? {
-    let usedSearch = !model.query.isEmpty
+    let usedSearch = model.isSearching
     let rank = model.ranking.candidates.firstIndex { $0.id == candidate.id }
     let kind: QuickAddTargetKind = candidate.isPackTerm ? .packTerm : .userWord
 
@@ -283,7 +283,7 @@ final class QuickAddCoordinator {
 
   /// Escape, clicking away, or the panel closing.
   func cancel(from model: QuickAddPanelModel) {
-    finish(.cancelled, usedSearch: !model.query.isEmpty, rank: nil, kind: nil)
+    finish(.cancelled, usedSearch: model.isSearching, rank: nil, kind: nil)
   }
 
   // MARK: - Internals

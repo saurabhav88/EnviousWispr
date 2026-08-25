@@ -93,6 +93,20 @@ final class QuickAddPanelModel {
       candidates: ranking.candidates, preselectedID: ranking.candidates[next].id)
   }
 
+  /// Whether the user is actually filtering, as opposed to having pressed the space bar.
+  ///
+  /// **`!query.isEmpty` was the test at four call sites and it is wrong for whitespace.**
+  /// `updateQuery` trims before deciding whether to re-rank — correctly, since a field holding two
+  /// spaces should show the heard ranking rather than an empty filter — but it stores the RAW text,
+  /// because that is what the field renders. So a whitespace-only field restored the heard ranking
+  /// while every downstream reader still believed a search was in progress: the group header
+  /// switched to its searching sentence under a user who had typed nothing, and `used_search=true`
+  /// went out on the resulting accept, which is a telemetry claim that the ranking needed rescuing
+  /// when it did not.
+  ///
+  /// One owner, derived, rather than four call sites each remembering to trim.
+  var isSearching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
   /// The row Return would accept, or nil when Return must write nothing.
   var acceptTarget: QuickAddRanker.Candidate? { ranking.preselected }
 

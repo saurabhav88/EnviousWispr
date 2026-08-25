@@ -309,4 +309,46 @@ struct QuickAddPanelModelTests {
 
     #expect(headerState(heardRanking: r, query: "cod") == .alreadySaved)
   }
+  @Test("Whitespace is not a search, at every reader")
+  func whitespaceIsNotASearch() {
+    // `updateQuery` trims before deciding whether to re-rank and stores the RAW text, because that
+    // is what the field renders. So the heard ranking came back while four downstream readers still
+    // believed a search was running: the header switched sentence under a user who typed nothing,
+    // and `used_search=true` went out on the accept — a claim that the ranking needed rescuing when
+    // it did not.
+    let (model, _) = makeModel(
+      heardRanking: ranking(["Codex"], preselecting: 0),
+      searchRanking: ranking(["Codex"], preselecting: nil))
+
+    model.updateQuery("   ")
+
+    #expect(!model.isSearching)
+    #expect(model.ranking.preselectedID != nil, "the heard ranking, including its preselection")
+  }
+
+  @Test("Real text IS a search")
+  func realTextIsASearch() {
+    // The paired positive. Without it, `isSearching` could return false always and the case above
+    // would pass while the search field stopped being observable at all.
+    let (model, _) = makeModel(
+      heardRanking: ranking(["Codex"], preselecting: 0),
+      searchRanking: ranking(["Codex"], preselecting: nil))
+
+    model.updateQuery("cod")
+
+    #expect(model.isSearching)
+  }
+
+  @Test("Text with surrounding whitespace is still a search")
+  func paddedTextIsStillASearch() {
+    // Trimming decides whether there is anything to search FOR; it must not decide that a padded
+    // query is no query. A user who typed a space before their word is searching.
+    let (model, _) = makeModel(
+      heardRanking: ranking(["Codex"], preselecting: 0),
+      searchRanking: ranking(["Codex"], preselecting: nil))
+
+    model.updateQuery("  cod  ")
+
+    #expect(model.isSearching)
+  }
 }
