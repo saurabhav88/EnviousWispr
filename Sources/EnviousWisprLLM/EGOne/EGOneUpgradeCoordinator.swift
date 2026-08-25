@@ -102,12 +102,61 @@ public final class EGOneUpgradeCoordinator {
   /// automatic upgrade from a download the user began in settings — the two reach the same
   /// adapter hooks and must not mean the same thing on cancel.
   ///
-  /// A COUNT, not a flag. `runLaunch()` runs once at bootstrap today, but it is re-entered within
-  /// the same session when onboarding completes, so two automatic attempts can overlap. With a
-  /// plain Boolean the first to finish would clear it while the second was still fetching, and a
-  /// Cancel belonging to that second attempt would be misread as the user's own.
-  private var automaticUpgradeInFlightCount = 0
-  private var automaticUpgradeInFlight: Bool { automaticUpgradeInFlightCount > 0 }
+  /// How the controller reports its start-vs-join decision back to this type.
+  /// `@MainActor` because the coordinator is, and the adapter hops it here.
+  package typealias FetchDecisionHandler =
+    @MainActor @Sendable (ModelDeliveryController.FetchDecision) -> Void
+
+  /// What each in-flight automatic ensure turned out to BE, keyed per attempt.
+  ///
+  /// **A dictionary rather than a count, because the count could not express the
+  /// question (#2110).** A count answers "is one of ours running", and a Cancel
+  /// needs "is the download being cancelled ONE OF OURS". Those differ exactly
+  /// when the controller single-flights: our ensure JOINS a download the user
+  /// started, the count goes up, and their Cancel is recorded as us declining an
+  /// automatic upgrade we never started.
+  ///
+  /// Keyed per attempt for the reason the count was keyed at all: `runLaunch()`
+  /// is `public`, so concurrent calls are possible and a shared slot would let
+  /// one attempt's decision overwrite another's.
+  ///
+  /// **Correcting the reason the old comment gave**, because it was wrong and a
+  /// wrong reason at the code stops the next reader checking: it said the count
+  /// existed because `runLaunch` is re-entered when onboarding completes, so two
+  /// automatic attempts can overlap. They cannot, by that route.
+  /// `onboardingDidComplete()` guards on `deferredForOnboarding`, which is set
+  /// only when `runLaunch` returned at the onboarding gate — BEFORE fetching. The
+  /// real reason is the `public` entry point above.
+  private var automaticFetchDecisions: [UUID: AutomaticFetchDecision] = [:]
+
+  /// Three states, and the third is the point.
+  ///
+  /// The controller reports start-vs-join on its own actor and the answer reaches
+  /// this @MainActor type through a hop that is NOT bounded — during launch the
+  /// main actor is running bootstrap composition, settings observation, runtime
+  /// activation and UI. A Cancel already queued can arrive while the answer is
+  /// still in flight.
+  ///
+  /// `.pending` refuses the Cancel rather than guessing. Both guesses are wrong:
+  /// assuming ours writes a decline the user never made and suppresses future
+  /// upgrades; assuming theirs drops a real decline and re-fetches up to 2.9 GB
+  /// on the next launch, contradicting the Cancel just pressed. Refusing is the
+  /// same fail-closed direction C14 already takes when a decline cannot be
+  /// persisted.
+  private enum AutomaticFetchDecision {
+    /// The start-vs-join answer has not reached the main actor yet.
+    case pending
+    /// This automatic attempt STARTED the shared fetch. A Cancel is ours.
+    case started
+    /// It joined a download someone else started. A Cancel is not ours.
+    case joined
+  }
+
+  /// Whether any automatic ensure is running, in ANY of the three states.
+  ///
+  /// Deliberately separate from the decision itself: `prepareForEnsure()` must not
+  /// clear a decline merely because attribution has not arrived yet.
+  private var automaticEnsureInProgress: Bool { !automaticFetchDecisions.isEmpty }
 
   /// Whether first-run setup has finished. EG-1 polish is a LIMB; during onboarding the HEART's
   /// model (Parakeet or WhisperKit) is downloading, and dictation does not work at all until it
@@ -119,7 +168,8 @@ public final class EGOneUpgradeCoordinator {
   private var deferredForOnboarding = false
 
   private let ensureCurrentModel:
-    @MainActor @Sendable () async -> ModelDeliveryController.DeliveryOutcome
+    @MainActor @Sendable (@escaping FetchDecisionHandler) async ->
+      ModelDeliveryController.DeliveryOutcome
   private let currentModelIsAdmitted: @MainActor @Sendable () async -> Bool
 
   /// nil in production: `LegacyRetirement` then hashes the descriptor it verified, so the
@@ -149,11 +199,11 @@ public final class EGOneUpgradeCoordinator {
         ?? .standard,
       trustedArtifact: trustedArtifact,
       isOnboardingComplete: isOnboardingComplete,
-      ensureCurrentModel: { [weak adapter] in
+      ensureCurrentModel: { [weak adapter] onFetchDecision in
         guard let adapter else {
           return .failed(DeliveryFailure(reason: .unknown, detail: "adapter_released"))
         }
-        return await adapter.ensureAvailable()
+        return await adapter.ensureAvailable(onFetchDecision: onFetchDecision)
       },
       currentModelIsAdmitted: { [weak adapter] in
         guard let adapter else { return false }
@@ -179,7 +229,8 @@ public final class EGOneUpgradeCoordinator {
     trustedArtifact: TrustedArtifact,
     isOnboardingComplete: @escaping @MainActor @Sendable () -> Bool = { true },
     ensureCurrentModel:
-      @escaping @MainActor @Sendable () async -> ModelDeliveryController.DeliveryOutcome,
+      @escaping @MainActor @Sendable (@escaping FetchDecisionHandler) async ->
+        ModelDeliveryController.DeliveryOutcome,
     currentModelIsAdmitted: @escaping @MainActor @Sendable () async -> Bool,
     hashFile: (@Sendable (URL) async throws -> String)? = nil,
     writeMarker: (@MainActor @Sendable (URL) -> Bool)? = nil,
@@ -358,9 +409,18 @@ public final class EGOneUpgradeCoordinator {
     //
     // Marked in-flight across the fetch so a Cancel arriving through the adapter's shared
     // decline hook is attributable to US rather than to the settings row.
-    automaticUpgradeInFlightCount += 1
-    let outcome = await ensureCurrentModel()
-    automaticUpgradeInFlightCount -= 1
+    // Registered as `.pending` BEFORE the call, so a Cancel arriving in the gap
+    // is refused rather than attributed by guess (#2110).
+    let attemptID = UUID()
+    automaticFetchDecisions[attemptID] = .pending
+    let outcome = await ensureCurrentModel { [weak self] decision in
+      guard let self, self.automaticFetchDecisions[attemptID] != nil else { return }
+      switch decision {
+      case .started: self.automaticFetchDecisions[attemptID] = .started
+      case .joined: self.automaticFetchDecisions[attemptID] = .joined
+      }
+    }
+    automaticFetchDecisions.removeValue(forKey: attemptID)
 
     if case .admitted = outcome {
       handleAdmission()
@@ -397,7 +457,7 @@ public final class EGOneUpgradeCoordinator {
   /// This lives on the coordinator rather than inside the composition root's closure so it is
   /// reachable from the test seam; logic that only exists in a wiring closure cannot be tested.
   func prepareForEnsure() async -> Bool {
-    if !automaticUpgradeInFlight { clearRevisionDecline() }
+    if !automaticEnsureInProgress { clearRevisionDecline() }
     return await prepareForDownload()
   }
 
@@ -602,8 +662,33 @@ public final class EGOneUpgradeCoordinator {
   // just declined — the failure being silent is precisely what makes it worth failing closed.
   // Written before the owed marker is cleared, so a failure leaves BOTH markers in their
   // pre-decline state rather than a half-applied one.
+  // C16 (#2110) - A Cancel declines the REVISION only when one of OUR automatic
+  // attempts started the download being cancelled. The controller single-flights,
+  // so an automatic ensure can JOIN a download the user started themselves; before
+  // this, that user's Cancel wrote a revision decline and suppressed the next
+  // automatic upgrade they had never refused.
+  //
+  // `.remove` is unaffected and deliberately still reads `isRevisionUpgradeOwed`:
+  // it is a refusal of the MODEL, from durable admission state, not a statement
+  // about whichever task happens to be running.
   func recordUserDecline(source: DeclineSource) -> Bool {
-    let declinesRevision = source == .remove ? isRevisionUpgradeOwed : automaticUpgradeInFlight
+    let declinesRevision: Bool
+    switch source {
+    case .remove:
+      declinesRevision = isRevisionUpgradeOwed
+    case .cancel:
+      if automaticFetchDecisions.values.contains(.started) {
+        declinesRevision = true
+      } else if automaticFetchDecisions.values.contains(.pending) {
+        // Fail closed. The start-vs-join answer has not landed, and both guesses
+        // are wrong in a way the user would notice. Returning false blocks the
+        // action, exactly as a failed decline WRITE does (C14) — the caller sees
+        // "could not record your decision", not a silent mis-attribution.
+        return false
+      } else {
+        declinesRevision = false
+      }
+    }
     guard !declinesRevision || writeRevisionDecline() else { return false }
     // Emitted only after the decline is DURABLE. An event for a refusal that failed to persist
     // would report an outcome the next launch is about to contradict.

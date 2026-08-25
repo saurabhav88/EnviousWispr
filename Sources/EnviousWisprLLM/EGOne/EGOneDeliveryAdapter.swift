@@ -94,7 +94,10 @@ public final class EGOneDeliveryAdapter {
   /// existing cache is already admitted (the server may use trusted bytes),
   /// else a limb-not-ready failure (dictation raw-fallbacks). The bypass fires
   /// `flag_active` from its one taking site (D5 §1).
-  public func ensureAvailable() async -> ModelDeliveryController.DeliveryOutcome {
+  public func ensureAvailable(
+    onFetchDecision:
+      (@MainActor @Sendable (ModelDeliveryController.FetchDecision) -> Void)? = nil
+  ) async -> ModelDeliveryController.DeliveryOutcome {
     if !isEnabled() {
       controllerNoteDisabled()
       if await controller.isAdmitted(registration) { return .admitted }
@@ -109,7 +112,14 @@ public final class EGOneDeliveryAdapter {
         DeliveryFailure(reason: .cacheRepairFailed, detail: "legacy_retirement"))
     }
 
-    let outcome = await controller.ensureModelAvailable(registration)
+    let outcome = await controller.ensureModelAvailable(registration) { decision in
+      guard let onFetchDecision else { return }
+      // The controller fires this on its own actor; the coordinator is
+      // @MainActor. The hop is why the coordinator has a `.pending` state at all
+      // — it is not bounded, so the coordinator refuses to attribute a Cancel
+      // until the answer lands rather than guessing (#2110).
+      Task { @MainActor in onFetchDecision(decision) }
+    }
     if case .admitted = outcome {
       legacyDidAdmit?()
     }

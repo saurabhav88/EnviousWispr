@@ -98,8 +98,13 @@ import Testing
         sizeBytes: Int64(bytes.count),
         sha256: digest(bytes)
       ),
-      ensureCurrentModel: {
+      ensureCurrentModel: { onFetchDecision in
         probe.ensureCount += 1
+        // Report STARTED, as the real controller does the moment it decides
+        // (#2110). A closure reporting nothing would leave the attempt
+        // `.pending`, which now REFUSES a cancel — correct behaviour, and not
+        // what these cases are about.
+        onFetchDecision(.started)
         return probe.ensureOutcome
       },
       currentModelIsAdmitted: {

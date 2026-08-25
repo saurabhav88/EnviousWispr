@@ -209,8 +209,33 @@ public actor ModelDeliveryController {
   /// Ensure the model's cache is admitted, fetching/repairing as needed.
   /// Single-flight JOIN: a second caller while one runs awaits the SAME
   /// task's outcome (D4 §2 — two windows, onboarding + cold-press).
-  public func ensureModelAvailable(_ registration: DeliveryRegistration) async -> DeliveryOutcome {
-    await joinOrStartFetch(registration, trigger: nil)
+  /// - Parameter onFetchDecision: reports START-vs-JOIN at the instant this
+  ///   controller decides it, which is the only instant the answer exists and is
+  ///   still useful (#2110). A caller that needs to know whether the download
+  ///   running is ITS OWN cannot learn it from the outcome: by then the download
+  ///   is over, and the question is asked while it runs, when Cancel arrives.
+  ///
+  ///   Deliberately a callback rather than a return value or an owner the
+  ///   controller stores. An owner field would let a caller ASK later, which
+  ///   reads as the safer design and is not: between the question and the cancel
+  ///   the observed task can finish and another can start, so the answer is
+  ///   stale exactly when it matters. Reporting the decision leaves ownership
+  ///   where it belongs — with the caller who made the call.
+  ///
+  ///   Fired synchronously on this actor, so it must not block; every caller
+  ///   hops it onward itself.
+  public func ensureModelAvailable(
+    _ registration: DeliveryRegistration,
+    onFetchDecision: (@Sendable (FetchDecision) -> Void)? = nil
+  ) async -> DeliveryOutcome {
+    await joinOrStartFetch(registration, trigger: nil, onFetchDecision: onFetchDecision)
+  }
+
+  /// Whether a call to an explicit-fetch door STARTED the shared fetch or JOINED
+  /// one already running.
+  public enum FetchDecision: Sendable, Equatable {
+    case started
+    case joined
   }
 
   /// Shared join logic for the two EXPLICIT-fetch doors (`ensureModelAvailable`,
@@ -226,12 +251,14 @@ public actor ModelDeliveryController {
   /// A second fetch caller in the same wave sees the fetch task installed
   /// synchronously by `startAttempt` and joins it (no double-start, no spin).
   private func joinOrStartFetch(
-    _ registration: DeliveryRegistration, trigger: DeliveryEvent.ValidationTrigger?
+    _ registration: DeliveryRegistration, trigger: DeliveryEvent.ValidationTrigger?,
+    onFetchDecision: (@Sendable (FetchDecision) -> Void)? = nil
   ) async -> DeliveryOutcome {
     let identity = registration.manifest.identity
     if let active = entries[identity, default: Entry()].activeTask,
       entries[identity]?.activeTaskFetches == true
     {
+      onFetchDecision?(.joined)
       return await active.value
     }
     if let probe = entries[identity]?.activeTask {
@@ -242,6 +269,8 @@ public actor ModelDeliveryController {
       entries[identity]?.activeTask = nil
       probe.cancel()
     }
+    // Superseding a no-fetch probe still STARTS this caller's fetch.
+    onFetchDecision?(.started)
     return await startAttempt(registration, trigger: trigger)
   }
 
