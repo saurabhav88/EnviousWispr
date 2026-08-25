@@ -932,31 +932,25 @@ struct QuickAddCoordinatorTests {
     #expect(QuickAddWiring.announcement(notice: nil, writeFailure: nil) == nil)
   }
 
-  // MARK: - What a focus-taking call actually takes (#2391, r5)
+  // MARK: - Where the keyboard goes when the panel gives it up (#2391, r6)
 
-  /// **The case a SECOND shortcut press lands on, and the one that takes nothing.**
+  /// **This replaces three tests about who focus was TAKEN from, and the replacement is the point.**
   ///
-  /// Making one owner for taking focus was right; writing it as if every call takes something was
-  /// not. Raising an already-key panel recomputes "were we active" as true — because THIS PANEL made
-  /// it true — so the debt owed to the app the user actually came from is discarded, and the
-  /// confirmation then leaves us active with their next keystrokes going nowhere.
-  @Test("Raising an already-key panel takes nothing, so the standing debt survives")
-  func raisingAnAlreadyKeyPanelTakesNothing() {
+  /// Those tests protected "give back exactly what you took", which needed the panel to remember —
+  /// and three review rounds each found another way for it to become key without recording anything:
+  /// a raise on an already-key panel, and a mouse click, with command-tab and the Dock waiting. That
+  /// set is AppKit's, so it has a next member however many are handled.
+  ///
+  /// The property is now structural rather than asserted: nothing is remembered, so nothing can be
+  /// stale. What remains to test is the one closed decision.
+  @Test("The keyboard goes to our own window when we have one, and to the app behind us otherwise")
+  func theKeyboardGoesWhereItBelongs() {
     #expect(
-      QuickAddPanelHost.focusTake(wasActive: true, keyWindowIsThePanel: true) == .nothing)
-  }
-
-  /// The paired positives, without which a rule that never classifies anything looks clean.
-  @Test("Every other combination names what it took")
-  func everyOtherCombinationNamesWhatItTook() {
-    // Not active: both came from outside, whatever held key.
+      QuickAddPanelHost.focusRelease(hasOtherKeyableWindow: true) == .handToOurOwnWindow,
+      "another window of ours means the user is inside our app; deactivating would hide it")
     #expect(
-      QuickAddPanelHost.focusTake(wasActive: false, keyWindowIsThePanel: false) == .fromAnotherApp)
-    #expect(
-      QuickAddPanelHost.focusTake(wasActive: false, keyWindowIsThePanel: true) == .fromAnotherApp)
-    // Active, and one of OUR windows held key — Settings, reachable because the shortcut is global.
-    #expect(
-      QuickAddPanelHost.focusTake(wasActive: true, keyWindowIsThePanel: false) == .fromOurOwnWindow)
+      QuickAddPanelHost.focusRelease(hasOtherKeyableWindow: false) == .deactivateApp,
+      "the panel alone means the user came from another app")
   }
 
   // MARK: - The created confirmation names what was written (#2391, r5)

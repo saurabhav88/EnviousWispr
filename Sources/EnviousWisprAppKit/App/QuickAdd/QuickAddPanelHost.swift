@@ -39,25 +39,6 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
 
   private var panel: NSPanel?
 
-  /// Whether THIS presentation is what brought EnviousWispr forward.
-  ///
-  /// The Quick Add shortcut is global, so it fires while our own Settings window is frontmost too.
-  /// There we were already active, took nothing, and handing activation away would push the user's
-  /// own window behind an unrelated app. Set on every presentation, so a reused panel cannot inherit
-  /// the previous invocation's answer.
-  private var activatedForThisPresentation = false
-
-  /// Whoever held key status when this presentation took it.
-  ///
-  /// **`present` takes TWO things and they are independent, which is the whole reason this exists
-  /// beside the flag above.** Activation is taken only when we were not already active;
-  /// `makeKeyAndOrderFront` takes key status ALWAYS, from whatever held it. Releasing only the first
-  /// left the confirmation key for two seconds inside our own app — the keystroke-eating defect the
-  /// flag was added to prevent, in the one case the flag made silent.
-  ///
-  /// Weak on purpose: a Settings window the user closed during the beat must not be resurrected, and
-  /// must not be kept alive by us.
-  private weak var previousKeyWindow: NSWindow?
 
   #if DEBUG
     /// How many panels this host has built. A second one means the reuse path broke, which is
@@ -136,47 +117,35 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   ///
   /// A third taker cannot be added without coming through here, which is the point of it existing
   /// rather than the two lines being repeated.
+  /// Bring the panel forward and give it the keyboard.
+  ///
+  /// **Records nothing, deliberately.** An earlier revision remembered who focus was taken FROM so
+  /// it could be handed back, and three review rounds each found another way for the panel to gain
+  /// focus without passing through here — a raise, a mouse click, and whatever comes next. That set
+  /// is AppKit's rather than ours. `releaseFocus` now derives its answer from the live world instead,
+  /// so there is no record that can go stale.
   private func takeFocus(_ panel: NSPanel) {
-    // Both read BEFORE anything is taken, which is the only moment either answer exists.
-    let wasActive = NSApp.isActive
-    let key = NSApp.keyWindow
-    switch Self.focusTake(wasActive: wasActive, keyWindowIsThePanel: key === panel) {
-    case .fromAnotherApp:
-      activatedForThisPresentation = true
-      previousKeyWindow = nil
-    case .fromOurOwnWindow:
-      activatedForThisPresentation = false
-      previousKeyWindow = key
-    case .nothing:
-      // **Records untouched, and this is the case a second press lands on.** Recomputing them here
-      // reads a world THIS PANEL already changed: we are active because we activated ourselves, and
-      // key because we took it. The presentation that actually took still owes the debt.
-      break
-    }
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
   }
 
-  /// What a focus-taking call is actually taking, which is not always something.
+  /// Where the keyboard should go when this panel gives it up.
   ///
-  /// **The whole decision, extracted so the case that takes NOTHING is statable.** Making `takeFocus`
-  /// the single owner of taking was right and writing it as if every call takes something was not:
-  /// pressing the shortcut while the panel is already key recomputes `!NSApp.isActive` as false, and
-  /// the debt owed to the app the user actually came from is discarded — so the confirmation leaves
-  /// us active and their next keystrokes go nowhere.
-  package enum FocusTake: Equatable, Sendable, CaseIterable {
-    /// Not active: activation and key status both came from outside.
-    case fromAnotherApp
-    /// Active, and another of OUR windows held key. Activation was never ours to take.
-    case fromOurOwnWindow
-    /// Already active and already key. Nothing is taken and the standing debt is unchanged.
-    case nothing
+  /// Two values, and the question is CLOSED because it is about the world as it is now rather than
+  /// about a history of how the panel came to be key.
+  package enum FocusRelease: Equatable, Sendable, CaseIterable {
+    /// Another window of ours is on screen and can take key: the user is inside our app, and
+    /// deactivating would hide their own window.
+    case handToOurOwnWindow
+    /// The panel is our only window, so the user came from another app and that is where the
+    /// keyboard belongs.
+    case deactivateApp
   }
 
-  package static func focusTake(wasActive: Bool, keyWindowIsThePanel: Bool) -> FocusTake {
-    guard wasActive else { return .fromAnotherApp }
-    return keyWindowIsThePanel ? .nothing : .fromOurOwnWindow
+  package static func focusRelease(hasOtherKeyableWindow: Bool) -> FocusRelease {
+    hasOtherKeyableWindow ? .handToOurOwnWindow : .deactivateApp
   }
+
 
   /// Bring an already-visible panel back to the front and give it key focus.
   ///
@@ -208,15 +177,18 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// window is what gets it back — deactivating there would hide the user's own window instead.
   func releaseFocus() {
     guard let panel, panel.isVisible else { return }
-    let previous = previousKeyWindow
-    previousKeyWindow = nil
-    if activatedForThisPresentation {
-      NSApp.deactivate()
-      return
+    // Asked HERE, of the live window list, rather than remembered at take time. `canBecomeKey`
+    // rather than mere visibility: an accessory window that cannot take the keyboard is not somewhere
+    // to leave it.
+    let other = NSApp.windows.first {
+      $0 !== panel && $0.isVisible && $0.canBecomeKey
     }
-    // Already active: activation was never ours to give. Key status was, and it came from here.
-    guard let previous, previous !== panel, previous.isVisible else { return }
-    previous.makeKeyAndOrderFront(nil)
+    switch Self.focusRelease(hasOtherKeyableWindow: other != nil) {
+    case .handToOurOwnWindow:
+      other?.makeKeyAndOrderFront(nil)
+    case .deactivateApp:
+      NSApp.deactivate()
+    }
   }
 
   /// Take the panel down. Idempotent.
