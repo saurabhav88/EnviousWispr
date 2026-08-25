@@ -1647,6 +1647,38 @@ def _line_in_window(line, start):
     return stamp >= start.replace(microsecond=0)
 
 
+def marker_evidence_available(window_lines):
+    """Is a log sink LIVE for the app under test - not merely present on disk?
+
+    THE CLOSED QUESTION, and it replaces an open one. Four review rounds produced
+    findings of the form "here is another way the harness cannot see the log":
+    Debug Mode off, a Release build that compiles the sink out, a rotation moving
+    the evidence, and a STALE `app.log` left by an earlier debug session. That set
+    has no last member - it is every reason a file might not be written - and each
+    fix exposed the next.
+
+    So stop asking why the log might be unreadable and ask the one thing that
+    settles all of them: **did the window we just drove produce ANY log line.** A
+    live sink writes something when a recording starts and stops; a dead one
+    writes nothing, whatever the reason. `window_lines` is what the caller already
+    read, so this costs no extra I/O and makes no timing assumption.
+
+    ASKED AFTER THE ACTION, NEVER BEFORE IT, and that ordering is a measurement
+    rather than a preference. The first version of this probe watched an IDLE app
+    for a fresh line on the reasoning that it is chatty at rest. It is not: two
+    live runs reported a DEAD sink, and the second then read all three markers out
+    of that same file. A pre-check asks the app to prove itself while it has
+    nothing to say.
+
+    The distinction it draws is the one that matters to the caller: NO lines at
+    all means the instrument is blind, so a retry would be pressing into an
+    unknown state and a missing marker says nothing about the product. Lines but
+    no marker means the sink works and the gesture genuinely missed, which is
+    exactly when a retry is safe.
+    """
+    return bool(window_lines)
+
+
 def log_lines_since(start):
     """Every `app.log` line stamped at or after `start`, oldest first, across the
     rotated predecessors.
@@ -1672,19 +1704,43 @@ def log_lines_since(start):
     that. The process SAMPLES are the only mechanism that sees one.
     """
     directory = os.path.dirname(_APP_LOG_PATH)
-    lines = []
     # Oldest first: `app.5.log` down to `app.1.log`, then the live file.
     # `maxFileCount` is 5 in `AppLogger.swift`; reading one more than exists is
     # free, and reading one FEWER is the silent miss this function exists to stop.
-    for name in [f"app.{i}.log" for i in range(5, 0, -1)] + ["app.log"]:
-        try:
-            with open(os.path.join(directory, name), "rb") as fh:
-                text = fh.read().decode("utf-8", "replace")
-        except OSError:
-            continue
-        for line in text.splitlines():
-            if _line_in_window(line, start):
-                lines.append(line)
+    names = [f"app.{i}.log" for i in range(5, 0, -1)] + ["app.log"]
+
+    def sweep():
+        """One pass: (lines, inode per name). The inodes are what make a second
+        pass decidable rather than merely reassuring."""
+        found, inodes = [], {}
+        for name in names:
+            path = os.path.join(directory, name)
+            try:
+                with open(path, "rb") as fh:
+                    inodes[name] = os.fstat(fh.fileno()).st_ino
+                    text = fh.read().decode("utf-8", "replace")
+            except OSError:
+                continue
+            for line in text.splitlines():
+                if _line_in_window(line, start):
+                    found.append(line)
+        return found, inodes
+
+    # A ROTATION DURING THE SWEEP CAN SKIP A FILE ENTIRELY, which no ordering
+    # fixes: once `app.2.log` has been read, a rotation moves the old
+    # `app.1.log` onto that already-passed name and the live file onto
+    # `app.1.log`, so the old `app.1.log` is never opened. Its lines keep their
+    # timestamps through the rename, so they are real evidence that reads as
+    # absent.
+    # Detected by comparing INODES rather than assumed away: if any name now
+    # resolves to a different file, the shelf moved under us and one more pass
+    # sees the settled state. Bounded at two - a second rotation inside the same
+    # few milliseconds needs the log to cross 10 MiB twice, and an unbounded
+    # retry here would be a worse failure than the one it chases.
+    lines, before_inodes = sweep()
+    again, after_inodes = sweep()
+    if after_inodes != before_inodes:
+        lines = again
     return lines
 
 
@@ -1865,15 +1921,6 @@ def double_press_record_key(attempts=3):
     # So drive the gesture ONCE, say plainly that it could not be verified, and
     # leave the verdict to the caller's own marker check rather than pressing
     # again into an unknown state.
-    if _snapshot_log_size() is None:
-        print("  NOTE: no readable app.log, so an attempt cannot be verified; "
-              "driving the gesture ONCE and not retrying - a retry into an "
-              "already-locked recording is read as the stop gesture")
-        press_record_key()
-        time.sleep(0.12)
-        press_record_key()
-        return True
-
     for attempt in range(1, attempts + 1):
         attempt_start = _dt.datetime.now().astimezone()
         press_record_key()
@@ -1883,11 +1930,23 @@ def double_press_record_key(attempts=3):
         # `log_lines_since`, NOT a cursor: a rotation between the snapshot and
         # this read would hide the marker, and a hidden marker here is what turns
         # the retry into the saboteur described above.
-        seen = any("Double press" in line
-                   for line in log_lines_since(attempt_start))
+        window = log_lines_since(attempt_start)
+        seen = any("Double press" in line for line in window)
         if seen:
             if attempt > 1:
                 print(f"  double press engaged on attempt {attempt} of {attempts}")
+            return True
+        # NO LINES AT ALL is a different answer from "no marker", and only this
+        # branch keeps the retry from becoming a saboteur. A stale `app.log`, a
+        # Release build, or Debug Mode off all produce an empty window - and in
+        # that state a gesture that SUCCEEDED is indistinguishable from one that
+        # missed, so the next press would land on an already-locked recording
+        # where `HotkeyService` reads it as the stop gesture.
+        if not marker_evidence_available(window):
+            print("  NOTE: that attempt produced NO log lines at all, so the "
+                  "sink is not live and an attempt cannot be verified; not "
+                  "retrying - a retry into an already-locked recording is read "
+                  "as the stop gesture")
             return True
         if attempt < attempts:
             print(f"  attempt {attempt} did not register a chain; retrying")
@@ -2109,6 +2168,27 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
         print(f"  Every marker count above is unattributable: each instance answers "
               f"the same global hotkey and writes this same log.")
         print(f"  This is NOT a product failure. Re-run against one instance.")
+        end_test()
+        return False
+
+    # AN UNREADABLE INSTRUMENT IS NOT A PRODUCT FAILURE, and this path used to
+    # score one. With no live sink every marker is false BY CONSTRUCTION - a
+    # Release build compiles the sink out entirely - so a gesture that worked and
+    # a pipeline that completed would still print a product-facing FAIL naming
+    # three missing markers. That is the confident-wrong-subject shape: it
+    # accuses the app of a defect the harness could not have observed either way.
+    #
+    # An earlier round argued the caller would treat unreadable evidence as
+    # BLOCKED. Review checked that premise and it was false - nothing here did.
+    window_lines = log_lines_since(window_start)
+    if not all(markers.values()) and not marker_evidence_available(window_lines):
+        print(f"\n  BLOCKED: no live app.log sink, so the hands-free markers "
+              f"cannot be read at all.")
+        print(f"  This is an INSTRUMENT limit, not a product failure: a Release "
+              f"build compiles file logging out entirely, and Debug Mode gates it "
+              f"in a debug build.")
+        print(f"  The recording and pipeline results above stand; the hands-free "
+              f"assertion is unproven, which is not the same as failed.")
         end_test()
         return False
 
@@ -2728,14 +2808,31 @@ def _self_test():
     # retry.
     presses = []
     real_press = globals()["press_record_key"]
-    real_snap = globals()["_snapshot_log_size"]
+    real_snap = globals()["marker_evidence_available"]
     globals()["press_record_key"] = lambda: presses.append(1)
-    globals()["_snapshot_log_size"] = lambda: None
+    globals()["marker_evidence_available"] = lambda *a, **k: False
     try:
         engaged = double_press_record_key(attempts=3)
     finally:
         globals()["press_record_key"] = real_press
-        globals()["_snapshot_log_size"] = real_snap
+        globals()["marker_evidence_available"] = real_snap
+    # THE STALE-LOG CASE, which is the one that made "does the file exist" the
+    # wrong question. A leftover `app.log` from an earlier debug session answers
+    # YES to a file check while the current process writes nothing - and that is
+    # exactly the state where a successful first gesture reads as a miss and the
+    # retry's next press stops the locked recording. Asking what the WINDOW
+    # produced answers it without a file check and without a timing assumption.
+    for name, window, want in [
+        ("an empty window means the sink is not live", [], False),
+        ("a window with lines but no marker means the sink IS live",
+         ["[2026-01-01T12:00:01-05:00] [INFO] [Pipeline] Recording started."], True),
+    ]:
+        if marker_evidence_available(window) != want:
+            failures.append(f"{name}: got {not want}")
+        else:
+            print(f"  ok      {name}")
+        file_rows += 1
+
     name = "with no readable log the gesture is driven ONCE and never retried"
     if len(presses) != 2 or not engaged:
         failures.append(f"{name}: {len(presses)} presses, engaged={engaged}; "
