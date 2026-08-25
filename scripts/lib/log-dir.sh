@@ -186,6 +186,41 @@ ew_lane_device_of() {
 # `/proc/self/mountinfo` is consulted where it exists, which closes the Linux
 # case; no portable shell primitive covers the remainder. This is defence in
 # depth for the ONE remaining `rm -rf`, not a proof.
+# Does this mountinfo table list <path> as a mount point?
+#
+# **EXTRACTED SO THE SUITE CAN DRIVE THE REAL COMPARISON (#2408 review r9).** The
+# first version of this loop lived inline and the suite tested a COPY of it — a
+# reimplemented matcher, which measures the copy and says nothing about the code
+# that ships. Taking the table as an argument lets the row point it at a fixture
+# in mountinfo's own format while the production caller passes /proc/self/mountinfo.
+#
+# **THE TWO SIDES ARE IN DIFFERENT ALPHABETS (#2408 review r9, P1).** The kernel
+# escapes space, tab, newline and backslash in field 5 as `\040`, `\011`, `\012`
+# and `\134`, while `pwd -P` returns them literally — so a lane under a path
+# containing a space compares unequal against its own mountinfo row and the check
+# reports NOT-a-mount. That is the fail-OPEN direction, on the one branch whose
+# entire job is to stop `rm -rf` descending into a mounted filesystem, and a
+# checkout under a directory with a space in it is ordinary on macOS.
+#
+# `\134` is decoded LAST. A literal backslash in a real path arrives as `\134`, so
+# decoding it first would turn `\134040` into `\040` and the next rule would then
+# read a backslash-escape the path never contained.
+#
+# `read -r` is required: without it the shell would consume those backslashes
+# before any rule ran.
+#   ew_lane_mountinfo_lists <mountinfo-file> <resolved-path>
+ew_lane_mountinfo_lists() {
+  local mi_target
+  while read -r _ _ _ _ mi_target _; do
+    mi_target="${mi_target//\\040/ }"
+    mi_target="${mi_target//\\011/$'\t'}"
+    mi_target="${mi_target//\\012/$'\n'}"
+    mi_target="${mi_target//\\134/\\}"
+    [ "$mi_target" = "$2" ] && return 0
+  done < "$1"
+  return 1
+}
+
 ew_lane_is_mount_point() {
   local path="$1" dev parent_dev resolved
   [ -e "$path" ] || return 1
@@ -204,10 +239,7 @@ ew_lane_is_mount_point() {
   # the shell's own `=` on a variable this function already holds.
   if [ -r /proc/self/mountinfo ]; then
     resolved="$(cd "$path" 2>/dev/null && pwd -P)" || return 0
-    local mi_target
-    while read -r _ _ _ _ mi_target _; do
-      [ "$mi_target" = "$resolved" ] && return 0
-    done < /proc/self/mountinfo
+    ew_lane_mountinfo_lists /proc/self/mountinfo "$resolved" && return 0
   fi
   dev="$(ew_lane_device_of "$path")" || return 0
   parent_dev="$(ew_lane_device_of "$path/..")" || return 0
@@ -233,6 +265,40 @@ ew_lane_component_is_unsafe() {
   ew_lane_is_mount_point "$1" && return 0
   return 1
 }
+# Take a DEFAULT lane, atomically (#2408 review r9, P2).
+#
+# The note this replaces claimed `<seconds>-<pid>` "cannot recur — two runs
+# sharing both are the same process". Review found the case that is false in: a
+# pid recycled INSIDE one second, which a constrained pid namespace allows. The
+# old answer to reuse was an `rm -rf` at take time, and five review rounds went
+# into arranging guards around it.
+#
+# So this claims nothing about uniqueness. A bare `mkdir` — no `-p` — is atomic
+# and refuses an existing directory, the same primitive this repo settled on for
+# the seed cache after measuring that a check-then-act window fires 2-5 times in
+# 24 attempts. Reuse becomes IMPOSSIBLE rather than improbable, and a collision
+# fails loud instead of inheriting the previous occupant's Release receipt in
+# silence.
+#
+# In the LIB rather than inline in `xcode-test.sh` for the reason this file's
+# header already gives about the other two: inline, it could only be exercised by
+# running `xcodebuild`, so in practice it would never be exercised at all — and
+# this one is what stands between a recycled name and a stale receipt.
+#   ew_take_default_lane <lane_dir>
+ew_take_default_lane() {
+  local lane_dir="$1"
+  if [ -z "$lane_dir" ]; then
+    echo "ew_take_default_lane: lane_dir is required" >&2
+    return 2
+  fi
+  mkdir -p "${lane_dir%/*}" || return 2   # build/lanes is absent on a clean checkout
+  if ! mkdir "$lane_dir" 2>/dev/null; then
+    echo "ew_take_default_lane: $lane_dir already exists — refusing to inherit it" >&2
+    echo "  Two runs reached one lane name. Re-run; a new second gives a new lane." >&2
+    return 2
+  fi
+}
+
 # Publish "the last lane I ran" at a stable address (#2396).
 #
 # The default log directory is no longer predictable, so a human needs one place

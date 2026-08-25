@@ -439,31 +439,102 @@ echo "== the mountinfo branch is EXERCISED, not merely written =="
 # reached the shell, `$5` was expanded before awk saw it, and the command
 # succeeded for EVERY path — reporting everything as a mount.
 #
-# It is now a shell `while read`, which this suite CAN drive: point the reader at
-# a fixture in mountinfo's own format and assert both directions. That does not
-# prove the real /proc parse on Linux, but it proves the comparison, which is
-# what was wrong.
-ew_lane_mountinfo_hit() {  # <mountinfo-file> <resolved-path>
-  local mi_target
-  while read -r _ _ _ _ mi_target _; do
-    [ "$mi_target" = "$2" ] && return 0
-  done < "$1"
-  return 1
-}
+# It is now a shell `while read`, which this suite CAN drive: the reader takes
+# the table as an ARGUMENT, so these rows point the SHIPPED function at a fixture
+# in mountinfo's own format while production passes /proc/self/mountinfo. That
+# does not prove the real /proc parse on Linux, but it proves the comparison,
+# which is what was wrong.
+#
+# The first version of these rows called a COPY of the loop declared here. A
+# reimplemented matcher measures the copy — it would have gone green against the
+# escape defect below while the shipped code got it wrong (#2408 review r9).
 MI="$SANDBOX/mountinfo"
 cat > "$MI" <<'MIEOF'
 25 30 0:23 / /proc rw,nosuid shared:5 - proc proc rw
 26 30 0:24 / /mnt/bound rw,relatime shared:6 - ext4 /dev/sda1 rw
+27 30 0:25 / /mnt/with\040space rw,relatime shared:7 - ext4 /dev/sdb1 rw
+28 30 0:26 / /mnt/tab\011sep rw,relatime shared:8 - ext4 /dev/sdc1 rw
+29 30 0:27 / /mnt/back\134slash rw,relatime shared:9 - ext4 /dev/sdd1 rw
 MIEOF
-ew_lane_mountinfo_hit "$MI" /mnt/bound \
+ew_lane_mountinfo_lists "$MI" /mnt/bound \
   && ok "a mountinfo entry is recognised by its mount point field" \
   || bad "a mountinfo entry is recognised by its mount point field" "missed"
-# The accepted twin, and it is the one the broken version failed: a path that is
-# NOT in the table must not match. The old awk returned true for everything.
-if ew_lane_mountinfo_hit "$MI" /not/a/mount; then
+# The accepted twin, and it is the one the broken awk failed: a path that is NOT
+# in the table must not match. That version returned true for everything.
+if ew_lane_mountinfo_lists "$MI" /not/a/mount; then
   bad "a path absent from mountinfo does not match" "matched anyway"
 else
   ok "a path absent from mountinfo does not match"
+fi
+
+echo "== the kernel's escapes are decoded before the comparison =="
+# `pwd -P` returns these characters literally and mountinfo does not, so an
+# undecoded comparison reports NOT-a-mount for a path that IS one — fail-open, on
+# the check that stops `rm -rf` descending into a mounted filesystem. A macOS
+# checkout under a directory with a space in its name is entirely ordinary.
+ew_lane_mountinfo_lists "$MI" "/mnt/with space" \
+  && ok "an escaped space in a mount point is decoded" \
+  || bad "an escaped space in a mount point is decoded" "did not match"
+ew_lane_mountinfo_lists "$MI" "$(printf '/mnt/tab\tsep')" \
+  && ok "an escaped tab in a mount point is decoded" \
+  || bad "an escaped tab in a mount point is decoded" "did not match"
+ew_lane_mountinfo_lists "$MI" '/mnt/back\slash' \
+  && ok "an escaped backslash in a mount point is decoded" \
+  || bad "an escaped backslash in a mount point is decoded" "did not match"
+# The REJECTED twin for each, or a decoder that simply deleted every backslash
+# would pass all three above. The literal table text must NOT match.
+for raw in '/mnt/with\040space' '/mnt/tab\011sep' '/mnt/back\134slash'; do
+  if ew_lane_mountinfo_lists "$MI" "$raw"; then
+    bad "the raw escaped form does not match a decoded path" "$raw matched"
+  else
+    ok "the raw escaped form does not match a decoded path ($raw)"
+  fi
+done
+# `\134` must be decoded LAST. A literal backslash in a real path reaches
+# mountinfo as `\134`, so a path whose real name is `back\040slash` is written
+# `back\134040slash` — decoding the backslash first would turn it into
+# `back\040slash` and the space rule would then read an escape that was never
+# there, matching `back slash` instead.
+# Written by a QUOTED heredoc, never `printf`: printf reads `\134` as an octal
+# escape and would write a real backslash, so the fixture would carry the DECODED
+# form and these two rows would silently be about a different string. Caught by
+# the rows themselves — they failed against correct code.
+cat >> "$MI" <<'MIEOF'
+30 30 0:28 / /mnt/back\134040slash rw - ext4 /dev/sde1 rw
+MIEOF
+ew_lane_mountinfo_lists "$MI" '/mnt/back\040slash' \
+  && ok "backslash is decoded last, so an escape-looking literal survives" \
+  || bad "backslash is decoded last, so an escape-looking literal survives" "did not match"
+if ew_lane_mountinfo_lists "$MI" "/mnt/back slash"; then
+  bad "backslash decoded last does not manufacture a space" "matched"
+else
+  ok "backslash decoded last does not manufacture a space"
+fi
+
+echo "== taking a default lane is atomic, not assumed =="
+# The claim this replaces was that `<seconds>-<pid>` cannot recur. It can, in a
+# constrained pid namespace, and the cost was silent: the later run inherits the
+# earlier occupant's Release log and bundle beside fresh Debug ones. A bare
+# `mkdir` cannot be talked into reusing a directory.
+TAKE="$SANDBOX/take/build/lanes/1787000000-4242"
+ew_take_default_lane "$TAKE" \
+  && ok "a fresh lane is taken, parents and all" \
+  || bad "a fresh lane is taken, parents and all" "refused a fresh name"
+[ -d "$TAKE" ] \
+  && ok "the taken lane exists afterwards" \
+  || bad "the taken lane exists afterwards" "not created"
+# The rejected twin, and it is the whole point: the SECOND take of one name must
+# refuse. `mkdir -p` would return success here and hand over a used directory.
+if ew_take_default_lane "$TAKE" 2>/dev/null; then
+  bad "a second take of one lane name is refused" "accepted a used lane"
+else
+  ok "a second take of one lane name is refused"
+fi
+# A refusal must not be indistinguishable from a bad argument.
+if ew_take_default_lane "" 2>/dev/null; then
+  bad "take refuses a missing lane_dir" "accepted empty"
+else
+  ok "take refuses a missing lane_dir"
 fi
 
 echo "== find failing is not an empty sweep =="

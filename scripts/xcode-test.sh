@@ -73,14 +73,16 @@ cd "$PROJECT_ROOT"
 USING_DEFAULT_LOG_DIR=0
 [ -z "$LOG_DIR" ] && USING_DEFAULT_LOG_DIR=1
 LOG_DIR="$(ew_resolve_log_dir "$PROJECT_ROOT" "$LOG_DIR")"
-# A DEFAULT lane is named by pid, and pids recycle — so taking the directory
-# means clearing it, or a debug-only run inherits the previous occupant's Release
-# receipt (#2408 review r2). Never for an explicit `--log-dir`: that directory
-# belongs to the caller and may be one they are deliberately filling.
-# NO RESET HERE ANY MORE (#2408 review r7). The lane name carries the SECOND as
-# well as the pid, so it cannot recur — two runs sharing both are the same
-# process. The take path has nothing to clear and does not delete.
-mkdir -p "$LOG_DIR"   # absent on a clean checkout
+# Owner: scripts/lib/log-dir.sh ew_take_default_lane, which has its own rows. A
+# default lane is TAKEN atomically rather than assumed unique — the reasoning,
+# and the review finding that produced it, live at the function.
+if [ "$USING_DEFAULT_LOG_DIR" = "1" ]; then
+  ew_take_default_lane "$LOG_DIR" || exit 2
+else
+  # `-p` stays right for an explicit `--log-dir`: that directory belongs to the
+  # caller, who may be deliberately filling it across several runs.
+  mkdir -p "$LOG_DIR"
+fi
 APP_LOG_DIR="$LOG_DIR/app-logger"
 mkdir -p "$APP_LOG_DIR"
 
