@@ -1501,6 +1501,59 @@ def press_record_key():
     _si.modifier_up(kc)
 
 
+def running_enviouswispr_instances():
+    """Every running EnviousWispr app bundle, as {pid: executable path}.
+
+    Matches on the EXECUTABLE, never on the whole command line: a caller's own
+    argv routinely contains both `EnviousWispr` (a worktree path) and
+    `.app/Contents/MacOS/` (a script run under `Python.app`), so a substring test
+    over the line finds the probe itself. Excluding `python3` does not save it -
+    the interpreter's binary is named `Python`.
+
+    Deliberately NOT scoped to `EnviousWispr Local.app`. A Release-configuration
+    test host is named `EnviousWispr.app`, carries the PRODUCTION bundle id, and
+    answers the same global hotkey; a `Local.app` pattern cannot see it, which is
+    exactly the instance you most want counted.
+    """
+    out = subprocess.run(["ps", "-eo", "pid=,command="],
+                         capture_output=True, text=True).stdout
+    me = str(os.getpid())
+    found = {}
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        pid, cmd = line.strip().split(None, 1)
+        if pid == me:
+            continue
+        exe = cmd.split(" -")[0].strip()
+        if exe.endswith(".app/Contents/MacOS/EnviousWispr"):
+            found[pid] = exe
+    return found
+
+
+def _require_single_instance(what):
+    """REFUSE rather than choose when more than one EnviousWispr is running.
+
+    Every instance answers the same global hotkey and writes the same shared
+    `app.log`, so a marker count drawn from that log is unattributable the moment
+    there are two. Measured 2026-08-25: a second instance inside the window
+    returned 2 of every marker with DISTINCT session ids - two real recordings
+    from one gesture - which reads as the app double-counting a synthetic press.
+    A confident wrong subject, pointing at production code.
+
+    Returns the instance map so the caller can re-check it afterwards. A wrong
+    refusal costs a rerun; a wrong verdict costs somebody a debugging session in
+    correct code.
+    """
+    found = running_enviouswispr_instances()
+    if len(found) != 1:
+        rows = "\n".join(f"    {p}  {c}" for p, c in sorted(found.items()))
+        print(f"BLOCKED: {what} needs exactly ONE running EnviousWispr; "
+              f"found {len(found)}.\n{rows}")
+        return None
+    return found
+
+
 def double_press_record_key():
     """Two presses inside the app's chain window — the hands-free gesture (#2410).
 
@@ -1508,14 +1561,34 @@ def double_press_record_key():
     press, so the gap here is deliberately well inside 500ms rather than close to
     it.
 
-    PRECONDITION: NOT YET MEASURED. Whether the event tap needs EnviousWispr
-    frontmost is unestablished — a global hotkey works because the tap is not
-    frontmost-scoped, which is an argument from architecture and not a
-    measurement. This docstring will carry either an explicit precondition or an
-    explicit "no precondition, measured <date>, Settings-focused arm" once the
-    two-arm run has happened. It will not carry silence: an absent statement here
-    reads as examined-and-fine, which is the failure this whole pair of issues is
-    about.
+    NO PRECONDITION ON FOCUS. Measured 2026-08-25, macOS 26.4, dev build from
+    `main` at `d8cfd3b9`, two arms against one instance:
+
+        frontmost = com.apple.TextEdit          -> 1 `Double press`, 1 activation
+        frontmost = com.enviouswispr.app.dev    -> 1 `Double press`, 1 activation
+
+    So the tap is not frontmost-scoped, and this is now a measurement rather than
+    the argument-from-architecture the previous revision correctly refused to
+    accept. Arm A needs Settings OPEN to be stageable at all — EnviousWispr is a
+    menu-bar app with no window at rest, so activation alone cannot make it
+    frontmost, and a run that skips that step reports NOT ACHIEVED rather than a
+    control.
+
+    **RUN THIS AGAINST EXACTLY ONE EnviousWispr INSTANCE, AND RE-CHECK MID-RUN.**
+    The first attempt at this measurement returned 2 of every marker with distinct
+    session ids — two real recordings from one gesture — because a peer's
+    `build-dev-app.sh` relaunched their app INSIDE the measurement window. Both
+    apps answered the same global hotkey and wrote the same shared `app.log`.
+    A start-of-run instance check is a claim about a MOMENT; nothing makes it a
+    claim about the run. Count the pids before AND after, and require the same
+    pid rather than the same count, since a TERM-and-relaunch keeps the count at
+    one while swapping the instance underneath.
+
+    The direction is what makes it expensive: two `dictation_started` from one
+    press reads as the app double-counting a synthetic press, or as the tap being
+    registered twice. Both indict production code, both are false, and both come
+    with a reproduction. Distinct session ids are what separate "two recordings"
+    from "one duplicated log line".
     """
     press_record_key()
     time.sleep(0.12)
@@ -1578,6 +1651,15 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
         audio = tts(sentence)
         if expect is None:
             expect = "fox" if "fox" in sentence.lower() else sentence.split()[len(sentence.split())//2].lower()
+
+    # The verdict below is a COUNT OF MARKERS IN A SHARED LOG, so it is only
+    # attributable while ONE instance is running. Checked here and again after the
+    # gesture, because a start-of-run check is a claim about a moment: a peer's
+    # `build-dev-app.sh` step 8 can launch a second app mid-run, and the count
+    # stays at one across a TERM-and-relaunch while the instance changes.
+    instances_before = _require_single_instance("test_hands_free")
+    if instances_before is None:
+        return False
 
     begin_test(f"hands-free{' +audio' if audio else ''}")
     close_window()
@@ -1692,6 +1774,22 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     print(f"\nHands-free markers in app.log:")
     for m, seen in markers.items():
         print(f"  {'YES' if seen else 'NO ':3}  {m}")
+    # RE-CHECK, and it is not belt-and-braces: the check at the top of this
+    # function was true when it ran and says nothing about the window that
+    # followed. Compare the PIDS, never the count - a TERM-and-relaunch leaves the
+    # count at one while swapping the instance, and a second app that shared this
+    # log for part of the run makes every number above unattributable. Refuse the
+    # verdict rather than reporting one.
+    instances_after = running_enviouswispr_instances()
+    if set(instances_after) != set(instances_before):
+        print(f"\n  BLOCKED: the running EnviousWispr set changed during this test "
+              f"({sorted(instances_before)} -> {sorted(instances_after)}).")
+        print(f"  Every marker count above is unattributable: each instance answers "
+              f"the same global hotkey and writes this same log.")
+        print(f"  This is NOT a product failure. Re-run against one instance.")
+        end_test()
+        return False
+
     hands_free_proven = all(markers.values())
     if not hands_free_proven:
         # Name what is MISSING rather than reporting a bare false: a marker absent
