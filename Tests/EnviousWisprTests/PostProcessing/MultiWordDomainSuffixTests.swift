@@ -121,6 +121,38 @@ struct MultiWordDomainSuffixTests {
       "a near-twin must not turn already-correct text into an ambiguous span; got: \(result)")
   }
 
+  /// An EXACT peeled alias is a certainty, not a competitor (#2406 r5).
+  ///
+  /// Pass 1 gives the unpeeled phrase an exact lookup and misses here, because
+  /// the dictated token still carries `.com`. The peeled phrase then had no
+  /// exact lookup at all, so a score of 1.0 was put in a competition against a
+  /// distractor at ~0.972 and lost on the ambiguity margin — a correction the
+  /// vocabulary defines EXACTLY, refused because something else looked similar.
+  @Test("an exact peeled alias wins over a near-twin distractor")
+  func exactPeeledAliasOutranksFuzzyDistractor() {
+    let intended = CustomWord(canonical: "Acme Suite", aliases: ["international platform"])
+    let distractor = CustomWord(canonical: "Other Thing", aliases: ["international platforma"])
+    let (result, replacements) = corrector.correct(
+      "visit international platform.com today", against: [intended, distractor])
+    #expect(
+      result == "visit Acme Suite.com today",
+      "an exact alias for the peeled phrase is the answer, not a candidate; got: \(result)")
+    #expect(replacements.first?.sourceID == intended.id)
+  }
+
+  /// The other direction for the exact-peeled path, and it is what stops the
+  /// case above being satisfiable by "always take the first exact-ish hit": an
+  /// exact peeled alias must still respect the domain-shaped reattachment rule.
+  @Test("an exact peeled alias to a domain-shaped canonical does not double the suffix")
+  func exactPeeledAliasRespectsDomainShapedCanonical() {
+    let word = CustomWord(canonical: "Acme Suite.com", aliases: ["international platform"])
+    let (result, _) = corrector.correct(
+      "visit international platform.com today", against: [word])
+    #expect(
+      result == "visit Acme Suite.com today",
+      "the canonical already carries its own domain; got: \(result)")
+  }
+
   /// A canonical that already specifies its own domain does NOT get the dictated
   /// suffix reattached — otherwise the user sees it twice. Same rule the
   /// single-word path applies.

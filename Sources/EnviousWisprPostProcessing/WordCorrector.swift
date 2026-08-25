@@ -834,6 +834,78 @@ public struct WordCorrector: Sendable {
               let strippedCores = slice.map { stripPunctuation($0) }
               let domainSplit = strippedCores.last.flatMap { Self.splitDomainSuffix($0) }
 
+              // The peel is computed ONCE, above both the exact lookup and the
+              // fuzzy attempts, because both need it. Peeling can EXPOSE a
+              // reserved trigger word the slice guard above could not see:
+              // `emoji.com` is not `emoji` until the suffix comes off. Re-check
+              // what the peel actually produced.
+              var peeledRawPhrase: String?
+              if let domainSplit {
+                var peeledCores = strippedCores
+                peeledCores[peeledCores.count - 1] = domainSplit.bare
+                let exposesReservedWord = peeledCores.contains {
+                  Self.emojiTriggerReservedWords.contains($0.lowercased())
+                }
+                if !exposesReservedWord { peeledRawPhrase = peeledCores.joined(separator: " ") }
+              }
+
+              // EXACT BEFORE FUZZY, ACROSS THE PEEL BOUNDARY (#2406 review r5,
+              // and the consolidation of r2/r3/r4 — every one of those was this
+              // same root at a different member).
+              //
+              // Pass 1 gives the UNPEELED phrase an exact lookup and has already
+              // missed by the time Pass 2 runs. The PEELED phrase had no exact
+              // lookup at all, so a certainty was being routed through a
+              // competition: `international platform.com`, with the alias
+              // `international platform` scoring 1.0 and a distractor
+              // `international platforma` scoring 0.972, was rejected on the
+              // ambiguity margin and never corrected.
+              //
+              // A COMPETITION IS THE WRONG INSTRUMENT FOR A CERTAINTY. Threshold
+              // and margin exist to adjudicate candidates that only RESEMBLE the
+              // input; an exact member of the pool does not resemble it, it IS
+              // it. This is the rule Pass 4 reached at round 4 of #2281 —
+              // "EXACT match to completion, unpeeled then peeled, before any
+              // fuzzy pass runs at all" — applied to the pass that was built
+              // without it.
+              //
+              // No authority ladder is needed here and one would be wrong: this
+              // pool is built solely from `nonPackMultiAliasMap`, so every entry
+              // carries the same authority, and the dictionary it derives from
+              // makes an alias hit unique by construction. That is what makes
+              // the question CLOSED — "is this phrase a key of the pool" has one
+              // answer, where "does it resemble one" has a next counterexample.
+              if let peeledRaw = peeledRawPhrase,
+                let exactCanonical = candidates.first(where: { $0.alias == peeledRaw.lowercased() })?
+                  .canonical
+              {
+                if peeledRaw == exactCanonical {
+                  // Already right as dictated. Reserve the span, exactly as the
+                  // fuzzy `.alreadyCorrect` branch does — otherwise the outer
+                  // loop walks back into text this pass just declared correct.
+                  reservedSpan = span
+                  break spanLoop
+                }
+                let (firstPrefix, _, _) = splitPunctuation(tokens[i])
+                let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
+                // Same reattachment rule as the fuzzy accept branch and as
+                // Pass 4: a canonical that already specifies its own domain
+                // keeps its own, whatever suffix was dictated.
+                let reattach =
+                  Self.isDomainShaped(exactCanonical) ? "" : (domainSplit?.suffix ?? "")
+                tokens.replaceSubrange(
+                  i..<(i + span),
+                  with: [firstPrefix + exactCanonical + reattach + lastSuffix])
+                appendReplacement(forCanonical: exactCanonical)
+                matched = true
+                #if DEBUG
+                  Self.logger.debug(
+                    "WordCorrector: type=multi-word-exact-peeled source='\(peeledRaw)' target='\(exactCanonical)'"
+                  )
+                #endif
+                break spanLoop
+              }
+
               let unpeeledOutcome = multiWordFuzzyAttempt(
                 phrase: phrase, rawPhrase: rawPhrase, candidates: candidates,
                 canonicalToWord: canonicalToWord,
@@ -842,26 +914,12 @@ public struct WordCorrector: Sendable {
                 // narrowing the pool would silently drop today's ordinary matches.
                 domainShapedOnly: domainSplit != nil)
 
-              var peeledRawPhrase: String?
               var peeledOutcome: MultiWordFuzzyAttemptOutcome = .noCandidate
-
-              if let domainSplit {
-                var peeledCores = strippedCores
-                peeledCores[peeledCores.count - 1] = domainSplit.bare
-                // Peeling can EXPOSE a reserved trigger word the slice guard
-                // above could not see: `emoji.com` is not `emoji` until the
-                // suffix comes off. Re-check what the peel actually produced.
-                let exposesReservedWord = peeledCores.contains {
-                  Self.emojiTriggerReservedWords.contains($0.lowercased())
-                }
-                if !exposesReservedWord {
-                  let peeledRaw = peeledCores.joined(separator: " ")
-                  peeledRawPhrase = peeledRaw
-                  peeledOutcome = multiWordFuzzyAttempt(
-                    phrase: peeledRaw.lowercased(), rawPhrase: peeledRaw,
-                    candidates: candidates, canonicalToWord: canonicalToWord,
-                    domainShapedOnly: false)
-                }
+              if let peeledRaw = peeledRawPhrase {
+                peeledOutcome = multiWordFuzzyAttempt(
+                  phrase: peeledRaw.lowercased(), rawPhrase: peeledRaw,
+                  candidates: candidates, canonicalToWord: canonicalToWord,
+                  domainShapedOnly: false)
               }
 
               let winner: (candidate: MultiWordFuzzyCandidate, peeled: Bool)
