@@ -248,6 +248,30 @@ struct MultiWordDomainSuffixTests {
     #expect(replacements.first?.sourceID == user.id)
   }
 
+  /// A LONGER fuzzy candidate must not preempt an exact match (#2406 r8).
+  ///
+  /// While exact matching was split across two passes, the first could only
+  /// DECLINE a span and hand it on — and the fuzzy pass restarts at the longest
+  /// span, so a longer fuzzy candidate reached the tokens before the deferred
+  /// exact match did.
+  ///
+  /// The span here is three tokens and the fuzzy distractor is four, so the
+  /// distractor is offered FIRST by any implementation that lets fuzzy start
+  /// over. Exactness must win regardless of length.
+  @Test("a longer fuzzy candidate does not preempt a shorter exact match")
+  func longerFuzzyCandidateDoesNotPreemptExact() {
+    let packLong = CustomWord(
+      canonical: "Pack Choice", aliases: ["alpha beta gamma.com"], source: .pack)
+    let user = CustomWord(canonical: "User Choice", aliases: ["alpha beta gamma"])
+    let longerFuzzy = CustomWord(canonical: "Fuzzy Winner", aliases: ["alpha beta gamma now"])
+    let (result, replacements) = corrector.correct(
+      "see alpha beta gamma.com now", against: [packLong, user, longerFuzzy])
+    #expect(
+      result == "see User Choice.com now",
+      "an exact match outranks a longer fuzzy candidate; got: \(result)")
+    #expect(replacements.first?.sourceID == user.id)
+  }
+
   /// A canonical that already specifies its own domain does NOT get the dictated
   /// suffix reattached — otherwise the user sees it twice. Same rule the
   /// single-word path applies.

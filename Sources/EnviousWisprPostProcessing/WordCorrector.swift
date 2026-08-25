@@ -811,59 +811,103 @@ public struct WordCorrector: Sendable {
             continue
           }
 
-          // Pass 1: exact multi-word alias.
+          // The peel, computed once for both the unpeeled and peeled slots.
+          // Peeling can EXPOSE a reserved trigger word this guard could not see:
+          // `emoji.com` is not `emoji` until the suffix comes off, so a peel that
+          // exposes one yields no peeled slot rather than a forbidden match.
+          let strippedCores = slice.map { stripPunctuation($0) }
+          let domainSplit = strippedCores.last.flatMap { Self.splitDomainSuffix($0) }
+          var peeledRawPhrase: String?
+          if let domainSplit {
+            var peeledCores = strippedCores
+            peeledCores[peeledCores.count - 1] = domainSplit.bare
+            if !peeledCores.contains(where: {
+              Self.emojiTriggerReservedWords.contains($0.lowercased())
+            }) {
+              peeledRawPhrase = peeledCores.joined(separator: " ")
+            }
+          }
+
+          // PASS 1 IS THE ONE PLACE EXACT MULTI-WORD MATCHING HAPPENS
+          // (#2406 review r8, and the reason rounds 6, 7 and 8 each found a new
+          // leak).
           //
-          // NON-PACK BEATS PACK ACROSS THE PEEL BOUNDARY (#2406 review r6, P1).
+          // Those three rounds were one root, and it was not any of the
+          // individual holes they named. Exact matching had been SPLIT across
+          // two passes — unpeeled here, peeled in Pass 2 — so this pass could
+          // only DECLINE and hope the right thing picked the span up. Every
+          // round found another thing that picked it up first:
           //
-          // This map is the WIDE one and includes pack gap-fill entries, so a
-          // pack alias carrying its own domain suffix matches the unpeeled
-          // phrase here and `break`s — before Pass 2 can offer the user's OWN
-          // alias, which matches the same span once the suffix is peeled. The
-          // user's word loses to a pack term, which inverts this repo's
-          // precedence.
+          //   r6  a pack unpeeled exact accepted before the user's peeled exact
+          //   r7  declining fell through to a SHORTER span in this same loop
+          //   r8  `break` handed off to Pass 2, which restarts at maxSpan, so a
+          //       LONGER fuzzy candidate preempted the deferred exact
           //
-          // Measured shape: pack `international platform.com` -> Pack Choice,
-          // user `international platform` -> User Choice, dictated
-          // `international platform.com`. Slot 2 must outrank slot 3.
+          // Declining is not a decision. A pass that hands work away has to name
+          // the destination, and there is always one more route to it — which is
+          // this repo's own "describing a set instead of enumerating one".
           //
-          // This is Pass 4's four-slot ladder (#2281 round 7) applied to the
-          // multi-word passes, and only the middle pair needed arbitrating:
-          //   1. unpeeled non-pack   accepted here, unchanged
-          //   2. peeled   non-pack   deferred to Pass 2's exact lookup
-          //   3. unpeeled pack       accepted here ONLY when 2 is absent
-          //   4. peeled   pack       KNOWN LIMIT, see below
+          // So the split is removed. All four (attempt x authority) slots are
+          // resolved HERE, in one fixed order, and Pass 2 is fuzzy only:
           //
-          // KNOWN LIMIT, stated rather than hidden: slot 4 does not exist.
-          // Pass 2's pool is built solely from `nonPackMultiAliasMap`, so a PACK
-          // alias whose key matches only the PEELED phrase is never matched
-          // exactly and falls through to fuzzy. That is the lowest-authority
-          // slot, so its absence can only under-match, never override a
-          // higher-authority answer — and adding it would mean giving Pass 2 a
-          // pack pool, which is a larger change than this defect requires.
+          //   1. unpeeled non-pack   the user's own word, as dictated
+          //   2. peeled   non-pack   the user's own word, suffix peeled
+          //   3. unpeeled pack       a pack term, as dictated
+          //   4. peeled   pack       a pack term, suffix peeled
           //
-          // DEFERRING MUST END THE EXACT SCAN FOR THIS POSITION, not fall to a
-          // SHORTER span (#2406 r7). Folded into the `if` condition, a deferral
-          // was indistinguishable from a miss, so Pass 1 simply tried span-1 —
-          // where a SHORTER pack alias at the same position could match and win,
-          // reinstating the inversion this deferral exists to prevent, one span
-          // down. Same shape as r3 one pass over: `continue` only ever tries a
-          // shorter span, and the protection has to stop the scan instead.
-          if let canonical = multiAliasMap[phrase], rawPhrase != canonical {
-            if Self.nonPackPeeledExactExists(
-              slice: slice, nonPackMultiAliasMap: nonPackMultiAliasMap,
-              isPackMatch: nonPackMultiAliasMap[phrase] == nil,
-              stripPunctuation: stripPunctuation)
-            {
-              break  // hand this position to Pass 2, which owns the peeled exact
+          // This is Pass 4's ladder (#2281 round 7) ported wholesale rather than
+          // approximated, which is what the reviewer meant from round 5 on by
+          // "as the single-word path already does". Slot 4 is no longer a known
+          // limit: this pass holds the wide map, so it can be expressed here at
+          // no extra cost, and leaving it out was only ever an artifact of the
+          // split.
+          //
+          // Non-pack membership is decided by `nonPackMultiAliasMap`, not by
+          // `nonPackExactKeys` — that set is built from SINGLE alias keys and
+          // canonicals only, so a multi-word phrase is absent from it whatever
+          // its authority.
+          var exactHit: (canonical: String, source: String, peeled: Bool)?
+          let peeledKey = peeledRawPhrase?.lowercased()
+
+          if let canonical = nonPackMultiAliasMap[phrase] {
+            exactHit = (canonical, rawPhrase, false)
+          } else if let key = peeledKey, let raw = peeledRawPhrase,
+            let canonical = nonPackMultiAliasMap[key]
+          {
+            exactHit = (canonical, raw, true)
+          } else if let canonical = multiAliasMap[phrase] {
+            exactHit = (canonical, rawPhrase, false)
+          } else if let key = peeledKey, let raw = peeledRawPhrase,
+            let canonical = multiAliasMap[key]
+          {
+            exactHit = (canonical, raw, true)
+          }
+
+          if let exactHit {
+            // ALREADY CORRECT RESERVES THE SPAN. Previously this pass fell
+            // through to a shorter span when the text already equalled its
+            // canonical — round 3's defect, which was fixed in Pass 2 and left
+            // standing here because nothing had reached it yet.
+            if exactHit.source == exactHit.canonical {
+              reservedSpan = span
+              break
             }
             let (firstPrefix, _, _) = splitPunctuation(tokens[i])
             let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
-            tokens.replaceSubrange(i..<(i + span), with: [firstPrefix + canonical + lastSuffix])
-            appendReplacement(forCanonical: canonical)
+            // Reattached UNLESS the canonical already specifies its own domain —
+            // the same rule Pass 4 and Pass 2's accept branch apply.
+            let reattach =
+              exactHit.peeled && !Self.isDomainShaped(exactHit.canonical)
+              ? (domainSplit?.suffix ?? "") : ""
+            tokens.replaceSubrange(
+              i..<(i + span),
+              with: [firstPrefix + exactHit.canonical + reattach + lastSuffix])
+            appendReplacement(forCanonical: exactHit.canonical)
             matched = true
             #if DEBUG
               Self.logger.debug(
-                "WordCorrector: type=multi-word-exact source='\(rawPhrase)' target='\(canonical)'")
+                "WordCorrector: type=multi-word-exact source='\(exactHit.source)' target='\(exactHit.canonical)' peeled=\(exactHit.peeled)"
+              )
             #endif
             break
           }
@@ -913,63 +957,9 @@ public struct WordCorrector: Sendable {
                 if !exposesReservedWord { peeledRawPhrase = peeledCores.joined(separator: " ") }
               }
 
-              // EXACT BEFORE FUZZY, ACROSS THE PEEL BOUNDARY (#2406 review r5,
-              // and the consolidation of r2/r3/r4 — every one of those was this
-              // same root at a different member).
-              //
-              // Pass 1 gives the UNPEELED phrase an exact lookup and has already
-              // missed by the time Pass 2 runs. The PEELED phrase had no exact
-              // lookup at all, so a certainty was being routed through a
-              // competition: `international platform.com`, with the alias
-              // `international platform` scoring 1.0 and a distractor
-              // `international platforma` scoring 0.972, was rejected on the
-              // ambiguity margin and never corrected.
-              //
-              // A COMPETITION IS THE WRONG INSTRUMENT FOR A CERTAINTY. Threshold
-              // and margin exist to adjudicate candidates that only RESEMBLE the
-              // input; an exact member of the pool does not resemble it, it IS
-              // it. This is the rule Pass 4 reached at round 4 of #2281 —
-              // "EXACT match to completion, unpeeled then peeled, before any
-              // fuzzy pass runs at all" — applied to the pass that was built
-              // without it.
-              //
-              // No authority ladder is needed here and one would be wrong: this
-              // pool is built solely from `nonPackMultiAliasMap`, so every entry
-              // carries the same authority, and the dictionary it derives from
-              // makes an alias hit unique by construction. That is what makes
-              // the question CLOSED — "is this phrase a key of the pool" has one
-              // answer, where "does it resemble one" has a next counterexample.
-              if let peeledRaw = peeledRawPhrase,
-                let exactCanonical = candidates.first(where: { $0.alias == peeledRaw.lowercased() })?
-                  .canonical
-              {
-                if peeledRaw == exactCanonical {
-                  // Already right as dictated. Reserve the span, exactly as the
-                  // fuzzy `.alreadyCorrect` branch does — otherwise the outer
-                  // loop walks back into text this pass just declared correct.
-                  reservedSpan = span
-                  break spanLoop
-                }
-                let (firstPrefix, _, _) = splitPunctuation(tokens[i])
-                let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
-                // Same reattachment rule as the fuzzy accept branch and as
-                // Pass 4: a canonical that already specifies its own domain
-                // keeps its own, whatever suffix was dictated.
-                let reattach =
-                  Self.isDomainShaped(exactCanonical) ? "" : (domainSplit?.suffix ?? "")
-                tokens.replaceSubrange(
-                  i..<(i + span),
-                  with: [firstPrefix + exactCanonical + reattach + lastSuffix])
-                appendReplacement(forCanonical: exactCanonical)
-                matched = true
-                #if DEBUG
-                  Self.logger.debug(
-                    "WordCorrector: type=multi-word-exact-peeled source='\(peeledRaw)' target='\(exactCanonical)'"
-                  )
-                #endif
-                break spanLoop
-              }
-
+              // Exact matching is entirely Pass 1's now (#2406 r8). This pass is
+              // fuzzy only, so there is no exact answer here for a fuzzy
+              // candidate to preempt and no span handed across a pass boundary.
               let unpeeledOutcome = multiWordFuzzyAttempt(
                 phrase: phrase, rawPhrase: rawPhrase, candidates: candidates,
                 canonicalToWord: canonicalToWord,
@@ -1523,38 +1513,6 @@ public struct WordCorrector: Sendable {
       MultiWordFuzzyCandidate(
         canonical: bestCanonical, alias: bestAlias, score: bestScore,
         margin: margin, threshold: threshold, hasStopword: hasStopword))
-  }
-
-  /// Does a NON-pack alias match this span's PEELED phrase exactly?
-  ///
-  /// Only asked when Pass 1's own match came from a PACK entry, because that is
-  /// the only case where deferring changes anything: a non-pack unpeeled match
-  /// already outranks everything and must not be delayed. Returning `false` for
-  /// a non-pack match keeps the existing behaviour byte-for-byte rather than
-  /// re-deciding it (#2406 review r6).
-  ///
-  /// The peel is recomputed here rather than threaded in, because Pass 1 runs
-  /// its own span loop before Pass 2 exists and the two loops do not share a
-  /// frame. It is a string split over at most a handful of tokens, and it runs
-  /// only on the pack branch.
-  private static func nonPackPeeledExactExists(
-    slice: ArraySlice<String>,
-    nonPackMultiAliasMap: [String: String],
-    isPackMatch: Bool,
-    stripPunctuation: (String) -> String
-  ) -> Bool {
-    guard isPackMatch else { return false }
-    var cores = slice.map(stripPunctuation)
-    guard let last = cores.last, let split = Self.splitDomainSuffix(last) else { return false }
-    cores[cores.count - 1] = split.bare
-    // Peeling can EXPOSE a reserved trigger word, the same re-check Pass 2 makes
-    // for the same reason: `emoji.com` is not `emoji` until the suffix is off.
-    // If the peel exposes one, Pass 2 will refuse the span, so deferring to it
-    // would leave the span uncorrected rather than better corrected.
-    if cores.contains(where: { Self.emojiTriggerReservedWords.contains($0.lowercased()) }) {
-      return false
-    }
-    return nonPackMultiAliasMap[cores.joined(separator: " ").lowercased()] != nil
   }
 
   private enum SingleAttemptFuzzyOutcome {
