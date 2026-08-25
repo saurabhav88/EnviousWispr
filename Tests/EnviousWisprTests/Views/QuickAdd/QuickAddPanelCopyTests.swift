@@ -66,6 +66,20 @@ struct QuickAddPanelCopyTests {
         == QuickAddPanelCopy.groupHeader(.confident, heard: "codecs"))
   }
 
+  @Test("A refusal reads correctly once its channel's prefix is on it")
+  func aRefusalReadsCorrectlyUnderThePrefix() {
+    // `wordNoLongerExists` reaches the user through `writeFailure`, which prefixes "Not saved.".
+    // Written as though it stood alone it said "was not added" as well, which renders as a stutter.
+    // The cost of REUSING a refusal path is inheriting its sentence, and nothing about the constant
+    // says which path it travels — only the composed form shows it.
+    let rendered = QuickAddPanelCopy.writeFailure(QuickAddPanelCopy.wordNoLongerExists)
+
+    #expect(rendered.hasPrefix("Not saved."))
+    #expect(!rendered.lowercased().contains("not added"), "the prefix already said it")
+    #expect(
+      rendered.contains("Create it as a new word"), "the way forward the open panel still has")
+  }
+
   @Test("Every refusal has its own sentence")
   func everyRefusalHasItsOwnSentence() {
     // A single "could not read your selection" would be technically true for all of them and useless

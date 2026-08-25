@@ -23,6 +23,16 @@ enum QuickAddPanelCopy {
   static let newWordNotSaved =
     "That word could not be saved. Check it does not already exist in your words."
 
+  /// The row's word was in the library when the panel was ranked and is not there now, because the
+  /// panel stays open and the user deleted it in Settings in between.
+  ///
+  /// **Written to sit UNDER `writeFailure`'s "Not saved." prefix**, which is the channel it travels
+  /// through: `accept` returns it, the wiring hands it to `noteWriteFailure`, and the view renders
+  /// that prefix. So it does not repeat "was not added" — reusing a refusal path means inheriting
+  /// its sentence, and a copy written as though it stood alone reads as a stutter once rendered.
+  static let wordNoLongerExists =
+    "That word is no longer in your words. Create it as a new word instead."
+
   /// The canonical already existed, so the library kept what it had and the spelling was not added.
   /// Names the surviving word, because the way forward is to pick it from the list.
   static func newWordAlreadyExists(canonical: String) -> String {
