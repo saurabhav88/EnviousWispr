@@ -1,4 +1,7 @@
 import AppKit
+import EnviousWisprCore
+import EnviousWisprServices
+import Foundation
 import SwiftUI
 
 /// The Quick Add panel's window, and nothing else (#2381).
@@ -45,6 +48,20 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// because a Settings window the user closed during the beat must not be resurrected or retained.
   private var focusOrigin: FocusOriginKind = .unknown
   private weak var originWindow: NSWindow?
+  /// The process id of the application that was frontmost when we took focus.
+  ///
+  /// **Named, because `NSApp.deactivate()` does not hand activation to anyone.** Measured: four
+  /// seconds after the panel closed we were still active with zero windows, and every keystroke was
+  /// being discarded. Activation is cooperative since macOS 14 — resigning is not transferring, and
+  /// with nothing else asking we simply stay in front.
+  ///
+  /// **A pid rather than the `NSRunningApplication`, and the first version got this wrong in a way
+  /// only the log line caught.** Held `weak`, the object returned by `frontmostApplication` is
+  /// deallocated immediately — nothing else retains it — so the release always took the branch with
+  /// nothing to name and behaved exactly like the defect it was fixing. Held STRONG it would pin a
+  /// process object for the life of the host. A pid is neither: it is resolved at release time, and
+  /// if that app has quit the lookup fails, which is the honest answer rather than a stale one.
+  private var originAppPID: pid_t?
 
 
   #if DEBUG
@@ -138,9 +155,13 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
       if NSApp.isActive, let key = NSApp.keyWindow, key !== panel {
         focusOrigin = .ourWindow
         originWindow = key
+        originAppPID = nil
       } else {
         focusOrigin = .otherApp
         originWindow = nil
+        // Read at the same instant as everything else here, and for the same reason: a moment later
+        // the frontmost application is us.
+        originAppPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
       }
     }
     NSApp.activate(ignoringOtherApps: true)
@@ -151,6 +172,20 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   ///
   /// Holding it already means nothing is being taken, so the standing record — who we took it from
   /// when we did — is still the right answer.
+  /// Which release BRANCH ran, so a Live UAT can read it instead of inferring it.
+  ///
+  /// **Inferring it from which app ends up in front does not work, and two versions of that harness
+  /// were unfailable before this line existed** — our app can legitimately be frontmost either way,
+  /// so the observed value and the defect value were the same string. This names the branch.
+  ///
+  /// `#if DEBUG` and the same category as the funnel: a release build writes no `app.log` at all.
+  /// It carries no word, no spelling and no selection — only which of three paths was taken.
+  private func logFocus(_ line: String) {
+    #if DEBUG
+      Task { await AppLogger.shared.log("[QuickAdd] \(line)", level: .info, category: "QuickAdd") }
+    #endif
+  }
+
   package static func shouldCaptureOrigin(panelIsKey: Bool) -> Bool { !panelIsKey }
 
   /// Whether taking the panel down should hand focus back.
@@ -236,8 +271,23 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
       // be a guess about an app the user may not have come from, so do neither.
       guard let originWindow, originWindow !== panel, originWindow.isVisible else { return }
       originWindow.makeKeyAndOrderFront(nil)
+      logFocus("focus released to our own window")
     case .deactivateApp:
-      NSApp.deactivate()
+      // **Activate the app BY NAME. `NSApp.deactivate()` alone does not hand activation to anyone**
+      // — measured as four seconds still frontmost with zero windows, keystrokes going nowhere.
+      // This mirrors the branch above, which always named its destination and always worked.
+      if let pid = originAppPID,
+        let originApp = NSRunningApplication(processIdentifier: pid),
+        !originApp.isTerminated
+      {
+        originApp.activate()
+        logFocus("focus released to the origin app")
+      } else {
+        // Nothing to name: an origin taken before a frontmost app could be read, or one that has
+        // quit. Worse than naming a destination, better than keeping a keyboard nobody can use.
+        NSApp.deactivate()
+        logFocus("focus released with no origin app to name")
+      }
     }
   }
 
