@@ -156,7 +156,6 @@ struct OverlayRootView: View {
     case .escapeRecovery(let transcriptID):
       EscapeRecoveryPillView(
         onPaste: { press(.pasteEscapeRecovery(transcriptID: transcriptID), on: presentation) },
-        onExpire: {},
         // Already matched to this presentation at publication — see
         // `PillRenderState.dwell`. The root holds no policy, so a window left by
         // a previous pill never reaches this frame rather than being filtered
