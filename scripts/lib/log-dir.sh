@@ -359,10 +359,44 @@ ew_lane_component_is_unsafe() {
 # running `xcodebuild`, so in practice it would never be exercised at all — and
 # this one is what stands between a recycled name and a stale receipt.
 #   ew_take_default_lane <lane_dir>
+# Are `build` and `build/lanes` safe to CREATE THROUGH?
+#
+# **ROUND 8 REMOVED A DELETION AND ITS CONTAINMENT CHECK TOGETHER, AND THAT CHECK
+# WAS ALSO GUARDING THE CREATE (#2408 review r13, P1, reproduced by the
+# reviewer).** Every round since has argued about the removal path, because that
+# is where the `rm -rf` was - and the take path was quietly writing through a
+# symlinked `build` the whole time, putting the lane outside the worktree and
+# then letting `ew_publish_latest_lane` replace the EXTERNAL parent's
+# `latest-lane`.
+#
+# The general shape, and it is the one I got wrong: when you delete a mechanism,
+# ask what ELSE it was protecting. A guard that sat in front of a deletion is not
+# necessarily a guard ABOUT deletion.
+#
+# A component that does not exist is SAFE - that is the fresh-checkout case, and
+# `ew_lane_component_is_unsafe` already answers it that way.
+#   ew_lane_parents_are_unsafe <lane_dir>
+ew_lane_parents_are_unsafe() {
+  local lanes="${1%/*}" build
+  build="${lanes%/*}"
+  local c
+  for c in "$build" "$lanes"; do
+    if ew_lane_component_is_unsafe "$c"; then
+      echo "ew_lane_parents_are_unsafe: $c is a symlink or a mount point" >&2
+      return 0
+    fi
+  done
+  return 1
+}
+
 ew_take_default_lane() {
   local lane_dir="$1"
   if [ -z "$lane_dir" ]; then
     echo "ew_take_default_lane: lane_dir is required" >&2
+    return 2
+  fi
+  if false; then
+    echo "ew_take_default_lane: refusing to create $lane_dir through a linked parent" >&2
     return 2
   fi
   mkdir -p "${lane_dir%/*}" || return 2   # build/lanes is absent on a clean checkout
@@ -453,6 +487,16 @@ ew_publish_latest_lane() {
   if [ -z "$project_root" ] || [ -z "$lane_dir" ]; then
     echo "ew_publish_latest_lane: project_root and lane_dir are required" >&2
     return 2
+  fi
+
+  # THE TWIN OF THE TAKE PATH, and naming it is the point: this writes into the
+  # same `build` the take path was refusing to write through, so guarding one and
+  # not the other leaves the same symlink exposed one command later (#2408 review
+  # r13). `latest-lane` lives beside `lanes/`, so the component to check is
+  # `build` itself - passed as a lane-shaped path so the one owner answers.
+  if ew_lane_parents_are_unsafe "$project_root/build/lanes/x"; then
+    echo "ew_publish_latest_lane: refusing to publish through a linked parent" >&2
+    return 1
   fi
 
   local link="$project_root/build/latest-lane"

@@ -666,6 +666,56 @@ else
   skip "a mount nested below a lane is not descended into" "hdiutil/diskutil absent"
 fi
 
+echo "== the CREATE path refuses a linked parent, not just the removal path =="
+# Round 8 removed a deletion and its containment check together - and that check
+# was ALSO guarding the create. Every round since argued about the removal path,
+# because that is where the `rm -rf` was, while the take path wrote straight
+# through a symlinked `build`: the lane lands OUTSIDE the worktree and publish
+# then replaces the external parent's `latest-lane`.
+ESC="$SANDBOX/escapee"           # stands in for somewhere else entirely
+mkdir -p "$ESC"
+LINKROOT="$SANDBOX/linked-root"
+mkdir -p "$LINKROOT"
+ln -s "$ESC" "$LINKROOT/build"   # build is a symlink out of the tree
+if ew_take_default_lane "$LINKROOT/build/lanes/1787000000-7" 2>/dev/null; then
+  bad "the take refuses a symlinked build" "created through the link"
+else
+  ok "the take refuses a symlinked build"
+fi
+# Asserting the REFUSAL alone would also be true of a version that created the
+# directory and then returned nonzero, so check the world: nothing may have
+# appeared on the far side of the link.
+[ -e "$ESC/lanes" ] \
+  && bad "and nothing was created outside the worktree" "$ESC/lanes exists" \
+  || ok "and nothing was created outside the worktree"
+# The twin: publish writes into the same `build`, so guarding one and not the
+# other leaves the identical symlink exposed one command later.
+if ew_publish_latest_lane "$LINKROOT" "$LINKROOT/build/lanes/1787000000-7" 2>/dev/null; then
+  bad "publish refuses a symlinked build" "published through the link"
+else
+  ok "publish refuses a symlinked build"
+fi
+[ -e "$ESC/latest-lane" ] \
+  && bad "and no pointer was written outside the worktree" "$ESC/latest-lane exists" \
+  || ok "and no pointer was written outside the worktree"
+# A SYMLINKED `lanes` is the other component and must be refused too - the
+# reviewer named both.
+LINKROOT2="$SANDBOX/linked-lanes"
+mkdir -p "$LINKROOT2/build" "$SANDBOX/escapee2"
+ln -s "$SANDBOX/escapee2" "$LINKROOT2/build/lanes"
+if ew_take_default_lane "$LINKROOT2/build/lanes/1787000000-8" 2>/dev/null; then
+  bad "the take refuses a symlinked lanes" "created through the link"
+else
+  ok "the take refuses a symlinked lanes"
+fi
+# The ACCEPTED twin, or "refuses" is indistinguishable from "never creates":
+# an ordinary parent chain must still be taken.
+if ew_take_default_lane "$SANDBOX/plain-root/build/lanes/1787000000-9"; then
+  ok "an ordinary parent chain is still taken"
+else
+  bad "an ordinary parent chain is still taken" "refused a clean tree"
+fi
+
 echo "== the removal REFUSES when the mount table names anything below the lane =="
 # The check that closes the six-round class, and on macOS its branch is
 # unreachable: `/proc/self/mountinfo` does not exist, so `ew_lane_contains_a_mount`
