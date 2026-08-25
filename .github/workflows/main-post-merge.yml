@@ -14,6 +14,11 @@ on:
       - '.github/actions/xcode-ci-setup/action.yml'
       - 'scripts/ci/verify-checked-out-revision.sh'
       - 'scripts/ci/post-merge-should-run.sh'
+      # #2401: both lanes below decide their verdict through this owner, so a
+      # change to it alters every job here while leaving the workflow untouched —
+      # the same reason the composite action and the revision guard are listed.
+      - 'scripts/lib/lane-verdict.sh'
+      - 'scripts/lib/lane-verdict.py'
   schedule:
     # Hourly re-validation of main HEAD (#2334): during a merge train,
     # cancel-in-progress cancels every push run before it completes, so main
@@ -267,13 +272,16 @@ jobs:
             ENABLE_TESTABILITY=YES 2>&1 | tee xcode-test-release.log
 
           # Require a positive executed-test count (see pr-check.yml rationale):
-          # a presence-grep would green a zero-test run.
-          TESTS_RUN=$(grep -oE "Test run with [0-9]+ test" xcode-test-release.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
-          if [ "$TESTS_RUN" -lt 1 ]; then
-            echo "::error::Xcode executed 0 release tests (empty/misconfigured bundle) — failing"
-            exit 1
-          fi
-          echo "==> Xcode executed $TESTS_RUN tests (release)"
+          # a presence-grep would green a zero-test run. #2401: that guard is
+          # complete about the EMPTY case and is kept unchanged inside the shared
+          # owner, which additionally reads the named .xcresult so a TRUNCATED
+          # run cannot pass — a crashed bundle prints zero failure marks and
+          # concludes SUCCEEDED.
+          . "$GITHUB_WORKSPACE/scripts/lib/lane-verdict.sh"
+          ew_lane_verdict \
+            "xcode-test-release.log" \
+            "$GITHUB_WORKSPACE/xcode-test-release.xcresult" \
+            "Post-merge Release lane"
 
       - name: Summarize release-test failure
         if: failure() && steps.release-tests.outcome == 'failure'
@@ -405,13 +413,16 @@ jobs:
             VALID_ARCHS=arm64 2>&1 | tee xcode-test-debug.log
 
           # Require a positive executed-test count (see pr-check.yml rationale):
-          # a presence-grep would green a zero-test run.
-          TESTS_RUN=$(grep -oE "Test run with [0-9]+ test" xcode-test-debug.log | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
-          if [ "$TESTS_RUN" -lt 1 ]; then
-            echo "::error::Xcode executed 0 debug tests (empty/misconfigured bundle) — failing"
-            exit 1
-          fi
-          echo "==> Xcode executed $TESTS_RUN tests (debug)"
+          # a presence-grep would green a zero-test run. #2401: that guard is
+          # complete about the EMPTY case and is kept unchanged inside the shared
+          # owner, which additionally reads the named .xcresult so a TRUNCATED
+          # run cannot pass — a crashed bundle prints zero failure marks and
+          # concludes SUCCEEDED.
+          . "$GITHUB_WORKSPACE/scripts/lib/lane-verdict.sh"
+          ew_lane_verdict \
+            "xcode-test-debug.log" \
+            "$GITHUB_WORKSPACE/xcode-test-debug.xcresult" \
+            "Post-merge Debug lane"
 
       # #1600, MOVED here from pr-check.yml's build-debug lane in the CI-speed
       # pass. It was always informational — no percentage gate, because coverage

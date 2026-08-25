@@ -170,6 +170,9 @@ scripts/lib/*
 !scripts/lib/spm-seed-test.sh
 !scripts/lib/log-dir.sh
 !scripts/lib/log-dir-test.sh
+!scripts/lib/lane-verdict.sh
+!scripts/lib/lane-verdict.py
+!scripts/lib/lane-verdict-test.sh
 # #1951: catalog ids are pull targets, so a wrong one ships a dead Download
 # button. Tracked deliberately — a gitignored validator can only be run by
 # someone who remembers it exists, which is how the false green happens.

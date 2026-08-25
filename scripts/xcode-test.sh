@@ -25,6 +25,8 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$PROJECT_ROOT/scripts/lib/spm-seed.sh"
 # shellcheck source=scripts/lib/log-dir.sh
 . "$PROJECT_ROOT/scripts/lib/log-dir.sh"
+# shellcheck source=scripts/lib/lane-verdict.sh
+. "$PROJECT_ROOT/scripts/lib/lane-verdict.sh"
 trap 'ew_seed_release_all' EXIT
 # bash exits on a signal WITHOUT running the EXIT trap, which would strand a
 # seed lock. Converting each signal into a normal exit makes EXIT run.
@@ -79,15 +81,36 @@ ew_ensure_generated "$PROJECT_ROOT"
 
 TEST_ARGS=()
 [ -n "$FILTER" ] && TEST_ARGS=(-only-testing:"$FILTER")
-RESULT_BUNDLE_ARGS=()
-[ -n "$RESULT_BUNDLE_PATH" ] && RESULT_BUNDLE_ARGS=(-resultBundlePath "$RESULT_BUNDLE_PATH")
+# EVERY lane now names its result bundle, because the verdict is read from it
+# (#2401). `-resultBundlePath` does not CREATE the artifact — `xcodebuild test`
+# writes one into `<derivedData>/Logs/Test/` on every run regardless, measured at
+# 4.5s against 4.6s without the flag — it only puts it somewhere addressable.
+# Naming it also avoids that directory's "newest wins" hazard, which is the same
+# shared-path problem `--log-dir` exists for one artifact over.
+DEBUG_RESULT_BUNDLE="${RESULT_BUNDLE_PATH:-$LOG_DIR/xcode-test-debug.xcresult}"
+RELEASE_RESULT_BUNDLE="$LOG_DIR/xcode-test-release.xcresult"
 
-# Run one test lane and guard against a silent zero-test run: xcodebuild prints
-# suite-level "passed" even for an empty bundle, so require a positive executed
-# count (summed across the Swift Testing per-target run summaries) — same guard
-# CI uses (pr-check.yml / main-post-merge.yml).
-run_lane() {  # $1=scheme  $2=config  $3=logfile  $4...=extra build settings
-  local scheme="$1" config="$2" log="$3"; shift 3
+# Run one test lane and hand its verdict to the shared owner.
+#
+# The zero-test guard this used to inline is PRESERVED inside
+# `ew_lane_verdict` and its reasoning is unchanged: xcodebuild prints
+# suite-level "passed" even for an empty bundle, so a presence-grep would green
+# a run where nothing executed and a positive executed count is required.
+#
+# What is ADDED beside it is the truncated-run refusal, because a positive count
+# cannot prove the lane finished — a crashed bundle was measured reporting
+# `** TEST SUCCEEDED **` at 2,557 of 6,664 tests with exit 0. That owner is
+# shared with the three CI steps (pr-check.yml / main-post-merge.yml) so the
+# rule cannot hold in one place and lapse in another.
+run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build settings
+  local scheme="$1" config="$2" log="$3" bundle="$4"; shift 4
+  # xcodebuild refuses to overwrite an existing bundle. Scoped to a path that
+  # actually names one: `--result-bundle-path` is caller-supplied, and an
+  # unscoped `rm -rf` on a caller-supplied path is a sharp edge nobody needs.
+  case "$bundle" in
+    *.xcresult) rm -rf "$bundle" ;;
+    *) echo "ERROR: result bundle path must end in .xcresult: $bundle" >&2; exit 2 ;;
+  esac
   set -o pipefail
   # Xcode forwards TEST_RUNNER_* variables to the test process after removing
   # the prefix. This keeps AppLogger tests away from the running dev app's
@@ -103,16 +126,17 @@ run_lane() {  # $1=scheme  $2=config  $3=logfile  $4...=extra build settings
     VALID_ARCHS=arm64 \
     ONLY_ACTIVE_ARCH=YES \
     "$@" \
-    "${RESULT_BUNDLE_ARGS[@]}" \
+    -resultBundlePath "$bundle" \
     "${TEST_ARGS[@]}" | tee "$log"
 
-  local n
-  n=$(grep -oE "Test run with [0-9]+ test" "$log" | grep -oE "[0-9]+" | awk '{s+=$1} END{print s+0}')
-  if [ "$n" -lt 1 ]; then
-    echo "ERROR: $config lane executed 0 tests (empty/misconfigured bundle)" >&2
-    exit 1
-  fi
-  echo "==> $config lane executed $n tests"
+  # The expected count is a FLAG, never a gate: it warns on a mismatch and
+  # cannot decide the lane either way. Unset by default, because a count is a
+  # parameter and a borrowed parameter builds a check that cannot fire.
+  local expected=""
+  [ "$config" = "Debug" ] && expected="${EW_EXPECTED_DEBUG_TESTS:-}"
+  [ "$config" = "Release" ] && expected="${EW_EXPECTED_RELEASE_TESTS:-}"
+
+  ew_lane_verdict "$log" "$bundle" "$config lane" "$expected" || exit 1
 }
 
 # #2157 chunk A: seed before the first lane resolves anything.
@@ -126,8 +150,9 @@ ew_seed_resolve_or_unseed "$DERIVED_DATA" \
     -scheme "$DEBUG_SCHEME" \
     -derivedDataPath "$DERIVED_DATA"
 
-run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log"
+run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log" "$DEBUG_RESULT_BUNDLE"
 ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
 if [ "$RUN_RELEASE" = "1" ]; then
-  run_lane "$RELEASE_SCHEME" Release "$LOG_DIR/xcode-test-release.log" ENABLE_TESTABILITY=YES
+  run_lane "$RELEASE_SCHEME" Release "$LOG_DIR/xcode-test-release.log" \
+    "$RELEASE_RESULT_BUNDLE" ENABLE_TESTABILITY=YES
 fi
