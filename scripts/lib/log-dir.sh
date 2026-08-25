@@ -395,7 +395,7 @@ ew_take_default_lane() {
     echo "ew_take_default_lane: lane_dir is required" >&2
     return 2
   fi
-  if false; then
+  if ew_lane_parents_are_unsafe "$lane_dir"; then
     echo "ew_take_default_lane: refusing to create $lane_dir through a linked parent" >&2
     return 2
   fi
