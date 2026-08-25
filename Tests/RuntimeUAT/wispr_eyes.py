@@ -2,7 +2,7 @@
 Usage:  python3 -c "from wispr_eyes import *; connect(); see()"
         python3 -c "from wispr_eyes import *; connect(); tap('AI Polish')"
 """
-import os, sys, subprocess, time
+import contextlib, os, sys, subprocess, time
 sys.path.insert(0, os.path.dirname(__file__))
 from ui_helpers import (find_app_pid, get_ax_app, get_attr, set_attr, perform_action,
     find_element, find_all_elements, find_control_for_label, wait_for_condition,
@@ -28,6 +28,35 @@ def _resolve_ptt_key():
     rather than guessing; see that module's header for why no fallback exists.
     """
     return resolve().key_name
+
+
+def _post_ptt_key_event(key, is_down):
+    """Post one configured PTT edge, or refuse before posting anything."""
+    import simulate_input as _si
+
+    key_lower = key.lower()
+    if key_lower in _si.MODIFIER_KEYS:
+        if is_down:
+            _si.modifier_down(_si.MODIFIER_KEYS[key_lower])
+        else:
+            _si.modifier_up(_si.MODIFIER_KEYS[key_lower])
+        return
+    if key_lower in _si.KEY_CODES:
+        from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap
+        event = CGEventCreateKeyboardEvent(None, _si.KEY_CODES[key_lower], is_down)
+        CGEventPost(kCGHIDEventTap, event)
+        return
+    raise PTTBindingError(f"Unknown PTT key '{key}'")
+
+
+@contextlib.contextmanager
+def _held_ptt_key(key):
+    """Guarantee the matching key-up even when playback or waiting raises."""
+    _post_ptt_key_event(key, True)
+    try:
+        yield
+    finally:
+        _post_ptt_key_event(key, False)
 
 
 def _ptt_binding_diagnostic(pressed_key):
@@ -1273,6 +1302,11 @@ def _engine_button(label):
     return None
 
 
+def _recording_should_generate_tts(sentence):
+    """A deliberate blank sentence is the no-playback ambient-room probe."""
+    return sentence is None or bool(sentence.strip())
+
+
 def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.0):
     """End-to-end recording test: menu start -> TTS/audio playback -> menu stop -> verify pipeline.
 
@@ -1292,13 +1326,17 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     """
     connect()
 
-    # Generate TTS audio if no explicit audio file provided
+    # Generate TTS audio if no explicit audio file provided. A blank sentence
+    # deliberately means silence: the canonical ambient-room probe records for
+    # the caller's exact hold without playing or auto-sizing a TTS clip.
     if audio is None:
+        should_generate_tts = _recording_should_generate_tts(sentence)
         if sentence is None:
             sentence = "The quick brown fox jumps over the lazy dog"
-        audio = tts(sentence)
-        if expect is None:
-            expect = "fox" if "fox" in sentence.lower() else sentence.split()[len(sentence.split())//2].lower()
+        if should_generate_tts:
+            audio = tts(sentence)
+            if expect is None:
+                expect = "fox" if "fox" in sentence.lower() else sentence.split()[len(sentence.split())//2].lower()
 
     begin_test(f"recording{' +audio' if audio else ''}")
 
@@ -1668,47 +1706,30 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     clip_before = get_clipboard_text() or ""
 
     # Phase 1: Key down (recording starts)
-    import simulate_input as _si
     print(f"\n--- KEY DOWN ({key}) ---")
     _chime()
 
-    key_lower = key.lower()
-    if key_lower in _si.MODIFIER_KEYS:
-        _si.modifier_down(_si.MODIFIER_KEYS[key_lower])
-    elif key_lower in _si.KEY_CODES:
-        from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap
-        kc = _si.KEY_CODES[key_lower]
-        down = CGEventCreateKeyboardEvent(None, kc, True)
-        CGEventPost(kCGHIDEventTap, down)
-    else:
-        print(f"BLOCKED: Unknown key '{key}'")
-        end_test()
-        return False
-
-    time.sleep(0.8)  # let recording engage + model warm
-
-    # Phase 2: Play audio
-    print(f"Playing audio ({audio_dur:.2f}s)...")
-    audio_proc = subprocess.Popen(
-        ["afplay", audio], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
-
-    # Phase 3: Wait for audio + buffer
     hold_audio = audio_dur + 0.8
-    time.sleep(hold_audio)
-    if audio_proc.poll() is None:
-        audio_proc.terminate()
-
-    # Phase 4: Key up (recording stops)
     total_hold = 0.8 + hold_audio
+    with _held_ptt_key(key):
+        time.sleep(0.8)  # let recording engage + model warm
+
+        # Phase 2: Play audio
+        print(f"Playing audio ({audio_dur:.2f}s)...")
+        audio_proc = None
+        try:
+            audio_proc = subprocess.Popen(
+                ["afplay", audio], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+
+            # Phase 3: Wait for audio + buffer
+            time.sleep(hold_audio)
+        finally:
+            if audio_proc is not None and audio_proc.poll() is None:
+                audio_proc.terminate()
+
+    # Phase 4: Key up has completed (recording stops)
     print(f"\n--- KEY UP ({key}) after {total_hold:.1f}s hold ---")
-    if key_lower in _si.MODIFIER_KEYS:
-        _si.modifier_up(_si.MODIFIER_KEYS[key_lower])
-    else:
-        from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap
-        kc = _si.KEY_CODES[key_lower]
-        up = CGEventCreateKeyboardEvent(None, kc, False)
-        CGEventPost(kCGHIDEventTap, up)
 
     # Phase 5: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
