@@ -1612,7 +1612,34 @@ def _line_timestamp(line):
         return None
 
 
-def _line_in_window(line, start):
+def _merge_sweeps(first, second, inodes_matched):
+    """Combine two passes over the log shelf into the evidence to trust.
+
+    Extracted so the decision is testable without staging a real rotation - the
+    surviving mutant is what asked for it, since nothing could reach this logic
+    while it lived inside a closure.
+
+    SELECTING THE SECOND PASS WAS WRONG, and the reasoning that produced it was
+    wrong too: "bounded at two, a second rotation needs 10 MiB twice". It takes
+    only ONE rotation, occurring during the VALIDATION pass, for that pass to be
+    the incomplete one - and its differing inode map is exactly what selected it.
+
+    The UNION cannot omit. A line present in either pass is real evidence, its
+    timestamp survived the rename, and every caller does a membership or an
+    emptiness test, so a duplicate costs nothing. Choosing between two passes
+    requires knowing which is complete; taking both requires knowing nothing.
+    """
+    if inodes_matched:
+        return first
+    seen, merged = set(), []
+    for line in first + second:
+        if line not in seen:
+            seen.add(line)
+            merged.append(line)
+    return merged
+
+
+def _line_in_window(line, start, strictly_after=False):
     """Is this log line stamped at or after `start`?
 
     ONE implementation, two callers. The consolidation that gave the harness a
@@ -1644,6 +1671,20 @@ def _line_in_window(line, start):
     # A window a fraction of a second wide is exactly where it bites, which is the
     # per-attempt check and nowhere else - the ones with a start seconds earlier
     # were unaffected, so nothing failed until the window got small.
+    if strictly_after:
+        # TWO QUESTIONS, TWO COMPARISONS, and conflating them was a defect of my
+        # own making. Marker DISCOVERY wants the floor: a marker written 0.4s
+        # after the window opened carries a stamp of that same second, and
+        # discarding it is how a successful gesture read as three failed
+        # attempts. Sink LIVENESS wants the opposite: a line from the same second
+        # may PREDATE the attempt entirely - a stale log whose last line landed
+        # at `:04.1` against an attempt starting `:04.6` - and admitting it makes
+        # a dead sink look alive, which is exactly what licenses the retry that
+        # stops a locked recording.
+        # So liveness requires a stamp in a LATER second than the attempt began.
+        # It costs a false negative for a line in the opening second, and that
+        # direction is the safe one: no evidence means no retry.
+        return stamp >= start.replace(microsecond=0) + _dt.timedelta(seconds=1)
     return stamp >= start.replace(microsecond=0)
 
 
@@ -1679,7 +1720,7 @@ def marker_evidence_available(window_lines):
     return bool(window_lines)
 
 
-def log_lines_since(start):
+def log_lines_since(start, strictly_after=False):
     """Every `app.log` line stamped at or after `start`, oldest first, across the
     rotated predecessors.
 
@@ -1722,7 +1763,7 @@ def log_lines_since(start):
             except OSError:
                 continue
             for line in text.splitlines():
-                if _line_in_window(line, start):
+                if _line_in_window(line, start, strictly_after):
                     found.append(line)
         return found, inodes
 
@@ -1737,11 +1778,19 @@ def log_lines_since(start):
     # sees the settled state. Bounded at two - a second rotation inside the same
     # few milliseconds needs the log to cross 10 MiB twice, and an unbounded
     # retry here would be a worse failure than the one it chases.
-    lines, before_inodes = sweep()
-    again, after_inodes = sweep()
-    if after_inodes != before_inodes:
-        lines = again
-    return lines
+    # SELECTING THE SECOND PASS WAS WRONG, and the reasoning that produced it
+    # ("bounded at two - a second rotation needs 10 MiB twice") was wrong too: it
+    # takes only ONE rotation, occurring during the VALIDATION pass, for that pass
+    # to be the incomplete one - and the differing inode map is exactly what made
+    # it get selected.
+    # The UNION cannot omit. A line present in either pass is real evidence, its
+    # timestamp survived the rename, and every caller here does a membership test
+    # or an emptiness test, so a duplicate costs nothing. Choosing between two
+    # passes requires knowing which is complete; taking both requires knowing
+    # nothing.
+    first, first_inodes = sweep()
+    second, second_inodes = sweep()
+    return _merge_sweeps(first, second, first_inodes == second_inodes)
 
 
 def launch_banners_since(start):
@@ -1942,7 +1991,10 @@ def double_press_record_key(attempts=3):
         # that state a gesture that SUCCEEDED is indistinguishable from one that
         # missed, so the next press would land on an already-locked recording
         # where `HotkeyService` reads it as the stop gesture.
-        if not marker_evidence_available(window):
+        # STRICTLY after: see `_line_in_window`. A stale line from the attempt's
+        # own second would otherwise pass for liveness.
+        if not marker_evidence_available(
+                log_lines_since(attempt_start, strictly_after=True)):
             print("  NOTE: that attempt produced NO log lines at all, so the "
                   "sink is not live and an attempt cannot be verified; not "
                   "retrying - a retry into an already-locked recording is read "
@@ -2180,7 +2232,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     #
     # An earlier round argued the caller would treat unreadable evidence as
     # BLOCKED. Review checked that premise and it was false - nothing here did.
-    window_lines = log_lines_since(window_start)
+    window_lines = log_lines_since(window_start, strictly_after=True)
     if not all(markers.values()) and not marker_evidence_available(window_lines):
         print(f"\n  BLOCKED: no live app.log sink, so the hands-free markers "
               f"cannot be read at all.")
@@ -2725,13 +2777,35 @@ def _self_test():
     # 22/22 stayed green while the per-attempt check reported "did not register"
     # against a log containing all three markers.
     T_SUB = _dt.datetime.fromisoformat("2026-01-01T12:00:00.500000-05:00")
+    # THE TWO COMPARISONS, side by side, because they are opposite by design and a
+    # reader who sees only one will "fix" it. Marker discovery admits the
+    # attempt's own second (a marker written 0.4s in carries that stamp); sink
+    # liveness does not (a STALE line from that same second predates the attempt,
+    # and admitting it makes a dead sink look alive - which licenses the retry
+    # that stops a locked recording).
+    same_second = "[2026-01-01T12:00:00-05:00] [INFO] a line in the opening second"
+    later_second = "[2026-01-01T12:00:01-05:00] [INFO] a line in a later second"
+    strict_rows = [
+        ("marker discovery ADMITS the attempt's own second",
+         same_second, False, True),
+        ("sink liveness REFUSES the attempt's own second",
+         same_second, True, False),
+        ("sink liveness accepts a later second",
+         later_second, True, True),
+    ]
+    for name, line, strict, want in strict_rows:
+        if _line_in_window(line, T_SUB, strictly_after=strict) != want:
+            failures.append(f"{name}: got {not want}")
+        else:
+            print(f"  ok      {name}")
+    banner_rows_extra = len(strict_rows)
     name = "a line stamped in the same SECOND the window opened is in-window"
     got_sub = count_launch_banners([banner_at("2026-01-01T12:00:00-05:00")], T_SUB)
     if got_sub != 1:
         failures.append(f"{name}: counted {got_sub}, want 1")
     else:
         print(f"  ok      {name}")
-    banner_rows_extra = 1
+    banner_rows_extra += 1
     for name, texts, want in banner_cases:
         got = count_launch_banners(texts, T0)
         if got != want:
@@ -2822,6 +2896,23 @@ def _self_test():
     # exactly the state where a successful first gesture reads as a miss and the
     # retry's next press stops the locked recording. Asking what the WINDOW
     # produced answers it without a file check and without a timing assumption.
+    for name, args, want in [
+        ("a stable shelf returns the first pass unchanged",
+         (["a", "b"], ["a", "b"], True), ["a", "b"]),
+        # The rotation case: the SECOND pass is the incomplete one, and its
+        # differing inode map is what used to select it.
+        ("a moved shelf returns the UNION, never the later pass",
+         (["a", "b"], ["b", "c"], False), ["a", "b", "c"]),
+        ("the union keeps first-seen order and drops duplicates",
+         (["x", "y"], ["y", "x", "z"], False), ["x", "y", "z"]),
+    ]:
+        got_merge = _merge_sweeps(*args)
+        if got_merge != want:
+            failures.append(f"{name}: got {got_merge}, want {want}")
+        else:
+            print(f"  ok      {name}")
+        file_rows += 1
+
     for name, window, want in [
         ("an empty window means the sink is not live", [], False),
         ("a window with lines but no marker means the sink IS live",
