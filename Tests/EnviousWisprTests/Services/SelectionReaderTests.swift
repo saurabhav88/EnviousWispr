@@ -215,4 +215,55 @@ struct SelectionReaderTests {
     #expect(Set(names).count == names.count)
     #expect(names.allSatisfy { !$0.isEmpty })
   }
+  // MARK: - One owner for what a selection IS (#2381 review r1)
+
+  @Test("Whitespace-only text is nothing selected, whichever door handed it over")
+  func classifyTreatsWhitespaceAsNoSelection() {
+    // Door B reached the coordinator with raw pasteboard text and none of this applied, so a
+    // whitespace-only Service selection opened a panel on an empty string with no stated reason.
+    #expect(SelectionReader.classify("   ") == .noSelection)
+    #expect(SelectionReader.classify("\n\t ") == .noSelection)
+    #expect(SelectionReader.classify("") == .noSelection)
+  }
+
+  @Test("The store's ceiling applies to handed text too, and it is measured after trimming")
+  func classifyAppliesTheCeiling() {
+    let atCeiling = String(repeating: "a", count: SelectionReader.maximumSelectionScalars)
+    let overCeiling = atCeiling + "a"
+
+    #expect(SelectionReader.classify(atCeiling) == .text(atCeiling))
+    #expect(SelectionReader.classify(overCeiling) == .refused(.selectionTooLong))
+    // Padded but short: trimming first is what stops surrounding space refusing a real word.
+    #expect(SelectionReader.classify("   codecs   ") == .text("codecs"))
+  }
+
+  @Test("No reader outcome is wordsUnavailable — that member has a different producer")
+  func noReadOutcomeIsWordsUnavailable() {
+    // `Refusal` is the panel's one reason line AND the telemetry refuse_reason, so it holds a case
+    // the reader cannot produce. Asserting the boundary is what keeps that from decaying into "the
+    // reader might return anything in here".
+    var seen: [SelectionReader.Result] = [
+      SelectionReader.classify(""),
+      SelectionReader.classify("codecs"),
+      SelectionReader.classify(String(repeating: "a", count: 9999)),
+      SelectionReader.resolve(error: .attributeUnsupported, value: nil),
+      SelectionReader.resolve(error: .noValue, value: nil),
+      SelectionReader.resolve(error: .cannotComplete, value: nil),
+      SelectionReader.resolve(error: .success, value: nil),
+      SelectionReader.resolve(error: .success, value: NSNumber(value: 7)),
+      SelectionReader.resolve(error: .success, value: "codecs" as CFString),
+    ]
+    for refusal in [
+      SelectionReader.refusalBeforeReading(isTrusted: false, frontmostPID: 1),
+      SelectionReader.refusalBeforeReading(isTrusted: true, frontmostPID: nil),
+      SelectionReader.refusalBeforeReading(isTrusted: true, frontmostPID: 0),
+    ] {
+      if let refusal { seen.append(.refused(refusal)) }
+    }
+
+    #expect(!seen.contains(.refused(.wordsUnavailable)))
+    // Paired positive: a sweep that produced no refusals at all would pass the line above.
+    #expect(seen.contains { if case .refused = $0 { true } else { false } })
+  }
+
 }

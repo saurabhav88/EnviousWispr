@@ -51,6 +51,15 @@ public enum SelectionReader {
     case unreadable = "unreadable"
     /// A selection too long to be stored as a word, so reading it further cannot help.
     case selectionTooLong = "selection_too_long"
+    /// The saved words could not be re-read, so there is nothing trustworthy to rank against.
+    ///
+    /// **The one member `SelectionReader` itself never produces**, and that is deliberate rather
+    /// than sloppy. This set is the panel's one reason line AND the telemetry `refuse_reason`, and
+    /// there is one of each — so the set is "why the panel has nothing to rank", which has two
+    /// producers. Splitting it would give the same slot two enums to reconcile. The boundary is
+    /// asserted instead of assumed: `noReadOutcomeIsWordsUnavailable` requires every reader path to
+    /// stay out of this case.
+    case wordsUnavailable = "words_unavailable"
   }
 
   /// The longest selection worth reading, in Unicode scalars.
@@ -139,10 +148,23 @@ public enum SelectionReader {
       return .refused(.unreadable)
     }
 
-    // TRIM FIRST, then measure. The ceiling exists to bound what gets STORED, and what gets stored
-    // is the trimmed string — so measuring the untrimmed one refuses a short word that happened to
-    // be dragged with a lot of surrounding space, and reports whitespace-only text as "too long"
-    // when the honest answer is "nothing selected".
+    return classify(text)
+  }
+
+  /// What a candidate selection IS, independent of where it came from.
+  ///
+  /// **Extracted so the two doors cannot disagree, which they did.** Door A arrives here through
+  /// `resolve`; door B is HANDED text by the Services system and reached the coordinator as
+  /// `.text(raw)` with none of this applied — so a whitespace-only Service selection opened a panel
+  /// on an empty string with no stated reason, and an oversized one bypassed the ceiling entirely
+  /// and went to the scorer. Anything one door validates and the other does not is a defect by
+  /// construction; the fix is one function, not a second copy of three checks.
+  ///
+  /// TRIM FIRST, then measure. The ceiling exists to bound what gets STORED, and what gets stored is
+  /// the trimmed string — so measuring the untrimmed one refuses a short word that happened to be
+  /// dragged with a lot of surrounding space, and reports whitespace-only text as "too long" when
+  /// the honest answer is "nothing selected".
+  public static func classify(_ text: String) -> Result {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return .noSelection }
 

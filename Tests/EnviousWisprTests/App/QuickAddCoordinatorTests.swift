@@ -84,17 +84,23 @@ struct QuickAddCoordinatorTests {
     #expect(recorder.refreshCalls == 1)
   }
 
-  @Test("An unreadable library presents nothing rather than ranking a stale snapshot")
-  func anUnreadableLibraryPresentsNothing() {
+  @Test("An unreadable library states a reason rather than ranking a stale snapshot")
+  func anUnreadableLibraryStatesAReason() throws {
+    // REWRITTEN in review round 1, and the previous version is why: it asserted `model == nil` plus
+    // a resolved event, which is the defect written down as a contract. Reporting the failure to
+    // telemetry is a fact about a dashboard; the user got a shortcut that did nothing visible,
+    // which is indistinguishable from one that was never registered.
     let (coordinator, recorder) = makeCoordinator(
       refreshSucceeds: false, userWords: [word("Codex")])
 
-    let model = coordinator.begin(door: .hotkey)
+    let model = try #require(coordinator.begin(door: .hotkey))
 
-    #expect(model == nil)
-    // nil is never silence: the failure is reported before the caller is told to show nothing.
+    #expect(model.refusal == .wordsUnavailable)
+    // The stale snapshot half of the name is the part that was always right.
+    #expect(model.ranking.candidates.isEmpty)
     #expect(recorder.events.contains { if case .failed = $0 { true } else { false } })
-    #expect(recorder.outcomes == [.writeFailed])
+    // Opening is not resolving. A resolved event here closes a funnel the user is still inside.
+    #expect(recorder.outcomes.isEmpty)
   }
 
   @Test("Opening reports SHAPE, never the word itself")
@@ -271,7 +277,10 @@ struct QuickAddCoordinatorTests {
     coordinator.createNew(from: model)
 
     #expect(recorder.sheetsFor == ["codecs"])
-    #expect(recorder.outcomes == [.createdNew])
+    // `createdNew` deliberately does NOT fire here any more — opening a sheet is an intention, and
+    // emitting on the click double-counted every open where the user then cancelled. The outcome is
+    // asserted in `didCreateNewResolvesOnce`, after the save is confirmed.
+    #expect(recorder.outcomes.isEmpty)
     #expect(recorder.saved.isEmpty, "the sheet writes, not this")
   }
 
@@ -317,4 +326,81 @@ struct QuickAddCoordinatorTests {
     #expect(Set(names).count == names.count)
     #expect(names.allSatisfy { !$0.isEmpty })
   }
+  // MARK: - Round 1 of the whole-diff review (#2381)
+
+  @Test("A Service handing over whitespace opens on a stated reason, not on an empty word")
+  func serviceWhitespaceIsARefusal() throws {
+    // The Services system hands us whatever was on the pasteboard. Treating that as already-valid
+    // opened a panel reading `Heard: ` with the search field up, from which Return could write an
+    // alias the store then stripped while reporting success.
+    let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
+    let model = try #require(coordinator.begin(door: .service, selectionOverride: "   "))
+
+    #expect(model.heard.isEmpty)
+    #expect(model.refusal == .selectionUnavailable)
+    #expect(model.ranking.candidates.isEmpty)
+    #expect(recorder.outcomes.isEmpty)
+  }
+
+  @Test("A Service handing over an oversized selection is refused at the store's own ceiling")
+  func serviceOversizedIsRefused() throws {
+    // Door A bounded this and door B did not, so the same selection was refused through one door
+    // and sent to the scorer through the other — where edit distance builds a matrix per candidate.
+    let huge = String(repeating: "a", count: SelectionReader.maximumSelectionScalars + 1)
+    let (coordinator, _) = makeCoordinator(userWords: [word("Codex")])
+    let model = try #require(coordinator.begin(door: .service, selectionOverride: huge))
+
+    #expect(model.refusal == .selectionTooLong)
+    #expect(model.ranking.candidates.isEmpty)
+  }
+
+  @Test("A Service handing over a real word still ranks it, so the guard is not blanket refusal")
+  func serviceOrdinaryWordStillRanks() throws {
+    // The paired accepted case. Without it every assertion above passes against a door that refuses
+    // everything, which is a check that never classifies anything.
+    let (coordinator, _) = makeCoordinator(userWords: [word("Codex")])
+    let model = try #require(coordinator.begin(door: .service, selectionOverride: "  codecs  "))
+
+    #expect(model.heard == "codecs")
+    #expect(model.refusal == nil)
+    #expect(!model.ranking.candidates.isEmpty)
+  }
+
+  @Test("Opening the new-word sheet resolves nothing, because an intention is not an outcome")
+  func createNewDoesNotResolve() throws {
+    // Emitting createdNew on the click counted opening a sheet as a save: cancelling the sheet left
+    // the panel up, and cancelling the panel then emitted a SECOND resolved event for one open.
+    let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
+    let model = try #require(coordinator.begin(door: .hotkey))
+
+    coordinator.createNew(from: model)
+
+    #expect(recorder.sheetsFor == ["codecs"])
+    #expect(recorder.outcomes.isEmpty)
+  }
+
+  @Test("Cancelling after opening the sheet resolves exactly once, as cancelled")
+  func cancellingAfterTheSheetResolvesOnce() throws {
+    let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
+    let model = try #require(coordinator.begin(door: .hotkey))
+
+    coordinator.createNew(from: model)
+    coordinator.cancel(from: model)
+
+    #expect(recorder.outcomes == [.cancelled])
+  }
+
+  @Test("A confirmed save resolves as createdNew, once")
+  func didCreateNewResolvesOnce() throws {
+    // The paired positive: the outcome still exists and is still reachable. Moving the emission
+    // without this would be indistinguishable from deleting it.
+    let (coordinator, recorder) = makeCoordinator(userWords: [word("Codex")])
+    let model = try #require(coordinator.begin(door: .hotkey))
+
+    coordinator.createNew(from: model)
+    coordinator.didCreateNew(from: model)
+
+    #expect(recorder.outcomes == [.createdNew])
+  }
+
 }

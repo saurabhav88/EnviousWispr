@@ -110,29 +110,36 @@ final class QuickAddCoordinator {
 
   /// One Quick Add invocation, from either door.
   ///
-  /// Returns the panel model to present, or nil when there is nothing to present at all. **nil is
-  /// never silence:** the only path that returns it has already emitted a `failed` event, and the
-  /// caller shows nothing because there is genuinely nothing to show.
+  /// Returns the panel model to present. **It no longer returns nil for a refusal, and the
+  /// distinction is the whole point:** a `failed` event is a fact about a dashboard, and the review
+  /// that caught the accept path reporting success without telling anyone caught this one branch
+  /// over. A shortcut that emits telemetry and shows nothing is indistinguishable from a shortcut
+  /// that is not registered.
   func begin(door: QuickAddDoor, selectionOverride: String? = nil) -> QuickAddPanelModel? {
     let startedAt = environment.now()
     let bundleID = environment.frontmostBundleID()
 
     // Read BEFORE anything activates our app — by the time a panel exists, the frontmost application
     // is us and the answer would be about our own window.
-    let selection: SelectionReader.Result =
-      selectionOverride.map { .text($0) } ?? environment.readSelection()
+    //
+    // Door B's text goes through `SelectionReader.classify` rather than straight into `.text`. The
+    // Services system hands us whatever was on the pasteboard, and treating that as already-valid
+    // is what let a whitespace-only selection open a panel on an empty string and an oversized one
+    // reach the scorer — the ceiling and the empty check are properties of a SELECTION, not of the
+    // door it arrived through.
+    var selection: SelectionReader.Result =
+      selectionOverride.map { SelectionReader.classify($0) } ?? environment.readSelection()
 
     // Refresh before ranking, every invocation. A sibling instance or the Settings window can have
     // changed the library since launch, and ranking a stale snapshot offers words that no longer
     // exist and hides ones that do.
-    guard environment.refreshWords() else {
-      environment.emit(
-        .failed(stage: "refresh", reason: "words_unreadable"))
-      environment.emit(
-        .resolved(
-          outcome: .writeFailed, usedSearch: false, candidateRank: nil, targetKind: nil,
-          elapsedMilliseconds: elapsed(since: startedAt)))
-      return nil
+    //
+    // A failure REPLACES the selection rather than returning nil. Whatever was selected is now
+    // unrankable, so the panel opens on the stated reason like any other refusal — which is what
+    // §3 requires and what returning nil silently did not do.
+    if !environment.refreshWords() {
+      environment.emit(.failed(stage: "refresh", reason: "words_unreadable"))
+      selection = .refused(.wordsUnavailable)
     }
 
     let heard: String
@@ -143,8 +150,9 @@ final class QuickAddCoordinator {
       refusal = nil
     case .noSelection:
       heard = ""
-      // No selection is not an error and not a success. It reaches the panel as the one refusal that
-      // means "you have not told me anything yet", and the search field is the way forward.
+      // No selection is not an error and not a success. It reaches the panel as the one refusal
+      // meaning "you have not told me anything yet"; the panel then states it and offers the
+      // by-hand route, which is the only control that can do anything without a heard word.
       refusal = .selectionUnavailable
     case .refused(let reason):
       heard = ""
@@ -222,9 +230,18 @@ final class QuickAddCoordinator {
     return nil
   }
 
-  /// The user chose to create a new word.
+  /// The user chose to create a new word. **Opens the sheet and resolves NOTHING.**
+  ///
+  /// Emitting `createdNew` here counted an intention as an outcome: cancelling the sheet left the
+  /// panel up, and cancelling the panel then emitted a SECOND resolved event for one open. The
+  /// funnel is one `opened` and one `resolved`, and a rate computed over a denominator that
+  /// double-counts is worse than no rate.
   func createNew(from model: QuickAddPanelModel) {
     environment.presentNewWordSheet(model.spellingToWrite)
+  }
+
+  /// The sheet saved, and the word is confirmed present. Called by the caller that checked.
+  func didCreateNew(from model: QuickAddPanelModel) {
     finish(.createdNew, usedSearch: !model.query.isEmpty, rank: nil, kind: nil)
   }
 

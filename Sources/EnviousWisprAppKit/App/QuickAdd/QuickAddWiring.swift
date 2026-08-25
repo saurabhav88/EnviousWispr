@@ -144,10 +144,41 @@ final class QuickAddWiring {
   /// already relies on — a second write path here would be a second set of rules.
   ///
   /// Returns nil on success or a user-facing message, which is the sheet's own contract.
+  ///
+  /// **A nil return from `add` is not proof the word was saved, and this is the second time that
+  /// assumption cost this feature a false success.** `CustomWordsManager.add` RETURNS silently,
+  /// without throwing, when the canonical already exists case-insensitively — three lines below its
+  /// own comment explaining that it throws precisely so a silent return cannot dismiss a sheet on a
+  /// nil error. It also has a branch that restores a deleted built-in, which discards the aliases
+  /// the user typed. Both end as: sheet closes, panel closes, nothing saved.
+  ///
+  /// So this asserts the OUTCOME rather than the call's return value — the word is there and it
+  /// carries the spellings the user kept — which is the one check that covers both branches and any
+  /// third one nobody has found yet.
   private func saveNewWord(_ word: CustomWord) -> String? {
-    let message = customWords.add(word)
-    if message == nil { dismiss() }
-    return message
+    if let message = customWords.add(word) { return message }
+    // Compare against the TRIMMED canonical, because that is what `add` stores. Comparing the raw
+    // one reports a correct save as a failure whenever the user typed a leading space.
+    let canonical = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let stored = customWords.customWords.first(where: {
+      $0.canonical.caseInsensitiveCompare(canonical) == .orderedSame
+    }) else {
+      return QuickAddPanelCopy.newWordNotSaved
+    }
+    // Blank rows are ordinary trimming, not a lost edit — the editor leaves them behind. A NON-blank
+    // spelling that vanished is the lie worth catching.
+    let kept = word.aliases
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    let missing = kept.filter { alias in
+      !stored.aliases.contains { $0.caseInsensitiveCompare(alias) == .orderedSame }
+    }
+    guard missing.isEmpty else {
+      return QuickAddPanelCopy.newWordAlreadyExists(canonical: stored.canonical)
+    }
+    if let model = activeModel { coordinator.didCreateNew(from: model) }
+    dismiss()
+    return nil
   }
 
   private func dismiss() {

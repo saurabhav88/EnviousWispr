@@ -20,6 +20,19 @@ enum QuickAddPanelCopy {
   /// second set of rules for the user to reconcile.
   static func writeFailure(_ message: String) -> String { "Not saved. \(message)" }
 
+  /// The edit sheet saved and the word is not in the library afterwards. Rare, and deliberately not
+  /// specific: the reasons `CustomWordsManager.add` can return silently are not distinguishable from
+  /// the caller, so naming one would be a guess presented as a fact.
+  static let newWordNotSaved =
+    "That word could not be saved. Check it does not already exist in your words."
+
+  /// The canonical already existed, so the library kept what it had and the spelling was not added.
+  /// Names the surviving word, because the way forward is to pick it from the list.
+  static func newWordAlreadyExists(canonical: String) -> String {
+    "\"\(canonical)\" already exists and was left as it is. Choose it from the list instead to "
+      + "add this spelling."
+  }
+
   /// The subtitle under a candidate: what accepting it would do, then how much that word already
   /// carries. Singular matters — "1 spellings already saved" is the kind of thing users screenshot.
   static func rowSubtitle(spellingCount: Int) -> String {
@@ -57,6 +70,10 @@ enum QuickAddPanelCopy {
       "Your selection could not be read. You can still add the word by hand below."
     case .selectionTooLong:
       "That selection is too long to be a word. Select just the word and try again."
+    case .wordsUnavailable:
+      // The plan's exact wording (§3, "Refresh before ranking"). Capital W on Words because that is
+      // what the feature is called in Settings, and a user reading this has to find it there.
+      "Your Words could not be refreshed, so there is nothing to match against yet. Try again."
     }
   }
 }
