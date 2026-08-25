@@ -74,6 +74,10 @@ public final class WisprBootstrapper {
   /// lives as long as the app — which is what "runs on every launch" requires.
   let whisperKitRetirement: WhisperKitLegacyUpgradeCoordinator?
   let audioDeviceList: AudioDeviceList
+  /// #2376 C7: the Appearance page's window onto the recording pill. A
+  /// view-facing home like the nine beside it, injected into every window root
+  /// that hosts Settings.
+  let pillAppearance: PillAppearanceModel
   let inputDevicePreferenceReconciler: InputDevicePreferenceReconciler
   let aiAvailability: AIAvailabilityCoordinator
   let keychainManager: KeychainManager
@@ -498,18 +502,37 @@ public final class WisprBootstrapper {
       // and that captures weakly. `WisprBootstrapper` owns the service for the
       // app's lifetime regardless.
       grantAccessibility: { _ = permissions.requestAccessibilityAccess() },
-      // **THE SEAM PHASE 4 REPLACES, and it is a closure so that it can be.**
-      // The director lives for the app's lifetime, so a stored pair would freeze
-      // the user's choice at launch: a picker would appear to work, change
-      // nothing, and only take effect after a relaunch.
+      // **THE SEAM PHASE 3 LEFT, NOW SPENT** (#2376 Phase 4, C6). It is a closure
+      // so that it can be: the director lives for the app's lifetime, so a stored
+      // pair would freeze the user's choice at launch — a picker would appear to
+      // work, change nothing, and only take effect after a relaunch.
       //
-      // Phase 3 returns the constant the current code already produces — the
-      // classic capsule without words, the reading well with them. Phase 4
-      // replaces this closure's BODY with a settings-backed snapshot and nothing
-      // else: not `PillCatalog.entry`, not `DesignResolution`, not the call site,
-      // not where the director resolves capability. If Phase 4 finds itself
-      // changing any of those, this seam was wrong.
-      selections: { .shipped })
+      // Phase 3 returned a constant and predicted that Phase 4 would replace this
+      // closure's BODY and nothing else: not `PillCatalog.entry`, not
+      // `DesignResolution`, not the call site, not where the director resolves
+      // capability. That held — this is the only line of composition that moved.
+      //
+      // `settings` is captured strongly, exactly as `position:` above captures it,
+      // and the bootstrapper owns both for the app's lifetime so there is no
+      // cycle. Every party is already `@MainActor`, so there is no hop and nothing
+      // to make `Sendable`.
+      selections: {
+        PillDesignSelections(
+          withoutWords: settings.recordingPillDesignWithoutWords,
+          withWords: settings.recordingPillDesignWithWords)
+      })
+
+    // #2376 C7: the Appearance page's window onto the pill. Built HERE because
+    // this is where the live-preview bridge already is, so the picker reads the
+    // same capability the director does rather than re-deriving one.
+    let pillAppearance = PillAppearanceModel(
+      settings: settings, capability: livePreviewInstallation.bridge.wordsCapability)
+    // Removal suppression is the one capability input no settings key records, so
+    // it has to be pushed. Weak, for the reason every other hook into this limb is
+    // weak: a settings page must never be what keeps it alive.
+    livePreview.onWordsCapabilityMayHaveChanged = { [weak pillAppearance] in
+      pillAppearance?.capabilityDidChange()
+    }
 
     // #1701 Chunk 2: bulk-import-enrichment producer, a sibling of
     // `contactsImportCoordinator` on the same alias-suggester permit lane.
@@ -1055,6 +1078,7 @@ public final class WisprBootstrapper {
     self.egOneRuntime = egOneRuntime
     self.modelDelivery = modelDelivery
     self.audioDeviceList = audioDeviceList
+    self.pillAppearance = pillAppearance
     self.inputDevicePreferenceReconciler = inputDevicePreferenceReconciler
     self.aiAvailability = aiAvailability
     self.keychainManager = keychainManager
@@ -1264,6 +1288,7 @@ private struct MainWindowRoot: View {
       .environment(b.appWindowCoordinator)
       // The nine view-facing homes (epic #763).
       .environment(b.settings)
+      .environment(b.pillAppearance)
       .environment(b.permissions)
       .environment(b.customWordsCoordinator)
       .environment(b.contactsImportCoordinator)

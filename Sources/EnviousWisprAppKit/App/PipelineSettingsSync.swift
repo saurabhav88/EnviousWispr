@@ -269,6 +269,8 @@ final class PipelineSettingsSync {
       break  // UI-only; applied to NSApp.appearance by the app shell (#1047).
     case .overlayPillPosition:
       break  // #1341: UI-only; read at fresh panel creation.
+    case .recordingPillDesignWithoutWords, .recordingPillDesignWithWords:
+      break  // #2376: UI-only; read at the start of the next fresh recording.
     case .showBluetoothTips:
       break  // #1480: UI-only; read by BluetoothAwarenessPresenter, no pipeline sync.
     case .playRecordingSounds, .recordingSoundPairing:

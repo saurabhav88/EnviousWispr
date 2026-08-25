@@ -1,4 +1,5 @@
 import CoreGraphics
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -69,11 +70,32 @@ struct PillCatalogRecordingParityTests {
         for: .recording(audioLevel: 0, design: .readingWell), id: PresentationID()
       ).definition)
 
+    let levelRail = try #require(
+      PillCatalog.entry(for: .recording(audioLevel: 0, design: .levelRail), id: PresentationID())
+        .definition)
+
     #expect(classic.requestedWidth == .fixed(185))
     #expect(readingWell.requestedWidth == .fixed(400))
+    // 288 since #2376 round 5, measured from 279pt of locked content rather than
+    // chosen. LITERAL on purpose: this suite is the guard ON the number, so a pin
+    // that read `RecordingPillDesign.levelRail.width` would agree with whatever
+    // that becomes and guard nothing.
+    #expect(levelRail.requestedWidth == .fixed(288))
     #expect(classic.reservesFixedHeight == 92)
     #expect(readingWell.reservesFixedHeight == nil)
-    #expect(classic.requestedWidth != readingWell.requestedWidth)
+    // **The same 92 as the capsule, and that is inherited rather than repeated.**
+    // It is the without-words NOTICE BUDGET: the #1060 banner is the only thing
+    // that grows such a pill, and a design that cannot hold words is handed a
+    // no-op growth callback, so anything over the reserved box is clipped in
+    // silence.
+    #expect(levelRail.reservesFixedHeight == 92)
+
+    // **Every PAIR must differ, not just the original two.** Asserting only that
+    // classic and readingWell disagree would stay green with a third design that
+    // rendered as a copy of either — which is this phase's named regression
+    // arriving as a feature.
+    let widths = [classic, readingWell, levelRail].map(\.requestedWidth)
+    #expect(Set(widths.map(String.init(describing:))).count == widths.count, "\(widths)")
   }
 
   /// The recording pill still announces, and still says the same sentence
@@ -150,6 +172,11 @@ struct PillCatalogRecordingParityTests {
   func designCapabilities() {
     #expect(RecordingPillDesign.classic.canHoldWords == false)
     #expect(RecordingPillDesign.readingWell.canHoldWords)
-    #expect(RecordingPillDesign.allCases.count == 2, "a design was added without a frozen row")
+    #expect(RecordingPillDesign.levelRail.canHoldWords == false)
+    // Raised from 2 to 3 by #2376 C5, which added `.levelRail` WITH its frozen
+    // geometry row below and its own suite. The tripwire is doing its job: it
+    // fired, and the response was to add the rows a new design owes rather than
+    // to widen the number.
+    #expect(RecordingPillDesign.allCases.count == 3, "a design was added without a frozen row")
   }
 }

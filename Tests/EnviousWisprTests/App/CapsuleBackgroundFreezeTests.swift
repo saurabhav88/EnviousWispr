@@ -148,8 +148,8 @@ struct CapsuleBackgroundFreezeTests {
   /// **The first version of this checked for a gate keyword within six lines of
   /// each palette reference, and it was wrong in the way this repo keeps
   /// recording: a comparison narrower than the language.** `previewHeader` is
-  /// reached only from `if usesPreviewLayout`, so every line in it is gated and
-  /// none of them says so. Lexical proximity is not the property; reachability is,
+  /// reached only from the chrome's `.meterStrip` header case, so every line in it
+  /// is gated and none of them says so. Lexical proximity is not the property; reachability is,
   /// and the honest way to check reachability cheaply is to scope the check to the
   /// one type where a leak is possible.
   ///

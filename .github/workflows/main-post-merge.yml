@@ -49,6 +49,15 @@ env:
   XCODE_PROJECT: EnviousWispr.xcodeproj
   XCODE_SCHEME: EnviousWispr
   XCODE_RELEASE_SCHEME: EnviousWispr-Release
+  # Xcode forwards TEST_RUNNER_* into the test process, stripping the prefix; an
+  # INHERITED variable does not arrive at all, so a suite cannot answer "am I on a
+  # hosted runner" by reading the runner's own CI. Measured both ways (#2376).
+  #
+  # What this gates: rows that freeze RENDERED TEXT GEOMETRY. Those numbers are a
+  # reading of one Mac's font metrics — eleven of twelve failed here while all
+  # twelve passed on the development machine, same commit. The claims that travel
+  # are asserted separately and run in both places.
+  TEST_RUNNER_CI: "true"
 
 # Job layout (#1994). This ran as ONE job until 2026-08-12 and grew into its
 # 45-minute cap: eleven completed runs measured 34.7 min (min) / 40.4 (median) /

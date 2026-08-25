@@ -244,6 +244,24 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// starting a competing one.
   private var removalDrain: Task<Void, Never>?
 
+  /// **Called when `wordsCapability` may have changed for a reason no observable
+  /// setting records** (#2376 Phase 4, round 4).
+  ///
+  /// Every other input to that property is settings-backed, so a SwiftUI page
+  /// reading it registers a dependency and refreshes by itself. Removal
+  /// suppression is the exception: it is a private field on a class that is not
+  /// `@Observable`, and the capability's guard returns on it BEFORE any settings
+  /// read — so during a drain the page has no dependency on anything at all, and
+  /// `endRemovalSuppression()` cannot invalidate it. The Appearance picker would
+  /// keep the with-words designs greyed with the removal sentence until some
+  /// unrelated redraw, and the inverse stale state is reachable too.
+  ///
+  /// A callback rather than making this class `@Observable`: the whole heart path
+  /// reads it at 20 Hz, and changing its invalidation semantics to publish one
+  /// settings page is a blast radius nobody asked for. Weak at the call site, so
+  /// a settings page can never be what keeps the limb alive.
+  var onWordsCapabilityMayHaveChanged: (@MainActor () -> Void)?
+
   /// `selectedRoute` answers "which engine is chosen right now" and is read once
   /// per recording. `isPreviewOn` is the user's toggle ALONE — support is the
   /// route's own answer (`isSupportedOnThisSystem`), so combining them here is
@@ -266,6 +284,49 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   var isEnabledForGeometry: Bool {
     if let snapshot = recordingSnapshot { return snapshot.enabled }
     return selectedRoute().isSupportedOnThisSystem() && isPreviewOn()
+  }
+
+  /// Why the NEXT recording can or cannot show words, with its reason attached
+  /// (#2376 Phase 4, C4; corrected by cloud review on C7).
+  ///
+  /// **This answers a DIFFERENT QUESTION from `isEnabledForGeometry`, and the
+  /// difference is the whole point.** That property answers "what is THIS
+  /// recording doing", so it reads the frozen snapshot — a pill already on screen
+  /// must not resize because a setting moved underneath it. This answers "what
+  /// will the NEXT recording do", which is what a settings page has to say, and
+  /// so it reads LIVE and ignores the snapshot entirely.
+  ///
+  /// **An earlier version honoured the snapshot and that was a user-visible
+  /// defect, found by cloud review rather than by the equivalence test that was
+  /// supposed to protect this.** Settings is reachable while recording — the menu
+  /// item carries no recording gate, and the Live Preview toggle is disabled only
+  /// when no engine is available — so a user could start a take, switch Live
+  /// Preview off, open Appearance, and be told "Live Preview is on, so the pill
+  /// shows your words" about a next recording where it will not be. That
+  /// contradicts the panel's own promise that changes apply the next time you
+  /// record.
+  ///
+  /// **The comment that made it survive is worth naming, because it is the shape
+  /// this repo ranks worst.** The known-limit note here used to say the picker
+  /// "reads this from Settings, outside a recording, where no snapshot exists".
+  /// That sentence asserted a premise nobody checked and told the next reader the
+  /// question was closed. It was false: Settings is available during a recording.
+  ///
+  /// So the two properties AGREE outside a recording and may DIVERGE during one,
+  /// which is asserted in both directions by
+  /// `PillWordsCapabilityTests` rather than left to intention.
+  /// **The claim this makes is exact and is what the tests hold it to: this is
+  /// what `setRecording(true)` WOULD freeze if a recording started right now.**
+  /// Stated that way rather than as "the live settings" because the first
+  /// correction here fixed the liveness and still missed a condition — the
+  /// suppression below — and a property described by its INPUTS invites exactly
+  /// that, while one described by the decision it mirrors names its own
+  /// completeness criterion. The order matches the freeze's, so removal outranks
+  /// the rest here for the same reason it does there.
+  var wordsCapability: PillWordsCapability {
+    guard !isRemovingModel else { return .modelBeingRemoved }
+    guard selectedRoute().isSupportedOnThisSystem() else { return .engineUnsupported }
+    return isPreviewOn() ? .available : .previewOff
   }
 
   // MARK: - Lifecycle
@@ -641,6 +702,9 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     }
 
     isRemovingModel = true
+    // The suppression BEGINS here, so a page already on screen stops offering
+    // what the next recording will not deliver.
+    onWordsCapabilityMayHaveChanged?()
 
     // **CAPTURE EVERY HOLDER BEFORE RELEASING ANYTHING.** The shared teardown
     // clears `preparationTask` on its way through, so reading it afterwards
@@ -675,6 +739,10 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// Removal is over: previews may run again.
   func endRemovalSuppression() {
     isRemovingModel = false
+    // And it ENDS here. Without this the picker keeps the removal sentence up
+    // after the files are gone, which is the direction a user actually meets:
+    // the drain finishes while they are looking at the page.
+    onWordsCapabilityMayHaveChanged?()
   }
 
   /// The shared teardown: stop the live session, then drop the cached engine.

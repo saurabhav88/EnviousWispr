@@ -19,9 +19,14 @@ struct AppearanceSettingsView: View {
 
     SettingsContentView {
       // No section eyebrow or restated description here: the page-header card
-      // already introduces the page ("Appearance — Choose how EnviousWispr looks
-      // in light and dark") and each card describes its own mode. Say it once,
-      // then show the choices (founder, 2026-07-03).
+      // already introduces the page and each card describes its own mode. Say it
+      // once, then show the choices (founder, 2026-07-03).
+      //
+      // **#2376: that header no longer tells the whole truth and was revised with
+      // this change.** It read "Choose how EnviousWispr looks in light and dark",
+      // which was complete while theme and pill position were the only settings
+      // here; a pill-design picker on the same page makes it a description of one
+      // section rather than of the page.
       LazyVGrid(columns: columns, spacing: 12) {
         ForEach(AppearancePreference.allCases, id: \.self) { preference in
           AppearanceCard(
@@ -48,6 +53,9 @@ struct AppearanceSettingsView: View {
           selection: $settings.overlayPillPosition
         )
       }
+
+      // #2376: which pill is drawn while dictating, per capability group.
+      RecordingPillAppearancePanel()
     }
   }
 }

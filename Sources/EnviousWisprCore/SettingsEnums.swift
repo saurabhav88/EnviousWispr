@@ -35,6 +35,46 @@ public enum LivePreviewEngineChoice: String, CaseIterable, Sendable {
   case universal
 }
 
+/// Which recording pill the user gets (#2375 Phase 3; moved here by #2376 C4/C6).
+///
+/// **A DESIGN, not a capability.** Whether the machine can show words as you
+/// speak is a capability the director reads; which pill is drawn is a choice the
+/// user makes. Keeping those two vocabularies apart is what lets one change
+/// without touching the other.
+///
+/// **It lives in Core because a SETTING persists it**, and `SettingsManager` is
+/// in Services. Only the identity is here: `canHoldWords`, `width`,
+/// `reservedHeight` and `chrome` are an AppKit extension, because Core has no
+/// business knowing a pill's pixels. Persisted by rawValue, which derives from
+/// the case NAMES — `recordingPillDesignRawValuesAreStable` pins them, because a
+/// rename would silently orphan every saved selection to the fallback.
+///
+/// **`package`, not `public`, and it is forced rather than stylistic.** A public
+/// non-frozen enum from another module makes every switch over it demand
+/// `@unknown default`, which would destroy this phase's exhaustive-routing
+/// requirement — a design added later could then render as a neighbour by falling
+/// through. `package` keeps the compiler's exhaustiveness and is already used
+/// cross-module in this build.
+package enum RecordingPillDesign: String, Equatable, Sendable, CaseIterable {
+  /// The rainbow-lips capsule: a fixed 185x92 interaction frame that holds the
+  /// normal capsule, the locked state and the #1060 notice expansion without
+  /// resizing on every morph.
+  case classic
+  /// The wide panel that shows words as you speak. Content-sized from the first
+  /// frame so it does not visibly snap as lines wrap.
+  ///
+  /// **`.readingWell`, deliberately not `.livePreview`.** Naming a design after
+  /// the capability that enables it makes the settings group label and the card
+  /// label the same word, and forecloses a second with-words design before one
+  /// exists. The capability keeps its own name.
+  case readingWell
+  /// A wider capsule carrying the clock beside a live rainbow level rail, and no
+  /// lips mark (#2376 Phase 4, C5). Named for what it DRAWS, following
+  /// `.readingWell`'s reasoning; it says nothing about words or preview, so it
+  /// survives a capability rename.
+  case levelRail
+}
+
 /// Where the recording pill (and every transient overlay sharing its window —
 /// polishing, warnings, cold-start notices, the Bluetooth card) appears on
 /// screen. Persisted by rawValue; unknown/missing values resolve to `.top`.

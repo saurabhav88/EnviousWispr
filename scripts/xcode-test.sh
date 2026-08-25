@@ -115,7 +115,16 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
   # Xcode forwards TEST_RUNNER_* variables to the test process after removing
   # the prefix. This keeps AppLogger tests away from the running dev app's
   # ~/Library/Logs/EnviousWispr/app.log (#2279).
-  TEST_RUNNER_EW_APP_LOG_DIRECTORY="$APP_LOG_DIR" xcodebuild test \
+  #
+  # `CI` is forwarded the same way and for the same reason: an INHERITED variable
+  # does not reach the test process at all. Measured 2026-08-25 two ways on one
+  # suite — with `CI=true` exported into this script a gate reading it still ran,
+  # and with `TEST_RUNNER_CI=true` the same gate skipped. So a suite asking "am I
+  # on a hosted runner" cannot read the runner's own variable, and a gate written
+  # against it fails OPEN, which is how a machine-dependent assertion reaches CI
+  # while its author believes it is gated (#2376 Phase 4).
+  TEST_RUNNER_EW_APP_LOG_DIRECTORY="$APP_LOG_DIR" \
+  TEST_RUNNER_CI="${CI:-}" xcodebuild test \
     -project "$PROJECT" \
     -scheme "$scheme" \
     -configuration "$config" \

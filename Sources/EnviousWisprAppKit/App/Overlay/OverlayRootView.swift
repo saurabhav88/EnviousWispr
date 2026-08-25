@@ -78,6 +78,26 @@ struct OverlayRootView: View {
     sendEvent(.action(presentation.id, action))
   }
 
+  /// Send a NOTICE's own action (#2376 Phase 4, C3).
+  ///
+  /// **The literal is gone, and that is the point.** This site used to dispatch
+  /// `.discardRecovery` and `.grantAccessibility` by name while `PillCatalog`
+  /// carried the same two values on the model, so `NoticeModel.action` had no
+  /// production reader at all — a field set by two rows and read by nothing but
+  /// the model's own `==`.
+  ///
+  /// **There is no `??` fallback to the old literal, deliberately.** A fallback
+  /// would reinstate exactly the duplicate authority this deletes, and would do
+  /// it silently: a row that lost its action would keep working and nothing would
+  /// say so. A button with no action does not render at all
+  /// (`RecoveryNoticeView` and `AccessibilityToastView` both bind `if let
+  /// action`), and `noticeActionsAreCarriedByEveryKindThatDrawsAButton` sweeps the
+  /// catalog's closed set so a row cannot lose one unnoticed.
+  private func dispatch(_ action: NoticeAction?, on presentation: PillDefinition) {
+    guard let action else { return }
+    press(action.action, on: presentation)
+  }
+
   @ViewBuilder
   private func content(for presentation: PillDefinition) -> some View {
     switch presentation.content {
@@ -122,18 +142,25 @@ struct OverlayRootView: View {
     }
   }
 
-  /// **`usesPreviewLayout` SURVIVES this chunk, and that is the boundary rather
-  /// than an oversight** (#2375 C3b). Two adapters existed and only one is
-  /// deleted: the layout bundle is gone, and this boolean is still handed to
-  /// `RecordingOverlayView` with its internal uses untouched. It is DERIVED —
-  /// its only input is the captured design — so it cannot disagree with the
-  /// catalog independently. Phase 4 replaces it with the design itself.
+  /// **`usesPreviewLayout` IS GONE, and the design itself is what the leaf gets**
+  /// (#2376 Phase 4, C2). #2375 C3b deleted the layout bundle and left this
+  /// boolean as the declared boundary; it is now replaced by
+  /// `RecordingPillChrome`, a value carrying what the pill DRAWS. `canHoldWords`
+  /// survives untouched as a CAPABILITY fact, read by
+  /// `OverlayRenderModel.setRecordingProviders` to decide whether a live-preview
+  /// provider is installed at all. It never reaches a view.
   ///
   /// **The design is NON-OPTIONAL, and an earlier version of this took an
   /// optional and fell back to `.classic`.** The definition's own recording case
   /// carries the design, so the caller binds it there and nothing here can
-  /// substitute a second answer — which is exactly the arrangement this chunk
-  /// deletes, and I had rebuilt a small one inside the fix for it.
+  /// substitute a second answer — which is exactly the arrangement #2375 C3b
+  /// deleted, and a small one had been rebuilt inside the fix for it.
+  ///
+  /// **The framing switch is EXHAUSTIVE over `RecordingPillDesign` and carries no
+  /// `default:`.** A default would let a design added later render inside a
+  /// neighbour's frame — correct model data with the wrong geometry, which is
+  /// this phase's named regression arriving through the one construct that hides
+  /// it from the compiler.
   @ViewBuilder
   private func recording(
     design: RecordingPillDesign, position: OverlayPillPosition
@@ -143,15 +170,20 @@ struct OverlayRootView: View {
       recordingElapsedProvider: model.recordingElapsedProvider,
       livePreviewProvider: model.livePreviewProvider,
       onContentHeightChange: model.onContentHeightChange,
-      usesPreviewLayout: design.canHoldWords,
+      chrome: design.chrome,
       lockState: lockState.value,
       noticeState: noticeState.value)
 
-    if design.canHoldWords {
+    switch design {
+    case .readingWell:
       // Width only. The height is content-driven so the pill earns its size a
       // line at a time rather than snapping once the real height is measured.
       view.frame(width: design.width)
-    } else {
+    case .classic, .levelRail:
+      // The shared without-words arm: both reserve a fixed interaction frame, and
+      // both do it for the same reason — the #1060 banner has to fit a box neither
+      // can grow out of.
+      //
       // #1341: Bottom bottom-aligns, Top centres. Centring in Bottom leaves ~24
       // points of invisible space under a ~44-point capsule, which mutes the
       // Bottom offset and visibly misaligns the polishing pill that replaces it.
@@ -174,13 +206,21 @@ struct OverlayRootView: View {
     case .ready:
       ColdStartNoticeView(title: notice.text, subtitle: notice.secondaryText, icon: .ready)
     case .notification:
-      NotificationOverlayView(message: notice.text, style: Self.style(for: notice.severity))
+      NotificationOverlayView(
+        message: notice.text, style: Self.style(for: notice.severity),
+        isMultiline: notice.isMultiline)
     case .importStatus:
       ImportStatusOverlayView(message: notice.text)
     case .recovery:
-      RecoveryNoticeView(onDiscard: { press(.discardRecovery, on: presentation) })
+      RecoveryNoticeView(
+        title: notice.text, subtitle: notice.secondaryText,
+        accessibilityLabel: notice.accessibilityLabel ?? notice.text,
+        action: notice.action,
+        onAction: { dispatch(notice.action, on: presentation) })
     case .accessibilityToast:
-      AccessibilityToastView(onGrant: { press(.grantAccessibility, on: presentation) })
+      AccessibilityToastView(
+        text: notice.text, action: notice.action,
+        onAction: { dispatch(notice.action, on: presentation) })
     }
   }
 

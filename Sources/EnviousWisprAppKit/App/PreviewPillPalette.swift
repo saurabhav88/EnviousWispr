@@ -113,10 +113,16 @@ enum PreviewPillPalette {
 
   /// The #1060 notice banner.
   ///
-  /// **This one is why the palette exists.** The notice is rendered by BOTH
-  /// layouts from one `Text`, and its colour was a hardcoded white — invisible on
-  /// a light pill. It has to be selected on `usesPreviewLayout` at the call site,
-  /// with the capsule keeping `.white.opacity(0.95)` exactly.
+  /// **This one is why the palette exists.** The notice is rendered by EVERY
+  /// recording layout from one `Text`, and its colour was a hardcoded white —
+  /// invisible on a light pill.
+  ///
+  /// **It is selected by the DESIGN's chrome, not at the call site** (#2376
+  /// Phase 4, C2). `RecordingPillChrome.noticeInk` names an ink case and
+  /// `PillInk.notice` resolves it, so a design says which ink it wants and the
+  /// call site chooses nothing. The capsule keeps `.white.opacity(0.95)` exactly,
+  /// which `CapsuleBackgroundFreezeTests` pins by counting that literal's single
+  /// occurrence.
   static let notice = Color.stDynamic(
     lightRGB: (0.059, 0.039, 0.102, 0.88),
     darkRGB: (1.0, 1.0, 1.0, 0.95))

@@ -32,25 +32,10 @@ struct PresentationID: Hashable, Sendable {
 
 // MARK: - The recording pill's design
 
-/// Which recording pill the user gets (#2375 Phase 3, chunk C3a).
-///
-/// **A DESIGN, not a capability.** Whether the machine can show words as you
-/// speak is a capability the director reads; which pill is drawn is a choice.
-/// Until Phase 4 the two are locked together by a constant, and separating the
-/// vocabulary now is what lets Phase 4 change one without touching the other.
-///
-/// **`.readingWell`, deliberately not `.livePreview`.** Naming a design after
-/// the capability that enables it makes the settings group label and the card
-/// label the same word, and forecloses a second with-words design before one
-/// exists. The capability keeps its own name.
-enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
-  /// The rainbow-lips capsule: a fixed 185x92 interaction frame that holds the
-  /// normal capsule, the locked state and the #1060 notice expansion without
-  /// resizing on every morph.
-  case classic
-  /// The wide panel that shows words as you speak. Content-sized from the first
-  /// frame so it does not visibly snap as lines wrap.
-  case readingWell
+/// The PIXELS of a recording design. Its identity lives in `EnviousWisprCore`,
+/// because a setting persists it and `SettingsManager` is in Services; everything
+/// here is what AppKit knows and Core must not.
+extension RecordingPillDesign {
 
   /// Whether this design can display transcribed words while recording.
   ///
@@ -61,7 +46,7 @@ enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
   /// is on screen; C3a derived that value from this one and C3b deleted it.
   var canHoldWords: Bool {
     switch self {
-    case .classic: return false
+    case .classic, .levelRail: return false
     case .readingWell: return true
     }
   }
@@ -72,6 +57,52 @@ enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
     switch self {
     case .classic: return 185
     case .readingWell: return 400
+    // Wide enough that the rail is the pill's subject rather than an ornament
+    // beside the clock, and unmistakably not 185 at a glance. A CHOSEN number,
+    // not a measured one — there is no mockup in the tree — and the one value in
+    // this design a founder should move before it ships.
+    // 288, not the 260 this design was drawn at, and the 28 is MEASURED rather
+    // than chosen (#2376 Phase 4, round 5). The hands-free badge is inline —
+    // the reserved-box guard refused it a row of its own — and the locked row
+    // then wants 279pt: a ~45pt clock, 24 bars at 3pt with 2pt gaps, and a
+    // ~90pt badge. At 260 the badge or the rail is CLIPPED with nothing
+    // reporting it, and the thing being clipped is the only confirmation that
+    // the microphone stays open after the key is released.
+    //
+    // Three alternatives were measured and refused: shortening the label splits
+    // one mode across two names, since the reading well already says
+    // "Hands-free"; cutting the rail to 20 bars takes 20pt out of the audio
+    // history that is this design's whole point, and `barCount` is shared with
+    // the reading well; dropping the clock contradicts the 2026-08-19 founder
+    // decision that hands-free is the mode that needs one.
+    case .levelRail: return 288
+    }
+  }
+
+  /// What the Appearance picker calls this design.
+  ///
+  /// **On the design rather than in the picker, deliberately.** A per-design
+  /// table in the view would be a second one on day one — the drift shape this
+  /// phase exists to remove, one field over — and a design added later would
+  /// render with a blank card until somebody remembered the other list.
+  var displayName: String {
+    switch self {
+    case .classic: return "Capsule"
+    case .readingWell: return "Reading Well"
+    case .levelRail: return "Level Rail"
+    }
+  }
+
+  /// One sentence on the card, in the user's terms rather than ours. No em or en
+  /// dashes (GR-NO-DASHES).
+  var summary: String {
+    switch self {
+    case .classic:
+      return "A small capsule with the rainbow mark and a timer. The pill EnviousWispr has always shown."
+    case .readingWell:
+      return "A wide panel that shows your words as you speak, growing a line at a time."
+    case .levelRail:
+      return "A wider capsule with a live rainbow meter of your voice beside the timer."
     }
   }
 
@@ -79,10 +110,58 @@ enum RecordingPillDesign: Equatable, Sendable, CaseIterable {
   /// site. The classic pill reserves a fixed box; the reading well does not.
   var reservedHeight: CGFloat? {
     switch self {
-    case .classic: return 92
+    // **92 IS THE WITHOUT-WORDS NOTICE BUDGET, and it is inherited rather than
+    // chosen.** The #1060 in-panel banner is rendered by every layout from one
+    // `Text` inside the root stack, and a design that cannot hold words is handed
+    // a no-op growth callback by `OverlayRenderModel` — so it CANNOT resize its
+    // window when the banner arrives mid-recording. Measured 2026-08-25: the
+    // longest shipped banner fills this box EXACTLY, with zero headroom, and a
+    // three-line sentence measures 120 and would be clipped in silence. A 40 or
+    // 44-point box would clip the graceful-cap warning on a shipping path with no
+    // test able to see it, which is why `.levelRail` takes the same number as
+    // `.classic` rather than one sized to its own contents.
+    case .classic, .levelRail: return 92
     case .readingWell: return nil
     }
   }
+}
+
+/// Why the recording pill can or cannot show words as you speak (#2376 Phase 4).
+///
+/// **A REASON, where `LivePreviewBridge.isEnabledForGeometry` is a verdict.** The
+/// director only needs to know whether to size a pill for words; a settings page
+/// that greys out a whole group of designs has to say WHY, and a `Bool` cannot
+/// carry that. One sentence for both causes would be worse than none: it would
+/// tell a user on an unsupported machine to turn on a setting that would not help
+/// them.
+///
+/// **Additive, and the verdict it sits beside is untouched.** Phase 3's seam
+/// comment forbids Phase 4 from changing where the director resolves capability,
+/// so this is produced alongside the property the director reads rather than
+/// replacing it.
+///
+/// **It reads LIVE while that verdict reads a frozen snapshot, and the difference
+/// is deliberate** (corrected by cloud review). The verdict answers "what is THIS
+/// recording doing", so a pill on screen keeps the geometry it was sized for.
+/// This answers "what will the NEXT recording do", which is the only question a
+/// settings page can honestly answer — and Settings is reachable DURING a
+/// recording, so a snapshot-backed answer would tell a user who just switched
+/// Live Preview off that their words will still be shown.
+/// `PillWordsCapabilityTests` asserts the agreement outside a recording and the
+/// divergence during one.
+enum PillWordsCapability: Equatable, Sendable, CaseIterable {
+  /// Words are available: an engine that runs here, and the preview turned on.
+  case available
+  /// The engine would run here; the user has the preview switched off.
+  case previewOff
+  /// The selected engine cannot run on this machine, so the switch would not help.
+  case engineUnsupported
+  /// The selected model is being removed, so the next recording is frozen wordless
+  /// however the switch is set. Transient, and the only cause here that resolves
+  /// itself: it lasts as long as the removal drain.
+  case modelBeingRemoved
+
+  var hasWords: Bool { self == .available }
 }
 
 /// Which design the user has chosen for each capability state.
@@ -101,12 +180,23 @@ struct PillDesignSelections: Equatable, Sendable {
     self.withWords = withWords
   }
 
-  /// The pair the shipped code produces, and what Phase 3 injects everywhere.
+  /// The pair the shipped code produces, and the FROZEN REFERENCE tests measure
+  /// against.
   ///
-  /// Phase 4 replaces the CLOSURE that returns this, never this constant's
-  /// meaning — it is the current behaviour written down, so a Phase 4 regression
-  /// is measurable against it.
+  /// **Production no longer reads it** (#2376 Phase 4). The bootstrapper's
+  /// selections closure is settings-backed, and this constant's job is to be the
+  /// thing those defaults are asserted to equal — one production authority, one
+  /// frozen reference, and a test saying they agree. It is kept rather than
+  /// deleted because 22 test call sites across 8 files use it as the neutral pair
+  /// for a director that is not about design selection.
   static let shipped = PillDesignSelections(withoutWords: .classic, withWords: .readingWell)
+
+  /// The design substituted when the chosen one cannot hold the capability's
+  /// content. Stated ONCE each rather than spelled at the branch that needs it.
+  static let canonicalWithWords: RecordingPillDesign = .readingWell
+  /// The design substituted when a with-words design is chosen for a pill that
+  /// will show no words.
+  static let canonicalWithoutWords: RecordingPillDesign = .classic
 
   /// Resolve the selection for a capability state, FAIL-CLOSED.
   ///
@@ -116,22 +206,40 @@ struct PillDesignSelections: Equatable, Sendable {
   /// true. `DesignResolution` cannot lie about which of the two happened, and a
   /// caller may assert on it, log it, or ignore it.
   ///
-  /// **No production caller can produce a mismatch this phase**, because
-  /// selections are constructed from `shipped`. That branch is covered by unit
-  /// tests only and ships no logging, telemetry or composition wiring. Phase 4
-  /// introduces the first real producer of an incompatible value and owns the
-  /// decision about what `substituted` should then cause.
+  /// **What `substituted` CAUSES is nothing, and that is the decision rather than
+  /// an omission** (#2376 Phase 4). Phase 3 recorded that Phase 4 introduces the
+  /// first real producer and owns this call. It does: two independently persisted
+  /// selections. But the picker cannot OFFER an incompatible design — it asks
+  /// `PillCatalog.offers`, which is defined in terms of this very function — so a
+  /// substitution is reachable only from a hand-edited plist or a downgrade. It
+  /// stays a returned value with no logging and no telemetry, and its
+  /// unreachability is asserted by the picker's cross-product rather than watched
+  /// for at runtime.
   func resolve(capabilityHasWords: Bool) -> DesignResolution {
     let chosen = capabilityHasWords ? withWords : withoutWords
-    // Written as an `if` rather than a `guard`, because the mismatch is the
-    // EXCEPTIONAL case and a guard whose success path is the exception reads
+    // Written as `if`s rather than `guard`s, because the mismatches are the
+    // EXCEPTIONAL cases and a guard whose success path is the exception reads
     // backwards to everyone after the author.
     if capabilityHasWords, !chosen.canHoldWords {
       // The capability can show words and the chosen design cannot hold them.
       // Substituting the canonical with-words design is the fail-closed answer:
       // the alternative is a pill that silently drops the feature it was enabled
       // for.
-      return DesignResolution(design: .readingWell, substituted: true)
+      return DesignResolution(design: Self.canonicalWithWords, substituted: true)
+    }
+    // **THE MIRROR DIRECTION, CLOSED IN #2376 C4, AND IT WAS NOT HYPOTHETICAL.**
+    // Phase 3 guarded only the case above, so a with-words design sitting in the
+    // without-words slot was accepted with `substituted: false` —
+    // `RecordingDirectorCaptureTests` MEASURES that combination installing a live
+    // display provider and resizing the window to 400x123 on a machine with no
+    // preview: a wide empty panel with nothing to put in it.
+    //
+    // C6 introduces the first producer that can reach this — two independently
+    // persisted selections, either of which a hand-edited plist or a downgrade
+    // can cross — so the guard lands one chunk BEFORE the thing that can trip it
+    // rather than one chunk after.
+    if !capabilityHasWords, chosen.canHoldWords {
+      return DesignResolution(design: Self.canonicalWithoutWords, substituted: true)
     }
     return DesignResolution(design: chosen, substituted: false)
   }
@@ -175,6 +283,39 @@ struct OverlayAnnouncement: Equatable, Sendable {
 enum OverlayWidth: Equatable, Sendable {
   case fixed(CGFloat)
   case measured
+}
+
+/// The one button a notice may carry.
+///
+/// **A struct rather than the tuple it replaces, because the button needs a
+/// THIRD value and a tuple cannot grow one** (#2376 Phase 4, C3). The shipped
+/// recovery pill spells its button's accessibility label as a bare literal
+/// inside the view — "Discard recovering recording" — with no field behind it, so
+/// nothing could read it, nothing could check it, and it was invisible to the
+/// catalog that owns every other word on that pill. A tuple's third element would
+/// have had to be restated positionally at every site; a struct names it once.
+///
+/// It is also what lets `NoticeModel`'s hand-written `==` shrink rather than
+/// grow: the tuple is why that operator had to compare two members by hand.
+struct NoticeAction: Equatable, Sendable {
+  /// What is printed on the button.
+  let label: String
+  /// What a screen reader says instead, where the printed label is too terse to
+  /// stand alone. `nil` means the label speaks for itself.
+  let accessibilityLabel: String?
+  /// What pressing it sends.
+  let action: PillAction
+
+  init(label: String, accessibilityLabel: String? = nil, action: PillAction) {
+    self.label = label
+    self.accessibilityLabel = accessibilityLabel
+    self.action = action
+  }
+
+  /// What VoiceOver should read: the explicit label where one is given, and the
+  /// printed one otherwise. Resolved HERE rather than at each leaf, so two leaves
+  /// cannot answer it differently.
+  var spokenLabel: String { accessibilityLabel ?? label }
 }
 
 /// The collapsed notice. Processing, clipboard fallback, warning, error,
@@ -228,27 +369,50 @@ struct NoticeModel: Equatable, Sendable {
   let kind: Kind
   let text: String
   let secondaryText: String?
+  /// What VoiceOver reads for the pill AS A WHOLE, where that is deliberately
+  /// different from what is printed on it.
+  ///
+  /// **Required rather than tidy, and exactly one pill needs it.**
+  /// `DictationNarrator.recoveryAccessibilityLabel` is pinned as deliberately
+  /// DIFFERENT from `recoveryTitle` — the title carries an ellipsis and the
+  /// spoken label does not — so folding it into `text` would ship an ellipsis
+  /// into VoiceOver and break a test that exists to keep them apart. `nil` means
+  /// the pill's own contents are what a screen reader should compose.
+  let accessibilityLabel: String?
   let severity: Severity
   /// A notice long enough to need wrapping renders multiline with a
   /// content-driven height. `.advisory` is the shipped case and its dwell is
   /// deliberately long enough to read (#1891).
+  ///
+  /// **Read by `NotificationOverlayView`, which is the leaf whose wrapping it
+  /// decides** (#2376 Phase 4, C3). That leaf used to re-derive the same fact
+  /// from its own style table as `self == .advisory`, so one pill's wrapping was
+  /// stated twice and the model's copy was the one nobody read; the style's copy
+  /// is deleted and this is the survivor.
+  ///
+  /// `.importStatus` also sets it, and its leaf pins a two-line CAP of its own.
+  /// Those are not the same question — this says the text wraps rather than being
+  /// clipped to one line, and the cap says how far — so the row is accurate and
+  /// the leaf is not duplicating it.
   let isMultiline: Bool
-  let action: (label: String, action: PillAction)?
+  let action: NoticeAction?
 
   static func == (a: NoticeModel, b: NoticeModel) -> Bool {
     a.kind == b.kind && a.text == b.text && a.secondaryText == b.secondaryText
+      && a.accessibilityLabel == b.accessibilityLabel
       && a.severity == b.severity
-      && a.isMultiline == b.isMultiline && a.action?.label == b.action?.label
-      && a.action?.action == b.action?.action
+      && a.isMultiline == b.isMultiline && a.action == b.action
   }
 
   init(
-    kind: Kind, text: String, secondaryText: String? = nil, severity: Severity = .neutral,
-    isMultiline: Bool = false, action: (label: String, action: PillAction)? = nil
+    kind: Kind, text: String, secondaryText: String? = nil, accessibilityLabel: String? = nil,
+    severity: Severity = .neutral,
+    isMultiline: Bool = false, action: NoticeAction? = nil
   ) {
     self.kind = kind
     self.text = text
     self.secondaryText = secondaryText
+    self.accessibilityLabel = accessibilityLabel
     self.severity = severity
     self.isMultiline = isMultiline
     self.action = action

@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 import SwiftUI
 import Testing
 
@@ -36,7 +37,7 @@ struct RecordingOverlayPreviewTypographyTests {
       recordingElapsedProvider: { 41 },
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
-      usesPreviewLayout: true,
+      chrome: RecordingPillDesign.readingWell.chrome,
       lockState: OverlayLockState(),
       noticeState: OverlayNoticeState(),
       initialPreview: display

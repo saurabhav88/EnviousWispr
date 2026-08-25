@@ -19,6 +19,16 @@ enum SettingsDefaultValues {
   // #1341: recording pill / status notices default to the top of the screen,
   // matching the fixed position every existing install already sees.
   static let overlayPillPosition: OverlayPillPosition = .top
+  /// #2376: which recording pill a user sees when the machine cannot show words
+  /// as they speak. The shipped capsule, so nobody's pill changes on upgrade.
+  static let recordingPillDesignWithoutWords: RecordingPillDesign = .classic
+  /// #2376: and when it can. The reading well, likewise unchanged.
+  ///
+  /// **These two are asserted to equal `PillDesignSelections.shipped`**, which is
+  /// the frozen pair every overlay test measures against. One production
+  /// authority, one frozen reference, and a test saying they agree — rather than
+  /// two constants that happen to match on the day they were written.
+  static let recordingPillDesignWithWords: RecordingPillDesign = .readingWell
 
   // #923: AI polish is ON by default, Apple Intelligence. Previously the cold
   // fallback was `.none` and onboarding wrote `.appleIntelligence` separately,

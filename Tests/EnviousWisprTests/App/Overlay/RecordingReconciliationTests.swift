@@ -53,6 +53,13 @@ struct RecordingReconciliationTests {
     host: any OverlayWindowHosting = WindowlessOverlayHost(),
     announce: @escaping @MainActor (OverlayAnnouncement) -> Void = { _ in },
     selections: @escaping @MainActor () -> PillDesignSelections = { .shipped },
+    // **The capability is a parameter because #2376 C4 made it the only way two
+    // transitions can resolve to different designs.** Before that a fixture could
+    // hand out mismatched selections — a with-words design under a without-words
+    // capability — and the director would install it, which is precisely the
+    // combination C4 now refuses. A test that still did it would be asserting on
+    // a state the product cannot reach.
+    capability: @escaping () -> Bool = { false },
     onCapabilityRead: @escaping () -> Void
   ) -> OverlayDirector {
     OverlayDirector(
@@ -63,8 +70,10 @@ struct RecordingReconciliationTests {
         recordingDidChange: bridge,
         isEnabledForGeometry: {
           onCapabilityRead()
-          return false
+          return capability()
         },
+        // Derived from this fixture's own verdict, never stated beside it.
+        wordsCapability: { capability() ? .available : .previewOff },
         display: { .off }),
       grantAccessibility: {},
       selections: selections,
@@ -166,7 +175,7 @@ struct RecordingReconciliationTests {
     var bridge: [Bool] = []
     var director: OverlayDirector?
     var reentered = false
-    var selectionReads = 0
+    var capabilityReads = 0
 
     // **The two transitions must be DISTINGUISHABLE, and an earlier version made
     // them identical.** Both were fresh recordings under the shipped selections,
@@ -177,14 +186,23 @@ struct RecordingReconciliationTests {
     //
     // The INNER transition resolves first, to reading well; the stale outer one
     // resolves second, to classic. The design on screen names the winner.
+    //
+    // **The two are told apart by the CAPABILITY, not by mismatched selections**
+    // (#2376 C4). An earlier version handed the first read a with-words design
+    // under a without-words capability, which C4 now refuses and substitutes — so
+    // both transitions resolved to classic and the discriminator quietly
+    // vanished. Varying the capability keeps the shipped pair on both reads and
+    // asks for two legal answers.
+    //
+    // The counter increments on RETURN rather than on entry, which is what makes
+    // the inner transition read `1`: the outer call is the one that triggers
+    // reentrancy, so it starts first and returns last.
     let d = Self.makeDirector(
       queue: queue,
       bridge: { bridge.append($0) },
-      selections: {
-        selectionReads += 1
-        return selectionReads == 1
-          ? PillDesignSelections(withoutWords: .readingWell, withWords: .readingWell)
-          : .shipped
+      capability: {
+        capabilityReads += 1
+        return capabilityReads == 1
       },
       onCapabilityRead: {
         // The reentrant winner is another RECORDING, so the slot ends up holding
@@ -204,7 +222,7 @@ struct RecordingReconciliationTests {
     #expect(
       bridge == [true, true, true],
       "expected both recording effects followed by reconciliation to the newer recording")
-    #expect(selectionReads == 2, "both transitions were not resolved")
+    #expect(capabilityReads == 2, "both transitions were not resolved")
     #expect(
       d.renderModel.presentation?.recordingDesign == .readingWell,
       "the stale outer recording overwrote the newer recording")
