@@ -406,6 +406,20 @@ ew_lane_remove_tree() {
   # ASK THE KERNEL WHAT IS MOUNTED UNDER HERE BEFORE REMOVING ANYTHING. This is
   # the check that closes the class; `-xdev` below is the floor for where the
   # table cannot be read.
+  # KNOWN LIMIT, ACCEPTED RATHER THAN FIXED (#2408 review r12). This reads a
+  # SNAPSHOT of the mount table and the traversal below happens afterwards, so a
+  # mount created in that window is not seen. **No shell primitive closes it** -
+  # the kernel-level answer is an `openat2` walk with `RESOLVE_NO_XDEV`, which
+  # bash cannot express - and inventing a mechanism I cannot execute is precisely
+  # how rounds 6, 7 and 9 of this PR each shipped a defect.
+  #
+  # State the residue precisely rather than as "there is a race", because the
+  # precise version is much smaller: `-xdev` runs DURING the traversal and is
+  # enforced by the kernel at the moment find would cross a device boundary, so a
+  # mount that appears mid-walk on a different device is still refused. What
+  # survives is a SAME-DEVICE bind mount, on Linux, created inside a >7-day-old
+  # lane under a gitignored `build/`, in the window between this read and the
+  # walk reaching that path.
   if ew_lane_contains_a_mount "$entry"; then
     echo "ew_lane_remove_tree: something is mounted at or below $entry - refusing" >&2
     return 1
