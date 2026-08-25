@@ -809,68 +809,100 @@ public struct WordCorrector: Sendable {
             }
 
             if let candidates = multiAliasByCount[span] {
-              var bestScore = 0.0
-              var secondBest = 0.0
-              var bestCanonical = ""
-              var bestAlias = ""
+              // #2312: TWO attempts when the span's LAST token carries a glued
+              // domain suffix, mirroring the single-word path's proven shape.
+              //
+              // The bug this fixes is not "the peeled form was never tried" — it
+              // is that the UNPEELED form already scores above threshold and
+              // wins. `international platforn.com` against the alias
+              // `international platform` scores 0.890, clears 0.85, and the
+              // accept branch then rebuilds the span from `lastSuffix`, which is
+              // EMPTY because the token ends in a letter. The dictated `.com` is
+              // destroyed by a correction meant only to fix a spelling.
+              //
+              // So a "try peeled only if unpeeled failed" rule would not fix
+              // anything. Both attempts are scored, then compared.
+              let strippedCores = slice.map { stripPunctuation($0) }
+              let domainSplit = strippedCores.last.flatMap { Self.splitDomainSuffix($0) }
 
-              for entry in candidates {
-                let alias = entry.alias
-                let canonical = entry.canonical
-                let s = score(phrase, against: alias)
-                if s > bestScore {
-                  if bestCanonical != canonical { secondBest = bestScore }
-                  bestScore = s
-                  bestCanonical = canonical
-                  bestAlias = alias
-                } else if s > secondBest && canonical != bestCanonical {
-                  secondBest = s
+              let unpeeledOutcome = multiWordFuzzyAttempt(
+                phrase: phrase, rawPhrase: rawPhrase, candidates: candidates,
+                canonicalToWord: canonicalToWord,
+                // Restricted only when a peel is available: with no suffix to
+                // swallow there is nothing for the restriction to protect, and
+                // narrowing the pool would silently drop today's ordinary matches.
+                domainShapedOnly: domainSplit != nil)
+
+              var peeledRawPhrase: String?
+              var peeledOutcome: MultiWordFuzzyAttemptOutcome = .noCandidate
+
+              if let domainSplit {
+                var peeledCores = strippedCores
+                peeledCores[peeledCores.count - 1] = domainSplit.bare
+                // Peeling can EXPOSE a reserved trigger word the slice guard
+                // above could not see: `emoji.com` is not `emoji` until the
+                // suffix comes off. Re-check what the peel actually produced.
+                let exposesReservedWord = peeledCores.contains {
+                  Self.emojiTriggerReservedWords.contains($0.lowercased())
+                }
+                if !exposesReservedWord {
+                  let peeledRaw = peeledCores.joined(separator: " ")
+                  peeledRawPhrase = peeledRaw
+                  peeledOutcome = multiWordFuzzyAttempt(
+                    phrase: peeledRaw.lowercased(), rawPhrase: peeledRaw,
+                    candidates: candidates, canonicalToWord: canonicalToWord,
+                    domainShapedOnly: false)
                 }
               }
 
-              let margin = bestScore - secondBest
-              // Phase 2 (#638) §8.2 item 1: lift multi-word threshold by +0.05
-              // when the candidate span includes any common stopword. Prevents
-              // "and we said" → "Andre" type degeneration.
-              let phraseTokens = Set(phrase.components(separatedBy: " "))
-              let hasStopword = !phraseTokens.isDisjoint(with: Self.stopwords)
-              let stopwordPenalty = hasStopword ? 0.05 : 0.0
-              // Phase 2 (#638) §8.2 item 4: per-term override for the matched
-              // canonical, if any. Override is the absolute bar.
-              let multiOverride = canonicalToWord[bestCanonical.lowercased()]?
-                .minSimilarityOverride
-              let multiThreshold = multiOverride ?? (Self.multiWordThreshold + stopwordPenalty)
-              if bestScore >= multiThreshold,
-                margin >= Self.ambiguityMargin,
-                rawPhrase != bestCanonical
-              {
-                let (firstPrefix, _, _) = splitPunctuation(tokens[i])
-                let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
-                tokens.replaceSubrange(
-                  i..<(i + span), with: [firstPrefix + bestCanonical + lastSuffix])
-                appendReplacement(forCanonical: bestCanonical)
-                matched = true
-                #if DEBUG
-                  Self.logger.debug(
-                    "WordCorrector: type=multi-word-fuzzy source='\(rawPhrase)' target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(margin, format: .fixed(precision: 3)) stopword=\(hasStopword) override=\(multiOverride.map { String($0) } ?? "nil")"
-                  )
-                #endif
-                break
-              } else if bestScore > 0 {
-                #if DEBUG
-                  let reason: String
-                  if bestScore < multiThreshold {
-                    reason = "below_threshold"
-                  } else if margin < Self.ambiguityMargin {
-                    reason = "below_margin"
-                  } else {
-                    reason = "same_as_input"
-                  }
-                  Self.logger.debug(
-                    "WordCorrector: REJECT pass=multi-word-fuzzy source='\(rawPhrase)' best_target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(margin, format: .fixed(precision: 3)) threshold=\(multiThreshold, format: .fixed(precision: 3)) stopword=\(hasStopword) reason=\(reason)"
-                  )
-                #endif
+              let winner: (candidate: MultiWordFuzzyCandidate, peeled: Bool)
+              switch (unpeeledOutcome, peeledOutcome) {
+              case (.ambiguous, _), (_, .ambiguous):
+                // An ambiguous attempt is NOT "found nothing": letting the other
+                // attempt decide a span this one already judged uncertain is the
+                // defect PR #2298 round 17 fixed one pass over.
+                continue
+              case (.candidate(let unpeeled), .candidate(let peeled)):
+                // Cross-attempt ambiguity, which neither attempt's own margin can
+                // see: two internally-clear winners can still disagree with each
+                // other by less than the margin.
+                if unpeeled.canonical != peeled.canonical,
+                  abs(unpeeled.score - peeled.score) < Self.ambiguityMargin
+                {
+                  continue
+                }
+                winner = unpeeled.score >= peeled.score ? (unpeeled, false) : (peeled, true)
+              case (.candidate(let unpeeled), .noCandidate):
+                winner = (unpeeled, false)
+              case (.noCandidate, .candidate(let peeled)):
+                winner = (peeled, true)
+              case (.noCandidate, .noCandidate):
+                continue
               }
+
+              let (firstPrefix, _, _) = splitPunctuation(tokens[i])
+              let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
+              // Reattached UNLESS the canonical already specifies its own domain,
+              // the same rule Pass 4 applies — and BEFORE `lastSuffix`, so
+              // `platforn.com!` becomes canonical + `.com` + `!`.
+              let reattachedDomainSuffix =
+                winner.peeled && !Self.isDomainShaped(winner.candidate.canonical)
+                ? (domainSplit?.suffix ?? "") : ""
+
+              tokens.replaceSubrange(
+                i..<(i + span),
+                with: [
+                  firstPrefix + winner.candidate.canonical + reattachedDomainSuffix + lastSuffix
+                ])
+              appendReplacement(forCanonical: winner.candidate.canonical)
+              matched = true
+              #if DEBUG
+                let winningSource = winner.peeled ? (peeledRawPhrase ?? rawPhrase) : rawPhrase
+                Self.logger.debug(
+                  "WordCorrector: type=multi-word-fuzzy source='\(winningSource)' target='\(winner.candidate.canonical)' alias='\(winner.candidate.alias)' score=\(winner.candidate.score, format: .fixed(precision: 3)) margin=\(winner.candidate.margin, format: .fixed(precision: 3)) threshold=\(winner.candidate.threshold, format: .fixed(precision: 3)) stopword=\(winner.candidate.hasStopword) peeled=\(winner.peeled)"
+                )
+              #endif
+              break
             }
           }
         }
@@ -1225,6 +1257,104 @@ public struct WordCorrector: Sendable {
   /// uncertain -- the identical shape round 16 fixed one layer up, for the
   /// cross-attempt (unpeeled vs. peeled) comparison instead of this
   /// within-attempt one.
+  /// One Pass 2 fuzzy attempt's result (#2312).
+  ///
+  /// Mirrors `SingleAttemptFuzzyOutcome` deliberately, including its three-way
+  /// shape: "genuinely ambiguous" must stay distinguishable from "nothing scored
+  /// close", because collapsing them lets an in-attempt ambiguity read as "this
+  /// attempt found nothing" and hands the decision to the other attempt — the
+  /// defect round 17 of PR #2298 fixed one pass over.
+  ///
+  /// Carries more than the single-word version because Pass 2's debug line
+  /// reports alias, margin, threshold and stopword state, and recomputing those
+  /// at the call site would be a second place for them to drift.
+  private struct MultiWordFuzzyCandidate {
+    let canonical: String
+    let alias: String
+    let score: Double
+    let margin: Double
+    let threshold: Double
+    let hasStopword: Bool
+  }
+
+  private enum MultiWordFuzzyAttemptOutcome {
+    case candidate(MultiWordFuzzyCandidate)
+    case ambiguous
+    case noCandidate
+  }
+
+  /// Score one phrase against the Pass 2 pool, applying every gate this pass
+  /// already applied — stopword penalty, per-term override, best-vs-second
+  /// ambiguity margin — to THIS attempt independently (#2312).
+  ///
+  /// `domainShapedOnly` gates the pool exactly as it does for the single-word
+  /// path: the UNPEELED attempt passes `true`, because fuzzy is only safe
+  /// unpeeled when compared against an equally domain-shaped candidate — both
+  /// sides then carry a suffix, so nothing is silently swallowed. The PEELED
+  /// attempt passes `false` and sees the ordinary pool.
+  ///
+  /// The stopword check is recomputed per attempt rather than shared: peeling
+  /// can CHANGE it. `alpha and.com` carries the token `and.com` unpeeled and
+  /// `and` once peeled, and the check is exact token membership — so a shared
+  /// value would apply the wrong threshold to one of the two attempts.
+  private func multiWordFuzzyAttempt(
+    phrase: String,
+    rawPhrase: String,
+    candidates: [Lookups.AliasCanonical],
+    canonicalToWord: [String: CustomWord],
+    domainShapedOnly: Bool
+  ) -> MultiWordFuzzyAttemptOutcome {
+    var bestScore = 0.0
+    var secondBest = 0.0
+    var bestCanonical = ""
+    var bestAlias = ""
+
+    for entry in candidates {
+      if domainShapedOnly, !Self.isDomainShaped(entry.alias) { continue }
+      let candidateScore = score(phrase, against: entry.alias)
+      if candidateScore > bestScore {
+        if bestCanonical != entry.canonical { secondBest = bestScore }
+        bestScore = candidateScore
+        bestCanonical = entry.canonical
+        bestAlias = entry.alias
+      } else if candidateScore > secondBest, entry.canonical != bestCanonical {
+        secondBest = candidateScore
+      }
+    }
+
+    guard bestScore > 0 else { return .noCandidate }
+
+    let phraseTokens = Set(phrase.components(separatedBy: " "))
+    let hasStopword = !phraseTokens.isDisjoint(with: Self.stopwords)
+    let stopwordPenalty = hasStopword ? 0.05 : 0.0
+    let override = canonicalToWord[bestCanonical.lowercased()]?.minSimilarityOverride
+    let threshold = override ?? (Self.multiWordThreshold + stopwordPenalty)
+    let margin = bestScore - secondBest
+
+    guard bestScore >= threshold else {
+      #if DEBUG
+        Self.logger.debug(
+          "WordCorrector: REJECT pass=multi-word-fuzzy source='\(rawPhrase)' best_target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) threshold=\(threshold, format: .fixed(precision: 3)) stopword=\(hasStopword) domain_only=\(domainShapedOnly) reason=below_threshold"
+        )
+      #endif
+      return .noCandidate
+    }
+    guard margin >= Self.ambiguityMargin else {
+      #if DEBUG
+        Self.logger.debug(
+          "WordCorrector: REJECT pass=multi-word-fuzzy source='\(rawPhrase)' best_target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(margin, format: .fixed(precision: 3)) stopword=\(hasStopword) domain_only=\(domainShapedOnly) reason=below_margin"
+        )
+      #endif
+      return .ambiguous
+    }
+    guard rawPhrase != bestCanonical else { return .noCandidate }
+
+    return .candidate(
+      MultiWordFuzzyCandidate(
+        canonical: bestCanonical, alias: bestAlias, score: bestScore,
+        margin: margin, threshold: threshold, hasStopword: hasStopword))
+  }
+
   private enum SingleAttemptFuzzyOutcome {
     case candidate(canonical: String, score: Double)
     case ambiguous
