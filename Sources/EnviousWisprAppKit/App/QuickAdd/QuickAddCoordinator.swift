@@ -91,11 +91,21 @@ final class QuickAddCoordinator {
     var now: () -> Date = Date.init
   }
 
-  private let environment: Environment
+  private var environment: Environment
   private let ranker = QuickAddRanker()
 
   init(environment: Environment) {
     self.environment = environment
+  }
+
+  /// Supply the create-new presenter after construction.
+  ///
+  /// Needed because the object that presents the sheet is the one that BUILDS this coordinator, so
+  /// it cannot capture itself while doing so. Kept to this one seam rather than making the whole
+  /// environment mutable: everything else is known at construction, and a settable environment is an
+  /// invitation to change the rules at runtime.
+  func setPresentNewWordSheet(_ present: @escaping (String) -> Void) {
+    environment.presentNewWordSheet = present
   }
 
   /// One Quick Add invocation, from either door.
