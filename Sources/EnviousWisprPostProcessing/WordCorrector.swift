@@ -134,6 +134,12 @@ public struct WordCorrector: Sendable {
     public let lowercasedCanonicals: [String]
     public let singleFuzzyCandidates: [SurfaceCanonical]
     public let multiAliasByCount: [Int: [AliasCanonical]]
+    /// #2406 review r6: the NON-pack multi-word alias keys, needed to answer
+    /// "is this exact multi match a pack term" at Pass 1. `nonPackExactKeys`
+    /// cannot answer it — that set is built from SINGLE alias keys and
+    /// canonicals only (see its construction), so a multi-word phrase is absent
+    /// from it whatever its authority.
+    public let nonPackMultiAliasMap: [String: String]
     /// #992 pack fuzzy tier (LOWER authority than the non-pack pools above).
     /// Single-word pack ALIAS surfaces (lowercased, length ≥ packFuzzyMinLength)
     /// for the pack Pass-4 scan; pack CANONICALS (length ≥ packFuzzyMinLength)
@@ -651,6 +657,7 @@ public struct WordCorrector: Sendable {
       lowercasedCanonicals: lowercasedCanonicals,
       singleFuzzyCandidates: singleFuzzyCandidates,
       multiAliasByCount: multiAliasByCount,
+      nonPackMultiAliasMap: nonPackMultiAliasMap,
       packSingleFuzzyCandidates: packSingleFuzzyCandidates,
       packCanonicals: packCanonicals,
       packLowercasedCanonicals: packLowercasedCanonicals,
@@ -690,6 +697,7 @@ public struct WordCorrector: Sendable {
   ) {
     let singleAliasMap = lookups.singleAliasMap
     let multiAliasMap = lookups.multiAliasMap
+    let nonPackMultiAliasMap = lookups.nonPackMultiAliasMap
     let nospaceCanonicalMap = lookups.nospaceCanonicalMap
     let canonicalToID = lookups.canonicalToID
     let canonicalToWord = lookups.canonicalToWord
@@ -790,8 +798,41 @@ public struct WordCorrector: Sendable {
             continue
           }
 
-          // Pass 1: exact multi-word alias
-          if let canonical = multiAliasMap[phrase], rawPhrase != canonical {
+          // Pass 1: exact multi-word alias.
+          //
+          // NON-PACK BEATS PACK ACROSS THE PEEL BOUNDARY (#2406 review r6, P1).
+          //
+          // This map is the WIDE one and includes pack gap-fill entries, so a
+          // pack alias carrying its own domain suffix matches the unpeeled
+          // phrase here and `break`s — before Pass 2 can offer the user's OWN
+          // alias, which matches the same span once the suffix is peeled. The
+          // user's word loses to a pack term, which inverts this repo's
+          // precedence.
+          //
+          // Measured shape: pack `international platform.com` -> Pack Choice,
+          // user `international platform` -> User Choice, dictated
+          // `international platform.com`. Slot 2 must outrank slot 3.
+          //
+          // This is Pass 4's four-slot ladder (#2281 round 7) applied to the
+          // multi-word passes, and only the middle pair needed arbitrating:
+          //   1. unpeeled non-pack   accepted here, unchanged
+          //   2. peeled   non-pack   deferred to Pass 2's exact lookup
+          //   3. unpeeled pack       accepted here ONLY when 2 is absent
+          //   4. peeled   pack       KNOWN LIMIT, see below
+          //
+          // KNOWN LIMIT, stated rather than hidden: slot 4 does not exist.
+          // Pass 2's pool is built solely from `nonPackMultiAliasMap`, so a PACK
+          // alias whose key matches only the PEELED phrase is never matched
+          // exactly and falls through to fuzzy. That is the lowest-authority
+          // slot, so its absence can only under-match, never override a
+          // higher-authority answer — and adding it would mean giving Pass 2 a
+          // pack pool, which is a larger change than this defect requires.
+          if let canonical = multiAliasMap[phrase], rawPhrase != canonical,
+            !Self.nonPackPeeledExactExists(
+              slice: slice, nonPackMultiAliasMap: nonPackMultiAliasMap,
+              isPackMatch: nonPackMultiAliasMap[phrase] == nil,
+              stripPunctuation: stripPunctuation)
+          {
             let (firstPrefix, _, _) = splitPunctuation(tokens[i])
             let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
             tokens.replaceSubrange(i..<(i + span), with: [firstPrefix + canonical + lastSuffix])
@@ -1453,6 +1494,38 @@ public struct WordCorrector: Sendable {
       MultiWordFuzzyCandidate(
         canonical: bestCanonical, alias: bestAlias, score: bestScore,
         margin: margin, threshold: threshold, hasStopword: hasStopword))
+  }
+
+  /// Does a NON-pack alias match this span's PEELED phrase exactly?
+  ///
+  /// Only asked when Pass 1's own match came from a PACK entry, because that is
+  /// the only case where deferring changes anything: a non-pack unpeeled match
+  /// already outranks everything and must not be delayed. Returning `false` for
+  /// a non-pack match keeps the existing behaviour byte-for-byte rather than
+  /// re-deciding it (#2406 review r6).
+  ///
+  /// The peel is recomputed here rather than threaded in, because Pass 1 runs
+  /// its own span loop before Pass 2 exists and the two loops do not share a
+  /// frame. It is a string split over at most a handful of tokens, and it runs
+  /// only on the pack branch.
+  private static func nonPackPeeledExactExists(
+    slice: ArraySlice<String>,
+    nonPackMultiAliasMap: [String: String],
+    isPackMatch: Bool,
+    stripPunctuation: (String) -> String
+  ) -> Bool {
+    guard isPackMatch else { return false }
+    var cores = slice.map(stripPunctuation)
+    guard let last = cores.last, let split = Self.splitDomainSuffix(last) else { return false }
+    cores[cores.count - 1] = split.bare
+    // Peeling can EXPOSE a reserved trigger word, the same re-check Pass 2 makes
+    // for the same reason: `emoji.com` is not `emoji` until the suffix is off.
+    // If the peel exposes one, Pass 2 will refuse the span, so deferring to it
+    // would leave the span uncorrected rather than better corrected.
+    if cores.contains(where: { Self.emojiTriggerReservedWords.contains($0.lowercased()) }) {
+      return false
+    }
+    return nonPackMultiAliasMap[cores.joined(separator: " ").lowercased()] != nil
   }
 
   private enum SingleAttemptFuzzyOutcome {

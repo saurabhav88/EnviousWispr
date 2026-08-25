@@ -153,6 +153,45 @@ struct MultiWordDomainSuffixTests {
       "the canonical already carries its own domain; got: \(result)")
   }
 
+  /// The user's own word outranks a pack term ACROSS the peel boundary
+  /// (#2406 r6, P1).
+  ///
+  /// A pack alias carrying its own domain suffix matches the UNPEELED phrase in
+  /// Pass 1, which reads the wide map and accepts immediately — before Pass 2
+  /// can offer the user's own alias, which matches the same span once the suffix
+  /// comes off. The result is the user's vocabulary losing to a pack term, which
+  /// inverts this repo's precedence.
+  ///
+  /// This is the slot-2-over-slot-3 rule the single-word path settled at round 7
+  /// of #2281, reached in the multi-word passes only because this PR made a
+  /// peeled exact match possible at all.
+  @Test("a user's peeled exact outranks a pack term's unpeeled exact")
+  func nonPackPeeledExactOutranksPackUnpeeledExact() {
+    let packWord = CustomWord(
+      canonical: "Pack Choice", aliases: ["international platform.com"], source: .pack)
+    let userWord = CustomWord(canonical: "User Choice", aliases: ["international platform"])
+    let (result, replacements) = corrector.correct(
+      "visit international platform.com today", against: [packWord, userWord])
+    #expect(
+      result == "visit User Choice.com today",
+      "the user's own word must outrank a pack term across the peel; got: \(result)")
+    #expect(replacements.first?.sourceID == userWord.id)
+  }
+
+  /// The other direction, and it is what stops the case above being satisfiable
+  /// by "always defer to Pass 2": with NO user word competing, the pack term's
+  /// unpeeled exact must still win. Slot 3 is a real slot, not a disabled one.
+  @Test("a pack term's unpeeled exact still wins when no user word competes")
+  func packUnpeeledExactStillWinsUncontested() {
+    let packWord = CustomWord(
+      canonical: "Pack Choice", aliases: ["international platform.com"], source: .pack)
+    let (result, _) = corrector.correct(
+      "visit international platform.com today", against: [packWord])
+    #expect(
+      result == "visit Pack Choice today",
+      "an uncontested pack exact must still be applied; got: \(result)")
+  }
+
   /// A canonical that already specifies its own domain does NOT get the dictated
   /// suffix reattached — otherwise the user sees it twice. Same rule the
   /// single-word path applies.
