@@ -1626,7 +1626,25 @@ def _line_in_window(line, start):
     the log being readable at all.
     """
     stamp = _line_timestamp(line)
-    return stamp is not None and stamp >= start
+    if stamp is None:
+        return False
+    # FLOOR THE START TO THE SECOND. `AppLogger` writes second-resolution stamps
+    # (`2026-08-25T17:55:04-04:00`, no fraction) while `datetime.now()` carries
+    # microseconds, so a line written 0.4s AFTER the window opened compares as
+    # BEFORE it and is discarded. Measured live: the double press fired, all three
+    # markers were in the log, and the per-attempt check reported "did not register
+    # after 3 attempts" - the harness driving three gestures against an app that
+    # had already done what was asked.
+    #
+    # Direction is the expensive one and it is why a unit-covered change still
+    # needed a live run: it fails toward NOT SEEING evidence. For the banner scan
+    # that is permissive (a launch goes uncounted); for the marker check it is a
+    # false product failure; and for the retry it is the saboteur case this file
+    # already documents, since an unseen marker is what licenses the next press.
+    # A window a fraction of a second wide is exactly where it bites, which is the
+    # per-attempt check and nowhere else - the ones with a start seconds earlier
+    # were unaffected, so nothing failed until the window got small.
+    return stamp >= start.replace(microsecond=0)
 
 
 def log_lines_since(start):
@@ -2620,6 +2638,20 @@ def _self_test():
         ("an ordinary line is not a banner",
          ["[2026-01-01T12:00:01-05:00] [INFO] [Pipeline] Recording started."], 0),
     ]
+    # THE ROW THE SELF-TEST DID NOT HAVE, and a live run is what found the gap.
+    # `AppLogger` stamps to the SECOND while `datetime.now()` carries microseconds,
+    # so a line written a fraction of a second after the window opened compares as
+    # before it. Every row above uses a whole-second start, which is exactly why
+    # 22/22 stayed green while the per-attempt check reported "did not register"
+    # against a log containing all three markers.
+    T_SUB = _dt.datetime.fromisoformat("2026-01-01T12:00:00.500000-05:00")
+    name = "a line stamped in the same SECOND the window opened is in-window"
+    got_sub = count_launch_banners([banner_at("2026-01-01T12:00:00-05:00")], T_SUB)
+    if got_sub != 1:
+        failures.append(f"{name}: counted {got_sub}, want 1")
+    else:
+        print(f"  ok      {name}")
+    banner_rows_extra = 1
     for name, texts, want in banner_cases:
         got = count_launch_banners(texts, T0)
         if got != want:
@@ -2740,7 +2772,8 @@ def _self_test():
         else:
             print(f"  ok      {name}")
 
-    total = len(cases) + len(banner_cases) + file_rows + len(window_cases)
+    total = (len(cases) + len(banner_cases) + banner_rows_extra + file_rows
+             + len(window_cases))
     if failures:
         for f in failures:
             print(f"  FAIL    {f}")
