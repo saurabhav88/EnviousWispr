@@ -889,4 +889,46 @@ struct QuickAddCoordinatorTests {
     // Nothing on screen wins outright. A stale live flag with no panel must not wedge the shortcut.
     #expect(QuickAddWiring.mayBeginCapture(panelVisible: false, hasLiveInvocation: true))
   }
+
+  // MARK: - What a VoiceOver user hears (#2391, confirming round)
+
+  /// **A spoken confirmation that differs from the visible one is two answers to "what happened",
+  /// and the blind user has no way to notice.** So the announcement is not a paraphrase — it is the
+  /// string the view renders, and this asserts that rather than trusting one derivation.
+  @Test("Every message the panel shows is spoken with the words it shows")
+  func theAnnouncementIsTheRenderedSentence() {
+    for kind in QuickAddPanelModel.Notice.Kind.allCases {
+      let notice = QuickAddPanelModel.Notice(
+        kind: kind,
+        spelling: [.created, .alreadyInWords].contains(kind) ? "" : "codecs",
+        word: "Codex", searchable: false)
+      #expect(
+        QuickAddWiring.announcement(notice: notice, writeFailure: nil)
+          == QuickAddPanelCopy.notice(notice))
+    }
+    #expect(
+      QuickAddWiring.announcement(notice: nil, writeFailure: "That word cannot be saved.")
+        == QuickAddPanelCopy.writeFailure("That word cannot be saved."))
+  }
+
+  /// The member the confirming round did NOT name, found by enumerating the channel axis rather than
+  /// fixing the two sites it did name. A refusal is the only message the user has to ACT on, and it
+  /// appears after a keypress while focus sits in the search field — so it is a dynamic status
+  /// change with nothing focused on it, exactly like the two notices.
+  @Test("A refusal is spoken too, and outranks a notice")
+  func aRefusalIsSpokenAndOutranksANotice() {
+    let notice = QuickAddPanelModel.Notice(
+      kind: .saved, spelling: "codecs", word: "Codex", searchable: false)
+
+    #expect(
+      QuickAddWiring.announcement(notice: notice, writeFailure: "nope")
+        == QuickAddPanelCopy.writeFailure("nope"))
+  }
+
+  /// The panel ASKING is not the panel TELLING. A ranked list with nothing refused and no notice has
+  /// no status change to announce, and speaking there would talk over the user exploring the rows.
+  @Test("A panel that is asking rather than telling says nothing")
+  func aPanelThatIsAskingAnnouncesNothing() {
+    #expect(QuickAddWiring.announcement(notice: nil, writeFailure: nil) == nil)
+  }
 }

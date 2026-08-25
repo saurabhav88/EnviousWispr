@@ -143,6 +143,35 @@ final class QuickAddWiring {
     return true
   }
 
+  /// What a VoiceOver user must HEAR when the panel changes what it is telling them, or nil when
+  /// the panel is asking rather than telling.
+  ///
+  /// **One derivation, so the two channels cannot disagree.** It returns the string the view
+  /// renders — not a paraphrase — because a spoken confirmation that differs from the visible one is
+  /// two answers to "what happened", and the blind user has no way to notice.
+  ///
+  /// A write failure outranks a notice. They are mutually exclusive today (`showNotice` clears the
+  /// failure), and stating the order closes the case rather than leaving it to that invariant.
+  package static func announcement(
+    notice: QuickAddPanelModel.Notice?, writeFailure: String?
+  ) -> String? {
+    if let writeFailure { return QuickAddPanelCopy.writeFailure(writeFailure) }
+    if let notice { return QuickAddPanelCopy.notice(notice) }
+    return nil
+  }
+
+  /// Speak the panel's current message, if it has one.
+  ///
+  /// **`.accessibilityLabel` is not this.** A label names an element when it is VISITED; every
+  /// message this panel shows is a dynamic status change, and two of the three vanish on a timer
+  /// while focus is somewhere else entirely — the terminal confirmation deliberately releases focus,
+  /// and the searchable notice gives it to the search field rather than to the sentence.
+  private func speak(_ model: QuickAddPanelModel) {
+    guard let text = Self.announcement(notice: model.notice, writeFailure: model.writeFailure)
+    else { return }
+    OverlayDirector.postAnnouncement(.medium(text))
+  }
+
   /// Whether a fresh capture may start.
   ///
   /// **A confirmation fading out is NOT a live panel, and treating it as one costs the user their
@@ -189,7 +218,10 @@ final class QuickAddWiring {
     coordinator.didOpen()
     // Opened onto a word that already knows this spelling: the panel says so and fades, unless the
     // user types (#2391 §3).
-    if model.isShowingSearchableNotice { scheduleSearchableNoticeFade(for: model) }
+    if model.isShowingSearchableNotice {
+      speak(model)
+      scheduleSearchableNoticeFade(for: model)
+    }
   }
 
   // MARK: - Outcomes
@@ -209,6 +241,7 @@ final class QuickAddWiring {
     switch coordinator.accept(candidate, from: model) {
     case .refused(let message):
       model.noteWriteFailure(message)
+      speak(model)
     case .saved(let word):
       conclude(model, .saved, spelling: model.spellingToWrite, word: word)
     case .alreadyHad(let word):
@@ -233,6 +266,9 @@ final class QuickAddWiring {
   ) {
     activeModel = nil
     model.showNotice(kind, spelling: spelling, word: word)
+    // Spoken BEFORE focus is released, because releasing it is what makes the sentence unreachable
+    // by exploration — after this line there is no element for VoiceOver to visit.
+    speak(model)
     panelHost.releaseFocus()
     noticeDismissal?.cancel()
     noticeDismissal = Task { [weak self] in
@@ -288,6 +324,7 @@ final class QuickAddWiring {
     switch saveNewWord(word, usedSearch: model.isSearching) {
     case .refused(let message):
       model.noteWriteFailure(message)
+      speak(model)
     case .created(let canonical):
       let spelling = model.spellingToWrite.trimmingCharacters(in: .whitespacesAndNewlines)
       // With no readable selection there is no mishearing to name, and a confirmation quoting an
