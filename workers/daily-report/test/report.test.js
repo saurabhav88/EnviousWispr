@@ -2093,6 +2093,126 @@ test("a rate limit's 500 body says WHY, and never claims a retry loop that did n
   }
 });
 
+test("resolveReleases: a SHORT Retry-After is honoured once; a long one is declined out loud", async () => {
+  // #2415 review r2. The primary hourly limit resets at the top of an hour and
+  // no request can wait for it - that is why this change stopped retrying. The
+  // SECONDARY limit is a different animal: it carries `Retry-After`, the value
+  // can be a second, and refusing it threw away a recovery the server offered.
+  const NOW_MS = 1_787_670_000_000;
+  const nowFn = () => NOW_MS;
+  const resetAt = String(Math.floor(NOW_MS / 1000) + 1800);
+
+  // 1. A one-second secondary limit RECOVERS, and the request succeeds.
+  let calls = 0;
+  const sleeps = [];
+  const out = await resolveReleases({ GITHUB_REPO: "o/r" }, [usage("2.4.1", 1)], {
+    windowEndExclusive: "2026-07-29",
+    fetchFn: async () => {
+      calls += 1;
+      if (calls === 1) return ghResponse(429, null, { headers: { "retry-after": "1" } });
+      return ghResponse(200, [release("v2.4.1", "2026-07-24T00:00:00Z")]);
+    },
+    sleepFn: async (ms) => sleeps.push(ms),
+    nowFn,
+  });
+  assert.equal(calls, 2, "the offered wait is taken and the request retried");
+  assert.deepEqual(sleeps, [1000], "it waits exactly what the server asked for");
+  assert.ok(out.releases.length > 0, "and the lookup succeeds");
+
+  // 2. ONCE, not per attempt. A server that keeps answering "wait one second"
+  // would otherwise turn a bounded budget into a multiple of it.
+  let repeat = 0;
+  const repeatSleeps = [];
+  await assert.rejects(
+    () =>
+      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+        windowEndExclusive: "2026-07-29",
+        fetchFn: async () => {
+          repeat += 1;
+          return ghResponse(429, null, { headers: { "retry-after": "1", "x-ratelimit-reset": resetAt } });
+        },
+        sleepFn: async (ms) => repeatSleeps.push(ms),
+        nowFn,
+      }),
+    (err) =>
+      err instanceof ReleaseResolutionError &&
+      err.transient === true &&
+      /already waited once on Retry-After/.test(err.message),
+    "a repeated Retry-After is obeyed once"
+  );
+  assert.equal(repeat, 2, "two requests: the original and the one honoured wait");
+  assert.deepEqual(repeatSleeps, [1000]);
+
+  // 3. A wait longer than the budget is DECLINED, and the message says so.
+  // "GitHub said 900 seconds" and "GitHub did not say" send a reader to
+  // different places, so they must not collapse into one sentence.
+  let longCalls = 0;
+  await assert.rejects(
+    () =>
+      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+        windowEndExclusive: "2026-07-29",
+        fetchFn: async () => {
+          longCalls += 1;
+          return ghResponse(429, null, { headers: { "retry-after": "900", "x-ratelimit-reset": resetAt } });
+        },
+        sleepFn: async () => {},
+        nowFn,
+      }),
+    (err) =>
+      err instanceof ReleaseResolutionError &&
+      /Retry-After 900s exceeds the 2s budget/.test(err.message),
+    "a long Retry-After is named, not silently ignored"
+  );
+  assert.equal(longCalls, 1, "and it is not waited on");
+
+  // 4. `Retry-After` also has an HTTP-date form. GitHub sends seconds here, and
+  // a date we half-parsed would be a guess wearing a measurement's clothes - so
+  // it reads as no usable wait rather than as a number.
+  let dateCalls = 0;
+  await assert.rejects(
+    () =>
+      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+        windowEndExclusive: "2026-07-29",
+        fetchFn: async () => {
+          dateCalls += 1;
+          return ghResponse(429, null, {
+            headers: { "retry-after": "Wed, 21 Oct 2026 07:28:00 GMT", "x-ratelimit-reset": resetAt },
+          });
+        },
+        sleepFn: async () => {},
+        nowFn,
+      }),
+    (err) => err instanceof ReleaseResolutionError && err.transient === true,
+    "an HTTP-date Retry-After is not parsed as a number"
+  );
+  assert.equal(dateCalls, 1, "an unusable Retry-After is not waited on");
+
+  // 5. A FRACTIONAL value, and this row exists because a mutant found that
+  // nothing else needed the digit check: an HTTP-date already dies at
+  // `Number.isSafeInteger`, so dropping the regex changed nothing observable
+  // there - two mechanisms covering one outcome. `1.5` is the input where the
+  // regex does unique work: without it, `Number("1.5") * 1000` is a safe integer
+  // and a fractional header would be honoured as a real wait.
+  let fracCalls = 0;
+  await assert.rejects(
+    () =>
+      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+        windowEndExclusive: "2026-07-29",
+        fetchFn: async () => {
+          fracCalls += 1;
+          return ghResponse(429, null, {
+            headers: { "retry-after": "1.5", "x-ratelimit-reset": resetAt },
+          });
+        },
+        sleepFn: async () => {},
+        nowFn,
+      }),
+    (err) => err instanceof ReleaseResolutionError && err.transient === true,
+    "a fractional Retry-After is not a wait we honour"
+  );
+  assert.equal(fracCalls, 1, "a fractional Retry-After is not waited on");
+});
+
 test("resolveReleases: a RATE LIMIT is temporary but NOT retried, and says when it resets", async () => {
   // #2411. This used to retry three times like any other transient status. The
   // window resets at the top of an hour and a request cannot wait that long, so

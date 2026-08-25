@@ -185,6 +185,33 @@ function classifyGitHubStatus(res) {
   return res.headers?.get?.("x-ratelimit-remaining") === "0" ? "rate-limited" : "fatal";
 }
 
+/** A `Retry-After` we can actually honour, in MILLISECONDS, or null.
+ *
+ * **A SECONDARY RATE LIMIT IS NOT THE SAME ANIMAL AS THE HOURLY ONE (#2415 review
+ * r2).** The primary limit resets at the top of an hour and no request can wait
+ * for it, which is why this change stopped retrying. GitHub's SECONDARY limit is
+ * different: it carries `Retry-After`, and the value can be a second or two - a
+ * wait we can afford, and the only case where a rate limit is recoverable inside
+ * one request. Refusing it threw away a recovery the server had explicitly
+ * offered.
+ *
+ * Two ways this returns null, and they are different situations rather than one:
+ * the header is ABSENT or unparseable, and the wait is LONGER than the budget.
+ * The caller reports which, because "GitHub did not say" and "GitHub said 900
+ * seconds" send a reader to different places.
+ *
+ * Integer seconds only. `Retry-After` also has an HTTP-date form; GitHub sends
+ * seconds here, and a date we half-parsed would be a guess wearing a
+ * measurement's clothes. An unrecognised value is reported as unusable, never
+ * silently treated as absent. */
+function retryAfterMs(res) {
+  const raw = res.headers?.get?.("retry-after");
+  if (typeof raw !== "string" || !/^\d+$/.test(raw.trim())) return null;
+  const ms = Number(raw.trim()) * 1000;
+  if (!Number.isSafeInteger(ms) || ms <= 0) return null;
+  return ms;
+}
+
 /** How long until the rate-limit window resets, in SECONDS FROM NOW.
  *
  * Deliberately not a formatted instant. The first version returned
@@ -206,12 +233,25 @@ function rateLimitResetInSeconds(res, nowFn = Date.now) {
   return delta > 0 ? delta : null;
 }
 
+/** ONE waiting budget for this lookup, and everything that waits derives from it.
+ *
+ * The delays below and the `Retry-After` ceiling started as three separate
+ * numbers I had chosen and nothing had measured (#2415 review r1, my own
+ * question). Reducing them to one leaves one thing to justify: **how long may a
+ * daily report's release lookup block a request somebody is waiting on.** The
+ * ping workflow's `curl` sets no `--max-time` and the job budget is hours, so the
+ * real constraint is that a human reading a failed run should not be waiting on
+ * arithmetic - 2 seconds is beneath notice beside the PostHog, Sentry and Discord
+ * work the same run already does.
+ *
+ * Stated so the next reader can disagree with the number rather than reverse-
+ * engineer it: nothing measured 2000. It is a ceiling chosen to be small.
+ */
+const GITHUB_MAX_WAIT_MS = 2000;
+
 /** Backoff between RETRYABLE attempts. Was `0`, which made the retry loop three
  * requests inside a few milliseconds - the shape of a retry with none of the
- * effect. Deliberately small: the founder's `curl` is waiting on this request,
- * and ~2s total is what a connection reset or a 5xx blip needs. A rate limit
- * needs minutes and is no longer retried at all, so nothing here is trying to
- * outwait one. */
+ * effect. Sums to exactly the budget above. */
 const GITHUB_RETRY_DELAYS_MS = [500, 1500];
 
 /** OPTIONAL authentication, matching what `workers/weekly-digest` already does
@@ -266,6 +306,10 @@ async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep, n
   }
 
   let lastStatus = null;
+  // ONCE, not per attempt. A server that keeps answering "wait one second" would
+  // otherwise be obeyed for as many attempts as the loop has, turning a bounded
+  // budget into a multiple of it.
+  let honouredRetryAfter = false;
   for (let attempt = 1; attempt <= GITHUB_MAX_ATTEMPTS; attempt += 1) {
     let res;
     try {
@@ -367,13 +411,37 @@ async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep, n
       });
     }
     if (disposition === "rate-limited") {
+      // A SHORT `Retry-After` IS A RECOVERY THE SERVER OFFERED, so take it once
+      // (#2415 review r2). Only once, and only inside the budget: this is the
+      // secondary-limit case, where the wait is seconds. The primary hourly limit
+      // carries no such header and still fails immediately, which is the whole
+      // point of not retrying it.
+      const waitMs = retryAfterMs(res);
+      if (waitMs !== null && waitMs <= GITHUB_MAX_WAIT_MS && !honouredRetryAfter) {
+        honouredRetryAfter = true;
+        lastStatus = res.status;
+        await sleepFn(waitMs);
+        continue;
+      }
       // Reported at once rather than after two more refusals. The reset instant
       // is the fact that decides what to do about it, so it is in the message
       // and not only in a header nobody will see.
       const resetIn = rateLimitResetInSeconds(res, nowFn);
+      // Three facts, each of which sends a reader somewhere different: the
+      // status, when the window reopens, and whether the server offered a wait
+      // we could not afford. A `Retry-After` that was present and too long is
+      // NOT the same situation as one that was absent - the first says GitHub
+      // knows and we declined, the second says nobody knows.
+      const declined =
+        waitMs !== null && waitMs > GITHUB_MAX_WAIT_MS
+          ? `, Retry-After ${waitMs / 1000}s exceeds the ${GITHUB_MAX_WAIT_MS / 1000}s budget`
+          : honouredRetryAfter
+            ? ", already waited once on Retry-After"
+            : "";
       throw new ReleaseResolutionError(
         `GitHub releases rate-limited: HTTP ${lastStatus}` +
           (resetIn === null ? ", reset not reported" : `, resets in ${resetIn}s`) +
+          declined +
           " (not retried: the window is far longer than a request can wait)",
         { transient: true }
       );
