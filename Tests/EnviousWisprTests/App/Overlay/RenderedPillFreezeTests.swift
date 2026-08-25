@@ -92,25 +92,68 @@ struct RenderedPillFreezeTests {
     }
   }
 
-  /// **The four notification severities must not all measure the same.** They
-  /// share one leaf and one model shape and differ only in style, so a harness
-  /// returning one number for everything would pass every row above while seeing
-  /// nothing. `.interruption` swaps an SF Symbol for the distress lips and its
-  /// own background, and `.advisory` wraps where the others do not.
+  /// **The four notification severities must not all measure the same, and the
+  /// TEXT is held constant so that claim is about the severity.**
+  ///
+  /// An earlier version drove four different catalog requests — `.warning`,
+  /// `.error`, `.advisory`, `.interruption` — each carrying its own copy. Cloud
+  /// review refuted it: those four measure differently because their MESSAGES
+  /// differ, so the control passes just as well against a build that routes every
+  /// severity through one style, while claiming to prove the opposite. A control
+  /// that cannot fail for the reason it names buys confidence without cover.
+  ///
+  /// Holding the sentence fixed and varying only the severity makes a collapsed
+  /// mapping fail: the four would then measure identically.
+  ///
+  /// Measured 2026-08-25 with one sentence at a fixed 280pt: warning 37,
+  /// error 38, distress 44, advisory 52. The error-versus-warning gap is ONE
+  /// point, from the two SF Symbols' differing heights — real, small, and the
+  /// reason this suite claims discrimination rather than claiming to see paint.
   @Test("the notification severities are told apart by the instrument")
   func severitiesAreDiscriminated() {
-    let sizes = [
-      RenderedPillHarness.rootSize(for: .warning(reason: .polishFailed)),
-      RenderedPillHarness.rootSize(for: .error(reason: .asrFailed)),
-      RenderedPillHarness.rootSize(for: .advisory(reason: .zeroSignal)),
-      RenderedPillHarness.rootSize(for: .interruption(reason: .deviceRemoved)),
-    ]
+    let text = "Something went wrong while polishing your text."
+    let sizes = [NoticeModel.Severity.warning, .error, .distress, .advisory].map {
+      severity in
+      RenderedPillHarness.rootSize(
+        for: PillDefinition(
+          id: RenderedPillHarness.id(),
+          content: .notice(
+            NoticeModel(
+              kind: .notification, text: text, severity: severity,
+              isMultiline: severity == .advisory)),
+          expiry: .untilReplaced, requestedWidth: .fixed(280)))
+    }
     #expect(
       Set(sizes.map { "\($0.width)x\($0.height)" }).count == sizes.count,
       """
-      two or more notification severities measured identically: \(sizes). This \
-      instrument cannot tell them apart, so every frozen row above is a claim it \
-      cannot support.
+      two or more notification severities measured identically on ONE sentence: \
+      \(sizes). Either the severity-to-style mapping has collapsed, or this \
+      instrument cannot tell the treatments apart — and every frozen row above is a \
+      claim it cannot support.
+      """)
+  }
+
+  /// The paired case, so the row above cannot pass merely because five inputs
+  /// give five answers: `.neutral` has no style of its own and maps to
+  /// `.warning`, so it must measure IDENTICALLY to it. A harness that returned a
+  /// different number for every input would fail here.
+  @Test("the styleless severity measures as the style it maps to")
+  func neutralMeasuresAsWarning() {
+    let text = "Something went wrong while polishing your text."
+    func size(_ severity: NoticeModel.Severity) -> CGSize {
+      RenderedPillHarness.rootSize(
+        for: PillDefinition(
+          id: RenderedPillHarness.id(),
+          content: .notice(NoticeModel(kind: .notification, text: text, severity: severity)),
+          expiry: .untilReplaced, requestedWidth: .fixed(280)))
+    }
+    #expect(
+      size(.neutral) == size(.warning),
+      """
+      `.neutral` measured \(size(.neutral)) against `.warning`'s \(size(.warning)). \
+      `OverlayRootView.style(for:)` maps the styleless severity to `.warning` \
+      deliberately, so a row landing there is styled-wrong-but-VISIBLE rather than \
+      unstyled; if these differ, that mapping moved.
       """)
   }
 
