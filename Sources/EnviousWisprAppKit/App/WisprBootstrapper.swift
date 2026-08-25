@@ -80,6 +80,14 @@ public final class WisprBootstrapper {
   let llmDiscovery: LLMModelDiscoveryCoordinator
   let vocabularyPackManager: VocabularyPackManager
 
+  /// Quick Add (#2381), as ONE slot rather than four.
+  ///
+  /// The coordinator, the panel host and the Services provider all live inside it. That is the
+  /// documented way to spend one stored-property slot on a group of collaborators here, and it is
+  /// what keeps the feature's deletability honest: removing Quick Add is three directories, this
+  /// property, and the one `install()` call below.
+  let quickAdd: QuickAddWiring
+
   /// App-owned output-safety classifier holder (#832/#913 PR8). The classifier
   /// is loaded asynchronously off the heart path at prewarm; the holder lets the
   /// live-dictation `LLMPolishStep`s pick it up once ready.
@@ -1040,6 +1048,12 @@ public final class WisprBootstrapper {
     self.keychainManager = keychainManager
     self.llmDiscovery = llmDiscovery
     self.vocabularyPackManager = vocabularyPackManager
+    // #2381. Built from three collaborators this root already holds; it adds no new dependency of
+    // its own and reaches nothing the root did not already have.
+    self.quickAdd = QuickAddWiring(
+      hotkeyService: hotkeyService,
+      customWords: customWordsCoordinator,
+      packManager: vocabularyPackManager)
 
     // #832/#913 PR8: App-owned output-safety classifier holder.
     self.outputClassifierHolder = outputClassifierHolder
@@ -1149,6 +1163,10 @@ public final class WisprBootstrapper {
 
   public func applicationDidFinishLaunching() {
     appLifecycleCoordinator.runDidFinishLaunching()
+    // #2381. AFTER launch, not during: `NSApp.servicesProvider` set before the app has finished
+    // launching is registered against an app that cannot yet answer, and the menu item is then
+    // present and inert.
+    quickAdd.install()
     // #1063 PR2: recover orphan crash-recovery spools behind the blocking
     // "recovering" pill. Strict limb, single-flight, one attempt per orphan.
     Task { await recoveryCoordinator.scanAndRecover() }

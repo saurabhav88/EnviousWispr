@@ -59,6 +59,9 @@ enum SettingsProjection {
     case toggleHotkeyIdentity = "toggle_hotkey_identity"
     case pushToTalkHotkeyShape = "push_to_talk_hotkey_shape"
     case cancelHotkeyShape = "cancel_hotkey_shape"
+    /// #2381. Shape only — `chord` or `modifier_only` — never the key code, which would say
+    /// which physical key a named user pressed.
+    case quickAddHotkeyShape = "quick_add_hotkey_shape"
     case playRecordingSounds = "play_recording_sounds"
     case recordingSoundPairing = "recording_sound_pairing"
   }
@@ -113,6 +116,7 @@ enum SettingsProjection {
     case .toggleKeyCode, .toggleModifiers: return [.toggleHotkeyShape, .toggleHotkeyIdentity]
     case .pushToTalkKeyCode, .pushToTalkModifiers: return [.pushToTalkHotkeyShape]
     case .cancelKeyCode, .cancelModifiers: return [.cancelHotkeyShape]
+    case .quickAddKeyCode, .quickAddModifiers: return [.quickAddHotkeyShape]
     case .playRecordingSounds: return [.playRecordingSounds]
     case .recordingSoundPairing: return [.recordingSoundPairing]
     // Not instrumented.
@@ -165,6 +169,7 @@ enum SettingsProjection {
       return HotkeyKeyIdentity.classify(keyCode: settings.toggleKeyCode).rawValue
     case .pushToTalkHotkeyShape: return hotkeyShape(settings.pushToTalkKeyCode)
     case .cancelHotkeyShape: return hotkeyShape(settings.cancelKeyCode)
+    case .quickAddHotkeyShape: return hotkeyShape(settings.quickAddKeyCode)
     case .playRecordingSounds: return onOff(settings.playRecordingSounds)
     case .recordingSoundPairing: return settings.recordingSoundPairing.rawValue
     }

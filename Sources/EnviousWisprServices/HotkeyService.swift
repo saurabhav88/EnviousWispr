@@ -61,6 +61,19 @@ public final class HotkeyService {
   private enum HotkeyID: UInt32 {
     case toggle = 1
     case cancel = 3
+    /// #2381. Takes 4, not the free slot at 2: that gap is a RETIRED id whose meaning nobody wrote
+    /// down, and a stale Carbon registration or an old log line could still carry it.
+    case quickAdd = 4
+
+    /// Which role this Carbon registration belongs to. A switch, so a new id must declare one
+    /// rather than borrowing a neighbour's telemetry name.
+    var role: ShortcutRole {
+      switch self {
+      case .toggle: .record
+      case .cancel: .cancel
+      case .quickAdd: .quickAdd
+      }
+    }
   }
 
   // MARK: - Carbon State
@@ -68,6 +81,7 @@ public final class HotkeyService {
   private var eventHandlerRef: EventHandlerRef?
   private var toggleHotkeyRef: EventHotKeyRef?
   private var cancelHotkeyRef: EventHotKeyRef?
+  private var quickAddHotkeyRef: EventHotKeyRef?
 
   /// Whether the cancel role is currently armed.
   ///
@@ -165,21 +179,40 @@ public final class HotkeyService {
   /// Used by the processing state gate to block new recordings during processing.
   public var onIsProcessing: (@MainActor () -> Bool)?
 
+  /// Quick Add fired (#2381). Deliberately NOT gated on `onIsProcessing`: it never touches the
+  /// recording path, so refusing it mid-transcription would block a limb for a heart-path reason.
+  public var onQuickAdd: (@MainActor () async -> Void)?
+
   // MARK: - Configuration
 
   public var recordingMode: RecordingMode = .toggle
 
-  /// Toggle-mode hotkey key code (default: Right Option = 61, modifier-only).
-  public var toggleKeyCode: UInt16 = ModifierKeyCodes.rightOption
+  // Every fallback below reads `ShortcutRole.defaultBinding`, the one owner of what a shortcut ships
+  // as. These are the value a service carries before `HotkeyController` pushes the user's settings,
+  // so a hard-coded one here does not show up as a wrong default anywhere a test looks — it shows up
+  // as a newly constructed service holding a stale binding until synchronisation runs.
+  //
+  // Converting Quick Add and leaving these two was the first attempt, which is the partial migration
+  // this repo's own rule refuses: old code removed and new code wired in the SAME change, never a
+  // shim and a follow-up.
 
-  /// Toggle-mode required modifiers (default: none — modifier-only hotkey).
-  public var toggleModifiers: NSEvent.ModifierFlags = []
+  /// Toggle-mode hotkey key code. Right Option, a bare modifier.
+  public var toggleKeyCode: UInt16 = ShortcutRole.record.defaultKeyCode
 
-  /// Key code for the cancel hotkey. Default: Escape (53).
-  public var cancelKeyCode: UInt16 = 53
+  /// Toggle-mode required modifiers — none, because a bare modifier stores empty modifiers.
+  public var toggleModifiers: NSEvent.ModifierFlags = ShortcutRole.record.defaultModifiers
 
-  /// Required modifiers for cancel hotkey. Default: none (bare Escape).
-  public var cancelModifiers: NSEvent.ModifierFlags = []
+  /// Key code for the cancel hotkey. Escape.
+  public var cancelKeyCode: UInt16 = ShortcutRole.cancel.defaultKeyCode
+
+  /// Required modifiers for cancel hotkey — none, bare Escape.
+  public var cancelModifiers: NSEvent.ModifierFlags = ShortcutRole.cancel.defaultModifiers
+
+  /// Key code for the Quick Add hotkey (#2381). The shipped value, read from its one owner.
+  public var quickAddKeyCode: UInt16 = ShortcutRole.quickAdd.defaultKeyCode
+
+  /// Required modifiers for the Quick Add hotkey, read from the same owner.
+  public var quickAddModifiers: NSEvent.ModifierFlags = ShortcutRole.quickAdd.defaultModifiers
 
   // MARK: - Lifecycle
 
@@ -227,6 +260,7 @@ public final class HotkeyService {
   /// cancel hotkey and a PTT triple-press cancel (told apart by `trigger`).
   private enum PressAction: String {
     case start, toggle, cancel, lock, stop
+    case quickAdd = "quick_add"
     case ignoredProcessing = "ignored_processing"
     case ignoredCooldown = "ignored_cooldown"
   }
@@ -236,6 +270,7 @@ public final class HotkeyService {
     case ptt = "ptt_hotkey"
     case toggle = "toggle_hotkey"
     case cancel = "cancel_hotkey"
+    case quickAdd = "quick_add_hotkey"
   }
 
   /// Injected clock for the 500ms double-press window and the lock cooldown.
@@ -267,7 +302,15 @@ public final class HotkeyService {
     // key_shape reflects the TRIGGERING hotkey: the cancel hotkey (Escape, a chord
     // by default) vs the toggle/PTT hotkey (modifier-only by default). The PTT
     // hands-free actions all ride the toggle key. (Codex code-diff #1.)
-    let keyCode = trigger == .cancel ? cancelKeyCode : toggleKeyCode
+    // A `switch`, not a ternary (#2381). The old `trigger == .cancel ? cancel : toggle` silently
+    // absorbed any new member into the toggle branch, so a Quick Add press would have reported the
+    // RECORD key's shape and identity — a telemetry field asserting the wrong subject.
+    let keyCode: UInt16 =
+      switch trigger {
+      case .cancel: cancelKeyCode
+      case .quickAdd: quickAddKeyCode
+      case .toggle, .ptt: toggleKeyCode
+      }
     let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
     // #1987: same key as key_shape, one level finer. `key_shape` cannot separate
     // Globe from Right Option because both are modifier-only. Content-free class,
@@ -280,13 +323,18 @@ public final class HotkeyService {
     guard !isEnabled else { return }
     installCarbonEventHandler()
     registerToggleHotkey()
+    // `isEnabled` is set BEFORE the reconciler, which reads it: the rule it enforces is "not while
+    // stopped or suspended", and a reconciler run against a service that has not yet admitted it is
+    // running would refuse the registration it was called to make.
+    isEnabled = true
+    reconcileQuickAddRegistration()
     installModifierMonitors()
     // Cancel hotkey is NOT registered here — only during recording
-    isEnabled = true
   }
 
   public func stop() {
     unregisterCancelHotkey()
+    unregisterQuickAddHotkey()
     unregisterToggleHotkey()
     removeCarbonEventHandler()
     removeModifierMonitors()
@@ -311,6 +359,7 @@ public final class HotkeyService {
     let wasArmed = isCancelArmed
     unregisterCancelHotkey()
     cancelArmedBeforeSuspend = wasArmed
+    unregisterQuickAddHotkey()
     unregisterToggleHotkey()
     removeModifierMonitors()
     isSuspended = true
@@ -322,8 +371,13 @@ public final class HotkeyService {
     isModifierHeld = false
     performCleanup()
     registerToggleHotkey()
-    installModifierMonitors()
+    // No armed-state snapshot, unlike cancel: Quick Add is armed whenever the service is, so
+    // restoring it is unconditional and there is nothing that could outlive its own recording.
+    // WHETHER it may hold its chord is still the reconciler's call, because a recording can be in
+    // flight and cancel may own that chord — `resume()` re-arms cancel two lines below.
     isSuspended = false
+    reconcileQuickAddRegistration()
+    installModifierMonitors()
     if cancelArmedBeforeSuspend { registerCancelHotkey() }
     cancelArmedBeforeSuspend = false
   }
@@ -339,6 +393,11 @@ public final class HotkeyService {
   /// stored, displayed, and inert.
   public func registerCancelHotkey() {
     isCancelArmed = true
+    // Quick Add yields FIRST, before cancel asks Carbon. `RegisterEventHotKey` refuses a duplicate
+    // chord, and Quick Add is registered at `start()` and holds its registration for the whole
+    // session — so with both bound to one chord, cancel arrives second, is refused, and the user's
+    // cancel key opens the Quick Add panel while the recording keeps running.
+    reconcileQuickAddRegistration()
     guard cancelBinding.isCarbonRegistrable else { return }
     guard cancelHotkeyRef == nil else { return }
     cancelHotkeyRef = registerHotkey(
@@ -363,6 +422,10 @@ public final class HotkeyService {
       UnregisterEventHotKey(ref)
       cancelHotkeyRef = nil
     }
+    // Cancel has released the chord, so Quick Add may have it back. Unconditional rather than
+    // guarded on a collision: the reconciler decides, and asking the question here as well would be
+    // the same rule written twice.
+    reconcileQuickAddRegistration()
   }
 
   /// Arm or disarm the cancel hotkey from a single decision (#2087).
@@ -745,8 +808,36 @@ public final class HotkeyService {
   /// `package` so the install condition is testable directly. Testing it through
   /// `installModifierMonitors()` would assert on `NSEvent` monitor objects, which
   /// says nothing about the decision being made here.
+  /// #2381 reproduced #1991's blocker 2 before this was written. The condition was
+  /// `recordBinding.isBareModifier || cancelBinding.isBareModifier` — a hand-written disjunction over
+  /// the roles that existed when it was authored — so a user pairing a bare-modifier QUICK ADD with a
+  /// chord record key and a chord cancel key got no monitor at all, and their shortcut was stored,
+  /// displayed, and completely inert. Exactly the defect the comment above describes, one role over,
+  /// added by the change that quotes it.
+  ///
+  /// It now asks the CLOSED SET rather than a list of the roles someone remembered, so a fourth role
+  /// is included by construction instead of by whoever adds it noticing this line.
   package var shouldInstallModifierMonitors: Bool {
-    recordBinding.isBareModifier || cancelBinding.isBareModifier
+    bareModifierRoleAtRisk != nil
+  }
+
+  /// Which role loses its dispatch if the modifier monitors are missing, or nil when none is a bare
+  /// modifier and the monitors are not needed at all.
+  ///
+  /// One value, so the most SEVERE loss wins — `ShortcutRole`'s declaration order is that severity
+  /// order and its doc comment says so. Read by both the install decision and the failure label, so
+  /// the two cannot come to disagree about which roles matter.
+  package var bareModifierRoleAtRisk: ShortcutRole? {
+    ShortcutRole.allCases.first { binding(for: $0).isBareModifier }
+  }
+
+  /// The binding a role is currently bound to. A switch, so a new role must be given one.
+  package func binding(for role: ShortcutRole) -> ShortcutBinding {
+    switch role {
+    case .record: recordBinding
+    case .cancel: cancelBinding
+    case .quickAdd: quickAddBinding
+    }
   }
 
   /// The current record binding, as one value.
@@ -759,6 +850,11 @@ public final class HotkeyService {
     .keyboard(keyCode: cancelKeyCode, modifiers: cancelModifiers)
   }
 
+  /// The current Quick Add binding, as one value.
+  package var quickAddBinding: ShortcutBinding {
+    .keyboard(keyCode: quickAddKeyCode, modifiers: quickAddModifiers)
+  }
+
   /// Which roles a press may currently trigger.
   ///
   /// Record is live whenever the service is; cancel only between
@@ -766,8 +862,23 @@ public final class HotkeyService {
   /// drives on `.recording` entry and exit. The Carbon path gets this for free —
   /// an unregistered hotkey delivers no event — but the modifier monitors stay
   /// installed the whole time, so the modifier path has to ask.
+  /// The bare-modifier keyCode whose press cancel consumed, until its aggregate flag drops.
+  ///
+  /// Exists because `isPress` is derived from a device-INDEPENDENT flag: with Left Option held,
+  /// releasing Right Option leaves `.option` set, so the release is indistinguishable from a press
+  /// at this layer. Cancel closes its own double-fire by disarming, which is correct and is exactly
+  /// what lets a second role claim the re-entry — see the note at the disarm.
+  ///
+  /// **Deliberately NOT cleared by `unregisterCancelHotkey()`, and that is load-bearing rather than
+  /// an omission.** That teardown runs on the way out of a cancel, which is inside the window this
+  /// marker exists to cover, so clearing it there would make the whole thing dead code that still
+  /// reads as a fix. The aggregate flag dropping is the only signal that the gesture is actually
+  /// over, so it is the only thing that clears this.
+  private var keyCodeConsumedByCancel: UInt16?
+
   private var armedRoles: Set<ShortcutRole> {
-    isCancelArmed ? [.record, .cancel] : [.record]
+    // Quick Add is unconditional: it belongs to the app, not to a recording.
+    isCancelArmed ? [.record, .cancel, .quickAdd] : [.record, .quickAdd]
   }
 
   private func installModifierMonitors() {
@@ -822,10 +933,15 @@ public final class HotkeyService {
       // as a toggle failure — mislabelling the telemetry for exactly the users
       // this change is for, in the one signal that would tell us it broke.
       //
-      // Record wins when both are bare modifiers: it is armed for the whole
+      // Record wins when several are bare modifiers: it is armed for the whole
       // session while cancel is armed only during a recording, so it is the
       // more severe loss and the field holds one value.
-      let kind = recordBinding.isBareModifier ? "toggle" : "cancel"
+      //
+      // #2381: this was `recordBinding.isBareModifier ? "toggle" : "cancel"`, a THIRD two-role
+      // ternary alongside the two the switch repairs elsewhere in this file, and it reported a dead
+      // bare-modifier Quick Add as a dead CANCEL shortcut. It now reads the same closed enumeration
+      // the install decision does.
+      let kind = bareModifierRoleAtRisk?.telemetryKind ?? "unknown"
       telemetry.registrationFailed("nsevent_\(scope)", kind, nil, "modifier_only")
     }
     return monitor
@@ -880,6 +996,83 @@ public final class HotkeyService {
     }
   }
 
+  /// Register the Quick Add hotkey (#2381).
+  ///
+  /// Asked through the BINDING, exactly as the toggle and cancel paths ask it — a bare modifier
+  /// cannot go to Carbon, and for that shape the already-installed `NSEvent` monitors observe it
+  /// instead. Two spellings of that question is how the record and cancel paths drifted apart.
+  /// The ONE place that decides whether Quick Add may hold its Carbon chord.
+  ///
+  /// **A shared chord is a policy question, and the event-tap path already answered it while the
+  /// Carbon path had no answer at all.** `ShortcutMatcher.role(forBareModifierKeyCode:...)` checks
+  /// Quick Add LAST precisely because it is the least severe of the three roles
+  /// (`ShortcutRole`'s declaration order is severity order, and load-bearing). This is the same
+  /// ruling for the other dispatch mechanism: cancel outranks Quick Add on a chord they share, for
+  /// as long as cancel is armed.
+  ///
+  /// Every caller that used to call `registerQuickAddHotkey()` calls this instead, so the rule lives
+  /// in one function rather than being asked again at each site — which is how the three shortcut
+  /// defaults came to disagree in the first place (#1991 blocker 2, reproduced during this build).
+  private func reconcileQuickAddRegistration() {
+    if Self.quickAddMayHoldItsChord(
+      isEnabled: isEnabled, isSuspended: isSuspended,
+      quickAdd: quickAddBinding, cancel: cancelBinding, isCancelArmed: isCancelArmed)
+    {
+      registerQuickAddHotkey()
+    } else {
+      unregisterQuickAddHotkey()
+    }
+  }
+
+  /// The decision itself, pure.
+  ///
+  /// Split out for the same reason `SelectionReader.refusalBeforeReading` is: the surrounding
+  /// function talks to Carbon, and a rule reachable only through `RegisterEventHotKey` is a rule no
+  /// test can state. Every branch here is one a user can produce by rebinding a shortcut.
+  package static func quickAddMayHoldItsChord(
+    isEnabled: Bool, isSuspended: Bool,
+    quickAdd: ShortcutBinding, cancel: ShortcutBinding, isCancelArmed: Bool
+  ) -> Bool {
+    guard isEnabled, !isSuspended else { return false }
+    // Cancel outranks Quick Add on a shared chord, for as long as cancel is armed — the same
+    // severity order `ShortcutRole` declares and the bare-modifier matcher already applies.
+    return !(quickAdd == cancel && isCancelArmed)
+  }
+
+  /// Pure mechanism, no policy: `reconcileQuickAddRegistration` above decides whether to call it.
+  private func registerQuickAddHotkey() {
+    guard quickAddBinding.isCarbonRegistrable else { return }
+    guard quickAddHotkeyRef == nil else { return }
+    quickAddHotkeyRef = registerHotkey(
+      id: HotkeyID.quickAdd.rawValue,
+      keyCode: quickAddKeyCode,
+      modifiers: carbonModifiers(from: quickAddModifiers)
+    )
+  }
+
+  private func unregisterQuickAddHotkey() {
+    if let ref = quickAddHotkeyRef {
+      UnregisterEventHotKey(ref)
+      quickAddHotkeyRef = nil
+    }
+  }
+
+  /// Re-apply the Quick Add binding after the user changes it.
+  ///
+  /// Both halves, because the binding can change SHAPE — chord to bare modifier or back — which
+  /// moves it between Carbon and the monitors. Re-registering without re-installing the monitors
+  /// would leave the new shape unobserved, which is #1991's exact failure: a shortcut that is
+  /// stored, displayed, and inert.
+  public func reapplyQuickAddBinding() {
+    unregisterQuickAddHotkey()
+    // The reconciler owns both questions the two guards below used to ask separately — may we
+    // register at all, and may we hold THIS chord. Rebinding Quick Add onto the cancel chord during
+    // a recording is exactly the case a bare `registerQuickAddHotkey()` here would get wrong.
+    reconcileQuickAddRegistration()
+    guard isEnabled, !isSuspended else { return }
+    installModifierMonitors()
+  }
+
   private func registerHotkey(id: UInt32, keyCode: UInt16, modifiers: UInt32) -> EventHotKeyRef? {
     let hotkeyID = EventHotKeyID(signature: hotkeySignature, id: id)
     var ref: EventHotKeyRef?
@@ -893,9 +1086,13 @@ public final class HotkeyService {
     )
     guard status == noErr else {
       // #1175: the noErr-but-silent trap means success can't confirm delivery, so
-      // we only report FAILURE. This is the single Carbon chokepoint — both the
-      // toggle and cancel registrations route through here.
-      let kind = id == HotkeyID.cancel.rawValue ? "cancel" : "toggle"
+      // we only report FAILURE. This is the single Carbon chokepoint — every registration routes
+      // through here.
+      // #2381: this was `id == cancel ? "cancel" : "toggle"`, which reported a quick-add
+      // registration failure as a TOGGLE failure. It now resolves the id to a ROLE and asks the role
+      // for its wire name, so the Carbon path and the monitor path below cannot disagree about what
+      // a role is called — one owner, `ShortcutRole.telemetryKind`.
+      let kind = (HotkeyID(rawValue: id)?.role ?? .record).telemetryKind
       let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
       telemetry.registrationFailed("carbon", kind, status, keyShape)
       return nil
@@ -929,6 +1126,13 @@ public final class HotkeyService {
       performCleanup()
       Task { await onCancelRecording?() }
       emitHotkeyPressed(.cancel, trigger: .cancel)
+
+    case HotkeyID.quickAdd.rawValue:
+      guard !isRelease else { return }
+      // No `performCleanup()`: Quick Add does not touch the recording path, so tearing down
+      // press-tracking state here would disturb an in-flight dictation for a limb's sake.
+      Task { await onQuickAdd?() }
+      emitHotkeyPressed(.quickAdd, trigger: .quickAdd)
 
     default:
       break
@@ -977,6 +1181,20 @@ public final class HotkeyService {
     // Determine press vs. release by checking whether the flag is present
     let isPress = currentFlags.contains(flag)
 
+    // **Swallow the tail of a gesture cancel already consumed.** With the opposite-side modifier
+    // held, `isPress` stays true through this key's physical release (the mask is aggregate and
+    // device-independent), so the release re-enters looking exactly like a press — and cancel has
+    // disarmed itself by then, so the matcher hands the same key to the next role that claims it.
+    //
+    // Cleared when the aggregate flag finally drops, which is the only signal available that the
+    // whole gesture is over. Swallowing a genuine second tap of this key while the other side is
+    // still held is the accepted cost and it is the safe direction: the recording is already gone,
+    // and the alternative is opening a panel the user did not ask for on the way out of losing it.
+    if keyCodeConsumedByCancel == keyCode {
+      if !isPress { keyCodeConsumedByCancel = nil }
+      return
+    }
+
     // #1991, blocker 1. This was `guard keyCode == toggleKeyCode`, which asked
     // "is this the RECORD key" and returned early for everything else — so a
     // bare modifier bound to CANCEL reached here and was dropped on the floor.
@@ -988,10 +1206,27 @@ public final class HotkeyService {
         forBareModifierKeyCode: keyCode,
         record: recordBinding,
         cancel: cancelBinding,
+        quickAdd: quickAddBinding,
         armed: armedRoles)
     else { return }
 
-    if role == .cancel {
+    // #2381. This was `if role == .cancel { … return }` followed by the record path, so a role the
+    // matcher resolved and this site did not name FELL THROUGH AND STARTED A RECORDING — and it
+    // compiled perfectly, because an `if` over an enum asserts nothing about the members it omits.
+    // A bare-modifier Quick Add would have begun dictating instead of opening the panel. The switch
+    // below is what makes the compiler name every member, which is the entire reason `ShortcutRole`
+    // was made a closed set.
+    switch role {
+    case .quickAdd:
+      // Press only: a modifier RELEASE is not a gesture. Quick Add carries none of cancel's
+      // aggregate-flag hazard, because it disarms nothing and destroys nothing — a stray second
+      // fire opens the panel twice, and the panel reuses its own window.
+      guard isPress else { return }
+      Task { await onQuickAdd?() }
+      emitHotkeyPressed(.quickAdd, trigger: .quickAdd)
+      return
+
+    case .cancel:
       // A modifier RELEASE is not a press, on the common path.
       guard isPress else { return }
 
@@ -1016,10 +1251,24 @@ public final class HotkeyService {
       // dependent left/right masks and would change heart-path dispatch, so it
       // is not folded into a cancel-key fix.
       isCancelArmed = false
+      // **AND DISARMING IS WHAT MAKES THE STRAY RELEASE DANGEROUS RATHER THAN HARMLESS, once a
+      // SECOND role can claim this key.** The comment above is right that the release "finds nothing
+      // to cancel" — it then falls through to the `.quickAdd` arm, which #2381 added, matches the
+      // same bare modifier when the user has bound both to it, and fires on `isPress`. So one cancel
+      // gesture discarded the recording AND opened the panel.
+      //
+      // Not a pre-existing residual: this branch introduced the second claimant. Marking the key is
+      // what lets the TAIL of a consumed gesture be swallowed instead of reinterpreted as a
+      // lower-priority role, and it is per-key rather than a flag because the aggregate mask cannot
+      // tell us which physical key came up.
+      keyCodeConsumedByCancel = keyCode
       performCleanup()
       Task { await onCancelRecording?() }
       emitHotkeyPressed(.cancel, trigger: .cancel)
       return
+
+    case .record:
+      break
     }
 
     if recordingMode == .toggle {

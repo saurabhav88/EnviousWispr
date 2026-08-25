@@ -121,6 +121,60 @@ struct SettingsDefaultsRoutingTests {
     #expect(matchingChanges == 1)
   }
 
+  // MARK: - Quick Add's shortcut (#2381)
+
+  @Test("Quick Add ships on Control-Option-W and belongs to unified defaults")
+  func quickAddShortcutDefaults() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+
+    // W (13), not a modifier: the default is deliberately a CHORD, so it takes the Carbon path and
+    // nobody who has never heard of the feature reaches it by accident.
+    #expect(settings.quickAddKeyCode == 13)
+    #expect(settings.quickAddModifiers == [.control, .option])
+    #expect(
+      SettingsManager.unifiedDefaultsKeys.filter { $0 == "quickAddKeyCode" }.count == 1,
+      "missing from unified keys means it never migrates to the shared suite (#923)")
+    #expect(
+      SettingsManager.unifiedDefaultsKeys.filter { $0 == "quickAddModifiersRaw" }.count == 1)
+  }
+
+  @Test("A rebound Quick Add shortcut survives a relaunch")
+  func quickAddShortcutPersists() {
+    // The requirement nothing else covers: rebinding is the whole point for a one-handed user, and
+    // a binding that works until quit is indistinguishable from one that works.
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+
+    settings.quickAddKeyCode = 2  // D
+    settings.quickAddModifiers = [.command, .shift]
+
+    #expect(suite.object(forKey: "quickAddKeyCode") as? Int == 2)
+    let reloaded = SettingsManager(defaults: suite)
+    #expect(reloaded.quickAddKeyCode == 2)
+    #expect(reloaded.quickAddModifiers == [.command, .shift])
+  }
+
+  @Test("Each half of the Quick Add binding emits its own SettingKey exactly once")
+  func quickAddShortcutNotifies() {
+    // Without the notification the value persists and never reaches registration — a shortcut that
+    // is stored, displayed, and inert (#1991).
+    let settings = SettingsManager(defaults: Self.freshSuite())
+    var keyCodeChanges = 0
+    var modifierChanges = 0
+
+    settings.onChange = { key in
+      if case .quickAddKeyCode = key { keyCodeChanges += 1 }
+      if case .quickAddModifiers = key { modifierChanges += 1 }
+    }
+
+    settings.quickAddKeyCode = 2
+    settings.quickAddModifiers = [.command]
+
+    #expect(keyCodeChanges == 1)
+    #expect(modifierChanges == 1)
+  }
+
   @Test("Smart insertion change emits its SettingKey exactly once")
   func smartInsertionNotifies() {
     let settings = SettingsManager(defaults: Self.freshSuite())
