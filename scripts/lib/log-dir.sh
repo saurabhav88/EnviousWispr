@@ -112,6 +112,30 @@ ew_resolve_log_dir() {
 # Shared by both deleting functions deliberately. Two copies of a rule this sharp
 # is how one of them stops matching the other.
 #   ew_lane_path_is_deletable <project_root> <lane_dir>
+# Is this path a MOUNT POINT? A directory whose device number differs from its
+# parent's is where a filesystem is mounted. `stat -f %d` is the macOS spelling;
+# a path that cannot be stat'd is reported as NOT a mount point, because the
+# callers already refuse a path they cannot resolve and an unreadable path must
+# not become an argument for deleting it.
+#   ew_lane_is_mount_point <path>
+ew_lane_is_mount_point() {
+  local path="$1" dev parent_dev
+  dev="$(/usr/bin/stat -f %d "$path" 2>/dev/null)" || return 1
+  parent_dev="$(/usr/bin/stat -f %d "$path/.." 2>/dev/null)" || return 1
+  [ -n "$dev" ] && [ -n "$parent_dev" ] && [ "$dev" != "$parent_dev" ]
+}
+
+# Can `rm -rf` escape the tree through this component? TWO ways, and `-L` sees
+# only the first: a symlink, or a MOUNT POINT. A mounted filesystem is not a link
+# and passes every textual and `-L` check, while `rm -rf` descends into it and
+# erases its contents, leaving only the busy mount root.
+#   ew_lane_component_is_unsafe <path>
+ew_lane_component_is_unsafe() {
+  [ -L "$1" ] && return 0
+  ew_lane_is_mount_point "$1" && return 0
+  return 1
+}
+
 ew_lane_path_is_deletable() {
   local project_root="$1" lane_dir="$2"
   local base="${lane_dir##*/}"
@@ -125,11 +149,17 @@ ew_lane_path_is_deletable() {
     "" | *[!0-9]*) return 1 ;;
   esac
 
-  # Then the filesystem. A link ANYWHERE on the way down means `rm -rf` can leave
-  # the tree, and `-L` is the only thing that sees that.
-  [ -L "$project_root/build" ] && return 1
-  [ -L "$project_root/build/lanes" ] && return 1
-  [ -L "$lane_dir" ] && return 1
+  # Then the filesystem. ONE question asked at each of the three levels: can
+  # `rm -rf` leave the tree through this component. Asked through a single helper
+  # rather than two checks per level, and that is a COVERAGE decision as much as a
+  # tidiness one — a real mount cannot be constructed in a portable suite without
+  # sudo, so a `-L` check and a separate mount check at each level would leave the
+  # mount half of every level untestable. With one helper, the rows that prove the
+  # guard consults it (the symlink victims below) and the rows that prove the
+  # helper catches a mount (against real devfs) compose into coverage of both.
+  ew_lane_component_is_unsafe "$project_root/build" && return 1
+  ew_lane_component_is_unsafe "$project_root/build/lanes" && return 1
+  ew_lane_component_is_unsafe "$lane_dir" && return 1
 
   # NO `pwd -P` PARENT-EQUALITY CHECK HERE, AND ITS ABSENCE IS DELIBERATE.
   # One was written and removed: with the three link checks above passing, the
@@ -170,15 +200,26 @@ ew_reset_lane_dir() {
     return 2
   fi
 
-  # An ABSENT lane is the common case and is nothing to clean. Checked before
-  # containment because the containment probe cannot resolve a path that is not
-  # there, and "not there" must not read as "refused".
-  [ -e "$lane_dir" ] || return 0
-
+  # CONTAINMENT IS DECIDED BEFORE ABSENCE (#2408 review r3, P1).
+  #
+  # The absent-lane shortcut used to run FIRST, and absence is the NORMAL
+  # fresh-invocation case — so on almost every run this returned success without
+  # ever looking at the parents, and the caller then `mkdir -p`'d straight through
+  # a symlinked `build` or `lanes`. The early return was added for a good reason
+  # and put upstream of the guard, which is this repo's own
+  # fix-the-path-that-runs-first shape: the check that matters was correct and
+  # unreachable.
+  #
+  # Ordering is safe because none of the containment checks require the lane to
+  # exist — they ask about its NAME and about its parents.
   if ! ew_lane_path_is_deletable "$project_root" "$lane_dir"; then
     echo "ew_reset_lane_dir: refusing to clear a path that is not a contained lane: $lane_dir" >&2
     return 2
   fi
+
+  # Nothing to clean is success, and it is checked AFTER containment so a
+  # fresh run still validates the tree it is about to write into.
+  [ -e "$lane_dir" ] || return 0
 
   rm -rf "$lane_dir"
 }

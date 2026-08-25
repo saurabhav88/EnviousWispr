@@ -77,7 +77,18 @@ LOG_DIR="$(ew_resolve_log_dir "$PROJECT_ROOT" "$LOG_DIR")"
 # means clearing it, or a debug-only run inherits the previous occupant's Release
 # receipt (#2408 review r2). Never for an explicit `--log-dir`: that directory
 # belongs to the caller and may be one they are deliberately filling.
-[ "$USING_DEFAULT_LOG_DIR" = "1" ] && ew_reset_lane_dir "$PROJECT_ROOT" "$LOG_DIR"
+# REFUSING TO DELETE MUST NOT REFUSE TO RUN (#2408 review r3, P2).
+#
+# This script runs `set -euo pipefail`, so a bare call returning 2 aborts the
+# lane before `xcodebuild` — turning "I will not delete through a symlink" into
+# "your tests do not run", which is a far worse answer to an unusual but legal
+# layout. An `if` condition suppresses errexit for the call, the same mechanism
+# #2401 needed for its judge.
+if [ "$USING_DEFAULT_LOG_DIR" = "1" ]; then
+  if ! ew_reset_lane_dir "$PROJECT_ROOT" "$LOG_DIR"; then
+    echo "==> not clearing this lane; a recycled pid may leave stale receipts here" >&2
+  fi
+fi
 mkdir -p "$LOG_DIR"   # absent on a clean checkout
 APP_LOG_DIR="$LOG_DIR/app-logger"
 mkdir -p "$APP_LOG_DIR"
@@ -87,8 +98,15 @@ mkdir -p "$APP_LOG_DIR"
 # address it already knows, and moving a shared pointer or pruning on its behalf
 # would make a battery's rows fight over it.
 if [ "$USING_DEFAULT_LOG_DIR" = "1" ]; then
-  ew_publish_latest_lane "$PROJECT_ROOT" "$LOG_DIR"
-  ew_prune_stale_lanes "$PROJECT_ROOT" "$LOG_DIR"
+  # Both are conveniences and neither may abort the lane under `set -e`: a link
+  # that cannot be repointed and a sweep that will not run through a symlink are
+  # both worth saying out loud and neither is worth refusing to test over.
+  if ! ew_publish_latest_lane "$PROJECT_ROOT" "$LOG_DIR"; then
+    echo "==> could not publish build/latest-lane; the lane itself is unaffected" >&2
+  fi
+  if ! ew_prune_stale_lanes "$PROJECT_ROOT" "$LOG_DIR"; then
+    echo "==> not pruning old lanes; build/lanes will grow until this is resolved" >&2
+  fi
 fi
 
 # Generate the Xcode project (gitignored, never committed) — only when a

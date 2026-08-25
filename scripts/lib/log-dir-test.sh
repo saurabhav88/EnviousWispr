@@ -334,6 +334,79 @@ ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/8888" >/dev/null 2>&1
   && ok "an ordinary lane is still cleared" \
   || bad "an ordinary lane is still cleared" "stale file survived"
 
+echo "== containment is decided BEFORE absence =="
+# The P1 that made every other symlink row unreachable on the normal path. The
+# absent-lane shortcut used to run first, and absence is the FRESH-INVOCATION
+# case — so on almost every run the function returned success without looking at
+# the parents at all. The rows above only caught it because they pre-created the
+# lane.
+mkdir -p "$SYM/victim-e" "$SYM/root-e/build"
+: > "$SYM/victim-e/precious.txt"
+ln -s "$SYM/victim-e" "$SYM/root-e/build/lanes"
+# NOTE: lane 5150 deliberately does NOT exist — that is the whole point.
+ew_reset_lane_dir "$SYM/root-e" "$SYM/root-e/build/lanes/5150" >/dev/null 2>&1
+[ "$?" -eq 2 ] \
+  && ok "an ABSENT lane under a symlinked parent is still refused" \
+  || bad "an ABSENT lane under a symlinked parent is still refused" "rc was not 2"
+
+# The accepted twin: an absent lane under a NORMAL parent is a plain no-op, or
+# the row above is satisfied by a function that refuses every fresh run.
+if ew_reset_lane_dir "$SANDBOX" "$SANDBOX/build/lanes/5151" >/dev/null 2>&1; then
+  ok "an absent lane under a normal parent is a no-op"
+else
+  bad "an absent lane under a normal parent is a no-op" "returned nonzero"
+fi
+
+echo "== a mount point is a second way out that -L cannot see =="
+# `/dev` is devfs on every macOS machine this runs on, so the detector is
+# exercised against a REAL mount rather than a constructed one.
+#
+# Deliberately NOT `/`: root IS a mount point and this method cannot see it,
+# because `/..` is `/` and the devices compare equal. That is a real limit of
+# comparing against the parent, and it costs nothing here — a lane path can never
+# be `/`, since the shape guard requires it to sit under `<root>/build/lanes/`
+# with a numeric basename. Written as `/` first, and the row failed, which is how
+# the limit was found rather than assumed.
+if ew_lane_is_mount_point /dev ; then
+  ok "the detector recognises a real mount point"
+else
+  bad "the detector recognises a real mount point" "/dev not detected"
+fi
+# The accepted twin: an ordinary directory is NOT a mount point, or the detector
+# refuses everything and the guard above is vacuous.
+if ew_lane_is_mount_point "$SANDBOX/build/lanes" ; then
+  bad "an ordinary directory is not a mount point" "false positive"
+else
+  ok "an ordinary directory is not a mount point"
+fi
+# And an unreadable path must not be reported as a mount point: the callers
+# refuse what they cannot resolve, and an unreadable path must never become an
+# argument for deleting it.
+if ew_lane_is_mount_point "$SANDBOX/no/such/path" ; then
+  bad "an unresolvable path is not called a mount point" "false positive"
+else
+  ok "an unresolvable path is not called a mount point"
+fi
+
+# THE COMPOSITION, which is what makes the mount half reachable at all. A real
+# mount cannot be built in a portable suite without sudo, so the guard's mount
+# branch is covered in two pieces: these rows prove the shared helper answers YES
+# for BOTH ways out, and the symlink-victim rows above prove the guard consults
+# the helper at all three levels.
+ln -s "$SANDBOX" "$SANDBOX/a-link"
+ew_lane_component_is_unsafe "$SANDBOX/a-link" \
+  && ok "the shared safety check refuses a link" \
+  || bad "the shared safety check refuses a link" "accepted"
+ew_lane_component_is_unsafe /dev \
+  && ok "the shared safety check refuses a mount point" \
+  || bad "the shared safety check refuses a mount point" "accepted"
+# Accepted twin, or the helper refuses everything and both rows are vacuous.
+if ew_lane_component_is_unsafe "$SANDBOX/build/lanes" ; then
+  bad "the shared safety check accepts an ordinary directory" "refused"
+else
+  ok "the shared safety check accepts an ordinary directory"
+fi
+
 echo "== both refuse rather than guessing =="
 ew_publish_latest_lane "$SANDBOX" "" >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "publish refuses a missing lane_dir" || bad "publish refuses a missing lane_dir" "rc=$?"
