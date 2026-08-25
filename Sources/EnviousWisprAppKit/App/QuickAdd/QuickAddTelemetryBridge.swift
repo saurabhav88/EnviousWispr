@@ -109,7 +109,30 @@ enum QuickAddTelemetryBridge {
   /// **`len=` is a CHARACTER COUNT and the word itself never appears here.** Every value on these
   /// lines is a closed-set token, a number, or an app's bundle id. If you are ever tempted to add the
   /// word to make a support case easier, that is the exact trade this was decided against.
-  private static func log(_ line: String) {
-    Task { await AppLogger.shared.log("[QuickAdd] \(line)", level: .info, category: "QuickAdd") }
+  ///
+  /// **`#if DEBUG` HERE, not only inside `AppLogger`, and the difference is not stylistic.**
+  /// `AppLogger.log`'s BODY is `#if DEBUG` — its own doc says call sites compile unchanged and
+  /// produce no output — so a release build discards these lines. But discarding them happens AFTER
+  /// the caller has already interpolated the string and spawned a Task to hand it over. Every panel
+  /// open in a shipped build would format `top=%.2f`, build a sentence and hop actors for a sink that
+  /// cannot exist.
+  ///
+  /// The cost is small; the absurdity is the argument. And it corrects a premise worth stating,
+  /// because it is the kind that gets inherited and restated: a RELEASE build writes no
+  /// `~/Library/Logs/EnviousWispr/app.log` at all. These lines are for us reproducing locally and for
+  /// the founder on a dev build during UAT — never something a shipped user can send in. Any support
+  /// workflow written around them is a workflow around an artifact that does not exist.
+  /// (Owed to a peer session finding the same inherited premise under #2135.)
+  /// **`@autoclosure`, and without it the `#if DEBUG` below is a fix that reads as a fix and is not.**
+  /// The interpolation happens at the CALL SITE — `log("opened door=\(door) top=\(score)")` builds
+  /// its string before `log` is entered — so guarding only the body would still format every sentence
+  /// in a release build and then throw it away. Deferring the expression is what actually removes the
+  /// work. Non-escaping and evaluated synchronously inside the guard, so the Task captures a rendered
+  /// String rather than a closure.
+  private static func log(_ line: @autoclosure () -> String) {
+    #if DEBUG
+      let rendered = "[QuickAdd] \(line())"
+      Task { await AppLogger.shared.log(rendered, level: .info, category: "QuickAdd") }
+    #endif
   }
 }
