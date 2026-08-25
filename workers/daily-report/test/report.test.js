@@ -2235,6 +2235,27 @@ test("resolveReleases: a SHORT Retry-After is honoured once; a long one is decli
   assert.equal(secCalls, 2, "a 403 carrying Retry-After is a rate limit, and recovers");
   assert.deepEqual(secSleeps, [1000]);
   assert.ok(secOut.releases.length > 0);
+
+  // 7. `Retry-After: 0` is a VALID delta-seconds value meaning "retry now"
+  // (#2415 review r4). A `> 0` test rejected it and threw away the cheapest
+  // recovery there is - no wait at all - reporting the section unavailable
+  // instead. The row asserts the retry happens AND that the wait is zero, since
+  // "recovered" alone would also be true of a version that slept a default.
+  let zeroCalls = 0;
+  const zeroSleeps = [];
+  const zeroOut = await resolveReleases({ GITHUB_REPO: "o/r" }, [usage("2.4.1", 1)], {
+    windowEndExclusive: "2026-07-29",
+    fetchFn: async () => {
+      zeroCalls += 1;
+      if (zeroCalls === 1) return ghResponse(429, null, { headers: { "retry-after": "0" } });
+      return ghResponse(200, [release("v2.4.1", "2026-07-24T00:00:00Z")]);
+    },
+    sleepFn: async (ms) => zeroSleeps.push(ms),
+    nowFn,
+  });
+  assert.equal(zeroCalls, 2, "Retry-After: 0 is honoured, not discarded");
+  assert.deepEqual(zeroSleeps, [0], "and it waits for exactly no time");
+  assert.ok(zeroOut.releases.length > 0);
 });
 
 test("resolveReleases: a RATE LIMIT is temporary but NOT retried, and says when it resets", async () => {

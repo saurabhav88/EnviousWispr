@@ -221,7 +221,12 @@ function retryAfterMs(res) {
   const raw = res.headers?.get?.("retry-after");
   if (typeof raw !== "string" || !/^\d+$/.test(raw.trim())) return null;
   const ms = Number(raw.trim()) * 1000;
-  if (!Number.isSafeInteger(ms) || ms <= 0) return null;
+  // `>= 0`, not `> 0`. **`Retry-After: 0` IS A VALID DELTA-SECONDS VALUE** and it
+  // means "you may retry immediately" (#2415 review r4). Rejecting it threw away
+  // the CHEAPEST recovery available - no wait at all - and reported the section
+  // unavailable instead. The negative branch is unreachable given the `^\d+$`
+  // above and is kept as a floor, not as live logic.
+  if (!Number.isSafeInteger(ms) || ms < 0) return null;
   return ms;
 }
 
