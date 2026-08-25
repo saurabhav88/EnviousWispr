@@ -118,13 +118,22 @@ public enum SelectionReader {
     // Safe: `refusalBeforeReading` returns non-nil for a nil or non-positive pid.
     guard let pid = frontmost else { return .refused(.noFocusedElement) }
     if let timeout {
-      // Set on the APPLICATION element, which is what the focused-element query goes through, and
-      // before that query rather than after it — the stall this bounds can happen on either call.
+      // Bound the application handle, which is what the focused-element query messages.
       AXUIElementSetMessagingTimeout(AXUIElementCreateApplication(pid), timeout)
     }
     guard let focused = PasteService.focusedElementQuery(pid: pid) else {
       return .refused(.noFocusedElement)
     }
+    // **And bound the FOCUSED handle separately, because a descendant does not inherit it.** This
+    // repo learned that in #1332 and wrote it down twice — `PasteService.firstPasteItem`:
+    // "Descendant handles do NOT inherit an ancestor's messaging timeout", and
+    // `findPasteMenuItem`: "The timeout binds ONE element, so every handle we message has to be
+    // bounded, not just this one."
+    //
+    // Bounding only the application is the shape that LOOKS bounded: the app answers the focused
+    // query promptly, and then the attribute read below — the call that actually stalls — runs
+    // against a handle nothing capped.
+    if let timeout { AXUIElementSetMessagingTimeout(focused, timeout) }
 
     var valueRef: CFTypeRef?
     let error = AXUIElementCopyAttributeValue(
