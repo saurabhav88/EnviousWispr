@@ -99,6 +99,24 @@ def expected_read(key, value):
     return ("1" if value else "0") if key in BOOL_KEYS else str(value)
 
 
+def screen_is_locked():
+    """True when the login window owns the screen.
+
+    A LOCKED SCREEN INVALIDATES A RUN SILENTLY. The app still records, the window
+    server still reports pill geometry, and `screencapture` still writes a file of
+    the usual size — so a row asserting only that its frames EXIST passes while
+    every frame shows the login window. Delivery also degrades to clipboard-only
+    for want of any focused text field.
+
+    Owner: tools-and-apps.md FACT: synthetic-escape-does-not-reach-a-carbon-hotkey,
+    which prescribes this check before anything else in a Live UAT.
+    """
+    import Quartz
+
+    d = Quartz.CGSessionCopyCurrentDictionary() or {}
+    return bool(d.get("CGSSessionScreenIsLocked"))
+
+
 def read_default(k):
     r = subprocess.run(["defaults", "read", DOMAIN, k], capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else None
@@ -245,6 +263,12 @@ def measure_row(name, pid, since_bytes):
 
 
 def main():
+    # SCREEN LOCK FIRST. A locked screen makes every visual verdict in this row
+    # meaningless while the run still looks real.
+    if screen_is_locked():
+        print(json.dumps({"verdict": "ABORT_SCREEN_LOCKED"}))
+        return
+
     snapshot = {k: read_default(k) for k in KEYS}
     report = {"snapshot": snapshot, "rows": {}}
     try:

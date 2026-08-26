@@ -217,6 +217,12 @@ def _terminal_after_start():
 
 
 def main():
+    # SCREEN LOCK FIRST. A locked screen makes every visual verdict in this row
+    # meaningless while the run still looks real.
+    if g.screen_is_locked():
+        print(json.dumps({"verdict": "ABORT_SCREEN_LOCKED"}))
+        return
+
     snapshot = {k: read_dev_default(k) for k in OVERRIDES}
     report = {"snapshot": snapshot, "cap_seconds": CAP_SECONDS,
               "lead_seconds": LEAD_SECONDS,

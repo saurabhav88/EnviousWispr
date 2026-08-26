@@ -265,6 +265,12 @@ def run_arm(pid, audio, hover, label):
 
 
 def main():
+    # SCREEN LOCK FIRST. A locked screen makes every visual verdict in this row
+    # meaningless while the run still looks real.
+    if g.screen_is_locked():
+        print(json.dumps({"verdict": "ABORT_SCREEN_LOCKED"}))
+        return
+
     pids = g.dev_pids()
     if len(pids) != 1:
         print(json.dumps({"verdict": "ABORT_INSTANCE", "found": pids}))

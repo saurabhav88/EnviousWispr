@@ -115,6 +115,12 @@ def wait_for_cancel(since_bytes, timeout):
 
 
 def main():
+    # SCREEN LOCK FIRST. A locked screen makes every visual verdict in this row
+    # meaningless while the run still looks real.
+    if g.screen_is_locked():
+        print(json.dumps({"verdict": "ABORT_SCREEN_LOCKED"}))
+        return
+
     if len(g.dev_pids()) != 1:
         print(json.dumps({"verdict": "ABORT_INSTANCE", "found": g.dev_pids()}))
         return
