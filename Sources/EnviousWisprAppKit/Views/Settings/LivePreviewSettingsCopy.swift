@@ -269,7 +269,9 @@ enum LivePreviewSettingsCopy {
   /// chunk review on #2436, and `chipNeverPromisesOutput` missed it because its forbidden
   /// list did not contain "detect" — the guard and the defect had the same blind spot.
   ///
-  /// **The Auto asymmetry is stated in `pickerDictationCaveat`, not here.**
+  /// **The Auto asymmetry is stated in `pickerAppleCaveat`, not here** — and only there,
+  /// because it is Apple's asymmetry alone; `pickerUniversalCaveat` is the universal
+  /// engine's own sentence and must never repeat Apple's.
   ///
   /// Dictation on Auto detects what you actually speak. Apple's preview cannot: it
   /// is built for one locale chosen before the first word, so it uses the Mac's.

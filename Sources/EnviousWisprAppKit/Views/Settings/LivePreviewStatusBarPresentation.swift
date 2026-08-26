@@ -24,7 +24,7 @@ enum LivePreviewStatusBarPresentation {
   /// dictation language the way a user assumes: dictation detects what they
   /// actually speak, while this preview must commit to one locale before the first
   /// word and so uses the Mac's. Saying only "German" invites the reading that they
-  /// chose it. `LivePreviewSettingsCopy.pickerDictationCaveat` states that asymmetry in
+  /// chose it. `LivePreviewSettingsCopy.pickerAppleCaveat` states that asymmetry in
   /// full, at the moment somebody acts on the language; an earlier draft of the copy it
   /// replaced claimed the symmetrical version and was wrong.
   struct Language: Equatable {
