@@ -127,7 +127,28 @@ final class QuickAddCoordinator {
   /// that caught the accept path reporting success without telling anyone caught this one branch
   /// over. A shortcut that emits telemetry and shows nothing is indistinguishable from a shortcut
   /// that is not registered.
-  func begin(door: QuickAddDoor, selectionOverride: String? = nil) -> QuickAddPanelModel? {
+  /// Where `begin` gets the selection, with one case per door.
+  ///
+  /// **A type rather than a `String?`, because the read has THREE outcomes and an optional holds
+  /// two.** Passing nil to mean "refused" is what let the menu's bounded read be silently repeated
+  /// unbounded: `begin` could not tell "I have nothing for you, go and look" from "I looked, under a
+  /// cap, and was refused". Cloud review found it on PR #2427; it is the same three-state collapse
+  /// `QuickAddMenuState` fixed in the menu, one call later.
+  ///
+  /// `.text` is classified INSIDE `begin` rather than at the call site, so a future door cannot hand
+  /// over raw text and skip the ceiling and the empty check.
+  enum SelectionSource {
+    /// Read it now, live and unbounded. The hotkey door, where the user's app is still frontmost.
+    case live
+    /// Raw text handed to us, to be classified here. The Services door.
+    case text(String)
+    /// An outcome somebody else already obtained, carried through as-is. The menu door, whose read
+    /// happened while the menu was open — under a cap, and at the one moment the answer was about
+    /// the user's document rather than about us.
+    case result(SelectionReader.Result)
+  }
+
+  func begin(door: QuickAddDoor, selection source: SelectionSource = .live) -> QuickAddPanelModel? {
     let startedAt = environment.now()
     let bundleID = environment.frontmostBundleID()
 
@@ -139,8 +160,17 @@ final class QuickAddCoordinator {
     // is what let a whitespace-only selection open a panel on an empty string and an oversized one
     // reach the scorer — the ceiling and the empty check are properties of a SELECTION, not of the
     // door it arrived through.
-    var selection: SelectionReader.Result =
-      selectionOverride.map { SelectionReader.classify($0) } ?? environment.readSelection()
+    //
+    // `.result` is carried UNTOUCHED. It is already a classified outcome, and re-reading it here
+    // would both repeat a stalled read without the caller's cap and, once #2413 lands, risk
+    // answering "EnviousWispr is in front" — true by then, and about the wrong subject.
+    var selection: SelectionReader.Result = {
+      switch source {
+      case .live: return environment.readSelection()
+      case .text(let raw): return SelectionReader.classify(raw)
+      case .result(let already): return already
+      }
+    }()
 
     // Refresh before ranking, every invocation. A sibling instance or the Settings window can have
     // changed the library since launch, and ranking a stale snapshot offers words that no longer

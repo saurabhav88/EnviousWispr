@@ -223,9 +223,29 @@ final class MenuBarController: NSObject {
   /// residual inaccuracy on an exotic layout is the app-wide one and belongs where that formatter
   /// lives — fixing it HERE alone would make the menu disagree with the Keybinds screen, which is
   /// worse than being consistently approximate.
+  ///
+  /// **Silent when another role owns the same chord, which is not the same as the chord being
+  /// dead.** `ShortcutMatcher.role` gives Record priority on a shared binding, and
+  /// `HotkeyService.quickAddMayHoldItsChord` unregisters Quick Add entirely while a same-binding
+  /// Cancel is armed — and the keybind screen allows the collision. So the configured chord can
+  /// START OR CANCEL A RECORDING, and printing it here teaches the user to fire the heart path while
+  /// trying to add a word. This menu exists because the shortcut can fail; advertising the wrong
+  /// owner is the one thing it must not do.
+  ///
+  /// Omitted rather than resolved to the effective owner: there is no honest short hint for "this
+  /// chord belongs to Start Recording", and the row itself still works. Cloud review, PR #2427.
   static func quickAddShortcutLabel(
-    keyCode: UInt16, modifiers: NSEvent.ModifierFlags
+    keyCode: UInt16, modifiers: NSEvent.ModifierFlags,
+    recordKeyCode: UInt16, recordModifiers: NSEvent.ModifierFlags,
+    cancelKeyCode: UInt16, cancelModifiers: NSEvent.ModifierFlags
   ) -> String? {
+    // Compared as raw pairs rather than as `ShortcutBinding`, which is `package` to another module.
+    // Equality is the same question either way: same key code, same modifiers, same chord.
+    let contested =
+      (keyCode == recordKeyCode && modifiers == recordModifiers)
+      || (keyCode == cancelKeyCode && modifiers == cancelModifiers)
+    guard !contested else { return nil }
+
     let formatted = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
     // `nameForKeyCode` falls back to `Key <n>` for anything it does not know, which teaches nothing
     // and looks like a bug. Say nothing instead.
@@ -348,10 +368,11 @@ final class MenuBarController: NSObject {
     // controller would be one value shared by every render, and could drift from the title sitting
     // beside it; this cannot, because they are set together and thrown away together. It also keeps
     // this class off its stored-property ceiling, which refused the field and was right to.
-    // Only a READY row carries text. A blocked row is enabled precisely so the panel can state the
-    // refusal, and it must reach `begin` with no override so the panel reads the live reason rather
-    // than being handed a stale one.
-    if case .ready(let selection) = state.quickAdd { quickAddItem.representedObject = selection }
+    // **EVERY row carries its own outcome, not just a ready one.** The previous version attached
+    // text to a ready row and nothing to the others, so the click path had to re-read to find out
+    // what had happened — without this read's cap, and after the menu had closed, by which time a
+    // live read can answer about US rather than about the user's document.
+    quickAddItem.representedObject = state.quickAdd.selectionResult
     menu.addItem(quickAddItem)
 
     // Auto-stop on silence indicator
@@ -470,7 +491,9 @@ final class MenuBarController: NSObject {
 
     return MenuBarViewState(
       quickAddShortcut: Self.quickAddShortcutLabel(
-        keyCode: settings.quickAddKeyCode, modifiers: settings.quickAddModifiers),
+        keyCode: settings.quickAddKeyCode, modifiers: settings.quickAddModifiers,
+        recordKeyCode: settings.toggleKeyCode, recordModifiers: settings.toggleModifiers,
+        cancelKeyCode: settings.cancelKeyCode, cancelModifiers: settings.cancelModifiers),
       quickAdd: quickAdd,
       pipelineState: liveRecordingState.pipelineState,
       asrLabel: backendMetadata.modelLabel,
@@ -495,7 +518,10 @@ final class MenuBarController: NSObject {
   @objc private func addSelectedWordAction(_ sender: NSMenuItem) {
     // A blocked row carries nothing, and passing nil is what lets the panel read the refusal LIVE
     // and say why — rather than repeating a reason captured when the menu was drawn.
-    actions.addSelectedWord(sender.representedObject as? String)
+    // A row we rendered always carries its outcome. The fallback is not a real case — it exists so
+    // a menu item built by something other than `renderMenu` cannot silently add an empty word.
+    actions.addSelectedWord(
+      sender.representedObject as? SelectionReader.Result ?? .refused(.noFocusedElement))
   }
 
   @objc private func continueOnboardingAction() {
@@ -579,7 +605,7 @@ extension MenuBarController: NSMenuDelegate {
           switch SelectionReader.read(timeout: Self.quickAddReadTimeout) {
           case .text(let text): return .ready(text)
           case .noSelection: return .nothingSelected
-          case .refused: return .blocked
+          case .refused(let why): return .blocked(why)
           }
         }()
         renderMenu(into: currentMenu, state: currentViewState(quickAdd: quickAdd))
@@ -593,7 +619,7 @@ extension MenuBarController: NSMenuDelegate {
 /// architecture ceiling parser scores them as a single collaborator slot.
 struct MenuBarActions: Sendable {
   /// Open Quick Add on the text the menu read while the user's own app was still frontmost (#2412).
-  let addSelectedWord: @MainActor (String?) -> Void
+  let addSelectedWord: @MainActor (SelectionReader.Result) -> Void
   let continueOnboarding: @MainActor () -> Void
   let openSettings: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void
@@ -612,8 +638,29 @@ enum QuickAddMenuState: Equatable {
   case ready(String)
   /// The read succeeded and there was nothing selected. Inert.
   case nothingSelected
-  /// The read was refused. Enabled, so the panel can state the reason.
-  case blocked
+  /// The read was refused. Enabled, so the panel can state the reason — and it CARRIES that reason,
+  /// because the panel must be handed the outcome we measured rather than re-deriving it.
+  ///
+  /// **Dropping the refusal is what made the re-read necessary.** With only "blocked", the click
+  /// path had to ask again, without the menu's cap, so a stalled Accessibility provider stalled the
+  /// panel instead of the menu and the bound bought nothing. Cloud review, PR #2427.
+  ///
+  /// It changes no display: every refusal renders the same row. Information kept, not shown.
+  case blocked(SelectionReader.Refusal)
+
+  /// The read outcome behind this state, for handing to the panel.
+  ///
+  /// **On the state rather than on the controller, and not merely to satisfy a ceiling.** It answers
+  /// a different question from `quickAddItem`: that one decides what the row LOOKS like, this one
+  /// decides what the panel is TOLD, and neither needs the controller. They were one function's job
+  /// once, which is how the refusal came to be dropped on the way through.
+  var selectionResult: SelectionReader.Result {
+    switch self {
+    case .ready(let text): return .text(text)
+    case .nothingSelected: return .noSelection
+    case .blocked(let why): return .refused(why)
+    }
+  }
 }
 
 /// Immutable snapshot the menu and icon render from. Extracting it makes

@@ -276,13 +276,48 @@ struct MenuBarControllerTests {
     #expect(item(menu, "Add \u{201C}clawwed\u{201D}") != nil, "the title carries no trailing hint")
   }
 
+  /// Every case is paired with its opposite, or a function that returned nil for everything would
+  /// look exactly like this one passing.
+  private static func label(
+    _ keyCode: UInt16, _ modifiers: NSEvent.ModifierFlags,
+    record: (UInt16, NSEvent.ModifierFlags) = (49, []),
+    cancel: (UInt16, NSEvent.ModifierFlags) = (53, [])
+  ) -> String? {
+    MenuBarController.quickAddShortcutLabel(
+      keyCode: keyCode, modifiers: modifiers,
+      recordKeyCode: record.0, recordModifiers: record.1,
+      cancelKeyCode: cancel.0, cancelModifiers: cancel.1)
+  }
+
   /// The mapping itself: what is worth showing, and what is not.
   @Test("An unknown key code advertises nothing rather than `Key 999`")
   func onlyKnownChordsAreAdvertised() {
+    #expect(Self.label(13, [.control, .option]) == "\u{2303}\u{2325} W")
+    #expect(Self.label(999, [.command]) == nil)
+  }
+
+  /// **A chord another role owns must not be advertised here, and this is worse than a dead hint.**
+  /// `ShortcutMatcher.role` gives Record priority on a shared binding and
+  /// `HotkeyService.quickAddMayHoldItsChord` unregisters Quick Add while a same-binding Cancel is
+  /// armed — so the advertised chord can START OR CANCEL A RECORDING. This menu exists because the
+  /// shortcut can fail; sending the user to the heart path instead is the one lie it must not tell.
+  /// Cloud review, PR #2427.
+  @Test("A chord Record or Cancel owns is not advertised as Quick Add's")
+  func acontestedChordIsNotAdvertised() {
+    // The shipped default is uncontested and still shows, so the guard cannot be a blanket nil.
+    #expect(Self.label(13, [.control, .option]) != nil, "the default is nobody else's")
+
+    #expect(Self.label(49, [], record: (49, [])) == nil, "Record owns this chord")
+    #expect(Self.label(53, [], cancel: (53, [])) == nil, "Cancel owns this chord")
+
+    // MODIFIERS are half the identity: the same key code under a different chord is a different
+    // shortcut, and refusing it too would silence a hint that is perfectly honest.
     #expect(
-      MenuBarController.quickAddShortcutLabel(keyCode: 13, modifiers: [.control, .option])
-        == "\u{2303}\u{2325} W")
-    #expect(MenuBarController.quickAddShortcutLabel(keyCode: 999, modifiers: [.command]) == nil)
+      Self.label(49, [.control, .option], record: (49, [])) != nil,
+      "same key, different chord — not a collision")
+    #expect(
+      Self.label(49, [], record: (49, [.command])) != nil,
+      "and the other way round, or the check is comparing key codes alone")
   }
 
   /// The title composer, paired so a missing hint cannot leave trailing whitespace.
@@ -514,7 +549,15 @@ struct MenuBarControllerTests {
       settings: settings,
       permissions: PermissionsService(),
       actions: MenuBarActions(
-        addSelectedWord: { spy.fired.append("addSelectedWord:\($0 ?? "<none>")") },
+        // Rendered per CASE rather than through a description, so a refusal reaching the panel is
+        // visible in the assertion instead of collapsing into the same string as an empty read.
+        addSelectedWord: {
+          switch $0 {
+          case .text(let t): spy.fired.append("addSelectedWord:\(t)")
+          case .noSelection: spy.fired.append("addSelectedWord:<none>")
+          case .refused(let why): spy.fired.append("addSelectedWord:refused:\(why.rawValue)")
+          }
+        },
         continueOnboarding: { spy.fired.append("continueOnboarding") },
         openSettings: { spy.fired.append("openSettings") },
         openPermissions: { spy.fired.append("openPermissions") },
@@ -601,9 +644,21 @@ struct QuickAddMenuItemTests {
   /// tells them nothing. Enabled, so the panel opens and states the reason.
   @Test("A refused read stays clickable so the panel can say why")
   func aRefusedReadIsNotAnEmptySelection() {
-    let blocked = MenuBarController.quickAddItem(.blocked)
+    let blocked = MenuBarController.quickAddItem(.blocked(.accessibilityNotTrusted))
     #expect(blocked.enabled, "the door that must be reliable cannot fail silently")
     #expect(blocked.title == "Add Selected Word")
+
+    // **Every refusal renders the SAME row, and the state still carries which one it was.** The
+    // display is deliberately uniform — the panel states the reason, not the menu — but dropping the
+    // reason here is what forced the click path to re-read without the menu's cap (PR #2427).
+    for why in SelectionReader.Refusal.allCases where why != .accessibilityNotTrusted {
+      #expect(MenuBarController.quickAddItem(.blocked(why)) == blocked, "one row for every refusal")
+      #expect(
+        QuickAddMenuState.blocked(why).selectionResult == .refused(why),
+        "and the panel is handed the refusal we measured, not a fresh guess")
+    }
+    #expect(QuickAddMenuState.nothingSelected.selectionResult == .noSelection)
+    #expect(QuickAddMenuState.ready("clawwed").selectionResult == .text("clawwed"))
 
     let empty = MenuBarController.quickAddItem(.nothingSelected)
     #expect(!empty.enabled, "and genuinely nothing selected is still inert")

@@ -1010,7 +1010,7 @@ public final class WisprBootstrapper {
       settings: settings,
       permissions: permissions,
       actions: MenuBarActions(
-        addSelectedWord: { quickAdd.beginFromMenuBar(text: $0) },
+        addSelectedWord: { quickAdd.beginFromMenuBar(selection: $0) },
         continueOnboarding: { appWindowCoordinator.openOnboardingWindow() },
         openSettings: {
           navigationCoordinator.request(.speechEngine)
