@@ -130,6 +130,36 @@ struct RecordingPillTileTests {
       "two tiles measured the same width \(widths), so the picker shows one design twice")
   }
 
+  /// **Every tile asks for its design's DECLARED width, and the excess over that
+  /// is one constant shared by all three.**
+  ///
+  /// Cloud review on #2439 raised the reading well overflowing a narrow window.
+  /// This is the half that can be measured rather than argued: the tile's ideal
+  /// width is the design's own `width` plus a padding that does not vary by
+  /// design. Whether the containing window can ever be narrower than that is a
+  /// Live UAT row, and the horizontal scroll fallback is what keeps it from
+  /// clipping when it is.
+  @Test("a tile asks for its design's declared width plus a shared padding")
+  func tileWidthIsTheDesignWidthPlusOnePadding() {
+    let overheads = RecordingPillDesign.allCases.map {
+      Self.tileSize($0).width - $0.width
+    }
+
+    #expect(
+      overheads.allSatisfy { $0 > 0 },
+      """
+      measured overheads \(overheads). A tile no wider than its design's declared width \
+      has no padding at all, which means the pill is touching the tile's border.
+      """)
+    #expect(
+      Set(overheads).count == 1,
+      """
+      the three tiles add \(overheads) to their designs' widths. They share one padding \
+      constant, so a difference means a tile is sized by something other than the pill \
+      inside it.
+      """)
+  }
+
   // MARK: - What a screen reader gets
 
   /// **The words that left the screen have to arrive somewhere, and the LABEL is
@@ -161,6 +191,37 @@ struct RecordingPillTileTests {
       description is no longer on screen, so a reader who cannot see the picture now \
       gets nothing about what this option looks like.
       """)
+  }
+
+  /// **The still pill's meter is DRAWN from this, so it is the picture.**
+  ///
+  /// Nothing rendered can see it: the meter is paint, and `fittingSize` is blind
+  /// to paint. So the shape is asserted here and the wiring in
+  /// `RecordingPillPreviewWiringTests`.
+  @Test("the sample waveform fills the meter and ends where the mark is")
+  func theSampleWaveformIsWellFormed() {
+    let history = RecordingPillPreviewTile.sampleLevelHistory
+
+    #expect(
+      history.count == RainbowLevelMeter.barCount,
+      """
+      the sample waveform has \(history.count) samples for \(RainbowLevelMeter.barCount) \
+      bars. Short pads the OLD end with silence, which is survivable; long silently \
+      drops the oldest, which is not what this array is claiming to be.
+      """)
+    #expect(
+      history.allSatisfy { $0 >= 0 && $0 <= 1 },
+      "a sample outside 0...1 clamps at the meter and is not the shape written here: \(history)")
+    #expect(
+      history.last == CGFloat(RecordingPillPreviewTile.sampleLevel),
+      """
+      the waveform ends at \(history.last ?? -1) while the rainbow mark is driven by \
+      \(RecordingPillPreviewTile.sampleLevel). Both render the same instant, so a picker \
+      showing them disagreeing is drawing a pill that cannot occur.
+      """)
+    #expect(
+      Set(history).count > 1,
+      "every sample is identical, so the meter draws a flat bar rather than a waveform")
   }
 
   @Test("no two tiles announce the same thing")
@@ -331,6 +392,32 @@ struct RecordingPillPreviewWiringTests {
       the tile seeds its first frame with `\(seed.baseName.text)` and its provider returns \
       `\(returned.baseName.text)`. The seed is what the user sees before the first poll, so \
       these disagreeing means the picker briefly shows a picture nothing chose.
+      """)
+  }
+
+  /// **The seeded meter has no rendered observable at all**, because the meter is
+  /// paint and `fittingSize` cannot see paint. Without the seed the rail draws one
+  /// bar at the sample level and twenty-three at the silence floor, which is a
+  /// picture of the wrong design, and every size row in the suite still passes.
+  @Test("the still meter is handed a history to draw")
+  func theMeterIsSeeded() throws {
+    let call = try Self.theConstruction()
+    let expr = try #require(
+      Self.argument("initialLevelHistory", of: call),
+      """
+      the tile passes no initialLevelHistory, so the meter starts empty and a pill that \
+      never polls draws a single bar. The Level Rail IS that meter.
+      """)
+
+    #expect(
+      expr.as(ArrayExprSyntax.self)?.elements.isEmpty != true,
+      "initialLevelHistory is an empty literal, which is the same as not passing it")
+    #expect(
+      expr.trimmedDescription.contains("sampleLevelHistory"),
+      """
+      initialLevelHistory is \(expr.trimmedDescription), not the sample waveform this \
+      picker owns. `theSampleWaveformIsWellFormed` asserts that array's shape and would \
+      then be asserting something nothing draws.
       """)
   }
 

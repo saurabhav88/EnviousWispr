@@ -64,6 +64,26 @@ struct RecordingPillAppearancePanel: View {
           group(holdingWords: false)
           group(holdingWords: true)
         }
+        // **The last resort SCROLLS, because the alternative is a pill cut in
+        // half** (#2439 cloud review, P2). Stacking does not rescue a window
+        // narrower than one tile: the reading well asks for its design's full
+        // width plus the tile's padding, and the tile clips its own content, so
+        // below that the pill is silently truncated rather than merely cramped.
+        //
+        // Scrolling rather than scaling is the founder's constraint holding: a
+        // preview shrunk to fit is the illegible thumbnail this whole change
+        // exists to remove, and a user who can see two thirds of a pill and drag
+        // for the rest has lost nothing about what it looks like.
+        //
+        // It must be LAST. A `ScrollView` reports a small minimum and therefore
+        // always fits, so any earlier position would make it the only candidate
+        // `ViewThatFits` ever chooses.
+        ScrollView(.horizontal) {
+          VStack(alignment: .leading, spacing: 12) {
+            group(holdingWords: false)
+            group(holdingWords: true)
+          }
+        }
       }
     } footnote: {
       // ONE quiet line for the whole page's pill settings (founder, 2026-08-26),
@@ -217,6 +237,37 @@ struct RecordingPillPreviewTile: View {
     design.canHoldWords ? .text("the quarterly numbers came in") : .off
   }
 
+  /// Mid level, so the meter and the rainbow mark are visibly alive rather than
+  /// sitting on the silence floor.
+  static let sampleLevel: Float = 0.42
+
+  /// A two digit clock, which is the widest ordinary case.
+  static let sampleElapsed: TimeInterval = 12
+
+  /// Twenty-four samples of a plausible sentence, oldest first (#2435).
+  ///
+  /// **A still pill has no history to build, so this IS the meter.** With one
+  /// poll and nothing after it the rail would draw a single bar at the sample
+  /// level and twenty-three at the silence floor — and the Level Rail's whole
+  /// identity is that meter, so the picker would misrepresent the design it is
+  /// asking the user to choose. Found by cloud review on #2439.
+  ///
+  /// A shorter array pads with silence at the OLD end, which is what a real
+  /// recording looks like a second in, so a future `barCount` change degrades
+  /// rather than breaks.
+  ///
+  /// It ENDS at `sampleLevel`, because the newest bar and the rainbow mark are
+  /// driven by the same instant, and a picker drawing them disagreeing would be
+  /// showing a pill that cannot occur.
+  ///
+  /// `internal`, like `sampleDisplay`, because "what the sample pill shows" has
+  /// one owner and a test has to be able to read it.
+  static let sampleLevelHistory: [CGFloat] = [
+    0.06, 0.11, 0.24, 0.38, 0.52, 0.61, 0.55, 0.40,
+    0.22, 0.13, 0.09, 0.18, 0.34, 0.49, 0.66, 0.73,
+    0.64, 0.47, 0.29, 0.16, 0.10, 0.21, 0.35, CGFloat(sampleLevel),
+  ]
+
   var body: some View {
     Button(action: onSelect) {
       ZStack(alignment: .topTrailing) {
@@ -272,18 +323,12 @@ struct RecordingPillPreviewTile: View {
 private struct RecordingPillPreview: View {
   let design: RecordingPillDesign
 
-  /// Mid level, so the meter and the rainbow mark are visibly alive rather than
-  /// sitting on the silence floor.
-  private static let sampleLevel: Float = 0.42
-
-  /// A two digit clock, which is the widest ordinary case.
-  private static let sampleElapsed: TimeInterval = 12
-
+  ///
   var body: some View {
     let display = RecordingPillPreviewTile.sampleDisplay(for: design)
     RecordingOverlayView(
-      audioLevelProvider: { Self.sampleLevel },
-      recordingElapsedProvider: { Self.sampleElapsed },
+      audioLevelProvider: { RecordingPillPreviewTile.sampleLevel },
+      recordingElapsedProvider: { RecordingPillPreviewTile.sampleElapsed },
       livePreviewProvider: { display },
       onContentHeightChange: { _ in },
       chrome: design.chrome,
@@ -301,7 +346,10 @@ private struct RecordingPillPreview: View {
       cadence: .still,
       // A settings page is not the place for a permanent two second pulse, and
       // there would be one per capsule tile.
-      animatesGlow: false
+      animatesGlow: false,
+      // The meter is the Level Rail's whole identity, and a pill that never polls
+      // has no history to build. See `sampleLevelHistory`.
+      initialLevelHistory: RecordingPillPreviewTile.sampleLevelHistory
     )
     // **A PICTURE does not move, including on the way in.** The leaf animates
     // `audioLevel`, and its first poll moves that from 0 to the sample, so a tile

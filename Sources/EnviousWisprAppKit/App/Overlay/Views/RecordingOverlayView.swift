@@ -315,6 +315,13 @@ struct RecordingOverlayView: View {
   /// How long the poll waits between reads. Production never passes this.
   let cadence: RecordingPollCadence
 
+  /// Seeds the level meter's history, for a pill drawn as a PICTURE (#2435).
+  ///
+  /// **Threaded through for the same reason as `animatesGlow`: this view
+  /// constructs the meter**, at both of its layouts, so a caller has no other way
+  /// to reach it. Empty by default, which is today's behaviour exactly.
+  let initialLevelHistory: [CGFloat]
+
   /// Whether the capsule's rainbow hairline breathes (#2435).
   ///
   /// **Threaded through rather than set at the call site, because this view
@@ -352,7 +359,8 @@ struct RecordingOverlayView: View {
     noticeText: String?,
     initialPreview: LivePreviewDisplay = .off,
     cadence: RecordingPollCadence = .live,
-    animatesGlow: Bool = true
+    animatesGlow: Bool = true,
+    initialLevelHistory: [CGFloat] = []
   ) {
     self.audioLevelProvider = audioLevelProvider
     self.recordingElapsedProvider = recordingElapsedProvider
@@ -363,6 +371,7 @@ struct RecordingOverlayView: View {
     self.noticeText = noticeText
     self.cadence = cadence
     self.animatesGlow = animatesGlow
+    self.initialLevelHistory = initialLevelHistory
     _preview = State(initialValue: initialPreview)
   }
 
@@ -394,7 +403,8 @@ struct RecordingOverlayView: View {
         .font(.system(size: 13, weight: .semibold, design: .monospaced))
         .foregroundStyle(PreviewPillPalette.timer)
 
-      RainbowLevelMeter(audioLevel: audioLevel, tick: audioTick)
+      RainbowLevelMeter(
+        audioLevel: audioLevel, tick: audioTick, initialHistory: initialLevelHistory)
 
       Spacer(minLength: 8)
 
@@ -460,7 +470,8 @@ struct RecordingOverlayView: View {
           // than the clock is what the eye lands on. No lips mark: the rail IS
           // the audio-reactive element, and two of them would compete.
           RainbowLevelMeter(
-            audioLevel: audioLevel, tick: audioTick, height: 24, barWidth: 3, spacing: 2)
+            audioLevel: audioLevel, tick: audioTick, height: 24, barWidth: 3, spacing: 2,
+            initialHistory: initialLevelHistory)
 
           // **The hands-free badge, and without it this design was the one that
           // never said the microphone stays open** (#2376 Phase 4, cloud review
