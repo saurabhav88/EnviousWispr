@@ -194,6 +194,13 @@ enum QuickAddPanelCopy {
       "No app was in front, so there was nothing to read."
     case .noFocusedElement:
       "That app did not tell us where the cursor is. Click into the text and try again."
+    case .ownApplication:
+      // **Says only what was checked.** Nothing here reads a selection, so this may not describe
+      // one — an earlier wording said "That selection is inside EnviousWispr", which is a confident
+      // sentence about a selection the code never looked at, and is false for a caret sitting in an
+      // empty field of ours. Names no fault and states the one thing that fixes it.
+      "EnviousWispr is in front, so there is nothing of yours to read. Select the word in the app "
+        + "you are writing in, then try again."
     case .selectionUnsupported:
       "That app does not share its selection with other apps. You can still add the word by hand "
         + "below."
