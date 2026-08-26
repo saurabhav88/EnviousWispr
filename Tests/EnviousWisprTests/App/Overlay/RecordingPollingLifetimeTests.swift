@@ -118,6 +118,28 @@ struct RecordingPollingLifetimeTests {
     var all: [Int] { [audio, elapsed, preview] }
   }
 
+  /// A one-shot latch: the subject announces, the test suspends until it has.
+  ///
+  /// Signalling BEFORE anyone waits is the ordinary case here rather than an edge
+  /// case, so it latches instead of requiring a waiter to already be present.
+  @MainActor
+  private final class Latch {
+    private var fired = false
+    private var waiter: CheckedContinuation<Void, Never>?
+
+    func signal() {
+      guard !fired else { return }
+      fired = true
+      waiter?.resume()
+      waiter = nil
+    }
+
+    func wait() async {
+      if fired { return }
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in waiter = c }
+    }
+  }
+
   private static let screen = ScreenGeometry(
     id: ScreenID(rawValue: 1),
     frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
@@ -192,5 +214,99 @@ struct RecordingPollingLifetimeTests {
     #expect(
       counts.all == afterOneTick,
       "a hidden pill kept polling: \(afterOneTick) became \(counts.all)")
+  }
+
+  // MARK: - The still cadence (#2435)
+
+  /// **Product Outcome.** The Appearance picker draws three recording pills as
+  /// PICTURES. On `.live` each would read its providers twenty times a second for
+  /// as long as the settings window is open, so a page that shows what a pill
+  /// looks like would cost more than showing one.
+  ///
+  /// **This row proves the FIRST READ still happens and is the LAST one.** The
+  /// count is taken at the moment the loop parks, which the pill's own provider
+  /// announces — no elapsed time, and no inference that a subject is finished.
+  ///
+  /// The non-vacuous control is the row above: with a cadence the test can
+  /// advance, the very same counters move. A subject that never polled at all
+  /// would fail there.
+  @Test("a still recording pill reads its providers once, then parks", .timeLimit(.minutes(1)))
+  func aStillPillReadsOnceThenParks() async throws {
+    let counts = Counts()
+    let parked = Latch()
+    let host = OverlayWindowHost(screens: { OverlayScreenResolver { Self.screen } })
+    defer { host.hide() }
+
+    let view = RecordingOverlayView(
+      audioLevelProvider: {
+        counts.audio += 1
+        return 0.4
+      },
+      recordingElapsedProvider: {
+        counts.elapsed += 1
+        return 12
+      },
+      livePreviewProvider: {
+        counts.preview += 1
+        // LAST of the three reads in the loop body, so the latch fires with the
+        // whole first poll complete rather than part-way through it.
+        parked.signal()
+        return .off
+      },
+      onContentHeightChange: { _ in },
+      chrome: RecordingPillDesign.classic.chrome,
+      isLocked: false,
+      noticeText: nil,
+      cadence: .still)
+
+    let hosted = NSHostingView(rootView: AnyView(view))
+    try #require(
+      host.present(
+        hosted, width: .fixed(RecordingPillDesign.classic.width),
+        fixedHeight: RecordingPillDesign.classic.reservedHeight,
+        isFresh: true, position: .top),
+      "the still pill never reached the host")
+
+    await parked.wait()
+    #expect(
+      counts.all == [1, 1, 1],
+      """
+      a still pill read \(counts.all) on its first poll, not one of each. \
+      `.still` suppresses REPEATED reads; the first one is what seeds the frame.
+      """)
+  }
+
+  /// **The other half of `.still`, and the failure it guards is a LEAK.** A park
+  /// that outlives its view keeps the pill's task alive for the rest of the
+  /// session with nothing on screen — the same defect the first row proves for
+  /// the live cadence, one layer down, asserted on the cadence VALUE so it holds
+  /// however that value is used.
+  ///
+  /// **The park is asserted to release BECAUSE of cancellation, not merely to
+  /// return.** A `wait` that did nothing at all would return too, and a row whose
+  /// only assertion is "it came back" passes on it. Reading `Task.isCancelled`
+  /// on the far side of the wait is the terminal outcome: `false` means the park
+  /// released on its own, which is the defect that would put a settings page
+  /// back to twenty reads a second.
+  ///
+  /// A park that ignored cancellation still hangs, and is reported by the row's
+  /// own time limit rather than by an assertion — that half cannot be helped, and
+  /// it fails loudly either way.
+  @Test("a still cadence releases when its task is cancelled", .timeLimit(.minutes(1)))
+  func stillReleasesOnCancellation() async {
+    let entered = Latch()
+    let task = Task { @MainActor in
+      entered.signal()
+      await RecordingPollCadence.still.wait()
+      return Task.isCancelled
+    }
+
+    await entered.wait()
+    task.cancel()
+
+    let releasedAfterCancellation = await task.value
+    #expect(
+      releasedAfterCancellation,
+      "the still cadence returned before its task was cancelled")
   }
 }

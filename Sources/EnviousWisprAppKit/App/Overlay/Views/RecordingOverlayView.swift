@@ -243,6 +243,28 @@ struct RecordingPollCadence: Sendable {
   static let live = RecordingPollCadence {
     try? await Task.sleep(for: .milliseconds(50))
   }
+
+  /// Parks until the enclosing task is cancelled, so a pill rendered as a
+  /// PICTURE reads its providers once and never again (#2435).
+  ///
+  /// **It does NOT mean "no poll".** The loop performs one provider read before
+  /// it ever calls `wait`, and that read is what synchronises the first frame
+  /// with whatever the providers say. What this removes is every read AFTER it.
+  ///
+  /// **A stream rather than a long sleep, because a duration is a schedule and
+  /// this is a park.** Any finite sleep is a number a reader has to judge, and a
+  /// settings window left open longer than it would repoll once for no reason.
+  /// The continuation is created per call, so two pills parked on this share no
+  /// state, and `finish()` is safe before the loop starts: the stream is already
+  /// finished and `for await` returns immediately.
+  static let still = RecordingPollCadence {
+    let (stream, continuation) = AsyncStream<Void>.makeStream()
+    await withTaskCancellationHandler {
+      for await _ in stream { break }
+    } onCancel: {
+      continuation.finish()
+    }
+  }
 }
 
 /// Compact recording indicator overlay.
@@ -292,6 +314,13 @@ struct RecordingOverlayView: View {
 
   /// How long the poll waits between reads. Production never passes this.
   let cadence: RecordingPollCadence
+
+  /// Whether the capsule's rainbow hairline breathes (#2435).
+  ///
+  /// **Threaded through rather than set at the call site, because this view
+  /// CONSTRUCTS its own background** and a caller has no other way to reach it.
+  /// Defaults to `true`, so the one production caller is unchanged.
+  let animatesGlow: Bool
   @State private var audioLevel: Float = 0
 
   /// Counts polls, not level changes. #2216: the meter's history needs a sample
@@ -322,7 +351,8 @@ struct RecordingOverlayView: View {
     isLocked: Bool,
     noticeText: String?,
     initialPreview: LivePreviewDisplay = .off,
-    cadence: RecordingPollCadence = .live
+    cadence: RecordingPollCadence = .live,
+    animatesGlow: Bool = true
   ) {
     self.audioLevelProvider = audioLevelProvider
     self.recordingElapsedProvider = recordingElapsedProvider
@@ -332,6 +362,7 @@ struct RecordingOverlayView: View {
     self.isLocked = isLocked
     self.noticeText = noticeText
     self.cadence = cadence
+    self.animatesGlow = animatesGlow
     _preview = State(initialValue: initialPreview)
   }
 
@@ -568,7 +599,8 @@ struct RecordingOverlayView: View {
     // measurement is taken on the padded stack, so moving this either side of it
     // measures a different view than the one that was proven.
     .fixedSize(horizontal: false, vertical: chrome.isContentSizedVertically)
-    .background(OverlayCapsuleBackground(cornerStyle: chrome.cornerStyle))
+    .background(
+      OverlayCapsuleBackground(cornerStyle: chrome.cornerStyle, animatesGlow: animatesGlow))
     // #1988: report the capsule's real height so the panel can follow it. Measured
     // on the capsule rather than computed from a line count, because only the text
     // engine knows how many lines a sentence wraps to at this width in this script.

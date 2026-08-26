@@ -9,6 +9,17 @@ import SwiftUI
 /// each with a miniature window preview, so the choice reads at a glance. The
 /// cards flow in an adaptive grid: three across when the detail pane is wide,
 /// reflowing to two then one as the window narrows.
+///
+/// **The cards are a ROW rather than a column, and carry no description (#2435,
+/// founder).** They cost 191 points of height each and the page below them is now
+/// three pill pictures; laid out horizontally they cost 90. The picture is the
+/// explanation for Light and Dark.
+///
+/// **What that trades away, so nobody restores it by accident: the `System`
+/// card's split thumbnail cannot say that it FOLLOWS the Mac.** Keeping a short
+/// caption and renaming `System` to `Auto` were both offered and both declined
+/// in favour of the shorter page (founder, 2026-08-26). The card's meaning now
+/// rests on its title. This is the accepted trade, not an oversight.
 struct AppearanceSettingsView: View {
   @Environment(SettingsManager.self) private var settings
 
@@ -19,14 +30,10 @@ struct AppearanceSettingsView: View {
 
     SettingsContentView {
       // No section eyebrow or restated description here: the page-header card
-      // already introduces the page and each card describes its own mode. Say it
-      // once, then show the choices (founder, 2026-07-03).
-      //
-      // **#2376: that header no longer tells the whole truth and was revised with
-      // this change.** It read "Choose how EnviousWispr looks in light and dark",
-      // which was complete while theme and pill position were the only settings
-      // here; a pill-design picker on the same page makes it a description of one
-      // section rather than of the page.
+      // already introduces the page (founder, 2026-07-03). #2376 revised that
+      // header when the pill picker arrived, and #2435 shortened it again when the
+      // cards below stopped describing themselves — the subtitle in
+      // `SettingsSection` is the one sentence this page gets.
       LazyVGrid(columns: columns, spacing: 12) {
         ForEach(AppearancePreference.allCases, id: \.self) { preference in
           AppearanceCard(
@@ -39,11 +46,13 @@ struct AppearanceSettingsView: View {
       }
 
       // #1341: where the recording pill and status notices open on screen.
+      // #2435: the description went with the picker's. The two segments say
+      // "Top" and "Bottom" and the panel is called Pill Position, so a sentence
+      // repeating that is text for its own sake, and the pill panel below carries
+      // the one next-recording note the page needs.
       BrandedPanel(
         icon: "rectangle.portrait.and.arrow.right",
-        header: "Recording Indicator Position",
-        description:
-          "Choose where the recording pill and status notices appear. Changes apply the next time one appears."
+        header: "Pill Position"
       ) {
         BrandedSegmentedPicker(
           options: [
@@ -62,45 +71,54 @@ struct AppearanceSettingsView: View {
 
 // MARK: - Appearance card
 
-/// One selectable appearance option: mini window preview, icon + title, and a
-/// short description. The selected card carries an accent border and a filled
-/// accent check badge.
+/// One selectable appearance option: mini window preview beside its icon and
+/// title. The selected card carries an accent border and a filled accent check
+/// badge.
 private struct AppearanceCard: View {
   let preference: AppearancePreference
   let isSelected: Bool
   let onSelect: () -> Void
 
+  /// The thumbnail's authored size, kept as the size it is DRAWN at and then
+  /// scaled whole (#2435).
+  ///
+  /// **Scaled rather than re-laid-out, because `MiniWindow`'s parts are fixed
+  /// points** — a 15 point title bar and a 44 point sidebar. Handing it a 108
+  /// point frame would make the sidebar 41% of the window instead of 22%, so the
+  /// preview would stop looking like this app.
+  private static let thumbnailSize = CGSize(width: 200, height: 116)
+  private static let thumbnailScale: CGFloat = 0.54
+
   var body: some View {
     Button(action: onSelect) {
-      VStack(alignment: .leading, spacing: 0) {
-        ZStack(alignment: .topTrailing) {
-          AppearancePreviewThumbnail(preference: preference)
-            .frame(height: 116)
+      HStack(spacing: 12) {
+        AppearancePreviewThumbnail(preference: preference)
+          .frame(width: Self.thumbnailSize.width, height: Self.thumbnailSize.height)
+          .scaleEffect(Self.thumbnailScale)
+          .frame(
+            width: Self.thumbnailSize.width * Self.thumbnailScale,
+            height: Self.thumbnailSize.height * Self.thumbnailScale)
 
-          if isSelected {
-            Image(systemName: "checkmark.circle.fill")
-              .font(.system(size: 20, weight: .semibold))
-              .foregroundStyle(Color.white, Color.stAccent)
-              .padding(10)
-          }
-        }
+        Image(systemName: iconName)
+          .font(.system(size: 16, weight: .medium))
+          .foregroundStyle(isSelected ? .stAccent : .stTextSecondary)
+          .frame(width: 22, alignment: .center)
+        Text(title)
+          .font(.stRowTitle)
+          .foregroundStyle(isSelected ? .stAccent : .stTextPrimary)
 
-        VStack(alignment: .leading, spacing: 4) {
-          HStack(spacing: 8) {
-            Image(systemName: iconName)
-              .font(.system(size: 16, weight: .medium))
-              .foregroundStyle(isSelected ? .stAccent : .stTextSecondary)
-              .frame(width: 22, alignment: .center)
-            Text(title)
-              .font(.stRowTitle)
-              .foregroundStyle(isSelected ? .stAccent : .stTextPrimary)
-          }
-          Text(description)
-            .settingsReadingCopy()
-            .frame(maxWidth: .infinity, minHeight: 40, alignment: .topLeading)
+        Spacer(minLength: 0)
+
+        if isSelected {
+          Image(systemName: "checkmark.circle.fill")
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(Color.white, Color.stAccent)
         }
-        .padding(14)
       }
+      .padding(12)
+      // Before `.buttonStyle(.plain)`: the `Spacer` above is otherwise dead space
+      // rather than part of the hit target.
+      .contentShape(Rectangle())
       .background(Color.stSectionBg)
       .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
       .overlay(
@@ -131,17 +149,6 @@ private struct AppearanceCard: View {
     case .system: return "System"
     case .light: return "Light"
     case .dark: return "Dark"
-    }
-  }
-
-  private var description: String {
-    switch preference {
-    case .system:
-      return "Automatically switches between Light and Dark based on your system settings."
-    case .light:
-      return "A clean, bright interface for daytime and well-lit environments."
-    case .dark:
-      return "A low-light interface that's easy on the eyes."
     }
   }
 }

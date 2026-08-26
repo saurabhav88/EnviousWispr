@@ -221,4 +221,50 @@ struct AppearancePillPickerTests {
     let names = RecordingPillDesign.allCases.map(\.displayName)
     #expect(Set(names).count == names.count, "two designs share a card title: \(names)")
   }
+
+  // MARK: - The current state stays unmistakable (#2435)
+
+  /// **Product Outcome, and the reason the approved group titles are honest.**
+  ///
+  /// "Live Preview off" and "Live Preview on" name a CONDITION — the pills you get
+  /// when the setting is that way. Read instead as a claim about the CURRENT
+  /// state they would be false at `engineUnsupported` and `modelBeingRemoved`,
+  /// where the setting is on and the pills are still out of reach. What makes the
+  /// condition reading the one a user actually gets is that exactly one group
+  /// shows the filled dot and the other prints its own reason. Both are therefore
+  /// requirements, and this is the row that holds them.
+  ///
+  /// **It links the two surfaces rather than re-deriving either.** The dot reads
+  /// `isActive`; the greyed line reads `reason(for:groupHoldsWords:)`. That they
+  /// each behave correctly is asserted above; that they AGREE, in every
+  /// capability state, is what this asserts and nothing else does.
+  @Test(
+    "exactly one group is marked in use, and it is the one with nothing to explain",
+    arguments: PillWordsCapability.allCases)
+  func theDotAndTheReasonAgree(capability: PillWordsCapability) throws {
+    let active = [true, false].filter {
+      RecordingPillAppearancePanel.isActive(capability, groupHoldsWords: $0)
+    }
+
+    #expect(
+      active.count == 1,
+      """
+      \(capability) marks \(active.count) groups in use. The dot is the only thing on \
+      the page carrying the CURRENT state, so zero leaves a user unable to tell which \
+      pills they have and two tells them both.
+      """)
+    let live = try #require(active.first)
+
+    #expect(
+      RecordingPillAppearancePanel.reason(for: capability, groupHoldsWords: live) == nil,
+      "\(capability) marks a group in use and still explains why it is not")
+    #expect(
+      RecordingPillAppearancePanel.reason(for: capability, groupHoldsWords: !live)?.isEmpty
+        == false,
+      """
+      \(capability) greys a group without saying why. The title says only which \
+      CONDITION that group belongs to, so with no reason beside it there is nothing on \
+      the page that names what is actually wrong.
+      """)
+  }
 }
