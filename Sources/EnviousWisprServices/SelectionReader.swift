@@ -38,6 +38,22 @@ public enum SelectionReader {
     case noFrontmostApplication = "no_frontmost_application"
     /// The frontmost application reported no focused element.
     case noFocusedElement = "no_focused_element"
+    /// **EnviousWispr is the frontmost application, so there is nothing of the user's to read
+    /// (#2413).**
+    ///
+    /// Reachable because the shortcut is GLOBAL and our own Settings window has text fields: press
+    /// it while editing a custom word and, without this, the reader hands back the half-typed edit
+    /// as a word to add.
+    ///
+    /// **Named for what is CHECKED, not for what is assumed.** An earlier version called this
+    /// `ownSelection` and its copy said "That selection is inside EnviousWispr" — but nothing here
+    /// reads a selection, and a caret in an empty field of ours produces this refusal too. Asserting
+    /// a selection the code never looked at is the false-sentence class this guard exists to stop,
+    /// committed inside the guard itself.
+    ///
+    /// Its own member rather than `nothingSelected` because the causes differ and so does the fix:
+    /// this one is "you are in our app", which names no fault of the user's and has one remedy.
+    case ownApplication = "own_application"
     /// The focused element does not expose selected text at all (`kAXErrorAttributeUnsupported`).
     case selectionUnsupported = "selection_unsupported"
     /// The attribute is advertised but answered with no value (`kAXErrorNoValue`).
@@ -118,14 +134,16 @@ public enum SelectionReader {
     // because this runs on the main run loop from a hotkey or a Service, with events flowing;
     // `NSWorkspace.frontmostApplication` is stale only where nothing is pumping the run loop, which
     // is not a state this entry point can be called from.
-    let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier
+    let frontmost = Frontmost.current()
 
-    if let refusal = refusalBeforeReading(isTrusted: AXIsProcessTrusted(), frontmostPID: frontmost)
-    {
+    if let refusal = refusalBeforeReading(isTrusted: AXIsProcessTrusted(), frontmost: frontmost) {
       return .refused(refusal)
     }
-    // Safe: `refusalBeforeReading` returns non-nil for a nil or non-positive pid.
-    guard let pid = frontmost else { return .refused(.noFocusedElement) }
+    // Safe: `refusalBeforeReading` returns non-nil for a nil or non-positive pid. The pid used for
+    // the element read is the SAME sample the guard judged, so the refusal and the read can never
+    // describe two different applications.
+    guard let pid = frontmost.pid else { return .refused(.noFocusedElement) }
+
     // **Handed to the query rather than set here.** `focusedElement` creates its OWN application
     // element, so a timeout set on a handle made here reaches nothing — it did not, and the line
     // that tried is gone. The parameter has existed all along.
@@ -167,6 +185,36 @@ public enum SelectionReader {
     return resolve(error: error, value: valueRef)
   }
 
+  // MARK: - The frontmost application, sampled ONCE
+
+  /// Everything the guard needs to know about the frontmost application, from ONE sample.
+  ///
+  /// **A type rather than two parameters, because two parameters is exactly how this went wrong.**
+  /// The pid was read in `read()` and the bundle identity in a DEFAULT ARGUMENT one call later —
+  /// two reads of a mutable global at two moments, which a switch in between makes describe two
+  /// different applications. Found by cloud review on PR #2428, one round after the identity check
+  /// itself was wrong.
+  ///
+  /// The previous version of this file documented a window here as a known limit. That note was
+  /// about a DIFFERENT gap (refusal versus element read) and, worse, it made an unclosable window
+  /// the story while this closable one sat under it.
+  struct Frontmost: Equatable {
+    /// nil when nothing is frontmost, which is a refusal rather than a fact about us.
+    let pid: pid_t?
+    /// Whether that same application is one of ours, by `AppBundleIdentity`.
+    let isOurs: Bool
+
+    /// The live read: one `NSRunningApplication`, both facts taken off it.
+    ///
+    /// The only member of this file that touches the workspace, so it is the only thing a test
+    /// cannot reach — and all it does is sample once. Everything that DECIDES anything is pure.
+    @MainActor
+    static func current() -> Frontmost {
+      let app = NSWorkspace.shared.frontmostApplication
+      return Frontmost(pid: app?.processIdentifier, isOurs: AppBundleIdentity.isOurs(app?.bundleIdentifier))
+    }
+  }
+
   // MARK: - The decisions, which are pure
 
   /// Which refusal a focused-element outcome becomes, or nil when there is an element to read.
@@ -188,9 +236,44 @@ public enum SelectionReader {
   /// Split from `read()` so both refusals are reachable from a test. Trust and frontmost are asked
   /// together because they are the two questions with no Accessibility round trip behind them; the
   /// element read has its own function below rather than four optionals in one.
-  static func refusalBeforeReading(isTrusted: Bool, frontmostPID: pid_t?) -> Refusal? {
+  ///
+  /// **No default for `frontmost`, deliberately.** It carried a live `NSWorkspace` read until cloud
+  /// review found that this made a SECOND sample, one call after `read()` took the first. A default
+  /// that reaches out to a mutable global is a second sample waiting for a caller who omits it.
+  static func refusalBeforeReading(
+    isTrusted: Bool,
+    frontmost: Frontmost,
+    ownPID: pid_t = ProcessInfo.processInfo.processIdentifier
+  ) -> Refusal? {
     guard isTrusted else { return .accessibilityNotTrusted }
-    guard let frontmostPID, frontmostPID > 0 else { return .noFrontmostApplication }
+    guard let frontmostPID = frontmost.pid, frontmostPID > 0 else {
+      return .noFrontmostApplication
+    }
+    // **Refuse our own app (#2413), and no ordering discipline can replace this.** The two comments
+    // in this file and in `QuickAddCoordinator.begin` say to read BEFORE activating ourselves, which
+    // is right and is what makes the ordinary case work. It cannot help when the user is ALREADY
+    // inside our app when they press the shortcut — the binding is global, our Settings window has
+    // text fields, and there is no "before" in which another application is frontmost.
+    //
+    // `ownPID` is a parameter with a live default so the decision is reachable from a test; the
+    // production call site never passes it.
+    // **Identity, not just this process, and identity is a FAMILY rather than a string.** A second
+    // EnviousWispr — an installed release build beside a dev build — has a different pid, so a
+    // pid-only check reads its text. That is the ordinary state of a development machine.
+    //
+    // The first version of this guard compared against `Bundle.main.bundleIdentifier`, which is
+    // `.dev` in a dev build and not in a release one, so it answered NOT OURS for precisely the
+    // pair it was written to catch. `AppBundleIdentity` owns the closed set; the pid comparison
+    // stays for the case where there is no identifier to read at all.
+    guard frontmostPID != ownPID, !frontmost.isOurs else { return .ownApplication }
+
+    // **What remains, now that both facts come from one sample.** The guard judges a snapshot and
+    // the element read uses that snapshot's own pid, so the two cannot describe different
+    // applications. A switch between the sample and the read still means the pid names an
+    // application that is no longer frontmost — but it is the SAME application throughout, and
+    // Accessibility answers for the process rather than for whoever is in front, so the read stays
+    // about the selection the user made. Closing that too would mean asking the workspace to hold
+    // still, which it does not offer.
     return nil
   }
 

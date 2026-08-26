@@ -25,7 +25,8 @@ struct SelectionReaderTests {
   @Test("Without Accessibility the reason is the one the user can act on")
   func untrustedIsNamed() {
     #expect(
-      SelectionReader.refusalBeforeReading(isTrusted: false, frontmostPID: 501)
+      SelectionReader.refusalBeforeReading(
+        isTrusted: false, frontmost: .init(pid: 501, isOurs: false), ownPID: 999)
         == .accessibilityNotTrusted)
   }
 
@@ -34,14 +35,16 @@ struct SelectionReaderTests {
     // Both wrong at once. Reporting "no frontmost application" to someone who simply has not
     // granted permission sends them looking at the wrong thing.
     #expect(
-      SelectionReader.refusalBeforeReading(isTrusted: false, frontmostPID: nil)
+      SelectionReader.refusalBeforeReading(
+        isTrusted: false, frontmost: .init(pid: nil, isOurs: false), ownPID: 999)
         == .accessibilityNotTrusted)
   }
 
   @Test("No frontmost application is its own reason")
   func noFrontmostApplicationIsNamed() {
     #expect(
-      SelectionReader.refusalBeforeReading(isTrusted: true, frontmostPID: nil)
+      SelectionReader.refusalBeforeReading(
+        isTrusted: true, frontmost: .init(pid: nil, isOurs: false), ownPID: 999)
         == .noFrontmostApplication)
   }
 
@@ -49,15 +52,94 @@ struct SelectionReaderTests {
   func aNonPositivePIDIsRefused() {
     for pid: pid_t in [0, -1] {
       #expect(
-        SelectionReader.refusalBeforeReading(isTrusted: true, frontmostPID: pid)
+        SelectionReader.refusalBeforeReading(
+          isTrusted: true, frontmost: .init(pid: pid, isOurs: false), ownPID: 999)
           == .noFrontmostApplication,
         "pid \(pid) must not reach Accessibility")
     }
   }
 
+  /// **The shortcut is GLOBAL and our own Settings window has text fields (#2413).** Pressed while
+  /// editing a custom word, the frontmost application is US, and without this the reader hands back
+  /// the half-typed edit as a word to add.
+  ///
+  /// **No ordering discipline can replace this guard.** Both this file and `QuickAddCoordinator`
+  /// carry comments saying to read BEFORE activating ourselves — correct, and what makes the
+  /// ordinary case work. It cannot help when the user is already inside our app when they press the
+  /// shortcut: there is no "before" in which another application is frontmost.
+  @Test("Our own application is refused rather than read")
+  func ourOwnApplicationIsRefused() {
+    #expect(
+      SelectionReader.refusalBeforeReading(
+        isTrusted: true, frontmost: .init(pid: 4242, isOurs: false), ownPID: 4242)
+        == .ownApplication)
+  }
+
+  /// **A SECOND EnviousWispr passes a pid check, and that is the ordinary state of this machine** —
+  /// an installed build beside a dev build. Different pid, our text, straight through.
+  ///
+  /// **Driven by the REAL identifiers, not by an injected verdict.** The first version of this row
+  /// handed the guard a hardcoded `true` for the ownership question, which asserts that the guard
+  /// ACTS on the answer and says nothing about how the answer is COMPUTED — and the computation was
+  /// wrong in exactly this case, because a dev build's `Bundle.main.bundleIdentifier` does not equal
+  /// a release build's. A fixture that hands over the conclusion cannot observe the step that
+  /// produces it, so the row runs `AppBundleIdentity.isOurs` over the real pair instead.
+  @Test(
+    "Another EnviousWispr is refused too, whichever build is asking",
+    arguments: [
+      (AppBundleIdentity.production, AppBundleIdentity.development),
+      (AppBundleIdentity.development, AppBundleIdentity.production),
+      (AppBundleIdentity.production, AppBundleIdentity.production),
+    ])
+  func aSecondInstanceIsAlsoRefused(frontmost: String, own: String) {
+    #expect(
+      SelectionReader.refusalBeforeReading(
+        isTrusted: true,
+        frontmost: .init(pid: 7777, isOurs: AppBundleIdentity.isOurs(frontmost)),
+        ownPID: 4242)
+        == .ownApplication,
+      "a \(own) build must refuse a frontmost \(frontmost) build; a pid-only guard reads its text")
+  }
+
+  /// The family is CLOSED, and a row per member so adding one without deciding is visible.
+  @Test("Only our own identifiers are the app; everything else is somebody's document")
+  func theIdentityFamilyIsExactlyOurTwoBuilds() {
+    #expect(AppBundleIdentity.isOurs(AppBundleIdentity.production))
+    #expect(AppBundleIdentity.isOurs(AppBundleIdentity.development))
+    #expect(AppBundleIdentity.all.count == 2)
+    // Paired rejections, or a predicate that says yes to everything looks identical to this one.
+    #expect(!AppBundleIdentity.isOurs(nil))
+    #expect(!AppBundleIdentity.isOurs(""))
+    #expect(!AppBundleIdentity.isOurs("com.apple.TextEdit"))
+    // Our OWN neighbours, which are the near misses a prefix check would swallow.
+    #expect(!AppBundleIdentity.isOurs("com.enviouswispr.asrservice"))
+    #expect(!AppBundleIdentity.isOurs("com.enviouswispr.app.dev.extra"))
+    #expect(!AppBundleIdentity.isOurs("com.enviouswispr"))
+  }
+
+  /// The pair, without which the row above passes for a guard that refuses everything.
+  @Test("Another application at the same trust level still goes ahead")
+  func anotherApplicationIsStillRead() {
+    #expect(
+      SelectionReader.refusalBeforeReading(
+        isTrusted: true, frontmost: .init(pid: 4243, isOurs: false), ownPID: 4242) == nil)
+  }
+
+  /// **Trust outranks it, for the same reason it outranks a missing frontmost app.** Someone who
+  /// has not granted permission must be told THAT, not that their selection was ours.
+  @Test("Untrusted outranks reading our own app")
+  func untrustedOutranksOurOwnSelection() {
+    #expect(
+      SelectionReader.refusalBeforeReading(
+        isTrusted: false, frontmost: .init(pid: 4242, isOurs: true), ownPID: 4242)
+        == .accessibilityNotTrusted)
+  }
+
   @Test("Trusted with a live application goes ahead")
   func trustedAndFrontmostProceeds() {
-    #expect(SelectionReader.refusalBeforeReading(isTrusted: true, frontmostPID: 501) == nil)
+    #expect(
+      SelectionReader.refusalBeforeReading(
+        isTrusted: true, frontmost: .init(pid: 501, isOurs: false), ownPID: 999) == nil)
   }
 
   // MARK: - What Accessibility answered
@@ -268,9 +350,12 @@ struct SelectionReaderTests {
       SelectionReader.resolve(error: .success, value: "codecs" as CFString),
     ]
     for refusal in [
-      SelectionReader.refusalBeforeReading(isTrusted: false, frontmostPID: 1),
-      SelectionReader.refusalBeforeReading(isTrusted: true, frontmostPID: nil),
-      SelectionReader.refusalBeforeReading(isTrusted: true, frontmostPID: 0),
+      SelectionReader.refusalBeforeReading(
+        isTrusted: false, frontmost: .init(pid: 1, isOurs: false), ownPID: 999),
+      SelectionReader.refusalBeforeReading(
+        isTrusted: true, frontmost: .init(pid: nil, isOurs: false), ownPID: 999),
+      SelectionReader.refusalBeforeReading(
+        isTrusted: true, frontmost: .init(pid: 0, isOurs: false), ownPID: 999),
     ] {
       if let refusal { seen.append(.refused(refusal)) }
     }
