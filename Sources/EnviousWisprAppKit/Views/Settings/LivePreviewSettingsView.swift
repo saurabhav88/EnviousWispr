@@ -318,7 +318,14 @@ struct LivePreviewSettingsView: View {
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
-            .accessibilityLabel("Change dictation language: \(language.name)")
+            // **The provenance is IN the label, not just on screen.** An explicit
+            // `accessibilityLabel` REPLACES the child text announcement, so naming
+            // only `language.name` dropped the second line entirely for VoiceOver —
+            // and that line is the one carrying the Auto asymmetry, the distinction
+            // between a language the Mac chose and one the user picked. A sighted
+            // user reads both; a VoiceOver user heard one. Cloud review on PR #2440.
+            .accessibilityLabel(
+              "Change dictation language: \(language.name), \(language.provenance)")
           }
 
           // **The reason lives in the hero card now, and only there.**

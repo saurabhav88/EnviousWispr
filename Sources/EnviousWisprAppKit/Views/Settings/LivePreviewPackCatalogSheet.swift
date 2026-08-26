@@ -176,6 +176,15 @@ struct LivePreviewPackCatalogSheet: View {
         Capsule().strokeBorder(selected ? Color.clear : Color.stDivider, lineWidth: 1))
     }
     .buttonStyle(.plain)
+    // **Which half is showing lives ONLY in these two colours**, so without this a
+    // VoiceOver user hears two ordinary buttons with labels and counts and has no
+    // way to tell which one the list below is obeying — on a sheet whose entire
+    // job is "the languages you do NOT have". Cloud review on PR #2440.
+    //
+    // `.isSelected` rather than a "(selected)" suffix on the label: the trait is
+    // what assistive tech reads as SELECTION, and baking the state into the visible
+    // title would also change the button's own name every time it is pressed.
+    .accessibilityAddTraits(selected ? [.isSelected] : [])
   }
 
   // MARK: - Content

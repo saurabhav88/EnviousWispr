@@ -56,6 +56,90 @@ struct LivePreviewStatusBarPresentationTests {
       engine: engine, appleActive: appleActive, languageMode: languageMode)
   }
 
+  // MARK: - Reachability of the language control
+
+  /// **The language chip IS the picker, so hiding it removes the only way to change
+  /// the language from this page.** That makes its visibility a REACHABILITY
+  /// property, not a cosmetic one, and the states where a user most needs the
+  /// picker are exactly the states the language itself has broken.
+  ///
+  /// `chipNeverPromisesOutput` sweeps reachable pairs and had a row asserting the
+  /// chip was hidden for Apple `.unsupportedLanguage` — an expectation written to
+  /// match the implementation, which is why a whole passing suite said nothing
+  /// about a stranded user. Cloud review on PR #2440 found it.
+  ///
+  /// This test is the complement of that one: it states WHICH states may hide the
+  /// control and requires a reason for each, so the next kind added has to be
+  /// classified rather than inheriting whatever `appleLanguage` happens to return.
+  /// The three below are the only ones where no picker choice is a remedy —
+  /// nothing the user can select fixes a macOS version, a broken build, or an
+  /// answer that has not arrived yet.
+  @Test("The language control is reachable in every state where changing the language could help")
+  func languageControlSurvivesTheStatesThatNeedIt() {
+    let mayHide: Set<String> = ["needsMacOS26", "buildCannotRun", "checking"]
+
+    /// Apple pack state paired so each kind is REACHABLE, per the fixture lesson in
+    /// `chipNeverPromisesOutput`: a kind swept against a default `.ready` tests
+    /// pairs the mapping cannot produce.
+    func appleValue(
+      for kind: LivePreviewStatusMapping.Kind
+    ) -> LivePreviewPacksModel.ActiveLanguage? {
+      switch kind {
+      case .needsMacOS26: return .unsupportedSystem
+      case .checking: return nil
+      case .unsupportedLanguage: return .unsupportedLanguage
+      case .needsLanguage(let name): return .needsDownload(name: name)
+      default: return .ready(tag: "en-US", name: "English (United States)")
+      }
+    }
+
+    for kind in Self.allKinds {
+      let name = "\(kind)".split(separator: "(").first.map(String.init) ?? "\(kind)"
+      for engine in [LivePreviewEngineChoice.apple, .universal] {
+        // Universal reads no pack state at all, so it must answer for every kind
+        // the page can reach — #2154 r7 hid it here and stranded locked users.
+        let active = engine == .apple ? appleValue(for: kind) : nil
+        let language = bar(kind, engine: engine, appleActive: active).language
+        if mayHide.contains(name) && engine == .apple {
+          #expect(language == nil, "\(name) on Apple has no picker remedy, so it hides")
+        } else if mayHide.contains(name) && engine == .universal {
+          // Universal has no macOS floor and no pack build to fail, so only the
+          // build-cannot-run kind hides there.
+          continue
+        } else {
+          // One interpolated literal, never `"a" + "b"`: `Comment` is expressible by
+          // string interpolation but not built from a runtime `String`, so the
+          // concatenated form does not compile.
+          #expect(
+            language != nil,
+            "\(name) on \(engine) hides the language chip, the only control on this page that can change the language"
+          )
+        }
+      }
+    }
+  }
+
+  /// The locked language is NAMED when Apple cannot preview it, rather than the row
+  /// falling back to something generic. A user who locked Danish and is told the
+  /// preview cannot do it needs to see Danish to know what to change.
+  @Test("An unsupported Apple lock still names the language the user chose")
+  func unsupportedAppleLockNamesTheLock() {
+    let locked = bar(
+      .unsupportedLanguage, engine: .apple, appleActive: .unsupportedLanguage,
+      languageMode: .locked("da"))
+    #expect(locked.language?.name == LanguageCatalog.entry(for: "da").englishName)
+    #expect(locked.language?.provenance == LivePreviewSettingsCopy.languageProvenanceUserPicked)
+
+    // On Auto there is no lock to name, and Apple's preview takes the locale from
+    // the Mac — which is the Auto asymmetry, so the provenance must say so rather
+    // than borrowing the universal engine's "no language pinned".
+    let auto = bar(
+      .unsupportedLanguage, engine: .apple, appleActive: .unsupportedLanguage,
+      languageMode: .auto)
+    #expect(auto.language?.provenance == LivePreviewSettingsCopy.languageProvenanceFromMac)
+    #expect(auto.language?.provenance != LivePreviewSettingsCopy.languageProvenanceDetected)
+  }
+
   // MARK: - Label and detail
 
   /// The bar never drops a state's explanation.
@@ -113,7 +197,9 @@ struct LivePreviewStatusBarPresentationTests {
   /// `activeSource` shipped and had to withdraw.
   @Test("Provenance names the Mac on Auto and the user on a lock")
   func provenanceDistinguishesAutoFromLocked() {
-    #expect(bar(.active, languageMode: .auto).language?.provenance == LivePreviewSettingsCopy.languageProvenanceFromMac)
+    #expect(
+      bar(.active, languageMode: .auto).language?.provenance
+        == LivePreviewSettingsCopy.languageProvenanceFromMac)
     #expect(
       bar(.active, languageMode: .locked("de")).language?.provenance
         == LivePreviewSettingsCopy.languageProvenanceUserPicked)
@@ -158,7 +244,14 @@ struct LivePreviewStatusBarPresentationTests {
       (.needsMacOS26, .apple, .unsupportedSystem, false),
       (.checking, .apple, nil, false),
       (.needsLanguage(name: "German"), .apple, .needsDownload(name: "German"), true),
-      (.unsupportedLanguage, .apple, .unsupportedLanguage, false),
+      // **Was `false`, and that expectation was written to match the code rather
+      // than the requirement.** Hiding the chip here hides the PICKER, which is the
+      // only control on this page that can change the language — so the state
+      // caused by a language became the state in which the language cannot be
+      // changed. Found by cloud review on PR #2440, after this suite passed.
+      // A row that agrees with the implementation proves the implementation is
+      // self-consistent, never that it is right.
+      (.unsupportedLanguage, .apple, .unsupportedLanguage, true),
       (.active, .universal, nil, true),
       (.off, .universal, nil, true),
       (.needsDownload, .universal, nil, true),

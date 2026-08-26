@@ -130,7 +130,30 @@ enum LivePreviewStatusBarPresentation {
     switch active {
     case .ready(_, let name), .needsDownload(let name):
       return Language(name: name, provenance: provenance(for: languageMode))
-    case .unsupportedLanguage, .unsupportedSystem:
+    case .unsupportedLanguage:
+      // **The control that UNSTRANDS the user must not be hidden by the state that
+      // stranded them.** Apple cannot preview this language, the language chip IS
+      // the picker, and returning nil here removed the only way to change it from
+      // this page — leaving a user whose preview is broken BY their language with
+      // no control on the page that could fix it. Cloud review on PR #2440.
+      //
+      // `universalLanguage` two functions down already carries this exact reason,
+      // from #2154 review r7, which hid the control on Universal and stranded
+      // exactly those users. The reason was written down and applied to one branch
+      // of two — so the shared derivation below is the fix, not a second copy of
+      // the sentence (`workflow-process.md` RULE: fix-the-path-that-runs-first,
+      // "name the TWIN of every site you change").
+      //
+      // The name comes from the LOCK rather than from `active`, because
+      // `ActiveLanguage.unsupportedLanguage` carries none — and the lock is what
+      // made it unsupported, so it is also the honest thing to name.
+      return languageFromLock(
+        languageMode, autoProvenance: LivePreviewSettingsCopy.languageProvenanceFromMac)
+    case .unsupportedSystem:
+      // Unreachable in practice — that value maps to `.needsMacOS26`, which the
+      // caller already returned nil for — and correct to hide regardless: no
+      // control on this page changes the macOS version, so offering the picker
+      // would imply a remedy that does not exist. The engine card says why.
       return nil
     }
   }
@@ -140,12 +163,27 @@ enum LivePreviewStatusBarPresentation {
   /// engine honours a lock, and the row's whole purpose is that a user locked to the
   /// wrong language can see it and change it. An earlier #2154 draft hid the control
   /// on this engine and stranded exactly those users (review r7).
-  private static func universalLanguage(_ mode: LanguageMode) -> Language? {
+  private static func universalLanguage(_ mode: LanguageMode) -> Language {
+    languageFromLock(
+      mode, autoProvenance: LivePreviewSettingsCopy.languageProvenanceDetected)
+  }
+
+  /// The language derived from the LOCK alone, for every state where pack
+  /// resolution cannot name one but the user must still be able to change it.
+  ///
+  /// **Only the Auto provenance differs between its two callers, and that
+  /// difference is the whole Auto asymmetry**: Apple's preview picks one locale
+  /// before the first word and takes it from the Mac, so `from your Mac`; the
+  /// universal engine pins nothing, so `no language pinned`. Passing it in keeps
+  /// one derivation with one honest parameter rather than two functions that
+  /// agree today.
+  private static func languageFromLock(
+    _ mode: LanguageMode, autoProvenance: String
+  ) -> Language {
     switch mode {
     case .auto:
       return Language(
-        name: LivePreviewSettingsCopy.languageAnyLanguage,
-        provenance: LivePreviewSettingsCopy.languageProvenanceDetected)
+        name: LivePreviewSettingsCopy.languageAnyLanguage, provenance: autoProvenance)
     case .locked(let code):
       return Language(
         name: LanguageCatalog.entry(for: code).englishName,
