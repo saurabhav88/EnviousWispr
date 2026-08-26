@@ -129,32 +129,59 @@ struct LivePreviewStatusBarPresentationTests {
   /// The chip states configuration, never readiness. #2154's r8 and r9 were both a
   /// second surface promising output the card denied; the fix is that no second
   /// surface makes a readiness claim at all, so there is nothing left to disagree.
-  @Test("The language chip contains no readiness vocabulary, in any state")
+  ///
+  /// **The scenarios are REACHABLE pairs, not a cross-product.** An earlier version
+  /// swept every kind against a fixed `.ready` Apple value, which pairs
+  /// `.unsupportedLanguage` with a resolved language — a combination the mapping
+  /// cannot produce — while never once constructing a real Apple `.needsLanguage`.
+  /// The consequence was a live branch nobody tested: returning nil from
+  /// `appleLanguage`'s `.needsDownload` case passed the whole suite. Testing a state
+  /// the code cannot reach and missing one it can are the same defect, and both come
+  /// from a fixture built out of defaults rather than out of the real pairings.
+  @Test("The language chip contains no readiness vocabulary, in every reachable state")
   func chipNeverPromisesOutput() {
+    typealias Scenario = (
+      kind: LivePreviewStatusMapping.Kind,
+      engine: LivePreviewEngineChoice,
+      appleActive: LivePreviewPacksModel.ActiveLanguage?,
+      expectsLanguage: Bool
+    )
+    let scenarios: [Scenario] = [
+      (.active, .apple, .ready(tag: "en-US", name: "English"), true),
+      (.off, .apple, .ready(tag: "en-US", name: "English"), true),
+      (.needsMacOS26, .apple, .unsupportedSystem, false),
+      (.checking, .apple, nil, false),
+      (.needsLanguage(name: "German"), .apple, .needsDownload(name: "German"), true),
+      (.unsupportedLanguage, .apple, .unsupportedLanguage, false),
+      (.active, .universal, nil, true),
+      (.off, .universal, nil, true),
+      (.needsDownload, .universal, nil, true),
+      (.gettingReady, .universal, nil, true),
+      (.downloadFailed, .universal, nil, true),
+      (.paused, .universal, nil, true),
+      (.buildCannotRun, .universal, nil, false),
+    ]
     let forbidden = ["will appear", "ready", "working", "active", "showing"]
-    for kind in Self.allKinds {
-      for engine in LivePreviewEngineChoice.allCases {
-        for mode in [LanguageMode.auto, .locked("de")] {
-          let candidate = bar(kind, engine: engine, languageMode: mode).language
-          // **Assert presence or absence per kind rather than skipping a nil.**
-          // `guard ... else { continue }` let a state that WRONGLY hides its
-          // language pass this test silently, which is the vacuity shape the
-          // suite is meant to catch rather than commit.
-          switch kind {
-          case .buildCannotRun, .needsMacOS26, .checking:
-            #expect(candidate == nil, "named a language for \(kind) on \(engine)")
-            continue
-          case .active, .off, .needsLanguage, .unsupportedLanguage, .needsDownload,
-            .gettingReady, .downloadFailed, .paused:
-            #expect(candidate != nil, "missing language for \(kind) on \(engine)")
-          }
-          guard let language = candidate else { continue }
-          let text = (language.name + " " + language.provenance).lowercased()
-          for phrase in forbidden {
-            #expect(
-              !text.contains(phrase),
-              "the language chip makes a readiness claim: \(text)")
-          }
+    for scenario in scenarios {
+      for mode in [LanguageMode.auto, .locked("de")] {
+        let candidate = bar(
+          scenario.kind, engine: scenario.engine, appleActive: scenario.appleActive,
+          languageMode: mode
+        ).language
+        #expect(
+          (candidate != nil) == scenario.expectsLanguage,
+          "language presence wrong for \(scenario.kind) on \(scenario.engine)")
+        // The missing-language state must name the language it is missing, which is
+        // the branch the previous fixture could not reach at all.
+        if case .needsLanguage(let name) = scenario.kind {
+          #expect(candidate?.name == name)
+        }
+        guard let candidate else { continue }
+        let text = "\(candidate.name) \(candidate.provenance)".lowercased()
+        for phrase in forbidden {
+          #expect(
+            !text.contains(phrase),
+            "the language chip makes a readiness claim: \(text)")
         }
       }
     }
