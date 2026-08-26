@@ -652,7 +652,8 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
 class FakeProc:
     """Enough of `subprocess.Popen` to exercise the reaper's three outcomes."""
 
-    def __init__(self, *, exits_on=None, already_gone=False):
+    def __init__(self, *, exits_on=None, already_gone=False, pid=4242):
+        self.pid = pid
         # exits_on: which wait() call succeeds — 1 after TERM, 2 after KILL,
         # None for a process that ignores both.
         self.exits_on = exits_on
@@ -711,6 +712,87 @@ def test_an_abandoned_launch_is_actually_reaped():
     expect("nor killed", gone.killed, False)
 
 
+def test_every_exceptional_exit_from_the_readiness_wait_reaps():
+    """`proc` is alive from the moment `Popen` returns, so nothing may leave here
+    without it.
+
+    Three ways out: ready (keep it), timeout (reap), and an exception from
+    reading the marker file itself (reap). The third is the one that escaped —
+    it is not a failure of the app, so nothing about it looks like a launch
+    problem, and `smoke()` turns it into a tidy `BLOCKED_LAUNCH` receipt while
+    the app keeps running.
+    """
+    good = (line("launch.enter") + "\n" + line("launch.exit") + "\n")
+
+    # READY: the process is kept, not reaped.
+    alive = FakeProc(exits_on=1)
+    m.await_launch_ready(alive, pathlib.Path("/unused"), run_id=RUN,
+                         expected_bundle=BUNDLE, ready_timeout_s=1.0,
+                         read_text=lambda: good)
+    expect("a ready launch is not terminated", alive.terminated, False)
+
+    # TIMEOUT: never ready, so reaped and reported.
+    timed_out = FakeProc(exits_on=1)
+    try:
+        m.await_launch_ready(timed_out, pathlib.Path("/unused"), run_id=RUN,
+                             expected_bundle=BUNDLE, ready_timeout_s=0.05,
+                             read_text=lambda: "")
+        FAILURES.append("a launch that never became ready must raise")
+    except RuntimeError:
+        pass
+    expect("a timed-out launch is reaped", timed_out.terminated, True)
+
+    # THE ESCAPED CASE: reading the marker file raises.
+    def explode():
+        raise OSError("the output directory went away underneath the run")
+
+    io_error = FakeProc(exits_on=1)
+    try:
+        m.await_launch_ready(io_error, pathlib.Path("/unused"), run_id=RUN,
+                             expected_bundle=BUNDLE, ready_timeout_s=1.0,
+                             read_text=explode)
+        FAILURES.append("an unreadable marker file must not be swallowed")
+    except OSError:
+        pass
+    expect("a launch whose marker read raises is still reaped",
+           io_error.terminated, True)
+
+    # And an interrupt, which is the case least likely to be cleaned up by hand.
+    def interrupt():
+        raise KeyboardInterrupt()
+
+    interrupted = FakeProc(exits_on=1)
+    try:
+        m.await_launch_ready(interrupted, pathlib.Path("/unused"), run_id=RUN,
+                             expected_bundle=BUNDLE, ready_timeout_s=1.0,
+                             read_text=interrupt)
+        FAILURES.append("an interrupt must propagate")
+    except KeyboardInterrupt:
+        pass
+    expect("an interrupted launch is reaped", interrupted.terminated, True)
+
+
+def test_a_locked_screen_blocks_before_a_launch_is_spent():
+    """A locked screen is a different machine, not a slower one.
+
+    `loginwindow` owns the active Space, no app window is reachable, and this
+    repo has already shipped one green whose screenshots were all the login
+    window. The check runs before occupancy because it costs nothing and
+    invalidates the run whatever the slot looks like.
+    """
+    expect("a locked screen blocks", m.screen_lock_block(True) is not None, True)
+    expect("an unlocked screen proceeds", m.screen_lock_block(False), None)
+    # THE THIRD VALUE. Collapsing "could not tell" into "unlocked" would let the
+    # run proceed on a machine it cannot describe — the exact shape that turns a
+    # broken probe into a green.
+    expect("an unreadable session blocks too",
+           m.screen_lock_block(None) is not None, True)
+    # The two refusals must not read the same, or a reader cannot tell a locked
+    # screen from a probe that failed.
+    if m.screen_lock_block(True) == m.screen_lock_block(None):
+        FAILURES.append("locked and unknown must give distinguishable reasons")
+
+
 # ------------------------------------------------------------------- runner
 
 TESTS = [
@@ -735,6 +817,8 @@ TESTS = [
     test_the_swift_emitter_and_this_parser_agree_on_the_schema,
     test_the_host_marker_is_emitted_with_a_real_window_number,
     test_an_abandoned_launch_is_actually_reaped,
+    test_every_exceptional_exit_from_the_readiness_wait_reaps,
+    test_a_locked_screen_blocks_before_a_launch_is_spent,
     test_median_uses_statistics_median,
     test_p95_uses_nearest_rank,
 ]

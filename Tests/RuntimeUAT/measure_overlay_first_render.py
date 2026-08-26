@@ -81,6 +81,7 @@ BLOCKED_SCHEDULE = "BLOCKED_SCHEDULE"
 BLOCKED_OCCUPANCY = "BLOCKED_OCCUPANCY"
 BLOCKED_LAUNCH = "BLOCKED_LAUNCH"
 BLOCKED_NO_OVERLAY = "BLOCKED_NO_OVERLAY"
+BLOCKED_SCREEN_LOCKED = "BLOCKED_SCREEN_LOCKED"
 
 Identity = namedtuple("Identity", "bundle_id executable_path sha256")
 Marker = namedtuple("Marker", "run pid bundle event ticks window index")
@@ -738,6 +739,39 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
     }
 
 
+def screen_lock_state():
+    """`True` locked, `False` unlocked, `None` could not tell.
+
+    Three-valued on purpose. Collapsing "could not tell" into "unlocked" is the
+    shape that turns a broken probe into a green: the caller would proceed on a
+    machine it cannot describe, which is precisely the state a measurement must
+    not be taken in.
+    """
+    try:
+        import Quartz
+        session = Quartz.CGSessionCopyCurrentDictionary()
+    except Exception:
+        return None
+    if session is None:
+        return None
+    value = session.get("CGSSessionScreenIsLocked")
+    return None if value is None else bool(value)
+
+
+def screen_lock_block(state):
+    """A verdict for a lock state, or `None` to proceed."""
+    if state is True:
+        return ("the screen is locked, so `loginwindow` owns the active Space and no "
+                "app window is reachable. A latency figure taken here is a measurement "
+                "of a different machine state, and this repo has already shipped one "
+                "green whose screenshots were all the login window. Unlock and re-run.")
+    if state is None:
+        return ("could not read the login session, so whether the screen is locked is "
+                "unknown. An instrument that cannot describe the machine must not "
+                "measure it.")
+    return None
+
+
 def hardware_identity():
     """The machine, recorded with every run.
 
@@ -791,6 +825,56 @@ def reap(proc, *, timeout_s=10.0):
         pass
 
 
+def await_launch_ready(proc, marker_path, *, run_id, expected_bundle,
+                       ready_timeout_s=30.0, read_text=None):
+    """Wait for the app's own readiness marker, and reap it on EVERY failure.
+
+    **Separated from the launch so the guard can be tested at all**, and because
+    the guard is the whole point: `proc` is alive from the moment `Popen`
+    returns, so any exit from here that is not a success must leave nothing
+    behind. Two of the three ways out are exceptional and one of those is not
+    obvious — reading the marker file can raise on its own, if the output
+    directory is cleaned up underneath the run or the filesystem returns an
+    error. That escapes to `smoke()`, which turns it into `BLOCKED_LAUNCH` and
+    returns a tidy-looking receipt while the app keeps running.
+
+    An orphan is the expensive failure here rather than a cosmetic one: it
+    blocks the next cold launch on occupancy, or worse is not noticed and
+    answers the same global hotkey during someone else's measurement. Every dev
+    bundle on this machine carries the same name, so it cannot be told apart
+    from the instance under test.
+
+    `BaseException` rather than `Exception`, deliberately: a Ctrl-C in the middle
+    of a run is the case most likely to leave a stray app behind and the least
+    likely to be cleaned up by hand afterwards.
+
+    `read_text` exists for the suite, which cannot launch a real app to make the
+    read fail.
+    """
+    read_text = read_text or (lambda: marker_path.read_text())
+    try:
+        deadline = time.monotonic() + ready_timeout_s
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                raise RuntimeError(
+                    f"the app exited during launch with {proc.returncode}")
+            if launch_is_ready(read_text(), expected_run=run_id,
+                               expected_pid=proc.pid, expected_bundle=expected_bundle):
+                return
+            # deadline-fallback: the interval between reads of the app's own
+            # readiness marker, bounded by `ready_timeout_s` above. The signal is
+            # the marker; this only decides how often we look for it.
+            time.sleep(0.02)
+        raise RuntimeError(
+            f"no complete {LAUNCH_EXIT} marker for run {run_id} within "
+            f"{ready_timeout_s}s. Either the build carries no emitter (a Release "
+            f"build carries none by design), the marker environment did not reach "
+            f"it, or the file holds a line this parser cannot read.")
+    except BaseException:
+        reap(proc)
+        raise
+
+
 def launch_with_markers(bundle_path, *, marker_dir, ready_timeout_s=30.0):
     """One cold launch with markers armed, returning everything needed to judge it.
 
@@ -817,30 +901,9 @@ def launch_with_markers(bundle_path, *, marker_dir, ready_timeout_s=30.0):
 
     proc = subprocess.Popen([requested.executable_path], env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    deadline = time.monotonic() + ready_timeout_s
-    ready = False
-    while time.monotonic() < deadline:
-        if proc.poll() is not None:
-            raise RuntimeError(f"the app exited during launch with {proc.returncode}")
-        if launch_is_ready(marker_path.read_text(),
-                           expected_run=run_id, expected_pid=proc.pid,
-                           expected_bundle=requested.bundle_id):
-            ready = True
-            break
-        # deadline-fallback: the interval between reads of the app's own
-        # readiness marker, bounded by `ready_timeout_s` above. The signal is
-        # the marker; this only decides how often we look for it.
-        time.sleep(0.02)
-    if not ready:
-        # The same bounded cleanup the successful path uses. A Release bundle, or
-        # an emitter that cannot open its marker file, reaches here — and both are
-        # ordinary enough that leaving an orphan behind would be a routine cost.
-        reap(proc)
-        raise RuntimeError(
-            f"no complete {LAUNCH_EXIT} marker for run {run_id} within "
-            f"{ready_timeout_s}s. Either the build carries no emitter (a Release "
-            f"build carries none by design), the marker environment did not reach "
-            f"it, or the file holds a line this parser cannot read.")
+    await_launch_ready(proc, marker_path, run_id=run_id,
+                       expected_bundle=requested.bundle_id,
+                       ready_timeout_s=ready_timeout_s)
     return {"requested": requested, "run_id": run_id, "pid": proc.pid,
             "marker_path": marker_path, "process": proc}
 
@@ -854,6 +917,16 @@ def smoke(bundle_path, *, out_dir):
     """
     out = {"kind": "smoke", "bundle": str(bundle_path),
            "hardware": hardware_identity()}
+
+    # The screen lock is checked BEFORE occupancy, because it costs nothing and
+    # invalidates the run whatever the slot looks like.
+    lock = screen_lock_state()
+    blocked_reason = screen_lock_block(lock)
+    out["screen_locked"] = lock
+    if blocked_reason:
+        out["verdict"] = BLOCKED_SCREEN_LOCKED
+        out["detail"] = blocked_reason
+        return out
 
     # Occupancy: REFUSE rather than choose. Every dev bundle on this machine is
     # named the same, so picking one of two instances silently retargets the
