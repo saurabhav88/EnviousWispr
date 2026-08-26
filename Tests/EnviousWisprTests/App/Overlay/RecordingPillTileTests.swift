@@ -160,6 +160,45 @@ struct RecordingPillTileTests {
       """)
   }
 
+  /// **The page refuses to be narrower than its widest pill.**
+  ///
+  /// Rendered at a 380 point content width the reading well was CUT OFF: a grid
+  /// column cannot shrink below its content and the tile clips its own, so there
+  /// is no width at which a too-narrow layout degrades gracefully. The panel
+  /// therefore carries a minimum that propagates to the window.
+  ///
+  /// Asserted as a RELATION against the tile's own width, so no point value is
+  /// frozen. What this does NOT prove is that the WINDOW honours it — that is a
+  /// Live UAT row, dragging the real window narrow.
+  @Test("the picker will not lay out narrower than its widest pill")
+  func thePanelRefusesToClipItsWidestPill() {
+    let widest = RecordingPillDesign.allCases
+      .filter(\.canHoldWords)
+      .map(RecordingPillPreviewTile.width(for:))
+      .max()
+    let required = try! #require(widest, "no design can hold words, so this guard has no subject")
+
+    #expect(
+      RecordingPillAppearancePanel.widestTile(holdingWords: true) == required,
+      """
+      the panel sizes its with-words column to \
+      \(RecordingPillAppearancePanel.widestTile(holdingWords: true)) while its widest tile \
+      needs \(required). A column narrower than its tile clips the pill, because the tile \
+      clips its own content.
+      """)
+
+    // And the wordless side, which has its own widest design.
+    let wordless = RecordingPillDesign.allCases
+      .filter { !$0.canHoldWords }
+      .map(RecordingPillPreviewTile.width(for:))
+      .max()
+    if let wordless {
+      #expect(
+        RecordingPillAppearancePanel.widestTile(holdingWords: false) == wordless,
+        "the wordless column is sized to something other than its widest tile")
+    }
+  }
+
   // MARK: - What a screen reader gets
 
   /// **The words that left the screen have to arrive somewhere, and the LABEL is

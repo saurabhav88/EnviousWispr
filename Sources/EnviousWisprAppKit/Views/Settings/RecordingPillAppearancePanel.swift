@@ -48,43 +48,36 @@ struct RecordingPillAppearancePanel: View {
       icon: "waveform.badge.mic",
       header: "Recording Pill"
     ) {
-      // **`ViewThatFits` rather than a width breakpoint**, because the number
-      // would have to be re-derived every time a design's width moved, and the
-      // designs already declare their own widths. Side by side while both groups
-      // fit; stacked otherwise, with every pill still drawn at TRUE SIZE. The
-      // alternative measured badly: the settings window opens at 820 points wide,
-      // where fitting both groups side by side needs a shared 0.47 scale factor
-      // and the reading well's words become unreadable.
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .top, spacing: 12) {
-          group(holdingWords: false)
-          group(holdingWords: true)
-        }
-        VStack(alignment: .leading, spacing: 12) {
-          group(holdingWords: false)
-          group(holdingWords: true)
-        }
-        // **The last resort SCROLLS, because the alternative is a pill cut in
-        // half** (#2439 cloud review, P2). Stacking does not rescue a window
-        // narrower than one tile: the reading well asks for its design's full
-        // width plus the tile's padding, and the tile clips its own content, so
-        // below that the pill is silently truncated rather than merely cramped.
-        //
-        // Scrolling rather than scaling is the founder's constraint holding: a
-        // preview shrunk to fit is the illegible thumbnail this whole change
-        // exists to remove, and a user who can see two thirds of a pill and drag
-        // for the rest has lost nothing about what it looks like.
-        //
-        // It must be LAST. A `ScrollView` reports a small minimum and therefore
-        // always fits, so any earlier position would make it the only candidate
-        // `ViewThatFits` ever chooses.
-        ScrollView(.horizontal) {
-          VStack(alignment: .leading, spacing: 12) {
-            group(holdingWords: false)
-            group(holdingWords: true)
-          }
-        }
+      // **The two groups always STACK, and each one reflows its own tiles.**
+      //
+      // A `ViewThatFits` chose the groups' side-by-side arrangement here and was
+      // REMOVED after rendering it: nested inside the page's vertical
+      // `ScrollView` it does not reliably receive a bounded horizontal proposal,
+      // so it cannot judge whether a candidate fits and keeps its first one. At a
+      // 530 point content width that clipped both wordless pills; at 1010 it
+      // stacked two groups with room to sit side by side. A container that
+      // guesses wrong CLIPS here rather than cramping, because every pill is a
+      // fixed width by design.
+      //
+      // `LazyVGrid` is the container this page already proves receives a bounded
+      // width — the theme cards above use one — so the reflow is decided by
+      // arithmetic rather than by a proposal that may not arrive.
+      VStack(alignment: .leading, spacing: 18) {
+        group(holdingWords: false)
+        group(holdingWords: true)
       }
+      // **The page REFUSES to be narrower than its widest pill, rather than
+      // clipping one.** Rendered at a 380 point content width the reading well
+      // was cut off: a grid column cannot shrink below its content, and the tile
+      // clips its own, so there is no width at which a too-narrow layout degrades
+      // gracefully. A minimum propagates up to the window, so the window stops
+      // resizing instead — which is the honest behaviour for a page whose whole
+      // subject is fixed-size pictures.
+      //
+      // DERIVED, never a literal: a design added later widens it with no edit
+      // here, and a literal would be a second authority for a number the tile
+      // already owns.
+      .frame(minWidth: Self.widestTile(holdingWords: true), alignment: .leading)
     } footnote: {
       // ONE quiet line for the whole page's pill settings (founder, 2026-08-26),
       // replacing the sentence this panel and the position panel each carried.
@@ -112,6 +105,17 @@ struct RecordingPillAppearancePanel: View {
   /// active, in every capability state" without hosting anything.
   static func isActive(_ capability: PillWordsCapability, groupHoldsWords: Bool) -> Bool {
     groupHoldsWords == capability.hasWords
+  }
+
+  /// The widest tile a group will contain, which is what its grid column has to
+  /// be able to hold.
+  ///
+  /// Read off `PillCatalog` and the tile, so a design added later widens the
+  /// column with no edit here.
+  static func widestTile(holdingWords: Bool) -> CGFloat {
+    PillCatalog.designs(holdingWords: holdingWords)
+      .map(RecordingPillPreviewTile.width(for:))
+      .max() ?? 0
   }
 
   @ViewBuilder
@@ -147,13 +151,29 @@ struct RecordingPillAppearancePanel: View {
           .settingsReadingCopy()
       }
 
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .top, spacing: 12) { tiles(holdingWords: holdingWords) }
-        VStack(alignment: .leading, spacing: 12) { tiles(holdingWords: holdingWords) }
+      // **One column per tile that fits, sized by the WIDEST tile in this group.**
+      // A narrower minimum would let a column form that the reading well cannot
+      // sit in, and the tile clips its own content, so the pill would be cut
+      // rather than cramped. Taken from the tile itself, never a literal here.
+      LazyVGrid(
+        columns: [
+          GridItem(
+            .adaptive(minimum: Self.widestTile(holdingWords: holdingWords), maximum: .infinity),
+            spacing: 12)
+        ],
+        alignment: .leading,
+        spacing: 12
+      ) {
+        tiles(holdingWords: holdingWords)
       }
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    // One animation on the container, never per `ForEach` child.
+    // **NO `maxWidth: .infinity` HERE, and it stays absent deliberately.** It was
+    // removed while this panel still chose its layout with `ViewThatFits`, which
+    // asks each candidate for its IDEAL size: a greedy child answers that it will
+    // take whatever it is given, so every candidate fit at every width and the
+    // fallbacks were dead code. That container is gone, but a greedy group would
+    // now stretch every column to the panel's full width instead, which is the
+    // same wrong picture by another route.
     .animation(.easeInOut(duration: 0.15), value: isActive)
   }
 
@@ -225,6 +245,17 @@ struct RecordingPillPreviewTile: View {
     "\(design.displayName). \(design.summary)"
   }
 
+  /// The pill's own inset inside the tile, on each side.
+  static let horizontalInset: CGFloat = 16
+
+  /// **What one tile occupies, derived rather than restated.** The panel's grid
+  /// needs this to size a column that can hold the widest design; a literal there
+  /// would be a second authority for the same number, free to disagree the day a
+  /// design's width moves.
+  static func width(for design: RecordingPillDesign) -> CGFloat {
+    design.width + horizontalInset * 2
+  }
+
   /// What the pill inside the tile is shown SAYING.
   ///
   /// **Keyed off `canHoldWords`, so the panel names no design.** A design added
@@ -272,9 +303,12 @@ struct RecordingPillPreviewTile: View {
     Button(action: onSelect) {
       ZStack(alignment: .topTrailing) {
         RecordingPillPreview(design: design)
-          .padding(.horizontal, 16)
+          .padding(.horizontal, Self.horizontalInset)
           .padding(.vertical, 16)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          // Height only, so tiles sharing a grid row are the same size. A greedy
+          // WIDTH would make the tile report that it fits anywhere, which is what
+          // stops any container above it from reflowing correctly.
+          .frame(maxHeight: .infinity)
 
         if isSelected {
           Image(systemName: "checkmark.circle.fill")
@@ -360,9 +394,9 @@ private struct RecordingPillPreview: View {
     )
     // **A PICTURE does not move, including on the way in.** The leaf animates
     // `audioLevel`, and its first poll moves that from 0 to the sample, so a tile
-    // would fade its meter up every time `ViewThatFits` changes candidates or the
-    // settings page recreates it. Rejecting inherited animations is the only
-    // reach a caller has: the `.animation` modifiers are inside the leaf.
+    // would fade its meter up every time the grid recreates a row or the settings
+    // page rebuilds. Rejecting inherited animations is the only reach a caller
+    // has: the `.animation` modifiers are inside the leaf.
     .transaction { transaction in
       transaction.disablesAnimations = true
     }
