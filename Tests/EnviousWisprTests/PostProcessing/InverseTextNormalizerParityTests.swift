@@ -308,6 +308,13 @@ struct InverseTextNormalizerParityTests {
       (
         "the variable H slash slash is malformed", "the variable H slash slash is malformed"
       ),
+      // Fix 3 (negative, round 2, cloud review PR #2463): a real domain right after an
+      // unrelated "H" mid-sentence still must not be rewritten — the ambiguity is about what
+      // PRECEDES "H", not just what follows it.
+      (
+        "the variable H slash slash example.com is malformed",
+        "the variable H slash slash example.com is malformed"
+      ),
       // Boundary (see note above): a cleanly-heard "https slash slash" prefix already blocks
       // dot-conversion today, independent of this fix — documented, not asserted as fixed.
       ("https slash slash facebook dot com.", "https slash slash facebook dot com."),

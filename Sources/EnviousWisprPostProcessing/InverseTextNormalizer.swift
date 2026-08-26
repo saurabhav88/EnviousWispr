@@ -708,18 +708,37 @@ public struct InverseTextNormalizer: Sendable {
   // written narrower. A standalone "H"/"h" immediately followed by "slash slash" has no such
   // established alternate producer in the corpus, so it stays a safe, narrow fix.
   //
-  // Cloud review (PR #2463): unanchored, this also rewrote ordinary technical dictation with
-  // no URL intent at all ("the variable H slash slash is malformed" -> "...https slash
-  // slash..."). A zero-width lookahead requiring what FOLLOWS to actually be a host
-  // (spoken "host dot tld" or already-joined "host.tld") closes that — "is malformed" matches
-  // neither shape, so that sentence is left untouched, while a real address still qualifies.
+  // Cloud review (PR #2463), round 1: unanchored, this also rewrote ordinary technical
+  // dictation with no URL intent at all ("the variable H slash slash is malformed" ->
+  // "...https slash slash..."). A zero-width lookahead requiring what FOLLOWS to actually be
+  // a host (spoken "host dot tld" or already-joined "host.tld") closed that specific case.
+  //
+  // Cloud review, round 2: the follows-a-host guard alone is insufficient — a constructed
+  // sentence can put a REAL domain right after an unrelated "H" ("the variable H slash slash
+  // example.com is malformed"), satisfying the lookahead while still meaning something else
+  // entirely. The follows-a-host check answers "is what's AFTER this shaped like a URL"; it
+  // has nothing to say about what PRECEDES it, which is exactly where the ambiguity lives — a
+  // bare single letter is ONLY unambiguous as a truncated "https" at the very start of the
+  // utterance, matching how a real truncated protocol prefix actually arrives (nothing spoken
+  // before it), never buried mid-sentence after other words. Checked in the callback (this
+  // file's established pattern for a preceding-context guard, see `isBareURLUtterance` below):
+  // requiring nothing but whitespace before the match closes this round's case too, since
+  // "the variable " precedes "H" there.
   private func normalizeGarbledHTTPSPrefix(_ t: String) -> String {
     let hostChain = #"(?:"# + Self.urlHostLabelPat + #"\.)*"# + Self.urlHostLabelPat
     let tldAlt = Self.lowerRiskURLTLDAlt + #"|"# + Self.commonWordURLTLDAlt
     let urlAhead =
       #"(?=\s+"# + hostChain + #"\s+dot\s+(?:"# + tldAlt + #")\b|\s+"# + hostChain
       + #"\.(?:"# + tldAlt + #")\b)"#
-    return reSub(#"\b[Hh]\s+slash\s+slash\b"# + urlAhead, t) { _ in "https slash slash" }
+    return reSub(#"\b[Hh]\s+slash\s+slash\b"# + urlAhead, t) { m in
+      let start = m.result.range.location
+      guard
+        start == 0
+          || m.ns.substring(with: NSRange(location: 0, length: start))
+            .trimmingCharacters(in: .whitespaces).isEmpty
+      else { return nil }
+      return "https slash slash"
+    }
   }
 
   // #2315: the recognizer's own end-of-utterance period lands right after a bare spoken URL
