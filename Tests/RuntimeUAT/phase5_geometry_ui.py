@@ -94,7 +94,7 @@ def ui_text():
 
 def capture_design(pid, name):
     """One fresh recording, its bounds and a screenshot."""
-    await_idle()
+    require(await_idle(), f"the app never went idle before capturing {name}")
     rk.single_press_record_key()
     seen = await_visible(pid)
     shot = SHOTS / f"{name}.png"
@@ -157,7 +157,7 @@ def main():
     # **The window has to EXIST before any of this means anything.** Nothing here
     # opened Settings, and every check below silently assumed someone had.
     require(w.tap("Appearance"), "could not reach the Appearance section")
-    await_idle()
+    require(await_idle(), "the app never went idle after opening Appearance")
 
     tree = ui_text()
     appearance_open = "RECORDING PILL" in tree
@@ -194,7 +194,7 @@ def main():
     # name; `tapped_readingWell` false means that label stopped naming the design,
     # which is a real defect and not a harness quirk.
     w.tap("Reading Well")
-    await_idle()
+    require(await_idle(), "the app never went idle before selecting the words design")
 
     before = ui_text()
     report["picker"]["configure_link_while_words_selected"] = CONFIGURE_LINK in before
@@ -232,9 +232,21 @@ def main():
         # format could not be sampled, and a matcher grounded in nothing is how a
         # check comes to pass for the wrong reason. A no-op leaves the tree
         # byte-identical, which needs no format knowledge at all.
+        # **Wait for the PREVIOUS recording to tear down before sampling.**
+        # `capture_design` sends the stop key and returns without waiting, so the
+        # recording overlay can still be on screen here and then vanish during the
+        # `await_idle` below — making the two trees differ for a reason that has
+        # nothing to do with the tap. The check would pass while the tap did
+        # nothing, which is the exact false pass it was added to close. Found by
+        # the cloud review.
+        #
+        # `await_idle` returns False on timeout and every other call site here
+        # discards that — the same silent-empty shape as the reader this file just
+        # had — so it is required rather than called.
+        require(await_idle(), f"the recording before {label} never tore down")
         before_tap = ui_text()
         w.tap(label)
-        await_idle()
+        require(await_idle(), f"the app never went idle after tapping {label}")
         require(
             ui_text() != before_tap,
             f"tapping {label} changed nothing on screen — the capture that follows would "
