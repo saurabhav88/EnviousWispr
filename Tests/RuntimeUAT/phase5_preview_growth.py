@@ -102,8 +102,8 @@ def await_idle(timeout=30.0):
     return False
 
 
-def growth_segment(series):
-    """The longest contiguous run of samples sharing one width.
+def growth_segment(series, start_t=None, end_t=None):
+    """The longest contiguous same-width run INSIDE the recording window.
 
     ONE TAKE CONTAINS SEVERAL PRESENTATIONS, and only one of them is this row's
     subject. Measured 2026-08-25, the size series across a single dictation:
@@ -123,6 +123,15 @@ def growth_segment(series):
     be a constant invented here, and the collapse frames are only "small" relative
     to a number nobody measured.
     """
+    # BOUND BY THE RECORDING, not by the whole capture. The longest same-width
+    # run is not necessarily the growth: a longer, stable presentation AFTER the
+    # stop, with three height changes of its own, would win on length alone and
+    # the row would report growth that happened once the take was over.
+    if start_t is not None:
+        series = [x for x in series if x["t"] >= start_t]
+    if end_t is not None:
+        series = [x for x in series if x["t"] <= end_t]
+
     best, run = [], []
     for s in series:
         if run and s["w"] == run[-1]["w"]:
@@ -143,6 +152,27 @@ def _transitions(series):
             out.append({"t": s["t"], "w": s["w"], "h": s["h"]})
             last = key
     return out
+
+
+def recording_window(since_bytes):
+    """(start, end) wall-clock of the take, from the app's OWN markers.
+
+    The harness knows when it PRESSED; the app knows when it started recording
+    and when the pipeline reached its terminal. Those differ by the chain window,
+    any double-press retry, and the whole polish tail.
+    """
+    import datetime as _dt
+
+    with LOG.open("rb") as fh:
+        fh.seek(since_bytes)
+        lines = fh.read().decode("utf-8", errors="replace").splitlines()
+
+    def stamp(line):
+        return _dt.datetime.fromisoformat(line[1:line.index("]")]).timestamp()
+
+    starts = [stamp(l) for l in lines if "Recording started" in l and l.startswith("[")]
+    ends = [stamp(l) for l in lines if "dictation_terminal" in l and l.startswith("[")]
+    return (starts[-1] if starts else None), (ends[-1] if ends else None)
 
 
 def raw_ids(series):
@@ -177,6 +207,7 @@ def main():
     # five-sentence script, with ASR=0.075s. Almost nothing was captured, and the
     # row would have been read as the pill failing to grow.
     # Shape owned by uat-testing.md RULE: tts-drills-prove-playback-inside-the-window.
+    since_log = LOG.stat().st_size
     audio = w.tts(SENTENCE)
     duration = w._audio_duration(audio)
     print(f"  speech is {duration:.1f}s")
@@ -242,7 +273,9 @@ def main():
         "transitions": _transitions(series),
     }
 
-    seg = growth_segment(series)
+    rec_start, rec_end = recording_window(since_log)
+    report["recording_window"] = {"start": rec_start, "end": rec_end}
+    seg = growth_segment(series, start_t=rec_start, end_t=rec_end)
     seg_h = [x["h"] for x in seg]
     report["growth_segment"] = {
         "samples": len(seg),
@@ -260,6 +293,7 @@ def main():
     # evidence for this row however convincing the numbers look.
     g = report["growth_segment"]
     report["verdict"] = ("PASS" if (locked and settled and life["verdict"] == lc.OK
+                                    and rec_start and rec_end
                                     and report["one_window_id"]
                                     and g["grew"] and g["distinct_heights"] >= 3
                                     and clip.exists)

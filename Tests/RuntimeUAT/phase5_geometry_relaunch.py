@@ -279,7 +279,11 @@ def main():
             if not pid:
                 report["rows"][name] = {"error": "relaunch produced no single instance"}
                 continue
-            await_idle()
+            if not await_idle():
+                report["rows"][name] = {
+                    "pid": pid, "settings": {k: str(v) for k, v in settings.items()},
+                    "error": "the app never reached idle before this row; refusing to measure"}
+                continue
             since = LOG.stat().st_size
 
             record, err = measure_row(name, pid, since)
@@ -325,8 +329,12 @@ def main():
         # through. Every row must also have rendered the group it names.
         report["all_rows_correct_group"] = all(
             r.get("capability_as_expected") is True for r in report["rows"].values())
+        # `restore_clean` is part of the VERDICT, not a footnote beside it. A run
+        # that measured correctly and left the shared settings suite altered has
+        # changed what every other worktree's dev build reads on next launch.
         report["verdict"] = ("PASS" if report["width_spread_ok"]
-                             and report["all_rows_correct_group"] else "REFUSED")
+                             and report["all_rows_correct_group"]
+                             and report["restore_clean"] else "REFUSED")
         (UAT / "geometry-relaunch.json").write_text(json.dumps(report, indent=2, default=str))
         print(json.dumps({k: report[k] for k in
                           ("widths", "heights", "rows_measured", "width_spread_ok",

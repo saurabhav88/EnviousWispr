@@ -167,8 +167,15 @@ def main():
             last = key
 
         expected = CAP_SECONDS - LEAD_SECONDS
+        # TIMING ALONE IS NOT THE PREDICATE. A window that merely CHANGED SIZE
+        # near the expected second passes a timing-only check, and an unrelated
+        # animation is exactly that. The row's claim is a specific morph: the
+        # banner adds a row to a pill whose width does not move, so require the
+        # width to be UNCHANGED and the height to GROW, on the same window.
         near = [m for m in morphs
-                if m["at_s"] is not None and abs(m["at_s"] - expected) <= 4.0]
+                if m["at_s"] is not None and abs(m["at_s"] - expected) <= 4.0
+                and m["to"][0] == m["from"][0]
+                and m["to"][1] > m["from"][1]]
 
         report.update({
             "locked": locked,
@@ -193,8 +200,14 @@ def main():
                 report.setdefault("frames", {})[label] = clip.frame_at(
                     max(0.0, at + offset), save_path=str(OUT / f"{label}.png"))
 
+        # Every extracted frame must EXIST. A verdict citing frames that were
+        # never written is a claim nobody can go and look at.
+        frames = report.get("frames") or {}
+        report["frames_all_written"] = bool(frames) and all(
+            f and pathlib.Path(f).exists() for f in frames.values())
         report["verdict"] = ("PASS" if (locked and settled and life["verdict"] == lc.OK
-                                        and report["one_window_id"] and near and clip.exists)
+                                        and report["one_window_id"] and near
+                                        and clip.exists and report["frames_all_written"])
                              else "REFUSED")
         # The clear is not attempted; see the module docstring.
         report["clear_row"] = "BLOCKED_PRODUCT_TRIGGER"
