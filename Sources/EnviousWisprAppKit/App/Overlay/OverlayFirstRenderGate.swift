@@ -43,15 +43,44 @@ final class OverlayFirstRenderGate {
     return root
   }
 
-  func scheduleIfNeeded() {
+  /// `scheduleOverride` lets a caller supply a DIFFERENT scheduling primitive
+  /// for this one call while every other caller keeps using the instance's
+  /// own default. Idle prewarm is the one caller that needs this: it wants
+  /// the main run loop's `.beforeWaiting` boundary (`idleScheduler()` below),
+  /// while demand-driven rendering keeps the constructor's `schedule`
+  /// (`DispatchQueue.main.async` in production) unchanged — that default is
+  /// load-bearing for the menu-dismiss crash fix and must not move.
+  func scheduleIfNeeded(using scheduleOverride: Schedule? = nil) {
     guard case .idle = state else { return }
     state = .scheduled
 
-    schedule { [weak self] in
+    (scheduleOverride ?? schedule) { [weak self] in
       guard let self, case .scheduled = self.state else { return }
       let root = self.construct()
       self.state = .ready(root)
       self.didBecomeReady(root)
+    }
+  }
+}
+
+extension OverlayFirstRenderGate {
+  /// A one-shot `Schedule` that fires when the main run loop next reaches
+  /// `.beforeWaiting` — the plan's literal "first idle main-run-loop turn",
+  /// as opposed to `DispatchQueue.main.async`'s "next queue turn", which can
+  /// still be contending with whatever async launch work the app itself
+  /// queued (recovery scan, expired-pending sweep, and anything
+  /// `AppLifecycleCoordinator.runDidFinishLaunching()` starts).
+  ///
+  /// `repeats: false` in `CFRunLoopObserverCreateWithHandler` invalidates the
+  /// observer after its first fire, so it costs nothing to leave registered
+  /// beyond that — there is no manual removal to forget.
+  static func idleScheduler() -> Schedule {
+    { work in
+      let observer = CFRunLoopObserverCreateWithHandler(
+        kCFAllocatorDefault, CFRunLoopActivity.beforeWaiting.rawValue,
+        false, 0
+      ) { _, _ in work() }
+      CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
     }
   }
 }

@@ -172,13 +172,19 @@ import Testing
   ///   `bulkImportEnrichmentCoordinator`, the app-lifetime owner of the durable
   ///   pending-word drain and Cancel/checkpoint sequencing. The approved #1701
   ///   plan §3b/§10 places this sibling of `contactsImportCoordinator` here.
+  /// - 39 → 40 in #2377 Phase 6 C4 (2026-08-26): App-owned `recordingOverlay`,
+  ///   previously a local only. Idle-prewarm needs `applicationDidFinishLaunching()`
+  ///   to reach the director after construction, and the approved plan
+  ///   (`docs/feature-requests/issue-2377-2026-08-26-phase6-c4-idle-prewarm.md`
+  ///   §3 step 4) places the app-lifetime overlay owner here rather than on
+  ///   `AppLifecycleCoordinator`, which gains no overlay dependency.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 39,
+      count <= 40,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 39. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 40. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
