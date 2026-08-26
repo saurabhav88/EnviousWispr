@@ -48,10 +48,9 @@ def dev_pids():
 def visible_overlays(pid):
     """EVERY visible overlay-layer window, keyed by id.
 
-    The previous revision returned `best` — the LAST window the enumeration
-    happened to yield — which is arbitrary, not an identification. Keeping them
-    all lets `phase5_overlay_lifecycle` decide which one was the pill, and lets
-    the report show what was rejected.
+    Returning whichever window an enumeration happens to yield is arbitrary, not
+    an identification. Keeping them all lets `phase5_overlay_lifecycle` decide
+    which one was the pill, and lets the report show what was rejected.
     """
     import Quartz
 
@@ -202,10 +201,8 @@ def main():
     # SYNTHESIZE BEFORE RECORDING, then play SYNCHRONOUSLY inside the held window.
     # `record_tts` is not usable here: it drives its OWN push-to-talk hold, so
     # calling it inside a hands-free lock is two overlapping drives of one app.
-    # Measured 2026-08-25 — the first attempt did exactly that and the take came
-    # back `RAW ASR: Rarely have I made the same same choice` against a
-    # five-sentence script, with ASR=0.075s. Almost nothing was captured, and the
-    # row would have been read as the pill failing to grow.
+    # A double-driven take captures almost nothing and reads as the pill failing
+    # to grow.
     # Shape owned by uat-testing.md RULE: tts-drills-prove-playback-inside-the-window.
     since_log = LOG.stat().st_size
     audio = w.tts(SENTENCE)

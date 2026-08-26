@@ -1,32 +1,34 @@
 """The #1060 in-panel warning, morphing INTO the pill already on screen.
 
-#2377 chunk 6 (C6B). Phase 5's claim is that the notice rides in the SAME atomic
-frame as the recording it belongs to, so the row's subject is not "a banner
-appeared" — it is "the banner appeared WITHOUT a second window and WITHOUT the
-pill being torn down and rebuilt". The retained window id is what carries that,
-so it is the assertion rather than the screenshot.
+#2377 chunk 6. Phase 5's claim is that the notice rides in the SAME atomic frame
+as the recording it belongs to, so the subject is not "a banner appeared" — it is
+"the banner appeared WITHOUT a second window and WITHOUT the pill being torn down
+and rebuilt". The retained window id carries that, so it is the assertion rather
+than the screenshot.
 
 **Driven by the production DEBUG override, not a new seam.** `TimingConstants`
-already honours `EWDebugMaxRecordingSeconds` and `EWDebugWarningLeadSeconds`, and
-its own comment says why they exist: "so Live UAT can drive the full
+honours `EWDebugMaxRecordingSeconds` and `EWDebugWarningLeadSeconds`, and its own
+comment states the purpose: "so Live UAT can drive the full
 warning -> cap -> transcribe cycle in ~90s instead of an hour"
-(`Constants.swift:366`). Codex ruled against adding a Phase 5 fault seam for this,
-and it would have been a second answer to a question production already answers.
+(`Constants.swift:366`).
 
 **THE OVERRIDE READS `UserDefaults.standard`, WHICH IS THE DEV DOMAIN.** Every
-other preset in this harness goes to the shared `com.enviouswispr.app` store
-(`SettingsDefaults.store` redirects the unified keys there), but these two are
-read straight off `.standard`, so for the dev build they live in
-`com.enviouswispr.app.dev`. Writing them to the shared domain changes nothing and
-the run then reports the warning never firing.
+other preset here goes to the shared `com.enviouswispr.app` store, but these two
+are read straight off `.standard`, so for the dev build they live in
+`com.enviouswispr.app.dev`. Written to the shared domain they change nothing and
+the run reports the warning never firing.
 
-**The CLEAR half of this row is not reachable and is not attempted.** The notice
-is armed with `dismissAfter: nil` and the coordinator's own comment says it "stays
-until the recording stops; cleared by the transition out of recording"
-(`DictationLifecycleCoordinator.swift:285-294`). So there is no supported action
-that clears the notice while the pill remains — the clear IS the recording ending.
-Recorded as BLOCKED_PRODUCT_TRIGGER per Codex's ruling, with the suite carrying
-the same-id clear instead.
+**TIMING ALONE IS NOT THE PREDICATE.** A window that merely changed size near the
+expected second passes a timing-only check, and an unrelated animation is exactly
+that. The morph is specific: a banner adds a row to a pill whose width does not
+move, so the row requires width UNCHANGED and height GROWN on the same window,
+and requires every extracted frame to exist.
+
+**The CLEAR half is not reachable through this notice.** It is armed
+`dismissAfter: nil` and the coordinator states it "stays until the recording
+stops; cleared by the transition out of recording"
+(`DictationLifecycleCoordinator.swift:285-294`). A same-id clear is reachable
+through `autoStopUnavailable` (`dismissAfter: 4.0`) and needs a VAD seam.
 
 No speech is needed: the cap warning is driven by elapsed recording time.
 """

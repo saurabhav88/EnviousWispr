@@ -40,16 +40,16 @@ This row therefore switches the backend, and ASSERTS it from the app's own
 `Recording started. Backend: ...` line rather than from the value it wrote —
 the same discipline the geometry row needs for the words capability.
 
-**ONE DICTATION IS NOT ENOUGH AND THE FIRST VERSION OF THIS ROW ASSUMED IT WAS.**
-The detector emits `.consistentHighConfidence` only after THREE consecutive
-high-confidence accepts of the same non-English language — threshold 3,
-confidence floor 0.85, counter in-memory and reset on app launch
-(`LanguageDetector.swift:106-111`). A two-take run produced no chip and the
-report said "no language chip appeared", which reads as the dwell being broken
-rather than as the trigger never having been armed.
-So each arm dictates until a chip arrives, up to a bound, and REPORTS how many
-takes it needed: an accept is not guaranteed per take, so a fixed count of three
-would be its own version of the same assumption.
+**ONE DICTATION CANNOT ARM THE CHIP.** The detector emits
+`.consistentHighConfidence` only after THREE consecutive high-confidence accepts
+of the same non-English language — threshold 3, confidence floor 0.85, counter
+in-memory and reset on app launch (`LanguageDetector.swift:106-111`). A run that
+does not reach the threshold reports no chip, which reads as the dwell being
+broken rather than as the trigger never having armed.
+So each arm dictates until a chip arrives and REPORTS how many takes it needed:
+only a `.highAuto` accept at >= 0.85 increments, a `.mediumAuto` is a no-op, and
+identical audio does not clear the floor every time — measured 0.85, 0.91, 0.91,
+then 0.65. Three takes is the BEST case, not the expected one.
 """
 
 import json

@@ -1,27 +1,22 @@
 """Identify the overlay window by LIFECYCLE, and refuse when it is not unique.
 
-#2377 chunk 6 (C6A). Shared by `phase5_geometry_relaunch.py` and
-`phase5_preview_growth.py` so there is ONE answer to "which window is the pill",
-rather than two scripts each choosing differently.
+#2377 chunk 6. Shared by every row that measures a pill, so there is ONE answer
+to "which window is that".
 
-**The question this answers is not "which window looks like a pill".** Size,
-layer and ordering are all properties an unrelated window can have, and the
-previous revision took `fresh[0]` out of an unordered dict — a CHOICE wearing an
-identification's clothes, which returns a confident answer for the wrong window.
+**Size, layer and enumeration order are all properties an unrelated window can
+have**, so choosing by any of them returns a confident answer for the wrong
+window. The lifecycle question has a checkable answer: the overlay APPEARED when
+the recording started and was GONE after it stopped. Both halves are required —
+appearance alone admits any window that opened during the take, and the
+disappearance is what ties a candidate to the recording.
 
-The lifecycle question has a checkable answer: the overlay is the window that
-APPEARED when the recording started and was GONE after it stopped. Both halves
-are required. Appearance alone admits any window that happened to open during the
-take; the disappearance is what ties it to the recording.
+More than one such window returns `AMBIGUOUS` and the caller must refuse, per
+tools-and-apps.md RULE: a-harness-that-ACTS-on-a-shared-resource-must-refuse-not-choose.
+A wrong refusal costs a rerun; a wrong pick silently retargets the measurement.
 
-Where that is not exactly one window the classifier returns `AMBIGUOUS` and the
-caller must refuse, per tools-and-apps.md
-RULE: a-harness-that-ACTS-on-a-shared-resource-must-refuse-not-choose. A wrong
-refusal costs a rerun; a wrong pick silently retargets the measurement.
-
-Pure and dependency-free on purpose: it takes three sets of window ids and no
-Quartz, so `phase5_overlay_lifecycle_test.py` can drive every verdict — including
-the ambiguous one, which is not stageable against a live app on demand.
+Pure and dependency-free: it takes three sets of window ids and no Quartz, so
+`phase5_overlay_lifecycle_test.py` can drive every verdict — including
+`AMBIGUOUS`, which cannot be staged against a live app on demand.
 """
 
 OK = "OK"

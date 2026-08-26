@@ -1,60 +1,41 @@
-"""Per-design geometry via PRESET-AND-RELAUNCH (#2377 chunk 6, Codex option 1).
+"""Per-design geometry via PRESET-AND-RELAUNCH (#2377 chunk 6).
 
-Three earlier methods failed and all three failed QUIETLY, which is why this one
-is built to prove each precondition rather than to assume it:
+Each row presets one design, relaunches the existing bundle, holds a recording
+open, and measures the overlay. Three facts decide the design and each is a
+property of the app rather than of this script:
 
-  - defaults write alone   — the value changed, the app never re-read it
-  - driving the picker     — `tap`/`see` navigation is #1296-unreliable; two of
-                             three taps silently did not take
-  - a SINGLE press         — see below; this is the one that produced a plausible
-                             number for one design and `null` for two
+**A single press is PUSH-TO-TALK and ends in the same second it starts.** The
+app answers one with `Recording started` / `Debounce timer fired — stopping PTT`
+/ `discarded` at one timestamp, so a window search races a sub-second overlay and
+returns a real measurement only sometimes. Rows hold the pill open with the
+hands-free double press, which refuses on the app's own
+`Hands-free mode activated`.
 
-**A SINGLE PRESS IS PUSH-TO-TALK AND ENDS IN THE SAME SECOND IT STARTS.** Measured
-2026-08-25 from the app's own log across this script's first run:
+**A preset governs the NEXT LAUNCH, and the app must be STOPPED when it is
+written.** A running instance owns these keys and flushes its in-memory copy on
+quit, so a value written while it is alive is overwritten by the instance being
+replaced. Owner: settings-defaults.md
+RULE: preset-a-dev-setting-in-the-shared-suite-never-the-dev-domain.
 
-    [20:39:45] Recording started. Backend: parakeet, streaming=false
-    [20:39:45] Debounce timer fired — stopping PTT (no double-press detected)
-    [20:39:45] dictation_terminal result=discarded
+**A Bool must be written as a Bool.** `livePreviewEnabled` is read
+`object(forKey:) as? Bool ?? default` (`SettingsManager.swift:941`); `defaults
+write <dom> <key> 1` stores a STRING, which does not bridge, so the app silently
+uses its shipped default.
 
-So the overlay existed for well under a second and the window search was RACING
-it. `classic` returned 243x51 because one poll happened to land inside that
-window; `levelRail` and `readingWell` returned `overlay: null` from the identical
-code against an app behaving identically. **A racing instrument does not fail —
-it reports a real measurement, sometimes**, and the two nulls read as a product
-defect in two designs rather than as one flaw in the harness.
+**THE WIDTH SPREAD IS NOT THE VERDICT.** Two of three rows can collide and still
+leave a spread, so a row that fell back to another design would pass a check
+written to catch exactly that. `isEnabledForGeometry` is
+`selectedRoute().isSupportedOnThisSystem() && isPreviewOn()`
+(`LivePreviewCoordinator.swift:286`), and when the capability is absent `resolve`
+falls back to the no-words group (`PillDefinition.swift:223`) and renders a
+DIFFERENT pill at a plausible size. Each row therefore asserts the group it
+actually rendered, from the app's own `LIVE_PREVIEW session started`, and the
+verdict is `width_spread_ok AND all_rows_correct_group AND restore_clean`.
 
-The fix is not a longer search. It is to hold the pill open: the double press
-engages hands-free lock, so the recording stays up until it is stopped, and
-`double_press_record_key` refuses on `Hands-free mode activated` rather than on
-the press landing. Every row is therefore measured under the SAME lock state,
-which is recorded in the report so the numbers are attributable.
-
-`settings-defaults.md` RULE: preset-a-dev-setting-in-the-shared-suite-never-the-dev-domain
-says a preset governs the NEXT LAUNCH. So: preset, relaunch the EXISTING bundle
-(no rebuild), then measure.
-
-**The window id and pid both change per launch**, so neither is assumed: the
-overlay is re-identified each round by LIFECYCLE — the window that APPEARED with
-the recording — and the round REFUSES if that is not exactly one window, per
-tools-and-apps.md RULE: a-harness-that-ACTS-on-a-shared-resource-must-refuse-not-choose.
-The previous revision took `fresh[0]` out of an unordered dict, which is a choice
-wearing an identification's clothes.
-
-**PRESET WITH THE APP STOPPED, NEVER WHILE IT RUNS.** A running instance owns
-these keys and flushes its in-memory copy on quit, so a value written before the
-TERM is overwritten by the app being replaced. Measured 2026-08-25: with the write
-first, three relaunches produced three hands-free locks and ZERO
-`LIVE_PREVIEW session started` lines.
-
-**THE WIDTH SPREAD IS NOT THE VERDICT, AND BELIEVING IT WAS COST THIS SCRIPT A
-ROUND.** Two of three rows can collide and still leave a spread, so a readingWell
-row that silently fell back to levelRail passed a check written to catch exactly
-that. `isEnabledForGeometry` is `selectedRoute().isSupportedOnThisSystem() &&
-isPreviewOn()` (`LivePreviewCoordinator.swift:286`), so the toggle is one of two
-conditions; when the capability is absent `resolve` falls back to the no-words
-group (`PillDefinition.swift:223`). Each row therefore asserts the group it
-actually rendered, from the app's own `LIVE_PREVIEW` line, and the verdict is
-`width_spread_ok AND all_rows_correct_group`.
+The overlay is re-identified per launch by LIFECYCLE — the window that appeared
+with the recording and was gone after it — because both pid and window id change.
+More than one candidate REFUSES, per tools-and-apps.md
+RULE: a-harness-that-ACTS-on-a-shared-resource-must-refuse-not-choose.
 """
 
 import json
@@ -82,10 +63,8 @@ KEYS = ["livePreviewEnabled", "recordingPillDesignWithoutWords"]
 # `defaults.object(forKey:) as? Bool` (`SettingsManager.swift:941`), and
 # `defaults write <domain> <key> 1` writes an INTEGER, which does not bridge —
 # so the app falls back to the shipped default (`false`) and the words capability
-# never turns on. Measured 2026-08-25: with `1` the readingWell row produced ZERO
-# `LIVE_PREVIEW session started` lines across three runs; the identical row with
-# `-bool YES` started a preview session on the first attempt. The `0` rows were
-# right by accident, because both a false Bool and a failed bridge answer false.
+# never turns on. A `0` row is right by accident, because both a false Bool and a
+# failed bridge answer false — only a TRUE value exposes the defect.
 BOOL_KEYS = {"livePreviewEnabled"}
 
 ROWS = [
@@ -216,9 +195,7 @@ def measure_row(name, pid, since_bytes):
     # SEEK IN BINARY. `st_size` is BYTES and `read_text()[n:]` slices CHARACTERS,
     # and this log is full of em-dashes at 3 bytes each — so a byte offset applied
     # to a decoded string lands far PAST the intended point and silently discards
-    # the lines being looked for. The first version of this check reported
-    # `LIVE_PREVIEW: NONE` for a run whose own log carried
-    # `LIVE_PREVIEW session started, engine=apple` at the matching second.
+    # the lines being looked for.
     with LOG.open("rb") as fh:
         fh.seek(since_bytes)
         tail = fh.read().decode("utf-8", errors="replace")
@@ -262,12 +239,8 @@ def main():
         for name, settings in ROWS:
             # STOP FIRST, THEN WRITE. A running app owns these keys and flushes its
             # own in-memory copy on quit, so a value written while it is alive is
-            # overwritten by the instance being replaced. Measured 2026-08-25: with
-            # the write first, three relaunches produced three hands-free locks and
-            # ZERO `LIVE_PREVIEW session started` lines, so `livePreviewEnabled=1`
-            # never reached the new instance and all three rows resolved the
-            # no-words group — levelRail and readingWell returned byte-identical
-            # 288x92 and the spread check passed on two distinct values out of three.
+            # overwritten by the instance being replaced, so the preset never
+            # reaches the new instance and every row resolves the default group.
             if not stop_app():
                 report["rows"][name] = {"error": "an instance survived TERM; refusing to preset"}
                 continue

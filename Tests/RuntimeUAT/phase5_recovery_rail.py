@@ -173,10 +173,8 @@ def main():
 
             # THE RAIL IS NOT A NEW WINDOW. The overlay is ONE RETAINED PANEL,
             # so the rail MORPHS the panel the recording pill was using rather
-            # than creating a second one — the id does not change, and looking
-            # for an id absent before the cancel can never find it. Measured: a
-            # run keyed on a fresh id reported `rail: null` for a take whose own
-            # log carried the recovery decision.
+            # than creating a second one — the id does not change, so looking
+            # for an id absent before the cancel can never find it.
             #
             # It is also not immediate: the cancel KEEPS the take and runs the
             # ordinary pipeline, so the rail is offered once that finishes.
