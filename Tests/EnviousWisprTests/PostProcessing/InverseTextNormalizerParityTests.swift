@@ -302,6 +302,12 @@ struct InverseTextNormalizerParityTests {
       // reaching polish as unambiguous text instead of a dangling "H" — see the boundary
       // note above for why the domain itself stays dot-unconverted here.
       ("H slash slash facebook dot com", "https slash slash facebook dot com"),
+      // Fix 3 (negative, cloud review PR #2463): "H slash slash" with no URL-shaped
+      // continuation is ordinary technical dictation, not a truncated https, and must be
+      // left untouched.
+      (
+        "the variable H slash slash is malformed", "the variable H slash slash is malformed"
+      ),
       // Boundary (see note above): a cleanly-heard "https slash slash" prefix already blocks
       // dot-conversion today, independent of this fix — documented, not asserted as fixed.
       ("https slash slash facebook dot com.", "https slash slash facebook dot com."),

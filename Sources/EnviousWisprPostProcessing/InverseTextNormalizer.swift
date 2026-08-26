@@ -707,8 +707,19 @@ public struct InverseTextNormalizer: Sendable {
   // it collided with 44 existing "h t t p colon slash slash" rows before this comment was
   // written narrower. A standalone "H"/"h" immediately followed by "slash slash" has no such
   // established alternate producer in the corpus, so it stays a safe, narrow fix.
+  //
+  // Cloud review (PR #2463): unanchored, this also rewrote ordinary technical dictation with
+  // no URL intent at all ("the variable H slash slash is malformed" -> "...https slash
+  // slash..."). A zero-width lookahead requiring what FOLLOWS to actually be a host
+  // (spoken "host dot tld" or already-joined "host.tld") closes that — "is malformed" matches
+  // neither shape, so that sentence is left untouched, while a real address still qualifies.
   private func normalizeGarbledHTTPSPrefix(_ t: String) -> String {
-    reSub(#"\b[Hh]\s+slash\s+slash\b"#, t) { _ in "https slash slash" }
+    let hostChain = #"(?:"# + Self.urlHostLabelPat + #"\.)*"# + Self.urlHostLabelPat
+    let tldAlt = Self.lowerRiskURLTLDAlt + #"|"# + Self.commonWordURLTLDAlt
+    let urlAhead =
+      #"(?=\s+"# + hostChain + #"\s+dot\s+(?:"# + tldAlt + #")\b|\s+"# + hostChain
+      + #"\.(?:"# + tldAlt + #")\b)"#
+    return reSub(#"\b[Hh]\s+slash\s+slash\b"# + urlAhead, t) { _ in "https slash slash" }
   }
 
   // #2315: the recognizer's own end-of-utterance period lands right after a bare spoken URL
