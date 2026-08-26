@@ -23,7 +23,11 @@ import SwiftUI
 struct AppearanceSettingsView: View {
   @Environment(SettingsManager.self) private var settings
 
-  private let columns = [GridItem(.adaptive(minimum: 210, maximum: .infinity), spacing: 12)]
+  /// 270, not the 210 this grid used while the cards were vertical (#2435). A
+  /// selected `System` row is 108 of thumbnail, 22 of icon, its title, an 18
+  /// point check, four gaps and the padding. At 210 the title or the check
+  /// compresses at narrow multi-column widths, silently.
+  private let columns = [GridItem(.adaptive(minimum: 270, maximum: .infinity), spacing: 12)]
 
   var body: some View {
     @Bindable var settings = settings

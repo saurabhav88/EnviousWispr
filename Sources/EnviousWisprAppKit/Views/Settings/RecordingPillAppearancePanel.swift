@@ -68,7 +68,17 @@ struct RecordingPillAppearancePanel: View {
     } footnote: {
       // ONE quiet line for the whole page's pill settings (founder, 2026-08-26),
       // replacing the sentence this panel and the position panel each carried.
-      Text("Changes apply the next time you record.")
+      //
+      // **It NAMES both settings, because it sits inside the Recording Pill
+      // panel** and an unqualified "Changes" reads there as design changes only,
+      // leaving the position panel above silently uncovered.
+      //
+      // "the next time the pill appears", not "the next time you record": the
+      // position setting also places status notices, which the deleted copy said
+      // outright ("Changes apply the next time one appears"). A notice can arrive
+      // without a recording, so scoping this line to recording would be wrong for
+      // half of what it now covers.
+      Text("Design and position changes apply the next time the pill appears.")
         .settingsReadingCopy()
     }
   }
@@ -294,11 +304,10 @@ private struct RecordingPillPreview: View {
       animatesGlow: false
     )
     // **A PICTURE does not move, including on the way in.** The leaf animates
-    // `audioLevel`, and its first poll moves that from 0 to the sample — so a
-    // tile would fade its meter up every time the grid created the row, which a
-    // `LazyVGrid` does on scroll as well as on appear. Rejecting inherited
-    // animations is the only reach a caller has: the `.animation` modifiers are
-    // inside the leaf.
+    // `audioLevel`, and its first poll moves that from 0 to the sample, so a tile
+    // would fade its meter up every time `ViewThatFits` changes candidates or the
+    // settings page recreates it. Rejecting inherited animations is the only
+    // reach a caller has: the `.animation` modifiers are inside the leaf.
     .transaction { transaction in
       transaction.disablesAnimations = true
     }
