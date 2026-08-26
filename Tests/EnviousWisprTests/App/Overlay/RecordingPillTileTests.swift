@@ -76,15 +76,6 @@ struct RecordingPillTileTests {
     )
   }
 
-  /// **Every tile in one group draws the SAME rectangle, and the two groups draw
-  /// different ones.**
-  ///
-  /// This REPLACES an assertion that no two tiles shared a width, which pinned
-  /// the behaviour the founder rejected on sight: unequal boxes read as a ragged
-  /// set rather than as a row of pictures. The pill inside still keeps its own
-  /// true size — `thePreviewIsTheRealPillScaled` and `noPreviewIsMagnified` are
-  /// what hold that, and they are what would fail if normalising ever started
-  /// distorting the pill.
   /// **The pill inside the card is the REAL pill, and it fits its box.**
   ///
   /// REPLACES `tileHeightTracksTheLeaf` and `theReadingWellRendersTaller`, which
@@ -173,6 +164,35 @@ struct RecordingPillTileTests {
     #expect(
       abs(selected.height - unselected.height) < 0.01,
       "\(design) changes height on selection: \(unselected.height) -> \(selected.height)")
+  }
+
+  /// **The selected card's accessibility VALUE is exactly "Selected".**
+  ///
+  /// Not a style preference: `wispr_eyes.read_cards` compares `AXValue` against
+  /// that literal, and the Runtime UAT now decides whether a tap landed by asking
+  /// it. Reword this and the harness stops seeing selection at all — and it fails
+  /// toward reporting a working picker as broken, which is the direction that
+  /// wastes a person's afternoon.
+  ///
+  /// The empty string for unselected matters too: `read_cards` treats anything
+  /// other than "selected" as not-selected, so a placeholder like "Not selected"
+  /// would still read correctly, but a second SELECTED-ish word would not.
+  @Test("the selected value is exactly the string the harness reads")
+  func theSelectedValueIsExactly() {
+    // Assert the CONSTANT the view uses, so this fails if the literal moves.
+    let selectedValue = "Selected"
+
+    #expect(
+      RecordingPillPreviewTile.accessibilityValue(isSelected: true) == selectedValue,
+      """
+      the selected card announces \
+      "\(RecordingPillPreviewTile.accessibilityValue(isSelected: true))" rather than \
+      "\(selectedValue)". `wispr_eyes.read_cards` compares against that exact string, so the \
+      Runtime UAT would stop seeing any selection.
+      """)
+    #expect(
+      RecordingPillPreviewTile.accessibilityValue(isSelected: false).isEmpty,
+      "an unselected card announces a value, which read_cards may read as a selection")
   }
 
   @Test("every card in the row is the same size")

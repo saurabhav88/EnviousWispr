@@ -203,6 +203,17 @@ struct RecordingPillPreviewTile: View {
     "\(design.displayName). \(design.summary)"
   }
 
+  /// What a card announces as its VALUE.
+  ///
+  /// **Extracted because a test and a Python harness both depend on the exact
+  /// string.** `wispr_eyes.read_cards` compares `AXValue` against "Selected", and
+  /// the Runtime UAT decides whether a tap landed by asking it. Reworded inline,
+  /// the harness silently stops seeing selection and reports a working picker as
+  /// broken. `theSelectedValueIsExactly` pins it.
+  static func accessibilityValue(isSelected: Bool) -> String {
+    isSelected ? "Selected" : ""
+  }
+
   /// **Every card draws its pill into THIS box, each at its own scale.**
   ///
   /// **The CARD matches a theme card exactly** (founder, 2026-08-26: "I want the
@@ -462,7 +473,7 @@ struct RecordingPillPreviewTile: View {
     // visible and inaudible.
     .accessibilityElement(children: .combine)
     .accessibilityLabel(Self.accessibilityLabel(for: design))
-    .accessibilityValue(isSelected ? "Selected" : "")
+    .accessibilityValue(Self.accessibilityValue(isSelected: isSelected))
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
   }
 }

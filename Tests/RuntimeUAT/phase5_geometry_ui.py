@@ -244,13 +244,30 @@ def main():
         # discards that — the same silent-empty shape as the reader this file just
         # had — so it is required rather than called.
         require(await_idle(), f"the recording before {label} never tore down")
-        before_tap = ui_text()
         w.tap(label)
         require(await_idle(), f"the app never went idle after tapping {label}")
+
+        # **Read WHICH CARD IS SELECTED, rather than diffing printed trees.**
+        #
+        # Two earlier versions of this check were wrong and the second is the
+        # instructive one. A whole-tree diff could differ for reasons unrelated to
+        # the tap — an overlay tearing down — and, worse, could be IDENTICAL for a
+        # real move: Capsule to Level Rail keeps both designs wordless, so the
+        # Configure link does not change and the only relevant difference is which
+        # button carries `AXValue == "Selected"`. It therefore fails on a working
+        # app and passes on a broken one, in different states. Found by the cloud
+        # review.
+        #
+        # `read_cards` is the harness's own reader for this exact question and asks
+        # the AX API instead of parsing text. The pill group was added to it for
+        # this, and the "Selected" string it compares against is pinned by
+        # `theSelectedValueIsExactly` — so this does not rest on a guessed format.
+        selected = w.read_cards("pill")
+        require(selected, f"read_cards found no pill cards after tapping {label}")
         require(
-            ui_text() != before_tap,
-            f"tapping {label} changed nothing on screen — the capture that follows would "
-            f"be the PREVIOUS design's geometry filed under {key}")
+            selected.get(label) is True,
+            f"tapping {label} did not select it (read {selected}) — the capture that "
+            f"follows would be the PREVIOUS design's geometry filed under {key}")
         row = capture_design(pid, key)
         report["rows"][key] = row
         # A null bound is a failed capture, and recording it as data is how a dead
