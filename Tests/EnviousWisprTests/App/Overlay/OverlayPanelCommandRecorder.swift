@@ -58,21 +58,23 @@ final class OverlayPanelCommandRecorder {
 /// recorder — the panel behaves exactly as the production one does; only the
 /// reporting is added.
 ///
-/// **`close()` records BEFORE calling `super`, every other override AFTER.**
-/// `isReleasedWhenClosed` can make `super.close()` deallocate `self`; recording
-/// first means the receipt survives even where the production configuration
-/// (`isReleasedWhenClosed = false`, set by `ensurePanel()` right after
-/// construction) did not — which is exactly the case a `.close()` this suite
-/// exists to catch would be violating.
+/// **`close()` records BEFORE calling `super`; every successful command records
+/// AFTER.** Closing is a negative tripwire on the attempted call itself, so its
+/// receipt must not depend on the superclass operation completing. Production
+/// never calls `close()`.
 ///
 /// **`setFrame` is normalized to one receipt per Host call.** `NSWindow`
 /// exposes both an animated and a non-animated `setFrame`, and the Host uses
 /// both (`display:` alone from `present`/`resizeCurrentPresentation`,
-/// `display:animate:` from `repositionForActiveSpaceChange`); overriding both
-/// and routing each through the same recorder call keeps that a Host-call-shaped
-/// fact rather than an AppKit-dispatch-shaped one.
+/// `display:animate:` from `repositionForActiveSpaceChange`). AppKit's own
+/// animated overload is not guaranteed to skip the non-animated one internally,
+/// so `animatedSetFrameDepth` suppresses a second receipt for the SAME call —
+/// without it, a single Host call could silently produce two commands instead
+/// of one, which is a Host-call count no assertion here would notice going
+/// wrong in the direction that inflates rather than drops evidence.
 private final class CommandRecordingPanel: NSPanel {
   private weak var recorder: OverlayPanelCommandRecorder?
+  private var animatedSetFrameDepth = 0
 
   init(recorder: OverlayPanelCommandRecorder?) {
     self.recorder = recorder
@@ -85,6 +87,7 @@ private final class CommandRecordingPanel: NSPanel {
 
   override func setFrame(_ frameRect: NSRect, display displayFlag: Bool) {
     super.setFrame(frameRect, display: displayFlag)
+    guard animatedSetFrameDepth == 0 else { return }
     recorder?.commands.append(
       .setFrame(
         panel: ObjectIdentifier(self), frame: frameRect, display: displayFlag, animated: false))
@@ -92,6 +95,8 @@ private final class CommandRecordingPanel: NSPanel {
 
   override func setFrame(_ frameRect: NSRect, display displayFlag: Bool, animate animateFlag: Bool)
   {
+    animatedSetFrameDepth += 1
+    defer { animatedSetFrameDepth -= 1 }
     super.setFrame(frameRect, display: displayFlag, animate: animateFlag)
     recorder?.commands.append(
       .setFrame(

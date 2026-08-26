@@ -233,6 +233,100 @@ struct OverlayWindowHostTests {
     #expect(recorder.constructionCount == 1, "showing after a hide rebuilt the panel")
   }
 
+  /// **The recorder's own coverage.** Every other test in this file reads
+  /// `recorder.panel`/`recorder.constructionCount`, which only exercise
+  /// `.constructed` and (indirectly, via `hideNeverCloses` below) `.close`.
+  /// Nothing directly asserted `setFrame`, `setContentView` or
+  /// `orderFrontRegardless` ever appear — a recorder that silently stopped
+  /// recording any one of those would leave every OTHER test in this file
+  /// green, because they all read the PANEL's own state, never the recorder's
+  /// command log. Codex found this gap in chunk review.
+  @Test("present, resize and hide issue the real panel commands in order")
+  func panelCommandOrderIsObservable() throws {
+    let recorder = OverlayPanelCommandRecorder()
+    let h = Self.host(panelFactory: recorder.makeFactory())
+    defer { recorder.panel?.orderOut(nil) }
+
+    let view = Self.view(width: 185, height: 44)
+    let presentStart = recorder.commands.count
+    #expect(
+      h.present(
+        view, width: .fixed(185), fixedHeight: nil, isFresh: true, position: .bottom))
+
+    let panel = try #require(recorder.panel)
+    let panelID = ObjectIdentifier(panel)
+    let presented = Array(recorder.commands[presentStart...])
+
+    // **`NSPanel`'s OWN designated initializer sets a default `contentView`
+    // internally, before `.constructed` is even appended** — measured live:
+    // `super.init(contentRect:styleMask:backing:defer:)` issues a
+    // `.setContentView` receipt of its own, ahead of construction finishing.
+    // That is a real AppKit fact this test is not about, so it locates
+    // `.constructed` rather than assuming position 0, and asserts only what
+    // HOST code issues after it — the three commands `present` itself drives.
+    guard
+      let constructedIndex = presented.firstIndex(where: {
+        if case .constructed = $0 { return true }
+        return false
+      })
+    else {
+      Issue.record("present never constructed a panel")
+      return
+    }
+    guard case .constructed(let constructedID) = presented[constructedIndex] else {
+      Issue.record("unreachable: index was located by matching .constructed")
+      return
+    }
+    let afterConstruction = Array(presented[(constructedIndex + 1)...])
+    try #require(
+      afterConstruction.count == 3,
+      """
+      expected exactly setFrame → setContentView → orderFrontRegardless after construction, \
+      got \(afterConstruction)
+      """)
+
+    guard case .setFrame(let frameID, let frame, let display, let animated) = afterConstruction[0],
+      case .setContentView(let contentID, let viewID) = afterConstruction[1],
+      case .orderFrontRegardless(let frontID) = afterConstruction[2]
+    else {
+      Issue.record("present did not issue frame → content → order-front after construction")
+      return
+    }
+
+    #expect(constructedID == panelID)
+    #expect(frameID == panelID)
+    #expect(frame.size == CGSize(width: 185, height: 44))
+    #expect(display == false)
+    #expect(animated == false)
+    #expect(contentID == panelID)
+    #expect(viewID == ObjectIdentifier(view))
+    #expect(frontID == panelID)
+
+    let resizeStart = recorder.commands.count
+    h.resizeCurrentPresentation(to: CGSize(width: 240, height: 60))
+    let resized = Array(recorder.commands[resizeStart...])
+    try #require(resized.count == 1)
+    guard
+      case .setFrame(let resizeID, let resizedFrame, let resizeDisplay, let resizeAnimated) =
+        resized[0]
+    else {
+      Issue.record("resize did not issue exactly one setFrame")
+      return
+    }
+    #expect(resizeID == panelID)
+    #expect(resizedFrame.size == CGSize(width: 240, height: 60))
+    #expect(resizeDisplay)
+    #expect(resizeAnimated == false)
+
+    let hideStart = recorder.commands.count
+    h.hide()
+    #expect(
+      Array(recorder.commands[hideStart...]) == [
+        .orderOut(panel: panelID),
+        .setContentView(panel: panelID, view: nil),
+      ])
+  }
+
   /// **`hide()` must ORDER OUT, and a mutation control is what proved this test
   /// was needed.** Substituting `close()` for `orderOut` left all eight cases
   /// green: with `isReleasedWhenClosed = false` a closed panel is still alive,
@@ -497,6 +591,7 @@ struct OverlayWindowHostTests {
 
     // A full-screen space appears: `visibleFrame` does not shrink, so the pill
     // must drop to the true screen edge (#1341).
+    let spaceChangeStart = recorder.commands.count
     geometry = Self.fullScreened
     NSWorkspace.shared.notificationCenter.post(
       name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
@@ -505,6 +600,25 @@ struct OverlayWindowHostTests {
     #expect(
       panel.frame.origin.y == 0,
       "the Space-change notification never reached the host — it is not registered")
+
+    // **The recorder's proof that the animated-`setFrame` depth guard is doing
+    // real work, not defending against a call AppKit never makes.**
+    // `repositionForActiveSpaceChange` issues `setFrame(_:display:animate:)`,
+    // exactly the overload the guard exists to keep from double-recording.
+    // Removing the guard is the control: this row must fail by finding TWO
+    // receipts instead of one if the animated overload also routes through
+    // the non-animated override internally.
+    let spaceChangeCommands = Array(recorder.commands[spaceChangeStart...])
+    let animatedFrameCommands = spaceChangeCommands.filter {
+      if case .setFrame(_, _, let display, let animated) = $0 { return display && animated }
+      return false
+    }
+    #expect(
+      animatedFrameCommands.count == 1,
+      """
+      expected exactly one animated setFrame receipt for the Space-change reposition, got \
+      \(spaceChangeCommands)
+      """)
 
     // **A SECOND swipe, and this is the assertion that matters.** The first one
     // proves only that the host is listening. The host moves the window itself

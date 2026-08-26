@@ -303,8 +303,21 @@ struct OverlayRetainedWindowRealPanelTests {
 
   @Test("a real panel survives show, hide, show with identity intact")
   func showHideShowRetainsTheRealPanel() throws {
+    // **A CAPTURING factory, not `firstView.window`.** Reading the panel off
+    // the attached view can only see the panel that ended up attached — it is
+    // blind to an extra real panel constructed and then discarded before or
+    // instead of that one. Wrapping `.live` itself, so every panel it
+    // constructs is genuinely production configuration, is what lets
+    // `constructedPanels.count == 1` prove there was only ever ONE.
+    let live = OverlayPanelFactory.live
+    var constructedPanels: [NSPanel] = []
+    let capturingFactory = OverlayPanelFactory {
+      let panel = live.makePanel()
+      constructedPanels.append(panel)
+      return panel
+    }
     let host = OverlayWindowHost(
-      screens: { OverlayScreenResolver { Self.screen } }, panelFactory: .live)
+      screens: { OverlayScreenResolver { Self.screen } }, panelFactory: capturingFactory)
 
     nonisolated(unsafe) var closed = false
     var closeToken: NSObjectProtocol?
@@ -315,9 +328,9 @@ struct OverlayRetainedWindowRealPanelTests {
       host.present(
         firstView, width: .fixed(185), fixedHeight: nil, isFresh: true, position: .bottom)
     )
-    // The panel exists only after the first `present`, so the close observer is
-    // attached here rather than before — there is nothing to observe earlier.
-    let panel = try #require(firstView.window)
+    #expect(constructedPanels.count == 1, "the first presentation built more than one panel")
+    let panel = try #require(constructedPanels.first)
+    #expect(firstView.window === panel, "the view attached to a DIFFERENT panel than was built")
     closeToken = NotificationCenter.default.addObserver(
       forName: NSWindow.willCloseNotification, object: panel, queue: nil
     ) { _ in closed = true }
@@ -335,6 +348,9 @@ struct OverlayRetainedWindowRealPanelTests {
       host.present(
         secondView, width: .fixed(185), fixedHeight: nil, isFresh: true, position: .bottom)
     )
+    #expect(
+      constructedPanels.count == 1,
+      "showing after a hide built a SECOND real panel — the window is not retained")
     let secondPanel = try #require(secondView.window)
 
     #expect(
