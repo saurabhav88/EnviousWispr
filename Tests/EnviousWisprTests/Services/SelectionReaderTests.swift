@@ -282,4 +282,25 @@ struct SelectionReaderTests {
     #expect(seen.contains { if case .refused = $0 { true } else { false } })
   }
 
+
+  /// **A failed query is not an empty one, and they need different sentences.**
+  ///
+  /// `focusedElementQuery` collapsed both to nil, which was tolerable while every read was
+  /// unbounded and a timeout was rare. #2412's 0.25s menu cap makes the timeout branch the likely
+  /// one, so the panel was routinely telling users to click into the text when nothing they clicked
+  /// could help. Cloud review, PR #2427.
+  @Test("A timed-out or failed focus query is unreadable, not an unfocused app")
+  func aFailedFocusQueryIsNotAnEmptyOne() {
+    #expect(SelectionReader.refusalForFocusedElement(.none) == .noFocusedElement)
+    #expect(SelectionReader.refusalForFocusedElement(.queryFailed(.cannotComplete)) == .unreadable)
+    // The timeout arrives as its own error code and must not be special-cased into the empty case.
+    #expect(
+      SelectionReader.refusalForFocusedElement(.queryFailed(.actionUnsupported)) == .unreadable,
+      "every query failure is unreadable; only a SUCCESSFUL empty query is noFocusedElement")
+    // The two must stay DISTINCT refusals; the wording each maps to is the copy table's suite,
+    // in another module. What matters here is that nothing collapses them back together.
+    #expect(
+      SelectionReader.refusalForFocusedElement(.none)
+        != SelectionReader.refusalForFocusedElement(.queryFailed(.cannotComplete)))
+  }
 }

@@ -239,11 +239,21 @@ final class MenuBarController: NSObject {
     recordKeyCode: UInt16, recordModifiers: NSEvent.ModifierFlags,
     cancelKeyCode: UInt16, cancelModifiers: NSEvent.ModifierFlags
   ) -> String? {
-    // Compared as raw pairs rather than as `ShortcutBinding`, which is `package` to another module.
-    // Equality is the same question either way: same key code, same modifiers, same chord.
+    // **Compared on the CARBON-EFFECTIVE modifiers, not the raw flags.** `HotkeyService`
+    // registers through `carbonModifiers`, which keeps only Command/Option/Control/Shift — so a
+    // binding recorded with Caps Lock, Function or Numeric Pad set differs from Record's RAW flags
+    // while being the SAME CHORD to Carbon. Record registers first, Quick Add's registration then
+    // fails, and a raw comparison calls the binding uncontested and advertises a dead chord. Cloud
+    // review, PR #2427, on the first version of this very guard.
+    //
+    // Compared as masked pairs rather than as `ShortcutBinding`, which is `package` to another
+    // module.
+    let effective = modifiers.intersection(Self.carbonEffectiveModifiers)
     let contested =
-      (keyCode == recordKeyCode && modifiers == recordModifiers)
-      || (keyCode == cancelKeyCode && modifiers == cancelModifiers)
+      (keyCode == recordKeyCode
+        && effective == recordModifiers.intersection(Self.carbonEffectiveModifiers))
+      || (keyCode == cancelKeyCode
+        && effective == cancelModifiers.intersection(Self.carbonEffectiveModifiers))
     guard !contested else { return nil }
 
     let formatted = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
@@ -276,6 +286,15 @@ final class MenuBarController: NSObject {
   ///
   /// Longer than any healthy Accessibility read, shorter than a user tolerates a menu not opening.
   static let quickAddReadTimeout: Float = 0.25
+
+  /// The modifiers Carbon actually registers, mirroring `HotkeyService.carbonModifiers`.
+  ///
+  /// Every other bit — Caps Lock, Function, Numeric Pad, and the device-dependent flags — is dropped
+  /// on the way to `RegisterEventHotKey`, so two bindings differing only there are ONE chord as far
+  /// as the system is concerned. Comparing anything else here answers a question nobody asked.
+  static let carbonEffectiveModifiers: NSEvent.ModifierFlags = [
+    .command, .option, .control, .shift,
+  ]
 
   static let quickAddTitleCharacters = 24
   static let quickAddTitleScalars = 96
@@ -591,8 +610,19 @@ extension MenuBarController: NSMenuDelegate {
         // here is a gap in the evidence rather than a contradiction.
         //
         // It matters because #2413 adds a refusal for "we are the frontmost application": if
-        // opening this menu DID activate us, the entry would be permanently blocked. Probe and
-        // output are at `docs/audits/2026-08-25-statusmenu-frontmost-{probe.swift,result.txt}`.
+        // opening this menu DID activate us, the entry would be permanently blocked.
+        //
+        // **Reproduce it rather than look for the artifact — `docs/` is gitignored
+        // (`.gitignore:340`), so no checkout will ever hold that probe.** An earlier version of
+        // this comment cited a path there, which is worse than citing nothing: it tells the reader
+        // evidence exists and sends them to find it. Cloud review caught it, PR #2427.
+        //
+        // Thirty lines, no app involved: an `NSApplication` at `.accessory` policy, one
+        // `NSStatusItem` whose menu has this delegate, `NSWorkspace.frontmostApplication` recorded
+        // before `button.performClick(nil)`, inside `menuNeedsUpdate`, and after. Two traps —
+        // `performClick` enters a modal tracking loop where `DispatchQueue.main.async` never runs,
+        // so schedule the dismissal with a `Timer` in `.common`; and write findings to a file as
+        // they are taken, since `print` to a pipe block-buffers and a hang leaves nothing.
         //
         // **Bounded, because `menuNeedsUpdate` must be synchronous.** A frontmost application whose
         // Accessibility provider stalls would otherwise hold the main actor and the menu would not

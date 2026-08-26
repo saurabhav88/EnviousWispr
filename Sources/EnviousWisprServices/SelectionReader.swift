@@ -126,25 +126,31 @@ public enum SelectionReader {
     }
     // Safe: `refusalBeforeReading` returns non-nil for a nil or non-positive pid.
     guard let pid = frontmost else { return .refused(.noFocusedElement) }
-    // **Handed to the query rather than set here.** `focusedElementQuery` creates its OWN
-    // application element, so a timeout set on a handle made here reaches nothing — it did not, and
-    // the line that tried is gone. The parameter has existed all along.
-    guard
-      let focused = timeout.map({ PasteService.focusedElementQuery(pid: pid, messagingTimeout: Double($0)) })
-        ?? PasteService.focusedElementQuery(pid: pid)
-    else {
-      return .refused(.noFocusedElement)
+    // **Handed to the query rather than set here.** `focusedElement` creates its OWN application
+    // element, so a timeout set on a handle made here reaches nothing — it did not, and the line
+    // that tried is gone. The parameter has existed all along.
+    //
+    // **Three outcomes, and they are three different sentences to the user.** A failed or timed-out
+    // query is NOT an app that has nothing focused: telling someone to click into the text cannot
+    // help when the provider never answered. The distinction only started mattering when this read
+    // gained a cap, which makes the timeout branch the likely one. Cloud review, PR #2427.
+    let focusedOutcome =
+      timeout.map({ PasteService.focusedElement(pid: pid, messagingTimeout: Double($0)) })
+      ?? PasteService.focusedElement(pid: pid)
+
+    let focused: AXUIElement
+    if case .element(let element) = focusedOutcome {
+      focused = element
+    } else {
+      // Safe: `refusalForFocusedElement` returns non-nil for every non-element outcome.
+      return .refused(refusalForFocusedElement(focusedOutcome) ?? .unreadable)
     }
-    // **And the FOCUSED handle separately, because a descendant does not inherit one.** This repo
-    // learned that in #1332 — `PasteService.firstPasteItem`: "Descendant handles do NOT inherit an
-    // ancestor's messaging timeout", and `findPasteMenuItem`: "The timeout binds ONE element, so
-    // every handle we message has to be bounded, not just this one."
-    if let timeout { AXUIElementSetMessagingTimeout(focused, timeout) }
-    // **And bound the FOCUSED handle separately, because a descendant does not inherit it.** This
+
+    // **And bound the FOCUSED handle separately, because a descendant does not inherit one.** This
     // repo learned that in #1332 and wrote it down twice — `PasteService.firstPasteItem`:
-    // "Descendant handles do NOT inherit an ancestor's messaging timeout", and
-    // `findPasteMenuItem`: "The timeout binds ONE element, so every handle we message has to be
-    // bounded, not just this one."
+    // "Descendant handles do NOT inherit an ancestor's messaging timeout", and `findPasteMenuItem`:
+    // "The timeout binds ONE element, so every handle we message has to be bounded, not just this
+    // one."
     //
     // Bounding only the application is the shape that LOOKS bounded: the app answers the focused
     // query promptly, and then the attribute read below — the call that actually stalls — runs
@@ -162,6 +168,20 @@ public enum SelectionReader {
   }
 
   // MARK: - The decisions, which are pure
+
+  /// Which refusal a focused-element outcome becomes, or nil when there is an element to read.
+  ///
+  /// **Pure and separate from `read()` for the reason the guard below is: otherwise no test can
+  /// reach it.** The distinction it draws is the whole of PR #2427's second finding — a query that
+  /// FAILED or timed out is not an app with nothing focused, and telling the user to click into the
+  /// text cannot help when the provider never answered.
+  static func refusalForFocusedElement(_ outcome: PasteService.FocusedElement) -> Refusal? {
+    switch outcome {
+    case .element: return nil
+    case .none: return .noFocusedElement
+    case .queryFailed: return .unreadable
+    }
+  }
 
   /// Why a read cannot even be attempted, or nil to go ahead.
   ///

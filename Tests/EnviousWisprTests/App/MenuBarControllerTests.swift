@@ -302,6 +302,25 @@ struct MenuBarControllerTests {
   /// armed — so the advertised chord can START OR CANCEL A RECORDING. This menu exists because the
   /// shortcut can fail; sending the user to the heart path instead is the one lie it must not tell.
   /// Cloud review, PR #2427.
+  /// **Ownership is decided on the CARBON-EFFECTIVE modifiers, not the raw flags.**
+  /// `HotkeyService.carbonModifiers` keeps only Command/Option/Control/Shift, so a binding recorded
+  /// with Caps Lock, Function or Numeric Pad set is the SAME CHORD to Carbon as one without —
+  /// Record registers first, Quick Add's registration fails, and a raw comparison would call the
+  /// binding uncontested and advertise a dead chord. Cloud review, PR #2427, on the first version
+  /// of this guard.
+  @Test("A chord that differs only in a modifier Carbon drops is still contested")
+  func modifiersAreComparedAsCarbonSeesThem() {
+    // Quick Add carries an extra bit Carbon discards; Record does not. Same chord in practice.
+    #expect(Self.label(49, [.command, .capsLock], record: (49, [.command])) == nil)
+    // And the other direction, so this is not a rule about which side carries the extra bit.
+    #expect(Self.label(49, [.command], record: (49, [.command, .function])) == nil)
+    #expect(Self.label(53, [.control, .numericPad], cancel: (53, [.control])) == nil)
+
+    // Paired: a modifier Carbon DOES register still separates two bindings, or the masking would
+    // have swallowed every real difference and called everything contested.
+    #expect(Self.label(49, [.command, .shift], record: (49, [.command])) != nil)
+  }
+
   @Test("A chord Record or Cancel owns is not advertised as Quick Add's")
   func acontestedChordIsNotAdvertised() {
     // The shipped default is uncontested and still shows, so the guard cannot be a blanket nil.
