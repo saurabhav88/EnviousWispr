@@ -259,4 +259,76 @@ struct InverseTextNormalizerParityTests {
   func codexFindingRegressions(input: String, expected: String) {
     #expect(InverseTextNormalizer().normalize(input, spokenPunctuation: true) == expected)
   }
+
+  // #2315: spoken web addresses come out broken — trailing periods, a stray trailing "dot"
+  // word, and a garbled "https" prefix. Each row demonstrates one fix; the regression-guard
+  // row confirms the fix does not reopen the #2257-era "dot s m" bug the file's own comment
+  // on `spokenPat` warns about.
+  //
+  // Expected values are ITN-ONLY output (this test calls `normalize(_:)` directly, not the
+  // full pipeline): ITN converts spoken dot/slash into real punctuation and strips the
+  // recognizer's own trailing-period/stray-dot artifacts, but it does not materialize a
+  // spoken "slash slash" protocol connector into "://" — that reconstruction is LLM polish's
+  // job downstream, unchanged by this fix.
+  //
+  // KNOWN, PRE-EXISTING, OUT-OF-SCOPE BOUNDARY: a domain immediately preceded by "slash" —
+  // as in a spoken "https slash slash" protocol prefix — never reaches spokenPat/joinedPat's
+  // conversion at all. `precededByUnresolvedConnector` (this file, unrelated to and unchanged
+  // by this fix) already treats "slash" as one of its dangling-connector-word signals and
+  // refuses the WHOLE match, so the host/tld dot-conversion this PR adds trailer handling to
+  // never fires there either — the last two rows below document this AS-IS rather than
+  // asserting the aspirational fully-cleaned form. Changing that guard's established
+  // "slash" membership is a separate, larger decision (it exists to avoid a worse dangling
+  // partial conversion) and is out of scope here.
+  @Test(
+    "#2315 spoken web addresses: trailing period, stray dot, garbled https prefix",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/2315", "spoken web address cleanup"),
+    arguments: [
+      // Fix 1: a bare URL-only utterance's recognizer-added period is dropped.
+      ("facebook dot com.", "facebook.com"),
+      // Fix 1 (negative): the identical trailing period on a real sentence is kept.
+      ("I visited facebook dot com.", "I visited facebook.com."),
+      // Fix 2: a stray trailing "dot"/"dot." word survives a spoken-shape conversion.
+      ("facebook dot com dot.", "facebook.com."),
+      ("facebook dot com dot", "facebook.com."),
+      // Fix 2, ASR-pre-joined bare-domain shape (no path — outside joinedPat's own scope,
+      // handled by the dedicated bare-trailer pass).
+      ("www.facebook.com dot.", "www.facebook.com."),
+      // Fix 2 (negative): a real mid-utterance continuation after the domain must not be
+      // swallowed into the address (the "5%" is separate, pre-existing percent conversion,
+      // unrelated to and unaffected by this fix).
+      ("facebook.com dot five percent off", "facebook.com dot 5% off"),
+      // Fix 3: a garbled "H slash slash" (truncated "https") is normalized to the full word,
+      // reaching polish as unambiguous text instead of a dangling "H" — see the boundary
+      // note above for why the domain itself stays dot-unconverted here.
+      ("H slash slash facebook dot com", "https slash slash facebook dot com"),
+      // Fix 3 (negative, cloud review PR #2463): "H slash slash" with no URL-shaped
+      // continuation is ordinary technical dictation, not a truncated https, and must be
+      // left untouched.
+      (
+        "the variable H slash slash is malformed", "the variable H slash slash is malformed"
+      ),
+      // Fix 3 (negative, round 2, cloud review PR #2463): a real domain right after an
+      // unrelated "H" mid-sentence still must not be rewritten — the ambiguity is about what
+      // PRECEDES "H", not just what follows it.
+      (
+        "the variable H slash slash example.com is malformed",
+        "the variable H slash slash example.com is malformed"
+      ),
+      // Boundary (see note above): a cleanly-heard "https slash slash" prefix already blocks
+      // dot-conversion today, independent of this fix — documented, not asserted as fixed.
+      ("https slash slash facebook dot com.", "https slash slash facebook dot com."),
+      // Fix 2 (negative, cloud review PR #2463): a glued, unrelated identifier ending in "dot"
+      // with no whitespace before it must not be split into a domain plus a bogus trailer.
+      ("visit example.comdot", "visit example.comdot"),
+      // Regression guard (#2257-era): the letter-spelled "h t t p" shape must still leave an
+      // unrelated trailing "dot s m" continuation untouched — this fix must not reopen it.
+      (
+        "h t t p colon slash slash w w w dot o u r d a i l y n e w s dot com dot s m",
+        "h t t p: slash slash w w w dot o u r d a i l y n e w s.com dot s m"
+      ),
+    ])
+  func issue2315SpokenURLCleanup(input: String, expected: String) {
+    #expect(InverseTextNormalizer().normalize(input, spokenPunctuation: true) == expected)
+  }
 }

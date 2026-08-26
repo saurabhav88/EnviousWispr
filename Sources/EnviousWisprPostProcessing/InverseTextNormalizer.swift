@@ -689,7 +689,103 @@ public struct InverseTextNormalizer: Sendable {
   /// points are needed). `emails(_:)` runs first, so any domain it already converted to
   /// `name@host.tld` is excluded here via a negative lookbehind on `@` — a trailing
   /// "slash word" after an email is NOT a URL path.
+  // #2315: both ASR backends can transcribe a spoken "https" prefix as a lone letter
+  // ("H slash slash example.com") instead of the word. Not recovered by
+  // `precededByProtocolPrefix` below, since that guard only RECOGNIZES an existing "https"/
+  // "http" prefix to refuse a bad partial match — it has nothing to say about a truncated one.
+  // This runs BEFORE spokenPat/joinedPat so a corrected "https slash slash" prefix reaches
+  // downstream (LLM polish) as clean, recognizable text instead of the garbled original.
+  //
+  // Scoped to exactly this one shape, not "any bare protocol connector with https missing" —
+  // this repo's own oracle corpus (`parity.jsonl`) establishes a well-tested, DIFFERENT
+  // producer for a dropped "https": the recognizer spells it out letter-by-letter
+  // ("h t t p colon slash slash..."), which already carries its own oracle-verified handling
+  // elsewhere in this file. A same-shaped "bare colon slash slash" normalizer here would have
+  // no way to distinguish that established shape from a genuinely https-less utterance (the
+  // spelled letters are separated by ordinary word-boundary whitespace, so a same-length
+  // lookbehind for the contiguous word "http" cannot see them) — measured against the oracle,
+  // it collided with 44 existing "h t t p colon slash slash" rows before this comment was
+  // written narrower. A standalone "H"/"h" immediately followed by "slash slash" has no such
+  // established alternate producer in the corpus, so it stays a safe, narrow fix.
+  //
+  // Cloud review (PR #2463), round 1: unanchored, this also rewrote ordinary technical
+  // dictation with no URL intent at all ("the variable H slash slash is malformed" ->
+  // "...https slash slash..."). A zero-width lookahead requiring what FOLLOWS to actually be
+  // a host (spoken "host dot tld" or already-joined "host.tld") closed that specific case.
+  //
+  // Cloud review, round 2: the follows-a-host guard alone is insufficient — a constructed
+  // sentence can put a REAL domain right after an unrelated "H" ("the variable H slash slash
+  // example.com is malformed"), satisfying the lookahead while still meaning something else
+  // entirely. The follows-a-host check answers "is what's AFTER this shaped like a URL"; it
+  // has nothing to say about what PRECEDES it, which is exactly where the ambiguity lives — a
+  // bare single letter is ONLY unambiguous as a truncated "https" at the very start of the
+  // utterance, matching how a real truncated protocol prefix actually arrives (nothing spoken
+  // before it), never buried mid-sentence after other words. Checked in the callback (this
+  // file's established pattern for a preceding-context guard, see `isBareURLUtterance` below):
+  // requiring nothing but whitespace before the match closes this round's case too, since
+  // "the variable " precedes "H" there.
+  private func normalizeGarbledHTTPSPrefix(_ t: String) -> String {
+    let hostChain = #"(?:"# + Self.urlHostLabelPat + #"\.)*"# + Self.urlHostLabelPat
+    let tldAlt = Self.lowerRiskURLTLDAlt + #"|"# + Self.commonWordURLTLDAlt
+    let urlAhead =
+      #"(?=\s+"# + hostChain + #"\s+dot\s+(?:"# + tldAlt + #")\b|\s+"# + hostChain
+      + #"\.(?:"# + tldAlt + #")\b)"#
+    return reSub(#"\b[Hh]\s+slash\s+slash\b"# + urlAhead, t) { m in
+      let start = m.result.range.location
+      guard
+        start == 0
+          || m.ns.substring(with: NSRange(location: 0, length: start))
+            .trimmingCharacters(in: .whitespaces).isEmpty
+      else { return nil }
+      return "https slash slash"
+    }
+  }
+
+  // #2315: the recognizer's own end-of-utterance period lands right after a bare spoken URL
+  // ("https slash facebook dot com.") indistinguishable, at the ITN layer, from a real sentence
+  // period on a URL that happens to end a real sentence ("I visited facebook.com."). And a
+  // trailing "dot"/"dot." word can survive a conversion untouched, on either the spoken-word
+  // ("facebook dot com dot.") or ASR-pre-joined ("www.facebook.com dot.") shape, because neither
+  // existing pass ever inspects text after a match it already accepted.
+  //
+  // Both are handled by ONE optional trailer group appended to the end of each pattern below
+  // (`(?<trailer>...)`), never a post-hoc window check: `reSub` only rewrites the exact matched
+  // span and copies everything else through verbatim, so a trailing period or stray "dot" is
+  // only actually CONSUMED if it is part of the match itself. The trailer only ever matches
+  // right at true end-of-string, so a real following sentence or a genuine mid-utterance
+  // continuation ("facebook.com dot five percent off") is never part of the match and is left
+  // completely untouched.
+  //
+  // `trailerSuffix` turns whichever trailer this match captured into what to append: a stray
+  // "dot"/"dot." is always the recognizer's own artifact (nobody ends a real sentence with the
+  // literal word "dot"), so it always folds to a period. A literal "." only folds away when the
+  // WHOLE utterance was nothing but the spoken URL (`isBareURLUtterance`) — otherwise it is a
+  // real sentence period and is put back exactly as it was.
+  //
+  // `\s+` (not `\s*`) before the "dot" word (cloud review, PR #2463): a real trailing "dot"
+  // is always a distinct spoken/ITN token, separated from the domain by whitespace — requiring
+  // at least one space rules out this group ever splitting a glued, unrelated identifier like
+  // "example.comdot" into a domain plus a bogus trailer. The bare-period alternative needs no
+  // such guard: a literal "." is punctuation, not a word, so it never has this ambiguity.
+  private static let urlTrailerPat = #"(?<trailer>\s+dot\.?\s*$|\.\s*$)?"#
+  private func trailerSuffix(_ m: Match) -> String {
+    guard let trailer = m.g("trailer"), !trailer.isEmpty else { return "" }
+    if firstMatch(#"dot\.?\s*$"#, trailer) != nil { return "." }
+    return isBareURLUtterance(m) ? "" : "."
+  }
+
+  // Whether the text BEFORE a match is nothing but whitespace and bare protocol-prefix words —
+  // i.e. the entire utterance IS the spoken URL, so a trailing period is the recognizer's own
+  // artifact rather than real sentence punctuation the user dictated around the address.
+  private func isBareURLUtterance(_ m: Match) -> Bool {
+    let start = m.result.range.location
+    guard start > 0 else { return true }
+    let lead = m.ns.substring(with: NSRange(location: 0, length: start))
+    return firstMatch(#"^\s*(?:https?\s*:?\s*)?(?:slash\s*){0,2}$"#, lead) != nil
+  }
+
   private func urls(_ t: String) -> String {
+    let t = normalizeGarbledHTTPSPrefix(t)
     func withPath(_ base: String, _ path: String?) -> String {
       var s = base
       if let path, !path.isEmpty {
@@ -797,7 +893,7 @@ public struct InverseTextNormalizer: Sendable {
     let spokenPat =
       #"(?<![@a-z0-9.-])\b(?<host>(?:"# + Self.urlHostLabelPat + #"\.)*"#
       + Self.urlHostLabelPat + #")\s+dot\s+(?<tld>"# + Self.lowerRiskURLTLDAlt + #")\b"#
-      + #"(?<path>(?:\s+slash\s+"# + Self.urlPathSegmentPat + #")*)"#
+      + #"(?<path>(?:\s+slash\s+"# + Self.urlPathSegmentPat + #")*)"# + Self.urlTrailerPat
     var result = reSub(spokenPat, t) { m in
       // followedByUnsupportedContinuation only applies once a path is actually being
       // converted: with an EMPTY path (this pass's is optional, `*`), the host.tld
@@ -810,7 +906,7 @@ public struct InverseTextNormalizer: Sendable {
         !precededByProtocolPrefix(m), !precededByUnresolvedConnector(m),
         !precededBySpacedAtSign(m), !(hasPath && followedByUnsupportedContinuation(m))
       else { return nil }
-      return withPath("\(m.g("host") ?? "").\(m.g("tld") ?? "")", m.g("path"))
+      return withPath("\(m.g("host") ?? "").\(m.g("tld") ?? "")", m.g("path")) + trailerSuffix(m)
     }
 
     // Pass 2: recognizer already pre-joined the host into `word.tld`; only a trailing
@@ -848,14 +944,45 @@ public struct InverseTextNormalizer: Sendable {
       + Self.urlHostLabelPat + #"\.(?:"# + Self.lowerRiskURLTLDAlt + #"))"#
       + #"|(?<domain2>(?:"# + Self.urlHostLabelPat + #"\.)*"# + Self.urlHostLabelPat
       + #"\.(?:"# + Self.commonWordURLTLDAlt + #")))"#
-      + #"(?<path>(?:\s+slash\s+"# + Self.urlPathSegmentPat + #")+)"#
+      + #"(?<path>(?:\s+slash\s+"# + Self.urlPathSegmentPat + #")+)"# + Self.urlTrailerPat
     result = reSub(joinedPat, result) { m in
       guard
         !precededByProtocolPrefix(m), !precededByUnresolvedConnector(m),
         !precededBySpacedAtSign(m), !followedByUnsupportedContinuation(m)
       else { return nil }
       let domain = m.g("domain") ?? m.g("domain2") ?? ""
-      return withPath(domain, m.g("path"))
+      return withPath(domain, m.g("path")) + trailerSuffix(m)
+    }
+
+    // Pass 3 (#2315): a bare, already-correct `host.tld` with NO path — deliberately outside
+    // joinedPat's scope above, since that pattern requires >=1 path segment precisely so an
+    // ordinary mid-sentence "example.com" is left untouched — immediately followed by a stray
+    // trailing "dot"/"dot." WORD and nothing else before end-of-string. Never touches the
+    // domain itself, only strips what the recognizer glued on after it.
+    //
+    // WORD-ONLY trailer, deliberately narrower than `Self.urlTrailerPat` (no bare "."
+    // alternative): passes 1/2 above already run this SAME text and, via their own trailer
+    // group, correctly decide whether a literal "." they matched should stay or go — a bare
+    // "." is real, ordinary sentence punctuation on an ALREADY-CORRECT domain (nothing to
+    // fix), never an artifact this pass exists to clean up. Matching it too would re-scan
+    // pass 1/2's OWN just-emitted period on their own output and re-run the bare-utterance
+    // check a second time with a different lead context, silently overturning their decision
+    // — measured: "facebook dot com dot" correctly became "facebook.com." in pass 1, then
+    // this pass matched the trailing "." it had just added and stripped it right back off.
+    //
+    // `\s+` (not `\s*`, cloud review PR #2463): without a required space, the TLD alternation
+    // has no trailing `\b` of its own, so this could split a glued, unrelated identifier like
+    // "example.comdot" into a domain plus a bogus trailer — a real trailing "dot" word is
+    // always separated from the domain by whitespace, so requiring one costs nothing genuine.
+    let bareTrailerPat =
+      #"(?<![@a-z0-9.-])\b(?<domain>(?:"# + Self.urlHostLabelPat + #"\.)*"# + Self.urlHostLabelPat
+      + #"\.(?:"# + Self.lowerRiskURLTLDAlt + #"|"# + Self.commonWordURLTLDAlt + #"))"#
+      + #"(?<trailer>\s+dot\.?\s*$)"#
+    result = reSub(bareTrailerPat, result) { m in
+      guard
+        !precededByProtocolPrefix(m), !precededByUnresolvedConnector(m), !precededBySpacedAtSign(m)
+      else { return nil }
+      return (m.g("domain") ?? "") + trailerSuffix(m)
     }
 
     return result
