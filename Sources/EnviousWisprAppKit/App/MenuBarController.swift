@@ -224,37 +224,39 @@ final class MenuBarController: NSObject {
   /// lives — fixing it HERE alone would make the menu disagree with the Keybinds screen, which is
   /// worse than being consistently approximate.
   ///
-  /// **Silent when another role owns the same chord, which is not the same as the chord being
-  /// dead.** `ShortcutMatcher.role` gives Record priority on a shared binding, and
-  /// `HotkeyService.quickAddMayHoldItsChord` unregisters Quick Add entirely while a same-binding
-  /// Cancel is armed — and the keybind screen allows the collision. So the configured chord can
-  /// START OR CANCEL A RECORDING, and printing it here teaches the user to fire the heart path while
-  /// trying to add a word. This menu exists because the shortcut can fail; advertising the wrong
-  /// owner is the one thing it must not do.
+  /// **Silent unless Quick Add would actually ANSWER the chord, and that question is ASKED rather
+  /// than re-derived.** Three review rounds found three different ways a configured binding can
+  /// belong to someone else — the same binding as Record or Cancel; a binding differing only in a
+  /// modifier Carbon discards; and a bare modifier the record chord reserves. Each fix was correct
+  /// and each exposed the next, which is the signature of describing a set instead of enumerating
+  /// one.
   ///
-  /// Omitted rather than resolved to the effective owner: there is no honest short hint for "this
-  /// chord belongs to Start Recording", and the row itself still works. Cloud review, PR #2427.
+  /// The set is closed by the app's two dispatch paths, and each has an authority that already
+  /// decides ownership with the reasoning attached:
+  ///
+  /// - a BARE MODIFIER is dispatched by `ShortcutMatcher.role(forBareModifierKeyCode:)`, which
+  ///   encodes record-wins-a-tie, cancel-outranks-Quick-Add-while-armed, and the refusal when the
+  ///   record chord needs that modifier;
+  /// - a CHORD is dispatched by Carbon, so it is `HotkeyService.quickAddMayHoldItsChord` plus
+  ///   inequality with Record on the modifiers Carbon actually registers.
+  ///
+  /// `isBareModifier` decides which, so there is no third case to miss.
+  ///
+  /// **Omitted rather than resolved to the effective owner:** there is no honest short hint for
+  /// "this chord belongs to Start Recording", and the row itself still works. This menu exists
+  /// BECAUSE the shortcut can fail, so advertising a chord that starts or cancels a recording is
+  /// the one lie this surface must not tell.
   static func quickAddShortcutLabel(
     keyCode: UInt16, modifiers: NSEvent.ModifierFlags,
     recordKeyCode: UInt16, recordModifiers: NSEvent.ModifierFlags,
     cancelKeyCode: UInt16, cancelModifiers: NSEvent.ModifierFlags
   ) -> String? {
-    // **Compared on the CARBON-EFFECTIVE modifiers, not the raw flags.** `HotkeyService`
-    // registers through `carbonModifiers`, which keeps only Command/Option/Control/Shift — so a
-    // binding recorded with Caps Lock, Function or Numeric Pad set differs from Record's RAW flags
-    // while being the SAME CHORD to Carbon. Record registers first, Quick Add's registration then
-    // fails, and a raw comparison calls the binding uncontested and advertises a dead chord. Cloud
-    // review, PR #2427, on the first version of this very guard.
-    //
-    // Compared as masked pairs rather than as `ShortcutBinding`, which is `package` to another
-    // module.
-    let effective = modifiers.intersection(Self.carbonEffectiveModifiers)
-    let contested =
-      (keyCode == recordKeyCode
-        && effective == recordModifiers.intersection(Self.carbonEffectiveModifiers))
-      || (keyCode == cancelKeyCode
-        && effective == cancelModifiers.intersection(Self.carbonEffectiveModifiers))
-    guard !contested else { return nil }
+    let quickAdd = ShortcutBinding.keyboard(keyCode: keyCode, modifiers: modifiers)
+    let record = ShortcutBinding.keyboard(keyCode: recordKeyCode, modifiers: recordModifiers)
+    let cancel = ShortcutBinding.keyboard(keyCode: cancelKeyCode, modifiers: cancelModifiers)
+    guard ShortcutMatcher.quickAddOwnsItsBinding(quickAdd: quickAdd, record: record, cancel: cancel) else {
+      return nil
+    }
 
     let formatted = KeySymbols.format(keyCode: keyCode, modifiers: modifiers)
     // `nameForKeyCode` falls back to `Key <n>` for anything it does not know, which teaches nothing
@@ -286,15 +288,6 @@ final class MenuBarController: NSObject {
   ///
   /// Longer than any healthy Accessibility read, shorter than a user tolerates a menu not opening.
   static let quickAddReadTimeout: Float = 0.25
-
-  /// The modifiers Carbon actually registers, mirroring `HotkeyService.carbonModifiers`.
-  ///
-  /// Every other bit — Caps Lock, Function, Numeric Pad, and the device-dependent flags — is dropped
-  /// on the way to `RegisterEventHotKey`, so two bindings differing only there are ONE chord as far
-  /// as the system is concerned. Comparing anything else here answers a question nobody asked.
-  static let carbonEffectiveModifiers: NSEvent.ModifierFlags = [
-    .command, .option, .control, .shift,
-  ]
 
   static let quickAddTitleCharacters = 24
   static let quickAddTitleScalars = 96

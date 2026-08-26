@@ -321,6 +321,32 @@ struct MenuBarControllerTests {
     #expect(Self.label(49, [.command, .shift], record: (49, [.command])) != nil)
   }
 
+  /// **A BARE MODIFIER the record chord reserves is not Quick Add's either, and no comparison of
+  /// the two bindings can see it.** Quick Add on bare Left Command with Record on Command-D are
+  /// different bindings by every equality this file used to apply — yet `ShortcutMatcher.role`
+  /// returns nil for that press, because a bare Command is indistinguishable from the start of the
+  /// record chord and accepting it would open a panel that takes key focus while the user is trying
+  /// to dictate. Third round on this one root, and the reason the label now ASKS the dispatcher
+  /// instead of re-deriving the rules. Cloud review, PR #2427.
+  @Test("A bare modifier the record chord reserves is not advertised")
+  func aBareModifierReservedByRecordIsNotAdvertised() {
+    // Record is Command-D (key code 2), Quick Add is bare Left Command.
+    #expect(Self.label(ModifierKeyCodes.leftCommand, [], record: (2, [.command])) == nil)
+    #expect(Self.label(ModifierKeyCodes.rightCommand, [], record: (2, [.command])) == nil)
+
+    // Paired: with the record chord NOT needing Command, the same bare key is genuinely Quick
+    // Add's and must still be advertised — or this guard would silence every bare modifier.
+    #expect(Self.label(ModifierKeyCodes.leftCommand, [], record: (2, [.option])) != nil)
+  }
+
+  /// Cancel takes a shared chord for the whole of every recording, so a label promising it is a
+  /// promise we cannot keep even though the binding is Quick Add's most of the time.
+  @Test("A chord cancel takes during recording is not advertised")
+  func aChordCancelClaimsIsNotAdvertised() {
+    #expect(Self.label(53, [.control], cancel: (53, [.control])) == nil)
+    #expect(Self.label(53, [.control], cancel: (53, [.command])) != nil)
+  }
+
   @Test("A chord Record or Cancel owns is not advertised as Quick Add's")
   func acontestedChordIsNotAdvertised() {
     // The shipped default is uncontested and still shows, so the guard cannot be a blanket nil.
