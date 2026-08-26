@@ -489,7 +489,30 @@ internal final class PasteCascadeExecutor {
       let activated = activation.activated
       let elapsed = activation.elapsed
 
-      if activated {
+      // Cloud review round 2 (PR #2451): activation itself — not only the
+      // pipeline time before it — can move focus off the omnibox (the
+      // REVALIDATED comment below already says so, for the payload; this is
+      // the same fact applied to whether Tier 2 should even fire a BLIND
+      // paste at all). The round 1 `freshFocusedElement` check runs before
+      // `await activate(app)` and cannot see a shift `activate` itself causes.
+      // Re-checked HERE, after activation, at the latest possible moment
+      // before the irreversible CGEvent — closing the window rather than
+      // narrowing it, because there is no later commit point left to defer to.
+      let chromiumOmniboxStillFocused: Bool =
+        if isChromiumOmnibox, let element = request.targetElement {
+          PasteService.freshFocusedElement(matching: element) != nil
+        } else {
+          true
+        }
+      if activated, !chromiumOmniboxStillFocused {
+        // Refuse the blind paste rather than guess where it lands — the same
+        // "not confident enough to act automatically" floor PR #220 already
+        // uses for a non-text focus: fall through to clipboard-only below.
+        tierFailures["cgevent"] = "chromium_omnibox_lost_focus_during_activation"
+        emitTierFailureBreadcrumb(
+          stage: "cgevent", reason: "chromium_omnibox_lost_focus_during_activation",
+          bundleId: bundleId)
+      } else if activated {
         tiersAttempted.append(.cgEvent)
         // Revalidated AFTER activation, because bringing the app frontmost is
         // itself capable of moving focus and selection.
