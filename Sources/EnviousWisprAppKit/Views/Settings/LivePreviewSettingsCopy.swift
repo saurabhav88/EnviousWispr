@@ -44,14 +44,9 @@ enum LivePreviewSettingsCopy {
     + "languages; the rest are about 140 MB each and download only when you ask. "
     + "Nothing downloads on its own."
 
-  static let packInstalled = "Ready"
   static let packInstall = "Download"
   static let packInstalling = "Downloading"
   static let packRetry = "Try again"
-
-  /// The row that is genuinely in use, as opposed to merely present. With nine languages
-  /// installed, "Ready" on all of them said nothing about which one you are previewing in.
-  static let packInUse = "In use"
 
   /// Placeholder and empty state for the language search. Wording matches `LanguageLockSheet`
   /// verbatim: the app already has a language search and a second phrasing for the same job would
@@ -114,7 +109,8 @@ enum LivePreviewSettingsCopy {
   /// "needs a download" or a missing language pack. An earlier draft said
   /// "switch it on to see your words while you speak", which is a promise this
   /// card cannot keep for every user who reads it.
-  static let statusOffDetail = "Switch it on and this bar will show whether anything else is needed."
+  static let statusOffDetail =
+    "Switch it on and this bar will show whether anything else is needed."
 
   // `statusUnavailableLabel` / `statusUnavailableDetail` were DELETED by #2154's
   // final sweep, not merely unused. "Not available on this Mac" was returned
@@ -149,7 +145,8 @@ enum LivePreviewSettingsCopy {
   static func statusNeedsLanguageLabel(_ languageName: String) -> String {
     "\(languageName) isn't downloaded yet"
   }
-  static let statusNeedsLanguageDetail = "Use Browse downloads below to get it and start the preview."
+  static let statusNeedsLanguageDetail =
+    "Use Browse downloads below to get it and start the preview."
 
   static let statusUnsupportedLanguageLabel = "Apple can't preview this language"
   /// **Two details, because the advice is only true when the other engine
@@ -230,24 +227,43 @@ enum LivePreviewSettingsCopy {
   /// "Not on this Mac" half is empty and no search has happened, so
   /// `packsNoSearchMatch` would blame a query the user never typed.
   static let catalogNothingToInstall = "Every language Apple offers is already on this Mac."
-  static let catalogNoneInstalled = "No languages downloaded yet."
-
-
   /// The bar's one remedy, named for where it goes rather than what it fetches: the
   /// catalogue is the only thing that can resolve a display name to an installable pack.
   static let browseDownloadsButton = "Browse downloads"
 
   /// The Languages row's trailing button, and the row's own summary.
-  static let packsBrowseButton = "Browse"
-  static func packsInstalledSummary(installed: Int, total: Int) -> String {
-    "\(installed) of \(total) on this Mac"
-  }
+  // `packsBrowseButton` ("Browse") was DELETED, not left unused. The Languages
+  // row IS the button now, so the word had nothing to label — and a second name
+  // for one action is what made "Browse" versus "Install new languages" a
+  // question in the first place (founder, 2026-08-26). A trailing chevron says
+  // "this opens something" without needing a word that must then agree with the
+  // title above it.
 
-  /// **Not-installed first, because acquiring is the only reason this sheet opens.**
-  /// The counts beside them come from the same grouping the rows do.
-  static let catalogFilterAvailable = "Not on this Mac"
-  static let catalogFilterInstalled = "On this Mac"
+  /// **The Languages row names its action, not an inventory.** It read
+  /// "N of 54 on this Mac" — a count of something the reader was not asking about
+  /// and could not act on, which the sheet then restated as two filter chips
+  /// (founder, 2026-08-26: "remove on this mac part because that is the confusing
+  /// part - they can see what is on the mac on the top of the live preview page").
+  /// What is already installed is answered by the language control at the top of
+  /// the page, which lists exactly the languages you can switch to.
+  static let packsInstallRowTitle = "Install new languages"
+
+  // `packInstalled` ("Ready"), `packInUse` ("In use"), `packsInstalledSummary`,
+  // `catalogFilterAvailable`, `catalogFilterInstalled` and `catalogNoneInstalled`
+  // were DELETED here, not left unused. All six existed to describe the installed
+  // half of the catalogue, which this sheet no longer renders. Kept strings would
+  // have read as available vocabulary for a surface that cannot show them, and the
+  // copy-coverage test would have gone on asserting words nothing displays.
+  //
+  // The facts they carried are still stated where they are true: which language is
+  // previewing NOW is the status bar's, and what is installed is the language
+  // control's, which lists exactly what you can switch to.
   static let catalogDoneButton = "Done"
+
+  /// The close control carries no visible text, so this IS its name for
+  /// VoiceOver. "Close" rather than "Done": both leave, and only one of them
+  /// implies something was committed — nothing in this sheet is.
+  static let catalogCloseLabel = "Close"
 
   // MARK: - Status-bar language chip (#2436)
 
@@ -347,12 +363,21 @@ enum LivePreviewSettingsCopy {
   /// false about their own engine. A single shared string shipped exactly that for one
   /// review round, and the test that guarded it had no engine variable, so it validated
   /// the Apple sentence and passed while Universal displayed it.
+  /// **Shortened 2026-08-26 — "too wordy and too small to read" (founder).** Three
+  /// lines of the smallest type, above a search box it was flush against, on a
+  /// sheet somebody opened to press one row. The first sentence is the one that
+  /// changes behaviour and it leads; the Auto asymmetry follows in half the words.
+  ///
+  /// **What could NOT be cut: that Apple's preview uses the MAC's language on
+  /// Auto.** A bilingual user on Auto gets correct dictation and a preview in the
+  /// wrong language, and naming the source is what makes that legible instead of a
+  /// bug report.
   static let pickerAppleCaveat =
-    "This sets the language for dictation too, not just the preview. On Auto, dictation "
-    + "detects whatever you speak, while the preview has to pick one language in advance "
-    + "and uses your Mac's."
+    "This changes dictation too, not just the preview. On Automatic, dictation "
+    + "follows what you speak, but the preview must pick one language up front and "
+    + "uses your Mac's."
 
   static let pickerUniversalCaveat =
-    "This sets the language for dictation too, not just the preview. On Auto, this engine "
-    + "works the language out as you speak, so there is nothing you need to pick."
+    "This changes dictation too, not just the preview. On Automatic, this engine "
+    + "works the language out as you speak."
 }

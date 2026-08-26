@@ -82,7 +82,6 @@ struct LivePreviewPackCopyTests {
     let strings = [
       LivePreviewSettingsCopy.packsHeader,
       LivePreviewSettingsCopy.packsDescription,
-      LivePreviewSettingsCopy.packInstalled,
       LivePreviewSettingsCopy.packInstall,
       LivePreviewSettingsCopy.packInstalling,
       LivePreviewSettingsCopy.packRetry,

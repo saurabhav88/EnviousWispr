@@ -261,7 +261,7 @@ struct LivePreviewSettingsView: View {
       //
       // `request.search`, never a separately-read `@State`: see `catalogRequest`.
       LivePreviewPackCatalogSheet(
-        packs: packs, activeTag: activePackTag, initialSearch: request.search)
+        packs: packs, initialSearch: request.search)
     }
   }
 
@@ -301,23 +301,29 @@ struct LivePreviewSettingsView: View {
         HStack(alignment: .center, spacing: 12) {
           VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
-              ProviderStatusChip(status: status.chip)
+              ProviderStatusChip(status: status.chip, isHeadline: true)
             }
             Text(bar.detail).settingsHelperCopy()
           }
           Spacer(minLength: 12)
 
           if let language = bar.language {
-            Button {
+            // **It has to LOOK like a control, and two stacked Texts did not.**
+            // `.buttonStyle(.plain)` over a bare VStack renders as ordinary
+            // right-aligned copy — the founder read the most important control on
+            // the page as a status readout and did not know it could be pressed
+            // (2026-08-26). A bordered container plus a disclosure chevron is the
+            // platform's own vocabulary for "this opens a list", which is exactly
+            // what it does.
+            //
+            // The provenance moves INSIDE the container rather than under it: it
+            // describes the value, so leaving it outside made the control look
+            // like it ended at the name.
+            LivePreviewLanguageMenuButton(
+              name: language.name, provenance: language.provenance
+            ) {
               showLanguageSheet = true
-            } label: {
-              VStack(alignment: .trailing, spacing: 1) {
-                Text(language.name).settingsRowLabel()
-                Text(language.provenance).settingsHelperCopy()
-              }
             }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
             // **The provenance is IN the label, not just on screen.** An explicit
             // `accessibilityLabel` REPLACES the child text announcement, so naming
             // only `language.name` dropped the second line entirely for VoiceOver —
@@ -430,8 +436,22 @@ struct LivePreviewSettingsView: View {
         .foregroundStyle(.stAccent)
       }
 
+      // **`GridItem` defaults to `.center`, which is why the two cards did not
+      // line up.** Measured on the live page: Apple 101.5pt tall starting at
+      // y=341, Universal 82.5pt starting at y=330.5 — two cards presented as
+      // equal choices, disagreeing on both edges, which reads as unfinished and
+      // makes the taller one look more important (Codex UX review, 2026-08-26).
+      //
+      // Two changes, because one alone is not enough: `alignment: .top` settles
+      // the top edge, and `maxHeight: .infinity` on the cards below makes them
+      // fill the row so the bottoms agree too. The heights differ legitimately —
+      // Apple's tagline runs to two lines and Universal carries a footer button —
+      // so equalising is the fix rather than trimming copy to match.
       LazyVGrid(
-        columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+        columns: [
+          GridItem(.flexible(), spacing: 12, alignment: .top),
+          GridItem(.flexible(), spacing: 12, alignment: .top),
+        ],
         spacing: 12
       ) {
         engineCard(
@@ -473,6 +493,7 @@ struct LivePreviewSettingsView: View {
       unavailability: card.unavailability,
       isSelected: card.isSelected,
       onSelect: { settings.livePreviewEngine = choice },
+      fillsHeight: true,
       footer: {
         if card.action != nil || card.progress != nil {
           VStack(alignment: .leading, spacing: 8) {
@@ -480,14 +501,24 @@ struct LivePreviewSettingsView: View {
               ProgressView(value: progress)
             }
             if let action = card.action {
-              // Removal is bordered, everything else prominent: the destructive
-              // action should not be the most inviting thing on the card.
-              if action == .remove {
-                Button(Self.label(for: action)) { perform(action) }
-                  .buttonStyle(.bordered)
-              } else {
-                Button(Self.label(for: action)) { perform(action) }
-                  .buttonStyle(.borderedProminent)
+              // **Same intent as before, on a control that renders it.** Kept
+              // verbatim, because the reason still holds:
+              //
+              // > Removal is bordered, everything else prominent: the destructive
+              // > action should not be the most inviting thing on the card.
+              //
+              // What changed is the mechanism. `.bordered` rendered `Remove` as a
+              // flat grey capsule indistinguishable from this app's disabled
+              // treatment, so "quieter than the primary" became "looks broken"
+              // (Codex UX review, 2026-08-26) — the same defect already measured
+              // on Download and Browse. Outlined is the quiet-but-alive rung, and
+              // it has a hover state, which the flat one did not.
+              SettingsActionButton(
+                title: Self.label(for: action),
+                isEnabled: true,
+                emphasis: action == .remove ? .outlined : .filled
+              ) {
+                perform(action)
               }
             }
           }
@@ -607,51 +638,143 @@ struct LivePreviewSettingsView: View {
   private var packsSection: some View {
     if showsApplePacks {
       BrandedSection(header: LivePreviewSettingsCopy.packsHeader) {
-        BrandedRow(showDivider: false) {
-          HStack(alignment: .top, spacing: 11) {
-            SettingsRowIcon(systemName: "arrow.down.circle")
-            VStack(alignment: .leading, spacing: 4) {
-              // **No count unless we have one.** A count is a claim about this Mac,
-              // and there is no acceptable stand-in for one we have not read yet.
-              switch packs.state {
-              case .loading:
-                Text(LivePreviewSettingsCopy.packsLoading).settingsRowLabel()
-              case .failed:
-                Text(LivePreviewSettingsCopy.packsUnavailable).settingsRowLabel()
-              case .loaded(let rows):
-                Text(
-                  LivePreviewSettingsCopy.packsInstalledSummary(
-                    installed: rows.filter(\.isInstalled).count, total: rows.count)
-                ).settingsRowLabel()
-              }
-              Text(LivePreviewSettingsCopy.packsDescription).settingsHelperCopy()
+        // **The ROW is the button, not a card containing one** (founder,
+        // 2026-08-26). Everything here did one thing: the title named the action,
+        // the paragraph explained it, and a separate `Browse` performed it — so
+        // the row was an explanation wrapped around a control, with two names for
+        // one job and a small target at the far right.
+        //
+        // Collapsing them removes a control rather than restyling one, and it
+        // dissolves the naming question with it: there is no longer a second word
+        // to reconcile with "Install new languages".
+        //
+        // Pressable in EVERY state on purpose, including `.failed` — the sheet
+        // re-reads the inventory when it opens, so pressing a row that says "could
+        // not read the language list" is exactly the retry a user wants. A
+        // disabled row there would be a dead end wearing a reason.
+        LivePreviewInstallRow(
+          title: {
+            switch packs.state {
+            case .loading: return LivePreviewSettingsCopy.packsLoading
+            case .failed: return LivePreviewSettingsCopy.packsUnavailable
+            case .loaded: return LivePreviewSettingsCopy.packsInstallRowTitle
             }
-            Spacer(minLength: 8)
-            Button(LivePreviewSettingsCopy.packsBrowseButton) {
-              catalogRequest = CatalogRequest(search: "")
-            }
-            .controlSize(.small)
-          }
+          }(),
+          detail: LivePreviewSettingsCopy.packsDescription
+        ) {
+          catalogRequest = CatalogRequest(search: "")
         }
       }
     }
   }
 
-  /// The pack tag currently producing the preview, or nil.
-  ///
-  /// Carried verbatim from `isActive`, which the catalogue sheet no longer owns because
-  /// the two gates below are the page's to answer, not a row's:
-  ///
-  /// > Gated on the toggle because "In use" is a claim about a running preview,
-  /// > and nothing runs while the feature is off. Gated on the ENGINE because
-  /// > these are Apple's packs: with the universal engine selected the badge would
-  /// > name a language that is not the one on screen.
-  ///
-  /// > Same reason: an "In use" badge is a claim about the language running NOW.
-  ///
-  /// Both terms read the same values the bar does, so the two cannot disagree.
-  private var activePackTag: String? {
-    guard isUsingApple, isPreviewOn, case .ready(let tag, _) = currentActive else { return nil }
-    return tag
+
+}
+
+// MARK: - Status-bar language control
+
+/// The dictation-language control in the status bar, shaped like the pop-up menu
+/// it behaves as.
+///
+/// **Why it is not an `NSPopUpButton` / SwiftUI `Menu`.** The list it opens is a
+/// searchable sheet over fifty-plus entries with its own caveat subtitle
+/// (`LanguageLockSheet`), which a menu cannot host. So this borrows the pop-up's
+/// APPEARANCE — bordered container, value, disclosure chevron — while keeping the
+/// sheet's behaviour. The chevron is `chevron.up.chevron.down`, the platform's
+/// pop-up glyph, rather than a plain `chevron.down`, which reads as "expand a
+/// section".
+struct LivePreviewLanguageMenuButton: View {
+  let name: String
+  let provenance: String
+  let action: () -> Void
+
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var hovering = false
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 1) {
+          Text(name)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color.stTextPrimary)
+            .lineLimit(1)
+          Text(provenance)
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextSecondary)
+            .lineLimit(1)
+        }
+        Image(systemName: "chevron.up.chevron.down")
+          .font(.system(size: 10, weight: .semibold))
+          .foregroundStyle(hovering ? Color.stAccent : Color.stTextSecondary)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 7)
+      .background(
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .fill(hovering ? Color.stAccentLight : Color.stSectionBg)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .strokeBorder(hovering ? Color.stAccent : Color.stDivider, lineWidth: 1)
+      )
+      .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+    .buttonStyle(.plain)
+    .onHover { hovering = $0 }
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+  }
+}
+
+// MARK: - Languages row
+
+/// The whole Languages row, as one control.
+///
+/// **A row whose title is a verb should be pressable.** This replaced a card that
+/// contained a `Browse` button: the title said "Install new languages", the body
+/// explained downloads, and a small button at the far right did the only thing
+/// available. That is two names for one job, and the smallest part of the row was
+/// the only part that worked.
+///
+/// The chevron replaces the button rather than joining it. A trailing disclosure
+/// is the platform's own "this opens something" mark, and it does not need a word
+/// that would then have to agree with the title.
+struct LivePreviewInstallRow: View {
+  let title: String
+  let detail: String
+  let action: () -> Void
+
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var hovering = false
+
+  var body: some View {
+    Button(action: action) {
+      HStack(alignment: .top, spacing: 11) {
+        SettingsRowIcon(systemName: "arrow.down.circle")
+        VStack(alignment: .leading, spacing: 4) {
+          Text(title).settingsRowLabel()
+          Text(detail).settingsHelperCopy()
+        }
+        Spacer(minLength: 8)
+        Image(systemName: "chevron.right")
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(hovering ? Color.stAccent : Color.stTextTertiary)
+      }
+      .padding(.horizontal, 14)
+      .padding(.vertical, 12)
+      // The whole row, so the target is the row rather than the chevron. Without
+      // this the hit area is the rendered content and the gaps between the icon,
+      // the text and the chevron are dead (`swift-patterns.md`
+      // RULE: plain-button-content-shape).
+      .contentShape(Rectangle())
+      .background(hovering ? Color.stAccent.opacity(0.06) : Color.clear)
+    }
+    .buttonStyle(.plain)
+    .onHover { hovering = $0 }
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+    .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(.isButton)
+    .accessibilityLabel(title)
+    .accessibilityHint(detail)
   }
 }
