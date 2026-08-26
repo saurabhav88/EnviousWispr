@@ -14,6 +14,28 @@ extension EnvironmentValues {
   }
 }
 
+/// A way for a page to send the user to ANOTHER page.
+///
+/// **Added for the Appearance page's link to Live Preview** (#2446). Picking the
+/// pill that shows words switches Live Preview on, and the user then needs
+/// somewhere to configure it — which lives on a different page. Threading a
+/// binding down through `AppearanceSettingsView` into a panel would put window
+/// navigation in the signature of every view in between; the environment is where
+/// this window already keeps `settingsPageSection`, one level up.
+///
+/// Defaults to a no-op rather than to `nil`, so a preview or a test that hosts a
+/// panel on its own gets a dead link instead of a crash.
+private struct SettingsNavigateKey: EnvironmentKey {
+  static let defaultValue: @MainActor (SettingsSection) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+  var settingsNavigate: @MainActor (SettingsSection) -> Void {
+    get { self[SettingsNavigateKey.self] }
+    set { self[SettingsNavigateKey.self] = newValue }
+  }
+}
+
 /// Sidebar navigation sections for the unified window.
 enum SettingsSection: String, CaseIterable, Identifiable {
   case history

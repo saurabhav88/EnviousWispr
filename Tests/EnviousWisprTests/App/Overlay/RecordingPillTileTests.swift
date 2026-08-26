@@ -28,9 +28,14 @@ struct RecordingPillTileTests {
 
   /// The tile as the settings page builds it, measured unconstrained so it
   /// reports what it ideally wants.
-  private static func tileSize(_ design: RecordingPillDesign) -> CGSize {
+  ///
+  /// **The width comes from the design's GROUP, exactly as the panel supplies
+  /// it** — a tile measured at some other width is not the tile the user sees.
+  private static func tileSize(
+    _ design: RecordingPillDesign, isSelected: Bool = false
+  ) -> CGSize {
     let tile = RecordingPillPreviewTile(
-      design: design, isSelected: false, isEnabled: true, onSelect: {})
+      design: design, isSelected: isSelected, isEnabled: true, onSelect: {})
     let host = NSHostingView(rootView: AnyView(tile))
     let frame = NSRect(x: 0, y: 0, width: 1200, height: 600)
     let window = NSWindow(
@@ -55,33 +60,6 @@ struct RecordingPillTileTests {
 
   // MARK: - The tile renders the real pill
 
-  /// **The strong one: the tile's height tracks the LEAF's height exactly.**
-  ///
-  /// Stated as a difference so the tile's own padding cancels out of both sides.
-  /// A tile that drew a placeholder, an empty box, or another design's chrome
-  /// would have a height unrelated to what the leaf reports for itself, and no
-  /// absolute constant is involved on either side.
-  @Test(
-    "each tile is as tall as the pill inside it",
-    arguments: [RecordingPillDesign.levelRail, RecordingPillDesign.readingWell])
-  func tileHeightTracksTheLeaf(design: RecordingPillDesign) throws {
-    let baseline = RecordingPillDesign.classic
-
-    let tileDelta = Self.tileSize(design).height - Self.tileSize(baseline).height
-    let leafDelta = try Self.leafHeight(design) - Self.leafHeight(baseline)
-
-    // Equality, with no tolerance: the tile's padding cancels algebraically from
-    // both sides of one in-process comparison, so a tolerance would only be a
-    // number nobody measured.
-    #expect(
-      tileDelta == leafDelta,
-      """
-      the \(design) tile is \(tileDelta)pt taller than the \(baseline) tile while the \
-      PILLS differ by \(leafDelta)pt. The tile is not sized by the pill it contains, so \
-      it is drawing something else.
-      """)
-  }
-
   /// **The two wordless designs are the same height, because they are the same
   /// chrome.** A tile that routed one of them through the reading well's layout
   /// would differ here, and the difference is what no static mock could catch.
@@ -90,113 +68,237 @@ struct RecordingPillTileTests {
     let capsule = Self.tileSize(.classic).height
     let rail = Self.tileSize(.levelRail).height
 
-    #expect(capsule > 0 && rail > 0, "measured \(capsule)/\(rail): nothing rendered, which is not a pass")
+    #expect(
+      capsule > 0 && rail > 0, "measured \(capsule)/\(rail): nothing rendered, which is not a pass")
     #expect(
       capsule == rail,
-      "the capsule tile is \(capsule)pt and the level rail tile is \(rail)pt, so one of them is not the pill it claims")
+      "the capsule tile is \(capsule)pt and the level rail tile is \(rail)pt, so one of them is not the pill it claims"
+    )
   }
 
-  /// **The reading well ends up taller, which is a FINAL geometry outcome and not
-  /// a claim about the first frame.**
+  /// **The pill inside the card is the REAL pill, and it fits its box.**
   ///
-  /// This row was first named for `initialPreview:` seeding, and it cannot prove
-  /// that: the leaf's first asynchronous provider read can win before
-  /// `fittingSize` is sampled, so an unseeded tile measures tall here too. What
-  /// it does prove is that the design which shows your words renders visibly more
-  /// than one that cannot, which a placeholder-sized well would fail.
+  /// REPLACES `tileHeightTracksTheLeaf` and `theReadingWellRendersTaller`, which
+  /// both required a card's height to track the pill inside it. The founder
+  /// replaced that layout with three identical cards on 2026-08-26, so a uniform
+  /// card can no longer report the pill's height and those two failed BY DESIGN.
+  /// They are obsolete rather than weakened: the fidelity they protected moves
+  /// onto the LEAF, which the tile does not size.
   ///
-  /// The seeding has no rendered observable at all, so it is covered structurally
-  /// by `RecordingPillPreviewWiringTests` below.
-  @Test("the rendered reading well tile is taller than a wordless tile")
-  func theReadingWellRendersTaller() {
-    let well = Self.tileSize(.readingWell).height
-    let capsule = Self.tileSize(.classic).height
+  /// The oracle is still one the tile did not write — `RenderedPillHarness`
+  /// measures the recording leaf directly, with no tile involved.
+  @Test(
+    "the preview is the real pill, scaled to fit its box at every card width",
+    arguments: RecordingPillDesign.allCases, [CGFloat(260), 300, 370, 520, 900])
+  func thePreviewIsTheRealPillScaled(design: RecordingPillDesign, width: CGFloat) throws {
+    let leaf = try Self.leafHeight(design)
+    // **Every width a card ACTUALLY gets, not just the nominal one.** The nominal
+    // width was the only case asserted, and cloud review found the defect at
+    // ~370pt — a single-column layout at the supported minimum window width,
+    // where the reading well scaled to ~0.93x and its fixed header plus insets
+    // overflowed the fixed box. The one width guaranteed NOT to be what a user
+    // sees was the one width under test. 260 is below the grid minimum and 900 is
+    // a wide single column, so the bound is exercised from both sides.
+    //
+    // The SAME entry point the view calls. A separate `thumbnailScale(for:)` used
+    // to exist for tests to ask this; it was one more answer to a question the
+    // view already had an answer for, so it is gone.
+    let drawn = leaf * RecordingPillPreviewTile.scale(for: design, inWidth: width)
 
+    #expect(leaf > 0, "\(design) leaf measured \(leaf), so the harness rendered nothing")
     #expect(
-      well > capsule,
+      drawn <= RecordingPillPreviewTile.thumbnailSize.height + 0.5,
       """
-      the reading well tile is \(well)pt against a \(capsule)pt capsule tile, so the \
-      design that shows your words as you speak is drawn no larger than one that cannot.
+      \(design) draws \(drawn) tall into a \
+      \(RecordingPillPreviewTile.thumbnailSize.height) box at a card width of \(width), so \
+      the pill is cut off. The card is a fixed height, so nothing grows to accommodate it.
       """)
   }
 
-  /// Each design asks for its own width, so no two tiles are interchangeable.
-  @Test("no two tiles are the same width")
-  func tileWidthsAreDistinct() {
-    let widths = RecordingPillDesign.allCases.map { Self.tileSize($0).width }
-    #expect(widths.allSatisfy { $0 > 0 }, "measured \(widths): nothing rendered")
+  /// **The pill that shows words is still the TALLEST**, even though its card is
+  /// no longer taller than the others.
+  ///
+  /// A change that started drawing the well at a wordless pill's height would be
+  /// showing the user the wrong picture, and the equalised cards can no longer
+  /// catch it.
+  @Test("the pill that shows words is still the tallest")
+  func theReadingWellLeafIsTallest() throws {
+    let wordy = try RecordingPillDesign.allCases.filter(\.canHoldWords).map(Self.leafHeight)
+    let wordless = try RecordingPillDesign.allCases.filter { !$0.canHoldWords }.map(Self.leafHeight)
+
+    let tallestWordy = try #require(wordy.max(), "no design holds words")
+    let tallestWordless = try #require(wordless.max(), "no design is wordless")
+
     #expect(
-      Set(widths).count == widths.count,
-      "two tiles measured the same width \(widths), so the picker shows one design twice")
+      tallestWordy > tallestWordless,
+      """
+      a words-holding pill measured \(tallestWordy) against \(tallestWordless) for a \
+      wordless one. The well carries a line of text the others do not, so it must be \
+      taller; equal heights mean the well is rendering without its text.
+      """)
   }
 
-  /// **Every tile asks for its design's DECLARED width, and the excess over that
-  /// is one constant shared by all three.**
+  /// **Selecting a card does not change its size.**
+  ///
+  /// Codex review found the tick taking width from the preview beside it, so
+  /// selecting a design shrank its own pill while the previous selection grew —
+  /// a wobble on every click. **No render could have caught it**: each render
+  /// captures one selection, and the defect exists only as a difference between
+  /// two, which is exactly why this is asserted rather than looked at.
+  ///
+  /// Written against the whole card rather than the tick, so any future control
+  /// added on selection is caught by the same row.
+  @Test("selecting a card does not resize it", arguments: RecordingPillDesign.allCases)
+  func selectionDoesNotResizeTheCard(design: RecordingPillDesign) {
+    let unselected = Self.tileSize(design, isSelected: false)
+    let selected = Self.tileSize(design, isSelected: true)
+
+    #expect(unselected.width > 0, "\(design) measured \(unselected): nothing rendered")
+    #expect(
+      abs(selected.width - unselected.width) < 0.01,
+      """
+      \(design) is \(unselected.width) unselected and \(selected.width) selected. The \
+      preview scales to the width it is handed, so a card that changes width on \
+      selection redraws its pill at a different size every time it is clicked.
+      """)
+    #expect(
+      abs(selected.height - unselected.height) < 0.01,
+      "\(design) changes height on selection: \(unselected.height) -> \(selected.height)")
+  }
+
+  /// **The selected card's accessibility VALUE is exactly "Selected".**
+  ///
+  /// Not a style preference: `wispr_eyes.read_cards` compares `AXValue` against
+  /// that literal, and the Runtime UAT now decides whether a tap landed by asking
+  /// it. Reword this and the harness stops seeing selection at all — and it fails
+  /// toward reporting a working picker as broken, which is the direction that
+  /// wastes a person's afternoon.
+  ///
+  /// The empty string for unselected matters too: `read_cards` treats anything
+  /// other than "selected" as not-selected, so a placeholder like "Not selected"
+  /// would still read correctly, but a second SELECTED-ish word would not.
+  @Test("the selected value is exactly the string the harness reads")
+  func theSelectedValueIsExactly() {
+    // Assert the CONSTANT the view uses, so this fails if the literal moves.
+    let selectedValue = "Selected"
+
+    #expect(
+      RecordingPillPreviewTile.accessibilityValue(isSelected: true) == selectedValue,
+      """
+      the selected card announces \
+      "\(RecordingPillPreviewTile.accessibilityValue(isSelected: true))" rather than \
+      "\(selectedValue)". `wispr_eyes.read_cards` compares against that exact string, so the \
+      Runtime UAT would stop seeing any selection.
+      """)
+    #expect(
+      RecordingPillPreviewTile.accessibilityValue(isSelected: false).isEmpty,
+      "an unselected card announces a value, which read_cards may read as a selection")
+  }
+
+  @Test("every card in the row is the same size")
+  func everyCardIsOneSize() {
+    let sizes = RecordingPillDesign.allCases.map { Self.tileSize($0) }
+
+    #expect(
+      sizes.allSatisfy { $0.width > 0 && $0.height > 0 }, "measured \(sizes): nothing rendered")
+    #expect(
+      Set(sizes.map(\.height)).count == 1,
+      """
+      the cards measured heights \(sizes.map(\.height)). One row of identical cards was \
+      the founder's ask; a difference means a card is sized by the pill inside it rather \
+      than by the shared thumbnail box.
+      """)
+  }
+
+  /// **No tile is ever narrower than the pill it frames, plus its padding.**
   ///
   /// Cloud review on #2439 raised the reading well overflowing a narrow window.
-  /// This is the half that can be measured rather than argued: the tile's ideal
-  /// width is the design's own `width` plus a padding that does not vary by
-  /// design. Whether the containing window can ever be narrower than that is a
-  /// Live UAT row, and the horizontal scroll fallback is what keeps it from
-  /// clipping when it is.
-  @Test("a tile asks for its design's declared width plus a shared padding")
-  func tileWidthIsTheDesignWidthPlusOnePadding() {
-    let overheads = RecordingPillDesign.allCases.map {
-      Self.tileSize($0).width - $0.width
-    }
+  /// Normalising every tile in a group to that group's WIDEST can only ever add
+  /// width, never remove it — but that is an argument, and this is the
+  /// measurement, taken per design so a future group whose widest shrinks fails
+  /// here rather than by clipping a pill on screen.
+  ///
+  /// Whether the containing WINDOW can be narrower than the tile is a different
+  /// question, held by `thePanelRefusesToClipItsWidestPill` and a Live UAT row.
+  /// **No pill overflows the thumbnail box it is scaled into.**
+  ///
+  /// The shared scale is taken from the WIDEST design, so this can only fail if a
+  /// design's declared width stops being covered by that maximum — which is
+  /// exactly what a new, wider design would do if the scale were ever pinned to a
+  /// literal instead of derived.
+  @Test("no pill overflows its thumbnail", arguments: RecordingPillDesign.allCases)
+  func noPillOverflowsItsThumbnail(design: RecordingPillDesign) {
+    let drawn = RecordingPillPreviewTile.thumbnailWidth(for: design)
+    let box = RecordingPillPreviewTile.thumbnailSize.width
 
+    #expect(drawn > 0, "\(design) scaled to \(drawn), so nothing is drawn")
     #expect(
-      overheads.allSatisfy { $0 > 0 },
-      """
-      measured overheads \(overheads). A tile no wider than its design's declared width \
-      has no padding at all, which means the pill is touching the tile's border.
-      """)
+      drawn <= box + 0.01,
+      "\(design) draws \(drawn) into a \(box) box, so the pill is clipped")
+  }
+
+  /// **No pill is ever drawn LARGER than it appears in real life.**
+  ///
+  /// The previews were enlarged so a user can read them (founder, 2026-08-26), and
+  /// the narrow designs already fit the box at native size. Scaling them UP to
+  /// fill it would make a compact pill look bigger on this page than on screen —
+  /// the same misrepresentation as the rejected shared scale, pointed the other
+  /// way, and the one this cap exists to prevent.
+  @Test("no preview is magnified past the bound", arguments: RecordingPillDesign.allCases)
+  func noPreviewIsMagnifiedPastTheBound(design: RecordingPillDesign) {
+    // A card far wider than any pill, which is what the founder's window gives at
+    // the default size — the case the bound exists for.
+    let scale = RecordingPillPreviewTile.scale(for: design, inWidth: 2000)
+
+    #expect(scale > 0, "\(design) scales to \(scale), so nothing is drawn")
     #expect(
-      Set(overheads).count == 1,
+      scale <= RecordingPillPreviewTile.maxMagnification,
       """
-      the three tiles add \(overheads) to their designs' widths. They share one padding \
-      constant, so a difference means a tile is sized by something other than the pill \
-      inside it.
+      \(design) is drawn at \(scale)x against a bound of \
+      \(RecordingPillPreviewTile.maxMagnification)x. Unbounded, a wide window draws a \
+      compact pill at nearly 5x and the row stops being comparable.
       """)
   }
 
-  /// **The page refuses to be narrower than its widest pill.**
-  ///
-  /// Rendered at a 380 point content width the reading well was CUT OFF: a grid
-  /// column cannot shrink below its content and the tile clips its own, so there
-  /// is no width at which a too-narrow layout degrades gracefully. The panel
-  /// therefore carries a minimum that propagates to the window.
-  ///
-  /// Asserted as a RELATION against the tile's own width, so no point value is
-  /// frozen. What this does NOT prove is that the WINDOW honours it — that is a
-  /// Live UAT row, dragging the real window narrow.
-  @Test("the picker will not lay out narrower than its widest pill")
-  func thePanelRefusesToClipItsWidestPill() {
-    let widest = RecordingPillDesign.allCases
-      .filter(\.canHoldWords)
-      .map(RecordingPillPreviewTile.width(for:))
-      .max()
-    let required = try! #require(widest, "no design can hold words, so this guard has no subject")
+  /// **The widest design still fills the box**, so enlarging the previews did not
+  /// quietly leave the biggest one floating in margin.
+  @Test("the widest design fills the preview box")
+  func theWidestDesignFillsTheBox() {
+    let widest = RecordingPillDesign.allCases.max(by: { $0.width < $1.width })
+    let widestDesign = try! #require(widest, "no designs, so the row has no subject")
 
     #expect(
-      RecordingPillAppearancePanel.widestTile(holdingWords: true) == required,
+      abs(
+        RecordingPillPreviewTile.thumbnailWidth(for: widestDesign)
+          - RecordingPillPreviewTile.thumbnailSize.width) < 0.01,
       """
-      the panel sizes its with-words column to \
-      \(RecordingPillAppearancePanel.widestTile(holdingWords: true)) while its widest tile \
-      needs \(required). A column narrower than its tile clips the pill, because the tile \
-      clips its own content.
+      the widest design draws \(RecordingPillPreviewTile.thumbnailWidth(for: widestDesign)) \
+      into a \(RecordingPillPreviewTile.thumbnailSize.width) box. It should fill it: if it \
+      does not, every other preview is smaller than it needed to be.
       """)
+  }
 
-    // And the wordless side, which has its own widest design.
-    let wordless = RecordingPillDesign.allCases
-      .filter { !$0.canHoldWords }
-      .map(RecordingPillPreviewTile.width(for:))
-      .max()
-    if let wordless {
-      #expect(
-        RecordingPillAppearancePanel.widestTile(holdingWords: false) == wordless,
-        "the wordless column is sized to something other than its widest tile")
-    }
+  /// **The names came off the cards, so the ACCESSIBILITY label is now the only
+  /// thing naming a design to anyone who cannot see the drawing.**
+  ///
+  /// Before the visible names were removed a sighted user and a VoiceOver user both
+  /// got the name; now only one does, and this is what keeps it. A change that
+  /// trimmed the label to match the visible card would leave a row of buttons that
+  /// announce nothing distinguishable.
+  @Test(
+    "every design is still named to a screen reader", arguments: RecordingPillDesign.allCases)
+  func theNameSurvivesInTheAccessibilityLabel(design: RecordingPillDesign) {
+    let label = RecordingPillPreviewTile.accessibilityLabel(for: design)
+
+    #expect(
+      label.contains(design.displayName),
+      """
+      \(design) announces "\(label)", which does not carry its name. The card shows no \
+      name, so this label is the only place a screen reader can get one.
+      """)
+    #expect(
+      label.contains(design.summary),
+      "\(design) announces no description, leaving a blind user only a name for a picture")
   }
 
   // MARK: - What a screen reader gets
@@ -216,7 +318,8 @@ struct RecordingPillTileTests {
   /// not readable from a test — measured 2026-08-25 and recorded in
   /// `RenderedPillHarness`. Those three are unchanged from the control this tile
   /// replaces and are confirmed by the VoiceOver pass in Live UAT.
-  @Test("every tile announces its name and what it looks like", arguments: RecordingPillDesign.allCases)
+  @Test(
+    "every tile announces its name and what it looks like", arguments: RecordingPillDesign.allCases)
   func theLabelCarriesNameAndDescription(design: RecordingPillDesign) {
     let label = RecordingPillPreviewTile.accessibilityLabel(for: design)
 
@@ -356,14 +459,19 @@ struct RecordingPillTileTests {
 
   /// The sample sentence is a real one, and the wordless designs get no words —
   /// which is what makes their tiles pictures of a capsule rather than of a well.
-  @Test("only a design that can hold words is shown holding any", arguments: RecordingPillDesign.allCases)
+  @Test(
+    "only a design that can hold words is shown holding any",
+    arguments: RecordingPillDesign.allCases)
   func onlyWordCapableDesignsAreShownWords(design: RecordingPillDesign) {
     switch RecordingPillPreviewTile.sampleDisplay(for: design) {
     case .text(let sentence):
-      #expect(design.canHoldWords, "\(design) cannot hold words and is drawn holding \"\(sentence)\"")
+      #expect(
+        design.canHoldWords, "\(design) cannot hold words and is drawn holding \"\(sentence)\"")
       #expect(!sentence.isEmpty, "\(design) is drawn holding an empty sentence")
     case .off:
-      #expect(!design.canHoldWords, "\(design) can hold words and is drawn empty, so its tile understates it")
+      #expect(
+        !design.canHoldWords,
+        "\(design) can hold words and is drawn empty, so its tile understates it")
     default:
       Issue.record("\(design) is sampled in a transient state, which is not an appearance")
     }
@@ -558,7 +666,8 @@ struct RecordingPillPreviewWiringTests {
 
     #expect(
       literal.literal.tokenKind == .keyword(.false),
-      "the settings tile passes animatesGlow: true, so every capsule tile runs a permanent two second pulse")
+      "the settings tile passes animatesGlow: true, so every capsule tile runs a permanent two second pulse"
+    )
   }
 
   /// **The seed and the provider must be the SAME expression**, which is the
@@ -583,7 +692,8 @@ struct RecordingPillPreviewWiringTests {
       "livePreviewProvider is not a literal closure, so this guard cannot compare the two")
     let onlyStatement = try #require(
       provider.statements.count == 1 ? provider.statements.first : nil,
-      "livePreviewProvider has \(provider.statements.count) statements; this guard reads a single expression")
+      "livePreviewProvider has \(provider.statements.count) statements; this guard reads a single expression"
+    )
     let returned = try #require(
       onlyStatement.item.as(ExprSyntax.self)?.as(DeclReferenceExprSyntax.self),
       "livePreviewProvider returns \(onlyStatement.item.trimmedDescription), not a plain reference")
@@ -652,7 +762,8 @@ struct RecordingPillPreviewWiringTests {
     let stateNames = Self.stateProperties(of: view)
     #expect(
       stateNames.count >= 4,
-      "found \(stateNames.count) @State properties, which is fewer than the four this view is known to hold: \(stateNames)")
+      "found \(stateNames.count) @State properties, which is fewer than the four this view is known to hold: \(stateNames)"
+    )
 
     let written = Self.namesAssignedOutsideInit(of: view).intersection(stateNames)
     #expect(

@@ -1,8 +1,8 @@
 import EnviousWisprCore
 import SwiftUI
 
-/// Choose the recording pill's design, per capability group (#2376 Phase 4, C7;
-/// redrawn as pictures in #2435).
+/// Choose the recording pill's design (#2376 Phase 4, C7; redrawn as pictures in
+/// #2435; flattened to one row in #2446).
 ///
 /// **The picker SHOWS each design instead of describing it (#2435).** A user
 /// could not previously see what any option looked like without starting a
@@ -11,206 +11,163 @@ import SwiftUI
 /// accessibility label — which is the only channel a macOS user cannot silence
 /// (VoiceOver Utility can turn hints and custom content off).
 ///
-/// **Two groups, and the one that does not apply is GREYED WITH ITS REASON
-/// rather than hidden.** Hiding it would leave a user who turns Live Preview on
-/// wondering where the other pills went, and would give no clue to a user whose
-/// engine cannot run here that the switch is not the thing standing in their way.
+/// **ONE row of identical cards, shaped like the theme cards above them**
+/// (founder, 2026-08-26, on seeing the alternative rendered). This REPLACES a
+/// split into a "Live Preview off" group and a "Live Preview on" group, each
+/// with its own heading, state dot and reason line. That split was accurate and
+/// it was the wrong subject: a user opens this page to pick a PICTURE, and the
+/// page opened by explaining a setting. The pill previews are now scaled to a
+/// fixed thumbnail and paired with a name and a tick, which is the same control
+/// the theme row already is.
 ///
-/// **The groups and their offerability come from `PillCatalog`, never from this
-/// view.** A design this page greys out is exactly a design the pill would
-/// refuse, because `offers` is defined in terms of the same `resolve` the
-/// director calls. A local `allCases.filter { $0.canHoldWords == x }` would be a
-/// second derivation of that rule even on the day it agreed.
+/// **The constraint the split encoded has NOT gone away.** A design that shows
+/// words is unusable when words are unavailable, and vice versa; that is carried
+/// per card by `isEnabled` and by a single line under the row, instead of by two
+/// headed groups. Two selections are still remembered behind the one visible
+/// tick — see `selected(in:)`.
 ///
-/// **The reason is stated ONCE, at group level.** Two precedents were considered
+/// **Offerability comes from `PillCatalog`, never from this view.** A design this
+/// page greys out is exactly a design the pill would refuse, because `offers` is
+/// defined in terms of the same `resolve` the director calls. A local
+/// `allCases.filter { $0.canHoldWords == x }` would be a second derivation of
+/// that rule even on the day it agreed.
+///
+/// **The reason is stated ONCE, under the row.** Two precedents were considered
 /// and both rejected: `EngineCard` puts a reason inside a card that stays
 /// selectable, and `LivePreviewSettingsView` deliberately moved its reason OUT of
 /// the disabled control onto another card, on the recorded grounds that two
-/// places saying why is how they come to disagree. Here the requirement is the
-/// reason WITH the greyed group, so it is rendered once in that group's header
-/// and nowhere else.
-///
-/// **The two group titles name a CONDITION, not the current state, and that is
-/// what makes them true** (founder, 2026-08-26). Read as a status claim,
-/// "Live Preview on" would be false at `.engineUnsupported` and
-/// `.modelBeingRemoved`, where the setting is on and the pills are still out of
-/// reach. Read as "the pills you get when Live Preview is on", it holds in all
-/// four cases. Two things carry the CURRENT state instead, and both are
-/// requirements rather than decoration: exactly one group shows the filled active
-/// dot, and the other one prints `reason(for:groupHoldsWords:)`, which already
-/// distinguishes every case. `AppearancePillPickerTests` asserts both.
+/// places saying why is how they come to disagree. One line for one row keeps
+/// that property with no group to hang it on.
 struct RecordingPillAppearancePanel: View {
 
   @Environment(PillAppearanceModel.self) private var model
+  @Environment(\.settingsNavigate) private var navigate
 
   var body: some View {
     BrandedPanel(
       icon: "waveform.badge.mic",
       header: "Recording Pill"
     ) {
-      // **The two groups always STACK, and each one reflows its own tiles.**
-      //
-      // A `ViewThatFits` chose the groups' side-by-side arrangement here and was
-      // REMOVED after rendering it: nested inside the page's vertical
-      // `ScrollView` it does not reliably receive a bounded horizontal proposal,
-      // so it cannot judge whether a candidate fits and keeps its first one. At a
-      // 530 point content width that clipped both wordless pills; at 1010 it
-      // stacked two groups with room to sit side by side. A container that
-      // guesses wrong CLIPS here rather than cramping, because every pill is a
-      // fixed width by design.
-      //
-      // `LazyVGrid` is the container this page already proves receives a bounded
-      // width — the theme cards above use one — so the reflow is decided by
-      // arithmetic rather than by a proposal that may not arrive.
-      VStack(alignment: .leading, spacing: 18) {
-        group(holdingWords: false)
-        group(holdingWords: true)
-      }
-      // **The page REFUSES to be narrower than its widest pill, rather than
-      // clipping one.** Rendered at a 380 point content width the reading well
-      // was cut off: a grid column cannot shrink below its content, and the tile
-      // clips its own, so there is no width at which a too-narrow layout degrades
-      // gracefully. A minimum propagates up to the window, so the window stops
-      // resizing instead — which is the honest behaviour for a page whose whole
-      // subject is fixed-size pictures.
-      //
-      // DERIVED, never a literal: a design added later widens it with no edit
-      // here, and a literal would be a second authority for a number the tile
-      // already owns.
-      .frame(minWidth: Self.widestTile(holdingWords: true), alignment: .leading)
-    } footnote: {
-      // ONE quiet line for the whole page's pill settings (founder, 2026-08-26),
-      // replacing the sentence this panel and the position panel each carried.
-      //
-      // **It NAMES both settings, because it sits inside the Recording Pill
-      // panel** and an unqualified "Changes" reads there as design changes only,
-      // leaving the position panel above silently uncovered.
-      //
-      // "the next time the pill appears", not "the next time you record": the
-      // position setting also places status notices, which the deleted copy said
-      // outright ("Changes apply the next time one appears"). A notice can arrive
-      // without a recording, so scoping this line to recording would be wrong for
-      // half of what it now covers.
-      Text("Design and position changes apply the next time the pill appears.")
-        .settingsReadingCopy()
-    }
-  }
+      VStack(alignment: .leading, spacing: 10) {
+        // **ONE row of identical cards, no with-words / without-words split**
+        // (founder, 2026-08-26, on seeing the split rendered). The two groups
+        // each carried a heading, a state dot and their own reason line, which
+        // put the SETTING's state in front of a user who came here to pick a
+        // PICTURE. The constraint that split them has not gone away — it is
+        // carried by `isEnabled` per card and one line beneath the row.
+        //
+        // Deliberately the SAME grid metric as the theme cards above
+        // (`AppearanceSettingsView`), because the founder's ask was that these
+        // read as the same kind of control. A shared literal would be a second
+        // authority for one number, so if these ever need to move together the
+        // fix is a named constant on `SettingsLayout`, not a copy here.
+        LazyVGrid(
+          columns: [GridItem(.adaptive(minimum: 270, maximum: .infinity), spacing: 12)],
+          alignment: .leading,
+          spacing: 12
+        ) {
+          ForEach(Self.displayOrder, id: \.self) { design in
+            RecordingPillPreviewTile(
+              design: design,
+              isSelected: Self.selected(in: model) == design,
+              isEnabled: model.offersCoupled(design, capability: model.wordsCapability),
+              // **Picking a pill also sets Live Preview to what that pill needs**
+              // (founder, 2026-08-26). The slot written is still the design's own,
+              // so the two remembered choices survive; what is new is that the
+              // capability follows the tap instead of gating it.
+              onSelect: { model.chooseCoupled(design) })
+          }
+        }
 
-  /// Whether a group describes the situation the user is actually in.
-  ///
-  /// **A function rather than a computed property inside `body`, because it is
-  /// the authority the active dot and the reason line BOTH read**, and because
-  /// the rendered accessibility tree is not readable from a test (recorded in
-  /// `RenderedPillHarness`). A test can hold this to "exactly one group is
-  /// active, in every capability state" without hosting anything.
-  static func isActive(_ capability: PillWordsCapability, groupHoldsWords: Bool) -> Bool {
-    groupHoldsWords == capability.hasWords
-  }
+        // ONE line for the whole row, and only when something in it is greyed —
+        // which is now only a Mac that cannot show words at all.
+        if let reason = Self.reason(for: model.wordsCapability) {
+          Text(reason)
+            .settingsReadingCopy()
+        }
 
-  /// The widest tile a group will contain, which is what its grid column has to
-  /// be able to hold.
-  ///
-  /// Read off `PillCatalog` and the tile, so a design added later widens the
-  /// column with no edit here.
-  static func widestTile(holdingWords: Bool) -> CGFloat {
-    PillCatalog.designs(holdingWords: holdingWords)
-      .map(RecordingPillPreviewTile.width(for:))
-      .max() ?? 0
-  }
-
-  @ViewBuilder
-  private func group(holdingWords: Bool) -> some View {
-    let isActive = Self.isActive(model.wordsCapability, groupHoldsWords: holdingWords)
-    let title = holdingWords ? "Live Preview on" : "Live Preview off"
-
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(spacing: 7) {
-        // The dot is the CURRENT state; the title beside it is the condition.
-        Circle()
-          .fill(isActive ? Color.green : Color.clear)
-          .overlay(
-            Circle().strokeBorder(
-              isActive ? Color.clear : Color.stTextTertiary, lineWidth: 1)
-          )
-          .frame(width: 8, height: 8)
-          // Announced through the title's own label instead, so a screen reader
-          // hears one phrase rather than an unnamed shape beside a heading.
-          .accessibilityHidden(true)
-
-        Text(title)
-          .font(.stRowTitle)
-          .foregroundStyle(isActive ? .stTextPrimary : .stTextSecondary)
-          .accessibilityLabel(isActive ? "\(title). In use." : title)
-      }
-
-      // The reason, rendered ONLY on the inactive group and only once.
-      if !isActive,
-        let reason = Self.reason(for: model.wordsCapability, groupHoldsWords: holdingWords)
-      {
-        Text(reason)
-          .settingsReadingCopy()
-      }
-
-      // **One column per tile that fits, sized by the WIDEST tile in this group.**
-      // A narrower minimum would let a column form that the reading well cannot
-      // sit in, and the tile clips its own content, so the pill would be cut
-      // rather than cramped. Taken from the tile itself, never a literal here.
-      LazyVGrid(
-        columns: [
-          GridItem(
-            .adaptive(minimum: Self.widestTile(holdingWords: holdingWords), maximum: .infinity),
-            spacing: 12)
-        ],
-        alignment: .leading,
-        spacing: 12
-      ) {
-        tiles(holdingWords: holdingWords)
+        // **The way out to the settings this choice just turned on** (founder,
+        // 2026-08-26). Picking the pill that shows words switches Live Preview on
+        // silently, and the user's next question is how to configure it — which
+        // lives on another page. Shown only when that pill is the live choice,
+        // because it is answering a question nobody else has asked.
+        if Self.selected(in: model).canHoldWords {
+          Button {
+            navigate(.livePreview)
+          } label: {
+            Text("Configure Live Preview")
+          }
+          .buttonStyle(.link)
+          .accessibilityHint("Opens the Live Preview settings page")
+        }
       }
     }
-    // **NO `maxWidth: .infinity` HERE, and it stays absent deliberately.** It was
-    // removed while this panel still chose its layout with `ViewThatFits`, which
-    // asks each candidate for its IDEAL size: a greedy child answers that it will
-    // take whatever it is given, so every candidate fit at every width and the
-    // fallbacks were dead code. That container is gone, but a greedy group would
-    // now stretch every column to the panel's full width instead, which is the
-    // same wrong picture by another route.
-    .animation(.easeInOut(duration: 0.15), value: isActive)
+    // **NO footnote.** "Design and position changes apply the next time the pill
+    // appears." was a founder decision earlier in this same work and was DELETED
+    // by the founder on 2026-08-26 along with the two instruction lines above it.
+    // The page is now three pictures and one link, and a caveat about when a
+    // change takes effect is not what a user came here to read.
+    //
+    // Recorded rather than silently dropped because it was ASKED FOR: the thing
+    // it warned about is still true — a design or position change does not touch a
+    // recording already on screen.
   }
 
-  @ViewBuilder
-  private func tiles(holdingWords: Bool) -> some View {
-    let isActive = Self.isActive(model.wordsCapability, groupHoldsWords: holdingWords)
-    ForEach(model.designs(holdingWords: holdingWords), id: \.self) { design in
-      RecordingPillPreviewTile(
-        design: design,
-        isSelected: model.selection(holdingWords: holdingWords) == design,
-        isEnabled: model.offers(design, holdingWords: holdingWords) && isActive,
-        onSelect: { model.choose(design, holdingWords: holdingWords) })
-    }
+  /// The order the cards appear in, left to right.
+  ///
+  /// **The two designs that cannot show words come first, then the one that can**
+  /// (founder, 2026-08-26: "the order is wrong"). The enum declares `classic`,
+  /// `readingWell`, `levelRail`, which put the odd one out in the MIDDLE and split
+  /// the pair that behave alike — and since exactly one side of the row is greyed
+  /// at any moment, that also meant the greyed cards were never adjacent.
+  ///
+  /// Taken from `PillCatalog.designs(holdingWords:)`, whose doc comment already
+  /// says it exists "for the picker's ORDER only", rather than by reordering the
+  /// enum: the enum's order is a declaration site with other readers, and a
+  /// presentation concern has no business moving it.
+  static var displayOrder: [RecordingPillDesign] {
+    PillCatalog.designs(holdingWords: false) + PillCatalog.designs(holdingWords: true)
   }
 
-  /// Why the inactive group is inactive, in that user's terms.
+  /// The design the pill would use for the NEXT recording.
   ///
-  /// **Two refusals, two sentences, and that is the whole reason the capability
-  /// carries a reason at all.** One sentence for both would tell a user whose
-  /// engine cannot run on this Mac to turn on a setting that would not help them.
+  /// **The flat row shows one check, and this is what it marks.** Two slots are
+  /// still remembered — one for each capability state — so the mark follows the
+  /// state the user is actually in rather than a third stored value that could
+  /// disagree with both.
   ///
-  /// **Shortened to a phrase each (#2435)** — the page is now pictures, and a
-  /// paragraph under a greyed group is the text this change exists to remove. Each
-  /// phrase still names its own cause, which is the property that matters: it is
-  /// the only surface that distinguishes `previewOff` from `engineUnsupported`
-  /// from `modelBeingRemoved`.
-  static func reason(for capability: PillWordsCapability, groupHoldsWords: Bool) -> String? {
-    if groupHoldsWords {
-      switch capability {
-      case .available: return nil
-      case .previewOff: return "Turn on Live Preview to use these."
-      case .engineUnsupported: return "Your engine cannot show words on this Mac."
-      case .modelBeingRemoved: return "Unavailable while a removed model finishes clearing."
-      }
+  /// **RESOLVED, not read raw.** Reading the slot directly returned whatever is
+  /// persisted, while the recording director puts the same value through
+  /// `PillDesignSelections.resolve` and SUBSTITUTES an incompatible one. A
+  /// downgrade or a hand-edited plist can leave a words-capable design in the
+  /// wordless slot, and the picker then ticked a card the next recording would
+  /// not use — and, since the Configure link keys off this, showed or hid the link
+  /// against the wrong design. Found by Codex review; it is the same root as
+  /// `offersCoupled`, which was routed through the catalog one round earlier while
+  /// this second site was missed.
+  static func selected(in model: PillAppearanceModel) -> RecordingPillDesign {
+    model.resolvedSelection()
+  }
+
+  /// Why some cards in the row are greyed, in one line, or `nil` when none are.
+  ///
+  /// **Names the ACTION where there is one.** The greyed cards are the ones that
+  /// cannot be used in the current state, and every sentence here is about THEM,
+  /// never about the state — a line opening "Live Preview is on" reads as a
+  /// status report on a page the user opened to choose a picture.
+  static func reason(for capability: PillWordsCapability) -> String? {
+    switch capability {
+    case .available, .previewOff:
+      // **Nothing is greyed in these two states any more, so there is nothing to
+      // explain.** Picking a design now sets Live Preview to whatever that design
+      // needs, which is what the two sentences here used to instruct the user to
+      // go and do by hand.
+      return nil
+    case .engineUnsupported:
+      return "Your engine cannot show words on this Mac."
+    case .modelBeingRemoved:
+      return "Unavailable while a removed model finishes clearing."
     }
-    // The wordless group is inactive exactly when words ARE available.
-    return capability.hasWords ? "Live Preview is on, so the pill shows your words." : nil
   }
 }
 
@@ -224,6 +181,7 @@ struct RecordingPillAppearancePanel: View {
 /// through the function that produces it and confirmed by a VoiceOver pass.
 struct RecordingPillPreviewTile: View {
   let design: RecordingPillDesign
+
   let isSelected: Bool
   let isEnabled: Bool
   let onSelect: () -> Void
@@ -245,15 +203,116 @@ struct RecordingPillPreviewTile: View {
     "\(design.displayName). \(design.summary)"
   }
 
-  /// The pill's own inset inside the tile, on each side.
-  static let horizontalInset: CGFloat = 16
+  /// What a card announces as its VALUE.
+  ///
+  /// **Extracted because a test and a Python harness both depend on the exact
+  /// string.** `wispr_eyes.read_cards` compares `AXValue` against "Selected", and
+  /// the Runtime UAT decides whether a tap landed by asking it. Reworded inline,
+  /// the harness silently stops seeing selection and reports a working picker as
+  /// broken. `theSelectedValueIsExactly` pins it.
+  static func accessibilityValue(isSelected: Bool) -> String {
+    isSelected ? "Selected" : ""
+  }
 
-  /// **What one tile occupies, derived rather than restated.** The panel's grid
-  /// needs this to size a column that can hold the widest design; a literal there
-  /// would be a second authority for the same number, free to disagree the day a
-  /// design's width moves.
-  static func width(for design: RecordingPillDesign) -> CGFloat {
-    design.width + horizontalInset * 2
+  /// **Every card draws its pill into THIS box, each at its own scale.**
+  ///
+  /// **The CARD matches a theme card exactly** (founder, 2026-08-26: "I want the
+  /// dimensions to be identical to the light/dark theme rectangles"). An earlier
+  /// pass grew these until they were several times a theme card's height and the
+  /// two rows stopped reading as the same kind of control, which was the whole
+  /// point of the shape.
+  ///
+  /// The height is `AppearanceCard`'s drawn thumbnail height — 116 x 0.54 — so
+  /// both rows come out the same card height once the shared 12pt padding is
+  /// added. The WIDTH is not matched and deliberately so: a theme card spends its
+  /// remaining width on an icon and a name, and this card has neither, so the
+  /// picture takes that room instead. Same rectangle, more of it given to the
+  /// preview.
+  static let thumbnailSize = CGSize(width: 300, height: 63)
+
+  /// **Each design fills the box on its OWN scale** (founder, 2026-08-26).
+  ///
+  /// The alternative — one shared factor taken from the widest design — keeps the
+  /// pills' RELATIVE sizes honest, and was rendered and rejected: at a scale that
+  /// fits a 400pt reading well, a 185pt capsule is a smudge. Two of the three
+  /// previews showed nothing, which fails the only job this picker has (#2435:
+  /// SHOW the design rather than describe it).
+  ///
+  /// What is given up is the sense that one pill takes more screen than another.
+  /// That is real information, and it is recoverable the first time the user
+  /// dictates; an unreadable thumbnail is not recoverable at all.
+  ///
+  /// **The life-size cap was LIFTED at the founder's direction** (2026-08-26,
+  /// after seeing it: "make the mock ups fill out the useable area more"). It had
+  /// been 1, on the argument that magnifying a compact pill misrepresents how much
+  /// screen it takes — the same objection as the rejected shared scale, pointed the
+  /// other way. That argument is still true and was overruled knowingly: at the
+  /// window widths people use, the cards run nearly full width and a life-size
+  /// 185pt pill in a 445pt card reads as a mistake rather than as fidelity.
+  ///
+  /// **`maxMagnification` is what stops it becoming absurd.** Uncapped, the fill
+  /// rule would draw a compact pill at nearly 5x in a wide window. The bound keeps
+  /// the pictures comparable to each other, which is the property that actually
+  /// mattered underneath the life-size argument.
+
+
+  /// The same rule against a REAL card width, which is what the view uses.
+  ///
+  /// Split out so a test can ask the question at any width rather than only at the
+  /// nominal one — the card reflows, so the nominal width is the one case that is
+  /// guaranteed not to be what a user sees.
+  static func scale(for design: RecordingPillDesign, inWidth available: CGFloat) -> CGFloat {
+    guard available > 0, design.width > 0 else { return 1 }
+    // **The card can be WIDER than the picture may safely grow**, because the
+    // card's HEIGHT is fixed at a theme card's and the pill's height scales with
+    // its width. At a single-column layout the reader is ~370pt, which scales the
+    // reading well to ~0.93x — and that pill's fixed 34pt header plus its well
+    // insets and text then exceed the 63pt box, so it is drawn clipped. Found by
+    // cloud review.
+    //
+    // Capping the width used for the scale is what closes it WITHOUT a per-design
+    // height table the view cannot measure. It also removes the gap that hid the
+    // defect: the scale is now the same at every card width at or above the
+    // nominal one, so a test taken at the nominal width describes what a user
+    // actually gets rather than the one case they never see.
+    //
+    // The cost, and it is the honest trade: at a wide card the picture stops
+    // growing and sits centred with margin either side. It could not have grown
+    // safely anyway.
+    let usable = min(available, thumbnailSize.width)
+    return min(maxMagnification, usable / design.width)
+  }
+
+  /// How far past life size a preview may be drawn.
+  ///
+  /// Chosen, not measured: it is the point at which the narrow designs read as
+  /// pictures rather than as stamps, without the widest one and the narrowest one
+  /// arriving at visibly the same size — which is the failure the rejected shared
+  /// scale had, and the one the fill rule would recreate if nothing bounded it.
+  ///
+  /// **It also has to keep the tallest-for-its-width design inside
+  /// `thumbnailSize.height`, and that is the binding constraint.** The card height
+  /// matches a theme card by instruction, so it cannot grow to accommodate a
+  /// magnified pill; at 2 the capsule drew 71pt into a 63pt box and was silently
+  /// clipped. `thePreviewIsTheRealPillScaled` measures every design against the box
+  /// and is what caught it — a new design taller for its width than the capsule
+  /// fails there LOUDLY rather than shipping cut off.
+  /// **1.4, and the number is the CAPSULE's height budget, not a taste call.** Its
+  /// pill is 44pt tall against a 63pt box, so anything above ~1.43 clips it — and
+  /// 2 and 1.7 both did, the second only because the card WIDTH happened to bound
+  /// the scale below the cap and hid it. Tuned against
+  /// `thePreviewIsTheRealPillScaled` rather than derived, because the view cannot
+  /// measure a leaf's height; that test is what makes a wrong value loud instead of
+  /// silently cropping a pill.
+  static let maxMagnification: CGFloat = 1.4
+
+  /// What this design's pill measures ON THE CARD, after its own scale.
+  ///
+  /// Kept as a function rather than read off the rendered view because a test
+  /// can hold the RELATION — the widest design fills the box, the others are
+  /// proportionally narrower — without hosting anything.
+  static func thumbnailWidth(for design: RecordingPillDesign) -> CGFloat {
+    design.width * scale(for: design, inWidth: thumbnailSize.width)
   }
 
   /// What the pill inside the tile is shown SAYING.
@@ -306,32 +365,94 @@ struct RecordingPillPreviewTile: View {
 
   var body: some View {
     Button(action: onSelect) {
-      ZStack(alignment: .topTrailing) {
-        RecordingPillPreview(design: design)
-          .padding(.horizontal, Self.horizontalInset)
-          .padding(.vertical, 16)
-          // Height only, so tiles sharing a grid row are the same size. A greedy
-          // WIDTH would make the tile report that it fits anywhere, which is what
-          // stops any container above it from reflowing correctly.
-          .frame(maxHeight: .infinity)
+      HStack(spacing: 12) {
+        // **No spacers around the picture.** They were added to centre a fixed-width
+        // preview inside a much wider card; now that the preview TAKES the card's
+        // width they only compete with it for that width, and the picture ends up
+        // smaller than the space it was given. Centring is handled inside the
+        // preview instead, by the scale anchor.
 
-        if isSelected {
-          Image(systemName: "checkmark.circle.fill")
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(Color.white, isEnabled ? Color.stAccent : Color.stTextSecondary)
-            .padding(9)
+        // **Drawn at full size, then scaled WHOLE** — the same move
+        // `AppearanceCard` makes with its window thumbnail, and for the same
+        // reason: a pill's parts are fixed points, so re-laying it out into a 160
+        // point frame would change the proportions of the thing being previewed
+        // rather than shrink it.
+        // **The preview takes the width the card actually has** (founder,
+        // 2026-08-26: "make the mock ups fill out the useable area more"). A fixed
+        // box left a wide margin at the window sizes people use, because the cards
+        // stack full-width below ~900pt and a 300pt picture in an 890pt card reads
+        // as an accident.
+        //
+        // `GeometryReader` rather than a bigger constant: the card's width is
+        // decided by the grid above, which reflows, so any constant is wrong at
+        // every width except the one it was picked at.
+        GeometryReader { geo in
+          RecordingPillPreview(design: design)
+            // Natural WIDTH, natural height. `scaleEffect` is a draw-time
+            // transform and does not change layout, so the frames here are what
+            // reserve space; letting the height come from the pill is what keeps a
+            // one-line design from reserving a two-line design's box.
+            .fixedSize(horizontal: false, vertical: true)
+            .scaleEffect(Self.scale(for: design, inWidth: geo.size.width), anchor: .center)
+            .frame(width: geo.size.width, height: geo.size.height)
         }
+        .frame(height: Self.thumbnailSize.height)
+        // The scaled draw can exceed the reserved box by a hair on a design whose
+        // natural height is unusually tall; clip rather than let it paint over the
+        // tick beside it.
+        .clipped()
+
+        // **NO VISIBLE NAME** (founder, 2026-08-26): "people know what it is
+        // without explaining the name". The picture is the label, which is the
+        // whole thesis of #2435 carried to its end — a name beside a drawing of
+        // the thing is the description this redesign existed to delete.
+        //
+        // **The name is NOT gone, it moved.** `accessibilityLabel(for:)` still
+        // announces "<name>. <summary>", so a VoiceOver user gets more than a
+        // sighted one rather than less. `theLabelCarriesNameAndDescription`
+        // guards that, and it is now the ONLY thing standing between this change
+        // and a row of unnamed buttons for anyone who cannot see the drawing.
+        //
+        // Checked before removing: no help article, blog post or website page
+        // refers to a design by name, so nothing in the documentation now points
+        // at a label the user cannot find.
+        // **The tick's slot is reserved whether or not it is shown, and that is a
+        // correctness requirement rather than tidiness.** The preview's scale is
+        // computed from the width its `GeometryReader` is handed, so a tick that
+        // appears only when selected TAKES that width from the card it is on:
+        // selecting a design visibly shrank its own pill while the previous
+        // selection grew. Found by Codex review — invisible in a static render,
+        // because every render captures one selection and the effect is only
+        // legible as a change.
+        //
+        // An empty frame rather than an overlay, so the picture is never drawn
+        // underneath the tick.
+        ZStack {
+          if isSelected {
+            Image(systemName: "checkmark.circle.fill")
+              .font(.system(size: 18, weight: .semibold))
+              .foregroundStyle(Color.white, isEnabled ? Color.stAccent : Color.stTextSecondary)
+          }
+        }
+        .frame(width: 18)
       }
-      // Before `.buttonStyle(.plain)`, so the whole tile is the hit target rather
-      // than the pill's own glyphs.
+      .padding(12)
+      // Before `.buttonStyle(.plain)`: the reserved tick slot is otherwise dead
+      // space rather than part of the hit target.
       .contentShape(Rectangle())
-      .background(Color.stPageBg)
+      .background(Color.stSectionBg)
       .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+      // **An unselected card needs a border you can actually see** (founder,
+      // 2026-08-26). At `stDivider` and one point it disappeared against the card's
+      // own fill, so a row of three read as one undivided block with a highlight
+      // floating in it. Heavier than the theme cards above deliberately: those
+      // carry a name and an icon that give them an edge, and these are now bare
+      // pictures with nothing else to bound them.
       .overlay(
         RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
           .strokeBorder(
-            isSelected && isEnabled ? Color.stAccent : Color.stDivider,
-            lineWidth: isSelected && isEnabled ? 2 : 1)
+            isSelected && isEnabled ? Color.stAccent : Color.stTextTertiary.opacity(0.5),
+            lineWidth: isSelected && isEnabled ? 2 : 1.5)
       )
       // These tiles SHOW the product rather than describing it (#2435), which
       // makes them read as illustrations. Hover is what says they are also the
@@ -347,12 +468,12 @@ struct RecordingPillPreviewTile: View {
     .disabled(!isEnabled)
     .opacity(isEnabled ? 1 : 0.45)
     // **Addressed by role and title, never by an accessibility identifier**
-    // (swift-patterns). A greyed tile must REPORT as disabled rather than merely
+    // (swift-patterns). A greyed card must REPORT as disabled rather than merely
     // look it: the mistake `EngineCard` records for itself is a control that is
     // visible and inaudible.
     .accessibilityElement(children: .combine)
     .accessibilityLabel(Self.accessibilityLabel(for: design))
-    .accessibilityValue(isSelected ? "Selected" : "")
+    .accessibilityValue(Self.accessibilityValue(isSelected: isSelected))
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
   }
 }

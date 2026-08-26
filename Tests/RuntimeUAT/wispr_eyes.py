@@ -393,6 +393,12 @@ def read(label):
 _CARD_GROUPS = {
     "engine": ["Fast", "All Languages"],
     "style": ["Formal", "Standard", "Friendly"],
+    # The Appearance page's recording-pill cards. They carry NO visible text, so
+    # these keywords match the accessibility label alone — which is also the only
+    # thing naming a design to a VoiceOver user. `RecordingPillTileTests`
+    # asserts that label still carries the name, and `theSelectedValueIsExactly`
+    # pins the "Selected" value this reader compares against.
+    "pill": ["Capsule", "Reading Well", "Level Rail"],
 }
 
 def read_cards(group):
