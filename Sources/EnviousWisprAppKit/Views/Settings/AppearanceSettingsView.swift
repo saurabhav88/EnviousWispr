@@ -131,6 +131,11 @@ private struct AppearanceCard: View {
             isSelected ? Color.stAccent : Color.stDivider,
             lineWidth: isSelected ? 2 : 1)
       )
+      // Three cards that look like labelled previews and behave like radio
+      // buttons. Nothing at rest distinguishes the two unselected ones from
+      // decoration.
+      .settingsHoverCard(
+        cornerRadius: SettingsLayout.sectionRadius, isSelected: isSelected)
     }
     .buttonStyle(.plain)
     .animation(.easeInOut(duration: 0.15), value: isSelected)

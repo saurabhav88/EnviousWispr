@@ -56,14 +56,18 @@ struct RecordingSoundsSettingsView: View {
                 .settingsReadingCopy()
             }
             Spacer()
-            Button(action: startPreview) {
-              Label("Preview", systemImage: "play.fill")
-                .padding(.horizontal, 4)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
+            // This one genuinely disables while a recording runs, and the
+            // system prominent style renders grey on a settings page, so the
+            // enabled and disabled states were the same pixels on the only
+            // control in the row.
+            SettingsActionButton(
+              title: "Preview",
+              isEnabled: !liveRecordingState.isDictationActive,
+              emphasis: .filled,
+              systemImage: "play.fill",
+              action: startPreview
+            )
             .accessibilityLabel("Preview \(displayName(for: settings.recordingSoundPairing))")
-            .disabled(liveRecordingState.isDictationActive)
             .help(
               liveRecordingState.isDictationActive
                 ? "Preview is unavailable while a recording is in progress."
@@ -191,6 +195,11 @@ private struct RecordingSoundPairingCard: View {
       RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
         .strokeBorder(isSelected ? Color.stAccent : Color.stDivider, lineWidth: isSelected ? 2 : 1)
     )
+    // Safe to hang off the card rather than the label here: the comment above
+    // this type records that the ENTIRE card is one `Button` with no second
+    // interactive region inside it, so the card's bounds and the hit region are
+    // already the same rectangle.
+    .settingsHoverCard(cornerRadius: SettingsLayout.sectionRadius, isSelected: isSelected)
     .animation(.easeInOut(duration: 0.15), value: isSelected)
     .accessibilityLabel(displayName(for: pairing))
     .accessibilityValue(isSelected ? "Selected" : "")

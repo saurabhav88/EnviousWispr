@@ -108,7 +108,7 @@ struct LanguageLockSheet: View {
         .font(.system(size: 15, weight: .semibold))
         .foregroundStyle(Color.stTextPrimary)
       Spacer(minLength: 12)
-      LanguageSheetCloseButton { dismiss() }
+      SettingsSheetCloseButton(accessibilityTitle: "Close") { dismiss() }
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)
@@ -127,8 +127,9 @@ struct LanguageLockSheet: View {
       // WITHOUT choosing is a secondary action here, because the rows are the
       // primary one. `Done` on the catalogue sheet is filled because nothing
       // competes with it there.
-      SettingsActionButton(title: "Cancel", isEnabled: true) { dismiss() }
-        .keyboardShortcut(.cancelAction)
+      SettingsActionButton(title: "Cancel", isEnabled: true, shortcut: .cancelAction) {
+        dismiss()
+      }
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)
@@ -202,8 +203,16 @@ struct LanguageLockSheet: View {
           }
           .padding(.horizontal, 14)
           .padding(.vertical, 10)
+          // The TWIN of `LanguageLockRow`, and it was drifting from it in two
+          // ways at once. Live UAT caught the first: every language row beneath
+          // this one lit up under the pointer and this one did not, on the first
+          // row of the list. The second was only visible once both were read
+          // together -- the selected wash here was 0.06 against the rows' 0.10,
+          // so "this is the current choice" was drawn two different strengths
+          // depending on which kind of choice it was.
+          .background(isAuto ? Color.stAccent.opacity(0.10) : Color.clear)
+          .settingsHoverRow(cornerRadius: 0)
           .contentShape(Rectangle())
-          .background(isAuto ? Color.stAccent.opacity(0.06) : Color.clear)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Auto-detect language")
@@ -413,9 +422,6 @@ private struct LanguageLockRow: View {
   let isSelected: Bool
   let action: () -> Void
 
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var hovering = false
-
   var body: some View {
     Button(action: action) {
       HStack(spacing: 10) {
@@ -434,44 +440,20 @@ private struct LanguageLockRow: View {
       }
       .padding(.horizontal, 14)
       .padding(.vertical, 10)
-      .contentShape(Rectangle())
       // Selection outranks hover: a selected row keeps its accent wash even while
       // the pointer sits on a neighbour, so the current choice never disappears.
-      .background(background)
+      // The hover tint composites ON TOP of that wash rather than replacing it,
+      // so the selected row under the pointer reads as both.
+      .background(isSelected ? Color.stAccent.opacity(0.10) : Color.clear)
+      .settingsHoverRow(cornerRadius: 0)
+      .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .onHover { hovering = $0 }
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
     .accessibilityLabel("\(entry.englishName), native \(entry.nativeName)")
     .accessibilityValue(isSelected ? "selected" : "")
   }
-
-  private var background: Color {
-    if isSelected { return Color.stAccent.opacity(0.10) }
-    return hovering ? Color.stAccent.opacity(0.06) : Color.clear
-  }
 }
 
-/// Matches `LivePreviewPackCatalogSheet`'s close control. Duplicated rather than
-/// shared for now because the two sheets live in different features; if a third
-/// appears, this is the one to promote.
-private struct LanguageSheetCloseButton: View {
-  let action: () -> Void
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var hovering = false
-
-  var body: some View {
-    Button(action: action) {
-      Image(systemName: "xmark")
-        .font(.system(size: 11, weight: .bold))
-        .foregroundStyle(hovering ? Color.stTextPrimary : Color.stTextSecondary)
-        .frame(width: 22, height: 22)
-        .background(Circle().fill(hovering ? Color.stSectionBg : Color.clear))
-        .contentShape(Circle())
-    }
-    .buttonStyle(.plain)
-    .onHover { hovering = $0 }
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
-    .accessibilityLabel("Close")
-  }
-}
+// The close control this file used to declare is now
+// `SettingsSheetCloseButton` in `SettingsComponents.swift`, shared with
+// `LivePreviewPackCatalogSheet`, which held a byte-identical copy.

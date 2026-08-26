@@ -336,6 +336,17 @@ private struct SidebarNavRow<Icon: View>: View {
             .shadow(color: Color.stAccent.opacity(0.40), radius: 7, y: 2)
         }
       }
+      // The pointer's answer to "is this a thing I can click". Fifteen rows,
+      // the most-visited control in the window, and until #2447 not one of them
+      // reacted. Tint radius matches the selection pill's 9 so a row that is
+      // hovered and then selected does not change shape.
+      //
+      // A SELECTED row already carries the brand gradient, which a 6% accent
+      // tint disappears into, so it takes a white veil instead -- otherwise the
+      // row the pointer rests on most often is the one row that looks dead.
+      .settingsHoverRow(
+        cornerRadius: 9,
+        tint: isSelected ? SettingsHover.selectedRowVeil : SettingsHover.rowTint)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)

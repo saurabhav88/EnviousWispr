@@ -125,7 +125,7 @@ struct CustomWordsImportSheet: View {
   private var header: some View {
     HStack(spacing: 8) {
       if model.canGoBack {
-        Button("Back") { model.goBack() }
+        SettingsActionButton(title: "Back", isEnabled: true) { model.goBack() }
       }
       Text(title)
         .font(.title3)
@@ -160,24 +160,53 @@ struct CustomWordsImportSheet: View {
         // VoiceOver/Full Keyboard Access from exposing two overlapping
         // "Done" controls at the same location (Codex, round 6) — it only
         // affects the accessibility tree, not keyboard shortcut dispatch.
-        Button("Done") { requestCancel() }
-          .keyboardShortcut(.defaultAction)
-          .buttonStyle(.borderedProminent)
-          .overlay {
-            Button("Done") { requestCancel() }
-              .keyboardShortcut(.cancelAction)
-              .opacity(0)
-              .accessibilityHidden(true)
-          }
+        //
+        // #2447 restyles the VISIBLE button only. The zero-opacity overlay below
+        // stays a raw `Button` deliberately: it exists to carry `.cancelAction`
+        // and is never seen, so a hover treatment on it would be decoration for
+        // a control nobody can look at -- and every word of the comment above
+        // describes constraints on THAT button, which restyling risks quietly
+        // invalidating.
+        SettingsActionButton(
+          title: "Done", isEnabled: true, emphasis: .filled, shortcut: .defaultAction
+        ) {
+          requestCancel()
+        }
+        .overlay {
+          Button("Done") { requestCancel() }
+            .keyboardShortcut(.cancelAction)
+            .opacity(0)
+            .accessibilityHidden(true)
+            // **`.opacity(0)` hides it from the EYE, not from the POINTER.** The
+            // comment above records why `.hidden()` was rejected -- a hidden view
+            // receives no interaction, which killed shortcut dispatch. What that
+            // left behind is a fully hit-testable control sitting on top of the
+            // visible one: clicks reached the same action so nothing looked
+            // wrong, and the visible button's hover never fired because the
+            // pointer never reached it (cloud review, #2447).
+            //
+            // Hit testing and shortcut dispatch are separate paths: Apple
+            // documents `allowsHitTesting` as governing "hit test operations"
+            // and pointer interaction, while a keyboard shortcut fires for a
+            // control "anywhere in the frontmost window", which is a presence
+            // condition. This restores the pointer to the button underneath
+            // while leaving Escape's route intact -- verified by pressing Escape
+            // on this screen, not inferred from the two doc pages.
+            .allowsHitTesting(false)
+        }
       case .review:
-        Button("Cancel") { requestCancel() }
-          .keyboardShortcut(.cancelAction)
-        Button(confirmTitle) { model.confirm() }
-          .keyboardShortcut(.defaultAction)
-          .buttonStyle(.borderedProminent)
+        SettingsActionButton(title: "Cancel", isEnabled: true, shortcut: .cancelAction) {
+          requestCancel()
+        }
+        SettingsActionButton(
+          title: confirmTitle, isEnabled: true, emphasis: .filled, shortcut: .defaultAction
+        ) {
+          model.confirm()
+        }
       case .methodPicker, .paste, .upload, .smartImportAppPicker, .working:
-        Button("Cancel") { requestCancel() }
-          .keyboardShortcut(.cancelAction)
+        SettingsActionButton(title: "Cancel", isEnabled: true, shortcut: .cancelAction) {
+          requestCancel()
+        }
       }
     }
   }
@@ -294,6 +323,9 @@ private struct ImportMethodCard: View {
       .overlay(
         RoundedRectangle(cornerRadius: 10).strokeBorder(Color.stDivider, lineWidth: 1)
       )
+      // The first screen of the import flow is three of these and nothing else,
+      // so if they do not read as choices the flow has no visible entry point.
+      .settingsHoverCard(cornerRadius: 10)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -440,18 +472,21 @@ private struct ImportPasteScreen: View {
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
         Spacer(minLength: 0)
-        Button("Continue") {
-          model.begin(with: PasteWordsImportSource(text: model.pasteDraft))
-        }
-        .keyboardShortcut(.defaultAction)
-        .buttonStyle(.borderedProminent)
         // Over-limit is a refusal, not a warning: Confirm would throw and land
         // the user on the terminal failure screen, which has no Back, so the
         // draft they could have split is gone. Block it where they can still
-        // edit it (cloud review, #1683).
-        .disabled(
-          isCounting || wordCount == 0
-            || wordCount > CustomWordsImportLimits.maximumCandidates)
+        // edit it (cloud review, #1683) -- and #2447 makes that refusal VISIBLE,
+        // since the system style drew the blocked and the ready states in the
+        // same grey.
+        SettingsActionButton(
+          title: "Continue",
+          isEnabled: !(isCounting || wordCount == 0
+            || wordCount > CustomWordsImportLimits.maximumCandidates),
+          emphasis: .filled,
+          shortcut: .defaultAction
+        ) {
+          model.begin(with: PasteWordsImportSource(text: model.pasteDraft))
+        }
       }
     }
     .onAppear {
@@ -555,16 +590,15 @@ private struct ImportUploadScreen: View {
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
 
-      Button {
+      SettingsActionButton(
+        title: "Choose a file", isEnabled: true, emphasis: .filled, systemImage: "folder"
+      ) {
         // The panel is opened first and the file read only after a choice, so
         // cancelling reads nothing and starts no work.
         if let url = CustomWordsImportFilePanel.chooseFile() {
           model.begin(with: FileImportSource(url: url))
         }
-      } label: {
-        Label("Choose a file", systemImage: "folder")
       }
-      .buttonStyle(.borderedProminent)
 
       Text("Spreadsheets aren't supported yet.")
         .font(.stHelper)

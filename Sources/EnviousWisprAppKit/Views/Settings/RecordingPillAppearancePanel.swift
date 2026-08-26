@@ -333,6 +333,15 @@ struct RecordingPillPreviewTile: View {
             isSelected && isEnabled ? Color.stAccent : Color.stDivider,
             lineWidth: isSelected && isEnabled ? 2 : 1)
       )
+      // These tiles SHOW the product rather than describing it (#2435), which
+      // makes them read as illustrations. Hover is what says they are also the
+      // control. Gated on `isEnabled` for the same reason `.disabled` is below:
+      // a tile at 45% opacity that still answers the pointer is worse than one
+      // that does nothing, because it invites the press it will refuse.
+      .settingsHoverCard(
+        cornerRadius: SettingsLayout.sectionRadius,
+        isEnabled: isEnabled,
+        isSelected: isSelected && isEnabled)
     }
     .buttonStyle(.plain)
     .disabled(!isEnabled)

@@ -398,6 +398,13 @@ struct BrandedToggleStyle: ToggleStyle {
         Spacer()
         BrandedToggleTrack(isOn: configuration.isOn)
       }
+      // The whole row commits the change -- `contentShape(Rectangle())` below
+      // has always made the label, the gap and the track one target -- and
+      // until #2447 nothing said so, so the 38pt track was the only part users
+      // aimed at. The tint covers exactly the rectangle `contentShape` claims,
+      // which is the point: it does not advertise a target that is not there,
+      // and it does not hide the one that is.
+      .settingsHoverRow(cornerRadius: 7)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -522,6 +529,14 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
               .fill(isSelected ? Color.stAccentSolid : Color.clear)
           )
+          // An UNSELECTED segment is drawn as bare text on the track: no fill,
+          // no border, nothing separating it from a label. Hover is the only
+          // thing that says the other options are reachable. The selected
+          // segment is a solid accent pill, so it takes the white veil for the
+          // same reason the selected sidebar row does.
+          .settingsHoverRow(
+            cornerRadius: 7,
+            tint: isSelected ? SettingsHover.selectedRowVeil : SettingsHover.rowTint)
         }
         .buttonStyle(.plain)
         .accessibilityValue(isSelected ? "selected" : "")
@@ -565,8 +580,12 @@ struct BrandedStatusRow: View {
       Spacer()
 
       if !isGranted, let actionLabel, let action {
-        Button(actionLabel, action: action)
-          .controlSize(.small)
+        // The whole Permissions page is two of these rows, so this button is
+        // that page's only control -- and the persona it exists for is someone
+        // who came here because dictation stopped working. On the system style
+        // it rendered as grey text beside a red X, which is a poor thing for
+        // "Open System Settings" to look like.
+        SettingsActionButton(title: actionLabel, isEnabled: true, emphasis: .filled, action: action)
       }
     }
   }
@@ -762,6 +781,13 @@ struct EngineCard<Footer: View>: View {
           maxWidth: .infinity,
           maxHeight: fillsHeight ? .infinity : nil,
           alignment: .topLeading)
+        // Applied to the LABEL, inside the same frame the hit region uses, so
+        // the tint and the target are one rectangle and stay one rectangle when
+        // `fillsHeight` grows them. On a card that carries a footer button the
+        // tint deliberately stops where the selection area stops: the footer is
+        // a different action, and a highlight running under it would say
+        // otherwise.
+        .settingsHoverRow(cornerRadius: SettingsLayout.sectionRadius)
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
@@ -898,6 +924,35 @@ struct ProviderStatusChip: View {
     .accessibilityLabel("Status: \(status.label)")
   }
 }
+/// The close control in a settings sheet's title bar.
+///
+/// Promoted from the two byte-identical copies in `LivePreviewPackCatalogSheet`
+/// and `LanguageLockSheet`, whose own comment said "if a third appears, this is
+/// the one to promote". A third appeared.
+///
+/// Deliberately a symbol rather than a second worded button: the sheet's footer
+/// already carries the words, and two worded exits invite the reading that they
+/// do different things.
+struct SettingsSheetCloseButton: View {
+  /// What the assistive label says. The two sheets word it differently on
+  /// purpose, so it stays a parameter rather than becoming a shared constant.
+  let accessibilityTitle: String
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: "xmark")
+        .font(.system(size: 11, weight: .bold))
+        .foregroundStyle(Color.stTextSecondary)
+        .frame(width: 22, height: 22)
+        .settingsHoverQuiet()
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(accessibilityTitle)
+  }
+}
+
 /// A branded action button for settings sheets and rows.
 ///
 /// **Enabled and disabled must not look alike.** The bordered style this
@@ -915,49 +970,128 @@ struct SettingsActionButton: View {
   /// How loud this button is. `outlined` is a row-level action, `filled` the one
   /// primary on a surface — a hierarchy the system styles could not express here
   /// because their rendering depended on the container.
-  enum Emphasis { case outlined, filled }
+  /// `destructive` is `outlined` in the error tone, for Clear / Delete / Remove
+  /// All. Those sites reached for `.bordered` plus a red `foregroundStyle`,
+  /// which on a settings page rendered as grey with red text — the same
+  /// "looks disabled" reading that made the Download buttons unreadable, on the
+  /// one class of action where a misread is expensive.
+  enum Emphasis { case outlined, filled, destructive }
 
   let title: String
   let isEnabled: Bool
   var emphasis: Emphasis = .outlined
+  /// An optional leading SF Symbol, for the few actions whose glyph does real
+  /// work: Preview's play triangle, Refresh's arrows.
+  var systemImage: String? = nil
+  /// Return or Escape for a sheet's confirm and cancel.
+  ///
+  /// **A parameter rather than something the call site applies, so the shortcut
+  /// lands on a control rather than on a wrapper.** Apple documents
+  /// `keyboardShortcut(_:modifiers:)` as assigning the shortcut to "the modified
+  /// control"; this type is a composite `View`, not a control, so a call site
+  /// writing the modifier on the outside is relying on behaviour the
+  /// documentation does not describe. Passed in, it is applied to the `Button`
+  /// below, which is unambiguously the control.
+  ///
+  /// The failure this avoids is a silent one: a footer that swapped `Button` for
+  /// this type and kept its own modifier still works when CLICKED, so nothing on
+  /// screen would say Escape had stopped answering.
+  var shortcut: KeyboardShortcut? = nil
   let action: () -> Void
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var hovering = false
+  /// A PARENT can disable this control without touching `isEnabled`, and then
+  /// the two disagree. See `SettingsHover.respondsToPointer`.
+  @Environment(\.isEnabled) private var environmentEnabled
+  @State private var pointerInside = false
+
+  /// DERIVED, never stored. See `SettingsHover.respondsToPointer`.
+  private var hovering: Bool {
+    SettingsHover.respondsToPointer(pointerInside, isEnabled, environmentEnabled)
+  }
 
   var body: some View {
-    Button(action: action) {
-      Text(title)
-        .font(.system(size: 12, weight: .semibold))
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-        .foregroundStyle(foreground)
-        .background(fill, in: Capsule())
-        .overlay(Capsule().strokeBorder(border, lineWidth: 1))
-        .contentShape(Capsule())
-    }
-    .buttonStyle(.plain)
+    shortcutBound(button)
+      .buttonStyle(.plain)
     .disabled(!isEnabled)
-    .onHover { hovering = $0 && isEnabled }
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+    .onHover { pointerInside = $0 }
+    .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
   }
+
+  private var button: some View {
+    // **The ROLE, not just the colour.** `emphasis` decides how this looks;
+    // `role` is what AppKit and VoiceOver read, and the system `Button`s this
+    // replaced supplied it. Carrying the tone visually while dropping the
+    // semantics would leave an irreversible action indistinguishable from an
+    // ordinary one to anyone not looking at the pixels -- which is the same
+    // defect as the grey Delete button, one sense over (cloud review, #2447).
+    Button(role: emphasis == .destructive ? .destructive : nil, action: action) {
+      HStack(spacing: 5) {
+        if let systemImage {
+          Image(systemName: systemImage)
+            .font(.system(size: 11, weight: .semibold))
+            // Decoration. Without this the symbol contributes its own
+            // symbol-derived name beside the title, so "Add term" is announced
+            // as a plus sign AND the words -- where the `Label` this replaced
+            // announced one thing.
+            .accessibilityHidden(true)
+        }
+        Text(title)
+          .font(.system(size: 12, weight: .semibold))
+      }
+      .padding(.horizontal, 14)
+      .padding(.vertical, 6)
+      .foregroundStyle(foreground)
+      .background(fill, in: Capsule())
+      .overlay(Capsule().strokeBorder(border, lineWidth: 1))
+      .contentShape(Capsule())
+    }
+  }
+
+  /// Binds `shortcut` to the `Button`, and leaves the shortcut ALONE when there
+  /// is none.
+  ///
+  /// **The branch is the fix, not a style choice.** An unconditional
+  /// `.keyboardShortcut(shortcut)` also runs for `nil`, and a caller that
+  /// applies its own modifier on the OUTSIDE of this composite then has it
+  /// overridden from within -- which is how a Cancel button keeps working when
+  /// clicked and silently stops answering Escape. Found by review on exactly
+  /// that: the two #2445 sheet footers had their `.cancelAction` and
+  /// `.defaultAction` cleared by this type's own default.
+  @ViewBuilder
+  private func shortcutBound(_ content: some View) -> some View {
+    if let shortcut {
+      content.keyboardShortcut(shortcut)
+    } else {
+      content
+    }
+  }
+
+  /// The one place emphasis becomes a colour. `destructive` is the only
+  /// emphasis that leaves the brand accent, so the three rules below read the
+  /// tone from here instead of each testing the emphasis themselves.
+  private var tone: Color { emphasis == .destructive ? Color.stError : Color.stAccent }
 
   private var foreground: Color {
     guard isEnabled else { return Color.stTextTertiary }
     if emphasis == .filled { return Color.white }
-    return hovering ? Color.white : Color.stAccent
+    return hovering ? Color.white : tone
   }
 
   private var fill: Color {
     guard isEnabled else { return Color.clear }
-    if emphasis == .filled {
+    switch emphasis {
+    case .filled:
       return hovering ? Color.stAccent : Color.stAccentSolid
+    case .destructive:
+      return hovering ? Color.stError : Color.stError.opacity(0.12)
+    case .outlined:
+      return hovering ? Color.stAccentSolid : Color.stAccentLight
     }
-    return hovering ? Color.stAccentSolid : Color.stAccentLight
   }
 
   private var border: Color {
     guard isEnabled else { return Color.stDivider }
     if emphasis == .filled { return Color.clear }
-    return hovering ? Color.clear : Color.stAccent
+    return hovering ? Color.clear : tone
   }
 }

@@ -35,8 +35,10 @@ struct VocabPacksSection: View {
                   .padding(.top, 2)
               }
               Spacer()
-              Button("See all") { selectedPack = id }
-                .controlSize(.small)
+              // No `.controlSize` here: this control owns its own metrics, so the
+              // modifier the previous system `Button` needed became a dead line
+              // that reads as if it still sizes something.
+              SettingsActionButton(title: "See all", isEnabled: true) { selectedPack = id }
                 .accessibilityLabel("See all words in the \(id.displayName) pack")
 
               Toggle(

@@ -32,16 +32,21 @@ struct ContactsImportConfirm: View {
 
       HStack {
         Spacer()
+        // #2447 finishes the sheet-dismissal class #2445 opened. The founder's
+        // finding there was not any single button but the PAIR: "you improved
+        // the 'done' button on the install pop up but then didn't fix the cancel
+        // button on the language selector." Both halves of each pair move
+        // together here for that reason.
         if hasNewNames {
-          Button("Cancel", action: onCancel)
-            .keyboardShortcut(.cancelAction)
-          Button(addButtonTitle, action: onConfirm)
-            .keyboardShortcut(.defaultAction)
-            .buttonStyle(.borderedProminent)
+          SettingsActionButton(
+            title: "Cancel", isEnabled: true, shortcut: .cancelAction, action: onCancel)
+          SettingsActionButton(
+            title: addButtonTitle, isEnabled: true, emphasis: .filled,
+            shortcut: .defaultAction, action: onConfirm)
         } else {
-          Button("Done", action: onCancel)
-            .keyboardShortcut(.defaultAction)
-            .buttonStyle(.borderedProminent)
+          SettingsActionButton(
+            title: "Done", isEnabled: true, emphasis: .filled,
+            shortcut: .defaultAction, action: onCancel)
         }
       }
     }

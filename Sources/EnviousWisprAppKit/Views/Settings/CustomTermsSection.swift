@@ -69,6 +69,7 @@ struct CustomTermsSection: View {
               Image(systemName: "xmark.circle.fill")
                 .foregroundStyle(.stTextSecondary)
                 .font(.system(size: 12))
+                .settingsHoverQuiet()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Clear search")
@@ -89,10 +90,12 @@ struct CustomTermsSection: View {
               .font(.stHelper)
               .foregroundStyle(.stTextSecondary)
             Spacer()
-            Button("Delete…", role: .destructive) {
+            // The one irreversible action on this page. The system destructive
+            // role renders as ordinary grey here, so the control that deletes a
+            // word list looked exactly like the control that cancels.
+            SettingsActionButton(title: "Delete…", isEnabled: true, emphasis: .destructive) {
               pendingBulkDelete = BulkDeleteRequest(ids: selectedIDs)
             }
-            .controlSize(.small)
           }
         }
       }
@@ -124,6 +127,7 @@ struct CustomTermsSection: View {
               if currentPage > 0 { currentPage -= 1 }
             } label: {
               Image(systemName: "chevron.left")
+                .settingsHoverQuiet(isEnabled: currentPage > 0)
             }
             .buttonStyle(.plain)
             .disabled(currentPage == 0)
@@ -137,6 +141,7 @@ struct CustomTermsSection: View {
               if currentPage < pageCount - 1 { currentPage += 1 }
             } label: {
               Image(systemName: "chevron.right")
+                .settingsHoverQuiet(isEnabled: currentPage < pageCount - 1)
             }
             .buttonStyle(.plain)
             .disabled(currentPage >= pageCount - 1)
@@ -202,10 +207,9 @@ struct CustomTermsSection: View {
         // convention, so the two sheets this section presents never both
         // apply to the same row at once.
         if !isSelecting {
-          Button("Edit") {
+          SettingsActionButton(title: "Edit", isEnabled: true) {
             editingWord = word
           }
-          .controlSize(.small)
         }
       }
     }
@@ -229,23 +233,22 @@ struct CustomTermsSection: View {
     if isSelecting {
       let allSelected =
         !filteredSelectableIDs.isEmpty && filteredSelectableIDs.isSubset(of: selectedIDs)
-      Button(allSelected ? "Deselect All" : "Select All") {
+      SettingsActionButton(
+        title: allSelected ? "Deselect All" : "Select All",
+        isEnabled: !filteredSelectableIDs.isEmpty
+      ) {
         selectedIDs = CustomTermListPolicy.toggledSelection(
           current: selectedIDs, target: filteredSelectableIDs)
       }
-      .controlSize(.small)
-      .disabled(filteredSelectableIDs.isEmpty)
 
-      Button("Cancel") {
+      SettingsActionButton(title: "Cancel", isEnabled: true) {
         selectedIDs = []
         isSelecting = false
       }
-      .controlSize(.small)
     } else if !filteredSelectableIDs.isEmpty {
-      Button("Select") {
+      SettingsActionButton(title: "Select", isEnabled: true) {
         isSelecting = true
       }
-      .controlSize(.small)
     }
   }
 

@@ -142,6 +142,10 @@ struct TranscriptDetailView: View {
         transcriptCoordinator.delete(transcript)
       } label: {
         Image(systemName: "trash")
+          // The only irreversible control in the bar and the quietest thing in
+          // it: borderless, secondary grey, no border. Hover in the error tone
+          // so what it does is legible before it is pressed rather than after.
+          .settingsHoverQuiet(tint: .stError)
       }
       .buttonStyle(.borderless)
       .foregroundStyle(.stTextSecondary)

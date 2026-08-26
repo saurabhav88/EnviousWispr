@@ -383,11 +383,15 @@ struct LivePreviewSettingsView: View {
             Spacer(minLength: 0)
             switch action {
             case .browseDownloads(let initialSearch):
-              Button(LivePreviewSettingsCopy.browseDownloadsButton) {
+              // The last system-styled button left on this page after #2445
+              // replaced the other three. Same fact, same fix.
+              SettingsActionButton(
+                title: LivePreviewSettingsCopy.browseDownloadsButton,
+                isEnabled: true,
+                emphasis: .filled
+              ) {
                 catalogRequest = CatalogRequest(search: initialSearch)
               }
-              .buttonStyle(.borderedProminent)
-              .controlSize(.small)
             }
           }
         }
@@ -689,7 +693,14 @@ struct LivePreviewLanguageMenuButton: View {
   let action: () -> Void
 
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var hovering = false
+  /// See `SettingsHover.respondsToPointer`.
+  @Environment(\.isEnabled) private var environmentEnabled
+  @State private var pointerInside = false
+
+  /// DERIVED, never stored. See `SettingsHover.respondsToPointer`.
+  private var hovering: Bool {
+    SettingsHover.respondsToPointer(pointerInside, true, environmentEnabled)
+  }
 
   var body: some View {
     Button(action: action) {
@@ -721,8 +732,8 @@ struct LivePreviewLanguageMenuButton: View {
       .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
     .buttonStyle(.plain)
-    .onHover { hovering = $0 }
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+    .onHover { pointerInside = $0 }
+    .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
   }
 }
 
@@ -745,7 +756,14 @@ struct LivePreviewInstallRow: View {
   let action: () -> Void
 
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var hovering = false
+  /// See `SettingsHover.respondsToPointer`.
+  @Environment(\.isEnabled) private var environmentEnabled
+  @State private var pointerInside = false
+
+  /// DERIVED, never stored. See `SettingsHover.respondsToPointer`.
+  private var hovering: Bool {
+    SettingsHover.respondsToPointer(pointerInside, true, environmentEnabled)
+  }
 
   var body: some View {
     Button(action: action) {
@@ -770,8 +788,8 @@ struct LivePreviewInstallRow: View {
       .background(hovering ? Color.stAccent.opacity(0.06) : Color.clear)
     }
     .buttonStyle(.plain)
-    .onHover { hovering = $0 }
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+    .onHover { pointerInside = $0 }
+    .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isButton)
     .accessibilityLabel(title)

@@ -189,6 +189,22 @@ struct HotkeyRecorderView: View {
   enum Style {
     case compact
     case prominent
+
+    /// The radius of the field each style draws.
+    ///
+    /// **One owner, because three places now need to agree.** The field's
+    /// `background`, its border `overlay`, and the hover tint
+    /// `KeyCaptureBehavior` applies all have to describe the same shape, and
+    /// each was free to name its own number. That is the shape of both #2447
+    /// review findings -- a decision made in one place that a second place can
+    /// silently contradict -- so it does not get to survive in the change that
+    /// introduced the third reader.
+    var fieldRadius: CGFloat {
+      switch self {
+      case .compact: return 6
+      case .prominent: return 10
+      }
+    }
   }
 
   @Binding var keyCode: UInt16
@@ -250,9 +266,9 @@ struct HotkeyRecorderView: View {
       .padding(.horizontal, 8)
       .padding(.vertical, 4)
       .background(isRecording ? colors.recordingBackground : colors.fieldBackground)
-      .cornerRadius(6)
+      .cornerRadius(Style.compact.fieldRadius)
       .overlay(
-        RoundedRectangle(cornerRadius: 6)
+        RoundedRectangle(cornerRadius: Style.compact.fieldRadius)
           .stroke(isRecording ? colors.recordingBorder : Color.clear, lineWidth: 1)
       )
       .modifier(keyCaptureBehavior)
@@ -300,10 +316,10 @@ struct HotkeyRecorderView: View {
       .frame(maxWidth: .infinity, minHeight: 62)
       .background(
         isRecording ? Color.stAccentLight : Color.stPageBg,
-        in: RoundedRectangle(cornerRadius: 10)
+        in: RoundedRectangle(cornerRadius: Style.prominent.fieldRadius)
       )
       .overlay(
-        RoundedRectangle(cornerRadius: 10)
+        RoundedRectangle(cornerRadius: Style.prominent.fieldRadius)
           .strokeBorder(Color.stAccent, lineWidth: isRecording ? 2 : 1.5)
       )
       .modifier(keyCaptureBehavior)
@@ -330,6 +346,7 @@ struct HotkeyRecorderView: View {
       // with an emoji for the Globe key. Visible text is unchanged.
       valueDescription: KeySymbols.accessibilityDescription(
         keyCode: keyCode, modifiers: modifiers),
+      cornerRadius: style.fieldRadius,
       onKeyEvent: handleKeyEvent,
       onToggle: toggleRecording
     )
@@ -409,11 +426,23 @@ private struct KeyCaptureBehavior: ViewModifier {
   let isRecording: Bool
   let label: String
   let valueDescription: String
+  /// The radius of the visual field this behaviour is attached to, so the hover
+  /// tint follows the same shape. The two styles draw 6 and 10; passing it in
+  /// keeps the one interaction layer from having to guess which it is wrapping.
+  let cornerRadius: CGFloat
   let onKeyEvent: (NSEvent) -> Void
   let onToggle: () -> Void
 
   func body(content: Content) -> some View {
     content
+      // A keybind field is a plain view with `onTapGesture`, deliberately not a
+      // `Button` so a Button cannot swallow the key events being recorded (see
+      // `.focusable()` in `KeybindsSettingsView`). The cost of that choice is
+      // that it inherits none of a control's affordances, which is why the
+      // field looked like a text label showing a shortcut rather than something
+      // to click. Suppressed while RECORDING, where the field already has a
+      // loud active treatment and a hover tint would fight it.
+      .settingsHoverRow(cornerRadius: cornerRadius, isEnabled: !isRecording)
       // Overlay a zero-size KeyCaptureView so it can steal first responder
       // without affecting visual layout.
       .overlay(

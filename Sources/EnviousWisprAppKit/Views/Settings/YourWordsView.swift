@@ -41,19 +41,23 @@ struct YourWordsView: View {
       // "Add term" action (the page title + description now live in the page header).
       HStack {
         Spacer()
-        Button {
+        // Three page-level actions that were on the system default style, which
+        // on this dark surface renders as the same grey as a disabled control
+        // and gives no hover of its own. Add term is the primary, so it is the
+        // one that fills.
+        SettingsActionButton(
+          title: "Add term", isEnabled: true, emphasis: .filled, systemImage: "plus"
+        ) {
           sheetRoute = .addTerm
-        } label: {
-          Label("Add term", systemImage: "plus")
         }
         // The ONLY doorway into Custom Words import (epic #1619). Shipped to
         // release users from v2.4.1 by founder decision, 2026-07-24; every
         // import PR still carries "adds no second entry point" in its
         // definition of done, so this stays the single doorway.
-        Button {
+        SettingsActionButton(
+          title: "Import", isEnabled: true, systemImage: "square.and.arrow.down"
+        ) {
           sheetRoute = .importWords
-        } label: {
-          Label("Import", systemImage: "square.and.arrow.down")
         }
         // Export (#1680). ONE body-render snapshot drives both the count shown
         // in the save dialog and the array handed to the action, so the number
@@ -63,10 +67,11 @@ struct YourWordsView: View {
         // (#1715).
         let proposed = CustomWordsExportAction.exportableWords(
           from: customWordsCoordinator.customWords)
-        Button {
+        SettingsActionButton(
+          title: "Export your words", isEnabled: true,
+          systemImage: "square.and.arrow.up"
+        ) {
           exportWords(proposed: proposed)
-        } label: {
-          Label("Export your words", systemImage: "square.and.arrow.up")
         }
       }
 
@@ -244,10 +249,15 @@ private struct BulkImportEnrichmentProgressCard: View {
       HStack {
         Text("Importing your words").settingsRowLabel()
         Spacer()
-        Button("Cancel", action: onCancel)
-          .buttonStyle(.plain)
-          .font(.stHelper)
-          .foregroundStyle(.stAccent)
+        Button(action: onCancel) {
+          // The only way out of a running import, drawn as accent-coloured
+          // helper text -- which on this page is also how non-interactive
+          // labels are drawn.
+          Text("Cancel").settingsHoverQuiet()
+        }
+        .buttonStyle(.plain)
+        .font(.stHelper)
+        .foregroundStyle(.stAccent)
       }
 
       ProgressView(value: fraction)

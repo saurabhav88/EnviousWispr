@@ -42,12 +42,13 @@ struct BulkDeleteConfirmSheet: View {
       }
 
       HStack {
-        Button("Cancel", action: onCancel)
-          .keyboardShortcut(.cancelAction)
-          .disabled(isExporting)
+        SettingsActionButton(
+          title: "Cancel", isEnabled: !isExporting, shortcut: .cancelAction, action: onCancel)
 
         Spacer()
 
+        // The ProgressView swap stays a raw Button: this control replaces its
+        // whole label while exporting, which a title-taking control cannot do.
         Button {
           exportCopy()
         } label: {
@@ -59,10 +60,17 @@ struct BulkDeleteConfirmSheet: View {
         }
         .disabled(isExporting)
 
-        Button("Delete \(ids.count) \(ids.count == 1 ? "word" : "words")", role: .destructive) {
+        // Deletes words permanently, and on this sheet it sat in the same grey
+        // as Cancel with only the system's destructive ROLE separating them --
+        // a role that renders as red TEXT on macOS and disappears entirely
+        // against this palette.
+        SettingsActionButton(
+          title: "Delete \(ids.count) \(ids.count == 1 ? "word" : "words")",
+          isEnabled: !isExporting,
+          emphasis: .destructive
+        ) {
           deleteSelection()
         }
-        .disabled(isExporting)
       }
     }
     .padding(24)

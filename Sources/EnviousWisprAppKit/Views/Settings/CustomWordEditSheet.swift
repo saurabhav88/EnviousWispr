@@ -114,8 +114,11 @@ struct CustomWordEditSheet: View {
                   Button {
                     word.aliases.removeAll { $0 == alias }
                   } label: {
+                    // An 8pt glyph inside a chip: the smallest target in the
+                    // whole window, and the one that deletes an alias.
                     Image(systemName: "xmark")
                       .font(.system(size: 8, weight: .bold))
+                      .settingsHoverQuiet(inset: 2, tint: .stError)
                   }
                   .buttonStyle(.plain)
                   .fixedSize()
@@ -200,16 +203,20 @@ struct CustomWordEditSheet: View {
       // Actions
       HStack {
         if onDelete != nil {
-          Button(role: .destructive) {
+          SettingsActionButton(title: "Delete", isEnabled: true, emphasis: .destructive) {
             showingDeleteConfirmation = true
-          } label: {
-            Text("Delete")
           }
         }
         Spacer()
-        Button("Cancel") { dismiss() }
-          .keyboardShortcut(.cancelAction)
-        Button("Save") {
+        SettingsActionButton(title: "Cancel", isEnabled: true, shortcut: .cancelAction) {
+          dismiss()
+        }
+        SettingsActionButton(
+          title: "Save",
+          isEnabled: !word.canonical.trimmingCharacters(in: .whitespaces).isEmpty,
+          emphasis: .filled,
+          shortcut: .defaultAction
+        ) {
           if let error = onSave(word) {
             saveError = error
           } else {
@@ -217,8 +224,6 @@ struct CustomWordEditSheet: View {
             dismiss()
           }
         }
-        .keyboardShortcut(.defaultAction)
-        .disabled(word.canonical.trimmingCharacters(in: .whitespaces).isEmpty)
       }
     }
     .confirmationDialog(
