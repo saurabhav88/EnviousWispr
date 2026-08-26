@@ -135,39 +135,60 @@ struct LivePreviewPackPresentationTests {
     }
   }
 
-  // MARK: - Availability column (#2154)
+  // **The two `availability(for:)` cases are DELETED by #2436 with the Source column
+  // they described.** They protected that an installed pack read "On this Mac" and a
+  // downloadable one "Available from Apple". No defect distinguishes those rows once
+  // the column does not exist; the installed/downloadable boundary is now the filter,
+  // and the two cases below assert it as a partition rather than as two strings.
+  //
+  // Deleted AFTER those cases were green, not in the same edit — the plan made that an
+  // ordering condition because an earlier draft cited a covering case it had not written.
 
-  /// **Product Outcome.** The Availability column is what makes 54 rows scannable:
-  /// it answers "do I already have this" without reading the Status cell. It
-  /// replaced the two-card installed/downloadable split, so if it stops telling
-  /// the truth the table loses the only boundary it has.
-  @Test("Availability says On this Mac for what is installed and Available from Apple for what is not")
-  func availabilityDistinguishesInstalledFromDownloadable() {
-    let installed = LivePreviewPack(
-      tag: "en-US", nativeName: "English (US)", localizedName: "English (US)", isInstalled: true)
-    let available = LivePreviewPack(
-      tag: "fr-FR", nativeName: "Français (France)", localizedName: "French (France)",
-      isInstalled: false)
+  // MARK: - Catalogue filter (#2436)
 
-    #expect(LivePreviewPackPresentation.availability(for: installed) == LivePreviewSettingsCopy.sourceSystem)
-    #expect(LivePreviewPackPresentation.availability(for: available) == LivePreviewSettingsCopy.sourceApple)
-    // The two must differ. A refactor collapsing them would leave a column that
-    // renders on every row and distinguishes nothing.
-    #expect(LivePreviewSettingsCopy.sourceSystem != LivePreviewSettingsCopy.sourceApple)
+  /// **The counts and the rows come from ONE grouping, so a chip cannot lie about the
+  /// list beneath it.** This replaces what the deleted Source column made visible: the
+  /// installed/downloadable boundary. The column stated it per row; the filter states it
+  /// once and can also be the default.
+  ///
+  /// Swapping either group turns this red, which is the property that matters — a chip
+  /// reading "Not on this Mac 53" above the installed rows is worse than no chip.
+  @Test("Both catalogue filter halves come from the same grouping, and partition the packs")
+  func filterHalvesComeFromOneGrouping() {
+    let rows = [
+      pack("en-US", "English", "English", installed: true),
+      pack("de-DE", "German", "Deutsch", installed: false),
+      pack("fr-FR", "French", "Français", installed: false),
+    ]
+    let groups = LivePreviewPackPresentation.groups(from: rows)
+
+    #expect(groups.installed.count == 1)
+    #expect(groups.available.count == 2)
+
+    // A partition: every pack in exactly one half, nothing invented, nothing dropped.
+    let installedAreInstalled = groups.installed.filter(\.isInstalled).count
+    let availableAreNot = groups.available.filter { !$0.isInstalled }.count
+    let unionTags = Set((groups.installed + groups.available).map(\.tag))
+    #expect(groups.installed.count + groups.available.count == rows.count)
+    #expect(installedAreInstalled == groups.installed.count)
+    #expect(availableAreNot == groups.available.count)
+    #expect(unionTags == Set(rows.map(\.tag)))
   }
 
-  /// The column tracks `isInstalled` and nothing else — not the tag, not the
-  /// name. Pinned because the obvious wrong implementation (guessing from the
-  /// locale) would look right on a US machine and be wrong everywhere else.
-  @Test("Availability depends only on whether the pack is installed")
-  func availabilityIgnoresEverythingButInstalledness() {
-    for tag in ["en-US", "zh-CN", "hi-IN", "pt-BR"] {
-      let present = LivePreviewPack(
-        tag: tag, nativeName: tag, localizedName: tag, isInstalled: true)
-      let absent = LivePreviewPack(
-        tag: tag, nativeName: tag, localizedName: tag, isInstalled: false)
-      #expect(LivePreviewPackPresentation.availability(for: present) == LivePreviewSettingsCopy.sourceSystem)
-      #expect(LivePreviewPackPresentation.availability(for: absent) == LivePreviewSettingsCopy.sourceApple)
-    }
+  /// The sheet searches WITHIN the selected half, so a match in the other half must not
+  /// leak into the visible list. That is the one behaviour the old single table could not
+  /// have, and the one a filter makes possible to get wrong.
+  @Test("Searching inside one filter half never returns the other half's matches")
+  func searchIsScopedToTheSelectedHalf() {
+    let rows = [
+      pack("en-US", "English", "English", installed: true),
+      pack("de-DE", "German", "Deutsch", installed: false),
+    ]
+    let groups = LivePreviewPackPresentation.groups(from: rows)
+
+    #expect(LivePreviewPackPresentation.matching(groups.available, query: "German").count == 1)
+    #expect(LivePreviewPackPresentation.matching(groups.installed, query: "German").isEmpty)
+    #expect(LivePreviewPackPresentation.matching(groups.installed, query: "English").count == 1)
+    #expect(LivePreviewPackPresentation.matching(groups.available, query: "English").isEmpty)
   }
 }

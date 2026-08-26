@@ -41,6 +41,15 @@ struct LivePreviewSettingsView: View {
   /// #2154: the dictation-language picker, opened by the Change button.
   @State private var showLanguageSheet: Bool = false
 
+  /// #2436: the pack catalogue, opened by the Languages row or the bar's remedy.
+  @State private var showPackCatalog: Bool = false
+
+  /// What the catalogue's search starts with. The bar's remedy seeds it with the
+  /// missing language's NAME, so the row a user was sent here for is already on
+  /// screen; the Languages row passes nothing, because no particular language is
+  /// in question there.
+  @State private var catalogSearchSeed: String = ""
+
 
   // MARK: - Derived state
 
@@ -214,6 +223,12 @@ struct LivePreviewSettingsView: View {
         // consequence belongs where the action is taken.
         contextSubtitle: LivePreviewSettingsCopy.pickerDictationCaveat)
     }
+    .sheet(isPresented: $showPackCatalog) {
+      // The retained model, never a copy: dismissing this sheet mid-install must not
+      // cancel the install, because the workflow outlives any presentation.
+      LivePreviewPackCatalogSheet(
+        packs: packs, activeTag: activePackTag, initialSearch: catalogSearchSeed)
+    }
   }
 
   // MARK: - Hero card
@@ -248,7 +263,7 @@ struct LivePreviewSettingsView: View {
       appleActive: currentActive, languageMode: settings.languageMode)
 
     return BrandedSection {
-      BrandedRow(showDivider: false) {
+      BrandedRow(showDivider: bar.action != nil) {
         HStack(alignment: .center, spacing: 12) {
           VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
@@ -294,13 +309,26 @@ struct LivePreviewSettingsView: View {
         }
       }
 
-      // **The remedy button lands in C4, with the sheet it opens.**
-      //
-      // `bar.action` is computed and tested from C1; nothing renders it yet, and
-      // that is deliberate rather than an omission. Until C4 the inline pack table
-      // is still on this page, so `statusNeedsLanguageDetail`'s "Use Browse
-      // downloads below" is satisfied by what is genuinely below. Shipping a button
-      // here would mean shipping one that opens nothing for the length of a chunk.
+      // The bar's one remedy, and the only button on the page. Every other unhappy
+      // state is repaired where the control already lives: the engine cards own
+      // download, cancel, resume, retry and remove, and Faster Transcription is
+      // turned off on its own page.
+      if let action = bar.action {
+        BrandedRow(showDivider: false) {
+          HStack(spacing: 12) {
+            Spacer(minLength: 0)
+            switch action {
+            case .browseDownloads(let initialSearch):
+              Button(LivePreviewSettingsCopy.browseDownloadsButton) {
+                catalogSearchSeed = initialSearch
+                showPackCatalog = true
+              }
+              .buttonStyle(.borderedProminent)
+              .controlSize(.small)
+            }
+          }
+        }
+      }
 
     } footer: {
       // Always visible: never gated on engine, toggle, Apple support or pack state.
@@ -503,197 +531,71 @@ struct LivePreviewSettingsView: View {
 
   // MARK: - Language table
 
-  /// Every language available to the preview, as ONE table.
+  /// One row where fifty-four used to be (#2436).
+  ///
+  /// The catalogue moved to `LivePreviewPackCatalogSheet`, which carries every reason
+  /// the table recorded. What stays here is the summary and the way in.
   ///
   /// Hidden entirely below macOS 26 (no Apple packs exist to manage, and an
   /// empty list under a disabled toggle reads as something being broken) and on
   /// the universal engine, which carries its own languages and has no packs.
   ///
-  /// The catalogue LOAD is deliberately NOT gated the same way: its `.task` is
-  /// keyed on the dictation language, so adding the engine to the condition
-  /// without adding it to the key would leave a user who switches back to Apple
-  /// looking at a snapshot from before.
+  /// Carried verbatim, and still true of the LOAD even though the table is gone:
   ///
-  /// **One table, replacing the two cards #2080 shipped.** Those cards existed
-  /// to make the installed/downloadable boundary visible after ten rows, which a
-  /// Source column does better: it aligns, it scans, and it does not split the
-  /// list in half. Group ORDER is preserved — installed first — so
-  /// `LivePreviewPackPresentation.groups(from:)` still owns the policy and its
-  /// tests still mean something.
-  ///
-  /// No drag handles and no per-row overflow menu, both of which the mockup
-  /// drew: nothing in the app orders languages, and Apple's packs are not ours
-  /// to delete, so each would be a control with nothing behind it (founder,
-  /// Gate 1).
+  /// > The catalogue LOAD is deliberately NOT gated the same way: its `.task` is
+  /// > keyed on the dictation language, so adding the engine to the condition
+  /// > without adding it to the key would leave a user who switches back to Apple
+  /// > looking at a snapshot from before.
   @ViewBuilder
   private var packsSection: some View {
     if showsApplePacks {
       BrandedSection(header: LivePreviewSettingsCopy.packsHeader) {
-        BrandedRow(showDivider: !visibleRows.isEmpty) {
-          VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
-              Text(LivePreviewSettingsCopy.packsDescription)
-                .settingsReadingCopy()
-              Spacer(minLength: 8)
-              // Only once there is a list to search: a search box over a spinner
-              // or over the "could not read" message is a control that does nothing.
-              if case .loaded = packs.state { searchField }
+        BrandedRow(showDivider: false) {
+          HStack(alignment: .top, spacing: 11) {
+            SettingsRowIcon(systemName: "arrow.down.circle")
+            VStack(alignment: .leading, spacing: 4) {
+              // **No count unless we have one.** A count is a claim about this Mac,
+              // and there is no acceptable stand-in for one we have not read yet.
+              switch packs.state {
+              case .loading:
+                Text(LivePreviewSettingsCopy.packsLoading).settingsRowLabel()
+              case .failed:
+                Text(LivePreviewSettingsCopy.packsUnavailable).settingsRowLabel()
+              case .loaded(let rows):
+                Text(
+                  LivePreviewSettingsCopy.packsInstalledSummary(
+                    installed: rows.filter(\.isInstalled).count, total: rows.count)
+                ).settingsRowLabel()
+              }
+              Text(LivePreviewSettingsCopy.packsDescription).settingsHelperCopy()
             }
-            nonListState
+            Spacer(minLength: 8)
+            Button(LivePreviewSettingsCopy.packsBrowseButton) {
+              catalogSearchSeed = ""
+              showPackCatalog = true
+            }
+            .controlSize(.small)
           }
         }
-        if !visibleRows.isEmpty {
-          tableHeader
-          ForEach(Array(visibleRows.enumerated()), id: \.element.id) { index, pack in
-            BrandedRow(showDivider: index < visibleRows.count - 1) {
-              packRow(pack)
-            }
-          }
-        }
       }
     }
   }
 
-  private var tableHeader: some View {
-    BrandedRow(showDivider: true) {
-      HStack(spacing: 10) {
-        Text(LivePreviewSettingsCopy.tableColumnLanguage)
-          .settingsHelperCopy()
-          .frame(maxWidth: .infinity, alignment: .leading)
-        Text(LivePreviewSettingsCopy.tableColumnSource)
-          .settingsHelperCopy()
-          .frame(width: Self.sourceColumnWidth, alignment: .leading)
-        Text(LivePreviewSettingsCopy.tableColumnStatus)
-          .settingsHelperCopy()
-          .frame(width: Self.statusColumnWidth, alignment: .leading)
-      }
-      .accessibilityHidden(true)  // column labels; each row states its own values
-    }
-  }
-
-  private static let sourceColumnWidth: CGFloat = 90
-  private static let statusColumnWidth: CGFloat = 130
-
-  /// Same shape as `LanguageLockSheet.searchField`, deliberately: the app
-  /// already has a language search and a second visual idiom for the same job
-  /// would read as a different feature.
-  private var searchField: some View {
-    HStack(spacing: 8) {
-      Image(systemName: "magnifyingglass")
-        .foregroundStyle(.stTextSecondary)
-      TextField(LivePreviewSettingsCopy.packsSearchPlaceholder, text: $searchText)
-        .textFieldStyle(.plain)
-        .accessibilityLabel("Search languages")
-    }
-    .frame(maxWidth: 240)
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
-    // Recessed surface WITH a border, matching `InsetNotice` on this same page.
-    // The sheet this was ported from underlines its field instead, which works
-    // there because it spans the sheet's full width at the top. Inside a card
-    // that underline reads as no container at all (founder, 2026-08-16).
-    .background(Color.stPageBg, in: RoundedRectangle(cornerRadius: 9))
-    .overlay(
-      RoundedRectangle(cornerRadius: 9).strokeBorder(Color.stDivider, lineWidth: 1)
-    )
-  }
-
-  /// Loading, unreadable, or nothing matching the search.
-  @ViewBuilder
-  private var nonListState: some View {
-    switch packs.state {
-    case .loading:
-      HStack(spacing: 8) {
-        ProgressView().controlSize(.small)
-        // `packsLoading`, NOT `packInstalling` — this spinner is a local
-        // inventory read. The per-row spinner below is the one that means a transfer.
-        Text(LivePreviewSettingsCopy.packsLoading).settingsHelperCopy()
-      }
-    case .failed:
-      Text(LivePreviewSettingsCopy.packsUnavailable).settingsHelperCopy()
-    case .loaded:
-      if visibleRows.isEmpty {
-        Text(LivePreviewSettingsCopy.packsNoSearchMatch).settingsHelperCopy()
-      }
-    }
-  }
-
-  /// Search first, then group, then flatten — installed rows first, so the
-  /// grouping policy survives the move to one table without a visible split.
-  private var visibleRows: [LivePreviewPack] {
-    guard case .loaded(let rows) = packs.state else { return [] }
-    let groups = LivePreviewPackPresentation.groups(
-      from: LivePreviewPackPresentation.matching(rows, query: searchText))
-    return groups.installed + groups.available
-  }
-
-  /// Gated on the toggle because "In use" is a claim about a running preview,
-  /// and nothing runs while the feature is off. Gated on the ENGINE because
-  /// these are Apple's packs: with the universal engine selected the badge would
-  /// name a language that is not the one on screen. Both terms read the same
-  /// values the section above does, so the two cannot disagree.
-  private func isActive(_ pack: LivePreviewPack) -> Bool {
-    // Same reason: an "In use" badge is a claim about the language running NOW.
-    guard isUsingApple, isPreviewOn, case .ready(let tag, _) = currentActive else { return false }
-    return tag == pack.tag
-  }
-
-  @ViewBuilder
-  private func packRow(_ pack: LivePreviewPack) -> some View {
-    HStack(spacing: 10) {
-      VStack(alignment: .leading, spacing: 2) {
-        Text(pack.localizedName).settingsRowLabel()
-        if pack.nativeName != pack.localizedName {
-          Text(pack.nativeName).settingsHelperCopy()
-        }
-        // The failure needs WORDS, not just a relabelled button. "Try again"
-        // alone leaves the user guessing whether the download broke, whether
-        // they did something wrong, or whether the language is unavailable — and
-        // the remedy is the same for every cause, so one sentence answers all.
-        if packs.failedTag == pack.tag {
-          Text(LivePreviewSettingsCopy.packInstallFailed).settingsHelperCopy()
-        }
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-
-      Text(LivePreviewPackPresentation.availability(for: pack))
-        .settingsHelperCopy()
-        .frame(width: Self.sourceColumnWidth, alignment: .leading)
-
-      statusCell(pack)
-        .frame(width: Self.statusColumnWidth, alignment: .leading)
-    }
-  }
-
-  @ViewBuilder
-  private func statusCell(_ pack: LivePreviewPack) -> some View {
-    if isActive(pack) {
-      // "Ready" says the bytes are here; it never said WHICH language you are
-      // actually previewing in. With nine installed, that was the whole confusion.
-      ProviderStatusChip(
-        status: ProviderStatus(label: LivePreviewSettingsCopy.packInUse, tone: .ready))
-    } else if pack.isInstalled {
-      ProviderStatusChip(
-        status: ProviderStatus(
-          label: LivePreviewSettingsCopy.packInstalled, tone: .unavailable))
-    } else if packs.installingTag == pack.tag {
-      // A spinner, never a percentage. Apple's progress object yields two
-      // distinct values across a whole install, so a bar would be a fabrication.
-      HStack(spacing: 6) {
-        ProgressView().controlSize(.small)
-        Text(LivePreviewSettingsCopy.packInstalling).settingsHelperCopy()
-      }
-    } else {
-      Button(
-        packs.failedTag == pack.tag
-          ? LivePreviewSettingsCopy.packRetry
-          : LivePreviewSettingsCopy.packInstall
-      ) {
-        packs.install(tag: pack.tag)
-      }
-      .buttonStyle(.bordered)
-      .controlSize(.small)
-      .disabled(packs.installingTag != nil)
-    }
+  /// The pack tag currently producing the preview, or nil.
+  ///
+  /// Carried verbatim from `isActive`, which the catalogue sheet no longer owns because
+  /// the two gates below are the page's to answer, not a row's:
+  ///
+  /// > Gated on the toggle because "In use" is a claim about a running preview,
+  /// > and nothing runs while the feature is off. Gated on the ENGINE because
+  /// > these are Apple's packs: with the universal engine selected the badge would
+  /// > name a language that is not the one on screen.
+  ///
+  /// > Same reason: an "In use" badge is a claim about the language running NOW.
+  ///
+  /// Both terms read the same values the bar does, so the two cannot disagree.
+  private var activePackTag: String? {
+    guard isUsingApple, isPreviewOn, case .ready(let tag, _) = currentActive else { return nil }
+    return tag
   }
 }

@@ -42,6 +42,12 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.languageProvenanceDetected,
       // #2154 additions.
       LivePreviewSettingsCopy.previewPrivacyFooter,
+      // #2436 catalogue sheet.
+      LivePreviewSettingsCopy.browseDownloadsButton,
+      LivePreviewSettingsCopy.packsBrowseButton,
+      LivePreviewSettingsCopy.catalogFilterAvailable,
+      LivePreviewSettingsCopy.catalogFilterInstalled,
+      LivePreviewSettingsCopy.catalogDoneButton,
       LivePreviewSettingsCopy.statusActiveLabel,
       LivePreviewSettingsCopy.statusActiveDetail,
       LivePreviewSettingsCopy.statusOffLabel,
@@ -72,11 +78,6 @@ struct LivePreviewSettingsCopyTests {
       // r8: paused variants, which must describe rather than promise.
       LivePreviewSettingsCopy.universalLockedPaused("German"),
       LivePreviewSettingsCopy.universalAutoPaused,
-      LivePreviewSettingsCopy.tableColumnLanguage,
-      LivePreviewSettingsCopy.tableColumnSource,
-      LivePreviewSettingsCopy.tableColumnStatus,
-      LivePreviewSettingsCopy.sourceSystem,
-      LivePreviewSettingsCopy.sourceApple,
       LivePreviewCopy.needsNewerMacOS,
       LivePreviewCopy.languageUnsupported,
       LivePreviewCopy.notReady,

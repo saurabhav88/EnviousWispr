@@ -224,6 +224,24 @@ enum LivePreviewSettingsCopy {
     "It stays on your Mac, is discarded when the recording ends, and never changes a "
     + "character of what gets pasted."
 
+  // MARK: - Pack catalogue sheet (#2436)
+
+  /// The bar's one remedy, named for where it goes rather than what it fetches: the
+  /// catalogue is the only thing that can resolve a display name to an installable pack.
+  static let browseDownloadsButton = "Browse downloads"
+
+  /// The Languages row's trailing button, and the row's own summary.
+  static let packsBrowseButton = "Browse"
+  static func packsInstalledSummary(installed: Int, total: Int) -> String {
+    "\(installed) of \(total) on this Mac"
+  }
+
+  /// **Not-installed first, because acquiring is the only reason this sheet opens.**
+  /// The counts beside them come from the same grouping the rows do.
+  static let catalogFilterAvailable = "Not on this Mac"
+  static let catalogFilterInstalled = "On this Mac"
+  static let catalogDoneButton = "Done"
+
   // MARK: - Status-bar language chip (#2436)
 
   /// The universal engine's "language", which is the absence of one.
@@ -312,21 +330,4 @@ enum LivePreviewSettingsCopy {
     "This sets the language for dictation too, not just the preview. On Auto, dictation "
     + "detects whatever you speak, while the preview has to pick one language in advance "
     + "and uses your Mac's."
-
-  // MARK: - Language table (#2154)
-
-  static let tableColumnLanguage = "Language"
-  static let tableColumnStatus = "Status"
-
-  /// **Availability, NOT provenance, and the first draft got that wrong.**
-  ///
-  /// The column is computed from `isInstalled`, so downloading a language
-  /// through this very page flipped it from "Apple" to "System" — claiming the
-  /// pack had shipped with macOS when the user had just fetched it from Apple
-  /// thirty seconds earlier. The model carries availability and knows nothing
-  /// about origin, so the honest fix is to label what is actually computed.
-  /// Every one of these is an Apple pack either way.
-  static let tableColumnSource = "Availability"
-  static let sourceSystem = "On this Mac"
-  static let sourceApple = "Available from Apple"
 }
