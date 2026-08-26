@@ -42,23 +42,16 @@ struct LivePreviewPackCatalogSheet: View {
   /// the model is passed in rather than created here.
   let packs: LivePreviewPacksModel
 
-  /// The pack tag currently producing the preview, or nil.
-  ///
-  /// Resolved by the CALLER, which owns the two gates that decide whether "In use" is a
-  /// claim we may make. Carried verbatim from `isActive`:
-  ///
-  /// > Gated on the toggle because "In use" is a claim about a running preview,
-  /// > and nothing runs while the feature is off. Gated on the ENGINE because
-  /// > these are Apple's packs: with the universal engine selected the badge would
-  /// > name a language that is not the one on screen.
-  let activeTag: String?
-
   /// Seeded by the status bar's remedy with the missing language's NAME, so the row a
   /// user was sent here for is already on screen. Empty from the Languages row, where
   /// there is no particular language in question.
-  init(packs: LivePreviewPacksModel, activeTag: String?, initialSearch: String = "") {
+  /// **No `activeTag` any more, and it is removed rather than defaulted.** It fed
+  /// the "In use" badge, which only ever rendered on an installed row — a row this
+  /// sheet no longer shows. A defaulted-but-ignored parameter would have left every
+  /// call site passing a value nothing reads, which is how a dead argument survives
+  /// a migration.
+  init(packs: LivePreviewPacksModel, initialSearch: String = "") {
     self.packs = packs
-    self.activeTag = activeTag
     _searchText = State(initialValue: initialSearch)
   }
 
@@ -66,36 +59,92 @@ struct LivePreviewPackCatalogSheet: View {
   /// catalogue, so the model has no reason to know it exists.
   @State private var searchText: String
 
-  /// Which half of the catalogue is on screen. Not-installed first, because acquiring a
-  /// language is the only reason this sheet opens.
-  @State private var showingInstalled: Bool = false
-
   var body: some View {
-    NavigationStack {
-      VStack(spacing: 0) {
-        header
-        Divider().overlay(Color.stDivider)
-        content
-      }
-      .frame(minWidth: 460, minHeight: 420)
-      .background(Color.stPageBg)
-      .navigationTitle(LivePreviewSettingsCopy.packsHeader)
-      // **A failed read must be retryable, or the message is a dead end.**
-      // `packsUnavailable` tells the user to reopen; nothing reloaded when they did,
-      // so reopening produced the same failure forever. Only on `.failed`, so an
-      // ordinary open does not re-read an inventory the page already has.
-      .task {
-        if case .failed = packs.state { await packs.load() }
-      }
-      .toolbar {
-        ToolbarItem(placement: .confirmationAction) {
-          Button(LivePreviewSettingsCopy.catalogDoneButton) { dismiss() }
-        }
-      }
+    // **No `NavigationStack`, and that is the fix rather than a simplification.**
+    // `.navigationTitle` renders through AppKit's own title chrome, which insets
+    // the text by a value this sheet does not control — measured sitting ~64pt
+    // from the sheet edge while the body copy below it starts at 16pt, so the
+    // title read as belonging to a different container than everything under it
+    // (founder, 2026-08-26). A plain header row shares ONE inset constant with
+    // the body, which is what makes them line up by construction rather than by
+    // a number someone has to keep matching.
+    //
+    // Losing the navigation bar also loses the toolbar that carried the only
+    // dismissal, so `titleBar` provides both the title and an explicit close.
+    VStack(spacing: 0) {
+      titleBar
+      Divider().overlay(Color.stDivider)
+      header
+      Divider().overlay(Color.stDivider)
+      content
+      Divider().overlay(Color.stDivider)
+      // **Explicit, because dropping `NavigationStack` dropped the toolbar that
+      // used to render this.** `Done` lived in a `confirmationAction` toolbar
+      // item; removing the navigation chrome to fix the title's inset would have
+      // silently removed the sheet's primary exit with it. Kept alongside the
+      // close control rather than replaced by it: `Done` is where a keyboard user
+      // lands by default, and it is what the earlier screenshots trained.
+      footer
+    }
+    .frame(minWidth: 460, minHeight: 420)
+    .background(Color.stPageBg)
+    // **A failed read must be retryable, or the message is a dead end.**
+    // `packsUnavailable` tells the user to reopen; nothing reloaded when they did,
+    // so reopening produced the same failure forever. Only on `.failed`, so an
+    // ordinary open does not re-read an inventory the page already has.
+    .task {
+      if case .failed = packs.state { await packs.load() }
     }
   }
 
+  // MARK: - Title bar
+
+  /// The sheet's own title row, sharing `Self.inset` with the body beneath it.
+  ///
+  /// **The close control is not decoration.** Before this the only way out was
+  /// the `Done` button at the far bottom-right, which on a long scrolled list is
+  /// off-screen and reads as "commit" rather than "leave" — nothing here is
+  /// committed, so a user looking for the ordinary way to abandon a sheet found
+  /// none (founder, 2026-08-26). Escape already dismissed it, but an invisible
+  /// keyboard-only exit is not an affordance.
+  private var titleBar: some View {
+    HStack(spacing: 8) {
+      Text(LivePreviewSettingsCopy.packsHeader)
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(Color.stTextPrimary)
+      Spacer(minLength: 12)
+      CatalogCloseButton { dismiss() }
+    }
+    .padding(.horizontal, Self.inset)
+    .padding(.vertical, 12)
+  }
+
   // MARK: - Header
+
+  /// One inset for the title and for everything under it. Shared rather than
+  /// repeated, because the defect this replaced was two containers disagreeing
+  /// about their left edge.
+  private static let inset: CGFloat = 16
+
+  private var footer: some View {
+    HStack {
+      Spacer(minLength: 0)
+      // Filled, where the row actions are outlined: one primary, many secondaries.
+      // NOT `.borderedProminent`, which rendered filled while it lived in the
+      // navigation toolbar and grey the moment it moved into a plain row — the
+      // same container-dependence measured on `Browse`.
+      SettingsActionButton(
+        title: LivePreviewSettingsCopy.catalogDoneButton,
+        isEnabled: true,
+        emphasis: .filled
+      ) {
+        dismiss()
+      }
+      .keyboardShortcut(.defaultAction)
+    }
+    .padding(.horizontal, Self.inset)
+    .padding(.vertical, 12)
+  }
 
   private var header: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -105,10 +154,9 @@ struct LivePreviewPackCatalogSheet: View {
       // the "could not read" message is a control that does nothing.
       if case .loaded = packs.state {
         searchField
-        filterChips
       }
     }
-    .padding(16)
+    .padding(Self.inset)
   }
 
   /// Carried verbatim from the page's own search box, whose shape this keeps:
@@ -138,54 +186,19 @@ struct LivePreviewPackCatalogSheet: View {
     .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.stDivider, lineWidth: 1))
   }
 
-  /// Both counts come from the SAME searched grouping the rows do, so a chip can never
-  /// disagree with the list under it — including while a search is active, which is the
-  /// case that shipped wrong for one review round.
-  private var filterChips: some View {
-    let groups = visibleGroups
-    return HStack(spacing: 6) {
-      chip(
-        title: LivePreviewSettingsCopy.catalogFilterAvailable,
-        count: groups.available.count, selected: !showingInstalled
-      ) { showingInstalled = false }
-      chip(
-        title: LivePreviewSettingsCopy.catalogFilterInstalled,
-        count: groups.installed.count, selected: showingInstalled
-      ) { showingInstalled = true }
-      Spacer(minLength: 0)
-    }
-  }
-
-  private func chip(
-    title: String, count: Int, selected: Bool, action: @escaping () -> Void
-  ) -> some View {
-    Button(action: action) {
-      HStack(spacing: 5) {
-        Text(title)
-        Text("\(count)").opacity(0.65)
-      }
-      .font(.stHelper)
-      .padding(.horizontal, 11)
-      .padding(.vertical, 4)
-      .background(
-        selected ? Color.stAccentSolid : Color.clear,
-        in: Capsule()
-      )
-      .foregroundStyle(selected ? Color.white : Color.stTextSecondary)
-      .overlay(
-        Capsule().strokeBorder(selected ? Color.clear : Color.stDivider, lineWidth: 1))
-    }
-    .buttonStyle(.plain)
-    // **Which half is showing lives ONLY in these two colours**, so without this a
-    // VoiceOver user hears two ordinary buttons with labels and counts and has no
-    // way to tell which one the list below is obeying — on a sheet whose entire
-    // job is "the languages you do NOT have". Cloud review on PR #2440.
-    //
-    // `.isSelected` rather than a "(selected)" suffix on the label: the trait is
-    // what assistive tech reads as SELECTION, and baking the state into the visible
-    // title would also change the button's own name every time it is pressed.
-    .accessibilityAddTraits(selected ? [.isSelected] : [])
-  }
+  // **The installed half is GONE, and that is a scope change, not a tidy-up.**
+  // Two chips asked the user to understand a split before they could act, on a
+  // sheet that exists for exactly one reason: acquiring a language you do not
+  // have (founder, 2026-08-26 — "remove on this mac part because that is the
+  // confusing part"). What is already installed is answerable from the language
+  // control at the top of the page, which lists precisely the installed
+  // languages you can switch to.
+  //
+  // Consequence, stated rather than discovered later: a pack that is installed
+  // but NOT lockable for dictation now appears in neither place. That is
+  // reachable only when Apple ships a preview pack for a language the
+  // transcription backend cannot lock, and such a pack cannot be selected or
+  // used, so nothing is lost but its visibility.
 
   // MARK: - Content
 
@@ -232,15 +245,18 @@ struct LivePreviewPackCatalogSheet: View {
     }.frame(maxWidth: .infinity)
   }
 
-  /// Which nothing-here message applies: the search found nothing, or this half of the
-  /// catalogue is genuinely empty.
+  /// Which nothing-here message applies: the search found nothing, or every
+  /// language is already installed.
+  ///
+  /// **Still two cases, and the distinction is the one that shipped wrong once.**
+  /// An empty list because you searched for "qqq" and an empty list because there
+  /// is genuinely nothing left to install are different facts, and blaming the
+  /// search for the second is the defect this branch exists to prevent.
   private var emptyMessage: String {
     guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       return LivePreviewSettingsCopy.packsNoSearchMatch
     }
-    return showingInstalled
-      ? LivePreviewSettingsCopy.catalogNoneInstalled
-      : LivePreviewSettingsCopy.catalogNothingToInstall
+    return LivePreviewSettingsCopy.catalogNothingToInstall
   }
 
   private var loadedPacks: [LivePreviewPack] {
@@ -248,17 +264,25 @@ struct LivePreviewPackCatalogSheet: View {
     return rows
   }
 
-  /// **One searched grouping feeds BOTH the chips and the rows.** Computing them
-  /// separately is how the chips came to count the full catalogue while the rows showed
-  /// only matches — a chip reading "Not on this Mac 53" above one row is worse than no
-  /// chip. `groups(from:matching:)` owns the policy, so there is one answer to disagree
-  /// with rather than two.
+  /// The searched grouping. Carried from when it also fed two filter chips:
+  ///
+  /// > **One searched grouping feeds BOTH the chips and the rows.** Computing them
+  /// > separately is how the chips came to count the full catalogue while the rows
+  /// > showed only matches — a chip reading "Not on this Mac 53" above one row is
+  /// > worse than no chip.
+  ///
+  /// The chips are gone, so that particular disagreement is no longer reachable —
+  /// kept as one call anyway, because `groups(from:matching:)` owning the split is
+  /// what makes the classification testable independently of this view.
   private var visibleGroups: LivePreviewPackPresentation.Groups {
     LivePreviewPackPresentation.groups(from: loadedPacks, matching: searchText)
   }
 
+  /// Always the not-installed half. `groups(from:matching:)` still owns the
+  /// split and still applies the search to both, so the classification and its
+  /// tests are untouched; this sheet simply renders one side of it.
   private var visibleRows: [LivePreviewPack] {
-    showingInstalled ? visibleGroups.installed : visibleGroups.available
+    visibleGroups.available
   }
 
   @ViewBuilder
@@ -283,18 +307,15 @@ struct LivePreviewPackCatalogSheet: View {
     }
   }
 
+  /// **Two branches were deleted here, not left unreachable.** `packInUse` and
+  /// `packInstalled` could only render for a pack this sheet no longer lists, so
+  /// keeping them would have been dead code that reads as live coverage — and the
+  /// next person to add a state would copy the shape. The claims they made still
+  /// exist where they are true: which language is actually previewing is the
+  /// status bar's job, and what is installed is the language control's.
   @ViewBuilder
   private func statusCell(_ pack: LivePreviewPack) -> some View {
-    if pack.tag == activeTag {
-      // "Ready" says the bytes are here; it never said WHICH language you are
-      // actually previewing in. With nine installed, that was the whole confusion.
-      ProviderStatusChip(
-        status: ProviderStatus(label: LivePreviewSettingsCopy.packInUse, tone: .ready))
-    } else if pack.isInstalled {
-      ProviderStatusChip(
-        status: ProviderStatus(
-          label: LivePreviewSettingsCopy.packInstalled, tone: .unavailable))
-    } else if packs.installingTag == pack.tag {
+    if packs.installingTag == pack.tag {
       // A spinner, never a percentage. Apple's progress object yields two
       // distinct values across a whole install, so a bar would be a fabrication.
       HStack(spacing: 6) {
@@ -302,16 +323,55 @@ struct LivePreviewPackCatalogSheet: View {
         Text(LivePreviewSettingsCopy.packInstalling).settingsHelperCopy()
       }
     } else {
-      Button(
-        packs.failedTag == pack.tag
+      // **`.bordered` was the defect, not the size.** On this dark surface AppKit
+      // renders a bordered button as a low-contrast grey capsule that is very
+      // nearly the app's own disabled treatment — so the one action on every row
+      // read as unavailable, and hovering changed nothing to contradict that
+      // (founder, 2026-08-26). It was ALSO genuinely disabled whenever any other
+      // install was running, which meant "looks disabled" and "is disabled" were
+      // indistinguishable at exactly the moment the difference mattered.
+      //
+      // `SettingsActionButton` carries an accent tint, a hover fill, and a
+      // disabled state that is visibly different from both.
+      SettingsActionButton(
+        title: packs.failedTag == pack.tag
           ? LivePreviewSettingsCopy.packRetry
-          : LivePreviewSettingsCopy.packInstall
+          : LivePreviewSettingsCopy.packInstall,
+        isEnabled: packs.installingTag == nil
       ) {
         packs.install(tag: pack.tag)
       }
-      .buttonStyle(.bordered)
-      .controlSize(.small)
-      .disabled(packs.installingTag != nil)
     }
+  }
+}
+
+// MARK: - Catalogue controls
+
+/// The sheet's close control.
+///
+/// Deliberately a symbol rather than a second worded button: `Done` at the
+/// bottom already carries the words, and two worded exits invite the reading
+/// that they do different things. Nothing in this sheet is committed on exit,
+/// so both simply leave.
+private struct CatalogCloseButton: View {
+  let action: () -> Void
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var hovering = false
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: "xmark")
+        .font(.system(size: 11, weight: .bold))
+        .foregroundStyle(hovering ? Color.stTextPrimary : Color.stTextSecondary)
+        .frame(width: 22, height: 22)
+        .background(
+          Circle().fill(hovering ? Color.stSectionBg : Color.clear)
+        )
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .onHover { hovering = $0 }
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+    .accessibilityLabel(LivePreviewSettingsCopy.catalogCloseLabel)
   }
 }

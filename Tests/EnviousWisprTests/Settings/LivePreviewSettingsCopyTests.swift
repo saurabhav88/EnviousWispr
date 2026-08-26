@@ -29,8 +29,6 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.packsUnavailable,
       LivePreviewSettingsCopy.packsSearchPlaceholder,
       LivePreviewSettingsCopy.packsNoSearchMatch,
-      LivePreviewSettingsCopy.packInstalled,
-      LivePreviewSettingsCopy.packInUse,
       LivePreviewSettingsCopy.packInstall,
       LivePreviewSettingsCopy.packInstalling,
       LivePreviewSettingsCopy.packInstallFailed,
@@ -44,10 +42,10 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.previewPrivacyFooter,
       // #2436 catalogue sheet.
       LivePreviewSettingsCopy.browseDownloadsButton,
-      LivePreviewSettingsCopy.packsBrowseButton,
-      LivePreviewSettingsCopy.catalogFilterAvailable,
-      LivePreviewSettingsCopy.catalogFilterInstalled,
       LivePreviewSettingsCopy.catalogDoneButton,
+      // #2445 catalogue-sheet polish.
+      LivePreviewSettingsCopy.catalogCloseLabel,
+      LivePreviewSettingsCopy.packsInstallRowTitle,
       LivePreviewSettingsCopy.statusActiveLabel,
       LivePreviewSettingsCopy.statusActiveDetail,
       LivePreviewSettingsCopy.statusOffLabel,
@@ -76,7 +74,6 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.pickerAppleCaveat,
       LivePreviewSettingsCopy.pickerUniversalCaveat,
       LivePreviewSettingsCopy.catalogNothingToInstall,
-      LivePreviewSettingsCopy.catalogNoneInstalled,
       LivePreviewSettingsCopy.universalAuto,
       // r8: paused variants, which must describe rather than promise.
       LivePreviewSettingsCopy.universalLockedPaused("German"),
@@ -195,16 +192,51 @@ struct LivePreviewSettingsCopyTests {
   /// catch one being given the other's explanation.
   @Test("Apple's caveat keeps the Auto asymmetry, and Universal's does not claim it")
   func caveatsAreEngineSpecific() {
+    // **Attribution by PROXIMITY, not by a list of verbs.** This used to require
+    // one of ["dictation detects", "dictation understands"] — a description of a
+    // set, which grew a new member the moment the copy said "dictation follows".
+    // Extending it would buy one more rewording before the next.
+    //
+    // The property the test actually exists for is WHICH SUBJECT each claim hangs
+    // on: hearing the spoken language belongs to dictation, and falling back to
+    // the Mac belongs to the preview. Nearest-mention answers that for any verb,
+    // and it is what the reversal defect ("Mac detects dictation") violated.
+    // **The subject that GOVERNS a claim is the last one named BEFORE it**, which
+    // is what English word order gives us and what a nearest-mention measure does
+    // not. Measured, after nearest-mention picked the wrong answer on correct copy:
+    // in "dictation follows what you speak, but the preview must pick one", the
+    // word "preview" sits 16 characters after "you speak" while "dictation" is 25
+    // before it, so proximity attributed the hearing to the preview.
+    func governingSubject(_ text: String, of claim: String) -> String? {
+      guard let claimAt = text.range(of: claim)?.lowerBound else { return nil }
+      var best: (String, Int)?
+      for subject in ["dictation", "preview"] {
+        for r in text.ranges(of: subject) where r.lowerBound < claimAt {
+          let d = text.distance(from: r.lowerBound, to: claimAt)
+          if best == nil || d < best!.1 { best = (subject, d) }
+        }
+      }
+      return best?.0
+    }
+
     let apple = LivePreviewSettingsCopy.pickerAppleCaveat.lowercased()
     #expect(apple.contains("auto"), "Apple's caveat stopped naming the mode it describes")
     #expect(
-      ["dictation detects", "dictation understands"].contains(where: apple.contains)
-        && ["you speak", "spoken"].contains(where: apple.contains),
-      "Apple's caveat stopped saying DICTATION is what hears the spoken language")
+      governingSubject(apple, of: "you speak") == "dictation",
+      "Apple's caveat no longer attributes hearing the spoken language to DICTATION")
     #expect(
-      apple.contains("preview")
-        && ["uses your mac", "follows your mac", "goes by your mac"].contains(where: apple.contains),
-      "Apple's caveat stopped saying the PREVIEW is what falls back to the Mac")
+      governingSubject(apple, of: "your mac") == "preview",
+      "Apple's caveat no longer attributes the Mac fallback to the PREVIEW")
+
+    // Two-way control: the reversal that shipped once must still fail this.
+    let reversed = "on auto, the preview follows what you speak, while dictation uses your mac's."
+    // AND, not OR: the swap breaks BOTH attributions, so requiring both to be
+    // detected is the stronger control. An OR would pass while half the check
+    // was inert.
+    #expect(
+      governingSubject(reversed, of: "you speak") == "preview"
+        && governingSubject(reversed, of: "your mac") == "dictation",
+      "the attribution check cannot detect the swapped-subjects defect it exists for")
 
     // The universal engine resolves per utterance, so the Mac fallback is not its story.
     // Asserting its ABSENCE is the half that would have caught the shared-string defect.

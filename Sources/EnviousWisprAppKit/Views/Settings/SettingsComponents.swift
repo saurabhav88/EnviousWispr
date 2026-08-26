@@ -672,6 +672,20 @@ struct EngineCard<Footer: View>: View {
   let onSelect: () -> Void
   /// The action area: a Download/Cancel/Resume/Remove button, a progress bar,
   /// or nothing. Rendered as a sibling of the selection button, never a child.
+  /// Whether this card should fill its container's height.
+  ///
+  /// **Defaulted off so the Transcription page is byte-identical.** Live Preview
+  /// puts two cards in a grid row where their content legitimately differs in
+  /// height — one tagline wraps, the other carries a footer button — so without
+  /// this their bottom edges disagree and the pair reads as unfinished (Codex UX
+  /// review, 2026-08-26).
+  ///
+  /// **It has to live HERE, not at the call site.** An outer `.frame` applied by
+  /// the caller stretches a transparent box around a card whose `.background`
+  /// and border were already sized to content — measured doing exactly that
+  /// before this parameter existed: tops aligned, bottoms still ragged.
+  var fillsHeight: Bool = false
+
   @ViewBuilder var footer: Footer
 
   var body: some View {
@@ -737,7 +751,17 @@ struct EngineCard<Footer: View>: View {
           }
         }
         .padding(16)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        // **The stretch belongs to the BUTTON'S LABEL, not to the card.**
+        // `fillsHeight` first put `maxHeight: .infinity` on the outer container,
+        // which made the two cards match — and made the added space UNSELECTABLE,
+        // because the `Button` wraps only this content. The founder found it
+        // immediately: "the bottom half of the preview engine cards are not
+        // clickable" (2026-08-26). Growing a card without growing its hit region
+        // is a worse defect than the ragged edge it was fixing.
+        .frame(
+          maxWidth: .infinity,
+          maxHeight: fillsHeight ? .infinity : nil,
+          alignment: .topLeading)
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
@@ -844,16 +868,96 @@ struct ProviderStatus: Equatable {
 struct ProviderStatusChip: View {
   let status: ProviderStatus
 
+  /// Whether this chip is the HEADLINE state of its surface.
+  ///
+  /// **Defaulted off, so `AIPolishProviderRail` is byte-identical.** There it is
+  /// one badge among many rows and the quiet microcopy treatment is right.
+  ///
+  /// On the Live Preview status bar it is the opposite: the label is the single
+  /// thing the page exists to tell you, and it was rendered in `stHelper` — the
+  /// microcopy token — tinted by tone. In the OFF state that tone is grey, so the
+  /// page's main fact was its quietest text while a large purple engine card kept
+  /// the eye (Codex UX review r2, 2026-08-26: "the eye lands on the engine card
+  /// before the condition that currently matters").
+  ///
+  /// **The DOT keeps the tone colour and the label takes primary contrast.** Tone
+  /// still carries the meaning for anyone reading colour; the label stops
+  /// depending on it, which also helps where grey-on-dark is the hardest to read.
+  var isHeadline: Bool = false
+
   var body: some View {
     HStack(spacing: 5) {
       Circle()
         .fill(status.tone.color)
-        .frame(width: 7, height: 7)
+        .frame(width: isHeadline ? 8 : 7, height: isHeadline ? 8 : 7)
       Text(status.label)
-        .font(.stHelper)
-        .foregroundStyle(status.tone.color)
+        .font(isHeadline ? .system(size: 15, weight: .semibold) : .stHelper)
+        .foregroundStyle(isHeadline ? Color.stTextPrimary : status.tone.color)
     }
     .accessibilityElement(children: .combine)
     .accessibilityLabel("Status: \(status.label)")
+  }
+}
+/// A branded action button for settings sheets and rows.
+///
+/// **Enabled and disabled must not look alike.** The bordered style this
+/// replaced rendered both as low-contrast grey on this surface, and every row's
+/// button genuinely disables while any other install runs — so the state that
+/// mattered was the state that could not be read.
+///
+/// **And the SYSTEM prominent style is not a substitute, measured rather than
+/// assumed.** `.borderedProminent` renders accent-filled inside the sheet and
+/// plain grey on the settings page, in the same build, from the same modifier —
+/// so a button's affordance depended on which container it landed in. Owning the
+/// fill, border and hover here makes the appearance a property of the control
+/// rather than of its surroundings.
+struct SettingsActionButton: View {
+  /// How loud this button is. `outlined` is a row-level action, `filled` the one
+  /// primary on a surface — a hierarchy the system styles could not express here
+  /// because their rendering depended on the container.
+  enum Emphasis { case outlined, filled }
+
+  let title: String
+  let isEnabled: Bool
+  var emphasis: Emphasis = .outlined
+  let action: () -> Void
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var hovering = false
+
+  var body: some View {
+    Button(action: action) {
+      Text(title)
+        .font(.system(size: 12, weight: .semibold))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .foregroundStyle(foreground)
+        .background(fill, in: Capsule())
+        .overlay(Capsule().strokeBorder(border, lineWidth: 1))
+        .contentShape(Capsule())
+    }
+    .buttonStyle(.plain)
+    .disabled(!isEnabled)
+    .onHover { hovering = $0 && isEnabled }
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+  }
+
+  private var foreground: Color {
+    guard isEnabled else { return Color.stTextTertiary }
+    if emphasis == .filled { return Color.white }
+    return hovering ? Color.white : Color.stAccent
+  }
+
+  private var fill: Color {
+    guard isEnabled else { return Color.clear }
+    if emphasis == .filled {
+      return hovering ? Color.stAccent : Color.stAccentSolid
+    }
+    return hovering ? Color.stAccentSolid : Color.stAccentLight
+  }
+
+  private var border: Color {
+    guard isEnabled else { return Color.stDivider }
+    if emphasis == .filled { return Color.clear }
+    return hovering ? Color.clear : Color.stAccent
   }
 }

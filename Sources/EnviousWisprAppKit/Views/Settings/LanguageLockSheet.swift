@@ -48,47 +48,90 @@ struct LanguageLockSheet: View {
   private let maxRecents = 5
 
   var body: some View {
-    NavigationStack {
-      VStack(spacing: 0) {
+    // **Same chrome as `LivePreviewPackCatalogSheet`, for the same reason.**
+    // `.navigationTitle` renders through AppKit's title chrome, whose inset this
+    // sheet does not control — measured here at ~178pt from the sheet edge while
+    // the body copy under it started at ~115pt, so the title read as belonging to
+    // a different container (founder, 2026-08-26, on both sheets independently).
+    // One shared inset makes them line up by construction.
+    VStack(spacing: 0) {
+      titleBar
+      Divider().overlay(Color.stDivider)
+
+      VStack(alignment: .leading, spacing: 12) {
         if let contextSubtitle {
-          Text(contextSubtitle)
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
+          // **Reading copy, not microcopy.** This was `stHelper`, the app's
+          // smallest token, on the one sentence explaining that the choice reaches
+          // dictation and not only the preview — "too wordy and too small to read"
+          // (founder). The words are shorter now and the type is the reading size.
+          Text(contextSubtitle).settingsReadingCopy()
         }
         searchField
+      }
+      .padding(Self.inset)
 
-        ScrollView {
-          VStack(alignment: .leading, spacing: 16) {
-            if searchText.isEmpty {
-              autoDetectSection
-            }
-            if !recents.isEmpty && searchText.isEmpty {
-              recentSection
-            }
-            allLanguagesSection
+      Divider().overlay(Color.stDivider)
+
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+          if searchText.isEmpty {
+            autoDetectSection
           }
-          .padding(.horizontal, 16)
-          .padding(.vertical, 12)
+          if !recents.isEmpty && searchText.isEmpty {
+            recentSection
+          }
+          allLanguagesSection
         }
+        .padding(.horizontal, Self.inset)
+        .padding(.vertical, 12)
       }
-      .background(Color.stPageBg)
-      // "Lock language" while the first row CLEARS the lock is the sheet
-      // contradicting itself, the same defect r8 and r9 fixed on the page that
-      // opens it. This title is true of both actions and of both presenters —
-      // and it matches the Change button's copy, which already says out loud
-      // that this sets the DICTATION language, not a preview-only one.
-      .navigationTitle("Dictation language")
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel") { dismiss() }
-        }
-      }
+
+      Divider().overlay(Color.stDivider)
+      footer
     }
+    .background(Color.stPageBg)
     .frame(minWidth: 420, minHeight: 520)
     .onAppear(perform: loadRecents)
+  }
+
+  /// One inset shared by the title, the header and the list beneath them.
+  private static let inset: CGFloat = 16
+
+  // "Lock language" while the first row CLEARS the lock is the sheet
+  // contradicting itself, the same defect r8 and r9 fixed on the page that
+  // opens it. This title is true of both actions and of both presenters —
+  // and it matches the Change button's copy, which already says out loud
+  // that this sets the DICTATION language, not a preview-only one.
+  private var titleBar: some View {
+    HStack(spacing: 8) {
+      Text("Dictation language")
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(Color.stTextPrimary)
+      Spacer(minLength: 12)
+      LanguageSheetCloseButton { dismiss() }
+    }
+    .padding(.horizontal, Self.inset)
+    .padding(.vertical, 12)
+  }
+
+  /// `Cancel`, not `Done`: this sheet COMMITS on row selection, so the bottom
+  /// action is an abandon rather than a confirm. Kept alongside the close control
+  /// because the word is what says nothing was changed.
+  private var footer: some View {
+    HStack {
+      Spacer(minLength: 0)
+      // **Outlined, not filled, and not a bare accent word.** The catalogue
+      // sheet's `Done` became a filled primary and this was left as coloured
+      // text — one sheet's exit polished, its twin untouched, in the same change
+      // (founder, 2026-08-26). Same control now, one emphasis lower: leaving
+      // WITHOUT choosing is a secondary action here, because the rows are the
+      // primary one. `Done` on the catalogue sheet is filled because nothing
+      // competes with it there.
+      SettingsActionButton(title: "Cancel", isEnabled: true) { dismiss() }
+        .keyboardShortcut(.cancelAction)
+    }
+    .padding(.horizontal, Self.inset)
+    .padding(.vertical, 12)
   }
 
   // MARK: - Subviews
@@ -103,13 +146,13 @@ struct LanguageLockSheet: View {
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
-    .background(Color.stSectionBg)
-    .overlay(
-      Rectangle()
-        .fill(Color.stDivider)
-        .frame(height: 1),
-      alignment: .bottom
-    )
+    // **Was full-bleed with an underline**, which put it flush against the
+    // sentence above with no gap and made it read as part of that paragraph
+    // rather than as a control ("placement and size feels weird", founder).
+    // Same recessed bordered field the catalogue sheet uses: one idiom for one
+    // job, across both language sheets.
+    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 9))
+    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.stDivider, lineWidth: 1))
   }
 
   /// **The way BACK. Without it this sheet is a one-way door.**
@@ -198,7 +241,12 @@ struct LanguageLockSheet: View {
     let filtered = filteredLanguages
 
     VStack(alignment: .leading, spacing: 6) {
-      Text("ALL LANGUAGES")
+      // **`ALL LANGUAGES` was a claim wider than the list.** Opened from Live
+      // Preview this sheet shows only the languages installed AND lockable — on a
+      // stock Mac, one — under a heading saying all, so the app appeared to speak
+      // one language (#2443). The caller knows whether its list is complete;
+      // `lockableCodes == nil` is exactly "no filter applied".
+      Text(lockableCodes == nil ? "ALL LANGUAGES" : "AVAILABLE ON THIS MAC")
         .font(.stSectionHeader)
         .foregroundStyle(.stTextSecondary)
         .padding(.leading, 4)
@@ -238,35 +286,19 @@ struct LanguageLockSheet: View {
 
   @ViewBuilder
   private func languageRow(_ entry: LanguageCatalog.Entry, showDivider: Bool) -> some View {
-    let isSelected = isCurrentLock(entry.code)
-
     VStack(spacing: 0) {
-      Button {
+      // **Hover is what makes a row read as a row you can press.** These are the
+      // only way to choose a language and nothing changed under the pointer, so
+      // the list looked like a table of facts ("hovering over the languages
+      // doesn't highlight so it doesn't feel like it's clickable", founder).
+      // Extracted into a type because a hover needs its own `@State`, which a
+      // `@ViewBuilder` function cannot hold.
+      LanguageLockRow(
+        entry: entry,
+        isSelected: isCurrentLock(entry.code)
+      ) {
         select(entry)
-      } label: {
-        HStack(spacing: 10) {
-          VStack(alignment: .leading, spacing: 2) {
-            Text(entry.nativeName)
-              .settingsRowLabel()
-            Text("\(entry.englishName) · \(entry.code)")
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
-          }
-          Spacer()
-          if isSelected {
-            Image(systemName: "checkmark")
-              .font(.system(size: 12, weight: .semibold))
-              .foregroundStyle(Color.stAccent)
-          }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
-        .background(isSelected ? Color.stAccent.opacity(0.06) : Color.clear)
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel("\(entry.englishName), native \(entry.nativeName)")
-      .accessibilityValue(isSelected ? "selected" : "")
 
       if showDivider {
         Divider()
@@ -366,5 +398,80 @@ struct LanguageLockSheet: View {
       }
 
     recents = Array(sorted)
+  }
+}
+
+// MARK: - Row
+
+/// One selectable language.
+///
+/// A `View` rather than a builder function purely so it can own the hover state;
+/// selection still lives with the caller, which is the only thing that knows what
+/// is currently locked.
+private struct LanguageLockRow: View {
+  let entry: LanguageCatalog.Entry
+  let isSelected: Bool
+  let action: () -> Void
+
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var hovering = false
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text(entry.nativeName).settingsRowLabel()
+          Text("\(entry.englishName) · \(entry.code)")
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+        }
+        Spacer()
+        if isSelected {
+          Image(systemName: "checkmark")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.stAccent)
+        }
+      }
+      .padding(.horizontal, 14)
+      .padding(.vertical, 10)
+      .contentShape(Rectangle())
+      // Selection outranks hover: a selected row keeps its accent wash even while
+      // the pointer sits on a neighbour, so the current choice never disappears.
+      .background(background)
+    }
+    .buttonStyle(.plain)
+    .onHover { hovering = $0 }
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+    .accessibilityLabel("\(entry.englishName), native \(entry.nativeName)")
+    .accessibilityValue(isSelected ? "selected" : "")
+  }
+
+  private var background: Color {
+    if isSelected { return Color.stAccent.opacity(0.10) }
+    return hovering ? Color.stAccent.opacity(0.06) : Color.clear
+  }
+}
+
+/// Matches `LivePreviewPackCatalogSheet`'s close control. Duplicated rather than
+/// shared for now because the two sheets live in different features; if a third
+/// appears, this is the one to promote.
+private struct LanguageSheetCloseButton: View {
+  let action: () -> Void
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var hovering = false
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: "xmark")
+        .font(.system(size: 11, weight: .bold))
+        .foregroundStyle(hovering ? Color.stTextPrimary : Color.stTextSecondary)
+        .frame(width: 22, height: 22)
+        .background(Circle().fill(hovering ? Color.stSectionBg : Color.clear))
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .onHover { hovering = $0 }
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+    .accessibilityLabel("Close")
   }
 }
