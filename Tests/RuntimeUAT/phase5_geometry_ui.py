@@ -108,10 +108,23 @@ def main():
     # presence/absence pair can falsify is the shape to stop writing here.
     #
     # What replaces them tests the behaviour that replaced the sentence.
+    # **Select it EXPLICITLY rather than assuming it is already selected.** The
+    # previous version sampled the baseline from whatever state the machine
+    # happened to be in, and this script finishes each run on Level Rail without
+    # restoring — so the second run in a row read the link as missing, captured a
+    # Level Rail pill under the key `readingWell`, and reported the coupling
+    # broken while it worked. It also failed that way for any user who simply
+    # prefers a wordless pill. Found by Codex review.
+    #
+    # Resolves through the ACCESSIBILITY label, since the cards carry no visible
+    # name; `tapped_readingWell` false means that label stopped naming the design,
+    # which is a real defect and not a harness quirk.
+    report["picker"]["tapped_readingWell"] = bool(w.tap("Reading Well"))
+    await_idle()
+
     before = ui_text()
     report["picker"]["configure_link_while_words_selected"] = CONFIGURE_LINK in before
 
-    # ---- Reading Well first: it is what is selected now, no toggle needed ----
     report["rows"]["readingWell"] = capture_design(pid, "readingWell")
 
     # ---- Live Preview is now turned off BY THE PICKER, not on its own tab ----
@@ -137,8 +150,15 @@ def main():
     w.tap("Appearance")
     after = ui_text()
     report["picker"]["configure_link_gone_after_wordless"] = CONFIGURE_LINK not in after
+    # Every tap that had to land is named here, so a run where the picker was
+    # never actually driven reports FALSE rather than inheriting a lucky starting
+    # state. Without this the whole verdict rests on a link being absent, which is
+    # also what a completely dead run looks like.
     report["picker"]["coupling_observed"] = bool(
-        report["picker"].get("configure_link_while_words_selected")
+        report["picker"].get("tapped_readingWell")
+        and report["picker"].get("tapped_classic")
+        and report["picker"].get("tapped_levelRail")
+        and report["picker"].get("configure_link_while_words_selected")
         and report["picker"]["configure_link_gone_after_wordless"]
     )
 

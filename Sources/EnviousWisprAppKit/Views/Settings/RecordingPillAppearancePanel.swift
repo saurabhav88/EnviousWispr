@@ -378,15 +378,29 @@ struct RecordingPillPreviewTile: View {
         // Checked before removing: no help article, blog post or website page
         // refers to a design by name, so nothing in the documentation now points
         // at a label the user cannot find.
-        if isSelected {
-          Image(systemName: "checkmark.circle.fill")
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(Color.white, isEnabled ? Color.stAccent : Color.stTextSecondary)
+        // **The tick's slot is reserved whether or not it is shown, and that is a
+        // correctness requirement rather than tidiness.** The preview's scale is
+        // computed from the width its `GeometryReader` is handed, so a tick that
+        // appears only when selected TAKES that width from the card it is on:
+        // selecting a design visibly shrank its own pill while the previous
+        // selection grew. Found by Codex review — invisible in a static render,
+        // because every render captures one selection and the effect is only
+        // legible as a change.
+        //
+        // An empty frame rather than an overlay, so the picture is never drawn
+        // underneath the tick.
+        ZStack {
+          if isSelected {
+            Image(systemName: "checkmark.circle.fill")
+              .font(.system(size: 18, weight: .semibold))
+              .foregroundStyle(Color.white, isEnabled ? Color.stAccent : Color.stTextSecondary)
+          }
         }
+        .frame(width: 18)
       }
       .padding(12)
-      // Before `.buttonStyle(.plain)`: the `Spacer` above is otherwise dead space
-      // rather than part of the hit target.
+      // Before `.buttonStyle(.plain)`: the reserved tick slot is otherwise dead
+      // space rather than part of the hit target.
       .contentShape(Rectangle())
       .background(Color.stSectionBg)
       .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))

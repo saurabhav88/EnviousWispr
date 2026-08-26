@@ -31,9 +31,11 @@ struct RecordingPillTileTests {
   ///
   /// **The width comes from the design's GROUP, exactly as the panel supplies
   /// it** — a tile measured at some other width is not the tile the user sees.
-  private static func tileSize(_ design: RecordingPillDesign) -> CGSize {
+  private static func tileSize(
+    _ design: RecordingPillDesign, isSelected: Bool = false
+  ) -> CGSize {
     let tile = RecordingPillPreviewTile(
-      design: design, isSelected: false, isEnabled: true, onSelect: {})
+      design: design, isSelected: isSelected, isEnabled: true, onSelect: {})
     let host = NSHostingView(rootView: AnyView(tile))
     let frame = NSRect(x: 0, y: 0, width: 1200, height: 600)
     let window = NSWindow(
@@ -136,6 +138,34 @@ struct RecordingPillTileTests {
       wordless one. The well carries a line of text the others do not, so it must be \
       taller; equal heights mean the well is rendering without its text.
       """)
+  }
+
+  /// **Selecting a card does not change its size.**
+  ///
+  /// Codex review found the tick taking width from the preview beside it, so
+  /// selecting a design shrank its own pill while the previous selection grew —
+  /// a wobble on every click. **No render could have caught it**: each render
+  /// captures one selection, and the defect exists only as a difference between
+  /// two, which is exactly why this is asserted rather than looked at.
+  ///
+  /// Written against the whole card rather than the tick, so any future control
+  /// added on selection is caught by the same row.
+  @Test("selecting a card does not resize it", arguments: RecordingPillDesign.allCases)
+  func selectionDoesNotResizeTheCard(design: RecordingPillDesign) {
+    let unselected = Self.tileSize(design, isSelected: false)
+    let selected = Self.tileSize(design, isSelected: true)
+
+    #expect(unselected.width > 0, "\(design) measured \(unselected): nothing rendered")
+    #expect(
+      abs(selected.width - unselected.width) < 0.01,
+      """
+      \(design) is \(unselected.width) unselected and \(selected.width) selected. The \
+      preview scales to the width it is handed, so a card that changes width on \
+      selection redraws its pill at a different size every time it is clicked.
+      """)
+    #expect(
+      abs(selected.height - unselected.height) < 0.01,
+      "\(design) changes height on selection: \(unselected.height) -> \(selected.height)")
   }
 
   @Test("every card in the row is the same size")
