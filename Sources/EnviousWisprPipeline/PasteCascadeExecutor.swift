@@ -490,7 +490,6 @@ internal final class PasteCascadeExecutor {
       let elapsed = activation.elapsed
 
       if activated {
-        tiersAttempted.append(.cgEvent)
         // Revalidated AFTER activation, because bringing the app frontmost is
         // itself capable of moving focus and selection.
         let payload = PasteService.payloadAtCommitBoundary(
@@ -518,11 +517,16 @@ internal final class PasteCascadeExecutor {
           // Refuse the blind paste rather than guess where it lands — the same
           // "not confident enough to act automatically" floor PR #220 already
           // uses for a non-text focus: fall through to clipboard-only below.
+          // Cloud review round 5: `.cgEvent` must NOT be recorded as attempted
+          // here — `pasteToActiveApp` is never called, so a clipboard-only
+          // outcome from this path would otherwise falsely claim Cmd+V was
+          // tried in its own telemetry.
           tierFailures["cgevent"] = "chromium_omnibox_lost_focus_during_activation"
           emitTierFailureBreadcrumb(
             stage: "cgevent", reason: "chromium_omnibox_lost_focus_during_activation",
             bundleId: bundleId)
         } else {
+          tiersAttempted.append(.cgEvent)
           // Snapshot immediately before the write, in the SAME block as the
           // write itself (ClipboardIsolationFreezeTests.pasteRoutesUseCleanupSnapshot
           // asserts every automatic route's snapshot and write share one code
@@ -565,7 +569,6 @@ internal final class PasteCascadeExecutor {
           stage: "activation", reason: "timeout_ms=\(elapsed)", bundleId: bundleId
         )
         // Tier 2b: AppleScript Edit > Paste
-        tiersAttempted.append(.appleScript)
         _ = PasteService.forceActivateApp(pid: app.processIdentifier)
         app.activate()
         // Not a clipboard delay — this waits for the activation to settle before
@@ -603,15 +606,22 @@ internal final class PasteCascadeExecutor {
             true
           }
         if !chromiumOmniboxStillFocusedForAppleScript {
+          // Cloud review round 5 (same shape, Tier 2b): `.appleScript` must NOT
+          // be recorded as attempted here — `pasteViaAppleScript` is never
+          // called, so a clipboard-only outcome would otherwise falsely claim
+          // the AppleScript paste was tried in its own telemetry.
           tierFailures["applescript"] = "chromium_omnibox_lost_focus_during_activation"
           emitTierFailureBreadcrumb(
             stage: "applescript", reason: "chromium_omnibox_lost_focus_during_activation",
             bundleId: bundleId)
-        } else if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
-          tier = .appleScript
         } else {
-          tierFailures["applescript"] = "refused"
-          emitTierFailureBreadcrumb(stage: "applescript", reason: "refused", bundleId: bundleId)
+          tiersAttempted.append(.appleScript)
+          if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
+            tier = .appleScript
+          } else {
+            tierFailures["applescript"] = "refused"
+            emitTierFailureBreadcrumb(stage: "applescript", reason: "refused", bundleId: bundleId)
+          }
         }
         if let snapshot {
           ClipboardCleanup.scheduleRestore(
