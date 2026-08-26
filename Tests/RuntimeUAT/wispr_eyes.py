@@ -1824,10 +1824,17 @@ def instances_stayed_single(before, window_start, samples):
     they answer the same global hotkey. So for a Release instance the banner
     mechanism contributes NOTHING and the samples are the only cover, which makes
     the residual the whole sampling gap rather than a rare coincidence.
-    A debug instance is the narrow case: it must launch AND exit between two
-    samples, with its banner ALSO lost to the concurrent-writer line loss
-    `AppLogger` suffers - and the moment a second app launches is exactly when
-    there are two writers, so the banner is the line most at risk.
+    A debug instance is the narrow case, and it is narrower than an earlier
+    revision of this note claimed. That version said the banner was "the line most
+    at risk" because a second app launching means two writers - which was the
+    obsolete diagnosis, and it survived here after the same claim was corrected in
+    the verdict and the docstring. THIRD SITE of one sentence; a copied claim has
+    siblings by construction, so grep the SENTENCE rather than the finding.
+    `AppLogger.swift:187` opens with `O_APPEND`, so concurrent appends cannot
+    overwrite the banner at all. Losing it now needs a ROTATION crossing the
+    10 MiB bound while the two processes overlap, since rotation is still not
+    locked across processes. So the debug case requires: launch AND exit between
+    two samples, AND a rotation inside that same window.
 
     What is NOT in that residual any more, because a review round closed both: a
     banner written before the log cursor was taken, and a banner carried into a
