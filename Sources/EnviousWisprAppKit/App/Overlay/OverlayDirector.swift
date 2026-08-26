@@ -145,6 +145,27 @@ final class OverlayDirector {
       self?.commitLatestFirstRender(root)
     })
 
+  /// Requests root construction at the next main run-loop idle turn, ahead
+  /// of any real presentation (#2377 Phase 6 C4). Registers an idle observer
+  /// and returns immediately — construction happens later, when that
+  /// observer fires. A no-op if the gate is already scheduled or ready,
+  /// whichever caller got there first: `firstRenderGate`'s own idle-state
+  /// guard is what makes that safe, not anything here.
+  ///
+  /// `idleScheduler` is a MECHANISM default, the same shape as
+  /// `firstRenderSchedule`/`scheduleReconciliation` above: production always
+  /// wants a real `CFRunLoopObserver`, which a synchronous unit test cannot
+  /// observe firing without spinning the actual run loop. A test substitutes
+  /// a manual scheduler here; the one production call site
+  /// (`WisprBootstrapper.applicationDidFinishLaunching()`) stays a bare,
+  /// zero-argument `recordingOverlay.prewarmFirstRender()`.
+  func prewarmFirstRender(
+    idleScheduler: @escaping OverlayFirstRenderGate.Schedule =
+      OverlayFirstRenderGate.idleScheduler()
+  ) {
+    firstRenderGate.scheduleIfNeeded(using: idleScheduler)
+  }
+
   /// Builds the retained root view. Called at most once per launch, from the
   /// gate's own scheduled task — never directly.
   private func makeRootHostingView() -> NSView {

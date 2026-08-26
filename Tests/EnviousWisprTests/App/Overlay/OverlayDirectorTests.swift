@@ -2025,4 +2025,107 @@ struct OverlayDirectorTests {
     // it is real: the lock is remembered with NO pill showing, which is the
     // same state a refusal leaves. That case runs in the Release lane.
   }
+
+  // MARK: - Idle prewarm (#2377 Phase 6 C4)
+  //
+  // `OverlayFirstRenderGateTests` proves the gate's own `scheduleIfNeeded(using:)`
+  // override and both race directions in isolation. These four prove the
+  // DIRECTOR wires `prewarmFirstRender(idleScheduler:)` into that same gate
+  // correctly — no second construction path, no synchronous build, and both
+  // scheduler-race outcomes resolve through the full present()/renderModel
+  // surface, not just the gate's internal state.
+
+  @Test("prewarmFirstRender registers work asynchronously; nothing constructs before it fires")
+  func prewarmRegistersAsynchronously() {
+    let host = RefusingWindowlessHost()
+    let deferral = Deferral()
+    let prewarmDeferral = Deferral()
+    let d = Self.deferrableDirector(host, deferral)
+
+    d.prewarmFirstRender(idleScheduler: { prewarmDeferral.block = $0 })
+
+    #expect(prewarmDeferral.fired == 0, "prewarm registers work but does not run it synchronously")
+    #expect(host.presentCount == 0, "nothing was constructed or presented yet")
+  }
+
+  @Test("repeated prewarmFirstRender calls schedule and build at most once")
+  func repeatedPrewarmCallsBuildOnce() {
+    let host = RefusingWindowlessHost()
+    let deferral = Deferral()
+    let prewarmDeferral = Deferral()
+    let d = Self.deferrableDirector(host, deferral)
+
+    d.prewarmFirstRender(idleScheduler: { prewarmDeferral.block = $0 })
+    d.prewarmFirstRender(idleScheduler: { prewarmDeferral.block = $0 })
+    d.prewarmFirstRender(idleScheduler: { prewarmDeferral.block = $0 })
+    prewarmDeferral.fireAll()
+
+    #expect(prewarmDeferral.fired == 1, "only one block was ever queued across three calls")
+
+    // A real presentation afterward finds the root already built — it
+    // resolves on the SAME turn, with no `deferral.fire()` needed, which is
+    // only true if construction already happened via prewarm.
+    var results: [PillPresentationResult] = []
+    let receipt = d.present(
+      .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+      onResult: { results.append($0) })
+    #expect(receipt != nil)
+    #expect(results.count == 1, "the presentation resolved immediately, without deferral.fire()")
+  }
+
+  @Test("prewarmFirstRender after a real presentation already scheduled is a no-op")
+  func prewarmAfterDemandDrivenAlreadyScheduledIsANoOp() {
+    // Race direction 1: demand-driven wins. Prewarm arriving second must
+    // never touch its own scheduler — the gate is already `.scheduled`.
+    let host = RefusingWindowlessHost()
+    let deferral = Deferral()
+    let prewarmDeferral = Deferral()
+    let d = Self.deferrableDirector(host, deferral)
+
+    var results: [PillPresentationResult] = []
+    let receipt = d.present(
+      .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+      onResult: { results.append($0) })
+    #expect(receipt != nil)
+    #expect(deferral.fired == 0, "not yet fired")
+
+    d.prewarmFirstRender(idleScheduler: { prewarmDeferral.block = $0 })
+    #expect(
+      prewarmDeferral.block == nil,
+      "prewarm's scheduler never receives work — demand-driven already claimed .scheduled")
+
+    deferral.fire()
+    #expect(results.count == 1, "the presentation commits via the scheduler that won the race")
+  }
+
+  @Test("a real presentation before prewarm fires still commits once, via the prewarm scheduler")
+  func earlyPresentationBeforePrewarmFiresStillCommitsOnce() {
+    // Race direction 2, the mirror: prewarm wins. A presentation arriving
+    // before the prewarm scheduler fires must coalesce and wait for it — the
+    // demand-driven scheduler must never receive work either.
+    let host = RefusingWindowlessHost()
+    let deferral = Deferral()
+    let prewarmDeferral = Deferral()
+    let d = Self.deferrableDirector(host, deferral)
+
+    d.prewarmFirstRender(idleScheduler: { prewarmDeferral.block = $0 })
+
+    var results: [PillPresentationResult] = []
+    let receipt = d.present(
+      .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+      onResult: { results.append($0) })
+    #expect(receipt != nil)
+    #expect(results.isEmpty, "not yet built — waiting on the prewarm scheduler's fire")
+    #expect(
+      deferral.fired == 0,
+      "the demand-driven scheduler must never receive work: prewarm already scheduled")
+
+    prewarmDeferral.fireAll()
+
+    #expect(results.count == 1, "the presentation commits exactly once, via the prewarm scheduler")
+    guard case .bluetoothAwareness? = d.renderModel.state.presentation?.content else {
+      Issue.record("the presentation never reached the screen")
+      return
+    }
+  }
 }

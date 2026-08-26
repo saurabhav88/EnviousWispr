@@ -102,6 +102,13 @@ public final class WisprBootstrapper {
   /// app-lifetime (a weak-only hold would dealloc and silently stop emitting).
   let settingsChangeTelemetry: SettingsChangeTelemetry
 
+  /// #2377 Phase 6 C4: the app-lifetime overlay owner, previously a local
+  /// only. Storing it here is what lets `applicationDidFinishLaunching()`
+  /// call `recordingOverlay.prewarmFirstRender()` — the +1 stored property
+  /// is the plan's named cost (ceiling 39 -> 40, Bible entry in
+  /// EnviousWisprAppCeilingsTests).
+  let recordingOverlay: OverlayDirector
+
   public init() {
     // ===== Subsystem construction (epic #763) =====
     // `EnviousWisprApp` is the composition root: every subsystem is constructed
@@ -533,6 +540,12 @@ public final class WisprBootstrapper {
           withoutWords: settings.recordingPillDesignWithoutWords,
           withWords: settings.recordingPillDesignWithWords)
       })
+    // #2377 Phase 6 C4: stored immediately so `applicationDidFinishLaunching()`
+    // can reach it later. Every use below this line keeps reading the bare
+    // `recordingOverlay` identifier, which still resolves to this same local —
+    // Swift resolves an unqualified name to the innermost declaration in
+    // scope, and the local shadows the property for the rest of `init`.
+    self.recordingOverlay = recordingOverlay
 
     // #2376 C7: the Appearance page's window onto the pill. Built HERE because
     // this is where the live-preview bridge already is, so the picker reads the
@@ -1255,6 +1268,13 @@ public final class WisprBootstrapper {
     // survives, so it is safe whenever it runs. Chaining it was tried and cloud
     // review refuted both halves. Bound by `EscapeRecoveryDiskExpiryTests`.
     Task { await transcriptCoordinator.sweepExpiredPending() }
+    // #2377 Phase 6 C4: registers a one-shot idle observer and returns
+    // immediately — root construction happens later, at the main run loop's
+    // next `.beforeWaiting`, not here. No outer `DispatchQueue.main.async`:
+    // that would add a second hop without establishing idleness, which is
+    // the whole reason this call exists instead of the demand-driven path's
+    // existing `DispatchQueue.main.async` default.
+    recordingOverlay.prewarmFirstRender()
   }
 
   public func applicationDidBecomeActive() {
