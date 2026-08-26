@@ -11,7 +11,7 @@ import Testing
 /// **Drift Guard, and the class matters here.** When this fails we changed our
 /// own code; the user sees nothing at the moment of failure. It must never be
 /// cited as evidence that the pill renders correctly — the behavioural proof is
-/// the §11.1 Live UAT, reading panelConstructionCountForTesting after a real
+/// the §11.1 Live UAT, reading the panel construction count after a real
 /// dictation.
 ///
 /// ## Why this is structural rather than behavioural
@@ -176,103 +176,190 @@ struct OverlayRetainedWindowTests {
       """)
   }
 }
-// **Only the BEHAVIOURAL suite below is DEBUG-only.** It reads
-// panelConstructionCountForTesting, which lives inside `#if DEBUG` on the
-// panel, so without this guard the RELEASE build of the test target does not
-// compile — something a Debug-only local run cannot see by construction.
-//
-// The three guards ABOVE it read source files and need no seam at all. Wrapping
-// the whole file, which is what the first repair did, silently dropped two
-// configuration-independent structural guards out of the Release lane: a fix
-// that created the next defect, which is the shape this migration keeps
-// producing.
-#if DEBUG
-  /// The BEHAVIOURAL half, which I had wrongly concluded was untestable.
-  ///
-  /// **Product Outcome**, and the sentence finishes: when this fails the user sees
-  /// the pill blink as it is destroyed and rebuilt — the stated root cause of #930.
-  ///
-  /// I moved this claim to Live UAT after finding that a synchronous test creates
-  /// no window (every `showPanel` is queued with `DispatchQueue.main.async`) and
-  /// that observing it seemed to need a run-loop pump, which
-  /// the local test-timing guard rejects the pump. Asked directly whether I had talked myself
-  /// out of a guard I should have written, cloud review said yes and named the
-  /// mechanism: **a main-queue barrier is a SIGNAL, not a clock.** Enqueueing a
-  /// continuation behind the work under test resumes only after that work has run,
-  /// so it waits on the subject rather than on time — exactly what
-  /// `never-guess-when-the-subject-is-finished` asks for, and no annotation needed.
-  @MainActor
-  @Suite(.tags(.productOutcome))
-  struct OverlayRetainedWindowBehaviourTests {
+/// The BEHAVIOURAL half, migrated off the deleted `#if DEBUG` accessors onto
+/// `OverlayPanelCommandRecorder` (#2377, P6-C2) — this whole suite is now
+/// Release-visible, closing the gap the earlier `#if DEBUG` wrapper (which used
+/// to cover this whole file) left in `build-release`.
+///
+/// **Product Outcome**, and the sentence finishes: when this fails the user sees
+/// the pill blink as it is destroyed and rebuilt — the stated root cause of #930.
+///
+/// A synchronous test creates no window on its own (every `showPanel` is
+/// queued with `DispatchQueue.main.async`) and observing it needs a run-loop
+/// pump, which the local test-timing guard rejects. **A main-queue barrier is
+/// a SIGNAL, not a clock.** Enqueueing a continuation behind the work under
+/// test resumes only after that work has run, so it waits on the subject
+/// rather than on time — exactly what `never-guess-when-the-subject-is-finished`
+/// asks for, and no annotation needed.
+@MainActor
+@Suite(.tags(.productOutcome))
+struct OverlayRetainedWindowBehaviourTests {
 
-    init() { _ = NSApplication.shared }
+  init() { _ = NSApplication.shared }
 
-    /// Resumes after everything already queued on the main queue has run —
-    /// including the deferred panel creation. FIFO ordering is the whole
-    /// mechanism; there is no interval anywhere in it.
-    private func drainMainQueue() async {
-      await withCheckedContinuation { continuation in
-        DispatchQueue.main.async { continuation.resume() }
-      }
-    }
-
-    /// **The property this whole migration exists to establish.** Several
-    /// transitions, ONE window. Every rebuild is the #930 flicker, and the four
-    /// compensating mechanisms #2292 removes — generations, pending work, drag
-    /// deferrals, `CATransaction.flush` — exist only to paper over it.
-    ///
-    /// **Rewritten rather than deleted at the cutover.** It used to drive the
-    /// panel's `showPolishing` / `showAccessibilityToast` / `showWarning`; those
-    /// methods are gone with the class, and the same three transitions are now
-    /// three intents. Deleting it would have removed the only guard on the claim
-    /// the branch is named for.
-    @Test("several transitions build one window")
-    func transitionsReuseTheRetainedWindow() async {
-      let host = OverlayWindowHost()
-      let d = OverlayDirector(
-        host: host,         announce: { _ in }, livePreview: .disabled, grantAccessibility: {}, selections: { .shipped },
-        deferFirstRender: { $0() })
-      defer { host.panelForTesting?.orderOut(nil) }
-
-      d.present(.processing(phase: .polishing))
-      await drainMainQueue()
-      #expect(
-        host.panelConstructionCount == 1,
-        "no window was built at all — this guard is asserting nothing")
-
-      d.present(.accessibilityNotice)
-      await drainMainQueue()
-      d.present(.warning(reason: .polishFailed))
-      await drainMainQueue()
-
-      #expect(
-        host.panelConstructionCount == 1,
-        """
-        the overlay built a second window for a transition. Every rebuild is the \
-        #930 flicker this migration removes.
-        """)
-    }
-
-    /// Hiding must ORDER OUT, never close: a closed `NSPanel` is a destroyed one,
-    /// and the next presentation would have to build another.
-    @Test("hiding and showing again reuses the same window")
-    func hideThenShowReusesTheWindow() async {
-      let host = OverlayWindowHost()
-      let d = OverlayDirector(
-        host: host,         announce: { _ in }, livePreview: .disabled, grantAccessibility: {}, selections: { .shipped },
-        deferFirstRender: { $0() })
-      defer { host.panelForTesting?.orderOut(nil) }
-
-      for _ in 0..<4 {
-        d.present(.processing(phase: .polishing))
-        await drainMainQueue()
-        d.dismissCurrent(.silent)
-        await drainMainQueue()
-      }
-
-      #expect(
-        host.panelConstructionCount == 1,
-        "hiding released the window, so the next presentation had to build a new one")
+  /// Resumes after everything already queued on the main queue has run —
+  /// including the deferred panel creation. FIFO ordering is the whole
+  /// mechanism; there is no interval anywhere in it.
+  private func drainMainQueue() async {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.main.async { continuation.resume() }
     }
   }
-#endif
+
+  /// **The property this whole migration exists to establish.** Several
+  /// transitions, ONE window. Every rebuild is the #930 flicker, and the four
+  /// compensating mechanisms #2292 removes — generations, pending work, drag
+  /// deferrals, `CATransaction.flush` — exist only to paper over it.
+  ///
+  /// **Rewritten rather than deleted at the cutover.** It used to drive the
+  /// panel's `showPolishing` / `showAccessibilityToast` / `showWarning`; those
+  /// methods are gone with the class, and the same three transitions are now
+  /// three intents. Deleting it would have removed the only guard on the claim
+  /// the branch is named for.
+  @Test("several transitions build one window")
+  func transitionsReuseTheRetainedWindow() async {
+    let recorder = OverlayPanelCommandRecorder()
+    let host = OverlayWindowHost(panelFactory: recorder.makeFactory())
+    let d = OverlayDirector(
+      host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      selections: { .shipped },
+      deferFirstRender: { $0() })
+    defer { recorder.panel?.orderOut(nil) }
+
+    d.present(.processing(phase: .polishing))
+    await drainMainQueue()
+    #expect(
+      recorder.constructionCount == 1,
+      "no window was built at all — this guard is asserting nothing")
+
+    d.present(.accessibilityNotice)
+    await drainMainQueue()
+    d.present(.warning(reason: .polishFailed))
+    await drainMainQueue()
+
+    #expect(
+      recorder.constructionCount == 1,
+      """
+      the overlay built a second window for a transition. Every rebuild is the \
+      #930 flicker this migration removes.
+      """)
+  }
+
+  /// Hiding must ORDER OUT, never close: a closed `NSPanel` is a destroyed one,
+  /// and the next presentation would have to build another.
+  @Test("hiding and showing again reuses the same window")
+  func hideThenShowReusesTheWindow() async {
+    let recorder = OverlayPanelCommandRecorder()
+    let host = OverlayWindowHost(panelFactory: recorder.makeFactory())
+    let d = OverlayDirector(
+      host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      selections: { .shipped },
+      deferFirstRender: { $0() })
+    defer { recorder.panel?.orderOut(nil) }
+
+    for _ in 0..<4 {
+      d.present(.processing(phase: .polishing))
+      await drainMainQueue()
+      d.dismissCurrent(.silent)
+      await drainMainQueue()
+    }
+
+    #expect(
+      recorder.constructionCount == 1,
+      "hiding released the window, so the next presentation had to build a new one")
+  }
+}
+
+/// **The real-panel integration Codex ruled C2 needed (#2377): retained
+/// identity proven with a genuine base `NSPanel`, not the recording subclass.**
+///
+/// The recorder above proves the host issues the right AppKit COMMANDS; it says
+/// nothing about what a real `NSPanel` does in response to them, because the
+/// recording subclass overrides those same methods. This suite injects
+/// `OverlayPanelFactory.live` itself — the identical factory production uses —
+/// so the panel under test is exactly what ships.
+///
+/// **Show / hide / show, asserting identity across all three, not just the
+/// last one.** A host that rebuilt on hide would still show correctly the
+/// second time; only comparing the SAME `ObjectIdentifier` across the full
+/// cycle catches that.
+///
+/// **`willCloseNotification`, not just final visibility.** `isVisible == false`
+/// is what BOTH `orderOut` and `close` leave behind on a panel with
+/// `isReleasedWhenClosed = false` — the earlier mutation control found exactly
+/// this (`compensatingMechanismsStayGone`'s sibling test up the file). The
+/// notification is the only observation that tells them apart without reading
+/// private host state.
+@MainActor
+@Suite(.tags(.productOutcome))
+struct OverlayRetainedWindowRealPanelTests {
+
+  init() { _ = NSApplication.shared }
+
+  private static let screen = ScreenGeometry(
+    id: ScreenID(rawValue: 1),
+    frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+    visibleFrame: CGRect(x: 0, y: 85, width: 1512, height: 860))
+
+  @Test("a real panel survives show, hide, show with identity intact")
+  func showHideShowRetainsTheRealPanel() throws {
+    // **A CAPTURING factory, not `firstView.window`.** Reading the panel off
+    // the attached view can only see the panel that ended up attached — it is
+    // blind to an extra real panel constructed and then discarded before or
+    // instead of that one. Wrapping `.live` itself, so every panel it
+    // constructs is genuinely production configuration, is what lets
+    // `constructedPanels.count == 1` prove there was only ever ONE.
+    let live = OverlayPanelFactory.live
+    var constructedPanels: [NSPanel] = []
+    let capturingFactory = OverlayPanelFactory {
+      let panel = live.makePanel()
+      constructedPanels.append(panel)
+      return panel
+    }
+    let host = OverlayWindowHost(
+      screens: { OverlayScreenResolver { Self.screen } }, panelFactory: capturingFactory)
+
+    nonisolated(unsafe) var closed = false
+    var closeToken: NSObjectProtocol?
+    defer { closeToken.map(NotificationCenter.default.removeObserver) }
+
+    let firstView = NSView(frame: NSRect(x: 0, y: 0, width: 185, height: 44))
+    #expect(
+      host.present(
+        firstView, width: .fixed(185), fixedHeight: nil, isFresh: true, position: .bottom)
+    )
+    #expect(constructedPanels.count == 1, "the first presentation built more than one panel")
+    let panel = try #require(constructedPanels.first)
+    #expect(firstView.window === panel, "the view attached to a DIFFERENT panel than was built")
+    closeToken = NotificationCenter.default.addObserver(
+      forName: NSWindow.willCloseNotification, object: panel, queue: nil
+    ) { _ in closed = true }
+    defer { host.hide() }
+
+    #expect(panel.isVisible, "show did not put the panel on screen")
+    #expect(panel.contentView === firstView, "show did not attach the content view")
+
+    host.hide()
+    #expect(panel.isVisible == false, "hide left the panel on screen")
+    #expect(panel.contentView == nil, "hide left the previous content attached")
+
+    let secondView = NSView(frame: NSRect(x: 0, y: 0, width: 185, height: 44))
+    #expect(
+      host.present(
+        secondView, width: .fixed(185), fixedHeight: nil, isFresh: true, position: .bottom)
+    )
+    #expect(
+      constructedPanels.count == 1,
+      "showing after a hide built a SECOND real panel — the window is not retained")
+    let secondPanel = try #require(secondView.window)
+
+    #expect(
+      ObjectIdentifier(secondPanel) == ObjectIdentifier(panel),
+      "show after hide built a NEW panel — the window is not retained")
+    #expect(secondPanel.isVisible, "the second show did not put the panel back on screen")
+    #expect(secondPanel.contentView === secondView, "the second show kept the old content view")
+    #expect(
+      closed == false,
+      "the panel was CLOSED at some point in show/hide/show — orderOut never posts this")
+  }
+}

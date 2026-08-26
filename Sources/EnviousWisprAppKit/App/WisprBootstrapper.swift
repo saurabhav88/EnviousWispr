@@ -431,6 +431,20 @@ public final class WisprBootstrapper {
       },
       preloadAction: { [weak whisperKitKernelDriver] in
         await whisperKitKernelDriver?.ensureEngineWarm(reason: .launch)
+        #if DEBUG
+          // Re-check the SELECTED and ACTIVE backend, not just this driver's
+          // own readiness (#2377, C1 repair). A backend switch mid-await can
+          // leave this driver `.ready` while it is no longer the one a press
+          // would actually route to — emitting on its readiness alone would
+          // tell the harness the wrong engine warmed, recreating the exact
+          // ColdPressGuard (#879) false alarm this marker exists to avoid.
+          if settings.selectedBackend == .whisperKit,
+            asrManager.activeBackendType == .whisperKit,
+            whisperKitKernelDriver?.engineReadiness == .ready
+          {
+            OverlayFirstRenderMarkers.emitEngineReadyOnce()
+          }
+        #endif
       }
     )
 
@@ -457,8 +471,6 @@ public final class WisprBootstrapper {
       ollamaRemotenessLookup: PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup)
     )
     settingsSync.applyInitialSettings(settings)
-
-
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
     //
@@ -686,6 +698,17 @@ public final class WisprBootstrapper {
         // Discard the outcome so the Task's Success type stays Void
         // (`EngineWarmupOutcome` does not declare Sendable conformance).
         _ = await kernelDriver?.ensureEngineWarm(reason: .launch)
+        #if DEBUG
+          // Same re-check as the WhisperKit path, mirrored: the SELECTED and
+          // ACTIVE backend, not just this driver's own readiness (#2377, C1
+          // repair).
+          if settings.selectedBackend == .parakeet,
+            asrManager.activeBackendType == .parakeet,
+            kernelDriver?.engineReadiness == .ready
+          {
+            OverlayFirstRenderMarkers.emitEngineReadyOnce()
+          }
+        #endif
       }
     }
 
@@ -716,7 +739,6 @@ public final class WisprBootstrapper {
         }
       }
     }
-
 
     let updateCoordinatorHolder = UpdateCoordinatorHolder()
     let sparkleUpdateController = SparkleUpdateController(holder: updateCoordinatorHolder)

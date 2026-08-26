@@ -29,11 +29,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationWillFinishLaunching(_ notification: Notification) {
     assertAttached()
     bootstrapper?.applicationWillFinishLaunching()
+    // #2377 Phase 6: arm the DEBUG marker sink here — in the callback BEFORE the
+    // measured one, and AFTER this callback's own production work.
+    //
+    // Before `applicationDidFinishLaunching` because that interval is what is
+    // measured, and the sink's one-time setup must not land inside it once
+    // Phase 6 moves root construction earlier. After the forwarding above
+    // because #739 requires Sparkle's cross-launch correlation to run at the
+    // earliest callback, and putting measurement in front of it would make a
+    // DEBUG instrument the first thing a launch does.
+    #if DEBUG
+      OverlayFirstRenderMarkers.prepare()
+    #endif
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     assertAttached()
+    // #2377 Phase 6: DEBUG-only measurement of this forwarding call, which is
+    // where launch work happens. `capture` reads the clock and nothing else; the
+    // environment read, the string and the write all run in `emit`, after the
+    // interval has closed.
+    #if DEBUG
+      let launchEnter = OverlayFirstRenderMarkers.capture(.launchEnter)
+    #endif
     bootstrapper?.applicationDidFinishLaunching()
+    #if DEBUG
+      OverlayFirstRenderMarkers.emit(
+        launchEnter, OverlayFirstRenderMarkers.capture(.launchExit))
+    #endif
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {

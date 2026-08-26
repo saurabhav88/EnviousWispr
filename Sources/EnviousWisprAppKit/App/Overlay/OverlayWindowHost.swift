@@ -90,11 +90,7 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
   /// not flagged.
   private var programmaticMoveDepth = 0
 
-  #if DEBUG
-    /// The #2292 acceptance metric: reads 1 after a full dictation exercising
-    /// every transition.
-    private(set) var panelConstructionCount = 0
-  #endif
+  private let panelFactory: OverlayPanelFactory
 
   /// Registered here rather than on the panel because **every fact this
   /// callback needs already lives in this object**: the placement anchor, the
@@ -107,8 +103,12 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
   /// pill reacts to the swipe.
   private nonisolated(unsafe) var spaceChangeObserver: NSObjectProtocol?
 
-  init(screens: @escaping () -> OverlayScreenResolver = { .live }) {
+  init(
+    screens: @escaping () -> OverlayScreenResolver = { .live },
+    panelFactory: OverlayPanelFactory = .live
+  ) {
     self.screens = screens
+    self.panelFactory = panelFactory
     super.init()
     spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
@@ -215,6 +215,27 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
     view.frame = NSRect(origin: .zero, size: size)
     panel.contentView = view
     panel.orderFrontRegardless()
+    // #2377 Phase 6: DEBUG-only, and `emitFirst` rather than `emit` because the
+    // host orders a panel front on EVERY presentation while the benchmark is
+    // about the first one. See `OverlayFirstRenderMarkers.emitFirst`.
+    #if DEBUG
+      // **The AX identifier is set HERE, after `orderFrontRegardless()`, never
+      // in `ensurePanel()` (cloud review P1, C1 repair round 2).**
+      // `accessibilityWindows` enumerates every application window, visible or
+      // not — setting the identifier at construction would make the harness's
+      // AX poll match the panel the instant it exists, before content is
+      // attached or the panel is ordered front, timing something the user
+      // cannot see. Setting it AFTER the same two calls the marker already
+      // waits on keeps both signals — AX identity and the marker — bound to
+      // the same real event.
+      panel.setAccessibilityIdentifier(OverlayFirstRenderMarkers.axPanelIdentifier)
+      // The window number is the whole point of this marker: it lets the harness
+      // NAME the window whose appearance ends the keypress interval, instead of
+      // accepting whichever window it happens to notice first.
+      OverlayFirstRenderMarkers.emitFirst(
+        OverlayFirstRenderMarkers.capture(
+          .hostOrderFrontComplete, window: panel.windowNumber))
+    #endif
     return true
   }
 
@@ -270,16 +291,12 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
 
   private func ensurePanel() -> NSPanel {
     if let panel { return panel }
-    #if DEBUG
-      panelConstructionCount += 1
-    #endif
-    // Configuration copied verbatim from `05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`
-    // so this chunk changes the panel's LIFETIME and nothing about its identity.
-    let p = NSPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 185, height: 44),
-      styleMask: [.borderless, .nonactivatingPanel],
-      backing: .buffered,
-      defer: false)
+    // Configuration below is copied verbatim from
+    // `05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift` so
+    // this chunk changes the panel's LIFETIME and nothing about its identity;
+    // the panel object itself comes from the injected factory so a test can
+    // observe every AppKit command issued against it.
+    let p = panelFactory.makePanel()
     p.isReleasedWhenClosed = false
     p.isOpaque = false
     p.backgroundColor = .clear
@@ -397,11 +414,29 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
     }
   }
 
-  #if DEBUG
-    var placementForTesting: OverlayPlacementState { placement }
-    var panelForTesting: NSPanel? { panel }
-    var isProgrammaticallyMovingForTesting: Bool { programmaticMoveDepth > 0 }
-  #endif
+}
+
+/// How the host builds its `NSPanel`.
+///
+/// A seam rather than a direct construction, mirroring `OverlayScreenResolver`
+/// immediately below: a test injects a recording subclass through this same
+/// point instead of reading private state off the host, so the real AppKit
+/// commands the host issues are what a test observes (#2377, P6-C2).
+@MainActor
+struct OverlayPanelFactory {
+  let makePanel: () -> NSPanel
+
+  init(makePanel: @escaping () -> NSPanel) {
+    self.makePanel = makePanel
+  }
+
+  static let live = OverlayPanelFactory {
+    NSPanel(
+      contentRect: NSRect(x: 0, y: 0, width: 185, height: 44),
+      styleMask: [.borderless, .nonactivatingPanel],
+      backing: .buffered,
+      defer: false)
+  }
 }
 
 /// How the host learns about screens.
