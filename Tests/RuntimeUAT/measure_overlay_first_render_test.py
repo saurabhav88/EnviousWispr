@@ -647,6 +647,70 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
             "reserved to stay out of")
 
 
+# ------------------------------------------- 13. nobody is left behind
+
+class FakeProc:
+    """Enough of `subprocess.Popen` to exercise the reaper's three outcomes."""
+
+    def __init__(self, *, exits_on=None, already_gone=False):
+        # exits_on: which wait() call succeeds — 1 after TERM, 2 after KILL,
+        # None for a process that ignores both.
+        self.exits_on = exits_on
+        self.already_gone = already_gone
+        self.waits = 0
+        self.terminated = False
+        self.killed = False
+
+    def poll(self):
+        return 0 if self.already_gone else None
+
+    def terminate(self):
+        self.terminated = True
+
+    def kill(self):
+        self.killed = True
+
+    def wait(self, timeout=None):
+        self.waits += 1
+        if self.exits_on is not None and self.waits >= self.exits_on:
+            return 0
+        import subprocess
+        raise subprocess.TimeoutExpired(cmd="fake", timeout=timeout)
+
+
+def test_an_abandoned_launch_is_actually_reaped():
+    """A bare terminate-and-raise is a REQUEST, not an outcome.
+
+    A process slow to exit, or ignoring SIGTERM, outlives the exception — and
+    the next cold launch is then either blocked on occupancy or measured beside
+    an orphan answering the same global hotkey and writing the same log. Every
+    dev bundle here is named `EnviousWispr Local.app`, so an orphan is not
+    distinguishable by name from the instance under test.
+    """
+    polite = FakeProc(exits_on=1)
+    m.reap(polite, timeout_s=0.01)
+    expect("a process that exits on TERM is not killed", polite.killed, False)
+    expect("and it is waited on", polite.waits, 1)
+
+    stubborn = FakeProc(exits_on=2)
+    m.reap(stubborn, timeout_s=0.01)
+    expect("a process that ignores TERM is killed", stubborn.killed, True)
+    expect("and waited on again, so it is reaped rather than left a zombie",
+           stubborn.waits, 2)
+
+    wedged = FakeProc(exits_on=None)
+    m.reap(wedged, timeout_s=0.01)
+    expect("a wedged process is still killed", wedged.killed, True)
+    expect("and the reaper returns rather than hanging the run", wedged.waits, 2)
+
+    # TWIN: a process that has already exited is not signalled at all. Without
+    # this the reaper would TERM a pid that may since have been recycled.
+    gone = FakeProc(already_gone=True)
+    m.reap(gone, timeout_s=0.01)
+    expect("an already-exited process is not signalled", gone.terminated, False)
+    expect("nor killed", gone.killed, False)
+
+
 # ------------------------------------------------------------------- runner
 
 TESTS = [
@@ -670,6 +734,7 @@ TESTS = [
     test_every_side_must_be_its_own_cold_launch,
     test_the_swift_emitter_and_this_parser_agree_on_the_schema,
     test_the_host_marker_is_emitted_with_a_real_window_number,
+    test_an_abandoned_launch_is_actually_reaped,
     test_median_uses_statistics_median,
     test_p95_uses_nearest_rank,
 ]

@@ -759,6 +759,38 @@ def hardware_identity():
     }
 
 
+def reap(proc, *, timeout_s=10.0):
+    """Terminate a launched app and make sure it is actually gone.
+
+    **Every path that abandons a launch uses this one, and that is the point.**
+    A bare `terminate()` followed by a raise is a request, not an outcome: a
+    process slow to exit — or ignoring SIGTERM — outlives the exception, and the
+    NEXT cold launch then either blocks on occupancy or, worse, is measured
+    beside an orphan answering the same global hotkey and writing the same log.
+    Every dev bundle on this machine is named `EnviousWispr Local.app`, so an
+    orphan is not distinguishable by name from the instance under test.
+
+    Bounded, then escalated, then waited on again: a `kill()` that is never
+    reaped leaves a zombie, which `ps` still reports.
+    """
+    if proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        # deadline-fallback: the signal is the process exiting; this bounds how
+        # long a wedged instance can hold the shared dev-app slot.
+        proc.wait(timeout=timeout_s)
+        return
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    try:
+        # deadline-fallback: same signal, after SIGKILL, so the child is reaped
+        # rather than left as a zombie for the next occupancy probe to find.
+        proc.wait(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        pass
+
+
 def launch_with_markers(bundle_path, *, marker_dir, ready_timeout_s=30.0):
     """One cold launch with markers armed, returning everything needed to judge it.
 
@@ -800,7 +832,10 @@ def launch_with_markers(bundle_path, *, marker_dir, ready_timeout_s=30.0):
         # the marker; this only decides how often we look for it.
         time.sleep(0.02)
     if not ready:
-        proc.terminate()
+        # The same bounded cleanup the successful path uses. A Release bundle, or
+        # an emitter that cannot open its marker file, reaches here — and both are
+        # ordinary enough that leaving an orphan behind would be a routine cost.
+        reap(proc)
         raise RuntimeError(
             f"no complete {LAUNCH_EXIT} marker for run {run_id} within "
             f"{ready_timeout_s}s. Either the build carries no emitter (a Release "
@@ -862,13 +897,7 @@ def smoke(bundle_path, *, out_dir):
     except Exception as exc:
         failure = f"{type(exc).__name__}: {exc}"
     finally:
-        launched["process"].terminate()
-        try:
-            # deadline-fallback: the signal is the process exiting; this bounds
-            # how long a wedged instance can hold the dev slot before we escalate.
-            launched["process"].wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            launched["process"].kill()
+        reap(launched["process"])
 
     out.update({
         "run_id": launched["run_id"],
