@@ -23,12 +23,6 @@ struct LivePreviewSettingsCopyTests {
     [
       LivePreviewSettingsCopy.sectionHeader,
       LivePreviewSettingsCopy.toggleLabel,
-      LivePreviewSettingsCopy.needsNewerMacOS,
-      LivePreviewSettingsCopy.activeHeader,
-      LivePreviewSettingsCopy.activeExplainer,
-      LivePreviewSettingsCopy.activeNeedsDownloadHelp,
-      LivePreviewSettingsCopy.activeUnsupportedLanguage,
-      LivePreviewSettingsCopy.activeUnsupportedLanguageHelp,
       LivePreviewSettingsCopy.packsHeader,
       LivePreviewSettingsCopy.packsDescription,
       LivePreviewSettingsCopy.packsLoading,
@@ -73,11 +67,8 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.statusBuildCannotRunDetailNoAlternative,
       LivePreviewSettingsCopy.pausedForFasterTranscription,
       LivePreviewSettingsCopy.statusPausedDetail,
-      LivePreviewSettingsCopy.changeLanguageButton,
-      LivePreviewSettingsCopy.changeLanguageHelp,
-      LivePreviewSettingsCopy.universalLockedHelp,
+      LivePreviewSettingsCopy.pickerDictationCaveat,
       LivePreviewSettingsCopy.universalAuto,
-      LivePreviewSettingsCopy.universalAutoHelp,
       // r8: paused variants, which must describe rather than promise.
       LivePreviewSettingsCopy.universalLockedPaused("German"),
       LivePreviewSettingsCopy.universalAutoPaused,
@@ -285,37 +276,8 @@ struct LivePreviewSettingsCopyTests {
         "each engine's copy must separate this setting from Live Preview: \(description)")
     }
   }
-
-  /// **The four cells of the universal row, because the SELECTION is the subject.**
-  ///
-  /// Cloud review r8: with Faster Transcription streaming, `WhisperPreviewEngineResolver`
-  /// returns `.blocked(.heartIsStreaming)` and the hero correctly reads "Paused",
-  /// while this row went on saying "Your words will appear in German" and "The
-  /// preview detects your language as you speak". One page asserted a fact and
-  /// denied it a few points lower.
-  ///
-  /// Asserting only that the paused strings avoid a promise verb would pass
-  /// unchanged if the view stopped consulting the refusal, so these assert the
-  /// mapping from (language, streaming) to the string actually chosen.
-  @Test("The universal row promises output only when the engine is not paused")
-  func universalRowPromisesOnlyWhenRunning() {
-    #expect(
-      LivePreviewEnginePresentation.universalRowLabel(languageName: "German", engineWillProduceOutput: true)
-        == LivePreviewSettingsCopy.universalLocked("German"),
-      "a locked language must promise output when the engine is ready")
-    #expect(
-      LivePreviewEnginePresentation.universalRowLabel(languageName: "German", engineWillProduceOutput: false)
-        == LivePreviewSettingsCopy.universalLockedPaused("German"),
-      "a locked language must be described, not promised, when the engine will not run")
-    #expect(
-      LivePreviewEnginePresentation.universalRowLabel(languageName: nil, engineWillProduceOutput: true)
-        == LivePreviewSettingsCopy.universalAuto,
-      "Auto must say detection is happening when the engine is ready")
-    #expect(
-      LivePreviewEnginePresentation.universalRowLabel(languageName: nil, engineWillProduceOutput: false)
-        == LivePreviewSettingsCopy.universalAutoPaused,
-      "Auto must not claim detection is happening when the engine will not run")
-  }
+  // Deleted by #2436 with the universal language row it guarded; see
+  // LivePreviewStatusMappingTests for why the replacement is stronger.
 
   /// The paused strings must still NAME the language, because the row exists so a
   /// user locked to the wrong one can see it. Silencing the row while paused would

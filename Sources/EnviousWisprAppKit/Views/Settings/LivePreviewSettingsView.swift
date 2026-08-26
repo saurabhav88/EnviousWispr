@@ -177,7 +177,6 @@ struct LivePreviewSettingsView: View {
     return SettingsContentView {
       statusBar
       engineSection
-      languageSection
       packsSection
     }
     // **Keyed on the language, not merely on appearance.**
@@ -213,7 +212,10 @@ struct LivePreviewSettingsView: View {
         lockableCodes: LanguageLockOptions.previewLockableCodes(
           backend: settings.selectedBackend,
           previewEngine: settings.livePreviewEngine,
-          installedPackTags: installedPackTags))
+          installedPackTags: installedPackTags),
+        // Re-homed from the help line under the old Change button (#2436): the
+        // consequence belongs where the action is taken.
+        contextSubtitle: LivePreviewSettingsCopy.pickerDictationCaveat)
     }
   }
 
@@ -438,134 +440,69 @@ struct LivePreviewSettingsView: View {
   }
 
   // MARK: - Preview language
-
-  /// Which language the words will appear in, and where that came from.
-  ///
-  /// **Only while the preview is actually on, and only on Apple's engine.** The
-  /// toggle defaults to OFF, so without the first gate the DEFAULT state of the
-  /// page announced "Your words will appear in English" for something that
-  /// cannot run. Without the second, it would state confidently which Apple
-  /// pack is producing words while the universal engine is the one drawing them.
-  @ViewBuilder
-  private var languageSection: some View {
-    // `currentActive`, never `packs.active` — a value resolved for a language the
-    // user has left must not describe this panel either.
-    // **The language control is NOT Apple-specific, and gating it on the pack
-    // list stranded universal users.** `showsApplePacks` correctly hides Apple's
-    // PACK TABLE on the other engine — those are Apple's languages. But the
-    // universal engine honours a LOCK too (`WhisperPreviewEngineResolver` maps
-    // `.locked(code)` straight through and only `.auto` becomes nil), so a user
-    // locked to the wrong language had no way to see or change it from the page
-    // that was telling them the preview was ready. Review r7.
-    if isPreviewOn, !isUsingApple {
-      universalLanguageSection
-    }
-    if showsApplePacks, isPreviewOn, let active = currentActive {
-      // **TWO containers, not one — founder 2026-08-18, comparing the shipped
-      // page against his mockup: "you combined it into 1 container instead of
-      // keeping it 2 containers."** The language row is a CONTROL you act on; the
-      // explainer is background you read once. Folding them into a single card
-      // made the row look like a paragraph with a button in it, and buried the
-      // thing the user came here to change.
-      //
-      // Always visible rather than behind a disclosure: the whole problem was not
-      // knowing where the language comes from, and an explanation you must first
-      // discover does not solve that.
-      BrandedSection(header: LivePreviewSettingsCopy.activeHeader) {
-        BrandedRow(showDivider: false) {
-          activeSummary(active)
-        }
-      }
-      InsetNotice(text: LivePreviewSettingsCopy.activeExplainer)
-    }
-  }
-
-  /// The universal engine's language row.
-  ///
-  /// Deliberately simpler than Apple's: there is no pack to resolve, so there is
-  /// no needs-download or unsupported state to describe. What it must NOT do is
-  /// stay silent — this engine follows a lock, and the whole point of the row is
-  /// that a user locked to the wrong language can see it and change it.
-  @ViewBuilder
-  private var universalLanguageSection: some View {
-    BrandedSection(header: LivePreviewSettingsCopy.activeHeader) {
-      BrandedRow(showDivider: false) {
-        HStack(alignment: .top, spacing: 11) {
-          SettingsRowIcon(systemName: "globe")
-          VStack(alignment: .leading, spacing: 4) {
-            switch settings.languageMode {
-            case .locked(let code):
-              let entry = LanguageCatalog.entry(for: code)
-              // Describe the lock while paused; promise output only when the
-              // resolver would actually deliver it. The help line is unchanged
-              // because it states where the setting lives, which stays true.
-              Text(
-                LivePreviewEnginePresentation.universalRowLabel(
-                  languageName: entry.englishName, engineWillProduceOutput: universalWillProduceOutput)
-              )
-              .settingsRowLabel()
-              Text(LivePreviewSettingsCopy.universalLockedHelp).settingsHelperCopy()
-            case .auto:
-              Text(
-                LivePreviewEnginePresentation.universalRowLabel(
-                  languageName: nil, engineWillProduceOutput: universalWillProduceOutput)
-              )
-              .settingsRowLabel()
-              Text(LivePreviewSettingsCopy.universalAutoHelp).settingsHelperCopy()
-            }
-          }
-          Spacer(minLength: 8)
-          VStack(alignment: .trailing, spacing: 3) {
-            Button(LivePreviewSettingsCopy.changeLanguageButton) { showLanguageSheet = true }
-              .controlSize(.small)
-            Text(LivePreviewSettingsCopy.changeLanguageHelp)
-              .settingsHelperCopy()
-              .multilineTextAlignment(.trailing)
-              .frame(maxWidth: 190, alignment: .trailing)
-          }
-        }
-      }
-    }
-  }
-
-  /// States the resolved language plainly, and where it came from, so "what is
-  /// active" is readable without inferring it from the list.
-  @ViewBuilder
-  private func activeSummary(_ active: LivePreviewPacksModel.ActiveLanguage) -> some View {
-    HStack(alignment: .top, spacing: 11) {
-      SettingsRowIcon(systemName: "globe")
-      VStack(alignment: .leading, spacing: 4) {
-        switch active {
-        case .ready(_, let name):
-          Text(LivePreviewSettingsCopy.activeReady(name)).settingsRowLabel()
-          Text(LivePreviewSettingsCopy.activeSource(settings.languageMode)).settingsHelperCopy()
-        case .needsDownload(let name):
-          Text(LivePreviewSettingsCopy.activeNeedsDownload(name)).settingsRowLabel()
-          Text(LivePreviewSettingsCopy.activeNeedsDownloadHelp).settingsHelperCopy()
-        case .unsupportedLanguage:
-          Text(LivePreviewSettingsCopy.activeUnsupportedLanguage).settingsRowLabel()
-          Text(LivePreviewSettingsCopy.activeUnsupportedLanguageHelp).settingsHelperCopy()
-        case .unsupportedSystem:
-          Text(LivePreviewSettingsCopy.needsNewerMacOS).settingsReadingCopy()
-        }
-      }
-      Spacer(minLength: 8)
-      // #2154. The panel used to state the language and point at another page,
-      // which is a dead end for the one thing somebody reading it wants to
-      // change. The help line under the button says the consequence out loud:
-      // this sets the DICTATION language, not a preview-only one. Founder
-      // decision, one language in one place — two settings that can disagree
-      // hand the user a mismatch they cannot diagnose.
-      VStack(alignment: .trailing, spacing: 3) {
-        Button(LivePreviewSettingsCopy.changeLanguageButton) { showLanguageSheet = true }
-          .controlSize(.small)
-        Text(LivePreviewSettingsCopy.changeLanguageHelp)
-          .settingsHelperCopy()
-          .multilineTextAlignment(.trailing)
-          .frame(maxWidth: 190, alignment: .trailing)
-      }
-    }
-  }
+  //
+  // **The section is gone; the language moved into the status bar (#2436).** What
+  // follows is every reason the three deleted members recorded, carried verbatim
+  // rather than summarised, because each one still constrains the bar that replaced
+  // them.
+  //
+  // From `languageSection`, on which value may describe the language:
+  //
+  // > `currentActive`, never `packs.active` — a value resolved for a language the
+  // > user has left must not describe this panel either.
+  //
+  // Still binding, and `LivePreviewStatusBarPresentation.appleLanguage` is where it
+  // now lives.
+  //
+  // From `languageSection`, on why the control may not be Apple-only:
+  //
+  // > **The language control is NOT Apple-specific, and gating it on the pack
+  // > list stranded universal users.** `showsApplePacks` correctly hides Apple's
+  // > PACK TABLE on the other engine — those are Apple's languages. But the
+  // > universal engine honours a LOCK too (`WhisperPreviewEngineResolver` maps
+  // > `.locked(code)` straight through and only `.auto` becomes nil), so a user
+  // > locked to the wrong language had no way to see or change it from the page
+  // > that was telling them the preview was ready. Review r7.
+  //
+  // The bar honours this by construction: the language region renders on BOTH
+  // engines, and only `showsApplePacks` gates the pack table below.
+  //
+  // From `universalLanguageSection`, on what the universal row must not do:
+  //
+  // > Deliberately simpler than Apple's: there is no pack to resolve, so there is
+  // > no needs-download or unsupported state to describe. What it must NOT do is
+  // > stay silent — this engine follows a lock, and the whole point of the row is
+  // > that a user locked to the wrong language can see it and change it.
+  //
+  // `universalLanguage` in the presentation is never nil for either language mode,
+  // which is that requirement expressed as a return type rather than a habit, and
+  // `chipNeverPromisesOutput`'s scenario table asserts it for both modes.
+  //
+  // From `activeSummary`, on where the Change button leads:
+  //
+  // > #2154. The panel used to state the language and point at another page,
+  // > which is a dead end for the one thing somebody reading it wants to
+  // > change. The help line under the button says the consequence out loud:
+  // > this sets the DICTATION language, not a preview-only one. Founder
+  // > decision, one language in one place — two settings that can disagree
+  // > hand the user a mismatch they cannot diagnose.
+  //
+  // The button survives as the language region itself. The consequence sentence
+  // moves into `LanguageLockSheet`'s context subtitle in C4, next to the moment it
+  // becomes true, rather than sitting under a button nobody has pressed yet.
+  //
+  // **The one reason NOT carried forward is the two-container rule**, and it is
+  // superseded rather than dropped:
+  //
+  // > **TWO containers, not one — founder 2026-08-18, comparing the shipped
+  // > page against his mockup: "you combined it into 1 container instead of
+  // > keeping it 2 containers."**
+  //
+  // That rule separated a CONTROL from its EXPLAINER so the control was not buried
+  // in a paragraph. #2436 deletes the explainer instead: the fact it carried (on
+  // Auto the preview follows the Mac, not the dictation language) is now two words
+  // under the language itself. There is no paragraph left for the control to be
+  // buried in. Founder direction, 2026-08-25.
 
   // MARK: - Language table
 

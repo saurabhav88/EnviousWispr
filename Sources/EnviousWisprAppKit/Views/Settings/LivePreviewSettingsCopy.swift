@@ -31,12 +31,6 @@ enum LivePreviewSettingsCopy {
 
   static let toggleLabel = "Show words while I speak"
 
-  /// Shown under the disabled toggle on older systems. Names the requirement and
-  /// stops there: a user on macOS 14 cannot act on this beyond upgrading, and a
-  /// longer explanation would read as an apology.
-  static let needsNewerMacOS =
-    "On-screen preview needs macOS 26 or later. Dictation itself works on macOS 14 and up."
-
   // MARK: - Language packs (#2080)
 
   static let packsHeader = "Languages"
@@ -54,59 +48,6 @@ enum LivePreviewSettingsCopy {
   static let packInstall = "Download"
   static let packInstalling = "Downloading"
   static let packRetry = "Try again"
-
-  // MARK: - Which language is live (#2080)
-
-  /// Names what the section CONTAINS, like "Live Preview" and "Languages" either side of it.
-  /// "Right Now" named a moment instead, which told the reader nothing about what they would find.
-  static let activeHeader = "Preview Language"
-
-  /// States the language, not the mechanism. "Resolved locale" is our word, not the user's.
-  static func activeReady(_ name: String) -> String {
-    "Your words will appear in \(name)."
-  }
-
-  /// Where that came from, so the user knows which setting to change if it is wrong.
-  ///
-  /// **Auto is not symmetrical, and saying it was would have been a false claim.** Dictation on
-  /// Auto detects the language you actually speak (`RecordingSessionKernel` sends no language at
-  /// all). The preview cannot: Apple's transcriber is built for one locale chosen before the first
-  /// word, so it uses the Mac's language. A bilingual user on Auto therefore gets correct
-  /// dictation and a preview in the wrong language, which is exactly the "the preview is not the
-  /// pasted text" confusion this feature's copy exists to prevent. Naming the Mac as a guess is
-  /// what makes that legible instead of a bug report.
-  static func activeSource(_ mode: LanguageMode) -> String {
-    switch mode {
-    case .auto:
-      return "Your dictation language is set to Auto, so the preview goes by your Mac's language."
-    case .locked:
-      return "Following the language you picked for dictation."
-    }
-  }
-
-  static func activeNeedsDownload(_ name: String) -> String {
-    "\(name) isn't downloaded yet, so you won't see words while you speak."
-  }
-
-  static let activeNeedsDownloadHelp = "Download it below and the preview starts working."
-
-  static let activeUnsupportedLanguage =
-    "Apple can't preview the language you picked for dictation."
-  static let activeUnsupportedLanguageHelp =
-    "Dictation still works normally. Only the on-screen preview is unavailable."
-
-  /// Explains WHERE the preview language comes from, because the page shows which one is live but
-  /// cannot change it — and a status you cannot act on is a dead end unless it says where to go.
-  ///
-  /// States the rule rather than the mechanism, and states the ONE case where the rule bends. An
-  /// earlier draft said the preview always uses your dictation language, full stop; that reads
-  /// cleanly and is untrue on Auto, where dictation detects what you speak and the preview has to
-  /// commit to a locale in advance. See `activeSource` for the measurement behind that.
-  static let activeExplainer =
-    "The preview follows the language you pick for dictation, under Transcription. On Auto there "
-    + "is nothing to follow yet, so it goes by your Mac's language: dictation still understands "
-    + "whatever you speak, but the words on screen may appear in the wrong language until you "
-    + "pick one."
 
   /// The row that is genuinely in use, as opposed to merely present. With nine languages
   /// installed, "Ready" on all of them said nothing about which one you are previewing in.
@@ -297,15 +238,11 @@ enum LivePreviewSettingsCopy {
   /// is built for one locale chosen before the first word, so it uses the Mac's.
   /// A bilingual user on Auto therefore gets correct dictation and a preview in the
   /// wrong language, and naming the Mac as the source is what makes that legible
-  /// instead of a bug report. `activeSource` above carries the same distinction in
+  /// instead of a bug report. the deleted `activeSource` carried the same distinction in
   /// sentence form; these are its two-word shoulders for the status bar.
   static let languageProvenanceFromMac = "from your Mac"
   static let languageProvenanceUserPicked = "you picked this"
   static let languageProvenanceDetected = "detected as you speak"
-
-  // MARK: - Language section (#2154)
-
-  static let changeLanguageButton = "Change"
 
   /// **The universal engine follows a LOCK, and only auto-detects on Auto.**
   /// `WhisperPreviewEngineResolver` maps `.locked(code)` straight through to the
@@ -317,11 +254,7 @@ enum LivePreviewSettingsCopy {
   static func universalLocked(_ name: String) -> String {
     "Your words will appear in \(name)."
   }
-  static let universalLockedHelp =
-    "The preview follows the language you picked for dictation, under Transcription."
   static let universalAuto = "The preview detects your language as you speak."
-  static let universalAutoHelp =
-    "On Auto this engine works out the language itself, so there is nothing to set."
 
   /// **Paused variants. The row must DESCRIBE the configuration, never promise
   /// output, whenever the engine is refused.**
@@ -356,7 +289,13 @@ enum LivePreviewSettingsCopy {
   /// preview-only setting: it sets the DICTATION language, on a different page.
   /// A button that silently edits another page's setting is how a user loses
   /// auto-detect without noticing.
-  static let changeLanguageHelp =
+  /// **Re-homed by #2436 from a help line under a Change button to the picker's own
+  /// subtitle.** It states a CONSEQUENCE of the action, so it belongs where the action
+  /// is taken rather than under a button nobody has pressed yet. `activeSummary`'s
+  /// reason for it is carried verbatim in `LivePreviewSettingsView`: one language in
+  /// one place, because two settings that can disagree hand the user a mismatch they
+  /// cannot diagnose.
+  static let pickerDictationCaveat =
     "This sets the language for dictation too, not just the preview."
 
   // MARK: - Language table (#2154)
