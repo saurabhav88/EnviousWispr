@@ -38,6 +38,22 @@ public enum SelectionReader {
     case noFrontmostApplication = "no_frontmost_application"
     /// The frontmost application reported no focused element.
     case noFocusedElement = "no_focused_element"
+    /// **EnviousWispr is the frontmost application, so there is nothing of the user's to read
+    /// (#2413).**
+    ///
+    /// Reachable because the shortcut is GLOBAL and our own Settings window has text fields: press
+    /// it while editing a custom word and, without this, the reader hands back the half-typed edit
+    /// as a word to add.
+    ///
+    /// **Named for what is CHECKED, not for what is assumed.** An earlier version called this
+    /// `ownSelection` and its copy said "That selection is inside EnviousWispr" — but nothing here
+    /// reads a selection, and a caret in an empty field of ours produces this refusal too. Asserting
+    /// a selection the code never looked at is the false-sentence class this guard exists to stop,
+    /// committed inside the guard itself.
+    ///
+    /// Its own member rather than `nothingSelected` because the causes differ and so does the fix:
+    /// this one is "you are in our app", which names no fault of the user's and has one remedy.
+    case ownApplication = "own_application"
     /// The focused element does not expose selected text at all (`kAXErrorAttributeUnsupported`).
     case selectionUnsupported = "selection_unsupported"
     /// The attribute is advertised but answered with no value (`kAXErrorNoValue`).
@@ -131,9 +147,35 @@ public enum SelectionReader {
   /// Split from `read()` so both refusals are reachable from a test. Trust and frontmost are asked
   /// together because they are the two questions with no Accessibility round trip behind them; the
   /// element read has its own function below rather than four optionals in one.
-  static func refusalBeforeReading(isTrusted: Bool, frontmostPID: pid_t?) -> Refusal? {
+  static func refusalBeforeReading(
+    isTrusted: Bool,
+    frontmostPID: pid_t?,
+    ownPID: pid_t = ProcessInfo.processInfo.processIdentifier,
+    frontmostIsOurs: Bool = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+      == Bundle.main.bundleIdentifier
+  ) -> Refusal? {
     guard isTrusted else { return .accessibilityNotTrusted }
     guard let frontmostPID, frontmostPID > 0 else { return .noFrontmostApplication }
+    // **Refuse our own app (#2413), and no ordering discipline can replace this.** The two comments
+    // in this file and in `QuickAddCoordinator.begin` say to read BEFORE activating ourselves, which
+    // is right and is what makes the ordinary case work. It cannot help when the user is ALREADY
+    // inside our app when they press the shortcut — the binding is global, our Settings window has
+    // text fields, and there is no "before" in which another application is frontmost.
+    //
+    // `ownPID` is a parameter with a live default so the decision is reachable from a test; the
+    // production call site never passes it.
+    // **Identity, not just this process.** A second EnviousWispr — an installed build beside a dev
+    // build — has a different pid and would walk straight through a pid-only check. That is the
+    // ordinary state of a development machine, not an exotic one. The pid was a proxy for identity;
+    // this asks the question directly, and keeps the pid comparison as the case that holds when
+    // there is no bundle identifier to read.
+    guard frontmostPID != ownPID, !frontmostIsOurs else { return .ownApplication }
+
+    // **KNOWN LIMIT, stated rather than left to be found.** `frontmostPID` was sampled by the caller
+    // and the element read happens after this returns, so an application switch in between means the
+    // refusal and the read can describe different applications. Closing it means binding both to one
+    // Accessibility object, which is a restructure of `read` rather than a guard, and the read is
+    // already bound to the SAME pid — so this shrinks the window rather than widening it.
     return nil
   }
 
