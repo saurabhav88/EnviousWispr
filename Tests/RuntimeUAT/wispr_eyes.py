@@ -1909,18 +1909,21 @@ def double_press_record_key(attempts=3):
     # THE ATTEMPT COUNT IS PRINTED, ALWAYS. A retry that hides itself turns a
     # degrading delivery path into a silent slowdown, and the next person to
     # measure this needs to see 1 become 3 before it becomes a failure.
-    # A RETRY IS ONLY SAFE WHILE THE LOG CAN CONTRADICT IT, and that is not a
-    # detail - it is the difference between a retry and a saboteur. If the marker
-    # cannot be read, an attempt that SUCCEEDED reads as a failure, and the
-    # retry's first press is then delivered to an app that is already locked,
-    # where `HotkeyService` reads it as the STOP gesture. The harness would
-    # dismantle its own successful attempt and report a product failure.
+    # KNOWN COST OF THE RETRY, and it is a real one rather than a hedge. Where no
+    # file log exists at all - a Release build compiles the sink out, and Debug
+    # Mode gates it in a debug build - a first attempt that SUCCEEDED reads as a
+    # failure, and the next press lands on an already-locked recording where
+    # `HotkeyService` takes it as the STOP gesture.
     #
-    # No file log means no evidence: `AppLogger` gates the whole file sink behind
-    # `#if DEBUG` and, within a debug build, behind the in-app Debug Mode switch.
-    # So drive the gesture ONCE, say plainly that it could not be verified, and
-    # leave the verdict to the caller's own marker check rather than pressing
-    # again into an unknown state.
+    # An earlier revision tried to detect that state and drive the gesture once
+    # instead. It was wrong twice in opposite directions, cost two full traversals
+    # of a 49 MB shelf per attempt, and was choosing between two ways of failing
+    # the run rather than preventing a loss. Deleted, and this is what deleting it
+    # costs: on a build with no log, three attempts instead of one.
+    #
+    # The verdict below is what covers it - it names every cause it cannot rule
+    # out rather than reporting a product failure it cannot distinguish from its
+    # own blindness.
     for attempt in range(1, attempts + 1):
         attempt_start = _dt.datetime.now().astimezone()
         press_record_key()
@@ -1999,9 +2002,11 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     NEVER AGREED (#2409).** Measured across all five rotated logs, 434,924 lines:
     650 `Hands-free mode activated` against 652 `Double press`, so the double
     press accounts for effectively every activation and the menu path has produced
-    none. (The two-line gap is line loss, not a product gap: `AppLogger` opens
-    without `O_APPEND` and concurrent writers overwrite each other - this repo has
-    measured 48 of 80 lines lost that way.)
+    none. (The two-line gap is line loss rather than a product gap. Note the
+    measurement predates #2159: `AppLogger` opened without `O_APPEND` then, so
+    concurrent writers overwrote each other. `AppLogger.swift:187` uses
+    `O_WRONLY | O_APPEND | O_CLOEXEC` now and that mechanism is closed - rotation
+    is still unlocked across processes, which is a different one.)
 
     That sentence did not merely mislead, it RETIRED THE CHECK: anyone asking
     "does our suite cover hands-free" read it, got an answer, and stopped looking,
@@ -2244,9 +2249,9 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
               f"~80% reliable per attempt, which is why it retries")
         print(f"    2. nothing was writing app.log - a Release build compiles "
               f"the sink out, and Debug Mode gates it in a debug build")
-        print(f"    3. a concurrent writer ate the line - AppLogger opens "
-              f"without O_APPEND, and 206 of 440,640 lines on this machine have "
-              f"lost their prefix that way")
+        print(f"    3. a rotation crossed the 10 MiB bound mid-run - "
+              f"AppLogger's rotation is still not locked across processes, so a "
+              f"line can be lost as the shelf shifts")
         print(f"  Check Debug Mode is on and exactly one EnviousWispr is "
               f"running, then re-run before filing anything.")
 
