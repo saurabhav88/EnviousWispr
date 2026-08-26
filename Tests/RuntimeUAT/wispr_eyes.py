@@ -1824,17 +1824,21 @@ def instances_stayed_single(before, window_start, samples):
     they answer the same global hotkey. So for a Release instance the banner
     mechanism contributes NOTHING and the samples are the only cover, which makes
     the residual the whole sampling gap rather than a rare coincidence.
-    A debug instance is the narrow case, and it is narrower than an earlier
-    revision of this note claimed. That version said the banner was "the line most
-    at risk" because a second app launching means two writers - which was the
-    obsolete diagnosis, and it survived here after the same claim was corrected in
-    the verdict and the docstring. THIRD SITE of one sentence; a copied claim has
-    siblings by construction, so grep the SENTENCE rather than the finding.
-    `AppLogger.swift:187` opens with `O_APPEND`, so concurrent appends cannot
-    overwrite the banner at all. Losing it now needs a ROTATION crossing the
-    10 MiB bound while the two processes overlap, since rotation is still not
-    locked across processes. So the debug case requires: launch AND exit between
-    two samples, AND a rotation inside that same window.
+    A debug instance additionally needs its banner to be missing from the shelf
+    when the reader looks, and **this note deliberately does not say by what
+    mechanism.** Four review rounds went into that sentence and each correction
+    was right and exposed the next: the append race (closed by `O_APPEND` in
+    #2159), then a single in-window rotation (which loses nothing, because
+    `log_lines_since` reads `app.1.log` too), then shelf eviction and read races
+    that need not happen in the window at all.
+    **That is a SET being described rather than enumerated, and a description has
+    a next counterexample.** The residual does not depend on which mechanism it
+    is: whatever removes the banner from the shelf before the read, the samples
+    are the only remaining cover. Naming a mechanism has been wrong three times
+    and adds nothing the reader can act on, so it is left out.
+    What IS bounded and worth stating: the debug case needs the instance to
+    launch AND exit between two samples, AND its banner to be unreadable by the
+    time the verdict is drawn.
 
     What is NOT in that residual any more, because a review round closed both: a
     banner written before the log cursor was taken, and a banner carried into a
