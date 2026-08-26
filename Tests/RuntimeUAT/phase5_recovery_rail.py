@@ -228,9 +228,16 @@ def main():
         # `restore_clean` is deliberately NOT read here — it is set in the
         # `finally` below, which downgrades a PASS if the restore did not land.
         # Reading it at this point would always find `None` and refuse every run.
+        # `same_panel_as_recording` is a VERDICT INPUT, not a note. The rail
+        # morphing the retained panel is the architecture this phase rests on; a
+        # rail on a second window would be a different product passing this row.
+        # `clip_exists` likewise — a verdict citing video nobody wrote is a claim
+        # nobody can check.
         report["verdict"] = ("PASS" if (report.get("cancelled") and report.get("rail")
+                                        and report.get("same_panel_as_recording")
                                         and report.get("survived_hover")
-                                        and report.get("expired_after_leaving"))
+                                        and report.get("expired_after_leaving")
+                                        and report.get("clip_exists"))
                              else "REFUSED")
         return report
 

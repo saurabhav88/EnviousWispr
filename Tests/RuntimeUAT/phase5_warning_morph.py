@@ -24,13 +24,24 @@ that. The morph is specific: a banner adds a row to a pill whose width does not
 move, so the row requires width UNCHANGED and height GROWN on the same window,
 and requires every extracted frame to exist.
 
-**The CLEAR half is not reachable through this notice.** It is armed
-`dismissAfter: nil` and the coordinator states it "stays until the recording
-stops; cleared by the transition out of recording"
-(`DictationLifecycleCoordinator.swift:285-294`). A same-id clear is reachable
-through `autoStopUnavailable` (`dismissAfter: 4.0`) and needs a VAD seam.
+**TWO NOTICES, TWO TAKES, because one recording cannot show both.** The #1060
+cap warning is armed `dismissAfter: nil` — the coordinator states it "stays until
+the recording stops; cleared by the transition out of recording"
+(`DictationLifecycleCoordinator.swift:285-294`) — so it can prove the MORPH and
+never the clear. The clear is proven by `autoStopUnavailable`, the only in-panel
+notice armed `dismissAfter: 4.0` (`WisprBootstrapper.swift:573`), staged through
+`force_auto_stop_unavailable_notice`. Firing both into one take would leave the
+persistent notice underneath the self-clearing one and neither transition legible.
 
-No speech is needed: the cap warning is driven by elapsed recording time.
+    take 1  cap warning     morph 400x34 -> 400x60, stays
+    take 2  autoStop notice morph 400x34 -> 400x60 -> 400x34, recording still live
+
+**The staged notice is the PRODUCTION closure.** `WisprBootstrapper` installs the
+same value it hands the VAD source, so this proves that notice clearing through
+the one clock rather than proving a notice can clear.
+
+No speech is needed: the cap warning is driven by elapsed recording time, and the
+staged notice by a command.
 """
 
 import json
@@ -46,6 +57,7 @@ import phase5_geometry_relaunch as g  # noqa: E402
 import phase5_overlay_lifecycle as lc  # noqa: E402
 import phase5_paste_target as pt  # noqa: E402
 import wispr_eyes as rk  # noqa: E402  (record-key helpers; merged in #2425)
+import faultInjection as fi  # noqa: E402
 import wispr_eyes as w  # noqa: E402
 
 UAT = pathlib.Path(
@@ -104,6 +116,92 @@ def recording_started_at(since_bytes):
     return None
 
 
+def staged_clear_take(pid):
+    """Take 2: stage the self-clearing notice and watch it come and go.
+
+    Returns a dict. The claim is a round trip on ONE window — morph out to the
+    banner frame, back to the pre-banner frame about four seconds later — with
+    the recording still live at the end, because a "clear" that is really the
+    recording ending is the thing this row must not accept.
+    """
+    # IDLE INVOCATION MUST BE INERT, and that is ASSERTED rather than noted. The
+    # notice targets the recording panel and no-ops when none is showing; a seam
+    # that rendered something with no recording would be staging a state the
+    # product cannot reach, which is the opposite of what it is for.
+    idle_before = set(g.visible_overlays(pid))
+    idle_reply = fi.send("force_auto_stop_unavailable_notice")
+    idle_seen = {}
+    for _ in range(60):
+        idle_seen.update(g.visible_overlays(pid))
+        time.sleep(0.05)  # test-fixture-timer: window-server sampling cadence
+    out = {"idle_reply": idle_reply,
+           "idle_overlays_before": sorted(idle_before),
+           "idle_overlays_after": sorted(idle_seen),
+           "idle_invocation_inert": not (set(idle_seen) - idle_before)}
+
+    before = set(g.visible_overlays(pid))
+    bounds = Bounds(pid)
+    bounds.start()
+    if not rk.double_press_record_key():
+        bounds.stop()
+        return dict(out, error="hands-free did not engage")
+
+    time.sleep(2.0)  # settle: let the recording pill settle to its steady frame
+    steady = [m for m in g.visible_overlays(pid).values()]
+    out["frame_before_notice"] = [steady[0]["w"], steady[0]["h"]] if steady else None
+
+    out["reply"] = fi.send("force_auto_stop_unavailable_notice")
+    fired_at = time.time()
+    time.sleep(10.0)  # deadline-fallback: the notice is armed `dismissAfter: 4.0`
+    # and there is no signal for "the clear fired"; outliving it IS the
+    # observation, so this waits comfortably past it and reads the series.
+
+    still_recording = "Recording started" in tail_of_log(2000) and not _terminal_after_start()
+    rk.stop_after_short_hold(0.0)
+    bounds.stop()
+    g.await_idle()
+
+    after = set(g.visible_overlays(pid))
+    life = lc.describe(before, {x["id"] for x in bounds.series}, after)
+    series = [x for x in bounds.series if x["id"] == life["window_id"]] if life["window_id"] else []
+
+    steps, last = [], None
+    for x in series:
+        key = (x["w"], x["h"])
+        if last is not None and key != last:
+            steps.append({"at_s": round(x["t"] - fired_at, 2),
+                          "from": list(last), "to": [x["w"], x["h"]]})
+        last = key
+    out["steps"] = steps
+    out["lifecycle"] = life["verdict"]
+    out["recording_still_live_at_clear"] = still_recording
+
+    # The round trip: out to the banner frame, then back to where it started.
+    outs = [m for m in steps if m["at_s"] >= 0 and m["to"][1] > m["from"][1]
+            and m["to"][0] == m["from"][0]]
+    backs = []
+    if outs:
+        first = outs[0]
+        backs = [m for m in steps if m["at_s"] > first["at_s"]
+                 and m["from"] == first["to"] and m["to"] == first["from"]]
+    out["morph"] = outs[0] if outs else None
+    out["clear"] = backs[0] if backs else None
+    out["cleared_after_s"] = (round(backs[0]["at_s"] - outs[0]["at_s"], 2)
+                              if outs and backs else None)
+    return out
+
+
+def tail_of_log(n_bytes):
+    with LOG.open("rb") as fh:
+        fh.seek(max(0, LOG.stat().st_size - n_bytes))
+        return fh.read().decode("utf-8", errors="replace")
+
+
+def _terminal_after_start():
+    t = tail_of_log(200_000)
+    return max(t.rfind("dictation_terminal"), t.rfind("Clipboard cleanup")) > t.rfind("Recording started")
+
+
 def main():
     snapshot = {k: read_dev_default(k) for k in OVERRIDES}
     report = {"snapshot": snapshot, "cap_seconds": CAP_SECONDS,
@@ -117,7 +215,16 @@ def main():
             subprocess.run(["defaults", "write", DEV_DOMAIN, k, "-float", str(v)], check=True)
         report["overrides_written"] = {k: read_dev_default(k) for k in OVERRIDES}
 
-        pid = g.start_app()
+        # `open` does not pass env vars, so the endpoint is armed with --env.
+        subprocess.run(["open", "-n", "--env", "EW_FAULT_INJECTION=1", g.BUNDLE],
+                       capture_output=True)
+        deadline, pid = time.time() + 30, None
+        while time.time() < deadline:
+            pids = g.dev_pids()
+            if len(pids) == 1:
+                pid = pids[0]
+                break
+            time.sleep(0.2)  # test-fixture-timer: process-table polling
         if not pid:
             print(json.dumps({"verdict": "ABORT_NO_INSTANCE"}))
             return
@@ -174,10 +281,23 @@ def main():
         # animation is exactly that. The row's claim is a specific morph: the
         # banner adds a row to a pill whose width does not move, so require the
         # width to be UNCHANGED and the height to GROW, on the same window.
+        # THE EXACT TRANSITION, not a shape near a time. "Same width, taller"
+        # still admits any same-width growth near the deadline — a live preview
+        # wrapping a line does exactly that. The banner's morph is a specific
+        # pair of frames and the clear is its inverse.
+        morph_from, morph_to = [400, 34], [400, 60]
         near = [m for m in morphs
                 if m["at_s"] is not None and abs(m["at_s"] - expected) <= 4.0
-                and m["to"][0] == m["from"][0]
-                and m["to"][1] > m["from"][1]]
+                and m["from"] == morph_from and m["to"] == morph_to]
+        # The CLEAR: the same panel returns to the pre-banner frame, roughly four
+        # seconds later, while the recording is still running.
+        cleared = []
+        if near:
+            at = near[0]["at_s"]
+            cleared = [m for m in morphs
+                       if m["at_s"] is not None and m["at_s"] > at
+                       and m["from"] == morph_to and m["to"] == morph_from]
+        report["morph_cleared"] = cleared
 
         report.update({
             "locked": locked,
@@ -207,12 +327,22 @@ def main():
         frames = report.get("frames") or {}
         report["frames_all_written"] = bool(frames) and all(
             f and pathlib.Path(f).exists() for f in frames.values())
-        report["verdict"] = ("PASS" if (locked and settled and life["verdict"] == lc.OK
-                                        and report["one_window_id"] and near
-                                        and clip.exists and report["frames_all_written"])
-                             else "REFUSED")
-        # The clear is not attempted; see the module docstring.
-        report["clear_row"] = "BLOCKED_PRODUCT_TRIGGER"
+        morph_ok = (locked and settled and life["verdict"] == lc.OK
+                    and report["one_window_id"] and near
+                    and clip.exists and report["frames_all_written"])
+        report["morph_row"] = "PASS" if morph_ok else "REFUSED"
+
+        # TAKE 2 — the clear, through the production notice staged on demand.
+        g.await_idle()
+        clear = staged_clear_take(pid)
+        report["clear_take"] = clear
+        clear_ok = (clear.get("idle_invocation_inert") and clear.get("morph") and clear.get("clear")
+                    and clear.get("lifecycle") == lc.OK
+                    and clear.get("recording_still_live_at_clear")
+                    and clear.get("cleared_after_s") is not None
+                    and 2.0 <= clear["cleared_after_s"] <= 8.0)
+        report["clear_row"] = "PASS" if clear_ok else "REFUSED"
+        report["verdict"] = "PASS" if (morph_ok and clear_ok) else "REFUSED"
     finally:
         for k, v in snapshot.items():
             if v is None:

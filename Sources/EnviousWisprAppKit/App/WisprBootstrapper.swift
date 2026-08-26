@@ -570,9 +570,16 @@ public final class WisprBootstrapper {
     // down with the director. The notice can only fire during a recording, which
     // cannot start until bootstrap returns, so no reachable interval exists where
     // it is unbound.
-    vadSource.onAutoStopUnavailableNotice = { [weak recordingOverlay] in
+    // FACTORED so production and the Live UAT invoke the SAME value. #2377 C6D
+    // needs the self-clearing notice on demand, and a seam presenting its own
+    // notice would prove that a notice can clear rather than that THIS one does.
+    let presentAutoStopUnavailableNotice: @MainActor () -> Void = { [weak recordingOverlay] in
       recordingOverlay?.update(.inPanelNotice(.autoStopUnavailable, dismissAfter: 4.0))
     }
+    vadSource.onAutoStopUnavailableNotice = presentAutoStopUnavailableNotice
+    #if DEBUG
+      DebugOverlayStaging.presentAutoStopUnavailableNotice = presentAutoStopUnavailableNotice
+    #endif
 
     // Custom-words propagator wiring (seed → register consumers → install
     // `onWordsChanged`). Phase D (#496). `wireCustomWords` strong-captures the
