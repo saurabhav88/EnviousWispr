@@ -936,10 +936,10 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
     boot = BOOTSTRAPPER.read_text()
     for label, anchor, backend, driver in (
         ("WhisperKit preloadAction",
-         "preloadAction: { [weak whisperKitKernelDriver, asrManager] in",
+         "preloadAction: { [weak whisperKitKernelDriver] in",
          "whisperKit", "whisperKitKernelDriver"),
         ("parakeet launch Task",
-         "Task { [weak kernelDriver, asrManager] in",
+         "Task { [weak kernelDriver] in",
          "parakeet", "kernelDriver"),
     ):
         start = boot.find(anchor)

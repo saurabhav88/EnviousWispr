@@ -429,7 +429,7 @@ public final class WisprBootstrapper {
       runDocumentsMigration: { [weak whisperKitRetirement] in
         await whisperKitRetirement?.runLaunch()
       },
-      preloadAction: { [weak whisperKitKernelDriver, asrManager] in
+      preloadAction: { [weak whisperKitKernelDriver] in
         await whisperKitKernelDriver?.ensureEngineWarm(reason: .launch)
         #if DEBUG
           // Re-check the SELECTED and ACTIVE backend, not just this driver's
@@ -694,7 +694,7 @@ public final class WisprBootstrapper {
     // WhisperKit: observation-based (waits for setupState to become .ready
     // first, then `preloadAction` → `ensureEngineWarm`).
     if settings.selectedBackend == .parakeet {
-      Task { [weak kernelDriver, asrManager] in
+      Task { [weak kernelDriver] in
         // Discard the outcome so the Task's Success type stays Void
         // (`EngineWarmupOutcome` does not declare Sendable conformance).
         _ = await kernelDriver?.ensureEngineWarm(reason: .launch)
