@@ -194,8 +194,9 @@ final class MenuBarController: NSObject {
     // a broken glyph. The scalar ceiling still bounds the worst case, because a character can carry
     // many scalars — both limits, and the tighter one wins.
     let shown: String = {
-      guard collapsed.count > Self.quickAddTitleCharacters
-        || collapsed.unicodeScalars.count > Self.quickAddTitleScalars
+      guard
+        collapsed.count > Self.quickAddTitleCharacters
+          || collapsed.unicodeScalars.count > Self.quickAddTitleScalars
       else { return collapsed }
       var out = ""
       for character in collapsed {
@@ -447,7 +448,8 @@ final class MenuBarController: NSObject {
   /// application frontmost (measured twice, #2412), which is exactly what makes the answer theirs.
   /// An Accessibility round trip on an icon refresh would be work nobody asked for, against a
   /// frontmost app that may well be us.
-  private func currentViewState(quickAdd: QuickAddMenuState = .nothingSelected) -> MenuBarViewState {
+  private func currentViewState(quickAdd: QuickAddMenuState = .nothingSelected) -> MenuBarViewState
+  {
     // #1019: read the pending-update state (non-critical only — critical routes
     // to Sparkle's own UX) and the active-dictation guard.
     let pending: UpdateAvailabilityService.AvailableUpdate? = {
@@ -550,6 +552,14 @@ extension MenuBarController: NSMenuDelegate {
     MainActor.assumeIsolated {
       if let currentMenu = statusItem?.menu {
         // The one read, at the one moment it is about the user's document rather than about us.
+        //
+        // **That is MEASURED, not assumed — opening a status-bar menu does not activate its owner.**
+        // A standalone AppKit probe with a status item and nothing else read
+        // `NSWorkspace.frontmostApplication` before, during and after: unchanged throughout, and
+        // `isUs=false` inside `menuNeedsUpdate`. It matters because #2413 adds a refusal for "we are
+        // frontmost", which would otherwise make this entry permanently blocked. Limit of that
+        // measurement: the probe opens the menu with `performClick` rather than a real mouse click,
+        // though both enter the same tracking loop.
         //
         // **Bounded, because `menuNeedsUpdate` must be synchronous.** A frontmost application whose
         // Accessibility provider stalls would otherwise hold the main actor and the menu would not
