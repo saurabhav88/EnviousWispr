@@ -971,17 +971,16 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
     # free: it is the exact input this instrument exists to measure the
     # effect of.
     #
-    # **The screen-lock check is HERE, immediately before `modifier_down`,
-    # not only in `smoke()` (#2377, C1 repair).** `smoke()`'s own recheck
-    # runs before `_ptt.resolve()` above — which can spend up to ~5s in
-    # `defaults export` — and the AX queries just above it, so the screen
-    # can still lock inside that gap even though `smoke()` saw it unlocked.
-    # This is the LAST statement before the press, so no further gap can
-    # exist after it; `smoke()`'s own check remains as a cheap early exit
-    # that skips the ~5s of PTT/AX work entirely when the screen is ALREADY
-    # locked, rather than being made redundant by this one.
+    # This is the final pre-input check. A session transition cannot be
+    # atomic with synthetic input, so the post-measure check below brackets
+    # the whole interval and prevents any locked-screen sample from being
+    # accepted. `smoke()`'s own recheck (run before this function is even
+    # called) remains as a cheap early exit that skips the ~5s of PTT/AX
+    # work entirely when the screen is ALREADY locked at readiness time.
     pre_press_lock = screen_lock_state()
     pre_press_blocked = screen_lock_block(pre_press_lock)
+    post_measure_lock = None
+    post_measure_blocked = None
 
     if ax_available and not preexisting and not pre_press_blocked:
         keydown_ns = time.perf_counter_ns()
@@ -1021,6 +1020,15 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
             # is exactly when it is least likely to be noticed.
             _si.modifier_up(binding.keycode)
 
+        # The OTHER boundary: the screen can lock DURING the poll loop above
+        # (up to `timeout_s`, not instantaneous), so a sample that started
+        # unlocked can still finish having been taken against a locked
+        # screen. Checked immediately after the modifier is released and
+        # normal polling completes — bracketing the whole measured interval
+        # is what closes the class; a pre-check alone only moves the gap.
+        post_measure_lock = screen_lock_state()
+        post_measure_blocked = screen_lock_block(post_measure_lock)
+
         if marker_result[0] is None and marker_result[1] is None:
             # Neither confirmed nor blocked when time ran out: force the
             # FINAL call, which is the one point "only .other, no .recording
@@ -1034,11 +1042,15 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
 
         host_window_id, presentation_block = marker_result
 
-    if pre_press_blocked:
-        # Checked first: a screen that locked in the gap above never gets a
-        # press, whatever `presentation_block`/`adjudicate_ax_overlay` would
-        # otherwise have said about a poll loop that never ran.
-        timing = OverlayTiming(verdict=BLOCKED_SCREEN_LOCKED, detail=pre_press_blocked,
+    if pre_press_blocked or post_measure_blocked:
+        # EITHER boundary blocks the sample — a lock caught only at one end
+        # would still accept a measurement taken while locked in the middle.
+        # `presentation_block`/`adjudicate_ax_overlay` never get a say over
+        # a locked-screen sample, whatever they would otherwise have
+        # concluded about a poll loop that ran against the wrong machine
+        # state.
+        lock_block = pre_press_blocked or post_measure_blocked
+        timing = OverlayTiming(verdict=BLOCKED_SCREEN_LOCKED, detail=lock_block,
                                window_id=None, keypress_ms=None)
     elif presentation_block is not None:
         timing = OverlayTiming(verdict=presentation_block[0], detail=presentation_block[1],
@@ -1055,7 +1067,8 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
     return {
         "verdict": timing.verdict,
         "detail": timing.detail,
-        "screen_locked": pre_press_lock,
+        "screen_locked_pre_press": pre_press_lock,
+        "screen_locked_post_measurement": post_measure_lock,
         "keypress_ms": timing.keypress_ms,
         "window_id": timing.window_id,
         "host_window_id": host_window_id,

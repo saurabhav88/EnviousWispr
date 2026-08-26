@@ -604,6 +604,64 @@ def test_known_invalid_ax_preconditions_never_touch_the_record_key():
         m.screen_lock_state = saved_lock_state
 
 
+def test_screen_lock_brackets_the_whole_measured_interval():
+    """A pre-press check alone cannot see the screen lock DURING the AX poll
+    (up to `timeout_s`, not instantaneous) — only bracketing both ends of
+    the interval closes that (#2377, C1 repair). `screen_lock_state`
+    returns `[False, True]`: unlocked when the pre-press check runs, locked
+    by the time the post-measure check runs after polling completes. The
+    press still happens — the pre-press check correctly saw it as safe —
+    but the sample must still be blocked.
+    """
+    import types
+
+    class SpyInput(types.ModuleType):
+        def __init__(self, name):
+            super().__init__(name)
+            self.down_calls = []
+            self.up_calls = []
+
+        def modifier_down(self, keycode):
+            self.down_calls.append(keycode)
+
+        def modifier_up(self, keycode):
+            self.up_calls.append(keycode)
+
+    fake_ptt = types.ModuleType("ptt_binding")
+    fake_ptt.resolve = lambda: types.SimpleNamespace(
+        is_modifier_only=True, key_name="fn (globe)", keycode=63)
+    spy = SpyInput("simulate_input")
+
+    saved_modules = {name: sys.modules.get(name) for name in ("simulate_input", "ptt_binding")}
+    saved_ax_available = m.ax_accessibility_available
+    saved_ax_matching = m.ax_matching_windows
+    saved_lock_state = m.screen_lock_state
+    sys.modules["simulate_input"] = spy
+    sys.modules["ptt_binding"] = fake_ptt
+    lock_sequence = iter([False, True])
+    m.screen_lock_state = lambda: next(lock_sequence, True)
+    try:
+        m.ax_accessibility_available = lambda pid: True
+        m.ax_matching_windows = lambda pid: []
+        result = m.measure_keypress_to_overlay(4242, "/nonexistent-marker-path", timeout_s=0.05)
+        expect("the pre-press check passed, so the press still occurs once",
+               spy.down_calls, [63])
+        expect("and releases once", spy.up_calls, [63])
+        expect("but the post-measure check blocks the sample",
+               result["verdict"], m.BLOCKED_SCREEN_LOCKED)
+        expect("no keypress figure for a sample taken against a locked screen",
+               result["keypress_ms"], None)
+    finally:
+        for name, mod in saved_modules.items():
+            if mod is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = mod
+        m.ax_accessibility_available = saved_ax_available
+        m.ax_matching_windows = saved_ax_matching
+        m.screen_lock_state = saved_lock_state
+
+
 # -------------------------------------------------- 9. thirty pairs, exactly
 
 
@@ -1574,6 +1632,7 @@ TESTS = [
     test_recording_host_marker_is_read_from_the_marker_text,
     test_wrong_presentation_binding_is_refused,
     test_known_invalid_ax_preconditions_never_touch_the_record_key,
+    test_screen_lock_brackets_the_whole_measured_interval,
     test_29_pairs_block_and_30_pairs_pass,
     test_one_invalid_sample_blocks_without_top_up,
     test_benchmark_fails_on_a_real_regression,
