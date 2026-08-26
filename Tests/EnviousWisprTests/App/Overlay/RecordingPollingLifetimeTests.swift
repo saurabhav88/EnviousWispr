@@ -282,31 +282,56 @@ struct RecordingPollingLifetimeTests {
   /// the live cadence, one layer down, asserted on the cadence VALUE so it holds
   /// however that value is used.
   ///
-  /// **The park is asserted to release BECAUSE of cancellation, not merely to
-  /// return.** A `wait` that did nothing at all would return too, and a row whose
-  /// only assertion is "it came back" passes on it. Reading `Task.isCancelled`
-  /// on the far side of the wait is the terminal outcome: `false` means the park
-  /// released on its own, which is the defect that would put a settings page
-  /// back to twenty reads a second.
+  /// **The park must NOT return while its task is uncancelled — and the earlier
+  /// version of this row could not see that, which a mutation run proved rather
+  /// than suggested.**
   ///
-  /// A park that ignored cancellation still hangs, and is reported by the row's
-  /// own time limit rather than by an assertion — that half cannot be helped, and
-  /// it fails loudly either way.
-  @Test("a still cadence releases when its task is cancelled", .timeLimit(.minutes(1)))
-  func stillReleasesOnCancellation() async {
+  /// It read `Task.isCancelled` on the far side of the wait and required `true`.
+  /// Against a `.still` mutated to `continuation.finish()` — a cadence that parks
+  /// for nothing and returns at once — the row still PASSED, because the mutant's
+  /// wait suspends just long enough for the main actor to run the test's own
+  /// `cancel()` first. So `isCancelled` was true, the assertion held, and the
+  /// guard was decorative. Written after its fix against already-correct code, it
+  /// was indistinguishable from a row that cannot fail.
+  ///
+  /// **The discriminating property is the one the earlier row assumed: does the
+  /// wait return while nothing has cancelled it.** So this never cancels at all
+  /// for that half. `Task.yield()` hands the main actor over repeatedly — a
+  /// SCHEDULING barrier, not elapsed time, so it is not the guess-when-the-subject-
+  /// is-finished shape and adds no real-time dependence. A correct park cannot
+  /// return across any number of yields; the mutant returns on the first.
+  ///
+  /// The cancellation half is kept as the second arm, so the row still proves the
+  /// park RELEASES rather than merely never returning — a `wait` that hangs
+  /// forever would satisfy arm one alone.
+  @Test("a still cadence parks until cancelled, and only until cancelled", .timeLimit(.minutes(1)))
+  func stillParksUntilCancelled() async {
+    final class Flag: @unchecked Sendable { var returned = false }
+
+    // ARM 1: uncancelled, it must not come back.
+    let flag = Flag()
     let entered = Latch()
-    let task = Task { @MainActor in
+    let parked = Task { @MainActor in
       entered.signal()
       await RecordingPollCadence.still.wait()
-      return Task.isCancelled
+      flag.returned = true
     }
-
     await entered.wait()
-    task.cancel()
+    for _ in 0..<32 { await Task.yield() }
 
-    let releasedAfterCancellation = await task.value
     #expect(
-      releasedAfterCancellation,
-      "the still cadence returned before its task was cancelled")
+      !flag.returned,
+      """
+      the still cadence returned with nothing cancelling it, so it does not park at all \
+      and every pill using it polls exactly as fast as the loop can run.
+      """)
+
+    // ARM 2: and it does come back once cancelled, or a park that simply hangs
+    // forever would satisfy arm one.
+    parked.cancel()
+    await parked.value
+    #expect(
+      flag.returned,
+      "the still cadence did not release on cancellation, so its task outlives the view")
   }
 }
