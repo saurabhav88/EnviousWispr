@@ -113,6 +113,35 @@
       sink.write(payload)
     }
 
+    /// Hold captures until the first order-front, instead of writing them now.
+    ///
+    /// **A marker's own write must not sit inside a measured interval in one
+    /// bundle and outside it in the other.** Root construction is the interval
+    /// Phase 6 MOVES. In the baseline bundle it runs after key-down and before
+    /// the panel is ordered front, so emitting there puts this string building
+    /// and `write(2)` inside the keypress interval; in the prewarmed bundle the
+    /// same construction happens before key-down, so the identical cost falls
+    /// outside it. The benchmark would then credit the change for removing
+    /// marker I/O that is not production work — the instrument paying the
+    /// variant it is supposed to be judging.
+    ///
+    /// Holding them means BOTH bundles write the same three lines at the same
+    /// point, immediately after `orderFrontRegardless()`. The cost is identical
+    /// on both sides, so it cancels in every bound this phase is judged on —
+    /// all three are stated as regressions against the other bundle, and the
+    /// one absolute bound (root construction p95) measures an interval this
+    /// write is not inside.
+    ///
+    /// Consequence worth stating: a launch that never orders a panel front
+    /// writes no root markers at all, and the harness blocks it as incomplete.
+    /// That is the honest reading — no first render happened.
+    @MainActor
+    public static func hold(_ captures: Capture...) {
+      pending.append(contentsOf: captures)
+    }
+
+    @MainActor private static var pending: [Capture] = []
+
     /// Emit at most once per process, for an event whose CALL SITE runs many
     /// times but whose measurement is about the first occurrence.
     ///
@@ -129,7 +158,11 @@
     @MainActor
     public static func emitFirst(_ capture: Capture) {
       guard emittedOnce.insert(capture.event).inserted else { return }
-      emit([capture])
+      // Everything held so far flushes with this one, in capture order, so the
+      // file order matches the causal order the harness enforces.
+      let batch = pending + [capture]
+      pending.removeAll()
+      emit(batch)
     }
 
     @MainActor private static var emittedOnce: Set<Event> = []

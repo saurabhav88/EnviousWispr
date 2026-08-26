@@ -611,6 +611,27 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
         FAILURES.append(
             "the host no longer emits the order-front marker once per process")
 
+    # The root markers must be HELD, not emitted where they are captured.
+    # Emitting at the capture site puts the marker's own write inside the
+    # keypress interval in the baseline bundle and outside it in the prewarmed
+    # one, so the benchmark credits the change for removing instrumentation cost
+    # that is not production work. Nothing about the marker FORMAT changes when
+    # this regresses, so no other row here would notice.
+    director = (pathlib.Path(__file__).resolve().parents[2] / "Sources"
+                / "EnviousWisprAppKit" / "App" / "Overlay" / "OverlayDirector.swift")
+    if not director.exists():
+        FAILURES.append(f"the director is not at {director}; this test's path is stale")
+        return
+    d = director.read_text()
+    if "OverlayFirstRenderMarkers.hold(" not in d:
+        FAILURES.append(
+            "the director does not HOLD its root captures; emitting them at the "
+            "capture site biases the keypress comparison toward the prewarmed bundle")
+    if "OverlayFirstRenderMarkers.emit(" in d:
+        FAILURES.append(
+            "the director emits directly, which is the biased form this test exists "
+            "to refuse")
+
 
 # ------------------------------------------------------------------- runner
 

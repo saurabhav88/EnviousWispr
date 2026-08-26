@@ -174,7 +174,10 @@ final class OverlayDirector {
     #endif
     builtRootView = view
     #if DEBUG
-      OverlayFirstRenderMarkers.emit(constructStart, constructEnd)
+      // HELD, not emitted. Writing here would put the marker's own cost inside
+      // the keypress interval in the baseline bundle and outside it in the
+      // prewarmed one — see `OverlayFirstRenderMarkers.hold`.
+      OverlayFirstRenderMarkers.hold(constructStart, constructEnd)
     #endif
     return view
   }
