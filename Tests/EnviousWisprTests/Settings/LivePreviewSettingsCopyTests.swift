@@ -23,13 +23,6 @@ struct LivePreviewSettingsCopyTests {
     [
       LivePreviewSettingsCopy.sectionHeader,
       LivePreviewSettingsCopy.toggleLabel,
-      LivePreviewSettingsCopy.toggleDescription,
-      LivePreviewSettingsCopy.needsNewerMacOS,
-      LivePreviewSettingsCopy.activeHeader,
-      LivePreviewSettingsCopy.activeExplainer,
-      LivePreviewSettingsCopy.activeNeedsDownloadHelp,
-      LivePreviewSettingsCopy.activeUnsupportedLanguage,
-      LivePreviewSettingsCopy.activeUnsupportedLanguageHelp,
       LivePreviewSettingsCopy.packsHeader,
       LivePreviewSettingsCopy.packsDescription,
       LivePreviewSettingsCopy.packsLoading,
@@ -42,9 +35,19 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.packInstalling,
       LivePreviewSettingsCopy.packInstallFailed,
       LivePreviewSettingsCopy.packRetry,
+      // #2436 additions: the status bar's language chip.
+      LivePreviewSettingsCopy.languageAnyLanguage,
+      LivePreviewSettingsCopy.languageProvenanceFromMac,
+      LivePreviewSettingsCopy.languageProvenanceUserPicked,
+      LivePreviewSettingsCopy.languageProvenanceDetected,
       // #2154 additions.
-      LivePreviewSettingsCopy.heroTitle,
-      LivePreviewSettingsCopy.heroBody,
+      LivePreviewSettingsCopy.previewPrivacyFooter,
+      // #2436 catalogue sheet.
+      LivePreviewSettingsCopy.browseDownloadsButton,
+      LivePreviewSettingsCopy.packsBrowseButton,
+      LivePreviewSettingsCopy.catalogFilterAvailable,
+      LivePreviewSettingsCopy.catalogFilterInstalled,
+      LivePreviewSettingsCopy.catalogDoneButton,
       LivePreviewSettingsCopy.statusActiveLabel,
       LivePreviewSettingsCopy.statusActiveDetail,
       LivePreviewSettingsCopy.statusOffLabel,
@@ -70,19 +73,14 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.statusBuildCannotRunDetailNoAlternative,
       LivePreviewSettingsCopy.pausedForFasterTranscription,
       LivePreviewSettingsCopy.statusPausedDetail,
-      LivePreviewSettingsCopy.changeLanguageButton,
-      LivePreviewSettingsCopy.changeLanguageHelp,
-      LivePreviewSettingsCopy.universalLockedHelp,
+      LivePreviewSettingsCopy.pickerAppleCaveat,
+      LivePreviewSettingsCopy.pickerUniversalCaveat,
+      LivePreviewSettingsCopy.catalogNothingToInstall,
+      LivePreviewSettingsCopy.catalogNoneInstalled,
       LivePreviewSettingsCopy.universalAuto,
-      LivePreviewSettingsCopy.universalAutoHelp,
       // r8: paused variants, which must describe rather than promise.
       LivePreviewSettingsCopy.universalLockedPaused("German"),
       LivePreviewSettingsCopy.universalAutoPaused,
-      LivePreviewSettingsCopy.tableColumnLanguage,
-      LivePreviewSettingsCopy.tableColumnSource,
-      LivePreviewSettingsCopy.tableColumnStatus,
-      LivePreviewSettingsCopy.sourceSystem,
-      LivePreviewSettingsCopy.sourceApple,
       LivePreviewCopy.needsNewerMacOS,
       LivePreviewCopy.languageUnsupported,
       LivePreviewCopy.notReady,
@@ -186,11 +184,67 @@ struct LivePreviewSettingsCopyTests {
   /// not fix that; it would only trade this gap for a false failure on every honest
   /// rewrite, which is what sent an earlier draft to a comment insisting the phrase
   /// was frozen.
+  /// **The Auto asymmetry, pinned per ENGINE (#2436).**
+  ///
+  /// Dictation on Auto detects what the user actually speaks. Apple's preview cannot: it
+  /// must pick one language before the first word and uses the Mac's, so a bilingual user
+  /// who does not know that reads a wrong-language preview as broken dictation. **The
+  /// universal engine has no such constraint**, and an earlier version of this test had no
+  /// engine variable at all — it validated the Apple sentence and passed while the
+  /// universal picker displayed it. A test that cannot tell the two engines apart cannot
+  /// catch one being given the other's explanation.
+  @Test("Apple's caveat keeps the Auto asymmetry, and Universal's does not claim it")
+  func caveatsAreEngineSpecific() {
+    let apple = LivePreviewSettingsCopy.pickerAppleCaveat.lowercased()
+    #expect(apple.contains("auto"), "Apple's caveat stopped naming the mode it describes")
+    #expect(
+      ["dictation detects", "dictation understands"].contains(where: apple.contains)
+        && ["you speak", "spoken"].contains(where: apple.contains),
+      "Apple's caveat stopped saying DICTATION is what hears the spoken language")
+    #expect(
+      apple.contains("preview")
+        && ["uses your mac", "follows your mac", "goes by your mac"].contains(where: apple.contains),
+      "Apple's caveat stopped saying the PREVIEW is what falls back to the Mac")
+
+    // The universal engine resolves per utterance, so the Mac fallback is not its story.
+    // Asserting its ABSENCE is the half that would have caught the shared-string defect.
+    let universal = LivePreviewSettingsCopy.pickerUniversalCaveat.lowercased()
+    #expect(
+      !["uses your mac", "follows your mac", "goes by your mac"].contains(where: universal.contains),
+      "Universal's caveat claims Apple's Mac fallback, which is false for that engine")
+    #expect(universal.contains("auto"), "Universal's caveat stopped naming the mode")
+
+    // Both still state the shared consequence, which is why the sheet carries either.
+    for c in [apple, universal] {
+      #expect(c.contains("dictation"), "a caveat stopped naming dictation at all")
+    }
+  }
+
+  /// The status bar's provenance describes CONFIGURATION, never activity: the chip
+  /// renders in every state, including off and failed, so any word implying live
+  /// detection is a claim the bar cannot keep.
+  @Test("Language provenance never claims the preview is doing something")
+  func provenanceIsConfigurationOnly() {
+    let strings = [
+      LivePreviewSettingsCopy.languageProvenanceFromMac,
+      LivePreviewSettingsCopy.languageProvenanceUserPicked,
+      LivePreviewSettingsCopy.languageProvenanceDetected,
+    ]
+    for s in strings {
+      let t = s.lowercased()
+      for claim in ["detect", "appear", "show", "ready", "working", "active", "hearing"] {
+        #expect(!t.contains(claim), "provenance claims activity: \(s)")
+      }
+    }
+  }
+
   @Test("The description says the preview is not the pasted text")
   func descriptionDisclaimsThePastedText() {
-    // Moved to `heroBody` by #2154 when the hero card took the top of the page.
-    // The CLAIM is what is frozen, not which symbol carries it.
-    let d = LivePreviewSettingsCopy.heroBody.lowercased()
+    // Moved to `heroBody` by #2154 when the hero card took the top of the page, and
+    // to `previewPrivacyFooter` by #2436 when the bar replaced that card. The CLAIM
+    // is what is frozen, not which symbol carries it — that is why this assertion
+    // has now followed the sentence across three owners without ever being deleted.
+    let d = LivePreviewSettingsCopy.previewPrivacyFooter.lowercased()
     // Any wording that carries the claim is accepted; the list grows when copy changes.
     let disclaimers = ["preview only", "never changes", "does not change", "doesn't change"]
     #expect(
@@ -280,37 +334,8 @@ struct LivePreviewSettingsCopyTests {
         "each engine's copy must separate this setting from Live Preview: \(description)")
     }
   }
-
-  /// **The four cells of the universal row, because the SELECTION is the subject.**
-  ///
-  /// Cloud review r8: with Faster Transcription streaming, `WhisperPreviewEngineResolver`
-  /// returns `.blocked(.heartIsStreaming)` and the hero correctly reads "Paused",
-  /// while this row went on saying "Your words will appear in German" and "The
-  /// preview detects your language as you speak". One page asserted a fact and
-  /// denied it a few points lower.
-  ///
-  /// Asserting only that the paused strings avoid a promise verb would pass
-  /// unchanged if the view stopped consulting the refusal, so these assert the
-  /// mapping from (language, streaming) to the string actually chosen.
-  @Test("The universal row promises output only when the engine is not paused")
-  func universalRowPromisesOnlyWhenRunning() {
-    #expect(
-      LivePreviewEnginePresentation.universalRowLabel(languageName: "German", engineWillProduceOutput: true)
-        == LivePreviewSettingsCopy.universalLocked("German"),
-      "a locked language must promise output when the engine is ready")
-    #expect(
-      LivePreviewEnginePresentation.universalRowLabel(languageName: "German", engineWillProduceOutput: false)
-        == LivePreviewSettingsCopy.universalLockedPaused("German"),
-      "a locked language must be described, not promised, when the engine will not run")
-    #expect(
-      LivePreviewEnginePresentation.universalRowLabel(languageName: nil, engineWillProduceOutput: true)
-        == LivePreviewSettingsCopy.universalAuto,
-      "Auto must say detection is happening when the engine is ready")
-    #expect(
-      LivePreviewEnginePresentation.universalRowLabel(languageName: nil, engineWillProduceOutput: false)
-        == LivePreviewSettingsCopy.universalAutoPaused,
-      "Auto must not claim detection is happening when the engine will not run")
-  }
+  // Deleted by #2436 with the universal language row it guarded; see
+  // LivePreviewStatusMappingTests for why the replacement is stronger.
 
   /// The paused strings must still NAME the language, because the row exists so a
   /// user locked to the wrong one can see it. Silencing the row while paused would

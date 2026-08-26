@@ -65,32 +65,26 @@ enum LivePreviewPackPresentation {
     value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
   }
 
-  /// What the table's Availability cell shows for a pack.
-  ///
-  /// #2154. **Named for what it COMPUTES, after a first draft called it
-  /// "Source" and was wrong about its own meaning.** It reads `isInstalled` and
-  /// nothing else, so downloading a language through this page flipped its cell
-  /// from "Apple" to "System" — telling the user the pack had come with macOS
-  /// when they had fetched it from Apple moments before. The model carries no
-  /// provenance to report; every one of these is an Apple pack either way.
-  ///
-  /// What it does answer is the question somebody scanning 54 rows is actually
-  /// asking: do I already have this. That is also the honest answer to "why
-  /// does this look like the list in System Settings" — it IS that list
-  /// (`live-preview.md` FACT: language-pack-downloads).
-  ///
-  /// A named function rather than an inline ternary in the view, so the rule is
-  /// testable and has one home — the same reason `groups(from:)` is here.
-  static func availability(for pack: LivePreviewPack) -> String {
-    pack.isInstalled
-      ? LivePreviewSettingsCopy.sourceSystem
-      : LivePreviewSettingsCopy.sourceApple
-  }
-
   /// Split, preserving the incoming order within each group.
   ///
   /// The catalogue already sorts alphabetically by the name the user reads, so re-sorting here
   /// would either duplicate that decision or silently disagree with it.
+  /// Group AND search in one pass, so a caller cannot count one population and list
+  /// another (#2436).
+  ///
+  /// The catalogue sheet shipped with exactly that defect for one review round: its chips
+  /// counted the full groups while its rows showed the search-filtered ones, so a chip
+  /// could read "Not on this Mac 53" above a single matching row. Two tests each covered
+  /// one axis — grouping without search, search within one half — and the defect lived at
+  /// the intersection neither reached. Offering only the combined call is what stops the
+  /// next caller reassembling the same mistake.
+  static func groups(from packs: [LivePreviewPack], matching query: String) -> Groups {
+    let groups = groups(from: packs)
+    return Groups(
+      installed: matching(groups.installed, query: query),
+      available: matching(groups.available, query: query))
+  }
+
   static func groups(from packs: [LivePreviewPack]) -> Groups {
     Groups(
       installed: packs.filter(\.isInstalled),

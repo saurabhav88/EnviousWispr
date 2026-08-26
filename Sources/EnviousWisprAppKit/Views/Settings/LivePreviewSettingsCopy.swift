@@ -29,54 +29,7 @@ enum LivePreviewSettingsCopy {
   /// immediately after this), not by this one staying nameless.
   static let sectionHeader = "Live Preview"
 
-  /// The hero card's headline.
-  ///
-  /// **Deliberately does not assert that the feature is on.** The mockup read
-  /// "Real-time feedback, always on"; it ships OFF with its switch directly
-  /// below, so that headline is false the first time anybody opens this page.
-  static let heroTitle = "Watch your words appear as you talk"
-
   static let toggleLabel = "Show words while I speak"
-
-  /// Says four things, in the order a user cares about them: what they will see,
-  /// where that text goes, that it is not what gets pasted, and that it costs them
-  /// nothing in accuracy. The last is the one that stops "is this making my
-  /// transcription worse?", the natural next question once they know two engines
-  /// are running.
-  ///
-  /// The privacy sentence is here because #1988 asks for it in writing ("It should
-  /// be trivially yes (nothing leaves the Mac), but state it"). Trivially true is
-  /// not the same as visible: a user deciding whether to switch on something that
-  /// watches them speak should not have to infer the answer from our reputation,
-  /// and this is the only surface they read before deciding. It is also the one
-  /// place the claim can be made narrowly and honestly, since this preview really
-  /// is on-device for every user, with no cloud variant to qualify.
-  /// Trimmed once the Preview Language section existed: between them the page opened with six
-  /// lines of prose before anything actionable. Keeps the three claims that matter — what it does,
-  /// that it stays local, and that it cannot alter the result — and drops the restatement of
-  /// "preview", which the heading above it already says.
-  ///
-  /// The third claim is the load-bearing one and may not be dropped by any future rewording: a
-  /// user who concludes the preview IS the pasted text will file a bug that is not one, because
-  /// the preview is measurably less accurate than the engine that produces the paste. An earlier
-  /// draft carried it as the phrase "preview only"; this one carries it as "never changes a
-  /// character of what gets pasted". `LivePreviewSettingsCopyTests` accepts either wording and
-  /// fails if a rewrite drops the claim entirely.
-  static let heroBody =
-    "See your words in the recording pill as you talk, so you know EnviousWispr is hearing you. "
-    + "It stays on your Mac, is discarded when the recording ends, and never changes a character "
-    + "of what gets pasted."
-
-  /// The one line under the switch. The three claims above moved to `heroBody`
-  /// when the hero card took the top of the page (#2154); this is the mockup's
-  /// own wording for the row that remains.
-  static let toggleDescription = "See your words in the recording pill as you talk."
-
-  /// Shown under the disabled toggle on older systems. Names the requirement and
-  /// stops there: a user on macOS 14 cannot act on this beyond upgrading, and a
-  /// longer explanation would read as an apology.
-  static let needsNewerMacOS =
-    "On-screen preview needs macOS 26 or later. Dictation itself works on macOS 14 and up."
 
   // MARK: - Language packs (#2080)
 
@@ -95,59 +48,6 @@ enum LivePreviewSettingsCopy {
   static let packInstall = "Download"
   static let packInstalling = "Downloading"
   static let packRetry = "Try again"
-
-  // MARK: - Which language is live (#2080)
-
-  /// Names what the section CONTAINS, like "Live Preview" and "Languages" either side of it.
-  /// "Right Now" named a moment instead, which told the reader nothing about what they would find.
-  static let activeHeader = "Preview Language"
-
-  /// States the language, not the mechanism. "Resolved locale" is our word, not the user's.
-  static func activeReady(_ name: String) -> String {
-    "Your words will appear in \(name)."
-  }
-
-  /// Where that came from, so the user knows which setting to change if it is wrong.
-  ///
-  /// **Auto is not symmetrical, and saying it was would have been a false claim.** Dictation on
-  /// Auto detects the language you actually speak (`RecordingSessionKernel` sends no language at
-  /// all). The preview cannot: Apple's transcriber is built for one locale chosen before the first
-  /// word, so it uses the Mac's language. A bilingual user on Auto therefore gets correct
-  /// dictation and a preview in the wrong language, which is exactly the "the preview is not the
-  /// pasted text" confusion this feature's copy exists to prevent. Naming the Mac as a guess is
-  /// what makes that legible instead of a bug report.
-  static func activeSource(_ mode: LanguageMode) -> String {
-    switch mode {
-    case .auto:
-      return "Your dictation language is set to Auto, so the preview goes by your Mac's language."
-    case .locked:
-      return "Following the language you picked for dictation."
-    }
-  }
-
-  static func activeNeedsDownload(_ name: String) -> String {
-    "\(name) isn't downloaded yet, so you won't see words while you speak."
-  }
-
-  static let activeNeedsDownloadHelp = "Download it below and the preview starts working."
-
-  static let activeUnsupportedLanguage =
-    "Apple can't preview the language you picked for dictation."
-  static let activeUnsupportedLanguageHelp =
-    "Dictation still works normally. Only the on-screen preview is unavailable."
-
-  /// Explains WHERE the preview language comes from, because the page shows which one is live but
-  /// cannot change it — and a status you cannot act on is a dead end unless it says where to go.
-  ///
-  /// States the rule rather than the mechanism, and states the ONE case where the rule bends. An
-  /// earlier draft said the preview always uses your dictation language, full stop; that reads
-  /// cleanly and is untrue on Auto, where dictation detects what you speak and the preview has to
-  /// commit to a locale in advance. See `activeSource` for the measurement behind that.
-  static let activeExplainer =
-    "The preview follows the language you pick for dictation, under Transcription. On Auto there "
-    + "is nothing to follow yet, so it goes by your Mac's language: dictation still understands "
-    + "whatever you speak, but the words on screen may appear in the wrong language until you "
-    + "pick one."
 
   /// The row that is genuinely in use, as opposed to merely present. With nine languages
   /// installed, "Ready" on all of them said nothing about which one you are previewing in.
@@ -205,16 +105,16 @@ enum LivePreviewSettingsCopy {
   /// RULE: a-language-mismatch-shows-NOTHING-not-garbage), so "showing your
   /// words" would be a promise this page cannot keep.
 
-  static let statusActiveLabel = "Live Preview is active"
+  static let statusActiveLabel = "Activated"
   static let statusActiveDetail = "Ready to show your words while you speak."
 
-  static let statusOffLabel = "Live Preview is off"
+  static let statusOffLabel = "Off"
   /// **Deliberately promises nothing about what happens next.** The off state is
   /// checked BEFORE any engine detail, so switching on can land straight on
   /// "needs a download" or a missing language pack. An earlier draft said
   /// "switch it on to see your words while you speak", which is a promise this
   /// card cannot keep for every user who reads it.
-  static let statusOffDetail = "Switch it on and this card will show whether anything else is needed."
+  static let statusOffDetail = "Switch it on and this bar will show whether anything else is needed."
 
   // `statusUnavailableLabel` / `statusUnavailableDetail` were DELETED by #2154's
   // final sweep, not merely unused. "Not available on this Mac" was returned
@@ -249,7 +149,7 @@ enum LivePreviewSettingsCopy {
   static func statusNeedsLanguageLabel(_ languageName: String) -> String {
     "\(languageName) isn't downloaded yet"
   }
-  static let statusNeedsLanguageDetail = "Download it in the list below and the preview starts working."
+  static let statusNeedsLanguageDetail = "Use Browse downloads below to get it and start the preview."
 
   static let statusUnsupportedLanguageLabel = "Apple can't preview this language"
   /// **Two details, because the advice is only true when the other engine
@@ -306,9 +206,86 @@ enum LivePreviewSettingsCopy {
   static let statusPausedDetail =
     "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview."
 
-  // MARK: - Language section (#2154)
+  /// **The claim that may not be dropped, moved rather than deleted (#2436).**
+  ///
+  /// This is `heroBody`'s third sentence, and its own doc comment is explicit that
+  /// the pasted-text half "is the load-bearing one and may not be dropped by any
+  /// future rewording: a user who concludes the preview IS the pasted text will file
+  /// a bug that is not one, because the preview is measurably less accurate than the
+  /// engine that produces the paste." The privacy half is here because #1988 asked
+  /// for it in writing.
+  ///
+  /// **It renders under the status bar, not under the Languages block.** The
+  /// Languages block is gated on `showsApplePacks`, so putting it there would delete
+  /// the sentence on the universal engine and on every Mac too old for Apple's —
+  /// while this is the only surface a user reads before deciding whether to switch
+  /// on something that watches them speak.
+  static let previewPrivacyFooter =
+    "It stays on your Mac, is discarded when the recording ends, and never changes a "
+    + "character of what gets pasted."
 
-  static let changeLanguageButton = "Change"
+  // MARK: - Pack catalogue sheet (#2436)
+
+  /// **An empty FILTER is not a failed SEARCH.** With every pack installed, the default
+  /// "Not on this Mac" half is empty and no search has happened, so
+  /// `packsNoSearchMatch` would blame a query the user never typed.
+  static let catalogNothingToInstall = "Every language Apple offers is already on this Mac."
+  static let catalogNoneInstalled = "No languages downloaded yet."
+
+
+  /// The bar's one remedy, named for where it goes rather than what it fetches: the
+  /// catalogue is the only thing that can resolve a display name to an installable pack.
+  static let browseDownloadsButton = "Browse downloads"
+
+  /// The Languages row's trailing button, and the row's own summary.
+  static let packsBrowseButton = "Browse"
+  static func packsInstalledSummary(installed: Int, total: Int) -> String {
+    "\(installed) of \(total) on this Mac"
+  }
+
+  /// **Not-installed first, because acquiring is the only reason this sheet opens.**
+  /// The counts beside them come from the same grouping the rows do.
+  static let catalogFilterAvailable = "Not on this Mac"
+  static let catalogFilterInstalled = "On this Mac"
+  static let catalogDoneButton = "Done"
+
+  // MARK: - Status-bar language chip (#2436)
+
+  /// The universal engine's "language", which is the absence of one.
+  ///
+  /// It resolves per utterance rather than committing to a locale in advance, so
+  /// there is no single language to name and "Any" is the honest noun.
+  /// "Automatic", not "Any language": the universal engine supports a finite set, so
+  /// "any" is a claim wider than the code (`LanguageLockOptions` restricts the lockable
+  /// set to the backend's own). This names the SETTING, which is what the chip is for.
+  static let languageAnyLanguage = "Automatic"
+
+  /// **Where the language came from — CONFIGURATION only, never activity.**
+  ///
+  /// `languageProvenanceDetected` was "detected as you speak" and that was a readiness
+  /// claim wearing a provenance label: the chip renders in every state, so it asserted
+  /// live detection while the preview was off, paused, downloading or failed. "automatic"
+  /// describes the SETTING, which is true whether or not anything is running. Found by
+  /// chunk review on #2436, and `chipNeverPromisesOutput` missed it because its forbidden
+  /// list did not contain "detect" — the guard and the defect had the same blind spot.
+  ///
+  /// **The Auto asymmetry is stated in `pickerAppleCaveat`, not here** — and only there,
+  /// because it is Apple's asymmetry alone; `pickerUniversalCaveat` is the universal
+  /// engine's own sentence and must never repeat Apple's.
+  ///
+  /// Dictation on Auto detects what you actually speak. Apple's preview cannot: it
+  /// is built for one locale chosen before the first word, so it uses the Mac's.
+  /// A bilingual user on Auto therefore gets correct dictation and a preview in the
+  /// wrong language, and naming the Mac as the source is what makes that legible
+  /// instead of a bug report. the deleted `activeSource` carried the same distinction in
+  /// sentence form; these are its two-word shoulders for the status bar.
+  static let languageProvenanceFromMac = "from your Mac"
+  static let languageProvenanceUserPicked = "you picked this"
+  /// "automatic", not "auto-detect": the guard forbids activity words and "detect" is
+  /// one, even inside a setting's name. Arguing the matcher into an exception would
+  /// have traded a real guard for one word — and the word is not load-bearing, since
+  /// the picker this chip opens calls the same setting Automatic.
+  static let languageProvenanceDetected = "no language pinned"
 
   /// **The universal engine follows a LOCK, and only auto-detects on Auto.**
   /// `WhisperPreviewEngineResolver` maps `.locked(code)` straight through to the
@@ -320,11 +297,7 @@ enum LivePreviewSettingsCopy {
   static func universalLocked(_ name: String) -> String {
     "Your words will appear in \(name)."
   }
-  static let universalLockedHelp =
-    "The preview follows the language you picked for dictation, under Transcription."
   static let universalAuto = "The preview detects your language as you speak."
-  static let universalAutoHelp =
-    "On Auto this engine works out the language itself, so there is nothing to set."
 
   /// **Paused variants. The row must DESCRIBE the configuration, never promise
   /// output, whenever the engine is refused.**
@@ -359,23 +332,27 @@ enum LivePreviewSettingsCopy {
   /// preview-only setting: it sets the DICTATION language, on a different page.
   /// A button that silently edits another page's setting is how a user loses
   /// auto-detect without noticing.
-  static let changeLanguageHelp =
-    "This sets the language for dictation too, not just the preview."
-
-  // MARK: - Language table (#2154)
-
-  static let tableColumnLanguage = "Language"
-  static let tableColumnStatus = "Status"
-
-  /// **Availability, NOT provenance, and the first draft got that wrong.**
+  /// **Re-homed by #2436 from a help line under a Change button to the picker's own
+  /// subtitle.** It states a CONSEQUENCE of the action, so it belongs where the action
+  /// is taken rather than under a button nobody has pressed yet. `activeSummary`'s
+  /// reason for it is carried verbatim in `LivePreviewSettingsView`: one language in
+  /// one place, because two settings that can disagree hand the user a mismatch they
+  /// cannot diagnose.
+  /// **Two caveats, because one sentence cannot describe both engines.**
   ///
-  /// The column is computed from `isInstalled`, so downloading a language
-  /// through this very page flipped it from "Apple" to "System" — claiming the
-  /// pack had shipped with macOS when the user had just fetched it from Apple
-  /// thirty seconds earlier. The model carries availability and knows nothing
-  /// about origin, so the honest fix is to label what is actually computed.
-  /// Every one of these is an Apple pack either way.
-  static let tableColumnSource = "Availability"
-  static let sourceSystem = "On this Mac"
-  static let sourceApple = "Available from Apple"
+  /// The Auto asymmetry is APPLE'S: its preview must commit to a locale before the first
+  /// word, so on Auto it goes by the Mac while dictation still hears whatever is spoken.
+  /// The universal engine has no such constraint — it works the language out per
+  /// utterance — so telling a universal user their preview "uses your Mac's language" is
+  /// false about their own engine. A single shared string shipped exactly that for one
+  /// review round, and the test that guarded it had no engine variable, so it validated
+  /// the Apple sentence and passed while Universal displayed it.
+  static let pickerAppleCaveat =
+    "This sets the language for dictation too, not just the preview. On Auto, dictation "
+    + "detects whatever you speak, while the preview has to pick one language in advance "
+    + "and uses your Mac's."
+
+  static let pickerUniversalCaveat =
+    "This sets the language for dictation too, not just the preview. On Auto, this engine "
+    + "works the language out as you speak, so there is nothing you need to pick."
 }

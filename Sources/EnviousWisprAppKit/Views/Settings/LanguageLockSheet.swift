@@ -24,8 +24,18 @@ struct LanguageLockSheet: View {
   /// makes the setting mean what it says.
   let lockableCodes: Set<String>?
 
-  init(lockableCodes: Set<String>? = nil) {
+  /// One line of caller context under the title, or nil for none (#2436).
+  ///
+  /// Live Preview passes the dictation caveat; the Transcription page passes
+  /// nothing and is unchanged by construction, since the parameter is defaulted.
+  /// The sentence lives HERE rather than beside the button that opens this sheet
+  /// because it states a consequence of the action, and a consequence belongs at
+  /// the moment it becomes true.
+  let contextSubtitle: String?
+
+  init(lockableCodes: Set<String>? = nil, contextSubtitle: String? = nil) {
     self.lockableCodes = lockableCodes
+    self.contextSubtitle = contextSubtitle
   }
 
   @State private var searchText: String = ""
@@ -40,6 +50,14 @@ struct LanguageLockSheet: View {
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
+        if let contextSubtitle {
+          Text(contextSubtitle)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+        }
         searchField
 
         ScrollView {

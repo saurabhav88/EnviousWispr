@@ -1089,9 +1089,10 @@ struct LivePreviewCoordinatorTests {
     #expect(coordinator.display == .off)
     #expect(
       // Moved from `toggleDescription` to `heroBody` by #2154, when the hero card
-      // took the top of the page. The PROMISE is what this pins, not the symbol
+      // took the top of the page, and to `previewPrivacyFooter` by #2436, when the
+      // bar replaced that card. The PROMISE is what this pins, not the symbol
       // that carries it — following the string is the whole point of the check.
-      LivePreviewSettingsCopy.heroBody.contains("discarded"),
+      LivePreviewSettingsCopy.previewPrivacyFooter.contains("discarded"),
       "if this sentence goes, the assertion above stops being the promise it pins")
   }
 
