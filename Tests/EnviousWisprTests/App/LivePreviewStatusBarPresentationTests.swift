@@ -95,7 +95,7 @@ struct LivePreviewStatusBarPresentationTests {
   func universalLanguageIsIndependentOfApple() {
     let auto = bar(.active, engine: .universal, appleActive: nil, languageMode: .auto)
     #expect(auto.language?.name == "Any language")
-    #expect(auto.language?.provenance == "detected as you speak")
+    #expect(auto.language?.provenance == "automatic")
 
     let locked = bar(
       .active, engine: .universal, appleActive: nil, languageMode: .locked("de"))
@@ -161,7 +161,15 @@ struct LivePreviewStatusBarPresentationTests {
       (.paused, .universal, nil, true),
       (.buildCannotRun, .universal, nil, false),
     ]
-    let forbidden = ["will appear", "ready", "working", "active", "showing"]
+    // **"detect" is here because its absence is what let a real defect through.**
+    // `languageProvenanceDetected` said "detected as you speak", which the chip
+    // rendered while the preview was off, paused, downloading or failed. The guard
+    // and the defect shared one blind spot, which is the argument for widening the
+    // list at the moment a member escapes rather than only naming the instance.
+    let forbidden = [
+      "will appear", "ready", "working", "active", "showing", "detect", "hearing",
+      "listening", "as you speak",
+    ]
     for scenario in scenarios {
       for mode in [LanguageMode.auto, .locked("de")] {
         let candidate = bar(

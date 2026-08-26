@@ -134,13 +134,10 @@ struct LivePreviewSettingsView: View {
     WhisperPreviewDeliveryWiring.heartIsStreaming(settings: settings)
   }
 
-  /// Readiness for the universal row, from the same owner the hero reads. Never
-  /// re-derive this from a blocker here: r8 and r9 were both a surface deciding
-  /// readiness for itself and reaching a different answer from the card above it.
-  private var universalWillProduceOutput: Bool {
-    LivePreviewStatusMapping.universalWillProduceOutput(
-      exists: universalExists, state: universalState, heartIsStreaming: heartIsStreaming)
-  }
+  // `universalWillProduceOutput` was deleted with the row that asked it (#2436).
+  // Readiness now has exactly one consumer — the status text — and it reads the
+  // mapping's `Summary` directly. A second local property re-deriving it, even an
+  // unused one, is the shape r8 and r9 of #2154 cost two rounds to remove.
 
   /// **The ONE place staleness is decided, and every consumer of the resolved
   /// language reads THIS rather than `packs.active`.**

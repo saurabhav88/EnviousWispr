@@ -180,6 +180,45 @@ struct LivePreviewSettingsCopyTests {
   /// not fix that; it would only trade this gap for a false failure on every honest
   /// rewrite, which is what sent an earlier draft to a comment insisting the phrase
   /// was frozen.
+  /// **The Auto asymmetry, pinned at whichever symbol carries it (#2436).**
+  ///
+  /// Dictation on Auto detects what the user actually speaks; the preview must pick
+  /// one language before the first word and uses the Mac's. A bilingual user who does
+  /// not know that reads a wrong-language preview as broken dictation. It lived in
+  /// `activeExplainer` until the explainer box was deleted, and now lives in the
+  /// picker's context subtitle, where somebody is acting on the language.
+  ///
+  /// Written as a floor: it requires the sentence to spend words on both halves, which
+  /// catches the failure actually seen (a trim that keeps the source and drops the
+  /// contrast) without failing every honest rewrite.
+  @Test("The picker caveat keeps the Auto asymmetry, not just the source")
+  func pickerCaveatKeepsTheAutoAsymmetry() {
+    let c = LivePreviewSettingsCopy.pickerDictationCaveat.lowercased()
+    #expect(c.contains("dictation"), "the caveat stopped naming dictation")
+    #expect(c.contains("mac"), "the caveat stopped naming where the preview's language comes from")
+    #expect(
+      c.contains("detect") || c.contains("whatever you speak"),
+      "the caveat stopped saying dictation hears what is actually spoken")
+  }
+
+  /// The status bar's provenance describes CONFIGURATION, never activity: the chip
+  /// renders in every state, including off and failed, so any word implying live
+  /// detection is a claim the bar cannot keep.
+  @Test("Language provenance never claims the preview is doing something")
+  func provenanceIsConfigurationOnly() {
+    let strings = [
+      LivePreviewSettingsCopy.languageProvenanceFromMac,
+      LivePreviewSettingsCopy.languageProvenanceUserPicked,
+      LivePreviewSettingsCopy.languageProvenanceDetected,
+    ]
+    for s in strings {
+      let t = s.lowercased()
+      for claim in ["detect", "appear", "show", "ready", "working", "active", "hearing"] {
+        #expect(!t.contains(claim), "provenance claims activity: \(s)")
+      }
+    }
+  }
+
   @Test("The description says the preview is not the pasted text")
   func descriptionDisclaimsThePastedText() {
     // Moved to `heroBody` by #2154 when the hero card took the top of the page, and

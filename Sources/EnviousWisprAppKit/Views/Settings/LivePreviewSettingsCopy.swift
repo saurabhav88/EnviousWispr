@@ -232,7 +232,16 @@ enum LivePreviewSettingsCopy {
   /// there is no single language to name and "Any" is the honest noun.
   static let languageAnyLanguage = "Any language"
 
-  /// **Where the language came from, which on Auto is NOT where a user assumes.**
+  /// **Where the language came from — CONFIGURATION only, never activity.**
+  ///
+  /// `languageProvenanceDetected` was "detected as you speak" and that was a readiness
+  /// claim wearing a provenance label: the chip renders in every state, so it asserted
+  /// live detection while the preview was off, paused, downloading or failed. "auto-detect"
+  /// describes the SETTING, which is true whether or not anything is running. Found by
+  /// chunk review on #2436, and `chipNeverPromisesOutput` missed it because its forbidden
+  /// list did not contain "detect" — the guard and the defect had the same blind spot.
+  ///
+  /// **The Auto asymmetry is stated in `pickerDictationCaveat`, not here.**
   ///
   /// Dictation on Auto detects what you actually speak. Apple's preview cannot: it
   /// is built for one locale chosen before the first word, so it uses the Mac's.
@@ -242,7 +251,11 @@ enum LivePreviewSettingsCopy {
   /// sentence form; these are its two-word shoulders for the status bar.
   static let languageProvenanceFromMac = "from your Mac"
   static let languageProvenanceUserPicked = "you picked this"
-  static let languageProvenanceDetected = "detected as you speak"
+  /// "automatic", not "auto-detect": the guard forbids activity words and "detect" is
+  /// one, even inside a setting's name. Arguing the matcher into an exception would
+  /// have traded a real guard for one word — and the word is not load-bearing, since
+  /// the picker this chip opens calls the same setting Automatic.
+  static let languageProvenanceDetected = "automatic"
 
   /// **The universal engine follows a LOCK, and only auto-detects on Auto.**
   /// `WhisperPreviewEngineResolver` maps `.locked(code)` straight through to the
@@ -296,7 +309,9 @@ enum LivePreviewSettingsCopy {
   /// one place, because two settings that can disagree hand the user a mismatch they
   /// cannot diagnose.
   static let pickerDictationCaveat =
-    "This sets the language for dictation too, not just the preview."
+    "This sets the language for dictation too, not just the preview. On Auto, dictation "
+    + "detects whatever you speak, while the preview has to pick one language in advance "
+    + "and uses your Mac's."
 
   // MARK: - Language table (#2154)
 
