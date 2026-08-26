@@ -243,6 +243,21 @@ extension PasteFocusClassification {
   }
 }
 
+/// Why Tier 1 (AX direct write) did not run, or `nil` when it should. Pulled
+/// out of `deliver()`'s body so the ROUTING decision — as opposed to the live
+/// AX read `isChromiumOmnibox` is computed from — is unit-testable without a
+/// real focused element (#2297).
+internal func tier1DeclineReason(
+  axTrusted: Bool, classification: PasteFocusClassification, isChromiumOmnibox: Bool
+) -> PasteService.AXDeclineReason? {
+  if !axTrusted { return .accessibilityDenied }
+  switch classification {
+  case .textField: return isChromiumOmnibox ? .chromiumOmniboxNavigationSeam : nil
+  case .missing: return .focusMissing
+  case .nonText: return .focusNonText
+  }
+}
+
 /// Executes the tiered paste cascade: AX direct -> CGEvent Cmd+V -> AppleScript -> clipboard.
 ///
 /// Thin orchestrator over PasteService static methods. Both pipelines call this
@@ -384,17 +399,24 @@ internal final class PasteCascadeExecutor {
       targetDiagnostics = .missing
     }
     let canAttemptKeyPaste = classification.canAttemptKeyPaste
+    // #2297: a Chromium (Chrome/Brave/Edge) address bar specifically. Decided
+    // here, alongside `classification`, because it changes whether Tier 1
+    // should even be attempted — a direct AX write lands the text but never
+    // sets Chromium's own "user typed this" tracker, so Enter has nothing to
+    // navigate to. Only meaningful when Tier 1 would otherwise run at all, so
+    // gated on `.textField` and a present element; Safari is unaffected
+    // (`addressBarFamily` returns `nil` for it) and keeps using Tier 1.
+    let isChromiumOmnibox: Bool =
+      if classification == .textField, let element = request.targetElement {
+        PasteService.addressBarFamily(of: element) == .chromium
+      } else {
+        false
+      }
     // Why Tier 1 did not run, decided HERE rather than inside the write. These
     // are the majority of declines — a reason set covering only the write's own
     // exits would be nil for most of them (#1332).
-    var axDeclineReason: PasteService.AXDeclineReason? = {
-      if !axTrusted { return .accessibilityDenied }
-      switch classification {
-      case .textField: return nil  // Tier 1 runs; the write reports its own.
-      case .missing: return .focusMissing
-      case .nonText: return .focusNonText
-      }
-    }()
+    var axDeclineReason: PasteService.AXDeclineReason? = tier1DeclineReason(
+      axTrusted: axTrusted, classification: classification, isChromiumOmnibox: isChromiumOmnibox)
     var axSettability: PasteService.AXSettability?
     // Which payload was submitted by the route that last attempted a write.
     // Nil until one does. A later route may legitimately overwrite this: Tier 1
@@ -414,7 +436,7 @@ internal final class PasteCascadeExecutor {
     // gets the text — Tier 3 puts it on the clipboard and shows the existing
     // "press Cmd+V" notice — but we never place it twice on their behalf.
     var axAllowsRetry = true
-    if classification == .textField, let element = request.targetElement {
+    if classification == .textField, !isChromiumOmnibox, let element = request.targetElement {
       tiersAttempted.append(.axDirect)
       // The payload choice happens INSIDE the write, against the range read in
       // the same breath as the write itself (plan §6). Nothing is chosen here.

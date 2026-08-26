@@ -24,7 +24,7 @@ package enum BrowserAddressBarDetector {
   /// Which family of browser owns the focused element, and therefore which
   /// AX attribute is worth reading — never both, since each family exposes
   /// only its own signal. `nil` for anything not recognized at all.
-  package enum Family: Sendable {
+  package enum Family: Sendable, Equatable {
     case safari
     case chromium
   }
