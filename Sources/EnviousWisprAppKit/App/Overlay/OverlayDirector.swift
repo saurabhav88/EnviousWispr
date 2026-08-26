@@ -159,11 +159,23 @@ final class OverlayDirector {
 
   private var rootHostingView: NSView {
     if let builtRootView { return builtRootView }
+    // #2377 Phase 6: DEBUG-only measurement of root construction, the cost this
+    // phase moves. Memoised above, so this runs once per launch and the marker
+    // is naturally a singleton.
+    #if DEBUG
+      let constructStart = OverlayFirstRenderMarkers.capture(.rootConstructStart)
+    #endif
     let view = NSHostingView(
       rootView: OverlayRootView(
         model: model,
         sendEvent: { [weak self] event in self?.handle(event, binding: .none) }))
+    #if DEBUG
+      let constructEnd = OverlayFirstRenderMarkers.capture(.rootConstructEnd)
+    #endif
     builtRootView = view
+    #if DEBUG
+      OverlayFirstRenderMarkers.emit(constructStart, constructEnd)
+    #endif
     return view
   }
 

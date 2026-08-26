@@ -215,6 +215,17 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
     view.frame = NSRect(origin: .zero, size: size)
     panel.contentView = view
     panel.orderFrontRegardless()
+    // #2377 Phase 6: DEBUG-only, and `emitFirst` rather than `emit` because the
+    // host orders a panel front on EVERY presentation while the benchmark is
+    // about the first one. See `OverlayFirstRenderMarkers.emitFirst`.
+    #if DEBUG
+      // The window number is the whole point of this marker: it lets the harness
+      // NAME the window whose appearance ends the keypress interval, instead of
+      // accepting whichever window it happens to notice first.
+      OverlayFirstRenderMarkers.emitFirst(
+        OverlayFirstRenderMarkers.capture(
+          .hostOrderFrontComplete, window: panel.windowNumber))
+    #endif
     return true
   }
 
