@@ -306,6 +306,26 @@ enum LivePreviewSettingsCopy {
   static let statusPausedDetail =
     "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview."
 
+  // MARK: - Status-bar language chip (#2436)
+
+  /// The universal engine's "language", which is the absence of one.
+  ///
+  /// It resolves per utterance rather than committing to a locale in advance, so
+  /// there is no single language to name and "Any" is the honest noun.
+  static let languageAnyLanguage = "Any language"
+
+  /// **Where the language came from, which on Auto is NOT where a user assumes.**
+  ///
+  /// Dictation on Auto detects what you actually speak. Apple's preview cannot: it
+  /// is built for one locale chosen before the first word, so it uses the Mac's.
+  /// A bilingual user on Auto therefore gets correct dictation and a preview in the
+  /// wrong language, and naming the Mac as the source is what makes that legible
+  /// instead of a bug report. `activeSource` above carries the same distinction in
+  /// sentence form; these are its two-word shoulders for the status bar.
+  static let languageProvenanceFromMac = "from your Mac"
+  static let languageProvenanceUserPicked = "you picked this"
+  static let languageProvenanceDetected = "detected as you speak"
+
   // MARK: - Language section (#2154)
 
   static let changeLanguageButton = "Change"

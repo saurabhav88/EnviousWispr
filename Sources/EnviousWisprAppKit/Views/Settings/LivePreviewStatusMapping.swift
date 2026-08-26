@@ -26,7 +26,27 @@ enum LivePreviewStatusMapping {
 
   /// Both halves of the card's right column. One type rather than two calls, so
   /// a new state cannot ship with a fresh label and a stale detail line.
+  /// **What the state IS, separate from what it SAYS.**
+  ///
+  /// Added by #2436 for one reason, and it is worth stating because the obvious
+  /// reading is that this duplicates the label. It does not: a consumer that has
+  /// to BRANCH on the state — the status bar picks a remedy button from it —
+  /// otherwise has only `chip.label` to look at, and branching on a user-facing
+  /// string makes copy a behavioural API. A reworded sentence would then silently
+  /// change what a button does, months later, with no test between the two.
+  ///
+  /// So every consumer switches on `kind` and NOTHING switches on copy. Grounded
+  /// review r2 finding C1 on #2436 is the enumeration that produced it.
+  enum Kind: Equatable {
+    case active, off, needsMacOS26, checking
+    case needsLanguage(name: String)
+    case unsupportedLanguage, needsDownload, gettingReady
+    case downloadFailed, buildCannotRun, paused
+  }
+
   struct Summary: Equatable {
+    /// The state itself, for consumers that branch. See `Kind`.
+    let kind: Kind
     /// Dot + label, for `ProviderStatusChip`.
     let chip: ProviderStatus
     /// The second line, specific to this state.
@@ -67,11 +87,13 @@ enum LivePreviewStatusMapping {
       case .universal:
         // The Mac is fine for this engine. Our package is not.
         return Summary(
+          kind: .buildCannotRun,
           chip: ProviderStatus(
             label: LivePreviewSettingsCopy.statusBuildCannotRunLabel, tone: .error),
           detail: LivePreviewSettingsCopy.statusBuildCannotRunDetailNoAlternative)
       case .apple:
         return Summary(
+          kind: .needsMacOS26,
           chip: ProviderStatus(
             label: LivePreviewSettingsCopy.statusNeedsMacOS26Label, tone: .needsSetup),
           detail: LivePreviewSettingsCopy.statusNeedsMacOS26DetailNoAlternative)
@@ -82,6 +104,7 @@ enum LivePreviewStatusMapping {
     // none of it is true while the feature is off.
     guard isEnabled else {
       return Summary(
+        kind: .off,
         chip: ProviderStatus(label: LivePreviewSettingsCopy.statusOffLabel, tone: .unavailable),
         detail: LivePreviewSettingsCopy.statusOffDetail)
     }
@@ -112,6 +135,7 @@ enum LivePreviewStatusMapping {
   ) -> Summary {
     guard supported else {
       return Summary(
+        kind: .needsMacOS26,
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusNeedsMacOS26Label, tone: .needsSetup),
         detail: universalIsAnOption
@@ -131,6 +155,7 @@ enum LivePreviewStatusMapping {
     // review round.
     guard !activeDescribesAnotherLanguage else {
       return Summary(
+        kind: .checking,
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusCheckingLabel, tone: .unavailable),
         detail: LivePreviewSettingsCopy.statusLanguageChangedDetail)
@@ -142,6 +167,7 @@ enum LivePreviewStatusMapping {
     // this card exists to fix.
     guard let active else {
       return Summary(
+        kind: .checking,
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusCheckingLabel, tone: .unavailable),
         detail: LivePreviewSettingsCopy.statusCheckingDetail)
@@ -182,16 +208,19 @@ enum LivePreviewStatusMapping {
       // unresolved case already makes.
       guard !anInstallIsInFlight else {
         return Summary(
+          kind: .checking,
           chip: ProviderStatus(
             label: LivePreviewSettingsCopy.statusCheckingLabel, tone: .unavailable),
           detail: LivePreviewSettingsCopy.statusInstallInFlightDetail)
       }
       return Summary(
+        kind: .needsLanguage(name: name),
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusNeedsLanguageLabel(name), tone: .needsSetup),
         detail: LivePreviewSettingsCopy.statusNeedsLanguageDetail)
     case .unsupportedLanguage:
       return Summary(
+        kind: .unsupportedLanguage,
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusUnsupportedLanguageLabel, tone: .needsSetup),
         detail: universalIsAnOption
@@ -202,6 +231,7 @@ enum LivePreviewStatusMapping {
       // resolver instead of the static check. Answered identically rather than
       // with a second sentence saying the same thing differently.
       return Summary(
+        kind: .needsMacOS26,
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusNeedsMacOS26Label, tone: .needsSetup),
         detail: LivePreviewSettingsCopy.statusNeedsMacOS26Detail)
@@ -243,6 +273,7 @@ enum LivePreviewStatusMapping {
     // registered to download.
     guard exists else {
       return Summary(
+        kind: .buildCannotRun,
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusBuildCannotRunLabel, tone: .error),
         detail: LivePreviewSettingsCopy.statusBuildCannotRunDetail)
@@ -264,6 +295,7 @@ enum LivePreviewStatusMapping {
     // the download need, which is a correct sequence of answers.
     if heartIsStreaming {
       return Summary(
+        kind: .paused,
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.pausedForFasterTranscription, tone: .needsSetup),
         detail: LivePreviewSettingsCopy.statusPausedDetail)
@@ -275,6 +307,7 @@ enum LivePreviewStatusMapping {
 
     case .downloading, .preparing, .verifying:
       return Summary(
+        kind: .gettingReady,
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusGettingReadyLabel, tone: .needsSetup),
         detail: LivePreviewSettingsCopy.statusGettingReadyDetail)
@@ -289,6 +322,7 @@ enum LivePreviewStatusMapping {
     // keeps paying for.
     case .failed(let failure):
       return Summary(
+        kind: .downloadFailed,
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusDownloadFailedLabel, tone: .error),
         detail: ModelDeliveryCopy.message(reason: failure.reason, detail: failure.detail))
@@ -299,6 +333,7 @@ enum LivePreviewStatusMapping {
     // surfaces drift.
     case .cancelled, .notReady:
       return Summary(
+        kind: .needsDownload,
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusNeedsDownloadLabel, tone: .needsSetup),
         detail: LivePreviewSettingsCopy.statusNeedsDownloadDetail)
@@ -309,6 +344,7 @@ enum LivePreviewStatusMapping {
   /// saying "it works" two different ways.
   private static var activeSummary: Summary {
     Summary(
+      kind: .active,
       chip: ProviderStatus(label: LivePreviewSettingsCopy.statusActiveLabel, tone: .ready),
       detail: LivePreviewSettingsCopy.statusActiveDetail)
   }

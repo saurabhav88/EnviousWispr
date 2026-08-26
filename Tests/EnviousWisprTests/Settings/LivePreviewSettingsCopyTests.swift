@@ -42,6 +42,11 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.packInstalling,
       LivePreviewSettingsCopy.packInstallFailed,
       LivePreviewSettingsCopy.packRetry,
+      // #2436 additions: the status bar's language chip.
+      LivePreviewSettingsCopy.languageAnyLanguage,
+      LivePreviewSettingsCopy.languageProvenanceFromMac,
+      LivePreviewSettingsCopy.languageProvenanceUserPicked,
+      LivePreviewSettingsCopy.languageProvenanceDetected,
       // #2154 additions.
       LivePreviewSettingsCopy.heroTitle,
       LivePreviewSettingsCopy.heroBody,
