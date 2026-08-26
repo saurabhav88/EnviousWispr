@@ -4,6 +4,7 @@ Usage:  python3 -c "from wispr_eyes import *; connect(); see()"
 """
 import os, sys, subprocess, time
 import datetime as _dt
+import pathlib
 sys.path.insert(0, os.path.dirname(__file__))
 from ui_helpers import (find_app_pid, get_ax_app, get_attr, set_attr, perform_action,
     find_element, find_all_elements, find_control_for_label, wait_for_condition,
@@ -534,6 +535,97 @@ def screenshot(save_path=None, window=True):
     else:
         print(f"Screenshot FAILED: {save_path}")
     return save_path
+
+
+def record(seconds, save_path=None, settle=1.2):
+    """Record the screen for `seconds` and hand back a `Recording`.
+
+    **Reach for this before a screenshot whenever the question is "what did the
+    user SEE".** A screenshot answers what was on screen at one instant you had
+    to guess in advance; a recording answers what happened, and lets the frame be
+    chosen afterwards. #2377 needed the pill's FIRST composited frame — a
+    question no amount of well-timed polling can answer, because the interesting
+    frame is over in ~16 ms.
+
+    Measured 2026-08-25: `screencapture -v` yields 3024x1964 at 120 fps nominal,
+    ~1 MB/s, and starting it costs about a second. That cost is why `settle`
+    exists and why it is not optional — a recorder that starts after the input
+    has already landed misses exactly the frames worth having.
+
+    Use as a context manager so the recorder is always reaped:
+
+        with w.record(12) as clip:
+            w.double_press_record_key()
+        frame = clip.frame_at(3.5)          # or clip.frames(fps=10)
+
+    Audio is never captured: `-g` is deliberately absent, so a live dictation is
+    not written to disk by the harness.
+    """
+    return Recording(seconds, save_path=save_path, settle=settle)
+
+
+class Recording:
+    """A screen recording, plus frame extraction. See `record()`."""
+
+    def __init__(self, seconds, save_path=None, settle=1.2):
+        import os
+        os.makedirs(_SCREENSHOT_DIR, exist_ok=True)
+        self.seconds = seconds
+        self.settle = settle
+        self.path = save_path or f"{_SCREENSHOT_DIR}/clip_{int(time.time())}.mov"
+        self._proc = None
+        self.started_at = None
+
+    def start(self):
+        if os.path.exists(self.path):
+            os.remove(self.path)
+        self._proc = subprocess.Popen(
+            ["/usr/sbin/screencapture", "-v", f"-V{self.seconds}", "-x", self.path],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # settle: the recorder must be writing before the caller acts, and
+        # screencapture emits no ready signal of any kind.
+        time.sleep(self.settle)
+        self.started_at = time.time()
+        return self
+
+    def stop(self):
+        if self._proc:
+            # deadline-fallback: waits on the recorder's own exit; the bound only caps a hang
+            try:
+                self._proc.wait(timeout=self.seconds + 20)
+            except subprocess.TimeoutExpired:
+                self._proc.terminate()
+        return self
+
+    def __enter__(self):
+        return self.start()
+
+    def __exit__(self, *exc):
+        self.stop()
+        return False
+
+    @property
+    def exists(self):
+        return os.path.exists(self.path) and os.path.getsize(self.path) > 0
+
+    def frames(self, fps=10, crop=None, out_dir=None):
+        """Extract frames as PNGs. `crop` is (w, h, x, y) in PIXELS (2x on retina)."""
+        out = out_dir or self.path.replace(".mov", "-frames")
+        os.makedirs(out, exist_ok=True)
+        vf = f"fps={fps}"
+        if crop:
+            vf = f"crop={crop[0]}:{crop[1]}:{crop[2]}:{crop[3]}," + vf
+        subprocess.run(["ffmpeg", "-v", "error", "-i", self.path, "-vf", vf,
+                        f"{out}/f%04d.png"], capture_output=True)
+        return sorted(pathlib.Path(out).glob("f*.png"))
+
+    def frame_at(self, offset_s, save_path=None, crop=None):
+        """One frame `offset_s` after recording started. The frame you argue from."""
+        dest = save_path or self.path.replace(".mov", f"-at{offset_s:.2f}.png")
+        vf = f"crop={crop[0]}:{crop[1]}:{crop[2]}:{crop[3]}" if crop else "null"
+        subprocess.run(["ffmpeg", "-v", "error", "-ss", str(offset_s), "-i", self.path,
+                        "-vf", vf, "-frames:v", "1", "-y", dest], capture_output=True)
+        return dest if os.path.exists(dest) else None
 
 
 def _get_window_id():
