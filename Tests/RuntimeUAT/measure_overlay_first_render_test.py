@@ -817,17 +817,46 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
     # ordered front — a timestamp for an event the user cannot see. Source
     # order is the only thing that can catch this class of regression; the
     # marker format does not change when it does.
-    order_front_index = swift.find("orderFrontRegardless()")
-    identifier_index = swift.find("setAccessibilityIdentifier(")
-    if order_front_index < 0 or identifier_index < 0:
+    #
+    # **Scoped to `present()`'s own body, and matched against the FULL call**
+    # (round 2 of this control): a global `.find()` for the bare substrings
+    # matches this very comment, which mentions both names — so a regression
+    # that moved the REAL call into `ensurePanel()` while leaving the comment
+    # here would still read as passing. Isolating the function and requiring
+    # the complete call text is what makes the control test the call site,
+    # not the prose describing it.
+    identifier_call = (
+        "panel.setAccessibilityIdentifier("
+        "OverlayFirstRenderMarkers.axPanelIdentifier)"
+    )
+    # **Anchored to the CLASS, not just a bare function name** — Codex's first
+    # draft of this control searched for `resizeCurrentPresentation(` from
+    # the top of the file, which matches the `OverlayWindowHosting` PROTOCOL's
+    # own requirement (identically indented, and textually first) before ever
+    # reaching the real implementation — the exact same "found the wrong twin"
+    # shape this repo has hit before. Starting from `final class
+    # OverlayWindowHost` skips the protocol declaration entirely.
+    class_start = swift.find("final class OverlayWindowHost")
+    present_start = swift.find("\n  func present(", class_start) if class_start >= 0 else -1
+    present_end = (
+        swift.find("\n  func resizeCurrentPresentation(", class_start)
+        if class_start >= 0 else -1)
+    if class_start < 0 or present_start < 0 or present_end < 0:
+        FAILURES.append("could not isolate OverlayWindowHost.present() by source markers")
+    elif swift.count(identifier_call) != 1:
         FAILURES.append(
-            "could not find both orderFrontRegardless() and setAccessibilityIdentifier( "
-            "in the host source to check their order")
-    elif identifier_index < order_front_index:
-        FAILURES.append(
-            "setAccessibilityIdentifier( appears BEFORE orderFrontRegardless() in the "
-            "host — the AX identifier would be visible to a poll before the panel has "
-            "any content or is on screen")
+            "the AX identifier must be assigned exactly once in OverlayWindowHost, via "
+            f"the exact call {identifier_call!r}")
+    else:
+        order_front_index = swift.find(
+            "panel.orderFrontRegardless()", present_start, present_end)
+        identifier_index = swift.find(identifier_call, present_start, present_end)
+        if order_front_index < 0 or identifier_index < 0:
+            FAILURES.append(
+                "present() must assign the AX identifier after orderFrontRegardless()")
+        elif identifier_index < order_front_index:
+            FAILURES.append(
+                "present() assigns the AX identifier before orderFrontRegardless()")
 
     # The root markers must be HELD, not emitted where they are captured.
     # Emitting at the capture site puts the marker's own write inside the
