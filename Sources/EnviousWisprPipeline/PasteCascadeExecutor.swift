@@ -590,7 +590,24 @@ internal final class PasteCascadeExecutor {
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
           payload.text, to: self.pasteboard)
         submittedClipboardChangeCount = changeCount
-        if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
+        // #2297 cloud review round 3: Tier 2b never consulted the omnibox-focus
+        // decision at all — the force-activate and settle sleep above can move
+        // focus exactly as `activate(app)` does for Tier 2, and a blind
+        // AppleScript "Paste" click has the same "lands wherever focus is"
+        // property as Tier 2's Cmd+V. Same gate, same latest-possible-moment
+        // placement, reusing the primitive already proven for Tier 2.
+        let chromiumOmniboxStillFocusedForAppleScript: Bool =
+          if isChromiumOmnibox, let element = request.targetElement {
+            PasteService.freshFocusedElement(matching: element) != nil
+          } else {
+            true
+          }
+        if !chromiumOmniboxStillFocusedForAppleScript {
+          tierFailures["applescript"] = "chromium_omnibox_lost_focus_during_activation"
+          emitTierFailureBreadcrumb(
+            stage: "applescript", reason: "chromium_omnibox_lost_focus_during_activation",
+            bundleId: bundleId)
+        } else if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
           tier = .appleScript
         } else {
           tierFailures["applescript"] = "refused"
