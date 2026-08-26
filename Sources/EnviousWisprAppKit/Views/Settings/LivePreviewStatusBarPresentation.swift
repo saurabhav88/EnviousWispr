@@ -141,7 +141,7 @@ enum LivePreviewStatusBarPresentation {
       // from #2154 review r7, which hid the control on Universal and stranded
       // exactly those users. The reason was written down and applied to one branch
       // of two — so the shared derivation below is the fix, not a second copy of
-      // the sentence (`workflow-process.md` RULE: fix-the-path-that-runs-first,
+      // the sentence (`workflow-process.md` RULE: fix-the-path-that-runs-first-not-the-one-you-were-reading,
       // "name the TWIN of every site you change").
       //
       // The name comes from the LOCK rather than from `active`, because
