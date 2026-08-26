@@ -82,8 +82,21 @@
     ///
     /// So the call site arms this at the top of launch, before any `capture`.
     /// A no-op when the environment is absent, like everything else here.
+    ///
+    /// It also reserves the held-capture storage, for the same reason one level
+    /// down: `pending` starts empty, so the FIRST `hold` allocates its buffer.
+    /// In the baseline bundle that first `hold` happens after key-down and
+    /// before the panel is ordered front — inside the keypress interval — while
+    /// in the prewarmed bundle it happens before key-down. A malloc is small and
+    /// the asymmetry is not: it is a fixed cost charged to one side of a
+    /// comparison whose whole purpose is to detect a small difference.
+    ///
+    /// Three captures is the whole of it — two root, one order-front — and the
+    /// flush keeps the capacity rather than freeing it inside the same interval.
+    @MainActor
     public static func prepare() {
       _ = sink
+      pending.reserveCapacity(4)
     }
 
     /// Read the clock. This is the ONLY thing that happens at a measured boundary.
@@ -161,7 +174,7 @@
       // Everything held so far flushes with this one, in capture order, so the
       // file order matches the causal order the harness enforces.
       let batch = pending + [capture]
-      pending.removeAll()
+      pending.removeAll(keepingCapacity: true)
       emit(batch)
     }
 

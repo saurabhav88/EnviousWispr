@@ -632,6 +632,20 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
             "the director emits directly, which is the biased form this test exists "
             "to refuse")
 
+    # Holding is not enough on its own: an empty array allocates its buffer on
+    # the FIRST append, which in the baseline bundle happens inside the keypress
+    # interval and in the prewarmed one does not. The reservation has to happen
+    # in `prepare()`, which runs before either interval.
+    emitter = EMITTER.read_text()
+    if "pending.reserveCapacity" not in emitter:
+        FAILURES.append(
+            "prepare() does not reserve the held-capture storage; the first hold "
+            "would allocate inside the keypress interval in one bundle only")
+    if "removeAll(keepingCapacity: true)" not in emitter:
+        FAILURES.append(
+            "the flush frees the capacity it just used, inside the interval it was "
+            "reserved to stay out of")
+
 
 # ------------------------------------------------------------------- runner
 
