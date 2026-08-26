@@ -3,6 +3,7 @@ Usage:  python3 -c "from wispr_eyes import *; connect(); see()"
         python3 -c "from wispr_eyes import *; connect(); tap('AI Polish')"
 """
 import os, sys, subprocess, time
+import datetime as _dt
 sys.path.insert(0, os.path.dirname(__file__))
 from ui_helpers import (find_app_pid, get_ax_app, get_attr, set_attr, perform_action,
     find_element, find_all_elements, find_control_for_label, wait_for_condition,
@@ -1035,16 +1036,6 @@ _APP_LOG_PATH = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
 _COMPLETION_MARKERS = ("Pipeline timing TOTAL", "WhisperKit pipeline TOTAL")
 
 
-def _log_inode():
-    """Return (inode, size) for app.log, or None if absent. Used to detect
-    log rotation (inode change) and truncation (size shrinks below seek)."""
-    try:
-        st = os.stat(_APP_LOG_PATH)
-        return (st.st_ino, st.st_size)
-    except OSError:
-        return None
-
-
 def _snapshot_log_state():
     """Capture the pre-test state of app.log: (inode, size, mtime).
     Returns None if the file doesn't exist. The mtime is used later to
@@ -1460,12 +1451,587 @@ def test_cancel(hold=2.0):
     return menu_ok and clip_ok
 
 
-def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30.0):
-    """Test hands-free (persistent) recording mode via menu items.
+# Right Option, the shipped default record key. `simulate_input._MODIFIER_FLAGS`
+# already maps it; this constant exists so the helpers below read as a hotkey
+# rather than as a keycode.
+RECORD_KEY = "ropt"
 
-    Menu-based recording IS hands-free: tap Start Recording -> recording persists
-    until Stop Recording is tapped. This test verifies that flow works and that
-    recording stays active over time (not auto-stopping).
+# The app's own chain window, `TimingConstants.handsFreeDebounceDelayMs = 500`.
+# Named rather than inlined so a future change to that constant has one place to
+# meet here — a hard-coded 0.5 in three call sites is how a harness quietly stops
+# reaching the behaviour it tests.
+_CHAIN_WINDOW_S = 0.5
+
+
+def press_record_key():
+    """Post ONE press of the record hotkey, the way the app can actually see it.
+
+    The record key is a BARE MODIFIER, so it is delivered as `kCGEventFlagsChanged`
+    rather than keyDown/keyUp, and it is handled through an event tap rather than
+    Carbon (`tools-and-apps.md` FACT: the-record-hotkey-IS-drivable-synthetically-only-cancel-is-not).
+
+    **This delegates to `simulate_input.modifier_down`/`modifier_up`, which have
+    carried the correct mechanism all along** — including
+    `CGEventSetIntegerValueField(kCGKeyboardEventKeycode)`, because the keycode
+    does NOT survive the type change on its own. #2410 proposed a fresh helper
+    "so nobody re-derives this"; the snippet it proposed was itself a
+    re-derivation, and it omitted that line. A press missing it produces a pill on
+    screen and ZERO chain detections — events demonstrably arriving and being
+    acted on, so the only conclusion available is that the app's chain detection
+    is broken, which is false. A half-working result that indicts production code
+    is strictly worse than a silent one.
+
+    Do not inline a `CGEventSetType` call here or anywhere else in this harness.
+    Two implementations of this already existed; a third is how they drift.
+    """
+    import simulate_input as _si
+    import ptt_binding as _ptt
+
+    # RESOLVE the binding; never assume it. `RECORD_KEY` is only the DEFAULT, and
+    # the settings UI persists both a different key and a different recording
+    # mode. Pressing right Option at a profile bound to Globe, or driving a
+    # multi-press chain in toggle mode - where `HotkeyService` does not route
+    # hands-free at all - produces silence, and the caller reports that silence as
+    # a PRODUCT failure. That is the exact class `ptt_binding` exists for, and it
+    # refuses rather than guessing.
+    binding = _ptt.resolve()
+    if not binding.is_modifier_only:
+        raise _ptt.PTTBindingError(
+            f"the record key is bound to {binding.key_name!r} (keycode "
+            f"{binding.keycode}), which is not a standalone modifier. Multi-press "
+            "chain detection runs on the modifier event tap; an ordinary key is "
+            "registered with Carbon, which does not deliver synthetic events."
+        )
+
+    _si.modifier_down(binding.keycode)
+    time.sleep(0.04)
+    _si.modifier_up(binding.keycode)
+
+
+def running_enviouswispr_instances():
+    """Every running EnviousWispr app bundle, as {pid: executable path}.
+
+    Reads `comm`, NOT `command`. `command` is the executable PLUS its arguments
+    with no delimiter between them, so recovering the executable means guessing
+    where the arguments begin - and every guess is wrong for some legal path. An
+    earlier version split on the first `" -"`, which silently truncates
+    `/Users/x/EW - issue/build/EnviousWispr Local.app/...` to `/Users/x/EW` and
+    drops that instance from the count. `comm` is the executable alone, so there
+    is nothing to parse. (Verified here: on macOS it is the full path, unlike
+    Linux where `comm` is the basename.)
+
+    Still excludes our own pid. A caller's argv routinely carries both
+    `EnviousWispr` (a worktree path) and `.app/Contents/MacOS/` (a script running
+    under `Python.app`), and excluding `python3` does not help - the interpreter's
+    binary is named `Python`. The basename test already rejects `.../Python`, so
+    the pid check is the second of two mechanisms rather than the only one; the
+    self-test carries a row that binds it, because a mutant proved the obvious row
+    did not.
+
+    Deliberately NOT scoped to `EnviousWispr Local.app`. A Release-configuration
+    test host is named `EnviousWispr.app`, carries the PRODUCTION bundle id, and
+    answers the same global hotkey; a `Local.app` pattern cannot see it, which is
+    exactly the instance you most want counted.
+    """
+    # `-ww` asks for unlimited width. macOS `ps(1)` documents that output can be
+    # truncated to the terminal width and that a second `-w` lifts the bound. It
+    # did NOT reproduce here - piped output stayed intact at 88,841 characters
+    # even with COLUMNS=60 - so this is insurance, not a fix for an observed
+    # truncation. It earns its place because the failure would be SILENT and in
+    # the dangerous direction: a truncated suffix drops a real instance, and the
+    # verdict becomes unattributable with nothing to indicate it.
+    out = subprocess.run(["ps", "-eww", "-o", "pid=,comm="],
+                         capture_output=True, text=True).stdout
+    me = str(os.getpid())
+    found = {}
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        pid, exe = line.strip().split(None, 1)
+        if pid == me:
+            continue
+        # An EXACT suffix, so the app's own XPC service and `llama-server` - both
+        # inside the same bundle and both in this listing - are excluded.
+        if exe.endswith(".app/Contents/MacOS/EnviousWispr"):
+            found[pid] = exe
+    return found
+
+
+def _require_single_instance(what):
+    """REFUSE rather than choose when more than one EnviousWispr is running.
+
+    Every instance answers the same global hotkey and writes the same shared
+    `app.log`, so a marker count drawn from that log is unattributable the moment
+    there are two. Measured 2026-08-25: a second instance inside the window
+    returned 2 of every marker with DISTINCT session ids - two real recordings
+    from one gesture - which reads as the app double-counting a synthetic press.
+    A confident wrong subject, pointing at production code.
+
+    Returns the instance map so the caller can re-check it afterwards. A wrong
+    refusal costs a rerun; a wrong verdict costs somebody a debugging session in
+    correct code.
+    """
+    found = running_enviouswispr_instances()
+    if len(found) != 1:
+        rows = "\n".join(f"    {p}  {c}" for p, c in sorted(found.items()))
+        print(f"BLOCKED: {what} needs exactly ONE running EnviousWispr; "
+              f"found {len(found)}.\n{rows}")
+        return None
+    return found
+
+
+# One per launch of a debug build. Chosen over `[Recovery] #1 scan pass 1 started
+# (launch)` by measurement rather than taste: 437 occurrences against 112 in the
+# same log, because the recovery line is conditional and this one is not. It also
+# fires when a user toggles Debug Mode by hand, which OVER-reports - and
+# over-reporting means refusing a verdict that might have been fine, which is the
+# safe direction.
+_LAUNCH_BANNER = "[AppLogger] Debug mode enabled"
+
+
+def _line_timestamp(line):
+    """The ISO-8601 stamp `AppLogger` puts at the head of every line, or None."""
+    if not line.startswith("["):
+        return None
+    end = line.find("]")
+    if end < 0:
+        return None
+    try:
+        return _dt.datetime.fromisoformat(line[1:end])
+    except ValueError:
+        return None
+
+
+def _merge_sweeps(first, second):
+    """Combine two passes over the log shelf into the evidence to trust.
+
+    Extracted so the decision is testable without staging a real rotation - the
+    surviving mutant is what asked for it, since nothing could reach this logic
+    while it lived inside a closure.
+
+    ALWAYS THE UNION, AND THE INODE COMPARISON IS GONE. Three revisions landed
+    here and the first two both tried to CHOOSE a pass:
+
+      select the second when inodes differ - wrong, because one rotation during
+      the validation pass makes that pass the incomplete one and its differing
+      inode map is exactly what selects it;
+
+      keep the first when inodes match - also wrong, because inode equality
+      proves only that nothing was RENAMED. The app appends constantly, so a
+      marker written between the two passes is present in the second and absent
+      from the first, with both maps identical. In the per-attempt check that
+      hides a late `Double press` and licenses a destructive retry; in the final
+      check it reports a successful gesture as missing its stop marker.
+
+    Both failures come from the same move: deciding which pass to trust. The
+    union needs no such decision. A line in either pass is real evidence whose
+    timestamp survived any rename, and every caller does a membership or an
+    emptiness test, so a duplicate costs nothing. **Choosing between two passes
+    requires knowing which is complete; taking both requires knowing nothing.**
+    """
+    seen, merged = set(), []
+    for line in first + second:
+        if line not in seen:
+            seen.add(line)
+            merged.append(line)
+    return merged
+
+
+def _line_in_window(line, start):
+    """Is this log line stamped at or after `start`?
+
+    ONE implementation, two callers. The consolidation that gave the harness a
+    single log reader briefly left this test written twice - in the reader and in
+    the banner counter - and the mutation control caught it as a DUPLICATED ANCHOR
+    rather than as a survivor. That is the cheaper of the two ways to find out.
+
+    A line whose stamp will not parse answers NO. `AppLogger` writes a well-formed
+    stamp on every line, so an unparseable one is a mangled line rather than an
+    event, and the process SAMPLES remain the mechanism that does not depend on
+    the log being readable at all.
+    """
+    stamp = _line_timestamp(line)
+    if stamp is None:
+        return False
+    # FLOOR THE START TO THE SECOND. `AppLogger` writes second-resolution stamps
+    # (`2026-08-25T17:55:04-04:00`, no fraction) while `datetime.now()` carries
+    # microseconds, so a line written 0.4s AFTER the window opened compares as
+    # BEFORE it and is discarded. Measured live: the double press fired, all three
+    # markers were in the log, and the per-attempt check reported "did not register
+    # after 3 attempts" - the harness driving three gestures against an app that
+    # had already done what was asked.
+    #
+    # Direction is the expensive one and it is why a unit-covered change still
+    # needed a live run: it fails toward NOT SEEING evidence. For the banner scan
+    # that is permissive (a launch goes uncounted); for the marker check it is a
+    # false product failure; and for the retry it is the saboteur case this file
+    # already documents, since an unseen marker is what licenses the next press.
+    # A window a fraction of a second wide is exactly where it bites, which is the
+    # per-attempt check and nowhere else - the ones with a start seconds earlier
+    # were unaffected, so nothing failed until the window got small.
+    return stamp >= start.replace(microsecond=0)
+
+
+def log_lines_since(start):
+    """Every `app.log` line stamped at or after `start`, oldest first, across the
+    rotated predecessors.
+
+    THE ONE READER. Rotation produced a finding in three consecutive review
+    rounds, at three different call sites - the banner scan, the retry's own
+    check, and the final marker check - and each was correct and each exposed the
+    next. That is the signature of fixing sites rather than the question.
+
+    The question every one of them was asking is "what did the app log during this
+    window", and `_read_new_log_lines` cannot answer it: it follows the inode, so
+    when `AppLogger.rotateIfNeeded` moves `app.log` to `app.1.log` at its 10 MiB
+    bound, everything before the move is silently absent and the result still
+    looks like a complete slice. A timestamp cannot be moved by a rename, so
+    asking by time has no such failure.
+
+    Cost is six names read twice - the shelf is 49 MB here and one call measured
+    0.38s. That is real, and it is why the retry loop reads ONCE and asks one
+    question of the result rather than reading again for a second question.
+
+    KNOWN AND UNFIXABLE HERE: a RELEASE build writes nothing at all -
+    `AppLogger.swift` gates the whole file sink behind `#if DEBUG`. So no reader
+    of this log can see a Release instance, and no amount of reading better fixes
+    that. The process SAMPLES are the only mechanism that sees one.
+    """
+    directory = os.path.dirname(_APP_LOG_PATH)
+    # Oldest first: `app.5.log` down to `app.1.log`, then the live file.
+    # `maxFileCount` is 5 in `AppLogger.swift`; reading one more than exists is
+    # free, and reading one FEWER is the silent miss this function exists to stop.
+    names = [f"app.{i}.log" for i in range(5, 0, -1)] + ["app.log"]
+
+    def sweep():
+        """One pass over the shelf."""
+        found = []
+        for name in names:
+            path = os.path.join(directory, name)
+            try:
+                with open(path, "rb") as fh:
+                    text = fh.read().decode("utf-8", "replace")
+            except OSError:
+                continue
+            for line in text.splitlines():
+                if _line_in_window(line, start):
+                    found.append(line)
+        return found
+
+    # A ROTATION DURING THE SWEEP CAN SKIP A FILE ENTIRELY, which no ordering
+    # fixes: once `app.2.log` has been read, a rotation moves the old
+    # `app.1.log` onto that already-passed name and the live file onto
+    # `app.1.log`, so the old `app.1.log` is never opened. Its lines keep their
+    # timestamps through the rename, so they are real evidence that reads as
+    # absent.
+    # Detected by comparing INODES rather than assumed away: if any name now
+    # resolves to a different file, the shelf moved under us and one more pass
+    # sees the settled state. Bounded at two - a second rotation inside the same
+    # few milliseconds needs the log to cross 10 MiB twice, and an unbounded
+    # retry here would be a worse failure than the one it chases.
+    # SELECTING THE SECOND PASS WAS WRONG, and the reasoning that produced it
+    # ("bounded at two - a second rotation needs 10 MiB twice") was wrong too: it
+    # takes only ONE rotation, occurring during the VALIDATION pass, for that pass
+    # to be the incomplete one - and the differing inode map is exactly what made
+    # it get selected.
+    # The UNION cannot omit. A line present in either pass is real evidence, its
+    # timestamp survived the rename, and every caller here does a membership test
+    # or an emptiness test, so a duplicate costs nothing. Choosing between two
+    # passes requires knowing which is complete; taking both requires knowing
+    # nothing.
+    # Two passes, always merged. Comparing them was tried three ways and every
+    # one had to CHOOSE which pass to trust; the union chooses nothing.
+    return _merge_sweeps(sweep(), sweep())
+
+
+def launch_banners_since(start):
+    """Launch banners at or after `start`, across the live log AND its rotated
+    predecessors.
+
+    READS THE FILES, NOT A CURSOR, and both halves of that are review findings.
+
+    A cursor taken after the ownership check leaves a gap in front of it - here
+    `begin_test`, `close_window` and TTS synthesis, which is seconds, not
+    milliseconds - and a banner written in that gap is outside the slice. Passing
+    a TIMESTAMP instead means the window starts where ownership was established
+    rather than where somebody happened to open the file.
+
+    And a cursor cannot survive ROTATION. `AppLogger.rotateIfNeeded` moves
+    `app.log` to `app.1.log` (and shifts `app.N` to `app.N+1`) the moment the file
+    passes its size bound, so a second launch's banner can be pushed into
+    `app.1.log` while every marker that follows lands in the new `app.log`. A
+    reader that follows the inode reads the new file only and sees a complete-
+    looking slice with the banner missing. Scanning the predecessors costs one
+    open each and removes the whole question.
+    """
+    return count_launch_banners(["\n".join(log_lines_since(start))], start)
+
+
+def count_launch_banners(texts, start):
+    """The pure half of `launch_banners_since`: count banners at or after `start`.
+
+    Split out so the self-test can drive it with synthetic text. The FILE
+    LOCATIONS deliberately stay inside `launch_banners_since` and are not a
+    parameter - a caller able to redirect where this guard looks could aim it at
+    an empty directory and be handed a clean verdict, which is a bypass wearing a
+    test seam's clothes.
+    """
+    seen = 0
+    for text in texts:
+        for line in text.splitlines():
+            if _LAUNCH_BANNER not in line:
+                continue
+            if _line_in_window(line, start):
+                seen += 1
+    return seen
+
+
+def instances_stayed_single(before, window_start, samples):
+    """Did exactly one EnviousWispr own this window, start to finish?
+
+    TWO SNAPSHOTS CANNOT ANSWER THIS, and a review round is what established it:
+    an instance that starts after the opening check and exits before the closing
+    one leaves both endpoints reading the same single pid, while its markers sat
+    in the shared log for the whole interval. The comparison passes and the
+    verdict is exactly as unattributable as if the guard were absent.
+
+    So the window is covered by two mechanisms that fail differently:
+
+      SAMPLES   the instance set read repeatedly DURING the window rather than
+                only at its ends. Closes the hole down to the sampling gap.
+      BANNER    the log FILES, scanned by TIMESTAMP for another app's launch
+                line from `window_start` onward, across the rotated predecessors
+                too. The better of the two, because it is evidence from the SAME
+                artifact the verdict is drawn from: a process that wrote into
+                this window announced itself IN it, whatever the process table
+                happened to say at the instants we looked.
+                Reading files rather than a cursor is deliberate - see
+                `launch_banners_since`, whose docstring carries the two ways a
+                cursor loses the banner.
+
+    Returns `(ok, reason)`. The reason names which mechanism objected, because "a
+    second app launched mid-window" and "the app was replaced" are different
+    things to go and look at.
+
+    KNOWN RESIDUAL, stated rather than implied, because "two mechanisms" reads as
+    "closed" and this is not.
+
+    THE LARGEST MEMBER IS A RELEASE BUILD, and an earlier version of this note got
+    it wrong by describing a narrow line-loss race instead. `AppLogger.swift` gates
+    the ENTIRE file sink behind `#if DEBUG`, so a Release instance writes no banner
+    at all - not one at risk of being lost, one that never exists. Meanwhile
+    `running_enviouswispr_instances` counts Release bundles deliberately, because
+    they answer the same global hotkey. So for a Release instance the banner
+    mechanism contributes NOTHING and the samples are the only cover, which makes
+    the residual the whole sampling gap rather than a rare coincidence.
+    A debug instance additionally needs its banner to be missing from the shelf
+    when the reader looks, and **this note deliberately does not say by what
+    mechanism.** Four review rounds went into that sentence and each correction
+    was right and exposed the next: the append race (closed by `O_APPEND` in
+    #2159), then a single in-window rotation (which loses nothing, because
+    `log_lines_since` reads `app.1.log` too), then shelf eviction and read races
+    that need not happen in the window at all.
+    **That is a SET being described rather than enumerated, and a description has
+    a next counterexample.** The residual does not depend on which mechanism it
+    is: whatever removes the banner from the shelf before the read, the samples
+    are the only remaining cover. Naming a mechanism has been wrong three times
+    and adds nothing the reader can act on, so it is left out.
+    What IS bounded and worth stating: the debug case needs the instance to
+    launch AND exit between two samples, AND its banner to be unreadable by the
+    time the verdict is drawn.
+
+    What is NOT in that residual any more, because a review round closed both: a
+    banner written before the log cursor was taken, and a banner carried into a
+    rotated file. Neither depends on a cursor now.
+
+    What is NOT claimed: that this proves one instance owned the window. What is
+    claimed: two independent mechanisms must both miss, where before one snapshot
+    pair had a hole a whole app could live in. If a verdict from this ever has to
+    be defended, defend it on the samples plus the banner plus what the log slice
+    actually contains - never on this function returning True.
+    """
+    for snap in samples:
+        if set(snap) != set(before):
+            return False, (f"the running set changed mid-window "
+                           f"({sorted(before)} -> {sorted(snap)})")
+    launches = launch_banners_since(window_start)
+    if launches:
+        return False, (f"{launches} app launch banner(s) appeared inside this "
+                       f"window; another instance wrote into this same log")
+    return True, ""
+
+
+def double_press_record_key(attempts=3):
+    """Two presses inside the app's chain window — the hands-free gesture (#2410).
+
+    The window is measured from the moment RECORDING STARTS, not from the first
+    press, so the gap here is deliberately well inside 500ms rather than close to
+    it.
+
+    NO PRECONDITION ON FOCUS. Measured 2026-08-25, macOS 26.4, dev build from
+    `main` at `d8cfd3b9`, two arms against one instance:
+
+        frontmost = com.apple.TextEdit          -> 1 `Double press`, 1 activation
+        frontmost = com.enviouswispr.app.dev    -> 1 `Double press`, 1 activation
+
+    So the tap is not frontmost-scoped, and this is now a measurement rather than
+    the argument-from-architecture the previous revision correctly refused to
+    accept. Arm A needs Settings OPEN to be stageable at all — EnviousWispr is a
+    menu-bar app with no window at rest, so activation alone cannot make it
+    frontmost, and a run that skips that step reports NOT ACHIEVED rather than a
+    control.
+
+    **RUN THIS AGAINST EXACTLY ONE EnviousWispr INSTANCE, AND RE-CHECK MID-RUN.**
+    The first attempt at this measurement returned 2 of every marker with distinct
+    session ids — two real recordings from one gesture — because a peer's
+    `build-dev-app.sh` relaunched their app INSIDE the measurement window. Both
+    apps answered the same global hotkey and wrote the same shared `app.log`.
+    A start-of-run instance check is a claim about a MOMENT; nothing makes it a
+    claim about the run. Count the pids before AND after, and require the same
+    pid rather than the same count, since a TERM-and-relaunch keeps the count at
+    one while swapping the instance underneath.
+
+    The direction is what makes it expensive: two `dictation_started` from one
+    press reads as the app double-counting a synthetic press, or as the tap being
+    registered twice. Both indict production code, both are false, and both come
+    with a reproduction. Distinct session ids are what separate "two recordings"
+    from "one duplicated log line".
+    """
+    # THE SYNTHETIC CHAIN IS ~80% RELIABLE AND NO GAP FIXES IT. Measured
+    # 2026-08-25 against the live dev build, 24 trials at four gaps:
+    #
+    #     0.04s  5/6     0.08s  4/6     0.12s  5/6     0.20s  3/5     0.30s  0/5
+    #
+    # So the first four are one population around 80% and 0.30s is outside the
+    # window entirely. Tuning the number is not available - it was tried first,
+    # and the measurement is what stopped it.
+    #
+    # A SIGNAL-BASED WAIT WAS TRIED AND IS WORSE, which is why this is a retry and
+    # not the seam fix the flake rules would otherwise ask for. Waiting for the
+    # first press's `Recording started` before posting the second failed 4 out of
+    # 4: that line is written AFTER the key-up has already ended the push-to-talk
+    # take, so the second press lands during teardown rather than after it. The
+    # subject does emit a signal; it is not a signal that means "ready".
+    #
+    # What a missed attempt costs is nothing: the orphan take is discarded by the
+    # app as `Recording discarded - too short`, so the state is self-clearing and a
+    # retry starts clean.
+    #
+    # THE ATTEMPT COUNT IS PRINTED, ALWAYS. A retry that hides itself turns a
+    # degrading delivery path into a silent slowdown, and the next person to
+    # measure this needs to see 1 become 3 before it becomes a failure.
+    # KNOWN COST OF THE RETRY, and it is a real one rather than a hedge. Where no
+    # file log exists at all - a Release build compiles the sink out, and Debug
+    # Mode gates it in a debug build - a first attempt that SUCCEEDED reads as a
+    # failure, and the next press lands on an already-locked recording where
+    # `HotkeyService` takes it as the STOP gesture.
+    #
+    # An earlier revision tried to detect that state and drive the gesture once
+    # instead. It was wrong twice in opposite directions, cost two full traversals
+    # of a 49 MB shelf per attempt, and was choosing between two ways of failing
+    # the run rather than preventing a loss. Deleted, and this is what deleting it
+    # costs: on a build with no log, three attempts instead of one.
+    #
+    # The verdict below is what covers it - it names every cause it cannot rule
+    # out rather than reporting a product failure it cannot distinguish from its
+    # own blindness.
+    for attempt in range(1, attempts + 1):
+        attempt_start = _dt.datetime.now().astimezone()
+        press_record_key()
+        time.sleep(0.12)
+        press_record_key()
+        time.sleep(0.6)
+        # `log_lines_since`, NOT a cursor: a rotation between the snapshot and
+        # this read would hide the marker, and a hidden marker here is what turns
+        # the retry into the saboteur described above.
+        # ONE read, serving one question. An earlier revision took two - a
+        # non-strict read for the marker and a strict one for "is the sink
+        # live" - and they were 0.4s apart on this machine, because each is a
+        # full traversal of a 49 MB shelf. A marker landing in that gap is
+        # absent from the first read and present in the second, which is
+        # exactly the state the second read existed to detect.
+        #
+        # `Hands-free mode activated`, NOT `Double press`. Production says so
+        # in as many words at `HotkeyService.swift:673` - "this records the
+        # REQUEST. Whether it becomes a lock is not known yet" - and
+        # `publishLockIfReady` can answer `.notLockable` and clean up. Retrying
+        # on the request marker meant declaring success on a gesture that
+        # requested a lock and did not get one.
+        window = log_lines_since(attempt_start)
+        if any("Hands-free mode activated" in line for line in window):
+            if attempt > 1:
+                print(f"  double press engaged on attempt {attempt} of {attempts}")
+            return True
+        if attempt < attempts:
+            print(f"  attempt {attempt} did not register a chain; retrying")
+            # Let the orphan take finish being discarded before pressing again.
+            time.sleep(1.2)
+    print(f"  double press did not register after {attempts} attempts")
+    return False
+
+
+def stop_after_short_hold(hold):
+    """Stop a recording this helper locked but is about to refuse to judge.
+
+    A REFUSAL MUST NOT LEAVE A RECORDING RUNNING. This path is reached only after
+    the double press has locked hands-free, so an early `return` left the app
+    recording indefinitely - capturing ambient audio and poisoning every later run
+    in the session. That is precisely what the Escape Recovery UAT did on
+    2026-08-18, where the founder ended the recording by hand.
+
+    Waits out the remainder of the lock cooldown first: `HotkeyService` ignores a
+    press within 500ms of locking, so a stop posted too early is swallowed and the
+    refusal leaves the same mess it was written to avoid.
+
+    A separate function so a row can reach it. The in-line version survived its
+    mutant - the fourth in this PR to survive for want of reachability rather than
+    for want of a correct guard.
+    """
+    remaining_cooldown = _CHAIN_WINDOW_S - hold
+    if remaining_cooldown > 0:
+        time.sleep(remaining_cooldown)
+    print("  stopping the locked recording before returning")
+    single_press_record_key()
+    time.sleep(1.0)
+
+
+def single_press_record_key():
+    """One press AFTER the lock cooldown — the hands-free stop (#2410).
+
+    `HotkeyService` ignores presses within 500ms of locking, so a stop posted
+    too early is swallowed by the cooldown and reads as "the app ignored the
+    stop". The caller is responsible for having recorded for longer than that;
+    this helper only refuses to be the reason it was too soon.
+    """
+    press_record_key()
+
+
+def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30.0):
+    """Drive the real hands-free gesture: double-press to lock, single-press to stop.
+
+    **THE OLD DOCSTRING SAID "Menu-based recording IS hands-free" AND THE APP HAS
+    NEVER AGREED (#2409).** Measured across all five rotated logs, 434,924 lines:
+    650 `Hands-free mode activated` against 652 `Double press`, so the double
+    press accounts for effectively every activation and the menu path has produced
+    none. (The two-line gap is line loss rather than a product gap. Note the
+    measurement predates #2159: `AppLogger` opened without `O_APPEND` then, so
+    concurrent writers overwrote each other. `AppLogger.swift:187` uses
+    `O_WRONLY | O_APPEND | O_CLOEXEC` now and that mechanism is closed - rotation
+    is still unlocked across processes, which is a different one.)
+
+    That sentence did not merely mislead, it RETIRED THE CHECK: anyone asking
+    "does our suite cover hands-free" read it, got an answer, and stopped looking,
+    while the helper drove an ordinary menu recording and reported it as
+    hands-free coverage.
+
+    Menu start/stop is still covered - by `test_recording`, which has always done
+    exactly that. So this is not a lost capability; it was a duplicate wearing a
+    name that promised something else.
+
+    ASSERTS THE HANDS-FREE MARKERS, not merely that a recording persisted. Any
+    recording persists; only this gesture produces `Double press`,
+    `Hands-free mode activated` and `Single press while locked`. Without that
+    check the test would still be measuring the wrong thing with the right input.
 
     Args:
         audio:    Path to audio file to play during recording (or None to use TTS).
@@ -1488,6 +2054,25 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
         if expect is None:
             expect = "fox" if "fox" in sentence.lower() else sentence.split()[len(sentence.split())//2].lower()
 
+    # The verdict below is a COUNT OF MARKERS IN A SHARED LOG, so it is only
+    # attributable while ONE instance is running. Checked here and again after the
+    # gesture, because a start-of-run check is a claim about a moment: a peer's
+    # `build-dev-app.sh` step 8 can launch a second app mid-run, and the count
+    # stays at one across a TERM-and-relaunch while the instance changes.
+    instances_before = _require_single_instance("test_hands_free")
+    if instances_before is None:
+        return False
+    # Sampled DURING the window, not only at its ends - see
+    # `instances_stayed_single`. An instance that starts after the opening check
+    # and exits before the closing one is invisible to two snapshots.
+    instance_samples = []
+    # STAMPED HERE, at the moment ownership was established, and NOT at the log
+    # cursor taken further down. Everything between the two - `begin_test`,
+    # `close_window`, TTS synthesis - is seconds, and a review round found that a
+    # second app launching in that gap has its banner outside the slice entirely.
+    # The window starts where the claim starts.
+    window_start = _dt.datetime.now().astimezone()
+
     begin_test(f"hands-free{' +audio' if audio else ''}")
     close_window()
 
@@ -1503,18 +2088,16 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     log_size_before = _snapshot_log_size()
     clip_before = get_clipboard_text() or ""
 
-    # Phase 1: Start recording via menu
-    print(f"\n--- START RECORDING (hands-free) ---")
-    if not tap("Start Recording"):
-        print("BLOCKED: Could not tap 'Start Recording'")
-        end_test()
-        return False
+    # Phase 1: the REAL gesture - two presses inside the app's chain window.
+    print(f"\n--- DOUBLE PRESS (hands-free lock) ---")
+    double_press_record_key()
 
     # Wait for recording to engage — menu should flip to "Stop Recording"
     t_start = time.time()
     recording_started = False
     for _ in range(10):
         time.sleep(0.3)
+        instance_samples.append(running_enviouswispr_instances())
         if _find_match(_app, "Stop Recording", "AXMenuItem"):
             recording_started = True
             break
@@ -1522,7 +2105,17 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     print(f"Recording started: {'YES' if recording_started else 'NO'} ({start_latency:.1f}s)")
 
     if not recording_started:
+        # STOP FIRST. This branch fires when the AX probe never saw `Stop
+        # Recording`, which is exactly when the harness does NOT know whether the
+        # gesture locked - and returning here left the app recording if it had.
+        # A press costs nothing in the other world: with nothing locked it starts
+        # a take the app discards as too short.
         print("BLOCKED: Recording did not start (menu never showed 'Stop Recording')")
+        print("  posting a stop press anyway, in case the gesture locked and the "
+              "menu probe is what failed")
+        time.sleep(_CHAIN_WINDOW_S)
+        single_press_record_key()
+        time.sleep(1.0)
         end_test()
         return False
 
@@ -1538,6 +2131,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     # Phase 3: Let it record, with mid-recording check
     mid_check_at = min(hold / 2, 2.0)
     time.sleep(mid_check_at)
+    instance_samples.append(running_enviouswispr_instances())
 
     # Mid-recording check: verify STILL recording (the hands-free test)
     still_recording_mid = _find_match(_app, "Stop Recording", "AXMenuItem") is not None
@@ -1546,6 +2140,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     remaining = hold - mid_check_at - start_latency
     if remaining > 0:
         time.sleep(remaining)
+    instance_samples.append(running_enviouswispr_instances())
 
     # Final pre-stop check
     still_recording_end = _find_match(_app, "Stop Recording", "AXMenuItem") is not None
@@ -1554,9 +2149,28 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     if audio_proc and audio_proc.poll() is None:
         audio_proc.terminate()
 
-    # Phase 4: Stop recording via menu
-    print(f"\n--- STOP RECORDING ---")
-    tap("Stop Recording")
+    # Phase 4: single press to stop. `HotkeyService` ignores presses within
+    # 500ms of locking, so a stop posted inside that cooldown is swallowed and
+    # reads as "the app ignored it". `hold` is at least a second in every path
+    # above, so the cooldown has long expired - asserted rather than assumed,
+    # because a future caller passing hold=0.2 would otherwise get a confusing
+    # failure in the app rather than a clear one here.
+    if hold < _CHAIN_WINDOW_S:
+        # STOP THE RECORDING BEFORE REFUSING. This branch is reached only AFTER
+        # the double press has locked hands-free and the hold has elapsed, so
+        # returning here left the app recording indefinitely - capturing ambient
+        # audio and poisoning every later run in the session. That is the exact
+        # failure the Escape Recovery UAT produced on 2026-08-18, where the
+        # founder ended the recording by hand.
+        # Wait out the lock cooldown first, or the stop press is swallowed and
+        # the refusal leaves the same mess it was written to avoid.
+        print(f"BLOCKED: hold={hold:.2f}s is inside the {_CHAIN_WINDOW_S:.1f}s "
+              f"lock cooldown; the stop press would be swallowed")
+        stop_after_short_hold(hold)
+        end_test()
+        return False
+    print(f"\n--- SINGLE PRESS (stop) ---")
+    single_press_record_key()
 
     # Phase 5: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
@@ -1578,8 +2192,82 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     if completion_line:
         print(f"Log line:       {completion_line}")
 
+    # THE HANDS-FREE-SPECIFIC ASSERTION, and it is why this helper exists (#2409).
+    # "Recording persisted" is true of EVERY recording, which is exactly how the
+    # old menu-driven version passed while covering nothing. These three lines
+    # are produced by the chain detection and by nothing else.
+    markers = {
+        "Double press": False,
+        "Hands-free mode activated": False,
+        "Single press while locked": False,
+    }
+    # Read from the FILES by timestamp rather than from the accumulated slice.
+    # `_wait_for_pipeline_completion` follows the inode, so a rotation crossing
+    # the 10 MiB bound mid-run leaves every marker in `app.1.log` and the slice
+    # looks complete without them - which fails a SUCCESSFUL single-instance run
+    # and reports it as missing hands-free markers. Same root as the banner scan
+    # and the retry check; one reader now answers all three.
+    for line in log_lines_since(window_start):
+        for m in markers:
+            if m in line:
+                markers[m] = True
+    print(f"\nHands-free markers in app.log:")
+    for m, seen in markers.items():
+        print(f"  {'YES' if seen else 'NO ':3}  {m}")
+    # RE-CHECK, and it is not belt-and-braces: the check at the top of this
+    # function was true when it ran and says nothing about the window that
+    # followed. Compare the PIDS, never the count - a TERM-and-relaunch leaves the
+    # count at one while swapping the instance, and a second app that shared this
+    # log for part of the run makes every number above unattributable. Refuse the
+    # verdict rather than reporting one.
+    instance_samples.append(running_enviouswispr_instances())
+    single, why = instances_stayed_single(instances_before, window_start,
+                                          instance_samples)
+    if not single:
+        print(f"\n  BLOCKED: {why}.")
+        print(f"  Every marker count above is unattributable: each instance answers "
+              f"the same global hotkey and writes this same log.")
+        print(f"  This is NOT a product failure. Re-run against one instance.")
+        end_test()
+        return False
+
+    # AN UNREADABLE INSTRUMENT IS NOT A PRODUCT FAILURE, and this path used to
+    # score one. With no live sink every marker is false BY CONSTRUCTION - a
+    # Release build compiles the sink out entirely - so a gesture that worked and
+    # a pipeline that completed would still print a product-facing FAIL naming
+    # three missing markers. That is the confident-wrong-subject shape: it
+    # accuses the app of a defect the harness could not have observed either way.
+    #
+    # An earlier round argued the caller would treat unreadable evidence as
+    # BLOCKED. Review checked that premise and it was false - nothing here did.
+    hands_free_proven = all(markers.values())
+    if not hands_free_proven:
+        # NAME EVERY POSSIBILITY RATHER THAN CHOOSING ONE. An earlier revision
+        # spent ~250 lines trying to tell "the harness could not see it" from
+        # "the gesture missed", so it could decide which verdict to print. It got
+        # that distinction wrong twice, and the distinction was never the point:
+        # BOTH end in a failed run rather than in lost data.
+        #
+        # What mattered was not blaming the PRODUCT for something the harness
+        # cannot observe. A person is running this UAT and can check all three
+        # causes in seconds, so the honest report is the list, not a guess.
+        missing = [m for m, seen in markers.items() if not seen]
+        print(f"  UNPROVEN: hands-free was not demonstrated - missing: "
+              f"{', '.join(missing)}")
+        print(f"  This is not by itself a product defect. Three causes produce "
+              f"it and this harness cannot tell them apart:")
+        print(f"    1. the gesture genuinely missed - the synthetic chain is "
+              f"~80% reliable per attempt, which is why it retries")
+        print(f"    2. nothing was writing app.log - a Release build compiles "
+              f"the sink out, and Debug Mode gates it in a debug build")
+        print(f"    3. a rotation crossed the 10 MiB bound mid-run - "
+              f"AppLogger's rotation is still not locked across processes, so a "
+              f"line can be lost as the shelf shifts")
+        print(f"  Check Debug Mode is on and exactly one EnviousWispr is "
+              f"running, then re-run before filing anything.")
+
     result_text = _extract_transcript_text(signal, log_size_before, clip_seen, log_lines)
-    overall_pass = _report_result(completed, audio, expect, result_text)
+    overall_pass = _report_result(completed, audio, expect, result_text) and hands_free_proven
     print(f"{'='*60}")
     end_test()
     return overall_pass
@@ -1968,3 +2656,332 @@ def record_with_fault(scenario_name, **kwargs):
     through `run_scenario` directly."""
     connect()
     return run_scenario(scenario_name, **kwargs)
+
+
+def _self_test():
+    """Control for the single-instance guard - a HARNESS CONTRACT test.
+
+    It protects the INSTRUMENT and says nothing about whether hands-free works
+    (testing-philosophy.md RULE: every-test-declares-which-of-four-things-it-protects).
+
+    NOTHING RUNS THIS AUTOMATICALLY, stated rather than implied because a suite no
+    gate invokes reports nothing. The sibling `--self-test` modules that CI does
+    run (`ptt_binding.py`, `faultInjection.py`) are wired in on the stated grounds
+    that "neither module imports Quartz". This one does, transitively through
+    `ui_helpers`, so wiring it to the required check would rest on an untested
+    assumption about the hosted runner's PyObjC - and a CI addition that fails
+    reddens the required check for everybody. Run it by hand:
+
+        python3 Tests/RuntimeUAT/wispr_eyes.py --self-test
+
+    Every row drives the real function with an injected `ps` table, and the set is
+    two-way: three rows must REFUSE and two must PASS, so a guard that stopped
+    classifying anything fails here rather than looking clean.
+    """
+    import types, pathlib, shutil
+    real_run = subprocess.run
+    me = str(os.getpid())
+
+    def fake(rows):
+        def _run(cmd, *a, **k):
+            if list(cmd[:1]) == ["ps"]:
+                return types.SimpleNamespace(stdout="\n".join(rows), returncode=0)
+            return real_run(cmd, *a, **k)
+        return _run
+
+    ONE = ["  111 /Users/x/EW/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"]
+    cases = [
+        ("one dev instance", ONE, 1, True),
+        ("two dev instances", ONE + [
+            "  222 /Users/x/wt/.derivedData/Dev/Build/Products/Dev/EnviousWispr Local.app"
+            "/Contents/MacOS/EnviousWispr"], 2, False),
+        # The Release test host carries the PRODUCTION bundle id and answers the same
+        # global hotkey, and a pattern scoped to `EnviousWispr Local.app` cannot see
+        # it - which is the instance you most want counted.
+        ("dev + Release test host", ONE + [
+            "  333 /Users/x/wt/.derivedData/Release/Build/Products/Release/EnviousWispr.app"
+            "/Contents/MacOS/EnviousWispr"], 2, False),
+        # The probe's own argv carries `EnviousWispr` (a worktree path) AND
+        # `.app/Contents/MacOS/` (it runs under Python.app). A command-line
+        # substring test finds itself; excluding `python3` does not help, because
+        # the interpreter's binary is named `Python`.
+        ("one instance + this probe's own argv", ONE + [
+            f"  {me} /opt/homebrew/Frameworks/Python.framework/Versions/3.13/Resources"
+            f"/Python.app/Contents/MacOS/Python -u /tmp/EnviousWispr/probe.py"], 1, True),
+        # The row above does NOT bind the pid exclusion, and a mutant proved it: a
+        # Python probe's executable is `.../Python`, which the basename test
+        # already rejects, so removing `if pid == me` left the self-test green.
+        # This row is the one that binds it - our own pid wearing an executable
+        # the basename test WOULD accept. Contrived as a process, exact as a
+        # requirement: the two mechanisms answer different questions ("is this an
+        # EnviousWispr app" and "is this me"), and only this row can tell whether
+        # the second one is still there.
+        ("our own pid wearing a matching executable", ONE + [
+            f"  {me} /Users/x/EW/build/EnviousWispr Local.app"
+            f"/Contents/MacOS/EnviousWispr"], 1, True),
+        ("no instance at all", ["  999 /usr/bin/vim"], 0, False),
+        # A worktree or parent directory may legally contain " - ". An earlier
+        # version recovered the executable by splitting `command` on the first
+        # `" -"`, which truncates this to `/Users/x/EW` and drops the instance -
+        # a real second app going uncounted, which is the one failure this guard
+        # exists to prevent. Reading `comm` removes the parse entirely; this row
+        # is what stops anyone reintroducing one.
+        ("a path containing a space-hyphen is still counted", ONE + [
+            "  444 /Users/x/EW - issue/build/EnviousWispr Local.app"
+            "/Contents/MacOS/EnviousWispr"], 2, False),
+        # Same bundle, sibling executables. `comm` lists them, and an EXACT
+        # suffix is what keeps them out of the count; a substring test would
+        # treble every instance.
+        ("the app's own XPC service and llama-server are not instances", ONE + [
+            "  555 /Users/x/EW/build/EnviousWispr Local.app/Contents/XPCServices"
+            "/EnviousWisprASRService.xpc/Contents/MacOS/EnviousWisprASRService",
+            "  556 /Users/x/EW/build/EnviousWispr Local.app/Contents/Resources"
+            "/llama-server"], 1, True),
+    ]
+
+    failures = []
+    for name, rows, want_n, want_pass in cases:
+        subprocess.run = fake(rows)
+        try:
+            n = len(running_enviouswispr_instances())
+            got_pass = _require_single_instance("self-test") is not None
+        finally:
+            subprocess.run = real_run
+        if n != want_n or got_pass != want_pass:
+            failures.append(f"{name}: count={n} (want {want_n}), "
+                            f"guard={'PASS' if got_pass else 'REFUSED'} "
+                            f"(want {'PASS' if want_pass else 'REFUSED'})")
+        else:
+            print(f"  ok      {name}")
+
+    # The banner counter's PURE half, driven with synthetic text. This is where
+    # the two review findings on the log side live: a banner written before
+    # anyone took a cursor, and a banner carried into a rotated file.
+    T0 = _dt.datetime.fromisoformat("2026-01-01T12:00:00-05:00")
+    def banner_at(when):
+        return f"[{when}] [INFO] {_LAUNCH_BANNER}"
+    banner_cases = [
+        ("a banner BEFORE the window is not counted",
+         [banner_at("2026-01-01T11:59:59-05:00")], 0),
+        ("a banner AFTER the window is counted",
+         [banner_at("2026-01-01T12:00:01-05:00")], 1),
+        # The rotation finding: the banner sits in a PREDECESSOR while every
+        # marker that follows it lands in the new `app.log`. A cursor that
+        # follows the inode reads the new file only and sees a complete-looking
+        # slice with the banner missing.
+        ("a banner in a ROTATED predecessor is still counted",
+         ["nothing here", banner_at("2026-01-01T12:00:02-05:00")], 1),
+        ("a banner exactly AT the window start is counted",
+         [banner_at("2026-01-01T12:00:00-05:00")], 1),
+        # A different UTC offset must compare correctly rather than
+        # lexicographically - 17:00:01Z is 12:00:01-05:00, inside the window.
+        ("a banner written under a different UTC offset compares by INSTANT",
+         [banner_at("2026-01-01T17:00:01+00:00")], 1),
+        ("an unparseable stamp is not counted and does not raise",
+         ["[not-a-date] [INFO] " + _LAUNCH_BANNER], 0),
+        ("an ordinary line is not a banner",
+         ["[2026-01-01T12:00:01-05:00] [INFO] [Pipeline] Recording started."], 0),
+    ]
+    # THE ROW THE SELF-TEST DID NOT HAVE, and a live run is what found the gap.
+    # `AppLogger` stamps to the SECOND while `datetime.now()` carries microseconds,
+    # so a line written a fraction of a second after the window opened compares as
+    # before it. Every row above uses a whole-second start, which is exactly why
+    # 22/22 stayed green while the per-attempt check reported "did not register"
+    # against a log containing all three markers.
+    T_SUB = _dt.datetime.fromisoformat("2026-01-01T12:00:00.500000-05:00")
+    banner_rows_extra = 0
+    name = "a line stamped in the same SECOND the window opened is in-window"
+    got_sub = count_launch_banners([banner_at("2026-01-01T12:00:00-05:00")], T_SUB)
+    if got_sub != 1:
+        failures.append(f"{name}: counted {got_sub}, want 1")
+    else:
+        print(f"  ok      {name}")
+    banner_rows_extra += 1
+    for name, texts, want in banner_cases:
+        got = count_launch_banners(texts, T0)
+        if got != want:
+            failures.append(f"{name}: counted {got}, want {want}")
+        else:
+            print(f"  ok      {name}")
+
+    # The FILE half of the banner scan, which the rows above cannot reach: they
+    # drive the pure counter with a list of texts and never touch the loop that
+    # decides WHICH files get read. A mutant proved it - dropping the rotated
+    # predecessors from that loop survived every row above, because none of them
+    # opens a file.
+    #
+    # `_APP_LOG_PATH` is rebound in-process rather than made a parameter. A
+    # directory argument would let any caller aim this guard at an empty folder
+    # and be handed a clean verdict, which is a bypass wearing a test seam's
+    # clothes; a module global that only an in-process test can rebind is not
+    # reachable from a call site at all. Same technique as the `subprocess.run`
+    # stub above.
+    import tempfile as _tf
+    real_log_path = _APP_LOG_PATH
+    tmpdir = _tf.mkdtemp()
+    try:
+        pathlib.Path(tmpdir, "app.log").write_text(
+            "[2026-01-01T12:00:05-05:00] [INFO] [Pipeline] Recording started.\n")
+        # The rotation case exactly: the banner is in the PREDECESSOR while every
+        # marker that follows it lands in the new `app.log`.
+        pathlib.Path(tmpdir, "app.1.log").write_text(
+            banner_at("2026-01-01T12:00:01-05:00") + "\n")
+        globals()["_APP_LOG_PATH"] = str(pathlib.Path(tmpdir, "app.log"))
+        got = launch_banners_since(T0)
+    finally:
+        globals()["_APP_LOG_PATH"] = real_log_path
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    name = "a banner that rotation moved into app.1.log is still read off disk"
+    if got != 1:
+        failures.append(f"{name}: counted {got}, want 1")
+    else:
+        print(f"  ok      {name}")
+    file_rows = 1
+
+    # THE ONE READER, ordered. Three review rounds produced a rotation finding at
+    # three different call sites, so what is asserted here is the property that
+    # made them one bug: history survives a rename, and it comes back in the order
+    # it was written.
+    real_log_path = _APP_LOG_PATH
+    tmpdir = _tf.mkdtemp()
+    try:
+        pathlib.Path(tmpdir, "app.2.log").write_text(
+            "[2026-01-01T12:00:01-05:00] [INFO] oldest\n")
+        pathlib.Path(tmpdir, "app.1.log").write_text(
+            "[2026-01-01T11:59:59-05:00] [INFO] before the window\n"
+            "[2026-01-01T12:00:02-05:00] [INFO] middle\n")
+        pathlib.Path(tmpdir, "app.log").write_text(
+            "[2026-01-01T12:00:03-05:00] [INFO] newest\n")
+        globals()["_APP_LOG_PATH"] = str(pathlib.Path(tmpdir, "app.log"))
+        got_lines = log_lines_since(T0)
+    finally:
+        globals()["_APP_LOG_PATH"] = real_log_path
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    name = "the reader returns rotated history oldest-first and drops pre-window lines"
+    tails = [l.split("] ")[-1] for l in got_lines]
+    if tails != ["oldest", "middle", "newest"]:
+        failures.append(f"{name}: got {tails}")
+    else:
+        print(f"  ok      {name}")
+    file_rows += 1
+
+    # The merge that replaced three attempts to CHOOSE a pass.
+    for name, args, want in [
+        ("identical passes merge to themselves",
+         (["a", "b"], ["a", "b"]), ["a", "b"]),
+        # The rotation case: the SECOND pass is the incomplete one, and a
+        # differing inode map is what used to select exactly it.
+        ("a pass missing a line still contributes the others",
+         (["a", "b"], ["b", "c"]), ["a", "b", "c"]),
+        # The APPEND case, which no inode comparison can see: the app wrote a
+        # marker between the passes, so the second has a line the first does not
+        # and both inode maps are identical. Keeping the first pass here hides a
+        # late marker and licenses a destructive retry.
+        ("a line appended between passes is kept",
+         (["a"], ["a", "late-marker"]), ["a", "late-marker"]),
+        ("the union keeps first-seen order and drops duplicates",
+         (["x", "y"], ["y", "x", "z"]), ["x", "y", "z"]),
+    ]:
+        got_merge = _merge_sweeps(*args)
+        if got_merge != want:
+            failures.append(f"{name}: got {got_merge}, want {want}")
+        else:
+            print(f"  ok      {name}")
+        file_rows += 1
+
+    # THE RETRY'S ORACLE. `HotkeyService.swift:673` says in as many words that
+    # `Double press` records the REQUEST and "whether it becomes a lock is not
+    # known yet", and `publishLockIfReady` can answer `.notLockable` and clean
+    # up. So a window carrying the request and NOT the activation is a gesture
+    # that did not lock, and declaring success on it means the caller reports
+    # `Recording did not start` for a helper that just said it engaged.
+    presses = []
+    real_press = globals()["press_record_key"]
+    real_reader = globals()["log_lines_since"]
+    real_sleep = time.sleep
+    globals()["press_record_key"] = lambda: presses.append(1)
+    globals()["log_lines_since"] = lambda *_a, **_k: [
+        "[2026-01-01T12:00:01-05:00] [INFO] [HotkeyService] Double press "
+        "- requesting hands-free mode"]
+    time.sleep = lambda *_a, **_k: None
+    try:
+        request_only = double_press_record_key(attempts=2)
+    finally:
+        globals()["press_record_key"] = real_press
+        globals()["log_lines_since"] = real_reader
+        time.sleep = real_sleep
+    name = "the request marker alone is not a lock, so it does not end the retry"
+    if request_only or len(presses) != 4:
+        failures.append(f"{name}: engaged={request_only}, presses={len(presses)}; "
+                        f"want engaged=False and 4 presses across 2 attempts")
+    else:
+        print(f"  ok      {name}")
+    file_rows += 1
+
+    # A REFUSAL MUST NOT LEAVE A RECORDING RUNNING. Reached only after the
+    # gesture has locked hands-free, so an early return leaves the app recording
+    # indefinitely - the Escape Recovery UAT did exactly this on 2026-08-18 and
+    # the founder ended it by hand.
+    stops = []
+    real_stop = globals()["single_press_record_key"]
+    real_sleep = time.sleep
+    globals()["single_press_record_key"] = lambda: stops.append(1)
+    time.sleep = lambda *_a, **_k: None
+    try:
+        stop_after_short_hold(0.2)
+    finally:
+        globals()["single_press_record_key"] = real_stop
+        time.sleep = real_sleep
+    name = "refusing a short hold still stops the recording it locked"
+    if len(stops) != 1:
+        failures.append(f"{name}: {len(stops)} stop presses, want 1")
+    else:
+        print(f"  ok      {name}")
+    file_rows += 1
+
+
+    # `instances_stayed_single` answers a question no snapshot pair can: did one
+    # instance own the WHOLE window. Rows 2 and 3 are the review finding that
+    # produced it - an app that starts after the opening check and exits before
+    # the closing one leaves both endpoints identical.
+    BEFORE = {"111": "/Users/x/EW/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"}
+    OTHER = dict(BEFORE, **{"222": "/Users/y/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"})
+    window_cases = [
+        ("a quiet window is single", BEFORE, 0, [BEFORE, BEFORE], True),
+        ("a sample catching a second instance is not single",
+         BEFORE, 0, [BEFORE, OTHER, BEFORE], False),
+        ("a launch banner in the window is not single, even with every "
+         "sample clean", BEFORE, 1, [BEFORE, BEFORE], False),
+        ("a replaced instance is not single (same COUNT, different pid)",
+         BEFORE, 0, [BEFORE, {"999": BEFORE["111"]}], False),
+    ]
+    real_count = globals()["launch_banners_since"]
+    for name, before, banners, samples, want_ok in window_cases:
+        globals()["launch_banners_since"] = lambda _start, _n=banners: _n
+        try:
+            ok, _why = instances_stayed_single(before, T0, samples)
+        finally:
+            globals()["launch_banners_since"] = real_count
+        if ok != want_ok:
+            failures.append(f"{name}: got {'single' if ok else 'NOT single'}, "
+                            f"want {'single' if want_ok else 'NOT single'}")
+        else:
+            print(f"  ok      {name}")
+
+    total = (len(cases) + len(banner_cases) + banner_rows_extra + file_rows
+             + len(window_cases))
+    if failures:
+        for f in failures:
+            print(f"  FAIL    {f}")
+        print(f"\nwispr_eyes self-test: {len(failures)} of {total} FAILED")
+        return 1
+    print(f"\nwispr_eyes self-test: {total}/{total} passed")
+    return 0
+
+
+if __name__ == "__main__":
+    if "--self-test" in sys.argv:
+        sys.exit(_self_test())
+    print("wispr_eyes is a library. Run `--self-test` for the harness control, "
+          "or import it from a REPL/script for UAT.")
+    sys.exit(2)
