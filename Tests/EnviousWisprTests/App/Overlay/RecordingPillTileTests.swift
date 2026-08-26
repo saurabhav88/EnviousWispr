@@ -239,14 +239,27 @@ struct RecordingPillTileTests {
   /// `RecordingPillPreviewWiringTests`.
   @Test("the sample waveform fills the meter and ends where the mark is")
   func theSampleWaveformIsWellFormed() {
-    let history = RecordingPillPreviewTile.sampleLevelHistory
+    // **The subject is what the meter DRAWS, not the array as written.** `.still`
+    // polls once, that poll appends, and asserting the raw seed would be asserting
+    // a value nothing renders — which is exactly the defect cloud review found in
+    // the round that introduced the seed.
+    let history = RainbowLevelMeter.pushed(
+      RecordingPillPreviewTile.sampleLevelHistory,
+      level: CGFloat(RecordingPillPreviewTile.sampleLevel))
 
+    #expect(
+      RecordingPillPreviewTile.sampleLevelHistory.count == RainbowLevelMeter.barCount - 1,
+      """
+      the seed has \(RecordingPillPreviewTile.sampleLevelHistory.count) samples for \
+      \(RainbowLevelMeter.barCount) bars. It must be exactly one short: the single still \
+      poll completes it, and a FULL seed drops its oldest and shifts every bar.
+      """)
     #expect(
       history.count == RainbowLevelMeter.barCount,
       """
-      the sample waveform has \(history.count) samples for \(RainbowLevelMeter.barCount) \
-      bars. Short pads the OLD end with silence, which is survivable; long silently \
-      drops the oldest, which is not what this array is claiming to be.
+      after the one still poll the meter holds \(history.count) samples for \
+      \(RainbowLevelMeter.barCount) bars, so the rendered waveform is not the shape \
+      written here.
       """)
     #expect(
       history.allSatisfy { $0 >= 0 && $0 <= 1 },

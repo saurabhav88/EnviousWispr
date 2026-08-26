@@ -275,7 +275,7 @@ struct RecordingPillPreviewTile: View {
   /// A two digit clock, which is the widest ordinary case.
   static let sampleElapsed: TimeInterval = 12
 
-  /// Twenty-four samples of a plausible sentence, oldest first (#2435).
+  /// A plausible sentence's worth of level samples, oldest first (#2435).
   ///
   /// **A still pill has no history to build, so this IS the meter.** With one
   /// poll and nothing after it the rail would draw a single bar at the sample
@@ -283,20 +283,26 @@ struct RecordingPillPreviewTile: View {
   /// identity is that meter, so the picker would misrepresent the design it is
   /// asking the user to choose. Found by cloud review on #2439.
   ///
-  /// A shorter array pads with silence at the OLD end, which is what a real
-  /// recording looks like a second in, so a future `barCount` change degrades
-  /// rather than breaks.
+  /// **It is deliberately ONE SHORT of `RainbowLevelMeter.barCount`, and the
+  /// coupling is the point rather than an accident.** `.still` polls once, that
+  /// poll increments the tick, and the meter appends on a tick change — so a
+  /// FULL seed would immediately drop its oldest sample and shift every bar,
+  /// leaving the rendered meter one bar different from the array written here.
+  /// Cloud review caught that as a consequence of the seed itself, on the round
+  /// after the seed landed. Seeding one short lets the single poll COMPLETE the
+  /// history instead: `pushed` drops only past capacity, so nothing shifts and
+  /// the rail draws exactly this shape with `sampleLevel` newest.
   ///
-  /// It ENDS at `sampleLevel`, because the newest bar and the rainbow mark are
-  /// driven by the same instant, and a picker drawing them disagreeing would be
-  /// showing a pill that cannot occur.
+  /// That also removes the need to end this array at `sampleLevel` by hand — the
+  /// poll supplies it, from the same provider that drives the rainbow mark, so
+  /// the newest bar and the mark cannot disagree.
   ///
   /// `internal`, like `sampleDisplay`, because "what the sample pill shows" has
   /// one owner and a test has to be able to read it.
   static let sampleLevelHistory: [CGFloat] = [
     0.06, 0.11, 0.24, 0.38, 0.52, 0.61, 0.55, 0.40,
     0.22, 0.13, 0.09, 0.18, 0.34, 0.49, 0.66, 0.73,
-    0.64, 0.47, 0.29, 0.16, 0.10, 0.21, 0.35, CGFloat(sampleLevel),
+    0.64, 0.47, 0.29, 0.16, 0.10, 0.21, 0.35,
   ]
 
   var body: some View {
