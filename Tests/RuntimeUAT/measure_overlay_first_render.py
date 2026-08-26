@@ -757,23 +757,39 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
     }
 
 
-def screen_lock_state():
+def screen_lock_state(session_reader=None):
     """`True` locked, `False` unlocked, `None` could not tell.
 
-    Three-valued on purpose. Collapsing "could not tell" into "unlocked" is the
-    shape that turns a broken probe into a green: the caller would proceed on a
-    machine it cannot describe, which is precisely the state a measurement must
-    not be taken in.
+    A readable WindowServer session uses presence semantics for
+    `CGSSessionScreenIsLocked`: present and true means locked; absence means
+    unlocked. Import failure, reader failure, a missing session, an unusable
+    dictionary or an unexpected lock value remains unknown and fails closed.
     """
+    if session_reader is None:
+        try:
+            import Quartz
+            session_reader = Quartz.CGSessionCopyCurrentDictionary
+        except Exception:
+            return None
+
     try:
-        import Quartz
-        session = Quartz.CGSessionCopyCurrentDictionary()
+        session = session_reader()
     except Exception:
         return None
-    if session is None:
+
+    if session is None or not hasattr(session, "get") or not hasattr(session, "__contains__"):
         return None
-    value = session.get("CGSSessionScreenIsLocked")
-    return None if value is None else bool(value)
+
+    key = "CGSSessionScreenIsLocked"
+    if key not in session:
+        return False
+
+    value = session.get(key)
+    if value is True or value == 1:
+        return True
+    if value is False or value == 0:
+        return False
+    return None
 
 
 def screen_lock_block(state):

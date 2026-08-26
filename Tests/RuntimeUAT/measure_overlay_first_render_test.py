@@ -799,6 +799,72 @@ def test_a_locked_screen_blocks_before_a_launch_is_spent():
         FAILURES.append("locked and unknown must give distinguishable reasons")
 
 
+def test_the_real_screen_lock_probe_distinguishes_absence_from_failure():
+    """`screen_lock_block` above tests the POLICY on synthetic True/False/None.
+
+    This tests the PROBE that produces those values. A live machine measurement
+    (2026-08-26, this repo's own dev Mac, screen independently confirmed unlocked
+    via `osascript` frontmost-process resolution and a non-overlay app window
+    list) found `CGSSessionScreenIsLocked` absent from a perfectly valid session
+    dict — not present-and-false, absent. Apple does not document the key as a
+    standard session property, so presence-semantics (absent means unlocked) is
+    the correct reading, not a broken probe. What must still fail closed is a
+    session the probe genuinely could not read.
+    """
+    valid_session = {
+        "kCGSessionUserIDKey": 501,
+        "kCGSessionOnConsoleKey": True,
+    }
+
+    expect(
+        "a valid session with no lock key is unlocked",
+        m.screen_lock_state(lambda: valid_session),
+        False,
+    )
+
+    expect(
+        "a present true lock key is locked",
+        m.screen_lock_state(
+            lambda: {**valid_session, "CGSSessionScreenIsLocked": True}),
+        True,
+    )
+
+    expect(
+        "a present false lock key is unlocked",
+        m.screen_lock_state(
+            lambda: {**valid_session, "CGSSessionScreenIsLocked": False}),
+        False,
+    )
+
+    expect(
+        "no session remains unknown",
+        m.screen_lock_state(lambda: None),
+        None,
+    )
+
+    def failed_reader():
+        raise RuntimeError("WindowServer probe failed")
+
+    expect(
+        "a failed session read remains unknown",
+        m.screen_lock_state(failed_reader),
+        None,
+    )
+
+    expect(
+        "an unusable session object remains unknown",
+        m.screen_lock_state(lambda: object()),
+        None,
+    )
+
+    expect(
+        "an unexpected lock value remains unknown",
+        m.screen_lock_state(
+            lambda: {**valid_session, "CGSSessionScreenIsLocked": "yes"}),
+        None,
+    )
+
+
 def test_a_keypress_figure_must_name_the_launch_it_came_from():
     """Tagging the LAUNCHES is not enough; the timings need identity too.
 
@@ -863,6 +929,7 @@ TESTS = [
     test_an_abandoned_launch_is_actually_reaped,
     test_every_exceptional_exit_from_the_readiness_wait_reaps,
     test_a_locked_screen_blocks_before_a_launch_is_spent,
+    test_the_real_screen_lock_probe_distinguishes_absence_from_failure,
     test_a_keypress_figure_must_name_the_launch_it_came_from,
     test_median_uses_statistics_median,
     test_p95_uses_nearest_rank,
