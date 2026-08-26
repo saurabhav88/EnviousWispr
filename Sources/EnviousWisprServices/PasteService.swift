@@ -814,11 +814,46 @@ public enum PasteService {
   /// the frontmost app and a second implementation of it would be the parallel machine this repo's
   /// adopt-before-inventing rule exists to prevent. Every defensive check above is exactly what a
   /// second copy would have had to reproduce and would eventually have drifted on.
+  /// What asking for the focused element produced.
+  ///
+  /// **Three outcomes, because nil was carrying two of them.** "The app has nothing focused" and
+  /// "the provider failed or timed out" are different facts with different advice, and a caller
+  /// holding only nil has to guess. That was tolerable while every read was unbounded and a timeout
+  /// was rare; #2412's 0.25s menu cap makes the timeout branch the likely one, and the panel was
+  /// telling users to click into the text when nothing they clicked could help. Cloud review,
+  /// PR #2427.
+  enum FocusedElement {
+    /// A focused element belonging to the requested process.
+    case element(AXUIElement)
+    /// The query SUCCEEDED and there is nothing to read — no focus, or it belongs elsewhere.
+    case none
+    /// The query itself failed: not trusted, a bad pid, a wedged provider, or the timeout expiring.
+    case queryFailed(AXError)
+  }
+
+  /// The nil-returning form, kept EXACTLY as it was so the paste path is untouched.
   static func focusedElementQuery(
     pid: pid_t,
     messagingTimeout: Double = axMessagingTimeoutSeconds
   ) -> AXUIElement? {
-    guard AXIsProcessTrusted(), pid > 0 else { return nil }
+    if case .element(let focused) = focusedElement(pid: pid, messagingTimeout: messagingTimeout) {
+      return focused
+    }
+    return nil
+  }
+
+  /// Whether a focused-element query error means "nothing is focused" rather than "the query
+  /// failed".
+  ///
+  /// Pure and separate so the decision is reachable from a test — inside `focusedElement` it sits
+  /// behind a live Accessibility call and nothing can assert it.
+  static func isUnfocusedResponse(_ error: AXError) -> Bool { error == .noValue }
+
+  static func focusedElement(
+    pid: pid_t,
+    messagingTimeout: Double = axMessagingTimeoutSeconds
+  ) -> FocusedElement {
+    guard AXIsProcessTrusted(), pid > 0 else { return .queryFailed(.cannotComplete) }
 
     let application = AXUIElementCreateApplication(pid)
     // Bound every subsequent read. A wedged destination must not hang the
@@ -826,20 +861,34 @@ public enum PasteService {
     AXUIElementSetMessagingTimeout(application, Float(messagingTimeout))
 
     var focusedRef: CFTypeRef?
-    guard
-      AXUIElementCopyAttributeValue(
-        application, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
-      let focusedValue = focusedRef,
-      CFGetTypeID(focusedValue) == AXUIElementGetTypeID()
-    else { return nil }
+    // The ERROR is kept rather than compared away: a timeout and a genuinely unfocused app arrive
+    // here as different codes and leave as different outcomes.
+    let error = AXUIElementCopyAttributeValue(
+      application, kAXFocusedUIElementAttribute as CFString, &focusedRef)
+    // **`.noValue` IS the ordinary unfocused answer, not a failure.** Accessibility reports "this
+    // attribute has no associated value" for an application with nothing focused, so treating every
+    // non-success code as a failed query sends the commonest case to the generic read-failure
+    // message and withholds the one instruction that would help — click into the text. Cloud
+    // review, PR #2427, on the tri-state fix from the round before.
+    //
+    // `.attributeUnsupported` is deliberately NOT here: an app that does not implement the focused
+    // attribute at all will not start doing so because the user clicked somewhere, so that stays a
+    // failure and gets the honest "could not be read" copy.
+    if isUnfocusedResponse(error) { return PasteService.FocusedElement.none }
+    guard error == .success else { return .queryFailed(error) }
+    guard let focusedValue = focusedRef, CFGetTypeID(focusedValue) == AXUIElementGetTypeID() else {
+      // The call succeeded and produced nothing usable — that is an absence, not a failure.
+      return PasteService.FocusedElement.none
+    }
     // swift-format-ignore: NeverForceUnwrap — guarded by the CFGetTypeID check.
     let focused = focusedValue as! AXUIElement
 
     var focusedPID: pid_t = 0
     guard AXUIElementGetPid(focused, &focusedPID) == .success, focusedPID == pid else {
-      return nil
+      // Someone else's element is nothing of OURS to read, not a broken provider.
+      return PasteService.FocusedElement.none
     }
-    return focused
+    return .element(focused)
   }
 
   /// Read the text either side of the caret in the app that owns `element`.

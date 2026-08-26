@@ -985,6 +985,24 @@ public final class WisprBootstrapper {
     )
 
     // PR-B.3 of #763: menu bar surface home.
+    // **Built HERE rather than at its `self.quickAdd =` assignment below, because the menu-bar
+    // action needs it (#2412) and that assignment is a hundred lines further on.** A closure cannot
+    // reach it there: `[weak self]` is illegal while `self` is still being initialised, and
+    // `[weak quickAdd]` names nothing yet.
+    //
+    // Every dependency it takes already exists well above this line — `customWordsCoordinator`
+    // (:141), `vocabularyPackManager` (:150), `hotkeyService` (:438) — so this is a reorder, not a
+    // new dependency.
+    //
+    // The alternative was a settable seam on `MenuBarController`, and it is worse for a reason this
+    // issue is about: it makes the wiring optional at the type level, so "the menu item does nothing
+    // because nobody set the seam" becomes a state that compiles. A menu entry that silently does
+    // nothing is exactly the failure #2412 exists to route around.
+    let quickAdd = QuickAddWiring(
+      hotkeyService: hotkeyService,
+      customWords: customWordsCoordinator,
+      packManager: vocabularyPackManager)
+
     let menuBarController = MenuBarController(
       liveRecordingState: liveRecordingState,
       backendMetadata: backendMetadata,
@@ -992,6 +1010,7 @@ public final class WisprBootstrapper {
       settings: settings,
       permissions: permissions,
       actions: MenuBarActions(
+        addSelectedWord: { quickAdd.beginFromMenuBar(selection: $0) },
         continueOnboarding: { appWindowCoordinator.openOnboardingWindow() },
         openSettings: {
           navigationCoordinator.request(.speechEngine)
@@ -1086,10 +1105,7 @@ public final class WisprBootstrapper {
     self.vocabularyPackManager = vocabularyPackManager
     // #2381. Built from three collaborators this root already holds; it adds no new dependency of
     // its own and reaches nothing the root did not already have.
-    self.quickAdd = QuickAddWiring(
-      hotkeyService: hotkeyService,
-      customWords: customWordsCoordinator,
-      packManager: vocabularyPackManager)
+    self.quickAdd = quickAdd
 
     // #832/#913 PR8: App-owned output-safety classifier holder.
     self.outputClassifierHolder = outputClassifierHolder

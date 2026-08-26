@@ -19,6 +19,8 @@ import Testing
 struct QuickAddCoordinatorTests {
 
   private final class Recorder {
+    /// How many times `begin` went to the live reader. The menu door must never.
+    var selectionReads = 0
     var events: [QuickAddEvent] = []
     var saved: [CustomWord] = []
     var savedSpellings: [String] = []
@@ -59,6 +61,38 @@ struct QuickAddCoordinatorTests {
   /// `begin` plus the presentation callback, which is what the wiring does and what a test asserting
   /// an `opened` event must reproduce.
   ///
+  /// **The menu door carries its own outcome and must not read again.**
+  ///
+  /// The menu reads under a 0.25s-per-operation cap so a stalled Accessibility provider cannot hold
+  /// the menu shut. Passing `nil` for a refusal made `begin` read AGAIN through the uncapped live
+  /// reader, so clicking the deliberately-enabled blocked row repeated the same stalled operations
+  /// under the system default — the stall moved from the menu to the panel and the bound bought
+  /// nothing. Cloud review, PR #2427.
+  ///
+  /// The read COUNT is the assertion, not the refusal that comes out: a re-read of the same fixture
+  /// produces the same refusal, so asserting the reason alone passes either way.
+  @Test("A menu-door refusal is carried, never re-read")
+  func theMenuDoorDoesNotReadAgain() throws {
+    let (coordinator, recorder) = makeCoordinator(selection: .text("codecs"))
+
+    let model = coordinator.begin(
+      door: .menuBar, selection: .result(.refused(.accessibilityNotTrusted)))
+
+    #expect(recorder.selectionReads == 0, "the uncapped reader must not be reached at all")
+    #expect(
+      try #require(model).refusal == .accessibilityNotTrusted,
+      "and the panel states the reason the MENU measured, not one derived after it closed")
+  }
+
+  /// The live door still reads, or the assertion above would pass against a coordinator that never
+  /// reads anything.
+  @Test("The hotkey door does read live")
+  func theHotkeyDoorReadsLive() {
+    let (coordinator, recorder) = makeCoordinator(selection: .text("codecs"))
+    _ = coordinator.begin(door: .hotkey)
+    #expect(recorder.selectionReads == 1)
+  }
+
   /// The two are separate in production on purpose: `opened` names an event the user can SEE, so it
   /// fires when a panel is on screen. Emitting it from `begin` made a panel that could not be
   /// measured leave an open with nothing to resolve it.
@@ -66,7 +100,10 @@ struct QuickAddCoordinatorTests {
     _ coordinator: QuickAddCoordinator, door: QuickAddDoor = .hotkey,
     selectionOverride: String? = nil
   ) -> QuickAddPanelModel? {
-    let model = coordinator.begin(door: door, selectionOverride: selectionOverride)
+    // The helper still takes text, because that is what almost every row is about. It maps to
+    // `.text`, which is the Services door's shape — classification still happens inside `begin`.
+    let model = coordinator.begin(
+      door: door, selection: selectionOverride.map { .text($0) } ?? .live)
     if model != nil { coordinator.didOpen() }
     return model
   }
@@ -82,7 +119,13 @@ struct QuickAddCoordinatorTests {
     recorder.userWords = userWords
     var clock = Date(timeIntervalSince1970: 0)
     let environment = QuickAddCoordinator.Environment(
-      readSelection: { selection },
+      readSelection: {
+        // Counted, because the menu door's whole fix is that it does NOT reach this closure: it
+        // carries the outcome the menu already obtained under a cap. Without a count, "the refusal
+        // survived" passes whether it was carried or re-derived (PR #2427).
+        recorder.selectionReads += 1
+        return selection
+      },
       frontmostBundleID: { "com.apple.TextEdit" },
       refreshWords: {
         recorder.refreshCalls += 1
@@ -594,7 +637,7 @@ struct QuickAddCoordinatorTests {
     #expect(recorder.outcomes == [.cancelled])
   }
 
-  @Test("Both doors are reported, and they are the only two")
+  @Test("Every door is reported, and the set is closed")
   func bothDoorsAreReported() throws {
     let (coordinator, recorder) = makeCoordinator()
 
@@ -602,7 +645,10 @@ struct QuickAddCoordinatorTests {
     guard case .opened(let door, _, _, _, _, _, _) = try #require(recorder.opened) else { return }
 
     #expect(door == .service)
-    #expect(QuickAddDoor.allCases.count == 2)
+    // Three since #2412 added the status-item menu. The count is here so a new door cannot be added
+    // without someone reading the funnel — which is what happened.
+    #expect(QuickAddDoor.allCases.count == 3)
+    #expect(QuickAddDoor.allCases.contains(.menuBar))
   }
 
   @Test("The Service door uses the pasteboard text and does not read Accessibility")

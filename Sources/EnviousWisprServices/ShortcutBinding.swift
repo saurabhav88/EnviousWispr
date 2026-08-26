@@ -155,6 +155,74 @@ package enum ShortcutMatcher {
   /// slice's work and is NOT implemented here. This comment says so rather than
   /// implying a guard exists, and no unused `conflicts(...)` helper ships ahead
   /// of the consumers that would call it.
+  /// The modifiers Carbon actually registers, mirroring `HotkeyService.carbonModifiers`.
+  ///
+  /// Every other bit — Caps Lock, Function, Numeric Pad, and the device-dependent flags — is
+  /// dropped on the way to `RegisterEventHotKey`, so two bindings differing only there are ONE
+  /// chord as far as the system is concerned. Comparing anything else answers a question nobody
+  /// asked.
+  package static let carbonEffectiveModifiers: NSEvent.ModifierFlags = [
+    .command, .option, .control, .shift,
+  ]
+
+  /// Whether Quick Add would answer its own binding, asked of the code that dispatches it.
+  ///
+  /// **Both arms assume the service is running and cancel may be armed at any moment**, which is the
+  /// honest question for a menu label: a hint is a standing promise, not a claim about this instant,
+  /// so a chord that stops working the moment a recording starts must not be advertised.
+  package static func quickAddOwnsItsBinding(
+    quickAdd: ShortcutBinding, record: ShortcutBinding, cancel: ShortcutBinding
+  ) -> Bool {
+    if case .keyboard(let keyCode, _) = quickAdd, quickAdd.isBareModifier {
+      // `armed` carries cancel too: a label promising a key that cancel takes over for the whole of
+      // every recording is worse than no label.
+      return role(
+        forBareModifierKeyCode: keyCode, record: record, cancel: cancel, quickAdd: quickAdd,
+        armed: [.record, .cancel, .quickAdd]) == .quickAdd
+    }
+    // **A CHORD IS NOT DISPATCHED ONLY BY CARBON, WHICH IS WHERE THE PREVIOUS VERSION OF THIS WAS
+    // WRONG.** Pressing Command-W emits the Command press FIRST, and the modifier monitor routes
+    // every bare modifier press through `role(forBareModifierKeyCode:)` before the W ever reaches
+    // Carbon (`HotkeyService.installModifierMonitors`, and the dispatch at its
+    // `ShortcutMatcher.role` call). So a chord whose modifier is a higher-priority role's BARE
+    // binding is intercepted: Record on bare Command and Quick Add on Command-W means the user
+    // starts a recording while following this hint.
+    //
+    // That is the exact mirror of the refusal `role` already makes in the other direction — it
+    // rejects a bare Quick Add modifier the record CHORD needs. Both directions now exist.
+    //
+    // **The closure claim, stated so it can be falsified rather than hoped for:** a press reaches
+    // exactly two mechanisms, the modifier monitor and Carbon, and a chord press produces exactly
+    // two events, its modifiers and its key. Both are checked below. A further finding would have
+    // to name a THIRD dispatch mechanism, not another combination of these two.
+    for flag in [NSEvent.ModifierFlags.command, .option, .control, .shift]
+    where quickAdd.requiredModifiers.contains(flag) {
+      for other in [record, cancel] where other.isBareModifier {
+        if case .keyboard(let ok, _) = other, ModifierKeyCodes.flag(for: ok) == flag { return false }
+      }
+    }
+
+    // And the Carbon half: whether another role registers the same chord — key code plus the modifiers Carbon actually keeps. Record registers first and
+    // cancel takes the chord for the whole of every recording, so either one owning it means this
+    // label is a promise we cannot keep.
+    //
+    // **`HotkeyService.quickAddMayHoldItsChord` is deliberately NOT called here**, for two reasons
+    // worth stating rather than leaving as a silent choice. Its `isEnabled`/`isSuspended` arguments
+    // are runtime state a menu label does not have, so calling it means inventing values to get an
+    // answer. And it compares bindings with raw `==`, which is the very defect three review rounds
+    // found in this label — so delegating to it would reintroduce the bug in the name of reuse.
+    // That raw comparison looks like a real defect in the REGISTRATION path too (Quick Add would
+    // not be unregistered for a cancel chord differing only in a dropped modifier); it is reported
+    // separately rather than fixed from here, because it is the heart path.
+    guard case .keyboard(let qk, let qm) = quickAdd else { return true }
+    let mine = qm.intersection(carbonEffectiveModifiers)
+    for other in [record, cancel] {
+      guard case .keyboard(let ok, let om) = other else { continue }
+      if qk == ok, mine == om.intersection(carbonEffectiveModifiers) { return false }
+    }
+    return true
+  }
+
   package static func role(
     forBareModifierKeyCode keyCode: UInt16,
     record: ShortcutBinding,

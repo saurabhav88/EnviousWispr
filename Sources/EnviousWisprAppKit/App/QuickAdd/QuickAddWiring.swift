@@ -101,9 +101,27 @@ final class QuickAddWiring {
   }
 
   /// Door B. Separate from the hotkey path only because the Service is HANDED its text.
+  /// The status-item menu handed us text it read while the menu was open.
+  ///
+  /// **Takes the text rather than reading it here, and that is the whole point of the door.** The
+  /// menu is rendered while the user's own application is still frontmost — measured, twice — so the
+  /// read happens there, at the one moment the answer is about their document. Reading it from this
+  /// side would run after the click, by which time the menu has closed and the answer is ours.
+  func beginFromMenuBar(selection: SelectionReader.Result) {
+    guard notAlreadyOpen() else { return }
+    // **The menu's own outcome is carried through, refusal included.** This used to pass the text
+    // and let nil stand for "refused", which made `begin` read AGAIN — without the menu's cap, so a
+    // stalled Accessibility provider stalled the panel instead of the menu, and the bound that let
+    // the menu open bought nothing. Cloud review, PR #2427.
+    //
+    // Re-reading is also wrong on its own terms here: by the time this runs the menu has closed, so
+    // a live read can answer about US rather than about the document the user was looking at.
+    present(coordinator.begin(door: .menuBar, selection: .result(selection)))
+  }
+
   func beginFromService(text: String) {
     guard notAlreadyOpen() else { return }
-    present(coordinator.begin(door: .service, selectionOverride: text))
+    present(coordinator.begin(door: .service, selection: .text(text)))
   }
 
   /// Whether a new capture may start at all.

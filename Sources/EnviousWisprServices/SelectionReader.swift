@@ -113,8 +113,23 @@ public enum SelectionReader {
   /// Per-application, never system-wide: `AXUIElementCreateSystemWide()` can answer for a different
   /// process than the one the user is looking at, and the whole point here is to read the app they
   /// just made a selection in.
+  /// `timeout` bounds EACH Accessibility operation, in seconds. Nil keeps the system default.
+  ///
+  /// **PER OPERATION, not per call.** This makes two round trips — the focused-element lookup and
+  /// the selected-text read — so the worst case a caller should plan for is TWICE this value. An
+  /// earlier version's comment claimed it bounded how long the menu waits; it did not.
+  ///
+  /// **Zero is refused rather than honoured.** Accessibility reads a zero messaging timeout as
+  /// "use the system default", so `timeout: 0` would REMOVE the bound rather than tighten it — the
+  /// most obviously safe number producing the least safe behaviour.
+  ///
+  /// **A caller that must not block passes one.** The menu-bar door renders inside
+  /// `menuNeedsUpdate`, which AppKit requires to be synchronous — so a frontmost application whose
+  /// Accessibility provider stalls would hold the main actor and the menu simply would not open.
+  /// The default is far longer than a menu can wait.
   @MainActor
-  public static func read() -> Result {
+  public static func read(timeout: Float? = nil) -> Result {
+    precondition(timeout.map { $0 > 0 } ?? true, "a zero or negative AX timeout removes the bound")
     // Frontmost is read here rather than inside the check because it is the LIVE half. Current
     // because this runs on the main run loop from a hotkey or a Service, with events flowing;
     // `NSWorkspace.frontmostApplication` is stale only where nothing is pumping the run loop, which
@@ -127,9 +142,38 @@ public enum SelectionReader {
     // Safe: `refusalBeforeReading` returns non-nil for a nil or non-positive pid. The pid used for
     // the element read is the SAME sample the guard judged, so the refusal and the read can never
     // describe two different applications.
-    guard let pid = frontmost.pid, let focused = PasteService.focusedElementQuery(pid: pid) else {
-      return .refused(.noFocusedElement)
+    guard let pid = frontmost.pid else { return .refused(.noFocusedElement) }
+
+    // **Handed to the query rather than set here.** `focusedElement` creates its OWN application
+    // element, so a timeout set on a handle made here reaches nothing — it did not, and the line
+    // that tried is gone. The parameter has existed all along.
+    //
+    // **Three outcomes, and they are three different sentences to the user.** A failed or timed-out
+    // query is NOT an app that has nothing focused: telling someone to click into the text cannot
+    // help when the provider never answered. The distinction only started mattering when this read
+    // gained a cap, which makes the timeout branch the likely one. Cloud review, PR #2427.
+    let focusedOutcome =
+      timeout.map({ PasteService.focusedElement(pid: pid, messagingTimeout: Double($0)) })
+      ?? PasteService.focusedElement(pid: pid)
+
+    let focused: AXUIElement
+    if case .element(let element) = focusedOutcome {
+      focused = element
+    } else {
+      // Safe: `refusalForFocusedElement` returns non-nil for every non-element outcome.
+      return .refused(refusalForFocusedElement(focusedOutcome) ?? .unreadable)
     }
+
+    // **And bound the FOCUSED handle separately, because a descendant does not inherit one.** This
+    // repo learned that in #1332 and wrote it down twice — `PasteService.firstPasteItem`:
+    // "Descendant handles do NOT inherit an ancestor's messaging timeout", and `findPasteMenuItem`:
+    // "The timeout binds ONE element, so every handle we message has to be bounded, not just this
+    // one."
+    //
+    // Bounding only the application is the shape that LOOKS bounded: the app answers the focused
+    // query promptly, and then the attribute read below — the call that actually stalls — runs
+    // against a handle nothing capped.
+    if let timeout { AXUIElementSetMessagingTimeout(focused, timeout) }
 
     var valueRef: CFTypeRef?
     let error = AXUIElementCopyAttributeValue(
@@ -172,6 +216,20 @@ public enum SelectionReader {
   }
 
   // MARK: - The decisions, which are pure
+
+  /// Which refusal a focused-element outcome becomes, or nil when there is an element to read.
+  ///
+  /// **Pure and separate from `read()` for the reason the guard below is: otherwise no test can
+  /// reach it.** The distinction it draws is the whole of PR #2427's second finding — a query that
+  /// FAILED or timed out is not an app with nothing focused, and telling the user to click into the
+  /// text cannot help when the provider never answered.
+  static func refusalForFocusedElement(_ outcome: PasteService.FocusedElement) -> Refusal? {
+    switch outcome {
+    case .element: return nil
+    case .none: return .noFocusedElement
+    case .queryFailed: return .unreadable
+    }
+  }
 
   /// Why a read cannot even be attempted, or nil to go ahead.
   ///
