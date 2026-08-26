@@ -456,7 +456,7 @@ def engine_is_ready(text, *, expected_run, expected_pid, expected_bundle):
                for mk in markers)
 
 
-def await_engine_ready(marker_path, *, run_id, expected_pid, expected_bundle,
+def await_engine_ready(marker_path, *, proc, run_id, expected_pid, expected_bundle,
                        timeout_s=30.0, read_text=None):
     """Wait for `engine.ready` before any synthetic input is sent.
 
@@ -471,12 +471,24 @@ def await_engine_ready(marker_path, *, run_id, expected_pid, expected_bundle,
     the caller turns that into `BLOCKED_ENGINE_NOT_READY`, a receipt, not an
     exception with no receipt behind it.
 
+    **Watches `proc`, not just the marker file (#2377, C1 repair round 4,
+    Codex MEDIUM).** Without this, an app that crashes DURING warm-up burns
+    the whole `timeout_s` waiting for a marker that will never arrive, then
+    reports `BLOCKED_ENGINE_NOT_READY` — a plausible-sounding but wrong
+    diagnosis for what was actually a crash. Raising here instead reaches
+    `smoke()`'s existing `except Exception` handler, which reports
+    `BLOCKED_LAUNCH` — the same fate a crash during the ORIGINAL launch wait
+    already gets via `await_launch_ready`.
+
     `read_text` exists for the suite, which cannot launch a real app to make
     the read fail or to control what it returns.
     """
     read_text = read_text or (lambda: marker_path.read_text())
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            raise RuntimeError(
+                f"the app exited during engine warm-up with {proc.returncode}")
         try:
             text = read_text()
         except OSError:
@@ -1015,6 +1027,17 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
     }
 
 
+def measure_after_engine_ready(engine_ready, measure):
+    """Gate a measurement behind a readiness fact — extracted so `smoke()`'s
+    "never press before the engine is ready" property is provable by CALLING
+    this with a spy, not merely by reading `smoke()`'s own source layout
+    (#2377, C1 repair round 4, Codex MEDIUM). `measure` is a zero-argument
+    thunk so the caller controls exactly what "the measurement" means without
+    this function needing to know.
+    """
+    return measure() if engine_ready else None
+
+
 def screen_lock_state(session_reader=None):
     """`True` locked, `False` unlocked, `None` could not tell.
 
@@ -1258,15 +1281,21 @@ def smoke(bundle_path, *, out_dir):
         # that race, not to measure the app's response to it.
         ready_start = time.monotonic()
         engine_ready = await_engine_ready(
-            launched["marker_path"], run_id=launched["run_id"],
-            expected_pid=launched["pid"],
+            launched["marker_path"], proc=launched["process"],
+            run_id=launched["run_id"], expected_pid=launched["pid"],
             expected_bundle=launched["requested"].bundle_id)
         engine_ready_wait_ms = (time.monotonic() - ready_start) * 1000.0
+        # Gated through `measure_after_engine_ready` rather than an inline
+        # `if`/`else` around the call — the gate is then provable by calling
+        # that function directly with a spy, not just by reading this
+        # function's source layout (#2377, C1 repair round 4, Codex MEDIUM).
+        timing = measure_after_engine_ready(
+            engine_ready,
+            lambda: measure_keypress_to_overlay(
+                launched["pid"], launched["marker_path"]))
         if not engine_ready:
             engine_not_ready = True
         else:
-            timing = measure_keypress_to_overlay(
-                launched["pid"], launched["marker_path"])
             marker_text = launched["marker_path"].read_text()
             # `resolved_identity` raises if the pid is gone, which is exactly what a
             # crash during the take looks like. A traceback here would leave NO

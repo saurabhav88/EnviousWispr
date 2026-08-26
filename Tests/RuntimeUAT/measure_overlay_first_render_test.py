@@ -921,25 +921,44 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
             "the flush frees the capacity it just used, inside the interval it was "
             "reserved to stay out of")
 
-    # `emitEngineReadyOnce()` must be BOUND to a real readiness re-read at
-    # both launch warm-up paths, not just present somewhere in the file.
-    # Only one path runs for a given launch (keyed on selected backend), so
-    # both must carry the guard-then-emit pair.
+    # `emitEngineReadyOnce()` must be BOUND to a COMPLETE readiness guard at
+    # EACH launch warm-up path separately (#2377, C1 repair round 4, Codex
+    # HIGH) — checking the two facts "two emit calls exist" and "the string
+    # engineReadiness == .ready appears somewhere" independently would pass
+    # a mutant that moves one emit call OUTSIDE its own guard, since both
+    # facts would still be true elsewhere in the file. Each call site is
+    # scoped by its own unique capture-list text, so this cannot cross-match
+    # the other path's guard — the measured gap between the two capture
+    # lists is over 13,000 characters, far past this window.
     if not BOOTSTRAPPER.exists():
         FAILURES.append(f"the bootstrapper is not at {BOOTSTRAPPER}; this test's path is stale")
         return
     boot = BOOTSTRAPPER.read_text()
-    guarded_emit_count = boot.count(
-        "OverlayFirstRenderMarkers.emitEngineReadyOnce()")
-    if guarded_emit_count != 2:
-        FAILURES.append(
-            f"expected emitEngineReadyOnce() at exactly 2 call sites (parakeet "
-            f"launch Task, WhisperKit preloadAction), found {guarded_emit_count}")
-    if "engineReadiness == .ready" not in boot:
-        FAILURES.append(
-            "no launch warm-up path re-reads engineReadiness == .ready before "
-            "emitting; emitting unconditionally would report readiness for a "
-            "warm-up that actually failed")
+    for label, anchor, backend, driver in (
+        ("WhisperKit preloadAction",
+         "preloadAction: { [weak whisperKitKernelDriver, asrManager] in",
+         "whisperKit", "whisperKitKernelDriver"),
+        ("parakeet launch Task",
+         "Task { [weak kernelDriver, asrManager] in",
+         "parakeet", "kernelDriver"),
+    ):
+        start = boot.find(anchor)
+        if start < 0:
+            FAILURES.append(f"could not locate the {label} call site by its capture list")
+            continue
+        window = boot[start:start + 1000]
+        required = (
+            f"settings.selectedBackend == .{backend}",
+            f"asrManager.activeBackendType == .{backend}",
+            f"{driver}?.engineReadiness == .ready",
+            "OverlayFirstRenderMarkers.emitEngineReadyOnce()",
+        )
+        missing = [r for r in required if r not in window]
+        if missing:
+            FAILURES.append(
+                f"the {label} path's readiness guard is missing: {missing!r} — "
+                "moving emitEngineReadyOnce() outside its own selected/active/"
+                "engineReadiness guard must be caught here")
 
 
 # --------------------------------------- 12b. the engine-readiness gate
@@ -1024,13 +1043,14 @@ def test_await_engine_ready_waits_for_the_marker_and_times_out_without_it():
     """
     calls = {"n": 0}
     ready_marker = line("engine.ready", ticks=500_000) + "\n"
+    running = FakeProc()
 
     def eventually_ready():
         calls["n"] += 1
         return ready_marker if calls["n"] >= 3 else ""
 
     ready = m.await_engine_ready(
-        "/nonexistent-marker-path", run_id=RUN, expected_pid=PID,
+        "/nonexistent-marker-path", proc=running, run_id=RUN, expected_pid=PID,
         expected_bundle=BUNDLE, timeout_s=5.0, read_text=eventually_ready)
     expect("readiness is detected once the marker appears", ready, True)
     expect("it took more than one read to get there", calls["n"] >= 3, True)
@@ -1039,78 +1059,51 @@ def test_await_engine_ready_waits_for_the_marker_and_times_out_without_it():
     # wait times out and reports False rather than hanging or raising.
     wrong_run_marker = line("engine.ready", ticks=500_000, run="SOME-OTHER-RUN") + "\n"
     never_ready = m.await_engine_ready(
-        "/nonexistent-marker-path", run_id=RUN, expected_pid=PID,
+        "/nonexistent-marker-path", proc=FakeProc(), run_id=RUN, expected_pid=PID,
         expected_bundle=BUNDLE, timeout_s=0.05, read_text=lambda: wrong_run_marker)
     expect("a marker for a different run never satisfies readiness", never_ready, False)
 
 
-def _smoke_body(source):
-    """`smoke()`'s own body text, isolated by its full definition signature —
-    never a bare function name, which would match a call site instead (the
-    same "found the wrong twin" class the AX-identifier order check hit
-    before it anchored on `final class OverlayWindowHost`).
+def test_await_engine_ready_raises_on_a_crash_rather_than_waiting_out_the_timeout():
+    """A crash DURING warm-up must not burn the full timeout waiting for a
+    marker that will never arrive, then report the plausible-sounding but
+    wrong `BLOCKED_ENGINE_NOT_READY` (#2377, C1 repair round 4, Codex
+    MEDIUM). Watching `proc.poll()` is what tells the two apart.
     """
-    start = source.find("\ndef smoke(bundle_path")
-    end = source.find("\ndef main(argv)", start) if start >= 0 else -1
-    if start < 0 or end < 0:
-        return None
-    return source[start:end]
+    crashed = FakeProc(already_gone=True)
+    try:
+        m.await_engine_ready(
+            "/nonexistent-marker-path", proc=crashed, run_id=RUN, expected_pid=PID,
+            expected_bundle=BUNDLE, timeout_s=5.0, read_text=lambda: "")
+        FAILURES.append(
+            "await_engine_ready did not raise when the process had already exited")
+    except RuntimeError:
+        pass
 
 
-def test_smoke_gates_the_synthetic_keypress_behind_engine_readiness():
-    """`smoke()` must wait for `engine.ready` and take the READY branch
-    before ever calling `measure_keypress_to_overlay` — never the reverse.
-    A keypress sent first races `ColdPressGuard` (#879) for a warming
-    engine, which is the exact false alarm (`BLOCKED_WRONG_PRESENTATION` for
-    a reason that is not first render) Codex's smoke ruling exists to
-    remove. Source position is the only thing that can catch a regression
-    here: reordering the two calls changes no marker FORMAT, so nothing
-    else in this suite would notice.
+def test_measure_after_engine_ready_gates_the_keypress_by_call_count():
+    """The "never press before the engine is ready" property, proved by
+    EXECUTION rather than by reading `smoke()`'s source layout (#2377, C1
+    repair round 4, Codex MEDIUM) — the prior version of this test could
+    only see where the two calls sat in the file, which survives a
+    regression that keeps the right shape but breaks the actual gating
+    (e.g. a mutant `measure() if True else None`, still textually inside an
+    `if`).
     """
-    real_source = pathlib.Path(m.__file__).read_text()
-    body = _smoke_body(real_source)
-    if body is None:
-        FAILURES.append("could not isolate smoke()'s body by source markers")
-        return
-    ready_idx = body.find("await_engine_ready(")
-    else_idx = body.find("else:", ready_idx) if ready_idx >= 0 else -1
-    press_idx = body.find("measure_keypress_to_overlay(", else_idx) if else_idx >= 0 else -1
-    if ready_idx < 0:
-        FAILURES.append("smoke() does not call await_engine_ready")
-    elif else_idx < 0:
-        FAILURES.append(
-            "smoke() does not branch on the readiness result before pressing")
-    elif press_idx < 0:
-        FAILURES.append(
-            "smoke() does not call measure_keypress_to_overlay inside the "
-            "readiness-true branch")
+    calls = {"n": 0}
+    sentinel = object()
 
-    # TWO-WAY CONTROL: the same scoping-and-order logic, run against a
-    # synthetic source with the calls in the WRONG order, must actually
-    # report a failure — proof the check is not vacuously true. Never
-    # touches the real file.
-    reversed_fake = (
-        "\ndef smoke(bundle_path, *, out_dir):\n"
-        "    timing = measure_keypress_to_overlay(pid, marker_path)\n"
-        "    if not engine_ready:\n"
-        "        pass\n"
-        "    else:\n"
-        "        ready = await_engine_ready(marker_path, run_id=run_id)\n"
-        "\ndef main(argv):\n")
-    fake_body = _smoke_body(reversed_fake)
-    if fake_body is None:
-        FAILURES.append("the control fixture's own source markers do not isolate")
-        return
-    fake_ready_idx = fake_body.find("await_engine_ready(")
-    fake_else_idx = (
-        fake_body.find("else:", fake_ready_idx) if fake_ready_idx >= 0 else -1)
-    fake_press_idx = (
-        fake_body.find("measure_keypress_to_overlay(", fake_else_idx)
-        if fake_else_idx >= 0 else -1)
-    if fake_ready_idx >= 0 and fake_else_idx >= 0 and fake_press_idx >= 0:
-        FAILURES.append(
-            "the order check does not fail on a deliberately reversed source — "
-            "it cannot be trusted to catch a real regression")
+    def spy():
+        calls["n"] += 1
+        return sentinel
+
+    not_ready_result = m.measure_after_engine_ready(False, spy)
+    expect("a not-ready engine returns no measurement", not_ready_result, None)
+    expect("and the measurement thunk is never called", calls["n"], 0)
+
+    ready_result = m.measure_after_engine_ready(True, spy)
+    expect("a ready engine returns the measurement", ready_result, sentinel)
+    expect("calling the thunk exactly once", calls["n"], 1)
 
 
 # ------------------------------------------- 13. nobody is left behind
@@ -1127,6 +1120,12 @@ class FakeProc:
         self.waits = 0
         self.terminated = False
         self.killed = False
+        # Real `Popen.returncode` is `None` while running; `poll()`/`wait()`
+        # set it as a side effect once the process exits. `already_gone`
+        # models a process that was already dead when first observed, so it
+        # is set once here rather than dynamically — enough for the crash
+        # rows this fixture exercises, never a general `wait()` simulation.
+        self.returncode = 0 if already_gone else None
 
     def poll(self):
         return 0 if self.already_gone else None
@@ -1393,7 +1392,8 @@ TESTS = [
     test_engine_ready_marker_position_never_affects_launch_adjudication,
     test_engine_is_ready_matches_exactly_this_launch,
     test_await_engine_ready_waits_for_the_marker_and_times_out_without_it,
-    test_smoke_gates_the_synthetic_keypress_behind_engine_readiness,
+    test_await_engine_ready_raises_on_a_crash_rather_than_waiting_out_the_timeout,
+    test_measure_after_engine_ready_gates_the_keypress_by_call_count,
     test_an_abandoned_launch_is_actually_reaped,
     test_every_exceptional_exit_from_the_readiness_wait_reaps,
     test_a_locked_screen_blocks_before_a_launch_is_spent,

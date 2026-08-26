@@ -429,10 +429,20 @@ public final class WisprBootstrapper {
       runDocumentsMigration: { [weak whisperKitRetirement] in
         await whisperKitRetirement?.runLaunch()
       },
-      preloadAction: { [weak whisperKitKernelDriver] in
+      preloadAction: { [weak whisperKitKernelDriver, asrManager] in
         await whisperKitKernelDriver?.ensureEngineWarm(reason: .launch)
         #if DEBUG
-          if whisperKitKernelDriver?.engineReadiness == .ready {
+          // Re-check the SELECTED and ACTIVE backend, not just this driver's
+          // own readiness (#2377, C1 repair round 4, Codex HIGH). A backend
+          // switch mid-await can leave this driver `.ready` while it is no
+          // longer the one a press would actually route to — emitting on its
+          // readiness alone would tell the harness the wrong engine warmed,
+          // recreating the exact ColdPressGuard (#879) false alarm this round
+          // exists to remove.
+          if settings.selectedBackend == .whisperKit,
+            asrManager.activeBackendType == .whisperKit,
+            whisperKitKernelDriver?.engineReadiness == .ready
+          {
             OverlayFirstRenderMarkers.emitEngineReadyOnce()
           }
         #endif
@@ -685,12 +695,18 @@ public final class WisprBootstrapper {
     // WhisperKit: observation-based (waits for setupState to become .ready
     // first, then `preloadAction` → `ensureEngineWarm`).
     if settings.selectedBackend == .parakeet {
-      Task { [weak kernelDriver] in
+      Task { [weak kernelDriver, asrManager] in
         // Discard the outcome so the Task's Success type stays Void
         // (`EngineWarmupOutcome` does not declare Sendable conformance).
         _ = await kernelDriver?.ensureEngineWarm(reason: .launch)
         #if DEBUG
-          if kernelDriver?.engineReadiness == .ready {
+          // Same re-check as the WhisperKit path, mirrored: the SELECTED and
+          // ACTIVE backend, not just this driver's own readiness (#2377, C1
+          // repair round 4, Codex HIGH).
+          if settings.selectedBackend == .parakeet,
+            asrManager.activeBackendType == .parakeet,
+            kernelDriver?.engineReadiness == .ready
+          {
             OverlayFirstRenderMarkers.emitEngineReadyOnce()
           }
         #endif
