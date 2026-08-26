@@ -119,14 +119,15 @@ public enum SelectionReader {
     // because this runs on the main run loop from a hotkey or a Service, with events flowing;
     // `NSWorkspace.frontmostApplication` is stale only where nothing is pumping the run loop, which
     // is not a state this entry point can be called from.
-    let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier
+    let frontmost = Frontmost.current()
 
-    if let refusal = refusalBeforeReading(isTrusted: AXIsProcessTrusted(), frontmostPID: frontmost)
-    {
+    if let refusal = refusalBeforeReading(isTrusted: AXIsProcessTrusted(), frontmost: frontmost) {
       return .refused(refusal)
     }
-    // Safe: `refusalBeforeReading` returns non-nil for a nil or non-positive pid.
-    guard let pid = frontmost, let focused = PasteService.focusedElementQuery(pid: pid) else {
+    // Safe: `refusalBeforeReading` returns non-nil for a nil or non-positive pid. The pid used for
+    // the element read is the SAME sample the guard judged, so the refusal and the read can never
+    // describe two different applications.
+    guard let pid = frontmost.pid, let focused = PasteService.focusedElementQuery(pid: pid) else {
       return .refused(.noFocusedElement)
     }
 
@@ -140,6 +141,36 @@ public enum SelectionReader {
     return resolve(error: error, value: valueRef)
   }
 
+  // MARK: - The frontmost application, sampled ONCE
+
+  /// Everything the guard needs to know about the frontmost application, from ONE sample.
+  ///
+  /// **A type rather than two parameters, because two parameters is exactly how this went wrong.**
+  /// The pid was read in `read()` and the bundle identity in a DEFAULT ARGUMENT one call later —
+  /// two reads of a mutable global at two moments, which a switch in between makes describe two
+  /// different applications. Found by cloud review on PR #2428, one round after the identity check
+  /// itself was wrong.
+  ///
+  /// The previous version of this file documented a window here as a known limit. That note was
+  /// about a DIFFERENT gap (refusal versus element read) and, worse, it made an unclosable window
+  /// the story while this closable one sat under it.
+  struct Frontmost: Equatable {
+    /// nil when nothing is frontmost, which is a refusal rather than a fact about us.
+    let pid: pid_t?
+    /// Whether that same application is one of ours, by `AppBundleIdentity`.
+    let isOurs: Bool
+
+    /// The live read: one `NSRunningApplication`, both facts taken off it.
+    ///
+    /// The only member of this file that touches the workspace, so it is the only thing a test
+    /// cannot reach — and all it does is sample once. Everything that DECIDES anything is pure.
+    @MainActor
+    static func current() -> Frontmost {
+      let app = NSWorkspace.shared.frontmostApplication
+      return Frontmost(pid: app?.processIdentifier, isOurs: AppBundleIdentity.isOurs(app?.bundleIdentifier))
+    }
+  }
+
   // MARK: - The decisions, which are pure
 
   /// Why a read cannot even be attempted, or nil to go ahead.
@@ -147,15 +178,19 @@ public enum SelectionReader {
   /// Split from `read()` so both refusals are reachable from a test. Trust and frontmost are asked
   /// together because they are the two questions with no Accessibility round trip behind them; the
   /// element read has its own function below rather than four optionals in one.
+  ///
+  /// **No default for `frontmost`, deliberately.** It carried a live `NSWorkspace` read until cloud
+  /// review found that this made a SECOND sample, one call after `read()` took the first. A default
+  /// that reaches out to a mutable global is a second sample waiting for a caller who omits it.
   static func refusalBeforeReading(
     isTrusted: Bool,
-    frontmostPID: pid_t?,
-    ownPID: pid_t = ProcessInfo.processInfo.processIdentifier,
-    frontmostIsOurs: Bool = AppBundleIdentity.isOurs(
-      NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+    frontmost: Frontmost,
+    ownPID: pid_t = ProcessInfo.processInfo.processIdentifier
   ) -> Refusal? {
     guard isTrusted else { return .accessibilityNotTrusted }
-    guard let frontmostPID, frontmostPID > 0 else { return .noFrontmostApplication }
+    guard let frontmostPID = frontmost.pid, frontmostPID > 0 else {
+      return .noFrontmostApplication
+    }
     // **Refuse our own app (#2413), and no ordering discipline can replace this.** The two comments
     // in this file and in `QuickAddCoordinator.begin` say to read BEFORE activating ourselves, which
     // is right and is what makes the ordinary case work. It cannot help when the user is ALREADY
@@ -172,13 +207,15 @@ public enum SelectionReader {
     // `.dev` in a dev build and not in a release one, so it answered NOT OURS for precisely the
     // pair it was written to catch. `AppBundleIdentity` owns the closed set; the pid comparison
     // stays for the case where there is no identifier to read at all.
-    guard frontmostPID != ownPID, !frontmostIsOurs else { return .ownApplication }
+    guard frontmostPID != ownPID, !frontmost.isOurs else { return .ownApplication }
 
-    // **KNOWN LIMIT, stated rather than left to be found.** `frontmostPID` was sampled by the caller
-    // and the element read happens after this returns, so an application switch in between means the
-    // refusal and the read can describe different applications. Closing it means binding both to one
-    // Accessibility object, which is a restructure of `read` rather than a guard, and the read is
-    // already bound to the SAME pid — so this shrinks the window rather than widening it.
+    // **What remains, now that both facts come from one sample.** The guard judges a snapshot and
+    // the element read uses that snapshot's own pid, so the two cannot describe different
+    // applications. A switch between the sample and the read still means the pid names an
+    // application that is no longer frontmost — but it is the SAME application throughout, and
+    // Accessibility answers for the process rather than for whoever is in front, so the read stays
+    // about the selection the user made. Closing that too would mean asking the workspace to hold
+    // still, which it does not offer.
     return nil
   }
 

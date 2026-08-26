@@ -25,7 +25,8 @@ struct SelectionReaderTests {
   @Test("Without Accessibility the reason is the one the user can act on")
   func untrustedIsNamed() {
     #expect(
-      SelectionReader.refusalBeforeReading(isTrusted: false, frontmostPID: 501, ownPID: 999, frontmostIsOurs: false)
+      SelectionReader.refusalBeforeReading(
+        isTrusted: false, frontmost: .init(pid: 501, isOurs: false), ownPID: 999)
         == .accessibilityNotTrusted)
   }
 
@@ -34,14 +35,16 @@ struct SelectionReaderTests {
     // Both wrong at once. Reporting "no frontmost application" to someone who simply has not
     // granted permission sends them looking at the wrong thing.
     #expect(
-      SelectionReader.refusalBeforeReading(isTrusted: false, frontmostPID: nil, ownPID: 999, frontmostIsOurs: false)
+      SelectionReader.refusalBeforeReading(
+        isTrusted: false, frontmost: .init(pid: nil, isOurs: false), ownPID: 999)
         == .accessibilityNotTrusted)
   }
 
   @Test("No frontmost application is its own reason")
   func noFrontmostApplicationIsNamed() {
     #expect(
-      SelectionReader.refusalBeforeReading(isTrusted: true, frontmostPID: nil, ownPID: 999, frontmostIsOurs: false)
+      SelectionReader.refusalBeforeReading(
+        isTrusted: true, frontmost: .init(pid: nil, isOurs: false), ownPID: 999)
         == .noFrontmostApplication)
   }
 
@@ -49,7 +52,8 @@ struct SelectionReaderTests {
   func aNonPositivePIDIsRefused() {
     for pid: pid_t in [0, -1] {
       #expect(
-        SelectionReader.refusalBeforeReading(isTrusted: true, frontmostPID: pid, ownPID: 999, frontmostIsOurs: false)
+        SelectionReader.refusalBeforeReading(
+          isTrusted: true, frontmost: .init(pid: pid, isOurs: false), ownPID: 999)
           == .noFrontmostApplication,
         "pid \(pid) must not reach Accessibility")
     }
@@ -67,7 +71,7 @@ struct SelectionReaderTests {
   func ourOwnApplicationIsRefused() {
     #expect(
       SelectionReader.refusalBeforeReading(
-        isTrusted: true, frontmostPID: 4242, ownPID: 4242, frontmostIsOurs: false)
+        isTrusted: true, frontmost: .init(pid: 4242, isOurs: false), ownPID: 4242)
         == .ownApplication)
   }
 
@@ -75,10 +79,11 @@ struct SelectionReaderTests {
   /// an installed build beside a dev build. Different pid, our text, straight through.
   ///
   /// **Driven by the REAL identifiers, not by an injected verdict.** The first version of this row
-  /// passed `frontmostIsOurs: true`, which asserts the guard acts on the answer and says nothing
-  /// about how the answer is COMPUTED — and the computation was wrong in exactly this case, because
-  /// a dev build's `Bundle.main.bundleIdentifier` does not equal a release build's. A fixture that
-  /// hands over the conclusion cannot observe the step that produces it.
+  /// handed the guard a hardcoded `true` for the ownership question, which asserts that the guard
+  /// ACTS on the answer and says nothing about how the answer is COMPUTED — and the computation was
+  /// wrong in exactly this case, because a dev build's `Bundle.main.bundleIdentifier` does not equal
+  /// a release build's. A fixture that hands over the conclusion cannot observe the step that
+  /// produces it, so the row runs `AppBundleIdentity.isOurs` over the real pair instead.
   @Test(
     "Another EnviousWispr is refused too, whichever build is asking",
     arguments: [
@@ -89,8 +94,9 @@ struct SelectionReaderTests {
   func aSecondInstanceIsAlsoRefused(frontmost: String, own: String) {
     #expect(
       SelectionReader.refusalBeforeReading(
-        isTrusted: true, frontmostPID: 7777, ownPID: 4242,
-        frontmostIsOurs: AppBundleIdentity.isOurs(frontmost))
+        isTrusted: true,
+        frontmost: .init(pid: 7777, isOurs: AppBundleIdentity.isOurs(frontmost)),
+        ownPID: 4242)
         == .ownApplication,
       "a \(own) build must refuse a frontmost \(frontmost) build; a pid-only guard reads its text")
   }
@@ -116,7 +122,7 @@ struct SelectionReaderTests {
   func anotherApplicationIsStillRead() {
     #expect(
       SelectionReader.refusalBeforeReading(
-        isTrusted: true, frontmostPID: 4243, ownPID: 4242, frontmostIsOurs: false) == nil)
+        isTrusted: true, frontmost: .init(pid: 4243, isOurs: false), ownPID: 4242) == nil)
   }
 
   /// **Trust outranks it, for the same reason it outranks a missing frontmost app.** Someone who
@@ -124,13 +130,16 @@ struct SelectionReaderTests {
   @Test("Untrusted outranks reading our own app")
   func untrustedOutranksOurOwnSelection() {
     #expect(
-      SelectionReader.refusalBeforeReading(isTrusted: false, frontmostPID: 4242, ownPID: 4242)
+      SelectionReader.refusalBeforeReading(
+        isTrusted: false, frontmost: .init(pid: 4242, isOurs: true), ownPID: 4242)
         == .accessibilityNotTrusted)
   }
 
   @Test("Trusted with a live application goes ahead")
   func trustedAndFrontmostProceeds() {
-    #expect(SelectionReader.refusalBeforeReading(isTrusted: true, frontmostPID: 501, ownPID: 999, frontmostIsOurs: false) == nil)
+    #expect(
+      SelectionReader.refusalBeforeReading(
+        isTrusted: true, frontmost: .init(pid: 501, isOurs: false), ownPID: 999) == nil)
   }
 
   // MARK: - What Accessibility answered
@@ -341,9 +350,12 @@ struct SelectionReaderTests {
       SelectionReader.resolve(error: .success, value: "codecs" as CFString),
     ]
     for refusal in [
-      SelectionReader.refusalBeforeReading(isTrusted: false, frontmostPID: 1, ownPID: 999, frontmostIsOurs: false),
-      SelectionReader.refusalBeforeReading(isTrusted: true, frontmostPID: nil, ownPID: 999, frontmostIsOurs: false),
-      SelectionReader.refusalBeforeReading(isTrusted: true, frontmostPID: 0, ownPID: 999, frontmostIsOurs: false),
+      SelectionReader.refusalBeforeReading(
+        isTrusted: false, frontmost: .init(pid: 1, isOurs: false), ownPID: 999),
+      SelectionReader.refusalBeforeReading(
+        isTrusted: true, frontmost: .init(pid: nil, isOurs: false), ownPID: 999),
+      SelectionReader.refusalBeforeReading(
+        isTrusted: true, frontmost: .init(pid: 0, isOurs: false), ownPID: 999),
     ] {
       if let refusal { seen.append(.refused(refusal)) }
     }
