@@ -489,30 +489,7 @@ internal final class PasteCascadeExecutor {
       let activated = activation.activated
       let elapsed = activation.elapsed
 
-      // Cloud review round 2 (PR #2451): activation itself — not only the
-      // pipeline time before it — can move focus off the omnibox (the
-      // REVALIDATED comment below already says so, for the payload; this is
-      // the same fact applied to whether Tier 2 should even fire a BLIND
-      // paste at all). The round 1 `freshFocusedElement` check runs before
-      // `await activate(app)` and cannot see a shift `activate` itself causes.
-      // Re-checked HERE, after activation, at the latest possible moment
-      // before the irreversible CGEvent — closing the window rather than
-      // narrowing it, because there is no later commit point left to defer to.
-      let chromiumOmniboxStillFocused: Bool =
-        if isChromiumOmnibox, let element = request.targetElement {
-          PasteService.freshFocusedElement(matching: element) != nil
-        } else {
-          true
-        }
-      if activated, !chromiumOmniboxStillFocused {
-        // Refuse the blind paste rather than guess where it lands — the same
-        // "not confident enough to act automatically" floor PR #220 already
-        // uses for a non-text focus: fall through to clipboard-only below.
-        tierFailures["cgevent"] = "chromium_omnibox_lost_focus_during_activation"
-        emitTierFailureBreadcrumb(
-          stage: "cgevent", reason: "chromium_omnibox_lost_focus_during_activation",
-          bundleId: bundleId)
-      } else if activated {
+      if activated {
         tiersAttempted.append(.cgEvent)
         // Revalidated AFTER activation, because bringing the app frontmost is
         // itself capable of moving focus and selection.
@@ -524,37 +501,60 @@ internal final class PasteCascadeExecutor {
           candidateDeletesDictatedText: request.candidateDeletesDictatedText,
           requireCaretUnchanged: request.targetElementIsRetried,
           terminalBudget: request.terminalBudget)
-        // Snapshot AFTER that revalidation, immediately before the write. The
-        // re-check makes accessibility calls, and anything copied while they run
-        // would otherwise be captured as "the user's old clipboard" and then
-        // restored over (Codex review r5). The window is a fraction of a
-        // millisecond in practice, so this is narrowing rather than closing a
-        // proven gap — taken because it costs one moved line.
-        let snapshot: ClipboardSnapshot? =
-          request.restoreClipboardAfterPaste
-          ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
-          : nil
-        submittedKind = payload.kind
-        let dispatchResult = PasteService.pasteToActiveApp(
-          payload.text, to: self.pasteboard)
-        submittedClipboardChangeCount = dispatchResult.changeCount
-        switch dispatchResult {
-        case .dispatched:
-          tier = .cgEvent
-        case .cgEventCreationFailed(let accessibilityTrusted, _):
-          cgEventFailureAccessibilityTrusted = accessibilityTrusted
-          tierFailures["cgevent"] = "creation_failed (ax_trusted=\(accessibilityTrusted))"
+        // Cloud review rounds 2 and 4 (PR #2451): both activation AND
+        // `payloadAtCommitBoundary`'s own AX re-reads above can move focus off
+        // the omnibox before the CGEvent fires. Checking after activation but
+        // before the payload re-read (round 2's fix) still left this window
+        // open — round 4 caught it. Moved to run LAST, after every AX call
+        // this branch makes and immediately before the dispatch, so there is
+        // no remaining AX-touching step between the check and the write.
+        let chromiumOmniboxStillFocused: Bool =
+          if isChromiumOmnibox, let element = request.targetElement {
+            PasteService.freshFocusedElement(matching: element) != nil
+          } else {
+            true
+          }
+        if !chromiumOmniboxStillFocused {
+          // Refuse the blind paste rather than guess where it lands — the same
+          // "not confident enough to act automatically" floor PR #220 already
+          // uses for a non-text focus: fall through to clipboard-only below.
+          tierFailures["cgevent"] = "chromium_omnibox_lost_focus_during_activation"
           emitTierFailureBreadcrumb(
-            stage: "cgevent",
-            reason: "creation_failed (ax_trusted=\(accessibilityTrusted))",
-            bundleId: bundleId
-          )
-        }
-        if let snapshot {
-          // Scheduled, not awaited (#2197). The delay and the guard are
-          // unchanged; the dictation just stops queueing behind them.
-          ClipboardCleanup.scheduleRestore(
-            snapshot, changeCountAfterPaste: dispatchResult.changeCount, tier: tier)
+            stage: "cgevent", reason: "chromium_omnibox_lost_focus_during_activation",
+            bundleId: bundleId)
+        } else {
+          // Snapshot immediately before the write, in the SAME block as the
+          // write itself (ClipboardIsolationFreezeTests.pasteRoutesUseCleanupSnapshot
+          // asserts every automatic route's snapshot and write share one code
+          // block). The re-check above makes accessibility calls, and anything
+          // copied while it runs would otherwise be captured as "the user's old
+          // clipboard" and then restored over (Codex review r5).
+          let snapshot: ClipboardSnapshot? =
+            request.restoreClipboardAfterPaste
+            ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
+            : nil
+          submittedKind = payload.kind
+          let dispatchResult = PasteService.pasteToActiveApp(
+            payload.text, to: self.pasteboard)
+          submittedClipboardChangeCount = dispatchResult.changeCount
+          switch dispatchResult {
+          case .dispatched:
+            tier = .cgEvent
+          case .cgEventCreationFailed(let accessibilityTrusted, _):
+            cgEventFailureAccessibilityTrusted = accessibilityTrusted
+            tierFailures["cgevent"] = "creation_failed (ax_trusted=\(accessibilityTrusted))"
+            emitTierFailureBreadcrumb(
+              stage: "cgevent",
+              reason: "creation_failed (ax_trusted=\(accessibilityTrusted))",
+              bundleId: bundleId
+            )
+          }
+          if let snapshot {
+            // Scheduled, not awaited (#2197). The delay and the guard are
+            // unchanged; the dictation just stops queueing behind them.
+            ClipboardCleanup.scheduleRestore(
+              snapshot, changeCountAfterPaste: dispatchResult.changeCount, tier: tier)
+          }
         }
       } else {
         // Activation timed out. Record it as a distinct failure stage so
