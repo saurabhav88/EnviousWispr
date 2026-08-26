@@ -17,9 +17,9 @@ import Testing
 ///
 /// Scoped to what both can honestly claim: a presentation succeeds, a hide takes
 /// it down, and the director's own view of the world follows. Geometry, window
-/// ordering and `panelConstructionCount` are NOT here — the fake has no frame
-/// and must not be encouraged to invent one. `OverlayWindowHostTests` owns those
-/// and always will.
+/// ordering and the panel construction count are NOT here — the fake has no
+/// frame and must not be encouraged to invent one. `OverlayWindowHostTests`
+/// owns those and always will.
 ///
 /// **The split below used to be a LANE split and is now only a subject split.**
 /// The cross-host comparisons read `presentedIDForTesting` and
@@ -48,7 +48,8 @@ struct OverlayHostingContractTests {
   func theFakeNeverRefuses() {
     let host = WindowlessOverlayHost()
     let d = OverlayDirector(
-      host: host,       announce: { _ in }, livePreview: .disabled, grantAccessibility: {}, selections: { .shipped },
+      host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      selections: { .shipped },
       deferFirstRender: { $0() })
 
     d.present(.warning(reason: .polishFailed))
@@ -97,7 +98,8 @@ struct OverlayHostingParityTests {
 
   private static func director(on host: any OverlayWindowHosting) -> OverlayDirector {
     OverlayDirector(
-      host: host,         announce: { _ in }, livePreview: .disabled, grantAccessibility: {}, selections: { .shipped },
+      host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      selections: { .shipped },
       deferFirstRender: { $0() })
   }
 

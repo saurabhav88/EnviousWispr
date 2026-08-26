@@ -90,11 +90,7 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
   /// not flagged.
   private var programmaticMoveDepth = 0
 
-  #if DEBUG
-    /// The #2292 acceptance metric: reads 1 after a full dictation exercising
-    /// every transition.
-    private(set) var panelConstructionCount = 0
-  #endif
+  private let panelFactory: OverlayPanelFactory
 
   /// Registered here rather than on the panel because **every fact this
   /// callback needs already lives in this object**: the placement anchor, the
@@ -107,8 +103,12 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
   /// pill reacts to the swipe.
   private nonisolated(unsafe) var spaceChangeObserver: NSObjectProtocol?
 
-  init(screens: @escaping () -> OverlayScreenResolver = { .live }) {
+  init(
+    screens: @escaping () -> OverlayScreenResolver = { .live },
+    panelFactory: OverlayPanelFactory = .live
+  ) {
     self.screens = screens
+    self.panelFactory = panelFactory
     super.init()
     spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
@@ -281,16 +281,12 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
 
   private func ensurePanel() -> NSPanel {
     if let panel { return panel }
-    #if DEBUG
-      panelConstructionCount += 1
-    #endif
-    // Configuration copied verbatim from `05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`
-    // so this chunk changes the panel's LIFETIME and nothing about its identity.
-    let p = NSPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 185, height: 44),
-      styleMask: [.borderless, .nonactivatingPanel],
-      backing: .buffered,
-      defer: false)
+    // Configuration below is copied verbatim from
+    // `05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift` so
+    // this chunk changes the panel's LIFETIME and nothing about its identity;
+    // the panel object itself comes from the injected factory so a test can
+    // observe every AppKit command issued against it.
+    let p = panelFactory.makePanel()
     p.isReleasedWhenClosed = false
     p.isOpaque = false
     p.backgroundColor = .clear
@@ -408,11 +404,29 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
     }
   }
 
-  #if DEBUG
-    var placementForTesting: OverlayPlacementState { placement }
-    var panelForTesting: NSPanel? { panel }
-    var isProgrammaticallyMovingForTesting: Bool { programmaticMoveDepth > 0 }
-  #endif
+}
+
+/// How the host builds its `NSPanel`.
+///
+/// A seam rather than a direct construction, mirroring `OverlayScreenResolver`
+/// immediately below: a test injects a recording subclass through this same
+/// point instead of reading private state off the host, so the real AppKit
+/// commands the host issues are what a test observes (#2377, P6-C2).
+@MainActor
+struct OverlayPanelFactory {
+  let makePanel: () -> NSPanel
+
+  init(makePanel: @escaping () -> NSPanel) {
+    self.makePanel = makePanel
+  }
+
+  static let live = OverlayPanelFactory {
+    NSPanel(
+      contentRect: NSRect(x: 0, y: 0, width: 185, height: 44),
+      styleMask: [.borderless, .nonactivatingPanel],
+      backing: .buffered,
+      defer: false)
+  }
 }
 
 /// How the host learns about screens.
