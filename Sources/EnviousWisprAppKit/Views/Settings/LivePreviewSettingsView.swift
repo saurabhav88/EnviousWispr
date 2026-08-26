@@ -42,14 +42,42 @@ struct LivePreviewSettingsView: View {
   @State private var showLanguageSheet: Bool = false
 
   /// #2436: the pack catalogue, opened by the Languages row or the bar's remedy.
-  @State private var showPackCatalog: Bool = false
+  ///
+  /// **One piece of state, not two, and that is the whole point.** This started as
+  /// a `Bool` beside a separate `catalogSearchSeed` string, written together in one
+  /// button action. Live UAT measured the seed arriving EMPTY at the sheet on every
+  /// presentation, including the first one in a freshly launched process: with
+  /// `.sheet(isPresented:)` the content closure reads the seed through a second,
+  /// independent `@State` at content-build time, and the value it saw was the one
+  /// from before the write. The remedy therefore opened on all 52 rows rather than
+  /// the one language the user was sent here for — the entire value grounded review
+  /// r2 finding C4 added, silently absent.
+  ///
+  /// `.sheet(item:)` closes the class rather than the instance: the seed TRAVELS
+  /// with the presentation instead of being read back out of view state, so there
+  /// is no second value that can be stale. The fresh `id` per request also gives
+  /// each presentation its own view identity, which is what lets the sheet's
+  /// `State(initialValue:)` take effect more than once.
+  ///
+  /// Nothing here is testable from a unit test — presentation is SwiftUI's, not
+  /// ours — so `#2436` item 6 in the Live UAT spec is this fix's binding evidence,
+  /// and it is stated rather than implied.
+  @State private var catalogRequest: CatalogRequest?
 
-  /// What the catalogue's search starts with. The bar's remedy seeds it with the
-  /// missing language's NAME, so the row a user was sent here for is already on
-  /// screen; the Languages row passes nothing, because no particular language is
-  /// in question there.
-  @State private var catalogSearchSeed: String = ""
-
+  /// One catalogue presentation, carrying what it needs to open correctly.
+  ///
+  /// The bar's remedy seeds `search` with the missing language's NAME so the row a
+  /// user was sent here for is already on screen; the Languages row passes nothing,
+  /// because no particular language is in question there.
+  ///
+  /// `id` is fresh per request rather than derived from `search`: two consecutive
+  /// remedies for the SAME language must still be two presentations, and an id
+  /// equal to the search string would silently make the second one reuse the
+  /// first's view identity — the exact failure this type exists to remove.
+  private struct CatalogRequest: Identifiable {
+    let id = UUID()
+    let search: String
+  }
 
   // MARK: - Derived state
 
@@ -227,11 +255,13 @@ struct LivePreviewSettingsView: View {
           ? LivePreviewSettingsCopy.pickerAppleCaveat
           : LivePreviewSettingsCopy.pickerUniversalCaveat)
     }
-    .sheet(isPresented: $showPackCatalog) {
+    .sheet(item: $catalogRequest) { request in
       // The retained model, never a copy: dismissing this sheet mid-install must not
       // cancel the install, because the workflow outlives any presentation.
+      //
+      // `request.search`, never a separately-read `@State`: see `catalogRequest`.
       LivePreviewPackCatalogSheet(
-        packs: packs, activeTag: activePackTag, initialSearch: catalogSearchSeed)
+        packs: packs, activeTag: activePackTag, initialSearch: request.search)
     }
   }
 
@@ -303,9 +333,26 @@ struct LivePreviewSettingsView: View {
           // #2436: "the hero card" is now this same row's left half, so the rule
           // is unchanged and its one-owner property is stronger — there is no
           // longer a second container that could drift.
+          // **`.fixedSize()` is load-bearing, and its absence was a real defect.**
+          // `BrandedToggleStyle` lays out `HStack { label; Spacer(); track }` so that
+          // on an ORDINARY settings row the whole row is the hit target and the switch
+          // sits at its right edge. That is correct where a visible label owns the row.
+          //
+          // This row has no label — #2436 deleted it, because the page header above
+          // already says what the switch does. The style's `Spacer` then claimed every
+          // remaining point: Live UAT measured the checkbox at 738pt wide starting
+          // immediately after the language chip, so the empty middle of the status bar
+          // silently toggled Live Preview, and the chip rendered stranded a third of the
+          // way across instead of beside the switch as designed.
+          //
+          // Sizing to the ideal width collapses the style's internal `Spacer` and lets
+          // this row's own `Spacer(minLength: 12)` above do the pushing. Deliberately
+          // NOT a `.frame(width:)`: the track's size belongs to `BrandedToggleTrack`,
+          // and pinning a number here would be a second place to change it.
           Toggle("", isOn: $settings.livePreviewEnabled)
             .labelsHidden()
             .toggleStyle(BrandedToggleStyle())
+            .fixedSize()
             .disabled(!anyEngineAvailable)
             // The visible label is gone; this is the only thing naming the switch
             // for VoiceOver, which is why `toggleLabel` survives the copy cull.
@@ -324,8 +371,7 @@ struct LivePreviewSettingsView: View {
             switch action {
             case .browseDownloads(let initialSearch):
               Button(LivePreviewSettingsCopy.browseDownloadsButton) {
-                catalogSearchSeed = initialSearch
-                showPackCatalog = true
+                catalogRequest = CatalogRequest(search: initialSearch)
               }
               .buttonStyle(.borderedProminent)
               .controlSize(.small)
@@ -575,8 +621,7 @@ struct LivePreviewSettingsView: View {
             }
             Spacer(minLength: 8)
             Button(LivePreviewSettingsCopy.packsBrowseButton) {
-              catalogSearchSeed = ""
-              showPackCatalog = true
+              catalogRequest = CatalogRequest(search: "")
             }
             .controlSize(.small)
           }
