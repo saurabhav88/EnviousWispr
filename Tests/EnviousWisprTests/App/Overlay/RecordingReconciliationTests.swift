@@ -77,7 +77,7 @@ struct RecordingReconciliationTests {
         display: { .off }),
       grantAccessibility: {},
       selections: selections,
-      deferFirstRender: { $0() },
+      firstRenderSchedule: { $0() },
       scheduleReconciliation: { queue.schedule($0) })
   }
 

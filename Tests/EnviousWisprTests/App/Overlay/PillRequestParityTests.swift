@@ -85,7 +85,7 @@ struct PillRequestParityTests {
           grantSawPresentation = director.renderModel.state.presentation != nil
         },
         selections: { .shipped },
-        deferFirstRender: { $0() })
+        firstRenderSchedule: { $0() })
     }
 
   }
