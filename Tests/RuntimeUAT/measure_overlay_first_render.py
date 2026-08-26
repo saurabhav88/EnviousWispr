@@ -48,7 +48,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 # The version is IN the schema token, so a future format is refused loudly by an
 # old harness rather than parsed leniently into a plausible number.
 SCHEMA_FAMILY = "EW_OVERLAY_FIRST_RENDER"
-SCHEMA = SCHEMA_FAMILY + "_V1"
+# V2 adds the `intent` field (#2377, C1 repair, cloud review P1): the shared
+# retained panel makes every presentation look identical to a marker, so an
+# unrelated one — the crash-recovery card WisprBootstrapper can show on ANY
+# launch — could win the race and bind the marker instead of the
+# keypress-triggered recording. A schema bump because a V1 harness reading a
+# V2 line, or a V2 harness reading a V1 line, must refuse loudly rather than
+# silently misparse the field count.
+SCHEMA = SCHEMA_FAMILY + "_V2"
 
 LAUNCH_ENTER = "launch.enter"
 LAUNCH_EXIT = "launch.exit"
@@ -60,8 +67,21 @@ ORDER_FRONT = "host.order_front.complete"
 # built inside launch; there is deliberately no separate notion of "pairs".
 EVENTS = (LAUNCH_ENTER, LAUNCH_EXIT, ROOT_START, ROOT_END, ORDER_FRONT)
 
+# Which presentation an `ORDER_FRONT` marker belongs to. `NONE` is the only
+# legal intent for every other event; `RECORDING` is the presentation the
+# benchmark measures; `OTHER` is anything else sharing the retained panel.
+# Must match `OverlayFirstRenderMarkers.Intent` in Swift exactly — nothing
+# links the two spellings but `test_the_swift_emitter_and_this_parser_agree_on_the_schema`.
+INTENT_NONE = "none"
+INTENT_RECORDING = "recording"
+INTENT_OTHER = "other"
+INTENTS = (INTENT_NONE, INTENT_RECORDING, INTENT_OTHER)
+
 MARKER_PATH_ENV = "EW_OVERLAY_FIRST_RENDER_MARKER_PATH"
 RUN_ID_ENV = "EW_OVERLAY_FIRST_RENDER_RUN_ID"
+
+# Must match `OverlayFirstRenderMarkers.axPanelIdentifier` in Swift exactly.
+AX_PANEL_IDENTIFIER = "EW_OVERLAY_FIRST_RENDER_PANEL"
 
 # ---------------------------------------------------------------- the verdicts
 
@@ -82,9 +102,20 @@ BLOCKED_OCCUPANCY = "BLOCKED_OCCUPANCY"
 BLOCKED_LAUNCH = "BLOCKED_LAUNCH"
 BLOCKED_NO_OVERLAY = "BLOCKED_NO_OVERLAY"
 BLOCKED_SCREEN_LOCKED = "BLOCKED_SCREEN_LOCKED"
+# An unrelated presentation (intent=other) reached the shared panel before the
+# keypress-triggered recording did, so the FIRST order-front — and the root
+# construction it may have caused — belongs to the wrong presentation.
+BLOCKED_WRONG_PRESENTATION = "BLOCKED_WRONG_PRESENTATION"
+# The AX tree could not be read: permission not granted, or the app's own
+# AXRole did not resolve to AXApplication.
+BLOCKED_AX_UNAVAILABLE = "BLOCKED_AX_UNAVAILABLE"
+# More than one AX window bore our identifier at the moment of first
+# appearance. Never averaged or picked from — refused, like every other
+# ambiguity this instrument treats as evidence it cannot trust.
+BLOCKED_AMBIGUOUS_OVERLAY = "BLOCKED_AMBIGUOUS_OVERLAY"
 
 Identity = namedtuple("Identity", "bundle_id executable_path sha256")
-Marker = namedtuple("Marker", "run pid bundle event ticks window index")
+Marker = namedtuple("Marker", "run pid bundle event ticks window intent index")
 LaunchSample = namedtuple(
     "LaunchSample", "run launch_ms root_ms order_front_ms host_window_id")
 LaunchResult = namedtuple("LaunchResult", "verdict detail sample")
@@ -121,21 +152,24 @@ def parse_marker_line(line, index=0):
     pre-built string, no encoder, no allocation beyond the string itself.
     """
     fields = line.split("\t")
-    if len(fields) != 7:
+    if len(fields) != 8:
         raise MarkerFormatError(
-            f"expected 7 tab-separated fields, got {len(fields)}: {line!r}")
-    schema, run, pid, bundle, event, ticks, window = fields
+            f"expected 8 tab-separated fields, got {len(fields)}: {line!r}")
+    schema, run, pid, bundle, event, ticks, window, intent = fields
     if schema != SCHEMA:
         raise MarkerFormatError(f"unknown schema {schema!r}, this harness reads {SCHEMA}")
     parsed = {}
     for key, field in (("run", run), ("pid", pid), ("bundle", bundle),
-                       ("event", event), ("ticks", ticks), ("window", window)):
+                       ("event", event), ("ticks", ticks), ("window", window),
+                       ("intent", intent)):
         prefix = key + "="
         if not field.startswith(prefix):
             raise MarkerFormatError(f"expected {prefix!r}, got {field!r}")
         parsed[key] = field[len(prefix):]
     if parsed["event"] not in EVENTS:
         raise MarkerFormatError(f"unknown event {parsed['event']!r}")
+    if parsed["intent"] not in INTENTS:
+        raise MarkerFormatError(f"unknown intent {parsed['intent']!r}")
     for key in ("pid", "ticks", "window"):
         if not parsed[key].isdigit():
             raise MarkerFormatError(
@@ -147,17 +181,29 @@ def parse_marker_line(line, index=0):
     # different place. A non-host event carrying a window means the emitter is
     # writing something this parser does not model, and a contract stated only in
     # a comment is the shape that retires the check instead of failing it.
+    #
+    # The SAME split applies to intent: only the host event may concern a
+    # presentation, so it is the one event that must NOT carry `.none` — every
+    # other event must, since carrying anything else is the emitter writing a
+    # concept this parser does not model for that event.
     window_id = int(parsed["window"])
     if parsed["event"] == ORDER_FRONT:
         if window_id <= 0:
             raise MarkerFormatError(
                 f"{ORDER_FRONT} must name a positive window id, got {window_id}")
-    elif window_id != 0:
-        raise MarkerFormatError(
-            f"{parsed['event']} must carry window 0, got {window_id}")
+        if parsed["intent"] == INTENT_NONE:
+            raise MarkerFormatError(f"{ORDER_FRONT} must not carry intent={INTENT_NONE!r}")
+    else:
+        if window_id != 0:
+            raise MarkerFormatError(
+                f"{parsed['event']} must carry window 0, got {window_id}")
+        if parsed["intent"] != INTENT_NONE:
+            raise MarkerFormatError(
+                f"{parsed['event']} must carry intent={INTENT_NONE!r}, got "
+                f"{parsed['intent']!r}")
     return Marker(run=parsed["run"], pid=int(parsed["pid"]), bundle=parsed["bundle"],
                   event=parsed["event"], ticks=int(parsed["ticks"]),
-                  window=int(parsed["window"]), index=index)
+                  window=int(parsed["window"]), intent=parsed["intent"], index=index)
 
 
 def read_markers(text):
@@ -238,18 +284,57 @@ def adjudicate_launch(marker_text, *, expected_run, expected_pid,
     for mk in markers:
         by_event.setdefault(mk.event, []).append(mk)
 
-    missing = [e for e in EVENTS if not by_event.get(e)]
+    # `ORDER_FRONT` is no longer a plain singleton: the shared retained panel
+    # can legitimately write ONE marker per intent (`.recording`, `.other`),
+    # so its own missing/duplicate/identity checks are per-INTENT rather than
+    # per-event, on top of the ordinary per-event checks every other member of
+    # `EVENTS` still gets.
+    non_order_events = [e for e in EVENTS if e != ORDER_FRONT]
+
+    missing = [e for e in non_order_events if not by_event.get(e)]
+
+    order_fronts = by_event.get(ORDER_FRONT, [])
+    by_intent = {}
+    for mk in order_fronts:
+        by_intent.setdefault(mk.intent, []).append(mk)
+    # A `.recording` marker is what makes this launch usable at all — the
+    # benchmark's whole subject is that presentation. An `.other`-only launch
+    # is missing it exactly as if `ORDER_FRONT` were absent entirely.
+    if not by_intent.get(INTENT_RECORDING):
+        missing = missing + [ORDER_FRONT]
+
     if missing:
         return blocked(BLOCKED_MISSING_MARKER, "absent: " + ", ".join(missing))
-    doubled = [e for e in EVENTS if len(by_event[e]) > 1]
-    if doubled:
-        # Every event is a singleton within one launch. Two of anything means
-        # two launches wrote to one file, and the durations would be a mix.
-        return blocked(BLOCKED_DUPLICATE_MARKER,
-                       "seen more than once: " + ", ".join(
-                           f"{e} x{len(by_event[e])}" for e in doubled))
 
-    single = {e: by_event[e][0] for e in EVENTS}
+    # Every key in `non_order_events` is now guaranteed present — `missing`
+    # would have caught and returned on anything absent above — so indexing
+    # `by_event` directly here cannot raise.
+    doubled = [e for e in non_order_events if len(by_event[e]) > 1]
+    doubled_order_front = [intent for intent, group in by_intent.items() if len(group) > 1]
+    if doubled or doubled_order_front:
+        # Every event is a singleton within one launch, and now so is every
+        # INTENT of `ORDER_FRONT`. Two of anything means two launches — or two
+        # presentations of the same intent — wrote to one file, and the
+        # durations would be a mix.
+        parts = [f"{e} x{len(by_event[e])}" for e in doubled]
+        parts += [f"{ORDER_FRONT}(intent={intent}) x{len(by_intent[intent])}"
+                 for intent in doubled_order_front]
+        return blocked(BLOCKED_DUPLICATE_MARKER, "seen more than once: " + ", ".join(parts))
+
+    # Reached only once a `.recording` marker is confirmed present and alone.
+    recording_marker = by_intent[INTENT_RECORDING][0]
+    other_marker = by_intent.get(INTENT_OTHER, [None])[0]
+    if other_marker is not None and other_marker.index < recording_marker.index:
+        # The unrelated presentation reached the panel FIRST, so root
+        # construction — if this is the first-ever presentation — belongs to
+        # IT, not to the recording whose timing the benchmark actually wants.
+        return blocked(
+            BLOCKED_WRONG_PRESENTATION,
+            f"an unrelated presentation (window {other_marker.window}) reached the panel "
+            f"before the recording did (window {recording_marker.window})")
+
+    single = {e: by_event[e][0] for e in non_order_events}
+    single[ORDER_FRONT] = recording_marker
 
     # **The whole chain, not two pairs checked separately.** `EVENTS` is in
     # causal order, and the link that only a full chain enforces is
@@ -330,86 +415,119 @@ def launch_is_ready(text, *, expected_run, expected_pid, expected_bundle):
                for mk in markers)
 
 
-def named_window_has_appeared(host_window_id, first_seen):
-    """The live loop's stopping rule, extracted so a test can reach it.
+def ax_overlay_has_appeared(match_count):
+    """The live loop's stopping rule for the AX endpoint, extracted so a test
+    can reach it directly.
 
-    **It lived inline and no test could touch it**, which meant the whole
-    identity binding could be reverted to "the host marker plus any window" and
-    every pure test still passed — the adjudicator was bound and the thing that
-    decides when to STOP CALLING it was not. That is the same defect one level
-    out from the one this rule exists to fix.
+    Fires on the FIRST match, deliberately. Waiting to see whether a second one
+    also appears would inflate the very quantity being measured; ambiguity from
+    more than one match is judged AFTER the fact by the adjudicator, from the
+    count recorded at the moment of the first one.
     """
-    return host_window_id is not None and host_window_id in first_seen
+    return match_count > 0
 
 
-def host_window_from(marker_text):
-    """The window id the app says it ordered front, or `(None, reason)`.
+def recording_host_marker_from(marker_text, *, exhausted=False):
+    """The RECORDING-intent host marker's window id, or a block, or "not yet".
 
-    Returns `(window_id, None)` once the host marker is present and usable,
-    `(None, None)` while it has not arrived, and `(None, BLOCKED_...)` when it
-    arrived and cannot be read.
+    Three answers, and `exhausted` decides which of two readings an `.other`-
+    only file gets:
+
+    - `(window_id, None)` — a usable `.recording` marker exists, and no
+      `.other` marker reached the panel before it.
+    - `(None, (verdict, detail))` — a DEFINITIVE block: malformed content, a
+      duplicate marker of one intent, an `.other` marker that beat a
+      `.recording` marker that HAS arrived, or — only once `exhausted` is
+      True — an `.other` marker (or nothing at all) with no `.recording`
+      marker ever arriving.
+    - `(None, None)` — not enough information yet. Only possible when
+      `exhausted` is False: an `.other` marker alone does not yet mean the
+      recording never came, because it might still land within the deadline.
+
+    `exhausted=True` is for the ONE call made once polling has stopped (an AX
+    match fired, or the deadline passed) — the point at which "no `.recording`
+    marker yet" and "no `.recording` marker ever" become the same fact.
     """
     try:
         markers = read_complete_markers(marker_text)
     except MarkerFormatError as exc:
         return None, (BLOCKED_MALFORMED_MARKER, str(exc))
     hosts = [mk for mk in markers if mk.event == ORDER_FRONT]
-    if not hosts:
+    by_intent = {}
+    for mk in hosts:
+        by_intent.setdefault(mk.intent, []).append(mk)
+    for intent, group in by_intent.items():
+        if len(group) > 1:
+            return None, (BLOCKED_DUPLICATE_MARKER,
+                          f"{len(group)} {ORDER_FRONT} markers with intent={intent!r}")
+    recording = by_intent.get(INTENT_RECORDING, [None])[0]
+    other = by_intent.get(INTENT_OTHER, [None])[0]
+    if recording is not None:
+        if other is not None and other.index < recording.index:
+            return None, (BLOCKED_WRONG_PRESENTATION,
+                          f"an unrelated presentation (window {other.window}) reached the "
+                          f"panel before the recording did (window {recording.window})")
+        return recording.window, None
+    if not exhausted:
         return None, None
-    if len(hosts) > 1:
-        return None, (BLOCKED_DUPLICATE_MARKER,
-                      f"{len(hosts)} {ORDER_FRONT} markers in one launch")
-    return hosts[0].window, None
+    if other is not None:
+        return None, (BLOCKED_WRONG_PRESENTATION,
+                      f"only an unrelated presentation (window {other.window}) reached the "
+                      "panel; the keypress-triggered recording never did")
+    return None, (BLOCKED_MISSING_MARKER,
+                  f"the app never reported ordering a window front with intent="
+                  f"{INTENT_RECORDING!r}")
 
 
-def adjudicate_overlay_window(host_window_id, first_seen, keydown_ns, preexisting):
-    """Which window ended the keypress interval — NAMED by the app, timed by us.
+def adjudicate_ax_overlay(*, ax_available, preexisting_count, match_count_at_stop,
+                          first_seen_ns, keydown_ns, host_window_id):
+    """Which AX appearance ended the keypress interval — NAMED by the app's
+    identifier, timed by us.
 
-    **Identity is bound, not inferred.** An earlier version watched for "a new
-    window owned by this process" and stopped at the first one it saw. That
-    accepts this sequence, which no amount of settling delay fixes and which a
-    fixture supplying both windows at once cannot even express:
+    **CGWindow-list membership can precede compositing; AX membership is the
+    plan's own binding endpoint** (cloud review P1, #2377). Registration with
+    WindowServer is not the same fact as SwiftUI content having been drawn —
+    an app-owned window ID can appear in `CGWindowListCopyWindowInfo` before
+    its content is on screen, which is exactly the case the plan's
+    "first-AX-overlay" language exists to rule out.
 
-        1. an unrelated window appears — settings, onboarding, a prompt
-        2. the app writes its host marker
-        3. the harness stops, holding only the unrelated window
-        4. the real pill reaches WindowServer a moment later
-        5. the unrelated window is reported as the overlay
-
-    Every step is plausible and the output is a normal-looking latency about the
-    wrong subject. So the app now names the window it ordered front, and this
-    waits for THAT id. Unrelated windows are recorded for the receipt and can
-    neither end the interval nor invalidate it.
-
-    The value is always the harness's own first-observed timestamp for the named
-    window. The app supplies identity; it does not supply time.
+    The value is always the harness's own first-observed timestamp for the
+    identifier the panel carries. The app supplies identity; it does not
+    supply time. `host_window_id` — the marker's own CGWindow number, already
+    validated by `recording_host_marker_from` — is carried through as a
+    receipt and identity cross-check, never as part of the stopwatch.
     """
-    if host_window_id is None:
+    if not ax_available:
         return OverlayTiming(
-            verdict=BLOCKED_NO_OVERLAY,
-            detail="the app never reported ordering a window front",
-            window_id=None, keypress_ms=None)
-    if host_window_id <= 0:
-        return OverlayTiming(
-            verdict=BLOCKED_MALFORMED_MARKER,
-            detail=f"the host marker named window {host_window_id}, which is not a window",
-            window_id=None, keypress_ms=None)
-    if host_window_id in preexisting:
-        # It was already on screen when the key went down, so its appearance is
-        # not an event this keypress caused and there is no interval to report.
-        return OverlayTiming(
-            verdict=BLOCKED_NO_OVERLAY,
-            detail=(f"window {host_window_id} already existed before the keypress, so "
-                    "nothing about its appearance is attributable to this press"),
+            verdict=BLOCKED_AX_UNAVAILABLE,
+            detail="the AX tree could not be read: permission not granted, or the app's "
+                   "AXRole did not resolve to AXApplication",
             window_id=host_window_id, keypress_ms=None)
-    if host_window_id not in first_seen:
+    if preexisting_count > 0:
+        # Already present at key-down, so its appearance is not an event this
+        # keypress caused and there is no interval to report.
         return OverlayTiming(
             verdict=BLOCKED_NO_OVERLAY,
-            detail=(f"the app ordered window {host_window_id} front, but it was never "
-                    "observed on screen before the deadline"),
+            detail=(f"{preexisting_count} AX window(s) already bore our identifier before "
+                    "the keypress, so nothing about their appearance is attributable to "
+                    "this press"),
+            window_id=host_window_id, keypress_ms=None)
+    if first_seen_ns is None:
+        return OverlayTiming(
+            verdict=BLOCKED_NO_OVERLAY,
+            detail="no AX window bearing our identifier was observed before the deadline",
+            window_id=host_window_id, keypress_ms=None)
+    if match_count_at_stop != 1:
+        # Never averaged or picked from — refused, the same way every other
+        # ambiguity this instrument meets is refused rather than resolved by
+        # guessing.
+        return OverlayTiming(
+            verdict=BLOCKED_AMBIGUOUS_OVERLAY,
+            detail=f"{match_count_at_stop} AX windows bore our identifier at the moment of "
+                   "first appearance",
             window_id=host_window_id, keypress_ms=None)
     return OverlayTiming(verdict=OK, detail="", window_id=host_window_id,
-                         keypress_ms=(first_seen[host_window_id] - keydown_ns) / 1e6)
+                         keypress_ms=(first_seen_ns - keydown_ns) / 1e6)
 
 
 # -------------------------------------------------------------- statistics
@@ -645,12 +763,29 @@ def running_instances():
     return _we.running_enviouswispr_instances()
 
 
-def onscreen_window_ids(pid):
-    import Quartz
-    info = Quartz.CGWindowListCopyWindowInfo(
-        Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID) or []
-    return {w.get("kCGWindowNumber") for w in info
-            if w.get("kCGWindowOwnerPID") == pid}
+def ax_accessibility_available(pid):
+    """True when the AX tree is readable for this pid.
+
+    Mirrors `ui_helpers.validate_test_environment`'s own check: `AXRole`
+    resolving to `AXApplication` is what distinguishes a real, permitted read
+    from the silent `None` `AXUIElementCopyAttributeValue` returns for every
+    failure mode alike (no permission, wrong pid, app not responding).
+    """
+    import ui_helpers as _ui
+    app = _ui.get_ax_app(pid)
+    return _ui.get_attr(app, "AXRole") == "AXApplication"
+
+
+def ax_matching_windows(pid):
+    """Every AX window under this app bearing our panel's identifier.
+
+    A LIST, not a count and not a single element — the caller decides what
+    zero or more than one means; this function's only job is not to guess.
+    """
+    import ui_helpers as _ui
+    app = _ui.get_ax_app(pid)
+    windows = _ui.get_attr(app, "AXWindows") or []
+    return [w for w in windows if _ui.get_attr(w, "AXIdentifier") == AX_PANEL_IDENTIFIER]
 
 
 def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
@@ -674,19 +809,20 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
     hand-rolled version omits, and `press_record_key` reaches them the same way.
     Only its sequencing is not reused.
 
-    **The app names the subject; the harness times it.** Polling continues until
-    the specific window id from `host.order_front.complete` is seen on screen.
-    Every other new window is recorded for the receipt and ends nothing — see
-    `adjudicate_overlay_window` for why stopping at "the marker plus any window"
-    is not a smaller version of this but a different, wrong measurement.
+    **AX membership, not CGWindow-list membership (cloud review P1, #2377).**
+    CGWindow-list registration can precede SwiftUI content actually being
+    composited — the plan's own "first-AX-overlay" language exists to rule
+    that reading out. Polling continues until an `AXWindow` bearing our
+    panel's identifier exists under the app; `recording_host_marker_from`
+    supplies the CAUSALITY check (that the recording, not some other
+    presentation, is what reached the panel), which AX identity alone cannot
+    express.
 
-    Window identity comes from CGWindowList rather than the accessibility tree.
-    The plan says "first-AX-overlay"; this is the deliberate implementation of
-    that requirement, ruled on rather than assumed. A host-supplied window id
-    plus a harness-observed first appearance identifies the visible panel more
-    exactly than an AX sweep, and costs far less per poll — and polling
-    resolution is the floor of this measurement, so a slower probe reports a
-    worse number for a better reason. The observed resolution is in the receipt.
+    **The marker read is decoupled from the AX poll's stop condition.** The
+    loop stops as soon as EITHER side has a definitive answer — an AX match
+    plus a confirmed recording marker, or a marker-level block that no amount
+    of further waiting would change. Re-reading the marker file only when the
+    last read was inconclusive avoids re-parsing on every single poll.
     """
     import ptt_binding as _ptt
     import simulate_input as _si
@@ -702,11 +838,13 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
             "is registered with Carbon, which does not deliver synthetic events.")
 
     marker_path = pathlib.Path(marker_path)
-    preexisting = onscreen_window_ids(pid)
-    first_seen = {}
+    ax_available = ax_accessibility_available(pid)
+    preexisting = ax_matching_windows(pid) if ax_available else []
+
+    first_seen_ns = None
+    match_count_at_stop = 0
     gaps = []
-    host_window_id = None
-    marker_failure = None
+    marker_result = (None, None)  # (window_id, block_tuple) — both None means "not yet"
 
     keydown_ns = time.perf_counter_ns()
     _si.modifier_down(binding.keycode)
@@ -714,18 +852,25 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
     deadline = last + int(timeout_s * 1e9)
     try:
         while time.perf_counter_ns() < deadline:
-            now = onscreen_window_ids(pid)
+            matches = ax_matching_windows(pid) if ax_available else []
             seen = time.perf_counter_ns()
             gaps.append((seen - last) / 1e6)
             last = seen
-            for window in now - preexisting:
-                first_seen.setdefault(window, seen)
-            if host_window_id is None and marker_failure is None:
-                host_window_id, marker_failure = host_window_from(
-                    marker_path.read_text())
-                if marker_failure is not None:
-                    break
-            if named_window_has_appeared(host_window_id, first_seen):
+            if matches and first_seen_ns is None:
+                first_seen_ns = seen
+                match_count_at_stop = len(matches)
+            if marker_result[0] is None and marker_result[1] is None:
+                try:
+                    marker_text = marker_path.read_text()
+                except OSError:
+                    marker_text = ""
+                marker_result = recording_host_marker_from(marker_text, exhausted=False)
+            if marker_result[1] is not None:
+                # A definitive block. No amount of further AX polling changes
+                # a marker-level fault, so stop now rather than run out the
+                # clock on a verdict already decided.
+                break
+            if first_seen_ns is not None and marker_result[0] is not None:
                 break
     finally:
         # Released whatever happened above. A modifier left down is a stuck key
@@ -733,12 +878,28 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
         # is least likely to be noticed.
         _si.modifier_up(binding.keycode)
 
-    if marker_failure is not None:
-        timing = OverlayTiming(verdict=marker_failure[0], detail=marker_failure[1],
-                               window_id=None, keypress_ms=None)
+    if marker_result[0] is None and marker_result[1] is None:
+        # Neither confirmed nor blocked when time ran out: force the FINAL
+        # call, which is the one point "only .other, no .recording yet" and
+        # "only .other, no .recording EVER" become the same fact.
+        try:
+            marker_text = marker_path.read_text()
+        except OSError:
+            marker_text = ""
+        marker_result = recording_host_marker_from(marker_text, exhausted=True)
+
+    host_window_id, presentation_block = marker_result
+    if presentation_block is not None:
+        timing = OverlayTiming(verdict=presentation_block[0], detail=presentation_block[1],
+                               window_id=host_window_id, keypress_ms=None)
     else:
-        timing = adjudicate_overlay_window(
-            host_window_id, first_seen, keydown_ns, preexisting)
+        timing = adjudicate_ax_overlay(
+            ax_available=ax_available,
+            preexisting_count=len(preexisting),
+            match_count_at_stop=match_count_at_stop,
+            first_seen_ns=first_seen_ns,
+            keydown_ns=keydown_ns,
+            host_window_id=host_window_id)
 
     return {
         "verdict": timing.verdict,
@@ -746,10 +907,8 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
         "keypress_ms": timing.keypress_ms,
         "window_id": timing.window_id,
         "host_window_id": host_window_id,
-        # Kept so a receipt can show what else was on screen. These never end the
-        # interval; recording them is how an unexplained result stays explicable.
-        "other_windows_ms": {str(w): (t - keydown_ns) / 1e6
-                             for w, t in first_seen.items() if w != host_window_id},
+        "ax_available": ax_available,
+        "match_count_at_stop": match_count_at_stop,
         "keycode": binding.keycode,
         "poll_resolution_ms_median": median(gaps) if gaps else None,
         "poll_resolution_ms_max": max(gaps) if gaps else None,

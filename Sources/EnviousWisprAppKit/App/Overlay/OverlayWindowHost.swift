@@ -295,6 +295,13 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
     p.isMovableByWindowBackground = true
     p.hasShadow = true
     p.delegate = self
+    // #2377 Phase 6, C1 repair (cloud review P1): the harness's stopwatch
+    // endpoint polls AX, not CGWindow membership, so it needs a stable way to
+    // name THIS panel in the AX tree. Set once, on the one retained panel;
+    // every later presentation reuses it.
+    #if DEBUG
+      p.setAccessibilityIdentifier(OverlayFirstRenderMarkers.axPanelIdentifier)
+    #endif
     panel = p
     return p
   }

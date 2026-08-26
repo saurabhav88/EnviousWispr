@@ -59,12 +59,16 @@ HOST_WINDOW = 4242
 
 
 def line(event, *, ticks=None, run=RUN, pid=PID, bundle=BUNDLE, schema=m.SCHEMA,
-         window=None):
+         window=None, intent=None):
     t = GOOD_TICKS[event] if ticks is None else ticks
     if window is None:
         window = HOST_WINDOW if event == "host.order_front.complete" else 0
+    if intent is None:
+        # A single valid host marker is implicitly THE recording — matches
+        # what every existing row already meant before intent existed.
+        intent = m.INTENT_RECORDING if event == "host.order_front.complete" else m.INTENT_NONE
     return (f"{schema}\trun={run}\tpid={pid}\tbundle={bundle}"
-            f"\tevent={event}\tticks={t}\twindow={window}")
+            f"\tevent={event}\tticks={t}\twindow={window}\tintent={intent}")
 
 
 def text(events=None, **kw):
@@ -156,7 +160,7 @@ def test_duplicate_singleton_marker_blocks():
 
 def test_unknown_schema_or_malformed_line_blocks():
     expect_verdict("a future schema version blocks",
-                   text(schema="EW_OVERLAY_FIRST_RENDER_V2"), m.BLOCKED_MALFORMED_MARKER)
+                   text(schema="EW_OVERLAY_FIRST_RENDER_V3"), m.BLOCKED_MALFORMED_MARKER)
     expect_verdict("a line with a missing field blocks",
                    text() + f"{m.SCHEMA}\trun={RUN}\tpid={PID}\n",
                    m.BLOCKED_MALFORMED_MARKER)
@@ -265,90 +269,70 @@ def test_root_construction_inside_launch_blocks():
 
 # ------------------- 8c. WHICH window ended the interval, named by the app
 
-def test_overlay_endpoint_waits_for_the_window_the_app_named():
-    """The app names the subject; the harness times it.
+def test_ax_overlay_endpoint_waits_for_our_identified_window():
+    """The app names the subject via a fixed AX identifier; the harness times it.
 
-    Watching for "a new window owned by this process" and stopping at the first
-    one accepts a sequence that no settling delay fixes: an unrelated window
-    appears, the host marker is written, the harness stops holding only that
-    window, and the real pill reaches WindowServer a moment later. Every step is
-    plausible and the output is a normal-looking latency about the wrong window.
-
-    These rows are written as SEQUENCES rather than as a set of candidates
-    supplied at once, because the previous version of this test handed the
-    adjudicator both windows simultaneously — and a fixture that cannot express
-    the ordering cannot fail on it. That is what let the defect survive a review
-    round.
+    **AX membership, not CGWindow-list membership (cloud review P1, #2377).**
+    CGWindow-list registration can precede SwiftUI content actually being
+    composited, so the plan's own "first-AX-overlay" language is the binding
+    requirement, not an implementation detail. The adjudicator is pure — no
+    polling, no live process — so every branch is one row here.
     """
     t0 = 1_000_000_000
-    ms = lambda n: t0 + n * 1_000_000  # noqa: E731
 
-    # The sequence the old code got wrong: unrelated at +3, the named window at
-    # +12. The named window's time is what is reported.
-    unrelated_first = m.adjudicate_overlay_window(
-        99, {7: ms(3), 99: ms(12)}, t0, preexisting=set())
-    expect("an unrelated window arriving first does not win",
-           unrelated_first.verdict, m.OK)
-    expect("the named window is reported", unrelated_first.window_id, 99)
-    expect("with ITS first-observed time, not the unrelated one's",
-           unrelated_first.keypress_ms, 12.0)
-
-    # TWIN: the same call with only the unrelated window present. Nothing to
-    # report, and it must not fall back to the window it does have.
-    only_unrelated = m.adjudicate_overlay_window(
-        99, {7: ms(3)}, t0, preexisting=set())
-    expect("only an unrelated window blocks", only_unrelated.verdict,
-           m.BLOCKED_NO_OVERLAY)
-    expect("and carries no number", only_unrelated.keypress_ms, None)
-
-    # A window already on screen at key-down did not appear because of this
-    # press, so there is no interval to attribute to it.
-    preexisting = m.adjudicate_overlay_window(
-        99, {99: ms(12)}, t0, preexisting={99})
-    expect("a window that existed before the keypress blocks",
-           preexisting.verdict, m.BLOCKED_NO_OVERLAY)
-    expect("and carries no number", preexisting.keypress_ms, None)
-
-    # The app said it ordered a window front and that window never showed up.
-    never = m.adjudicate_overlay_window(99, {7: ms(3)}, t0, preexisting=set())
-    expect("a named window that never appears blocks", never.verdict,
-           m.BLOCKED_NO_OVERLAY)
-
-    # No host marker at all: a different fact from a window that did not appear,
-    # and it must not be reported as a latency of any kind.
-    silent = m.adjudicate_overlay_window(None, {99: ms(12)}, t0, preexisting=set())
-    expect("no host marker blocks", silent.verdict, m.BLOCKED_NO_OVERLAY)
-
-    # A host marker that reached the call site and could not name a window is a
-    # MALFORMED marker, not a missing overlay - different fault, different place.
-    zero = m.adjudicate_overlay_window(0, {99: ms(12)}, t0, preexisting=set())
-    expect("a host marker naming window 0 is malformed, not absent",
-           zero.verdict, m.BLOCKED_MALFORMED_MARKER)
-
-    # TWIN for the whole group: the ordinary case still passes.
-    ordinary = m.adjudicate_overlay_window(99, {99: ms(9)}, t0, preexisting=set())
+    ordinary = m.adjudicate_ax_overlay(
+        ax_available=True, preexisting_count=0, match_count_at_stop=1,
+        first_seen_ns=t0 + 9_000_000, keydown_ns=t0, host_window_id=HOST_WINDOW)
     expect("the ordinary case accepts", ordinary.verdict, m.OK)
     expect("with the harness's own timestamp", ordinary.keypress_ms, 9.0)
+    expect("the marker's window id is carried as a receipt, not the stopwatch",
+           ordinary.window_id, HOST_WINDOW)
+
+    unavailable = m.adjudicate_ax_overlay(
+        ax_available=False, preexisting_count=0, match_count_at_stop=0,
+        first_seen_ns=None, keydown_ns=t0, host_window_id=None)
+    expect("AX permission unavailable blocks", unavailable.verdict,
+           m.BLOCKED_AX_UNAVAILABLE)
+
+    # Already present at key-down: not an event this keypress caused.
+    already_there = m.adjudicate_ax_overlay(
+        ax_available=True, preexisting_count=1, match_count_at_stop=1,
+        first_seen_ns=t0 + 9_000_000, keydown_ns=t0, host_window_id=HOST_WINDOW)
+    expect("a match that existed before the keypress blocks",
+           already_there.verdict, m.BLOCKED_NO_OVERLAY)
+    expect("and carries no timing", already_there.keypress_ms, None)
+
+    never = m.adjudicate_ax_overlay(
+        ax_available=True, preexisting_count=0, match_count_at_stop=0,
+        first_seen_ns=None, keydown_ns=t0, host_window_id=HOST_WINDOW)
+    expect("no match before the deadline blocks", never.verdict, m.BLOCKED_NO_OVERLAY)
+
+    # More than one match at the moment of first appearance is refused, never
+    # averaged or picked from.
+    ambiguous = m.adjudicate_ax_overlay(
+        ax_available=True, preexisting_count=0, match_count_at_stop=2,
+        first_seen_ns=t0 + 9_000_000, keydown_ns=t0, host_window_id=HOST_WINDOW)
+    expect("more than one matching AX window blocks",
+           ambiguous.verdict, m.BLOCKED_AMBIGUOUS_OVERLAY)
+
+    # TWIN for the whole group: the ordinary case above (exactly one match,
+    # nothing preexisting, AX available) accepts.
 
 
-def test_the_live_stopping_rule_waits_for_the_named_window():
+def test_the_ax_stopping_rule_fires_on_the_first_match():
     """The rule that decides when to STOP polling, tested directly.
 
     Every other row here tests the adjudicator, which runs once the loop has
-    already stopped. That leaves the stop condition itself untested — so the
-    whole identity binding could be reverted to "the host marker plus any
-    window" and every other row would still pass. This is the row that fails
-    when it is.
+    already stopped. That leaves the stop condition itself untested — a
+    regression to "wait for two matches" or "never stop" would leave every
+    adjudicator row still passing. This is the row that fails when it is.
     """
-    ms = lambda n: 1_000_000_000 + n * 1_000_000  # noqa: E731
-    expect("an unrelated window does not stop polling",
-           m.named_window_has_appeared(99, {7: ms(3)}), False)
-    expect("the named window stops polling",
-           m.named_window_has_appeared(99, {7: ms(3), 99: ms(12)}), True)
-    expect("nothing stops polling before the app has named a window",
-           m.named_window_has_appeared(None, {7: ms(3), 99: ms(12)}), False)
-    expect("and an empty screen does not stop it either",
-           m.named_window_has_appeared(99, {}), False)
+    expect("no match does not stop polling", m.ax_overlay_has_appeared(0), False)
+    expect("one match stops polling", m.ax_overlay_has_appeared(1), True)
+    expect(
+        "more than one match ALSO stops polling — ambiguity is judged AFTER "
+        "stopping, by the adjudicator, never by waiting to see if it resolves",
+        m.ax_overlay_has_appeared(2), True)
 
 
 def test_a_half_written_line_is_not_a_marker():
@@ -380,33 +364,120 @@ def test_a_half_written_line_is_not_a_marker():
                              expected_bundle=BUNDLE), False)
 
     # The host half of the same problem.
-    window, failure = m.host_window_from(partial)
+    window, failure = m.recording_host_marker_from(partial, exhausted=False)
     expect("a half-written host line is 'not yet', not a verdict", window, None)
     expect("and not a failure either", failure, None)
-    window, failure = m.host_window_from(complete)
+    window, failure = m.recording_host_marker_from(complete, exhausted=False)
     expect("the finished line names the window", window, HOST_WINDOW)
     # A malformed line that IS finished is a real failure and must not be
     # swallowed by the same truncation rule that hides an unfinished one.
     malformed = complete.replace(f"window={HOST_WINDOW}", "window=main")
     expect("a finished malformed host line blocks",
-           m.host_window_from(malformed)[1][0], m.BLOCKED_MALFORMED_MARKER)
+           m.recording_host_marker_from(malformed, exhausted=False)[1][0],
+           m.BLOCKED_MALFORMED_MARKER)
 
 
-def test_host_window_is_read_from_the_marker_text():
-    """`host_window_from` is what the live loop polls with, so it gets its own
-    rows: an absent marker is 'not yet', never a verdict."""
-    window, failure = m.host_window_from(text())
+def test_recording_host_marker_is_read_from_the_marker_text():
+    """`recording_host_marker_from` is what the live loop polls with, so it
+    gets its own rows: an absent marker is 'not yet', never a verdict."""
+    window, failure = m.recording_host_marker_from(text(), exhausted=False)
     expect("a complete file names the window", window, HOST_WINDOW)
     expect("and reports no failure", failure, None)
 
     partial = text([e for e in ORDER if e != "host.order_front.complete"])
-    window, failure = m.host_window_from(partial)
+    window, failure = m.recording_host_marker_from(partial, exhausted=False)
     expect("a file without the host marker is not yet, not a verdict", window, None)
     expect("and still no failure", failure, None)
 
-    doubled = m.host_window_from(text(ORDER + ["host.order_front.complete"]))
-    expect("two host markers are refused, not averaged",
+    doubled = m.recording_host_marker_from(
+        text(ORDER + ["host.order_front.complete"]), exhausted=False)
+    expect("two host markers of the same intent are refused, not averaged",
            doubled[1][0], m.BLOCKED_DUPLICATE_MARKER)
+
+
+def test_wrong_presentation_binding_is_refused():
+    """A shared retained panel means ANY presentation can win the marker race.
+
+    Grounded in a real path, not a hypothetical: `WisprBootstrapper
+    .applicationDidFinishLaunching` starts an async crash-recovery scan on
+    EVERY launch (`Task { await recoveryCoordinator.scanAndRecover() }`),
+    which presents "behind the blocking recovering pill" through the SAME
+    retained panel the keypress-triggered recording uses. Without intent,
+    whichever wins the presentation race silently binds the marker.
+    """
+    def markers(*host_lines):
+        return "\n".join([
+            line("launch.enter"), line("launch.exit"),
+            line("root.construct.start"), line("root.construct.end"),
+        ] + list(host_lines)) + "\n"
+
+    other_then_recording = markers(
+        line("host.order_front.complete", window=7, intent=m.INTENT_OTHER,
+             ticks=13_000_000),
+        line("host.order_front.complete", window=99, intent=m.INTENT_RECORDING,
+             ticks=14_000_000))
+    window, failure = m.recording_host_marker_from(other_then_recording, exhausted=False)
+    expect("an unrelated presentation before the recording blocks", window, None)
+    if failure is None:
+        FAILURES.append("other-before-recording did not block at all")
+    else:
+        expect("with the specific wrong-presentation verdict",
+               failure[0], m.BLOCKED_WRONG_PRESENTATION)
+
+    recording_then_other = markers(
+        line("host.order_front.complete", window=99, intent=m.INTENT_RECORDING,
+             ticks=13_000_000),
+        line("host.order_front.complete", window=7, intent=m.INTENT_OTHER,
+             ticks=14_000_000))
+    window, failure = m.recording_host_marker_from(recording_then_other, exhausted=False)
+    expect("a LATER unrelated presentation does not invalidate the recording",
+           window, 99)
+    expect("and reports no failure", failure, None)
+
+    other_only = markers(
+        line("host.order_front.complete", window=7, intent=m.INTENT_OTHER))
+    window, failure = m.recording_host_marker_from(other_only, exhausted=False)
+    expect("an other-only file is not yet decidable mid-poll", window, None)
+    expect("the recording MIGHT still arrive, so no block yet", failure, None)
+    window, failure = m.recording_host_marker_from(other_only, exhausted=True)
+    expect("but IS decidable once polling has stopped", window, None)
+    if failure is None:
+        FAILURES.append("an exhausted other-only file did not block")
+    else:
+        expect("with the wrong-presentation verdict, since something DID present",
+               failure[0], m.BLOCKED_WRONG_PRESENTATION)
+
+    # Missing/illegal intent is malformed, exercised through the REAL parser
+    # rather than by constructing a `Marker` by hand.
+    illegal_intent = text().replace("intent=recording", "intent=urgent")
+    expect_verdict("an illegal intent value is malformed",
+                   illegal_intent, m.BLOCKED_MALFORMED_MARKER)
+    missing_intent_field = text().replace("\tintent=recording", "")
+    expect_verdict("a missing intent field is malformed",
+                   missing_intent_field, m.BLOCKED_MALFORMED_MARKER)
+
+    # The mutation control: if the Director's classifier were broken so the
+    # UNRELATED presentation were ALSO tagged `.recording` — indistinguishable
+    # from the real one — the FIRST control above stops being able to catch
+    # it. Both markers now read intent=recording, which is a DUPLICATE, not a
+    # wrong-presentation case; the verdict CLASS changes, which is what proves
+    # this suite is sensitive to the classifier rather than only to marker
+    # shape.
+    if_misclassified = markers(
+        line("host.order_front.complete", window=7, intent=m.INTENT_RECORDING,
+             ticks=13_000_000),
+        line("host.order_front.complete", window=99, intent=m.INTENT_RECORDING,
+             ticks=14_000_000))
+    window, failure = m.recording_host_marker_from(if_misclassified, exhausted=False)
+    expect("misclassifying BOTH as recording still blocks", window, None)
+    if failure is None:
+        FAILURES.append("two same-intent markers did not block at all")
+    else:
+        expect(
+            "but as duplicate-marker, not wrong-presentation — the first "
+            "control's specific verdict would no longer distinguish this case "
+            "from a real misclassification",
+            failure[0], m.BLOCKED_DUPLICATE_MARKER)
 
 
 # -------------------------------------------------- 9. thirty pairs, exactly
@@ -557,6 +628,9 @@ def test_p95_uses_nearest_rank():
 EMITTER = (pathlib.Path(__file__).resolve().parents[2]
            / "Sources" / "EnviousWisprAppKit" / "App" / "Debug"
            / "OverlayFirstRenderMarkers.swift")
+HOST = (pathlib.Path(__file__).resolve().parents[2]
+        / "Sources" / "EnviousWisprAppKit" / "App" / "Overlay"
+        / "OverlayWindowHost.swift")
 
 
 def test_the_swift_emitter_and_this_parser_agree_on_the_schema():
@@ -581,7 +655,7 @@ def test_the_swift_emitter_and_this_parser_agree_on_the_schema():
     for event in m.EVENTS:
         if f'"{event}"' not in swift:
             FAILURES.append(f"the emitter has no case spelled {event!r}")
-    for key in ("run=", "pid=", "bundle=", "event=", "ticks=", "window="):
+    for key in ("run=", "pid=", "bundle=", "event=", "ticks=", "window=", "intent="):
         if key not in swift:
             FAILURES.append(f"the emitter does not write the {key!r} field")
     # The environment names are the emitter's arming contract, and the harness
@@ -593,6 +667,29 @@ def test_the_swift_emitter_and_this_parser_agree_on_the_schema():
     # checks above would pass against an emitter that writes something else too.
     if "launch.begin" in swift:
         FAILURES.append("the emitter writes an event this parser cannot read")
+
+    # The intent values, spelled `case <name>` in the Swift enum — the same
+    # PAIRED-REJECTION shape as the events above: an intent this parser does
+    # NOT know must be absent, checked as one row so the acceptance checks
+    # cannot pass against an emitter that also writes something else.
+    for intent in m.INTENTS:
+        if f"case {intent}" not in swift:
+            FAILURES.append(f"the emitter has no Intent case spelled {intent!r}")
+    if "case urgent" in swift:
+        FAILURES.append("the emitter writes an intent this parser cannot read")
+
+    # The AX identifier the harness polls for must be the exact string set on
+    # the panel, or the C1-repair endpoint swap silently measures nothing.
+    if f'"{m.AX_PANEL_IDENTIFIER}"' not in swift:
+        FAILURES.append(
+            f"the emitter does not define {m.AX_PANEL_IDENTIFIER!r}; the AX identity "
+            "the harness polls for has drifted")
+
+    host = HOST.read_text() if HOST.exists() else ""
+    if "setAccessibilityIdentifier" not in host:
+        FAILURES.append(
+            "the host does not set an AX identifier on the panel; the AX endpoint has "
+            "nothing to poll for")
 
 
 def test_the_host_marker_is_emitted_with_a_real_window_number():
@@ -915,10 +1012,11 @@ TESTS = [
     test_same_bundle_version_but_different_executable_hash_blocks,
     test_non_monotonic_ticks_block,
     test_root_construction_inside_launch_blocks,
-    test_overlay_endpoint_waits_for_the_window_the_app_named,
-    test_the_live_stopping_rule_waits_for_the_named_window,
+    test_ax_overlay_endpoint_waits_for_our_identified_window,
+    test_the_ax_stopping_rule_fires_on_the_first_match,
     test_a_half_written_line_is_not_a_marker,
-    test_host_window_is_read_from_the_marker_text,
+    test_recording_host_marker_is_read_from_the_marker_text,
+    test_wrong_presentation_binding_is_refused,
     test_29_pairs_block_and_30_pairs_pass,
     test_one_invalid_sample_blocks_without_top_up,
     test_benchmark_fails_on_a_real_regression,

@@ -34,6 +34,15 @@
   /// dictionary — but that happens exactly once, in `prepare()`, which the call
   /// site places before any measured interval.
   public enum OverlayFirstRenderMarkers {
+    /// The AX identifier the harness polls for (#2377, C1 repair, cloud review
+    /// P1). CGWindow-list membership can precede SwiftUI content actually being
+    /// composited, so the harness's stopwatch endpoint moved to "does an
+    /// `AXWindow` bearing this identifier exist under the app" — set on the ONE
+    /// retained panel once, in `OverlayWindowHost.ensurePanel()`, DEBUG-only.
+    /// A string constant here rather than duplicated in Swift and Python is
+    /// what keeps the two from drifting apart the way the schema strings do.
+    public static let axPanelIdentifier = "EW_OVERLAY_FIRST_RENDER_PANEL"
+
     /// The exact strings the harness parses. Changing one is a schema change and
     /// belongs with a bump of `SCHEMA` in `measure_overlay_first_render.py`,
     /// whose parser refuses an unknown event rather than skipping it.
@@ -43,6 +52,25 @@
       case rootConstructStart = "root.construct.start"
       case rootConstructEnd = "root.construct.end"
       case hostOrderFrontComplete = "host.order_front.complete"
+    }
+
+    /// Which presentation a `host.order_front.complete` marker belongs to.
+    ///
+    /// **Added because the shared retained panel makes every presentation look
+    /// identical to the marker.** The Host does not know why it was asked to
+    /// present; the Director does (`OverlayDirector.isRecording`). Without this,
+    /// an unrelated presentation — the crash-recovery card
+    /// `WisprBootstrapper.applicationDidFinishLaunching` can show on ANY
+    /// launch — that wins the presentation race binds the marker instead of the
+    /// keypress-triggered one, and the harness reports a plausible latency for
+    /// work the keypress did not cause.
+    public enum Intent: String, Sendable {
+      /// Launch/root markers concern no presentation.
+      case none
+      /// The presentation the benchmark measures.
+      case recording
+      /// Any other presentation sharing the retained panel.
+      case other
     }
 
     /// One clock reading bound to the event it belongs to.
@@ -64,6 +92,10 @@
       /// which is worse than no measurement because nothing about it looks
       /// wrong.
       let window: Int
+      /// `.none` for launch/root events. For `host.order_front.complete`, the
+      /// ambient value `withPresentationIntent` set for the call that produced
+      /// this presentation.
+      let intent: Intent
     }
 
     /// Force the sink open BEFORE the first measured interval begins.
@@ -105,9 +137,37 @@
     /// against an 8 ms bound, and wall time can step. Raw ticks are emitted
     /// unconverted — `mach_timebase_info` is applied by the harness, so no
     /// arithmetic runs inside the interval.
+    ///
+    /// Only `hostOrderFrontComplete` ever carries a non-`.none` intent — every
+    /// other event concerns no presentation, so its intent is fixed at `.none`
+    /// regardless of the ambient value, which is what keeps a launch/root
+    /// marker from accidentally inheriting whatever `withPresentationIntent`
+    /// last set.
+    @MainActor
     public static func capture(_ event: Event, window: Int = 0) -> Capture {
-      Capture(event: event, ticks: mach_absolute_time(), window: window)
+      let intent: Intent = event == .hostOrderFrontComplete ? currentIntent : .none
+      return Capture(event: event, ticks: mach_absolute_time(), window: window, intent: intent)
     }
+
+    /// The intent the NEXT `hostOrderFrontComplete` capture will carry.
+    ///
+    /// **Ambient rather than a parameter, because the Host must not learn why
+    /// it was asked to present.** `OverlayWindowHosting` is deliberately
+    /// minimal (`OverlayWindowHost.swift`'s own doc comment says so), and
+    /// presentation intent is measurement-only — widening the production seam
+    /// to carry it would put a DEBUG-only concept in a protocol production code
+    /// depends on. The Director sets this immediately around its one
+    /// `host.present` call, using the SAME `isRecording` classification that
+    /// already decides `isFresh`.
+    @MainActor
+    public static func withPresentationIntent<T>(_ intent: Intent, _ body: () -> T) -> T {
+      let previous = currentIntent
+      currentIntent = intent
+      defer { currentIntent = previous }
+      return body()
+    }
+
+    @MainActor private static var currentIntent: Intent = .other
 
     /// Write captures, in one `write(2)`, after the measured work has finished.
     public static func emit(_ captures: Capture...) {
@@ -117,11 +177,11 @@
     public static func emit(_ captures: [Capture]) {
       guard let sink, !captures.isEmpty else { return }
       var payload = ""
-      payload.reserveCapacity((sink.prefix.count + 64) * captures.count)
+      payload.reserveCapacity((sink.prefix.count + 80) * captures.count)
       for capture in captures {
         payload += sink.prefix
         payload += "event=\(capture.event.rawValue)\tticks=\(capture.ticks)"
-        payload += "\twindow=\(capture.window)\n"
+        payload += "\twindow=\(capture.window)\tintent=\(capture.intent.rawValue)\n"
       }
       sink.write(payload)
     }
@@ -155,30 +215,45 @@
 
     @MainActor private static var pending: [Capture] = []
 
-    /// Emit at most once per process, for an event whose CALL SITE runs many
-    /// times but whose measurement is about the first occurrence.
+    /// Emit at most once PER INTENT, for a call site that runs many times but
+    /// whose measurement is about the first occurrence of each presentation
+    /// kind.
     ///
     /// `host.order_front.complete` is the case: the host orders a panel front on
-    /// every presentation, and a launch that showed two pills would write the
-    /// event twice. The harness treats every event as a singleton and blocks on a
-    /// duplicate, correctly — two order-fronts in one file give a "first render"
-    /// figure that is a mix of a first render and a later one. The latch is here
-    /// rather than at the call site so the property the harness depends on lives
-    /// with the contract, not with one of its callers.
+    /// every presentation. Latching per EVENT alone (the pre-intent design)
+    /// meant whichever presentation reached this call first — the keypress
+    /// recording, or an unrelated one racing it — silently won the marker,
+    /// with nothing in the file to say which. Latching per INTENT keeps that
+    /// singleton property for each kind separately: at most one `.recording`
+    /// marker ever, and at most one `.other` marker ever, so the harness can
+    /// tell "a recording happened" from "something else happened" instead of
+    /// reading one merged, unlabelled event.
+    ///
+    /// **Only `.recording` flushes the held root markers.** Root construction
+    /// timing is meaningful paired with the RECORDING's own first render; an
+    /// unrelated `.other` presentation winning the race first must not consume
+    /// that flush, or the recording's later marker would find `pending` already
+    /// emptied and its root timing lost. An `.other` marker before any
+    /// `.recording` is written on its own, and the harness blocks on it
+    /// (`BLOCKED_WRONG_PRESENTATION`) — see the Python adjudicator.
     ///
     /// `@MainActor` because all three call sites already are, which is cheaper
     /// and more honest than a lock defending state nothing else touches.
     @MainActor
     public static func emitFirst(_ capture: Capture) {
-      guard emittedOnce.insert(capture.event).inserted else { return }
-      // Everything held so far flushes with this one, in capture order, so the
-      // file order matches the causal order the harness enforces.
-      let batch = pending + [capture]
-      pending.removeAll(keepingCapacity: true)
-      emit(batch)
+      guard emittedIntents.insert(capture.intent).inserted else { return }
+      if capture.intent == .recording {
+        // Everything held so far flushes with this one, in capture order, so
+        // the file order matches the causal order the harness enforces.
+        let batch = pending + [capture]
+        pending.removeAll(keepingCapacity: true)
+        emit(batch)
+      } else {
+        emit(capture)
+      }
     }
 
-    @MainActor private static var emittedOnce: Set<Event> = []
+    @MainActor private static var emittedIntents: Set<Intent> = []
 
     // MARK: - the sink
 
@@ -237,8 +312,11 @@
       guard descriptor >= 0 else { return nil }
 
       let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
+      // V2: adds the `intent` field (#2377, C1 repair) — a schema bump because
+      // an old harness reading a V2 line would silently misparse the eighth
+      // field as belonging to no key it expects.
       let prefix =
-        "EW_OVERLAY_FIRST_RENDER_V1\trun=\(runID)\tpid=\(getpid())\tbundle=\(bundleID)\t"
+        "EW_OVERLAY_FIRST_RENDER_V2\trun=\(runID)\tpid=\(getpid())\tbundle=\(bundleID)\t"
       return Sink(descriptor: descriptor, prefix: prefix)
     }()
   }

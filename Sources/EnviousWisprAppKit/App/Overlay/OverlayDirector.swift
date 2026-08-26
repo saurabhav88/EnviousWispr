@@ -1,9 +1,9 @@
 import AppKit
-import SwiftUI
 import CoreGraphics
 import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
+import SwiftUI
 
 /// Owns the presentation TRANSACTION (#2292, chunk C4b).
 ///
@@ -155,7 +155,6 @@ final class OverlayDirector {
   /// gate left the flag true with nothing built, so the next presentation did
   /// the same. Cloud review caught both in one finding.
   private var builtRootView: NSView?
-
 
   private var rootHostingView: NSView {
     if let builtRootView { return builtRootView }
@@ -1055,7 +1054,8 @@ final class OverlayDirector {
     // A CONTINUING recording is excluded by the id check: the reducer keeps one
     // identity across audio-level morphs, so a tick is not a new lifecycle and
     // must not re-anchor.
-    let isFresh = presentedID == nil || (Self.isRecording(presentation) && presentedID != presentation.id)
+    let isFresh =
+      presentedID == nil || (Self.isRecording(presentation) && presentedID != presentation.id)
     presentedID = presentation.id
     let recordingGeometry = geometry(for: presentation)
     // **One position per presentation, not two reads of a provider.** The
@@ -1075,12 +1075,34 @@ final class OverlayDirector {
     } else {
       anchor = position()
     }
-    let presented = host.present(
-      rootHostingView,
-      width: recordingGeometry.width,
-      fixedHeight: recordingGeometry.fixedHeight,
-      isFresh: isFresh,
-      position: anchor)
+    // #2377 Phase 6, C1 repair: DEBUG-only presentation-intent tagging around
+    // the ONE call to `host.present`. The Host has no way to know why it was
+    // asked to present — `OverlayWindowHosting` is deliberately minimal — but
+    // this Director already classifies every presentation via `isRecording`
+    // (the same call `isFresh` above uses). Setting the ambient intent here,
+    // for the duration of this synchronous call, is what lets the marker the
+    // Host emits inside `present` say which presentation it belongs to,
+    // without widening the production seam to carry a measurement-only
+    // concept. See `OverlayFirstRenderMarkers.withPresentationIntent`.
+    #if DEBUG
+      let presented = OverlayFirstRenderMarkers.withPresentationIntent(
+        Self.isRecording(presentation) ? .recording : .other
+      ) {
+        host.present(
+          rootHostingView,
+          width: recordingGeometry.width,
+          fixedHeight: recordingGeometry.fixedHeight,
+          isFresh: isFresh,
+          position: anchor)
+      }
+    #else
+      let presented = host.present(
+        rootHostingView,
+        width: recordingGeometry.width,
+        fixedHeight: recordingGeometry.fixedHeight,
+        isFresh: isFresh,
+        position: anchor)
+    #endif
     if !presented {
       // The host refused — no screen, or a presentation it could not size — and
       // it returns BEFORE touching the panel, so a window that was already up
