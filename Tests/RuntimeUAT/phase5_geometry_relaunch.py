@@ -67,6 +67,18 @@ KEYS = ["livePreviewEnabled", "recordingPillDesignWithoutWords"]
 # failed bridge answer false — only a TRUE value exposes the defect.
 BOOL_KEYS = {"livePreviewEnabled"}
 
+# THE PRODUCTION CONTRACTS, pinned. `all_rows_correct_group` proves the words vs
+# no-words GROUP and nothing finer — classic and levelRail are both no-words, so
+# swapping their two presets satisfies it and still passes. These are the sizes
+# the designs declare (`PillDefinition.swift:56`, `:111`): classic 185 wide with
+# the fixed 92-point interaction frame, levelRail 288, and the reading well 400
+# content-sized from the first frame.
+EXPECTED_GEOMETRY = {
+    "classic": (185, 92),
+    "levelRail": (288, 92),
+    "readingWell": (400, 34),
+}
+
 ROWS = [
     ("classic", {"livePreviewEnabled": False, "recordingPillDesignWithoutWords": "classic"}),
     ("levelRail", {"livePreviewEnabled": False, "recordingPillDesignWithoutWords": "levelRail"}),
@@ -305,13 +317,19 @@ def main():
         # `restore_clean` is part of the VERDICT, not a footnote beside it. A run
         # that measured correctly and left the shared settings suite altered has
         # changed what every other worktree's dev build reads on next launch.
+        report["all_rows_expected_geometry"] = all(
+            tuple((report["rows"].get(name, {}).get("overlay") or {}).get(k)
+                  for k in ("w", "h")) == expected
+            for name, expected in EXPECTED_GEOMETRY.items())
         report["verdict"] = ("PASS" if report["width_spread_ok"]
                              and report["all_rows_correct_group"]
+                             and report["all_rows_expected_geometry"]
                              and report["restore_clean"] else "REFUSED")
         (UAT / "geometry-relaunch.json").write_text(json.dumps(report, indent=2, default=str))
         print(json.dumps({k: report[k] for k in
                           ("widths", "heights", "rows_measured", "width_spread_ok",
-                           "all_rows_correct_group", "verdict", "restore_clean")},
+                           "all_rows_correct_group", "all_rows_expected_geometry",
+                           "verdict", "restore_clean")},
                          indent=2))
 
 

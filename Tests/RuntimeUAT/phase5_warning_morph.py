@@ -71,6 +71,7 @@ DEV_DOMAIN = "com.enviouswispr.app.dev"
 CAP_SECONDS = 45.0
 LEAD_SECONDS = 30.0          # so the warning fires 15s into the take
 HOLD_SECONDS = 26.0          # comfortably past the warning, well short of the cap
+MORPH_FROM, MORPH_TO = [400, 34], [400, 60]
 OVERRIDES = {"EWDebugMaxRecordingSeconds": CAP_SECONDS,
              "EWDebugWarningLeadSeconds": LEAD_SECONDS}
 
@@ -128,6 +129,7 @@ def staged_clear_take(pid):
     # notice targets the recording panel and no-ops when none is showing; a seam
     # that rendered something with no recording would be staging a state the
     # product cannot reach, which is the opposite of what it is for.
+    idle_settled = g.await_idle()
     idle_before = set(g.visible_overlays(pid))
     idle_reply = fi.send("force_auto_stop_unavailable_notice")
     idle_seen = {}
@@ -135,6 +137,8 @@ def staged_clear_take(pid):
         idle_seen.update(g.visible_overlays(pid))
         time.sleep(0.05)  # test-fixture-timer: window-server sampling cadence
     out = {"idle_reply": idle_reply,
+           "idle_settled": idle_settled,
+           "idle_slot_was_empty": not idle_before,
            "idle_overlays_before": sorted(idle_before),
            "idle_overlays_after": sorted(idle_seen),
            "idle_invocation_inert": not (set(idle_seen) - idle_before)}
@@ -150,12 +154,22 @@ def staged_clear_take(pid):
     steady = [m for m in g.visible_overlays(pid).values()]
     out["frame_before_notice"] = [steady[0]["w"], steady[0]["h"]] if steady else None
 
+    clear_frames = {"before-notice": str(OUT / "clear-before.png")}
+    subprocess.run(["/usr/sbin/screencapture", "-x", "-o", clear_frames["before-notice"]],
+                   capture_output=True)
     out["reply"] = fi.send("force_auto_stop_unavailable_notice")
     fired_at = time.time()
-    time.sleep(10.0)  # deadline-fallback: the notice is armed `dismissAfter: 4.0`
+    time.sleep(1.0)  # settle: let the banner compose before capturing it
+    clear_frames["notice-visible"] = str(OUT / "clear-visible.png")
+    subprocess.run(["/usr/sbin/screencapture", "-x", "-o", clear_frames["notice-visible"]],
+                   capture_output=True)
+    time.sleep(9.0)  # deadline-fallback: the notice is armed `dismissAfter: 4.0`
     # and there is no signal for "the clear fired"; outliving it IS the
     # observation, so this waits comfortably past it and reads the series.
 
+    clear_frames["after-clear"] = str(OUT / "clear-after.png")
+    subprocess.run(["/usr/sbin/screencapture", "-x", "-o", clear_frames["after-clear"]],
+                   capture_output=True)
     still_recording = "Recording started" in tail_of_log(2000) and not _terminal_after_start()
     rk.stop_after_short_hold(0.0)
     bounds.stop()
@@ -176,18 +190,18 @@ def staged_clear_take(pid):
     out["lifecycle"] = life["verdict"]
     out["recording_still_live_at_clear"] = still_recording
 
-    # The round trip: out to the banner frame, then back to where it started.
-    outs = [m for m in steps if m["at_s"] >= 0 and m["to"][1] > m["from"][1]
-            and m["to"][0] == m["from"][0]]
-    backs = []
-    if outs:
-        first = outs[0]
-        backs = [m for m in steps if m["at_s"] > first["at_s"]
-                 and m["from"] == first["to"] and m["to"] == first["from"]]
+    # THE EXACT ROUND TRIP. "Any same-width growth and its inverse" still admits a
+    # live preview wrapping a line and unwrapping it; the banner is a specific
+    # pair of frames.
+    outs = [m for m in steps if m["at_s"] >= 0
+            and m["from"] == MORPH_FROM and m["to"] == MORPH_TO]
+    backs = [m for m in steps if outs and m["at_s"] > outs[0]["at_s"]
+             and m["from"] == MORPH_TO and m["to"] == MORPH_FROM]
     out["morph"] = outs[0] if outs else None
     out["clear"] = backs[0] if backs else None
     out["cleared_after_s"] = (round(backs[0]["at_s"] - outs[0]["at_s"], 2)
                               if outs and backs else None)
+    out["frames"] = clear_frames
     return out
 
 
@@ -285,10 +299,9 @@ def main():
         # still admits any same-width growth near the deadline — a live preview
         # wrapping a line does exactly that. The banner's morph is a specific
         # pair of frames and the clear is its inverse.
-        morph_from, morph_to = [400, 34], [400, 60]
         near = [m for m in morphs
                 if m["at_s"] is not None and abs(m["at_s"] - expected) <= 4.0
-                and m["from"] == morph_from and m["to"] == morph_to]
+                and m["from"] == MORPH_FROM and m["to"] == MORPH_TO]
         # The CLEAR: the same panel returns to the pre-banner frame, roughly four
         # seconds later, while the recording is still running.
         cleared = []
@@ -296,7 +309,7 @@ def main():
             at = near[0]["at_s"]
             cleared = [m for m in morphs
                        if m["at_s"] is not None and m["at_s"] > at
-                       and m["from"] == morph_to and m["to"] == morph_from]
+                       and m["from"] == MORPH_TO and m["to"] == MORPH_FROM]
         report["morph_cleared"] = cleared
 
         report.update({
@@ -336,11 +349,19 @@ def main():
         g.await_idle()
         clear = staged_clear_take(pid)
         report["clear_take"] = clear
-        clear_ok = (clear.get("idle_invocation_inert") and clear.get("morph") and clear.get("clear")
+        clear_frames = clear.get("frames") or {}
+        clear_frames_exist = bool(clear_frames) and all(
+            f and pathlib.Path(f).exists() for f in clear_frames.values())
+        clear_ok = (clear.get("idle_reply") == "OK"
+                    and clear.get("reply") == "OK"
+                    and clear.get("idle_settled")
+                    and clear.get("idle_slot_was_empty")
+                    and clear.get("idle_invocation_inert")
+                    and clear.get("morph") and clear.get("clear")
                     and clear.get("lifecycle") == lc.OK
                     and clear.get("recording_still_live_at_clear")
-                    and clear.get("cleared_after_s") is not None
-                    and 2.0 <= clear["cleared_after_s"] <= 8.0)
+                    and clear_frames_exist
+                    and 2.0 <= clear.get("cleared_after_s", 0) <= 8.0)
         report["clear_row"] = "PASS" if clear_ok else "REFUSED"
         report["verdict"] = "PASS" if (morph_ok and clear_ok) else "REFUSED"
     finally:

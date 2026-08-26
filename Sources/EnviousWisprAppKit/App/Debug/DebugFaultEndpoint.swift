@@ -251,14 +251,9 @@
       // `ASREngineNotReadyAfterLoadError` and crash recovery must RETAIN the
       // recording and spend one retry instead of deleting it. Staging that race
       // by hand is impossible — it lives between two adjacent statements.
-      // #2377 C6D. Presents the PRODUCTION `autoStopUnavailable` notice — the
-      // only in-panel notice armed `dismissAfter: 4.0`, and therefore the only
-      // one whose CLEAR leaves the pill on screen. Its real trigger is a VAD
-      // failure, which nothing can stage on demand.
-      //
-      // Refuses when bootstrap has not installed the handle. An "OK" for a
-      // command that reached no overlay would let the UAT report a morph nobody
-      // rendered.
+      // Presents the production `autoStopUnavailable` notice — the only in-panel
+      // notice armed `dismissAfter: 4.0`, so the only one whose clear leaves the
+      // pill on screen. Refuses before installation; inert with no recording.
       case "force_auto_stop_unavailable_notice":
         guard let present = DebugOverlayStaging.presentAutoStopUnavailableNotice else {
           return "ERR notice handle not installed"
