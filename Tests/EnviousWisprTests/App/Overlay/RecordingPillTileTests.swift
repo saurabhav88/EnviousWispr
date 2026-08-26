@@ -219,9 +219,14 @@ struct RecordingPillTileTests {
       \(RecordingPillPreviewTile.sampleLevel). Both render the same instant, so a picker \
       showing them disagreeing is drawing a pill that cannot occur.
       """)
+    // **This is about an AUTHORED constant, not about a recording**, and the
+    // distinction matters if anyone copies the assertion: a genuinely SILENT take
+    // renders all-zeros for honest reasons and would fail it. Here the array is
+    // written by hand and a flat one would mean somebody replaced a waveform with
+    // a placeholder. Raised by a peer session against its own prewarm work.
     #expect(
       Set(history).count > 1,
-      "every sample is identical, so the meter draws a flat bar rather than a waveform")
+      "every sample in the authored waveform is identical, so the meter draws a flat bar")
   }
 
   @Test("no two tiles announce the same thing")
@@ -326,6 +331,97 @@ struct RecordingPillPreviewWiringTests {
     call.arguments.first { $0.label?.text == label }?.expression
   }
 
+  static let leaf = "Sources/EnviousWisprAppKit/App/Overlay/Views/RecordingOverlayView.swift"
+
+  private final class StructFinder: SyntaxVisitor {
+    let wanted: String
+    private(set) var found: StructDeclSyntax?
+    init(_ wanted: String) {
+      self.wanted = wanted
+      super.init(viewMode: .sourceAccurate)
+    }
+    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
+      if node.name.text == wanted { found = node }
+      return .visitChildren
+    }
+  }
+
+  private static func structDecl(named: String, in tree: SourceFileSyntax) -> StructDeclSyntax? {
+    let f = StructFinder(named)
+    f.walk(tree)
+    return f.found
+  }
+
+  /// Names of the `@State` properties declared DIRECTLY on this struct.
+  private static func stateProperties(of decl: StructDeclSyntax) -> Set<String> {
+    var names: Set<String> = []
+    for member in decl.memberBlock.members {
+      guard let variable = member.decl.as(VariableDeclSyntax.self) else { continue }
+      let isState = variable.attributes.contains { attribute in
+        attribute.as(AttributeSyntax.self)?
+          .attributeName.as(IdentifierTypeSyntax.self)?.name.text == "State"
+      }
+      guard isState else { continue }
+      for binding in variable.bindings {
+        if let pattern = binding.pattern.as(IdentifierPatternSyntax.self) {
+          names.insert(pattern.identifier.text)
+        }
+      }
+    }
+    return names
+  }
+
+  /// **Assignments the view makes to its own names, with initializers EXCLUDED.**
+  /// An init writes `_name = State(initialValue:)`, which is the seed itself, so
+  /// counting it would make every property look poll-written.
+  private final class AssignmentFinder: SyntaxVisitor {
+    private(set) var names: Set<String> = []
+    private var initDepth = 0
+
+    override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
+      initDepth += 1
+      return .visitChildren
+    }
+    override func visitPost(_ node: InitializerDeclSyntax) { initDepth -= 1 }
+
+    /// **`SequenceExprSyntax`, not `InfixOperatorExprSyntax`.** An unfolded parse
+    /// represents `a = b` as a flat sequence — reference, operator, value — and
+    /// the folded infix form never appears. Reaching for the infix node returned
+    /// an EMPTY set, which the `audioTick` control below caught rather than
+    /// letting it pass as "the poll writes nothing".
+    override func visit(_ node: SequenceExprSyntax) -> SyntaxVisitorContinueKind {
+      guard initDepth == 0 else { return .visitChildren }
+      let elements = Array(node.elements)
+      guard elements.count >= 3,
+        let target = elements[0].as(DeclReferenceExprSyntax.self)
+      else { return .visitChildren }
+
+      let isAssignment =
+        elements[1].is(AssignmentExprSyntax.self)
+        || (elements[1].as(BinaryOperatorExprSyntax.self)?.operator.text.hasSuffix("=") ?? false)
+      if isAssignment { names.insert(target.baseName.text) }
+      return .visitChildren
+    }
+  }
+
+  private static func namesAssignedOutsideInit(of decl: StructDeclSyntax) -> Set<String> {
+    let f = AssignmentFinder(viewMode: .sourceAccurate)
+    f.walk(decl)
+    return f.names
+  }
+
+  /// Every parameter label on this struct's initializers.
+  private static func initParameterNames(of decl: StructDeclSyntax) -> Set<String> {
+    var names: Set<String> = []
+    for member in decl.memberBlock.members {
+      guard let initializer = member.decl.as(InitializerDeclSyntax.self) else { continue }
+      for parameter in initializer.signature.parameterClause.parameters {
+        names.insert((parameter.secondName ?? parameter.firstName).text)
+      }
+    }
+    return names
+  }
+
   @Test("the settings tile parks its poll instead of running one")
   func theTilePassesTheStillCadence() throws {
     let call = try Self.theConstruction()
@@ -418,6 +514,60 @@ struct RecordingPillPreviewWiringTests {
       initialLevelHistory is \(expr.trimmedDescription), not the sample waveform this \
       picker owns. `theSampleWaveformIsWellFormed` asserts that array's shape and would \
       then be asserting something nothing draws.
+      """)
+  }
+
+  /// **THE CLOSURE ROW. Every piece of `@State` the poll writes must be seedable,
+  /// and this ENUMERATES them from the poll body rather than from a list I wrote.**
+  ///
+  /// Three cloud-review rounds each found a different member of one set: the
+  /// reading well's words, the meter's history, then the level and the clock. That
+  /// is the signature of DESCRIBING a set instead of enumerating one — a
+  /// description always has a next counterexample, and the reviewer finds it
+  /// faster than the author can extend it.
+  ///
+  /// So the machine prints the structure. It reads `RecordingOverlayView`'s own
+  /// `@State` declarations, finds which of them the view assigns outside its
+  /// initializer, and requires an `initial<Name>` parameter for each. A fifth one
+  /// added later fails HERE, before a picker can ship drawing it wrong.
+  ///
+  /// `audioTick` is the one exemption and it is exempted BY NAME with its reason:
+  /// it is a counter rather than a picture, it exists so the meter appends on
+  /// every poll including silent ones, and seeding it to anything but zero would
+  /// suppress the meter's first append. The meter takes `initialHistory` instead.
+  @Test("every piece of state the poll writes can be seeded")
+  func thePollsStateIsSeedable() throws {
+    let text = try String(
+      contentsOf: RepoRoot.url.appending(path: Self.leaf), encoding: .utf8)
+    let view = try #require(
+      Self.structDecl(named: "RecordingOverlayView", in: Parser.parse(source: text)),
+      "RecordingOverlayView is not in \(Self.leaf) — this guard is pointed at the wrong file")
+
+    let stateNames = Self.stateProperties(of: view)
+    #expect(
+      stateNames.count >= 4,
+      "found \(stateNames.count) @State properties, which is fewer than the four this view is known to hold: \(stateNames)")
+
+    let written = Self.namesAssignedOutsideInit(of: view).intersection(stateNames)
+    #expect(
+      written.contains("audioTick"),
+      """
+      the poll no longer writes audioTick, so this guard's one exemption is stale and \
+      its reason needs re-reading rather than the name being deleted.
+      """)
+
+    let seeds = Self.initParameterNames(of: view)
+    let unseeded = written.subtracting(["audioTick"]).filter {
+      !seeds.contains("initial" + $0.prefix(1).uppercased() + $0.dropFirst())
+    }
+
+    #expect(
+      unseeded.isEmpty,
+      """
+      the poll writes \(unseeded.sorted()) and the view takes no seed for them, so a pill \
+      rendered as a PICTURE draws those at their zero value and then snaps once the single \
+      poll lands. Add `initial<Name>` and pass it from the picker, or state here why this \
+      one is a counter rather than a picture.
       """)
   }
 

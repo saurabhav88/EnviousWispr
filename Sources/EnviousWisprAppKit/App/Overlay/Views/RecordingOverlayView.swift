@@ -328,6 +328,19 @@ struct RecordingOverlayView: View {
   /// CONSTRUCTS its own background** and a caller has no other way to reach it.
   /// Defaults to `true`, so the one production caller is unchanged.
   let animatesGlow: Bool
+  /// **THE POLL WRITES FOUR PIECES OF `@State`, AND A PILL THAT NEVER POLLS NEEDS
+  /// EVERY ONE OF THEM SEEDED (#2435).** Three cloud-review rounds each found a
+  /// different member of this set — the reading well's words, the meter's history,
+  /// then the level and the clock — so the set is now ENUMERATED here rather than
+  /// described, and `RecordingPillPreviewWiringTests` reads the poll body to
+  /// enforce it. A fifth one added later fails that guard until it is seeded.
+  ///
+  /// | poll writes | seed | why |
+  /// |---|---|---|
+  /// | `audioLevel` | `initialAudioLevel` | the rainbow mark's height |
+  /// | `elapsed` | `initialElapsed` | the clock |
+  /// | `preview` | `initialPreview` | the reading well's words |
+  /// | `audioTick` | NONE, deliberately | a counter, not a picture. It exists so the meter appends on every poll INCLUDING silent ones; seeding it to anything but 0 would suppress the meter's first append, and the meter takes its own `initialHistory` instead. |
   @State private var audioLevel: Float = 0
 
   /// Counts polls, not level changes. #2216: the meter's history needs a sample
@@ -360,7 +373,9 @@ struct RecordingOverlayView: View {
     initialPreview: LivePreviewDisplay = .off,
     cadence: RecordingPollCadence = .live,
     animatesGlow: Bool = true,
-    initialLevelHistory: [CGFloat] = []
+    initialLevelHistory: [CGFloat] = [],
+    initialAudioLevel: Float = 0,
+    initialElapsed: TimeInterval = 0
   ) {
     self.audioLevelProvider = audioLevelProvider
     self.recordingElapsedProvider = recordingElapsedProvider
@@ -373,6 +388,8 @@ struct RecordingOverlayView: View {
     self.animatesGlow = animatesGlow
     self.initialLevelHistory = initialLevelHistory
     _preview = State(initialValue: initialPreview)
+    _audioLevel = State(initialValue: initialAudioLevel)
+    _elapsed = State(initialValue: initialElapsed)
   }
 
   /// #2202: the preview pill's header — timer hard left, live meter beside it,

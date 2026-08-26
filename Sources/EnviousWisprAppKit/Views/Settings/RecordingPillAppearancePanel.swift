@@ -349,7 +349,14 @@ private struct RecordingPillPreview: View {
       animatesGlow: false,
       // The meter is the Level Rail's whole identity, and a pill that never polls
       // has no history to build. See `sampleLevelHistory`.
-      initialLevelHistory: RecordingPillPreviewTile.sampleLevelHistory
+      initialLevelHistory: RecordingPillPreviewTile.sampleLevelHistory,
+      // **The last two of the poll's four pieces of state.** Without them the
+      // first frame draws the rainbow mark at silence and a 0:00 clock, then
+      // snaps to the sample once the single poll lands. The leaf's own doc
+      // comment enumerates the set; the wiring guard reads the poll body and
+      // requires a seed for each.
+      initialAudioLevel: RecordingPillPreviewTile.sampleLevel,
+      initialElapsed: RecordingPillPreviewTile.sampleElapsed
     )
     // **A PICTURE does not move, including on the way in.** The leaf animates
     // `audioLevel`, and its first poll moves that from 0 to the sample, so a tile
