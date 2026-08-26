@@ -91,13 +91,44 @@ def capture_design(pid, name):
 CONFIGURE_LINK = "Configure Live Preview"
 
 
+class UATPreconditionFailed(RuntimeError):
+    """A state this run needs, which it could not establish."""
+
+
+def require(condition, what):
+    """Stop the run rather than record a value nothing established.
+
+    **Every field below used to be written whatever the app was doing.** Measured
+    2026-08-26 against a freshly launched build with NO Settings window open: the
+    report came back with `appearance_open: false` and the run CARRIED ON,
+    producing `tapped_readingWell: true`, `tapped_classic: true` and
+    `configure_link_gone_after_wordless: true` — three green-looking fields from a
+    run that never opened a window. Every `bounds` was null in the same report and
+    was recorded as data rather than as failure.
+
+    **`w.tap()` returning True does NOT mean the tap landed.** That is the half
+    that matters, because a guard built on tap results — which is exactly what
+    `coupling_observed` was — inherits the lie. The only trustworthy evidence is
+    the app's own rendered state, read back after the action.
+    """
+    if not condition:
+        raise UATPreconditionFailed(what)
+
+
 def main():
     pid = int(sys.argv[1])
     report = {"pid": pid, "rows": {}, "picker": {}}
 
     w.connect()
-    w.tap("Appearance")
-    report["picker"]["appearance_open"] = "RECORDING PILL" in ui_text()
+
+    # **The window has to EXIST before any of this means anything.** Nothing here
+    # opened Settings, and every check below silently assumed someone had.
+    require(w.tap("Appearance"), "could not reach the Appearance section")
+    await_idle()
+
+    appearance_open = "RECORDING PILL" in ui_text()
+    report["picker"]["appearance_open"] = appearance_open
+    require(appearance_open, "Appearance did not open — the Recording Pill panel is not on screen")
 
     # **The greyed-reason rows are GONE, not renamed.** They asserted a sentence
     # the panel no longer renders in either Live Preview state: the presence half
@@ -119,11 +150,16 @@ def main():
     # Resolves through the ACCESSIBILITY label, since the cards carry no visible
     # name; `tapped_readingWell` false means that label stopped naming the design,
     # which is a real defect and not a harness quirk.
-    report["picker"]["tapped_readingWell"] = bool(w.tap("Reading Well"))
+    w.tap("Reading Well")
     await_idle()
 
     before = ui_text()
     report["picker"]["configure_link_while_words_selected"] = CONFIGURE_LINK in before
+    # The link IS the evidence that the tap landed, so it is required rather than
+    # recorded. A tap result would not be: see `require`.
+    require(
+        report["picker"]["configure_link_while_words_selected"],
+        "selecting the words design did not produce the Configure Live Preview link")
 
     report["rows"]["readingWell"] = capture_design(pid, "readingWell")
 
@@ -140,9 +176,13 @@ def main():
     # not incidental: if a rename ever broke it, this row goes red and a
     # VoiceOver user loses the only name they had.
     for label, key in (("Capsule", "classic"), ("Level Rail", "levelRail")):
-        tapped = w.tap(label)
-        report["picker"][f"tapped_{key}"] = bool(tapped)
-        report["rows"][key] = capture_design(pid, key)
+        w.tap(label)
+        await_idle()
+        row = capture_design(pid, key)
+        report["rows"][key] = row
+        # A null bound is a failed capture, and recording it as data is how a dead
+        # run reported three designs it never saw.
+        require(row.get("bounds"), f"no bounds captured for {key} — the pill never rendered")
 
     # Both directions, so neither half can pass vacuously: the link was present
     # above with the words design live, and must be gone now that a wordless one
@@ -154,17 +194,27 @@ def main():
     # never actually driven reports FALSE rather than inheriting a lucky starting
     # state. Without this the whole verdict rests on a link being absent, which is
     # also what a completely dead run looks like.
-    report["picker"]["coupling_observed"] = bool(
-        report["picker"].get("tapped_readingWell")
-        and report["picker"].get("tapped_classic")
-        and report["picker"].get("tapped_levelRail")
-        and report["picker"].get("configure_link_while_words_selected")
-        and report["picker"]["configure_link_gone_after_wordless"]
-    )
+    # Both halves are now REQUIRED above and here, so reaching this line at all
+    # means the coupling was observed in both directions. The field stays for the
+    # report's readers; it is no longer what decides the verdict, because a value
+    # computed from tap results was exactly the thing that could not be trusted.
+    require(
+        report["picker"]["configure_link_gone_after_wordless"],
+        "the Configure Live Preview link survived selecting a wordless design")
+    report["picker"]["coupling_observed"] = True
 
     (UAT / "geometry-ui.json").write_text(json.dumps(report, indent=2, default=str))
     print(json.dumps(report, indent=2, default=str)[:2200])
 
 
 if __name__ == "__main__":
-    main()
+    # **A failed precondition EXITS NONZERO and writes no report.** The previous
+    # entrypoint let every failure become a JSON file full of plausible-looking
+    # fields, which is worse than no file: a caller reading it cannot tell a real
+    # result from a run that never opened a window. `validate-pr.sh` and any human
+    # reading the exit status now get an unambiguous answer.
+    try:
+        main()
+    except UATPreconditionFailed as failure:
+        print(f"UAT PRECONDITION FAILED: {failure}", file=sys.stderr)
+        sys.exit(2)
