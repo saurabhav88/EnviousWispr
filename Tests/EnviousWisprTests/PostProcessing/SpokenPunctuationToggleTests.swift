@@ -16,14 +16,34 @@ struct SpokenPunctuationToggleTests {
 
   private static let itn = InverseTextNormalizer()
 
-  /// The ten spoken phrases the nine `punct` tuples produce. Mirrors
-  /// `SpokenPunctuationCopy.phrases`; the copy-freeze test in the AppKit suite pins the
-  /// user-facing side.
-  static let triggers: [(spoken: String, mark: String)] = [
-    ("comma", ","), ("period", "."), ("full stop", "."),
-    ("question mark", "?"), ("exclamation mark", "!"), ("exclamation point", "!"),
-    ("colon", ":"), ("semicolon", ";"),
-  ]
+  /// **GENERATED from `SpokenPunctuationRules`, not mirrored (#2450.)** This was a
+  /// hand-maintained copy of the English table and the third of three such copies; a
+  /// rename or an added phrase silently left it stale. The line and paragraph breaks are
+  /// excluded because they produce whitespace rather than a mark and are exercised by
+  /// `lineBreakTriggers` below.
+  ///
+  /// The EXPECTED OUTPUTS in the tests below stay literal. Generating both the input and
+  /// the expectation from the same table would compare the mechanism with itself.
+  static let triggers: [(spoken: String, mark: String)] = {
+    let rules = SpokenPunctuationRules.table(for: "en") ?? []
+    return
+      rules
+      .filter { $0.command != .lineBreak && $0.command != .paragraphBreak }
+      .flatMap { rule in rule.spokenForms.map { (spoken: $0, mark: rule.replacement) } }
+  }()
+
+  /// Fails closed: a table that stopped returning English rules would otherwise make
+  /// every parameterized test above vacuous by running zero arguments.
+  @Test("The generated trigger set is the shipped English one")
+  func triggerSetIsComplete() {
+    #expect(Self.triggers.count == 8, "expected 8 mark-producing English phrases")
+    let spoken = Set(Self.triggers.map(\.spoken))
+    #expect(
+      spoken == [
+        "comma", "period", "full stop", "question mark",
+        "exclamation mark", "exclamation point", "colon", "semicolon",
+      ])
+  }
 
   // MARK: - The switch works
 

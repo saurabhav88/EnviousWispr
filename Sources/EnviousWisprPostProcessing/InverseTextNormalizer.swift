@@ -557,7 +557,10 @@ public struct InverseTextNormalizer: Sendable {
     t = reSub(#"\b(\d[\d,]*\.\d+)\s+(?:percent|per\s+cent)\b"#, t) { m in "\(m.g(1) ?? "")% " }
 
     t = keepMagnitude(t)  // '$80,000,000'->'$80 million' (founder house style), keep the word
-    t = applyPunct(t, spokenPunctuation: spokenPunctuation)
+    // #2450: the English table moved to `SpokenPunctuationRules` verbatim. Passing nil
+    // when the setting is off reproduces the previous `if spokenPunctuation` guard.
+    t = applyPunct(t, rules: spokenPunctuation ? SpokenPunctuationRules.table(for: "en") : nil).text
+    t = capitalizeSentenceStarts(t)
 
     // restore register-preserved spans verbatim
     for (i, p) in protected.enumerated() {
@@ -1093,41 +1096,87 @@ public struct InverseTextNormalizer: Sendable {
 
   // MARK: - Punctuation
 
-  /// The nine bare spoken-punctuation commands, gated by the user setting (#1794).
-  /// Nine tuples, TEN phrases: `exclamation (mark|point)` yields two.
-  ///
-  /// Matching is case-INSENSITIVE (`reSub` defaults `caseInsensitive: true` and the
-  /// loop below does not override it), so "Period" at a sentence start converts too.
-  ///
-  /// User-facing copy mirrors this table BY HAND in `SpokenPunctuationCopy`
-  /// (EnviousWisprAppKit). Change one, change the other, or the in-app help panel
-  /// starts lying about what the app does. A freeze test pins that copy.
+  /// The spoken-punctuation command table moved to `SpokenPunctuationRules` (#2450),
+  /// which is now the sole owner of "which spoken phrase becomes which mark" across all
+  /// five languages. **English's nine patterns are carried there VERBATIM**, including
+  /// the asymmetry where two anchor with `\b` and the rest with `\s+`.
   ///
   /// Spoken symbol words in CONTEXTUAL conversions (email at/dot, URL dot/slash,
-  /// numeric slash, percent, decimal dot) are NOT here and are never gated.
-  private static let punct: [(String, String)] = [
-    (#"\bnew paragraph\b"#, "\n\n"), (#"\bnew line\b"#, "\n"),
-    (#"\s+comma\b"#, ","), (#"\s+period\b"#, "."), (#"\s+full stop\b"#, "."),
-    (#"\s+question mark\b"#, "?"), (#"\s+exclamation (mark|point)\b"#, "!"),
-    (#"\s+colon\b"#, ":"), (#"\s+semicolon\b"#, ";"),
-  ]
-
-  /// - Parameter spokenPunctuation: when false, the nine command rewrites are skipped
-  ///   and their trigger words survive as ordinary text. Sentence capitalization below
-  ///   runs REGARDLESS: it keys off `.!?` whoever produced them, including the marks
-  ///   the speech recognizer adds on its own, so it is general formatting rather than
-  ///   part of the spoken-command feature.
-  private func applyPunct(_ t0: String, spokenPunctuation: Bool) -> String {
+  /// numeric slash, percent, decimal dot) are NOT there and are never gated.
+  ///
+  /// - Parameter rules: `nil` skips the command rewrites entirely and their trigger
+  ///   words survive as ordinary text — the shipped default (#1794).
+  /// - Parameter startWord: `nil` for English, whose commands are bare. Every other
+  ///   language's patterns already carry their start word, so this parameter exists for
+  ///   the caller's benefit rather than the matcher's; see `applySpokenPunctuation`.
+  ///
+  /// Sentence capitalization is NOT applied here. It was, until #2450: it keys off
+  /// `.!?` whoever produced them, so it is general English formatting rather than part
+  /// of the spoken-command feature, and calling it from the multilingual entry point
+  /// would silently expand an English `[a-z]`-only pass into four languages that have
+  /// never received it. `normalize` calls `capitalizeSentenceStarts` directly instead.
+  private func applyPunct(_ t0: String, rules: [SpokenPunctuationRule]?) -> (
+    text: String, fired: Int
+  ) {
+    guard let rules else { return (t0, 0) }
     var t = t0
-    if spokenPunctuation {
-      for (pat, rep) in Self.punct {
-        t = reSub(pat, t) { _ in rep }
+    var fired = 0
+    for rule in rules {
+      var hit = false
+      t = reSub(rule.pattern, t) { _ in
+        hit = true
+        return rule.replacement
       }
+      if hit { fired += 1 }
     }
-    // capitalize sentence starts crudely (no case-insensitivity: targets lowercase only)
-    t = reSub(#"(^|[.!?]\s+)([a-z])"#, t, caseInsensitive: false) { m in
+    return (t, fired)
+  }
+
+  /// Capitalize sentence starts crudely. ASCII-lowercase only and deliberately so; it
+  /// runs for every take that reaches `normalize`, whatever the spoken-punctuation
+  /// setting, because the marks it keys off are usually the recognizer's own.
+  private func capitalizeSentenceStarts(_ t: String) -> String {
+    reSub(#"(^|[.!?]\s+)([a-z])"#, t, caseInsensitive: false) { m in
       (m.g(1) ?? "") + (m.g(2) ?? "").uppercased()
     }
-    return t
   }
+
+  // MARK: - Multilingual spoken punctuation (#2450)
+
+  /// Apply ONE language's spoken-punctuation commands, with none of the contextual
+  /// English conversions and none of the English sentence capitalization.
+  ///
+  /// **A separate entry point rather than a flag on `normalize` on purpose.**
+  /// `normalize` is a ~370-line single pipeline owning every shipped English
+  /// conversion; wrapping its passes in a conditional to serve a case that needs none
+  /// of them is a large edit to the one function with the most to lose. This touches
+  /// nothing English.
+  ///
+  /// Returns the text and how many RULES fired — a count the caller cannot recover by
+  /// diffing, and the only thing #2450's telemetry claims. It measures routing, never
+  /// precision: nothing here knows whether a rewrite was what the user meant.
+  package func applySpokenPunctuation(
+    _ text: String, language: String, startWord: String?
+  ) -> SpokenPunctuationResult {
+    guard let rules = SpokenPunctuationRules.table(for: language) else {
+      return SpokenPunctuationResult(text: text, rulesFired: 0)
+    }
+    _ = startWord  // patterns already carry it; parameter documents the caller's intent
+    let padded = " " + text.trimmingCharacters(in: .whitespacesAndNewlines) + " "
+    let applied = applyPunct(padded, rules: rules)
+    var t = applied.text
+    // Tighten the space the pad and the `\s+` anchors leave in front of a mark, then
+    // collapse runs of spaces WITHOUT touching the newlines a paragraph command just
+    // inserted. Same two passes `normalize` runs for the same reason.
+    t = reSub(#"\s+([,.!?;:])"#, t, caseInsensitive: false) { m in m.g(1) }
+    t = reSub(#"[ \t]+"#, t, caseInsensitive: false) { _ in " " }
+    return SpokenPunctuationResult(
+      text: t.trimmingCharacters(in: .whitespacesAndNewlines), rulesFired: applied.fired)
+  }
+}
+
+/// What `applySpokenPunctuation` produced, and how much of the table fired.
+package struct SpokenPunctuationResult: Sendable {
+  package let text: String
+  package let rulesFired: Int
 }
