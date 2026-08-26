@@ -50,7 +50,7 @@ struct OverlayHostingContractTests {
     let d = OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
       selections: { .shipped },
-      deferFirstRender: { $0() })
+      firstRenderSchedule: { $0() })
 
     d.present(.warning(reason: .polishFailed))
 
@@ -100,7 +100,7 @@ struct OverlayHostingParityTests {
     OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
       selections: { .shipped },
-      deferFirstRender: { $0() })
+      firstRenderSchedule: { $0() })
   }
 
   @Test("both hosts report a presentation they accepted")

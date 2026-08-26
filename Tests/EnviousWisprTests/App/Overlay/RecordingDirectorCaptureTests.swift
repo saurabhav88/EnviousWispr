@@ -67,7 +67,7 @@ struct RecordingDirectorCaptureTests {
         counts.selections += 1
         return selections
       },
-      deferFirstRender: { $0() },
+      firstRenderSchedule: { $0() },
       scheduleReconciliation: scheduleReconciliation)
   }
 
@@ -325,7 +325,7 @@ struct RecordingDirectorCaptureTests {
         display: { .off }),
       grantAccessibility: {},
       selections: { .shipped },
-      deferFirstRender: { $0() })
+      firstRenderSchedule: { $0() })
 
     Self.record(d)
 

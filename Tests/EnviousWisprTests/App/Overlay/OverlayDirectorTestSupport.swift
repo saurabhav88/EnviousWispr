@@ -35,7 +35,7 @@ enum OverlayTestDouble {
       // Announcements go nowhere: a test that has not asked for a screen has not
       // asked for VoiceOver either, and the real post reaches the system.
       announce: { _ in }, livePreview: .disabled, grantAccessibility: {}, selections: { .shipped },
-      deferFirstRender: { $0() })
+      firstRenderSchedule: { $0() })
   }
 
   /// The same director, with its fake host in hand for a test that needs to
@@ -45,7 +45,7 @@ enum OverlayTestDouble {
     return (
       OverlayDirector(
         host: host, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {}, selections: { .shipped }, deferFirstRender: { $0() }),
+        livePreview: .disabled, grantAccessibility: {}, selections: { .shipped }, firstRenderSchedule: { $0() }),
       host
     )
   }

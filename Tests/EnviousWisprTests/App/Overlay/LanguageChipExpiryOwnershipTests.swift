@@ -69,7 +69,7 @@ struct LanguageChipExpiryOwnershipTests {
       announce: { _ in },
       livePreview: .disabled,
       grantAccessibility: {}, selections: { .shipped },
-      deferFirstRender: { $0() })
+      firstRenderSchedule: { $0() })
 
     d.present(
       .languageChip(

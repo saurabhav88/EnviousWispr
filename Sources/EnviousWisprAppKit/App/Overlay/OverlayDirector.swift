@@ -132,35 +132,25 @@ final class OverlayDirector {
   /// announces.
   private let announce: @MainActor (OverlayAnnouncement) -> Void
 
-  /// **ONE hosting view for THIS DIRECTOR's lifetime**, created lazily and
-  /// reused. The model is observable, so the same view re-renders rather than
-  /// being rebuilt — the SwiftUI half of the same claim the retained `NSPanel`
-  /// makes about the window. "For the app's lifetime" is a property of the
-  /// COMPOSITION ROOT holding the director, not something this file can promise.
-  ///
-  /// The view sends whole events and supplies the presentation's own ID; this
-  /// closure no longer looks one up. It used to read `reducer.state.current?.id`
-  /// at press time, which relabels a click on an outgoing pill with its
-  /// SUCCESSOR's identity — so the staleness check below passes it through and
-  /// the wrong pill's handler runs.
-  /// **Built on first use, and whether it HAS been built is load-bearing** —
-  /// which a `lazy var` cannot report, so the storage is explicit.
-  ///
-  /// Constructing this during the status-item menu dismiss animation is the
-  /// SIGABRT `deferFirstRender` exists to avoid, so "is it built yet" is the
-  /// exact condition the deferral keys on. A boolean set when a deferral was
-  /// SCHEDULED is a different fact and was wrong twice over: a second event
-  /// arriving before the queued block ran saw the flag already true and
-  /// constructed synchronously, and a deferred request dropped by its identity
-  /// gate left the flag true with nothing built, so the next presentation did
-  /// the same. Cloud review caught both in one finding.
-  private var builtRootView: NSView?
+  /// **ONE construction, however many presentations ask before it is ready**,
+  /// owned by `OverlayFirstRenderGate` rather than by a director-held flag.
+  /// `lazy var` is required, not stylistic: the closures below capture `self`,
+  /// and a stored property's initializer expression cannot — `self` is not
+  /// fully formed until every stored property is set, so construction is
+  /// deferred to first access, which is always after `init` completes.
+  private lazy var firstRenderGate = OverlayFirstRenderGate(
+    schedule: firstRenderSchedule,
+    construct: { [unowned self] in makeRootHostingView() },
+    didBecomeReady: { [weak self] root in
+      self?.commitLatestFirstRender(root)
+    })
 
-  private var rootHostingView: NSView {
-    if let builtRootView { return builtRootView }
+  /// Builds the retained root view. Called at most once per launch, from the
+  /// gate's own scheduled task — never directly.
+  private func makeRootHostingView() -> NSView {
     // #2377 Phase 6: DEBUG-only measurement of root construction, the cost this
-    // phase moves. Memoised above, so this runs once per launch and the marker
-    // is naturally a singleton.
+    // phase moves. The gate calls this once, so the marker is naturally a
+    // singleton.
     #if DEBUG
       let constructStart = OverlayFirstRenderMarkers.capture(.rootConstructStart)
     #endif
@@ -171,7 +161,6 @@ final class OverlayDirector {
     #if DEBUG
       let constructEnd = OverlayFirstRenderMarkers.capture(.rootConstructEnd)
     #endif
-    builtRootView = view
     #if DEBUG
       // HELD, not emitted. Writing here would put the marker's own cost inside
       // the keypress interval in the baseline bundle and outside it in the
@@ -188,20 +177,23 @@ final class OverlayDirector {
   /// Carries one `present` call's result from wherever that call terminates back
   /// to the caller — and is reachable from nothing else.
   ///
-  /// **NOT stored on the director, and that is the whole design.** A result held
-  /// in a director property belongs to whoever touched it last, and both ways of
-  /// managing that shipped a defect in turn: left armed, a recording resolved a
-  /// CARD's caller with the recording's outcome; flushed on entry, a request that
-  /// `admit` went on to REFUSE had already told a pending caller its card never
-  /// appeared — while that card rendered anyway, with buttons whose target its
-  /// presenter had never been told to record. A relay created by the call and
-  /// captured by that call's own deferred block cannot be reached by a later
-  /// transaction, so neither is expressible.
+  /// **Never resolved twice, and never resolved on the caller's behalf by a
+  /// LATER transaction.** A result held past its own call belongs to whoever
+  /// touched it last, and both ways of managing that shipped a defect in turn:
+  /// left armed, a recording resolved a CARD's caller with the recording's
+  /// outcome; flushed on entry, a request that `admit` went on to REFUSE had
+  /// already told a pending caller its card never appeared — while that card
+  /// rendered anyway, with buttons whose target its presenter had never been
+  /// told to record.
   ///
-  /// **SEVERAL DEFERRALS CAN BE PENDING AT ONCE**, which is why no single slot
-  /// could have been right: `builtRootView` is assigned inside `rootHostingView`,
-  /// reached only from `performRender`, so until some deferred block actually
-  /// renders, every presentation defers and queues its own block.
+  /// **Several relays CAN be pending at once for the SAME presentation id**,
+  /// held in `PendingFirstAcceptance.relays` while the first-render gate has
+  /// not yet constructed: two calls that both morph the one recording pill
+  /// before it has ever been drawn each get their own relay, and each must
+  /// hear the SAME verdict once the pill actually reaches the screen —
+  /// `onResult` promises exactly one answer describing whether the caller's
+  /// own presentation id was shown, and answering early or not at all is a
+  /// broken promise either way, not a simplification.
   ///
   /// One-shot: `resolve` after the first is a no-op, so a path that both rolls
   /// back and reports cannot report twice.
@@ -234,7 +226,8 @@ final class OverlayDirector {
   /// re-anchor or preserve the live frame, and it is the CALLER's fact.
   private var presentedID: PresentationID?
 
-  /// How the FIRST render reaches the next run loop.
+  /// How the FIRST render reaches the next run loop — the seam
+  /// `OverlayFirstRenderGate` schedules through.
   ///
   /// **A seam, not a branch, and the same shape `scheduler` already uses for
   /// expiry.** The production value is `DispatchQueue.main.async`, which is the
@@ -246,7 +239,12 @@ final class OverlayDirector {
   /// at its own call site: `Task` may execute immediately when already on the
   /// main actor, which is precisely the case that crashes. Written here because
   /// this is the line someone will try to modernise.
-  private let deferFirstRender: (@escaping () -> Void) -> Void
+  ///
+  /// A plain stored property, not `lazy`: it captures no `self`, so it needs
+  /// none of the deferred-construction treatment `firstRenderGate` requires,
+  /// and the gate reads it at ITS OWN `init`, which runs at first access —
+  /// after the director's `init` has already set this.
+  private let firstRenderSchedule: OverlayFirstRenderGate.Schedule
 
   private let position: () -> OverlayPillPosition
 
@@ -304,7 +302,7 @@ final class OverlayDirector {
     // installed and is not.
     selections: @escaping @MainActor () -> PillDesignSelections,
     makeID: @escaping () -> PresentationID = { PresentationID() },
-    deferFirstRender: @escaping (@escaping () -> Void) -> Void = { work in
+    firstRenderSchedule: @escaping OverlayFirstRenderGate.Schedule = { work in
       DispatchQueue.main.async(execute: work)
     },
     // A MECHANISM default, unlike the two above: production always wants the next
@@ -314,7 +312,7 @@ final class OverlayDirector {
       DispatchQueue.main.async(execute: work)
     }
   ) {
-    self.deferFirstRender = deferFirstRender
+    self.firstRenderSchedule = firstRenderSchedule
     self.selections = selections
     self.scheduleReconciliation = scheduleReconciliation
     self.host = host
@@ -731,6 +729,19 @@ final class OverlayDirector {
       case .inPanelNotice: self?.handle(.inPanelNoticeExpiryFired(id), binding: .none)
       }
     }
+    // **Which of `PillExpiryClock`'s three meanings this plan carries, kept
+    // explicit rather than folded into the returned closure.** `.unchanged`
+    // and `.cancel` both hand back an indistinguishable no-op — `.cancel`'s
+    // real effect already ran INSIDE `prepare` above — so a coalescing
+    // decision (preserve a still-pending arm vs. clear it vs. replace it)
+    // cannot be read back out of `armExpiry` itself; it has to travel
+    // alongside it. `PillExpiryClock.swift:66` owns which case means what.
+    let expiryUpdate: PendingExpiryUpdate
+    switch plan.expiryCommand {
+    case .unchanged: expiryUpdate = .preserve
+    case .cancel: expiryUpdate = .clear
+    case .arm: expiryUpdate = .replace(armExpiry)
+    }
 
     // **FAIL CLOSED: the recovery pill needs a payload the intent cannot carry.**
     // `OverlayIntent` is `Sendable` and the paste target is a pair of main-actor
@@ -799,54 +810,18 @@ final class OverlayDirector {
       // resolved notice copy and the providers reach the root together, so no
       // leaf can be built from a new presentation and an outgoing lock.
       model.publish(plan.presentation)
-      // **The announcement travels WITH the render**, so the deferred first
-      // presentation announces when it lands and a refused one never does.
-      let announceOnSuccess: () -> Void = { [weak self] in
-        armExpiry()
-        guard announcing, let announcement = plan.announcement else { return }
-        self?.announce(announcement)
-      }
-      let outcome = render(plan.presentation, onPresented: announceOnSuccess, relay: relay)
-      // The deferred branch holds the relay and resolves it when it lands;
-      // returning here must not resolve, or the caller hears a verdict before
-      // the host has been asked.
-      if outcome == .deferred { return }
-      if outcome == .refused {
-        // **A REFUSED PRESENTATION MUST NOT LEAVE AN OWNER BEHIND.** Clearing
-        // `presentedID` and the window says nothing to the reducer, the model,
-        // the binding or the armed expiry, all of which still name an occupant
-        // that is not on screen. Two consequences, both shipped defects rather
-        // than theory: `currentIntent` reads `reducer.state.current`, so the
-        // Bluetooth presenter's handshake confirms an invisible card and acts on
-        // its buttons; and `pipelineIntent` still holds the refused intent, so
-        // the dedup guard drops the RETRY as a repeat and the pill never
-        // recovers once a screen comes back.
-        //
-        // Rolled back through the same silent-dismiss path a real dismissal
-        // takes, so "nothing is on screen" has ONE definition rather than a
-        // second, partial one written here. Silent because nothing appeared:
-        // announcing a dismissal for a pill a VoiceOver user was never told
-        // about is a false statement in the other direction.
-        // **Rollback FIRST, then the verdict — and the ORDER is why this reads
-        // `presentedThisPlan` below.** The rollback dismisses through
-        // `apply(.hidden)`, which renders nil, which SUCCEEDS. Resolving on a
-        // bare render outcome therefore reported `.presented` for the very pill
-        // the host had just refused.
-        // **Rollback FIRST, then the verdict.** The rollback dismisses through
-        // `apply(.hidden)`, which renders nil, which SUCCEEDS — and it carries no
-        // relay, so it cannot answer for the presentation it is undoing. Reading
-        // a bare render outcome instead reported `.presented` for the very pill
-        // the host had just refused.
-        rollBackRefusedPresentation()
-        relay?.resolve(false)
-        // Nothing this plan installed survives, so an action addressed to it has
-        // no target. Delivering it would hit the assertion below on a state the
-        // rollback deliberately emptied.
-        return
-      }
-      // Only a plan that actually PUT SOMETHING ON SCREEN answers "presented".
-      // A `.hidden` plan reaches here too, and that is a dismissal.
-      if plan.presentation != nil { relay?.resolve(true) }
+      // **`render` now owns acceptance, refusal, rollback, expiry-start and
+      // announcement together — see `finishRender`.** `RenderSubmission` has
+      // only two cases because a QUEUED render and a REFUSED one both need the
+      // relay left to a LATER resolution and neither is this call's business:
+      // a queued render resolves when `commitLatestFirstRender` eventually
+      // runs, and a refused one is resolved by `finishRender` itself before
+      // this call returns. Only `.queued` needs this call to stop — a refusal
+      // has already rolled back and answered by the time control gets here.
+      let submission = render(
+        plan.presentation, relay: relay, expiryUpdate: expiryUpdate,
+        announcement: announcing ? plan.announcement : nil)
+      if submission == .queued { return }
     }
 
     // **A plan that changes NOTHING still announces, and that is shipped.**
@@ -939,22 +914,82 @@ final class OverlayDirector {
     return false
   }
 
-  /// Three outcomes, because a DEFERRED first render is neither of the other
-  /// two: nothing has been refused yet, and nothing is on screen yet. Collapsing
-  /// it into `true` announced a presentation the host had not accepted — the C8
-  /// defect reopening through the C15 deferral, caught by C8's own case.
-  enum RenderOutcome { case presented, refused, deferred }
+  /// `.queued` means no host verdict exists yet and `apply` must return.
+  /// `.completed` means this call has already hidden, or `finishRender` has
+  /// accepted or refused the host command and settled every relay.
+  private enum RenderSubmission {
+    case completed
+    case queued
+  }
+
+  /// **Which of `PillExpiryClock`'s three prepared meanings a coalescing
+  /// update carries.** `expiryClock.prepare` always returns a callable
+  /// closure, but `.unchanged`'s and `.cancel`'s are both indistinguishable
+  /// no-ops — see the comment where this is built, in `apply`. `.preserve`
+  /// and `.clear` collapse to the same "call nothing" outcome wherever there
+  /// is no PRIOR pending state to preserve FROM (the immediate, gate-ready
+  /// render path); they diverge only while coalescing an update onto an
+  /// already-pending first render.
+  private enum PendingExpiryUpdate {
+    case preserve
+    case clear
+    case replace(() -> Void)
+
+    var resolvedStart: (() -> Void)? {
+      guard case .replace(let start) = self else { return nil }
+      return start
+    }
+  }
+
+  /// **Everything a still-unbuilt first render owes once it lands**, coalesced
+  /// from however many presentations arrived while the gate had not yet
+  /// constructed. Typed because `.unchanged` must retain a previously prepared
+  /// arm, `.cancel` must clear it, and `.arm` must replace it.
+  private struct PendingFirstAcceptance {
+    let id: PresentationID
+    var relays: [PresentationRelay]
+    var expiryStart: (() -> Void)?
+    var announcement: OverlayAnnouncement?
+  }
+
+  /// The ONE slot for construction-pending presentations, keyed by id so a
+  /// same-id morph coalesces and a different-id supersession resolves the
+  /// outgoing owner `false`. `nil` whenever nothing is waiting on the gate —
+  /// which is always, once `firstRenderGate.readyRoot` exists.
+  private var pendingFirstAcceptance: PendingFirstAcceptance?
 
   @discardableResult
   private func render(
-    _ presentation: PillDefinition?, onPresented: @escaping () -> Void = {},
-    relay: PresentationRelay? = nil
-  ) -> RenderOutcome {
+    _ presentation: PillDefinition?,
+    relay: PresentationRelay? = nil,
+    expiryUpdate: PendingExpiryUpdate = .preserve,
+    announcement: OverlayAnnouncement? = nil
+  ) -> RenderSubmission {
     guard let presentation else {
+      // A `.hidden` plan still owes whatever was waiting on a construction
+      // that will now never show it — resolved here rather than left for
+      // `commitLatestFirstRender` to find later, so a caller hears its
+      // verdict as soon as the answer is known instead of whenever the gate
+      // next happens to fire.
+      //
+      // **Take the slot and settle every OTHER consequence before resolving
+      // any relay.** `resolve(false)` runs arbitrary caller code, and a
+      // reentrant `present` from inside that callback must see the hide
+      // already applied and the slot already empty — not this call's own
+      // stale view of either, which it would otherwise overwrite on return.
+      let detached = pendingFirstAcceptance?.relays ?? []
+      pendingFirstAcceptance = nil
       presentedID = nil
       host.hide()
-      onPresented()
-      return .presented
+      // **A dismissal still announces "Recording complete" and still owes
+      // whatever expiry command this plan carried** — `.hidden` has no
+      // presentation but is not exempt from either
+      // (`OverlayReducer.swift`'s own `OverlayPlan.announcement` doc comment
+      // states this explicitly, and `silentDismissalSaysNothing` proves it).
+      expiryUpdate.resolvedStart?()
+      if let announcement { announce(announcement) }
+      detached.forEach { $0.resolve(false) }
+      return .completed
     }
     // **THE FIRST PRESENTATION IS DEFERRED ONE RUN LOOP, AND THIS IS A CRASH
     // FIX RATHER THAN A COMPENSATION.** `MenuBarController.toggleRecordingAction`
@@ -977,56 +1012,141 @@ final class OverlayDirector {
     // view that already exists, and the shipped code was synchronous on that
     // path too. `DispatchQueue.main.async` rather than `Task`, for the reason
     // above, spelled out so it is not "modernised" back.
-    // Keyed on the VIEW, not on a flag: every presentation arriving before the
-    // view exists defers, however many that is. Each carries its own identity
-    // gate, so a superseded one drops and the live one constructs; a request
-    // cancelled that way leaves nothing built and the next one defers too.
-    if builtRootView == nil {
-      presentedID = presentation.id
-      let deferredID = presentation.id
-      relay?.markDeferred()
-      // Captured, not read from the director when the block fires: the result
-      // belongs to the call that scheduled this block, and a transaction that
-      // starts in between must not be able to reach it.
-      deferFirstRender { [weak self] in
-        guard let self else {
-          // The director went away before its own run loop turn. Nothing was
-          // drawn, and a caller left waiting forever is a once-per-launch
-          // allowance spent on a pill that never existed.
-          relay?.resolve(false)
-          return
-        }
-        // Identity gate, not a generation counter: a presentation superseded
-        // while we waited is dropped, and the one that replaced it does its own
-        // render. Same one-shot staleness rule `PresentationID` exists for.
-        guard self.reducer.state.current?.id == deferredID else {
-          // Superseded while we waited. The replacement does its own render, so
-          // this request never reached the screen and its caller must hear so.
-          relay?.resolve(false)
-          return
-        }
-        if self.performRender(presentation) {
-          onPresented()
-          relay?.resolve(true)
-        } else {
-          // Rollback FIRST, so a caller acting inside the callback sees an
-          // emptied slot rather than one still naming the pill it was refused.
-          self.rollBackRefusedPresentation()
-          relay?.resolve(false)
-        }
+    if let root = firstRenderGate.readyRoot {
+      return finishRender(
+        presentation, root: root, relays: relay.map { [$0] } ?? [],
+        expiryStart: expiryUpdate.resolvedStart, announcement: announcement)
+    }
+
+    coalescePendingFirstAcceptance(
+      id: presentation.id, relay: relay, expiryUpdate: expiryUpdate,
+      announcement: announcement)
+    firstRenderGate.scheduleIfNeeded()
+    return .queued
+  }
+
+  /// Folds a new presentation into whatever is already pending, per the
+  /// coalescing rule the render gate cannot own itself (it knows nothing of
+  /// presentation identity — see `OverlayFirstRenderGate`'s own doc comment):
+  /// a different id resolves the outgoing relays `false` and starts a fresh
+  /// slot; the same id keeps every relay accumulated so far, since each one
+  /// promises its own caller exactly one verdict once the SAME presentation
+  /// id actually reaches the screen.
+  private func coalescePendingFirstAcceptance(
+    id: PresentationID,
+    relay: PresentationRelay?,
+    expiryUpdate: PendingExpiryUpdate,
+    announcement: OverlayAnnouncement?
+  ) {
+    // Set before scheduling, not after: an injected IMMEDIATE scheduler can
+    // resolve this same call stack, and `present(_:onResult:)` reads
+    // `isDeferred` to decide whether the receipt exists yet to rebind to.
+    relay?.markDeferred()
+
+    if var pending = pendingFirstAcceptance, pending.id == id {
+      if let relay { pending.relays.append(relay) }
+      switch expiryUpdate {
+      case .preserve: break
+      case .clear: pending.expiryStart = nil
+      case .replace(let start): pending.expiryStart = start
       }
-      return .deferred
+      // A nil announcement does not erase one already pending; only a later
+      // non-nil announcement replaces it.
+      if let announcement { pending.announcement = announcement }
+      pendingFirstAcceptance = pending
+      return
     }
-    if performRender(presentation) {
-      onPresented()
-      return .presented
+
+    // **THE REPLACEMENT MUST BE INSTALLED BEFORE ANY OUTGOING RELAY RUNS.**
+    // `resolve(false)` calls arbitrary caller code synchronously, and a
+    // `.notPresented` callback presenting AGAIN is a real, reachable shape —
+    // that reentrant call reads `pendingFirstAcceptance` too. Resolving
+    // first would let it install its own slot, which this function would then
+    // silently clobber with its previously computed replacement.
+    let outgoing = pendingFirstAcceptance?.relays ?? []
+    let expiryStart: (() -> Void)?
+    switch expiryUpdate {
+    case .preserve, .clear: expiryStart = nil
+    case .replace(let start): expiryStart = start
     }
-    return .refused
+    pendingFirstAcceptance = PendingFirstAcceptance(
+      id: id, relays: relay.map { [$0] } ?? [], expiryStart: expiryStart,
+      announcement: announcement)
+
+    // The replacement is authoritative before arbitrary caller code runs.
+    outgoing.forEach { $0.resolve(false) }
+  }
+
+  /// The render gate's readiness callback: bind whatever is currently pending
+  /// to the just-built root, provided the presentation that pending state was
+  /// FOR is still the one actually published.
+  private func commitLatestFirstRender(_ root: NSView) {
+    // **Take the slot before resolving anything it holds** — same reentrancy
+    // reason as `coalescePendingFirstAcceptance` and `render`'s dismissal
+    // branch: `resolve(false)` runs arbitrary caller code, which must see an
+    // already-empty slot rather than one this function would otherwise
+    // overwrite on return.
+    guard let pending = pendingFirstAcceptance else { return }
+    pendingFirstAcceptance = nil
+
+    guard let presentation = model.state.presentation, pending.id == presentation.id else {
+      // Either nothing is on screen any more, or the pending id and the
+      // published one disagree — a presentation superseded while
+      // construction was in flight. The replacement (if any) does its own
+      // render through the now-ready gate; this stale slot only owes its
+      // own callers `false`.
+      pending.relays.forEach { $0.resolve(false) }
+      return
+    }
+    _ = finishRender(
+      presentation, root: root, relays: pending.relays,
+      expiryStart: pending.expiryStart, announcement: pending.announcement)
+  }
+
+  /// Host acceptance, refusal rollback, expiry start, announcement and every
+  /// retained relay's resolution — all in one place, so the queued path
+  /// (`commitLatestFirstRender`) and the immediate path (`render`, once the
+  /// gate is ready) run identically once a root view exists.
+  @discardableResult
+  private func finishRender(
+    _ presentation: PillDefinition, root: NSView, relays: [PresentationRelay],
+    expiryStart: (() -> Void)?, announcement: OverlayAnnouncement?
+  ) -> RenderSubmission {
+    if performRender(presentation, rootView: root) {
+      expiryStart?()
+      if let announcement { announce(announcement) }
+      relays.forEach { $0.resolve(true) }
+    } else {
+      // **A REFUSED PRESENTATION MUST NOT LEAVE AN OWNER BEHIND.** Clearing
+      // `presentedID` and the window says nothing to the reducer, the model,
+      // the binding or the armed expiry, all of which still name an occupant
+      // that is not on screen. Two consequences, both shipped defects rather
+      // than theory: `currentIntent` reads `reducer.state.current`, so the
+      // Bluetooth presenter's handshake confirms an invisible card and acts on
+      // its buttons; and `pipelineIntent` still holds the refused intent, so
+      // the dedup guard drops the RETRY as a repeat and the pill never
+      // recovers once a screen comes back.
+      //
+      // Rolled back through the same silent-dismiss path a real dismissal
+      // takes, so "nothing is on screen" has ONE definition rather than a
+      // second, partial one written here. Silent because nothing appeared:
+      // announcing a dismissal for a pill a VoiceOver user was never told
+      // about is a false statement in the other direction.
+      //
+      // **Rollback FIRST, then the verdict.** The rollback dismisses through
+      // `apply(.hidden)`, which renders nil, which SUCCEEDS — and it carries
+      // no relay, so it cannot answer for the presentation it is undoing.
+      // Resolving on a bare render outcome instead would report `true` for
+      // the very pill the host had just refused.
+      rollBackRefusedPresentation()
+      relays.forEach { $0.resolve(false) }
+    }
+    return .completed
   }
 
   /// The synchronous half, so the deferred first call and every later one run
   /// exactly the same code rather than two copies that can drift.
-  private func performRender(_ presentation: PillDefinition) -> Bool {
+  private func performRender(_ presentation: PillDefinition, rootView: NSView) -> Bool {
     // **`isFresh` means NOTHING IS SHOWING, not "a different occupant".** The
     // comment here used to say the opposite and the code matched it, which made
     // every recording -> processing -> warning step a fresh presentation: the
@@ -1093,7 +1213,7 @@ final class OverlayDirector {
         Self.isRecording(presentation) ? .recording : .other
       ) {
         host.present(
-          rootHostingView,
+          rootView,
           width: recordingGeometry.width,
           fixedHeight: recordingGeometry.fixedHeight,
           isFresh: isFresh,
@@ -1101,7 +1221,7 @@ final class OverlayDirector {
       }
     #else
       let presented = host.present(
-        rootHostingView,
+        rootView,
         width: recordingGeometry.width,
         fixedHeight: recordingGeometry.fixedHeight,
         isFresh: isFresh,
@@ -1159,7 +1279,7 @@ extension OverlayDirector: OverlayPresenting {
     _ request: PillRequest,
     onResult: @escaping (PillPresentationResult) -> Void
   ) -> PillReceipt? {
-    // Captured synchronously. `deferFirstRender` hands its block to
+    // Captured synchronously. `firstRenderSchedule` hands its block to
     // `DispatchQueue.main.async`, so it cannot run until this call stack
     // unwinds — the branches below are reached with the receipt already in hand
     // rather than racing it.

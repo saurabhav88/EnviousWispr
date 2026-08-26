@@ -131,11 +131,13 @@ struct OverlayRetainedWindowTests {
   /// the crash fix with the compensation, and four local review rounds passed it
   /// — cloud review caught it as a P1.
   ///
-  /// **`deferFirstRender` is that fix, restored under a name this guard does not
-  /// ban.** It is not an evasion: the banned name meant per-presentation pending
-  /// creation with a cancel handle, and this defers exactly once for the lifetime
-  /// of a director. Naming it differently is what keeps the guard honest about
-  /// which idea is actually forbidden.
+  /// **`OverlayFirstRenderGate` is that fix, restored under a name this guard
+  /// does not ban.** It is not an evasion: the banned name meant per-presentation
+  /// pending creation with a cancel handle, and the gate schedules at most once
+  /// for the lifetime of a director, coalescing every later presentation onto
+  /// that one construction rather than queuing a cancel handle per arrival.
+  /// Naming it differently is what keeps the guard honest about which idea is
+  /// actually forbidden.
   ///
   /// **Named rather than derived, and that is a real weakness of this guard**:
   /// it cannot recognise the same idea under a different word. It is a tripwire
@@ -223,7 +225,7 @@ struct OverlayRetainedWindowBehaviourTests {
     let d = OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
       selections: { .shipped },
-      deferFirstRender: { $0() })
+      firstRenderSchedule: { $0() })
     defer { recorder.panel?.orderOut(nil) }
 
     d.present(.processing(phase: .polishing))
@@ -254,7 +256,7 @@ struct OverlayRetainedWindowBehaviourTests {
     let d = OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
       selections: { .shipped },
-      deferFirstRender: { $0() })
+      firstRenderSchedule: { $0() })
     defer { recorder.panel?.orderOut(nil) }
 
     for _ in 0..<4 {
