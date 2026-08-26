@@ -120,9 +120,7 @@ final class OverlayScheduledWork {
   /// **Not a test hatch.** `OverlayScheduler.live` calls this from its own timer
   /// callback, so it is the one path a dwell fires through in production as well
   /// as under a manual clock — which is the point: a test that fires a dwell
-  /// exercises the same cancellation check a real one does. It replaced a
-  /// `fireForTesting` that only tests called, and whose name claimed the
-  /// cancellation guard was a testing convenience.
+  /// exercises the same cancellation check a real one does.
   func fire() {
     guard !cancelled else { return }
     body()

@@ -14,7 +14,7 @@ so this records 60 fps video started before the input and extracts frames after.
 
 The overlay is `64874`, identified by LIFECYCLE rather than by size — it is the
 only window that appears with a recording and hides after stop
-(`window-lifecycle.json`). Its bounds change per design, which is exactly why a
+(written by `phase5_window_lifecycle.py`). Its bounds change per design, which is exactly why a
 size predicate was rejected.
 
 Log lines are SYNCHRONISERS only: they say which attempt took, never what the
