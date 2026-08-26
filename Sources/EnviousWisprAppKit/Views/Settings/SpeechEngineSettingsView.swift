@@ -281,13 +281,20 @@ struct SpeechEngineSettingsView: View {
                 }
               }
               Spacer()
+              // #2447: both were system styles on a settings PAGE, where
+              // `.borderedProminent` renders plain grey and `.bordered` renders
+              // grey one shade darker — so Cancel and Resume were the same
+              // colour as each other and as this app's disabled treatment, with
+              // no hover to contradict it.
               if row.showsCancel {
-                Button("Cancel") { modelDelivery.cancelParakeetDownload() }
-                  .buttonStyle(.bordered)
+                SettingsActionButton(title: "Cancel", isEnabled: true) {
+                  modelDelivery.cancelParakeetDownload()
+                }
               }
               if let action = row.actionLabel {
-                Button(action) { modelDelivery.resumeParakeetDownload() }
-                  .buttonStyle(.borderedProminent)
+                SettingsActionButton(title: action, isEnabled: true, emphasis: .filled) {
+                  modelDelivery.resumeParakeetDownload()
+                }
               }
             }
           }
@@ -587,11 +594,11 @@ struct SpeechEngineSettingsView: View {
         .settingsReadingCopy()
 
         HStack {
-          Button("Download WhisperKit Model") {
+          SettingsActionButton(
+            title: "Download WhisperKit Model", isEnabled: true, emphasis: .filled
+          ) {
             setup.whisperKitSetup.downloadModel()
           }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.small)
 
           whisperKitRefreshButton
         }
@@ -616,8 +623,10 @@ struct SpeechEngineSettingsView: View {
               .monospacedDigit()
               .foregroundStyle(.stTextSecondary)
           }
-          Button("Cancel") {
+          Button {
             setup.whisperKitSetup.cancelDownload()
+          } label: {
+            Text("Cancel").settingsHoverQuiet(tint: .stError)
           }
           .controlSize(.small)
           .buttonStyle(.borderless)
@@ -631,11 +640,9 @@ struct SpeechEngineSettingsView: View {
         Text("Download paused. Resume anytime.")
           .settingsReadingCopy()
         HStack {
-          Button("Resume") {
+          SettingsActionButton(title: "Resume", isEnabled: true, emphasis: .filled) {
             setup.whisperKitSetup.downloadModel()
           }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.small)
           whisperKitRefreshButton
         }
       }
@@ -695,8 +702,10 @@ struct SpeechEngineSettingsView: View {
                 .foregroundStyle(.stTextSecondary)
             }
           } else {
-            Button("Remove Model") {
+            Button {
               setup.whisperKitSetup.removeModel()
+            } label: {
+              Text("Remove Model").settingsHoverQuiet(tint: .stError)
             }
             .controlSize(.small)
             .buttonStyle(.borderless)
@@ -737,6 +746,7 @@ struct SpeechEngineSettingsView: View {
       Task { await setup.whisperKitSetup.forceDetectState() }
     } label: {
       Image(systemName: "arrow.clockwise")
+        .settingsHoverQuiet()
     }
     .buttonStyle(.borderless)
     .help("Re-check model status")
@@ -755,6 +765,7 @@ struct SpeechEngineSettingsView: View {
       Image(systemName: "questionmark.circle")
         .foregroundStyle(Color.stTextSecondary)
         .font(.stHelper)
+        .settingsHoverQuiet()
     }
     .buttonStyle(.borderless)
     .help(LiveTranscriptionCopy.helpButtonAccessibilityLabel)
@@ -848,6 +859,7 @@ struct SpeechEngineSettingsView: View {
       Image(systemName: "questionmark.circle")
         .foregroundStyle(Color.stTextSecondary)
         .font(.stHelper)
+        .settingsHoverQuiet()
     }
     .buttonStyle(.borderless)
     .help(SpokenPunctuationCopy.helpButtonAccessibilityLabel)

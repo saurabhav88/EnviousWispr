@@ -115,9 +115,13 @@ struct LearningSection: View {
       ProgressView()
         .controlSize(.small)
     case .denied:
-      Button("Open Settings") { openContactsSettings() }
+      SettingsActionButton(title: "Open Settings", isEnabled: true, emphasis: .filled) {
+        openContactsSettings()
+      }
     default:
-      Button(contactsImport.importedCount > 0 ? "Re-scan" : "Import") {
+      SettingsActionButton(
+        title: contactsImport.importedCount > 0 ? "Re-scan" : "Import", isEnabled: true
+      ) {
         Task { await contactsImport.prepareImport() }
       }
     }
@@ -131,6 +135,9 @@ struct LearningSection: View {
         contactsImport.bulkRemoveImported()
       } label: {
         Image(systemName: "xmark.circle.fill")
+          // Bulk-removes every imported name, from a glyph inside a status
+          // pill -- the least button-shaped thing on the page doing the most.
+          .settingsHoverQuiet(tint: .stError)
       }
       .buttonStyle(.plain)
       .help("Remove all imported names")

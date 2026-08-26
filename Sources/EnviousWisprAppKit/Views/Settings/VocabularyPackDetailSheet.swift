@@ -52,6 +52,7 @@ struct VocabularyPackDetailSheet: View {
             Image(systemName: "xmark.circle.fill")
               .foregroundStyle(.stTextSecondary)
               .font(.system(size: 12))
+              .settingsHoverQuiet()
           }
           .buttonStyle(.plain)
           .accessibilityLabel("Clear search")
@@ -95,8 +96,11 @@ struct VocabularyPackDetailSheet: View {
       // Done
       HStack {
         Spacer()
-        Button("Done") { dismiss() }
-          .keyboardShortcut(.cancelAction)
+        SettingsActionButton(
+          title: "Done", isEnabled: true, emphasis: .filled, shortcut: .cancelAction
+        ) {
+          dismiss()
+        }
       }
     }
     .padding(20)

@@ -55,6 +55,7 @@ struct TranscriptHistoryView: View {
         } label: {
           Label("Delete All", systemImage: "trash")
             .font(.caption)
+            .settingsHoverQuiet(tint: .stError)
         }
         .buttonStyle(.borderless)
         .padding(.vertical, 6)
@@ -227,6 +228,12 @@ struct TranscriptRowView: View {
           isSelected ? Color.stAccent : Color.stDivider,
           lineWidth: isSelected ? 2 : 1)
     )
+    // The `List` row's own selection highlight is deliberately painted over
+    // (see `.listRowBackground` in `TranscriptHistoryView`), and painting it out
+    // took the system's hover with it -- so History, which is the first page the
+    // app opens on and a list whose whole purpose is picking one of many rows,
+    // had no pointer feedback at all.
+    .settingsHoverCard(cornerRadius: 12, isSelected: isSelected)
     .contentShape(RoundedRectangle(cornerRadius: 12))
   }
 }

@@ -302,6 +302,10 @@ private struct RecordingModeCard: View {
             isSelected ? Color.stAccent : Color.stDivider,
             lineWidth: isSelected ? 2 : 1)
       )
+      // Inside the label, where the padding and `background` already are, so the
+      // tint cannot outgrow the region the `Button` responds on.
+      .settingsHoverCard(
+        cornerRadius: SettingsLayout.sectionRadius, isSelected: isSelected)
     }
     .buttonStyle(.plain)
     .animation(.easeInOut(duration: 0.15), value: isSelected)

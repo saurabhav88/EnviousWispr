@@ -105,6 +105,9 @@ struct StatusView: View {
                 RoundedRectangle(cornerRadius: 8)
                   .stroke(.stError, lineWidth: 1.5)
               )
+              // Stops a recording in progress, so it is worth being certain the
+              // pointer is on it before pressing.
+              .settingsHoverRow(cornerRadius: 8, tint: Color.stError.opacity(0.12))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.stError)
@@ -126,6 +129,12 @@ struct StatusView: View {
                 Text("Cancel")
               }
               .foregroundStyle(.secondary)
+              // Bare secondary text beside a bordered Stop: the quietest thing
+              // in the row and the one that discards the take.
+              .padding(.horizontal, 8)
+              .padding(.vertical, 4)
+              .contentShape(Rectangle())
+              .settingsHoverRow(cornerRadius: 7)
             }
             .buttonStyle(.plain)
           }
@@ -405,6 +414,14 @@ struct RecordButton: View {
           .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
       )
       .shadow(color: (recording ? Color.stError : Color.stAccent).opacity(0.35), radius: 5, y: 2)
+      // The most-pressed control in the window, and gradient-filled, so a tint
+      // beneath it would not show. The veil goes on top for the same reason the
+      // selected sidebar row's does. Gated on the same condition as `.disabled`
+      // below, so a button that cannot be pressed does not answer the pointer.
+      .settingsHoverRow(
+        cornerRadius: 8,
+        tint: SettingsHover.selectedRowVeil,
+        isEnabled: !(state.isActive && !recording))
       .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
     .buttonStyle(.plain)

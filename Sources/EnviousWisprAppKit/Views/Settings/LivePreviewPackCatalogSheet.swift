@@ -113,7 +113,9 @@ struct LivePreviewPackCatalogSheet: View {
         .font(.system(size: 15, weight: .semibold))
         .foregroundStyle(Color.stTextPrimary)
       Spacer(minLength: 12)
-      CatalogCloseButton { dismiss() }
+      SettingsSheetCloseButton(
+        accessibilityTitle: LivePreviewSettingsCopy.catalogCloseLabel
+      ) { dismiss() }
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)
@@ -136,11 +138,11 @@ struct LivePreviewPackCatalogSheet: View {
       SettingsActionButton(
         title: LivePreviewSettingsCopy.catalogDoneButton,
         isEnabled: true,
-        emphasis: .filled
+        emphasis: .filled,
+        shortcut: .defaultAction
       ) {
         dismiss()
       }
-      .keyboardShortcut(.defaultAction)
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)
@@ -349,29 +351,7 @@ struct LivePreviewPackCatalogSheet: View {
 
 /// The sheet's close control.
 ///
-/// Deliberately a symbol rather than a second worded button: `Done` at the
-/// bottom already carries the words, and two worded exits invite the reading
-/// that they do different things. Nothing in this sheet is committed on exit,
-/// so both simply leave.
-private struct CatalogCloseButton: View {
-  let action: () -> Void
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var hovering = false
-
-  var body: some View {
-    Button(action: action) {
-      Image(systemName: "xmark")
-        .font(.system(size: 11, weight: .bold))
-        .foregroundStyle(hovering ? Color.stTextPrimary : Color.stTextSecondary)
-        .frame(width: 22, height: 22)
-        .background(
-          Circle().fill(hovering ? Color.stSectionBg : Color.clear)
-        )
-        .contentShape(Circle())
-    }
-    .buttonStyle(.plain)
-    .onHover { hovering = $0 }
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
-    .accessibilityLabel(LivePreviewSettingsCopy.catalogCloseLabel)
-  }
-}
+// Nothing in this sheet is committed on exit, so the X and `Done` simply both
+// leave. The control itself is now
+// `SettingsSheetCloseButton` in `SettingsComponents.swift`, shared with
+// `LanguageLockSheet`, which held a byte-identical copy.

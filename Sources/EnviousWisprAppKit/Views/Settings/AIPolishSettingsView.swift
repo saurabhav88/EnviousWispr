@@ -569,6 +569,7 @@ struct AIPolishSettingsView: View {
           }
         } label: {
           Image(systemName: "arrow.clockwise")
+            .settingsHoverQuiet()
         }
         .buttonStyle(.borderless)
         .help("Refresh available models")
@@ -898,7 +899,9 @@ struct AIPolishSettingsView: View {
 
         validationBadge
 
-        Button("Save") {
+        SettingsActionButton(
+          title: "Save", isEnabled: !activeKeyBinding.wrappedValue.isEmpty, emphasis: .filled
+        ) {
           let provider = settings.llmProvider
           let key = activeKeyBinding.wrappedValue
           guard saveKey(key: key, keychainId: descriptor.keychainId) else { return }
@@ -908,19 +911,17 @@ struct AIPolishSettingsView: View {
               provider: provider, settings: settings, source: .save)
           }
         }
-        .disabled(activeKeyBinding.wrappedValue.isEmpty)
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
 
-        Button("Clear") {
+        // Save genuinely disables on an empty field and Clear destroys a stored
+        // key, and on this page the system styles drew both, plus the enabled
+        // Save, in the same grey. The red `foregroundStyle` on Clear was the
+        // only thing separating a destructive action from an inert one.
+        SettingsActionButton(title: "Clear", isEnabled: true, emphasis: .destructive) {
           guard clearKey(keychainId: descriptor.keychainId) else { return }
           activeKeyBinding.wrappedValue = ""
           setKeySaved(false)
           llmDiscovery.reset()
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .foregroundStyle(.stError)
       }
 
       Text(descriptor.privacySentence)
@@ -1277,13 +1278,11 @@ struct AIPolishSettingsView: View {
         .foregroundStyle(Color.stTextSecondary)
 
         HStack {
-          Button("Download Ollama") {
+          SettingsActionButton(title: "Download Ollama", isEnabled: true, emphasis: .filled) {
             if let url = URL(string: "https://ollama.com/download") {
               NSWorkspace.shared.open(url)
             }
           }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.small)
 
           ollamaRefreshButton()
         }
@@ -1302,11 +1301,9 @@ struct AIPolishSettingsView: View {
           .foregroundStyle(Color.stTextSecondary)
 
         HStack {
-          Button("Start Ollama") {
+          SettingsActionButton(title: "Start Ollama", isEnabled: true, emphasis: .filled) {
             setup.ollamaSetup.startServer()
           }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.small)
 
           ollamaRefreshButton()
         }
@@ -1325,20 +1322,23 @@ struct AIPolishSettingsView: View {
           .foregroundStyle(Color.stTextSecondary)
 
         HStack {
-          Button("Download \(settings.ollamaModel)") {
+          // #1956: the SECOND control that can reach `pullModel`, and the one my
+          // catalog-row sweep missed (review r4). The service has one pull slot,
+          // so if this is pressed while a hosted Add is still probing, the
+          // resolution's own pull arrives second and cancels this download. Both
+          // pull entry points now read the same signal — which #2447 makes
+          // legible, because the system prominent style drew the probing and the
+          // ready states in the same grey.
+          SettingsActionButton(
+            title: "Download \(settings.ollamaModel)",
+            isEnabled: !hostedAddIsResolving,
+            emphasis: .filled
+          ) {
             // #1950: through the funnel, not straight to `pullModel`. The shipped default is a
             // recommended model so this normally downloads immediately, but a user who has changed
             // the setting to something that failed every test gets asked first.
             requestOllamaDownload(modelID: settings.ollamaModel)
           }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.small)
-          // #1956: the SECOND control that can reach `pullModel`, and the one my
-          // catalog-row sweep missed (review r4). The service has one pull slot,
-          // so if this is pressed while a hosted Add is still probing, the
-          // resolution's own pull arrives second and cancels this download. Both
-          // pull entry points now read the same signal.
-          .disabled(hostedAddIsResolving)
 
           ollamaRefreshButton()
         }
@@ -1559,6 +1559,7 @@ struct AIPolishSettingsView: View {
           egOne.activateAndProbe()
         } label: {
           Image(systemName: "arrow.clockwise")
+            .settingsHoverQuiet()
         }
         .buttonStyle(.borderless)
         .help("Test that EG-1 is live")
@@ -1660,6 +1661,7 @@ struct AIPolishSettingsView: View {
         aiAvailability.debouncedCheck()
       } label: {
         Image(systemName: "arrow.clockwise")
+          .settingsHoverQuiet()
       }
       .buttonStyle(.borderless)
       .disabled(aiAvailability.isChecking)
@@ -1861,6 +1863,7 @@ struct AIPolishSettingsView: View {
         Task { await setup.ollamaSetup.refreshCloudCatalog(force: true) }
       } label: {
         Text("Retry")
+          .settingsHoverQuiet()
       }
       .controlSize(.small)
       .buttonStyle(.borderless)
@@ -2089,6 +2092,7 @@ struct AIPolishSettingsView: View {
             } label: {
               Text("Cancel")
                 .foregroundStyle(.stError)
+                .settingsHoverQuiet(tint: .stError)
             }
             .controlSize(.small)
             .buttonStyle(.borderless)
@@ -2108,6 +2112,7 @@ struct AIPolishSettingsView: View {
           } label: {
             Text("Delete")
               .foregroundStyle(.stError)
+              .settingsHoverQuiet(tint: .stError)
           }
           .controlSize(.small)
           .buttonStyle(.borderless)
@@ -2261,6 +2266,7 @@ struct AIPolishSettingsView: View {
       }
     } label: {
       Image(systemName: "arrow.clockwise")
+        .settingsHoverQuiet()
     }
     .buttonStyle(.borderless)
     .help("Re-check Ollama status")
@@ -2309,6 +2315,7 @@ struct AIPolishSettingsView: View {
         setup.ollamaSetup.warmUpModel(settings.llmModel)
       } label: {
         Image(systemName: "arrow.clockwise")
+          .settingsHoverQuiet()
       }
       .buttonStyle(.borderless)
       .help("Prepare model")

@@ -420,7 +420,14 @@ struct ProviderRailRow: View {
   let namespace: Namespace.ID
   let onSelect: () -> Void
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var hovering = false
+  /// See `SettingsHover.respondsToPointer`.
+  @Environment(\.isEnabled) private var environmentEnabled
+  @State private var pointerInside = false
+
+  /// DERIVED, never stored. See `SettingsHover.respondsToPointer`.
+  private var hovering: Bool {
+    SettingsHover.respondsToPointer(pointerInside, true, environmentEnabled)
+  }
 
   var body: some View {
     Button(action: onSelect) {
@@ -470,6 +477,14 @@ struct ProviderRailRow: View {
             .matchedGeometryEffect(id: "railSelection", in: namespace)
         }
       }
+      // #2447. The scale below was this rail's ONLY hover, and it is gated on
+      // reduce-motion -- so the users who turn motion off had no hover at all on
+      // the one control in the window that had any. A transform is a nice
+      // secondary cue and a poor sole one: it says "something is happening here"
+      // without saying WHAT is under the pointer, and it is the first thing an
+      // accessibility setting removes. The tint carries the meaning and survives;
+      // the scale stays as the flourish it was always meant to be.
+      .settingsHoverRow(cornerRadius: 10)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -477,8 +492,8 @@ struct ProviderRailRow: View {
     // so the row's frame and hover hit-region do not move (no jitter loop); it
     // only grows (1.006), never shrinks. Gated on reduce-motion. #1298.
     .scaleEffect(hovering && !reduceMotion ? 1.006 : 1.0)
-    .onHover { hovering = $0 }
-    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+    .onHover { pointerInside = $0 }
+    .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isButton)
     .accessibilityLabel("\(entry.name), \(entry.group.accessibilityPhrase)")
