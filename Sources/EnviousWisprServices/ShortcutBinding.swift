@@ -180,8 +180,29 @@ package enum ShortcutMatcher {
         forBareModifierKeyCode: keyCode, record: record, cancel: cancel, quickAdd: quickAdd,
         armed: [.record, .cancel, .quickAdd]) == .quickAdd
     }
-    // A CHORD is dispatched by Carbon, so the question is whether another role registers the same
-    // Carbon chord — key code plus the modifiers Carbon actually keeps. Record registers first and
+    // **A CHORD IS NOT DISPATCHED ONLY BY CARBON, WHICH IS WHERE THE PREVIOUS VERSION OF THIS WAS
+    // WRONG.** Pressing Command-W emits the Command press FIRST, and the modifier monitor routes
+    // every bare modifier press through `role(forBareModifierKeyCode:)` before the W ever reaches
+    // Carbon (`HotkeyService.installModifierMonitors`, and the dispatch at its
+    // `ShortcutMatcher.role` call). So a chord whose modifier is a higher-priority role's BARE
+    // binding is intercepted: Record on bare Command and Quick Add on Command-W means the user
+    // starts a recording while following this hint.
+    //
+    // That is the exact mirror of the refusal `role` already makes in the other direction — it
+    // rejects a bare Quick Add modifier the record CHORD needs. Both directions now exist.
+    //
+    // **The closure claim, stated so it can be falsified rather than hoped for:** a press reaches
+    // exactly two mechanisms, the modifier monitor and Carbon, and a chord press produces exactly
+    // two events, its modifiers and its key. Both are checked below. A further finding would have
+    // to name a THIRD dispatch mechanism, not another combination of these two.
+    for flag in [NSEvent.ModifierFlags.command, .option, .control, .shift]
+    where quickAdd.requiredModifiers.contains(flag) {
+      for other in [record, cancel] where other.isBareModifier {
+        if case .keyboard(let ok, _) = other, ModifierKeyCodes.flag(for: ok) == flag { return false }
+      }
+    }
+
+    // And the Carbon half: whether another role registers the same chord — key code plus the modifiers Carbon actually keeps. Record registers first and
     // cancel takes the chord for the whole of every recording, so either one owning it means this
     // label is a promise we cannot keep.
     //

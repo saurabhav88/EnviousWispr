@@ -339,6 +339,30 @@ struct MenuBarControllerTests {
     #expect(Self.label(ModifierKeyCodes.leftCommand, [], record: (2, [.option])) != nil)
   }
 
+  /// **A CHORD is intercepted by a bare-modifier role, which is the mirror of the case above and
+  /// the reason `isBareModifier` does not partition the dispatch paths.** Pressing Command-W emits
+  /// the Command press first, and the modifier monitor routes every bare modifier press through
+  /// `ShortcutMatcher.role` before the W reaches Carbon — so Record on bare Command means the user
+  /// starts a recording while following this hint. Fourth round on this root; cloud review, #2427.
+  @Test("A chord whose modifier a bare role owns is not advertised")
+  func aChordInterceptedByABareModifierIsNotAdvertised() {
+    // Quick Add Command-W (key code 13), Record on bare Left Command.
+    #expect(Self.label(13, [.command], record: (ModifierKeyCodes.leftCommand, [])) == nil)
+    // Cancel too — it holds its bare modifier for the whole of every recording.
+    #expect(Self.label(13, [.command], cancel: (ModifierKeyCodes.rightCommand, [])) == nil)
+    // A chord needing SEVERAL modifiers is intercepted if ANY of them is claimed.
+    #expect(
+      Self.label(13, [.command, .option], record: (ModifierKeyCodes.leftOption, [])) == nil,
+      "the option half is enough; the chord never completes")
+
+    // Paired, or this would silence every chord the moment any bare binding existed: a bare role on
+    // a modifier the chord does NOT need leaves the hint honest.
+    #expect(Self.label(13, [.command], record: (ModifierKeyCodes.leftOption, [])) != nil)
+    #expect(
+      Self.label(13, [.control, .option], cancel: (ModifierKeyCodes.leftCommand, [])) != nil,
+      "cancel owns Command; this chord needs Control and Option")
+  }
+
   /// Cancel takes a shared chord for the whole of every recording, so a label promising it is a
   /// promise we cannot keep even though the binding is Quick Add's most of the time.
   @Test("A chord cancel takes during recording is not advertised")
