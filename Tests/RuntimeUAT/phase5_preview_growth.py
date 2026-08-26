@@ -19,7 +19,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 import phase5_overlay_lifecycle as lc  # noqa: E402
 import phase5_paste_target as pt  # noqa: E402
-import phase5_record_key as rk  # noqa: E402
+import wispr_eyes as rk  # noqa: E402  (record-key helpers; merged in #2425)
 import wispr_eyes as w  # noqa: E402
 
 UAT = pathlib.Path(

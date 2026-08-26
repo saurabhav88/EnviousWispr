@@ -63,7 +63,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 import phase5_geometry_relaunch as g  # noqa: E402
 import phase5_paste_target as pt  # noqa: E402
-import phase5_record_key as rk  # noqa: E402
+import wispr_eyes as rk  # noqa: E402  (record-key helpers; merged in #2425)
 import simulate_input as si  # noqa: E402
 import wispr_eyes as w  # noqa: E402
 

@@ -47,7 +47,7 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 import phase5_overlay_lifecycle as lc  # noqa: E402
-import phase5_record_key as rk  # noqa: E402
+import wispr_eyes as rk  # noqa: E402  (record-key helpers; merged in #2425)
 
 UAT = pathlib.Path(
     "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/.validation/runs/2377-phase5-live-uat"
