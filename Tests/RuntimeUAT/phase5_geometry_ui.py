@@ -84,10 +84,11 @@ def capture_design(pid, name):
     return {"bounds": seen, "screenshot": str(shot) if seen else None}
 
 
-# The greyed group's reason line, verbatim from
-# `RecordingPillAppearancePanel.reason(for:)`. Two rows below read
-# it — one requires it present, one requires it gone — so it lives here once.
-GREYED_REASON = "Turn off Live Preview to use the other designs."
+# The link the panel shows ONLY while the words-showing design is the live
+# choice. It is the coupling's one visible consequence, which makes it the
+# oracle for it: this file's own docstring records Codex's ruling that a
+# defaults read-back is not evidence and the picker must be SEEN to change.
+CONFIGURE_LINK = "Configure Live Preview"
 
 
 def main():
@@ -98,39 +99,48 @@ def main():
     w.tap("Appearance")
     report["picker"]["appearance_open"] = "RECORDING PILL" in ui_text()
 
-    # The without-words group is greyed while Live Preview is on — Phase 4's own
-    # behaviour, and the reason it states is captured here as evidence.
+    # **The greyed-reason rows are GONE, not renamed.** They asserted a sentence
+    # the panel no longer renders in either Live Preview state: the presence half
+    # would have failed on correct behaviour, and the absence half would have
+    # passed vacuously. Found by Codex review on this branch — and it is the
+    # SECOND time this pair went stale, the first being when the wording changed
+    # rather than when it was deleted. A literal that only one side of a
+    # presence/absence pair can falsify is the shape to stop writing here.
     #
-    # ONE constant for both the presence and the absence check below. Held twice,
-    # the absence half passes for free the moment the copy changes and the string
-    # here goes stale: it then asserts that a sentence nobody renders is missing.
-    # That is the shape that made this row green against copy it had never seen.
+    # What replaces them tests the behaviour that replaced the sentence.
     before = ui_text()
-    report["picker"]["greyed_reason_present"] = GREYED_REASON in before
+    report["picker"]["configure_link_while_words_selected"] = CONFIGURE_LINK in before
 
     # ---- Reading Well first: it is what is selected now, no toggle needed ----
     report["rows"]["readingWell"] = capture_design(pid, "readingWell")
 
-    # ---- turn Live Preview OFF through its own tab ----
-    w.tap("Live Preview")
-    lp = ui_text()
-    report["picker"]["live_preview_tab"] = "Live Preview" in lp
-    for label in ("Show words as I speak", "Live Preview", "Enable Live Preview"):
-        try:
-            if w.tap(label):
-                report["picker"]["toggled_via"] = label
-                break
-        except Exception:  # noqa: BLE001
-            continue
-
-    w.tap("Appearance")
-    after = ui_text()
-    report["picker"]["greyed_cleared"] = GREYED_REASON not in after
-
+    # ---- Live Preview is now turned off BY THE PICKER, not on its own tab ----
+    #
+    # The trip to the Live Preview tab is deleted along with the toggle hunt it
+    # needed. That was the friction the founder named: a user who can SEE the
+    # design they want should not have to find a switch elsewhere to earn the
+    # click they already made. Tapping a wordless design is now the whole gesture,
+    # and driving it here is what proves it.
+    #
+    # The cards carry no visible name any more, so these labels resolve through
+    # the ACCESSIBILITY label, which still announces "<name>. <summary>". That is
+    # not incidental: if a rename ever broke it, this row goes red and a
+    # VoiceOver user loses the only name they had.
     for label, key in (("Capsule", "classic"), ("Level Rail", "levelRail")):
         tapped = w.tap(label)
         report["picker"][f"tapped_{key}"] = bool(tapped)
         report["rows"][key] = capture_design(pid, key)
+
+    # Both directions, so neither half can pass vacuously: the link was present
+    # above with the words design live, and must be gone now that a wordless one
+    # is. A run where the taps did nothing fails HERE rather than reporting green.
+    w.tap("Appearance")
+    after = ui_text()
+    report["picker"]["configure_link_gone_after_wordless"] = CONFIGURE_LINK not in after
+    report["picker"]["coupling_observed"] = bool(
+        report["picker"].get("configure_link_while_words_selected")
+        and report["picker"]["configure_link_gone_after_wordless"]
+    )
 
     (UAT / "geometry-ui.json").write_text(json.dumps(report, indent=2, default=str))
     print(json.dumps(report, indent=2, default=str)[:2200])
