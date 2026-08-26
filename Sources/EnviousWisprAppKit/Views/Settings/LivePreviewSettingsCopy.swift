@@ -29,48 +29,7 @@ enum LivePreviewSettingsCopy {
   /// immediately after this), not by this one staying nameless.
   static let sectionHeader = "Live Preview"
 
-  /// The hero card's headline.
-  ///
-  /// **Deliberately does not assert that the feature is on.** The mockup read
-  /// "Real-time feedback, always on"; it ships OFF with its switch directly
-  /// below, so that headline is false the first time anybody opens this page.
-  static let heroTitle = "Watch your words appear as you talk"
-
   static let toggleLabel = "Show words while I speak"
-
-  /// Says four things, in the order a user cares about them: what they will see,
-  /// where that text goes, that it is not what gets pasted, and that it costs them
-  /// nothing in accuracy. The last is the one that stops "is this making my
-  /// transcription worse?", the natural next question once they know two engines
-  /// are running.
-  ///
-  /// The privacy sentence is here because #1988 asks for it in writing ("It should
-  /// be trivially yes (nothing leaves the Mac), but state it"). Trivially true is
-  /// not the same as visible: a user deciding whether to switch on something that
-  /// watches them speak should not have to infer the answer from our reputation,
-  /// and this is the only surface they read before deciding. It is also the one
-  /// place the claim can be made narrowly and honestly, since this preview really
-  /// is on-device for every user, with no cloud variant to qualify.
-  /// Trimmed once the Preview Language section existed: between them the page opened with six
-  /// lines of prose before anything actionable. Keeps the three claims that matter — what it does,
-  /// that it stays local, and that it cannot alter the result — and drops the restatement of
-  /// "preview", which the heading above it already says.
-  ///
-  /// The third claim is the load-bearing one and may not be dropped by any future rewording: a
-  /// user who concludes the preview IS the pasted text will file a bug that is not one, because
-  /// the preview is measurably less accurate than the engine that produces the paste. An earlier
-  /// draft carried it as the phrase "preview only"; this one carries it as "never changes a
-  /// character of what gets pasted". `LivePreviewSettingsCopyTests` accepts either wording and
-  /// fails if a rewrite drops the claim entirely.
-  static let heroBody =
-    "See your words in the recording pill as you talk, so you know EnviousWispr is hearing you. "
-    + "It stays on your Mac, is discarded when the recording ends, and never changes a character "
-    + "of what gets pasted."
-
-  /// The one line under the switch. The three claims above moved to `heroBody`
-  /// when the hero card took the top of the page (#2154); this is the mockup's
-  /// own wording for the row that remains.
-  static let toggleDescription = "See your words in the recording pill as you talk."
 
   /// Shown under the disabled toggle on older systems. Names the requirement and
   /// stops there: a user on macOS 14 cannot act on this beyond upgrading, and a
@@ -205,16 +164,16 @@ enum LivePreviewSettingsCopy {
   /// RULE: a-language-mismatch-shows-NOTHING-not-garbage), so "showing your
   /// words" would be a promise this page cannot keep.
 
-  static let statusActiveLabel = "Live Preview is active"
+  static let statusActiveLabel = "Activated"
   static let statusActiveDetail = "Ready to show your words while you speak."
 
-  static let statusOffLabel = "Live Preview is off"
+  static let statusOffLabel = "Off"
   /// **Deliberately promises nothing about what happens next.** The off state is
   /// checked BEFORE any engine detail, so switching on can land straight on
   /// "needs a download" or a missing language pack. An earlier draft said
   /// "switch it on to see your words while you speak", which is a promise this
   /// card cannot keep for every user who reads it.
-  static let statusOffDetail = "Switch it on and this card will show whether anything else is needed."
+  static let statusOffDetail = "Switch it on and this bar will show whether anything else is needed."
 
   // `statusUnavailableLabel` / `statusUnavailableDetail` were DELETED by #2154's
   // final sweep, not merely unused. "Not available on this Mac" was returned
@@ -249,7 +208,7 @@ enum LivePreviewSettingsCopy {
   static func statusNeedsLanguageLabel(_ languageName: String) -> String {
     "\(languageName) isn't downloaded yet"
   }
-  static let statusNeedsLanguageDetail = "Download it in the list below and the preview starts working."
+  static let statusNeedsLanguageDetail = "Use Browse downloads below to get it and start the preview."
 
   static let statusUnsupportedLanguageLabel = "Apple can't preview this language"
   /// **Two details, because the advice is only true when the other engine
@@ -305,6 +264,24 @@ enum LivePreviewSettingsCopy {
   static let pausedForFasterTranscription = "Paused while Faster Transcription is on"
   static let statusPausedDetail =
     "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview."
+
+  /// **The claim that may not be dropped, moved rather than deleted (#2436).**
+  ///
+  /// This is `heroBody`'s third sentence, and its own doc comment is explicit that
+  /// the pasted-text half "is the load-bearing one and may not be dropped by any
+  /// future rewording: a user who concludes the preview IS the pasted text will file
+  /// a bug that is not one, because the preview is measurably less accurate than the
+  /// engine that produces the paste." The privacy half is here because #1988 asked
+  /// for it in writing.
+  ///
+  /// **It renders under the status bar, not under the Languages block.** The
+  /// Languages block is gated on `showsApplePacks`, so putting it there would delete
+  /// the sentence on the universal engine and on every Mac too old for Apple's —
+  /// while this is the only surface a user reads before deciding whether to switch
+  /// on something that watches them speak.
+  static let previewPrivacyFooter =
+    "It stays on your Mac, is discarded when the recording ends, and never changes a "
+    + "character of what gets pasted."
 
   // MARK: - Status-bar language chip (#2436)
 

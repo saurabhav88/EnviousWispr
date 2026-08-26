@@ -23,7 +23,6 @@ struct LivePreviewSettingsCopyTests {
     [
       LivePreviewSettingsCopy.sectionHeader,
       LivePreviewSettingsCopy.toggleLabel,
-      LivePreviewSettingsCopy.toggleDescription,
       LivePreviewSettingsCopy.needsNewerMacOS,
       LivePreviewSettingsCopy.activeHeader,
       LivePreviewSettingsCopy.activeExplainer,
@@ -48,8 +47,7 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.languageProvenanceUserPicked,
       LivePreviewSettingsCopy.languageProvenanceDetected,
       // #2154 additions.
-      LivePreviewSettingsCopy.heroTitle,
-      LivePreviewSettingsCopy.heroBody,
+      LivePreviewSettingsCopy.previewPrivacyFooter,
       LivePreviewSettingsCopy.statusActiveLabel,
       LivePreviewSettingsCopy.statusActiveDetail,
       LivePreviewSettingsCopy.statusOffLabel,
@@ -193,9 +191,11 @@ struct LivePreviewSettingsCopyTests {
   /// was frozen.
   @Test("The description says the preview is not the pasted text")
   func descriptionDisclaimsThePastedText() {
-    // Moved to `heroBody` by #2154 when the hero card took the top of the page.
-    // The CLAIM is what is frozen, not which symbol carries it.
-    let d = LivePreviewSettingsCopy.heroBody.lowercased()
+    // Moved to `heroBody` by #2154 when the hero card took the top of the page, and
+    // to `previewPrivacyFooter` by #2436 when the bar replaced that card. The CLAIM
+    // is what is frozen, not which symbol carries it — that is why this assertion
+    // has now followed the sentence across three owners without ever being deleted.
+    let d = LivePreviewSettingsCopy.previewPrivacyFooter.lowercased()
     // Any wording that carries the claim is accepted; the list grows when copy changes.
     let disclaimers = ["preview only", "never changes", "does not change", "doesn't change"]
     #expect(

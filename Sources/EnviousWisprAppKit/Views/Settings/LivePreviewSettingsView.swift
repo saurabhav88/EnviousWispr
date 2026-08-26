@@ -41,6 +41,7 @@ struct LivePreviewSettingsView: View {
   /// #2154: the dictation-language picker, opened by the Change button.
   @State private var showLanguageSheet: Bool = false
 
+
   // MARK: - Derived state
 
   /// Whether APPLE's engine can run here. Still the gate for the pack list and
@@ -174,8 +175,7 @@ struct LivePreviewSettingsView: View {
   var body: some View {
     @Bindable var settings = settings
     return SettingsContentView {
-      heroCard
-      toggleCard
+      statusBar
       engineSection
       languageSection
       packsSection
@@ -219,72 +219,93 @@ struct LivePreviewSettingsView: View {
 
   // MARK: - Hero card
 
-  /// What the feature is, and whether it is working right now.
+  // MARK: - Status bar
+
+  /// What is happening, which language, and the switch — on one line (#2436).
   ///
-  /// Two columns because they answer different questions and a returning user
-  /// only needs the right one. The left half is read once, on the first visit;
-  /// the right half is the reason anybody comes back.
-  private var heroCard: some View {
-    BrandedSection {
-      BrandedRow(showDivider: false) {
-        HStack(alignment: .top, spacing: 18) {
-          HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "text.viewfinder")
-              .font(.system(size: 20, weight: .medium))
-              .foregroundStyle(.stAccent)
-              .frame(width: 44, height: 44)
-              .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 11))
-              .overlay(
-                RoundedRectangle(cornerRadius: 11)
-                  .strokeBorder(Color.stAccent.opacity(0.22), lineWidth: 1)
-              )
-              .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-              Text(LivePreviewSettingsCopy.heroTitle).settingsRowTitle()
-              Text(LivePreviewSettingsCopy.heroBody).settingsReadingCopy()
-            }
-          }
-          .frame(maxWidth: .infinity, alignment: .leading)
-
-          Divider().overlay(Color.stDivider).frame(width: 1)
-
-          VStack(alignment: .leading, spacing: 4) {
-            ProviderStatusChip(status: status.chip)
-            Text(status.detail).settingsHelperCopy()
-          }
-          .frame(maxWidth: 260, alignment: .leading)
-        }
-      }
-    }
-  }
-
-  // MARK: - Toggle
-
-  private var toggleCard: some View {
+  /// Replaces the hero card, its status column and the toggle row. Those three said
+  /// the same sentence three times before the page said anything: the page header
+  /// already carries "See your words on screen while you are still speaking"
+  /// (`SettingsSection.swift:92`), the hero repeated it, and the toggle repeated the
+  /// hero. Founder, 2026-08-25: "the current live preview page is just information
+  /// overload."
+  ///
+  /// **Carried verbatim from `heroCard`, whose two columns this row replaces:**
+  ///
+  /// > Two columns because they answer different questions and a returning user
+  /// > only needs the right one. The left half is read once, on the first visit;
+  /// > the right half is the reason anybody comes back.
+  ///
+  /// That reasoning is why the left half is gone rather than shrunk: what it said
+  /// once now lives one line above in the page header, and what the right half said
+  /// is the only thing left here.
+  ///
+  /// Composition is `LivePreviewStatusBarPresentation`, not this body, so the rules
+  /// about what may be named in which state are testable without rendering.
+  private var statusBar: some View {
     @Bindable var settings = settings
+    let bar = LivePreviewStatusBarPresentation.bar(
+      summary: status, engine: settings.livePreviewEngine,
+      appleActive: currentActive, languageMode: settings.languageMode)
+
     return BrandedSection {
       BrandedRow(showDivider: false) {
-        HStack(alignment: .center, spacing: 11) {
+        HStack(alignment: .center, spacing: 12) {
           VStack(alignment: .leading, spacing: 3) {
-            Text(LivePreviewSettingsCopy.toggleLabel).settingsRowLabel()
-            Text(LivePreviewSettingsCopy.toggleDescription).settingsHelperCopy()
-            // **The reason lives in the hero card now, and only there.**
-            // This row used to repeat `needsNewerMacOS` whenever neither engine
-            // could run — but that condition is an OR of two independent causes,
-            // so on macOS 14 with a defective build it told the user to upgrade
-            // macOS when upgrading would not have helped. The status card above
-            // states the SELECTED engine's own reason, which is specific by
-            // construction, and two places saying why is how they come to
-            // disagree.
+            HStack(spacing: 8) {
+              ProviderStatusChip(status: status.chip)
+            }
+            Text(bar.detail).settingsHelperCopy()
           }
           Spacer(minLength: 12)
+
+          if let language = bar.language {
+            Button {
+              showLanguageSheet = true
+            } label: {
+              VStack(alignment: .trailing, spacing: 1) {
+                Text(language.name).settingsRowLabel()
+                Text(language.provenance).settingsHelperCopy()
+              }
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .accessibilityLabel("Change dictation language: \(language.name)")
+          }
+
+          // **The reason lives in the hero card now, and only there.**
+          // This row used to repeat `needsNewerMacOS` whenever neither engine
+          // could run — but that condition is an OR of two independent causes,
+          // so on macOS 14 with a defective build it told the user to upgrade
+          // macOS when upgrading would not have helped. The status card above
+          // states the SELECTED engine's own reason, which is specific by
+          // construction, and two places saying why is how they come to
+          // disagree.
+          //
+          // #2436: "the hero card" is now this same row's left half, so the rule
+          // is unchanged and its one-owner property is stronger — there is no
+          // longer a second container that could drift.
           Toggle("", isOn: $settings.livePreviewEnabled)
             .labelsHidden()
             .toggleStyle(BrandedToggleStyle())
             .disabled(!anyEngineAvailable)
+            // The visible label is gone; this is the only thing naming the switch
+            // for VoiceOver, which is why `toggleLabel` survives the copy cull.
             .accessibilityLabel(LivePreviewSettingsCopy.toggleLabel)
         }
       }
+
+      // **The remedy button lands in C4, with the sheet it opens.**
+      //
+      // `bar.action` is computed and tested from C1; nothing renders it yet, and
+      // that is deliberate rather than an omission. Until C4 the inline pack table
+      // is still on this page, so `statusNeedsLanguageDetail`'s "Use Browse
+      // downloads below" is satisfied by what is genuinely below. Shipping a button
+      // here would mean shipping one that opens nothing for the length of a chunk.
+
+    } footer: {
+      // Always visible: never gated on engine, toggle, Apple support or pack state.
+      Text(LivePreviewSettingsCopy.previewPrivacyFooter).settingsHelperCopy()
     }
   }
 
