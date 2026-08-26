@@ -434,8 +434,14 @@ def pairs(n, *, a_launch=10.0, b_launch=10.0, a_root=2.0, b_root=2.0,
         if bad_index == i:
             b = m.LaunchResult(verdict=m.BLOCKED_MISSING_MARKER,
                                detail="host.order_front.complete", sample=None)
-        out.append(m.Pair(order=("AB" if i % 2 == 0 else "BA"),
-                          a=a, b=b, a_keypress_ms=a_key, b_keypress_ms=b_key))
+        # The keypress figure names the launch it came from, so a crossed or
+        # reused measurement cannot pass the run check on the launch alone.
+        out.append(m.Pair(
+            order=("AB" if i % 2 == 0 else "BA"), a=a, b=b,
+            a_keypress=m.KeypressSample(run=a.sample.run if a.sample else a_run,
+                                        keypress_ms=a_key),
+            b_keypress=m.KeypressSample(run=b.sample.run if b.sample else b_run,
+                                        keypress_ms=b_key)))
     return out
 
 
@@ -793,6 +799,44 @@ def test_a_locked_screen_blocks_before_a_launch_is_spent():
         FAILURES.append("locked and unknown must give distinguishable reasons")
 
 
+def test_a_keypress_figure_must_name_the_launch_it_came_from():
+    """Tagging the LAUNCHES is not enough; the timings need identity too.
+
+    The distinct-run check validates `p.a`/`p.b`. A runner that reused a prior
+    keypress result, or associated the two sides' timings the wrong way round,
+    satisfies it completely — the launches are all distinct and only the numbers
+    are wrong. `BENCHMARK_PASS` from cross-associated evidence is the worst
+    outcome this instrument has, because every other check reads clean.
+    """
+    good = pairs(30)
+    expect("matched timings pass",
+           m.adjudicate_benchmark(good, BUDGET).verdict, m.BENCHMARK_PASS)
+
+    # One side's keypress figure carries a run that is not its launch's.
+    crossed = list(good)
+    crossed[11] = crossed[11]._replace(
+        b_keypress=m.KeypressSample(run="RUN-FROM-SOMEWHERE-ELSE",
+                                    keypress_ms=100.0))
+    r = m.adjudicate_benchmark(crossed, BUDGET)
+    expect("a keypress figure from another run blocks",
+           r.verdict, m.BLOCKED_INCOMPLETE_PAIRS)
+    if "RUN-FROM-SOMEWHERE-ELSE" not in r.detail:
+        FAILURES.append(f"the block must name the mismatched run: {r.detail!r}")
+
+    # THE SWAP, which is the case a per-side check catches and a set check does
+    # not: both runs are present and legitimate, on the wrong sides.
+    swapped = list(good)
+    p12 = swapped[12]
+    swapped[12] = p12._replace(a_keypress=p12.b_keypress,
+                               b_keypress=p12.a_keypress)
+    expect("two legitimate timings on the wrong sides block",
+           m.adjudicate_benchmark(swapped, BUDGET).verdict,
+           m.BLOCKED_INCOMPLETE_PAIRS)
+
+    expect("and the untouched set still passes",
+           m.adjudicate_benchmark(pairs(30), BUDGET).verdict, m.BENCHMARK_PASS)
+
+
 # ------------------------------------------------------------------- runner
 
 TESTS = [
@@ -819,6 +863,7 @@ TESTS = [
     test_an_abandoned_launch_is_actually_reaped,
     test_every_exceptional_exit_from_the_readiness_wait_reaps,
     test_a_locked_screen_blocks_before_a_launch_is_spent,
+    test_a_keypress_figure_must_name_the_launch_it_came_from,
     test_median_uses_statistics_median,
     test_p95_uses_nearest_rank,
 ]

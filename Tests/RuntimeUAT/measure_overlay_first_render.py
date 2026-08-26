@@ -89,7 +89,11 @@ LaunchSample = namedtuple(
     "LaunchSample", "run launch_ms root_ms order_front_ms host_window_id")
 LaunchResult = namedtuple("LaunchResult", "verdict detail sample")
 OverlayTiming = namedtuple("OverlayTiming", "verdict detail window_id keypress_ms")
-Pair = namedtuple("Pair", "order a b a_keypress_ms b_keypress_ms")
+# A keypress figure carries the run it belongs to. Untagged floats let a runner
+# associate the wrong measurement with a launch and still satisfy every other
+# check — the identity argument this whole instrument rests on, one level out.
+KeypressSample = namedtuple("KeypressSample", "run keypress_ms")
+Pair = namedtuple("Pair", "order a b a_keypress b_keypress")
 Budget = namedtuple(
     "Budget", "launch_median_regression_ms root_p95_ms keypress_p95_regression_ms")
 BenchmarkResult = namedtuple("BenchmarkResult", "verdict detail measured")
@@ -494,11 +498,25 @@ def adjudicate_benchmark(pairs, budget=PLAN_BUDGET, pair_count=PAIR_COUNT):
                        f"{len(set(runs))} distinct run ids across {pair_count * 2} "
                        "sides; every side must come from its own cold launch")
 
+    # Each keypress figure must name the launch it came from. The distinct-run
+    # check above validates the LAUNCH samples; without this, a runner that
+    # reused a prior keypress result or crossed the two sides still satisfies it
+    # and produces BENCHMARK_PASS from cross-associated evidence.
+    for i, p in enumerate(pairs):
+        for side, result, keypress in (("A", p.a, p.a_keypress),
+                                       ("B", p.b, p.b_keypress)):
+            if keypress.run != result.sample.run:
+                return blocked(
+                    BLOCKED_INCOMPLETE_PAIRS,
+                    f"pair {i} side {side}: the keypress figure names run "
+                    f"{keypress.run!r} and the launch is {result.sample.run!r}. "
+                    "Every timing must come from the launch it is reported with.")
+
     a_launch = [p.a.sample.launch_ms for p in pairs]
     b_launch = [p.b.sample.launch_ms for p in pairs]
     b_root = [p.b.sample.root_ms for p in pairs]
-    a_key = [p.a_keypress_ms for p in pairs]
-    b_key = [p.b_keypress_ms for p in pairs]
+    a_key = [p.a_keypress.keypress_ms for p in pairs]
+    b_key = [p.b_keypress.keypress_ms for p in pairs]
 
     launch_regression = median(b_launch) - median(a_launch)
     root_p95 = nearest_rank(b_root, 95)
@@ -946,12 +964,17 @@ def smoke(bundle_path, *, out_dir):
         out["detail"] = f"{type(exc).__name__}: {exc}"
         return out
 
-    timebase = mach_timebase()
     resolved = None
     timing = None
     result = None
     failure = None
+    timebase = None
     try:
+        # Inside the reaped region, not before it. `mach_timebase()` loads a
+        # native symbol and can raise; raising here with the app already launched
+        # and the cleanup not yet armed leaves an orphan and produces no receipt
+        # at all — the one run that most needs explaining.
+        timebase = mach_timebase()
         timing = measure_keypress_to_overlay(
             launched["pid"], launched["marker_path"])
         marker_text = launched["marker_path"].read_text()
