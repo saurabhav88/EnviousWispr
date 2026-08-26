@@ -1208,116 +1208,144 @@ def test_measure_after_engine_ready_gates_the_keypress_by_call_count():
     expect("calling the thunk exactly once", calls["n"], 1)
 
 
-def _smoke_body(source):
-    """`smoke()`'s own body text, isolated by its full definition signature —
-    never a bare function name, which would match a call site instead (the
-    same "found the wrong twin" class the AX-identifier order check hit
-    before it anchored on `final class OverlayWindowHost`).
+def _function_body(source, name, next_name):
+    """One named function's own body text, isolated by its full definition
+    signature — never a bare function name, which would match a call site
+    instead (the same "found the wrong twin" class the AX-identifier order
+    check hit before it anchored on `final class OverlayWindowHost`).
+
+    Bound to exactly ONE function: a wide span covering several functions
+    lets a required literal in an UNUSED sibling satisfy the check without
+    the function actually under test containing it. `next_name` is the
+    following top-level `def` that ends this one's body — pass the real next
+    function so the span is exact, not a lowest-common-denominator boundary
+    shared by every caller.
     """
-    start = source.find("\ndef smoke(bundle_path")
-    end = source.find("\ndef main(argv)", start) if start >= 0 else -1
+    start = source.find(f"\ndef {name}(")
+    end = source.find(f"\ndef {next_name}(", start) if start >= 0 else -1
     if start < 0 or end < 0:
         return None
     return source[start:end]
 
 
 def test_smoke_routes_its_keypress_measurement_through_the_readiness_gate():
-    """A CALLER-CONTRACT row (#2377, C1 repair): the
-    previous test proved `measure_after_engine_ready` behaves correctly in
-    isolation, which says nothing about whether `smoke()` still CALLS it —
-    replacing the live call with a direct `measure_keypress_to_overlay()`
-    would leave that test green. This binds the exact live shape instead.
+    """A CALLER-CONTRACT row (#2377, C1 repair): the previous test proved
+    `measure_after_engine_ready` behaves correctly
+    in isolation, which says nothing about whether the live sequence still
+    CALLS it — replacing a live call with a direct measurement would leave
+    that test green. This binds the exact live shape across the three
+    functions that now share the sequence: `_drive_one_launch` (the
+    readiness gate and screen-lock capture), `_launch_verdict` (the
+    pre-press-lock verdict return), and `smoke` (the call graph tying them
+    together plus the final adjudicator).
     """
     real_source = pathlib.Path(m.__file__).read_text()
-    body = _smoke_body(real_source)
-    if body is None:
-        FAILURES.append("could not isolate smoke()'s body by source markers")
+
+    drive_body = _function_body(real_source, "_drive_one_launch", "_launch_receipt_fields")
+    if drive_body is None:
+        FAILURES.append("could not isolate _drive_one_launch()'s body")
         return
 
-    ready_idx = body.find("await_engine_ready(")
+    ready_idx = drive_body.find("await_engine_ready(")
     if ready_idx < 0:
-        FAILURES.append("smoke() does not call await_engine_ready")
+        FAILURES.append("_drive_one_launch() does not call await_engine_ready")
         return
     # Bound to THIS call, not merely present anywhere in the function — the
     # keyword must appear before the call's own closing paren is reached.
-    call_end = body.find(")", ready_idx)
-    if 'proc=launched["process"]' not in body[ready_idx:call_end + 1]:
+    call_end = drive_body.find(")", ready_idx)
+    if 'proc=launched["process"]' not in drive_body[ready_idx:call_end + 1]:
         FAILURES.append(
-            "smoke()'s await_engine_ready call does not pass "
+            "_drive_one_launch()'s await_engine_ready call does not pass "
             'proc=launched["process"] — a crash during warm-up would wait '
             "out the full timeout instead of being detected")
 
     # `press_permitted` must be derived from BOTH facts — engine readiness
     # AND a screen-lock recheck taken AFTER the readiness wait (cloud review
     # P1, #2377 C1 repair): the launch and readiness waits can together run
-    # long enough for the screen to lock after the function's initial check,
+    # long enough for the screen to lock after the caller's initial check,
     # which that initial check cannot see.
-    if "pre_press_lock = screen_lock_state()" not in body:
-        FAILURES.append("smoke() does not re-check the screen lock before the press")
+    if "pre_press_lock = screen_lock_state()" not in drive_body:
+        FAILURES.append("_drive_one_launch() does not re-check the screen lock before the press")
     required_permit = "press_permitted = engine_ready and not pre_press_blocked"
-    if required_permit not in body:
+    if required_permit not in drive_body:
         FAILURES.append(
-            "smoke() does not derive press_permitted from BOTH engine "
-            "readiness and the pre-press screen-lock recheck")
+            "_drive_one_launch() does not derive press_permitted from BOTH "
+            "engine readiness and the pre-press screen-lock recheck")
 
     required_gate = "\n".join((
         "        timing = measure_after_engine_ready(",
         "            press_permitted,",
         "            lambda: measure_keypress_to_overlay(",
     ))
-    gate_idx = body.find(required_gate)
+    gate_idx = drive_body.find(required_gate)
     if gate_idx < 0:
         FAILURES.append(
-            "smoke() does not route its keypress measurement through "
-            "press_permitted")
+            "_drive_one_launch() does not route its keypress measurement "
+            "through press_permitted")
     elif gate_idx < ready_idx:
         FAILURES.append(
-            "smoke() gates the keypress measurement BEFORE awaiting "
-            "readiness — the readiness result it gates on would be stale")
+            "_drive_one_launch() gates the keypress measurement BEFORE "
+            "awaiting readiness — the readiness result it gates on would be stale")
 
-    # `final_verdict_and_detail` must actually be the live adjudicator, not
-    # just a correctly-behaving function nobody calls (round-two finding on
-    # this same review): restoring the old inline result-first ordering
-    # would leave the isolated priority test green.
-    required_final_adjudication = (
-        'out["verdict"], out["detail"] = '
-        "final_verdict_and_detail(result, timing)")
-    if required_final_adjudication not in body:
-        FAILURES.append(
-            "smoke() bypasses the timing-first final verdict adjudicator")
-
-    # The screen-lock recheck must both CAPTURE the block and RETURN its
-    # promised verdict — two separate live blocks, so each is bound on its
-    # own rather than inferred from the other.
+    # CAPTURE lives in `_drive_one_launch`.
     required_screen_capture = "\n".join((
         "        elif pre_press_blocked:",
         "            screen_locked_before_press = pre_press_blocked",
     ))
-    required_screen_verdict = "\n".join((
-        "    if screen_locked_before_press:",
-        "        out[\"verdict\"] = BLOCKED_SCREEN_LOCKED",
-        "        out[\"detail\"] = screen_locked_before_press",
-        "        return out",
-    ))
+    if required_screen_capture not in drive_body:
+        FAILURES.append("_drive_one_launch() discards the pre-press lock block")
+
+    # RETURN of that block's promised verdict lives in `_launch_verdict` —
+    # bound separately, on ITS OWN function body, so each is proven rather
+    # than inferred from the other.
+    verdict_body = _function_body(real_source, "_launch_verdict", "smoke")
+    if verdict_body is None:
+        FAILURES.append("could not isolate _launch_verdict()'s body")
+    else:
+        required_screen_verdict = "\n".join((
+            '    if piece["screen_locked_before_press"]:',
+            '        return (BLOCKED_SCREEN_LOCKED, piece["screen_locked_before_press"])',
+        ))
+        if required_screen_verdict not in verdict_body:
+            FAILURES.append("_launch_verdict() does not return the pre-press lock verdict")
+
+    # `smoke()` must actually CALL `_drive_one_launch`, `_launch_receipt_fields`,
+    # `_launch_verdict`, and the final adjudicator — the call graph itself,
+    # not merely text that happens to exist in one of the three functions.
+    # A wide span covering all three would let this pass with NO caller
+    # actually wiring the pieces together.
+    smoke_body = _function_body(real_source, "smoke", "_pin_identity")
+    if smoke_body is None:
+        FAILURES.append("could not isolate smoke()'s body")
+        return
+    required_final_adjudication = (
+        'out["verdict"], out["detail"] = '
+        'final_verdict_and_detail(piece["result"], piece["timing"])')
     for required, message in (
-        (required_screen_capture, "smoke() discards the pre-press lock block"),
-        (required_screen_verdict, "smoke() does not return the pre-press lock verdict"),
+        ("_drive_one_launch(bundle_path, out_dir=out_dir)",
+         "smoke() does not call _drive_one_launch"),
+        ("_launch_receipt_fields(piece)",
+         "smoke() does not call _launch_receipt_fields"),
+        ("_launch_verdict(piece)", "smoke() does not call _launch_verdict"),
+        (required_final_adjudication,
+         "smoke() bypasses the timing-first final verdict adjudicator"),
     ):
-        if required not in body:
+        if required not in smoke_body:
             FAILURES.append(message)
 
-    # CONTROL: the same check, run against a synthetic source where the live
-    # call is replaced by a direct measurement, must actually fail — proof
-    # this row is not vacuously true. Never touches the real file.
+    # CONTROL: a synthetic `smoke()` whose body calls a direct measurement
+    # instead of `_drive_one_launch` must actually fail this test's own
+    # call-graph check — proof it is not vacuously true. Never touches the
+    # real file.
     bypassed_fake = (
         "\ndef smoke(bundle_path, *, out_dir):\n"
         "    ready = await_engine_ready(marker_path, proc=proc, run_id=run_id)\n"
         "    timing = measure_keypress_to_overlay(pid, marker_path)\n"
-        "\ndef main(argv):\n")
-    fake_body = _smoke_body(bypassed_fake)
-    if fake_body is None:
+        "\ndef _pin_identity(bundle_path, label):\n")
+    fake_smoke_body = _function_body(bypassed_fake, "smoke", "_pin_identity")
+    if fake_smoke_body is None:
         FAILURES.append("the control fixture's own source markers do not isolate")
-    elif required_gate in fake_body:
+    elif "_drive_one_launch(bundle_path, out_dir=out_dir)" in fake_smoke_body:
         FAILURES.append(
             "the caller-contract check does not fail on a bypassed source — "
             "it cannot be trusted to catch a real regression")
@@ -1614,6 +1642,362 @@ def test_a_keypress_figure_must_name_the_launch_it_came_from():
            m.adjudicate_benchmark(pairs(30), BUDGET).verdict, m.BENCHMARK_PASS)
 
 
+# ------------------------------------------------------- run_benchmark (C4)
+
+def _fake_piece(*, run_id, identity, launch_ms=3.0, root_ms=2.0, keypress_ms=5.0):
+    """A `_drive_one_launch` return value for a CLEAN launch — every field
+    `run_benchmark` AND `_launch_receipt_fields` read, nothing they do not."""
+    sample = m.LaunchSample(run=run_id, launch_ms=launch_ms, root_ms=root_ms,
+                            order_front_ms=launch_ms + 1, host_window_id=7)
+    return {
+        "launched": {"run_id": run_id, "pid": 1000, "marker_path": f"/tmp/{run_id}.tsv",
+                    "requested": identity},
+        "resolved": identity, "timebase": (1, 1), "engine_ready_wait_ms": 1.0,
+        "failure": None, "engine_not_ready": False,
+        "screen_locked_before_press": None, "screen_locked_pre_press": False,
+        "result": m.LaunchResult(verdict=m.OK, detail="", sample=sample),
+        "timing": {
+            "verdict": m.OK, "detail": "", "keypress_ms": keypress_ms,
+            "window_id": 7, "host_window_id": 7, "ax_available": True,
+            "match_count_at_stop": 1, "keycode": 61,
+            "poll_resolution_ms_median": 0.25, "poll_resolution_ms_max": 0.5,
+            "polls": 4, "screen_locked_pre_press": False,
+            "screen_locked_post_measurement": False,
+        },
+    }
+
+
+IDENTITY_A = m.Identity(bundle_id=BUNDLE, executable_path=EXE, sha256=SHA)
+IDENTITY_B = m.Identity(bundle_id=BUNDLE, executable_path=EXE.replace("EnviousWispr", "EnviousWisprB"),
+                        sha256="b" * 64)
+
+
+def _identity_for(side):
+    return IDENTITY_A if side == "A" else IDENTITY_B
+
+
+def _patch_benchmark_environment(script):
+    """Runs `script(calls)` with `_drive_one_launch`, `bundle_identity`,
+    `screen_lock_state`, and `running_instances` all patched to synthetic,
+    deterministic behavior — A and B pinned to genuinely DIFFERENT
+    identities, since `run_benchmark` now refuses to compare a build with
+    itself. `calls` accumulates one dict per launch in call order, so a test
+    can assert on ORDER without depending on real timing.
+    """
+    calls = []
+
+    saved = {
+        "_drive_one_launch": m._drive_one_launch,
+        "bundle_identity": m.bundle_identity,
+        "screen_lock_state": m.screen_lock_state,
+        "running_instances": m.running_instances,
+    }
+    m.screen_lock_state = lambda: False
+    m.running_instances = lambda: {}
+    m.bundle_identity = lambda bundle_path: (
+        IDENTITY_A if str(bundle_path) == "A.app" else IDENTITY_B)
+
+    def fake_drive(bundle_path, *, out_dir):
+        run_id = f"RUN-{len(calls)}"
+        side = "A" if str(bundle_path) == "A.app" else "B"
+        calls.append({"bundle": str(bundle_path), "run_id": run_id})
+        return _fake_piece(run_id=run_id, identity=_identity_for(side))
+
+    m._drive_one_launch = fake_drive
+    try:
+        return script(calls)
+    finally:
+        for name, value in saved.items():
+            setattr(m, name, value)
+
+
+def test_run_benchmark_drives_pairs_in_the_declared_ab_ba_order():
+    """The live driver must call the bundle matching `paired_schedule`'s own
+    letters, in order — not merely alternate SOMETHING, which a bug swapping
+    the bundle-for-letter mapping would still satisfy."""
+    def script(calls):
+        return m.run_benchmark("A.app", "B.app", pairs=m.PAIR_COUNT, out_dir="/tmp")
+    receipt = _patch_benchmark_environment(script)
+
+    expect(f"{m.PAIR_COUNT} pairs drive exactly {m.PAIR_COUNT * 2} launches",
+           receipt["pairs_completed"], m.PAIR_COUNT)
+    expect("a clean run with distinct identities reaches a real benchmark verdict",
+           receipt["verdict"] in (m.BENCHMARK_PASS, m.BENCHMARK_FAIL), True)
+    expect("the schedule alternates AB/BA", receipt["schedule"][:4], ["AB", "BA", "AB", "BA"])
+    # The letter 'A' must always resolve to "A.app" and 'B' to "B.app" in the
+    # per-pair receipt — not merely alternate SOMETHING, which a bug swapping
+    # the bundle-for-letter mapping would still satisfy.
+    expect("every receipt row's side A used A.app",
+           all(row["sides"]["A"]["bundle"] == "A.app" for row in receipt["pair_receipts"]), True)
+    expect("every receipt row's side B used B.app",
+           all(row["sides"]["B"]["bundle"] == "B.app" for row in receipt["pair_receipts"]), True)
+
+
+def test_run_benchmark_blocks_on_identity_drift_mid_run_never_pass_or_fail():
+    """A bundle rebuilt between two launches must BLOCK the whole run, never
+    reach `BENCHMARK_PASS` or `BENCHMARK_FAIL` — the two-way control: the
+    UNCHANGED twin (next test) completes normally."""
+    identity_b_rebuilt = m.Identity(bundle_id=BUNDLE, executable_path=IDENTITY_B.executable_path,
+                                    sha256="f" * 64)
+
+    saved = {"_drive_one_launch": m._drive_one_launch,
+            "bundle_identity": m.bundle_identity,
+            "screen_lock_state": m.screen_lock_state,
+            "running_instances": m.running_instances}
+    m.screen_lock_state = lambda: False
+    m.running_instances = lambda: {}
+    # Pinning (the first two calls, one per bundle) sees the ORIGINAL identity.
+    m.bundle_identity = lambda bundle_path: (
+        IDENTITY_A if str(bundle_path) == "A.app" else IDENTITY_B)
+
+    launch_calls = {"n": 0}
+
+    def fake_drive(bundle_path, *, out_dir):
+        launch_calls["n"] += 1
+        run_id = f"RUN-{launch_calls['n']}"
+        side = "A" if str(bundle_path) == "A.app" else "B"
+        # Second overall launch (side B of pair 0) resolves to the rebuilt
+        # identity, simulating a rebuild that landed between pinning and it.
+        resolved = identity_b_rebuilt if launch_calls["n"] == 2 else _identity_for(side)
+        return _fake_piece(run_id=run_id, identity=resolved)
+
+    m._drive_one_launch = fake_drive
+    try:
+        receipt = m.run_benchmark("A.app", "B.app", pairs=m.PAIR_COUNT, out_dir="/tmp")
+    finally:
+        for name, value in saved.items():
+            setattr(m, name, value)
+
+    expect("a mid-run identity drift blocks rather than PASS/FAIL",
+           receipt["verdict"], m.BLOCKED_IDENTITY_DRIFT)
+    expect("the run stopped at the drifted pair, none completed",
+           receipt["pairs_completed"], 0)
+    expect("side A of pair 0 launched, then side B drifted — exactly 2 launches",
+           launch_calls["n"], 2)
+
+
+def test_run_benchmark_completes_normally_when_identity_never_drifts():
+    """TWIN of the drift test: the same run with identity held constant
+    throughout must reach a real benchmark verdict, proving the drift
+    test's block is about the DRIFT, not about identity-checking itself
+    always blocking."""
+    def script(calls):
+        return m.run_benchmark("A.app", "B.app", pairs=m.PAIR_COUNT, out_dir="/tmp")
+    receipt = _patch_benchmark_environment(script)
+    expect("an unchanged identity throughout reaches PASS or FAIL, never BLOCKED",
+           receipt["verdict"] in (m.BENCHMARK_PASS, m.BENCHMARK_FAIL), True)
+    expect(f"all {m.PAIR_COUNT} pairs completed", receipt["pairs_completed"], m.PAIR_COUNT)
+    expect("the final re-hash is recorded", "final_identity" in receipt, True)
+    expect("every pair produced a receipt row",
+           len(receipt["pair_receipts"]), m.PAIR_COUNT)
+    expect("each pair receipt row carries both arms",
+           all(set(row["sides"]) == {"A", "B"} for row in receipt["pair_receipts"]), True)
+
+    expect("the complete schedule is retained",
+           receipt["schedule"], m.paired_schedule(m.PAIR_COUNT))
+    expect("pair indexes and orders match that schedule",
+           [(row["index"], row["order"]) for row in receipt["pair_receipts"]],
+           list(enumerate(receipt["schedule"])))
+    expect("the final identities equal the pinned identities",
+           receipt["final_identity"], receipt["pinned_identity"])
+
+    required_timing = {
+        "keypress_ms", "host_window_id", "ax_available",
+        "match_count_at_stop", "keycode", "poll_resolution_ms_median",
+        "poll_resolution_ms_max", "polls",
+        "screen_locked_pre_press", "screen_locked_post_measurement",
+    }
+    for row in receipt["pair_receipts"]:
+        for side in ("A", "B"):
+            item = row["sides"][side]
+            expect(f"pair {row['index']} side {side} retains its pinned identity",
+                   item["requested_identity"], receipt["pinned_identity"][side])
+            expect(f"pair {row['index']} side {side} retains its resolved identity",
+                   item["resolved_identity"], receipt["pinned_identity"][side])
+            expect(f"pair {row['index']} side {side} retains the full timing receipt",
+                   required_timing <= set(item["keypress"]), True)
+
+    expect("both root p95 diagnostics are retained",
+           {"root_p95_a_ms", "root_p95_b_ms"} <= set(receipt["measured"]), True)
+
+
+def test_run_benchmark_stops_after_the_first_bad_side_no_top_up():
+    """One blocked side must stop the run BEFORE launching that pair's other
+    side, and before any further pair — no top-up (#2377, C4 plan §3 step 1),
+    and no wasted launch on a pair that is already known bad."""
+    launch_calls = {"n": 0}
+
+    saved = {"_drive_one_launch": m._drive_one_launch,
+            "bundle_identity": m.bundle_identity,
+            "screen_lock_state": m.screen_lock_state,
+            "running_instances": m.running_instances}
+    m.screen_lock_state = lambda: False
+    m.running_instances = lambda: {}
+    m.bundle_identity = lambda bundle_path: (
+        IDENTITY_A if str(bundle_path) == "A.app" else IDENTITY_B)
+
+    def fake_drive(bundle_path, *, out_dir):
+        launch_calls["n"] += 1
+        run_id = f"RUN-{launch_calls['n']}"
+        side = "A" if str(bundle_path) == "A.app" else "B"
+        if launch_calls["n"] == 1:
+            # The FIRST launch overall (side A of pair 0) never got
+            # engine-ready — side B of that same pair must never launch.
+            piece = _fake_piece(run_id=run_id, identity=_identity_for(side))
+            piece["engine_not_ready"] = True
+            return piece
+        return _fake_piece(run_id=run_id, identity=_identity_for(side))
+
+    m._drive_one_launch = fake_drive
+    try:
+        receipt = m.run_benchmark("A.app", "B.app", pairs=m.PAIR_COUNT, out_dir="/tmp")
+    finally:
+        for name, value in saved.items():
+            setattr(m, name, value)
+
+    expect("a bad side blocks with the specific per-side reason",
+           receipt["verdict"], m.BLOCKED_INCOMPLETE_PAIRS)
+    expect("the detail names the underlying side verdict",
+           m.BLOCKED_ENGINE_NOT_READY in receipt["detail"], True)
+    expect("the run never reaches PASS or FAIL",
+           receipt["verdict"] in (m.BENCHMARK_PASS, m.BENCHMARK_FAIL), False)
+    expect("no pair completed", receipt["pairs_completed"], 0)
+    expect("side B of the bad pair never launched — exactly 1 launch total",
+           launch_calls["n"], 1)
+
+
+def test_run_benchmark_rechecks_occupancy_before_every_launch():
+    """A peer app appearing partway through a 30-pair run must block the
+    NEXT launch it precedes, not only pair 0's initial check — a run
+    spanning up to 60 launches is wide enough for a peer to appear well
+    after the start."""
+    launch_calls = {"n": 0}
+    occupancy_calls = {"n": 0}
+
+    saved = {"_drive_one_launch": m._drive_one_launch,
+            "bundle_identity": m.bundle_identity,
+            "screen_lock_state": m.screen_lock_state,
+            "running_instances": m.running_instances}
+    m.screen_lock_state = lambda: False
+    m.bundle_identity = lambda bundle_path: (
+        IDENTITY_A if str(bundle_path) == "A.app" else IDENTITY_B)
+
+    def fake_instances():
+        occupancy_calls["n"] += 1
+        # Call 1 is the initial pre-loop check; call 2 is the per-side
+        # recheck before pair 0 side A launches — both clear. Call 3 is the
+        # recheck before pair 0 side B: a peer has appeared by then.
+        return {} if occupancy_calls["n"] <= 2 else {4242: "/peer/EnviousWispr.app"}
+
+    def fake_drive(bundle_path, *, out_dir):
+        launch_calls["n"] += 1
+        run_id = f"RUN-{launch_calls['n']}"
+        side = "A" if str(bundle_path) == "A.app" else "B"
+        return _fake_piece(run_id=run_id, identity=_identity_for(side))
+
+    m.running_instances = fake_instances
+    m._drive_one_launch = fake_drive
+    try:
+        receipt = m.run_benchmark("A.app", "B.app", pairs=m.PAIR_COUNT, out_dir="/tmp")
+    finally:
+        for name, value in saved.items():
+            setattr(m, name, value)
+
+    expect("a peer appearing mid-run blocks on occupancy",
+           receipt["verdict"], m.BLOCKED_OCCUPANCY)
+    expect("only side A of pair 0 launched before the peer was seen",
+           launch_calls["n"], 1)
+
+
+def test_run_benchmark_rejects_any_pair_count_other_than_the_binding_thirty():
+    """Fewer than 30 pairs has no statistical claim on a p95; more than 30
+    is not the binding evidence set the plan names. Every count other than
+    exactly `PAIR_COUNT` must block before any launch."""
+    for bad_count in (0, 2, 29, 32):
+        receipt = m.run_benchmark("A.app", "B.app", pairs=bad_count, out_dir="/tmp")
+        expect(f"{bad_count} pairs blocks before any launch",
+               receipt["verdict"], m.BLOCKED_INCOMPLETE_PAIRS)
+
+    def script(calls):
+        return m.run_benchmark("A.app", "B.app", pairs=m.PAIR_COUNT, out_dir="/tmp")
+    twin = _patch_benchmark_environment(script)
+    expect(f"exactly {m.PAIR_COUNT} pairs reaches a real verdict, proving the "
+           "count check is not vacuously blocking everything",
+           twin["verdict"] in (m.BENCHMARK_PASS, m.BENCHMARK_FAIL), True)
+
+
+def test_run_benchmark_refuses_two_arms_that_resolve_to_the_same_build():
+    """Comparing a build with itself proves nothing about the optimization.
+    Path OR hash matching alone must block."""
+    saved = {"bundle_identity": m.bundle_identity,
+            "screen_lock_state": m.screen_lock_state,
+            "running_instances": m.running_instances}
+    m.screen_lock_state = lambda: False
+    m.running_instances = lambda: {}
+    m.bundle_identity = lambda bundle_path: IDENTITY_A  # both arms identical
+    try:
+        receipt = m.run_benchmark("A.app", "B.app", pairs=m.PAIR_COUNT, out_dir="/tmp")
+    finally:
+        for name, value in saved.items():
+            setattr(m, name, value)
+    expect("identical arms block before any launch",
+           receipt["verdict"], m.BLOCKED_IDENTICAL_ARMS)
+
+
+def test_cli_rejects_smoke_with_an_explicit_pairs_argument():
+    """`--smoke --pairs 30` must be refused even though 30 equals the
+    benchmark default — the parser cannot tell an explicit benchmark-only
+    argument from an unset one unless the default itself is `None`."""
+    calls = {"n": 0}
+    saved_drive = m._drive_one_launch
+    m._drive_one_launch = lambda bundle_path, *, out_dir: calls.__setitem__("n", calls["n"] + 1)
+    try:
+        exited = None
+        try:
+            m.main(["--smoke", "--bundle", "A.app", "--pairs", "30"])
+        except SystemExit as exc:
+            exited = exc.code
+    finally:
+        m._drive_one_launch = saved_drive
+
+    expect("--smoke --pairs 30 exits with an argparse error", exited, 2)
+    expect("no launch was ever attempted", calls["n"], 0)
+
+
+def test_run_benchmark_pins_identity_before_the_first_pair():
+    """Both bundles' identities must be read BEFORE pair 0 launches, not
+    lazily on first use — else a rebuild during pair 0 itself would have no
+    baseline to be compared against."""
+    order = []
+
+    saved = {"_drive_one_launch": m._drive_one_launch,
+            "bundle_identity": m.bundle_identity,
+            "screen_lock_state": m.screen_lock_state,
+            "running_instances": m.running_instances}
+    m.screen_lock_state = lambda: False
+    m.running_instances = lambda: {}
+
+    def fake_identity(bundle_path):
+        order.append(("pin", str(bundle_path)))
+        return IDENTITY_A if str(bundle_path) == "A.app" else IDENTITY_B
+
+    def fake_drive(bundle_path, *, out_dir):
+        order.append(("launch", str(bundle_path)))
+        side = "A" if str(bundle_path) == "A.app" else "B"
+        return _fake_piece(run_id=f"RUN-{len(order)}", identity=_identity_for(side))
+
+    m.bundle_identity = fake_identity
+    m._drive_one_launch = fake_drive
+    try:
+        m.run_benchmark("A.app", "B.app", pairs=m.PAIR_COUNT, out_dir="/tmp")
+    finally:
+        for name, value in saved.items():
+            setattr(m, name, value)
+
+    expect("both bundles are pinned before the first launch",
+           order[:2], [("pin", "A.app"), ("pin", "B.app")])
+
+
 # ------------------------------------------------------------------- runner
 
 TESTS = [
@@ -1656,6 +2040,15 @@ TESTS = [
     test_a_keypress_figure_must_name_the_launch_it_came_from,
     test_median_uses_statistics_median,
     test_p95_uses_nearest_rank,
+    test_run_benchmark_drives_pairs_in_the_declared_ab_ba_order,
+    test_run_benchmark_blocks_on_identity_drift_mid_run_never_pass_or_fail,
+    test_run_benchmark_completes_normally_when_identity_never_drifts,
+    test_run_benchmark_stops_after_the_first_bad_side_no_top_up,
+    test_run_benchmark_rechecks_occupancy_before_every_launch,
+    test_run_benchmark_rejects_any_pair_count_other_than_the_binding_thirty,
+    test_run_benchmark_refuses_two_arms_that_resolve_to_the_same_build,
+    test_cli_rejects_smoke_with_an_explicit_pairs_argument,
+    test_run_benchmark_pins_identity_before_the_first_pair,
 ]
 
 

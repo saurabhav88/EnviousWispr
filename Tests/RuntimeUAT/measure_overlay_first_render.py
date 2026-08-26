@@ -134,6 +134,17 @@ BLOCKED_AMBIGUOUS_OVERLAY = "BLOCKED_AMBIGUOUS_OVERLAY"
 # policy, not a first-render fault, so it gets its own verdict rather than
 # reusing `BLOCKED_WRONG_PRESENTATION` or `BLOCKED_LAUNCH`.
 BLOCKED_ENGINE_NOT_READY = "BLOCKED_ENGINE_NOT_READY"
+# A launched executable's identity (bundle id, executable path, or SHA-256)
+# did not match the identity pinned for its arm before pair 1, or the
+# post-run re-hash did not match the pinned value (#2377, C4). Never a
+# BENCHMARK_FAIL: a rebuild mid-run means the sixty launches are not all
+# measuring the same two builds, which is a question the run cannot answer,
+# not a regression it found.
+BLOCKED_IDENTITY_DRIFT = "BLOCKED_IDENTITY_DRIFT"
+# The pinned baseline and prewarmed identities share an executable path or a
+# hash (#2377, C4). A regression measured between one build and itself is not
+# evidence the optimization does anything — it proves nothing either way.
+BLOCKED_IDENTICAL_ARMS = "BLOCKED_IDENTICAL_ARMS"
 
 Identity = namedtuple("Identity", "bundle_id executable_path sha256")
 Marker = namedtuple("Marker", "run pid bundle event ticks window intent index")
@@ -395,9 +406,12 @@ def smoke_verdict(result):
     return SMOKE_PASS if result.verdict == OK else result.verdict
 
 
-def final_verdict_and_detail(result, timing):
-    """The SINGLE place that decides `smoke()`'s outcome once a launch's
-    marker adjudication AND a keypress measurement both exist.
+def result_and_timing_verdict(result, timing):
+    """The SINGLE place that decides a launch's outcome once its marker
+    adjudication AND a keypress measurement both exist — shared by
+    `final_verdict_and_detail` (smoke) and the benchmark's per-side verdict,
+    so a later edit to the priority order affects both callers rather than
+    silently diverging between them.
 
     `timing` is checked FIRST (#2377, C1 repair): it is the
     SPECIFIC diagnosis from the actual keypress measurement — AX
@@ -408,12 +422,25 @@ def final_verdict_and_detail(result, timing):
     true-but-less-informative `BLOCKED_MISSING_MARKER` for the SAME run,
     masking the real reason behind a verdict that reads like an app defect
     rather than an unavailable precondition.
+
+    Returns bare `OK` on success, never `SMOKE_PASS` — that relabeling means
+    "one launch, nothing to compare," which only `smoke()`'s caller wants;
+    the benchmark's per-side verdict has no use for it.
     """
     if timing["verdict"] != OK:
         return timing["verdict"], timing["detail"]
     if result.verdict != OK:
         return result.verdict, result.detail
-    return smoke_verdict(result), result.detail
+    return OK, result.detail
+
+
+def final_verdict_and_detail(result, timing):
+    """`smoke()`'s outcome: `result_and_timing_verdict`'s bare `OK` becomes
+    `SMOKE_PASS`; every blocked verdict passes through unchanged."""
+    verdict, detail = result_and_timing_verdict(result, timing)
+    if verdict == OK:
+        return smoke_verdict(result), detail
+    return verdict, detail
 
 
 # ------------------------------------------------------- the overlay endpoint
@@ -746,6 +773,7 @@ def adjudicate_benchmark(pairs, budget=PLAN_BUDGET, pair_count=PAIR_COUNT):
 
     a_launch = [p.a.sample.launch_ms for p in pairs]
     b_launch = [p.b.sample.launch_ms for p in pairs]
+    a_root = [p.a.sample.root_ms for p in pairs]
     b_root = [p.b.sample.root_ms for p in pairs]
     a_key = [p.a_keypress.keypress_ms for p in pairs]
     b_key = [p.b_keypress.keypress_ms for p in pairs]
@@ -771,6 +799,9 @@ def adjudicate_benchmark(pairs, budget=PLAN_BUDGET, pair_count=PAIR_COUNT):
         "launch_median_a_ms": median(a_launch),
         "launch_median_b_ms": median(b_launch),
         "launch_median_regression_ms": launch_regression,
+        # `a` (baseline) never triggers early construction, so its root p95
+        # is diagnostic evidence only — the budget applies to `b` alone.
+        "root_p95_a_ms": nearest_rank(a_root, 95),
         "root_p95_b_ms": root_p95,
         "keypress_p95_a_ms": nearest_rank(a_key, 95),
         "keypress_p95_b_ms": nearest_rank(b_key, 95),
@@ -1277,43 +1308,22 @@ def launch_with_markers(bundle_path, *, marker_dir, ready_timeout_s=30.0):
             "marker_path": marker_path, "process": proc}
 
 
-def smoke(bundle_path, *, out_dir):
-    """One bundle, one launch, one press: does the instrument produce a receipt?
+def _drive_one_launch(bundle_path, *, out_dir):
+    """One cold launch, one press, the raw pieces — no verdict, no JSON shape.
 
-    Returns a JSON-serialisable dict whose `verdict` is `SMOKE_PASS` or a
-    `BLOCKED_` reason. It is never `BENCHMARK_PASS` — one bundle has nothing to
-    be compared against.
+    Shared by `smoke()` and `run_benchmark()` so both execute the identical
+    crash-avoidance and timing sequence. The callers add only their own
+    pre-launch gates, adjudication, and receipt shape.
+
+    Returns a dict of raw pieces: `launched`, `resolved`, `timing`, `result`,
+    `timebase`, `engine_ready_wait_ms`, `failure`, `engine_not_ready`,
+    `screen_locked_before_press`, `screen_locked_pre_press` (the state dict,
+    for the caller's receipt). Never raises for an ordinary launch failure —
+    that is carried in `failure`; an exception here means the launch attempt
+    itself could not even be started (e.g. `launch_with_markers` itself
+    raised), which the caller turns into `BLOCKED_LAUNCH`.
     """
-    out = {"kind": "smoke", "bundle": str(bundle_path),
-           "hardware": hardware_identity()}
-
-    # The screen lock is checked BEFORE occupancy, because it costs nothing and
-    # invalidates the run whatever the slot looks like.
-    lock = screen_lock_state()
-    blocked_reason = screen_lock_block(lock)
-    out["screen_locked"] = lock
-    if blocked_reason:
-        out["verdict"] = BLOCKED_SCREEN_LOCKED
-        out["detail"] = blocked_reason
-        return out
-
-    # Occupancy: REFUSE rather than choose. Every dev bundle on this machine is
-    # named the same, so picking one of two instances silently retargets the
-    # measurement at somebody else's build.
-    instances = running_instances()
-    if instances:
-        out["verdict"] = BLOCKED_OCCUPANCY
-        out["detail"] = ("EnviousWispr is already running and this measurement needs a "
-                         "cold launch it owns: " +
-                         ", ".join(f"pid {p} at {x}" for p, x in sorted(instances.items())))
-        return out
-
-    try:
-        launched = launch_with_markers(bundle_path, marker_dir=out_dir)
-    except Exception as exc:
-        out["verdict"] = BLOCKED_LAUNCH
-        out["detail"] = f"{type(exc).__name__}: {exc}"
-        return out
+    launched = launch_with_markers(bundle_path, marker_dir=out_dir)
 
     resolved = None
     timing = None
@@ -1323,6 +1333,7 @@ def smoke(bundle_path, *, out_dir):
     engine_ready_wait_ms = None
     engine_not_ready = False
     screen_locked_before_press = None
+    screen_locked_pre_press = None
     try:
         # Inside the reaped region, not before it. `mach_timebase()` loads a
         # native symbol and can raise; raising here with the app already launched
@@ -1344,15 +1355,15 @@ def smoke(bundle_path, *, out_dir):
         # Re-check the screen lock immediately before the press (#2377, C1
         # repair). The launch and engine-readiness waits above can together
         # run for up to ~60s — wide enough for the screen to lock AFTER the
-        # check at the top of this function, which the
-        # initial check cannot see. A press sent into a locked screen
-        # invalidates the run for the same reason that initial check exists;
-        # checked here, not inside `measure_keypress_to_overlay`, so it
-        # shares the SAME verdict and receipt field as the initial check
-        # rather than inventing a second meaning for the same fact.
+        # caller's initial check, which that check cannot see. A press sent
+        # into a locked screen invalidates the run for the same reason the
+        # initial check exists; checked here, not inside
+        # `measure_keypress_to_overlay`, so it shares the SAME verdict and
+        # receipt field as the initial check rather than inventing a second
+        # meaning for the same fact.
         pre_press_lock = screen_lock_state()
         pre_press_blocked = screen_lock_block(pre_press_lock)
-        out["screen_locked_pre_press"] = pre_press_lock
+        screen_locked_pre_press = pre_press_lock
         press_permitted = engine_ready and not pre_press_blocked
 
         # Gated through `measure_after_engine_ready` rather than an inline
@@ -1386,62 +1397,381 @@ def smoke(bundle_path, *, out_dir):
     finally:
         reap(launched["process"])
 
-    out.update({
+    return {
+        "launched": launched, "resolved": resolved, "timing": timing,
+        "result": result, "timebase": timebase,
+        "engine_ready_wait_ms": engine_ready_wait_ms, "failure": failure,
+        "engine_not_ready": engine_not_ready,
+        "screen_locked_before_press": screen_locked_before_press,
+        "screen_locked_pre_press": screen_locked_pre_press,
+    }
+
+
+def _launch_receipt_fields(piece):
+    """The fields every launch receipt shares, keyed off `_drive_one_launch`'s
+    raw pieces. `smoke()` and `run_benchmark()` both call this so a field
+    added to one receipt shape is not silently absent from the other."""
+    launched = piece["launched"]
+    resolved = piece["resolved"]
+    result = piece["result"]
+    return {
         "run_id": launched["run_id"],
         "pid": launched["pid"],
         "marker_path": str(launched["marker_path"]),
         "requested_identity": launched["requested"]._asdict(),
         "resolved_identity": resolved._asdict() if resolved else None,
-        "timebase": timebase,
-        "engine_ready_wait_ms": engine_ready_wait_ms,
-        "keypress": timing,
-        "detail": failure or (result.detail if result else ""),
+        "timebase": piece["timebase"],
+        "engine_ready_wait_ms": piece["engine_ready_wait_ms"],
+        "keypress": piece["timing"],
+        "detail": piece["failure"] or (result.detail if result else ""),
         "sample": result.sample._asdict() if result and result.sample else None,
-    })
-    if engine_not_ready:
-        out["verdict"] = BLOCKED_ENGINE_NOT_READY
-        out["detail"] = (
-            f"no complete {ENGINE_READY} marker for run {launched['run_id']} "
-            f"within the warm-up wait; a keypress sent now would race "
-            f"ColdPressGuard (#879)")
-        return out
-    if screen_locked_before_press:
+    }
+
+
+def _launch_verdict(piece):
+    """`(verdict, detail)` for one driven launch, or `(None, None)` if the
+    launch reached a real result and the caller must derive its own verdict
+    from `piece["result"]` / `piece["timing"]` (via `final_verdict_and_detail`
+    for smoke, or the benchmark's own per-side OK/blocked check)."""
+    if piece["engine_not_ready"]:
+        launched = piece["launched"]
+        return (BLOCKED_ENGINE_NOT_READY,
+               f"no complete {ENGINE_READY} marker for run {launched['run_id']} "
+               f"within the warm-up wait; a keypress sent now would race "
+               f"ColdPressGuard (#879)")
+    if piece["screen_locked_before_press"]:
+        return (BLOCKED_SCREEN_LOCKED, piece["screen_locked_before_press"])
+    if piece["failure"] is not None:
+        return (BLOCKED_LAUNCH, piece["failure"])
+    return (None, None)
+
+
+def smoke(bundle_path, *, out_dir):
+    """One bundle, one launch, one press: does the instrument produce a receipt?
+
+    Returns a JSON-serialisable dict whose `verdict` is `SMOKE_PASS` or a
+    `BLOCKED_` reason. It is never `BENCHMARK_PASS` — one bundle has nothing to
+    be compared against.
+    """
+    out = {"kind": "smoke", "bundle": str(bundle_path),
+           "hardware": hardware_identity()}
+
+    # The screen lock is checked BEFORE occupancy, because it costs nothing and
+    # invalidates the run whatever the slot looks like.
+    lock = screen_lock_state()
+    blocked_reason = screen_lock_block(lock)
+    out["screen_locked"] = lock
+    if blocked_reason:
         out["verdict"] = BLOCKED_SCREEN_LOCKED
-        out["detail"] = screen_locked_before_press
+        out["detail"] = blocked_reason
         return out
-    if failure is not None:
+
+    # Occupancy: REFUSE rather than choose. Every dev bundle on this machine is
+    # named the same, so picking one of two instances silently retargets the
+    # measurement at somebody else's build.
+    instances = running_instances()
+    if instances:
+        out["verdict"] = BLOCKED_OCCUPANCY
+        out["detail"] = ("EnviousWispr is already running and this measurement needs a "
+                         "cold launch it owns: " +
+                         ", ".join(f"pid {p} at {x}" for p, x in sorted(instances.items())))
+        return out
+
+    try:
+        piece = _drive_one_launch(bundle_path, out_dir=out_dir)
+    except Exception as exc:
         out["verdict"] = BLOCKED_LAUNCH
+        out["detail"] = f"{type(exc).__name__}: {exc}"
         return out
-    out["verdict"], out["detail"] = final_verdict_and_detail(result, timing)
+
+    out["screen_locked_pre_press"] = piece["screen_locked_pre_press"]
+    out.update(_launch_receipt_fields(piece))
+    verdict, detail = _launch_verdict(piece)
+    if verdict is not None:
+        out["verdict"], out["detail"] = verdict, detail
+        return out
+    out["verdict"], out["detail"] = final_verdict_and_detail(piece["result"], piece["timing"])
+    return out
+
+
+def _pin_identity(bundle_path, label):
+    """A bundle's identity, read once before the run starts. Raises with a
+    label naming WHICH arm failed, since `bundle_identity` alone cannot say."""
+    try:
+        return bundle_identity(bundle_path)
+    except Exception as exc:
+        raise RuntimeError(
+            f"cannot pin the {label} bundle's identity: {type(exc).__name__}: {exc}"
+        ) from exc
+
+
+def _identity_matches(pinned, observed):
+    """Whole-identity equality — bundle id, executable path, AND hash all
+    three, because any one of them changing means the run stopped measuring
+    the bundle it started with."""
+    return (pinned.bundle_id == observed.bundle_id
+            and pinned.executable_path == observed.executable_path
+            and pinned.sha256 == observed.sha256)
+
+
+def _benchmark_side_verdict(piece):
+    """One side's `(verdict, detail)` — the launch-level block (engine not
+    ready, screen locked, launch failure) if there is one, else the shared
+    `result_and_timing_verdict` a benchmark side has no reason to duplicate."""
+    verdict, detail = _launch_verdict(piece)
+    if verdict is not None:
+        return verdict, detail
+    return result_and_timing_verdict(piece["result"], piece["timing"])
+
+
+def run_benchmark(baseline_bundle, prewarmed_bundle, *, pairs=PAIR_COUNT, out_dir):
+    """`pairs` alternating cold-launch pairs, baseline (A) vs prewarmed (B),
+    adjudicated against the plan's three binding budgets.
+
+    Returns a JSON-serialisable dict whose `verdict` is `BENCHMARK_PASS`,
+    `BENCHMARK_FAIL`, or a `BLOCKED_<reason>`. Every launch is driven through
+    `_drive_one_launch` — the exact sequence `smoke()` uses — so this runner
+    adds no second launch path, only the pairing, identity pinning, and
+    adjudication `smoke()` has no need for.
+
+    **No top-up, and this function stops at the FIRST bad side, never
+    launching that pair's other side.** A rejected sample blocks the run
+    rather than being replaced, because replacing it would select for
+    launches that happened to produce clean evidence — and continuing to
+    spend real cold launches on a run that can no longer reach a valid
+    `pairs`-pair set burns exactly the evidence this discipline exists to
+    protect.
+    """
+    out = {"kind": "benchmark", "baseline_bundle": str(baseline_bundle),
+           "prewarmed_bundle": str(prewarmed_bundle), "pairs_requested": pairs,
+           "hardware": hardware_identity(), "schedule": [],
+           "pair_receipts": []}
+
+    # The plan's three budgets are binding at exactly PAIR_COUNT pairs. A
+    # shorter run has no statistical claim on a p95, and PAIR_COUNT=0 would
+    # reach `nearest_rank` on an empty sample.
+    if pairs != PAIR_COUNT:
+        out["verdict"] = BLOCKED_INCOMPLETE_PAIRS
+        out["detail"] = (f"{pairs} pairs requested; the binding benchmark "
+                         f"requires exactly {PAIR_COUNT}")
+        return out
+    out["schedule"] = paired_schedule(pairs)
+
+    lock = screen_lock_state()
+    blocked_reason = screen_lock_block(lock)
+    out["screen_locked_start"] = lock
+    if blocked_reason:
+        out["verdict"] = BLOCKED_SCREEN_LOCKED
+        out["detail"] = blocked_reason
+        return out
+
+    instances = running_instances()
+    if instances:
+        out["verdict"] = BLOCKED_OCCUPANCY
+        out["detail"] = ("EnviousWispr is already running and this measurement needs a "
+                         "cold launch it owns: " +
+                         ", ".join(f"pid {p} at {x}" for p, x in sorted(instances.items())))
+        return out
+
+    try:
+        pinned = {"A": _pin_identity(baseline_bundle, "baseline"),
+                 "B": _pin_identity(prewarmed_bundle, "prewarmed")}
+    except Exception as exc:
+        out["verdict"] = BLOCKED_IDENTITY_DRIFT
+        out["detail"] = str(exc)
+        return out
+
+    out["pinned_identity"] = {side: identity._asdict() for side, identity in pinned.items()}
+
+    # Comparing a build with itself proves nothing. Path OR hash matching is
+    # enough to block — either alone means the two arms are not the two
+    # builds this benchmark exists to tell apart.
+    if (pinned["A"].executable_path == pinned["B"].executable_path
+            or pinned["A"].sha256 == pinned["B"].sha256):
+        out["verdict"] = BLOCKED_IDENTICAL_ARMS
+        out["detail"] = ("baseline and candidate resolve to the same executable "
+                         "or executable hash; comparing one build with itself "
+                         "cannot prove the optimization")
+        return out
+
+    bundle_for = {"A": baseline_bundle, "B": prewarmed_bundle}
+    schedule = out["schedule"]
+    completed = []
+
+    for i, order in enumerate(schedule):
+        pair_receipt = {"index": i, "order": order, "sides": {}}
+        sides = {}
+        pair_blocked = None  # (verdict, detail) if this pair cannot continue
+
+        for side in order:
+            # Re-checked before EVERY launch, not only before pair 0: a peer
+            # app appearing mid-run could answer the same global hotkey a
+            # launch triggers, and a run spanning up to 60 launches is wide
+            # enough for that to happen well after the initial check.
+            mid_run_instances = running_instances()
+            if mid_run_instances:
+                pair_blocked = (
+                    BLOCKED_OCCUPANCY,
+                    f"pair {i} side {side}: EnviousWispr appeared before this "
+                    "launch: " + ", ".join(
+                        f"pid {p} at {x}" for p, x in sorted(mid_run_instances.items())))
+                break
+
+            try:
+                piece = _drive_one_launch(bundle_for[side], out_dir=out_dir)
+            except Exception as exc:
+                pair_blocked = (BLOCKED_LAUNCH, f"pair {i} side {side}: "
+                               f"{type(exc).__name__}: {exc}")
+                break
+
+            side_receipt = _launch_receipt_fields(piece)
+            side_receipt.update({
+                "arm": side, "bundle": str(bundle_for[side]),
+                "screen_locked_pre_press": piece["screen_locked_pre_press"],
+            })
+
+            observed = piece["launched"]["requested"]
+            if not _identity_matches(pinned[side], observed):
+                side_receipt["verdict"] = BLOCKED_IDENTITY_DRIFT
+                side_receipt["detail"] = (
+                    f"launched identity drifted from the identity pinned "
+                    f"before pair 0 (pinned sha256={pinned[side].sha256}, "
+                    f"observed sha256={observed.sha256}) — the bundle was "
+                    f"likely rebuilt mid-run")
+                pair_receipt["sides"][side] = side_receipt
+                pair_blocked = (BLOCKED_IDENTITY_DRIFT, side_receipt["detail"])
+                break
+
+            verdict, detail = _benchmark_side_verdict(piece)
+            side_receipt["verdict"], side_receipt["detail"] = verdict, detail
+            pair_receipt["sides"][side] = side_receipt
+
+            if verdict != OK:
+                pair_blocked = (
+                    BLOCKED_INCOMPLETE_PAIRS,
+                    f"pair {i} side {side} is {verdict}: {detail}. "
+                    "The run stopped without top-up.")
+                break
+
+            sides[side] = {
+                "verdict": verdict, "detail": detail,
+                # `run_id` comes from the LAUNCH, independent of whether
+                # `result.sample` exists — deriving it from the sample
+                # instead would make `adjudicate_benchmark`'s cross-check
+                # pass by construction rather than by actually verifying the
+                # keypress and the launch describe the same run.
+                "run_id": piece["launched"]["run_id"],
+                "sample": piece["result"].sample if piece["result"] else None,
+                "keypress": piece["timing"],
+            }
+
+        out["pair_receipts"].append(pair_receipt)
+
+        if pair_blocked:
+            out["pairs_attempted"] = i + 1
+            out["pairs_completed"] = len(completed)
+            out["verdict"], out["detail"] = pair_blocked
+            return out
+
+        completed.append(Pair(
+            order=order,
+            a=LaunchResult(verdict=sides["A"]["verdict"], detail=sides["A"]["detail"],
+                          sample=sides["A"]["sample"]),
+            b=LaunchResult(verdict=sides["B"]["verdict"], detail=sides["B"]["detail"],
+                          sample=sides["B"]["sample"]),
+            a_keypress=KeypressSample(
+                run=sides["A"]["run_id"],
+                keypress_ms=(sides["A"]["keypress"] or {}).get("keypress_ms")),
+            b_keypress=KeypressSample(
+                run=sides["B"]["run_id"],
+                keypress_ms=(sides["B"]["keypress"] or {}).get("keypress_ms")),
+        ))
+
+    out["pairs_attempted"] = len(schedule)
+    out["pairs_completed"] = len(completed)
+
+    # Re-hash both executables after the last pair (#2377): per-launch
+    # identity checks above prove each launched PROCESS matched its pinned
+    # identity at THAT moment, but not that the bundle on disk stayed the
+    # same for the whole run — a rebuild landing between the last launch and
+    # this check would be invisible to every check already run.
+    try:
+        final = {"A": _pin_identity(baseline_bundle, "baseline"),
+                "B": _pin_identity(prewarmed_bundle, "prewarmed")}
+    except Exception as exc:
+        out["verdict"] = BLOCKED_IDENTITY_DRIFT
+        out["detail"] = f"post-run re-hash failed: {type(exc).__name__}: {exc}"
+        return out
+    out["final_identity"] = {side: identity._asdict() for side, identity in final.items()}
+    for side in ("A", "B"):
+        if not _identity_matches(pinned[side], final[side]):
+            out["verdict"] = BLOCKED_IDENTITY_DRIFT
+            out["detail"] = (
+                f"side {side}'s executable changed between pair 0 and the "
+                f"post-run re-hash (pinned sha256={pinned[side].sha256}, "
+                f"final sha256={final[side].sha256}) — the bundle was rebuilt "
+                f"during the run")
+            return out
+
+    result = adjudicate_benchmark(completed, pair_count=pairs)
+    out["verdict"] = result.verdict
+    out["detail"] = result.detail
+    out["measured"] = result.measured
     return out
 
 
 def main(argv):
     import argparse
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--smoke", action="store_true",
-                    help="one bundle, one launch; proves the instrument, not the latency")
-    ap.add_argument("--bundle", help="path to an EnviousWispr .app")
+    mode = ap.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--smoke", action="store_true",
+                      help="one bundle, one launch; proves the instrument, not the latency")
+    mode.add_argument("--benchmark", action="store_true",
+                      help="the 30-pair paired comparison against the plan's three budgets")
+    ap.add_argument("--bundle", help="path to an EnviousWispr .app (--smoke)")
+    ap.add_argument("--baseline-bundle", help="the unmodified baseline .app (--benchmark)")
+    ap.add_argument("--prewarmed-bundle", help="the idle-prewarm candidate .app (--benchmark)")
+    ap.add_argument("--pairs", type=int, default=None,
+                    help=f"pair count for --benchmark (must be exactly {PAIR_COUNT})")
     ap.add_argument("--out-dir", default=None,
                     help="where the receipt and marker file are written")
     args = ap.parse_args(argv)
 
-    if not args.smoke:
-        ap.error("only --smoke is implemented in P6-C1; "
-                 "the 30-pair benchmark run belongs to C4, after a final candidate exists")
-    if not args.bundle:
-        ap.error("--smoke needs --bundle")
+    if args.smoke:
+        if not args.bundle:
+            ap.error("--smoke needs --bundle")
+        if args.baseline_bundle or args.prewarmed_bundle or args.pairs is not None:
+            ap.error("--smoke accepts only --bundle and --out-dir")
+        out_dir = pathlib.Path(args.out_dir or (pathlib.Path.cwd() / ".validation" /
+                                                "runs" / "2377-p6c1-smoke"))
+        out_dir.mkdir(parents=True, exist_ok=True)
+        receipt = smoke(args.bundle, out_dir=out_dir)
+        path = out_dir / "overlay-first-render-smoke.json"
+        path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+        print(json.dumps(receipt, indent=2, sort_keys=True))
+        print(f"\nreceipt: {path}")
+        print(f"VERDICT: {receipt['verdict']}")
+        return 0 if receipt["verdict"] == SMOKE_PASS else 1
+
+    if not args.baseline_bundle or not args.prewarmed_bundle:
+        ap.error("--benchmark needs both --baseline-bundle and --prewarmed-bundle")
+    if args.bundle:
+        ap.error("--benchmark does not accept --bundle")
+    pair_count = PAIR_COUNT if args.pairs is None else args.pairs
+    if pair_count != PAIR_COUNT:
+        ap.error(f"--pairs must be exactly {PAIR_COUNT}")
 
     out_dir = pathlib.Path(args.out_dir or (pathlib.Path.cwd() / ".validation" /
-                                            "runs" / "2377-p6c1-smoke"))
+                                            "runs" / "2377-p6c4-benchmark"))
     out_dir.mkdir(parents=True, exist_ok=True)
-    receipt = smoke(args.bundle, out_dir=out_dir)
-    path = out_dir / "overlay-first-render-smoke.json"
+    receipt = run_benchmark(args.baseline_bundle, args.prewarmed_bundle,
+                            pairs=pair_count, out_dir=out_dir)
+    path = out_dir / "overlay-first-render-benchmark.json"
     path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(json.dumps(receipt, indent=2, sort_keys=True))
     print(f"\nreceipt: {path}")
     print(f"VERDICT: {receipt['verdict']}")
-    return 0 if receipt["verdict"] == SMOKE_PASS else 1
+    return 0 if receipt["verdict"] == BENCHMARK_PASS else 1
 
 
 if __name__ == "__main__":
