@@ -117,6 +117,22 @@ def screen_is_locked():
     return bool(d.get("CGSSessionScreenIsLocked"))
 
 
+def capture_window(window_id, path):
+    """Capture ONE window by id, which beats a full-screen shot twice over.
+
+    It frames exactly the subject, so no cropping is needed and nothing else on
+    screen can be mistaken for the pill. And it reads the window's own backing
+    store rather than the display, so **it works while the screen is LOCKED** —
+    verified against a pill created during a locked session: 18 KB of exactly the
+    pill, where the full-screen capture of that same moment is the login window.
+
+    Returns True when a file was written.
+    """
+    r = subprocess.run(["/usr/sbin/screencapture", "-x", "-o", f"-l{window_id}", str(path)],
+                       capture_output=True)
+    return r.returncode == 0 and pathlib.Path(path).exists()
+
+
 def read_default(k):
     r = subprocess.run(["defaults", "read", DOMAIN, k], capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else None
@@ -210,9 +226,13 @@ def measure_row(name, pid, since_bytes):
             break
         time.sleep(0.05)  # test-fixture-timer: window-server sampling cadence
 
+    # CAPTURE WHILE THE PILL IS UP. The window's backing store is torn down when
+    # the presentation ends, so a capture taken after the stop returns a blank
+    # frame at a constant size — three designs all producing 4450 identical bytes
+    # is what that looks like, and it passes a file-exists check.
     shot = SHOTS / f"{name}.png"
-    if set(during) - before:
-        subprocess.run(["/usr/sbin/screencapture", "-x", "-o", str(shot)], capture_output=True)
+    fresh_now = set(during) - before
+    captured = capture_window(next(iter(fresh_now)), shot) if len(fresh_now) == 1 else False
 
     # THE CAPABILITY, ASSERTED FROM THE APP RATHER THAN INFERRED FROM THE TOGGLE.
     # `isEnabledForGeometry` is `selectedRoute().isSupportedOnThisSystem() &&
@@ -250,8 +270,8 @@ def measure_row(name, pid, since_bytes):
         err = (f"overlay not uniquely identified: {life['verdict']} "
                f"(appeared {life['appeared']}, gone {life['appeared_and_gone']}, "
                f"still present {life['still_present_after']})")
-    elif not shot.exists():
-        err = "no screenshot was written; the row has no visual evidence"
+    elif not captured:
+        err = "no screenshot was written while the pill was up"
     else:
         seen = dict(during[life["window_id"]], id=life["window_id"])
 
@@ -263,14 +283,11 @@ def measure_row(name, pid, since_bytes):
 
 
 def main():
-    # SCREEN LOCK FIRST. A locked screen makes every visual verdict in this row
-    # meaningless while the run still looks real.
-    if screen_is_locked():
-        print(json.dumps({"verdict": "ABORT_SCREEN_LOCKED"}))
-        return
-
     snapshot = {k: read_default(k) for k in KEYS}
-    report = {"snapshot": snapshot, "rows": {}}
+    # Recorded, not refused: every frame this row takes is captured BY WINDOW ID,
+    # which the lock cannot substitute. A row taking a full-SCREEN artifact still
+    # has to refuse.
+    report = {"snapshot": snapshot, "screen_locked": screen_is_locked(), "rows": {}}
     try:
         for name, settings in ROWS:
             # STOP FIRST, THEN WRITE. A running app owns these keys and flushes its

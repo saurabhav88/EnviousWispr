@@ -154,22 +154,25 @@ def staged_clear_take(pid):
     steady = [m for m in g.visible_overlays(pid).values()]
     out["frame_before_notice"] = [steady[0]["w"], steady[0]["h"]] if steady else None
 
-    clear_frames = {"before-notice": str(OUT / "clear-before.png")}
-    subprocess.run(["/usr/sbin/screencapture", "-x", "-o", clear_frames["before-notice"]],
-                   capture_output=True)
+    live = [i for i in g.visible_overlays(pid) if i not in before]
+    wid = live[0] if len(live) == 1 else None
+    clear_frames = {}
+    if wid:
+        clear_frames["before-notice"] = str(OUT / "clear-before.png")
+        g.capture_window(wid, clear_frames["before-notice"])
     out["reply"] = fi.send("force_auto_stop_unavailable_notice")
     fired_at = time.time()
     time.sleep(1.0)  # settle: let the banner compose before capturing it
-    clear_frames["notice-visible"] = str(OUT / "clear-visible.png")
-    subprocess.run(["/usr/sbin/screencapture", "-x", "-o", clear_frames["notice-visible"]],
-                   capture_output=True)
+    if wid:
+        clear_frames["notice-visible"] = str(OUT / "clear-visible.png")
+        g.capture_window(wid, clear_frames["notice-visible"])
     time.sleep(9.0)  # deadline-fallback: the notice is armed `dismissAfter: 4.0`
     # and there is no signal for "the clear fired"; outliving it IS the
     # observation, so this waits comfortably past it and reads the series.
 
-    clear_frames["after-clear"] = str(OUT / "clear-after.png")
-    subprocess.run(["/usr/sbin/screencapture", "-x", "-o", clear_frames["after-clear"]],
-                   capture_output=True)
+    if wid:
+        clear_frames["after-clear"] = str(OUT / "clear-after.png")
+        g.capture_window(wid, clear_frames["after-clear"])
     still_recording = "Recording started" in tail_of_log(2000) and not _terminal_after_start()
     rk.stop_after_short_hold(0.0)
     bounds.stop()
@@ -217,14 +220,9 @@ def _terminal_after_start():
 
 
 def main():
-    # SCREEN LOCK FIRST. A locked screen makes every visual verdict in this row
-    # meaningless while the run still looks real.
-    if g.screen_is_locked():
-        print(json.dumps({"verdict": "ABORT_SCREEN_LOCKED"}))
-        return
-
     snapshot = {k: read_dev_default(k) for k in OVERRIDES}
-    report = {"snapshot": snapshot, "cap_seconds": CAP_SECONDS,
+    report = {"snapshot": snapshot, "screen_locked": g.screen_is_locked(),
+              "cap_seconds": CAP_SECONDS,
               "lead_seconds": LEAD_SECONDS,
               "expected_warning_at_s": CAP_SECONDS - LEAD_SECONDS}
     try:
@@ -264,10 +262,32 @@ def main():
         with w.record(HOLD_SECONDS + 8, save_path=clip_path) as clip:
             locked = rk.double_press_record_key()
             if locked:
-                time.sleep(HOLD_SECONDS)  # deadline-fallback: the cap warning is
-                # driven by elapsed RECORDING time inside the app; there is no
-                # earlier signal to wait on, and the log line it would emit goes
-                # to PostHog rather than to the file sink.
+                # FRAMES CAPTURED LIVE, BY WINDOW ID — not extracted from the
+                # video afterwards. The video records the SCREEN, so with the
+                # display locked every extracted frame is the login window; a
+                # window-targeted capture reads the pill's own backing store and
+                # is immune to that. It must be taken while the presentation is
+                # up, because the store is torn down when it ends.
+                live = [i for i in g.visible_overlays(pid) if i not in before]
+                w1 = live[0] if len(live) == 1 else None
+                expected_at = CAP_SECONDS - LEAD_SECONDS
+                began = time.time()
+                shots = {}
+                for label, at in (("before-warning", expected_at - 5),
+                                  ("at-warning", expected_at + 2),
+                                  ("after-warning", expected_at + 8)):
+                    # deadline-fallback: the cap warning is driven by elapsed
+                    # RECORDING time inside the app; there is no earlier signal
+                    # to wait on, and the event it emits goes to PostHog rather
+                    # than to the file sink. Offsets are absolute from the start
+                    # of the hold, so a slow capture cannot drift the next one.
+                    time.sleep(max(0.0, at - (time.time() - began)))
+                    if w1:
+                        path = str(OUT / f"{label}.png")
+                        if g.capture_window(w1, path):
+                            shots[label] = path
+                report["live_frames"] = shots
+                time.sleep(max(0.0, HOLD_SECONDS - (time.time() - began)))
                 rk.stop_after_short_hold(0.0)
 
         bounds.stop()
@@ -330,22 +350,17 @@ def main():
             "morph_near_expected": near,
         })
 
-        # Frames on both sides of the predicted warning, so it can be READ rather
-        # than inferred from a rectangle changing size.
-        if clip.exists and started:
-            # Seconds into the CLIP at which the app's recording began, so a frame
-            # can be asked for by its offset into the RECORDING.
-            offset = started - clip.started_at if getattr(clip, "started_at", None) else 0
-            for label, at in (("before-warning", expected - 4), ("at-warning", expected + 2),
-                              ("after-warning", expected + 8)):
-                report.setdefault("frames", {})[label] = clip.frame_at(
-                    max(0.0, at + offset), save_path=str(OUT / f"{label}.png"))
-
+        # NO VIDEO-EXTRACTED FRAMES. They were written to the same paths as the
+        # live window captures and, running later, silently overwrote them — and
+        # a video records the SCREEN, so with the display locked every one of them
+        # is the login window. The live captures in `live_frames` are the evidence.
         # Every extracted frame must EXIST. A verdict citing frames that were
         # never written is a claim nobody can go and look at.
-        frames = report.get("frames") or {}
-        report["frames_all_written"] = bool(frames) and all(
-            f and pathlib.Path(f).exists() for f in frames.values())
+        frames = report.get("live_frames") or {}
+        report["frames_all_written"] = (
+            set(frames) == {"before-warning", "at-warning", "after-warning"}
+            and all(f and pathlib.Path(f).exists()
+                    and pathlib.Path(f).stat().st_size > 8000 for f in frames.values()))
         morph_ok = (locked and settled and life["verdict"] == lc.OK
                     and report["one_window_id"] and near
                     and clip.exists and report["frames_all_written"])
@@ -356,8 +371,13 @@ def main():
         clear = staged_clear_take(pid)
         report["clear_take"] = clear
         clear_frames = clear.get("frames") or {}
-        clear_frames_exist = bool(clear_frames) and all(
-            f and pathlib.Path(f).exists() for f in clear_frames.values())
+        # All THREE, and each non-trivial. A window whose presentation has ended
+        # still captures — as a blank frame at a constant small size — so
+        # "the file exists" is not evidence that anything was drawn.
+        wanted = {"before-notice", "notice-visible", "after-clear"}
+        clear_frames_exist = (set(clear_frames) == wanted and all(
+            f and pathlib.Path(f).exists() and pathlib.Path(f).stat().st_size > 8000
+            for f in clear_frames.values()))
         clear_ok = (clear.get("idle_reply") == "OK"
                     and clear.get("reply") == "OK"
                     and clear.get("idle_settled")
