@@ -131,10 +131,11 @@ struct LivePreviewPackCatalogSheet: View {
     .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.stDivider, lineWidth: 1))
   }
 
-  /// Both counts come from the SAME grouping the rows do, so a chip can never disagree
-  /// with the list under it.
+  /// Both counts come from the SAME searched grouping the rows do, so a chip can never
+  /// disagree with the list under it — including while a search is active, which is the
+  /// case that shipped wrong for one review round.
   private var filterChips: some View {
-    let groups = LivePreviewPackPresentation.groups(from: loadedPacks)
+    let groups = visibleGroups
     return HStack(spacing: 6) {
       chip(
         title: LivePreviewSettingsCopy.catalogFilterAvailable,
@@ -217,12 +218,17 @@ struct LivePreviewPackCatalogSheet: View {
     return rows
   }
 
-  /// Filter, then search, then the group's own order. `groups(from:)` still owns the
-  /// installed-first policy, so its tests still mean something.
+  /// **One searched grouping feeds BOTH the chips and the rows.** Computing them
+  /// separately is how the chips came to count the full catalogue while the rows showed
+  /// only matches — a chip reading "Not on this Mac 53" above one row is worse than no
+  /// chip. `groups(from:matching:)` owns the policy, so there is one answer to disagree
+  /// with rather than two.
+  private var visibleGroups: LivePreviewPackPresentation.Groups {
+    LivePreviewPackPresentation.groups(from: loadedPacks, matching: searchText)
+  }
+
   private var visibleRows: [LivePreviewPack] {
-    let groups = LivePreviewPackPresentation.groups(from: loadedPacks)
-    let half = showingInstalled ? groups.installed : groups.available
-    return LivePreviewPackPresentation.matching(half, query: searchText)
+    showingInstalled ? visibleGroups.installed : visibleGroups.available
   }
 
   @ViewBuilder

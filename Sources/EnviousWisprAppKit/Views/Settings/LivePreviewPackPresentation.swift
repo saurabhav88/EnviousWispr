@@ -69,6 +69,22 @@ enum LivePreviewPackPresentation {
   ///
   /// The catalogue already sorts alphabetically by the name the user reads, so re-sorting here
   /// would either duplicate that decision or silently disagree with it.
+  /// Group AND search in one pass, so a caller cannot count one population and list
+  /// another (#2436).
+  ///
+  /// The catalogue sheet shipped with exactly that defect for one review round: its chips
+  /// counted the full groups while its rows showed the search-filtered ones, so a chip
+  /// could read "Not on this Mac 53" above a single matching row. Two tests each covered
+  /// one axis — grouping without search, search within one half — and the defect lived at
+  /// the intersection neither reached. Offering only the combined call is what stops the
+  /// next caller reassembling the same mistake.
+  static func groups(from packs: [LivePreviewPack], matching query: String) -> Groups {
+    let groups = groups(from: packs)
+    return Groups(
+      installed: matching(groups.installed, query: query),
+      available: matching(groups.available, query: query))
+  }
+
   static func groups(from packs: [LivePreviewPack]) -> Groups {
     Groups(
       installed: packs.filter(\.isInstalled),

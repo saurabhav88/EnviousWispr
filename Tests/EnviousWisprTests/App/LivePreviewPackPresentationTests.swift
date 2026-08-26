@@ -175,6 +175,31 @@ struct LivePreviewPackPresentationTests {
     #expect(unionTags == Set(rows.map(\.tag)))
   }
 
+  /// **The counts must describe the rows that are actually on screen.**
+  ///
+  /// This is the case the two tests above did not reach between them: one grouped without
+  /// searching, the other searched within one half, and the defect lived at the
+  /// intersection — chips counting the full catalogue while the rows showed only matches,
+  /// so "Not on this Mac 53" could sit above a single row. A fixture that covers each
+  /// axis separately is not a fixture that covers their combination.
+  @Test("Filter counts describe the rows remaining after a search")
+  func filterCountsFollowSearch() {
+    let rows = [
+      pack("en-US", "English", "English", installed: true),
+      pack("it-IT", "Italian", "Italiano", installed: false),
+      pack("de-DE", "German", "Deutsch", installed: false),
+    ]
+    let searched = LivePreviewPackPresentation.groups(from: rows, matching: "Italian")
+    #expect(searched.installed.isEmpty)
+    #expect(searched.available.map(\.tag) == ["it-IT"])
+
+    // Two-way control: with no query the same call is the plain grouping, so the test
+    // above cannot be passing because the search silently swallowed everything.
+    let unsearched = LivePreviewPackPresentation.groups(from: rows, matching: "")
+    #expect(unsearched.installed.count == 1)
+    #expect(unsearched.available.count == 2)
+  }
+
   /// The sheet searches WITHIN the selected half, so a match in the other half must not
   /// leak into the visible list. That is the one behaviour the old single table could not
   /// have, and the one a filter makes possible to get wrong.
