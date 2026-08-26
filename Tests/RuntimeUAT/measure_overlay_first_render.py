@@ -399,7 +399,7 @@ def final_verdict_and_detail(result, timing):
     """The SINGLE place that decides `smoke()`'s outcome once a launch's
     marker adjudication AND a keypress measurement both exist.
 
-    `timing` is checked FIRST (cloud review P2, #2377 C1 repair): it is the
+    `timing` is checked FIRST (#2377, C1 repair): it is the
     SPECIFIC diagnosis from the actual keypress measurement — AX
     unavailable, a preexisting match, a wrong presentation, a timeout —
     while `result` only sees the marker file's completeness AFTER the fact.
@@ -1308,10 +1308,10 @@ def smoke(bundle_path, *, out_dir):
             expected_bundle=launched["requested"].bundle_id)
         engine_ready_wait_ms = (time.monotonic() - ready_start) * 1000.0
 
-        # Re-check the screen lock immediately before the press (cloud
-        # review P1, #2377 C1 repair). The launch and engine-readiness waits
-        # above can together run for up to ~60s — wide enough for the screen
-        # to lock AFTER the check at the top of this function, which the
+        # Re-check the screen lock immediately before the press (#2377, C1
+        # repair). The launch and engine-readiness waits above can together
+        # run for up to ~60s — wide enough for the screen to lock AFTER the
+        # check at the top of this function, which the
         # initial check cannot see. A press sent into a locked screen
         # invalidates the run for the same reason that initial check exists;
         # checked here, not inside `measure_keypress_to_overlay`, so it

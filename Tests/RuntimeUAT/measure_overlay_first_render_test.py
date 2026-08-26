@@ -1172,6 +1172,37 @@ def test_smoke_routes_its_keypress_measurement_through_the_readiness_gate():
             "smoke() gates the keypress measurement BEFORE awaiting "
             "readiness — the readiness result it gates on would be stale")
 
+    # `final_verdict_and_detail` must actually be the live adjudicator, not
+    # just a correctly-behaving function nobody calls (round-two finding on
+    # this same review): restoring the old inline result-first ordering
+    # would leave the isolated priority test green.
+    required_final_adjudication = (
+        'out["verdict"], out["detail"] = '
+        "final_verdict_and_detail(result, timing)")
+    if required_final_adjudication not in body:
+        FAILURES.append(
+            "smoke() bypasses the timing-first final verdict adjudicator")
+
+    # The screen-lock recheck must both CAPTURE the block and RETURN its
+    # promised verdict — two separate live blocks, so each is bound on its
+    # own rather than inferred from the other.
+    required_screen_capture = "\n".join((
+        "        elif pre_press_blocked:",
+        "            screen_locked_before_press = pre_press_blocked",
+    ))
+    required_screen_verdict = "\n".join((
+        "    if screen_locked_before_press:",
+        "        out[\"verdict\"] = BLOCKED_SCREEN_LOCKED",
+        "        out[\"detail\"] = screen_locked_before_press",
+        "        return out",
+    ))
+    for required, message in (
+        (required_screen_capture, "smoke() discards the pre-press lock block"),
+        (required_screen_verdict, "smoke() does not return the pre-press lock verdict"),
+    ):
+        if required not in body:
+            FAILURES.append(message)
+
     # CONTROL: the same check, run against a synthetic source where the live
     # call is replaced by a direct measurement, must actually fail — proof
     # this row is not vacuously true. Never touches the real file.
@@ -1190,8 +1221,8 @@ def test_smoke_routes_its_keypress_measurement_through_the_readiness_gate():
 
 
 def test_final_verdict_prefers_the_specific_keypress_diagnosis():
-    """`timing`'s verdict must win over `result`'s (cloud review P2, #2377
-    C1 repair). When AX is unavailable, `measure_keypress_to_overlay`
+    """`timing`'s verdict must win over `result`'s (#2377, C1 repair). When
+    AX is unavailable, `measure_keypress_to_overlay`
     writes no recording marker, so `adjudicate_launch` independently and
     correctly reports the true-but-less-informative `BLOCKED_MISSING_MARKER`
     for the SAME run — reporting THAT instead of the actual
