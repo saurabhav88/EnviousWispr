@@ -19,6 +19,13 @@ struct OverlayCapsuleBackground: View {
   }
 
   var cornerStyle: CornerStyle = .capsule
+
+  /// Whether the hairline breathes at all (#2435).
+  ///
+  /// **A still pill is a REQUIREMENT where this background is a picture rather
+  /// than a live overlay**, and the Appearance picker draws three of them at
+  /// once. Defaults to `true`, so all eight existing call sites are unchanged.
+  var animatesGlow: Bool = true
   @State private var glowOpacity: Double = 0.3
 
   /// #2201: the preview pill's rainbow hairline holds still instead of breathing
@@ -32,7 +39,13 @@ struct OverlayCapsuleBackground: View {
   ///
   /// Mid-way between the loop's own 0.3 and 0.65 endpoints, so the line is no
   /// dimmer on average than the one it replaces.
-  private static let steadyPreviewGlow: Double = 0.5
+  ///
+  /// **#2435 widened it to every hairline that is not breathing, which is why it
+  /// is no longer named for the preview.** A capsule drawn as a still picture in
+  /// Settings would otherwise sit at `glowOpacity`'s initial 0.3 — the DIM
+  /// ENDPOINT of a loop that is not running, which nobody chose and which shows
+  /// the user a duller pill than the one they will get.
+  private static let steadyGlowOpacity: Double = 0.5
 
   private var shape: AnyShape {
     switch cornerStyle {
@@ -90,7 +103,11 @@ struct OverlayCapsuleBackground: View {
           endPoint: .trailing
         )
         .frame(height: 1)
-        .opacity(cornerStyle == .rounded ? Self.steadyPreviewGlow : glowOpacity)
+        // Breathing is the ONLY case that reads the animated value. Everything
+        // else — the reading well, and any capsule asked to hold still — takes
+        // the chosen steady one.
+        .opacity(
+          animatesGlow && cornerStyle == .capsule ? glowOpacity : Self.steadyGlowOpacity)
         .padding(.horizontal, 20)
         .offset(y: -1)
       }
@@ -99,7 +116,7 @@ struct OverlayCapsuleBackground: View {
         // preview would keep it re-rendering whether or not anything read
         // `glowOpacity`, and the point of this chunk is that the preview pill
         // stops moving on its own.
-        guard cornerStyle == .capsule else { return }
+        guard animatesGlow, cornerStyle == .capsule else { return }
         withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
           glowOpacity = 0.65
         }

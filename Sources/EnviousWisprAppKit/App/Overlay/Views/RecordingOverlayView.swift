@@ -243,6 +243,28 @@ struct RecordingPollCadence: Sendable {
   static let live = RecordingPollCadence {
     try? await Task.sleep(for: .milliseconds(50))
   }
+
+  /// Parks until the enclosing task is cancelled, so a pill rendered as a
+  /// PICTURE reads its providers once and never again (#2435).
+  ///
+  /// **It does NOT mean "no poll".** The loop performs one provider read before
+  /// it ever calls `wait`, and that read is what synchronises the first frame
+  /// with whatever the providers say. What this removes is every read AFTER it.
+  ///
+  /// **A stream rather than a long sleep, because a duration is a schedule and
+  /// this is a park.** Any finite sleep is a number a reader has to judge, and a
+  /// settings window left open longer than it would repoll once for no reason.
+  /// The continuation is created per call, so two pills parked on this share no
+  /// state, and `finish()` is safe before the loop starts: the stream is already
+  /// finished and `for await` returns immediately.
+  static let still = RecordingPollCadence {
+    let (stream, continuation) = AsyncStream<Void>.makeStream()
+    await withTaskCancellationHandler {
+      for await _ in stream { break }
+    } onCancel: {
+      continuation.finish()
+    }
+  }
 }
 
 /// Compact recording indicator overlay.
@@ -292,6 +314,33 @@ struct RecordingOverlayView: View {
 
   /// How long the poll waits between reads. Production never passes this.
   let cadence: RecordingPollCadence
+
+  /// Seeds the level meter's history, for a pill drawn as a PICTURE (#2435).
+  ///
+  /// **Threaded through for the same reason as `animatesGlow`: this view
+  /// constructs the meter**, at both of its layouts, so a caller has no other way
+  /// to reach it. Empty by default, which is today's behaviour exactly.
+  let initialLevelHistory: [CGFloat]
+
+  /// Whether the capsule's rainbow hairline breathes (#2435).
+  ///
+  /// **Threaded through rather than set at the call site, because this view
+  /// CONSTRUCTS its own background** and a caller has no other way to reach it.
+  /// Defaults to `true`, so the one production caller is unchanged.
+  let animatesGlow: Bool
+  /// **THE POLL WRITES FOUR PIECES OF `@State`, AND A PILL THAT NEVER POLLS NEEDS
+  /// EVERY ONE OF THEM SEEDED (#2435).** Three cloud-review rounds each found a
+  /// different member of this set — the reading well's words, the meter's history,
+  /// then the level and the clock — so the set is now ENUMERATED here rather than
+  /// described, and `RecordingPillPreviewWiringTests` reads the poll body to
+  /// enforce it. A fifth one added later fails that guard until it is seeded.
+  ///
+  /// | poll writes | seed | why |
+  /// |---|---|---|
+  /// | `audioLevel` | `initialAudioLevel` | the rainbow mark's height |
+  /// | `elapsed` | `initialElapsed` | the clock |
+  /// | `preview` | `initialPreview` | the reading well's words |
+  /// | `audioTick` | NONE, deliberately | a counter, not a picture. It exists so the meter appends on every poll INCLUDING silent ones; seeding it to anything but 0 would suppress the meter's first append, and the meter takes its own `initialHistory` instead. |
   @State private var audioLevel: Float = 0
 
   /// Counts polls, not level changes. #2216: the meter's history needs a sample
@@ -322,7 +371,11 @@ struct RecordingOverlayView: View {
     isLocked: Bool,
     noticeText: String?,
     initialPreview: LivePreviewDisplay = .off,
-    cadence: RecordingPollCadence = .live
+    cadence: RecordingPollCadence = .live,
+    animatesGlow: Bool = true,
+    initialLevelHistory: [CGFloat] = [],
+    initialAudioLevel: Float = 0,
+    initialElapsed: TimeInterval = 0
   ) {
     self.audioLevelProvider = audioLevelProvider
     self.recordingElapsedProvider = recordingElapsedProvider
@@ -332,7 +385,11 @@ struct RecordingOverlayView: View {
     self.isLocked = isLocked
     self.noticeText = noticeText
     self.cadence = cadence
+    self.animatesGlow = animatesGlow
+    self.initialLevelHistory = initialLevelHistory
     _preview = State(initialValue: initialPreview)
+    _audioLevel = State(initialValue: initialAudioLevel)
+    _elapsed = State(initialValue: initialElapsed)
   }
 
   /// #2202: the preview pill's header — timer hard left, live meter beside it,
@@ -363,7 +420,8 @@ struct RecordingOverlayView: View {
         .font(.system(size: 13, weight: .semibold, design: .monospaced))
         .foregroundStyle(PreviewPillPalette.timer)
 
-      RainbowLevelMeter(audioLevel: audioLevel, tick: audioTick)
+      RainbowLevelMeter(
+        audioLevel: audioLevel, tick: audioTick, initialHistory: initialLevelHistory)
 
       Spacer(minLength: 8)
 
@@ -429,7 +487,8 @@ struct RecordingOverlayView: View {
           // than the clock is what the eye lands on. No lips mark: the rail IS
           // the audio-reactive element, and two of them would compete.
           RainbowLevelMeter(
-            audioLevel: audioLevel, tick: audioTick, height: 24, barWidth: 3, spacing: 2)
+            audioLevel: audioLevel, tick: audioTick, height: 24, barWidth: 3, spacing: 2,
+            initialHistory: initialLevelHistory)
 
           // **The hands-free badge, and without it this design was the one that
           // never said the microphone stays open** (#2376 Phase 4, cloud review
@@ -568,7 +627,8 @@ struct RecordingOverlayView: View {
     // measurement is taken on the padded stack, so moving this either side of it
     // measures a different view than the one that was proven.
     .fixedSize(horizontal: false, vertical: chrome.isContentSizedVertically)
-    .background(OverlayCapsuleBackground(cornerStyle: chrome.cornerStyle))
+    .background(
+      OverlayCapsuleBackground(cornerStyle: chrome.cornerStyle, animatesGlow: animatesGlow))
     // #1988: report the capsule's real height so the panel can follow it. Measured
     // on the capsule rather than computed from a line count, because only the text
     // engine knows how many lines a sentence wraps to at this width in this script.

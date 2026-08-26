@@ -15,7 +15,7 @@ EnviousWispr follows your macOS appearance setting by default, and you can overr
 
 ### Where the recording bar appears
 
-The recording bar shows you when EnviousWispr is listening, and you can put it wherever suits your screen. Go to **Settings**, then select **Appearance**. Use **Recording Indicator Position** to place the bar at either the top or the bottom of your screen.
+The recording bar shows you when EnviousWispr is listening, and you can put it wherever suits your screen. Go to **Settings**, then select **Appearance**. Use **Pill Position** to place the bar at either the top or the bottom of your screen.
 
 You can also move the bar during a dictation.
 

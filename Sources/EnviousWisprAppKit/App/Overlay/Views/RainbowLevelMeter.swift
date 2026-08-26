@@ -68,7 +68,62 @@ struct RainbowLevelMeter: View {
   /// therefore only LOOKED like a record of anything. Real audio hands us one
   /// scalar per tick, so the only honest way to get that picture is to keep the
   /// scalars.
-  @State private var history: [CGFloat] = []
+  @State private var history: [CGFloat]
+
+  /// **A SEEDED METER IS A PICTURE AND STOPS ACCUMULATING (#2435).** Non-empty
+  /// `initialHistory` is the caller declaring that it owns what this meter shows,
+  /// so tick changes are ignored and the rendered bars are exactly what was
+  /// handed in, on the first frame and every frame after it.
+  ///
+  /// **Two review rounds were spent trying to make an accumulating meter hold
+  /// still, and both fixes only moved the artifact.** A FULL seed hit capacity on
+  /// the first poll, dropped its oldest sample and shifted every bar. Seeding one
+  /// SHORT moved it: `bars` right-aligns a short history and pads the old end,
+  /// so the first frame carried a leading silence bar that the poll then pushed
+  /// out — the same one-bar shift, arriving from the other side. The root was
+  /// never the seed's length; it was that the meter kept accumulating into a
+  /// picture somebody else had already decided.
+  ///
+  /// Production passes nothing, gets `[]`, and accumulates exactly as it always
+  /// has — the branch cannot reach a live pill.
+  private var isSeeded: Bool { !initialHistory.isEmpty }
+
+  /// The history this meter was handed, if any. Held as well as seeded into
+  /// `@State` because the seeded-ness is what decides whether ticks are read.
+  private let initialHistory: [CGFloat]
+
+  /// Seeds `history` so a meter that will never poll still shows a real shape
+  /// (#2435).
+  ///
+  /// **Without it a still pill draws ONE sample and twenty-three bars at the
+  /// silence floor**, because `history` starts empty and only `onChange(of: tick)`
+  /// ever appends. The Appearance picker draws exactly that pill, and the Level
+  /// Rail's entire identity is this meter, so the picker would misrepresent the
+  /// design it is asking the user to choose.
+  ///
+  /// Seeded through an initializer rather than `onAppear`, which runs after the
+  /// first layout and would show the flat meter for a frame before filling it —
+  /// the same defect `initialPreview:` exists to avoid one view up.
+  ///
+  /// Production passes nothing and gets `[]`, which is exactly today's behaviour.
+  init(
+    audioLevel: Float,
+    tick: Int,
+    height: CGFloat = 16,
+    barWidth: CGFloat = 2,
+    spacing: CGFloat = 1.5,
+    onHistoryChange: @escaping ([CGFloat]) -> Void = { _ in },
+    initialHistory: [CGFloat] = []
+  ) {
+    self.audioLevel = audioLevel
+    self.tick = tick
+    self.height = height
+    self.barWidth = barWidth
+    self.spacing = spacing
+    self.onHistoryChange = onHistoryChange
+    self.initialHistory = initialHistory
+    _history = State(initialValue: initialHistory)
+  }
 
   /// About 1.2 seconds of history at the parent's 50 ms poll — long enough to read
   /// as a shape, short enough that it is recognisably what you just said.
@@ -170,6 +225,9 @@ struct RainbowLevelMeter: View {
     }
     .frame(width: Self.width(barWidth: barWidth, spacing: spacing), height: height)
     .onChange(of: tick) { _, _ in
+      // A seeded meter is a PICTURE: the caller owns what it shows, so a poll
+      // that exists only to synchronise scalars must not shift the bars.
+      guard !isSeeded else { return }
       let next = Self.pushed(history, level: CGFloat(audioLevel))
       history = next
       onHistoryChange(next)

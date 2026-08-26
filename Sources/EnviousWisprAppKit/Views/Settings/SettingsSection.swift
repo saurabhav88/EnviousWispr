@@ -87,7 +87,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .whatsNew: return "The latest improvements and fixes in this release."
     // #2376: widened from "in light and dark" when the recording-pill picker
     // joined this page. The old line described one section rather than the page.
-    case .appearance: return "Choose how EnviousWispr looks, and which pill you see while dictating."
+    case .appearance: return "How the app looks, and the pill you see while dictating."
     case .speechEngine: return "The speech engine that turns your voice into text."
     case .livePreview: return "See your words on screen while you are still speaking."
     case .audio: return "Choose your input source and readiness behavior."
