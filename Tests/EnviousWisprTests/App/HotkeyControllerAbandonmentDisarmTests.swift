@@ -104,7 +104,7 @@ struct HotkeyControllerAbandonmentDisarmTests {
       let settings = SettingsManager()
       let overlay = OverlayTestDouble.headlessDirector()
       let permissions = PermissionsService()
-      let hotkey = HotkeyService()
+      let hotkey = HotkeyService(onDeniedDesktopEffect: DesktopEffectDenial.recordOnly)
       let lockBox = TestRecordingLockedBox()
       let lockAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
         get: { lockBox.isLocked }, set: { lockBox.isLocked = $0 })

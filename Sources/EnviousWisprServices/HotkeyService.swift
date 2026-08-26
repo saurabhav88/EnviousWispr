@@ -78,10 +78,35 @@ public final class HotkeyService {
 
   // MARK: - Carbon State
 
-  private var eventHandlerRef: EventHandlerRef?
-  private var toggleHotkeyRef: EventHotKeyRef?
-  private var cancelHotkeyRef: EventHotKeyRef?
-  private var quickAddHotkeyRef: EventHotKeyRef?
+  /// A registration that either holds a real framework object or records that
+  /// the effect was refused (#2455 C0).
+  ///
+  /// A `.denied` case rather than a forged `EventHotKeyRef`: these are opaque
+  /// pointers, and handing a synthetic one to `UnregisterEventHotKey` would be a
+  /// wild-pointer call. Occupancy is what the surrounding state machine actually
+  /// asks about — `guard cancelHotkeyRef == nil`, `guard quickAddHotkeyRef == nil`
+  /// — so a non-nil `.denied` keeps every one of those guards behaving exactly as
+  /// it does against a real registration, while the teardown helpers below refuse
+  /// to pass anything but a `.live` payload back to the framework.
+  private enum HotkeyRegistration {
+    case live(EventHotKeyRef)
+    case denied
+  }
+
+  private enum HandlerRegistration {
+    case live(EventHandlerRef)
+    case denied
+  }
+
+  private enum MonitorRegistration {
+    case live(Any)
+    case denied
+  }
+
+  private var eventHandlerRef: HandlerRegistration?
+  private var toggleHotkeyRef: HotkeyRegistration?
+  private var cancelHotkeyRef: HotkeyRegistration?
+  private var quickAddHotkeyRef: HotkeyRegistration?
 
   /// Whether the cancel role is currently armed.
   ///
@@ -100,8 +125,8 @@ public final class HotkeyService {
 
   // MARK: - NSEvent Modifier Monitors
 
-  private var globalModifierMonitor: Any?
-  private var localModifierMonitor: Any?
+  private var globalModifierMonitor: MonitorRegistration?
+  private var localModifierMonitor: MonitorRegistration?
 
   public private(set) var isEnabled = false
   public private(set) var isModifierHeld = false
@@ -285,12 +310,58 @@ public final class HotkeyService {
   /// running this suite alongside its siblings while it passed alone.
   private let now: @MainActor () -> Date
 
+  /// #2455 C0. Read once at construction rather than per call, so a service
+  /// cannot change policy mid-life and produce a half-registered state machine.
+  private let desktopEffectPolicy: DesktopEffectPolicy
+  private let onDeniedDesktopEffect: DesktopEffectDenialHandler
+
+  /// Every effect this instance refused, oldest first, in the same wording the
+  /// handler receives.
+  ///
+  /// `package private(set)` for the same reason `isCancelArmed` is: it lets a
+  /// test assert on what the service DID rather than on a spy for a call the
+  /// production code might simply not make.
+  package private(set) var deniedDesktopEffects: [String] = []
+
+  /// - Parameter onDeniedDesktopEffect: what to do when the policy refuses a
+  ///   live effect. `nil` selects `DesktopEffectDenial.defaultHandler()`, which
+  ///   reads the trap variable: a test action sets it, so a test run aborts with
+  ///   a named reason, while a shipped app that somehow sees only the POLICY
+  ///   variable logs and continues rather than crashing. A test that legitimately
+  ///   drives registration injects `DesktopEffectDenial.recordOnly` here and
+  ///   asserts on `deniedDesktopEffects`; passing a handler that does nothing
+  ///   would restore the silent skip this exists to prevent.
   public init(
     telemetry: HotkeyTelemetrySink = .noop,
-    now: @escaping @MainActor () -> Date = { Date() }
+    now: @escaping @MainActor () -> Date = { Date() },
+    onDeniedDesktopEffect: (@MainActor (String) -> Void)? = nil
   ) {
     self.telemetry = telemetry
     self.now = now
+    self.desktopEffectPolicy = DesktopEffectPolicy.fromEnvironment()
+    self.onDeniedDesktopEffect = onDeniedDesktopEffect ?? DesktopEffectDenial.defaultHandler()
+  }
+
+  /// The single gate in front of every live INSTALLATION call C0 guards here.
+  ///
+  /// Exactly four: `RegisterEventHotKey`, `InstallEventHandler`, and both
+  /// `NSEvent.add*MonitorForEvents`. Each sits immediately behind a
+  /// `denyDesktopEffect` check, and their three release calls accept only a `.live`
+  /// payload.
+  ///
+  /// Deliberately OUTSIDE the gate: Carbon event DECODING — `GetEventKind` and
+  /// `GetEventParameter` in the handler below — which reads an event already
+  /// delivered and installs nothing. Also outside: desktop effects elsewhere in the
+  /// app; overlay is C4 and activation is C3.
+  ///
+  /// Returns `true` when the caller must NOT touch the framework. Recording
+  /// happens before the handler runs, so a trapping handler still leaves the
+  /// ledger populated for a crash report to carry.
+  private func denyDesktopEffect(_ operation: String) -> Bool {
+    guard desktopEffectPolicy == .deny else { return false }
+    deniedDesktopEffects.append(operation)
+    onDeniedDesktopEffect(operation)
+    return true
   }
 
   /// Emit `hotkey.pressed` for an accepted keydown. Synchronous + cheap (computes
@@ -418,10 +489,7 @@ public final class HotkeyService {
   public func unregisterCancelHotkey() {
     isCancelArmed = false
     cancelArmedBeforeSuspend = false
-    if let ref = cancelHotkeyRef {
-      UnregisterEventHotKey(ref)
-      cancelHotkeyRef = nil
-    }
+    releaseHotkey(&cancelHotkeyRef)
     // Cancel has released the chord, so Quick Add may have it back. Unconditional rather than
     // guarded on a collision: the reconciler decides, and asking the question here as well would be
     // the same rule written twice.
@@ -773,6 +841,13 @@ public final class HotkeyService {
   // MARK: - Carbon Event Handler
 
   private func installCarbonEventHandler() {
+    // #2455 C0. `.denied` rather than leaving the slot nil, so
+    // `removeCarbonEventHandler()` still clears an occupied slot and `stop()`
+    // remains symmetric with `start()`.
+    if denyDesktopEffect("InstallEventHandler(GetApplicationEventTarget())") {
+      eventHandlerRef = .denied
+      return
+    }
     var eventTypes = [
       EventTypeSpec(
         eventClass: OSType(kEventClassKeyboard),
@@ -784,14 +859,16 @@ public final class HotkeyService {
 
     let selfPtr = Unmanaged.passUnretained(self).toOpaque()
 
+    var ref: EventHandlerRef?
     InstallEventHandler(
       GetApplicationEventTarget(),
       carbonHotkeyHandler,
       eventTypes.count,
       &eventTypes,
       selfPtr,
-      &eventHandlerRef
+      &ref
     )
+    eventHandlerRef = ref.map(HandlerRegistration.live)
   }
 
   // MARK: - NSEvent Modifier Monitors
@@ -886,6 +963,18 @@ public final class HotkeyService {
 
     guard shouldInstallModifierMonitors else { return }
 
+    // #2455 C0. Both slots are marked together because one install decision
+    // creates both: a half-denied pair would be a state the production code can
+    // never produce. `recordMonitorInstall` is deliberately NOT consulted here —
+    // its `nil` branch reports a modifier-only shortcut that died on a real
+    // machine, and a policy refusal is not that.
+    if denyDesktopEffect("NSEvent.addGlobalMonitorForEvents(.flagsChanged) + addLocalMonitorForEvents")
+    {
+      globalModifierMonitor = .denied
+      localModifierMonitor = .denied
+      return
+    }
+
     // Read AFTER the teardown above, so both closures carry the identity of the
     // installation being created here rather than the one it replaced. Both
     // monitors are stamped with the same value on purpose: the generation
@@ -906,7 +995,8 @@ public final class HotkeyService {
               keyCode: keyCode, flags: flags, generation: generation)
           }
         }
-      }, scope: "global")
+      }, scope: "global"
+    ).map(MonitorRegistration.live)
 
     localModifierMonitor = recordMonitorInstall(
       NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) {
@@ -916,7 +1006,8 @@ public final class HotkeyService {
             keyCode: event.keyCode, flags: event.modifierFlags, generation: generation)
         }
         return event  // pass the event through
-      }, scope: "local")
+      }, scope: "local"
+    ).map(MonitorRegistration.live)
   }
 
   /// #1175 (C2): the single chokepoint for an `NSEvent` modifier-monitor install.
@@ -947,15 +1038,17 @@ public final class HotkeyService {
     return monitor
   }
 
+  /// The single release path for an `NSEvent` monitor slot — the monitor twin of
+  /// `releaseHotkey`, and for the same reason: `NSEvent.removeMonitor` must never
+  /// be handed a token that no framework ever issued.
+  private func releaseMonitor(_ slot: inout MonitorRegistration?) {
+    if case .live(let token) = slot { NSEvent.removeMonitor(token) }
+    slot = nil
+  }
+
   private func removeModifierMonitors() {
-    if let monitor = globalModifierMonitor {
-      NSEvent.removeMonitor(monitor)
-      globalModifierMonitor = nil
-    }
-    if let monitor = localModifierMonitor {
-      NSEvent.removeMonitor(monitor)
-      localModifierMonitor = nil
-    }
+    releaseMonitor(&globalModifierMonitor)
+    releaseMonitor(&localModifierMonitor)
     // Bump on EVERY teardown, including one that removed nothing. This is the
     // single writer of `monitorGeneration`, and it is the only NSEvent-monitor
     // teardown path: `stop()` and `suspend()` call it directly, and
@@ -966,10 +1059,8 @@ public final class HotkeyService {
   }
 
   private func removeCarbonEventHandler() {
-    if let ref = eventHandlerRef {
-      RemoveEventHandler(ref)
-      eventHandlerRef = nil
-    }
+    if case .live(let ref) = eventHandlerRef { RemoveEventHandler(ref) }
+    eventHandlerRef = nil
   }
 
   // MARK: - Registration Helpers
@@ -990,10 +1081,7 @@ public final class HotkeyService {
   }
 
   private func unregisterToggleHotkey() {
-    if let ref = toggleHotkeyRef {
-      UnregisterEventHotKey(ref)
-      toggleHotkeyRef = nil
-    }
+    releaseHotkey(&toggleHotkeyRef)
   }
 
   /// Register the Quick Add hotkey (#2381).
@@ -1051,10 +1139,7 @@ public final class HotkeyService {
   }
 
   private func unregisterQuickAddHotkey() {
-    if let ref = quickAddHotkeyRef {
-      UnregisterEventHotKey(ref)
-      quickAddHotkeyRef = nil
-    }
+    releaseHotkey(&quickAddHotkeyRef)
   }
 
   /// Re-apply the Quick Add binding after the user changes it.
@@ -1073,7 +1158,17 @@ public final class HotkeyService {
     installModifierMonitors()
   }
 
-  private func registerHotkey(id: UInt32, keyCode: UInt16, modifiers: UInt32) -> EventHotKeyRef? {
+  private func registerHotkey(id: UInt32, keyCode: UInt16, modifiers: UInt32)
+    -> HotkeyRegistration?
+  {
+    // #2455 C0. Placed ahead of the telemetry branch below on purpose: a refusal
+    // by policy is not a Carbon failure, so it must not emit
+    // `registrationFailed`. Emitting it would report a policy refusal as a Carbon
+    // registration failure, corrupting the one signal that tells us a real user's
+    // shortcut died.
+    if denyDesktopEffect("RegisterEventHotKey(id: \(id), keyCode: \(keyCode))") {
+      return .denied
+    }
     let hotkeyID = EventHotKeyID(signature: hotkeySignature, id: id)
     var ref: EventHotKeyRef?
     let status = RegisterEventHotKey(
@@ -1097,7 +1192,20 @@ public final class HotkeyService {
       telemetry.registrationFailed("carbon", kind, status, keyShape)
       return nil
     }
-    return ref
+    // `noErr` with a nil ref is reachable — see the trap named above — and stays
+    // nil here exactly as it did before, so the caller's occupancy guards see an
+    // unregistered slot rather than a registration it cannot release.
+    return ref.map(HotkeyRegistration.live)
+  }
+
+  /// The single release path for a Carbon hotkey slot.
+  ///
+  /// A `.denied` slot is cleared without a framework call. Every unregister site
+  /// routes through here so no future one can reintroduce a raw
+  /// `UnregisterEventHotKey` on a slot that never held a real registration.
+  private func releaseHotkey(_ slot: inout HotkeyRegistration?) {
+    if case .live(let ref) = slot { UnregisterEventHotKey(ref) }
+    slot = nil
   }
 
   // MARK: - Event Dispatch

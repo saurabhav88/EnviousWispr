@@ -97,7 +97,7 @@ import Testing
     let sink = Sink()
     let cancelWaiter = Waiter()
     let toggleWaiter = Waiter()
-    let service = HotkeyService()
+    let service = HotkeyService(onDeniedDesktopEffect: DesktopEffectDenial.recordOnly)
     service.recordingMode = mode
     service.toggleKeyCode = recordKey
     service.toggleModifiers = []
@@ -413,7 +413,7 @@ import Testing
   @Test("a cancel modifier required by the record chord does not cancel")
   func cancelModifierShadowedByRecordChordIsRefused() async {
     let sink = Sink()
-    let service = HotkeyService()
+    let service = HotkeyService(onDeniedDesktopEffect: DesktopEffectDenial.recordOnly)
     service.recordingMode = .toggle
     service.toggleKeyCode = chordKeyCode  // D
     service.toggleModifiers = [.command]  // record is ⌘D
@@ -435,7 +435,7 @@ import Testing
   func cancelModifierUnrelatedToRecordChordStillWorks() async {
     let sink = Sink()
     let waiter = Waiter()
-    let service = HotkeyService()
+    let service = HotkeyService(onDeniedDesktopEffect: DesktopEffectDenial.recordOnly)
     service.recordingMode = .toggle
     service.toggleKeyCode = chordKeyCode
     service.toggleModifiers = [.command]  // record is ⌘D

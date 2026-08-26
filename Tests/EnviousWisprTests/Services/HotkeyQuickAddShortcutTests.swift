@@ -91,7 +91,8 @@ struct HotkeyQuickAddShortcutTests {
         registrationFailed: { _, _, _, _ in },
         pressed: { trigger, _, keyShape, _, action in
           sink.presses.append((trigger, keyShape, action))
-        }))
+        }),
+      onDeniedDesktopEffect: DesktopEffectDenial.recordOnly)
     service.recordingMode = .toggle
     service.toggleKeyCode = recordKey
     service.toggleModifiers = recordModifiers

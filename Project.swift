@@ -13,6 +13,19 @@ let deploymentTargets: DeploymentTargets = .macOS("14.0")
 // consensus: Codex + council GPT/Gemini; see learnings ledger.)
 let packageAccessIdentifier = "enviouswispr"
 
+/// Mirrors `DesktopEffectPolicy.environmentKey` in EnviousWisprServices. Two
+/// spellings of one name is how a gate goes quietly dead, so any change to either
+/// must change both; `DesktopEffectPolicyTests` fails if they drift.
+let DesktopEffectsPolicyKey = "EW_DESKTOP_EFFECTS_POLICY"
+
+/// Mirrors `DesktopEffectDenial.trapEnvironmentKey`. Separate from the policy key
+/// so a shipped app that somehow sees ONLY the policy variable loses its hotkeys
+/// rather than crashing, while every TEST configuration — Debug, Dev and Release
+/// alike — aborts on an unhandled refusal. Selecting that severity with
+/// `#if DEBUG` instead would let the Release suite pass having reached a
+/// prohibited effect (Codex chunk review, 2026-08-26).
+let DesktopEffectsTrapKey = "EW_DESKTOP_EFFECTS_TRAP_DENIALS"
+
 let commonSettings: SettingsDictionary = [
   "ARCHS": "arm64",
   "VALID_ARCHS": "arm64",
@@ -249,6 +262,30 @@ let firstPartyTargetDeps: [TargetDependency] = [
   .target(name: "EnviousWisprLLM"),
   .target(name: "EnviousWisprPipeline"),
 ]
+
+/// #2455 C0 (#2457). For the duration of a test run, denies the desktop effects
+/// C0 guards: Carbon hotkey registration, the Carbon event handler, and the
+/// `NSEvent` modifier monitors. Overlay windows and app activation are the same
+/// root cause and are NOT covered — those are C3 (#2460) and C4 (#2461).
+///
+/// The effect this buys: the unit suite stops registering real global hotkeys on
+/// the developer's machine, where a registered Escape swallows Escape system-wide
+/// for as long as the suite runs.
+///
+/// On the TEST action only. Xcode never applies a test action's environment to a
+/// run, profile or archive action, and no shipped app is launched through a
+/// scheme at all, so this cannot reach a user. `scripts/xcode-test.sh` and CI
+/// both select these shared schemes, so neither needs its own copy of the
+/// variable — one owner, per `GR-WRITE-FOR-RETRIEVAL`.
+///
+/// Removed or demoted in C5 (#2462), once the module boundary makes a live effect
+/// unlinkable from the unit target and this tripwire is redundant.
+let denyDesktopEffects: Arguments = .arguments(
+  environmentVariables: [
+    DesktopEffectsPolicyKey: .environmentVariable(value: "deny", isEnabled: true),
+    DesktopEffectsTrapKey: .environmentVariable(value: "1", isEnabled: true),
+  ]
+)
 
 let project = Project(
   name: "EnviousWispr",
@@ -614,6 +651,7 @@ let project = Project(
       ),
       testAction: .targets(
         ["EnviousWisprTests", "EnviousWisprASRTests"],
+        arguments: denyDesktopEffects,
         configuration: "Debug"
       )
     ),
@@ -631,6 +669,7 @@ let project = Project(
       ),
       testAction: .targets(
         ["EnviousWisprTests", "EnviousWisprASRTests"],
+        arguments: denyDesktopEffects,
         configuration: "Dev"
       )
     ),
@@ -646,6 +685,7 @@ let project = Project(
       // preserving the release-config test coverage the old post-merge job ran.
       testAction: .targets(
         ["EnviousWisprTests", "EnviousWisprASRTests"],
+        arguments: denyDesktopEffects,
         configuration: "Release"
       )
     ),
