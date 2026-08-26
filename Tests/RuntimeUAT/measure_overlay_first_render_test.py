@@ -882,6 +882,7 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
         FAILURES.append(f"the director is not at {DIRECTOR}; this test's path is stale")
         return
     d = DIRECTOR.read_text()
+    emitter = EMITTER.read_text()
     if "OverlayFirstRenderMarkers.hold(" not in d:
         FAILURES.append(
             "the director does not HOLD its root captures; emitting them at the "
@@ -890,6 +891,25 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
         FAILURES.append(
             "the director emits directly, which is the biased form this test exists "
             "to refuse")
+
+    # `hold` must take exactly ONE Capture, never variadic (#2377, C1
+    # repair): a variadic parameter allocates a temporary `[Capture]` at
+    # its CALL SITE before the function body runs, the same asymmetric
+    # cost `reserveCapacity` below exists to avoid one level up. Bound at
+    # BOTH ends — the signature itself, and each of the two call sites
+    # appearing exactly once with a single argument — so a revert of
+    # either half is caught, including the less-obvious one-element-array
+    # regression that keeps the call sites looking unchanged.
+    if "public static func hold(_ capture: Capture)" not in emitter:
+        FAILURES.append("hold must accept exactly one Capture")
+    if "func hold(_ captures: Capture...)" in emitter:
+        FAILURES.append("hold regressed to a call-site-allocating variadic")
+    if d.count("OverlayFirstRenderMarkers.hold(constructStart)") != 1:
+        FAILURES.append("root construction must hold constructStart once")
+    if d.count("OverlayFirstRenderMarkers.hold(constructEnd)") != 1:
+        FAILURES.append("root construction must hold constructEnd once")
+    if "hold(constructStart, constructEnd)" in d:
+        FAILURES.append("root markers regressed to one variadic call")
 
     # **The production intent classifier must be BOUND, not just present**
     # (cloud review P1, C1 repair round 2). Every Python row above proves the
@@ -911,7 +931,6 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
     # the FIRST append, which in the baseline bundle happens inside the keypress
     # interval and in the prewarmed one does not. The reservation has to happen
     # in `prepare()`, which runs before either interval.
-    emitter = EMITTER.read_text()
     if "pending.reserveCapacity" not in emitter:
         FAILURES.append(
             "prepare() does not reserve the held-capture storage; the first hold "
