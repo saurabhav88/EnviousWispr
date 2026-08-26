@@ -135,9 +135,22 @@ def require(condition, what):
         raise UATPreconditionFailed(what)
 
 
+# The report path, named once because two places now touch it: the success write
+# and the invalidation below.
+REPORT = UAT / "geometry-ui.json"
+
+
 def main():
     pid = int(sys.argv[1])
     report = {"pid": pid, "rows": {}, "picker": {}}
+
+    # **A previous run's success must not survive this run.** The path is fixed,
+    # so a failing run used to exit leaving the last GOOD report on disk — and a
+    # reviewer or a script reading it cannot tell stale success from a current
+    # result. Deleted up front rather than only on failure, so a crash between
+    # here and the write also leaves nothing rather than something wrong.
+    # Found by Codex review.
+    REPORT.unlink(missing_ok=True)
 
     w.connect()
 
@@ -209,8 +222,23 @@ def main():
     # not incidental: if a rename ever broke it, this row goes red and a
     # VoiceOver user loses the only name they had.
     for label, key in (("Capsule", "classic"), ("Level Rail", "levelRail")):
+        # **The tap must CHANGE something before its capture is trusted.** If the
+        # Capsule tap silently no-ops, the next capture records Reading Well's
+        # geometry under the key `classic`; the later distinctness check still
+        # passes, because Level Rail did move. Found by Codex review.
+        #
+        # Compared as whole trees rather than by hunting a "Selected" marker: the
+        # picker was not on screen when this was written, so the marker's rendered
+        # format could not be sampled, and a matcher grounded in nothing is how a
+        # check comes to pass for the wrong reason. A no-op leaves the tree
+        # byte-identical, which needs no format knowledge at all.
+        before_tap = ui_text()
         w.tap(label)
         await_idle()
+        require(
+            ui_text() != before_tap,
+            f"tapping {label} changed nothing on screen — the capture that follows would "
+            f"be the PREVIOUS design's geometry filed under {key}")
         row = capture_design(pid, key)
         report["rows"][key] = row
         # A null bound is a failed capture, and recording it as data is how a dead
@@ -246,7 +274,7 @@ def main():
         "the Configure Live Preview link survived selecting a wordless design")
     report["picker"]["coupling_observed"] = True
 
-    (UAT / "geometry-ui.json").write_text(json.dumps(report, indent=2, default=str))
+    REPORT.write_text(json.dumps(report, indent=2, default=str))
     print(json.dumps(report, indent=2, default=str)[:2200])
 
 
