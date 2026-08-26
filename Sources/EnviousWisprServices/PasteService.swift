@@ -411,6 +411,15 @@ public enum PasteService {
     case setFailed = "set_failed"
     case noMutation = "no_mutation"
     case unverifiable
+    /// A Chromium (Chrome/Brave/Edge) address bar specifically, decided by the
+    /// CASCADE before Tier 1 is even attempted. #2297: a direct AX value write
+    /// lands the text but never touches Chromium's own "did the user actually
+    /// type this" tracker, so Enter has nothing to navigate to. Tier 2's
+    /// CGEvent Cmd+V — the same mechanism a human uses to paste a URL and hit
+    /// Enter — does set that tracker. Safari is unaffected (measured, #2297)
+    /// and is deliberately not routed here: `addressBarFamily(of:)` returns
+    /// `nil` for it.
+    case chromiumOmniboxNavigationSeam = "not_attempted_chromium_omnibox_navigation_seam"
   }
 
   /// What a Tier 1 attempt produced, including the evidence behind it.
@@ -910,7 +919,7 @@ public enum PasteService {
   ///
   /// Returns nil for untrusted accessibility, a dead process, an unreadable
   /// focus, or a different element — every one of which means "do not repair".
-  static func freshFocusedElement(
+  package static func freshFocusedElement(
     matching element: AXUIElement,
     messagingTimeout: Double = axMessagingTimeoutSeconds
   ) -> AXUIElement? {
@@ -1283,7 +1292,7 @@ public enum PasteService {
     else { return nil }
 
     let isBrowserAddressBar = bounded(
-      "browser_address_bar", { browserAddressBarSignature(of: fresh) })
+      "browser_address_bar", { addressBarFamily(of: fresh) != nil })
     guard isBrowserAddressBar else { return assembled }
     return CaretContext(
       leftWindow: assembled.leftWindow, rightWindow: assembled.rightWindow,
@@ -1314,12 +1323,18 @@ public enum PasteService {
   /// remove a wrapper Chromium itself inserts around everything it renders. So a
   /// signature match is trusted only once the ancestor chain is POSITIVELY
   /// verified clean of `AXWebArea`.
-  private static func browserAddressBarSignature(of element: AXUIElement) -> Bool {
+  ///
+  /// Returns the MATCHED family rather than a bare `Bool` (#2297): the paste
+  /// cascade needs to tell Chromium apart from Safari, which is unaffected by
+  /// the Enter-navigation defect this exists to route around.
+  package static func addressBarFamily(
+    of element: AXUIElement
+  ) -> BrowserAddressBarDetector.Family? {
     var pid: pid_t = 0
-    guard AXUIElementGetPid(element, &pid) == .success else { return false }
+    guard AXUIElementGetPid(element, &pid) == .success else { return nil }
     let bundleIdentifier = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier
     guard let family = BrowserAddressBarDetector.family(forBundleIdentifier: bundleIdentifier)
-    else { return false }
+    else { return nil }
 
     let signatureMatches: Bool
     switch family {
@@ -1340,8 +1355,8 @@ public enum PasteService {
       signatureMatches = BrowserAddressBarDetector.matches(
         bundleIdentifier: bundleIdentifier, axIdentifier: nil, axDOMClassList: axDOMClassList)
     }
-    guard signatureMatches else { return false }
-    return ancestorChainVerifiedFreeOfWebArea(element)
+    guard signatureMatches else { return nil }
+    return ancestorChainVerifiedFreeOfWebArea(element) ? family : nil
   }
 
   /// Whether `element`'s AX ancestor chain can be POSITIVELY VERIFIED clean of

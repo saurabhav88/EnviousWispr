@@ -87,10 +87,10 @@ struct PasteDeclineReasonTests {
         != PasteService.declineReason(for: .unverifiable))
   }
 
-  @Test("every one of the fourteen raw values is pinned exactly")
+  @Test("every one of the fifteen raw values is pinned exactly")
   func rawValuesAreStable() {
     // Frozen because they are grouped on in PostHog and Sentry, so a rename is a
-    // silent data break rather than a refactor. All fourteen, not a sample: the
+    // silent data break rather than a refactor. All fifteen, not a sample: the
     // earlier version pinned five and would have let a rename of the other nine
     // through (chunk whole-diff review).
     //
@@ -112,11 +112,12 @@ struct PasteDeclineReasonTests {
       (.setFailed, "set_failed"),
       (.noMutation, "no_mutation"),
       (.unverifiable, "unverifiable"),
+      (.chromiumOmniboxNavigationSeam, "not_attempted_chromium_omnibox_navigation_seam"),
     ]
     for (reason, rawValue) in expected {
       #expect(reason.rawValue == rawValue, "raw value drifted for \(reason)")
     }
-    #expect(expected.count == 14)
+    #expect(expected.count == 15)
   }
 
   @Test("no two reasons share a raw value")
@@ -126,8 +127,9 @@ struct PasteDeclineReasonTests {
       .accessibilityDenied, .focusMissing, .focusNonText, .roleUnreadable, .roleNotText,
       .selectedTextNotSettable, .countUnreadableOrInvalid, .rangeUnreadable, .rangeInvalid,
       .beforeImageUnreadableOrIncomplete, .focusUnconfirmed, .setFailed, .noMutation, .unverifiable,
+      .chromiumOmniboxNavigationSeam,
     ]
     #expect(Set(all.map(\.rawValue)).count == all.count)
-    #expect(all.count == 14)
+    #expect(all.count == 15)
   }
 }

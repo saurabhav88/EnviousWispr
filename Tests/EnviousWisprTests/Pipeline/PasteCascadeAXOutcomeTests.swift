@@ -61,3 +61,46 @@ struct PasteCascadeAXOutcomeTests {
     #expect(Set(dispositions.map(String.init(describing:))).count == 3)
   }
 }
+
+// #2297: whether Tier 1 (AX direct write) runs at all is decided before the
+// write, from `classification` and `isChromiumOmnibox` — never inside
+// `insertViaAccessibility`, which has no way to know a route was skipped.
+// Product outcome: when this misroutes, the user's dictated URL sits
+// correctly in Chrome's address bar and Enter silently does nothing.
+@Suite("PasteCascadeExecutor Tier 1 decline reason", .tags(.productOutcome))
+struct PasteCascadeTier1DeclineReasonTests {
+
+  @Test("A Chromium address bar declines Tier 1 with its own reason, never `nil`")
+  func chromiumOmniboxDeclinesWithItsOwnReason() {
+    let reason = tier1DeclineReason(
+      axTrusted: true, classification: .textField, isChromiumOmnibox: true)
+    #expect(reason == .chromiumOmniboxNavigationSeam)
+  }
+
+  @Test("An ordinary text field — Chromium or not — still runs Tier 1")
+  func ordinaryTextFieldRunsTier1() {
+    let reason = tier1DeclineReason(
+      axTrusted: true, classification: .textField, isChromiumOmnibox: false)
+    #expect(reason == nil)
+  }
+
+  @Test("Accessibility being untrusted outranks the Chromium omnibox reason")
+  func accessibilityDeniedOutranksChromiumReason() {
+    // If AX itself is denied, `isChromiumOmnibox` could never have been
+    // computed truthfully (it requires an AX read) — the untrusted branch
+    // must win regardless of what is passed for it.
+    let reason = tier1DeclineReason(
+      axTrusted: false, classification: .textField, isChromiumOmnibox: true)
+    #expect(reason == .accessibilityDenied)
+  }
+
+  @Test("A Chromium address bar still yields the ordinary reason for .missing and .nonText")
+  func nonTextFieldClassificationsUnaffectedByChromiumFlag() {
+    #expect(
+      tier1DeclineReason(axTrusted: true, classification: .missing, isChromiumOmnibox: true)
+        == .focusMissing)
+    #expect(
+      tier1DeclineReason(axTrusted: true, classification: .nonText, isChromiumOmnibox: true)
+        == .focusNonText)
+  }
+}

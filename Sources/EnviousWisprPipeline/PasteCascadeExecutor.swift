@@ -243,6 +243,21 @@ extension PasteFocusClassification {
   }
 }
 
+/// Why Tier 1 (AX direct write) did not run, or `nil` when it should. Pulled
+/// out of `deliver()`'s body so the ROUTING decision — as opposed to the live
+/// AX read `isChromiumOmnibox` is computed from — is unit-testable without a
+/// real focused element (#2297).
+internal func tier1DeclineReason(
+  axTrusted: Bool, classification: PasteFocusClassification, isChromiumOmnibox: Bool
+) -> PasteService.AXDeclineReason? {
+  if !axTrusted { return .accessibilityDenied }
+  switch classification {
+  case .textField: return isChromiumOmnibox ? .chromiumOmniboxNavigationSeam : nil
+  case .missing: return .focusMissing
+  case .nonText: return .focusNonText
+  }
+}
+
 /// Executes the tiered paste cascade: AX direct -> CGEvent Cmd+V -> AppleScript -> clipboard.
 ///
 /// Thin orchestrator over PasteService static methods. Both pipelines call this
@@ -384,17 +399,35 @@ internal final class PasteCascadeExecutor {
       targetDiagnostics = .missing
     }
     let canAttemptKeyPaste = classification.canAttemptKeyPaste
+    // #2297: a Chromium (Chrome/Brave/Edge) address bar specifically. Decided
+    // here, alongside `classification`, because it changes whether Tier 1
+    // should even be attempted — a direct AX write lands the text but never
+    // sets Chromium's own "user typed this" tracker, so Enter has nothing to
+    // navigate to. Only meaningful when Tier 1 would otherwise run at all, so
+    // gated on `.textField` and a present element; Safari is unaffected
+    // (`addressBarFamily` returns `nil` for it) and keeps using Tier 1.
+    //
+    // Cloud review (PR #2451): `addressBarFamily` answers a question about the
+    // CAPTURED element handle, which stays true even if the user has since
+    // moved focus to a different control in the same Chromium app — Tier 2's
+    // Cmd+V goes wherever CURRENT focus is, unlike Tier 1's targeted write
+    // into the captured element. `freshFocusedElement` closes that: only skip
+    // Tier 1 when the omnibox is PROVABLY still focused right now; if focus
+    // moved on, fall through to Tier 1's existing targeted-write behavior,
+    // exactly as before this fix existed.
+    let isChromiumOmnibox: Bool =
+      if classification == .textField, let element = request.targetElement,
+        PasteService.addressBarFamily(of: element) == .chromium
+      {
+        PasteService.freshFocusedElement(matching: element) != nil
+      } else {
+        false
+      }
     // Why Tier 1 did not run, decided HERE rather than inside the write. These
     // are the majority of declines — a reason set covering only the write's own
     // exits would be nil for most of them (#1332).
-    var axDeclineReason: PasteService.AXDeclineReason? = {
-      if !axTrusted { return .accessibilityDenied }
-      switch classification {
-      case .textField: return nil  // Tier 1 runs; the write reports its own.
-      case .missing: return .focusMissing
-      case .nonText: return .focusNonText
-      }
-    }()
+    var axDeclineReason: PasteService.AXDeclineReason? = tier1DeclineReason(
+      axTrusted: axTrusted, classification: classification, isChromiumOmnibox: isChromiumOmnibox)
     var axSettability: PasteService.AXSettability?
     // Which payload was submitted by the route that last attempted a write.
     // Nil until one does. A later route may legitimately overwrite this: Tier 1
@@ -414,7 +447,7 @@ internal final class PasteCascadeExecutor {
     // gets the text — Tier 3 puts it on the clipboard and shows the existing
     // "press Cmd+V" notice — but we never place it twice on their behalf.
     var axAllowsRetry = true
-    if classification == .textField, let element = request.targetElement {
+    if classification == .textField, !isChromiumOmnibox, let element = request.targetElement {
       tiersAttempted.append(.axDirect)
       // The payload choice happens INSIDE the write, against the range read in
       // the same breath as the write itself (plan §6). Nothing is chosen here.
@@ -457,7 +490,6 @@ internal final class PasteCascadeExecutor {
       let elapsed = activation.elapsed
 
       if activated {
-        tiersAttempted.append(.cgEvent)
         // Revalidated AFTER activation, because bringing the app frontmost is
         // itself capable of moving focus and selection.
         let payload = PasteService.payloadAtCommitBoundary(
@@ -468,37 +500,65 @@ internal final class PasteCascadeExecutor {
           candidateDeletesDictatedText: request.candidateDeletesDictatedText,
           requireCaretUnchanged: request.targetElementIsRetried,
           terminalBudget: request.terminalBudget)
-        // Snapshot AFTER that revalidation, immediately before the write. The
-        // re-check makes accessibility calls, and anything copied while they run
-        // would otherwise be captured as "the user's old clipboard" and then
-        // restored over (Codex review r5). The window is a fraction of a
-        // millisecond in practice, so this is narrowing rather than closing a
-        // proven gap — taken because it costs one moved line.
-        let snapshot: ClipboardSnapshot? =
-          request.restoreClipboardAfterPaste
-          ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
-          : nil
-        submittedKind = payload.kind
-        let dispatchResult = PasteService.pasteToActiveApp(
-          payload.text, to: self.pasteboard)
-        submittedClipboardChangeCount = dispatchResult.changeCount
-        switch dispatchResult {
-        case .dispatched:
-          tier = .cgEvent
-        case .cgEventCreationFailed(let accessibilityTrusted, _):
-          cgEventFailureAccessibilityTrusted = accessibilityTrusted
-          tierFailures["cgevent"] = "creation_failed (ax_trusted=\(accessibilityTrusted))"
+        // Cloud review rounds 2 and 4 (PR #2451): both activation AND
+        // `payloadAtCommitBoundary`'s own AX re-reads above can move focus off
+        // the omnibox before the CGEvent fires. Checking after activation but
+        // before the payload re-read (round 2's fix) still left this window
+        // open — round 4 caught it. Moved to run LAST, after every AX call
+        // this branch makes and immediately before the dispatch, so there is
+        // no remaining AX-touching step between the check and the write.
+        let chromiumOmniboxStillFocused: Bool =
+          if isChromiumOmnibox, let element = request.targetElement {
+            PasteService.freshFocusedElement(matching: element) != nil
+          } else {
+            true
+          }
+        if !chromiumOmniboxStillFocused {
+          // Refuse the blind paste rather than guess where it lands — the same
+          // "not confident enough to act automatically" floor PR #220 already
+          // uses for a non-text focus: fall through to clipboard-only below.
+          // Cloud review round 5: `.cgEvent` must NOT be recorded as attempted
+          // here — `pasteToActiveApp` is never called, so a clipboard-only
+          // outcome from this path would otherwise falsely claim Cmd+V was
+          // tried in its own telemetry.
+          tierFailures["cgevent"] = "chromium_omnibox_lost_focus_during_activation"
           emitTierFailureBreadcrumb(
-            stage: "cgevent",
-            reason: "creation_failed (ax_trusted=\(accessibilityTrusted))",
-            bundleId: bundleId
-          )
-        }
-        if let snapshot {
-          // Scheduled, not awaited (#2197). The delay and the guard are
-          // unchanged; the dictation just stops queueing behind them.
-          ClipboardCleanup.scheduleRestore(
-            snapshot, changeCountAfterPaste: dispatchResult.changeCount, tier: tier)
+            stage: "cgevent", reason: "chromium_omnibox_lost_focus_during_activation",
+            bundleId: bundleId)
+        } else {
+          tiersAttempted.append(.cgEvent)
+          // Snapshot immediately before the write, in the SAME block as the
+          // write itself (ClipboardIsolationFreezeTests.pasteRoutesUseCleanupSnapshot
+          // asserts every automatic route's snapshot and write share one code
+          // block). The re-check above makes accessibility calls, and anything
+          // copied while it runs would otherwise be captured as "the user's old
+          // clipboard" and then restored over (Codex review r5).
+          let snapshot: ClipboardSnapshot? =
+            request.restoreClipboardAfterPaste
+            ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
+            : nil
+          submittedKind = payload.kind
+          let dispatchResult = PasteService.pasteToActiveApp(
+            payload.text, to: self.pasteboard)
+          submittedClipboardChangeCount = dispatchResult.changeCount
+          switch dispatchResult {
+          case .dispatched:
+            tier = .cgEvent
+          case .cgEventCreationFailed(let accessibilityTrusted, _):
+            cgEventFailureAccessibilityTrusted = accessibilityTrusted
+            tierFailures["cgevent"] = "creation_failed (ax_trusted=\(accessibilityTrusted))"
+            emitTierFailureBreadcrumb(
+              stage: "cgevent",
+              reason: "creation_failed (ax_trusted=\(accessibilityTrusted))",
+              bundleId: bundleId
+            )
+          }
+          if let snapshot {
+            // Scheduled, not awaited (#2197). The delay and the guard are
+            // unchanged; the dictation just stops queueing behind them.
+            ClipboardCleanup.scheduleRestore(
+              snapshot, changeCountAfterPaste: dispatchResult.changeCount, tier: tier)
+          }
         }
       } else {
         // Activation timed out. Record it as a distinct failure stage so
@@ -509,7 +569,6 @@ internal final class PasteCascadeExecutor {
           stage: "activation", reason: "timeout_ms=\(elapsed)", bundleId: bundleId
         )
         // Tier 2b: AppleScript Edit > Paste
-        tiersAttempted.append(.appleScript)
         _ = PasteService.forceActivateApp(pid: app.processIdentifier)
         app.activate()
         // Not a clipboard delay — this waits for the activation to settle before
@@ -534,11 +593,35 @@ internal final class PasteCascadeExecutor {
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
           payload.text, to: self.pasteboard)
         submittedClipboardChangeCount = changeCount
-        if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
-          tier = .appleScript
+        // #2297 cloud review round 3: Tier 2b never consulted the omnibox-focus
+        // decision at all — the force-activate and settle sleep above can move
+        // focus exactly as `activate(app)` does for Tier 2, and a blind
+        // AppleScript "Paste" click has the same "lands wherever focus is"
+        // property as Tier 2's Cmd+V. Same gate, same latest-possible-moment
+        // placement, reusing the primitive already proven for Tier 2.
+        let chromiumOmniboxStillFocusedForAppleScript: Bool =
+          if isChromiumOmnibox, let element = request.targetElement {
+            PasteService.freshFocusedElement(matching: element) != nil
+          } else {
+            true
+          }
+        if !chromiumOmniboxStillFocusedForAppleScript {
+          // Cloud review round 5 (same shape, Tier 2b): `.appleScript` must NOT
+          // be recorded as attempted here — `pasteViaAppleScript` is never
+          // called, so a clipboard-only outcome would otherwise falsely claim
+          // the AppleScript paste was tried in its own telemetry.
+          tierFailures["applescript"] = "chromium_omnibox_lost_focus_during_activation"
+          emitTierFailureBreadcrumb(
+            stage: "applescript", reason: "chromium_omnibox_lost_focus_during_activation",
+            bundleId: bundleId)
         } else {
-          tierFailures["applescript"] = "refused"
-          emitTierFailureBreadcrumb(stage: "applescript", reason: "refused", bundleId: bundleId)
+          tiersAttempted.append(.appleScript)
+          if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
+            tier = .appleScript
+          } else {
+            tierFailures["applescript"] = "refused"
+            emitTierFailureBreadcrumb(stage: "applescript", reason: "refused", bundleId: bundleId)
+          }
         }
         if let snapshot {
           ClipboardCleanup.scheduleRestore(
