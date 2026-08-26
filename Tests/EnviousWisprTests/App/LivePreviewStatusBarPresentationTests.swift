@@ -64,20 +64,19 @@ struct LivePreviewStatusBarPresentationTests {
   /// control in `noLabelPromisesVisibleWords` is why it may not: the ready detail
   /// carries "ready to show", the deliberately weaker claim, and the label alone
   /// promises more than this page can keep.
-  @Test("Every state renders both a label and a detail, active included")
+  /// **Sentinels, not "non-empty".** Asserting only that the strings are non-empty
+  /// passes against an implementation that hard-codes them, which is the whole class
+  /// of defect this seam exists to make visible. A value unique per state proves the
+  /// mapping's own string arrived here and was not re-derived.
+  @Test("Every state passes through both its label and its detail, active included")
   func everyStateKeepsItsExplanation() {
-    for kind in Self.allKinds {
-      let b = bar(kind, label: "L", detail: "D")
-      #expect(!b.label.isEmpty, "empty label for \(kind)")
-      #expect(!b.detail.isEmpty, "empty detail for \(kind)")
+    for (index, kind) in Self.allKinds.enumerated() {
+      let label = "__label_\(index)__"
+      let detail = "__detail_\(index)__"
+      let b = bar(kind, label: label, detail: detail)
+      #expect(b.label == label, "label changed for \(kind)")
+      #expect(b.detail == detail, "detail changed for \(kind)")
     }
-  }
-
-  @Test("Label and detail are passed through from the mapping, never re-derived")
-  func labelAndDetailComeFromTheMapping() {
-    let b = bar(.active, label: "Activated", detail: "Ready to show your words while you speak.")
-    #expect(b.label == "Activated")
-    #expect(b.detail == "Ready to show your words while you speak.")
   }
 
   // MARK: - Language
@@ -100,7 +99,7 @@ struct LivePreviewStatusBarPresentationTests {
 
     let locked = bar(
       .active, engine: .universal, appleActive: nil, languageMode: .locked("de"))
-    #expect(locked.language?.name.isEmpty == false)
+    #expect(locked.language?.name == LanguageCatalog.entry(for: "de").englishName)
     #expect(locked.language?.provenance == "you picked this")
   }
 
@@ -136,8 +135,20 @@ struct LivePreviewStatusBarPresentationTests {
     for kind in Self.allKinds {
       for engine in LivePreviewEngineChoice.allCases {
         for mode in [LanguageMode.auto, .locked("de")] {
-          guard let language = bar(kind, engine: engine, languageMode: mode).language
-          else { continue }
+          let candidate = bar(kind, engine: engine, languageMode: mode).language
+          // **Assert presence or absence per kind rather than skipping a nil.**
+          // `guard ... else { continue }` let a state that WRONGLY hides its
+          // language pass this test silently, which is the vacuity shape the
+          // suite is meant to catch rather than commit.
+          switch kind {
+          case .buildCannotRun, .needsMacOS26, .checking:
+            #expect(candidate == nil, "named a language for \(kind) on \(engine)")
+            continue
+          case .active, .off, .needsLanguage, .unsupportedLanguage, .needsDownload,
+            .gettingReady, .downloadFailed, .paused:
+            #expect(candidate != nil, "missing language for \(kind) on \(engine)")
+          }
+          guard let language = candidate else { continue }
           let text = (language.name + " " + language.provenance).lowercased()
           for phrase in forbidden {
             #expect(
@@ -153,9 +164,11 @@ struct LivePreviewStatusBarPresentationTests {
 
   @Test("Only a missing language offers a remedy, and it carries that language")
   func onlyMissingLanguageOffersARemedy() {
-    #expect(
-      bar(.needsLanguage(name: "German")).action
-        == .browseDownloads(initialSearch: "German"))
+    // Two names, because one hard-coded string would satisfy a single case.
+    for name in ["German", "Japanese"] {
+      #expect(
+        bar(.needsLanguage(name: name)).action == .browseDownloads(initialSearch: name))
+    }
 
     for kind in Self.allKinds {
       if case .needsLanguage = kind { continue }
@@ -168,10 +181,17 @@ struct LivePreviewStatusBarPresentationTests {
   /// every string the bar receives must leave the action untouched.
   @Test("The remedy is derived from the state, never from the copy")
   func actionIsIndependentOfCopy() {
+    // **Asserting a == b is not enough: always-nil satisfies it.** Each kind's
+    // EXPECTED action is stated, then required to survive both copy mutations.
     for kind in Self.allKinds {
-      let a = bar(kind, label: "one wording", detail: "one detail").action
-      let b = bar(kind, label: "a completely different wording", detail: "and detail").action
-      #expect(a == b, "action moved when only copy changed, for \(kind)")
+      let expected: LivePreviewStatusBarPresentation.Action?
+      if case .needsLanguage(let name) = kind {
+        expected = .browseDownloads(initialSearch: name)
+      } else {
+        expected = nil
+      }
+      #expect(bar(kind, label: "__one__", detail: "__first__").action == expected)
+      #expect(bar(kind, label: "__two__", detail: "__second__").action == expected)
     }
   }
 }
