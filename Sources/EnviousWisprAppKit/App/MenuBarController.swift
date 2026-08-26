@@ -553,13 +553,20 @@ extension MenuBarController: NSMenuDelegate {
       if let currentMenu = statusItem?.menu {
         // The one read, at the one moment it is about the user's document rather than about us.
         //
-        // **That is MEASURED, not assumed — opening a status-bar menu does not activate its owner.**
-        // A standalone AppKit probe with a status item and nothing else read
-        // `NSWorkspace.frontmostApplication` before, during and after: unchanged throughout, and
-        // `isUs=false` inside `menuNeedsUpdate`. It matters because #2413 adds a refusal for "we are
-        // frontmost", which would otherwise make this entry permanently blocked. Limit of that
-        // measurement: the probe opens the menu with `performClick` rather than a real mouse click,
-        // though both enter the same tracking loop.
+        // **MEASURED rather than assumed, and the claim is exactly the measurement.** A standalone
+        // AppKit probe — a status item and nothing else — opened its menu with `performClick` on
+        // macOS 26.7 (build 25G220) and read `NSWorkspace.frontmostApplication` before, inside `menuNeedsUpdate`,
+        // and after: unchanged throughout, `isUs=false` inside the hook. So on that path this read
+        // is about another application's document.
+        //
+        // **What that does NOT establish: a real mouse click, or another macOS version.** Both
+        // enter the same tracking loop, which is why the probe is worth having, but neither was
+        // observed — so this is evidence, not a general fact about AppKit, and a future `isUs=true`
+        // here is a gap in the evidence rather than a contradiction.
+        //
+        // It matters because #2413 adds a refusal for "we are the frontmost application": if
+        // opening this menu DID activate us, the entry would be permanently blocked. Probe and
+        // output are at `docs/audits/2026-08-25-statusmenu-frontmost-{probe.swift,result.txt}`.
         //
         // **Bounded, because `menuNeedsUpdate` must be synchronous.** A frontmost application whose
         // Accessibility provider stalls would otherwise hold the main actor and the menu would not
