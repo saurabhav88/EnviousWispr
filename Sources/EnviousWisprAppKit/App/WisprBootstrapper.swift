@@ -431,6 +431,11 @@ public final class WisprBootstrapper {
       },
       preloadAction: { [weak whisperKitKernelDriver] in
         await whisperKitKernelDriver?.ensureEngineWarm(reason: .launch)
+        #if DEBUG
+          if whisperKitKernelDriver?.engineReadiness == .ready {
+            OverlayFirstRenderMarkers.emitEngineReadyOnce()
+          }
+        #endif
       }
     )
 
@@ -457,8 +462,6 @@ public final class WisprBootstrapper {
       ollamaRemotenessLookup: PipelineSettingsSync.liveOllamaRemotenessLookup(setup.ollamaSetup)
     )
     settingsSync.applyInitialSettings(settings)
-
-
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
     //
@@ -686,6 +689,11 @@ public final class WisprBootstrapper {
         // Discard the outcome so the Task's Success type stays Void
         // (`EngineWarmupOutcome` does not declare Sendable conformance).
         _ = await kernelDriver?.ensureEngineWarm(reason: .launch)
+        #if DEBUG
+          if kernelDriver?.engineReadiness == .ready {
+            OverlayFirstRenderMarkers.emitEngineReadyOnce()
+          }
+        #endif
       }
     }
 
@@ -716,7 +724,6 @@ public final class WisprBootstrapper {
         }
       }
     }
-
 
     let updateCoordinatorHolder = UpdateCoordinatorHolder()
     let sparkleUpdateController = SparkleUpdateController(holder: updateCoordinatorHolder)

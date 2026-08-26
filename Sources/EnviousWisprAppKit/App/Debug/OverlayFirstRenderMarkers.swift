@@ -62,6 +62,20 @@
       case rootConstructStart = "root.construct.start"
       case rootConstructEnd = "root.construct.end"
       case hostOrderFrontComplete = "host.order_front.complete"
+      /// #2377, C1 repair — the smoke ruling. Emitted once the launch-time
+      /// warm-up path (`WisprBootstrapper`) re-reads the ACTUALLY-selected
+      /// engine as `.ready`, so the harness can wait for it before sending a
+      /// synthetic keypress. Without this, a keypress sent right after
+      /// `launch.exit` races `ColdPressGuard` (#879), which correctly refuses
+      /// a press while the engine is still `.warming` — a real product policy,
+      /// not an instrument defect, but one this instrument's own synthetic
+      /// input must not trip. Carries `window=0`, `intent=.none`: it concerns
+      /// no presentation and is deliberately NOT part of the launch/root
+      /// causal chain the Python adjudicator enforces (`EVENTS`) — engine
+      /// warm-up and first render are two different things happening on two
+      /// different schedules, and folding one into the other's ordering check
+      /// would make an instrument change what it is trying only to observe.
+      case engineReady = "engine.ready"
     }
 
     /// Which presentation a `host.order_front.complete` marker belongs to.
@@ -265,6 +279,26 @@
 
     @MainActor private static var emittedIntents: Set<Intent> = []
 
+    /// Emit `engine.ready` at most once per launch.
+    ///
+    /// **The caller, not this function, decides readiness** — it must check
+    /// the driver's `engineReadiness == .ready` itself before calling this.
+    /// This function only owns the "at most once" property, the same reason
+    /// `emitFirst` exists: two launch warm-up paths exist (parakeet's launch
+    /// `Task` and WhisperKit's `preloadAction`), only one of which runs for a
+    /// given launch (keyed on the selected backend), so in practice this
+    /// fires from whichever path actually ran. A simple boolean latch is
+    /// correct here — unlike `emitFirst`'s per-INTENT latching, there is only
+    /// ever one presentation-free readiness fact to report.
+    @MainActor
+    public static func emitEngineReadyOnce() {
+      guard !engineReadyEmitted else { return }
+      engineReadyEmitted = true
+      emit(capture(.engineReady))
+    }
+
+    @MainActor private static var engineReadyEmitted = false
+
     // MARK: - the sink
 
     private struct Sink {
@@ -325,8 +359,12 @@
       // V2: adds the `intent` field (#2377, C1 repair) — a schema bump because
       // an old harness reading a V2 line would silently misparse the eighth
       // field as belonging to no key it expects.
+      // V3: adds the `engine.ready` event (#2377, C1 repair, Codex's smoke
+      // ruling) — a schema bump because a V2 harness's `Event` set does not
+      // recognize it and would refuse the line outright rather than silently
+      // misread it, which is the correct failure for an unknown event.
       let prefix =
-        "EW_OVERLAY_FIRST_RENDER_V2\trun=\(runID)\tpid=\(getpid())\tbundle=\(bundleID)\t"
+        "EW_OVERLAY_FIRST_RENDER_V3\trun=\(runID)\tpid=\(getpid())\tbundle=\(bundleID)\t"
       return Sink(descriptor: descriptor, prefix: prefix)
     }()
   }

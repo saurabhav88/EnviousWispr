@@ -20,7 +20,11 @@
   /// calling it would either pollute every other test in this process or
   /// need the kind of DEBUG-only reset hatch this migration exists to
   /// delete. `capture()` and `withPresentationIntent` are pure enough to test
-  /// directly without touching that state at all.
+  /// directly without touching that state at all. The same reasoning excludes
+  /// `emitEngineReadyOnce`'s `engineReadyEmitted` latch (#2377, C1 repair,
+  /// Codex's smoke ruling) — its call-site binding (guard-then-emit at both
+  /// launch warm-up paths) is proved instead by the Python suite's mutation-
+  /// tested `test_the_host_marker_is_emitted_with_a_real_window_number`.
   @MainActor
   @Suite(.tags(.harnessContract))
   struct OverlayFirstRenderMarkersIntentTests {

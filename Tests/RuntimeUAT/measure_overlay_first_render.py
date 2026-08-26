@@ -55,17 +55,32 @@ SCHEMA_FAMILY = "EW_OVERLAY_FIRST_RENDER"
 # keypress-triggered recording. A schema bump because a V1 harness reading a
 # V2 line, or a V2 harness reading a V1 line, must refuse loudly rather than
 # silently misparse the field count.
-SCHEMA = SCHEMA_FAMILY + "_V2"
+# V3 adds the `engine.ready` event (#2377, C1 repair, Codex's smoke ruling):
+# an app launched with an engine that has not finished warming refuses a
+# synthetic keypress via `ColdPressGuard` (#879), a real product policy this
+# instrument's own input must not trip. A V2 harness has no such event in its
+# `EVENTS`/`KNOWN_EVENTS` set and would refuse the line rather than silently
+# treat it as launch/root evidence it is not.
+SCHEMA = SCHEMA_FAMILY + "_V3"
 
 LAUNCH_ENTER = "launch.enter"
 LAUNCH_EXIT = "launch.exit"
 ROOT_START = "root.construct.start"
 ROOT_END = "root.construct.end"
 ORDER_FRONT = "host.order_front.complete"
+ENGINE_READY = "engine.ready"
 
 # In causal order. The whole chain is enforced, which is what forbids a root
 # built inside launch; there is deliberately no separate notion of "pairs".
+# `ENGINE_READY` is deliberately NOT a member: engine warm-up and first render
+# run on two independent schedules, and folding one into the other's ordering
+# check would make an instrument change what it exists only to observe.
 EVENTS = (LAUNCH_ENTER, LAUNCH_EXIT, ROOT_START, ROOT_END, ORDER_FRONT)
+
+# Every event the PARSER accepts — `EVENTS` plus `ENGINE_READY`. Kept separate
+# from `EVENTS` so adding a recognized event never silently widens the launch
+# causal chain `adjudicate_launch` enforces.
+KNOWN_EVENTS = EVENTS + (ENGINE_READY,)
 
 # Which presentation an `ORDER_FRONT` marker belongs to. `NONE` is the only
 # legal intent for every other event; `RECORDING` is the presentation the
@@ -113,6 +128,12 @@ BLOCKED_AX_UNAVAILABLE = "BLOCKED_AX_UNAVAILABLE"
 # appearance. Never averaged or picked from — refused, like every other
 # ambiguity this instrument treats as evidence it cannot trust.
 BLOCKED_AMBIGUOUS_OVERLAY = "BLOCKED_AMBIGUOUS_OVERLAY"
+# No complete `engine.ready` marker for this run/pid/bundle within the wait.
+# Sending a synthetic keypress anyway would race `ColdPressGuard` (#879),
+# which correctly refuses a press on a still-warming engine — a real product
+# policy, not a first-render fault, so it gets its own verdict rather than
+# reusing `BLOCKED_WRONG_PRESENTATION` or `BLOCKED_LAUNCH`.
+BLOCKED_ENGINE_NOT_READY = "BLOCKED_ENGINE_NOT_READY"
 
 Identity = namedtuple("Identity", "bundle_id executable_path sha256")
 Marker = namedtuple("Marker", "run pid bundle event ticks window intent index")
@@ -166,7 +187,7 @@ def parse_marker_line(line, index=0):
         if not field.startswith(prefix):
             raise MarkerFormatError(f"expected {prefix!r}, got {field!r}")
         parsed[key] = field[len(prefix):]
-    if parsed["event"] not in EVENTS:
+    if parsed["event"] not in KNOWN_EVENTS:
         raise MarkerFormatError(f"unknown event {parsed['event']!r}")
     if parsed["intent"] not in INTENTS:
         raise MarkerFormatError(f"unknown intent {parsed['intent']!r}")
@@ -413,6 +434,59 @@ def launch_is_ready(text, *, expected_run, expected_pid, expected_bundle):
     return any(mk.event == LAUNCH_EXIT and mk.run == expected_run
                and mk.pid == expected_pid and mk.bundle == expected_bundle
                for mk in markers)
+
+
+def engine_is_ready(text, *, expected_run, expected_pid, expected_bundle):
+    """Has THIS launch written its `engine.ready` marker yet?
+
+    Same exact-match discipline as `launch_is_ready`, for a different fact:
+    the app writes `launch.exit` when `applicationDidFinishLaunching`
+    returns, well before the selected engine has finished warming. Sending a
+    synthetic keypress in that window races `ColdPressGuard` (#879), which
+    correctly refuses the press and blocks the run for a reason that has
+    nothing to do with first render — the fact this instrument exists to
+    measure.
+    """
+    try:
+        markers = read_complete_markers(text)
+    except MarkerFormatError:
+        return False
+    return any(mk.event == ENGINE_READY and mk.run == expected_run
+               and mk.pid == expected_pid and mk.bundle == expected_bundle
+               for mk in markers)
+
+
+def await_engine_ready(marker_path, *, run_id, expected_pid, expected_bundle,
+                       timeout_s=30.0, read_text=None):
+    """Wait for `engine.ready` before any synthetic input is sent.
+
+    **A separate clock from the keypress-to-overlay interval it gates.** This
+    function returns before `measure_keypress_to_overlay` ever reads
+    `perf_counter_ns`, so warm-up wait time cannot fold into the number the
+    plan states as PILL latency — the same reasoning `hold()`'s doc comment
+    gives for keeping marker I/O cost out of the interval it would bias.
+
+    Never a fixed sleep: the signal is the app's own marker, exactly like
+    `await_launch_ready`. Returns `False` on timeout rather than raising —
+    the caller turns that into `BLOCKED_ENGINE_NOT_READY`, a receipt, not an
+    exception with no receipt behind it.
+
+    `read_text` exists for the suite, which cannot launch a real app to make
+    the read fail or to control what it returns.
+    """
+    read_text = read_text or (lambda: marker_path.read_text())
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            text = read_text()
+        except OSError:
+            text = ""
+        if engine_is_ready(text, expected_run=run_id, expected_pid=expected_pid,
+                           expected_bundle=expected_bundle):
+            return True
+        # deadline-fallback: the interval between reads of the app's own marker.
+        time.sleep(0.02)
+    return False
 
 
 def ax_overlay_has_appeared(match_count):
@@ -1169,27 +1243,43 @@ def smoke(bundle_path, *, out_dir):
     result = None
     failure = None
     timebase = None
+    engine_ready_wait_ms = None
+    engine_not_ready = False
     try:
         # Inside the reaped region, not before it. `mach_timebase()` loads a
         # native symbol and can raise; raising here with the app already launched
         # and the cleanup not yet armed leaves an orphan and produces no receipt
         # at all — the one run that most needs explaining.
         timebase = mach_timebase()
-        timing = measure_keypress_to_overlay(
-            launched["pid"], launched["marker_path"])
-        marker_text = launched["marker_path"].read_text()
-        # `resolved_identity` raises if the pid is gone, which is exactly what a
-        # crash during the take looks like. A traceback here would leave NO
-        # receipt on disk for the one run that most needs explaining, so the
-        # failure becomes a verdict rather than an exception.
-        resolved = resolved_identity(launched["pid"])
-        result = adjudicate_launch(
-            marker_text,
-            expected_run=launched["run_id"],
+        # Gated BEFORE any synthetic input, on its OWN clock — never the one
+        # `measure_keypress_to_overlay` starts below. A press sent while the
+        # engine is still warming races `ColdPressGuard` (#879), which
+        # correctly refuses it; this instrument's job is to avoid causing
+        # that race, not to measure the app's response to it.
+        ready_start = time.monotonic()
+        engine_ready = await_engine_ready(
+            launched["marker_path"], run_id=launched["run_id"],
             expected_pid=launched["pid"],
-            requested=launched["requested"],
-            resolved=resolved,
-            timebase=timebase)
+            expected_bundle=launched["requested"].bundle_id)
+        engine_ready_wait_ms = (time.monotonic() - ready_start) * 1000.0
+        if not engine_ready:
+            engine_not_ready = True
+        else:
+            timing = measure_keypress_to_overlay(
+                launched["pid"], launched["marker_path"])
+            marker_text = launched["marker_path"].read_text()
+            # `resolved_identity` raises if the pid is gone, which is exactly what a
+            # crash during the take looks like. A traceback here would leave NO
+            # receipt on disk for the one run that most needs explaining, so the
+            # failure becomes a verdict rather than an exception.
+            resolved = resolved_identity(launched["pid"])
+            result = adjudicate_launch(
+                marker_text,
+                expected_run=launched["run_id"],
+                expected_pid=launched["pid"],
+                requested=launched["requested"],
+                resolved=resolved,
+                timebase=timebase)
     except Exception as exc:
         failure = f"{type(exc).__name__}: {exc}"
     finally:
@@ -1202,10 +1292,18 @@ def smoke(bundle_path, *, out_dir):
         "requested_identity": launched["requested"]._asdict(),
         "resolved_identity": resolved._asdict() if resolved else None,
         "timebase": timebase,
+        "engine_ready_wait_ms": engine_ready_wait_ms,
         "keypress": timing,
         "detail": failure or (result.detail if result else ""),
         "sample": result.sample._asdict() if result and result.sample else None,
     })
+    if engine_not_ready:
+        out["verdict"] = BLOCKED_ENGINE_NOT_READY
+        out["detail"] = (
+            f"no complete {ENGINE_READY} marker for run {launched['run_id']} "
+            f"within the warm-up wait; a keypress sent now would race "
+            f"ColdPressGuard (#879)")
+        return out
     if failure is not None:
         out["verdict"] = BLOCKED_LAUNCH
         return out
