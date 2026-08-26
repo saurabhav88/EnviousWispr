@@ -17,6 +17,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
+import phase5_overlay_lifecycle as lc  # noqa: E402
 import phase5_record_key as rk  # noqa: E402
 import wispr_eyes as w  # noqa: E402
 
@@ -43,25 +44,37 @@ def dev_pids():
                   if needle in l and "/bin/zsh" not in l and "python3" not in l)
 
 
-def overlay(pid):
+def visible_overlays(pid):
+    """EVERY visible overlay-layer window, keyed by id.
+
+    The previous revision returned `best` — the LAST window the enumeration
+    happened to yield — which is arbitrary, not an identification. Keeping them
+    all lets `phase5_overlay_lifecycle` decide which one was the pill, and lets
+    the report show what was rejected.
+    """
     import Quartz
 
     info = Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionAll, Quartz.kCGNullWindowID)
-    best = None
+    got = {}
     for x in info or []:
         if x.get("kCGWindowOwnerPID") != pid or not x.get("kCGWindowIsOnscreen"):
             continue
         if (x.get("kCGWindowLayer") or 0) <= 0:
             continue
         b = x.get("kCGWindowBounds") or {}
-        best = {"id": x.get("kCGWindowNumber"), "w": round(b.get("Width", 0)),
-                "h": round(b.get("Height", 0)), "x": round(b.get("X", 0)),
-                "y": round(b.get("Y", 0))}
-    return best
+        got[x.get("kCGWindowNumber")] = {
+            "w": round(b.get("Width", 0)), "h": round(b.get("Height", 0)),
+            "x": round(b.get("X", 0)), "y": round(b.get("Y", 0))}
+    return got
 
 
 class Heights(threading.Thread):
-    """The window's own height over time — the growth series."""
+    """Every visible overlay window's bounds over time.
+
+    Samples ALL of them rather than one, because which one is the pill is not
+    knowable until the recording has ended — the identification needs the window
+    to have disappeared. Filtering happens afterwards, against the confirmed id.
+    """
 
     def __init__(self, pid):
         super().__init__(daemon=True)
@@ -69,9 +82,8 @@ class Heights(threading.Thread):
 
     def run(self):
         while self.running:
-            o = overlay(self.pid)
-            if o:
-                self.series.append({"t": round(time.time(), 2), **o})
+            for wid, m in visible_overlays(self.pid).items():
+                self.series.append({"t": round(time.time(), 2), "id": wid, **m})
             time.sleep(0.05)  # test-fixture-timer: window-server sampling cadence
 
     def stop(self):
@@ -89,6 +101,53 @@ def await_idle(timeout=30.0):
     return False
 
 
+def growth_segment(series):
+    """The longest contiguous run of samples sharing one width.
+
+    ONE TAKE CONTAINS SEVERAL PRESENTATIONS, and only one of them is this row's
+    subject. Measured 2026-08-25, the size series across a single dictation:
+
+        398x34, 400x34, 402x34        the reading well arriving and settling
+        400x34 -> 78 -> 99 -> 120 -> 141 -> 162   the growth this row is about
+        152x44, 131x44, 129x44        the pill collapsing after the stop
+
+    So a width-constant check over the WHOLE take reports the width varying
+    129..402 and refuses a perfectly correct pill. The reading well's own
+    documentation is the reason the segment is defined by width rather than by a
+    time window: it is "content-sized from the first frame so it does not visibly
+    snap as lines wrap" (`SettingsEnums.swift`), so constant width IS its identity
+    while the height is what moves.
+
+    Segmenting on the modal width is data-driven; a size or time threshold would
+    be a constant invented here, and the collapse frames are only "small" relative
+    to a number nobody measured.
+    """
+    best, run = [], []
+    for s in series:
+        if run and s["w"] == run[-1]["w"]:
+            run.append(s)
+        else:
+            run = [s]
+        if len(run) > len(best):
+            best = list(run)
+    return best
+
+
+def _transitions(series):
+    """Only the samples where the pill's size actually changed."""
+    out, last = [], None
+    for s in series:
+        key = (s["w"], s["h"])
+        if key != last:
+            out.append({"t": s["t"], "w": s["w"], "h": s["h"]})
+            last = key
+    return out
+
+
+def raw_ids(series):
+    return {s["id"] for s in series}
+
+
 def main():
     pids = dev_pids()
     if len(pids) != 1:
@@ -98,32 +157,107 @@ def main():
     w.connect()
     await_idle()
 
+    before = set(visible_overlays(pid))
+
     heights = Heights(pid)
     heights.start()
 
     clip_path = str(OUT / "preview-growth.mov")
-    with w.record(26, save_path=clip_path) as clip:
-        rk.single_press_record_key()
-        w.record_tts(SENTENCE)          # speaks it through the speakers
-        rk.single_press_record_key()
+    # SYNTHESIZE BEFORE RECORDING, then play SYNCHRONOUSLY inside the held window.
+    # `record_tts` is not usable here: it drives its OWN push-to-talk hold, so
+    # calling it inside a hands-free lock is two overlapping drives of one app.
+    # Measured 2026-08-25 — the first attempt did exactly that and the take came
+    # back `RAW ASR: Rarely have I made the same same choice` against a
+    # five-sentence script, with ASR=0.075s. Almost nothing was captured, and the
+    # row would have been read as the pill failing to grow.
+    # Shape owned by uat-testing.md RULE: tts-drills-prove-playback-inside-the-window.
+    audio = w.tts(SENTENCE)
+    duration = w._audio_duration(audio)
+    print(f"  speech is {duration:.1f}s")
+
+    locked = False
+    with w.record(duration + 12, save_path=clip_path) as clip:
+        # HOLD THE PILL WITH HANDS-FREE, not a bare single press. A single press is
+        # push-to-talk and the app answers it with `Debounce timer fired — stopping
+        # PTT (no double-press detected)` in the SAME SECOND, so the take this row
+        # depends on may never survive long enough to grow.
+        # `double_press_record_key` refuses on the app's own
+        # `Hands-free mode activated`, so a failure here is a refusal rather than a
+        # short recording that still produces a plausible series.
+        locked = rk.double_press_record_key()
+        if locked:
+            # Synchronous: when this returns the audio has provably played in full.
+            subprocess.run(["afplay", audio])
+            rk.stop_after_short_hold(0.0)
 
     heights.stop()
-    await_idle()
+    settled = await_idle()
 
-    series = heights.series
+    # WAIT FOR THE PILL TO GO, do not sample once at idle. The pipeline reaches its
+    # terminal marker while the overlay is still on screen, so a single snapshot
+    # taken at idle finds the window still present and the lifecycle check reports
+    # NONE — a refusal caused by reading too early rather than by anything wrong.
+    gone_deadline = time.time() + 15
+    after = set(visible_overlays(pid))
+    while (set(raw_ids(heights.series)) - before) & after and time.time() < gone_deadline:
+        time.sleep(0.2)  # test-fixture-timer: waiting for the overlay to be ordered out
+        after = set(visible_overlays(pid))
+
+    raw = heights.series
+    life = lc.describe(before, {s["id"] for s in raw}, after)
+
+    # ONLY the lifecycle-confirmed window. Mixing several windows' bounds into one
+    # series manufactures growth out of two windows of different sizes.
+    series = [s for s in raw if s["id"] == life["window_id"]] if life["window_id"] else []
     hs = [s["h"] for s in series]
+    ws = [s["w"] for s in series]
     report = {
         "pid": pid,
         "clip": clip.path,
         "clip_exists": clip.exists,
+        "locked": locked,
+        "settled": settled,
+        "lifecycle": life,
+        "samples_all_windows": len(raw),
         "samples": len(series),
         "distinct_heights": sorted(set(hs)),
         "min_height": min(hs) if hs else None,
         "max_height": max(hs) if hs else None,
         "grew": bool(hs and max(hs) > min(hs)),
-        "width_constant": len({s["w"] for s in series}) == 1 if series else None,
+        # KEEP THE WIDTHS, not just whether they were constant. A bare boolean
+        # can say the width varied and not what between, so a reader cannot tell a
+        # one-point rounding wobble from the pill changing size.
+        "distinct_widths": sorted(set(ws)),
+        "width_constant": len(set(ws)) == 1 if series else None,
         "one_window_id": len({s["id"] for s in series}) == 1 if series else None,
+        # THE SERIES ITSELF, so a verdict can be re-adjudicated without a rerun.
+        # Collapsed to transitions: consecutive identical (w,h) samples carry no
+        # information and 341 rows of them bury the handful that do.
+        "transitions": _transitions(series),
     }
+
+    seg = growth_segment(series)
+    seg_h = [x["h"] for x in seg]
+    report["growth_segment"] = {
+        "samples": len(seg),
+        "width": seg[0]["w"] if seg else None,
+        "heights": sorted(set(seg_h)),
+        "min_height": min(seg_h) if seg_h else None,
+        "max_height": max(seg_h) if seg_h else None,
+        "grew": bool(seg_h and max(seg_h) > min(seg_h)),
+        # Three distinct heights is the row's own wording — empty, one line,
+        # several — so two would satisfy "it grew" without showing it wrap twice.
+        "distinct_heights": len(set(seg_h)),
+    }
+    # Every precondition is part of the verdict. A growth series read from an
+    # unidentified window, or taken while the pipeline was still running, is not
+    # evidence for this row however convincing the numbers look.
+    g = report["growth_segment"]
+    report["verdict"] = ("PASS" if (locked and settled and life["verdict"] == lc.OK
+                                    and report["one_window_id"]
+                                    and g["grew"] and g["distinct_heights"] >= 3
+                                    and clip.exists)
+                         else "REFUSED")
 
     # Frames at the extremes, so the verdict can be looked at rather than trusted.
     if clip.exists and series:
