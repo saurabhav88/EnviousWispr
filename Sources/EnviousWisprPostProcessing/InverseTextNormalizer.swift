@@ -742,7 +742,13 @@ public struct InverseTextNormalizer: Sendable {
   // literal word "dot"), so it always folds to a period. A literal "." only folds away when the
   // WHOLE utterance was nothing but the spoken URL (`isBareURLUtterance`) — otherwise it is a
   // real sentence period and is put back exactly as it was.
-  private static let urlTrailerPat = #"(?<trailer>\s*dot\.?\s*$|\.\s*$)?"#
+  //
+  // `\s+` (not `\s*`) before the "dot" word (cloud review, PR #2463): a real trailing "dot"
+  // is always a distinct spoken/ITN token, separated from the domain by whitespace — requiring
+  // at least one space rules out this group ever splitting a glued, unrelated identifier like
+  // "example.comdot" into a domain plus a bogus trailer. The bare-period alternative needs no
+  // such guard: a literal "." is punctuation, not a word, so it never has this ambiguity.
+  private static let urlTrailerPat = #"(?<trailer>\s+dot\.?\s*$|\.\s*$)?"#
   private func trailerSuffix(_ m: Match) -> String {
     guard let trailer = m.g("trailer"), !trailer.isEmpty else { return "" }
     if firstMatch(#"dot\.?\s*$"#, trailer) != nil { return "." }
@@ -944,10 +950,15 @@ public struct InverseTextNormalizer: Sendable {
     // check a second time with a different lead context, silently overturning their decision
     // — measured: "facebook dot com dot" correctly became "facebook.com." in pass 1, then
     // this pass matched the trailing "." it had just added and stripped it right back off.
+    //
+    // `\s+` (not `\s*`, cloud review PR #2463): without a required space, the TLD alternation
+    // has no trailing `\b` of its own, so this could split a glued, unrelated identifier like
+    // "example.comdot" into a domain plus a bogus trailer — a real trailing "dot" word is
+    // always separated from the domain by whitespace, so requiring one costs nothing genuine.
     let bareTrailerPat =
       #"(?<![@a-z0-9.-])\b(?<domain>(?:"# + Self.urlHostLabelPat + #"\.)*"# + Self.urlHostLabelPat
       + #"\.(?:"# + Self.lowerRiskURLTLDAlt + #"|"# + Self.commonWordURLTLDAlt + #"))"#
-      + #"(?<trailer>\s*dot\.?\s*$)"#
+      + #"(?<trailer>\s+dot\.?\s*$)"#
     result = reSub(bareTrailerPat, result) { m in
       guard
         !precededByProtocolPrefix(m), !precededByUnresolvedConnector(m), !precededBySpacedAtSign(m)

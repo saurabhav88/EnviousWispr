@@ -311,6 +311,9 @@ struct InverseTextNormalizerParityTests {
       // Boundary (see note above): a cleanly-heard "https slash slash" prefix already blocks
       // dot-conversion today, independent of this fix — documented, not asserted as fixed.
       ("https slash slash facebook dot com.", "https slash slash facebook dot com."),
+      // Fix 2 (negative, cloud review PR #2463): a glued, unrelated identifier ending in "dot"
+      // with no whitespace before it must not be split into a domain plus a bogus trailer.
+      ("visit example.comdot", "visit example.comdot"),
       // Regression guard (#2257-era): the letter-spelled "h t t p" shape must still leave an
       // unrelated trailing "dot s m" continuation untouched — this fix must not reopen it.
       (
