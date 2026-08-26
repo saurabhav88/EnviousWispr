@@ -232,9 +232,19 @@
     /// Consequence worth stating: a launch that never orders a panel front
     /// writes no root markers at all, and the harness blocks it as incomplete.
     /// That is the honest reading — no first render happened.
+    ///
+    /// **One capture at a time, never variadic (#2377, C1 repair).** A
+    /// variadic parameter is bundled into a temporary `[Capture]` at the
+    /// CALL SITE before this function's body ever runs — the same
+    /// asymmetric-cost shape `prepare()`'s `reserveCapacity` exists to
+    /// avoid one level down. `hold(a, b)` inside the lazy root constructor
+    /// pays for that array in the baseline bundle's keypress interval and
+    /// outside it in the prewarmed bundle's. Two calls to this
+    /// single-capture form append directly into the already-reserved
+    /// `pending` storage instead.
     @MainActor
-    public static func hold(_ captures: Capture...) {
-      pending.append(contentsOf: captures)
+    public static func hold(_ capture: Capture) {
+      pending.append(capture)
     }
 
     @MainActor private static var pending: [Capture] = []

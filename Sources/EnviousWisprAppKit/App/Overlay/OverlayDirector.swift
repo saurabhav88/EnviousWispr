@@ -175,8 +175,12 @@ final class OverlayDirector {
     #if DEBUG
       // HELD, not emitted. Writing here would put the marker's own cost inside
       // the keypress interval in the baseline bundle and outside it in the
-      // prewarmed one — see `OverlayFirstRenderMarkers.hold`.
-      OverlayFirstRenderMarkers.hold(constructStart, constructEnd)
+      // prewarmed one — see `OverlayFirstRenderMarkers.hold`. Two single-
+      // capture calls, never one variadic call: a variadic argument list
+      // allocates its own temporary array at THIS call site before `hold`
+      // runs, which is the same asymmetric cost one level up.
+      OverlayFirstRenderMarkers.hold(constructStart)
+      OverlayFirstRenderMarkers.hold(constructEnd)
     #endif
     return view
   }
