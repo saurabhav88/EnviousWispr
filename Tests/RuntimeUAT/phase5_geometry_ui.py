@@ -84,6 +84,12 @@ def capture_design(pid, name):
     return {"bounds": seen, "screenshot": str(shot) if seen else None}
 
 
+# The greyed group's reason line, verbatim from
+# `RecordingPillAppearancePanel.reason(for:)`. Two rows below read
+# it — one requires it present, one requires it gone — so it lives here once.
+GREYED_REASON = "Turn off Live Preview to use the other designs."
+
+
 def main():
     pid = int(sys.argv[1])
     report = {"pid": pid, "rows": {}, "picker": {}}
@@ -94,10 +100,13 @@ def main():
 
     # The without-words group is greyed while Live Preview is on — Phase 4's own
     # behaviour, and the reason it states is captured here as evidence.
+    #
+    # ONE constant for both the presence and the absence check below. Held twice,
+    # the absence half passes for free the moment the copy changes and the string
+    # here goes stale: it then asserts that a sentence nobody renders is missing.
+    # That is the shape that made this row green against copy it had never seen.
     before = ui_text()
-    report["picker"]["greyed_reason_present"] = (
-        "Live Preview is on, so the pill shows your words" in before
-    )
+    report["picker"]["greyed_reason_present"] = GREYED_REASON in before
 
     # ---- Reading Well first: it is what is selected now, no toggle needed ----
     report["rows"]["readingWell"] = capture_design(pid, "readingWell")
@@ -116,9 +125,7 @@ def main():
 
     w.tap("Appearance")
     after = ui_text()
-    report["picker"]["greyed_cleared"] = (
-        "Live Preview is on, so the pill shows your words" not in after
-    )
+    report["picker"]["greyed_cleared"] = GREYED_REASON not in after
 
     for label, key in (("Capsule", "classic"), ("Level Rail", "levelRail")):
         tapped = w.tap(label)

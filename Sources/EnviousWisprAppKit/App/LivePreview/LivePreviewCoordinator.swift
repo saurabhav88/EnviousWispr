@@ -301,8 +301,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// supposed to protect this.** Settings is reachable while recording — the menu
   /// item carries no recording gate, and the Live Preview toggle is disabled only
   /// when no engine is available — so a user could start a take, switch Live
-  /// Preview off, open Appearance, and be told "Live Preview is on, so the pill
-  /// shows your words" about a next recording where it will not be. That
+  /// Preview off, open Appearance, and be told to "Turn off Live Preview to use
+  /// these" about a next recording where it already is off. That
   /// contradicts the panel's own promise that changes apply the next time you
   /// record.
   ///
