@@ -64,14 +64,9 @@ final class OverlayPanelCommandRecorder {
 /// never calls `close()`.
 ///
 /// **`setFrame` is normalized to one receipt per Host call.** `NSWindow`
-/// exposes both an animated and a non-animated `setFrame`, and the Host uses
-/// both (`display:` alone from `present`/`resizeCurrentPresentation`,
-/// `display:animate:` from `repositionForActiveSpaceChange`). AppKit's own
-/// animated overload is not guaranteed to skip the non-animated one internally,
-/// so `animatedSetFrameDepth` suppresses a second receipt for the SAME call —
-/// without it, a single Host call could silently produce two commands instead
-/// of one, which is a Host-call count no assertion here would notice going
-/// wrong in the direction that inflates rather than drops evidence.
+/// exposes animated and non-animated overloads. `animatedSetFrameDepth`
+/// normalizes either AppKit implementation: independent overloads or an
+/// animated overload that internally routes through the non-animated one.
 private final class CommandRecordingPanel: NSPanel {
   private weak var recorder: OverlayPanelCommandRecorder?
   private var animatedSetFrameDepth = 0

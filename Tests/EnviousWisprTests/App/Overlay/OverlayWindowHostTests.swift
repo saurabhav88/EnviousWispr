@@ -601,24 +601,27 @@ struct OverlayWindowHostTests {
       panel.frame.origin.y == 0,
       "the Space-change notification never reached the host — it is not registered")
 
-    // **The recorder's proof that the animated-`setFrame` depth guard is doing
-    // real work, not defending against a call AppKit never makes.**
-    // `repositionForActiveSpaceChange` issues `setFrame(_:display:animate:)`,
-    // exactly the overload the guard exists to keep from double-recording.
-    // Removing the guard is the control: this row must fail by finding TWO
-    // receipts instead of one if the animated overload also routes through
-    // the non-animated override internally.
+    // One Host animated move must yield exactly one `setFrame` receipt. Count ALL
+    // frame receipts first: filtering to `animated == true` would hide the extra
+    // non-animated receipt this normalization exists to suppress.
     let spaceChangeCommands = Array(recorder.commands[spaceChangeStart...])
-    let animatedFrameCommands = spaceChangeCommands.filter {
-      if case .setFrame(_, _, let display, let animated) = $0 { return display && animated }
+    let frameCommands = spaceChangeCommands.filter {
+      if case .setFrame = $0 { return true }
       return false
     }
-    #expect(
-      animatedFrameCommands.count == 1,
+    try #require(
+      frameCommands.count == 1,
       """
-      expected exactly one animated setFrame receipt for the Space-change reposition, got \
+      expected exactly one setFrame receipt for the Space-change reposition, got \
       \(spaceChangeCommands)
       """)
+
+    guard case .setFrame(_, _, let display, let animated) = frameCommands[0] else {
+      Issue.record("the Space-change command was not setFrame")
+      return
+    }
+    #expect(display)
+    #expect(animated)
 
     // **A SECOND swipe, and this is the assertion that matters.** The first one
     // proves only that the host is listening. The host moves the window itself
