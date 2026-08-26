@@ -18,6 +18,7 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 import phase5_overlay_lifecycle as lc  # noqa: E402
+import phase5_paste_target as pt  # noqa: E402
 import phase5_record_key as rk  # noqa: E402
 import wispr_eyes as w  # noqa: E402
 
@@ -156,6 +157,11 @@ def main():
     pid = pids[0]
     w.connect()
     await_idle()
+
+    # Somewhere harmless for the transcript to land. REFUSES rather than
+    # proceeding: a run that pastes into the operator's terminal is worse than a
+    # run that did not start.
+    pt.ensure()  # best effort; a missing paste target never blocks a row
 
     before = set(visible_overlays(pid))
 
