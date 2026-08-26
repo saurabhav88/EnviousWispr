@@ -1106,6 +1106,41 @@ struct OverlayDirectorTests {
 
   // MARK: - A presentation result is delivered exactly once (PR #2370)
 
+  /// **A caller still waiting on its deferred first render must hear
+  /// `false` if the director itself goes away first, not nothing.** The
+  /// gate cannot resolve this on its own deallocation — the pending relays
+  /// live in the director's `pendingFirstAcceptance`, not on the gate — so
+  /// the director's own `deinit` is the only place left to settle them.
+  /// Cloud review caught this as a regression: the previous mechanism's
+  /// `[weak self]` scheduled block explicitly resolved `false` when `self`
+  /// had gone nil.
+  @Test("a caller waiting on a deferred first render hears false if the director deallocates first")
+  func directorDeallocationResolvesAPendingRelay() {
+    let deferral = Deferral()
+    var results: [PillPresentationResult] = []
+
+    do {
+      let host = RefusingWindowlessHost()
+      var d: OverlayDirector? = Self.deferrableDirector(host, deferral)
+      _ = d!.present(
+        .bluetoothAwareness(onAcknowledge: {}, onClose: {}, onOpenSettings: {}),
+        onResult: { results.append($0) })
+
+      #expect(results.isEmpty, "a verdict arrived before any render")
+      d = nil
+    }
+
+    #expect(
+      results == [.notPresented],
+      "a caller was left waiting forever when the director deallocated before its render fired")
+
+    // The gate's own scheduled block still exists (captured by `deferral`,
+    // independent of the director); firing it now must be a harmless no-op,
+    // not a second callback or a crash on the deallocated `self`.
+    deferral.fireAll()
+    #expect(results == [.notPresented], "firing a stale block after deinit reported a second time")
+  }
+
   /// **THE DEFECT: a receipt is not proof the pill was drawn.** `present`
   /// returns synchronously, and the FIRST presentation of a launch reaches the
   /// host a run loop later — so at the moment a receipt is handed back there is

@@ -327,6 +327,19 @@ final class OverlayDirector {
     self.reducer = OverlayReducer(makeID: makeID)
   }
 
+  /// **The previous mechanism resolved a caller left waiting when the
+  /// director itself went away before its deferred first render fired —
+  /// `self` going `nil` inside a `[weak self]` scheduled block.** The gate
+  /// owns no relay to resolve on that path (`pendingFirstAcceptance` lives
+  /// here, not on the gate), so this director going away is the only place
+  /// left that can settle those callers. Preserves the old promise: a caller
+  /// hears `false` rather than nothing.
+  deinit {
+    MainActor.assumeIsolated {
+      pendingFirstAcceptance?.relays.forEach { $0.resolve(false) }
+    }
+  }
+
   var renderModel: OverlayRenderModel { model }
 
   // **`currentIntent` was DELETED** (#2292 C6). It was a PROJECTION invented so a
