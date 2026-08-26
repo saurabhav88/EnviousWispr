@@ -151,8 +151,8 @@ public enum SelectionReader {
     isTrusted: Bool,
     frontmostPID: pid_t?,
     ownPID: pid_t = ProcessInfo.processInfo.processIdentifier,
-    frontmostIsOurs: Bool = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-      == Bundle.main.bundleIdentifier
+    frontmostIsOurs: Bool = AppBundleIdentity.isOurs(
+      NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
   ) -> Refusal? {
     guard isTrusted else { return .accessibilityNotTrusted }
     guard let frontmostPID, frontmostPID > 0 else { return .noFrontmostApplication }
@@ -164,11 +164,14 @@ public enum SelectionReader {
     //
     // `ownPID` is a parameter with a live default so the decision is reachable from a test; the
     // production call site never passes it.
-    // **Identity, not just this process.** A second EnviousWispr — an installed build beside a dev
-    // build — has a different pid and would walk straight through a pid-only check. That is the
-    // ordinary state of a development machine, not an exotic one. The pid was a proxy for identity;
-    // this asks the question directly, and keeps the pid comparison as the case that holds when
-    // there is no bundle identifier to read.
+    // **Identity, not just this process, and identity is a FAMILY rather than a string.** A second
+    // EnviousWispr — an installed release build beside a dev build — has a different pid, so a
+    // pid-only check reads its text. That is the ordinary state of a development machine.
+    //
+    // The first version of this guard compared against `Bundle.main.bundleIdentifier`, which is
+    // `.dev` in a dev build and not in a release one, so it answered NOT OURS for precisely the
+    // pair it was written to catch. `AppBundleIdentity` owns the closed set; the pid comparison
+    // stays for the case where there is no identifier to read at all.
     guard frontmostPID != ownPID, !frontmostIsOurs else { return .ownApplication }
 
     // **KNOWN LIMIT, stated rather than left to be found.** `frontmostPID` was sampled by the caller

@@ -73,13 +73,42 @@ struct SelectionReaderTests {
 
   /// **A SECOND EnviousWispr passes a pid check, and that is the ordinary state of this machine** —
   /// an installed build beside a dev build. Different pid, our text, straight through.
-  @Test("Another EnviousWispr is refused too, by identity rather than by pid")
-  func aSecondInstanceIsAlsoRefused() {
+  ///
+  /// **Driven by the REAL identifiers, not by an injected verdict.** The first version of this row
+  /// passed `frontmostIsOurs: true`, which asserts the guard acts on the answer and says nothing
+  /// about how the answer is COMPUTED — and the computation was wrong in exactly this case, because
+  /// a dev build's `Bundle.main.bundleIdentifier` does not equal a release build's. A fixture that
+  /// hands over the conclusion cannot observe the step that produces it.
+  @Test(
+    "Another EnviousWispr is refused too, whichever build is asking",
+    arguments: [
+      (AppBundleIdentity.production, AppBundleIdentity.development),
+      (AppBundleIdentity.development, AppBundleIdentity.production),
+      (AppBundleIdentity.production, AppBundleIdentity.production),
+    ])
+  func aSecondInstanceIsAlsoRefused(frontmost: String, own: String) {
     #expect(
       SelectionReader.refusalBeforeReading(
-        isTrusted: true, frontmostPID: 7777, ownPID: 4242, frontmostIsOurs: true)
+        isTrusted: true, frontmostPID: 7777, ownPID: 4242,
+        frontmostIsOurs: AppBundleIdentity.isOurs(frontmost))
         == .ownApplication,
-      "a pid-only guard would read this one's text")
+      "a \(own) build must refuse a frontmost \(frontmost) build; a pid-only guard reads its text")
+  }
+
+  /// The family is CLOSED, and a row per member so adding one without deciding is visible.
+  @Test("Only our own identifiers are the app; everything else is somebody's document")
+  func theIdentityFamilyIsExactlyOurTwoBuilds() {
+    #expect(AppBundleIdentity.isOurs(AppBundleIdentity.production))
+    #expect(AppBundleIdentity.isOurs(AppBundleIdentity.development))
+    #expect(AppBundleIdentity.all.count == 2)
+    // Paired rejections, or a predicate that says yes to everything looks identical to this one.
+    #expect(!AppBundleIdentity.isOurs(nil))
+    #expect(!AppBundleIdentity.isOurs(""))
+    #expect(!AppBundleIdentity.isOurs("com.apple.TextEdit"))
+    // Our OWN neighbours, which are the near misses a prefix check would swallow.
+    #expect(!AppBundleIdentity.isOurs("com.enviouswispr.asrservice"))
+    #expect(!AppBundleIdentity.isOurs("com.enviouswispr.app.dev.extra"))
+    #expect(!AppBundleIdentity.isOurs("com.enviouswispr"))
   }
 
   /// The pair, without which the row above passes for a guard that refuses everything.
