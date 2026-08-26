@@ -193,12 +193,20 @@ struct LivePreviewSettingsCopyTests {
   /// contrast) without failing every honest rewrite.
   @Test("The picker caveat keeps the Auto asymmetry, not just the source")
   func pickerCaveatKeepsTheAutoAsymmetry() {
+    // **Pin the RELATIONSHIP, not the vocabulary.** An earlier version required the
+    // words "dictation", "mac" and "detect" somewhere in the sentence, which
+    // "Mac detects dictation" satisfies while reversing the fact. Each half is now
+    // pinned as a pair, with alternatives so an honest rewrite still passes.
     let c = LivePreviewSettingsCopy.pickerDictationCaveat.lowercased()
-    #expect(c.contains("dictation"), "the caveat stopped naming dictation")
-    #expect(c.contains("mac"), "the caveat stopped naming where the preview's language comes from")
+    #expect(c.contains("auto"), "the caveat stopped naming the mode it describes")
     #expect(
-      c.contains("detect") || c.contains("whatever you speak"),
-      "the caveat stopped saying dictation hears what is actually spoken")
+      ["dictation detects", "dictation understands"].contains(where: c.contains)
+        && ["you speak", "spoken"].contains(where: c.contains),
+      "the caveat stopped saying DICTATION is what hears the spoken language")
+    #expect(
+      c.contains("preview")
+        && ["uses your mac", "follows your mac", "goes by your mac"].contains(where: c.contains),
+      "the caveat stopped saying the PREVIEW is what falls back to the Mac")
   }
 
   /// The status bar's provenance describes CONFIGURATION, never activity: the chip

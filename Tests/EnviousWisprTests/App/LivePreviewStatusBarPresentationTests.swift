@@ -166,9 +166,14 @@ struct LivePreviewStatusBarPresentationTests {
     // rendered while the preview was off, paused, downloading or failed. The guard
     // and the defect shared one blind spot, which is the argument for widening the
     // list at the moment a member escapes rather than only naming the instance.
+    // **Activity FORMS, not the stem.** An earlier version banned the substring
+    // "detect", which rejects honest configuration copy like "automatic detection"
+    // — an over-broad guard is a real cost, not a safe default, because a guard that
+    // fails innocent work is the one people learn to bypass.
     let forbidden = [
-      "will appear", "ready", "working", "active", "showing", "detect", "hearing",
-      "listening", "as you speak",
+      "will appear", "ready", "working", "active", "showing",
+      "detects", "detecting", "detected as you speak", "will detect",
+      "hearing", "listening", "as you speak",
     ]
     for scenario in scenarios {
       for mode in [LanguageMode.auto, .locked("de")] {

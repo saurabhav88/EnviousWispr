@@ -236,7 +236,7 @@ enum LivePreviewSettingsCopy {
   ///
   /// `languageProvenanceDetected` was "detected as you speak" and that was a readiness
   /// claim wearing a provenance label: the chip renders in every state, so it asserted
-  /// live detection while the preview was off, paused, downloading or failed. "auto-detect"
+  /// live detection while the preview was off, paused, downloading or failed. "automatic"
   /// describes the SETTING, which is true whether or not anything is running. Found by
   /// chunk review on #2436, and `chipNeverPromisesOutput` missed it because its forbidden
   /// list did not contain "detect" — the guard and the defect had the same blind spot.

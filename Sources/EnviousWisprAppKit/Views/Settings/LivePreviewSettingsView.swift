@@ -485,7 +485,7 @@ struct LivePreviewSettingsView: View {
   // > hand the user a mismatch they cannot diagnose.
   //
   // The button survives as the language region itself. The consequence sentence
-  // moves into `LanguageLockSheet`'s context subtitle in C4, next to the moment it
+  // moved into `LanguageLockSheet`'s context subtitle in this same chunk, next to the moment it
   // becomes true, rather than sitting under a button nobody has pressed yet.
   //
   // **The one reason NOT carried forward is the two-container rule**, and it is
