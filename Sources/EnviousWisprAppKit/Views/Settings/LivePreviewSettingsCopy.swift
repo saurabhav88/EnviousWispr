@@ -226,6 +226,13 @@ enum LivePreviewSettingsCopy {
 
   // MARK: - Pack catalogue sheet (#2436)
 
+  /// **An empty FILTER is not a failed SEARCH.** With every pack installed, the default
+  /// "Not on this Mac" half is empty and no search has happened, so
+  /// `packsNoSearchMatch` would blame a query the user never typed.
+  static let catalogNothingToInstall = "Every language Apple offers is already on this Mac."
+  static let catalogNoneInstalled = "No languages downloaded yet."
+
+
   /// The bar's one remedy, named for where it goes rather than what it fetches: the
   /// catalogue is the only thing that can resolve a display name to an installable pack.
   static let browseDownloadsButton = "Browse downloads"
@@ -248,7 +255,10 @@ enum LivePreviewSettingsCopy {
   ///
   /// It resolves per utterance rather than committing to a locale in advance, so
   /// there is no single language to name and "Any" is the honest noun.
-  static let languageAnyLanguage = "Any language"
+  /// "Automatic", not "Any language": the universal engine supports a finite set, so
+  /// "any" is a claim wider than the code (`LanguageLockOptions` restricts the lockable
+  /// set to the backend's own). This names the SETTING, which is what the chip is for.
+  static let languageAnyLanguage = "Automatic"
 
   /// **Where the language came from — CONFIGURATION only, never activity.**
   ///
@@ -273,7 +283,7 @@ enum LivePreviewSettingsCopy {
   /// one, even inside a setting's name. Arguing the matcher into an exception would
   /// have traded a real guard for one word — and the word is not load-bearing, since
   /// the picker this chip opens calls the same setting Automatic.
-  static let languageProvenanceDetected = "automatic"
+  static let languageProvenanceDetected = "no language pinned"
 
   /// **The universal engine follows a LOCK, and only auto-detects on Auto.**
   /// `WhisperPreviewEngineResolver` maps `.locked(code)` straight through to the
@@ -326,8 +336,21 @@ enum LivePreviewSettingsCopy {
   /// reason for it is carried verbatim in `LivePreviewSettingsView`: one language in
   /// one place, because two settings that can disagree hand the user a mismatch they
   /// cannot diagnose.
-  static let pickerDictationCaveat =
+  /// **Two caveats, because one sentence cannot describe both engines.**
+  ///
+  /// The Auto asymmetry is APPLE'S: its preview must commit to a locale before the first
+  /// word, so on Auto it goes by the Mac while dictation still hears whatever is spoken.
+  /// The universal engine has no such constraint — it works the language out per
+  /// utterance — so telling a universal user their preview "uses your Mac's language" is
+  /// false about their own engine. A single shared string shipped exactly that for one
+  /// review round, and the test that guarded it had no engine variable, so it validated
+  /// the Apple sentence and passed while Universal displayed it.
+  static let pickerAppleCaveat =
     "This sets the language for dictation too, not just the preview. On Auto, dictation "
     + "detects whatever you speak, while the preview has to pick one language in advance "
     + "and uses your Mac's."
+
+  static let pickerUniversalCaveat =
+    "This sets the language for dictation too, not just the preview. On Auto, this engine "
+    + "works the language out as you speak, so there is nothing you need to pick."
 }

@@ -80,6 +80,13 @@ struct LivePreviewPackCatalogSheet: View {
       .frame(minWidth: 460, minHeight: 420)
       .background(Color.stPageBg)
       .navigationTitle(LivePreviewSettingsCopy.packsHeader)
+      // **A failed read must be retryable, or the message is a dead end.**
+      // `packsUnavailable` tells the user to reopen; nothing reloaded when they did,
+      // so reopening produced the same failure forever. Only on `.failed`, so an
+      // ordinary open does not re-read an inventory the page already has.
+      .task {
+        if case .failed = packs.state { await packs.load() }
+      }
       .toolbar {
         ToolbarItem(placement: .confirmationAction) {
           Button(LivePreviewSettingsCopy.catalogDoneButton) { dismiss() }
@@ -189,7 +196,10 @@ struct LivePreviewPackCatalogSheet: View {
       centered { Text(LivePreviewSettingsCopy.packsUnavailable).settingsHelperCopy() }
     case .loaded:
       if visibleRows.isEmpty {
-        centered { Text(LivePreviewSettingsCopy.packsNoSearchMatch).settingsHelperCopy() }
+        // **An empty FILTER is not a failed SEARCH.** With every pack installed the
+        // default half is empty and no query was typed, so blaming the search would
+        // accuse the user of something they did not do.
+        centered { Text(emptyMessage).settingsHelperCopy() }
       } else {
         ScrollView {
           LazyVStack(spacing: 0) {
@@ -211,6 +221,17 @@ struct LivePreviewPackCatalogSheet: View {
       content()
       Spacer()
     }.frame(maxWidth: .infinity)
+  }
+
+  /// Which nothing-here message applies: the search found nothing, or this half of the
+  /// catalogue is genuinely empty.
+  private var emptyMessage: String {
+    guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      return LivePreviewSettingsCopy.packsNoSearchMatch
+    }
+    return showingInstalled
+      ? LivePreviewSettingsCopy.catalogNoneInstalled
+      : LivePreviewSettingsCopy.catalogNothingToInstall
   }
 
   private var loadedPacks: [LivePreviewPack] {

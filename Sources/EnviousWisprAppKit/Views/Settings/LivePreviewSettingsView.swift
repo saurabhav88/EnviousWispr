@@ -220,8 +220,12 @@ struct LivePreviewSettingsView: View {
           previewEngine: settings.livePreviewEngine,
           installedPackTags: installedPackTags),
         // Re-homed from the help line under the old Change button (#2436): the
-        // consequence belongs where the action is taken.
-        contextSubtitle: LivePreviewSettingsCopy.pickerDictationCaveat)
+        // consequence belongs where the action is taken. **Engine-specific**, because
+        // the Auto asymmetry is Apple's alone — telling a universal user their preview
+        // "uses your Mac's language" is false about their own engine.
+        contextSubtitle: settings.livePreviewEngine == .apple
+          ? LivePreviewSettingsCopy.pickerAppleCaveat
+          : LivePreviewSettingsCopy.pickerUniversalCaveat)
     }
     .sheet(isPresented: $showPackCatalog) {
       // The retained model, never a copy: dismissing this sheet mid-install must not

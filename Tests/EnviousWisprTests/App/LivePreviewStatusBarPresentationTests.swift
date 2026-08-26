@@ -93,14 +93,18 @@ struct LivePreviewStatusBarPresentationTests {
   /// state here would have made this engine unrepresentable.
   @Test("Universal always states a language, with no Apple pack state at all")
   func universalLanguageIsIndependentOfApple() {
+    // Compared against the constants, not their literals: the wording changed twice
+    // during review ("Any language" overclaimed a finite engine, "detected as you speak"
+    // asserted activity) and a test pinning the words rather than the symbol fails on
+    // every honest correction while catching none of the wrong ones.
     let auto = bar(.active, engine: .universal, appleActive: nil, languageMode: .auto)
-    #expect(auto.language?.name == "Any language")
-    #expect(auto.language?.provenance == "automatic")
+    #expect(auto.language?.name == LivePreviewSettingsCopy.languageAnyLanguage)
+    #expect(auto.language?.provenance == LivePreviewSettingsCopy.languageProvenanceDetected)
 
     let locked = bar(
       .active, engine: .universal, appleActive: nil, languageMode: .locked("de"))
     #expect(locked.language?.name == LanguageCatalog.entry(for: "de").englishName)
-    #expect(locked.language?.provenance == "you picked this")
+    #expect(locked.language?.provenance == LivePreviewSettingsCopy.languageProvenanceUserPicked)
   }
 
   /// **The claim this page is least allowed to get wrong.** On Auto the preview
@@ -109,8 +113,10 @@ struct LivePreviewStatusBarPresentationTests {
   /// `activeSource` shipped and had to withdraw.
   @Test("Provenance names the Mac on Auto and the user on a lock")
   func provenanceDistinguishesAutoFromLocked() {
-    #expect(bar(.active, languageMode: .auto).language?.provenance == "from your Mac")
-    #expect(bar(.active, languageMode: .locked("de")).language?.provenance == "you picked this")
+    #expect(bar(.active, languageMode: .auto).language?.provenance == LivePreviewSettingsCopy.languageProvenanceFromMac)
+    #expect(
+      bar(.active, languageMode: .locked("de")).language?.provenance
+        == LivePreviewSettingsCopy.languageProvenanceUserPicked)
   }
 
   @Test("No language is named while nothing can run, on either engine")
