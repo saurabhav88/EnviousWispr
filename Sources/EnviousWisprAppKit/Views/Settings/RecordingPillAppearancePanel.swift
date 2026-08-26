@@ -41,6 +41,7 @@ import SwiftUI
 struct RecordingPillAppearancePanel: View {
 
   @Environment(PillAppearanceModel.self) private var model
+  @Environment(\.settingsNavigate) private var navigate
 
   var body: some View {
     BrandedPanel(
@@ -69,37 +70,47 @@ struct RecordingPillAppearancePanel: View {
             RecordingPillPreviewTile(
               design: design,
               isSelected: Self.selected(in: model) == design,
-              isEnabled: model.offers(design, holdingWords: model.wordsCapability.hasWords),
-              // **Written to the slot this DESIGN belongs to, which is what keeps
-              // the two remembered choices alive behind one flat row.** A card is
-              // only enabled when its group matches the current capability, so
-              // this is always the slot the pill will read next.
-              onSelect: { model.choose(design, holdingWords: design.canHoldWords) })
+              isEnabled: model.offersCoupled(design, capability: model.wordsCapability),
+              // **Picking a pill also sets Live Preview to what that pill needs**
+              // (founder, 2026-08-26). The slot written is still the design's own,
+              // so the two remembered choices survive; what is new is that the
+              // capability follows the tap instead of gating it.
+              onSelect: { model.chooseCoupled(design) })
           }
         }
 
-        // ONE line for the whole row, and only when something in it is greyed.
+        // ONE line for the whole row, and only when something in it is greyed —
+        // which is now only a Mac that cannot show words at all.
         if let reason = Self.reason(for: model.wordsCapability) {
           Text(reason)
             .settingsReadingCopy()
         }
+
+        // **The way out to the settings this choice just turned on** (founder,
+        // 2026-08-26). Picking the pill that shows words switches Live Preview on
+        // silently, and the user's next question is how to configure it — which
+        // lives on another page. Shown only when that pill is the live choice,
+        // because it is answering a question nobody else has asked.
+        if Self.selected(in: model).canHoldWords {
+          Button {
+            navigate(.livePreview)
+          } label: {
+            Text("Configure Live Preview")
+          }
+          .buttonStyle(.link)
+          .accessibilityHint("Opens the Live Preview settings page")
+        }
       }
-    } footnote: {
-      // ONE quiet line for the whole page's pill settings (founder, 2026-08-26),
-      // replacing the sentence this panel and the position panel each carried.
-      //
-      // **It NAMES both settings, because it sits inside the Recording Pill
-      // panel** and an unqualified "Changes" reads there as design changes only,
-      // leaving the position panel above silently uncovered.
-      //
-      // "the next time the pill appears", not "the next time you record": the
-      // position setting also places status notices, which the deleted copy said
-      // outright ("Changes apply the next time one appears"). A notice can arrive
-      // without a recording, so scoping this line to recording would be wrong for
-      // half of what it now covers.
-      Text("Design and position changes apply the next time the pill appears.")
-        .settingsReadingCopy()
     }
+    // **NO footnote.** "Design and position changes apply the next time the pill
+    // appears." was a founder decision earlier in this same work and was DELETED
+    // by the founder on 2026-08-26 along with the two instruction lines above it.
+    // The page is now three pictures and one link, and a caveat about when a
+    // change takes effect is not what a user came here to read.
+    //
+    // Recorded rather than silently dropped because it was ASKED FOR: the thing
+    // it warned about is still true — a design or position change does not touch a
+    // recording already on screen.
   }
 
   /// The order the cards appear in, left to right.
@@ -136,11 +147,12 @@ struct RecordingPillAppearancePanel: View {
   /// status report on a page the user opened to choose a picture.
   static func reason(for capability: PillWordsCapability) -> String? {
     switch capability {
-    case .available:
-      // Words ARE available, so the wordless designs are the greyed ones.
-      return "Turn off Live Preview to use the other designs."
-    case .previewOff:
-      return "Turn on Live Preview to use the one that shows words."
+    case .available, .previewOff:
+      // **Nothing is greyed in these two states any more, so there is nothing to
+      // explain.** Picking a design now sets Live Preview to whatever that design
+      // needs, which is what the two sentences here used to instruct the user to
+      // go and do by hand.
+      return nil
     case .engineUnsupported:
       return "Your engine cannot show words on this Mac."
     case .modelBeingRemoved:
@@ -221,9 +233,7 @@ struct RecordingPillPreviewTile: View {
   /// rule would draw a compact pill at nearly 5x in a wide window. The bound keeps
   /// the pictures comparable to each other, which is the property that actually
   /// mattered underneath the life-size argument.
-  static func thumbnailScale(for design: RecordingPillDesign) -> CGFloat {
-    scale(for: design, inWidth: thumbnailSize.width)
-  }
+
 
   /// The same rule against a REAL card width, which is what the view uses.
   ///
@@ -241,7 +251,22 @@ struct RecordingPillPreviewTile: View {
   /// pictures rather than as stamps, without the widest one and the narrowest one
   /// arriving at visibly the same size — which is the failure the rejected shared
   /// scale had, and the one the fill rule would recreate if nothing bounded it.
-  static let maxMagnification: CGFloat = 2
+  ///
+  /// **It also has to keep the tallest-for-its-width design inside
+  /// `thumbnailSize.height`, and that is the binding constraint.** The card height
+  /// matches a theme card by instruction, so it cannot grow to accommodate a
+  /// magnified pill; at 2 the capsule drew 71pt into a 63pt box and was silently
+  /// clipped. `thePreviewIsTheRealPillScaled` measures every design against the box
+  /// and is what caught it — a new design taller for its width than the capsule
+  /// fails there LOUDLY rather than shipping cut off.
+  /// **1.4, and the number is the CAPSULE's height budget, not a taste call.** Its
+  /// pill is 44pt tall against a 63pt box, so anything above ~1.43 clips it — and
+  /// 2 and 1.7 both did, the second only because the card WIDTH happened to bound
+  /// the scale below the cap and hid it. Tuned against
+  /// `thePreviewIsTheRealPillScaled` rather than derived, because the view cannot
+  /// measure a leaf's height; that test is what makes a wrong value loud instead of
+  /// silently cropping a pill.
+  static let maxMagnification: CGFloat = 1.4
 
   /// What this design's pill measures ON THE CARD, after its own scale.
   ///
@@ -249,7 +274,7 @@ struct RecordingPillPreviewTile: View {
   /// can hold the RELATION — the widest design fills the box, the others are
   /// proportionally narrower — without hosting anything.
   static func thumbnailWidth(for design: RecordingPillDesign) -> CGFloat {
-    design.width * thumbnailScale(for: design)
+    design.width * scale(for: design, inWidth: thumbnailSize.width)
   }
 
   /// What the pill inside the tile is shown SAYING.

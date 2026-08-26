@@ -99,7 +99,11 @@ struct RecordingPillTileTests {
     arguments: RecordingPillDesign.allCases)
   func thePreviewIsTheRealPillScaled(design: RecordingPillDesign) throws {
     let leaf = try Self.leafHeight(design)
-    let drawn = leaf * RecordingPillPreviewTile.thumbnailScale(for: design)
+    // The SAME entry point the view calls, at the nominal box width. A separate
+    // `thumbnailScale(for:)` used to exist for tests to ask this; it was one more
+    // answer to a question the view already had an answer for, so it is gone.
+    let drawn = leaf * RecordingPillPreviewTile.scale(
+      for: design, inWidth: RecordingPillPreviewTile.thumbnailSize.width)
 
     #expect(leaf > 0, "\(design) leaf measured \(leaf), so the harness rendered nothing")
     #expect(

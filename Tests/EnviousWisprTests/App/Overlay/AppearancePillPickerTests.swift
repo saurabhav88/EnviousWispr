@@ -55,7 +55,7 @@ struct AppearancePillPickerTests {
   @Test("the two groups between them offer every design")
   func groupsCoverEveryDesign() {
     let m = Self.model(.available)
-    let all = Set(m.designs(holdingWords: true) + m.designs(holdingWords: false))
+    let all = Set(PillCatalog.designs(holdingWords: true) + PillCatalog.designs(holdingWords: false))
     #expect(
       all == Set(RecordingPillDesign.allCases),
       "the picker lays out \(all.count) of \(RecordingPillDesign.allCases.count) designs")
@@ -72,22 +72,38 @@ struct AppearancePillPickerTests {
   /// array literal is not exhaustive over an enum, so adding `.modelBeingRemoved`
   /// compiled and left it unswept in four places at once: the compiler cannot see
   /// an omission from a list, only from a `switch`. Reading the authority instead
-  /// **Every capability state greys something, so every state says why.**
+  /// **A state explains itself EXACTLY when something in it is greyed.**
   ///
-  /// One row replaced two groups (#2446), which turns a per-group question into a
-  /// single invariant: exactly one side of the words divide is usable at a time,
-  /// so a card is always greyed and a reason is always owed. A `nil` here would be
-  /// a row with dead cards and no explanation.
-  @Test("every state explains its greyed cards", arguments: PillWordsCapability.allCases)
-  func everyStateCarriesAReason(capability: PillWordsCapability) {
+  /// Coupling the pill choice to Live Preview (founder, 2026-08-26) means a tap
+  /// now produces whatever state the design needs, so nothing is greyed in the two
+  /// states the switch controls — and a line there would be instructing the user to
+  /// do by hand what the tap already does. The other two are not about the switch,
+  /// stay greyed, and still owe a reason.
+  ///
+  /// Both directions asserted, so a future change that greys a card without
+  /// explaining it fails here, and so does one that leaves an orphaned sentence
+  /// under a row where everything is selectable.
+  @Test("a state explains itself exactly when it greys something",
+        arguments: PillWordsCapability.allCases)
+  func reasonAppearsExactlyWhenSomethingIsGreyed(capability: PillWordsCapability) throws {
     let reason = RecordingPillAppearancePanel.reason(for: capability)
-    let text = try! #require(reason, "\(capability) greys cards and says nothing about why")
+    let switchCanFixIt = capability == .available || capability == .previewOff
 
-    #expect(
-      !text.isEmpty, "\(capability) returns an empty reason, which renders as a blank line")
-    #expect(
-      !text.contains("—") && !text.contains("–"),
-      "\(capability) reason carries a dash: \(text)")
+    if switchCanFixIt {
+      #expect(
+        reason == nil,
+        """
+        \(capability) shows "\(reason ?? "")" while every card is selectable. Picking a \
+        design sets the switch itself, so this sentence tells the user to go and do what \
+        the tap already did.
+        """)
+    } else {
+      let text = try #require(reason, "\(capability) greys a card and says nothing about why")
+      #expect(!text.isEmpty, "\(capability) returns an empty reason, which renders as a blank line")
+      #expect(
+        !text.contains("—") && !text.contains("–"),
+        "\(capability) reason carries a dash: \(text)")
+    }
   }
 
   /// **The reason never opens by reporting the SETTING's state.**
@@ -99,28 +115,55 @@ struct AppearancePillPickerTests {
   /// PICTURES, and naming the action is what keeps it there.
   @Test("the reason is about the cards, not the setting", arguments: PillWordsCapability.allCases)
   func theReasonIsAboutTheCards(capability: PillWordsCapability) {
-    let text = try! #require(RecordingPillAppearancePanel.reason(for: capability))
+    // **Only the states that still HAVE a reason.** This used to require one from
+    // every state; coupling the pill choice to Live Preview removed the two the
+    // switch controls, and a `#require` here then aborted the whole run rather
+    // than reporting a result — which is why the sibling above now uses a
+    // throwing require.
+    guard let text = RecordingPillAppearancePanel.reason(for: capability) else { return }
 
     #expect(
       !text.hasPrefix("Live Preview is on"),
       "\(capability) opens by reporting the setting's state: \(text)")
+    #expect(
+      !text.lowercased().contains("turn on live preview")
+        && !text.lowercased().contains("turn off live preview"),
+      """
+      \(capability) tells the user to flip Live Preview by hand: "\(text)". Tapping a \
+      design does that now, so an instruction to go and do it is stale copy.
+      """)
   }
 
-  /// **Exactly one side of the divide is offerable at a time, and the row shows
-  /// its tick on that side.**
+  /// **A wordless design is ALWAYS pickable; a words-capable one needs words to be
+  /// possible here.**
   ///
-  /// This is the constraint the two groups used to make visible. Flattening the
-  /// row did not remove it, so it is asserted directly against the catalog rather
-  /// than against a heading that no longer exists.
-  @Test("one side is usable and the tick is on it", arguments: PillWordsCapability.allCases)
-  func theUsableSideCarriesTheSelection(capability: PillWordsCapability) {
-    let usable = RecordingPillDesign.allCases.filter {
-      PillCatalog.offers($0, capabilityHasWords: capability.hasWords)
+  /// This replaces "exactly one side is offerable at a time", which was true while
+  /// the capability GATED the choice. It now FOLLOWS the choice, so the only
+  /// remaining bar is whether the machine can produce words at all — something no
+  /// tap can change. Asserted per state so the two cases the switch cannot fix
+  /// stay closed.
+  @Test("a tap can reach any design the machine can actually run",
+        arguments: PillWordsCapability.allCases)
+  func couplingOpensEverythingTheMachineCanDo(capability: PillWordsCapability) {
+    let model = Self.model(capability)
+
+    for design in RecordingPillDesign.allCases where !design.canHoldWords {
+      #expect(
+        model.offersCoupled(design, capability: capability),
+        """
+        \(design) is greyed at \(capability), but turning Live Preview OFF always works, \
+        so no state can put a wordless design out of reach.
+        """)
     }
 
-    #expect(!usable.isEmpty, "\(capability) offers no design at all, so the row is entirely dead")
-    #expect(
-      usable.allSatisfy { $0.canHoldWords == capability.hasWords },
-      "\(capability) offers designs from both sides of the words divide: \(usable)")
+    let wordsArePossible = capability == .available || capability == .previewOff
+    for design in RecordingPillDesign.allCases where design.canHoldWords {
+      #expect(
+        model.offersCoupled(design, capability: capability) == wordsArePossible,
+        """
+        \(design) offerability at \(capability) does not match whether words are possible \
+        there. A tap sets the switch, but it cannot install an engine or finish a removal.
+        """)
+    }
   }
 }

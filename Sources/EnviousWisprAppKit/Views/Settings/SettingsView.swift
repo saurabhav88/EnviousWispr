@@ -279,6 +279,9 @@ struct UnifiedWindowView: View {
   ) -> some View {
     content()
       .environment(\.settingsPageSection, section)
+      // The only place `selectedSection` is in scope, so the only place this can
+      // be supplied without threading a binding through every page.
+      .environment(\.settingsNavigate) { selectedSection = $0 }
   }
 }
 
