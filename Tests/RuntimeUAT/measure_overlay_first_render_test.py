@@ -540,8 +540,16 @@ def test_known_invalid_ax_preconditions_never_touch_the_record_key():
     saved_modules = {name: sys.modules.get(name) for name in ("simulate_input", "ptt_binding")}
     saved_ax_available = m.ax_accessibility_available
     saved_ax_matching = m.ax_matching_windows
+    saved_lock_state = m.screen_lock_state
     sys.modules["simulate_input"] = spy
     sys.modules["ptt_binding"] = fake_ptt
+    # Locked out (`False` = unlocked) for every case below except the one
+    # that tests it — real PTT resolution and AX queries are already mocked
+    # here, so the screen lock must be too, or this test's own verdict
+    # depends on whether the machine running it happens to be locked.
+    # `screen_lock_block` itself stays real: it is pure and deterministic
+    # given `screen_lock_state`'s True/False/None.
+    m.screen_lock_state = lambda: False
     try:
         m.ax_accessibility_available = lambda pid: False
         m.ax_matching_windows = lambda pid: []
@@ -560,9 +568,26 @@ def test_known_invalid_ax_preconditions_never_touch_the_record_key():
         expect("while still reporting the right verdict",
                result["verdict"], m.BLOCKED_NO_OVERLAY)
 
-        # TWIN: with both preconditions satisfied, the record key IS pressed
-        # and released exactly once — the refusal above is about the
-        # preconditions, not about this function never pressing a key at all.
+        # A screen that locked in the gap between smoke()'s own recheck and
+        # this function's PTT/AX resolution work must ALSO refuse before any
+        # input — this is the LAST possible gate, immediately before
+        # `modifier_down` (#2377, C1 repair): AX is available and no match
+        # preexists, so without this check the press would go through.
+        m.ax_accessibility_available = lambda pid: True
+        m.ax_matching_windows = lambda pid: []
+        m.screen_lock_state = lambda: True
+        result = m.measure_keypress_to_overlay(4242, "/nonexistent-marker-path")
+        expect("a screen locked right before the press never presses the record key",
+               spy.down_calls, [])
+        expect("nor releases it", spy.up_calls, [])
+        expect("while still reporting the right verdict",
+               result["verdict"], m.BLOCKED_SCREEN_LOCKED)
+        m.screen_lock_state = lambda: False
+
+        # TWIN: with all three preconditions satisfied, the record key IS
+        # pressed and released exactly once — the refusals above are about
+        # the preconditions, not about this function never pressing a key
+        # at all.
         m.ax_accessibility_available = lambda pid: True
         m.ax_matching_windows = lambda pid: []
         result = m.measure_keypress_to_overlay(4242, "/nonexistent-marker-path", timeout_s=0.05)
@@ -576,6 +601,7 @@ def test_known_invalid_ax_preconditions_never_touch_the_record_key():
                 sys.modules[name] = mod
         m.ax_accessibility_available = saved_ax_available
         m.ax_matching_windows = saved_ax_matching
+        m.screen_lock_state = saved_lock_state
 
 
 # -------------------------------------------------- 9. thirty pairs, exactly

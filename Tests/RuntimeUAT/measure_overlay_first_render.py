@@ -970,7 +970,20 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
     # real press, and a synthetic keypress on an already-doomed launch is not
     # free: it is the exact input this instrument exists to measure the
     # effect of.
-    if ax_available and not preexisting:
+    #
+    # **The screen-lock check is HERE, immediately before `modifier_down`,
+    # not only in `smoke()` (#2377, C1 repair).** `smoke()`'s own recheck
+    # runs before `_ptt.resolve()` above — which can spend up to ~5s in
+    # `defaults export` — and the AX queries just above it, so the screen
+    # can still lock inside that gap even though `smoke()` saw it unlocked.
+    # This is the LAST statement before the press, so no further gap can
+    # exist after it; `smoke()`'s own check remains as a cheap early exit
+    # that skips the ~5s of PTT/AX work entirely when the screen is ALREADY
+    # locked, rather than being made redundant by this one.
+    pre_press_lock = screen_lock_state()
+    pre_press_blocked = screen_lock_block(pre_press_lock)
+
+    if ax_available and not preexisting and not pre_press_blocked:
         keydown_ns = time.perf_counter_ns()
         _si.modifier_down(binding.keycode)
         last = time.perf_counter_ns()
@@ -1021,7 +1034,13 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
 
         host_window_id, presentation_block = marker_result
 
-    if presentation_block is not None:
+    if pre_press_blocked:
+        # Checked first: a screen that locked in the gap above never gets a
+        # press, whatever `presentation_block`/`adjudicate_ax_overlay` would
+        # otherwise have said about a poll loop that never ran.
+        timing = OverlayTiming(verdict=BLOCKED_SCREEN_LOCKED, detail=pre_press_blocked,
+                               window_id=None, keypress_ms=None)
+    elif presentation_block is not None:
         timing = OverlayTiming(verdict=presentation_block[0], detail=presentation_block[1],
                                window_id=host_window_id, keypress_ms=None)
     else:
@@ -1036,6 +1055,7 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
     return {
         "verdict": timing.verdict,
         "detail": timing.detail,
+        "screen_locked": pre_press_lock,
         "keypress_ms": timing.keypress_ms,
         "window_id": timing.window_id,
         "host_window_id": host_window_id,
