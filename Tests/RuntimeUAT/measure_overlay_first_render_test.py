@@ -45,7 +45,7 @@ GOOD_TICKS = {
     "host.order_front.complete": 13_000_000,
     # Deliberately BEFORE `launch.enter`'s own tick — proves position and
     # ticks are irrelevant to `engine.ready`, which sits outside `EVENTS`'s
-    # causal chain entirely (#2377, C1 repair, Codex's smoke ruling).
+    # causal chain entirely (#2377, C1 repair).
     "engine.ready": 500_000,
 }
 
@@ -921,15 +921,15 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
             "the flush frees the capacity it just used, inside the interval it was "
             "reserved to stay out of")
 
-    # `emitEngineReadyOnce()` must be BOUND to a COMPLETE readiness guard at
-    # EACH launch warm-up path separately (#2377, C1 repair round 4, Codex
-    # HIGH) — checking the two facts "two emit calls exist" and "the string
-    # engineReadiness == .ready appears somewhere" independently would pass
-    # a mutant that moves one emit call OUTSIDE its own guard, since both
-    # facts would still be true elsewhere in the file. Each call site is
-    # scoped by its own unique capture-list text, so this cannot cross-match
-    # the other path's guard — the measured gap between the two capture
-    # lists is over 13,000 characters, far past this window.
+    # `emitEngineReadyOnce()` must be emitted FROM INSIDE a complete
+    # selected/active/readiness guard at EACH launch warm-up path
+    # separately (#2377, C1 repair) — checking that four required
+    # substrings all appear somewhere in a scoped window passes a mutant
+    # that moves the emit call immediately ABOVE its own `if`: all four
+    # strings are still present in the window, just no longer nested
+    # inside the brace. Matching one
+    # CONTIGUOUS block — the exact `if ... { emit }` text — is what proves
+    # containment, not mere co-occurrence.
     if not BOOTSTRAPPER.exists():
         FAILURES.append(f"the bootstrapper is not at {BOOTSTRAPPER}; this test's path is stale")
         return
@@ -947,18 +947,18 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
             FAILURES.append(f"could not locate the {label} call site by its capture list")
             continue
         window = boot[start:start + 1000]
-        required = (
-            f"settings.selectedBackend == .{backend}",
-            f"asrManager.activeBackendType == .{backend}",
-            f"{driver}?.engineReadiness == .ready",
-            "OverlayFirstRenderMarkers.emitEngineReadyOnce()",
-        )
-        missing = [r for r in required if r not in window]
-        if missing:
+        required_block = "\n".join((
+            f"          if settings.selectedBackend == .{backend},",
+            f"            asrManager.activeBackendType == .{backend},",
+            f"            {driver}?.engineReadiness == .ready",
+            "          {",
+            "            OverlayFirstRenderMarkers.emitEngineReadyOnce()",
+            "          }",
+        ))
+        if required_block not in window:
             FAILURES.append(
-                f"the {label} path's readiness guard is missing: {missing!r} — "
-                "moving emitEngineReadyOnce() outside its own selected/active/"
-                "engineReadiness guard must be caught here")
+                f"the {label} path does not emit inside its complete "
+                "selected/active/readiness guard")
 
 
 # --------------------------------------- 12b. the engine-readiness gate
@@ -966,8 +966,8 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
 def test_engine_ready_is_a_known_event_outside_the_launch_causal_chain():
     """`engine.ready` must parse, but must never join `EVENTS` — the launch/
     root causal chain `adjudicate_launch` enforces. Mechanical guard for the
-    property Codex's smoke ruling states in prose: engine warm-up and first
-    render run on two independent schedules.
+    fact `EVENTS`'s own comment states: engine warm-up and first render run
+    on two independent schedules.
     """
     expect("engine.ready is not part of the launch causal chain",
            m.ENGINE_READY in m.EVENTS, False)
@@ -997,10 +997,10 @@ def test_engine_ready_marker_position_never_affects_launch_adjudication():
 
 def test_engine_is_ready_matches_exactly_this_launch():
     """Missing, wrong-run, wrong-pid, wrong-bundle, and partial readiness
-    markers are all `False` — the exact set Codex's smoke ruling names as
-    the precondition that must gate a synthetic keypress. `engine_is_ready`
-    is what `smoke()` calls before it, so a `False` here is what keeps the
-    press from ever being sent (proved structurally below).
+    markers are all `False` — the precondition that must gate a synthetic
+    keypress. `engine_is_ready` is what `smoke()` calls before it, so a
+    `False` here is what keeps the press from ever being sent (proved by
+    execution below, via `measure_after_engine_ready`).
     """
     marker = line("engine.ready", ticks=500_000)
     good = marker + "\n"
@@ -1067,8 +1067,8 @@ def test_await_engine_ready_waits_for_the_marker_and_times_out_without_it():
 def test_await_engine_ready_raises_on_a_crash_rather_than_waiting_out_the_timeout():
     """A crash DURING warm-up must not burn the full timeout waiting for a
     marker that will never arrive, then report the plausible-sounding but
-    wrong `BLOCKED_ENGINE_NOT_READY` (#2377, C1 repair round 4, Codex
-    MEDIUM). Watching `proc.poll()` is what tells the two apart.
+    wrong `BLOCKED_ENGINE_NOT_READY` (#2377, C1 repair). Watching
+    `proc.poll()` is what tells the two apart.
     """
     crashed = FakeProc(already_gone=True)
     try:
@@ -1084,11 +1084,10 @@ def test_await_engine_ready_raises_on_a_crash_rather_than_waiting_out_the_timeou
 def test_measure_after_engine_ready_gates_the_keypress_by_call_count():
     """The "never press before the engine is ready" property, proved by
     EXECUTION rather than by reading `smoke()`'s source layout (#2377, C1
-    repair round 4, Codex MEDIUM) — the prior version of this test could
-    only see where the two calls sat in the file, which survives a
-    regression that keeps the right shape but breaks the actual gating
-    (e.g. a mutant `measure() if True else None`, still textually inside an
-    `if`).
+    repair) — a check that only sees where two calls sit in the file
+    survives a regression that keeps the right shape but breaks the actual
+    gating (e.g. a mutant `measure() if True else None`, still textually
+    inside an `if`).
     """
     calls = {"n": 0}
     sentinel = object()
@@ -1104,6 +1103,77 @@ def test_measure_after_engine_ready_gates_the_keypress_by_call_count():
     ready_result = m.measure_after_engine_ready(True, spy)
     expect("a ready engine returns the measurement", ready_result, sentinel)
     expect("calling the thunk exactly once", calls["n"], 1)
+
+
+def _smoke_body(source):
+    """`smoke()`'s own body text, isolated by its full definition signature —
+    never a bare function name, which would match a call site instead (the
+    same "found the wrong twin" class the AX-identifier order check hit
+    before it anchored on `final class OverlayWindowHost`).
+    """
+    start = source.find("\ndef smoke(bundle_path")
+    end = source.find("\ndef main(argv)", start) if start >= 0 else -1
+    if start < 0 or end < 0:
+        return None
+    return source[start:end]
+
+
+def test_smoke_routes_its_keypress_measurement_through_the_readiness_gate():
+    """A CALLER-CONTRACT row (#2377, C1 repair): the
+    previous test proved `measure_after_engine_ready` behaves correctly in
+    isolation, which says nothing about whether `smoke()` still CALLS it —
+    replacing the live call with a direct `measure_keypress_to_overlay()`
+    would leave that test green. This binds the exact live shape instead.
+    """
+    real_source = pathlib.Path(m.__file__).read_text()
+    body = _smoke_body(real_source)
+    if body is None:
+        FAILURES.append("could not isolate smoke()'s body by source markers")
+        return
+
+    ready_idx = body.find("await_engine_ready(")
+    if ready_idx < 0:
+        FAILURES.append("smoke() does not call await_engine_ready")
+        return
+    # Bound to THIS call, not merely present anywhere in the function — the
+    # keyword must appear before the call's own closing paren is reached.
+    call_end = body.find(")", ready_idx)
+    if 'proc=launched["process"]' not in body[ready_idx:call_end + 1]:
+        FAILURES.append(
+            "smoke()'s await_engine_ready call does not pass "
+            'proc=launched["process"] — a crash during warm-up would wait '
+            "out the full timeout instead of being detected")
+
+    required_gate = "\n".join((
+        "        timing = measure_after_engine_ready(",
+        "            engine_ready,",
+        "            lambda: measure_keypress_to_overlay(",
+    ))
+    gate_idx = body.find(required_gate)
+    if gate_idx < 0:
+        FAILURES.append(
+            "smoke() does not route its keypress measurement through the "
+            "engine-readiness gate")
+    elif gate_idx < ready_idx:
+        FAILURES.append(
+            "smoke() gates the keypress measurement BEFORE awaiting "
+            "readiness — the readiness result it gates on would be stale")
+
+    # CONTROL: the same check, run against a synthetic source where the live
+    # call is replaced by a direct measurement, must actually fail — proof
+    # this row is not vacuously true. Never touches the real file.
+    bypassed_fake = (
+        "\ndef smoke(bundle_path, *, out_dir):\n"
+        "    ready = await_engine_ready(marker_path, proc=proc, run_id=run_id)\n"
+        "    timing = measure_keypress_to_overlay(pid, marker_path)\n"
+        "\ndef main(argv):\n")
+    fake_body = _smoke_body(bypassed_fake)
+    if fake_body is None:
+        FAILURES.append("the control fixture's own source markers do not isolate")
+    elif required_gate in fake_body:
+        FAILURES.append(
+            "the caller-contract check does not fail on a bypassed source — "
+            "it cannot be trusted to catch a real regression")
 
 
 # ------------------------------------------- 13. nobody is left behind
@@ -1394,6 +1464,7 @@ TESTS = [
     test_await_engine_ready_waits_for_the_marker_and_times_out_without_it,
     test_await_engine_ready_raises_on_a_crash_rather_than_waiting_out_the_timeout,
     test_measure_after_engine_ready_gates_the_keypress_by_call_count,
+    test_smoke_routes_its_keypress_measurement_through_the_readiness_gate,
     test_an_abandoned_launch_is_actually_reaped,
     test_every_exceptional_exit_from_the_readiness_wait_reaps,
     test_a_locked_screen_blocks_before_a_launch_is_spent,

@@ -433,12 +433,11 @@ public final class WisprBootstrapper {
         await whisperKitKernelDriver?.ensureEngineWarm(reason: .launch)
         #if DEBUG
           // Re-check the SELECTED and ACTIVE backend, not just this driver's
-          // own readiness (#2377, C1 repair round 4, Codex HIGH). A backend
-          // switch mid-await can leave this driver `.ready` while it is no
-          // longer the one a press would actually route to — emitting on its
-          // readiness alone would tell the harness the wrong engine warmed,
-          // recreating the exact ColdPressGuard (#879) false alarm this round
-          // exists to remove.
+          // own readiness (#2377, C1 repair). A backend switch mid-await can
+          // leave this driver `.ready` while it is no longer the one a press
+          // would actually route to — emitting on its readiness alone would
+          // tell the harness the wrong engine warmed, recreating the exact
+          // ColdPressGuard (#879) false alarm this marker exists to avoid.
           if settings.selectedBackend == .whisperKit,
             asrManager.activeBackendType == .whisperKit,
             whisperKitKernelDriver?.engineReadiness == .ready
@@ -702,7 +701,7 @@ public final class WisprBootstrapper {
         #if DEBUG
           // Same re-check as the WhisperKit path, mirrored: the SELECTED and
           // ACTIVE backend, not just this driver's own readiness (#2377, C1
-          // repair round 4, Codex HIGH).
+          // repair).
           if settings.selectedBackend == .parakeet,
             asrManager.activeBackendType == .parakeet,
             kernelDriver?.engineReadiness == .ready

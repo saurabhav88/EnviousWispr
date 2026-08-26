@@ -55,8 +55,8 @@ SCHEMA_FAMILY = "EW_OVERLAY_FIRST_RENDER"
 # keypress-triggered recording. A schema bump because a V1 harness reading a
 # V2 line, or a V2 harness reading a V1 line, must refuse loudly rather than
 # silently misparse the field count.
-# V3 adds the `engine.ready` event (#2377, C1 repair, Codex's smoke ruling):
-# an app launched with an engine that has not finished warming refuses a
+# V3 adds the `engine.ready` event (#2377, C1 repair): an app launched with
+# an engine that has not finished warming refuses a
 # synthetic keypress via `ColdPressGuard` (#879), a real product policy this
 # instrument's own input must not trip. A V2 harness has no such event in its
 # `EVENTS`/`KNOWN_EVENTS` set and would refuse the line rather than silently
@@ -471,8 +471,8 @@ def await_engine_ready(marker_path, *, proc, run_id, expected_pid, expected_bund
     the caller turns that into `BLOCKED_ENGINE_NOT_READY`, a receipt, not an
     exception with no receipt behind it.
 
-    **Watches `proc`, not just the marker file (#2377, C1 repair round 4,
-    Codex MEDIUM).** Without this, an app that crashes DURING warm-up burns
+    **Watches `proc`, not just the marker file (#2377, C1 repair).** Without
+    this, an app that crashes DURING warm-up burns
     the whole `timeout_s` waiting for a marker that will never arrive, then
     reports `BLOCKED_ENGINE_NOT_READY` — a plausible-sounding but wrong
     diagnosis for what was actually a crash. Raising here instead reaches
@@ -1031,7 +1031,7 @@ def measure_after_engine_ready(engine_ready, measure):
     """Gate a measurement behind a readiness fact — extracted so `smoke()`'s
     "never press before the engine is ready" property is provable by CALLING
     this with a spy, not merely by reading `smoke()`'s own source layout
-    (#2377, C1 repair round 4, Codex MEDIUM). `measure` is a zero-argument
+    (#2377, C1 repair). `measure` is a zero-argument
     thunk so the caller controls exactly what "the measurement" means without
     this function needing to know.
     """
@@ -1288,7 +1288,7 @@ def smoke(bundle_path, *, out_dir):
         # Gated through `measure_after_engine_ready` rather than an inline
         # `if`/`else` around the call — the gate is then provable by calling
         # that function directly with a spy, not just by reading this
-        # function's source layout (#2377, C1 repair round 4, Codex MEDIUM).
+        # function's source layout (#2377, C1 repair).
         timing = measure_after_engine_ready(
             engine_ready,
             lambda: measure_keypress_to_overlay(

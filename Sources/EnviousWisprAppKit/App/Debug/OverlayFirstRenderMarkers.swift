@@ -62,8 +62,8 @@
       case rootConstructStart = "root.construct.start"
       case rootConstructEnd = "root.construct.end"
       case hostOrderFrontComplete = "host.order_front.complete"
-      /// #2377, C1 repair — the smoke ruling. Emitted once the launch-time
-      /// warm-up path (`WisprBootstrapper`) re-reads the ACTUALLY-selected
+      /// #2377, C1 repair. Emitted once the launch-time warm-up path
+      /// (`WisprBootstrapper`) re-reads the ACTUALLY-selected
       /// engine as `.ready`, so the harness can wait for it before sending a
       /// synthetic keypress. Without this, a keypress sent right after
       /// `launch.exit` races `ColdPressGuard` (#879), which correctly refuses
@@ -359,10 +359,10 @@
       // V2: adds the `intent` field (#2377, C1 repair) — a schema bump because
       // an old harness reading a V2 line would silently misparse the eighth
       // field as belonging to no key it expects.
-      // V3: adds the `engine.ready` event (#2377, C1 repair, Codex's smoke
-      // ruling) — a schema bump because a V2 harness's `Event` set does not
-      // recognize it and would refuse the line outright rather than silently
-      // misread it, which is the correct failure for an unknown event.
+      // V3: adds the `engine.ready` event (#2377, C1 repair) — a schema bump
+      // because a V2 harness's `Event` set does not recognize it and would
+      // refuse the line outright rather than silently misread it, which is
+      // the correct failure for an unknown event.
       let prefix =
         "EW_OVERLAY_FIRST_RENDER_V3\trun=\(runID)\tpid=\(getpid())\tbundle=\(bundleID)\t"
       return Sink(descriptor: descriptor, prefix: prefix)
