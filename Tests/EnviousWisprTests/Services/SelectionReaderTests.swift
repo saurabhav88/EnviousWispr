@@ -377,6 +377,18 @@ struct SelectionReaderTests {
   @Test("A timed-out or failed focus query is unreadable, not an unfocused app")
   func aFailedFocusQueryIsNotAnEmptyOne() {
     #expect(SelectionReader.refusalForFocusedElement(.none) == .noFocusedElement)
+    // **`.noValue` is Accessibility's ordinary "nothing is focused" answer**, so it must reach the
+    // click-into-the-text advice rather than the generic read failure. Asserted on the classifier
+    // itself: routing it to `.queryFailed` and checking the refusal differs would pass whatever the
+    // classifier does, which is a test about nothing.
+    #expect(PasteService.isUnfocusedResponse(.noValue), "the commonest case is not a failure")
+    // Paired, or a classifier that answered true to everything would look identical.
+    #expect(!PasteService.isUnfocusedResponse(.cannotComplete), "a timeout IS a failure")
+    #expect(
+      !PasteService.isUnfocusedResponse(.attributeUnsupported),
+      "an app that never implements the attribute will not start because the user clicked")
+    #expect(!PasteService.isUnfocusedResponse(.apiDisabled))
+    #expect(!PasteService.isUnfocusedResponse(.invalidUIElement))
     #expect(SelectionReader.refusalForFocusedElement(.queryFailed(.cannotComplete)) == .unreadable)
     // The timeout arrives as its own error code and must not be special-cased into the empty case.
     #expect(

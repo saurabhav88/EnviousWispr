@@ -842,6 +842,13 @@ public enum PasteService {
     return nil
   }
 
+  /// Whether a focused-element query error means "nothing is focused" rather than "the query
+  /// failed".
+  ///
+  /// Pure and separate so the decision is reachable from a test — inside `focusedElement` it sits
+  /// behind a live Accessibility call and nothing can assert it.
+  static func isUnfocusedResponse(_ error: AXError) -> Bool { error == .noValue }
+
   static func focusedElement(
     pid: pid_t,
     messagingTimeout: Double = axMessagingTimeoutSeconds
@@ -858,6 +865,16 @@ public enum PasteService {
     // here as different codes and leave as different outcomes.
     let error = AXUIElementCopyAttributeValue(
       application, kAXFocusedUIElementAttribute as CFString, &focusedRef)
+    // **`.noValue` IS the ordinary unfocused answer, not a failure.** Accessibility reports "this
+    // attribute has no associated value" for an application with nothing focused, so treating every
+    // non-success code as a failed query sends the commonest case to the generic read-failure
+    // message and withholds the one instruction that would help — click into the text. Cloud
+    // review, PR #2427, on the tri-state fix from the round before.
+    //
+    // `.attributeUnsupported` is deliberately NOT here: an app that does not implement the focused
+    // attribute at all will not start doing so because the user clicked somewhere, so that stays a
+    // failure and gets the honest "could not be read" copy.
+    if isUnfocusedResponse(error) { return PasteService.FocusedElement.none }
     guard error == .success else { return .queryFailed(error) }
     guard let focusedValue = focusedRef, CFGetTypeID(focusedValue) == AXUIElementGetTypeID() else {
       // The call succeeded and produced nothing usable — that is an absence, not a failure.
