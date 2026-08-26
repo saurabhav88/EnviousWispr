@@ -64,10 +64,6 @@ struct RecordingOverlayPreviewSizingTests {
     design: RecordingPillDesign = .readingWell
   ) throws -> CGFloat {
     let log = HeightLog()
-    let lockState = OverlayLockState()
-    lockState.isLocked = locked
-    let noticeState = OverlayNoticeState()
-    noticeState.message = notice
 
     let view = RecordingOverlayView(
       audioLevelProvider: { 0 },
@@ -75,8 +71,8 @@ struct RecordingOverlayPreviewSizingTests {
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
       chrome: design.chrome,
-      lockState: lockState,
-      noticeState: noticeState,
+      isLocked: locked,
+      noticeText: notice,
       initialPreview: display
     )
 
@@ -210,33 +206,13 @@ struct RecordingOverlayPreviewSizingTests {
 
   @Test("the notice banner contributes to the measured height")
   func noticeBannerAddsHeight() throws {
-    let log = HeightLog()
-    let noticeState = OverlayNoticeState()
+    // Two hosted measurements, because the notice is part of the frame the view
+    // is BUILT with: changing it means building another frame, which is what
+    // production does too. The claim is that a notice makes the content taller.
     let display = LivePreviewDisplay.text(Self.oneLine)
-    let view = RecordingOverlayView(
-      audioLevelProvider: { 0 },
-      recordingElapsedProvider: { 41 },
-      livePreviewProvider: { display },
-      onContentHeightChange: { log.record($0) },
-      chrome: RecordingPillDesign.readingWell.chrome,
-      lockState: OverlayLockState(),
-      noticeState: noticeState,
-      initialPreview: display
-    )
-    let frame = NSRect(x: 0, y: 0, width: Self.previewWidth, height: 65)
-    let host = NSHostingView(rootView: view.frame(width: Self.previewWidth))
-    let window = NSWindow(
-      contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
-    window.contentView = host
-    host.frame = frame
-    host.layoutSubtreeIfNeeded()
-    window.displayIfNeeded()
-    let withoutNotice = try #require(log.reported.last)
-
-    noticeState.message = "Recording stops in one minute."
-    host.layoutSubtreeIfNeeded()
-    window.displayIfNeeded()
-    let withNotice = try #require(log.reported.last)
+    let withoutNotice = try measuredHeight(showing: display, inPanelOfHeight: 65)
+    let withNotice = try measuredHeight(
+      showing: display, inPanelOfHeight: 65, notice: "Recording stops in one minute.")
 
     #expect(
       withNotice > withoutNotice,
@@ -267,8 +243,8 @@ struct RecordingOverlayPreviewSizingTests {
       livePreviewProvider: { .text(Self.threeLines) },
       onContentHeightChange: { log.record($0) },
       chrome: RecordingPillDesign.readingWell.chrome,
-      lockState: OverlayLockState(),
-      noticeState: OverlayNoticeState(),
+      isLocked: false,
+      noticeText: nil,
       initialPreview: .text(Self.threeLines)
     )
     let host = NSHostingView(rootView: view.frame(width: Self.previewWidth))
@@ -314,8 +290,8 @@ struct RecordingOverlayPreviewSizingTests {
       livePreviewProvider: { .off },
       onContentHeightChange: { log.record($0) },
       chrome: RecordingPillDesign.classic.chrome,
-      lockState: OverlayLockState(),
-      noticeState: OverlayNoticeState(),
+      isLocked: false,
+      noticeText: nil,
       initialPreview: .off
     )
     let host = NSHostingView(rootView: view.frame(width: 185, height: 92))

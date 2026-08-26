@@ -219,6 +219,32 @@ extension RecordingPillDesign {
 
 // MARK: - RecordingOverlayView
 
+/// How the recording poll waits between reads (#2377 Phase 5, C5).
+///
+/// **A seam because the alternative is a timed wait, and the question is about
+/// what the poll does over TIME.** `testing-philosophy.md`
+/// RULE: never-guess-when-the-subject-is-finished forbids inferring that a
+/// subject is finished from elapsed time; with this, a test learns the loop has
+/// parked from a signal the loop sends, and releases it itself.
+///
+/// **Available in Release, not `#if DEBUG`.** Phase 5's proofs must execute in
+/// both configurations, and a DEBUG-only seam forecloses that.
+struct RecordingPollCadence: Sendable {
+
+  /// Returns when it is time to read the providers again.
+  let wait: @Sendable () async -> Void
+
+  /// 50 ms, which is what shipped and what `RainbowLevelMeter`'s history depth
+  /// is scaled to.
+  ///
+  /// **`try?` here does NOT swallow cancellation into another read.** A cancelled
+  /// sleep returns immediately and the loop's own `while !Task.isCancelled` is
+  /// what ends it, so a cancelled poll performs no further provider read.
+  static let live = RecordingPollCadence {
+    try? await Task.sleep(for: .milliseconds(50))
+  }
+}
+
 /// Compact recording indicator overlay.
 struct RecordingOverlayView: View {
   let audioLevelProvider: () -> Float
@@ -252,9 +278,20 @@ struct RecordingOverlayView: View {
   /// before that first read — and that reasoning transfers unchanged: the chrome
   /// is decided upstream and this view never asks what the pill is capable of.
   let chrome: RecordingPillChrome
-  var lockState: OverlayLockState
-  /// #1060: transient notice banner shown inside the recording capsule.
-  var noticeState: OverlayNoticeState
+
+  /// Hands-free lock, and the #1060 in-panel notice's already-resolved copy.
+  ///
+  /// Plain immutable inputs, arriving in the same frame as the providers and the
+  /// chrome, so this leaf cannot draw a new presentation beside a previous pill's
+  /// lock or banner.
+  ///
+  /// `noticeText` is COPY, already resolved by the publisher. This view renders
+  /// a string and asks nobody what it should say.
+  let isLocked: Bool
+  let noticeText: String?
+
+  /// How long the poll waits between reads. Production never passes this.
+  let cadence: RecordingPollCadence
   @State private var audioLevel: Float = 0
 
   /// Counts polls, not level changes. #2216: the meter's history needs a sample
@@ -282,17 +319,19 @@ struct RecordingOverlayView: View {
     livePreviewProvider: @escaping () -> LivePreviewDisplay,
     onContentHeightChange: @escaping (CGFloat) -> Void,
     chrome: RecordingPillChrome,
-    lockState: OverlayLockState,
-    noticeState: OverlayNoticeState,
-    initialPreview: LivePreviewDisplay = .off
+    isLocked: Bool,
+    noticeText: String?,
+    initialPreview: LivePreviewDisplay = .off,
+    cadence: RecordingPollCadence = .live
   ) {
     self.audioLevelProvider = audioLevelProvider
     self.recordingElapsedProvider = recordingElapsedProvider
     self.livePreviewProvider = livePreviewProvider
     self.onContentHeightChange = onContentHeightChange
     self.chrome = chrome
-    self.lockState = lockState
-    self.noticeState = noticeState
+    self.isLocked = isLocked
+    self.noticeText = noticeText
+    self.cadence = cadence
     _preview = State(initialValue: initialPreview)
   }
 
@@ -328,7 +367,7 @@ struct RecordingOverlayView: View {
 
       Spacer(minLength: 8)
 
-      if lockState.isLocked {
+      if isLocked {
         // A filled badge, because the mode it announces persists until the user
         // presses again. A size change is a weak signal — you only notice it if
         // you saw the other size a second earlier.
@@ -395,7 +434,7 @@ struct RecordingOverlayView: View {
           // **The hands-free badge, and without it this design was the one that
           // never said the microphone stays open** (#2376 Phase 4, cloud review
           // round 5, P1). Every other visual property here is independent of
-          // `lockState.isLocked`, so the container's animation had nothing to
+          // `isLocked`, so the container's animation had nothing to
           // animate and the locked pill was pixel-identical to the unlocked one.
           // The cost is not cosmetic: hands-free keeps recording after the key is
           // released, so a user with no confirmation can leave a capture running.
@@ -416,7 +455,7 @@ struct RecordingOverlayView: View {
           // plus 24 bars at 3pt-and-2pt, and the dot is 11pt of the margin that
           // keeps the rail from being squeezed. Measured locked: 279pt of content,
           // which is what moved this design's width to 288.
-          if lockState.isLocked {
+          if isLocked {
             Text(LivePreviewCopy.handsFreeMode)
               .font(.system(size: 11, weight: .semibold))
               .foregroundStyle(PreviewPillPalette.badgeText)
@@ -432,9 +471,9 @@ struct RecordingOverlayView: View {
           // Rainbow lips icon — audio-reactive during recording.
           // Scales to 2x in hands-free (locked) mode.
           RainbowLipsIcon(size: 24, audioLevel: audioLevel)
-            .scaleEffect(lockState.isLocked ? 2.0 : 1.0)
+            .scaleEffect(isLocked ? 2.0 : 1.0)
 
-          if !lockState.isLocked {
+          if !isLocked {
             Text(FormattingConstants.formatDuration(elapsed))
               .font(.system(size: 13, weight: .medium, design: .monospaced))
               .foregroundStyle(.white)
@@ -449,7 +488,7 @@ struct RecordingOverlayView: View {
 
       // #1060: approaching-cap warning banner. Appears inside the same capsule
       // (no panel rebuild), wraps within the pill width, auto-clears.
-      if let notice = noticeState.message {
+      if let notice = noticeText {
         Text(notice)
           .font(.system(size: 11, weight: .medium))
           // #2204: the notice is rendered by BOTH layouts from this one `Text`,
@@ -471,7 +510,7 @@ struct RecordingOverlayView: View {
           .transition(.opacity)
       }
     }
-    .animation(.easeInOut(duration: 0.3), value: lockState.isLocked)
+    .animation(.easeInOut(duration: 0.3), value: isLocked)
     // Single container animation prevents animation stacking: N per-element
     // modifiers × update rate creates exponential state transitions (gotchas.md).
     //
@@ -490,9 +529,9 @@ struct RecordingOverlayView: View {
     //
     // Not a violation of swift-patterns.md RULE: animate-the-container-not-children
     // — that forbids per-child `.animation(value:)`, and this adds none. The
-    // container keeps its `lockState` and `noticeState` triggers in both layouts.
+    // container keeps its lock and notice triggers in both layouts.
     .animation(chrome.levelAnimation.resolved, value: audioLevel)
-    .animation(.easeInOut(duration: 0.25), value: noticeState.message)
+    .animation(.easeInOut(duration: 0.25), value: noticeText)
     // #2202 row 8 of the shared-root table. The capsule keeps its uniform inset;
     // the preview zeroes it and each section supplies its own, because a header
     // strip over a reading well does not want one rectangle of padding wrapped
@@ -546,7 +585,7 @@ struct RecordingOverlayView: View {
         audioTick &+= 1
         elapsed = recordingElapsedProvider() ?? 0
         preview = livePreviewProvider()
-        try? await Task.sleep(for: .milliseconds(50))
+        await cadence.wait()
       }
     }
   }

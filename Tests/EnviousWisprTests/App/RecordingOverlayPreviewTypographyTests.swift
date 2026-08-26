@@ -38,8 +38,8 @@ struct RecordingOverlayPreviewTypographyTests {
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
       chrome: RecordingPillDesign.readingWell.chrome,
-      lockState: OverlayLockState(),
-      noticeState: OverlayNoticeState(),
+      isLocked: false,
+      noticeText: nil,
       initialPreview: display
     )
     let host = NSHostingView(rootView: view.frame(width: Self.previewWidth))

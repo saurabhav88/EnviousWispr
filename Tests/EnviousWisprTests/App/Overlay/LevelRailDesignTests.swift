@@ -126,8 +126,20 @@ struct LevelRailDesignTests {
       position: .top,
       onContentHeightChange: { growthReports.append($0) })
 
-    #expect(model.livePreviewProvider() == .off, "the level rail was handed a live display")
-    model.onContentHeightChange(123)
+    // Read through a PUBLISHED frame (#2377 Phase 5 C1): the staged providers are
+    // private, and a published frame is the only way they reach a leaf in
+    // production too.
+    let design = RecordingPillDesign.levelRail
+    model.publish(
+      PillDefinition(
+        id: PresentationID(rawValue: UUID()),
+        content: .recording(audioLevel: 0.4, isLocked: false, notice: nil, design: design),
+        expiry: .untilReplaced,
+        requestedWidth: .fixed(design.width),
+        reservesFixedHeight: design.reservedHeight))
+    let frame = model.state.recording
+    #expect(frame?.livePreviewProvider() == .off, "the level rail was handed a live display")
+    frame?.onContentHeightChange(123)
 
     #expect(displayReads == 0, "the live provider was read for a pill that shows no words")
     #expect(growthReports.isEmpty, "a pill that cannot grow reported a height to its window")

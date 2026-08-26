@@ -251,6 +251,18 @@
       // `ASREngineNotReadyAfterLoadError` and crash recovery must RETAIN the
       // recording and spend one retry instead of deleting it. Staging that race
       // by hand is impossible — it lives between two adjacent statements.
+      // Presents the production `autoStopUnavailable` notice — the only in-panel
+      // notice armed `dismissAfter: 4.0`, so the only one whose clear leaves the
+      // pill on screen. Refuses before installation; inert with no recording.
+      case "force_auto_stop_unavailable_notice":
+        guard let present = DebugOverlayStaging.presentAutoStopUnavailableNotice else {
+          return "ERR notice handle not installed"
+        }
+        // Inert with no recording on screen, which is production behaviour and
+        // not something this seam may paper over.
+        present()
+        return "OK"
+
       case "force_readiness_lost":
         ActiveEngineOperation.forceNextReadinessLost = true
         return "OK"

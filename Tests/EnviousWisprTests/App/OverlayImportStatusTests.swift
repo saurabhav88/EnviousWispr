@@ -22,7 +22,7 @@
   struct OverlayImportStatusTests {
 
     private static func importMessage(_ d: OverlayDirector) -> String? {
-      guard case .notice(let notice)? = d.renderModel.presentation?.content,
+      guard case .notice(let notice)? = d.renderModel.state.presentation?.content,
         notice.kind == .importStatus
       else { return nil }
       return notice.text
@@ -58,7 +58,7 @@
       Self.record(overlay)
       overlay.present(.importStatus(message: "Finished importing your words."))
 
-      guard case .recording? = overlay.renderModel.presentation?.content else {
+      guard case .recording? = overlay.renderModel.state.presentation?.content else {
         Issue.record("a limb claimed ownership of a slot a genuine recording holds")
         return
       }
@@ -75,7 +75,7 @@
       Self.record(overlay)
       overlay.present(.importStatus(message: "Finished importing your words."))
 
-      guard case .recording? = overlay.renderModel.presentation?.content else {
+      guard case .recording? = overlay.renderModel.state.presentation?.content else {
         Issue.record("a limb claimed ownership of a slot a genuine recording holds")
         return
       }

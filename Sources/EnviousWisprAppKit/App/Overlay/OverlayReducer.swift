@@ -146,7 +146,7 @@ struct OverlayState: Equatable {
   private(set) var isHovered = false
   /// Hands-free lock, which OUTLIVES any one presentation.
   ///
-  /// Shipped updateLockState sets the shared `OverlayLockState`
+  /// Shipped updateLockState sets the shared lock channel
   /// unconditionally with no recording guard, and `show(...)` takes an
   /// `isRecordingLocked:` argument so a pill is born locked rather than
   /// rendering unlocked and morphing a frame later. The first model held
@@ -613,7 +613,7 @@ struct OverlayReducer {
   ///
   /// **The flag is recorded whether or not a pill is showing**, because shipped
   /// updateLockState has NO recording guard — it sets the
-  /// shared `OverlayLockState` unconditionally, and the next pill is then born
+  /// shared lock channel unconditionally, and the next pill is then born
   /// locked through `show(...isRecordingLocked:)`. An earlier version of this
   /// comment claimed the shipped method guards on recording; it does not, and
   /// asserting a mechanism the code lacks is worse than saying nothing.
@@ -641,10 +641,8 @@ struct OverlayReducer {
   private mutating func reduceInPanelNotice(
     _ reason: RecordingNoticeReason, dismissAfter: Double?
   ) -> OverlayPlan {
-    // It morphs a LIVE recording pill and does nothing otherwise. The shipped
-    // parallel `OverlayNoticeState` channel exists only because a replacement
-    // would have torn the panel down; with the panel retained, this is a field
-    // on the presentation that owns it.
+    // An in-panel notice belongs to the live recording presentation and morphs
+    // it in place; it does nothing when no recording holds the slot.
     guard let current = state.current,
       case .recording(let level, let isLocked, _, let design) = current.content
     else { return .noChange }

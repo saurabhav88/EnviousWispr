@@ -18,24 +18,12 @@ import SwiftUI
 ///
 /// **THE DIRECTOR OWNS THE DWELL; THIS VIEW OWNS THE PICTURE OF IT** (#2292).
 ///
-/// This paragraph used to say the opposite — that the view owns its own dwell,
-/// because a panel-level timer cannot be paused by a hover only the view can
-/// see. That was true of the shipped panel, which had no single owner of expiry.
-/// It is false here, and leaving it standing invited a maintainer to restore the
-/// removed view timer and recreate the defect below.
-///
-/// `OverlayReducer` arms a hover-pausing three-second expiry and `OverlayDirector`
-/// is the sole thing that dismisses. The rail draws `OverlayDwellWindow`, which
-/// carries the instant the director's clock STARTED, so a late reader animates
-/// the remainder rather than a fresh three seconds.
-///
-/// **Two independent three-second timers ran side by side from the cutover until
-/// cloud review found them** — the director's and this view's — started at
-/// different moments and agreeing only by luck. When they drifted the rail
-/// finished while the pill was still on screen, which reads as an expired offer
-/// the user can still press. Hover still cancels and hover-exit still restarts,
-/// but the director drives both, so what the user sees and what the timer is
-/// doing cannot drift apart.
+/// **This view owns no clock.** `PillCatalog` arms a hover-pausing three-second
+/// expiry, `PillExpiryClock` is the sole thing that dismisses, and root-forwarded
+/// hover is what cancels and re-arms it. The rail draws `OverlayDwellWindow`,
+/// which carries the instant that clock STARTED, so a late reader animates the
+/// remainder rather than a fresh three seconds — and what the user sees cannot
+/// drift from what the timer is doing, because there is only one timer.
 ///
 /// **The countdown is the brand line doing a job (founder design 2026-08-18).**
 /// Every other overlay pill carries a static rainbow hairline along its bottom
@@ -43,7 +31,6 @@ import SwiftUI
 /// instead of arriving as a surprise.
 struct EscapeRecoveryPillView: View {
   let onPaste: () -> Void
-  let onExpire: () -> Void
 
   /// **The instant the DIRECTOR's dwell started, and the rail waits for it.**
   ///
@@ -70,14 +57,12 @@ struct EscapeRecoveryPillView: View {
   @Environment(\.colorScheme) private var colorScheme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-  @State private var dismissTask: Task<Void, Never>?
   /// One-shot. Without it a fast double-click restores twice — and the second
   /// restore lands after the first has already moved the user's cursor.
   @State private var acted = false
-  /// How far the rail has travelled, 0 to 1. Driven by the same hover events as
-  /// `dismissTask`, never by its own clock.
+  /// How far the rail has travelled, 0 to 1. Driven by the same hover events the
+  /// reducer sees, never by a clock of its own.
   @State private var progress: Double = 0
-  @State private var isActionHovered = false
 
   private var palette: PillPalette { PillPalette.forScheme(colorScheme) }
 
@@ -89,13 +74,11 @@ struct EscapeRecoveryPillView: View {
       onPress: {
         guard !acted else { return }
         acted = true
-        dismissTask?.cancel()
         onPaste()
       }
     )
     .onHover { isHovering in
       if isHovering {
-        dismissTask?.cancel()
         // The offer is being HELD, and hover-exit restarts the full three
         // seconds rather than resuming — so the rail returns to empty rather
         // than freezing part-way, which would promise a resume that never comes.
@@ -118,7 +101,6 @@ struct EscapeRecoveryPillView: View {
     .onChange(of: dwell) { _, window in
       if window != nil { scheduleExpiry() }
     }
-    .onDisappear { dismissTask?.cancel() }
   }
 
   /// Empty the rail with no animation of its own, so whatever runs next starts
@@ -130,25 +112,13 @@ struct EscapeRecoveryPillView: View {
     withTransaction(instant) { progress = 0 }
   }
 
-  /// **The rail is a PICTURE of the director's dwell, not a second clock**
-  /// (#2292, C18). `OverlayReducer` arms `.after(seconds: 3, pausesOnHover: true)`
-  /// for this pill, and the view's own timer was removed in C18. A comment there
-  /// had recorded a LATER chunk as the one that would remove it; that chunk did
-  /// not, and nothing in any diff could contradict the promise, so two
-  /// independent three-second timers ran side by side from the cutover onward --
-  /// started at different moments and agreeing only by luck.
-  ///
-  /// The view's timer is gone; only the animation remains. The director dismisses,
-  /// which is what `exactly one armed expiry` means, and what made the rail
-  /// finish while the pill stayed on screen looking expired.
-  ///
-  /// `onExpire` is kept in the signature and is now unused by this view: the
-  /// preview and the shipped call site both still pass one, and removing it is a
-  /// wider edit than this fix earns.
+  /// **The rail is a PICTURE of the director's dwell, and this view owns no
+  /// clock.** `PillCatalog` gives this pill `.after(seconds: 3, pausesOnHover:
+  /// true)`, `OverlayRootView` forwards hover so the reducer can cancel and
+  /// re-arm, and `PillExpiryClock` is the one thing that dismisses. This function
+  /// only decides where the animation starts and how long it has left.
   private func scheduleExpiry() {
     guard !acted else { return }
-    dismissTask?.cancel()
-    dismissTask = nil
     // **Draw the REMAINDER, not a fresh three seconds.** The director's timer is
     // already running by the time this arrives; starting from empty would make
     // the rail finish after the pill is gone, which is the same disagreement in

@@ -655,6 +655,23 @@ import Testing
       matcher: "prepare",
       text: "try await fresh.prepare()", classification: .unrelatedDomain),
 
+    // MARK: OverlayDirector (#2377 Phase 5) — the overlay's DISMISSAL CLOCK, not
+    // the ASR engine. `PillExpiryClock.prepare` applies an expiry command and
+    // hands back the work that must wait for the pill to be on screen; it holds
+    // a timer and a dwell window and touches no engine, no adapter and no audio.
+    // Matched only by method-name coincidence, the same shape as the VAD and
+    // Live Preview entries above.
+    //
+    // Classified rather than renamed, following the reasoning recorded at the
+    // LivePreviewCoordinator entry: renaming to sidestep a name-based inventory
+    // removes the code from the inventory's view and leaves no record that the
+    // question was asked.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/Overlay/OverlayDirector.swift",
+      matcher: "prepare",
+      text: "let armExpiry = expiryClock.prepare(plan.expiryCommand) { [weak self] id, target in",
+      classification: .unrelatedDomain),
+
     // MARK: KernelDictationDriver
     // The SESSIONLESS load-wedge guard's fire path. `SessionlessLoadWedgeGuard`
     // is armed immediately before, and disarmed immediately after,

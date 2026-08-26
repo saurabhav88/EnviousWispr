@@ -10,8 +10,12 @@ import SwiftUI
 /// SwiftUI, and putting it in the director would make the director know about
 /// pixels — both are the god-object shape this migration is removing, relocated.
 ///
-/// The leaf views are untouched. Their cleanup is explicitly out of scope for
-/// this chunk: only the composition changes.
+/// **It holds no copy and no policy** — the plan's own ownership table says
+/// exactly that of this type (#2377 Phase 5 C1). It reads
+/// ONE `PillRenderState` per evaluation and destructures it. The lock, the
+/// notice sentence and the dwell-to-presentation match were all decided here
+/// once; all three now arrive already decided, because a value the root computes
+/// after publication is a value that can disagree with the frame it is drawn on.
 struct OverlayRootView: View {
 
   @ObservedObject var model: OverlayRenderModel
@@ -28,22 +32,43 @@ struct OverlayRootView: View {
   /// unrepresentable rather than merely unlikely.
   let sendEvent: (OverlayEvent) -> Void
 
-  /// The two legacy observable channels, adapted rather than removed.
+  /// What a recording leaf was BUILT with, reported at the construction boundary
+  /// (#2377 Phase 5 C1).
   ///
-  /// `OverlayLockState` and `OverlayNoticeState` exist in the shipped code as
-  /// PARALLEL channels, and `OverlayNoticeState`'s own doc comment says why: so
-  /// a notice could morph the live pill "WITHOUT tearing the panel down". With
-  /// one retained window every change is a morph, so the channels have no reason
-  /// to exist — but deleting them means editing the leaf views, which this chunk
-  /// deliberately does not do. They are driven FROM the presentation here, which
-  /// makes the presentation the single source and leaves the views alone.
-  @StateObject private var lockState = ObservableLockState()
-  @StateObject private var noticeState = ObservableNoticeState()
+  /// **The seam exists because the property under test is not observable from
+  /// the outside.** Atomicity is a claim about the FIRST evaluation after a
+  /// publication, and every other instrument settles before it can be read:
+  /// `fittingSize` is taken after layout has finished, so a torn first pass has
+  /// already been replaced by a correct second one by the time anything measures
+  /// it. Reading the definition proves nothing either — the tear was never about
+  /// what the definition said, it was about what reached the leaf.
+  ///
+  /// **Not `#if DEBUG`, deliberately, and the plan is why.** Phase 5's "Proven
+  /// by" line requires Release execution, and its test strategy says each phase
+  /// installs the smallest observable seam its own change requires — a
+  /// DEBUG-only seam satisfies the second and makes the first impossible. It is
+  /// `internal`, `nil` in production, set by nothing but a test, and read once
+  /// per recording frame.
+  ///
+  /// Cited by SECTION rather than line: the plan lives under a gitignored
+  /// `docs/`, so a line number in shipped source points at a file most readers
+  /// cannot open and cannot check.
+  ///
+  /// It reports the values PASSED to the leaf, never the values present on the
+  /// definition, because those two agreeing is the thing being tested.
+  @MainActor static var leafObserverForTesting:
+    ((PresentationID, Bool, String?) -> Void)?
 
   var body: some View {
-    Group {
-      if let presentation = model.presentation {
-        content(for: presentation)
+    // **ONE snapshot read, at the top, used by everything below** (#2377 Phase 5
+    // C1). Reading `model.state` again inside a closure would reintroduce the
+    // defect this chunk removes in its worst form: a press or a frame assembled
+    // from whatever is current at the moment it runs rather than from the frame
+    // the user is looking at.
+    let frame = model.state
+    return Group {
+      if let presentation = frame.presentation {
+        content(for: presentation, frame: frame)
           // **Identity at the occupant boundary.** A same-id morph — an audio
           // tick, a lock change, an in-panel notice — preserves SwiftUI's view
           // identity so animations and `@State` continue; a genuinely new
@@ -58,18 +83,6 @@ struct OverlayRootView: View {
           .onHover { sendEvent(.hoverChanged(presentation.id, $0)) }
       }
     }
-    .onAppear { sync(model.presentation) }
-    .onChange(of: model.presentation) { _, new in sync(new) }
-  }
-
-  private func sync(_ presentation: PillDefinition?) {
-    guard case .recording(_, let isLocked, let notice, _)? = presentation?.content else {
-      lockState.value.isLocked = false
-      noticeState.value.message = nil
-      return
-    }
-    lockState.value.isLocked = isLocked
-    noticeState.value.message = notice.map { DictationNarrator.copy(for: $0.reason) }
   }
 
   /// Every leaf callback goes through here, so the presentation's own ID travels
@@ -99,9 +112,9 @@ struct OverlayRootView: View {
   }
 
   @ViewBuilder
-  private func content(for presentation: PillDefinition) -> some View {
+  private func content(for presentation: PillDefinition, frame: PillRenderState) -> some View {
     switch presentation.content {
-    case .recording(_, _, _, let design):
+    case .recording:
       // The LEVEL on the presentation is a snapshot the reducer carries for
       // identity and morph decisions; the view reads the live provider instead,
       // which is why it is not bound here.
@@ -114,7 +127,16 @@ struct OverlayRootView: View {
       // content is what makes the panel's Y origin the capsule's visible bottom
       // edge. The DESIGN owns the size and the captured position owns the
       // alignment; nothing bundles them together any more.
-      recording(design: design, position: model.recordingPosition)
+      //
+      // **`frame.recording` is non-nil exactly when this case matched**, because
+      // `OverlayRenderModel.recordingFrame(for:)` builds it from the same
+      // `.recording` binding. `EmptyView` is the unreachable arm rather than a
+      // fallback: substituting a default design here would be a second answer to
+      // a question the definition already answers, which is what #2375 C3b
+      // deleted.
+      if let recordingFrame = frame.recording {
+        recording(recordingFrame, id: presentation.id)
+      }
 
     case .notice(let notice):
       notices(notice, on: presentation)
@@ -123,8 +145,7 @@ struct OverlayRootView: View {
       LanguageChipView(
         payload: payload,
         onLock: { press(.lockLanguage, on: presentation) },
-        onDismiss: { press(.dismissChip, on: presentation) },
-        onAutoDismiss: {})
+        onDismiss: { press(.dismissChip, on: presentation) })
 
     case .bluetoothAwareness:
       BluetoothAwarenessCardView(
@@ -135,10 +156,11 @@ struct OverlayRootView: View {
     case .escapeRecovery(let transcriptID):
       EscapeRecoveryPillView(
         onPaste: { press(.pasteEscapeRecovery(transcriptID: transcriptID), on: presentation) },
-        onExpire: {},
-        // Matched against THIS presentation, so a window left by a previous pill
-        // cannot drive this one's rail.
-        dwell: model.dwellWindow?.id == presentation.id ? model.dwellWindow : nil)
+        // Already matched to this presentation at publication — see
+        // `PillRenderState.dwell`. The root holds no policy, so a window left by
+        // a previous pill never reaches this frame rather than being filtered
+        // out by the view that draws it.
+        dwell: frame.dwell)
     }
   }
 
@@ -162,17 +184,18 @@ struct OverlayRootView: View {
   /// this phase's named regression arriving through the one construct that hides
   /// it from the compiler.
   @ViewBuilder
-  private func recording(
-    design: RecordingPillDesign, position: OverlayPillPosition
-  ) -> some View {
+  private func recording(_ recordingFrame: RecordingFrame, id: PresentationID) -> some View {
+    let _ = Self.leafObserverForTesting?(
+      id, recordingFrame.isLocked, recordingFrame.noticeText)
+    let design = recordingFrame.design
     let view = RecordingOverlayView(
-      audioLevelProvider: model.audioLevelProvider,
-      recordingElapsedProvider: model.recordingElapsedProvider,
-      livePreviewProvider: model.livePreviewProvider,
-      onContentHeightChange: model.onContentHeightChange,
+      audioLevelProvider: recordingFrame.audioLevelProvider,
+      recordingElapsedProvider: recordingFrame.recordingElapsedProvider,
+      livePreviewProvider: recordingFrame.livePreviewProvider,
+      onContentHeightChange: recordingFrame.onContentHeightChange,
       chrome: design.chrome,
-      lockState: lockState.value,
-      noticeState: noticeState.value)
+      isLocked: recordingFrame.isLocked,
+      noticeText: recordingFrame.noticeText)
 
     switch design {
     case .readingWell:
@@ -189,7 +212,7 @@ struct OverlayRootView: View {
       // Bottom offset and visibly misaligns the polishing pill that replaces it.
       view.frame(
         width: design.width, height: design.reservedHeight,
-        alignment: position == .bottom ? .bottom : .center)
+        alignment: recordingFrame.position == .bottom ? .bottom : .center)
     }
   }
 
@@ -244,17 +267,4 @@ struct OverlayRootView: View {
     case .advisory: return .advisory
     }
   }
-}
-
-/// `OverlayLockState` and `OverlayNoticeState` are `@Observable` classes the leaf
-/// views take by value-reference; these wrap them so the root can own their
-/// lifetime with `@StateObject` without editing the leaf views.
-@MainActor
-private final class ObservableLockState: ObservableObject {
-  let value = OverlayLockState()
-}
-
-@MainActor
-private final class ObservableNoticeState: ObservableObject {
-  let value = OverlayNoticeState()
 }

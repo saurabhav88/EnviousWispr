@@ -71,7 +71,7 @@ final class WindowlessOverlayHost: OverlayWindowHosting {
   /// cases must use `sendUserActionThroughRoot(_:for:)`.
   func sendCurrentUserActionThroughRoot(_ action: PillAction) throws {
     let root = try #require(hostedRoot, "nothing was presented, so no root exists")
-    let id = try #require(root.model.presentation?.id, "no pill is currently presented")
+    let id = try #require(root.model.state.presentation?.id, "no pill is currently presented")
     root.sendEvent(.action(id, action))
   }
 

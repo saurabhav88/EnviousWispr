@@ -61,18 +61,18 @@ import Testing
   /// `currentIntent == .cachingModel(engineLabel:)` was the only thing checking
   /// the label at all — through a value nobody sees.
   private static func showsColdBoot(_ overlay: OverlayDirector, engine: String) -> Bool {
-    guard case .notice(let notice)? = overlay.renderModel.presentation?.content else { return false }
+    guard case .notice(let notice)? = overlay.renderModel.state.presentation?.content else { return false }
     return notice.kind == .warmingUp
       && notice.secondaryText == DictationNarrator.coldStartSubtitle(engineLabel: engine)
   }
 
   private static func showsRecoveryOffer(_ overlay: OverlayDirector) -> Bool {
-    guard case .notice(let notice)? = overlay.renderModel.presentation?.content else { return false }
+    guard case .notice(let notice)? = overlay.renderModel.state.presentation?.content else { return false }
     return notice.kind == .recovery
   }
 
   private static func showsRecording(_ overlay: OverlayDirector) -> Bool {
-    if case .recording? = overlay.renderModel.presentation?.content { return true }
+    if case .recording? = overlay.renderModel.state.presentation?.content { return true }
     return false
   }
 
@@ -368,7 +368,7 @@ import Testing
       fx.discards.noticeWasStillUp == [true],
       "the notice was dismissed before its owner was told to discard")
     #expect(
-      fx.overlay.renderModel.presentation == nil,
+      fx.overlay.renderModel.state.presentation == nil,
       "the notice the user already answered is still on screen")
   }
 
@@ -439,7 +439,7 @@ import Testing
     // early-return mutation while still proving the cold branch was skipped.
     guard Self.showsRecording(fx.overlay) else {
       Issue.record(
-        "warm press must show the recording overlay; got \(String(describing: fx.overlay.renderModel.presentation?.content))")
+        "warm press must show the recording overlay; got \(String(describing: fx.overlay.renderModel.state.presentation?.content))")
       return
     }
   }
@@ -524,7 +524,7 @@ import Testing
       "a warm engine showed the cold-boot pill")
     guard Self.showsRecording(fx.overlay) else {
       Issue.record(
-        "warm-respawn must show the recording overlay; got \(String(describing: fx.overlay.renderModel.presentation?.content))")
+        "warm-respawn must show the recording overlay; got \(String(describing: fx.overlay.renderModel.state.presentation?.content))")
       return
     }
   }

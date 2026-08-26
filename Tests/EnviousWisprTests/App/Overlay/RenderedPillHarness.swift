@@ -13,7 +13,7 @@ import Testing
 /// are both private, so a fixture that constructs `RecoveryNoticeView` itself
 /// bypasses the routing switch entirely and can never observe which leaf was
 /// chosen — it would only prove that the leaf it already named draws what it
-/// draws. Driving `model.presentation` with real `PillCatalog.entry` output
+/// draws. Publishing real `PillCatalog.entry` output through the model
 /// exercises the routing by construction, so a row routed through the wrong leaf
 /// measures differently.
 ///
@@ -74,7 +74,7 @@ enum RenderedPillHarness {
     model: OverlayRenderModel = OverlayRenderModel(),
     recorder: EventRecorder = EventRecorder()
   ) -> CGSize {
-    model.presentation = definition
+    model.publish(definition)
     let root = OverlayRootView(model: model, sendEvent: { recorder.record($0) })
 
     // **The constraint is a SwiftUI WIDTH PROPOSAL, and it took two capture
@@ -171,19 +171,14 @@ enum RenderedPillHarness {
     width: CGFloat
   ) throws -> CGFloat {
     let log = HeightLog()
-    let lockState = OverlayLockState()
-    lockState.isLocked = locked
-    let noticeState = OverlayNoticeState()
-    noticeState.message = notice
-
     let view = RecordingOverlayView(
       audioLevelProvider: { 0.4 },
       recordingElapsedProvider: { 127 },
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
       chrome: design.chrome,
-      lockState: lockState,
-      noticeState: noticeState,
+      isLocked: locked,
+      noticeText: notice,
       initialPreview: display)
 
     let host = NSHostingView(rootView: view.frame(width: width))
@@ -220,19 +215,14 @@ enum RenderedPillHarness {
     notice: String? = nil,
     display: LivePreviewDisplay = .off
   ) -> CGFloat {
-    let lockState = OverlayLockState()
-    lockState.isLocked = locked
-    let noticeState = OverlayNoticeState()
-    noticeState.message = notice
-
     let view = RecordingOverlayView(
       audioLevelProvider: { 0.4 },
       recordingElapsedProvider: { 127 },
       livePreviewProvider: { display },
       onContentHeightChange: { _ in },
       chrome: design.chrome,
-      lockState: lockState,
-      noticeState: noticeState,
+      isLocked: locked,
+      noticeText: notice,
       initialPreview: display)
 
     // No `.frame(width:)`, which is the whole point — an unproposed hosting view
