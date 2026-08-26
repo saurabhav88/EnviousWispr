@@ -113,7 +113,9 @@ import Testing
   private func makeService(
     _ spy: Spy, clock: ManualClock, mode: RecordingMode = .pushToTalk
   ) -> HotkeyService {
-    let service = HotkeyService(telemetry: spy.sink, now: { clock.now })
+    let service = HotkeyService(
+      telemetry: spy.sink, now: { clock.now },
+      onDeniedDesktopEffect: DesktopEffectDenial.recordOnly)
     service.recordingMode = mode
     service.toggleKeyCode = ModifierKeyCodes.globe
     service.onStartRecording = { [weak spy] in
