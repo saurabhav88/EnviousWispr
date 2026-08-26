@@ -159,8 +159,14 @@ def test_duplicate_singleton_marker_blocks():
 # ------------------------------------------------------- 5. the schema itself
 
 def test_unknown_schema_or_malformed_line_blocks():
+    # Derived from `m.SCHEMA`, not hardcoded — a hardcoded "next version"
+    # string is exactly the kind of row that silently stops testing what its
+    # name claims the moment `SCHEMA` bumps again (cloud review P1, C1
+    # repair round 2: this row already went stale once, when V1 became V2).
+    current_suffix = m.SCHEMA[len(m.SCHEMA_FAMILY) + 2:]  # "_V2" -> "2"
+    future_schema = f"{m.SCHEMA_FAMILY}_V{int(current_suffix) + 1}"
     expect_verdict("a future schema version blocks",
-                   text(schema="EW_OVERLAY_FIRST_RENDER_V3"), m.BLOCKED_MALFORMED_MARKER)
+                   text(schema=future_schema), m.BLOCKED_MALFORMED_MARKER)
     expect_verdict("a line with a missing field blocks",
                    text() + f"{m.SCHEMA}\trun={RUN}\tpid={PID}\n",
                    m.BLOCKED_MALFORMED_MARKER)
@@ -334,6 +340,21 @@ def test_the_ax_stopping_rule_fires_on_the_first_match():
         "stopping, by the adjudicator, never by waiting to see if it resolves",
         m.ax_overlay_has_appeared(2), True)
 
+    # **The tested rule must be the BOUND rule, not a reimplementation
+    # sitting beside it** (cloud review P1, C1 repair round 2). Every
+    # assertion above tests `ax_overlay_has_appeared` directly; none of them
+    # can see whether the LIVE poll loop actually calls it, versus
+    # reimplementing its condition inline — which is exactly what the first
+    # draft of this repair did, silently, with every row above still green.
+    harness_source = pathlib.Path(__file__).with_name("measure_overlay_first_render.py")
+    if not harness_source.exists():
+        FAILURES.append(f"the harness is not at {harness_source}; this test's path is stale")
+        return
+    if "ax_overlay_has_appeared(len(matches))" not in harness_source.read_text():
+        FAILURES.append(
+            "the live poll loop does not call ax_overlay_has_appeared(len(matches)) — "
+            "the stopping rule tested above is not the one the loop actually uses")
+
 
 def test_a_half_written_line_is_not_a_marker():
     """The emitter loops on a short write, so a poller can read mid-line.
@@ -478,6 +499,79 @@ def test_wrong_presentation_binding_is_refused():
             "control's specific verdict would no longer distinguish this case "
             "from a real misclassification",
             failure[0], m.BLOCKED_DUPLICATE_MARKER)
+
+
+def test_known_invalid_ax_preconditions_never_touch_the_record_key():
+    """A synthetic keypress on a launch already known to be unusable is not
+    free (cloud review P1, C1 repair round 2): it is the exact input this
+    instrument exists to measure the effect of, so AX-unavailable and
+    a-match-already-exists must refuse BEFORE any input, not after.
+
+    `simulate_input`/`ptt_binding` are imported LAZILY inside
+    `measure_keypress_to_overlay`, so a fake registered in `sys.modules`
+    before the call is what `import ... as _si` finds instead of the real
+    one. `ax_accessibility_available`/`ax_matching_windows` are called
+    unqualified at module scope, so replacing the attribute on `m` itself
+    is enough — no `sys.modules` trick needed for those two.
+    """
+    import types
+
+    class SpyInput(types.ModuleType):
+        def __init__(self, name):
+            super().__init__(name)
+            self.down_calls = []
+            self.up_calls = []
+
+        def modifier_down(self, keycode):
+            self.down_calls.append(keycode)
+
+        def modifier_up(self, keycode):
+            self.up_calls.append(keycode)
+
+    fake_ptt = types.ModuleType("ptt_binding")
+    fake_ptt.resolve = lambda: types.SimpleNamespace(
+        is_modifier_only=True, key_name="fn (globe)", keycode=63)
+    spy = SpyInput("simulate_input")
+
+    saved_modules = {name: sys.modules.get(name) for name in ("simulate_input", "ptt_binding")}
+    saved_ax_available = m.ax_accessibility_available
+    saved_ax_matching = m.ax_matching_windows
+    sys.modules["simulate_input"] = spy
+    sys.modules["ptt_binding"] = fake_ptt
+    try:
+        m.ax_accessibility_available = lambda pid: False
+        m.ax_matching_windows = lambda pid: []
+        result = m.measure_keypress_to_overlay(4242, "/nonexistent-marker-path")
+        expect("AX-unavailable never presses the record key", spy.down_calls, [])
+        expect("and never releases it either", spy.up_calls, [])
+        expect("while still reporting the right verdict",
+               result["verdict"], m.BLOCKED_AX_UNAVAILABLE)
+
+        m.ax_accessibility_available = lambda pid: True
+        m.ax_matching_windows = lambda pid: [object()]
+        result = m.measure_keypress_to_overlay(4242, "/nonexistent-marker-path")
+        expect("a preexisting match never presses the record key either",
+               spy.down_calls, [])
+        expect("nor releases it", spy.up_calls, [])
+        expect("while still reporting the right verdict",
+               result["verdict"], m.BLOCKED_NO_OVERLAY)
+
+        # TWIN: with both preconditions satisfied, the record key IS pressed
+        # and released exactly once — the refusal above is about the
+        # preconditions, not about this function never pressing a key at all.
+        m.ax_accessibility_available = lambda pid: True
+        m.ax_matching_windows = lambda pid: []
+        result = m.measure_keypress_to_overlay(4242, "/nonexistent-marker-path", timeout_s=0.05)
+        expect("a clean precondition set presses the record key once", spy.down_calls, [63])
+        expect("and releases it once", spy.up_calls, [63])
+    finally:
+        for name, mod in saved_modules.items():
+            if mod is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = mod
+        m.ax_accessibility_available = saved_ax_available
+        m.ax_matching_windows = saved_ax_matching
 
 
 # -------------------------------------------------- 9. thirty pairs, exactly
@@ -631,6 +725,9 @@ EMITTER = (pathlib.Path(__file__).resolve().parents[2]
 HOST = (pathlib.Path(__file__).resolve().parents[2]
         / "Sources" / "EnviousWisprAppKit" / "App" / "Overlay"
         / "OverlayWindowHost.swift")
+DIRECTOR = (pathlib.Path(__file__).resolve().parents[2]
+            / "Sources" / "EnviousWisprAppKit" / "App" / "Overlay"
+            / "OverlayDirector.swift")
 
 
 def test_the_swift_emitter_and_this_parser_agree_on_the_schema():
@@ -700,12 +797,10 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
     just the field's spelling: `OverlayWindowHost` must pass
     `panel.windowNumber`, and it must do so on the `emitFirst` path.
     """
-    host = (pathlib.Path(__file__).resolve().parents[2] / "Sources"
-            / "EnviousWisprAppKit" / "App" / "Overlay" / "OverlayWindowHost.swift")
-    if not host.exists():
-        FAILURES.append(f"the host is not at {host}; this test's path is stale")
+    if not HOST.exists():
+        FAILURES.append(f"the host is not at {HOST}; this test's path is stale")
         return
-    swift = host.read_text()
+    swift = HOST.read_text()
     if "window: panel.windowNumber" not in swift:
         FAILURES.append(
             "the host does not pass panel.windowNumber to the marker; the harness "
@@ -714,18 +809,36 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
         FAILURES.append(
             "the host no longer emits the order-front marker once per process")
 
+    # **The AX identifier must be set AFTER `orderFrontRegardless()`, never at
+    # construction (cloud review P1, C1 repair round 2).**
+    # `accessibilityWindows` enumerates every application window regardless of
+    # visibility, so setting the identifier in `ensurePanel()` would let the
+    # harness's AX poll match a panel that has no content and was never
+    # ordered front — a timestamp for an event the user cannot see. Source
+    # order is the only thing that can catch this class of regression; the
+    # marker format does not change when it does.
+    order_front_index = swift.find("orderFrontRegardless()")
+    identifier_index = swift.find("setAccessibilityIdentifier(")
+    if order_front_index < 0 or identifier_index < 0:
+        FAILURES.append(
+            "could not find both orderFrontRegardless() and setAccessibilityIdentifier( "
+            "in the host source to check their order")
+    elif identifier_index < order_front_index:
+        FAILURES.append(
+            "setAccessibilityIdentifier( appears BEFORE orderFrontRegardless() in the "
+            "host — the AX identifier would be visible to a poll before the panel has "
+            "any content or is on screen")
+
     # The root markers must be HELD, not emitted where they are captured.
     # Emitting at the capture site puts the marker's own write inside the
     # keypress interval in the baseline bundle and outside it in the prewarmed
     # one, so the benchmark credits the change for removing instrumentation cost
     # that is not production work. Nothing about the marker FORMAT changes when
     # this regresses, so no other row here would notice.
-    director = (pathlib.Path(__file__).resolve().parents[2] / "Sources"
-                / "EnviousWisprAppKit" / "App" / "Overlay" / "OverlayDirector.swift")
-    if not director.exists():
-        FAILURES.append(f"the director is not at {director}; this test's path is stale")
+    if not DIRECTOR.exists():
+        FAILURES.append(f"the director is not at {DIRECTOR}; this test's path is stale")
         return
-    d = director.read_text()
+    d = DIRECTOR.read_text()
     if "OverlayFirstRenderMarkers.hold(" not in d:
         FAILURES.append(
             "the director does not HOLD its root captures; emitting them at the "
@@ -734,6 +847,22 @@ def test_the_host_marker_is_emitted_with_a_real_window_number():
         FAILURES.append(
             "the director emits directly, which is the biased form this test exists "
             "to refuse")
+
+    # **The production intent classifier must be BOUND, not just present**
+    # (cloud review P1, C1 repair round 2). Every Python row above proves the
+    # ADJUDICATOR reads intent correctly from fabricated marker text; none of
+    # them can see whether the Director actually asks `isRecording` before
+    # tagging a presentation. Flipping the real classifier to always say
+    # `.recording` would leave all 28 Python rows green, because they never
+    # read this file. This is the same defect class the marker's own window
+    # number was written to fix, one call site over.
+    if ("OverlayFirstRenderMarkers.withPresentationIntent(" not in d
+            or "Self.isRecording(presentation) ? .recording : .other" not in d):
+        FAILURES.append(
+            "the director does not wrap host.present with "
+            "withPresentationIntent(Self.isRecording(presentation) ? .recording : .other) "
+            "— the intent tag is no longer bound to the real classifier, so a broken "
+            "classifier would leave every marker-shape test green")
 
     # Holding is not enough on its own: an empty array allocates its buffer on
     # the FIRST append, which in the baseline bundle happens inside the keypress
@@ -1017,6 +1146,7 @@ TESTS = [
     test_a_half_written_line_is_not_a_marker,
     test_recording_host_marker_is_read_from_the_marker_text,
     test_wrong_presentation_binding_is_refused,
+    test_known_invalid_ax_preconditions_never_touch_the_record_key,
     test_29_pairs_block_and_30_pairs_pass,
     test_one_invalid_sample_blocks_without_top_up,
     test_benchmark_fails_on_a_real_regression,

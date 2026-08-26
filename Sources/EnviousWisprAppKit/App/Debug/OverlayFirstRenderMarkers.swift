@@ -35,10 +35,20 @@
   /// site places before any measured interval.
   public enum OverlayFirstRenderMarkers {
     /// The AX identifier the harness polls for (#2377, C1 repair, cloud review
-    /// P1). CGWindow-list membership can precede SwiftUI content actually being
-    /// composited, so the harness's stopwatch endpoint moved to "does an
-    /// `AXWindow` bearing this identifier exist under the app" — set on the ONE
-    /// retained panel once, in `OverlayWindowHost.ensurePanel()`, DEBUG-only.
+    /// P1). CGWindow-list registration can precede SwiftUI content actually
+    /// being composited, so the harness's stopwatch endpoint moved to "does an
+    /// `AXWindow` bearing this identifier exist under the app" — the plan's
+    /// OWN "first-AX-overlay" language, not a stronger claim than that. AX
+    /// membership still is not proof of the first COMPOSITED pixel; a real
+    /// screen recording is (`wispr_eyes.record()`), and that proof belongs to
+    /// C5, not to this polling instrument.
+    ///
+    /// Set on the ONE retained panel, AFTER `orderFrontRegardless()` —
+    /// `OverlayWindowHost.present()`, DEBUG-only, never in `ensurePanel()`.
+    /// `accessibilityWindows` enumerates every application window regardless
+    /// of visibility, so setting it at construction would let the harness's
+    /// poll match a panel with no content, never ordered front.
+    ///
     /// A string constant here rather than duplicated in Swift and Python is
     /// what keeps the two from drifting apart the way the schema strings do.
     public static let axPanelIdentifier = "EW_OVERLAY_FIRST_RENDER_PANEL"

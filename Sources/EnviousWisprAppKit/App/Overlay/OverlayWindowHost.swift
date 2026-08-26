@@ -219,6 +219,16 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
     // host orders a panel front on EVERY presentation while the benchmark is
     // about the first one. See `OverlayFirstRenderMarkers.emitFirst`.
     #if DEBUG
+      // **The AX identifier is set HERE, after `orderFrontRegardless()`, never
+      // in `ensurePanel()` (cloud review P1, C1 repair round 2).**
+      // `accessibilityWindows` enumerates every application window, visible or
+      // not — setting the identifier at construction would make the harness's
+      // AX poll match the panel the instant it exists, before content is
+      // attached or the panel is ordered front, timing something the user
+      // cannot see. Setting it AFTER the same two calls the marker already
+      // waits on keeps both signals — AX identity and the marker — bound to
+      // the same real event.
+      panel.setAccessibilityIdentifier(OverlayFirstRenderMarkers.axPanelIdentifier)
       // The window number is the whole point of this marker: it lets the harness
       // NAME the window whose appearance ends the keypress interval, instead of
       // accepting whichever window it happens to notice first.
@@ -295,13 +305,6 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
     p.isMovableByWindowBackground = true
     p.hasShadow = true
     p.delegate = self
-    // #2377 Phase 6, C1 repair (cloud review P1): the harness's stopwatch
-    // endpoint polls AX, not CGWindow membership, so it needs a stable way to
-    // name THIS panel in the AX tree. Set once, on the one retained panel;
-    // every later presentation reuses it.
-    #if DEBUG
-      p.setAccessibilityIdentifier(OverlayFirstRenderMarkers.axPanelIdentifier)
-    #endif
     panel = p
     return p
   }

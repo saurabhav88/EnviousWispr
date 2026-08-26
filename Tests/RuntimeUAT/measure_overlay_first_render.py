@@ -491,6 +491,13 @@ def adjudicate_ax_overlay(*, ax_available, preexisting_count, match_count_at_sto
     its content is on screen, which is exactly the case the plan's
     "first-AX-overlay" language exists to rule out.
 
+    **AX membership is not proof of the first COMPOSITED pixel either** —
+    stated so this function is never cited as more than it is. A real screen
+    recording is (`wispr_eyes.record()`); that proof belongs to C5, which
+    exists specifically because #2377 needed the pill's first composited
+    frame and this repo's own tooling already documents that no amount of
+    polling — CGWindow or AX — can answer that question.
+
     The value is always the harness's own first-observed timestamp for the
     identifier the panel carries. The app supplies identity; it does not
     supply time. `host_window_id` — the marker's own CGWindow number, already
@@ -845,50 +852,68 @@ def measure_keypress_to_overlay(pid, marker_path, *, timeout_s=5.0):
     match_count_at_stop = 0
     gaps = []
     marker_result = (None, None)  # (window_id, block_tuple) — both None means "not yet"
+    keydown_ns = 0
+    host_window_id = None
+    presentation_block = None
 
-    keydown_ns = time.perf_counter_ns()
-    _si.modifier_down(binding.keycode)
-    last = time.perf_counter_ns()
-    deadline = last + int(timeout_s * 1e9)
-    try:
-        while time.perf_counter_ns() < deadline:
-            matches = ax_matching_windows(pid) if ax_available else []
-            seen = time.perf_counter_ns()
-            gaps.append((seen - last) / 1e6)
-            last = seen
-            if matches and first_seen_ns is None:
-                first_seen_ns = seen
-                match_count_at_stop = len(matches)
-            if marker_result[0] is None and marker_result[1] is None:
-                try:
-                    marker_text = marker_path.read_text()
-                except OSError:
-                    marker_text = ""
-                marker_result = recording_host_marker_from(marker_text, exhausted=False)
-            if marker_result[1] is not None:
-                # A definitive block. No amount of further AX polling changes
-                # a marker-level fault, so stop now rather than run out the
-                # clock on a verdict already decided.
-                break
-            if first_seen_ns is not None and marker_result[0] is not None:
-                break
-    finally:
-        # Released whatever happened above. A modifier left down is a stuck key
-        # for every app on the machine, and the failure path is exactly when it
-        # is least likely to be noticed.
-        _si.modifier_up(binding.keycode)
-
-    if marker_result[0] is None and marker_result[1] is None:
-        # Neither confirmed nor blocked when time ran out: force the FINAL
-        # call, which is the one point "only .other, no .recording yet" and
-        # "only .other, no .recording EVER" become the same fact.
+    # **Known-invalid preconditions are checked BEFORE any synthetic input**
+    # (cloud review P1, C1 repair round 2). A keypress cannot produce
+    # evidence `adjudicate_ax_overlay` will accept when the AX tree is
+    # unreadable or a match already exists — driving the key anyway wastes a
+    # real press, and a synthetic keypress on an already-doomed launch is not
+    # free: it is the exact input this instrument exists to measure the
+    # effect of.
+    if ax_available and not preexisting:
+        keydown_ns = time.perf_counter_ns()
+        _si.modifier_down(binding.keycode)
+        last = time.perf_counter_ns()
+        deadline = last + int(timeout_s * 1e9)
         try:
-            marker_text = marker_path.read_text()
-        except OSError:
-            marker_text = ""
-        marker_result = recording_host_marker_from(marker_text, exhausted=True)
+            while time.perf_counter_ns() < deadline:
+                matches = ax_matching_windows(pid)
+                seen = time.perf_counter_ns()
+                gaps.append((seen - last) / 1e6)
+                last = seen
+                # **The tested stopping rule, actually called** (cloud review
+                # P1, C1 repair round 2) — `ax_overlay_has_appeared` was
+                # tested but the live loop reimplemented its condition inline,
+                # so a mutant weakening the real rule left the whole suite
+                # green.
+                if ax_overlay_has_appeared(len(matches)) and first_seen_ns is None:
+                    first_seen_ns = seen
+                    match_count_at_stop = len(matches)
+                if marker_result[0] is None and marker_result[1] is None:
+                    try:
+                        marker_text = marker_path.read_text()
+                    except OSError:
+                        marker_text = ""
+                    marker_result = recording_host_marker_from(marker_text, exhausted=False)
+                if marker_result[1] is not None:
+                    # A definitive block. No amount of further AX polling
+                    # changes a marker-level fault, so stop now rather than
+                    # run out the clock on a verdict already decided.
+                    break
+                if first_seen_ns is not None and marker_result[0] is not None:
+                    break
+        finally:
+            # Released whatever happened above. A modifier left down is a
+            # stuck key for every app on the machine, and the failure path
+            # is exactly when it is least likely to be noticed.
+            _si.modifier_up(binding.keycode)
 
-    host_window_id, presentation_block = marker_result
+        if marker_result[0] is None and marker_result[1] is None:
+            # Neither confirmed nor blocked when time ran out: force the
+            # FINAL call, which is the one point "only .other, no .recording
+            # yet" and "only .other, no .recording EVER" become the same
+            # fact.
+            try:
+                marker_text = marker_path.read_text()
+            except OSError:
+                marker_text = ""
+            marker_result = recording_host_marker_from(marker_text, exhausted=True)
+
+        host_window_id, presentation_block = marker_result
+
     if presentation_block is not None:
         timing = OverlayTiming(verdict=presentation_block[0], detail=presentation_block[1],
                                window_id=host_window_id, keypress_ms=None)
