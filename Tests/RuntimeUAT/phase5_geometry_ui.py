@@ -13,6 +13,8 @@ starts a fresh recording — the design is read once per fresh recording and hel
 Settings are snapshotted and restored through the same UI.
 """
 
+import contextlib
+import io
 import json
 import pathlib
 import subprocess
@@ -69,7 +71,25 @@ def await_visible(pid, timeout=8.0):
 
 
 def ui_text():
-    return str(w.see())
+    """The accessibility tree as TEXT, captured from what `see()` PRINTS.
+
+    **`see()` has no return statement — it prints and returns None** — so the
+    previous `str(w.see())` was the four-character string "None" on every call.
+    A presence check against it is always False and an absence check always True:
+    the absence direction merely loses information, the presence direction
+    MANUFACTURES evidence.
+
+    `uat-testing.md` FACT: uat-gotchas documents this verbatim, names the capture
+    below as the fix, and records that the row "already existed and was not read
+    first". It was not read first here either — the checks built on this reader
+    during #2446 were vacuous by construction, and the exit-2 "control" that
+    appeared to prove the script failed closed was this bug firing rather than the
+    precondition logic working.
+    """
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        w.see()
+    return buffer.getvalue()
 
 
 def capture_design(pid, name):
@@ -126,8 +146,18 @@ def main():
     require(w.tap("Appearance"), "could not reach the Appearance section")
     await_idle()
 
-    appearance_open = "RECORDING PILL" in ui_text()
+    tree = ui_text()
+    appearance_open = "RECORDING PILL" in tree
     report["picker"]["appearance_open"] = appearance_open
+
+    # **POSITIVE CONTROL on the same capture**, required by uat-testing.md
+    # FACT: uat-gotchas. Without it, "the panel is not on screen" and "the reader
+    # is broken" are the same observation — which is exactly the confusion that
+    # produced a confident wrong diagnosis on this branch.
+    report["picker"]["reader_alive"] = "PILL POSITION" in tree
+    require(
+        report["picker"]["reader_alive"],
+        "the AX reader returned nothing recognisable — instrument failure, not a product result")
     require(appearance_open, "Appearance did not open — the Recording Pill panel is not on screen")
 
     # **The greyed-reason rows are GONE, not renamed.** They asserted a sentence
@@ -162,6 +192,9 @@ def main():
         "selecting the words design did not produce the Configure Live Preview link")
 
     report["rows"]["readingWell"] = capture_design(pid, "readingWell")
+    require(
+        report["rows"]["readingWell"].get("bounds"),
+        "no bounds captured for readingWell — the pill never rendered")
 
     # ---- Live Preview is now turned off BY THE PICKER, not on its own tab ----
     #
@@ -183,6 +216,16 @@ def main():
         # A null bound is a failed capture, and recording it as data is how a dead
         # run reported three designs it never saw.
         require(row.get("bounds"), f"no bounds captured for {key} — the pill never rendered")
+
+    # **The two wordless designs must MEASURE DIFFERENTLY.** Non-null bounds only
+    # prove a pill rendered; if the Level Rail tap silently no-ops, the Capsule
+    # renders twice, both rows look valid, and the second is filed under the wrong
+    # name. uat-testing.md requires compared designs to prove they differ.
+    classic_bounds = report["rows"]["classic"].get("bounds")
+    rail_bounds = report["rows"]["levelRail"].get("bounds")
+    require(
+        classic_bounds != rail_bounds,
+        f"classic and levelRail measured identically ({classic_bounds}) — one tap did not land")
 
     # Both directions, so neither half can pass vacuously: the link was present
     # above with the words design live, and must be gone now that a wordless one

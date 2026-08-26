@@ -59,11 +59,23 @@ final class PillAppearanceModel {
     PillCatalog.offers(design, capabilityHasWords: holdingWords)
   }
 
-  /// The design currently chosen for a group.
-  func selection(holdingWords: Bool) -> RecordingPillDesign {
-    holdingWords
-      ? settings.recordingPillDesignWithWords
-      : settings.recordingPillDesignWithoutWords
+  /// The design the NEXT recording will actually use.
+  ///
+  /// **Through `resolve`, exactly as the recording director does it.** The raw
+  /// slot can hold a design the current capability cannot render — a downgrade or
+  /// a hand-edited plist reaches it — and the director substitutes in that case.
+  /// A picker reading the raw value ticks a card the pill will not draw.
+  ///
+  /// `substituted` is deliberately discarded here: the picker's job is to show
+  /// what WILL happen, and a substitution is exactly what will happen. Surfacing
+  /// the fact that it occurred is a separate question nobody has asked.
+  func resolvedSelection() -> RecordingPillDesign {
+    PillDesignSelections(
+      withoutWords: settings.recordingPillDesignWithoutWords,
+      withWords: settings.recordingPillDesignWithWords
+    )
+    .resolve(capabilityHasWords: wordsCapability.hasWords)
+    .design
   }
 
   /// Choose a design AND put Live Preview into the state that design needs

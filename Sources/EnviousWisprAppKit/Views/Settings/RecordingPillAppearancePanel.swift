@@ -135,8 +135,18 @@ struct RecordingPillAppearancePanel: View {
   /// still remembered — one for each capability state — so the mark follows the
   /// state the user is actually in rather than a third stored value that could
   /// disagree with both.
+  ///
+  /// **RESOLVED, not read raw.** Reading the slot directly returned whatever is
+  /// persisted, while the recording director puts the same value through
+  /// `PillDesignSelections.resolve` and SUBSTITUTES an incompatible one. A
+  /// downgrade or a hand-edited plist can leave a words-capable design in the
+  /// wordless slot, and the picker then ticked a card the next recording would
+  /// not use — and, since the Configure link keys off this, showed or hid the link
+  /// against the wrong design. Found by Codex review; it is the same root as
+  /// `offersCoupled`, which was routed through the catalog one round earlier while
+  /// this second site was missed.
   static func selected(in model: PillAppearanceModel) -> RecordingPillDesign {
-    model.selection(holdingWords: model.wordsCapability.hasWords)
+    model.resolvedSelection()
   }
 
   /// Why some cards in the row are greyed, in one line, or `nil` when none are.

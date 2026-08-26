@@ -22,11 +22,59 @@ struct AppearancePillPickerTests {
   init() { _ = NSApplication.shared }
 
   private static func model(_ capability: PillWordsCapability) -> PillAppearanceModel {
+    settingsAndModel(capability).1
+  }
+
+  /// Both halves, for a test that has to PERSIST a selection before reading it
+  /// back through the picker.
+  private static func settingsAndModel(
+    _ capability: PillWordsCapability
+  ) -> (SettingsManager, PillAppearanceModel) {
     let name = "ew.pillPickerTest." + UUID().uuidString
     let suite = UserDefaults(suiteName: name)!
     suite.removePersistentDomain(forName: name)
-    return PillAppearanceModel(
-      settings: SettingsManager(defaults: suite), capability: { capability })
+    let settings = SettingsManager(defaults: suite)
+    return (settings, PillAppearanceModel(settings: settings, capability: { capability }))
+  }
+
+  /// **The tick marks what the NEXT RECORDING will use, not what is stored.**
+  ///
+  /// The recording director puts both stored slots through
+  /// `PillDesignSelections.resolve`, which SUBSTITUTES a design the current
+  /// capability cannot render. The picker read the raw slot, so a words-capable
+  /// design sitting in the wordless slot — reachable by a downgrade or a
+  /// hand-edited plist, and the case `resolve`'s own mirror-direction guard exists
+  /// for — ticked a card the pill would not draw, and drove the Configure Live
+  /// Preview link off the wrong design.
+  ///
+  /// Found by Codex review. Same root as `offersCoupled`, which was routed through
+  /// the catalog a round earlier while this second site was missed — which is why
+  /// this asserts the RELATION to `resolve` rather than a specific design, so any
+  /// future divergence between the two fails here.
+  @Test("the tick marks the design the recorder would actually use")
+  func theTickFollowsTheResolvedDesign() {
+    for capability in PillWordsCapability.allCases {
+      let (settings, model) = Self.settingsAndModel(capability)
+
+      // The incompatible combination, persisted deliberately: a words-capable
+      // design in the wordless slot and vice versa.
+      settings.recordingPillDesignWithoutWords = .readingWell
+      settings.recordingPillDesignWithWords = .classic
+
+      let shown = RecordingPillAppearancePanel.selected(in: model)
+      let resolved = PillDesignSelections(
+        withoutWords: settings.recordingPillDesignWithoutWords,
+        withWords: settings.recordingPillDesignWithWords
+      ).resolve(capabilityHasWords: capability.hasWords).design
+
+      #expect(
+        shown == resolved,
+        """
+        at \(capability) the picker ticks \(shown) while the recorder would draw \
+        \(resolved). The tick is a promise about the next recording, so the two \
+        cannot be allowed to disagree.
+        """)
+    }
   }
 
   // MARK: - Offerability comes from the catalog, in both directions
