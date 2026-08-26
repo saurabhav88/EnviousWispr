@@ -406,9 +406,20 @@ internal final class PasteCascadeExecutor {
     // navigate to. Only meaningful when Tier 1 would otherwise run at all, so
     // gated on `.textField` and a present element; Safari is unaffected
     // (`addressBarFamily` returns `nil` for it) and keeps using Tier 1.
+    //
+    // Cloud review (PR #2451): `addressBarFamily` answers a question about the
+    // CAPTURED element handle, which stays true even if the user has since
+    // moved focus to a different control in the same Chromium app — Tier 2's
+    // Cmd+V goes wherever CURRENT focus is, unlike Tier 1's targeted write
+    // into the captured element. `freshFocusedElement` closes that: only skip
+    // Tier 1 when the omnibox is PROVABLY still focused right now; if focus
+    // moved on, fall through to Tier 1's existing targeted-write behavior,
+    // exactly as before this fix existed.
     let isChromiumOmnibox: Bool =
-      if classification == .textField, let element = request.targetElement {
+      if classification == .textField, let element = request.targetElement,
         PasteService.addressBarFamily(of: element) == .chromium
+      {
+        PasteService.freshFocusedElement(matching: element) != nil
       } else {
         false
       }

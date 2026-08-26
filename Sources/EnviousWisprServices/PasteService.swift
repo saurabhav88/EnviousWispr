@@ -919,7 +919,7 @@ public enum PasteService {
   ///
   /// Returns nil for untrusted accessibility, a dead process, an unreadable
   /// focus, or a different element — every one of which means "do not repair".
-  static func freshFocusedElement(
+  package static func freshFocusedElement(
     matching element: AXUIElement,
     messagingTimeout: Double = axMessagingTimeoutSeconds
   ) -> AXUIElement? {
