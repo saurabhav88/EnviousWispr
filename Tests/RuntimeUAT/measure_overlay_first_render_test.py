@@ -1144,16 +1144,29 @@ def test_smoke_routes_its_keypress_measurement_through_the_readiness_gate():
             'proc=launched["process"] — a crash during warm-up would wait '
             "out the full timeout instead of being detected")
 
+    # `press_permitted` must be derived from BOTH facts — engine readiness
+    # AND a screen-lock recheck taken AFTER the readiness wait (cloud review
+    # P1, #2377 C1 repair): the launch and readiness waits can together run
+    # long enough for the screen to lock after the function's initial check,
+    # which that initial check cannot see.
+    if "pre_press_lock = screen_lock_state()" not in body:
+        FAILURES.append("smoke() does not re-check the screen lock before the press")
+    required_permit = "press_permitted = engine_ready and not pre_press_blocked"
+    if required_permit not in body:
+        FAILURES.append(
+            "smoke() does not derive press_permitted from BOTH engine "
+            "readiness and the pre-press screen-lock recheck")
+
     required_gate = "\n".join((
         "        timing = measure_after_engine_ready(",
-        "            engine_ready,",
+        "            press_permitted,",
         "            lambda: measure_keypress_to_overlay(",
     ))
     gate_idx = body.find(required_gate)
     if gate_idx < 0:
         FAILURES.append(
-            "smoke() does not route its keypress measurement through the "
-            "engine-readiness gate")
+            "smoke() does not route its keypress measurement through "
+            "press_permitted")
     elif gate_idx < ready_idx:
         FAILURES.append(
             "smoke() gates the keypress measurement BEFORE awaiting "
@@ -1174,6 +1187,41 @@ def test_smoke_routes_its_keypress_measurement_through_the_readiness_gate():
         FAILURES.append(
             "the caller-contract check does not fail on a bypassed source — "
             "it cannot be trusted to catch a real regression")
+
+
+def test_final_verdict_prefers_the_specific_keypress_diagnosis():
+    """`timing`'s verdict must win over `result`'s (cloud review P2, #2377
+    C1 repair). When AX is unavailable, `measure_keypress_to_overlay`
+    writes no recording marker, so `adjudicate_launch` independently and
+    correctly reports the true-but-less-informative `BLOCKED_MISSING_MARKER`
+    for the SAME run — reporting THAT instead of the actual
+    `BLOCKED_AX_UNAVAILABLE` would mask an unavailable precondition behind
+    a verdict that reads like an app defect.
+    """
+    blocked_result = m.LaunchResult(
+        verdict=m.BLOCKED_MISSING_MARKER, detail="host.order_front.complete",
+        sample=None)
+    ax_unavailable_timing = {"verdict": m.BLOCKED_AX_UNAVAILABLE,
+                             "detail": "AX permission not granted"}
+    verdict, detail = m.final_verdict_and_detail(blocked_result, ax_unavailable_timing)
+    expect("the specific AX diagnosis wins over the generic marker block",
+           verdict, m.BLOCKED_AX_UNAVAILABLE)
+    expect("and carries its own detail, not the marker block's",
+           detail, "AX permission not granted")
+
+    # TWIN: when `timing` is OK, `result`'s own verdict is reported —
+    # proving the reordering above is about PRIORITY, not about `result`
+    # never being consulted at all.
+    ok_timing = {"verdict": m.OK, "detail": "", "keypress_ms": 12.0}
+    verdict, detail = m.final_verdict_and_detail(blocked_result, ok_timing)
+    expect("result's own verdict is reported once timing is OK",
+           verdict, m.BLOCKED_MISSING_MARKER)
+    expect("with result's own detail", detail, "host.order_front.complete")
+
+    # TWIN: both OK yields the smoke verdict, not a bare OK.
+    ok_result = m.LaunchResult(verdict=m.OK, detail="", sample=None)
+    verdict, detail = m.final_verdict_and_detail(ok_result, ok_timing)
+    expect("both OK yields SMOKE_PASS, not a bare OK", verdict, m.SMOKE_PASS)
 
 
 # ------------------------------------------- 13. nobody is left behind
@@ -1465,6 +1513,7 @@ TESTS = [
     test_await_engine_ready_raises_on_a_crash_rather_than_waiting_out_the_timeout,
     test_measure_after_engine_ready_gates_the_keypress_by_call_count,
     test_smoke_routes_its_keypress_measurement_through_the_readiness_gate,
+    test_final_verdict_prefers_the_specific_keypress_diagnosis,
     test_an_abandoned_launch_is_actually_reaped,
     test_every_exceptional_exit_from_the_readiness_wait_reaps,
     test_a_locked_screen_blocks_before_a_launch_is_spent,

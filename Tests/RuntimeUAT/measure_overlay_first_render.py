@@ -395,6 +395,27 @@ def smoke_verdict(result):
     return SMOKE_PASS if result.verdict == OK else result.verdict
 
 
+def final_verdict_and_detail(result, timing):
+    """The SINGLE place that decides `smoke()`'s outcome once a launch's
+    marker adjudication AND a keypress measurement both exist.
+
+    `timing` is checked FIRST (cloud review P2, #2377 C1 repair): it is the
+    SPECIFIC diagnosis from the actual keypress measurement — AX
+    unavailable, a preexisting match, a wrong presentation, a timeout —
+    while `result` only sees the marker file's completeness AFTER the fact.
+    A precondition block like `BLOCKED_AX_UNAVAILABLE` writes no recording
+    marker at all, so `result` would independently and correctly report the
+    true-but-less-informative `BLOCKED_MISSING_MARKER` for the SAME run,
+    masking the real reason behind a verdict that reads like an app defect
+    rather than an unavailable precondition.
+    """
+    if timing["verdict"] != OK:
+        return timing["verdict"], timing["detail"]
+    if result.verdict != OK:
+        return result.verdict, result.detail
+    return smoke_verdict(result), result.detail
+
+
 # ------------------------------------------------------- the overlay endpoint
 
 def read_complete_markers(text):
@@ -1268,6 +1289,7 @@ def smoke(bundle_path, *, out_dir):
     timebase = None
     engine_ready_wait_ms = None
     engine_not_ready = False
+    screen_locked_before_press = None
     try:
         # Inside the reaped region, not before it. `mach_timebase()` loads a
         # native symbol and can raise; raising here with the app already launched
@@ -1285,16 +1307,33 @@ def smoke(bundle_path, *, out_dir):
             run_id=launched["run_id"], expected_pid=launched["pid"],
             expected_bundle=launched["requested"].bundle_id)
         engine_ready_wait_ms = (time.monotonic() - ready_start) * 1000.0
+
+        # Re-check the screen lock immediately before the press (cloud
+        # review P1, #2377 C1 repair). The launch and engine-readiness waits
+        # above can together run for up to ~60s — wide enough for the screen
+        # to lock AFTER the check at the top of this function, which the
+        # initial check cannot see. A press sent into a locked screen
+        # invalidates the run for the same reason that initial check exists;
+        # checked here, not inside `measure_keypress_to_overlay`, so it
+        # shares the SAME verdict and receipt field as the initial check
+        # rather than inventing a second meaning for the same fact.
+        pre_press_lock = screen_lock_state()
+        pre_press_blocked = screen_lock_block(pre_press_lock)
+        out["screen_locked_pre_press"] = pre_press_lock
+        press_permitted = engine_ready and not pre_press_blocked
+
         # Gated through `measure_after_engine_ready` rather than an inline
         # `if`/`else` around the call — the gate is then provable by calling
         # that function directly with a spy, not just by reading this
         # function's source layout (#2377, C1 repair).
         timing = measure_after_engine_ready(
-            engine_ready,
+            press_permitted,
             lambda: measure_keypress_to_overlay(
                 launched["pid"], launched["marker_path"]))
         if not engine_ready:
             engine_not_ready = True
+        elif pre_press_blocked:
+            screen_locked_before_press = pre_press_blocked
         else:
             marker_text = launched["marker_path"].read_text()
             # `resolved_identity` raises if the pid is gone, which is exactly what a
@@ -1333,20 +1372,14 @@ def smoke(bundle_path, *, out_dir):
             f"within the warm-up wait; a keypress sent now would race "
             f"ColdPressGuard (#879)")
         return out
+    if screen_locked_before_press:
+        out["verdict"] = BLOCKED_SCREEN_LOCKED
+        out["detail"] = screen_locked_before_press
+        return out
     if failure is not None:
         out["verdict"] = BLOCKED_LAUNCH
         return out
-    if result.verdict != OK:
-        out["verdict"] = result.verdict
-        return out
-    if timing["verdict"] != OK:
-        # The markers can be complete while the keypress interval has no
-        # identifiable endpoint. That is a block, never a pass with a missing
-        # field: the plan's third bound is stated on this number.
-        out["verdict"] = timing["verdict"]
-        out["detail"] = timing["detail"]
-        return out
-    out["verdict"] = smoke_verdict(result)
+    out["verdict"], out["detail"] = final_verdict_and_detail(result, timing)
     return out
 
 
