@@ -70,6 +70,28 @@ struct RainbowLevelMeter: View {
   /// scalars.
   @State private var history: [CGFloat]
 
+  /// **A SEEDED METER IS A PICTURE AND STOPS ACCUMULATING (#2435).** Non-empty
+  /// `initialHistory` is the caller declaring that it owns what this meter shows,
+  /// so tick changes are ignored and the rendered bars are exactly what was
+  /// handed in, on the first frame and every frame after it.
+  ///
+  /// **Two review rounds were spent trying to make an accumulating meter hold
+  /// still, and both fixes only moved the artifact.** A FULL seed hit capacity on
+  /// the first poll, dropped its oldest sample and shifted every bar. Seeding one
+  /// SHORT moved it: `bars` right-aligns a short history and pads the old end,
+  /// so the first frame carried a leading silence bar that the poll then pushed
+  /// out — the same one-bar shift, arriving from the other side. The root was
+  /// never the seed's length; it was that the meter kept accumulating into a
+  /// picture somebody else had already decided.
+  ///
+  /// Production passes nothing, gets `[]`, and accumulates exactly as it always
+  /// has — the branch cannot reach a live pill.
+  private var isSeeded: Bool { !initialHistory.isEmpty }
+
+  /// The history this meter was handed, if any. Held as well as seeded into
+  /// `@State` because the seeded-ness is what decides whether ticks are read.
+  private let initialHistory: [CGFloat]
+
   /// Seeds `history` so a meter that will never poll still shows a real shape
   /// (#2435).
   ///
@@ -99,6 +121,7 @@ struct RainbowLevelMeter: View {
     self.barWidth = barWidth
     self.spacing = spacing
     self.onHistoryChange = onHistoryChange
+    self.initialHistory = initialHistory
     _history = State(initialValue: initialHistory)
   }
 
@@ -202,6 +225,9 @@ struct RainbowLevelMeter: View {
     }
     .frame(width: Self.width(barWidth: barWidth, spacing: spacing), height: height)
     .onChange(of: tick) { _, _ in
+      // A seeded meter is a PICTURE: the caller owns what it shows, so a poll
+      // that exists only to synchronise scalars must not shift the bars.
+      guard !isSeeded else { return }
       let next = Self.pushed(history, level: CGFloat(audioLevel))
       history = next
       onHistoryChange(next)

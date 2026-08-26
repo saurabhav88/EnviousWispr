@@ -283,26 +283,25 @@ struct RecordingPillPreviewTile: View {
   /// identity is that meter, so the picker would misrepresent the design it is
   /// asking the user to choose. Found by cloud review on #2439.
   ///
-  /// **It is deliberately ONE SHORT of `RainbowLevelMeter.barCount`, and the
-  /// coupling is the point rather than an accident.** `.still` polls once, that
-  /// poll increments the tick, and the meter appends on a tick change — so a
-  /// FULL seed would immediately drop its oldest sample and shift every bar,
-  /// leaving the rendered meter one bar different from the array written here.
-  /// Cloud review caught that as a consequence of the seed itself, on the round
-  /// after the seed landed. Seeding one short lets the single poll COMPLETE the
-  /// history instead: `pushed` drops only past capacity, so nothing shifts and
-  /// the rail draws exactly this shape with `sampleLevel` newest.
+  /// **Exactly `RainbowLevelMeter.barCount` samples, and it is the whole
+  /// picture.** A seeded meter ignores tick changes, so these bars are what
+  /// renders on the first frame and on every frame after it — no dependence on
+  /// how many times the pill polls or on how `bars` pads a short history.
   ///
-  /// That also removes the need to end this array at `sampleLevel` by hand — the
-  /// poll supplies it, from the same provider that drives the rainbow mark, so
-  /// the newest bar and the mark cannot disagree.
+  /// Two earlier attempts tuned the LENGTH instead and each only moved the
+  /// artifact by one bar; the owner of that reasoning is now
+  /// `RainbowLevelMeter.isSeeded`, which is where it belongs.
+  ///
+  /// It ENDS at `sampleLevel`, because the newest bar and the rainbow mark are
+  /// driven by the same instant and a picker drawing them disagreeing would be
+  /// showing a pill that cannot occur.
   ///
   /// `internal`, like `sampleDisplay`, because "what the sample pill shows" has
   /// one owner and a test has to be able to read it.
   static let sampleLevelHistory: [CGFloat] = [
     0.06, 0.11, 0.24, 0.38, 0.52, 0.61, 0.55, 0.40,
     0.22, 0.13, 0.09, 0.18, 0.34, 0.49, 0.66, 0.73,
-    0.64, 0.47, 0.29, 0.16, 0.10, 0.21, 0.35,
+    0.64, 0.47, 0.29, 0.16, 0.10, 0.21, 0.35, CGFloat(sampleLevel),
   ]
 
   var body: some View {

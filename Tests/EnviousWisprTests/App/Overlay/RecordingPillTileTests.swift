@@ -239,27 +239,19 @@ struct RecordingPillTileTests {
   /// `RecordingPillPreviewWiringTests`.
   @Test("the sample waveform fills the meter and ends where the mark is")
   func theSampleWaveformIsWellFormed() {
-    // **The subject is what the meter DRAWS, not the array as written.** `.still`
-    // polls once, that poll appends, and asserting the raw seed would be asserting
-    // a value nothing renders — which is exactly the defect cloud review found in
-    // the round that introduced the seed.
-    let history = RainbowLevelMeter.pushed(
-      RecordingPillPreviewTile.sampleLevelHistory,
-      level: CGFloat(RecordingPillPreviewTile.sampleLevel))
+    // **The seed IS the picture now**, because a seeded meter ignores ticks. Two
+    // earlier versions of this row chased the seed's LENGTH instead and each one
+    // only moved a one-bar shift; the property that matters is that the rendered
+    // bars are exactly this, which `theSeededMeterIgnoresTicks` proves for the
+    // mechanism and this row proves for the shape.
+    let history = RecordingPillPreviewTile.sampleLevelHistory
 
-    #expect(
-      RecordingPillPreviewTile.sampleLevelHistory.count == RainbowLevelMeter.barCount - 1,
-      """
-      the seed has \(RecordingPillPreviewTile.sampleLevelHistory.count) samples for \
-      \(RainbowLevelMeter.barCount) bars. It must be exactly one short: the single still \
-      poll completes it, and a FULL seed drops its oldest and shifts every bar.
-      """)
     #expect(
       history.count == RainbowLevelMeter.barCount,
       """
-      after the one still poll the meter holds \(history.count) samples for \
-      \(RainbowLevelMeter.barCount) bars, so the rendered waveform is not the shape \
-      written here.
+      the seed has \(history.count) samples for \(RainbowLevelMeter.barCount) bars. \
+      `bars` right-aligns a short history and pads the OLD end with silence, so anything \
+      but an exact fill draws a leading silence bar nobody chose.
       """)
     #expect(
       history.allSatisfy { $0 >= 0 && $0 <= 1 },
@@ -279,6 +271,68 @@ struct RecordingPillTileTests {
     #expect(
       Set(history).count > 1,
       "every sample in the authored waveform is identical, so the meter draws a flat bar")
+  }
+
+  /// **The mechanism behind the shape row above: a seeded meter does not
+  /// accumulate.**
+  ///
+  /// Driven through the meter's own `onHistoryChange` seam, which exists for
+  /// exactly this — an outcome observer that reports what was pushed. A seeded
+  /// meter must never push, so the observer must never fire, however many ticks
+  /// arrive. The unseeded control is what makes that non-vacuous: without it a
+  /// meter that had simply stopped working would pass.
+  @Test("a seeded meter ignores ticks, and an unseeded one does not")
+  func theSeededMeterIgnoresTicks() {
+    final class Pushes: @unchecked Sendable {
+      var histories: [[CGFloat]] = []
+    }
+
+    // **The tick must actually CHANGE, or neither arm pushes and the row is
+    // vacuous in both directions.** `onChange` fires on a change, so a meter
+    // mounted at a fixed tick never appends whatever its seed. The rootView is
+    // replaced to advance it, which is what a real poll does.
+    func drive(seed: [CGFloat]) -> Pushes {
+      let pushes = Pushes()
+      func meter(tick: Int) -> AnyView {
+        AnyView(
+          RainbowLevelMeter(
+            audioLevel: 0.42, tick: tick,
+            onHistoryChange: { pushes.histories.append($0) },
+            initialHistory: seed))
+      }
+
+      let host = NSHostingView(rootView: meter(tick: 0))
+      let frame = NSRect(x: 0, y: 0, width: 200, height: 60)
+      let window = NSWindow(
+        contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+      window.contentView = host
+      host.frame = frame
+      host.layoutSubtreeIfNeeded()
+      window.displayIfNeeded()
+
+      host.rootView = meter(tick: 1)
+      host.layoutSubtreeIfNeeded()
+      window.displayIfNeeded()
+      return pushes
+    }
+
+    // THE CONTROL, and without it a meter that had simply stopped appending
+    // would satisfy the assertion below.
+    let unseeded = drive(seed: [])
+    #expect(
+      !unseeded.histories.isEmpty,
+      """
+      control: an UNSEEDED meter did not append on a tick change, so this row cannot \
+      distinguish a seeded meter holding still from a meter that no longer works.
+      """)
+
+    let seeded = drive(seed: RecordingPillPreviewTile.sampleLevelHistory)
+    #expect(
+      seeded.histories.isEmpty,
+      """
+      a seeded meter pushed \(seeded.histories.count) time(s), so the picker's waveform \
+      is not the array the picker chose. Every push shifts the bars.
+      """)
   }
 
   @Test("no two tiles announce the same thing")
