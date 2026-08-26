@@ -252,7 +252,24 @@ struct RecordingPillPreviewTile: View {
   /// guaranteed not to be what a user sees.
   static func scale(for design: RecordingPillDesign, inWidth available: CGFloat) -> CGFloat {
     guard available > 0, design.width > 0 else { return 1 }
-    return min(maxMagnification, available / design.width)
+    // **The card can be WIDER than the picture may safely grow**, because the
+    // card's HEIGHT is fixed at a theme card's and the pill's height scales with
+    // its width. At a single-column layout the reader is ~370pt, which scales the
+    // reading well to ~0.93x — and that pill's fixed 34pt header plus its well
+    // insets and text then exceed the 63pt box, so it is drawn clipped. Found by
+    // cloud review.
+    //
+    // Capping the width used for the scale is what closes it WITHOUT a per-design
+    // height table the view cannot measure. It also removes the gap that hid the
+    // defect: the scale is now the same at every card width at or above the
+    // nominal one, so a test taken at the nominal width describes what a user
+    // actually gets rather than the one case they never see.
+    //
+    // The cost, and it is the honest trade: at a wide card the picture stops
+    // growing and sits centred with margin either side. It could not have grown
+    // safely anyway.
+    let usable = min(available, thumbnailSize.width)
+    return min(maxMagnification, usable / design.width)
   }
 
   /// How far past life size a preview may be drawn.

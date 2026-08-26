@@ -60,7 +60,6 @@ struct RecordingPillTileTests {
 
   // MARK: - The tile renders the real pill
 
-
   /// **The two wordless designs are the same height, because they are the same
   /// chrome.** A tile that routed one of them through the reading well's layout
   /// would differ here, and the difference is what no static mock could catch.
@@ -69,12 +68,13 @@ struct RecordingPillTileTests {
     let capsule = Self.tileSize(.classic).height
     let rail = Self.tileSize(.levelRail).height
 
-    #expect(capsule > 0 && rail > 0, "measured \(capsule)/\(rail): nothing rendered, which is not a pass")
+    #expect(
+      capsule > 0 && rail > 0, "measured \(capsule)/\(rail): nothing rendered, which is not a pass")
     #expect(
       capsule == rail,
-      "the capsule tile is \(capsule)pt and the level rail tile is \(rail)pt, so one of them is not the pill it claims")
+      "the capsule tile is \(capsule)pt and the level rail tile is \(rail)pt, so one of them is not the pill it claims"
+    )
   }
-
 
   /// **Every tile in one group draws the SAME rectangle, and the two groups draw
   /// different ones.**
@@ -97,23 +97,30 @@ struct RecordingPillTileTests {
   /// The oracle is still one the tile did not write — `RenderedPillHarness`
   /// measures the recording leaf directly, with no tile involved.
   @Test(
-    "the preview is the real pill, scaled to fit its box",
-    arguments: RecordingPillDesign.allCases)
-  func thePreviewIsTheRealPillScaled(design: RecordingPillDesign) throws {
+    "the preview is the real pill, scaled to fit its box at every card width",
+    arguments: RecordingPillDesign.allCases, [CGFloat(260), 300, 370, 520, 900])
+  func thePreviewIsTheRealPillScaled(design: RecordingPillDesign, width: CGFloat) throws {
     let leaf = try Self.leafHeight(design)
-    // The SAME entry point the view calls, at the nominal box width. A separate
-    // `thumbnailScale(for:)` used to exist for tests to ask this; it was one more
-    // answer to a question the view already had an answer for, so it is gone.
-    let drawn = leaf * RecordingPillPreviewTile.scale(
-      for: design, inWidth: RecordingPillPreviewTile.thumbnailSize.width)
+    // **Every width a card ACTUALLY gets, not just the nominal one.** The nominal
+    // width was the only case asserted, and cloud review found the defect at
+    // ~370pt — a single-column layout at the supported minimum window width,
+    // where the reading well scaled to ~0.93x and its fixed header plus insets
+    // overflowed the fixed box. The one width guaranteed NOT to be what a user
+    // sees was the one width under test. 260 is below the grid minimum and 900 is
+    // a wide single column, so the bound is exercised from both sides.
+    //
+    // The SAME entry point the view calls. A separate `thumbnailScale(for:)` used
+    // to exist for tests to ask this; it was one more answer to a question the
+    // view already had an answer for, so it is gone.
+    let drawn = leaf * RecordingPillPreviewTile.scale(for: design, inWidth: width)
 
     #expect(leaf > 0, "\(design) leaf measured \(leaf), so the harness rendered nothing")
     #expect(
       drawn <= RecordingPillPreviewTile.thumbnailSize.height + 0.5,
       """
       \(design) draws \(drawn) tall into a \
-      \(RecordingPillPreviewTile.thumbnailSize.height) box, so the pill is cut off. The \
-      card is a fixed height now, so nothing grows to accommodate it.
+      \(RecordingPillPreviewTile.thumbnailSize.height) box at a card width of \(width), so \
+      the pill is cut off. The card is a fixed height, so nothing grows to accommodate it.
       """)
   }
 
@@ -172,7 +179,8 @@ struct RecordingPillTileTests {
   func everyCardIsOneSize() {
     let sizes = RecordingPillDesign.allCases.map { Self.tileSize($0) }
 
-    #expect(sizes.allSatisfy { $0.width > 0 && $0.height > 0 }, "measured \(sizes): nothing rendered")
+    #expect(
+      sizes.allSatisfy { $0.width > 0 && $0.height > 0 }, "measured \(sizes): nothing rendered")
     #expect(
       Set(sizes.map(\.height)).count == 1,
       """
@@ -240,8 +248,9 @@ struct RecordingPillTileTests {
     let widestDesign = try! #require(widest, "no designs, so the row has no subject")
 
     #expect(
-      abs(RecordingPillPreviewTile.thumbnailWidth(for: widestDesign)
-        - RecordingPillPreviewTile.thumbnailSize.width) < 0.01,
+      abs(
+        RecordingPillPreviewTile.thumbnailWidth(for: widestDesign)
+          - RecordingPillPreviewTile.thumbnailSize.width) < 0.01,
       """
       the widest design draws \(RecordingPillPreviewTile.thumbnailWidth(for: widestDesign)) \
       into a \(RecordingPillPreviewTile.thumbnailSize.width) box. It should fill it: if it \
@@ -272,7 +281,6 @@ struct RecordingPillTileTests {
       "\(design) announces no description, leaving a blind user only a name for a picture")
   }
 
-
   // MARK: - What a screen reader gets
 
   /// **The words that left the screen have to arrive somewhere, and the LABEL is
@@ -290,7 +298,8 @@ struct RecordingPillTileTests {
   /// not readable from a test — measured 2026-08-25 and recorded in
   /// `RenderedPillHarness`. Those three are unchanged from the control this tile
   /// replaces and are confirmed by the VoiceOver pass in Live UAT.
-  @Test("every tile announces its name and what it looks like", arguments: RecordingPillDesign.allCases)
+  @Test(
+    "every tile announces its name and what it looks like", arguments: RecordingPillDesign.allCases)
   func theLabelCarriesNameAndDescription(design: RecordingPillDesign) {
     let label = RecordingPillPreviewTile.accessibilityLabel(for: design)
 
@@ -430,14 +439,19 @@ struct RecordingPillTileTests {
 
   /// The sample sentence is a real one, and the wordless designs get no words —
   /// which is what makes their tiles pictures of a capsule rather than of a well.
-  @Test("only a design that can hold words is shown holding any", arguments: RecordingPillDesign.allCases)
+  @Test(
+    "only a design that can hold words is shown holding any",
+    arguments: RecordingPillDesign.allCases)
   func onlyWordCapableDesignsAreShownWords(design: RecordingPillDesign) {
     switch RecordingPillPreviewTile.sampleDisplay(for: design) {
     case .text(let sentence):
-      #expect(design.canHoldWords, "\(design) cannot hold words and is drawn holding \"\(sentence)\"")
+      #expect(
+        design.canHoldWords, "\(design) cannot hold words and is drawn holding \"\(sentence)\"")
       #expect(!sentence.isEmpty, "\(design) is drawn holding an empty sentence")
     case .off:
-      #expect(!design.canHoldWords, "\(design) can hold words and is drawn empty, so its tile understates it")
+      #expect(
+        !design.canHoldWords,
+        "\(design) can hold words and is drawn empty, so its tile understates it")
     default:
       Issue.record("\(design) is sampled in a transient state, which is not an appearance")
     }
@@ -632,7 +646,8 @@ struct RecordingPillPreviewWiringTests {
 
     #expect(
       literal.literal.tokenKind == .keyword(.false),
-      "the settings tile passes animatesGlow: true, so every capsule tile runs a permanent two second pulse")
+      "the settings tile passes animatesGlow: true, so every capsule tile runs a permanent two second pulse"
+    )
   }
 
   /// **The seed and the provider must be the SAME expression**, which is the
@@ -657,7 +672,8 @@ struct RecordingPillPreviewWiringTests {
       "livePreviewProvider is not a literal closure, so this guard cannot compare the two")
     let onlyStatement = try #require(
       provider.statements.count == 1 ? provider.statements.first : nil,
-      "livePreviewProvider has \(provider.statements.count) statements; this guard reads a single expression")
+      "livePreviewProvider has \(provider.statements.count) statements; this guard reads a single expression"
+    )
     let returned = try #require(
       onlyStatement.item.as(ExprSyntax.self)?.as(DeclReferenceExprSyntax.self),
       "livePreviewProvider returns \(onlyStatement.item.trimmedDescription), not a plain reference")
@@ -726,7 +742,8 @@ struct RecordingPillPreviewWiringTests {
     let stateNames = Self.stateProperties(of: view)
     #expect(
       stateNames.count >= 4,
-      "found \(stateNames.count) @State properties, which is fewer than the four this view is known to hold: \(stateNames)")
+      "found \(stateNames.count) @State properties, which is fewer than the four this view is known to hold: \(stateNames)"
+    )
 
     let written = Self.namesAssignedOutsideInit(of: view).intersection(stateNames)
     #expect(
