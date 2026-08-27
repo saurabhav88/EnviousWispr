@@ -175,18 +175,30 @@ struct ClipboardCleanupTests {
       ClipboardCleanup.scheduleRestore(
         snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
 
-      // A budget below the held payload. Refusing must not tear down state we declined to take
-      // responsibility for: a caller that gets nothing back has nothing to restore, so if the
-      // pending work were cancelled here the user's clipboard would be gone with no owner left.
+      // **The board moves, which makes the pending value stale and sends the takeover down the
+      // branch that READS the board.** That is the only branch a budget can refuse: the other two
+      // return a value already held in memory, where bounding saves nothing and refusing would
+      // decline to hand back a clipboard we are holding anyway.
+      //
+      // This scenario is what the row needs after #2465's confirming round moved the budget from a
+      // post-hoc measurement into the snapshot itself. Before that, ANY pending state plus a tiny
+      // budget produced a refusal; now the refusal has one route and the test has to take it.
+      put("something the user just copied", on: pb)
+
+      // Refusing must not tear down state we declined to take responsibility for: a caller that
+      // gets nothing back has nothing to restore, so if the pending work were cancelled here the
+      // user's clipboard would be gone with no owner left.
       guard case .clipboardTooLarge = ClipboardCleanup.beginTakeover(maximumBytes: 1, from: pb)
       else {
-        Issue.record("a one-byte budget must refuse")
+        Issue.record("a one-byte budget must refuse on the board-reading branch")
         return
       }
       #expect(ClipboardCleanup.hasPending, "the refusal cancelled work it was not taking over")
 
+      // And the pending cleanup, left armed, still declines on its own terms because the board
+      // moved — so the user's newer copy survives, which is the outcome the arming exists to allow.
       await ClipboardCleanup.awaitPendingCleanup()
-      #expect(pb.string(forType: .string) == "the user's own clipboard")
+      #expect(pb.string(forType: .string) == "something the user just copied")
     }
   }
 
@@ -207,6 +219,16 @@ struct ClipboardCleanupTests {
         Issue.record("a 64 KB image under an 8 KB budget must refuse")
         return
       }
+      // **The budget bounds what we TOUCH, not what we keep (#2465, confirming round).** It used to
+      // snapshot everything and measure afterwards, so a large image was fully materialized on the
+      // main actor before the budget got a say; `boundedSaveClipboard` now stops at the
+      // representation that crosses the line.
+      //
+      // Exercised THROUGH `beginTakeover` rather than by calling that function here, deliberately.
+      // `ClipboardIsolationFreezeTests` permits exactly one suite to touch clipboard-capable
+      // `PasteService` entry points, and it refused this file when the call was written directly —
+      // correctly, since widening the allowlist to admit this suite would weaken the guard for
+      // every future test in it. The real caller is the subject anyway.
       // The pair, or the row above passes against a budget check that refuses everything.
       guard case .granted = ClipboardCleanup.beginTakeover(maximumBytes: 1 << 20, from: pb) else {
         Issue.record("the same clipboard must be accepted under a budget that fits it")

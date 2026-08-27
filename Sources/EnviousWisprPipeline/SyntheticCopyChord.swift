@@ -64,24 +64,42 @@ enum SyntheticCopyChord {
     // reading the other is how a clear looks like it never happened.
     guard let source = CGEventSource(stateID: .hidSystemState) else { return .notPosted }
 
-    // **Everything that can fail happens BEFORE Command goes down.** Both key events are built
-    // here, so the only statements between pressing Command and releasing it are two posts, and
-    // `CGEvent.postToPid` returns nothing and cannot throw. That is the structure rather than a
-    // convention: there is no early return to forget, so the clear below is unconditional by
-    // construction rather than by a `defer` a later edit could step around.
+    // **EVERY event is built before ANY of them is posted, including the RELEASE.**
+    //
+    // An earlier version built the two key events up front and then called a helper that CREATED
+    // the release event after Command was already down. If that creation failed — memory pressure,
+    // resource exhaustion — Command stayed latched system-wide and the function returned
+    // `clearFailed` having posted no release at all. The comment above it claimed "everything that
+    // can fail happens BEFORE Command goes down", which was the whole point and was not true of
+    // the line it was written above.
+    //
+    // The knowledge file this session wrote about the latch says exactly this: build everything
+    // that can fail BEFORE pressing the modifier. Writing that sentence did not stop the defect one
+    // file away. Found by the confirming review round; owner
+    // `~/.claude/knowledge/dev/gotchas.md`, "Posting a synthetic modifier chord LATCHES".
+    //
+    // So after this guard there is no construction left and no early return: four posts, none of
+    // which can fail, and the release is unconditional by CONSTRUCTION rather than by a `defer` a
+    // later edit could step around.
     guard
+      let commandDown = flagsEvent(.maskCommand, source: source),
+      let commandUp = flagsEvent([], source: source),
       let keyDown = CGEvent(keyboardEventSource: source, virtualKey: copyKeyCode, keyDown: true),
       let keyUp = CGEvent(keyboardEventSource: source, virtualKey: copyKeyCode, keyDown: false)
     else { return .notPosted }
 
-    guard setFlags(.maskCommand, source: source, pid: pid) else { return .notPosted }
-
+    commandDown.postToPid(pid)
     keyDown.flags = .maskCommand
     keyDown.postToPid(pid)
     keyUp.flags = .maskCommand
     keyUp.postToPid(pid)
+    commandUp.postToPid(pid)
 
-    return setFlags([], source: source, pid: pid) ? .posted : .clearFailed
+    // **`clearFailed` is now unreachable from this function and the case stays**, because the state
+    // it names is still real: a release we posted can be lost by the window server, and a future
+    // path that cannot prebuild its release would need it. Deleting a case to make a switch shorter
+    // is how a state stops being handled rather than stops existing.
+    return .posted
   }
 
   /// One `flagsChanged` event carrying exactly `flags`.
@@ -94,20 +112,21 @@ enum SyntheticCopyChord {
   /// The virtual key is the physical Command key, because a `flagsChanged` event names the key whose
   /// state changed. It is a layout-independent modifier position and not affected by the resolver
   /// below, which is about the character key.
+  ///
+  /// **BUILDS, never posts.** The split is the fix for the latch described in `post`: a helper that
+  /// created and posted in one step made it impossible to construct the release before pressing.
   @MainActor
-  private static func setFlags(
+  private static func flagsEvent(
     _ flags: CGEventFlags,
-    source: CGEventSource,
-    pid: pid_t
-  ) -> Bool {
+    source: CGEventSource
+  ) -> CGEvent? {
     guard
       let event = CGEvent(
         keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Command), keyDown: !flags.isEmpty)
-    else { return false }
+    else { return nil }
     event.type = .flagsChanged
     event.flags = flags
-    event.postToPid(pid)
-    return true
+    return event
   }
 
   /// Which virtual key means "c" on the keyboard layout that is active RIGHT NOW.

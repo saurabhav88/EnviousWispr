@@ -674,7 +674,8 @@ extension MenuBarController: NSMenuDelegate {
         // more Accessibility operation on a handle already bounded by the timeout above; a
         // successful read pays nothing.
         let (readResult, readContext) = SelectionReader.readForAcquisition(
-          timeout: Self.quickAddReadTimeout)
+          timeout: Self.quickAddReadTimeout,
+          sampleSubrole: settings.quickAddClipboardFallback)
         let quickAdd: QuickAddMenuState = {
           switch readResult {
           case .text(let text): return .ready(text)

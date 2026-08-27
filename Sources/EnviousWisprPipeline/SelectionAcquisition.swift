@@ -209,7 +209,11 @@ public enum SelectionAcquisition {
     timeout: Float? = nil,
     board: NSPasteboard = .general
   ) async -> Outcome {
-    let (result, context) = SelectionReader.readForAcquisition(timeout: timeout)
+    // The subrole is sampled ONLY where it can be acted on. With the fallback off, asking would
+    // add an Accessibility operation whose failure would change the answer the user gets, for a
+    // feature they opted out of.
+    let (result, context) = SelectionReader.readForAcquisition(
+      timeout: timeout, sampleSubrole: fallbackEnabled)
     return await acquire(
       following: result, context: context, fallbackEnabled: fallbackEnabled, board: board)
   }

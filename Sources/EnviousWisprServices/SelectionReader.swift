@@ -255,11 +255,21 @@ public enum SelectionReader {
   /// **Three Accessibility operations in the fallback-eligible cases, two otherwise.** The subrole
   /// is read off the focused handle this call already holds and already bounded, and only where
   /// something is about to act on it.
+  ///
+  /// **`sampleSubrole` has no default, and passing `false` when the fallback cannot run is not an
+  /// optimisation.** The subrole read is a third Accessibility operation, and if it FAILS the whole
+  /// read becomes `.unreadable` — so a user who has switched the clipboard fallback off would see
+  /// their menu row change from inert to clickable and their shortcut report an error, both caused
+  /// entirely by work done for a feature they opted out of. Found by the confirming review round.
+  ///
+  /// The per-app denylist still pays one probe, and that is unavoidable rather than an oversight:
+  /// which application this is comes from the very sample being taken.
   @MainActor
   public static func readForAcquisition(
-    timeout: Float? = nil
+    timeout: Float? = nil,
+    sampleSubrole: Bool
   ) -> (result: Result, context: AcquisitionContext) {
-    performRead(timeout: timeout, subrole: .whenFallbackEligible)
+    performRead(timeout: timeout, subrole: sampleSubrole ? .whenFallbackEligible : .skip)
   }
 
   /// The one live read both entry points share.

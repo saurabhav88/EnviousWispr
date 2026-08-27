@@ -266,9 +266,15 @@ public enum ClipboardCleanup {
   ///    and fires on top of the board it just handed back.
   /// 2. **The baseline must be the board's CURRENT count**, not the snapshot's. See `Takeover`.
   ///
-  /// - Parameter maximumBytes: the largest clipboard this caller is willing to hold in memory. The
-  ///   budget is the CALLER's policy rather than this type's: the number belongs beside the feature
-  ///   that decided how much risk one word is worth.
+  /// - Parameter maximumBytes: the largest clipboard this caller is willing to READ. The budget is
+  ///   the CALLER's policy rather than this type's: the number belongs beside the feature that
+  ///   decided how much risk one word is worth.
+  ///
+  ///   **It bounds the branch that reads the BOARD, and only that one.** The other two branches
+  ///   return a value already held in memory — a pending restore's snapshot, or a pending legacy
+  ///   rewrite's text — where bounding saves nothing and refusing would decline to hand back a
+  ///   clipboard we are holding either way. Said explicitly because the parameter's name invites
+  ///   the wider reading, and a test used to depend on it.
   static func beginTakeover(
     maximumBytes: Int,
     from board: NSPasteboard = .general
@@ -295,15 +301,17 @@ public enum ClipboardCleanup {
     var baseline = 0
     for _ in 0..<Self.takeoverSnapshotAttempts {
       let before = board.changeCount
-      let candidate = intendedPayload(from: board)
+      // The budget is passed DOWN so it bounds what we touch, not just what we keep. Nil here means
+      // the clipboard exceeded it and nothing usable was captured.
+      guard let candidate = intendedPayload(from: board, maximumBytes: maximumBytes) else {
+        return .clipboardTooLarge
+      }
       guard board.changeCount == before else { continue }
       payload = candidate
       baseline = before
       break
     }
     guard let payload else { return .clipboardTooLarge }
-
-    guard payloadBytes(payload) <= maximumBytes else { return .clipboardTooLarge }
 
     // Commit. Any pending operation is abandoned whether or not it was stale: a fresh one would fire
     // on top of our restore, a stale one would overwrite whatever the user copied, and the caller is
@@ -332,11 +340,19 @@ public enum ClipboardCleanup {
   /// asked. The three cases are the same three, and they are deliberately NOT shared with that
   /// method: one is a query and the other is a step in a transaction, and collapsing them is how a
   /// refusal comes to have side effects.
-  private static func intendedPayload(from board: NSPasteboard) -> ClipboardSnapshot {
+  ///
+  /// **Takes the budget rather than being measured afterwards.** Only the board-reading branch can
+  /// exceed it: the other two return values we are already holding in memory, so there is nothing
+  /// to bound and nothing to refuse.
+  private static func intendedPayload(
+    from board: NSPasteboard,
+    maximumBytes: Int
+  ) -> ClipboardSnapshot? {
     guard let current = pending, board.changeCount == current.changeCountAfterPaste else {
       // Either nothing is pending, or the board has moved on and the pending value is stale. In
-      // both cases what is on the board now IS the user's clipboard.
-      return PasteService.saveClipboard(from: board)
+      // both cases what is on the board now IS the user's clipboard — and it is the one branch that
+      // materializes anything, so it is the one the budget applies to.
+      return PasteService.boundedSaveClipboard(from: board, maximumBytes: maximumBytes)
     }
 
     switch current.operation {
@@ -351,17 +367,6 @@ public enum ClipboardCleanup {
       return ClipboardSnapshot(
         items: [[.string: Data(legacyText.utf8)]],
         changeCount: board.changeCount)
-    }
-  }
-
-  /// Total bytes across every representation of every item.
-  ///
-  /// **Every representation, because that is what restoration writes back.** Measuring only the
-  /// string would let a snapshot carrying a large image through as "small", and the budget exists to
-  /// bound what is held in memory rather than what is legible.
-  private static func payloadBytes(_ snapshot: ClipboardSnapshot) -> Int {
-    snapshot.items.reduce(0) { total, item in
-      total + item.values.reduce(0) { $0 + $1.count }
     }
   }
 
