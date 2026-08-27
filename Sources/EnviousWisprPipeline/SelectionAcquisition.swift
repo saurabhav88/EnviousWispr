@@ -343,6 +343,9 @@ public enum SelectionAcquisition {
     // whose own comment said it was live. `secureFocusProbe` asks the SAME pid, right now, and
     // `isSecureField` answers TRUE when it cannot tell.
     if let refusal = mayAttempt(
+      // The two signals are passed SEPARATELY here, matching what the parameters mean, because
+      // `mayAttempt` already takes both. Step 3b has one boolean to fill and uses the combined
+      // helper instead — same two questions either way, and neither site can ask a subset.
       secureInputActive: IsSecureEventInputEnabled(),
       focusedElementIsSecure: SelectionReader.isSecureField(
         SelectionReader.secureFocusProbe(pid: pid, timeout: secureProbeTimeout)),
@@ -457,9 +460,7 @@ public enum SelectionAcquisition {
     // Past the takeover, so a refusal returns through `concluding` and honours the restore
     // obligation — and because nothing has been posted, the board is unchanged and the no-write
     // path leaves the user's clipboard alone.
-    if SelectionReader.isSecureField(
-      SelectionReader.secureFocusProbe(pid: pid, timeout: secureProbeTimeout))
-    {
+    if isSecureRightNow(pid: pid) {
       return await concluding(.refused(.secureInputActive), acquired: .nothing)
     }
 
@@ -637,6 +638,26 @@ public enum SelectionAcquisition {
   }
 
   // MARK: - The live half
+
+  /// Is keystroke input protected RIGHT NOW, by either mechanism?
+  ///
+  /// **ONE function, called from both re-check sites, because checking a SUBSET is the failure this
+  /// area keeps producing.** There are two independent signals — `IsSecureEventInputEnabled()`,
+  /// which is process-wide and is what most apps actually use, and the focused element's secure
+  /// subrole, which catches a password field in an app that never enabled the mode. A site that
+  /// asks one of them looks exactly like a site that asks both.
+  ///
+  /// That is not hypothetical here: step 3b was added to close a window and probed only the
+  /// SUBROLE, so a target enabling process-wide secure input during the clipboard materialisation
+  /// walked straight through the guard that had just been added to catch it. Found by cloud review
+  /// on PR #2472, one round after the same shape was fixed at step 2b.
+  ///
+  /// A helper cannot be called with a subset, which is why this is a function rather than a note.
+  private static func isSecureRightNow(pid: pid_t) -> Bool {
+    if IsSecureEventInputEnabled() { return true }
+    return SelectionReader.isSecureField(
+      SelectionReader.secureFocusProbe(pid: pid, timeout: secureProbeTimeout))
+  }
 
   /// Whether the remembered pid is still the application it was sampled as.
   ///
