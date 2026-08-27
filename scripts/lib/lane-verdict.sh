@@ -99,11 +99,13 @@ ew_lane_verdict() {
   local log="$1" bundle="$2" label="$3" expected="${4:-}"
   local n payload rc
 
+
   if [ ! -f "$log" ]; then
     echo "ERROR: $label has no test log at $log" >&2
     echo "==> $label verdict: FAIL"
     return 1
   fi
+
 
   # Sum the Swift Testing per-target run summaries — the same quantity the guard
   # this replaces computed, kept as the empty-run detector rather than the verdict.
@@ -173,6 +175,47 @@ ew_lane_verdict() {
   # have read "exited 0" for every real failure — a diagnostic that is wrong
   # precisely when it is read (#2407 review r2).
   if xcrun xcresulttool get test-results tests --path "$bundle" >"$payload" 2>/dev/null; then
+    # #2455 C5: every EXPECTED test bundle must appear in the RESULT payload.
+    #
+    # The count guard sums per-target totals, so a bundle dropped from a scheme
+    # leaves a large positive number — 7,110 instead of 7,158 reads as a pass.
+    # `EnviousWisprDesktopEffectsTests` is the one that matters: it holds the
+    # three suites that drive real windows, it is the newest and so easiest to
+    # drop by accident, and it is the smallest, so its absence moves the total
+    # least.
+    #
+    # Read from the PAYLOAD, not the log. A first attempt paired a name-grep over
+    # the log with a count of anonymous `Test run started.` markers; Codex review
+    # (2026-08-27) rejected it correctly — the log carries the bundle name on
+    # BUILD lines, the markers carry no name, and two uncorrelated signals do not
+    # prove that the NAMED bundles ran. `xcresulttool` emits one
+    # `Unit test bundle` node per bundle that actually executed, which is the
+    # direct answer.
+    #
+    # Caller-controlled: `xcode-test.sh --filter` runs one suite on purpose and
+    # passes an empty list. A gate that fails honest usage teaches people to
+    # bypass it.
+    local required_bundles="${EW_LANE_REQUIRED_BUNDLES-EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests}"
+    if [ -n "$required_bundles" ]; then
+      local ran_bundles required_bundle
+      ran_bundles="$(python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+for plan in d.get("testNodes", []):
+    for node in plan.get("children", []) or []:
+        if node.get("nodeType") == "Unit test bundle":
+            print(node.get("name", ""))
+' "$payload" 2>/dev/null)"
+      for required_bundle in $required_bundles; do
+        if ! printf '%s\n' "$ran_bundles" | grep -qx "$required_bundle"; then
+          echo "ERROR: $label never ran $required_bundle — absent from the result bundle" >&2
+          echo "  ran: $(printf '%s ' $ran_bundles)" >&2
+          echo "==> $label verdict: FAIL"
+          rm -f "$payload"
+          return 1
+        fi
+      done
+    fi
     rc=0
   else
     rc=$?

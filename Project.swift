@@ -13,20 +13,6 @@ let deploymentTargets: DeploymentTargets = .macOS("14.0")
 // consensus: Codex + council GPT/Gemini; see learnings ledger.)
 let packageAccessIdentifier = "enviouswispr"
 
-/// Mirrors `DesktopEffectPolicy.environmentKey` in EnviousWisprServices. Two
-/// spellings of one name is how a gate goes quietly dead, so any change to either
-/// must change both; `DesktopEffectPolicyTests` fails if they drift.
-let DesktopEffectsPolicyKey = "EW_DESKTOP_EFFECTS_POLICY"
-
-/// Mirrors `DesktopEffectDenial.trapEnvironmentKey`.
-///
-/// **No production path consumes this after C2 (#2459).** It disables nothing and
-/// aborts nothing; the hotkey machinery it once governed was deleted when the OS
-/// calls moved to `EnviousWisprDesktopEffects`. `DesktopEffectPolicyTests` keeps
-/// its scheme wiring visible until C5 (#2462) removes the variable and those cases
-/// together.
-let DesktopEffectsTrapKey = "EW_DESKTOP_EFFECTS_TRAP_DENIALS"
-
 let commonSettings: SettingsDictionary = [
   "ARCHS": "arm64",
   "VALID_ARCHS": "arm64",
@@ -263,36 +249,6 @@ let firstPartyTargetDeps: [TargetDependency] = [
   .target(name: "EnviousWisprLLM"),
   .target(name: "EnviousWisprPipeline"),
 ]
-
-/// #2455 C0 (#2457). For the duration of a test run, denies the desktop effects
-/// C0 guards: Carbon hotkey registration, the Carbon event handler, and the
-/// `NSEvent` modifier monitors. Overlay windows and app activation are the same
-/// root cause and are NOT covered — those are C3 (#2460) and C4 (#2461).
-///
-/// The effect this buys: the unit suite stops registering real global hotkeys on
-/// the developer's machine, where a registered Escape swallows Escape system-wide
-/// for as long as the suite runs.
-///
-/// On the TEST action only. Xcode never applies a test action's environment to a
-/// run, profile or archive action, and no shipped app is launched through a
-/// scheme at all, so this cannot reach a user. `scripts/xcode-test.sh` and CI
-/// both select these shared schemes, so neither needs its own copy of the
-/// variable — one owner, per `GR-WRITE-FOR-RETRIEVAL`.
-///
-/// **After C2 (#2459) these guard NOTHING.** C0's tripwire was only ever
-/// implemented in `HotkeyService`, and C2 deleted that machinery when the Carbon
-/// and `NSEvent` calls moved out. No production path reads either variable now.
-/// They are not protecting overlay or activation — those never had a gate; they
-/// are C3 (#2460) and C4 (#2461), and the dep-direction script is what will cover
-/// them. These two lines are explicit disclosed debt until C5 (#2462) removes
-/// them, kept only so the removal is a single deliberate change rather than a
-/// silent drift.
-let denyDesktopEffects: Arguments = .arguments(
-  environmentVariables: [
-    DesktopEffectsPolicyKey: .environmentVariable(value: "deny", isEnabled: true),
-    DesktopEffectsTrapKey: .environmentVariable(value: "1", isEnabled: true),
-  ]
-)
 
 let project = Project(
   name: "EnviousWispr",
@@ -748,7 +704,6 @@ let project = Project(
       ),
       testAction: .targets(
         ["EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"],
-        arguments: denyDesktopEffects,
         configuration: "Debug"
       )
     ),
@@ -766,7 +721,6 @@ let project = Project(
       ),
       testAction: .targets(
         ["EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"],
-        arguments: denyDesktopEffects,
         configuration: "Dev"
       )
     ),
@@ -782,7 +736,6 @@ let project = Project(
       // preserving the release-config test coverage the old post-merge job ran.
       testAction: .targets(
         ["EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"],
-        arguments: denyDesktopEffects,
         configuration: "Release"
       )
     ),
