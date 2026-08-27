@@ -75,9 +75,7 @@ final class QuickAddWiring {
     // FIRST, before anything else in this initializer: the host was previously a
     // stored-property initializer, which ran before every line here. Constructing
     // it first keeps that ordering.
-    self.panelHost = QuickAddPanelHost(
-      application: presentationEffects.application,
-      presenter: presentationEffects.panels)
+    self.panelHost = QuickAddPanelHost(presenter: presentationEffects.panels)
     self.hotkeyService = hotkeyService
     self.customWords = customWords
     self.settings = settings
