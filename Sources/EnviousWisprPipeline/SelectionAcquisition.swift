@@ -15,12 +15,20 @@ import EnviousWisprServices
 /// issue and independently by two web-grounded models.
 ///
 /// **Why this lives in Pipeline and not in `SelectionReader`.** It cannot live there: the reader is
-/// in `EnviousWisprServices`, whose dependencies are Core and ObservabilityCore and nothing else,
-/// and `ClipboardCleanup` is here in Pipeline, which depends ON Services. Calling one from the other
-/// reverses the direction `scripts/check-dependency-direction.sh` enforces at the push gate, so it
-/// is a build failure rather than a preference. `architecture-rules.md` FACT: dependency-direction
-/// settles it twice over: the Features layer must not own the clipboard, and this layer is the one
-/// that owns sequencing, fallback contracts and telemetry, which is exactly what a ladder is.
+/// in `EnviousWisprServices`, whose dependencies are Core and ObservabilityCore and nothing else
+/// (`Package.swift`), and `ClipboardCleanup` is here in Pipeline, which depends ON Services.
+///
+/// **Two separate mechanisms say no, and they are named separately on purpose.** Under SwiftPM the
+/// import does not resolve, so it is a compiler failure. `scripts/check-dependency-direction.sh` is
+/// a second gate at push time. Merging them into one sentence would be the comment shape that
+/// retires a check instead of failing it — and it would be wrong in a way that matters, because the
+/// Xcode build shares one build-products search path, so a declared edge there ORDERS the link
+/// rather than gating imports (measured by the #2455 session, 2026-08-26, which is why that script
+/// now scans `Tests/` too).
+///
+/// `architecture-rules.md` FACT: dependency-direction settles it twice over on top of that: the
+/// Features layer must not own the clipboard, and this layer is the one that owns sequencing,
+/// fallback contracts and telemetry, which is exactly what a ladder is.
 ///
 /// **What it owns: acquisition, and nothing else.** No ranking, no panel state, no word storage. The
 /// reader still decides what an Accessibility answer MEANS and `ClipboardCleanup` still owns the
