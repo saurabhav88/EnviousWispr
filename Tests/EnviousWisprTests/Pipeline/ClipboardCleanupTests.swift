@@ -424,6 +424,42 @@ struct ClipboardCleanupTests {
     }
   }
 
+  /// **A STALE pending cleanup is not inherited, and reporting it as inherited costs a write.**
+  ///
+  /// `pending != nil` is the wrong test. Once the board has moved, that pending operation is stale
+  /// and the takeover correctly snapshots the CURRENT user clipboard rather than the held one — so
+  /// the board holds the user's own content, not ours, and there is nothing to put back. Saying
+  /// `true` there makes the caller restore for no reason, writing their clipboard and costing a
+  /// history entry: exactly what the caller's no-write path exists to avoid.
+  ///
+  /// Found by cloud review on PR #2472, and it is the pair to the row above: one proves the flag
+  /// fires when it must, this proves it stays down when it must not.
+  @Test("A pending cleanup whose board already moved is NOT reported as inherited")
+  func aStalePendingCleanupIsNotInherited() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      let snapshot = snapshot(of: pb)
+      put("our dictated payload", on: pb)
+      ClipboardCleanup.scheduleRestore(
+        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+
+      // The user copies something. The pending value is now stale and the board is THEIRS.
+      put("something the user just copied", on: pb)
+
+      guard case .granted(let payload, _, let token, let inherited) = ClipboardCleanup.beginTakeover(
+        maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("the takeover was refused on a small clipboard")
+        return
+      }
+      #expect(!inherited, "a stale pending cleanup is not our payload sitting on the board")
+      #expect(
+        string(payload) == "something the user just copied",
+        "and the payload is what the user actually has, not the stale held value")
+      ClipboardCleanup.endTakeover(token)
+    }
+  }
+
   /// **A board that will not hold still is not a board that is too large**, and the two used to
   /// share one refusal — so a user with four characters on their clipboard and a busy clipboard
   /// manager was told their clipboard was too large to keep safe. That is the third instance on this

@@ -442,6 +442,27 @@ public enum SelectionAcquisition {
         acquisitionMs: elapsedMs(), clipboardRestore: restore)
     }
 
+    // STEP 3b — the LAST secure-focus probe, immediately before the chord.
+    //
+    // **A THIRD site on the lifetime axis, and the one with no wait to point at.** Step 2b probes
+    // before the takeover, which looked like the last possible moment. It is not: `beginTakeover`
+    // MATERIALIZES the clipboard, and a lazily-provided representation is produced by another
+    // process on demand — unbounded, synchronous, and entirely outside our control. A user can
+    // click into a password field inside it.
+    //
+    // The previous two instances were "the check runs before a 250 ms wait". This one is "the check
+    // runs before an operation whose duration nobody bounds", which is why counting the waits was
+    // never going to find it. Found by cloud review on PR #2472.
+    //
+    // Past the takeover, so a refusal returns through `concluding` and honours the restore
+    // obligation — and because nothing has been posted, the board is unchanged and the no-write
+    // path leaves the user's clipboard alone.
+    if SelectionReader.isSecureField(
+      SelectionReader.secureFocusProbe(pid: pid, timeout: secureProbeTimeout))
+    {
+      return await concluding(.refused(.secureInputActive), acquired: .nothing)
+    }
+
     // STEP 4 — one chord, never retried. A copy can have side effects in an app that binds it to
     // something else, and a retry doubles them.
     switch SyntheticCopyChord.post(at: pid, copyKeyCode: copyKey) {

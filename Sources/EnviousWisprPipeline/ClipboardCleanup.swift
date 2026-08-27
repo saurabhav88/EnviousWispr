@@ -408,9 +408,17 @@ public enum ClipboardCleanup {
     //
     // Found by a refutation run against this file's class enumeration, on the CORRELATED-VALUE
     // ATOMICITY axis, which that enumeration did not have.
-    // Recorded BEFORE the pending operation is consumed below, because after that there is nothing
-    // left to observe. The caller needs it to decide whether restoring is necessary at all.
-    let inheritedPending = pending != nil
+    // **Recorded before the pending operation is consumed, and only when it would actually be
+    // INHERITED.** `pending != nil` alone is the wrong test: a pending cleanup whose board has
+    // already moved is STALE, and `intendedPayload` correctly snapshots the current user clipboard
+    // instead of the held one. Reporting `true` there tells the caller our own payload is on the
+    // board when the user's is, so it restores for no reason — writing their clipboard and costing
+    // a history entry, which is precisely what the caller's no-write path exists to avoid.
+    //
+    // The condition is the same freshness test `intendedPayload` applies one function down, and it
+    // is duplicated rather than shared deliberately: they answer for the SAME instant, and a helper
+    // that both called would be read twice with a gap between. Found by cloud review on PR #2472.
+    let inheritedPending = pending.map { board.changeCount == $0.changeCountAfterPaste } ?? false
 
     var payload: ClipboardSnapshot?
     var baseline = 0
