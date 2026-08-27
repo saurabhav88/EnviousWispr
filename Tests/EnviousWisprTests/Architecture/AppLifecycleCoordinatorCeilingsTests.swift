@@ -57,6 +57,9 @@ import Testing
     "Sources/EnviousWisprAppKit/App/AppLifecycleCoordinator.swift"
 
   private static let storedPropertyAllowlist: Set<String> = [
+    // #2455 C3 (#2460): the activation seam. Required and non-defaulted, so this
+    // type can no longer reach the real app's Dock policy or foreground state.
+    "application",
     "audioEnvironmentSnapshotter",
     "audioSystemEventReporter",
     "debugFaultEndpoint",

@@ -34,6 +34,7 @@ struct AppWindowCoordinatorTests {
   func pendingOpenOnboardingQueuesAndReplays() {
     var openCount = 0
     let coordinator = AppWindowCoordinator(
+      application: RecordingDesktopPresentationEffects(),
       canOpenOnboarding: { true },
       isOnboardingComplete: { false }
     )
@@ -60,6 +61,7 @@ struct AppWindowCoordinatorTests {
   func consumePendingOpenOnboardingNoOpsWhenFlagClear() {
     var openCount = 0
     let coordinator = AppWindowCoordinator(
+      application: RecordingDesktopPresentationEffects(),
       canOpenOnboarding: { true },
       isOnboardingComplete: { false }
     )
@@ -77,6 +79,7 @@ struct AppWindowCoordinatorTests {
   func completedOnboardingDoesNotQueue() {
     var openCount = 0
     let coordinator = AppWindowCoordinator(
+      application: RecordingDesktopPresentationEffects(),
       canOpenOnboarding: { false },  // onboarding complete → ineligible
       isOnboardingComplete: { true }
     )
@@ -97,6 +100,7 @@ struct AppWindowCoordinatorTests {
   func openOnboardingWindowRespectsEligibilityGuard() {
     var openCount = 0
     let coordinator = AppWindowCoordinator(
+      application: RecordingDesktopPresentationEffects(),
       canOpenOnboarding: { false },
       isOnboardingComplete: { true }
     )
@@ -112,6 +116,7 @@ struct AppWindowCoordinatorTests {
   func closeOnboardingWindowFiresOnboardingDismissedSeam() {
     var dismissedCount = 0
     let coordinator = AppWindowCoordinator(
+      application: RecordingDesktopPresentationEffects(),
       canOpenOnboarding: { true },
       isOnboardingComplete: { false }
     )

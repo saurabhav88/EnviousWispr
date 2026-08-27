@@ -33,10 +33,13 @@ import Testing
       named: "SparkleUpdateController", at: Self.sourcePath)
     let count = RouterCeilingParser.collaboratorCount(in: body)
     #expect(
-      count <= 2,
+      // #2455 C3 (#2460): 2 -> 3. The activation seam, required and non-defaulted,
+      // so this controller can no longer move the real app between accessory and
+      // regular or bring it to the front — the #739 update flow's three calls.
+      count <= 3,
       """
-      SparkleUpdateController collaborator ceiling exceeded: \(count) > 2 \
-      (parser-visible). Allowed (PR-B.1 baseline): holder, updaterFactory. \
+      SparkleUpdateController collaborator ceiling exceeded: \(count) > 3 \
+      (parser-visible). Allowed (C3 baseline): holder, updaterFactory, application. \
       The Sparkle-owned `updaterController` and `updateCoordinator` are \
       `private(set)` and intentionally invisible to the shared parser. \
       Raising requires a Bible §30 entry.
@@ -64,9 +67,11 @@ import Testing
       RouterCeilingParser.collaboratorCount(in: body)
       + RouterCeilingParser.closureInjectedCount(in: body)
     #expect(
-      total <= 3,
+      // #2455 C3 (#2460): 3 -> 4, the activation seam. Same one property as the
+      // collaborator count above.
+      total <= 4,
       """
-      SparkleUpdateController total stored-property ceiling exceeded: \(total) > 3 \
+      SparkleUpdateController total stored-property ceiling exceeded: \(total) > 4 \
       (parser-visible). The home publishes the coordinator into the env-carrier \
       and routes Sparkle delegate callbacks. Additional state is a sign of \
       scope creep.

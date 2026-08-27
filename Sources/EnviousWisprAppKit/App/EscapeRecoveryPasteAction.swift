@@ -33,18 +33,23 @@ enum EscapeRecoveryPasteAction {
   ///     Injected because `NSRunningApplication.isTerminated` cannot be staged
   ///     in a unit test, and the branch it guards is the one that decides
   ///     whether the user's words land somewhere they never asked for.
-  ///   - retarget: activate the app and refocus the field, injected for the same
-  ///     reason `report` is. It defaults to the real AX calls, so production
-  ///     reads exactly as it did; a test cannot otherwise observe that the
-  ///     FIELD was restored, only that the app was, and those are the two
-  ///     halves a cancel most often separates.
+  ///   - retarget: required activation-and-focus seam. Production supplies
+  ///     `liveRetarget(application:)`; a test must supply an explicit fake.
+  ///     #2455 C3 removed its default, which WAS the real AX calls — so a test
+  ///     that omitted it activated a real app and moved a real caret. A test
+  ///     cannot otherwise observe that the FIELD was restored, only that the app
+  ///     was, and those are the two halves a cancel most often separates.
   static func paste(
     payload: CancelUndoPayload,
     restorable: (UUID) -> (text: String, stampedAt: Date, takeID: String?)?,
     copyToClipboard: @MainActor (String) -> Void,
     dispatchPaste: @escaping @MainActor () -> Void,
     report: (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void,
-    retarget: @MainActor (CancelUndoPayload) -> Bool = Self.defaultRetarget,
+    // #2455 C3: no default. `Self.defaultRetarget` reached a live activation, so
+    // the same hole existed one level up from `activateFallback`. Every caller —
+    // production and all six test sites — already passed this explicitly, so
+    // removing the default cost nothing and closed both.
+    retarget: @MainActor (CancelUndoPayload) -> Bool,
     targetHasQuit: (CancelUndoPayload) -> Bool = { $0.targetApp?.isTerminated == true },
     recordLog: @MainActor (_ outcome: String, _ ageMs: Int?, _ takeID: String?) -> Void = Self.log
   ) {
@@ -213,16 +218,41 @@ enum EscapeRecoveryPasteAction {
   /// was right about History and wrong about the pill: History activates
   /// nothing, so it promises nothing, while returning to the target app is the
   /// entire reason this pill exists.
-  private static func defaultRetarget(_ payload: CancelUndoPayload) -> Bool {
-    retargetWithAccessibility(payload)
+  /// The production retarget, built from the activation seam.
+  ///
+  /// A factory rather than a static function used as a default argument: a default
+  /// cannot be handed a dependency, which is exactly how the live activation stayed
+  /// reachable from a test that simply did not override it.
+  @MainActor
+  static func liveRetarget(
+    application: any ApplicationActivating
+  ) -> @MainActor (CancelUndoPayload) -> Bool {
+    { payload in
+      retargetWithAccessibility(
+        payload,
+        forceActivate: { application.forceActivate(processIdentifier: $0) },
+        activateFallback: { application.activate($0) },
+        focusElement: { application.focus($0) })
+    }
   }
 
   @MainActor
   static func retargetWithAccessibility(
     _ payload: CancelUndoPayload,
-    forceActivate: (pid_t) -> Bool = PasteService.forceActivateApp,
-    activateFallback: (NSRunningApplication) -> Bool = { $0.activate() },
-    focusElement: (AXUIElement) -> Bool = PasteService.focusElement
+    // #2455 C3: no default, for the same reason `activateFallback` below has
+    // none. This one is worse than that one was: it runs FIRST, so a test that
+    // omitted it reached the live AX activation before its own fake fallback was
+    // ever consulted. Removing only the second default left this path open, which
+    // is what the Codex round after that fix found.
+    forceActivate: (pid_t) -> Bool,
+    // #2455 C3: no default. It was `{ $0.activate() }` — a live focus change any
+    // test could reach by simply not overriding it. The seam existed; the default
+    // is what made it optional.
+    activateFallback: (NSRunningApplication) -> Bool,
+    // #2455 C3: the THIRD live default in this signature. Two rounds each closed
+    // one and reported the path shut. Counting the routes before claiming closure
+    // is now RULE: fix-the-path-that-runs-first-not-the-one-you-were-reading.
+    focusElement: (AXUIElement) -> Bool
   ) -> Bool {
     guard let app = payload.targetApp else { return true }
     // Both routes report. `forceActivateApp` is the AX path macOS 14+ needs for

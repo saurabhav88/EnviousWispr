@@ -51,12 +51,20 @@ final class SparkleUpdateController: NSObject {
     assertionFailure(message)
   }
 
+  /// #2455 C3: required and non-defaulted, unlike the two parameters below it.
+  /// Those have defaults because a test that does not exercise updates still needs
+  /// the type; this one has none because the calls it carries are exactly what a
+  /// unit test must never make.
+  private let application: any ApplicationActivating
+
   init(
     holder: UpdateCoordinatorHolder,
+    application: any ApplicationActivating,
     bundleVersionProvider: @escaping () -> String = { AppConstants.appVersion },
     updaterFactory: SparkleUpdaterFactory = SparkleUpdateController.defaultUpdaterFactory
   ) {
     self.holder = holder
+    self.application = application
     self.bundleVersionProvider = bundleVersionProvider
     self.updaterFactory = updaterFactory
     super.init()
@@ -130,8 +138,8 @@ extension SparkleUpdateController: @preconcurrency SPUStandardUserDriverDelegate
 
   /// Bring app to front when Sparkle shows an update dialog (LSUIElement fix).
   func standardUserDriverWillShowModalAlert() {
-    NSApp.setActivationPolicy(.regular)
-    NSApp.activate()
+    application.setPolicy(.regular)
+    application.activate(.standard)
   }
 
   /// Return to accessory mode when the entire update session ends — but only
@@ -141,7 +149,7 @@ extension SparkleUpdateController: @preconcurrency SPUStandardUserDriverDelegate
   /// with it whenever the user checked for updates from inside it.
   func standardUserDriverWillFinishUpdateSession() {
     guard !AppWindowCoordinator.isMainWindowPresented() else { return }
-    NSApp.setActivationPolicy(.accessory)
+    application.setPolicy(.accessory)
   }
 
   /// Issue #343: pure yes/no decision per Sparkle's documented gentle-reminder

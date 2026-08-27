@@ -18,7 +18,12 @@ import SwiftUI
 final class QuickAddWiring {
 
   private let coordinator: QuickAddCoordinator
-  private let panelHost = QuickAddPanelHost()
+  /// #2455 C3: was `= QuickAddPanelHost()`, a stored-property initializer. The
+  /// host now requires its presentation seams, which only the composition root
+  /// has, so it is constructed in `init` from what is passed down. That is the
+  /// point rather than an inconvenience: a default-constructible host is one a
+  /// test can build with the real desktop attached.
+  private let panelHost: QuickAddPanelHost
   /// Built in `install()`, not here: its whole job is to call back into this object, and `self` does
   /// not exist yet during init. Constructing it early with a placeholder closure is how a door ships
   /// registered, enabled, and wired to nothing.
@@ -49,8 +54,15 @@ final class QuickAddWiring {
   init(
     hotkeyService: HotkeyService,
     customWords: CustomWordsCoordinator,
-    packManager: VocabularyPackManager
+    packManager: VocabularyPackManager,
+    presentationEffects: DesktopPresentationEffects
   ) {
+    // FIRST, before anything else in this initializer: the host was previously a
+    // stored-property initializer, which ran before every line here. Constructing
+    // it first keeps that ordering.
+    self.panelHost = QuickAddPanelHost(
+      application: presentationEffects.application,
+      presenter: presentationEffects.panels)
     self.hotkeyService = hotkeyService
     self.customWords = customWords
     self.coordinator = QuickAddCoordinator(

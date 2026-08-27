@@ -609,6 +609,7 @@ struct MenuBarControllerTests {
     // Nil-fake updater factory — no real Sparkle boot in the test process.
     let sparkle = SparkleUpdateController(
       holder: UpdateCoordinatorHolder(),
+      application: RecordingDesktopPresentationEffects(),
       bundleVersionProvider: { "v-test" },
       updaterFactory: SparkleUpdaterFactory { _, _ in nil })
     let controller = MenuBarController(

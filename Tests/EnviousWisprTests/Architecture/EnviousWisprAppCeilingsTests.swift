@@ -182,9 +182,13 @@ import Testing
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 40,
+      // #2455 C3 (#2460): 40 -> 41. `application`, the activation seam this type
+      // needs for the onboarding-dismissal policy change. ONE property, not two:
+      // the panel seam is consumed by collaborators and is passed through rather
+      // than retained here.
+      count <= 41,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 40. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 41. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.

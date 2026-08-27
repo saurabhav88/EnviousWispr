@@ -20,6 +20,18 @@ import SwiftUI
 @MainActor
 final class QuickAddPanelHost: NSObject, NSWindowDelegate {
 
+  /// #2455 C3: both required and non-defaulted. `takeFocus` is the single
+  /// chokepoint for activating and keying the Quick Add panel, so these two are
+  /// exactly the calls a unit test must not be able to make.
+  private let application: any ApplicationActivating
+  private let presenter: any PanelPresenting
+
+  init(application: any ApplicationActivating, presenter: any PanelPresenting) {
+    self.application = application
+    self.presenter = presenter
+    super.init()
+  }
+
   /// Fired when the panel goes away for any reason the host can see — Escape, clicking away, or the
   /// window closing under it. The coordinator treats all three as "the user is done".
   var onDismiss: (() -> Void)?
@@ -116,8 +128,8 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// **One owner for both takers.** `present` and `raise` both activate and both call
   /// `makeKeyAndOrderFront`, so a third taker cannot be added without coming through here.
   private func takeFocus(_ panel: NSPanel) {
-    NSApp.activate(ignoringOtherApps: true)
-    panel.makeKeyAndOrderFront(nil)
+    application.activate(.ignoringOtherApps)
+    presenter.makeKeyAndOrderFront(panel)
   }
 
   /// Whether taking focus should record who held it first.

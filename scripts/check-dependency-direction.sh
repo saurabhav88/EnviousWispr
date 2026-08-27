@@ -142,7 +142,28 @@ done
 #
 # Keep the lists exhaustive: a test target absent from here is unchecked, which
 # looks exactly like a test target that passes.
-# The hotkey OS calls, wherever they appear.
+# The desktop calls C2 and C3 moved, wherever they appear.
+#
+# C3 (#2460) added activation, Dock policy, Quick Add's panel presentation, and
+# `NSWorkspace.shared.openApplication` — the calls behind the pill flashing and
+# focus being taken mid-suite. `NSApp.windows` and other READS are deliberately
+# absent: they observe, they do not act.
+#
+# `NSRunningApplication.activate()` is NOT in this pattern, and the reason matters
+# because the obvious fix does not work. A bare `[.]activate[(][)]` was tried and
+# reverted: it matches `DispatchSource.activate()` in
+# `EGOneServerManager.swift:328`, which is not a desktop effect at all. Receiver
+# TYPE is what distinguishes them, and a grep cannot see types.
+#
+# What replaced it for the case C3 owns: `EscapeRecoveryPasteAction`'s
+# `activateFallback` and `retarget` both lost their live DEFAULTS, so the seam is
+# required rather than optional. That closes the hole at the call site instead of
+# at the pattern.
+#
+# KNOWN GAP, tracked rather than silently excluded: `PasteCascadeExecutor.swift`
+# `:573`, `:852`, `:862` call `app.activate()` on an `NSRunningApplication` in
+# `EnviousWisprPipeline`, bringing the paste target forward. Real activations, in
+# the core dictation path, listed by no chunk plan. Filed on #2455.
 #
 # No trailing `(` on the Carbon names ON PURPOSE: `let register = RegisterEventHotKey`
 # takes a function reference and calls it later, which a call-shaped pattern would
@@ -151,7 +172,7 @@ done
 # removes a `//` or `/*` and its tail on ONE line, not the continuation lines of a
 # block comment. A false positive is a sentence to rewrite; a false negative is a
 # suite back on the developer's real desktop.
-live_effect_pattern='RegisterEventHotKey|InstallEventHandler|NSEvent[.]add(Global|Local)MonitorForEvents'
+live_effect_pattern='RegisterEventHotKey|InstallEventHandler|NSEvent[.]add(Global|Local)MonitorForEvents|(NSApp|NSApplication[.]shared)[.](activate|setActivationPolicy)|panel[.]makeKeyAndOrderFront|NSWorkspace[.]shared[.]openApplication'
 
 test_targets_and_permitted() {
   case "$1" in
@@ -194,7 +215,7 @@ for test_dir in Tests/*/; do
   done < <(grep -rEn "$import_grep_pattern" "$test_dir" || true)
 done
 
-# OWNERSHIP: the hotkey OS calls may appear in EnviousWisprDesktopEffects and
+# OWNERSHIP: the live desktop calls may appear in EnviousWisprDesktopEffects and
 # nowhere else, in Sources OR Tests.
 #
 # Import discipline is necessary and NOT sufficient. `RegisterEventHotKey` comes
@@ -215,7 +236,7 @@ while IFS= read -r line; do
   esac
   code=$(echo "$line" | cut -d: -f3- | sed -E 's|//.*$||; s|/\*.*$||')
   if echo "$code" | grep -Eq "$live_effect_pattern"; then
-    echo "DEP-DIRECTION: $file: hotkey OS call outside Sources/EnviousWisprDesktopEffects/"
+    echo "DEP-DIRECTION: $file: live desktop call outside Sources/EnviousWisprDesktopEffects/"
     violations=$((violations + 1))
   fi
 done < <(grep -rEn --include='*.swift' "$live_effect_pattern" Sources Tests || true)

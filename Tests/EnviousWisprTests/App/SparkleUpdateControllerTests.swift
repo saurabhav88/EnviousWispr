@@ -24,6 +24,7 @@ struct SparkleUpdateControllerTests {
     let holder = UpdateCoordinatorHolder()
     let controller = SparkleUpdateController(
       holder: holder,
+      application: RecordingDesktopPresentationEffects(),
       bundleVersionProvider: { "v-test-1.0" },
       updaterFactory: SparkleUpdaterFactory { _, _ in nil }
     )
@@ -61,6 +62,7 @@ struct SparkleUpdateControllerTests {
     let holder = UpdateCoordinatorHolder()
     let controller = SparkleUpdateController(
       holder: holder,
+      application: RecordingDesktopPresentationEffects(),
       bundleVersionProvider: { "v-test-1.0" },
       updaterFactory: SparkleUpdaterFactory { _, _ in nil }
     )
@@ -132,6 +134,7 @@ struct SparkleUpdateControllerTests {
       let holder = UpdateCoordinatorHolder()
       let controller = SparkleUpdateController(
         holder: holder,
+        application: RecordingDesktopPresentationEffects(),
         // Provider returns the SAME version as the persisted attempt.
         // `evaluateLastInstallAttempt` should resolve to `.completed` and
         // fire `update.install_completed`.

@@ -48,10 +48,18 @@ final class AppWindowCoordinator {
   /// `openOnboardingAction` is wired; drained by `consumePendingOpenOnboarding()`.
   private var pendingOpenOnboarding: Bool = false
 
+  /// #2455 C3: required and non-defaulted. Every activation and Dock-policy call
+  /// this type makes goes through it, so a default would let a unit test move the
+  /// real app between accessory and regular — the pill-flash half of the symptom
+  /// this epic exists to remove.
+  private let application: any ApplicationActivating
+
   init(
+    application: any ApplicationActivating,
     canOpenOnboarding: @escaping @MainActor () -> Bool,
     isOnboardingComplete: @escaping @MainActor () -> Bool
   ) {
+    self.application = application
     self.canOpenOnboarding = canOpenOnboarding
     self.isOnboardingComplete = isOnboardingComplete
   }
@@ -82,7 +90,7 @@ final class AppWindowCoordinator {
         }
         // Match by identity so status-bar/panel windows never trigger the reset.
         guard window === self.mainWindow else { return }
-        NSApp.setActivationPolicy(.accessory)
+        self.application.setPolicy(.accessory)
       }
     }
   }
@@ -169,8 +177,8 @@ final class AppWindowCoordinator {
         break
       }
     }
-    NSApp.setActivationPolicy(.regular)
-    NSApp.activate(ignoringOtherApps: true)
+    application.setPolicy(.regular)
+    application.activate(.ignoringOtherApps)
   }
 
   /// Open the onboarding window and begin monitoring for early close (abort flow).
@@ -185,8 +193,8 @@ final class AppWindowCoordinator {
       return
     }
     openOnboardingAction?()
-    NSApp.setActivationPolicy(.regular)
-    NSApp.activate(ignoringOtherApps: true)
+    application.setPolicy(.regular)
+    application.activate(.ignoringOtherApps)
     // Hide the main window so only the onboarding window is visible during setup.
     if let mainWin = self.mainWindow {
       mainWin.orderOut(nil)
@@ -242,7 +250,7 @@ final class AppWindowCoordinator {
   /// dismisses the window.
   func closeOnboardingWindow() {
     dismissOnboardingAction?()
-    NSApp.setActivationPolicy(.accessory)
+    application.setPolicy(.accessory)
     onOnboardingDismissed?()
   }
 
