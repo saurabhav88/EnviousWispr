@@ -26,7 +26,8 @@ struct SelectionReaderTests {
   func untrustedIsNamed() {
     #expect(
       SelectionReader.refusalBeforeReading(
-        isTrusted: false, frontmost: .init(pid: 501, isOurs: false), ownPID: 999)
+        isTrusted: false, frontmost: .init(pid: 501, bundleIdentifier: "com.apple.TextEdit"),
+        ownPID: 999)
         == .accessibilityNotTrusted)
   }
 
@@ -36,7 +37,8 @@ struct SelectionReaderTests {
     // granted permission sends them looking at the wrong thing.
     #expect(
       SelectionReader.refusalBeforeReading(
-        isTrusted: false, frontmost: .init(pid: nil, isOurs: false), ownPID: 999)
+        isTrusted: false, frontmost: .init(pid: nil, bundleIdentifier: "com.apple.TextEdit"),
+        ownPID: 999)
         == .accessibilityNotTrusted)
   }
 
@@ -44,7 +46,8 @@ struct SelectionReaderTests {
   func noFrontmostApplicationIsNamed() {
     #expect(
       SelectionReader.refusalBeforeReading(
-        isTrusted: true, frontmost: .init(pid: nil, isOurs: false), ownPID: 999)
+        isTrusted: true, frontmost: .init(pid: nil, bundleIdentifier: "com.apple.TextEdit"),
+        ownPID: 999)
         == .noFrontmostApplication)
   }
 
@@ -53,7 +56,8 @@ struct SelectionReaderTests {
     for pid: pid_t in [0, -1] {
       #expect(
         SelectionReader.refusalBeforeReading(
-          isTrusted: true, frontmost: .init(pid: pid, isOurs: false), ownPID: 999)
+          isTrusted: true, frontmost: .init(pid: pid, bundleIdentifier: "com.apple.TextEdit"),
+          ownPID: 999)
           == .noFrontmostApplication,
         "pid \(pid) must not reach Accessibility")
     }
@@ -71,7 +75,8 @@ struct SelectionReaderTests {
   func ourOwnApplicationIsRefused() {
     #expect(
       SelectionReader.refusalBeforeReading(
-        isTrusted: true, frontmost: .init(pid: 4242, isOurs: false), ownPID: 4242)
+        isTrusted: true, frontmost: .init(pid: 4242, bundleIdentifier: "com.apple.TextEdit"),
+        ownPID: 4242)
         == .ownApplication)
   }
 
@@ -95,7 +100,7 @@ struct SelectionReaderTests {
     #expect(
       SelectionReader.refusalBeforeReading(
         isTrusted: true,
-        frontmost: .init(pid: 7777, isOurs: AppBundleIdentity.isOurs(frontmost)),
+        frontmost: .init(pid: 7777, bundleIdentifier: frontmost),
         ownPID: 4242)
         == .ownApplication,
       "a \(own) build must refuse a frontmost \(frontmost) build; a pid-only guard reads its text")
@@ -122,7 +127,8 @@ struct SelectionReaderTests {
   func anotherApplicationIsStillRead() {
     #expect(
       SelectionReader.refusalBeforeReading(
-        isTrusted: true, frontmost: .init(pid: 4243, isOurs: false), ownPID: 4242) == nil)
+        isTrusted: true, frontmost: .init(pid: 4243, bundleIdentifier: "com.apple.TextEdit"),
+        ownPID: 4242) == nil)
   }
 
   /// **Trust outranks it, for the same reason it outranks a missing frontmost app.** Someone who
@@ -131,7 +137,8 @@ struct SelectionReaderTests {
   func untrustedOutranksOurOwnSelection() {
     #expect(
       SelectionReader.refusalBeforeReading(
-        isTrusted: false, frontmost: .init(pid: 4242, isOurs: true), ownPID: 4242)
+        isTrusted: false,
+        frontmost: .init(pid: 4242, bundleIdentifier: AppBundleIdentity.production), ownPID: 4242)
         == .accessibilityNotTrusted)
   }
 
@@ -139,7 +146,8 @@ struct SelectionReaderTests {
   func trustedAndFrontmostProceeds() {
     #expect(
       SelectionReader.refusalBeforeReading(
-        isTrusted: true, frontmost: .init(pid: 501, isOurs: false), ownPID: 999) == nil)
+        isTrusted: true, frontmost: .init(pid: 501, bundleIdentifier: "com.apple.TextEdit"),
+        ownPID: 999) == nil)
   }
 
   // MARK: - What Accessibility answered
@@ -333,11 +341,27 @@ struct SelectionReaderTests {
     // the reader cannot produce. Asserting the boundary is what keeps that from decaying into "the
     // reader might return anything in here".
     //
-    // TWO members now, and the second is why this asserts a SET rather than a name. `nothingSelected`
-    // is minted by the coordinator from `.noSelection`, exactly as `wordsUnavailable` is minted from
-    // a failed refresh — and it exists because mapping `.noSelection` onto `selectionUnavailable`
-    // handed the commonest refusal a sentence blaming the frontmost app for withholding a selection.
-    let coordinatorOwned: [SelectionReader.Refusal] = [.wordsUnavailable, .nothingSelected]
+    // It asserts a SET rather than a name because the set keeps growing. `nothingSelected` is minted
+    // by the coordinator from `.noSelection`, exactly as `wordsUnavailable` is minted from a failed
+    // refresh — and it exists because mapping `.noSelection` onto `selectionUnavailable` handed the
+    // commonest refusal a sentence blaming the frontmost app for withholding a selection. #2465 then
+    // added six more, all minted by `SelectionAcquisition` one module up.
+    //
+    // **EIGHT now, and the six added by #2465 are enumerated from the ENUM rather than listed by
+    // hand.** A hand-written list is a description of the set, and the next member added is the one
+    // it will not contain — so the acquisition six are derived by subtracting the members the
+    // reader DOES own, which makes a seventh acquisition refusal join this assertion by existing.
+    let readerOwned: Set<SelectionReader.Refusal> = [
+      .accessibilityNotTrusted, .noFrontmostApplication, .noFocusedElement, .ownApplication,
+      .selectionUnsupported, .selectionUnavailable, .unreadable, .selectionTooLong,
+    ]
+    let coordinatorOwned = SelectionReader.Refusal.allCases.filter { !readerOwned.contains($0) }
+    // The subtraction is only meaningful if it left something, and only honest if it left the
+    // members this test was written about.
+    #expect(coordinatorOwned.count == SelectionReader.Refusal.allCases.count - readerOwned.count)
+    #expect(coordinatorOwned.contains(.wordsUnavailable))
+    #expect(coordinatorOwned.contains(.nothingSelected))
+    #expect(coordinatorOwned.contains(.copyRefused))
     var seen: [SelectionReader.Result] = [
       SelectionReader.classify(""),
       SelectionReader.classify("codecs"),
@@ -351,11 +375,14 @@ struct SelectionReaderTests {
     ]
     for refusal in [
       SelectionReader.refusalBeforeReading(
-        isTrusted: false, frontmost: .init(pid: 1, isOurs: false), ownPID: 999),
+        isTrusted: false, frontmost: .init(pid: 1, bundleIdentifier: "com.apple.TextEdit"),
+        ownPID: 999),
       SelectionReader.refusalBeforeReading(
-        isTrusted: true, frontmost: .init(pid: nil, isOurs: false), ownPID: 999),
+        isTrusted: true, frontmost: .init(pid: nil, bundleIdentifier: "com.apple.TextEdit"),
+        ownPID: 999),
       SelectionReader.refusalBeforeReading(
-        isTrusted: true, frontmost: .init(pid: 0, isOurs: false), ownPID: 999),
+        isTrusted: true, frontmost: .init(pid: 0, bundleIdentifier: "com.apple.TextEdit"),
+        ownPID: 999),
     ] {
       if let refusal { seen.append(.refused(refusal)) }
     }
@@ -366,7 +393,6 @@ struct SelectionReaderTests {
     // Paired positive: a sweep that produced no refusals at all would pass every line above.
     #expect(seen.contains { if case .refused = $0 { true } else { false } })
   }
-
 
   /// **A failed query is not an empty one, and they need different sentences.**
   ///

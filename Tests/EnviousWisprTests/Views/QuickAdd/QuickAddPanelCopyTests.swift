@@ -113,14 +113,43 @@ struct QuickAddPanelCopyTests {
     #expect(message.contains("Accessibility"))
   }
 
-  @Test("The terminal refusal says WHY rather than blaming the user's aim")
-  func theTerminalRefusalExplains() {
-    // Measured: a terminal advertises the attribute and then answers with nothing, so "select the
-    // word again" would send the user round a loop that cannot end.
-    let message = QuickAddPanelCopy.refusalMessage(.selectionUnavailable)
+  @Test("No refusal names an app class as the culprit")
+  func noRefusalNamesAnAppClass() {
+    // **This row REPLACES one that required the opposite (#2465).** `selectionUnavailable` used to
+    // be asserted to contain the word "terminal", because a terminal was the measured example of an
+    // app that advertises the attribute and answers with nothing. The clipboard fallback now READS
+    // a terminal selection, so the sentence naming terminals as broken described the exact case the
+    // change fixes — and the test was holding it in place.
+    //
+    // The replacement is the general property rather than the corrected example. Naming an app
+    // class is a confident diagnosis of software the code did not inspect, which is the same shape
+    // the `ownApplication` copy already records; and any such name goes stale the moment the class
+    // starts working.
+    let appClasses = ["terminal", "whatsapp", "chrome", "safari", "slack", "electron", "browser"]
+    for refusal in SelectionReader.Refusal.allCases {
+      let message = QuickAddPanelCopy.refusalMessage(refusal).lowercased()
+      for name in appClasses {
+        #expect(
+          !message.contains(name),
+          "\(refusal.rawValue) names \(name), which is a diagnosis of an app nothing looked at")
+      }
+    }
+    // Two-way control: the terms above match zero of today's messages, so the loop passes whether
+    // or not it is looking at anything. This is the wording that was actually removed.
+    #expect(
+      "that app reports a selection it will not share. terminals do this.".contains("terminal"))
+  }
 
-    #expect(message.lowercased().contains("terminal"))
-    #expect(!message.lowercased().contains("try again"))
+  @Test("The unreadable refusals still say what the user CAN do")
+  func theUnreadableRefusalsNameTheWayForward() {
+    // The paired positive for the row above: a check that only ever forbids words passes happily
+    // against a sentence that names nothing at all.
+    #expect(
+      QuickAddPanelCopy.refusalMessage(.selectionUnavailable).lowercased()
+        .contains("add the word by hand"))
+    #expect(
+      !QuickAddPanelCopy.refusalMessage(.selectionUnavailable).lowercased()
+        .contains("try again"))
   }
 
   @Test("The too-long refusal DOES tell the user to try again, because retrying works there")

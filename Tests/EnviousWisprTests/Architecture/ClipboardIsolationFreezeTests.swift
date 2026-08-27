@@ -119,6 +119,12 @@ struct ClipboardIsolationFreezeTests {
   ///   PasteCascadeExecutor  (changeCount)              READ    harmless; reads clobber nothing
   ///   DiagnosticsSettingsView, OnboardingV2View        WRITE   inside SwiftUI `body`, which a unit
   ///                                                            test cannot practically invoke
+  ///   ClipboardCleanup.beginTakeover(from:)            READ    #2465; boarded, and every test in
+  ///                                                            `ClipboardCleanupTests` passes one
+  ///   SelectionAcquisition.acquire(board:)             WRITE   #2465; boarded. No test calls it at
+  ///                                                            all: it posts a real key event, so
+  ///                                                            Live UAT is its proof and only its
+  ///                                                            pure decisions are unit-tested
   ///
   /// Re-derive with `grep -rn "NSPasteboard\.general" Sources/` and classify each hit write/read and
   /// reachable/not. Two entries here arrived as separate review findings before the enumeration was

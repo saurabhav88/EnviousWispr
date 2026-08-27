@@ -56,7 +56,8 @@ import Testing
         TelemetryService.shared.quickAddOpened(
           door: "hotkey", hadSelection: true, refuseReason: nil, candidateCount: 3,
           preselected: true, topScore: 0.8631, sourceBundleID: "com.apple.TextEdit",
-          heardLength: Self.secret.unicodeScalars.count)
+          heardLength: Self.secret.unicodeScalars.count,
+          acquired: "copy", acquisitionMilliseconds: 41, clipboardRestore: "restored")
       }
 
       let event = try #require(events.first { $0.name == "quick_add.opened" })
@@ -89,7 +90,8 @@ import Testing
       let events = captureEvents {
         TelemetryService.shared.quickAddOpened(
           door: "service", hadSelection: true, refuseReason: nil, candidateCount: 1,
-          preselected: false, topScore: 0.4, sourceBundleID: "com.apple.TextEdit", heardLength: 6)
+          preselected: false, topScore: 0.4, sourceBundleID: "com.apple.TextEdit", heardLength: 6,
+          acquired: "copy", acquisitionMilliseconds: 41, clipboardRestore: "restored")
       }
 
       let event = try #require(events.first)
@@ -103,7 +105,8 @@ import Testing
       let events = captureEvents {
         TelemetryService.shared.quickAddOpened(
           door: "hotkey", hadSelection: false, refuseReason: "selection_unavailable",
-          candidateCount: 0, preselected: false, topScore: nil, sourceBundleID: nil, heardLength: 0)
+          candidateCount: 0, preselected: false, topScore: nil, sourceBundleID: nil, heardLength: 0,
+          acquired: "copy", acquisitionMilliseconds: 41, clipboardRestore: "restored")
       }
 
       let event = try #require(events.first)
@@ -117,7 +120,8 @@ import Testing
       let events = captureEvents {
         TelemetryService.shared.quickAddOpened(
           door: "hotkey", hadSelection: true, refuseReason: nil, candidateCount: 2,
-          preselected: true, topScore: 0.9, sourceBundleID: "com.apple.TextEdit", heardLength: 6)
+          preselected: true, topScore: 0.9, sourceBundleID: "com.apple.TextEdit", heardLength: 6,
+          acquired: "copy", acquisitionMilliseconds: 41, clipboardRestore: "restored")
       }
 
       #expect(try #require(events.first).stringProps["refuse_reason"] == "none")
@@ -131,7 +135,8 @@ import Testing
       let events = captureEvents {
         TelemetryService.shared.quickAddOpened(
           door: "hotkey", hadSelection: true, refuseReason: nil, candidateCount: 3,
-          preselected: true, topScore: 0.8631, sourceBundleID: "com.apple.TextEdit", heardLength: 6)
+          preselected: true, topScore: 0.8631, sourceBundleID: "com.apple.TextEdit", heardLength: 6,
+          acquired: "copy", acquisitionMilliseconds: 41, clipboardRestore: "restored")
       }
 
       #expect(try #require(events.first).doubleProps["top_score"] == 0.86)

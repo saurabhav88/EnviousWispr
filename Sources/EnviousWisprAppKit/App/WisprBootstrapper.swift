@@ -1087,7 +1087,8 @@ package final class WisprBootstrapper {
       hotkeyService: hotkeyService,
       customWords: customWordsCoordinator,
       packManager: vocabularyPackManager,
-      presentationEffects: presentationEffects)
+      presentationEffects: presentationEffects,
+      settings: settings)
 
     let menuBarController = MenuBarController(
       liveRecordingState: liveRecordingState,
@@ -1096,7 +1097,7 @@ package final class WisprBootstrapper {
       settings: settings,
       permissions: permissions,
       actions: MenuBarActions(
-        addSelectedWord: { quickAdd.beginFromMenuBar(selection: $0) },
+        addSelectedWord: { quickAdd.beginFromMenuBar(selection: $0, context: $1) },
         continueOnboarding: { appWindowCoordinator.openOnboardingWindow() },
         openSettings: {
           navigationCoordinator.request(.speechEngine)

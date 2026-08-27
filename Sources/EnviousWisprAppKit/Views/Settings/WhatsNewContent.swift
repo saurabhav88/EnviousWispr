@@ -98,6 +98,29 @@ enum WhatsNewContent {
       version: "2.4.6"
     ),
 
+    // #2465. LAST in the 2.4.6 group, because order is the hierarchy
+    // (whats-new-protocol.md RULE: whats-new-content-rules) and this is a fix
+    // rather than a feature: the shortcut was always meant to work here.
+    //
+    // **The entry exists because the change WRITES to the user's clipboard**,
+    // which the feature never did before. A user who notices two new rows in
+    // their clipboard history and finds no mention of it anywhere has been
+    // surprised by their own dictation app. So the copy states the side effect
+    // plainly and names the switch, rather than only announcing the win.
+    //
+    // It names no app class as the culprit. WhatsApp is the case the founder
+    // reported and terminals are the other one, but naming them dates the entry
+    // the moment either starts publishing a selection, and it is a diagnosis of
+    // software we did not inspect. No dash characters, per GR-NO-DASHES.
+    Entry(
+      id: "quick-add-reads-more-apps",
+      icon: "text.viewfinder",
+      title: "Adding a word from your selection works in more apps",
+      description:
+        "Highlighting a word and pressing your Quick Add keybind did nothing in some apps, because they will not tell other apps what you have selected. Messaging apps built for iPad and terminals are the common ones. In those apps EnviousWispr now asks a second way: it copies your selection, reads it, and puts your clipboard back exactly as it was. It only does that where the ordinary way found nothing, so in every app that already worked your clipboard is never touched. If you copy something yourself while the panel is opening, your copy wins and yours is left alone. Your clipboard history will show the copy and the restore, which we do not try to hide. If you would rather it never touched your clipboard, there is a new switch in Clipboard settings, and it is off automatically in remote desktop and virtual machine apps.",
+      version: "2.4.6"
+    ),
+
     // MARK: - v2.4.5
     //
     // Order is the hierarchy (whats-new-protocol.md RULE: whats-new-content-rules):

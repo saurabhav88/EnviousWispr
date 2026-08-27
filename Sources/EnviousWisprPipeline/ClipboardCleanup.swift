@@ -225,6 +225,112 @@ public enum ClipboardCleanup {
     }
   }
 
+  // MARK: - Taking the board over for a non-delivery write (#2465)
+
+  /// The answer to a takeover request.
+  ///
+  /// **Two values on the granted case, because they answer two different questions and conflating
+  /// them is the defect this API exists to avoid.** `payload` is what the user must get back;
+  /// `baseline` is the number a change-count poll compares against. `snapshotForDelivery` returns a
+  /// snapshot whose own `changeCount` is from when the DICTATION snapshot was taken, so using it as
+  /// a copy baseline compares against a number from the past and the very first poll reads as
+  /// "something changed".
+  /// Not `Equatable`, because `ClipboardSnapshot` is not and making it so to satisfy a test would
+  /// hand that test an oracle with the wrong shape: "the clipboard came back" means the ITEMS match
+  /// and the change count deliberately does not.
+  enum Takeover {
+    /// The board is yours. Restore `payload` on every exit path; poll against `baseline`.
+    ///
+    /// **Nothing else will put the user's clipboard back once this is returned.** Any pending
+    /// cleanup has been cancelled, which is the point — an armed restore would otherwise fire on
+    /// top of yours — and it is also the obligation: an early return between here and the restore
+    /// strands whatever is on the board.
+    case granted(payload: ClipboardSnapshot, baseline: Int)
+    /// The clipboard is larger than the caller's budget, so nothing was touched.
+    ///
+    /// **Pending cleanup is left ARMED on this path**, deliberately. Refusing must not damage the
+    /// state we declined to take responsibility for, and a caller that gets this back has no
+    /// restore obligation precisely because it was given nothing to restore.
+    case clipboardTooLarge
+  }
+
+  /// Take the user's clipboard over for a write that is not a dictation delivery.
+  ///
+  /// Quick Add's clipboard fallback (#2465) posts a synthetic Copy at the frontmost app, reads what
+  /// lands, and puts the board back. That is the same preservation problem `snapshotForDelivery`
+  /// solves for a delivery, with two differences that make a bare snapshot wrong here:
+  ///
+  /// 1. **A pending operation must be CONSUMED, not merely read.** `snapshotForDelivery` leaves it
+  ///    armed on the path where the board has not moved, because a delivery goes on to schedule its
+  ///    own cleanup which supersedes it. This caller schedules nothing, so an armed restore survives
+  ///    and fires on top of the board it just handed back.
+  /// 2. **The baseline must be the board's CURRENT count**, not the snapshot's. See `Takeover`.
+  ///
+  /// - Parameter maximumBytes: the largest clipboard this caller is willing to hold in memory. The
+  ///   budget is the CALLER's policy rather than this type's: the number belongs beside the feature
+  ///   that decided how much risk one word is worth.
+  static func beginTakeover(
+    maximumBytes: Int,
+    from board: NSPasteboard = .general
+  ) -> Takeover {
+    // Computed BEFORE anything is cancelled. The budget question can refuse, and a refusal that had
+    // already torn down the pending cleanup would have damaged the state it declined to touch —
+    // which is why this is not a size check bolted onto the front of the commit below.
+    let payload = intendedPayload(from: board)
+
+    guard payloadBytes(payload) <= maximumBytes else { return .clipboardTooLarge }
+
+    // Commit. Any pending operation is abandoned whether or not it was stale: a fresh one would fire
+    // on top of our restore, a stale one would overwrite whatever the user copied, and the caller is
+    // about to write to the board either way.
+    if let current = pending {
+      pending = nil
+      current.task.cancel()
+    }
+
+    return .granted(payload: payload, baseline: board.changeCount)
+  }
+
+  /// What the user's clipboard IS right now, for a caller about to overwrite it.
+  ///
+  /// **Pure: it reads `pending` and the board and mutates neither.** That is the whole difference
+  /// from `snapshotForDelivery`, which cancels a stale pending operation as a side effect of being
+  /// asked. The three cases are the same three, and they are deliberately NOT shared with that
+  /// method: one is a query and the other is a step in a transaction, and collapsing them is how a
+  /// refusal comes to have side effects.
+  private static func intendedPayload(from board: NSPasteboard) -> ClipboardSnapshot {
+    guard let current = pending, board.changeCount == current.changeCountAfterPaste else {
+      // Either nothing is pending, or the board has moved on and the pending value is stale. In
+      // both cases what is on the board now IS the user's clipboard.
+      return PasteService.saveClipboard(from: board)
+    }
+
+    switch current.operation {
+    case .restore(let snapshot):
+      // Our own payload is still on the board and the real user clipboard is being held for it.
+      // Photographing the board here is the loss this whole method exists to prevent.
+      return snapshot
+
+    case .legacyRewrite(let legacyText):
+      // No user clipboard is held, but the board holds the CONTEXTUAL payload that the pending
+      // rewrite exists to replace. Inherit what the board would have held had the rewrite run.
+      return ClipboardSnapshot(
+        items: [[.string: Data(legacyText.utf8)]],
+        changeCount: board.changeCount)
+    }
+  }
+
+  /// Total bytes across every representation of every item.
+  ///
+  /// **Every representation, because that is what restoration writes back.** Measuring only the
+  /// string would let a snapshot carrying a large image through as "small", and the budget exists to
+  /// bound what is held in memory rather than what is legible.
+  private static func payloadBytes(_ snapshot: ClipboardSnapshot) -> Int {
+    snapshot.items.reduce(0) { total, item in
+      total + item.values.reduce(0) { $0 + $1.count }
+    }
+  }
+
   /// Hand the user's clipboard back after the target app has had time to read
   /// ours, without making the dictation wait for it.
   static func scheduleRestore(

@@ -90,6 +90,119 @@ public enum SelectionReader {
     /// three-valued shape `validation-discipline` describes, where the unhandled input lands in a
     /// neighbouring branch and inherits a claim that was never about it.
     case nothingSelected = "nothing_selected"
+
+    // MARK: The clipboard fallback's own refusals (#2465)
+    //
+    // Six members, and every one of them names a state in which the guarded synthetic Copy was NOT
+    // attempted or did not answer. They live on this set rather than on a second one for the reason
+    // the doc above gives: the panel line and `refuse_reason` are one slot, and a second enum would
+    // be two vocabularies for one question.
+    //
+    // **`SelectionReader` produces none of them**, the same way it produces neither
+    // `wordsUnavailable` nor `nothingSelected`. Their producer is `SelectionAcquisition` in
+    // Pipeline, which composes this reader with a clipboard transaction. That boundary is asserted
+    // rather than assumed — `noReadOutcomeIsAnAcquisitionRefusal` requires every reader path to
+    // stay out of them.
+
+    /// macOS is in secure input mode, so keystrokes are not ours to synthesize.
+    ///
+    /// Process-wide rather than a property of an element: something on the machine has taken secure
+    /// input, and posting a chord into it is exactly what that mode exists to prevent.
+    case secureInputActive = "secure_input_active"
+    /// The user's own shortcut modifiers never came up, so a Copy chord would land under them.
+    ///
+    /// Retryable, and the only one of these six that resolves itself: it means the shortcut is
+    /// still physically held. Quick Add fires on key-DOWN, so this is a real state rather than a
+    /// theoretical one.
+    case modifiersHeld = "modifiers_held"
+    /// The Copy was posted and the app never answered.
+    ///
+    /// **Replaces nothing.** `nothingSelected` still means the honest empty case, where the read
+    /// succeeded and there was nothing highlighted. This one means we asked twice, by two
+    /// mechanisms, and the second one also declined.
+    case copyRefused = "copy_refused"
+    /// macOS has not authorised this app to POST events.
+    ///
+    /// **Distinct from `accessibilityNotTrusted`, and the distinction is not pedantic.** Posting is
+    /// gated by `CGPreflightPostEventAccess`, which is a different grant from the Accessibility one
+    /// we already hold to READ. Inferring one from the other is how a user ends up told to turn on a
+    /// permission that is already on.
+    case eventPostingNotTrusted = "event_posting_not_trusted"
+    /// The clipboard is too large to preserve within budget, so we decline rather than risk it.
+    ///
+    /// The one member of this six that cannot be decided before the copy is attempted, because it
+    /// is a property of the payload rather than of the machine.
+    case clipboardTooLarge = "clipboard_too_large"
+    /// The clipboard fallback is off, by the user's setting or by the remote-desktop denylist.
+    case copyFallbackDisabled = "copy_fallback_disabled"
+    /// The application the read was taken from is no longer at the process we remembered.
+    ///
+    /// **Its own member rather than folded into `copyRefused`, and the seventh in a plan that
+    /// enumerated six.** It is reachable mainly from the menu-bar door, which can sit open long
+    /// enough for the target to quit and its pid to be recycled — and a recycled pid belongs to a
+    /// stranger, so "it did not answer" would be a sentence about the wrong process. Distinct in
+    /// telemetry too, because it is the verdict one Live UAT case exists to produce.
+    case targetApplicationGone = "target_application_gone"
+  }
+
+  /// Everything the acquisition ladder needs about the application a read was taken from, FROM THE
+  /// SAME SAMPLE that read used (#2465).
+  ///
+  /// **The single most important property in this file's new surface.** `Frontmost` below exists
+  /// because taking the pid in one place and the identity one call later described two different
+  /// applications — cloud review found it on PR #2428. A ladder one layer up that re-asks
+  /// `NSWorkspace.shared.frontmostApplication` for a pid to post a Copy chord at recreates that
+  /// exact defect, and it would post the chord at whatever came forward in between.
+  ///
+  /// So the pid is HANDED OUT with the read rather than re-derived, and nothing downstream samples
+  /// the workspace again.
+  public struct AcquisitionContext: Equatable, Sendable {
+    /// The process the read was taken from. Nil when nothing was frontmost, which is a refusal the
+    /// read already returned.
+    public let pid: pid_t?
+    /// That same application's bundle identifier, from the same `NSRunningApplication`.
+    ///
+    /// Two consumers: the remote-desktop denylist, and the menu-bar door's re-check that the
+    /// remembered pid still carries the identifier it was sampled with. A menu can sit open long
+    /// enough for a pid to be recycled.
+    public let bundleIdentifier: String?
+    /// The focused element's Accessibility subrole, when one was read.
+    ///
+    /// **Read only where it is about to be used**, which is why it is optional for two different
+    /// reasons: the element may not advertise one, and we may not have asked. See
+    /// `SubroleSampling` below — this costs a third Accessibility operation, and the success path
+    /// does not pay it.
+    public let focusedSubrole: String?
+
+    public init(pid: pid_t?, bundleIdentifier: String?, focusedSubrole: String?) {
+      self.pid = pid
+      self.bundleIdentifier = bundleIdentifier
+      self.focusedSubrole = focusedSubrole
+    }
+
+    /// Whether the focused element is a secure text field.
+    ///
+    /// A SECOND guard behind `IsSecureEventInputEnabled`, not a replacement for it. Secure input
+    /// mode is the real protection and is process-wide; this catches a password field in an app
+    /// that never enabled it. The cost of being wrong here is a password on the clipboard, which is
+    /// the one outcome in this whole feature worth a redundant check.
+    public var focusedElementIsSecure: Bool {
+      focusedSubrole == (kAXSecureTextFieldSubrole as String)
+    }
+  }
+
+  /// Whether a read should also sample the focused element's subrole.
+  ///
+  /// **An explicit parameter with no default, because a defaulted argument is how a capability
+  /// becomes unreachable to a grep** (`validation-discipline.md`, the silent-empty table's last
+  /// row). Both call sites say which they want.
+  enum SubroleSampling {
+    /// `read(timeout:)`. Two Accessibility operations, exactly as documented, unchanged.
+    case skip
+    /// `readForAcquisition(timeout:)`. A THIRD operation, on the focused handle we already hold and
+    /// already bounded, and only on the outcomes the fallback can act on. A successful read pays
+    /// nothing, so the menu's documented worst case is unchanged for the case it renders from.
+    case whenFallbackEligible
   }
 
   /// The longest selection worth reading, in Unicode scalars.
@@ -129,6 +242,36 @@ public enum SelectionReader {
   /// The default is far longer than a menu can wait.
   @MainActor
   public static func read(timeout: Float? = nil) -> Result {
+    performRead(timeout: timeout, subrole: .skip).result
+  }
+
+  /// The same read, handing back the sample it was taken from (#2465).
+  ///
+  /// **Side-effect free, exactly like `read`.** It touches no clipboard, posts no event and makes no
+  /// decision about a fallback. The only thing it adds is that the caller learns WHICH application
+  /// answered, from the sample the read itself used, so a ladder one layer up never has to ask the
+  /// workspace a second time. See `AcquisitionContext`.
+  ///
+  /// **Three Accessibility operations in the fallback-eligible cases, two otherwise.** The subrole
+  /// is read off the focused handle this call already holds and already bounded, and only where
+  /// something is about to act on it.
+  @MainActor
+  public static func readForAcquisition(
+    timeout: Float? = nil
+  ) -> (result: Result, context: AcquisitionContext) {
+    performRead(timeout: timeout, subrole: .whenFallbackEligible)
+  }
+
+  /// The one live read both entry points share.
+  ///
+  /// **One implementation rather than two, deliberately.** A second copy is how the two doors come
+  /// to disagree about the timeout, the ordering of the guards, or which pid the element read used
+  /// — which is the class `classify` was extracted to close one level down.
+  @MainActor
+  private static func performRead(
+    timeout: Float?,
+    subrole: SubroleSampling
+  ) -> (result: Result, context: AcquisitionContext) {
     precondition(timeout.map { $0 > 0 } ?? true, "a zero or negative AX timeout removes the bound")
     // Frontmost is read here rather than inside the check because it is the LIVE half. Current
     // because this runs on the main run loop from a hotkey or a Service, with events flowing;
@@ -136,13 +279,19 @@ public enum SelectionReader {
     // is not a state this entry point can be called from.
     let frontmost = Frontmost.current()
 
+    // Built once, from that one sample, and carried by EVERY return below including the refusals.
+    // A caller that only learns the application on success cannot re-check it later without taking
+    // a second sample, which is the defect this type exists to prevent.
+    let sampled = AcquisitionContext(
+      pid: frontmost.pid, bundleIdentifier: frontmost.bundleIdentifier, focusedSubrole: nil)
+
     if let refusal = refusalBeforeReading(isTrusted: AXIsProcessTrusted(), frontmost: frontmost) {
-      return .refused(refusal)
+      return (.refused(refusal), sampled)
     }
     // Safe: `refusalBeforeReading` returns non-nil for a nil or non-positive pid. The pid used for
     // the element read is the SAME sample the guard judged, so the refusal and the read can never
     // describe two different applications.
-    guard let pid = frontmost.pid else { return .refused(.noFocusedElement) }
+    guard let pid = frontmost.pid else { return (.refused(.noFocusedElement), sampled) }
 
     // **Handed to the query rather than set here.** `focusedElement` creates its OWN application
     // element, so a timeout set on a handle made here reaches nothing — it did not, and the line
@@ -161,7 +310,7 @@ public enum SelectionReader {
       focused = element
     } else {
       // Safe: `refusalForFocusedElement` returns non-nil for every non-element outcome.
-      return .refused(refusalForFocusedElement(focusedOutcome) ?? .unreadable)
+      return (.refused(refusalForFocusedElement(focusedOutcome) ?? .unreadable), sampled)
     }
 
     // **And bound the FOCUSED handle separately, because a descendant does not inherit one.** This
@@ -182,7 +331,67 @@ public enum SelectionReader {
     // The raw CF value is handed on UNERASED. `valueRef as? String` here would turn "the attribute
     // answered with something that is not a string" into `nil`, which reads as "nothing selected" —
     // and it would do it in the one function no test can reach.
-    return resolve(error: error, value: valueRef)
+    let result = resolve(error: error, value: valueRef)
+
+    // **The third operation, and only where something will act on it.** `isFallbackEligible` is the
+    // same predicate the ladder branches on, asked HERE so the subrole comes off the handle this
+    // call already holds — a second read would need a second focused-element lookup, which is a
+    // second sample of exactly the kind this whole type refuses.
+    guard subrole == .whenFallbackEligible, isFallbackEligible(result) else {
+      return (result, sampled)
+    }
+    var subroleRef: CFTypeRef?
+    let subroleError = AXUIElementCopyAttributeValue(
+      focused, kAXSubroleAttribute as CFString, &subroleRef)
+    // A missing subrole is the ORDINARY case, not a failure: plenty of elements advertise none.
+    // Type-checked before the cast for the same reason the selection is — an attribute answering
+    // with a number is a broken element, and `as? String` would report it as "no subrole".
+    let focusedSubrole: String? = {
+      guard subroleError == .success, let subroleRef,
+        CFGetTypeID(subroleRef) == CFStringGetTypeID()
+      else { return nil }
+      return subroleRef as? String
+    }()
+
+    return (
+      result,
+      AcquisitionContext(
+        pid: sampled.pid, bundleIdentifier: sampled.bundleIdentifier,
+        focusedSubrole: focusedSubrole)
+    )
+  }
+
+  /// Whether an outcome is one the clipboard fallback may act on (#2465).
+  ///
+  /// **Three, and every other outcome is terminal because asking a second time cannot help.** A
+  /// missing Accessibility grant, our own app being in front, a selection past the store's ceiling,
+  /// an unreadable answer: none of those becomes true because we posted a Copy. These three are the
+  /// shapes an app takes when it HAS a selection on screen and publishes nothing usable — the
+  /// measured WhatsApp case answers `.success` with `""`, and a terminal answers `noValue`.
+  ///
+  /// Lives here, beside `resolve`, rather than in the ladder: it is a statement about what an
+  /// Accessibility answer MEANS, which is this file's job, and the ladder that consumes it is one
+  /// module up.
+  public static func isFallbackEligible(_ result: Result) -> Bool {
+    switch result {
+    case .noSelection:
+      return true
+    case .refused(let why):
+      switch why {
+      case .selectionUnsupported, .selectionUnavailable:
+        return true
+      // Enumerated rather than defaulted, so adding a member forces the question to be answered
+      // here too. A `default` would silently make every future refusal terminal, which is the safe
+      // direction and still the wrong way to decide it.
+      case .accessibilityNotTrusted, .noFrontmostApplication, .noFocusedElement, .ownApplication,
+        .unreadable, .selectionTooLong, .wordsUnavailable, .nothingSelected, .secureInputActive,
+        .modifiersHeld, .copyRefused, .eventPostingNotTrusted, .clipboardTooLarge,
+        .copyFallbackDisabled, .targetApplicationGone:
+        return false
+      }
+    case .text:
+      return false
+    }
   }
 
   // MARK: - The frontmost application, sampled ONCE
@@ -201,8 +410,21 @@ public enum SelectionReader {
   struct Frontmost: Equatable {
     /// nil when nothing is frontmost, which is a refusal rather than a fact about us.
     let pid: pid_t?
+    /// That same application's bundle identifier, nil when it has none to report.
+    ///
+    /// **Stored rather than reduced to a Bool at the sample site (#2465).** `isOurs` used to be the
+    /// stored value, which was enough while the only question was "is this us". The acquisition
+    /// ladder asks two more — is this a remote-desktop client, and does the pid a menu remembered
+    /// still carry the identifier it was sampled with — and answering either from a second sample
+    /// is the defect this type was created to close. One string, every predicate derived from it,
+    /// so two answers about one application cannot disagree.
+    let bundleIdentifier: String?
+
     /// Whether that same application is one of ours, by `AppBundleIdentity`.
-    let isOurs: Bool
+    ///
+    /// Derived, never stored: a stored copy is a second value that can drift from the identifier it
+    /// was supposed to summarise.
+    var isOurs: Bool { AppBundleIdentity.isOurs(bundleIdentifier) }
 
     /// The live read: one `NSRunningApplication`, both facts taken off it.
     ///
@@ -211,7 +433,7 @@ public enum SelectionReader {
     @MainActor
     static func current() -> Frontmost {
       let app = NSWorkspace.shared.frontmostApplication
-      return Frontmost(pid: app?.processIdentifier, isOurs: AppBundleIdentity.isOurs(app?.bundleIdentifier))
+      return Frontmost(pid: app?.processIdentifier, bundleIdentifier: app?.bundleIdentifier)
     }
   }
 

@@ -101,6 +101,112 @@ struct ClipboardCleanupTests {
     }
   }
 
+  // MARK: The takeover (#2465)
+  //
+  // Quick Add's clipboard fallback writes to the board for a reason that is not a delivery, so it
+  // needs the same preservation `snapshotForDelivery` gives a delivery plus two things a delivery
+  // does not: the pending operation CONSUMED rather than read, and a baseline that is the board's
+  // current count rather than the snapshot's. Both differences are defects if they are wrong, and
+  // both are invisible from a happy-path run.
+
+  @Test("A takeover hands back the user's clipboard, not our own payload on the board")
+  func takeoverInheritsRatherThanPhotographingOurPayload() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      let snapshot = snapshot(of: pb)
+      put("our dictated payload", on: pb)
+      ClipboardCleanup.scheduleRestore(
+        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+
+      guard
+        case .granted(let payload, let baseline) = ClipboardCleanup.beginTakeover(
+          maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("the takeover was refused on a small clipboard")
+        return
+      }
+      #expect(string(payload) == "the user's own clipboard")
+
+      // **The baseline is the board's CURRENT count, and this is the assertion the API exists
+      // for.** The snapshot's own count is from when the DICTATION snapshot was taken, so a poll
+      // comparing against it would read "something changed" on its very first look.
+      #expect(baseline == pb.changeCount)
+      #expect(baseline != snapshot.changeCount, "or the two numbers are indistinguishable here")
+    }
+  }
+
+  @Test("A granted takeover CONSUMES the pending restore, so nothing fires on top of it")
+  func takeoverConsumesPendingCleanup() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      let snapshot = snapshot(of: pb)
+      put("our dictated payload", on: pb)
+      ClipboardCleanup.scheduleRestore(
+        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+      #expect(ClipboardCleanup.hasPending)
+
+      _ = ClipboardCleanup.beginTakeover(maximumBytes: 1 << 20, from: pb)
+
+      // **`snapshotForDelivery` would have left this armed**, because a delivery goes on to
+      // schedule its own cleanup that supersedes it. This caller schedules nothing, so a surviving
+      // restore fires on top of the board it just handed back.
+      #expect(!ClipboardCleanup.hasPending, "an armed restore would overwrite the fallback's work")
+
+      // The board the caller is about to write is whatever it was; nothing else will touch it now.
+      put("the copied word", on: pb)
+      #expect(pb.string(forType: .string) == "the copied word")
+    }
+  }
+
+  @Test("A takeover refused on budget leaves the pending restore exactly as it found it")
+  func takeoverRefusedOnBudgetDoesNotDamagePendingWork() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      let snapshot = snapshot(of: pb)
+      put("our dictated payload", on: pb)
+      ClipboardCleanup.scheduleRestore(
+        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+
+      // A budget below the held payload. Refusing must not tear down state we declined to take
+      // responsibility for: a caller that gets nothing back has nothing to restore, so if the
+      // pending work were cancelled here the user's clipboard would be gone with no owner left.
+      guard case .clipboardTooLarge = ClipboardCleanup.beginTakeover(maximumBytes: 1, from: pb)
+      else {
+        Issue.record("a one-byte budget must refuse")
+        return
+      }
+      #expect(ClipboardCleanup.hasPending, "the refusal cancelled work it was not taking over")
+
+      await ClipboardCleanup.awaitPendingCleanup()
+      #expect(pb.string(forType: .string) == "the user's own clipboard")
+    }
+  }
+
+  @Test("The budget counts EVERY representation, not just the readable one")
+  func takeoverBudgetCountsEveryRepresentation() async {
+    await withFastCleanup {
+      let pb = NSPasteboard.withUniqueName()
+      pb.clearContents()
+      let item = NSPasteboardItem()
+      item.setData(Data("word".utf8), forType: .string)
+      // A large non-text representation beside a tiny string. Measuring the string alone would let
+      // this through as "small" and then hold the whole thing in memory.
+      item.setData(Data(repeating: 0, count: 64 * 1024), forType: .tiff)
+      pb.writeObjects([item])
+
+      guard case .clipboardTooLarge = ClipboardCleanup.beginTakeover(maximumBytes: 8 * 1024, from: pb)
+      else {
+        Issue.record("a 64 KB image under an 8 KB budget must refuse")
+        return
+      }
+      // The pair, or the row above passes against a budget check that refuses everything.
+      guard case .granted = ClipboardCleanup.beginTakeover(maximumBytes: 1 << 20, from: pb) else {
+        Issue.record("the same clipboard must be accepted under a budget that fits it")
+        return
+      }
+    }
+  }
+
   // MARK: Pending-cleanup states — the class this design had to close
 
   @Test(

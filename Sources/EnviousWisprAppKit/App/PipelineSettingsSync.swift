@@ -239,6 +239,11 @@ final class PipelineSettingsSync {
     case .onboardingState, .hasCompletedOnboarding,
       .contactsSyncOnLaunchEnabled:
       break  // UI-only or cold flag.
+    case .quickAddClipboardFallback:
+      // #2465: read live by `QuickAddWiring` at each invocation, and there is no dictation session
+      // to sync it into. Deliberately NOT grouped with the frozen-per-recording cases above, which
+      // would be a false statement about when it takes effect.
+      break
     case .crashRecoveryEnabled:
       break  // #1063: read by the recovery wiring at capture start, not the live pipeline.
     case .escapeRecoveryEnabled:

@@ -1,5 +1,6 @@
 import AppKit
 import EnviousWisprCore
+import EnviousWisprPipeline
 import EnviousWisprPostProcessing
 import EnviousWisprServices
 import SwiftUI
@@ -30,6 +31,19 @@ final class QuickAddWiring {
   private var serviceProvider: QuickAddServiceProvider?
   private let hotkeyService: HotkeyService
   private let customWords: CustomWordsCoordinator
+  /// Read at the moment of each invocation rather than frozen, because Quick Add has no session to
+  /// freeze it into: the setting governs the very next press.
+  private let settings: SettingsManager
+
+  /// Whether an acquisition is in flight (#2465).
+  ///
+  /// **`notAlreadyOpen` cannot see one, and that is the whole reason this exists.** Acquisition
+  /// became asynchronous when it gained a step that waits for the user's modifiers to come up and
+  /// then for an app to answer a Copy — a few hundred milliseconds during which no panel exists, so
+  /// every "is the panel up" check says no. A second shortcut press inside that window would start a
+  /// second ladder, and two ladders would each take the clipboard over and each restore, with the
+  /// loser putting back a board the winner had already moved on from.
+  private var isAcquiring = false
 
   /// How long a confirmation stays up after Return. The founder's number: *"fade away by itself
   /// after two seconds"*.
@@ -55,7 +69,8 @@ final class QuickAddWiring {
     hotkeyService: HotkeyService,
     customWords: CustomWordsCoordinator,
     packManager: VocabularyPackManager,
-    presentationEffects: DesktopPresentationEffects
+    presentationEffects: DesktopPresentationEffects,
+    settings: SettingsManager
   ) {
     // FIRST, before anything else in this initializer: the host was previously a
     // stored-property initializer, which ran before every line here. Constructing
@@ -65,9 +80,9 @@ final class QuickAddWiring {
       presenter: presentationEffects.panels)
     self.hotkeyService = hotkeyService
     self.customWords = customWords
+    self.settings = settings
     self.coordinator = QuickAddCoordinator(
       environment: QuickAddCoordinator.Environment(
-        readSelection: { SelectionReader.read() },
         frontmostBundleID: { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
         refreshWords: { customWords.refreshFromDiskIfPossible() },
         userWords: { customWords.customWords },
@@ -107,9 +122,30 @@ final class QuickAddWiring {
 
   // MARK: - The two doors
 
+  /// Door A. Acquires BEFORE any panel exists, which is what keeps the answer about the user's own
+  /// application rather than about ours.
+  ///
+  /// **Asynchronous since #2465, and the alternative was worse.** The clipboard fallback waits for
+  /// the user's own shortcut modifiers to come up and then for the target app to answer a Copy.
+  /// Doing that synchronously would block the main actor for a couple of hundred milliseconds on
+  /// exactly the gesture whose whole promise is that it does not interrupt you. Nothing activates us
+  /// during the await, so the ordering the door depends on is unchanged.
   private func beginFromHotkey() {
-    guard notAlreadyOpen() else { return }
-    present(coordinator.begin(door: .hotkey))
+    // **`isAcquiring` is asked FIRST, and the order is not stylistic.** `notAlreadyOpen()` has side
+    // effects: it raises the panel and cancels a pending fade. Asking it while a ladder is already
+    // running would cancel a confirmation the user is still reading, on a press we are about to
+    // ignore anyway.
+    guard !isAcquiring, notAlreadyOpen() else { return }
+    isAcquiring = true
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer { self.isAcquiring = false }
+      let outcome = await SelectionAcquisition.acquire(
+        fallbackEnabled: self.settings.quickAddClipboardFallback)
+      // Re-asked after the await: the user may have opened the panel another way while we waited.
+      guard self.notAlreadyOpen() else { return }
+      self.present(self.coordinator.begin(door: .hotkey, selection: .acquired(outcome)))
+    }
   }
 
   /// Door B. Separate from the hotkey path only because the Service is HANDED its text.
@@ -119,8 +155,22 @@ final class QuickAddWiring {
   /// menu is rendered while the user's own application is still frontmost — measured, twice — so the
   /// read happens there, at the one moment the answer is about their document. Reading it from this
   /// side would run after the click, by which time the menu has closed and the answer is ours.
-  func beginFromMenuBar(selection: SelectionReader.Result) {
-    guard notAlreadyOpen() else { return }
+  ///
+  /// **Since #2465 it may also fall back, and the plan said this was impossible until it was
+  /// measured.** The synchronous constraint binds the menu's RENDER, not its click; and the reason
+  /// a live read here would be about us does not bind a chord aimed at a remembered pid. Measured:
+  /// a word highlighted in WhatsApp, Finder brought to the front, the chord posted at WhatsApp's
+  /// pid — the word came back. So the two doors now give the same answer through the same
+  /// mechanism, rather than needing copy to explain why they differ.
+  func beginFromMenuBar(
+    selection: SelectionReader.Result,
+    context: SelectionReader.AcquisitionContext
+  ) {
+    // **`isAcquiring` is asked FIRST, and the order is not stylistic.** `notAlreadyOpen()` has side
+    // effects: it raises the panel and cancels a pending fade. Asking it while a ladder is already
+    // running would cancel a confirmation the user is still reading, on a press we are about to
+    // ignore anyway.
+    guard !isAcquiring, notAlreadyOpen() else { return }
     // **The menu's own outcome is carried through, refusal included.** This used to pass the text
     // and let nil stand for "refused", which made `begin` read AGAIN — without the menu's cap, so a
     // stalled Accessibility provider stalled the panel instead of the menu, and the bound that let
@@ -128,7 +178,16 @@ final class QuickAddWiring {
     //
     // Re-reading is also wrong on its own terms here: by the time this runs the menu has closed, so
     // a live read can answer about US rather than about the document the user was looking at.
-    present(coordinator.begin(door: .menuBar, selection: .result(selection)))
+    isAcquiring = true
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer { self.isAcquiring = false }
+      let outcome = await SelectionAcquisition.acquire(
+        following: selection, context: context,
+        fallbackEnabled: self.settings.quickAddClipboardFallback)
+      guard self.notAlreadyOpen() else { return }
+      self.present(self.coordinator.begin(door: .menuBar, selection: .acquired(outcome)))
+    }
   }
 
   func beginFromService(text: String) {

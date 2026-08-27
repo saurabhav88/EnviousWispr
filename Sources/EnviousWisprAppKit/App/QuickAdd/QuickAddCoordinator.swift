@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprPipeline
 import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
@@ -17,7 +18,16 @@ enum QuickAddEvent: Equatable, Sendable {
     heardScalarCount: Int,
     candidateCount: Int,
     preselected: Bool,
-    topScore: Double?)
+    topScore: Double?,
+    /// HOW the text was obtained (#2465). Without it a support reader cannot tell an app that
+    /// works from one that only works because we paid for it with the user's clipboard, and
+    /// nobody can measure how large the fallback class actually is.
+    acquired: SelectionAcquisition.Acquired,
+    /// What the whole acquisition cost, nil when no fallback was attempted. The path alone cannot
+    /// show a slow one.
+    acquisitionMs: Int?,
+    /// What became of the user's clipboard. A declined restore is the one outcome they would feel.
+    clipboardRestore: SelectionAcquisition.ClipboardRestore)
 
   /// The panel closed, one way or another.
   case resolved(
@@ -76,7 +86,12 @@ final class QuickAddCoordinator {
   /// and the shape `keep-central-types-thin` refuses. It also makes every branch below testable
   /// without a window, a words file, or a real selection.
   struct Environment {
-    var readSelection: () -> SelectionReader.Result
+    /// **`readSelection` is GONE (#2465), not merely unused.** Every door now hands `begin` an
+    /// outcome somebody else obtained: the shortcut and the menu through `SelectionAcquisition`,
+    /// the Service through the text macOS passed it. A live read inside `begin` had exactly one
+    /// caller left and it could not stay, because the acquisition ladder has to await a synthetic
+    /// Copy and `begin` is synchronous. Leaving the seam behind would have been a second way in
+    /// that skips every guard the ladder adds.
     var frontmostBundleID: () -> String?
     /// Returns false when the words file could not be re-read. The panel then says so rather than
     /// ranking a stale snapshot.
@@ -138,17 +153,18 @@ final class QuickAddCoordinator {
   /// `.text` is classified INSIDE `begin` rather than at the call site, so a future door cannot hand
   /// over raw text and skip the ceiling and the empty check.
   enum SelectionSource {
-    /// Read it now, live and unbounded. The hotkey door, where the user's app is still frontmost.
-    case live
     /// Raw text handed to us, to be classified here. The Services door.
     case text(String)
-    /// An outcome somebody else already obtained, carried through as-is. The menu door, whose read
-    /// happened while the menu was open — under a cap, and at the one moment the answer was about
-    /// the user's document rather than about us.
-    case result(SelectionReader.Result)
+    /// An acquisition somebody else already performed, carried through as-is (#2465). The shortcut
+    /// and menu doors, both of which run the ladder before a panel exists — the shortcut because
+    /// the fallback has to await a synthetic Copy, the menu because its read happened while the
+    /// menu was open, at the one moment the answer was about the user's document rather than us.
+    case acquired(SelectionAcquisition.Outcome)
   }
 
-  func begin(door: QuickAddDoor, selection source: SelectionSource = .live) -> QuickAddPanelModel? {
+  /// No default for `selection`, because there is no longer a live case to default to and a default
+  /// would have to invent one.
+  func begin(door: QuickAddDoor, selection source: SelectionSource) -> QuickAddPanelModel? {
     let startedAt = environment.now()
     let bundleID = environment.frontmostBundleID()
 
@@ -164,13 +180,27 @@ final class QuickAddCoordinator {
     // `.result` is carried UNTOUCHED. It is already a classified outcome, and re-reading it here
     // would both repeat a stalled read without the caller's cap and, once #2413 lands, risk
     // answering "EnviousWispr is in front" — true by then, and about the wrong subject.
-    var selection: SelectionReader.Result = {
-      switch source {
-      case .live: return environment.readSelection()
-      case .text(let raw): return SelectionReader.classify(raw)
-      case .result(let already): return already
-      }
-    }()
+    // **The four facts come out of ONE switch**, so no door can report a path that disagrees with
+    // the result it arrived with. Split across four separate expressions, the Services door would
+    // be four independent chances to borrow a neighbouring value, which is the defect this cluster
+    // has already produced three times.
+    let acquisition:
+      (
+        result: SelectionReader.Result, acquired: SelectionAcquisition.Acquired,
+        milliseconds: Int?, restore: SelectionAcquisition.ClipboardRestore
+      ) = {
+        switch source {
+        case .text(let raw):
+          // The Services system hands us whatever was on the pasteboard. Nothing was acquired and
+          // no clipboard of the user's was ever ours, so both of those say so.
+          return (SelectionReader.classify(raw), .handed, nil, .notTouched)
+        case .acquired(let outcome):
+          return (
+            outcome.result, outcome.acquired, outcome.acquisitionMs, outcome.clipboardRestore
+          )
+        }
+      }()
+    var selection = acquisition.result
 
     // Refresh before ranking, every invocation. A sibling instance or the Settings window can have
     // changed the library since launch, and ranking a stale snapshot offers words that no longer
@@ -235,7 +265,10 @@ final class QuickAddCoordinator {
         heardScalarCount: heard.unicodeScalars.count,
         candidateCount: model.ranking.candidates.count,
         preselected: model.ranking.preselectedID != nil,
-        topScore: model.ranking.topScore)
+        topScore: model.ranking.topScore,
+        acquired: acquisition.acquired,
+        acquisitionMs: acquisition.milliseconds,
+        clipboardRestore: acquisition.restore)
 
     self.startedAt = startedAt
     return model

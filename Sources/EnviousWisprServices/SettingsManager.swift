@@ -28,6 +28,7 @@ public final class SettingsManager {
     case pushToTalkModifiers
     case modelUnloadPolicy
     case restoreClipboardAfterPaste
+    case quickAddClipboardFallback
     case smartInsertion
     case escapeRecoveryEnabled
     case wordCorrectionEnabled
@@ -84,7 +85,8 @@ public final class SettingsManager {
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
     "pushToTalkKeyCode", "pushToTalkModifiersRaw", "modelUnloadPolicy",
-    "restoreClipboardAfterPaste", "smartInsertion", "escapeRecoveryEnabled",
+    "restoreClipboardAfterPaste", "quickAddClipboardFallback",
+    "smartInsertion", "escapeRecoveryEnabled",
     "wordCorrectionEnabled",
     "fillerRemovalEnabled", "emojiFormatterEnabled", "spokenPunctuationEnabled",
     "crashRecoveryEnabled", "contactsSyncOnLaunchEnabled",
@@ -383,6 +385,25 @@ public final class SettingsManager {
     didSet {
       defaults.set(restoreClipboardAfterPaste, forKey: "restoreClipboardAfterPaste")
       onChange?(.restoreClipboardAfterPaste)
+    }
+  }
+
+  /// Whether Quick Add may briefly use the clipboard to read a selection an app will not share
+  /// (#2465).
+  ///
+  /// **One global switch rather than a per-app list, and that narrowing is deliberate.** A per-app
+  /// list needs a bundle roster, a UI to manage it, persistence and its own empty state, which is a
+  /// settings feature riding inside a bug fix. The hard-coded keystroke-forwarding list in
+  /// `SelectionAcquisition` already covers the apps such a list would most likely be used for. If
+  /// telemetry shows users reaching for this toggle rather than living with it, the per-app list is
+  /// the follow-up with evidence behind it.
+  ///
+  /// Takes effect on the next invocation. Nothing freezes it into a session, because Quick Add has
+  /// no session to freeze it into.
+  public var quickAddClipboardFallback: Bool {
+    didSet {
+      defaults.set(quickAddClipboardFallback, forKey: "quickAddClipboardFallback")
+      onChange?(.quickAddClipboardFallback)
     }
   }
 
@@ -831,6 +852,9 @@ public final class SettingsManager {
     restoreClipboardAfterPaste =
       defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool
       ?? SettingsDefaultValues.restoreClipboardAfterPaste
+    quickAddClipboardFallback =
+      defaults.object(forKey: "quickAddClipboardFallback") as? Bool
+      ?? SettingsDefaultValues.quickAddClipboardFallback
     smartInsertion =
       defaults.object(forKey: "smartInsertion") as? Bool
       ?? SettingsDefaultValues.smartInsertion
