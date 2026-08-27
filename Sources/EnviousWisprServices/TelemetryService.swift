@@ -753,16 +753,29 @@ public final class TelemetryService {
   /// `top_score` ships RAW rather than bucketed. It is a similarity between two strings, not a
   /// property of either; bucketing it would destroy the only signal that says whether the confidence
   /// bar is set right, which is the number this feature will actually be tuned on.
+  ///
+  /// **`acquired`, `acquisition_ms` and `clipboard_restore` are #2465's, and the first of them is
+  /// the one that matters.** Without it nothing distinguishes an app whose selection we can read
+  /// from one that only works because we briefly took the user's clipboard — the same funnel, the
+  /// same success, two very different things to know about a bundle id. It is also the number that
+  /// says how large the fallback class actually is. All three are shape: a path, a duration, and an
+  /// outcome, none of them anything the user wrote.
   public func quickAddOpened(
     door: String, hadSelection: Bool, refuseReason: String?, candidateCount: Int,
-    preselected: Bool, topScore: Double?, sourceBundleID: String?, heardLength: Int
+    preselected: Bool, topScore: Double?, sourceBundleID: String?, heardLength: Int,
+    acquired: String, acquisitionMilliseconds: Int?, clipboardRestore: String
   ) {
     var props: [String: Any] = [
       "door": door, "had_selection": hadSelection, "candidate_count": candidateCount,
       "preselected": preselected, "heard_length": heardLength,
       "refuse_reason": refuseReason ?? "none",
       "source_bundle_id": sourceBundleID ?? "unknown",
+      "acquired": acquired,
+      "clipboard_restore": clipboardRestore,
     ]
+    // Absent rather than zero when no fallback ran: a zero would be a real measurement of something
+    // that did not happen, and it would drag every average toward it.
+    if let acquisitionMilliseconds { props["acquisition_ms"] = acquisitionMilliseconds }
     if let topScore { props["top_score"] = (topScore * 100).rounded() / 100 }
     #if DEBUG
       // DERIVED from `props`, never re-listed — the #1987 lesson. A projection built independently

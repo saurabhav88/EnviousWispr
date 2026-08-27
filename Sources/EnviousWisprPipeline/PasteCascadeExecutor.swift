@@ -536,7 +536,7 @@ internal final class PasteCascadeExecutor {
           let snapshot: ClipboardSnapshot? =
             request.restoreClipboardAfterPaste
             ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
-            : nil
+            : { ClipboardCleanup.deliveryClaimsBoard(); return nil }()
           submittedKind = payload.kind
           let dispatchResult = PasteService.pasteToActiveApp(
             payload.text, to: self.pasteboard)
@@ -585,10 +585,13 @@ internal final class PasteCascadeExecutor {
           requireCaretUnchanged: request.targetElementIsRetried,
           terminalBudget: request.terminalBudget)
         // Same ordering as Tier 2: snapshot after the re-check, before the write.
+        // #2465: the restore-OFF arm still WRITES the board, so an in-flight Quick Add takeover has
+        // to learn it lost — `snapshotForDelivery` is the only thing that used to say so, and it
+        // does not run on this arm.
         let snapshot: ClipboardSnapshot? =
           request.restoreClipboardAfterPaste
           ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
-          : nil
+          : { ClipboardCleanup.deliveryClaimsBoard(); return nil }()
         submittedKind = payload.kind
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
           payload.text, to: self.pasteboard)
@@ -649,10 +652,13 @@ internal final class PasteCascadeExecutor {
       if activation.activated {
         // Put our text on the clipboard BEFORE probing enabled-state: apps grey
         // out Paste when the clipboard is empty/incompatible (#729 Codex r1).
+        // #2465: the restore-OFF arm still WRITES the board, so an in-flight Quick Add takeover has
+        // to learn it lost — `snapshotForDelivery` is the only thing that used to say so, and it
+        // does not run on this arm.
         let snapshot: ClipboardSnapshot? =
           request.restoreClipboardAfterPaste
           ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
-          : nil
+          : { ClipboardCleanup.deliveryClaimsBoard(); return nil }()
         // Selected through the same owner as every other route. A container
         // target should never HAVE a candidate — the context reader refuses any
         // role that is not a text role — but this route asks the same question
@@ -731,6 +737,10 @@ internal final class PasteCascadeExecutor {
     // Tier 2 because a non-text element was focused (PR #220's void-protection
     // path). Nil-element paths reach Tier 2 and log their own tier=cgevent.
     if tier == .clipboardOnly {
+      // #2465: Tier 3 WRITES the board and takes neither of the two routes that used to be the only
+      // ways to say so — it never snapshots and never restores. A Quick Add takeover in flight would
+      // have read this payload as the target app's Copy response and then restored over it.
+      ClipboardCleanup.deliveryClaimsBoard()
       PasteService.copyToClipboard(request.legacyText, to: self.pasteboard)
       // An earlier route may have SUBMITTED the contextual payload and failed.
       // What the user can now paste by hand is this legacy text, so that is what

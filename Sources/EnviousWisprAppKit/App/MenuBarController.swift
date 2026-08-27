@@ -153,10 +153,23 @@ final class MenuBarController: NSObject {
   ///
   /// Truncated for display. `SelectionReader` admits up to 512 scalars, and a menu item is not where
   /// 512 characters belong; the panel shows the whole thing.
-  static func quickAddItem(_ state: QuickAddMenuState) -> (title: String, enabled: Bool) {
+  ///
+  /// **`fallbackEnabled` has no default, and the row it governs changed meaning in #2465.** A read
+  /// that returns "nothing selected" used to be a fact: the user had highlighted nothing, so the
+  /// row was inert and clicking it would have spent a click on news the menu already had. It is no
+  /// longer a fact. WhatsApp answers exactly that with a word visibly highlighted, and terminals do
+  /// a related thing, so the honest state at render time is "we do not know" — and the way to find
+  /// out costs a clipboard, which is what the click is for.
+  ///
+  /// So the row is OFFERED when the clipboard fallback could run, and stays inert when it could
+  /// not, because with the fallback off the menu really does know.
+  static func quickAddItem(
+    _ state: QuickAddMenuState,
+    fallbackEnabled: Bool
+  ) -> (title: String, enabled: Bool) {
     switch state {
     case .nothingSelected:
-      return ("Add Selected Word", false)
+      return ("Add Selected Word", fallbackEnabled)
     case .blocked:
       // **Enabled, and that is the point.** A refused read is not an empty selection: the user has
       // selected something and we could not read it, usually because Accessibility is off. A greyed
@@ -282,9 +295,17 @@ final class MenuBarController: NSObject {
   /// How long the menu will wait for the frontmost application to answer EACH Accessibility
   /// operation.
   ///
-  /// **Per operation, and the read makes two** — the focused-element lookup and the selected-text
-  /// read — so the worst case is 0.5s total, which is the bound the menu was always meant to hold
-  /// to. An earlier version set 0.5 here and claimed 0.5 total, which was wrong by a factor of two.
+  /// **Per operation, and the read makes two on the path that renders a word** — the focused-element
+  /// lookup and the selected-text read — so the worst case there is 0.5s total, which is the bound
+  /// the menu was always meant to hold to. An earlier version set 0.5 here and claimed 0.5 total,
+  /// which was wrong by a factor of two.
+  ///
+  /// **A THIRD operation since #2465, and only where nothing was found.** `readForAcquisition` also
+  /// reads the focused element's subrole, on the handle it already holds and already bounded, on
+  /// exactly the outcomes the clipboard fallback can act on. So a menu opening onto a readable
+  /// selection is unchanged at 0.5s, and one opening onto an app that publishes nothing can reach
+  /// 0.75s. That is stated rather than hidden because it is the case this timeout exists to bound,
+  /// and it is the case that just got slower.
   ///
   /// Longer than any healthy Accessibility read, shorter than a user tolerates a menu not opening.
   static let quickAddReadTimeout: Float = 0.25
@@ -361,7 +382,8 @@ final class MenuBarController: NSObject {
 
     // Quick Add (#2412). Beside Start Recording because both act on what the user is doing RIGHT
     // NOW, and above the Settings separator because neither is configuration.
-    let quickAdd = Self.quickAddItem(state.quickAdd)
+    let quickAdd = Self.quickAddItem(
+      state.quickAdd, fallbackEnabled: state.quickAddFallbackEnabled)
     // **No key equivalent, deliberately** — see `quickAddShortcutLabel`. The chord rides in the
     // title as text, so the menu teaches the fast path without registering a second way to fire it.
     let quickAddItem = NSMenuItem(
@@ -384,7 +406,11 @@ final class MenuBarController: NSObject {
     // text to a ready row and nothing to the others, so the click path had to re-read to find out
     // what had happened — without this read's cap, and after the menu had closed, by which time a
     // live read can answer about US rather than about the user's document.
-    quickAddItem.representedObject = state.quickAdd.selectionResult
+    // **And the CONTEXT rides with it (#2465), from the same sample the read used.** The click path
+    // may post a Copy chord, and the process it aims at has to be the one the user was looking at
+    // when the menu was drawn — not whatever `NSWorkspace` says now, which after a menu click is us.
+    quickAddItem.representedObject = QuickAddMenuSelection(
+      result: state.quickAdd.selectionResult, context: state.quickAddContext)
     menu.addItem(quickAddItem)
 
     // Auto-stop on silence indicator
@@ -481,8 +507,17 @@ final class MenuBarController: NSObject {
   /// application frontmost (measured twice, #2412), which is exactly what makes the answer theirs.
   /// An Accessibility round trip on an icon refresh would be work nobody asked for, against a
   /// frontmost app that may well be us.
-  private func currentViewState(quickAdd: QuickAddMenuState = .nothingSelected) -> MenuBarViewState
-  {
+  ///
+  /// **`quickAddContext` is defaulted to an EMPTY sample, never to a live one (#2465).** The two
+  /// paths that do not read leave it empty, and an empty context refuses the copy path rather than
+  /// posting a chord at a pid nobody sampled. A default that reached out to `NSWorkspace` would be a
+  /// second sample waiting for a caller who omits it, which is the shape `SelectionReader` records
+  /// cloud review finding on PR #2428.
+  private func currentViewState(
+    quickAdd: QuickAddMenuState = .nothingSelected,
+    quickAddContext: SelectionReader.AcquisitionContext = .init(
+      pid: nil, bundleIdentifier: nil, focusedSubrole: nil)
+  ) -> MenuBarViewState {
     // #1019: read the pending-update state (non-critical only — critical routes
     // to Sparkle's own UX) and the active-dictation guard.
     let pending: UpdateAvailabilityService.AvailableUpdate? = {
@@ -506,6 +541,8 @@ final class MenuBarController: NSObject {
         keyCode: settings.quickAddKeyCode, modifiers: settings.quickAddModifiers,
         recordKeyCode: settings.toggleKeyCode, recordModifiers: settings.toggleModifiers,
         cancelKeyCode: settings.cancelKeyCode, cancelModifiers: settings.cancelModifiers),
+      quickAddContext: quickAddContext,
+      quickAddFallbackEnabled: settings.quickAddClipboardFallback,
       quickAdd: quickAdd,
       pipelineState: liveRecordingState.pipelineState,
       asrLabel: backendMetadata.modelLabel,
@@ -528,12 +565,17 @@ final class MenuBarController: NSObject {
   /// application was still frontmost; by the time this fires the menu has closed and a read would be
   /// about us. That ordering is the whole reason this door works.
   @objc private func addSelectedWordAction(_ sender: NSMenuItem) {
-    // A blocked row carries nothing, and passing nil is what lets the panel read the refusal LIVE
-    // and say why — rather than repeating a reason captured when the menu was drawn.
-    // A row we rendered always carries its outcome. The fallback is not a real case — it exists so
-    // a menu item built by something other than `renderMenu` cannot silently add an empty word.
-    actions.addSelectedWord(
-      sender.representedObject as? SelectionReader.Result ?? .refused(.noFocusedElement))
+    // A row we rendered always carries its outcome AND the sample it came from. The fallback is not
+    // a real case — it exists so a menu item built by something other than `renderMenu` cannot
+    // silently add an empty word, and the empty context it carries refuses the copy path rather
+    // than posting a chord at a pid nobody sampled.
+    let carried =
+      sender.representedObject as? QuickAddMenuSelection
+      ?? QuickAddMenuSelection(
+        result: .refused(.noFocusedElement),
+        context: SelectionReader.AcquisitionContext(
+          pid: nil, bundleIdentifier: nil, focusedSubrole: nil))
+    actions.addSelectedWord(carried.result, carried.context)
   }
 
   @objc private func continueOnboardingAction() {
@@ -624,14 +666,26 @@ extension MenuBarController: NSMenuDelegate {
         //
         // All three outcomes are carried. A refusal is NOT an empty selection — collapsing them is
         // what made a missing Accessibility permission look identical to having selected nothing.
+        //
+        // **`readForAcquisition` rather than `read` (#2465), and it is still side-effect free.** It
+        // is the same read; it additionally hands back which application answered, taken from the
+        // sample the read itself used. The click path needs that and cannot take its own, because
+        // by then the frontmost application is us. On the fallback-eligible outcomes it costs one
+        // more Accessibility operation on a handle already bounded by the timeout above; a
+        // successful read pays nothing.
+        let (readResult, readContext) = SelectionReader.readForAcquisition(
+          timeout: Self.quickAddReadTimeout,
+          sampleSubrole: settings.quickAddClipboardFallback)
         let quickAdd: QuickAddMenuState = {
-          switch SelectionReader.read(timeout: Self.quickAddReadTimeout) {
+          switch readResult {
           case .text(let text): return .ready(text)
           case .noSelection: return .nothingSelected
           case .refused(let why): return .blocked(why)
           }
         }()
-        renderMenu(into: currentMenu, state: currentViewState(quickAdd: quickAdd))
+        renderMenu(
+          into: currentMenu,
+          state: currentViewState(quickAdd: quickAdd, quickAddContext: readContext))
       }
       updateIcon()
     }
@@ -642,12 +696,30 @@ extension MenuBarController: NSMenuDelegate {
 /// architecture ceiling parser scores them as a single collaborator slot.
 struct MenuBarActions: Sendable {
   /// Open Quick Add on the text the menu read while the user's own app was still frontmost (#2412).
-  let addSelectedWord: @MainActor (SelectionReader.Result) -> Void
+  /// Takes the CONTEXT as well as the result (#2465): the click path may fall back to a synthetic
+  /// Copy, and that chord must be aimed at the process the render-time read sampled.
+  let addSelectedWord: @MainActor (SelectionReader.Result, SelectionReader.AcquisitionContext) ->
+    Void
   let continueOnboarding: @MainActor () -> Void
   let openSettings: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void
   let toggleRecording: @MainActor () async -> Void
   let quit: @MainActor () -> Void
+}
+
+/// What one rendered Quick Add row carries to its own click (#2465).
+///
+/// **Both halves or neither.** The result is what the panel is told; the context is which
+/// application it was read from, from the same sample. Carrying the result alone is what forced the
+/// click path to re-read before #2412, and carrying a context taken later would post a Copy chord at
+/// whatever came forward since — the two defects this pairing exists to close, one from each end.
+///
+/// On the menu ITEM rather than on the controller, which is AppKit's own place for it: a field on
+/// the controller would be one value shared by every render and could drift from the title beside
+/// it, and it would spend a stored-property slot the ceiling test already refused once.
+struct QuickAddMenuSelection {
+  let result: SelectionReader.Result
+  let context: SelectionReader.AcquisitionContext
 }
 
 /// What the Quick Add row has to say, in the three states a selection read can produce.
@@ -695,6 +767,17 @@ struct MenuBarViewState: Equatable {
   /// On the state for the same reason as the selection: `renderMenu` is pure over this value, and
   /// reading `settings` inside it would end that.
   let quickAddShortcut: String?
+
+  /// The application the Quick Add read was taken from, from that same sample (#2465).
+  ///
+  /// On the state for the same reason the selection is: `renderMenu` is pure over this value, and
+  /// re-deriving it inside would end that — and re-deriving is also the specific defect, because by
+  /// click time the frontmost application is us.
+  let quickAddContext: SelectionReader.AcquisitionContext
+
+  /// Whether the clipboard fallback may run, which decides whether an empty read is OFFERED or
+  /// asserted (#2465). See `quickAddItem`.
+  let quickAddFallbackEnabled: Bool
 
   /// What the Quick Add row has to say (#2412).
   ///

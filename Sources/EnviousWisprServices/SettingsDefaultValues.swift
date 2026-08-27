@@ -66,6 +66,10 @@ enum SettingsDefaultValues {
 
   static let modelUnloadPolicy: ModelUnloadPolicy = .never
   static let restoreClipboardAfterPaste = true
+  /// Quick Add's clipboard fallback (#2465). Default ON, because the whole point is that the
+  /// feature stops silently failing in the apps people actually chat in, and a fallback nobody
+  /// turns on is a fallback that does not exist.
+  static let quickAddClipboardFallback = true
   /// Smart insertion: adjust spacing and capitalisation to the text around the
   /// caret. Default ON — the repair only ever fires where it is positively safe,
   /// and an unrecognised word simply keeps today's behaviour.

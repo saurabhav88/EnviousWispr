@@ -52,6 +52,29 @@ struct ClipboardSettingsView: View {
       } footer: {
         FrozenPerRecordingFootnote()
       }
+
+      // **Its own section, not a fourth row above.** The Clipboard section carries the
+      // frozen-per-recording footnote, and this setting has nothing to do with a recording: it
+      // governs a shortcut, and a change to it applies to the very next press. Filing it under a
+      // footnote saying otherwise would be a false claim about the one row a user is most likely to
+      // read carefully, since it is the row that says we touch their clipboard.
+      BrandedSection(header: "Quick Add") {
+        BrandedRow(showDivider: false) {
+          HStack(alignment: .top, spacing: 11) {
+            SettingsRowIcon(systemName: "text.viewfinder")
+            VStack(alignment: .leading, spacing: 4) {
+              Toggle(isOn: $settings.quickAddClipboardFallback) {
+                Text("Read selections through the clipboard").settingsRowLabel()
+              }
+              .toggleStyle(BrandedToggleStyle())
+              Text(
+                "Some apps will not tell other apps what you have highlighted. In those, adding a word from your selection briefly copies it and then puts your clipboard back."
+              )
+              .settingsReadingCopy()
+            }
+          }
+        }
+      }
     }
   }
 }

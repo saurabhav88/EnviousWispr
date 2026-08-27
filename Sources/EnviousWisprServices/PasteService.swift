@@ -153,14 +153,44 @@ public enum PasteService {
 
   /// Capture the supplied pasteboard's contents for later restoration.
   public static func saveClipboard(from pasteboard: NSPasteboard = .general) -> ClipboardSnapshot {
+    // Unbounded by contract, which is correct for a delivery: whatever the user had, they get back.
+    // A caller that must bound its memory asks for the budgeted variant below and handles the nil.
+    boundedSaveClipboard(from: pasteboard, maximumBytes: nil) ?? ClipboardSnapshot(
+      items: [], changeCount: pasteboard.changeCount)
+  }
+
+  /// Capture the pasteboard, giving up as soon as the cumulative bytes exceed `maximumBytes`.
+  ///
+  /// **The budget has to be enforced WHILE materializing, not after (#2465).** An earlier caller
+  /// snapshotted everything and then measured it, so a clipboard holding a large image allocated
+  /// every byte of it on the main actor before the safety budget got a say — the budget bounded
+  /// what we KEPT and not what we TOUCHED, which is the opposite of what it was for.
+  ///
+  /// **Known residue, stated because it cannot be removed with public APIs:** `NSPasteboardItem`
+  /// exposes no size before its data is materialized, so a SINGLE representation larger than the
+  /// budget is still read once. What this bounds is everything after it. The real ceiling is
+  /// therefore `maximumBytes` plus one representation, not `maximumBytes`.
+  ///
+  /// - Returns: nil when the budget was exceeded. Nil means "we did not get a usable picture of
+  ///   your clipboard", which for the only caller means declining to touch it at all.
+  public static func boundedSaveClipboard(
+    from pasteboard: NSPasteboard = .general,
+    maximumBytes: Int?
+  ) -> ClipboardSnapshot? {
     var items: [[NSPasteboard.PasteboardType: Data]] = []
+    var total = 0
 
     for item in pasteboard.pasteboardItems ?? [] {
       var dict: [NSPasteboard.PasteboardType: Data] = [:]
       for type in item.types {
-        if let data = item.data(forType: type) {
-          dict[type] = data
+        guard let data = item.data(forType: type) else { continue }
+        if let maximumBytes {
+          total += data.count
+          // Checked AFTER adding this representation's own count, so the guard fires on the
+          // representation that crossed the line rather than on the one after it.
+          guard total <= maximumBytes else { return nil }
         }
+        dict[type] = data
       }
       if !dict.isEmpty {
         items.append(dict)

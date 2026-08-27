@@ -64,6 +64,10 @@ struct ClipboardIsolationFreezeTests {
     "copyToClipboard",
     "copyToClipboardReturningChangeCount",
     "saveClipboard",
+    // #2465. Same defaulted board as `saveClipboard`, and added here in the same change that
+    // introduced it rather than after a test reached the real clipboard — a new entry point with a
+    // defaulted board is a member of this set by construction, not by incident.
+    "boundedSaveClipboard",
     "restoreClipboard",
     // Moved here from `boardlessClipboardFunctions` by #2170, which gave it a
     // board parameter. A boarded call is safe; a bare one still writes the real
@@ -119,6 +123,14 @@ struct ClipboardIsolationFreezeTests {
   ///   PasteCascadeExecutor  (changeCount)              READ    harmless; reads clobber nothing
   ///   DiagnosticsSettingsView, OnboardingV2View        WRITE   inside SwiftUI `body`, which a unit
   ///                                                            test cannot practically invoke
+  ///   ClipboardCleanup.beginTakeover(from:)            READ    #2465; boarded, and every test in
+  ///                                                            `ClipboardCleanupTests` passes one
+  ///   PasteService.boundedSaveClipboard(from:)         READ    #2465; defaulted board, so it is in
+  ///                                                            `clipboardFunctions` below
+  ///   SelectionAcquisition.acquire(board:)             WRITE   #2465; boarded. No test calls it at
+  ///                                                            all: it posts a real key event, so
+  ///                                                            Live UAT is its proof and only its
+  ///                                                            pure decisions are unit-tested
   ///
   /// Re-derive with `grep -rn "NSPasteboard\.general" Sources/` and classify each hit write/read and
   /// reachable/not. Two entries here arrived as separate review findings before the enumeration was

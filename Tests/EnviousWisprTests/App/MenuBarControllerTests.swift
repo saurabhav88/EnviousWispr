@@ -196,18 +196,27 @@ struct MenuBarControllerTests {
     #expect(menu.delegate as AnyObject? === controller, "and it still repopulates on open")
   }
 
-  /// **The item is inert with nothing selected, and live with something.** Both halves matter: an
-  /// enabled item over no selection spends a click to report a refusal the menu already knew about,
-  /// and a disabled item over a real selection is the door not opening at all.
+  /// **The rendered item follows the selection, and the empty half moved in #2465.** A disabled item
+  /// over a real selection is still the door not opening at all. The empty case used to be inert
+  /// unconditionally; it is now inert only where the clipboard fallback cannot run, because an empty
+  /// read stopped being a fact about the user and became a fact about the app.
   @Test("The Quick Add item follows the selection, and carries it to the action")
   func theQuickAddItemFollowsTheSelection() {
     let spy = ActionSpy()
     let controller = makeController(spy: spy)
 
     let empty = NSMenu()
-    controller.renderMenu(into: empty, state: fixture(pipelineState: .idle))
+    controller.renderMenu(
+      into: empty, state: fixture(pipelineState: .idle, quickAddFallbackEnabled: false))
     let inert = itemPrefixed(empty, "Add Selected Word")
-    #expect(inert?.isEnabled == false)
+    #expect(inert?.isEnabled == false, "with no fallback to run, an empty read IS the answer")
+
+    let offered = NSMenu()
+    controller.renderMenu(
+      into: offered, state: fixture(pipelineState: .idle, quickAddFallbackEnabled: true))
+    #expect(
+      itemPrefixed(offered, "Add Selected Word")?.isEnabled == true,
+      "and where it can run, the menu cannot know, so the click is what finds out")
 
     let ready = NSMenu()
     controller.renderMenu(
@@ -223,8 +232,8 @@ struct MenuBarControllerTests {
 
     perform(live)
     #expect(
-      spy.fired == ["addSelectedWord:clawwed"],
-      "the action must carry the text the TITLE quoted, not a fresh read taken after the menu closed")
+      spy.fired == ["addSelectedWord:clawwed", "addSelectedWord:pid:501"],
+      "the action carries the TITLE's text and the sample it came from, never a later read")
   }
 
   // Re-homed from `QuickAddMenuItemTests`, which owns the PURE title decisions and has no
@@ -243,7 +252,7 @@ struct MenuBarControllerTests {
     #expect(row != nil, "the TITLE is collapsed")
     perform(row)
     #expect(
-      spy.fired == ["addSelectedWord:clawwed\nmachine"],
+      spy.fired == ["addSelectedWord:clawwed\nmachine", "addSelectedWord:pid:501"],
       "the ACTION carries the original, because that is what the user selected")
   }
 
@@ -564,10 +573,15 @@ struct MenuBarControllerTests {
     installEnabled: Bool = false,
     appearancePreference: AppearancePreference = .system,
     quickAdd: QuickAddMenuState = .nothingSelected,
-    quickAddShortcut: String? = "\u{2303}\u{2325} W"
+    quickAddShortcut: String? = "\u{2303}\u{2325} W",
+    quickAddContext: SelectionReader.AcquisitionContext = .init(
+      pid: 501, bundleIdentifier: "com.apple.TextEdit", focusedSubrole: nil),
+    quickAddFallbackEnabled: Bool = true
   ) -> MenuBarViewState {
     MenuBarViewState(
       quickAddShortcut: quickAddShortcut,
+      quickAddContext: quickAddContext,
+      quickAddFallbackEnabled: quickAddFallbackEnabled,
       quickAdd: quickAdd,
       pipelineState: pipelineState,
       asrLabel: "Parakeet v3",
@@ -621,12 +635,16 @@ struct MenuBarControllerTests {
       actions: MenuBarActions(
         // Rendered per CASE rather than through a description, so a refusal reaching the panel is
         // visible in the assertion instead of collapsing into the same string as an empty read.
-        addSelectedWord: {
-          switch $0 {
+        addSelectedWord: { result, context in
+          switch result {
           case .text(let t): spy.fired.append("addSelectedWord:\(t)")
           case .noSelection: spy.fired.append("addSelectedWord:<none>")
           case .refused(let why): spy.fired.append("addSelectedWord:refused:\(why.rawValue)")
           }
+          // #2465: the click path may post a Copy chord, and it must go to the process the
+          // render-time read sampled. Recorded so a context lost on the way through is visible here
+          // rather than as a chord landing on the wrong application at runtime.
+          spy.fired.append("addSelectedWord:pid:\(context.pid.map(String.init) ?? "none")")
         },
         continueOnboarding: { spy.fired.append("continueOnboarding") },
         openSettings: { spy.fired.append("openSettings") },
@@ -669,23 +687,41 @@ struct QuickAddMenuItemTests {
   /// can still correct it; the menu should not be a guess.
   @Test("A readable selection is named in the title, and the item can be chosen")
   func aSelectionIsNamedAndEnabled() {
-    let item = MenuBarController.quickAddItem(.ready("clawwed"))
+    let item = MenuBarController.quickAddItem(.ready("clawwed"), fallbackEnabled: true)
     #expect(item.title == "Add \u{201C}clawwed\u{201D}")
     #expect(item.enabled)
   }
 
-  /// **Disabled rather than enabled-onto-a-refusal.** An item that opens a panel only to report
-  /// "nothing selected" spends a click to deliver news the menu already had.
-  @Test("Nothing to add leaves the item disabled and generically titled")
-  func nothingSelectedIsDisabled() {
-    #expect(MenuBarController.quickAddItem(.nothingSelected).title == "Add Selected Word")
-    #expect(!MenuBarController.quickAddItem(.nothingSelected).enabled)
-    // A `.ready` carrying only whitespace is the same non-event: the reader trims, so this is the
-    // belt to that brace rather than a state the reader can actually produce.
+  /// **This row asserted the OPPOSITE until #2465, and the reason it flipped is the whole issue.**
+  /// "Nothing selected" used to be a fact, so the item was inert and clicking it would have spent a
+  /// click on news the menu already had. It is no longer a fact: WhatsApp answers exactly that with
+  /// a word visibly highlighted, and the only way to find out is the click.
+  ///
+  /// So the state is now read as "we do not know", and the row is OFFERED — but only when the
+  /// clipboard fallback could actually run, because with it off the menu really does know.
+  @Test("An empty read is OFFERED when the fallback can run, and inert when it cannot")
+  func nothingSelectedFollowsTheFallback() {
+    let offered = MenuBarController.quickAddItem(.nothingSelected, fallbackEnabled: true)
+    #expect(offered.title == "Add Selected Word")
+    #expect(offered.enabled, "the menu cannot know, so the click is what finds out")
+
+    let inert = MenuBarController.quickAddItem(.nothingSelected, fallbackEnabled: false)
+    #expect(inert.title == "Add Selected Word")
+    #expect(!inert.enabled, "with no fallback to run, an empty read IS the answer")
+  }
+
+  /// **Whitespace stays inert either way, and that is the pair the row above needs.** A `.ready`
+  /// carrying only spaces is a selection we DID read and that turned out to be nothing, which no
+  /// clipboard can improve on. Without this, "offered when the fallback can run" would be
+  /// indistinguishable from "always offered".
+  @Test("A whitespace-only selection is inert whatever the fallback setting says")
+  func whitespaceIsAlwaysInert() {
     for blank in ["", "   ", "\n\t "] {
-      let item = MenuBarController.quickAddItem(.ready(blank))
-      #expect(item.title == "Add Selected Word", "for \(blank.debugDescription)")
-      #expect(!item.enabled, "for \(blank.debugDescription)")
+      for fallback in [true, false] {
+        let item = MenuBarController.quickAddItem(.ready(blank), fallbackEnabled: fallback)
+        #expect(item.title == "Add Selected Word", "for \(blank.debugDescription)")
+        #expect(!item.enabled, "for \(blank.debugDescription), fallback \(fallback)")
+      }
     }
   }
 
@@ -693,7 +729,7 @@ struct QuickAddMenuItemTests {
   /// boundary is the ordinary case, not an edge one.
   @Test("Surrounding whitespace does not reach the title")
   func whitespaceIsTrimmed() {
-    #expect(MenuBarController.quickAddItem(.ready("  clawwed \n")).title == "Add \u{201C}clawwed\u{201D}")
+    #expect(MenuBarController.quickAddItem(.ready("  clawwed \n"), fallbackEnabled: true).title == "Add \u{201C}clawwed\u{201D}")
   }
 
   /// **A selection spanning two lines carries a newline, and a newline in a native menu title
@@ -702,10 +738,10 @@ struct QuickAddMenuItemTests {
   @Test("Internal line breaks and tabs are collapsed for display")
   func internalWhitespaceIsCollapsed() {
     #expect(
-      MenuBarController.quickAddItem(.ready("clawwed\nmachine")).title
+      MenuBarController.quickAddItem(.ready("clawwed\nmachine"), fallbackEnabled: true).title
         == "Add \u{201C}clawwed machine\u{201D}")
     #expect(
-      MenuBarController.quickAddItem(.ready("one\ttwo   three")).title
+      MenuBarController.quickAddItem(.ready("one\ttwo   three"), fallbackEnabled: true).title
         == "Add \u{201C}one two three\u{201D}")
   }
 
@@ -714,7 +750,7 @@ struct QuickAddMenuItemTests {
   /// tells them nothing. Enabled, so the panel opens and states the reason.
   @Test("A refused read stays clickable so the panel can say why")
   func aRefusedReadIsNotAnEmptySelection() {
-    let blocked = MenuBarController.quickAddItem(.blocked(.accessibilityNotTrusted))
+    let blocked = MenuBarController.quickAddItem(.blocked(.accessibilityNotTrusted), fallbackEnabled: true)
     #expect(blocked.enabled, "the door that must be reliable cannot fail silently")
     #expect(blocked.title == "Add Selected Word")
 
@@ -722,7 +758,7 @@ struct QuickAddMenuItemTests {
     // display is deliberately uniform — the panel states the reason, not the menu — but dropping the
     // reason here is what forced the click path to re-read without the menu's cap (PR #2427).
     for why in SelectionReader.Refusal.allCases where why != .accessibilityNotTrusted {
-      #expect(MenuBarController.quickAddItem(.blocked(why)) == blocked, "one row for every refusal")
+      #expect(MenuBarController.quickAddItem(.blocked(why), fallbackEnabled: true) == blocked, "one row for every refusal")
       #expect(
         QuickAddMenuState.blocked(why).selectionResult == .refused(why),
         "and the panel is handed the refusal we measured, not a fresh guess")
@@ -730,8 +766,11 @@ struct QuickAddMenuItemTests {
     #expect(QuickAddMenuState.nothingSelected.selectionResult == .noSelection)
     #expect(QuickAddMenuState.ready("clawwed").selectionResult == .text("clawwed"))
 
-    let empty = MenuBarController.quickAddItem(.nothingSelected)
-    #expect(!empty.enabled, "and genuinely nothing selected is still inert")
+    // **Compared with the fallback OFF (#2465).** With it on, an empty read is offered too, so the
+    // two states would be indistinguishable here and the row would assert nothing. Off is the
+    // configuration in which the original finding still has two sides.
+    let empty = MenuBarController.quickAddItem(.nothingSelected, fallbackEnabled: false)
+    #expect(!empty.enabled, "and genuinely nothing selected is inert once nothing can be tried")
     #expect(
       blocked.title == empty.title,
       "the titles match; it is the ENABLED state that separates them, which is the whole finding")
@@ -742,7 +781,7 @@ struct QuickAddMenuItemTests {
   @Test("Truncation never splits a character")
   func truncationRespectsGraphemes() {
     let families = String(repeating: "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}", count: 40)
-    let title = MenuBarController.quickAddItem(.ready(families)).title
+    let title = MenuBarController.quickAddItem(.ready(families), fallbackEnabled: true).title
 
     #expect(title.hasSuffix("\u{2026}\u{201D}"))
     // Every character between the quotes is a whole family, never a fragment of one.
@@ -760,7 +799,7 @@ struct QuickAddMenuItemTests {
   @Test("A long selection is truncated for display, with an ellipsis")
   func aLongSelectionIsTruncated() {
     let long = String(repeating: "a", count: 200)
-    let item = MenuBarController.quickAddItem(.ready(long))
+    let item = MenuBarController.quickAddItem(.ready(long), fallbackEnabled: true)
 
     #expect(item.enabled)
     #expect(item.title.hasSuffix("\u{2026}\u{201D}"), "the user is told it was cut")
@@ -774,7 +813,7 @@ struct QuickAddMenuItemTests {
   @Test("A selection exactly at the display limit keeps all of it")
   func theBoundaryIsNotTruncated() {
     let exact = String(repeating: "a", count: MenuBarController.quickAddTitleCharacters)
-    let item = MenuBarController.quickAddItem(.ready(exact))
+    let item = MenuBarController.quickAddItem(.ready(exact), fallbackEnabled: true)
 
     #expect(!item.title.contains("\u{2026}"))
     #expect(item.title == "Add \u{201C}\(exact)\u{201D}")

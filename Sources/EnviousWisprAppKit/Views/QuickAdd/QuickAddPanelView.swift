@@ -202,11 +202,22 @@ enum QuickAddPanelCopy {
       "EnviousWispr is in front, so there is nothing of yours to read. Select the word in the app "
         + "you are writing in, then try again."
     case .selectionUnsupported:
-      "That app does not share its selection with other apps. You can still add the word by hand "
-        + "below."
+      // **Rewritten for #2465, and the old sentence was made FALSE by that change rather than by
+      // drift.** It read "That app does not share its selection with other apps", which was a claim
+      // about the APP. After the clipboard fallback it is a claim about one mechanism, and the app
+      // may well have handed the word over through the other one. What is left that is still true
+      // is that we did not get it.
+      "We could not get what you highlighted in that app. You can still add the word by hand below."
     case .selectionUnavailable:
-      "That app reports a selection it will not share. Terminals do this. You can still add the "
-        + "word by hand below."
+      // **Rewritten for #2465. The old sentence named TERMINALS as the app class that does this**,
+      // and a terminal selection is exactly what this change now reads. Naming an app class as the
+      // culprit is the same false-confidence shape the `ownApplication` case above records.
+      //
+      // **Says nothing about how many attempts were made, and that is deliberate.** Both reading
+      // doors reach this member and they do not reach it the same way, so any sentence counting
+      // attempts is wrong at one of them. The user's next move is identical either way.
+      "That app reported a selection it would not hand over. You can still add the word by hand "
+        + "below."
     case .unreadable:
       "Your selection could not be read. You can still add the word by hand below."
     case .selectionTooLong:
@@ -224,6 +235,48 @@ enum QuickAddPanelCopy {
       // nothing highlighted, and the Services menu handed whitespace. A sentence naming one of them
       // is wrong half the time it is shown.
       "Nothing was selected. Highlight the word you want and try again, or add it by hand below."
+
+    // MARK: The clipboard fallback's six (#2465)
+    //
+    // Every one of them is DOOR-AGNOSTIC for the reason recorded on `selectionUnavailable` above:
+    // the shortcut and the menu reach these through different amounts of work, and a sentence
+    // asserting how hard we tried is wrong at one of them. The user's next move is the same either
+    // way, and the next move is what this line is for.
+    case .secureInputActive:
+      // Names the machine's state rather than the app's, because that is what is true: secure input
+      // is process-wide and no app chose it on the user's behalf.
+      "macOS is protecting what you are typing right now, so nothing could be read from that app. "
+        + "You can still add the word by hand below."
+    case .modifiersHeld:
+      // The one retryable member of the six, and the only one where the user's own hand is the
+      // cause. Says so without blaming, and names the exact motion that fixes it.
+      "Your shortcut keys were still held down. Let go of them, then press the shortcut again."
+    case .copyRefused:
+      "That app did not answer when we asked it for the highlighted word. You can still add the "
+        + "word by hand below."
+    case .eventPostingNotTrusted:
+      // **A different grant from the one `accessibilityNotTrusted` names, and the copy has to keep
+      // them apart.** Someone whose Accessibility permission is already on and who is told to turn
+      // on Accessibility has been sent to look at a switch that is not the problem, so this one
+      // names the CAPABILITY that is missing and asks them to check rather than to enable.
+      "macOS has not allowed EnviousWispr to send keystrokes, so it could not ask that app for "
+        + "your selection. Check Accessibility in System Settings, then try again."
+    case .clipboardTooLarge:
+      // Reassurance is load-bearing here rather than decorative: the one thing a user would worry
+      // about on reading this is what happened to the large thing on their clipboard.
+      "Your clipboard is too large to be kept safe while reading that app, so it was left alone. "
+        + "You can still add the word by hand below."
+    case .copyFallbackDisabled:
+      // **Names no cause, because there are two and the sentence must be true for both**: the user
+      // turned the setting off, or the app is one of the remote-desktop clients where sending a
+      // Copy would reach somebody else's machine.
+      "Reading this app's selection through the clipboard is turned off. You can still add the "
+        + "word by hand below."
+    case .targetApplicationGone:
+      // Reachable mostly from the menu, which can sit open while the app behind it quits. Names the
+      // state without accusing anything, and the fix is the user's ordinary next action anyway.
+      "The app you were in has closed, so there was nothing left to read. You can still add the "
+        + "word by hand below."
     }
   }
 }

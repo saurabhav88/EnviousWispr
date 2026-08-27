@@ -35,7 +35,7 @@ enum QuickAddTelemetryBridge {
       switch event {
       case .opened(
         let door, let refusal, let bundleID, let heardScalarCount, let candidateCount,
-        let preselected, let topScore):
+        let preselected, let topScore, let acquired, let acquisitionMs, let clipboardRestore):
         TelemetryService.shared.quickAddOpened(
           door: door.rawValue,
           hadSelection: refusal == nil,
@@ -44,7 +44,10 @@ enum QuickAddTelemetryBridge {
           preselected: preselected,
           topScore: topScore,
           sourceBundleID: bundleID,
-          heardLength: heardScalarCount)
+          heardLength: heardScalarCount,
+          acquired: acquired.rawValue,
+          acquisitionMilliseconds: acquisitionMs,
+          clipboardRestore: clipboardRestore.rawValue)
         // §3e: "Breadcrumbs on open and resolve so a crash inside the panel arrives with the door,
         // the candidate count, and the outcome attached." Only `failed` was leaving a breadcrumb, so
         // a crash while the panel was up arrived with no trail of how it got there.
@@ -54,6 +57,10 @@ enum QuickAddTelemetryBridge {
           data: [
             "door": door.rawValue, "candidate_count": candidateCount,
             "refuse_reason": refusal?.rawValue ?? "none",
+            // #2465: a crash inside the panel now arrives knowing whether the clipboard was
+            // involved in getting there, which is the difference between a report about ranking and
+            // a report about a synthetic keystroke.
+            "acquired": acquired.rawValue,
           ])
         // `top=` and `reason=` are BOTH required by §3e's own sample line, and both were missing.
         // Without the score a wrong-preselection report cannot show whether the confidence bar was
@@ -64,6 +71,9 @@ enum QuickAddTelemetryBridge {
         log(
           "opened door=\(door.rawValue) app=\(bundleID ?? "unknown") "
             + "selection=\(refusal == nil ? "yes" : "no") reason=\(refusal?.rawValue ?? "none") "
+            + "acquired=\(acquired.rawValue) "
+            + "acq_ms=\(acquisitionMs.map(String.init) ?? "none") "
+            + "clipboard=\(clipboardRestore.rawValue) "
             + "len=\(heardScalarCount) candidates=\(candidateCount) "
             + "top=\(topScore.map { String(format: "%.2f", $0) } ?? "none") "
             + "preselect=\(preselected ? "yes" : "no")")

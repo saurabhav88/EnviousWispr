@@ -26,6 +26,10 @@ enum SettingsProjection {
     case vadEnergyGate = "vad_energy_gate"
     case modelUnloadPolicy = "model_unload_policy"
     case restoreClipboard = "restore_clipboard"
+    /// Quick Add's clipboard fallback (#2465). Instrumented from the start rather than added later,
+    /// because the question this setting exists to answer is whether users reach for it — and a
+    /// toggle nobody measured cannot answer it.
+    case quickAddClipboardFallback = "quick_add_clipboard_fallback"
     case smartInsertion = "smart_insertion"
     // #2087. Adoption is the question the feature was built to answer: it ships
     // off, and whether anyone turns it on decides whether the rest of it earns
@@ -98,6 +102,7 @@ enum SettingsProjection {
     case .vadEnergyGate: return [.vadEnergyGate]
     case .modelUnloadPolicy: return [.modelUnloadPolicy]
     case .restoreClipboardAfterPaste: return [.restoreClipboard]
+    case .quickAddClipboardFallback: return [.quickAddClipboardFallback]
     case .smartInsertion: return [.smartInsertion]
     case .escapeRecoveryEnabled: return [.escapeRecovery]
     case .wordCorrectionEnabled: return [.wordCorrection]
@@ -153,6 +158,7 @@ enum SettingsProjection {
     case .vadEnergyGate: return onOff(settings.vadEnergyGate)
     case .modelUnloadPolicy: return settings.modelUnloadPolicy.rawValue
     case .restoreClipboard: return onOff(settings.restoreClipboardAfterPaste)
+    case .quickAddClipboardFallback: return onOff(settings.quickAddClipboardFallback)
     case .smartInsertion: return onOff(settings.smartInsertion)
     case .escapeRecovery: return onOff(settings.escapeRecoveryEnabled)
     case .wordCorrection: return onOff(settings.wordCorrectionEnabled)
