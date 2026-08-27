@@ -359,13 +359,17 @@ public enum SelectionAcquisition {
     // kind — a confident sentence about a state the code never checked.
     let takeover = ClipboardCleanup.beginTakeover(
       maximumBytes: maximumPreservedClipboardBytes, from: board)
-    guard case .granted(let payload, let baseline, let token) = takeover else {
+    guard
+      case .granted(let payload, let baseline, let token, let inheritedPending) = takeover
+    else {
       let refusal: SelectionReader.Refusal = {
         switch takeover {
         case .clipboardTooLarge: return .clipboardTooLarge
+        // The board kept moving, which says nothing about its size. `unreadable` is the only member
+        // of the set that is TRUE here: we could not get a clean read.
+        case .boardTooBusy: return .unreadable
         // Unreachable in production — one `isAcquiring` flag guards both doors — and answered
-        // honestly regardless: we could not read the selection, which is what `unreadable` says and
-        // is the only member of the set that is true here.
+        // honestly regardless.
         case .alreadyInFlight: return .unreadable
         case .granted: return .unreadable
         }
@@ -401,13 +405,30 @@ public enum SelectionAcquisition {
           acquisitionMs: elapsedMs(), clipboardRestore: .supersededByDelivery)
       }
       ClipboardCleanup.endTakeover(token)
+
+      // **Restoring an UNCHANGED board is a write nobody asked for.** When the chord was never
+      // posted, or the target never answered, `ownedChangeCount` is still the takeover baseline and
+      // the board holds exactly what it held — so a restore clears and rewrites the user's
+      // clipboard for nothing. That costs a clipboard-history entry the help page does not promise,
+      // and it can DROP representations `boundedSaveClipboard` declined to materialize.
+      //
+      // The exception is why `inheritedPending` exists: if the takeover consumed a pending dictation
+      // cleanup, the board holds OUR payload and the count has not moved since — which looks
+      // identical to "nothing happened" and is the one case where doing nothing strands the user's
+      // clipboard. Found by the confirming round.
+      guard ownedChangeCount != baseline || inheritedPending else {
+        await log(
+          context: context, acquired: acquired, refusal: refusalOf(result), ms: elapsedMs(),
+          restore: .notTouched)
+        return Outcome(
+          result: result, context: context, acquired: acquired,
+          acquisitionMs: elapsedMs(), clipboardRestore: .notTouched)
+      }
+
       let restored = PasteService.restoreClipboard(
         payload, changeCountAfterPaste: ownedChangeCount, on: board)
       let restore: ClipboardRestore = restored ? .restored : .declined
-      let refusal: SelectionReader.Refusal? = {
-        if case .refused(let why) = result { return why }
-        return nil
-      }()
+      let refusal = refusalOf(result)
       await log(
         context: context, acquired: acquired, refusal: refusal, ms: elapsedMs(), restore: restore)
       return Outcome(
@@ -492,6 +513,15 @@ public enum SelectionAcquisition {
       return .nothing
     }()
     return await concluding(classified, acquired: acquired)
+  }
+
+  /// The refusal inside a result, or nil for a success.
+  ///
+  /// Extracted because the exit function reports it from two places since the confirming round added
+  /// the no-write path, and two copies of a three-line unwrap is how the two come to disagree.
+  private static func refusalOf(_ result: SelectionReader.Result) -> SelectionReader.Refusal? {
+    if case .refused(let why) = result { return why }
+    return nil
   }
 
   // MARK: - The decisions, which are pure

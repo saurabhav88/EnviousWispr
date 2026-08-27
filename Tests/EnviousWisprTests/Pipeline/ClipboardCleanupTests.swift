@@ -119,7 +119,7 @@ struct ClipboardCleanupTests {
         snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
 
       guard
-        case .granted(let payload, let baseline, _) = ClipboardCleanup.beginTakeover(
+        case .granted(let payload, let baseline, _, _) = ClipboardCleanup.beginTakeover(
           maximumBytes: 1 << 20, from: pb)
       else {
         Issue.record("the takeover was refused on a small clipboard")
@@ -153,7 +153,7 @@ struct ClipboardCleanupTests {
         snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
       #expect(ClipboardCleanup.hasPending)
 
-      guard case .granted(_, _, let token) = ClipboardCleanup.beginTakeover(
+      guard case .granted(_, _, let token, _) = ClipboardCleanup.beginTakeover(
         maximumBytes: 1 << 20, from: pb)
       else {
         Issue.record("the takeover was refused on a small clipboard")
@@ -283,7 +283,7 @@ struct ClipboardCleanupTests {
     await withFastCleanup {
       let pb = board(holding: "the user's own clipboard")
 
-      guard case .granted(_, _, let token) = ClipboardCleanup.beginTakeover(
+      guard case .granted(_, _, let token, _) = ClipboardCleanup.beginTakeover(
         maximumBytes: 1 << 20, from: pb)
       else {
         Issue.record("the takeover was refused on a small clipboard")
@@ -313,7 +313,7 @@ struct ClipboardCleanupTests {
     await withFastCleanup {
       let pb = board(holding: "the user's own clipboard")
 
-      guard case .granted(_, _, let token) = ClipboardCleanup.beginTakeover(
+      guard case .granted(_, _, let token, _) = ClipboardCleanup.beginTakeover(
         maximumBytes: 1 << 20, from: pb)
       else {
         Issue.record("the takeover was refused on a small clipboard")
@@ -344,7 +344,7 @@ struct ClipboardCleanupTests {
     await withFastCleanup {
       let pb = board(holding: "the user's own clipboard")
 
-      guard case .granted(_, _, let first) = ClipboardCleanup.beginTakeover(
+      guard case .granted(_, _, let first, _) = ClipboardCleanup.beginTakeover(
         maximumBytes: 1 << 20, from: pb)
       else {
         Issue.record("the first takeover was refused on a small clipboard")
@@ -363,7 +363,7 @@ struct ClipboardCleanupTests {
 
       ClipboardCleanup.endTakeover(first)
       // The pair: once released, a takeover is available again.
-      guard case .granted(_, _, let second) = ClipboardCleanup.beginTakeover(
+      guard case .granted(_, _, let second, _) = ClipboardCleanup.beginTakeover(
         maximumBytes: 1 << 20, from: pb)
       else {
         Issue.record("a released takeover must be re-grantable")
@@ -383,6 +383,90 @@ struct ClipboardCleanupTests {
     }
   }
 
+  /// **`inheritedPending` is how the caller tells "nothing happened" from "the board is holding our
+  /// dictation payload", which look identical from the change count alone.**
+  ///
+  /// Without it the fallback either restores always — writing the user's clipboard for nothing when
+  /// the target never answered, costing a history entry and possibly dropping representations — or
+  /// restores only when the board moved, which strands our own payload on their board in exactly
+  /// the case the takeover exists to handle.
+  @Test("A takeover reports whether it consumed a pending dictation cleanup")
+  func aTakeoverReportsWhetherItInheritedPendingWork() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+
+      // Nothing pending: the board is the user's, and leaving it alone is correct.
+      guard case .granted(_, _, let clean, let inheritedNothing) = ClipboardCleanup.beginTakeover(
+        maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("the takeover was refused on a small clipboard")
+        return
+      }
+      #expect(!inheritedNothing)
+      ClipboardCleanup.endTakeover(clean)
+
+      // A dictation restore is pending, so the board holds OUR payload right now.
+      let snapshot = snapshot(of: pb)
+      put("our dictated payload", on: pb)
+      ClipboardCleanup.scheduleRestore(
+        snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
+
+      guard case .granted(_, _, let inheriting, let inheritedSomething) =
+        ClipboardCleanup.beginTakeover(maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("the takeover was refused on a small clipboard")
+        return
+      }
+      #expect(
+        inheritedSomething,
+        "without this the caller leaves our own dictation payload on the user's clipboard")
+      ClipboardCleanup.endTakeover(inheriting)
+    }
+  }
+
+  /// **A board that will not hold still is not a board that is too large**, and the two used to
+  /// share one refusal — so a user with four characters on their clipboard and a busy clipboard
+  /// manager was told their clipboard was too large to keep safe. That is the third instance on this
+  /// branch of one shape: a refusal case carrying a SENTENCE, reused as a general "no".
+  ///
+  /// **NOT TESTED HERE, and saying so is the point.** Reaching `boardTooBusy` means moving the board
+  /// between the two reads of the bracket, three times running. A single-threaded test cannot open
+  /// that window — the same reason `validation-discipline.md` gives for why a contract test cannot
+  /// tell an atomic primitive from check-then-act. An earlier version of this row churned the board
+  /// BEFORE the takeover and asserted a grant, which is a test that cannot fail on its own subject.
+  ///
+  /// What is asserted instead is the half that is decidable: the two outcomes are DISTINCT cases, so
+  /// the caller cannot map contention onto the size sentence even by accident. The failing race
+  /// belongs in the hardening issue with the other one that needs a real writer.
+  @Test("Contention and size are different outcomes, so they cannot share a sentence")
+  func contentionAndSizeAreDistinctOutcomes() async {
+    await withFastCleanup {
+      let pb = NSPasteboard.withUniqueName()
+      pb.clearContents()
+      let item = NSPasteboardItem()
+      item.setData(Data("word".utf8), forType: .string)
+      item.setData(Data(repeating: 0, count: 64 * 1024), forType: .tiff)
+      pb.writeObjects([item])
+
+      // The size path, reachable single-threaded, and it must be the SIZE case specifically.
+      guard case .clipboardTooLarge = ClipboardCleanup.beginTakeover(
+        maximumBytes: 8 * 1024, from: pb)
+      else {
+        Issue.record("an oversized clipboard must report the size case, not a generic refusal")
+        return
+      }
+
+      // The pair, so the row above is not passing against a takeover that refuses everything.
+      guard case .granted(_, _, let token, _) = ClipboardCleanup.beginTakeover(
+        maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("the same clipboard must be accepted under a budget that fits it")
+        return
+      }
+      ClipboardCleanup.endTakeover(token)
+    }
+  }
+
   /// **An update installing mid-takeover loses the user's clipboard the same way the 200 ms window
   /// does**, so the property the update coordinator reads has to cover both.
   @Test("An active takeover counts as pending, so an update install is refused during one")
@@ -391,7 +475,7 @@ struct ClipboardCleanupTests {
       let pb = board(holding: "the user's own clipboard")
       #expect(!ClipboardCleanup.hasPending)
 
-      guard case .granted(_, _, let token) = ClipboardCleanup.beginTakeover(
+      guard case .granted(_, _, let token, _) = ClipboardCleanup.beginTakeover(
         maximumBytes: 1 << 20, from: pb)
       else {
         Issue.record("the takeover was refused on a small clipboard")

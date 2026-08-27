@@ -328,7 +328,11 @@ public enum ClipboardCleanup {
     /// `wasSuperseded(_:)` after every await — a dictation delivery starting while you hold the
     /// board takes it from you, and continuing after that would put your restore on top of a
     /// payload the target app has not read yet.
-    case granted(payload: ClipboardSnapshot, baseline: Int, token: UUID)
+    /// `inheritedPending` says the takeover CONSUMED a pending dictation cleanup, so the board may
+    /// be holding our own payload right now. A caller that restores only when the board moved would
+    /// strand it; a caller that always restores writes the user's clipboard for no reason.
+    case granted(
+      payload: ClipboardSnapshot, baseline: Int, token: UUID, inheritedPending: Bool)
     /// The clipboard is larger than the caller's budget, so nothing was touched.
     ///
     /// **Pending cleanup is left ARMED on this path**, deliberately. Refusing must not damage the
@@ -342,6 +346,13 @@ public enum ClipboardCleanup {
     /// safe" would be a confident lie about a state that has nothing to do with size. Unreachable in
     /// production, which is not a reason to answer it wrongly.
     case alreadyInFlight
+    /// The board would not hold still long enough to be photographed with a matching change count.
+    ///
+    /// **Its own case for the same reason as the one above, and by the same mistake.** This path
+    /// used to fall through to `clipboardTooLarge`, so a user whose clipboard held four characters
+    /// and a busy clipboard manager was told their clipboard was too large to keep safe. A refusal
+    /// that carries a SENTENCE cannot be reused as a general "no".
+    case boardTooBusy
   }
 
   /// Take the user's clipboard over for a write that is not a dictation delivery.
@@ -397,6 +408,10 @@ public enum ClipboardCleanup {
     //
     // Found by a refutation run against this file's class enumeration, on the CORRELATED-VALUE
     // ATOMICITY axis, which that enumeration did not have.
+    // Recorded BEFORE the pending operation is consumed below, because after that there is nothing
+    // left to observe. The caller needs it to decide whether restoring is necessary at all.
+    let inheritedPending = pending != nil
+
     var payload: ClipboardSnapshot?
     var baseline = 0
     for _ in 0..<Self.takeoverSnapshotAttempts {
@@ -404,6 +419,7 @@ public enum ClipboardCleanup {
       // The budget is passed DOWN so it bounds what we touch, not just what we keep. Nil here means
       // the clipboard exceeded it and nothing usable was captured.
       guard let candidate = intendedPayload(from: board, maximumBytes: maximumBytes) else {
+        // This one IS the budget: the snapshot refused because the bytes exceeded it.
         return .clipboardTooLarge
       }
       guard board.changeCount == before else { continue }
@@ -411,7 +427,9 @@ public enum ClipboardCleanup {
       baseline = before
       break
     }
-    guard let payload else { return .clipboardTooLarge }
+    // Distinct from the budget refusal: the attempts ran out because the board kept MOVING, which
+    // says nothing about its size.
+    guard let payload else { return .boardTooBusy }
 
     // Commit. Any pending operation is abandoned whether or not it was stale: a fresh one would fire
     // on top of our restore, a stale one would overwrite whatever the user copied, and the caller is
@@ -428,7 +446,8 @@ public enum ClipboardCleanup {
 
     // The baseline is the count that was VERIFIED to describe this payload, never a fresh read
     // taken here — a fresh read would reintroduce the gap this method just closed.
-    return .granted(payload: payload, baseline: baseline, token: token)
+    return .granted(
+      payload: payload, baseline: baseline, token: token, inheritedPending: inheritedPending)
   }
 
   /// How many times to try for a payload and a change count that describe the same moment.
