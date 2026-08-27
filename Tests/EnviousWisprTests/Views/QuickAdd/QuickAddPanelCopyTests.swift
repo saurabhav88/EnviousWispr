@@ -43,6 +43,22 @@ struct QuickAddPanelCopyTests {
     let low = QuickAddPanelCopy.groupHeader(.lowConfidence, heard: "kubernets")
     #expect(!low.contains("Add"), "there is nothing to add yet, so do not use the verb")
     #expect(low.lowercased().contains("no close match"))
+    // **The word, in the one state that used to drop it.** Every other state shows a word the user
+    // can check against a match we found; this one shows a list of things that are NOT it, so
+    // without the word there is nothing distinguishing a correct read of an unknown word from a
+    // misread of a known one (#2476).
+    #expect(low.contains("kubernets"), "name what was read, especially when nothing matched it")
+  }
+
+  @Test("EVERY header state names the word that was read")
+  func everyHeaderStateNamesTheHeardWord() {
+    // Enumerated from the type rather than listed by hand, so a fifth state cannot be added with
+    // the word left out and still pass. This is the property #2476 is about; asserting it per-state
+    // would have gone stale the moment someone added a state.
+    for state in QuickAddPanelCopy.GroupHeaderState.allCases {
+      let header = QuickAddPanelCopy.groupHeader(state, heard: "keybinds")
+      #expect(header.contains("keybinds"), "\(state) dropped the heard word")
+    }
   }
 
   @Test("The already-saved header states the outcome and offers no verb")
