@@ -289,24 +289,30 @@ public enum SelectionAcquisition {
     }
 
     // STEP 1 — the policy questions, all of them, in a declared order. Nothing has been touched.
-    if let refusal = mayAttempt(
-      secureInputActive: IsSecureEventInputEnabled(),
-      // The sample's own answer, which is the freshest thing available here: the read that produced
-      // this context took it moments ago. Step 2b re-probes it live, because "moments ago" stops
-      // being good enough once the modifier wait has run.
-      focusedElementIsSecure: context.focusedElementIsSecure,
-      postingAuthorised: CGPreflightPostEventAccess(),
-      targetStillPresent: targetStillPresent(context),
-      fallbackEnabled: fallbackEnabled,
-      context: context)
-    {
+    //
+    // **Through `liveRefusal` like every other site, and the exception it used to make is gone.**
+    // It passed `context.focusedElementIsSecure` — the sample's own answer, freshest thing available
+    // and genuinely correct here, since the read that produced it happened microseconds ago. But an
+    // exception is a thing to remember, and five review rounds of this exact class say the thing to
+    // remember is what gets forgotten. The cost of removing it is one bounded probe on a path that
+    // is about to spend hundreds of milliseconds anyway, and it only runs where the fallback is
+    // eligible at all.
+    //
+    // The pid is unwrapped FIRST because `liveRefusal` probes that process. Its own guard refuses a
+    // nil or non-positive pid, so this returns the same refusal for the same reason rather than
+    // inventing one — and it is the first question `mayAttempt` asks, so the order is preserved.
+    guard let pid = context.pid, pid > 0 else {
+      await log(
+        context: context, acquired: .nothing, refusal: .noFrontmostApplication, ms: elapsedMs(),
+        restore: .notTouched)
+      return refusing(.noFrontmostApplication)
+    }
+    if let refusal = liveRefusal(pid: pid, context: context, fallbackEnabled: fallbackEnabled) {
       await log(
         context: context, acquired: .nothing, refusal: refusal, ms: elapsedMs(),
         restore: .notTouched)
       return refusing(refusal)
     }
-    // Safe: `mayAttempt` returns non-nil for a nil or non-positive pid.
-    guard let pid = context.pid else { return refusing(.noFrontmostApplication) }
 
     // Resolved once, before anything is posted, so a layout we cannot read refuses instead of
     // pressing whatever key happens to sit at position 8 on an ANSI board.
@@ -342,18 +348,7 @@ public enum SelectionAcquisition {
     // mode is a secret on the clipboard was the one still answering from memory, inside a block
     // whose own comment said it was live. `secureFocusProbe` asks the SAME pid, right now, and
     // `isSecureField` answers TRUE when it cannot tell.
-    if let refusal = mayAttempt(
-      // The two signals are passed SEPARATELY here, matching what the parameters mean, because
-      // `mayAttempt` already takes both. Step 3b has one boolean to fill and uses the combined
-      // helper instead — same two questions either way, and neither site can ask a subset.
-      secureInputActive: IsSecureEventInputEnabled(),
-      focusedElementIsSecure: SelectionReader.isSecureField(
-        SelectionReader.secureFocusProbe(pid: pid, timeout: secureProbeTimeout)),
-      postingAuthorised: CGPreflightPostEventAccess(),
-      targetStillPresent: targetStillPresent(context),
-      fallbackEnabled: fallbackEnabled,
-      context: context)
-    {
+    if let refusal = liveRefusal(pid: pid, context: context, fallbackEnabled: fallbackEnabled) {
       await log(
         context: context, acquired: .nothing, refusal: refusal, ms: elapsedMs(),
         restore: .notTouched)
@@ -369,7 +364,7 @@ public enum SelectionAcquisition {
     let takeover = ClipboardCleanup.beginTakeover(
       maximumBytes: maximumPreservedClipboardBytes, from: board)
     guard
-      case .granted(let payload, let baseline, let token, let inheritedPending) = takeover
+      case .granted(let payload, let baseline, let token) = takeover
     else {
       let refusal: SelectionReader.Refusal = {
         switch takeover {
@@ -377,6 +372,9 @@ public enum SelectionAcquisition {
         // The board kept moving, which says nothing about its size. `unreadable` is the only member
         // of the set that is TRUE here: we could not get a clean read.
         case .boardTooBusy: return .unreadable
+        // A dictation just wrote the board and its target is still reading it. Transient by design,
+        // and `unreadable` is the honest sentence: we could not read the selection this time.
+        case .deliveryInFlight: return .unreadable
         // Unreachable in production — one `isAcquiring` flag guards both doors — and answered
         // honestly regardless.
         case .alreadyInFlight: return .unreadable
@@ -421,11 +419,12 @@ public enum SelectionAcquisition {
       // clipboard for nothing. That costs a clipboard-history entry the help page does not promise,
       // and it can DROP representations `boundedSaveClipboard` declined to materialize.
       //
-      // The exception is why `inheritedPending` exists: if the takeover consumed a pending dictation
-      // cleanup, the board holds OUR payload and the count has not moved since — which looks
-      // identical to "nothing happened" and is the one case where doing nothing strands the user's
-      // clipboard. Found by the confirming round.
-      guard ownedChangeCount != baseline || inheritedPending else {
+      // **The exception this used to carry is GONE, and its absence is now guaranteed rather than
+      // handled.** A takeover that consumed a fresh pending cleanup could leave OUR dictation
+      // payload on the board with the count unmoved, which looks identical to "nothing happened".
+      // `beginTakeover` now REFUSES in that window instead of granting, so a granted takeover never
+      // holds our payload and an unmoved count always means nothing happened.
+      guard ownedChangeCount != baseline else {
         await log(
           context: context, acquired: acquired, refusal: refusalOf(result), ms: elapsedMs(),
           restore: .notTouched)
@@ -445,7 +444,7 @@ public enum SelectionAcquisition {
         acquisitionMs: elapsedMs(), clipboardRestore: restore)
     }
 
-    // STEP 3b — the LAST secure-focus probe, immediately before the chord.
+    // STEP 3b — the LAST live check of every policy question, immediately before the chord.
     //
     // **A THIRD site on the lifetime axis, and the one with no wait to point at.** Step 2b probes
     // before the takeover, which looked like the last possible moment. It is not: `beginTakeover`
@@ -457,11 +456,16 @@ public enum SelectionAcquisition {
     // runs before an operation whose duration nobody bounds", which is why counting the waits was
     // never going to find it. Found by cloud review on PR #2472.
     //
+    // **It asks EVERY question, not the secure ones.** A first version probed only secure state, and
+    // the next round pointed out that a pid can be reused while that same provider stalls — so the
+    // target can quit and a stranger inherit the chord. `liveRefusal` is what stops a site here
+    // being assembled from whichever questions the last finding was about.
+    //
     // Past the takeover, so a refusal returns through `concluding` and honours the restore
     // obligation — and because nothing has been posted, the board is unchanged and the no-write
     // path leaves the user's clipboard alone.
-    if isSecureRightNow(pid: pid) {
-      return await concluding(.refused(.secureInputActive), acquired: .nothing)
+    if let refusal = liveRefusal(pid: pid, context: context, fallbackEnabled: fallbackEnabled) {
+      return await concluding(.refused(refusal), acquired: .nothing)
     }
 
     // STEP 4 — one chord, never retried. A copy can have side effects in an app that binds it to
@@ -639,24 +643,33 @@ public enum SelectionAcquisition {
 
   // MARK: - The live half
 
-  /// Is keystroke input protected RIGHT NOW, by either mechanism?
+  /// Every LIVE policy question, asked at once, for one sampled application.
   ///
-  /// **ONE function, called from both re-check sites, because checking a SUBSET is the failure this
-  /// area keeps producing.** There are two independent signals — `IsSecureEventInputEnabled()`,
-  /// which is process-wide and is what most apps actually use, and the focused element's secure
-  /// subrole, which catches a password field in an app that never enabled the mode. A site that
-  /// asks one of them looks exactly like a site that asks both.
+  /// **This exists because "a site that asks a SUBSET looks identical to a site that asks all of
+  /// them" produced a finding in FIVE consecutive review rounds.** Step 1 asked all five questions.
+  /// Step 2b was added and passed one stale value. Step 3b was added and asked only the subrole.
+  /// Then 3b asked both secure signals but not target liveness — a pid can be reused while a lazy
+  /// pasteboard provider stalls the takeover. Each fix was correct and each left the next gap,
+  /// because the sites were assembled by hand from whichever questions the last finding was about.
   ///
-  /// That is not hypothetical here: step 3b was added to close a window and probed only the
-  /// SUBROLE, so a target enabling process-wide secure input during the clipboard materialisation
-  /// walked straight through the guard that had just been added to catch it. Found by cloud review
-  /// on PR #2472, one round after the same shape was fixed at step 2b.
+  /// A caller cannot invoke this with a subset. That is the whole point, and it is why this is a
+  /// function rather than a longer comment above three call sites.
   ///
-  /// A helper cannot be called with a subset, which is why this is a function rather than a note.
-  private static func isSecureRightNow(pid: pid_t) -> Bool {
-    if IsSecureEventInputEnabled() { return true }
-    return SelectionReader.isSecureField(
-      SelectionReader.secureFocusProbe(pid: pid, timeout: secureProbeTimeout))
+  /// The SAMPLED context goes in unchanged: this re-asks the live questions and never re-samples
+  /// the application, which is the defect the type doc's third numbered point is about.
+  private static func liveRefusal(
+    pid: pid_t,
+    context: SelectionReader.AcquisitionContext,
+    fallbackEnabled: Bool
+  ) -> SelectionReader.Refusal? {
+    mayAttempt(
+      secureInputActive: IsSecureEventInputEnabled(),
+      focusedElementIsSecure: SelectionReader.isSecureField(
+        SelectionReader.secureFocusProbe(pid: pid, timeout: secureProbeTimeout)),
+      postingAuthorised: CGPreflightPostEventAccess(),
+      targetStillPresent: targetStillPresent(context),
+      fallbackEnabled: fallbackEnabled,
+      context: context)
   }
 
   /// Whether the remembered pid is still the application it was sampled as.

@@ -328,11 +328,7 @@ public enum ClipboardCleanup {
     /// `wasSuperseded(_:)` after every await — a dictation delivery starting while you hold the
     /// board takes it from you, and continuing after that would put your restore on top of a
     /// payload the target app has not read yet.
-    /// `inheritedPending` says the takeover CONSUMED a pending dictation cleanup, so the board may
-    /// be holding our own payload right now. A caller that restores only when the board moved would
-    /// strand it; a caller that always restores writes the user's clipboard for no reason.
-    case granted(
-      payload: ClipboardSnapshot, baseline: Int, token: UUID, inheritedPending: Bool)
+    case granted(payload: ClipboardSnapshot, baseline: Int, token: UUID)
     /// The clipboard is larger than the caller's budget, so nothing was touched.
     ///
     /// **Pending cleanup is left ARMED on this path**, deliberately. Refusing must not damage the
@@ -353,6 +349,12 @@ public enum ClipboardCleanup {
     /// and a busy clipboard manager was told their clipboard was too large to keep safe. A refusal
     /// that carries a SENTENCE cannot be reused as a general "no".
     case boardTooBusy
+    /// A dictation delivery wrote the board and its target has not finished reading it.
+    ///
+    /// **The board is not ours to take during that window**, and taking it would overwrite a paste
+    /// mid-read. Distinct from the others because it is TRANSIENT by design: the same request a
+    /// fraction of a second later succeeds.
+    case deliveryInFlight
   }
 
   /// Take the user's clipboard over for a write that is not a dictation delivery.
@@ -408,17 +410,24 @@ public enum ClipboardCleanup {
     //
     // Found by a refutation run against this file's class enumeration, on the CORRELATED-VALUE
     // ATOMICITY axis, which that enumeration did not have.
-    // **Recorded before the pending operation is consumed, and only when it would actually be
-    // INHERITED.** `pending != nil` alone is the wrong test: a pending cleanup whose board has
-    // already moved is STALE, and `intendedPayload` correctly snapshots the current user clipboard
-    // instead of the held one. Reporting `true` there tells the caller our own payload is on the
-    // board when the user's is, so it restores for no reason — writing their clipboard and costing
-    // a history entry, which is precisely what the caller's no-write path exists to avoid.
+    // **REFUSE while a FRESH cleanup is pending, because the board is not ours to take.**
     //
-    // The condition is the same freshness test `intendedPayload` applies one function down, and it
-    // is duplicated rather than shared deliberately: they answer for the SAME instant, and a helper
-    // that both called would be read twice with a gap between. Found by cloud review on PR #2472.
-    let inheritedPending = pending.map { board.changeCount == $0.changeCountAfterPaste } ?? false
+    // A fresh pending operation means a dictation just wrote the board and the target application is
+    // still reading it — asynchronously, on its own schedule. That 200 ms window is the entire
+    // reason `clipboardRestoreDelayMs` exists. An earlier version CANCELLED that cleanup and granted
+    // the takeover, and the caller then posted a Copy that replaced the board content before the
+    // target had read the paste we already sent it. That is the wrong-text failure, reached from the
+    // other direction: not restoring too late, but overwriting too early.
+    //
+    // Heart and limbs again, and the limb yields again: Quick Add's fallback simply does not run
+    // during that window. The cost is a refusal in the 200 ms after a clipboard paste; the
+    // alternative is corrupting the paste itself. Found by cloud review on PR #2472.
+    //
+    // A STALE pending operation is a different thing — its board has already moved on, so nothing is
+    // mid-read and `intendedPayload` correctly snapshots the user's current clipboard.
+    if let current = pending, board.changeCount == current.changeCountAfterPaste {
+      return .deliveryInFlight
+    }
 
     var payload: ClipboardSnapshot?
     var baseline = 0
@@ -454,8 +463,7 @@ public enum ClipboardCleanup {
 
     // The baseline is the count that was VERIFIED to describe this payload, never a fresh read
     // taken here — a fresh read would reintroduce the gap this method just closed.
-    return .granted(
-      payload: payload, baseline: baseline, token: token, inheritedPending: inheritedPending)
+    return .granted(payload: payload, baseline: baseline, token: token)
   }
 
   /// How many times to try for a payload and a change count that describe the same moment.

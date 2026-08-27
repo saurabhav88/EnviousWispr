@@ -212,6 +212,35 @@ struct SelectionAcquisitionTests {
         fallbackEnabled: true, context: sameContext) == nil)
   }
 
+  /// **The structural claim behind five rounds of the same finding: no site asks a SUBSET.**
+  ///
+  /// Five consecutive review rounds found one check asking fewer questions than another — a stale
+  /// value, then only the subrole, then both secure signals but not target liveness. Each fix was
+  /// correct and each left the next gap, because every new site was assembled by hand from whatever
+  /// the last finding was about.
+  ///
+  /// The fix is one function every live site calls, and this asserts it STRUCTURALLY, because no
+  /// behavioural test can see a site that forgot to ask something: `mayAttempt` appears in the
+  /// ladder exactly twice — its own definition and the one helper — so a third hand-assembled call
+  /// site cannot appear without failing here.
+  @Test("Every live policy check goes through one function, so none can ask a subset")
+  func noSiteAsksASubsetOfThePolicyQuestions() throws {
+    let code = try Self.executableLines(of: "SelectionAcquisition.swift")
+
+    // Positive control: an empty or mis-stripped read would pass every absence check below.
+    #expect(code.contains(where: { $0.contains("liveRefusal") }))
+
+    let calls = code.filter { $0.contains("mayAttempt(") }
+    #expect(
+      calls.count == 2,
+      "expected the definition and ONE caller, `liveRefusal`; anything else is hand-assembled: \(calls)")
+
+    // And the helper is what the live sites reach for, at both of them.
+    #expect(
+      code.filter { $0.contains("liveRefusal(pid:") }.count == 3,
+      "all three live sites — before the wait, before the takeover, before the chord")
+  }
+
   // MARK: The keystroke-forwarding list
 
   @Test("Only an exact bundle identifier is treated as keystroke forwarding")
