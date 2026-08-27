@@ -10,9 +10,15 @@ import EnviousWisprServices
 /// **The problem, in one line.** WhatsApp highlights a word on screen and tells the rest of the Mac
 /// that nothing is selected. It is an iPad app ported to the Mac, the focused element is the compose
 /// field rather than the bubble, and a full window walk found every `AXSelectedText` empty and every
-/// `AXSelectedTextRange` at zero. Terminals do a related thing: they advertise the attribute and
-/// answer it with nothing. There is no Accessibility route to either, proven by exhaustion in the
+/// `AXSelectedTextRange` at zero. There is no Accessibility route to it, proven by exhaustion in the
 /// issue and independently by two web-grounded models.
+///
+/// **The issue also names TERMINALS as a member of this class, and Live UAT on 2026-08-27 falsified
+/// that for the one on this machine:** ghostty with a word selected answers through Accessibility,
+/// `acquired=ax`, clipboard untouched. The #2381 measurement (a terminal advertising
+/// `AXSelectedText` and answering `kAXErrorNoValue`) was real when taken and is not true of that
+/// build now. So this ladder is a safety net for terminals rather than the mechanism that fixes
+/// them — worth knowing before anyone cites terminals as the reason it exists.
 ///
 /// **Why this lives in Pipeline and not in `SelectionReader`.** It cannot live there: the reader is
 /// in `EnviousWisprServices`, whose dependencies are Core and ObservabilityCore and nothing else
