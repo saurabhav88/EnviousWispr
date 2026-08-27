@@ -5,6 +5,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// What the typed pill boundary DOES, asserted on outputs an observer outside
 /// the director can see (#2292 Phase 1).
@@ -49,6 +50,7 @@ import Testing
 struct PillRequestParityTests {
 
   /// One director, plus every observable output it produces, recorded in order.
+  @MainActor
   private final class Rig {
     let host = WindowlessOverlayHost()
     var effects: [PillEffect] = []

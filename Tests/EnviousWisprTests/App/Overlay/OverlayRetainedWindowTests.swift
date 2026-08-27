@@ -83,19 +83,28 @@ struct OverlayRetainedWindowTests {
     return found
   }
 
-  /// Exactly one `NSPanel(` constructor in the whole module, and it is the host's.
-  @Test("only OverlayWindowHost constructs a panel")
-  func onlyTheHostConstructsAPanel() throws {
+  /// **ZERO `NSPanel(` constructors in this module now (#2455 C4).**
+  ///
+  /// This asserted exactly one, in `OverlayWindowHost.swift`. C4 moved it to
+  /// `LiveOverlayPanelDriver` in `EnviousWisprDesktopEffects`, which this target
+  /// does not DECLARE — so the guard gets STRONGER, not weaker: the original worry
+  /// was a second constructor becoming a second window (#930's flicker by another
+  /// route), and this test plus `check-dependency-direction.sh`'s `NSPanel[[:space:]]*[(]`
+  /// rule are what reject one. Xcode would compile it — the gate is what does not.
+  @Test("no overlay source in this module constructs a panel")
+  func noOverlaySourceConstructsAPanel() throws {
     let sources = try Self.overlayModuleSources()
     #expect(sources.count > 50, "the sweep found almost nothing — it is pointed at the wrong tree")
 
     let constructors = sources.filter { Self.panelCalls(in: $0.text).constructs > 0 }
     #expect(
-      constructors.map(\.name) == ["OverlayWindowHost.swift"],
+      constructors.isEmpty,
       """
-      \(constructors.map(\.name)) construct an NSPanel. Exactly one owner may, or \
-      the retained window is not retained: a second constructor is a second \
-      window, which is the #930 flicker returning by another route.
+      \(constructors.map(\.name)) construct an NSPanel inside EnviousWisprAppKit. \
+      Panel construction belongs to LiveOverlayPanelDriver in \
+      EnviousWisprDesktopEffects; one here is a window this module can build \
+      without going through the seam, which is exactly what made the suite flash \
+      a pill.
       """)
   }
 
@@ -221,12 +230,12 @@ struct OverlayRetainedWindowBehaviourTests {
   @Test("several transitions build one window")
   func transitionsReuseTheRetainedWindow() async {
     let recorder = OverlayPanelCommandRecorder()
-    let host = OverlayWindowHost(panelFactory: recorder.makeFactory())
+    let host = OverlayWindowHost(effects: recorder.makeEffects())
     let d = OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
       selections: { .shipped },
       firstRenderSchedule: { $0() })
-    defer { recorder.panel?.orderOut(nil) }
+    defer { recorder.panel?.orderOut() }
 
     d.present(.processing(phase: .polishing))
     await drainMainQueue()
@@ -252,12 +261,12 @@ struct OverlayRetainedWindowBehaviourTests {
   @Test("hiding and showing again reuses the same window")
   func hideThenShowReusesTheWindow() async {
     let recorder = OverlayPanelCommandRecorder()
-    let host = OverlayWindowHost(panelFactory: recorder.makeFactory())
+    let host = OverlayWindowHost(effects: recorder.makeEffects())
     let d = OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
       selections: { .shipped },
       firstRenderSchedule: { $0() })
-    defer { recorder.panel?.orderOut(nil) }
+    defer { recorder.panel?.orderOut() }
 
     for _ in 0..<4 {
       d.present(.processing(phase: .polishing))
@@ -273,95 +282,9 @@ struct OverlayRetainedWindowBehaviourTests {
 }
 
 /// **The real-panel integration Codex ruled C2 needed (#2377): retained
-/// identity proven with a genuine base `NSPanel`, not the recording subclass.**
+/// identity proven with a genuine `NSPanel`, not a recorder.**
 ///
-/// The recorder above proves the host issues the right AppKit COMMANDS; it says
-/// nothing about what a real `NSPanel` does in response to them, because the
-/// recording subclass overrides those same methods. This suite injects
-/// `OverlayPanelFactory.live` itself — the identical factory production uses —
-/// so the panel under test is exactly what ships.
+/// #2455 C4: that proof now lives in `OverlayRetainedWindowRealPanelTests`, in the
+/// one test target `check-dependency-direction.sh` permits to construct a live
+/// driver. Xcode would let this target import it; the gate is what does not.
 ///
-/// **Show / hide / show, asserting identity across all three, not just the
-/// last one.** A host that rebuilt on hide would still show correctly the
-/// second time; only comparing the SAME `ObjectIdentifier` across the full
-/// cycle catches that.
-///
-/// **`willCloseNotification`, not just final visibility.** `isVisible == false`
-/// is what BOTH `orderOut` and `close` leave behind on a panel with
-/// `isReleasedWhenClosed = false` — the earlier mutation control found exactly
-/// this (`compensatingMechanismsStayGone`'s sibling test up the file). The
-/// notification is the only observation that tells them apart without reading
-/// private host state.
-@MainActor
-@Suite(.tags(.productOutcome))
-struct OverlayRetainedWindowRealPanelTests {
-
-  init() { _ = NSApplication.shared }
-
-  private static let screen = ScreenGeometry(
-    id: ScreenID(rawValue: 1),
-    frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
-    visibleFrame: CGRect(x: 0, y: 85, width: 1512, height: 860))
-
-  @Test("a real panel survives show, hide, show with identity intact")
-  func showHideShowRetainsTheRealPanel() throws {
-    // **A CAPTURING factory, not `firstView.window`.** Reading the panel off
-    // the attached view can only see the panel that ended up attached — it is
-    // blind to an extra real panel constructed and then discarded before or
-    // instead of that one. Wrapping `.live` itself, so every panel it
-    // constructs is genuinely production configuration, is what lets
-    // `constructedPanels.count == 1` prove there was only ever ONE.
-    let live = OverlayPanelFactory.live
-    var constructedPanels: [NSPanel] = []
-    let capturingFactory = OverlayPanelFactory {
-      let panel = live.makePanel()
-      constructedPanels.append(panel)
-      return panel
-    }
-    let host = OverlayWindowHost(
-      screens: { OverlayScreenResolver { Self.screen } }, panelFactory: capturingFactory)
-
-    nonisolated(unsafe) var closed = false
-    var closeToken: NSObjectProtocol?
-    defer { closeToken.map(NotificationCenter.default.removeObserver) }
-
-    let firstView = NSView(frame: NSRect(x: 0, y: 0, width: 185, height: 44))
-    #expect(
-      host.present(
-        firstView, width: .fixed(185), fixedHeight: nil, isFresh: true, position: .bottom)
-    )
-    #expect(constructedPanels.count == 1, "the first presentation built more than one panel")
-    let panel = try #require(constructedPanels.first)
-    #expect(firstView.window === panel, "the view attached to a DIFFERENT panel than was built")
-    closeToken = NotificationCenter.default.addObserver(
-      forName: NSWindow.willCloseNotification, object: panel, queue: nil
-    ) { _ in closed = true }
-    defer { host.hide() }
-
-    #expect(panel.isVisible, "show did not put the panel on screen")
-    #expect(panel.contentView === firstView, "show did not attach the content view")
-
-    host.hide()
-    #expect(panel.isVisible == false, "hide left the panel on screen")
-    #expect(panel.contentView == nil, "hide left the previous content attached")
-
-    let secondView = NSView(frame: NSRect(x: 0, y: 0, width: 185, height: 44))
-    #expect(
-      host.present(
-        secondView, width: .fixed(185), fixedHeight: nil, isFresh: true, position: .bottom)
-    )
-    #expect(
-      constructedPanels.count == 1,
-      "showing after a hide built a SECOND real panel — the window is not retained")
-    let secondPanel = try #require(secondView.window)
-
-    #expect(
-      ObjectIdentifier(secondPanel) == ObjectIdentifier(panel),
-      "show after hide built a NEW panel — the window is not retained")
-    #expect(secondPanel.isVisible, "the second show did not put the panel back on screen")
-    #expect(secondPanel.contentView === secondView, "the second show kept the old content view")
-    #expect(
-      closed == false,
-      "the panel was CLOSED at some point in show/hide/show — orderOut never posts this")
-  }
-}

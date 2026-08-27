@@ -13,6 +13,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #2292 chunk C4b. The presentation transaction.
 ///
@@ -252,9 +253,10 @@ struct OverlayDirectorTests {
   ) -> (OverlayDirector, Armed, Sink) {
     let armed = Armed()
     let sink = Sink()
-    // Real panels again: the director renders through a real host. Held so the
-    // caller can order the window out when the test ends.
-    let host = OverlayWindowHost(screens: { OverlayScreenResolver { screen } })
+    // Real HOST, inert panel driver (#2455 C4): the director renders through the
+    // production host, whose panel is a recorder rather than a window. Held so the
+    // caller can hide the host and release its content when the test ends.
+    let host = OverlayWindowHost(screens: { OverlayScreenResolver { screen } }, effects: .recording())
     let d = OverlayDirector(
       host: host,
       position: position,
@@ -938,7 +940,7 @@ struct OverlayDirectorTests {
   @Test("a recording's effect is delivered before its geometry is resolved")
   func recordingEffectsPrecedeGeometry() {
     var recordingStarted = false
-    let host = OverlayWindowHost(screens: { OverlayScreenResolver { Self.screen } })
+    let host = OverlayWindowHost(screens: { OverlayScreenResolver { Self.screen } }, effects: .recording())
     // **Both halves ride on the SAME bridge now** (#2292 C2), which states the
     // ordering this case is about more directly than the old pair did: the
     // recording signal and the geometry answer arrive together, so "did the
@@ -1407,23 +1409,24 @@ struct OverlayDirectorTests {
     #expect(secondResults == [.notPresented], "the second caller did not hear the shared refusal")
   }
 
-  /// **The real AppKit surface, not the windowless fake's call count.** Every
-  /// other same-id row above counts calls into `RefusingWindowlessHost`; this
-  /// one asks the actual `OverlayWindowHost` what it told a real `NSPanel` to
-  /// do, so a bug that produced one FAKE-host call but two real
-  /// `orderFrontRegardless` commands — a shape none of the windowless rows
-  /// above could ever see — still fails here.
-  @Test("two same-id updates before readiness issue exactly one real orderFrontRegardless")
+  /// **The real HOST's command stream, not the windowless fake's call count.**
+  /// Every other same-id row above counts calls into `RefusingWindowlessHost`;
+  /// this one asks the actual `OverlayWindowHost` what it told its panel driver to
+  /// do, so a bug that produced one FAKE-host call but two `orderFrontRegardless`
+  /// commands — a shape none of the windowless rows above could ever see — still
+  /// fails here. The driver is a recorder, not an `NSPanel` (#2455 C4); what
+  /// distinguishes this row is the HOST being real, which was always the point.
+  @Test("two same-id updates before readiness issue exactly one host orderFrontRegardless")
   func twoSameIDUpdatesIssueExactlyOneRealHostCommand() {
     let recorder = OverlayPanelCommandRecorder()
     let host = OverlayWindowHost(
-      screens: { OverlayScreenResolver { Self.screen } }, panelFactory: recorder.makeFactory())
+      screens: { OverlayScreenResolver { Self.screen } }, effects: recorder.makeEffects())
     let deferral = Deferral()
     let d = OverlayDirector(
       host: host, scheduler: .manual { _ in }, announce: { _ in }, livePreview: .disabled,
       grantAccessibility: {}, selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
-    defer { recorder.panel?.orderOut(nil) }
+    defer { recorder.panel?.orderOut() }
 
     Self.record(d, level: 0.2)
     Self.record(d, level: 0.4)
@@ -1435,7 +1438,7 @@ struct OverlayDirectorTests {
     }
     #expect(
       orderFrontCount == 1,
-      "two same-id updates issued \(orderFrontCount) real orderFrontRegardless commands")
+      "two same-id updates issued \(orderFrontCount) host orderFrontRegardless commands")
   }
 
   /// **Nothing announces or arms before the gate fires, and coalescing an
@@ -1907,7 +1910,8 @@ struct OverlayDirectorTests {
     let sink = Sink()
     let armed = Armed()
     let host = OverlayWindowHost(
-      screens: { OverlayScreenResolver { screenAvailable() ? screen : nil } })
+      screens: { OverlayScreenResolver { screenAvailable() ? screen : nil } },
+      effects: .recording())
     let d = OverlayDirector(
       host: host,
       scheduler: .manual { armed.work = $0 },

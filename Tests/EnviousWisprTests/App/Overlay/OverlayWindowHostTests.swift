@@ -5,6 +5,7 @@ import SwiftUI
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #2292 chunk C3. The retained window.
 ///
@@ -12,8 +13,12 @@ import Testing
 /// destroyed and rebuilt (#930), jump sideways after they dragged it (#2195), or
 /// a hidden window keeps swallowing clicks over an empty patch of screen.
 ///
-/// These touch AppKit, so they build a real `NSPanel` — that is the point. The
-/// probe on 2026-08-21 established what a retained panel costs
+/// **These build NO window (#2455 C4).** They used to: the recorder was an
+/// `NSPanel` subclass, so every case here displayed a real pill for as long as the
+/// suite ran. The host now drives an `OverlayPanelDriving` and the recorder is
+/// inert. What is asserted — which commands, in which order, with which geometry —
+/// is unchanged, because none of it was ever about AppKit's response.
+/// The probe on 2026-08-21 established what a retained panel costs
 /// (`docs/audits/2026-08-21-overlay-probe-results.md`); this suite establishes
 /// that OUR host retains exactly one and places it correctly. Screens are faked
 /// so geometry is deterministic and a full-screen space is reachable, neither of
@@ -22,8 +27,9 @@ import Testing
 /// **Every case observes the panel through an `OverlayPanelCommandRecorder`
 /// rather than a `#if DEBUG` accessor on the host (#2377, P6-C2).** That is what
 /// lets this whole file — and its production counterpart — build and run in
-/// RELEASE: the recorder is a real `NSPanel` subclass injected through the same
-/// `OverlayPanelFactory` seam production code uses, not a compiled-out hatch.
+/// RELEASE: the recorder is a pure `OverlayPanelDriving` implementation injected
+/// through the same `DesktopOverlayEffects` seam production code uses, not a
+/// compiled-out hatch.
 @MainActor
 @Suite(.tags(.productOutcome))
 struct OverlayWindowHostTests {
@@ -46,14 +52,14 @@ struct OverlayWindowHostTests {
 
   private static func makeHost(
     _ geometry: @escaping @autoclosure () -> ScreenGeometry = screen,
-    panelFactory: OverlayPanelFactory = .live
+    effects: DesktopOverlayEffects = .recording()
   ) -> OverlayWindowHost {
     OverlayWindowHost(
-      screens: { OverlayScreenResolver { geometry() } }, panelFactory: panelFactory)
+      screens: { OverlayScreenResolver { geometry() } }, effects: effects)
   }
 
-  private static func host(panelFactory: OverlayPanelFactory = .live) -> OverlayWindowHost {
-    makeHost(panelFactory: panelFactory)
+  private static func host(effects: DesktopOverlayEffects = .recording()) -> OverlayWindowHost {
+    makeHost(effects: effects)
   }
 
   /// A view whose FRAME and FITTING size are independently settable.
@@ -82,8 +88,8 @@ struct OverlayWindowHostTests {
   @Test("one panel is constructed however many presentations arrive")
   func onePanelForEveryPresentation() {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     for i in 0..<12 {
       h.present(
         Self.view(width: 185 + CGFloat(i), height: 44), width: .fixed(185 + CGFloat(i)),
@@ -101,17 +107,19 @@ struct OverlayWindowHostTests {
   @Test("a continuing presentation keeps the pill where the user dragged it")
   func continuingKeepsTheDraggedPosition() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
     let panel = try #require(recorder.panel)
 
-    // The user drags it well left of centre. `windowDidMove` is how the host
+    // The user drags it well left of centre. the driver's synchronous `onMove` callback is how the host
     // learns; there is no rebuild for the fact to survive.
-    panel.setFrameOrigin(NSPoint(x: 120, y: 85))
-    h.windowDidMove(Notification(name: NSWindow.didMoveNotification, object: panel))
+    // #2455 C4: one call replaces the setFrameOrigin + delegate-notification pair. The
+    // driver owns the delegate relationship now, so a test says what the USER did
+    // rather than reproducing AppKit\'s notification plumbing.
+    panel.simulateUserMove(to: CGPoint(x: 120, y: 85))
 
     h.present(
       Self.view(width: 320, height: 120), width: .fixed(320), fixedHeight: nil, isFresh: false,
@@ -125,26 +133,28 @@ struct OverlayWindowHostTests {
   @Test("a fresh presentation is centred even after a drag")
   func freshRecentresAfterADrag() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
     let panel = try #require(recorder.panel)
-    panel.setFrameOrigin(NSPoint(x: 120, y: 85))
-    h.windowDidMove(Notification(name: NSWindow.didMoveNotification, object: panel))
+    // #2455 C4: one call replaces the setFrameOrigin + delegate-notification pair. The
+    // driver owns the delegate relationship now, so a test says what the USER did
+    // rather than reproducing AppKit\'s notification plumbing.
+    panel.simulateUserMove(to: CGPoint(x: 120, y: 85))
     h.hide()
 
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
 
-    // Within a point, not exact: **AppKit aligns a window frame to whole
-    // points**, so a placement value of 663.5 lands at 663.0. The value type is
-    // right and the window is right; an exact float comparison against the
-    // unrounded computation is what was wrong. Half a point is tight enough that
-    // a pill left at 120 still fails this.
-    #expect(abs(panel.frame.origin.x - (Self.screen.visibleFrame.midX - 92.5)) <= 0.5)
+    // EXACT, not within a point (#2455 C4). The tolerance existed because AppKit
+    // aligns a real window frame to whole points, so a placement value of 663.5
+    // landed at 663.0. The recorder stores the `CGRect` it was handed, so there is
+    // no rounding to absorb — and a tolerance with nothing to absorb is slack that
+    // hides real drift.
+    #expect(panel.frame.origin.x == Self.screen.visibleFrame.midX - 92.5)
   }
 
   /// **A programmatic move is not a drag**, and telling them apart is what makes
@@ -160,14 +170,14 @@ struct OverlayWindowHostTests {
   @Test("the host's own frame changes never count as a user drag")
   func programmaticMovesAreNotDrags() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
     let panel = try #require(recorder.panel)
     // Every present/resize/reposition below moves the panel, and each fires
-    // `windowDidMove` for real.
+    // the driver's `onMove` callback for real.
     h.resizeCurrentPresentation(to: CGSize(width: 240, height: 60))
     h.repositionForActiveSpaceChange()
     h.present(
@@ -188,14 +198,16 @@ struct OverlayWindowHostTests {
     // Paired with the case above: a host that never promotes would recentre
     // here too.
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
     let panel = try #require(recorder.panel)
-    panel.setFrameOrigin(NSPoint(x: 400, y: 300))
-    h.windowDidMove(Notification(name: NSWindow.didMoveNotification, object: panel))
+    // #2455 C4: one call replaces the setFrameOrigin + delegate-notification pair. The
+    // driver owns the delegate relationship now, so a test says what the USER did
+    // rather than reproducing AppKit\'s notification plumbing.
+    panel.simulateUserMove(to: CGPoint(x: 400, y: 300))
 
     // The same proof as `continuingKeepsTheDraggedPosition`: a continuation
     // preserves X only when the drag was recorded as user-anchored.
@@ -215,8 +227,8 @@ struct OverlayWindowHostTests {
   @Test("hiding orders the panel out and keeps it alive")
   func hideOrdersOutWithoutClosing() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -235,17 +247,17 @@ struct OverlayWindowHostTests {
 
   /// **The recorder's own coverage.** Every other test in this file reads
   /// `recorder.panel`/`recorder.constructionCount`, which only exercise
-  /// `.constructed` and (indirectly, via `hideNeverCloses` below) `.close`.
+  /// `.constructed`.
   /// Nothing directly asserted `setFrame`, `setContentView` or
   /// `orderFrontRegardless` ever appear — a recorder that silently stopped
   /// recording any one of those would leave every OTHER test in this file
   /// green, because they all read the PANEL's own state, never the recorder's
   /// command log. Codex found this gap in chunk review.
-  @Test("present, resize and hide issue the real panel commands in order")
+  @Test("present, resize and hide issue the panel commands in order")
   func panelCommandOrderIsObservable() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
 
     let view = Self.view(width: 185, height: 44)
     let presentStart = recorder.commands.count
@@ -257,13 +269,16 @@ struct OverlayWindowHostTests {
     let panelID = ObjectIdentifier(panel)
     let presented = Array(recorder.commands[presentStart...])
 
-    // **`NSPanel`'s OWN designated initializer sets a default `contentView`
-    // internally, before `.constructed` is even appended** — measured live:
-    // `super.init(contentRect:styleMask:backing:defer:)` issues a
-    // `.setContentView` receipt of its own, ahead of construction finishing.
-    // That is a real AppKit fact this test is not about, so it locates
-    // `.constructed` rather than assuming position 0, and asserts only what
-    // HOST code issues after it — the three commands `present` itself drives.
+    // Locate `.constructed` explicitly rather than assuming position 0, then
+    // assert the three commands the HOST issues after it.
+    //
+    // #2455 C4: the original reason was an AppKit fact — `NSPanel`'s own
+    // designated initializer appended a `.setContentView` receipt before
+    // construction finished, because the recorder WAS an `NSPanel`. That cannot
+    // happen now. Locating `.constructed` is kept anyway: it makes the
+    // command-order contract independent of how the recorder flattens each
+    // driver's receipts, which is a property of the assertion rather than of
+    // whichever double is underneath it.
     guard
       let constructedIndex = presented.firstIndex(where: {
         if case .constructed = $0 { return true }
@@ -327,59 +342,29 @@ struct OverlayWindowHostTests {
       ])
   }
 
-  /// **`hide()` must ORDER OUT, and a mutation control is what proved this test
-  /// was needed.** Substituting `close()` for `orderOut` left all eight cases
-  /// green: with `isReleasedWhenClosed = false` a closed panel is still alive,
-  /// still the same instance, still `isVisible == false`, and the construction
-  /// count is unchanged — every assertion the suite had. The distinction that
-  /// matters is not observable through any of them.
+  /// **`hide()` must ORDER OUT, not close — and the check for it moved (#2455 C4).**
   ///
-  /// `close()` posts `willCloseNotification`; `orderOut` does not. Observing the
-  /// notification needs no production seam and no text matching, so it holds
-  /// whatever the method is called. The C5 freeze assertion (zero `.close()`
-  /// calls in the overlay module) is a second, structural protection — but it
-  /// does not exist yet, and deferring to it would have left the central claim
-  /// of this change unguarded for two chunks.
-  @Test("hiding never closes the window")
-  func hideNeverCloses() throws {
-    let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
-    h.present(
-      Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
-      position: .bottom)
-    let panel = try #require(recorder.panel)
+  /// This suite carried a `hideNeverCloses` case that observed
+  /// `NSWindow.willCloseNotification` on the recorder. That worked only while the
+  /// recorder WAS an `NSPanel`. Against a pure driver the notification can never
+  /// fire, so the test passed by construction and proved nothing — a mutation
+  /// control's worth of coverage, silently reduced to zero by the very change that
+  /// made the fake inert.
+  ///
+  /// Two things replaced it, and both are stronger than the original:
+  /// `OverlayPanelDriving` declares NO `close`, so the call is unrepresentable
+  /// rather than merely unasserted; and `OverlayRetainedWindowRealPanelTests` in
+  /// `EnviousWisprDesktopEffectsTests` still observes `willCloseNotification` on a
+  /// real panel, where it can actually fire.
 
-    nonisolated(unsafe) var closed = false
-    let token = NotificationCenter.default.addObserver(
-      forName: NSWindow.willCloseNotification, object: panel, queue: nil
-    ) { _ in closed = true }
-    defer { NotificationCenter.default.removeObserver(token) }
-
-    h.hide()
-    h.present(
-      Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
-      position: .bottom)
-    h.hide()
-
-    #expect(
-      closed == false,
-      "the panel was CLOSED rather than ordered out — every rebuild this change removes comes from that"
-    )
-    // Command-log corroboration of the same fact, now that the recorder can
-    // observe it directly: `.close` must never appear.
-    #expect(
-      recorder.commands.contains { if case .close = $0 { true } else { false } } == false,
-      "the recorder saw a `.close` command — `hide()` must issue only `orderOut`")
-  }
 
   /// **Three sizing paths, three DIFFERENT numbers**, so each is separable.
   @Test("fixed, fitting and frame-fallback widths are told apart")
   func sizingPathsAreDistinguishable() throws {
     // fixed 300, fitting 211, frame 150 — no two alike.
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     let v = Self.view(width: 150, height: 40, fitting: NSSize(width: 211, height: 58))
 
     h.present(v, width: .fixed(300), fixedHeight: nil, isFresh: true, position: .bottom)
@@ -404,8 +389,8 @@ struct OverlayWindowHostTests {
   @Test("a presentation that cannot be sized is refused, not shown at zero")
   func unsizablePresentationIsRefused() {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     let empty = Self.view(width: 0, height: 0)
     h.present(empty, width: .measured, fixedHeight: nil, isFresh: true, position: .bottom)
 
@@ -424,8 +409,8 @@ struct OverlayWindowHostTests {
   @Test("morphing replaces the panel's content view")
   func morphReplacesContent() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -444,8 +429,8 @@ struct OverlayWindowHostTests {
   @Test("the panel's shipped configuration is unchanged")
   func panelConfigurationIsPinned() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -457,8 +442,11 @@ struct OverlayWindowHostTests {
     #expect(panel.hasShadow)
     #expect(panel.isOpaque == false)
     #expect(panel.isReleasedWhenClosed == false, "a released panel cannot be retained")
-    #expect(panel.styleMask.contains(.borderless))
-    #expect(panel.styleMask.contains(.nonactivatingPanel))
+    // #2455 C4: `styleMask` is not on `OverlayPanelDriving`. It is a property of
+    // the REAL panel's construction, not of anything the host does, so asserting
+    // it here was testing the factory through the host. It moved to
+    // `LiveOverlayPanelDriverTests` in `EnviousWisprDesktopEffectsTests`, which is
+    // the target that can see a real `NSPanel`.
   }
 
   /// Top continuity through the HOST, not just the placement value: a
@@ -467,8 +455,8 @@ struct OverlayWindowHostTests {
   @Test("Top continuity re-anchors by top edge when the outgoing pill was content-sized")
   func topContinuityContentSized() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44, fitting: NSSize(width: 185, height: 44)),
       width: .fixed(185), fixedHeight: nil, isFresh: true, position: .top)
@@ -485,8 +473,8 @@ struct OverlayWindowHostTests {
   @Test("Top continuity re-anchors by centre when the outgoing pill had a fixed height")
   func topContinuityFixedHeight() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
       position: .top)
@@ -522,8 +510,8 @@ struct OverlayWindowHostTests {
   @Test("a measured width with a fixed height is not content-sized vertically")
   func measuredWidthWithFixedHeightIsNotContentSized() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 150, height: 40, fitting: NSSize(width: 211, height: 58)),
       width: .measured, fixedHeight: 92, isFresh: true, position: .top)
@@ -553,8 +541,8 @@ struct OverlayWindowHostTests {
   @Test("hiding releases the hosting view so its work stops")
   func hideReleasesTheHostingView() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -573,33 +561,43 @@ struct OverlayWindowHostTests {
   /// geometry back across the seam; every fact the callback needs — the anchor,
   /// the screen, the window — already lives here.
   ///
-  /// Posting the real `NSWorkspace` notification is the observation: it proves
-  /// the host is REGISTERED, which a direct call to
-  /// `repositionForActiveSpaceChange()` would not.
+  /// **Driving the injected observer is the observation**, and it proves the same
+  /// thing the real notification did: the host REGISTERED. A direct call to
+  /// `repositionForActiveSpaceChange()` would not — it would bypass registration
+  /// entirely, which is the half that can break.
+  ///
+  /// #2455 C4: this posted a real `NSWorkspace` notification, which reached every
+  /// workspace observer in the process, not just this host's. The fake now fires
+  /// exactly one subscription and nothing else in the app hears it.
   @Test("the host re-anchors a Bottom pill when the active Space changes")
   func spaceChangeReachesTheHost() throws {
     var geometry = Self.screen
     let recorder = OverlayPanelCommandRecorder()
+    let workspace = RecordingWorkspaceObserver()
     let h = OverlayWindowHost(
-      screens: { OverlayScreenResolver { geometry } }, panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+      screens: { OverlayScreenResolver { geometry } },
+      effects: recorder.makeEffects(workspace: workspace))
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
     let panel = try #require(recorder.panel)
     #expect(panel.frame.origin.y == 85)
+    #expect(workspace.observerCount == 1, "the host must subscribe exactly once")
 
     // A full-screen space appears: `visibleFrame` does not shrink, so the pill
     // must drop to the true screen edge (#1341).
     let spaceChangeStart = recorder.commands.count
     geometry = Self.fullScreened
-    NSWorkspace.shared.notificationCenter.post(
-      name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
-    RunLoop.main.run(until: Date())  // settle: deliver a posted notification, no polling
+    workspace.simulateActiveSpaceChange()
+    // No run-loop settle: the fake calls back synchronously, so there is no
+    // posted notification to deliver. The real observer used `queue: .main` and
+    // the notification centre guarantees the main thread, so the ordering the
+    // host sees is unchanged.
 
     #expect(
       panel.frame.origin.y == 0,
-      "the Space-change notification never reached the host — it is not registered")
+      "the Space change never reached the host — it is not registered")
 
     // One Host animated move must yield exactly one `setFrame` receipt. Count ALL
     // frame receipts first: filtering to `animated == true` would hide the extra
@@ -625,14 +623,12 @@ struct OverlayWindowHostTests {
 
     // **A SECOND swipe, and this is the assertion that matters.** The first one
     // proves only that the host is listening. The host moves the window itself
-    // to re-anchor, and that move fires `windowDidMove` — so if the programmatic
+    // to re-anchor, and that move fires the driver's `onMove` — so if the programmatic
     // guard did not hold, the host would record its OWN reposition as the user
     // dragging the pill and refuse to follow Spaces ever again. One swipe cannot
     // see that; the pill would look correct and then silently stop.
     geometry = Self.screen
-    NSWorkspace.shared.notificationCenter.post(
-      name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
-    RunLoop.main.run(until: Date())  // settle: deliver a posted notification, no polling
+    workspace.simulateActiveSpaceChange()
 
     #expect(
       panel.frame.origin.y == 85,
@@ -646,8 +642,8 @@ struct OverlayWindowHostTests {
   @Test("a measured width is taken from the view, not from a default")
   func measuredWidthComesFromTheView() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 271, height: 58), width: .measured, fixedHeight: nil, isFresh: true,
       position: .bottom)
@@ -661,8 +657,8 @@ struct OverlayWindowHostTests {
   @Test("a fixed height is honoured and overrides the view's own")
   func fixedHeightIsHonoured() throws {
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.host(panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+    let h = Self.host(effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
       position: .bottom)
@@ -690,11 +686,11 @@ struct OverlayWindowHostTests {
   private static func splitHost(
     pointer: @escaping () -> ScreenGeometry,
     containing: @escaping (CGRect) -> ScreenGeometry?,
-    panelFactory: OverlayPanelFactory = .live
+    effects: DesktopOverlayEffects = .recording()
   ) -> OverlayWindowHost {
     OverlayWindowHost(
       screens: { OverlayScreenResolver(containing: containing, current: pointer) },
-      panelFactory: panelFactory)
+      effects: effects)
   }
 
   /// **The regression, stated as the user sees it.** Start dictating on the
@@ -712,8 +708,8 @@ struct OverlayWindowHostTests {
     var pointer = Self.screen
     let recorder = OverlayPanelCommandRecorder()
     let h = Self.splitHost(
-      pointer: { pointer }, containing: { _ in Self.screen }, panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+      pointer: { pointer }, containing: { _ in Self.screen }, effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
 
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
@@ -741,8 +737,8 @@ struct OverlayWindowHostTests {
   func continuationFallsBackWhenItsScreenIsGone() throws {
     let recorder = OverlayPanelCommandRecorder()
     let h = Self.splitHost(
-      pointer: { Self.screen }, containing: { _ in nil }, panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+      pointer: { Self.screen }, containing: { _ in nil }, effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
 
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
@@ -771,8 +767,8 @@ struct OverlayWindowHostTests {
     var pointer = Self.screen
     let recorder = OverlayPanelCommandRecorder()
     let h = Self.splitHost(
-      pointer: { pointer }, containing: { _ in Self.screen }, panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+      pointer: { pointer }, containing: { _ in Self.screen }, effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
 
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
@@ -809,15 +805,17 @@ struct OverlayWindowHostTests {
     let recorder = OverlayPanelCommandRecorder()
     let h = Self.splitHost(
       pointer: { Self.shortSecondary }, containing: { _ in containingScreen },
-      panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+      effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: nil, isFresh: true,
       position: .bottom)
     let panel = try #require(recorder.panel)
 
-    panel.setFrameOrigin(NSPoint(x: 120, y: 85))
-    h.windowDidMove(Notification(name: NSWindow.didMoveNotification, object: panel))
+    // #2455 C4: one call replaces the setFrameOrigin + delegate-notification pair. The
+    // driver owns the delegate relationship now, so a test says what the USER did
+    // rather than reproducing AppKit\'s notification plumbing.
+    panel.simulateUserMove(to: CGPoint(x: 120, y: 85))
 
     // Continued on the LANDING screen (id 1, where `containing` placed the
     // panel): the drag is user-anchored there, so X is preserved.
@@ -856,8 +854,8 @@ struct OverlayWindowHostTests {
     let recorder = OverlayPanelCommandRecorder()
     let h = Self.splitHost(
       pointer: { Self.shortSecondary }, containing: { _ in Self.screen },
-      panelFactory: recorder.makeFactory())
-    defer { recorder.panel?.orderOut(nil) }
+      effects: recorder.makeEffects())
+    defer { recorder.panel?.orderOut() }
 
     h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,

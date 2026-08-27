@@ -8,11 +8,12 @@
 #   EnviousWispr           -> AppLive (thin launchable shell; #919/#2455 C1). Imports ONLY AppLive.
 #   EnviousWisprAppLive    -> AppKit, DesktopEffects (production composition root; #2455 C1/C2).
 #   EnviousWisprDesktopEffects -> AppKit, Services (#2455 C2). The ONLY module holding Carbon and
-#                             NSEvent calls. Neither test target declares it — but that alone does
-#                             NOT stop a test importing it (see the Tests/ loop below for why), so
-#                             this script is the enforcement. Adding either test target to that
-#                             loop's allowlist would silently reopen the hole this epic exists to
-#                             close.
+#                             NSEvent calls. The UNIT and ASR targets do not declare it; the
+#                             dedicated EnviousWisprDesktopEffectsTests target DOES, deliberately —
+#                             three suites there need real AppKit behaviour. Absence alone does not
+#                             stop an import (see the Tests/ loop below), so this script is the
+#                             enforcement. Adding the unit or ASR target to that loop's allowlist
+#                             would silently reopen the hole this epic exists to close.
 #   EnviousWisprAppKit     -> Core, Storage, PostProcessing, Audio, Services, ASR, LLM, Pipeline, Contacts (app-shell library; #919, top of stack)
 #   EnviousWisprASRService -> Core, ASR, Audio, ObservabilityCore (XPC executable; the audio capture XPC service was removed at #1543)
 #   EnviousWisprPipeline   -> Core, ASR, Audio, LLM, PostProcessing, Services, Storage
@@ -67,6 +68,7 @@ permitted_imports_for() {
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
     EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprObservabilityCore" ;;
     EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter" ;;
+    EnviousWisprAppKitTestSupport) echo "EnviousWisprAppKit EnviousWisprCore" ;;
     EnviousWisprDesktopEffects)    echo "EnviousWisprAppKit EnviousWisprServices" ;;
     EnviousWisprAppLive)           echo "EnviousWisprAppKit EnviousWisprDesktopEffects" ;;
     EnviousWispr)                  echo "EnviousWisprAppLive" ;;
@@ -160,6 +162,16 @@ done
 # required rather than optional. That closes the hole at the call site instead of
 # at the pattern.
 #
+# `NSWorkspace.shared.notificationCenter` is NOT in this pattern — it matches every
+# workspace subscription in the app (`UpdateTriggerCoordinator`,
+# `AccessibilityWarmupObserver`, `MenuBarIconAnimator`), which are different families
+# with their own lifecycles. `activeSpaceDidChangeNotification` IS, because it names
+# the exact event C4 moved rather than the mechanism that carries it. That is the
+# difference between matching an effect and matching an API.
+#
+# `NSPanel(` is here too: a test can build its own overlay window without touching
+# the seam at all, which import discipline alone would never see.
+#
 # KNOWN GAP, tracked rather than silently excluded: `PasteCascadeExecutor.swift`
 # `:573`, `:852`, `:862` call `app.activate()` on an `NSRunningApplication` in
 # `EnviousWisprPipeline`, bringing the paste target forward. Real activations, in
@@ -172,13 +184,14 @@ done
 # removes a `//` or `/*` and its tail on ONE line, not the continuation lines of a
 # block comment. A false positive is a sentence to rewrite; a false negative is a
 # suite back on the developer's real desktop.
-live_effect_pattern='RegisterEventHotKey|InstallEventHandler|NSEvent[.]add(Global|Local)MonitorForEvents|(NSApp|NSApplication[.]shared)[.](activate|setActivationPolicy)|panel[.]makeKeyAndOrderFront|NSWorkspace[.]shared[.]openApplication'
+live_effect_pattern='RegisterEventHotKey|InstallEventHandler|NSEvent[.]add(Global|Local)MonitorForEvents|(NSApp|NSApplication[.]shared)[.](activate|setActivationPolicy)|panel[.]makeKeyAndOrderFront|NSWorkspace[.]shared[.]openApplication|NSPanel[[:space:]]*[(]|NSPanel[.]init|activeSpaceDidChangeNotification'
 
 test_targets_and_permitted() {
   case "$1" in
     # Everything the unit suite legitimately links. EnviousWisprDesktopEffects and
     # EnviousWisprAppLive are ABSENT on purpose — that absence is the point.
-    EnviousWisprTests) echo "EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprContacts EnviousWisprServices EnviousWisprASR" ;;
+    EnviousWisprDesktopEffectsTests) echo "EnviousWisprCore EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprDesktopEffects" ;;
+    EnviousWisprTests) echo "EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprContacts EnviousWisprServices EnviousWisprASR" ;;
     EnviousWisprASRTests) echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprFluidAudioBridge EnviousWisprServices" ;;
     *) return 1 ;;
   esac

@@ -229,10 +229,15 @@ extension RecordingPillDesign {
 ///
 /// **Available in Release, not `#if DEBUG`.** Phase 5's proofs must execute in
 /// both configurations, and a DEBUG-only seam forecloses that.
-struct RecordingPollCadence: Sendable {
+/// `package` (#2455 C4): the shared test-support library builds a manual cadence
+/// over this, and that library is a non-shipping target rather than a test target,
+/// so `@testable` is not available to it. Widened one level, not to `public`.
+package struct RecordingPollCadence: Sendable {
 
   /// Returns when it is time to read the providers again.
-  let wait: @Sendable () async -> Void
+  package let wait: @Sendable () async -> Void
+
+  package init(_ wait: @escaping @Sendable () async -> Void) { self.wait = wait }
 
   /// 50 ms, which is what shipped and what `RainbowLevelMeter`'s history depth
   /// is scaled to.
@@ -240,7 +245,7 @@ struct RecordingPollCadence: Sendable {
   /// **`try?` here does NOT swallow cancellation into another read.** A cancelled
   /// sleep returns immediately and the loop's own `while !Task.isCancelled` is
   /// what ends it, so a cancelled poll performs no further provider read.
-  static let live = RecordingPollCadence {
+  package static let live = RecordingPollCadence {
     try? await Task.sleep(for: .milliseconds(50))
   }
 
@@ -257,7 +262,7 @@ struct RecordingPollCadence: Sendable {
   /// The continuation is created per call, so two pills parked on this share no
   /// state, and `finish()` is safe before the loop starts: the stream is already
   /// finished and `for await` returns immediately.
-  static let still = RecordingPollCadence {
+  package static let still = RecordingPollCadence {
     let (stream, continuation) = AsyncStream<Void>.makeStream()
     await withTaskCancellationHandler {
       for await _ in stream { break }

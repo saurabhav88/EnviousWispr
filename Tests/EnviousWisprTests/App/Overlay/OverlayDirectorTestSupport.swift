@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// A director for tests that need one only as a DEPENDENCY (#2292, C4c).
 ///

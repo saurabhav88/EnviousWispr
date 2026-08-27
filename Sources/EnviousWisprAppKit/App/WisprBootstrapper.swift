@@ -143,7 +143,8 @@ package final class WisprBootstrapper {
   package init(
     makeHotkeyEffects: () -> any DesktopHotkeyEffects,
     presentationEffects: DesktopPresentationEffects,
-    relocationRelauncher: any RelocationRelaunching
+    relocationRelauncher: any RelocationRelaunching,
+    overlayEffects: DesktopOverlayEffects
   ) {
     self.application = presentationEffects.application
     // ===== Subsystem construction (epic #763) =====
@@ -176,7 +177,7 @@ package final class WisprBootstrapper {
     // further down this function. `PipelineSettingsSync` is downstream of both
     // ASR pipelines, so hoisting the installer would mean hoisting those — the
     // move that does work is this one.
-    let overlayHost = OverlayWindowHost()
+    let overlayHost = OverlayWindowHost(effects: overlayEffects)
     let audioDeviceList = AudioDeviceList()
     let inputDevicePreferenceReconciler = InputDevicePreferenceReconciler(settings: settings)
     audioDeviceList.onDevicesChanged = { [weak inputDevicePreferenceReconciler] devices in

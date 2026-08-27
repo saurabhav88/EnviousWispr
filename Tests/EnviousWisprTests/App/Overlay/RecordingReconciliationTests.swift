@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 @testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
 
