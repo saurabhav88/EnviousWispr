@@ -139,10 +139,25 @@ THEN ESC still cancels (default cancel key has no required modifiers)
 GIVEN the app is recording
   AND another app (e.g., Finder) is frontmost
 WHEN ESC is pressed
-THEN the global monitor catches the ESC
+THEN the Carbon hotkey registration catches the ESC
   AND recording is cancelled
   AND the other app is not affected
 ```
+
+> **Corrected in #2455 C5.** This said "the global monitor catches the ESC". It
+> does not, and the difference is the whole point of this scenario. Escape is a
+> CHORD, so it is registered with Carbon's `RegisterEventHotKey`, which is what
+> makes it system-wide. The `NSEvent` global monitor exists for BARE MODIFIER
+> shortcuts, which Carbon cannot register at all — a user who rebinds cancel to,
+> say, Right Command is on the monitor path instead, and this scenario does not
+> cover them.
+>
+> The mechanism matters here because the two fail differently: a broken Carbon
+> registration means Escape cannot cancel recording regardless of which app is
+> frontmost, while a broken monitor means a
+> bare-modifier cancel key is stored, displayed and inert (#1991's exact
+> symptom). A scenario naming the wrong one sends the next reader to the wrong
+> code.
 
 #### test_cancel_before_speaking
 **Suite**: cancel_recording

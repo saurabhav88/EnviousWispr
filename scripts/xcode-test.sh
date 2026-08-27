@@ -172,7 +172,14 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
   [ "$config" = "Debug" ] && expected="${EW_EXPECTED_DEBUG_TESTS:-}"
   [ "$config" = "Release" ] && expected="${EW_EXPECTED_RELEASE_TESTS:-}"
 
-  ew_lane_verdict "$log" "$bundle" "$config lane" "$expected" || exit 1
+  # #2455 C5: a --filter run executes ONE suite on purpose, so the
+  # required-bundle check must not fire. An empty list disables it; a full run
+  # leaves it at the default.
+  if [ -n "$FILTER" ]; then
+    EW_LANE_REQUIRED_BUNDLES="" ew_lane_verdict "$log" "$bundle" "$config lane" "$expected" || exit 1
+  else
+    ew_lane_verdict "$log" "$bundle" "$config lane" "$expected" || exit 1
+  fi
 }
 
 # #2157 chunk A: seed before the first lane resolves anything.
