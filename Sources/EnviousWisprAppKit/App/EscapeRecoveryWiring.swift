@@ -55,6 +55,7 @@ enum EscapeRecoveryWiring {
   @MainActor
   static func pasteAction(
     coordinator: TranscriptCoordinator,
+    application: any ApplicationActivating,
     report: @escaping (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void
   ) -> (CancelUndoPayload) -> Void {
     { [weak coordinator] payload in
@@ -64,7 +65,8 @@ enum EscapeRecoveryWiring {
         restorable: { coordinator.restorableHeldRow(id: $0) },
         copyToClipboard: { PasteService.copyToClipboard($0) },
         dispatchPaste: { PasteService.simulatePaste() },
-        report: report)
+        report: report,
+        retarget: EscapeRecoveryPasteAction.liveRetarget(application: application))
     }
   }
 

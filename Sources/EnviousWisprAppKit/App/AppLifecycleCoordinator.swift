@@ -77,7 +77,12 @@ final class AppLifecycleCoordinator {
   /// dependency.
   private let batchDecodeFaultController: BatchDecodeFaultController?
 
+  /// #2455 C3: required and non-defaulted. The one call this type makes moves the
+  /// app to accessory at launch, which a unit test must never do to the real app.
+  private let application: any ApplicationActivating
+
   init(
+    application: any ApplicationActivating,
     settings: SettingsManager,
     permissions: PermissionsService,
     keychainManager: KeychainManager,
@@ -102,6 +107,7 @@ final class AppLifecycleCoordinator {
     onboardingProgress: OnboardingProgress,
     batchDecodeFaultController: BatchDecodeFaultController? = nil
   ) {
+    self.application = application
     self.settings = settings
     self.permissions = permissions
     self.keychainManager = keychainManager
@@ -146,7 +152,7 @@ final class AppLifecycleCoordinator {
     // hierarchy and ActionWirer can wire callbacks before opening the
     // onboarding window.
     if settings.onboardingState == .completed {
-      NSApp.setActivationPolicy(.accessory)
+      application.setPolicy(.accessory)
     }
 
     // #1451: recover from App Translocation. Runs on EVERY launch (NOT gated by

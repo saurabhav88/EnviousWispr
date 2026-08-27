@@ -56,9 +56,12 @@ import Testing
       named: "DictationLifecycleCoordinator", at: Self.sourcePath)
     let count = RouterCeilingParser.collaboratorCount(in: body)
     #expect(
-      count <= 11,
+      // #2455 C3 (#2460): 11 -> 12. `application`, the activation seam. Escape
+      // Recovery's pill hands the caret back to the user's app after a cancel,
+      // and that call had a live DEFAULT until this chunk made it required.
+      count <= 12,
       """
-      DictationLifecycleCoordinator collaborator ceiling exceeded: \(count) > 11. \
+      DictationLifecycleCoordinator collaborator ceiling exceeded: \(count) > 12. \
       Allowed (PR9 baseline): pipeline, whisperKitKernelDriver, recordingOverlay, \
       hotkeyService, settingsSync, audioCapture, transcriptCoordinator, settings, \
       lastRecordingResult, languageSuggestionPresenter, recordingLockedAccess. \

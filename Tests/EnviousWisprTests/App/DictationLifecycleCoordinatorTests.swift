@@ -56,6 +56,7 @@ import Testing
     let lastRecordingResult = LastRecordingResult()
     let lockBox = TestRecordingLockedBox()
     let coordinator = DictationLifecycleCoordinator(
+      application: RecordingDesktopPresentationEffects(),
       kernelDriver: pipeline,
       whisperKitKernelDriver: whisperKitKernelDriver,
       recordingOverlay: overlay,

@@ -205,6 +205,7 @@ struct EscapeRecoveryRestoreTests {
       transcriptID: UUID(), targetApp: app, targetElement: nil)
     var forcedPIDs: [pid_t] = []
     var fallbackCalls = 0
+    var focusCalls = 0
 
     let retargeted = EscapeRecoveryPasteAction.retargetWithAccessibility(
       payload,
@@ -215,9 +216,17 @@ struct EscapeRecoveryRestoreTests {
       activateFallback: { _ in
         fallbackCalls += 1
         return false
+      },
+      // #2455 C3: was the live `PasteService.focusElement` default, so this case
+      // moved a real caret on the developer's machine. Unreached here — both
+      // activation routes fail above — and asserted as unreached below.
+      focusElement: { _ in
+        focusCalls += 1
+        return true
       })
 
     #expect(forcedPIDs == [app.processIdentifier], "the Accessibility route is tried first")
+    #expect(focusCalls == 0, "focus is not attempted when the app could not be reached")
     #expect(fallbackCalls == 1, "the AppKit fallback is tried when Accessibility is unavailable")
     #expect(
       retargeted == false,
@@ -232,6 +241,7 @@ struct EscapeRecoveryRestoreTests {
     let payload = CancelUndoPayload(
       transcriptID: UUID(), targetApp: nil, targetElement: nil)
     var activationAttempted = false
+    var focusAttempted = false
 
     let retargeted = EscapeRecoveryPasteAction.retargetWithAccessibility(
       payload,
@@ -242,9 +252,14 @@ struct EscapeRecoveryRestoreTests {
       activateFallback: { _ in
         activationAttempted = true
         return false
+      },
+      focusElement: { _ in
+        focusAttempted = true
+        return true
       })
 
     #expect(activationAttempted == false, "there is no app to activate")
+    #expect(focusAttempted == false, "and no field to focus")
     #expect(retargeted == true, "the existing no-target behavior is intentional and preserved")
   }
 

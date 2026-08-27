@@ -122,7 +122,30 @@ package final class WisprBootstrapper {
   /// `EnviousWisprDesktopEffects`, which `EnviousWisprTests` may not import —
   /// enforced by `scripts/check-dependency-direction.sh`, not by the module graph,
   /// which does not enforce itself under Xcode. The seam does not move.
-  package init(makeHotkeyEffects: () -> any DesktopHotkeyEffects) {
+  /// #2455 C3: this type's own activation seam, for the onboarding-dismissal
+  /// policy change in the scene body below.
+  ///
+  /// One stored property, not two: `EnviousWisprAppCeilingsTests` caps what this
+  /// type may hold, and the panel seam is consumed by collaborators rather than by
+  /// this type, so only the activator is retained.
+  ///
+  /// `fileprivate`, not `private`: `ActionWirer` below is a separate type in this
+  /// file and is handed this seam at construction. Swift's `private` does not reach
+  /// across type boundaries even within one file. Still unreachable from anywhere
+  /// else, which is what the C3 seam is for.
+  fileprivate let application: any ApplicationActivating
+
+  /// - Parameter presentationEffects: the activation and panel-presentation seams
+  ///   (#2455 C3). Required and non-defaulted for the same reason
+  ///   `makeHotkeyEffects` is: a default would let this module assemble a
+  ///   production root that reaches the real desktop, which is precisely what
+  ///   `EnviousWisprTests` links.
+  package init(
+    makeHotkeyEffects: () -> any DesktopHotkeyEffects,
+    presentationEffects: DesktopPresentationEffects,
+    relocationRelauncher: any RelocationRelaunching
+  ) {
+    self.application = presentationEffects.application
     // ===== Subsystem construction (epic #763) =====
     // `EnviousWisprApp` is the composition root: every subsystem is constructed
     // here. Construction order is load-bearing: `pasteCompletionRegistry` before
@@ -772,7 +795,8 @@ package final class WisprBootstrapper {
     }
 
     let updateCoordinatorHolder = UpdateCoordinatorHolder()
-    let sparkleUpdateController = SparkleUpdateController(holder: updateCoordinatorHolder)
+    let sparkleUpdateController = SparkleUpdateController(
+      holder: updateCoordinatorHolder, application: presentationEffects.application)
 
     // #1019: event-driven update-discovery triggers (wake / network). Data-free
     // — it reads `updateCoordinator` lazily (nil until `startUpdater()`), so it
@@ -963,6 +987,7 @@ package final class WisprBootstrapper {
       set: { locked in liveRecordingState.isRecordingLocked = locked }
     )
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
+      application: presentationEffects.application,
       kernelDriver: kernelDriver,
       whisperKitKernelDriver: whisperKitKernelDriver,
       recordingOverlay: recordingOverlay,
@@ -1034,6 +1059,7 @@ package final class WisprBootstrapper {
 
     // PR-B.2 of #763: window-lifecycle home.
     let appWindowCoordinator = AppWindowCoordinator(
+      application: presentationEffects.application,
       canOpenOnboarding: { [weak settings] in
         guard let settings else { return false }
         return settings.onboardingState != .completed
@@ -1060,7 +1086,8 @@ package final class WisprBootstrapper {
     let quickAdd = QuickAddWiring(
       hotkeyService: hotkeyService,
       customWords: customWordsCoordinator,
-      packManager: vocabularyPackManager)
+      packManager: vocabularyPackManager,
+      presentationEffects: presentationEffects)
 
     let menuBarController = MenuBarController(
       liveRecordingState: liveRecordingState,
@@ -1085,7 +1112,8 @@ package final class WisprBootstrapper {
     )
 
     // #1451: App Translocation recovery limb, driven from the launch sequence.
-    let applicationRelocationCoordinator = ApplicationRelocationCoordinator.live()
+    let applicationRelocationCoordinator = ApplicationRelocationCoordinator.live(
+      presentation: presentationEffects, relauncher: relocationRelauncher)
 
     // #1480: Bluetooth cold-start card. Single decision owner; ingress facts come
     // from AppLifecycleCoordinator + settings.onChange. Wiring lives in `.live(...)`;
@@ -1102,6 +1130,7 @@ package final class WisprBootstrapper {
     // PR-B.4 of #763: process-lifecycle home. Constructed last. It receives the
     // 10 specific homes it reads.
     let appLifecycleCoordinator = AppLifecycleCoordinator(
+      application: presentationEffects.application,
       settings: settings,
       permissions: permissions,
       keychainManager: keychainManager,
@@ -1385,6 +1414,7 @@ private struct MainWindowRoot: View {
       .environment(\.keychainManager, b.keychainManager)
       .background(
         ActionWirer(
+          application: b.application,
           settings: b.settings,
           appWindowCoordinator: b.appWindowCoordinator,
           menuBarController: b.menuBarController,
@@ -1439,6 +1469,10 @@ private struct OnboardingWindowRoot: View {
 /// Hidden view that wires SwiftUI environment actions into App-owned homes.
 /// Must live inside a SwiftUI view hierarchy to access @Environment.
 private struct ActionWirer: View {
+  /// #2455 C3. This view makes the onboarding-dismissal policy call, so it holds
+  /// the seam directly rather than reaching through the bootstrapper — it already
+  /// takes each collaborator it uses by value for the same reason.
+  let application: any ApplicationActivating
   /// The onboarding-auto-open gate reads `onboardingState` off the settings
   /// store directly (epic #763).
   let settings: SettingsManager
@@ -1486,7 +1520,7 @@ private struct ActionWirer: View {
         if !newValue {
           // State-driven dismissal: binding flipped to false → close window.
           dismissWindow(id: "onboarding")
-          NSApp.setActivationPolicy(.accessory)
+          application.setPolicy(.accessory)
           menuBarController.updateIcon()
         }
       }

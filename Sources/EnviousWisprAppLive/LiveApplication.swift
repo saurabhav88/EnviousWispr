@@ -33,8 +33,14 @@ package final class LiveApplication {
     // Construction stays synchronous and in this order for the same reason it
     // always has: home construction must keep its pre-#919 ordering, and the
     // delegate must be attached before `applicationWillFinishLaunching` fires.
+    // One stateless live type conforms to both protocols, and the same instance
+    // fills both fields of `DesktopPresentationEffects`.
+    let presentation = LiveDesktopPresentationEffects()
     bootstrapper = WisprBootstrapper(
-      makeHotkeyEffects: { LiveDesktopHotkeyEffects() })
+      makeHotkeyEffects: { LiveDesktopHotkeyEffects() },
+      presentationEffects: DesktopPresentationEffects(
+        application: presentation, panels: presentation),
+      relocationRelauncher: LiveRelocationRelauncher())
   }
 
   // MARK: - Scene surface
