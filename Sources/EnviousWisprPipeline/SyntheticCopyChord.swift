@@ -153,23 +153,52 @@ enum SyntheticCopyChord {
     let layoutData = Unmanaged<CFData>.fromOpaque(rawLayout).takeUnretainedValue() as Data
     let keyboardType = UInt32(LMGetKbdType())
 
+    // **Resolved under the COMMAND layer, because that is the layer the key will be pressed in.**
+    //
+    // A layout can map the same physical key to different characters with and without Command, and
+    // at least one shipped layout does exactly that on purpose: "Dvorak - QWERTY ⌘" types Dvorak and
+    // switches to QWERTY while Command is held, so that Command shortcuts stay where muscle memory
+    // left them. Resolving with modifier state 0 finds the key that types an unmodified "c" — the
+    // Dvorak position — and `post` then sends that key WITH `.maskCommand`, where the Command layer
+    // makes it a different letter entirely. Two different questions, and the wrong one was asked.
+    //
+    // The failure is invisible: it presents as `copyRefused`, indistinguishable from an app that
+    // declined. Found by cloud review on PR #2472, and it is the exact case this function's own doc
+    // named as the one most likely to escape.
+    //
+    // `UCKeyTranslate` wants the modifier flags shifted right by 8, so Command (`cmdKey`, 0x0100)
+    // is state 1. Measured on this machine's US layout: both states answer 8, which is what makes
+    // this change safe everywhere the two layers agree.
+    let commandState = UInt32((cmdKey >> 8) & 0xFF)
+
     // A REVERSE lookup, because the layout maps key to character and the question is the other way
     // round. 128 translations of one keystroke each, run once per invocation of a user gesture.
-    for candidate in 0..<CGKeyCode(128) {
-      guard
-        let produced = character(
-          forKeyCode: candidate, layoutData: layoutData, keyboardType: keyboardType)
-      else { continue }
-      if produced == "c" { return candidate }
+    //
+    // The unmodified layer is a FALLBACK rather than the answer: a layout whose Command layer
+    // produces no plain "c" at all is one we cannot resolve correctly, and a best guess there beats
+    // refusing the feature outright — it is the behaviour every layout had before this fix.
+    for modifierState in [commandState, UInt32(0)] {
+      for candidate in 0..<CGKeyCode(128) {
+        guard
+          let produced = character(
+            forKeyCode: candidate, layoutData: layoutData, keyboardType: keyboardType,
+            modifierState: modifierState)
+        else { continue }
+        if produced == "c" { return candidate }
+      }
     }
     return nil
   }
 
   /// The unmodified character one virtual key produces under a given layout.
+  ///
+  /// `modifierState` is the `UCKeyTranslate` form — the Carbon modifier flags shifted RIGHT by 8 —
+  /// not `CGEventFlags`. Passing the wrong one silently answers about a different layer.
   private static func character(
     forKeyCode keyCode: CGKeyCode,
     layoutData: Data,
-    keyboardType: UInt32
+    keyboardType: UInt32,
+    modifierState: UInt32
   ) -> Character? {
     var deadKeyState: UInt32 = 0
     var length = 0
@@ -182,7 +211,7 @@ enum SyntheticCopyChord {
         layout,
         keyCode,
         UInt16(kUCKeyActionDown),
-        0,  // No modifiers: the question is which key carries the letter, not what Shift does to it.
+        modifierState,
         keyboardType,
         OptionBits(kUCKeyTranslateNoDeadKeysBit),
         &deadKeyState,
