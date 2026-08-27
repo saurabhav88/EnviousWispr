@@ -270,13 +270,31 @@ let package = Package(
     // and can construct `HotkeyService(telemetry: .live)` itself. What C1 buys is
     // that no IMPLICIT production assembly path exists, and that AppLive is the
     // only production-choice site. C2 (#2459) removes the live implementation
-    // from the test link graph and replaces the Services edge below with
-    // EnviousWisprDesktopEffects; unlinkable becomes true then, not now.
+    // from what the test target may import, and replaces the Services edge with
+    // EnviousWisprDesktopEffects, which the dep-direction gate then forbids the
+    // test targets from importing.
+    // #2455 C2 (#2459): the ONLY module holding Carbon and NSEvent calls. Absent
+    // from EnviousWisprTests' dependency list on purpose.
+    //
+    // That absence is NOT self-enforcing under Xcode — an undeclared import of
+    // this module from the test target compiles and links, because Xcode shares
+    // one build-products search path (measured 2026-08-26). SwiftPM does enforce
+    // it, and this manifest is what makes `swift build` reject it, but CI runs
+    // Tuist and xcodebuild only. `scripts/check-dependency-direction.sh` is what
+    // actually catches it on every run.
+    .target(
+      name: "EnviousWisprDesktopEffects",
+      dependencies: [
+        "EnviousWisprAppKit",
+        "EnviousWisprServices",
+      ],
+      path: "Sources/EnviousWisprDesktopEffects"
+    ),
     .target(
       name: "EnviousWisprAppLive",
       dependencies: [
         "EnviousWisprAppKit",
-        "EnviousWisprServices",
+        "EnviousWisprDesktopEffects",
       ],
       path: "Sources/EnviousWisprAppLive"
     ),

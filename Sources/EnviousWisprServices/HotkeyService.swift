@@ -78,39 +78,22 @@ public final class HotkeyService {
 
   // MARK: - Carbon State
 
-  /// A registration that either holds a real framework object or records that
-  /// the effect was refused (#2455 C0).
+  /// What this service currently has installed, as opaque tokens (#2455 C2).
   ///
-  /// A `.denied` case rather than a forged `EventHotKeyRef`: these are opaque
-  /// pointers, and handing a synthetic one to `UnregisterEventHotKey` would be a
-  /// wild-pointer call. Occupancy is what the surrounding state machine actually
-  /// asks about — `guard cancelHotkeyRef == nil`, `guard quickAddHotkeyRef == nil`
-  /// — so a non-nil `.denied` keeps every one of those guards behaving exactly as
-  /// it does against a real registration, while the teardown helpers below refuse
-  /// to pass anything but a `.live` payload back to the framework.
-  private enum HotkeyRegistration {
-    case live(EventHotKeyRef)
-    case denied
-  }
-
-  private enum HandlerRegistration {
-    case live(EventHandlerRef)
-    case denied
-  }
-
-  private enum MonitorRegistration {
-    case live(Any)
-    case denied
-  }
-
-  private var eventHandlerRef: HandlerRegistration?
-  private var toggleHotkeyRef: HotkeyRegistration?
-  private var cancelHotkeyRef: HotkeyRegistration?
-  private var quickAddHotkeyRef: HotkeyRegistration?
+  /// C0 held typed framework values here with a `.denied` case, because the OS
+  /// call happened in this file and a refusal had to be representable without
+  /// forging an `EventHotKeyRef`. C2 removes both problems at once: the framework
+  /// values now live inside `EnviousWisprDesktopEffects`, and a test's fake hands
+  /// back real tokens. Occupancy — all these guards ever ask, e.g.
+  /// `guard cancelHotkeyToken == nil` — is preserved by a token being non-nil.
+  private var eventHandlerToken: DesktopEffectToken?
+  private var toggleHotkeyToken: DesktopEffectToken?
+  private var cancelHotkeyToken: DesktopEffectToken?
+  private var quickAddHotkeyToken: DesktopEffectToken?
 
   /// Whether the cancel role is currently armed.
   ///
-  /// Not derivable from `cancelHotkeyRef`: a bare-modifier cancel key has no
+  /// Not derivable from `cancelHotkeyToken`: a bare-modifier cancel key has no
   /// Carbon registration to hold a ref, so a nil ref means "unarmed" for a chord
   /// and says nothing at all for a modifier. Tracking arming explicitly is what
   /// lets the modifier dispatch path know whether a recording is in flight.
@@ -125,8 +108,8 @@ public final class HotkeyService {
 
   // MARK: - NSEvent Modifier Monitors
 
-  private var globalModifierMonitor: MonitorRegistration?
-  private var localModifierMonitor: MonitorRegistration?
+  private var globalModifierMonitorToken: DesktopEffectToken?
+  private var localModifierMonitorToken: DesktopEffectToken?
 
   public private(set) var isEnabled = false
   public private(set) var isModifierHeld = false
@@ -310,58 +293,45 @@ public final class HotkeyService {
   /// running this suite alongside its siblings while it passed alone.
   private let now: @MainActor () -> Date
 
-  /// #2455 C0. Read once at construction rather than per call, so a service
-  /// cannot change policy mid-life and produce a half-registered state machine.
-  private let desktopEffectPolicy: DesktopEffectPolicy
-  private let onDeniedDesktopEffect: DesktopEffectDenialHandler
-
-  /// Every effect this instance refused, oldest first, in the same wording the
-  /// handler receives.
+  /// The OS calls this service is allowed to make (#2455 C2).
   ///
-  /// `package private(set)` for the same reason `isCancelArmed` is: it lets a
-  /// test assert on what the service DID rather than on a spy for a call the
-  /// production code might simply not make.
-  package private(set) var deniedDesktopEffects: [String] = []
+  /// Required and non-defaulted. Before C2 the Carbon and `NSEvent` calls were
+  /// inline in this file, so constructing a `HotkeyService` in a unit test was
+  /// enough to reach the developer's real desktop — which is how a running suite
+  /// took the Escape key system-wide. This module now declares no implementation
+  /// of this protocol at all: the live one lives in `EnviousWisprDesktopEffects`,
+  /// which `EnviousWisprTests` may not import — enforced by
+  /// `scripts/check-dependency-direction.sh`, since the module graph does not
+  /// enforce itself under Xcode — and tests supply a recording fake. A default
+  /// here would put the choice back inside the module the test target links,
+  /// which is what C2 exists to remove.
+  private let effects: any DesktopHotkeyEffects
 
-  /// - Parameter onDeniedDesktopEffect: what to do when the policy refuses a
-  ///   live effect. `nil` selects `DesktopEffectDenial.defaultHandler()`, which
-  ///   reads the trap variable: a test action sets it, so a test run aborts with
-  ///   a named reason, while a shipped app that somehow sees only the POLICY
-  ///   variable logs and continues rather than crashing. A test that legitimately
-  ///   drives registration injects `DesktopEffectDenial.recordOnly` here and
-  ///   asserts on `deniedDesktopEffects`; passing a handler that does nothing
-  ///   would restore the silent skip this exists to prevent.
-  public init(
+  /// `package`, not `public`: `DesktopHotkeyEffects` is `package`, and Swift will
+  /// not let a public initializer take a package type. That is the right
+  /// constraint rather than an obstacle — widening the protocol to `public` would
+  /// publish the desktop-effect seam outside this package for no caller, and every
+  /// construction site (AppKit's bootstrapper, the unit-test factory) is in-package
+  /// already.
+  package init(
+    effects: any DesktopHotkeyEffects,
     telemetry: HotkeyTelemetrySink = .noop,
-    now: @escaping @MainActor () -> Date = { Date() },
-    onDeniedDesktopEffect: (@MainActor (String) -> Void)? = nil
+    now: @escaping @MainActor () -> Date = { Date() }
   ) {
+    self.effects = effects
     self.telemetry = telemetry
     self.now = now
-    self.desktopEffectPolicy = DesktopEffectPolicy.fromEnvironment()
-    self.onDeniedDesktopEffect = onDeniedDesktopEffect ?? DesktopEffectDenial.defaultHandler()
   }
 
-  /// The single gate in front of every live INSTALLATION call C0 guards here.
+  /// The single release path for anything this service installed.
   ///
-  /// Exactly four: `RegisterEventHotKey`, `InstallEventHandler`, and both
-  /// `NSEvent.add*MonitorForEvents`. Each sits immediately behind a
-  /// `denyDesktopEffect` check, and their three release calls accept only a `.live`
-  /// payload.
-  ///
-  /// Deliberately OUTSIDE the gate: Carbon event DECODING — `GetEventKind` and
-  /// `GetEventParameter` in the handler below — which reads an event already
-  /// delivered and installs nothing. Also outside: desktop effects elsewhere in the
-  /// app; overlay is C4 and activation is C3.
-  ///
-  /// Returns `true` when the caller must NOT touch the framework. Recording
-  /// happens before the handler runs, so a trapping handler still leaves the
-  /// ledger populated for a crash report to carry.
-  private func denyDesktopEffect(_ operation: String) -> Bool {
-    guard desktopEffectPolicy == .deny else { return false }
-    deniedDesktopEffects.append(operation)
-    onDeniedDesktopEffect(operation)
-    return true
+  /// Keeps the token when the adapter reports a REFUSED release, so a later
+  /// teardown can retry. Clearing it regardless would strand the OS resource with
+  /// nothing left able to name it — the one outcome worse than releasing twice,
+  /// which the adapter already makes a no-op.
+  private func release(_ slot: inout DesktopEffectToken?) {
+    guard let token = slot, effects.remove(token) else { return }
+    slot = nil
   }
 
   /// Emit `hotkey.pressed` for an accepted keydown. Synchronous + cheap (computes
@@ -470,8 +440,8 @@ public final class HotkeyService {
     // cancel key opens the Quick Add panel while the recording keeps running.
     reconcileQuickAddRegistration()
     guard cancelBinding.isCarbonRegistrable else { return }
-    guard cancelHotkeyRef == nil else { return }
-    cancelHotkeyRef = registerHotkey(
+    guard cancelHotkeyToken == nil else { return }
+    cancelHotkeyToken = registerHotkey(
       id: HotkeyID.cancel.rawValue,
       keyCode: cancelKeyCode,
       modifiers: carbonModifiers(from: cancelModifiers)
@@ -489,7 +459,7 @@ public final class HotkeyService {
   public func unregisterCancelHotkey() {
     isCancelArmed = false
     cancelArmedBeforeSuspend = false
-    releaseHotkey(&cancelHotkeyRef)
+    release(&cancelHotkeyToken)
     // Cancel has released the chord, so Quick Add may have it back. Unconditional rather than
     // guarded on a collision: the reconciler decides, and asking the question here as well would be
     // the same rule written twice.
@@ -841,34 +811,22 @@ public final class HotkeyService {
   // MARK: - Carbon Event Handler
 
   private func installCarbonEventHandler() {
-    // #2455 C0. `.denied` rather than leaving the slot nil, so
-    // `removeCarbonEventHandler()` still clears an occupied slot and `stop()`
-    // remains symmetric with `start()`.
-    if denyDesktopEffect("InstallEventHandler(GetApplicationEventTarget())") {
-      eventHandlerRef = .denied
-      return
+    // The event-type list, the application target and the C trampoline moved into
+    // the adapter with the call that used them (#2455 C2). What stays here is the
+    // only part that was ever policy: WHEN to install.
+    //
+    // Occupancy guard, matching every other slot: installing over a live handler
+    // would orphan the first one, since the token naming it is about to be
+    // overwritten. NOT reachable by calling `start()` twice — that returns early on
+    // `isEnabled`. It is reachable when `stop()` KEEPS the token because the adapter
+    // refused to remove the handler, and a later `start()` runs; the guard preserves
+    // that retryable token instead of losing it.
+    guard eventHandlerToken == nil else { return }
+    // `[weak self]` because the adapter retains this callback for the life of the
+    // handler; a strong capture would be service -> adapter -> callback -> service.
+    eventHandlerToken = effects.installCarbonHandler { [weak self] event in
+      self?.handleCarbonHotkey(id: event.id, isRelease: event.isRelease)
     }
-    var eventTypes = [
-      EventTypeSpec(
-        eventClass: OSType(kEventClassKeyboard),
-        eventKind: UInt32(kEventHotKeyPressed)),
-      EventTypeSpec(
-        eventClass: OSType(kEventClassKeyboard),
-        eventKind: UInt32(kEventHotKeyReleased)),
-    ]
-
-    let selfPtr = Unmanaged.passUnretained(self).toOpaque()
-
-    var ref: EventHandlerRef?
-    InstallEventHandler(
-      GetApplicationEventTarget(),
-      carbonHotkeyHandler,
-      eventTypes.count,
-      &eventTypes,
-      selfPtr,
-      &ref
-    )
-    eventHandlerRef = ref.map(HandlerRegistration.live)
   }
 
   // MARK: - NSEvent Modifier Monitors
@@ -963,51 +921,31 @@ public final class HotkeyService {
 
     guard shouldInstallModifierMonitors else { return }
 
-    // #2455 C0. Both slots are marked together because one install decision
-    // creates both: a half-denied pair would be a state the production code can
-    // never produce. `recordMonitorInstall` is deliberately NOT consulted here —
-    // its `nil` branch reports a modifier-only shortcut that died on a real
-    // machine, and a policy refusal is not that.
-    if denyDesktopEffect("NSEvent.addGlobalMonitorForEvents(.flagsChanged) + addLocalMonitorForEvents")
-    {
-      globalModifierMonitor = .denied
-      localModifierMonitor = .denied
-      return
-    }
-
     // Read AFTER the teardown above, so both closures carry the identity of the
     // installation being created here rather than the one it replaced. Both
     // monitors are stamped with the same value on purpose: the generation
     // identifies the INSTALLATION, and these two closures are that installation.
     let generation = monitorGeneration
 
-    globalModifierMonitor = recordMonitorInstall(
-      NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) {
-        [weak self] event in
-        // Global monitor callbacks may arrive off the main thread.
-        // Extract event data here (NSEvent is not Sendable).
-        let keyCode = event.keyCode
-        let flags = event.modifierFlags
-        DispatchQueue.main.async {
-          guard let self else { return }
-          MainActor.assumeIsolated {
-            self.handleInstalledMonitorFlagsChangedValues(
-              keyCode: keyCode, flags: flags, generation: generation)
-          }
-        }
-      }, scope: "global"
-    ).map(MonitorRegistration.live)
+    // The off-main-thread hop, the `NSEvent` decoding and the local monitor's
+    // pass-through return all moved into the adapter with the calls that owned
+    // them (#2455 C2). What stays is policy: which installation a callback
+    // belongs to, and what a nil install means.
+    globalModifierMonitorToken = recordMonitorInstall(
+      effects.installGlobalModifierMonitor { [weak self] event in
+        self?.handleInstalledMonitorFlagsChangedValues(
+          keyCode: event.keyCode,
+          flags: NSEvent.ModifierFlags(rawValue: UInt(event.rawFlags)),
+          generation: generation)
+      }, scope: "global")
 
-    localModifierMonitor = recordMonitorInstall(
-      NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) {
-        [weak self] event in
-        MainActor.assumeIsolated {
-          self?.handleInstalledMonitorFlagsChangedValues(
-            keyCode: event.keyCode, flags: event.modifierFlags, generation: generation)
-        }
-        return event  // pass the event through
-      }, scope: "local"
-    ).map(MonitorRegistration.live)
+    localModifierMonitorToken = recordMonitorInstall(
+      effects.installLocalModifierMonitor { [weak self] event in
+        self?.handleInstalledMonitorFlagsChangedValues(
+          keyCode: event.keyCode,
+          flags: NSEvent.ModifierFlags(rawValue: UInt(event.rawFlags)),
+          generation: generation)
+      }, scope: "local")
   }
 
   /// #1175 (C2): the single chokepoint for an `NSEvent` modifier-monitor install.
@@ -1015,7 +953,10 @@ public final class HotkeyService {
   /// Returns the monitor unchanged so the call site assigns it as before.
   /// `internal` (not `private`) so the nil path is unit-testable without
   /// abstracting the whole `NSEvent` stack.
-  func recordMonitorInstall(_ monitor: Any?, scope: String) -> Any? {
+  /// #2455 C2: takes and returns a `DesktopEffectToken?` rather than a raw `Any?`
+  /// monitor. The telemetry contract is unchanged — a nil install still reports
+  /// the role at risk — but no `NSEvent` value reaches this module any more.
+  func recordMonitorInstall(_ monitor: DesktopEffectToken?, scope: String) -> DesktopEffectToken? {
     if monitor == nil {
       // Which ROLE dies if this monitor is missing. It used to hard-code
       // "toggle", which was true while the monitors only ever existed for a
@@ -1038,17 +979,9 @@ public final class HotkeyService {
     return monitor
   }
 
-  /// The single release path for an `NSEvent` monitor slot — the monitor twin of
-  /// `releaseHotkey`, and for the same reason: `NSEvent.removeMonitor` must never
-  /// be handed a token that no framework ever issued.
-  private func releaseMonitor(_ slot: inout MonitorRegistration?) {
-    if case .live(let token) = slot { NSEvent.removeMonitor(token) }
-    slot = nil
-  }
-
   private func removeModifierMonitors() {
-    releaseMonitor(&globalModifierMonitor)
-    releaseMonitor(&localModifierMonitor)
+    release(&globalModifierMonitorToken)
+    release(&localModifierMonitorToken)
     // Bump on EVERY teardown, including one that removed nothing. This is the
     // single writer of `monitorGeneration`, and it is the only NSEvent-monitor
     // teardown path: `stop()` and `suspend()` call it directly, and
@@ -1059,8 +992,7 @@ public final class HotkeyService {
   }
 
   private func removeCarbonEventHandler() {
-    if case .live(let ref) = eventHandlerRef { RemoveEventHandler(ref) }
-    eventHandlerRef = nil
+    release(&eventHandlerToken)
   }
 
   // MARK: - Registration Helpers
@@ -1073,7 +1005,7 @@ public final class HotkeyService {
     // of one question is how the record and cancel paths drifted apart in the
     // first place.
     guard recordBinding.isCarbonRegistrable else { return }
-    toggleHotkeyRef = registerHotkey(
+    toggleHotkeyToken = registerHotkey(
       id: HotkeyID.toggle.rawValue,
       keyCode: toggleKeyCode,
       modifiers: carbonModifiers(from: toggleModifiers)
@@ -1081,7 +1013,7 @@ public final class HotkeyService {
   }
 
   private func unregisterToggleHotkey() {
-    releaseHotkey(&toggleHotkeyRef)
+    release(&toggleHotkeyToken)
   }
 
   /// Register the Quick Add hotkey (#2381).
@@ -1130,8 +1062,8 @@ public final class HotkeyService {
   /// Pure mechanism, no policy: `reconcileQuickAddRegistration` above decides whether to call it.
   private func registerQuickAddHotkey() {
     guard quickAddBinding.isCarbonRegistrable else { return }
-    guard quickAddHotkeyRef == nil else { return }
-    quickAddHotkeyRef = registerHotkey(
+    guard quickAddHotkeyToken == nil else { return }
+    quickAddHotkeyToken = registerHotkey(
       id: HotkeyID.quickAdd.rawValue,
       keyCode: quickAddKeyCode,
       modifiers: carbonModifiers(from: quickAddModifiers)
@@ -1139,7 +1071,7 @@ public final class HotkeyService {
   }
 
   private func unregisterQuickAddHotkey() {
-    releaseHotkey(&quickAddHotkeyRef)
+    release(&quickAddHotkeyToken)
   }
 
   /// Re-apply the Quick Add binding after the user changes it.
@@ -1159,30 +1091,19 @@ public final class HotkeyService {
   }
 
   private func registerHotkey(id: UInt32, keyCode: UInt16, modifiers: UInt32)
-    -> HotkeyRegistration?
+    -> DesktopEffectToken?
   {
-    // #2455 C0. Placed ahead of the telemetry branch below on purpose: a refusal
-    // by policy is not a Carbon failure, so it must not emit
-    // `registrationFailed`. Emitting it would report a policy refusal as a Carbon
-    // registration failure, corrupting the one signal that tells us a real user's
-    // shortcut died.
-    if denyDesktopEffect("RegisterEventHotKey(id: \(id), keyCode: \(keyCode))") {
-      return .denied
-    }
-    let hotkeyID = EventHotKeyID(signature: hotkeySignature, id: id)
-    var ref: EventHotKeyRef?
-    let status = RegisterEventHotKey(
-      UInt32(keyCode),
-      modifiers,
-      hotkeyID,
-      GetApplicationEventTarget(),
-      0,
-      &ref
-    )
-    guard status == noErr else {
-      // #1175: the noErr-but-silent trap means success can't confirm delivery, so
-      // we only report FAILURE. This is the single Carbon chokepoint — every registration routes
-      // through here.
+    // The adapter reports; this module decides (#2455 C2). That split is
+    // deliberate: with both sides emitting, one Carbon refusal could produce two
+    // `registrationFailed` events or none, depending on which side thought the
+    // other had it — the #2381 defect class, one wire signal with two owners.
+    switch effects.registerHotkey(
+      id: id, keyCode: keyCode, rawModifiers: UInt64(modifiers))
+    {
+    case .registered(let token):
+      return token
+
+    case .refused(let status):
       // #2381: this was `id == cancel ? "cancel" : "toggle"`, which reported a quick-add
       // registration failure as a TOGGLE failure. It now resolves the id to a ROLE and asks the role
       // for its wire name, so the Carbon path and the monitor path below cannot disagree about what
@@ -1191,21 +1112,15 @@ public final class HotkeyService {
       let keyShape = ModifierKeyCodes.isModifierOnly(keyCode) ? "modifier_only" : "chord"
       telemetry.registrationFailed("carbon", kind, status, keyShape)
       return nil
-    }
-    // `noErr` with a nil ref is reachable — see the trap named above — and stays
-    // nil here exactly as it did before, so the caller's occupancy guards see an
-    // unregistered slot rather than a registration it cannot release.
-    return ref.map(HotkeyRegistration.live)
-  }
 
-  /// The single release path for a Carbon hotkey slot.
-  ///
-  /// A `.denied` slot is cleared without a framework call. Every unregister site
-  /// routes through here so no future one can reintroduce a raw
-  /// `UnregisterEventHotKey` on a slot that never held a real registration.
-  private func releaseHotkey(_ slot: inout HotkeyRegistration?) {
-    if case .live(let ref) = slot { UnregisterEventHotKey(ref) }
-    slot = nil
+    case .acceptedWithoutToken:
+      // #1175: the noErr-but-silent trap. Carbon accepted the registration and
+      // still produced no ref, so the shortcut is registered and delivers
+      // nothing. It is NOT a failure — emitting one would put a false alarm into
+      // the signal that says a real user's shortcut died — and the caller's
+      // occupancy guard sees nil and behaves exactly as it did before C2.
+      return nil
+    }
   }
 
   // MARK: - Event Dispatch
@@ -1413,57 +1328,4 @@ public final class HotkeyService {
     return recordingMode == .pushToTalk ? "Hold \(formatted)" : formatted
   }
 
-}
-
-// MARK: - Carbon Helpers
-
-/// Four-char-code signature for EnviousWispr hotkeys.
-private let hotkeySignature: OSType = {
-  var result: OSType = 0
-  for char in "EWSP".utf8.prefix(4) {
-    result = (result << 8) | OSType(char)
-  }
-  return result
-}()
-
-/// C-function callback for Carbon event handler.
-///
-/// Handles kEventHotKeyPressed/Released for key+modifier combos registered
-/// via RegisterEventHotKey. Modifier-only hotkeys are handled separately via
-/// NSEvent flagsChanged monitors, which work globally regardless of app focus.
-private func carbonHotkeyHandler(
-  _: EventHandlerCallRef?,
-  _ event: EventRef?,
-  _ userData: UnsafeMutableRawPointer?
-) -> OSStatus {
-  guard let event = event, let userData = userData else {
-    return OSStatus(eventNotHandledErr)
-  }
-
-  let service = Unmanaged<HotkeyService>.fromOpaque(userData).takeUnretainedValue()
-  let eventKind = GetEventKind(event)
-
-  // --- kEventHotKeyPressed / kEventHotKeyReleased ---
-  var hotkeyID = EventHotKeyID()
-  let status = GetEventParameter(
-    event,
-    UInt32(kEventParamDirectObject),
-    UInt32(typeEventHotKeyID),
-    nil,
-    MemoryLayout<EventHotKeyID>.size,
-    nil,
-    &hotkeyID
-  )
-  guard status == noErr else {
-    return OSStatus(eventNotHandledErr)
-  }
-
-  let isRelease = eventKind == UInt32(kEventHotKeyReleased)
-  let hotkeyIDValue = hotkeyID.id
-
-  MainActor.assumeIsolated {
-    service.handleCarbonHotkey(id: hotkeyIDValue, isRelease: isRelease)
-  }
-
-  return noErr
 }

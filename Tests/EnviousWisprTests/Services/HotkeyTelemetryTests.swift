@@ -61,7 +61,7 @@ import Testing
   private func makeService(
     _ spy: Spy, mode: RecordingMode, modifierOnly: Bool = false
   ) -> HotkeyService {
-    let service = HotkeyService(telemetry: spy.sink)
+    let service = HotkeyService(effects: RecordingDesktopHotkeyEffects(), telemetry: spy.sink)
     service.recordingMode = mode
     // keyCode 0 ('A') is a chord key; right Option (61) is modifier-only.
     service.toggleKeyCode = modifierOnly ? ModifierKeyCodes.rightOption : 0
@@ -189,10 +189,14 @@ import Testing
   func monitorOkReportsNothing() {
     let spy = Spy()
     let service = makeService(spy, mode: .toggle, modifierOnly: true)
-    let token = NSObject()
+    // #2455 C2: an opaque `DesktopEffectToken` rather than a raw `NSObject`
+    // monitor. The chokepoint's contract is unchanged — report a nil install,
+    // pass anything else through untouched — but no `NSEvent` value reaches this
+    // module any more.
+    let token = DesktopEffectToken()
     let returned = service.recordMonitorInstall(token, scope: "local")
     #expect(spy.registrations.isEmpty)
-    #expect((returned as? NSObject) === token)
+    #expect(returned == token)
   }
 
   @Test("default .noop sink stays inert — press still processed, nothing emitted")
@@ -201,7 +205,7 @@ import Testing
     // so the existing `HotkeyService()` construction sites are behaviorally
     // unchanged. The press still flows through the state machine (isModifierHeld
     // flips) but the no-op closures swallow every emit.
-    let service = HotkeyService()  // `.noop` default
+    let service = HotkeyService(effects: RecordingDesktopHotkeyEffects())  // `.noop` default
     service.recordingMode = .pushToTalk
     service.toggleKeyCode = 0
     service.handleCarbonHotkey(id: toggleID, isRelease: false)

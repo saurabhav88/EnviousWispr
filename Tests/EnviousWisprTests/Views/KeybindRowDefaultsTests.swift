@@ -90,7 +90,7 @@ struct KeybindRowDefaultsTests {
     // failure anywhere, because no case built a service. A hard-coded fallback is invisible in every
     // other assertion here — it shows up only as a fresh service holding a stale binding until
     // `HotkeyController` pushes settings over it.
-    let service = HotkeyService()
+    let service = HotkeyService(effects: RecordingDesktopHotkeyEffects())
 
     #expect(service.recordBinding == ShortcutRole.record.defaultBinding)
     #expect(service.cancelBinding == ShortcutRole.cancel.defaultBinding)

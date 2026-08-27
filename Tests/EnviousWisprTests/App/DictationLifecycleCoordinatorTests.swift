@@ -40,7 +40,7 @@ import Testing
       audioCapture: audio, store: store)
     let settings = SettingsManager()
     let overlay = OverlayTestDouble.headlessDirector()
-    let hotkey = HotkeyService()
+    let hotkey = HotkeyService(effects: RecordingDesktopHotkeyEffects())
     let settingsSync = PipelineSettingsSync(
       kernelDriver: pipeline,
       whisperKitKernelDriver: whisperKitKernelDriver,

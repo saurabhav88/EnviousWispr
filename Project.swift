@@ -18,12 +18,13 @@ let packageAccessIdentifier = "enviouswispr"
 /// must change both; `DesktopEffectPolicyTests` fails if they drift.
 let DesktopEffectsPolicyKey = "EW_DESKTOP_EFFECTS_POLICY"
 
-/// Mirrors `DesktopEffectDenial.trapEnvironmentKey`. Separate from the policy key
-/// so a shipped app that somehow sees ONLY the policy variable loses its hotkeys
-/// rather than crashing, while every TEST configuration — Debug, Dev and Release
-/// alike — aborts on an unhandled refusal. Selecting that severity with
-/// `#if DEBUG` instead would let the Release suite pass having reached a
-/// prohibited effect (Codex chunk review, 2026-08-26).
+/// Mirrors `DesktopEffectDenial.trapEnvironmentKey`.
+///
+/// **No production path consumes this after C2 (#2459).** It disables nothing and
+/// aborts nothing; the hotkey machinery it once governed was deleted when the OS
+/// calls moved to `EnviousWisprDesktopEffects`. `DesktopEffectPolicyTests` keeps
+/// its scheme wiring visible until C5 (#2462) removes the variable and those cases
+/// together.
 let DesktopEffectsTrapKey = "EW_DESKTOP_EFFECTS_TRAP_DENIALS"
 
 let commonSettings: SettingsDictionary = [
@@ -278,8 +279,14 @@ let firstPartyTargetDeps: [TargetDependency] = [
 /// both select these shared schemes, so neither needs its own copy of the
 /// variable — one owner, per `GR-WRITE-FOR-RETRIEVAL`.
 ///
-/// Removed or demoted in C5 (#2462), once the module boundary makes a live effect
-/// unlinkable from the unit target and this tripwire is redundant.
+/// **After C2 (#2459) these guard NOTHING.** C0's tripwire was only ever
+/// implemented in `HotkeyService`, and C2 deleted that machinery when the Carbon
+/// and `NSEvent` calls moved out. No production path reads either variable now.
+/// They are not protecting overlay or activation — those never had a gate; they
+/// are C3 (#2460) and C4 (#2461), and the dep-direction script is what will cover
+/// them. These two lines are explicit disclosed debt until C5 (#2462) removes
+/// them, kept only so the removal is a single deliberate change rather than a
+/// silent drift.
 let denyDesktopEffects: Arguments = .arguments(
   environmentVariables: [
     DesktopEffectsPolicyKey: .environmentVariable(value: "deny", isEnabled: true),
@@ -467,7 +474,7 @@ let project = Project(
     // ONLY this, and the unit-test target does not link it.
     //
     // Not a forwarding shim: `WisprBootstrapper` takes a required, non-defaulted
-    // `makeHotkeyService`, so EnviousWisprAppKit contains no IMPLICIT production
+    // `makeHotkeyEffects`, so EnviousWisprAppKit contains no IMPLICIT production
     // assembly path — every caller must state its hotkey-service choice
     // explicitly — and this module is the only production-choice site.
     //
@@ -479,11 +486,28 @@ let project = Project(
     // The direct EnviousWisprServices edge is TEMPORARY — C2 (#2459) replaces the
     // concrete HotkeyService construction with a live adapter from
     // EnviousWisprDesktopEffects and drops this edge.
+    // #2455 C2 (#2459): the ONLY module holding Carbon and NSEvent calls. Neither
+    // test target declares it — but Xcode still exposes a built module to every
+    // target in the project, so that absence enforces nothing on its own.
+    // `scripts/check-dependency-direction.sh` is the enforcing wall: it rejects the
+    // import from the test targets, and rejects the OS calls themselves anywhere
+    // outside this module.
+    firstPartyLibrary(
+      "EnviousWisprDesktopEffects",
+      dependencies: [
+        .target(name: "EnviousWisprAppKit"),
+        .target(name: "EnviousWisprServices"),
+        // Same transitive-propagation reason as AppLive below.
+        .package(product: "WhisperKit"),
+        .package(product: "FluidAudio"),
+        .package(product: "Sparkle"),
+      ]),
+
     firstPartyLibrary(
       "EnviousWisprAppLive",
       dependencies: [
         .target(name: "EnviousWisprAppKit"),
-        .target(name: "EnviousWisprServices"),
+        .target(name: "EnviousWisprDesktopEffects"),
         // Declared directly for the same reason EnviousWisprAppKit declares
         // them: Xcode does not propagate a static framework's package products
         // transitively, so a module importing AppKit must resolve AppKit's

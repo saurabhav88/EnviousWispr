@@ -136,7 +136,8 @@ import EnviousWisprServices
   private func makeService(
     _ spy: Spy, driver: StartDriver? = nil, clock: ManualClock
   ) -> HotkeyService {
-    let service = HotkeyService(telemetry: spy.sink, now: { clock.now })
+    let service = HotkeyService(
+      effects: RecordingDesktopHotkeyEffects(), telemetry: spy.sink, now: { clock.now })
     service.onStartResolvedForTesting = { driver?.noteServiceResolved() }
     service.recordingMode = .pushToTalk
     // keyCode 0 ('A') is a chord key, so no NSEvent monitor is involved.
