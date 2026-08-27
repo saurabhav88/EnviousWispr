@@ -43,6 +43,11 @@ struct SettingsDefaultsRoutingTests {
     // safe, and an unrecognised word keeps today's behaviour, so the default
     // costs nothing and the feature is invisible until it helps.
     #expect(settings.smartInsertion == true)
+    // #2465. Ships ON because the whole point is that Quick Add stops silently failing in the apps
+    // people actually chat in, and a fallback nobody turns on is a fallback that does not exist. It
+    // costs a clipboard round trip ONLY in apps that publish no selection; everywhere else the
+    // Accessibility path answers and the clipboard is never touched.
+    #expect(settings.quickAddClipboardFallback == true)
     #expect(settings.vadAutoStop == false)
     #expect(settings.vadSilenceTimeout == 1.5)
     #expect(settings.languageMode == .auto)

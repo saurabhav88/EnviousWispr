@@ -74,7 +74,7 @@ import EnviousWisprServices
 /// | Provenance | `changeCount` proves a write happened, never WHOSE. Undecidable with public APIs; documented at the poll site, not mitigated away |
 /// | Ordering | `beginTakeover` sampled the payload and its baseline at two moments; FIXED by bracketing |
 /// | Correlated-value atomicity | the same site, the same fix |
-/// | Lifetime | the secure-field and target checks run before the modifier wait, so they can go stale before the chord posts. See `mayAttempt` |
+/// | Lifetime | FIXED TWICE, and the second time is the lesson. The first fix re-asked the policy questions after the modifier wait and passed the same stale context, so three of four inputs were live and the fourth — the one whose failure mode is a secret on the clipboard — still answered from memory, inside a block whose comment said it was live. `focusedElementIsSecure` is now a PARAMETER, so no call site can read it off a sample without saying so, and step 2b probes the target's focus live and fails closed |
 /// | Identity of INSTANCE | pid plus bundle id proves the same application KIND, not the same launch. See `targetStillPresent` |
 /// | Exhaustive enum consumption | nothing found; every enum here is switched exhaustively |
 /// | Unsafe default consumption | nothing found; the menu's missing `representedObject` collapses to a refusing empty context |
@@ -82,6 +82,11 @@ import EnviousWisprServices
 /// **What a further finding would have to look like, so this is falsifiable rather than hopeful:** an
 /// axis not in that table. A new member on an axis already listed is an adjudication error on one
 /// row, which is a smaller thing and does not reopen the enumeration.
+///
+/// **That prediction was then tested, which is the only reason it is worth anything.** The
+/// confirming round returned exactly one code finding and it was a WRONG ROW on the lifetime axis,
+/// not a missing axis — which is what a complete enumeration fails like, and what an incomplete one
+/// does not.
 @MainActor
 public enum SelectionAcquisition {
 
@@ -185,6 +190,13 @@ public enum SelectionAcquisition {
   /// string.
   static let copySettleMs = 20
 
+  /// How long the live secure-field probe waits for the target, PER Accessibility operation.
+  ///
+  /// Short on purpose. It runs immediately before a keystroke is posted, so a stalled provider here
+  /// delays a gesture the user is waiting on — and the probe FAILS CLOSED, so a timeout costs them
+  /// the fallback rather than costing them a secret.
+  static let secureProbeTimeout: Float = 0.15
+
   // MARK: - The two entry points
 
   /// The shortcut door: read, and fall back if the read found nothing to use.
@@ -254,6 +266,10 @@ public enum SelectionAcquisition {
     // STEP 1 — the policy questions, all of them, in a declared order. Nothing has been touched.
     if let refusal = mayAttempt(
       secureInputActive: IsSecureEventInputEnabled(),
+      // The sample's own answer, which is the freshest thing available here: the read that produced
+      // this context took it moments ago. Step 2b re-probes it live, because "moments ago" stops
+      // being good enough once the modifier wait has run.
+      focusedElementIsSecure: context.focusedElementIsSecure,
       postingAuthorised: CGPreflightPostEventAccess(),
       targetStillPresent: targetStillPresent(context),
       fallbackEnabled: fallbackEnabled,
@@ -295,8 +311,16 @@ public enum SelectionAcquisition {
     // Same context, deliberately — this re-asks the LIVE questions and never re-samples the
     // application, which would be the defect the type doc's third numbered point is about. Still
     // before the takeover, so a refusal here leaves the clipboard genuinely untouched.
+    // **All FOUR inputs are live here, and an earlier version of this block got three.** It re-read
+    // secure input, posting authorisation and target liveness, then passed the same stale `context`
+    // whose `focusedElementIsSecure` was sampled before the wait. So the one guard whose failure
+    // mode is a secret on the clipboard was the one still answering from memory, inside a block
+    // whose own comment said it was live. `secureFocusProbe` asks the SAME pid, right now, and
+    // `isSecureField` answers TRUE when it cannot tell.
     if let refusal = mayAttempt(
       secureInputActive: IsSecureEventInputEnabled(),
+      focusedElementIsSecure: SelectionReader.isSecureField(
+        SelectionReader.secureFocusProbe(pid: pid, timeout: secureProbeTimeout)),
       postingAuthorised: CGPreflightPostEventAccess(),
       targetStillPresent: targetStillPresent(context),
       fallbackEnabled: fallbackEnabled,
@@ -438,8 +462,16 @@ public enum SelectionAcquisition {
   /// **The clipboard budget is deliberately NOT here.** The payload does not exist at this point, so
   /// its size is unknowable, and a predicate that cannot be evaluated where it is written is a
   /// predicate that silently passes. It lives in the takeover at step 3.
+  ///
+  /// **`focusedElementIsSecure` is a PARAMETER, not read off the context, and that is a fix rather
+  /// than a style choice.** It used to be derived from `context`, which made this function LOOK
+  /// live at both call sites while one of its inputs was sampled before a quarter-second wait. The
+  /// confirming review round found it: focus moving into a password field during that wait left
+  /// this guard reading the old answer, and the failure mode is a secret on the clipboard. A
+  /// parameter forces each call site to say WHERE its answer came from.
   static func mayAttempt(
     secureInputActive: Bool,
+    focusedElementIsSecure: Bool,
     postingAuthorised: Bool,
     targetStillPresent: Bool,
     fallbackEnabled: Bool,
@@ -447,7 +479,7 @@ public enum SelectionAcquisition {
   ) -> SelectionReader.Refusal? {
     guard let pid = context.pid, pid > 0 else { return .noFrontmostApplication }
     guard targetStillPresent else { return .targetApplicationGone }
-    guard !secureInputActive, !context.focusedElementIsSecure else { return .secureInputActive }
+    guard !secureInputActive, !focusedElementIsSecure else { return .secureInputActive }
     guard postingAuthorised else { return .eventPostingNotTrusted }
     guard fallbackEnabled, !isKeystrokeForwarding(context.bundleIdentifier) else {
       return .copyFallbackDisabled

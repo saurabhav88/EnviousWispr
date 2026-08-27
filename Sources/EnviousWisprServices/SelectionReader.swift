@@ -393,6 +393,52 @@ public enum SelectionReader {
     }
   }
 
+  /// Ask, RIGHT NOW, whether the focused element of one process is a secure text field (#2465).
+  ///
+  /// **A live probe, and it exists because a sampled answer to this question goes stale in the one
+  /// window that matters.** The acquisition ladder waits for the user's own shortcut modifiers to
+  /// come up, capped at a quarter of a second, and a quarter of a second is long enough to click
+  /// into a password field. A guard whose answer was correct when it was taken and is stale when it
+  /// matters is not a guard, and this one's failure mode is a secret on the clipboard.
+  ///
+  /// **Takes the pid rather than re-sampling the frontmost application**, so it asks about the SAME
+  /// process the read did, and cannot drift to whatever came forward. Two Accessibility operations,
+  /// both bounded.
+  ///
+  /// Three-valued and the caller must fail closed on `unreadable`: see `SubroleOutcome`, whose own
+  /// doc records the collapse this whole area was built wrong once already.
+  @MainActor
+  public static func secureFocusProbe(pid: pid_t, timeout: Float? = nil) -> SubroleOutcome {
+    let focusedOutcome =
+      timeout.map({ PasteService.focusedElement(pid: pid, messagingTimeout: Double($0)) })
+      ?? PasteService.focusedElement(pid: pid)
+
+    guard case .element(let focused) = focusedOutcome else {
+      // No element, or the query failed. Either way we cannot say this is not a password field, and
+      // "we cannot say" must never be spent as "it is safe".
+      return .unreadable
+    }
+    // Bound the FOCUSED handle separately: a descendant does not inherit an ancestor's messaging
+    // timeout, which this repo learned in #1332 and `read` records two functions up.
+    if let timeout { AXUIElementSetMessagingTimeout(focused, timeout) }
+
+    var subroleRef: CFTypeRef?
+    let error = AXUIElementCopyAttributeValue(
+      focused, kAXSubroleAttribute as CFString, &subroleRef)
+    return resolveSubrole(error: error, value: subroleRef)
+  }
+
+  /// Whether a subrole outcome names a secure text field.
+  ///
+  /// **`unreadable` answers TRUE here, and that is the whole point.** The caller asking "may I
+  /// synthesize a keystroke into this" gets "treat it as secure" when nobody can tell it otherwise.
+  public static func isSecureField(_ outcome: SubroleOutcome) -> Bool {
+    switch outcome {
+    case .subrole(let value): return value == (kAXSecureTextFieldSubrole as String)
+    case .unreadable: return true
+    }
+  }
+
   // MARK: - The frontmost application, sampled ONCE
 
   /// Everything the guard needs to know about the frontmost application, from ONE sample.
@@ -539,11 +585,15 @@ public enum SelectionReader {
   }
 
   /// The three answers a subrole query can give. See `resolveSubrole`.
-  enum SubroleOutcome: Equatable {
+  ///
+  /// Public because `secureFocusProbe` returns it and the acquisition ladder one module up is its
+  /// consumer — the whole point is that the caller has to handle `unreadable` explicitly rather
+  /// than receive an optional it can spend as "fine".
+  public enum SubroleOutcome: Equatable {
     /// The element answered. Nil means it genuinely advertises no subrole.
     case subrole(String?)
-    /// The query failed or answered with something that is not a subrole. FAILS CLOSED at the call
-    /// site: the read refuses rather than proceeding as if the element were ordinary.
+    /// The query failed or answered with something that is not a subrole. FAILS CLOSED at every
+    /// call site: the read refuses, and `isSecureField` answers TRUE.
     case unreadable
   }
 

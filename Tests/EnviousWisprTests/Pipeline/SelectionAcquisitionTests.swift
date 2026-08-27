@@ -32,7 +32,7 @@ struct SelectionAcquisitionTests {
   func theOrdinaryCaseProceeds() {
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: false, postingAuthorised: true, targetStillPresent: true,
+        secureInputActive: false, focusedElementIsSecure: false, postingAuthorised: true, targetStillPresent: true,
         fallbackEnabled: true, context: context()) == nil)
   }
 
@@ -42,7 +42,7 @@ struct SelectionAcquisitionTests {
   func noUsableProcessRefuses(pid: Int?) {
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: false, postingAuthorised: true, targetStillPresent: true,
+        secureInputActive: false, focusedElementIsSecure: false, postingAuthorised: true, targetStillPresent: true,
         fallbackEnabled: true, context: context(pid: pid.map(pid_t.init)))
         == .noFrontmostApplication)
   }
@@ -51,7 +51,7 @@ struct SelectionAcquisitionTests {
   func aVanishedTargetRefuses() {
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: false, postingAuthorised: true, targetStillPresent: false,
+        secureInputActive: false, focusedElementIsSecure: false, postingAuthorised: true, targetStillPresent: false,
         fallbackEnabled: true, context: context()) == .targetApplicationGone)
   }
 
@@ -60,23 +60,59 @@ struct SelectionAcquisitionTests {
     // Process-wide secure input mode: the real protection, and what an app enables when it means it.
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: true, postingAuthorised: true, targetStillPresent: true,
+        secureInputActive: true, focusedElementIsSecure: false, postingAuthorised: true, targetStillPresent: true,
         fallbackEnabled: true, context: context()) == .secureInputActive)
 
     // A secure text field in an app that never enabled the mode. The second guard, and the reason
     // it is worth having is that the cost of being wrong is a password on the clipboard.
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: false, postingAuthorised: true, targetStillPresent: true,
-        fallbackEnabled: true,
-        context: context(focusedSubrole: kAXSecureTextFieldSubrole as String))
-        == .secureInputActive)
+        secureInputActive: false, focusedElementIsSecure: true, postingAuthorised: true,
+        targetStillPresent: true, fallbackEnabled: true, context: context()) == .secureInputActive)
+  }
+
+  /// **The secure-field answer is a PARAMETER and no longer read off the context, and this row is
+  /// the reason.** It used to be derived from `context.focusedSubrole`, which made the guard look
+  /// live at both of its call sites while that field was sampled BEFORE a quarter-second wait for
+  /// the user's modifiers. Focus moving into a password field during that wait left the one guard
+  /// whose failure mode is a secret on the clipboard answering from memory.
+  ///
+  /// So the context can no longer influence this decision, and asserting that is what stops the
+  /// derivation being quietly reintroduced: a secure-looking context with a `false` parameter must
+  /// PROCEED, and an ordinary context with `true` must REFUSE.
+  @Test("The context cannot override the secure-field answer in either direction")
+  func theContextDoesNotDecideSecurity() {
+    #expect(
+      SelectionAcquisition.mayAttempt(
+        secureInputActive: false, focusedElementIsSecure: false, postingAuthorised: true,
+        targetStillPresent: true, fallbackEnabled: true,
+        context: context(focusedSubrole: kAXSecureTextFieldSubrole as String)) == nil,
+      "the stale context field decided this, which is the defect")
+
+    #expect(
+      SelectionAcquisition.mayAttempt(
+        secureInputActive: false, focusedElementIsSecure: true, postingAuthorised: true,
+        targetStillPresent: true, fallbackEnabled: true,
+        context: context(focusedSubrole: "AXTextField")) == .secureInputActive,
+      "the live probe decides, whatever the sample said")
+  }
+
+  /// **`unreadable` answers TRUE, which is the whole point of a three-valued probe.** A caller
+  /// asking "may I synthesize a keystroke into this" gets "treat it as secure" when nobody can tell
+  /// it otherwise. Without this the fail-closed read would be undone one function later.
+  @Test("A subrole nobody could read counts as secure")
+  func anUnreadableSubroleCountsAsSecure() {
+    #expect(SelectionReader.isSecureField(.unreadable))
+    #expect(SelectionReader.isSecureField(.subrole(kAXSecureTextFieldSubrole as String)))
+    // The pair, or the predicate says yes to everything.
+    #expect(!SelectionReader.isSecureField(.subrole("AXTextField")))
+    #expect(!SelectionReader.isSecureField(.subrole(nil)))
   }
 
   @Test("Unauthorised event posting gets its OWN refusal, never the Accessibility one")
   func unauthorisedPostingRefusesDistinctly() {
     let refusal = SelectionAcquisition.mayAttempt(
-      secureInputActive: false, postingAuthorised: false, targetStillPresent: true,
+      secureInputActive: false, focusedElementIsSecure: false, postingAuthorised: false, targetStillPresent: true,
       fallbackEnabled: true, context: context())
 
     #expect(refusal == .eventPostingNotTrusted)
@@ -90,12 +126,12 @@ struct SelectionAcquisitionTests {
   func theOffStatesShareOneRefusal() {
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: false, postingAuthorised: true, targetStillPresent: true,
+        secureInputActive: false, focusedElementIsSecure: false, postingAuthorised: true, targetStillPresent: true,
         fallbackEnabled: false, context: context()) == .copyFallbackDisabled)
 
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: false, postingAuthorised: true, targetStillPresent: true,
+        secureInputActive: false, focusedElementIsSecure: false, postingAuthorised: true, targetStillPresent: true,
         fallbackEnabled: true, context: context(bundleIdentifier: "com.apple.ScreenSharing"))
         == .copyFallbackDisabled)
   }
@@ -110,7 +146,7 @@ struct SelectionAcquisitionTests {
     // Everything wrong at once. The answer is the most fundamental: there is no subject at all.
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: true, postingAuthorised: false, targetStillPresent: false,
+        secureInputActive: true, focusedElementIsSecure: false, postingAuthorised: false, targetStillPresent: false,
         fallbackEnabled: false,
         context: context(pid: nil, bundleIdentifier: "com.apple.ScreenSharing"))
         == .noFrontmostApplication)
@@ -118,21 +154,21 @@ struct SelectionAcquisitionTests {
     // A process that no longer exists has nothing to protect and nothing to ask.
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: true, postingAuthorised: false, targetStillPresent: false,
+        secureInputActive: true, focusedElementIsSecure: false, postingAuthorised: false, targetStillPresent: false,
         fallbackEnabled: false, context: context(bundleIdentifier: "com.apple.ScreenSharing"))
         == .targetApplicationGone)
 
     // Secure input outranks both remaining ones: it is the state where posting anything is wrong.
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: true, postingAuthorised: false, targetStillPresent: true,
+        secureInputActive: true, focusedElementIsSecure: false, postingAuthorised: false, targetStillPresent: true,
         fallbackEnabled: false, context: context(bundleIdentifier: "com.apple.ScreenSharing"))
         == .secureInputActive)
 
     // And the capability outranks the preference: "we cannot" before "we chose not to".
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: false, postingAuthorised: false, targetStillPresent: true,
+        secureInputActive: false, focusedElementIsSecure: false, postingAuthorised: false, targetStillPresent: true,
         fallbackEnabled: false, context: context(bundleIdentifier: "com.apple.ScreenSharing"))
         == .eventPostingNotTrusted)
   }
@@ -154,25 +190,25 @@ struct SelectionAcquisitionTests {
 
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: false, postingAuthorised: true, targetStillPresent: true,
+        secureInputActive: false, focusedElementIsSecure: false, postingAuthorised: true, targetStillPresent: true,
         fallbackEnabled: true, context: sameContext) == nil)
 
     // The user clicked into a password field while we waited for their fingers to come up.
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: true, postingAuthorised: true, targetStillPresent: true,
+        secureInputActive: true, focusedElementIsSecure: false, postingAuthorised: true, targetStillPresent: true,
         fallbackEnabled: true, context: sameContext) == .secureInputActive)
 
     // The target quit while we waited.
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: false, postingAuthorised: true, targetStillPresent: false,
+        secureInputActive: false, focusedElementIsSecure: false, postingAuthorised: true, targetStillPresent: false,
         fallbackEnabled: true, context: sameContext) == .targetApplicationGone)
 
     // And back, so the row is not passing on a guard that latches after its first refusal.
     #expect(
       SelectionAcquisition.mayAttempt(
-        secureInputActive: false, postingAuthorised: true, targetStillPresent: true,
+        secureInputActive: false, focusedElementIsSecure: false, postingAuthorised: true, targetStillPresent: true,
         fallbackEnabled: true, context: sameContext) == nil)
   }
 
