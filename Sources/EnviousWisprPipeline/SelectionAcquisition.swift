@@ -50,29 +50,38 @@ import EnviousWisprServices
 ///    review on PR #2428; asking `NSWorkspace` again here recreates that defect one layer up and
 ///    posts a keystroke at whatever came forward in between.
 ///
-/// **AND ONE DEFECT CLASS, ENUMERATED HERE RATHER THAN DISCOVERED ONE MEMBER PER REVIEW ROUND.**
-/// Two local review rounds each found an instance of the same shape: a value this change introduces
-/// has MORE states than the caller that reads it, so one state is spent as another. Round 1 found
-/// it in the pasteboard's change count (ours / theirs / cannot tell, read as ours); round 2 in the
-/// focused element's subrole (a subrole / none / cannot tell, read as none, which meant NOT SECURE
-/// and would have copied from a password field). Two members is the signal to stop describing the
-/// set and enumerate it from the producing code, so every reduced value in this file is listed with
-/// what its collapse COSTS:
+/// **AND ONE DEFECT CLASS. THE FIRST ATTEMPT TO NAME IT WAS A FALSE CONSOLIDATION, WHICH IS THE
+/// PART WORTH KEEPING.**
 ///
-/// | Value | States at the producer | What the caller does | Cost |
-/// |---|---|---|---|
-/// | `AcquisitionContext.focusedSubrole` | subrole / none / unreadable | FAILS CLOSED at the read | none; `resolveSubrole` owns it |
-/// | `AcquisitionContext.pid` | pid / none | refuses on nil and on non-positive | none |
-/// | `AcquisitionContext.bundleIdentifier` | identifier / none | see the two notes below | **fails OPEN, deliberately, twice** |
-/// | `settledChangeCountAfterCopy` -> `Int?` | settled / cap expired / cancelled | last two both refuse and restore | none: the right action is identical |
-/// | `modifiersCleared` -> `Bool` | cleared / cap expired / cancelled | last two both refuse, board untouched | none: identical action |
-/// | `pause` -> `Bool` | slept / cancelled | caller abandons and restores | none |
-/// | `board.string(forType:)` -> `String?` | text / no text representation | `?? ""` then `classify` | none: an image-only copy and an empty copy are both "nothing to add" |
-/// | `SyntheticCopyChord.PostResult` | posted / clearFailed / notPosted | exhaustive `switch` | none |
-/// | `ClipboardCleanup.Takeover` | granted / too large | exhaustive `guard case` | none |
+/// Two local review rounds each returned one finding, so the rule is to stop taking rounds and
+/// enumerate the class instead. The first enumeration named it "a value has more states at its
+/// producer than at the caller reading it" and listed nine members, derived by grepping this file
+/// and `SyntheticCopyChord` for reduced return values.
 ///
-/// The two deliberate fail-OPEN cases are both on a MISSING bundle identifier, and both are stated
-/// at their call sites rather than here.
+/// **A refutation run — a reviewer asked to name an AXIS rather than a member — refuted it, and was
+/// right on both counts.** The two originating findings are NOT the same root: the pasteboard's
+/// change count is an IDENTITY inference (the producer returns a counter and the caller invents
+/// authorship), while the AX subrole was a genuine STATE-COUNT reduction. They share only the much
+/// wider statement that a caller assumed more than its evidence proved, which is not an enumerable
+/// class. A missing axis is invisible from inside an enumeration by construction, so no amount of
+/// re-reading the nine members could have produced this.
+///
+/// **The axes, from that run, with what each found here:**
+///
+/// | Axis | Here |
+/// |---|---|
+/// | State count | `resolveSubrole` was a real member; FIXED, fails closed |
+/// | Provenance | `changeCount` proves a write happened, never WHOSE. Undecidable with public APIs; documented at the poll site, not mitigated away |
+/// | Ordering | `beginTakeover` sampled the payload and its baseline at two moments; FIXED by bracketing |
+/// | Correlated-value atomicity | the same site, the same fix |
+/// | Lifetime | the secure-field and target checks run before the modifier wait, so they can go stale before the chord posts. See `mayAttempt` |
+/// | Identity of INSTANCE | pid plus bundle id proves the same application KIND, not the same launch. See `targetStillPresent` |
+/// | Exhaustive enum consumption | nothing found; every enum here is switched exhaustively |
+/// | Unsafe default consumption | nothing found; the menu's missing `representedObject` collapses to a refusing empty context |
+///
+/// **What a further finding would have to look like, so this is falsifiable rather than hopeful:** an
+/// axis not in that table. A new member on an axis already listed is an adjudication error on one
+/// row, which is a smaller thing and does not reopen the enumeration.
 @MainActor
 public enum SelectionAcquisition {
 
@@ -273,6 +282,30 @@ public enum SelectionAcquisition {
         context: context, acquired: .nothing, refusal: .modifiersHeld, ms: elapsedMs(),
         restore: .notTouched)
       return refusing(.modifiersHeld)
+    }
+
+    // STEP 2b — RE-ASK the policy questions, because step 2 can have taken a quarter of a second.
+    //
+    // **The LIFETIME axis, and it is the one a first reading of this ladder does not see.** Step 1's
+    // answers were correct when they were taken and are used much later: secure input is a mode the
+    // user can enter by clicking into a password field, and the target can quit, both of them while
+    // we wait for their fingers to come off the shortcut. A check that is correct at the moment it
+    // runs and stale at the moment it matters is not a guard.
+    //
+    // Same context, deliberately — this re-asks the LIVE questions and never re-samples the
+    // application, which would be the defect the type doc's third numbered point is about. Still
+    // before the takeover, so a refusal here leaves the clipboard genuinely untouched.
+    if let refusal = mayAttempt(
+      secureInputActive: IsSecureEventInputEnabled(),
+      postingAuthorised: CGPreflightPostEventAccess(),
+      targetStillPresent: targetStillPresent(context),
+      fallbackEnabled: fallbackEnabled,
+      context: context)
+    {
+      await log(
+        context: context, acquired: .nothing, refusal: refusal, ms: elapsedMs(),
+        restore: .notTouched)
+      return refusing(refusal)
     }
 
     // STEP 3 — take the board over. This is the line the file's doc comment is about: past it, the
@@ -528,10 +561,18 @@ public enum SelectionAcquisition {
         if after == settled { return settled }
         settled = after
       }
-      // The cap expired while the board was still moving. What is there now is what we own, and
-      // saying so is more honest than reporting that the app never answered, which is false — it
-      // answered, repeatedly, and we ran out of patience.
-      return board.changeCount
+      // **The cap expired while the board was STILL MOVING, and this refuses.** An earlier version
+      // returned `board.changeCount` here and proceeded as the board's owner, on the reasoning that
+      // the app had answered repeatedly and we had run out of patience. That reasoning defends the
+      // wrong thing: what we ran out of is any moment at which the board held still, so there is no
+      // count we can honestly claim, and claiming one means reading a value mid-write and then
+      // restoring over a writer who is still going.
+      //
+      // Refusing leaves `ownedChangeCount` at the takeover baseline, which the board has long since
+      // passed — so the restore DECLINES and the active writer's value survives, which is the
+      // outcome we want. Found by a refutation run against this file's own class enumeration, which
+      // had this member's cost recorded as "both refuse and restore". It did not.
+      return nil
     }
     return nil
   }

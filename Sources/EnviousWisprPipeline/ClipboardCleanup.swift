@@ -273,10 +273,35 @@ public enum ClipboardCleanup {
     maximumBytes: Int,
     from board: NSPasteboard = .general
   ) -> Takeover {
-    // Computed BEFORE anything is cancelled. The budget question can refuse, and a refusal that had
-    // already torn down the pending cleanup would have damaged the state it declined to touch —
-    // which is why this is not a size check bolted onto the front of the commit below.
-    let payload = intendedPayload(from: board)
+    // **The payload and the baseline must describe the SAME MOMENT, and an earlier version sampled
+    // them at two.** It read the payload, then took `board.changeCount` afterwards as the baseline.
+    // A write landing between those two reads produced a stale payload paired with a baseline
+    // saying nothing had changed since — so the caller would later restore that stale payload over
+    // the interloper's write, believing it still owned the board. `saveClipboard` also iterates the
+    // items, so a concurrent write can tear the payload itself.
+    //
+    // Fixed by bracketing: read the count, build the payload, read the count again, and accept only
+    // when it did not move. That makes "the payload and the baseline agree" a checked fact rather
+    // than an assumption about how fast two adjacent lines run.
+    //
+    // Bounded rather than looped forever: a board being written continuously is a board we should
+    // not be taking over at all, and `clipboardTooLarge` is the honest answer for "we could not get
+    // a clean picture of your clipboard, so we left it alone" — it is the refusal that promises the
+    // caller nothing was touched, which is exactly what happened.
+    //
+    // Found by a refutation run against this file's class enumeration, on the CORRELATED-VALUE
+    // ATOMICITY axis, which that enumeration did not have.
+    var payload: ClipboardSnapshot?
+    var baseline = 0
+    for _ in 0..<Self.takeoverSnapshotAttempts {
+      let before = board.changeCount
+      let candidate = intendedPayload(from: board)
+      guard board.changeCount == before else { continue }
+      payload = candidate
+      baseline = before
+      break
+    }
+    guard let payload else { return .clipboardTooLarge }
 
     guard payloadBytes(payload) <= maximumBytes else { return .clipboardTooLarge }
 
@@ -288,8 +313,17 @@ public enum ClipboardCleanup {
       current.task.cancel()
     }
 
-    return .granted(payload: payload, baseline: board.changeCount)
+    // The baseline is the count that was VERIFIED to describe this payload, never a fresh read
+    // taken here — a fresh read would reintroduce the gap this method just closed.
+    return .granted(payload: payload, baseline: baseline)
   }
+
+  /// How many times to try for a payload and a change count that describe the same moment.
+  ///
+  /// Three rather than one because an ordinary clipboard manager writing once should not cost the
+  /// user the feature, and rather than unbounded because a board being written continuously is a
+  /// board we should not be taking over.
+  private static let takeoverSnapshotAttempts = 3
 
   /// What the user's clipboard IS right now, for a caller about to overwrite it.
   ///

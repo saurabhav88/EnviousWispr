@@ -137,6 +137,45 @@ struct SelectionAcquisitionTests {
         == .eventPostingNotTrusted)
   }
 
+  /// **The ladder asks these questions TWICE, and this row is why the second call has to exist.**
+  ///
+  /// Step 1 asks before waiting for the user's shortcut modifiers to come up, which is capped at a
+  /// quarter of a second. Secure input is a mode the user enters by clicking into a password field,
+  /// and the target can quit — both of them inside that wait. A guard whose answer is correct when
+  /// it runs and stale when it matters is not a guard, so the same questions are re-asked with LIVE
+  /// inputs immediately before the takeover.
+  ///
+  /// The pure function cannot see the second call site, so this row asserts the property that makes
+  /// the second call meaningful: `mayAttempt` is a function of its ARGUMENTS ONLY, with no cached or
+  /// memoised state, so calling it again with changed inputs genuinely changes the answer.
+  @Test("The guard answers from its arguments, so asking again with new inputs answers differently")
+  func theGuardIsPureSoReAskingIsMeaningful() {
+    let sameContext = context()
+
+    #expect(
+      SelectionAcquisition.mayAttempt(
+        secureInputActive: false, postingAuthorised: true, targetStillPresent: true,
+        fallbackEnabled: true, context: sameContext) == nil)
+
+    // The user clicked into a password field while we waited for their fingers to come up.
+    #expect(
+      SelectionAcquisition.mayAttempt(
+        secureInputActive: true, postingAuthorised: true, targetStillPresent: true,
+        fallbackEnabled: true, context: sameContext) == .secureInputActive)
+
+    // The target quit while we waited.
+    #expect(
+      SelectionAcquisition.mayAttempt(
+        secureInputActive: false, postingAuthorised: true, targetStillPresent: false,
+        fallbackEnabled: true, context: sameContext) == .targetApplicationGone)
+
+    // And back, so the row is not passing on a guard that latches after its first refusal.
+    #expect(
+      SelectionAcquisition.mayAttempt(
+        secureInputActive: false, postingAuthorised: true, targetStillPresent: true,
+        fallbackEnabled: true, context: sameContext) == nil)
+  }
+
   // MARK: The keystroke-forwarding list
 
   @Test("Only an exact bundle identifier is treated as keystroke forwarding")

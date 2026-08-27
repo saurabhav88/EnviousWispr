@@ -29,6 +29,16 @@ enum SyntheticCopyChord {
   /// this reason.)
   enum PostResult: Equatable {
     /// Posted, and Command was cleared afterwards.
+    ///
+    /// **`posted` means WE POSTED, never that the app received or acted on it.** `CGEvent.postToPid`
+    /// returns nothing and there is no delivery receipt, so this value is a statement about our own
+    /// side of the boundary. It is safe only because the caller does not treat it as the outcome:
+    /// `SelectionAcquisition` goes on to judge by the ARTIFACT, polling the pasteboard's change
+    /// count, and reports `copyRefused` when the board never moves however cleanly this returned.
+    ///
+    /// Stated because the opposite is the ordinary mistake — judging an outcome by whether the call
+    /// terminated rather than by whether the thing happened — and a case named `posted` reads like
+    /// success at every call site that has not read this.
     case posted
     /// Posted, and the clearing event could not be created or sent.
     case clearFailed

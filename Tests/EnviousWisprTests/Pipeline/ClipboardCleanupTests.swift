@@ -132,6 +132,14 @@ struct ClipboardCleanupTests {
       // comparing against it would read "something changed" on its very first look.
       #expect(baseline == pb.changeCount)
       #expect(baseline != snapshot.changeCount, "or the two numbers are indistinguishable here")
+
+      // **KNOWN GAP, stated rather than papered over with a test that cannot see it.** The payload
+      // and the baseline are also required to describe the SAME MOMENT, which `beginTakeover`
+      // enforces by reading the count, building the payload, and reading the count again. No
+      // single-threaded test can distinguish that from the torn version — the same reason
+      // `validation-discipline.md` gives for why a contract test cannot tell an atomic primitive
+      // from check-then-act. Proving it would mean racing a writer against the takeover, which is
+      // the honest test to write and is filed as hardening rather than faked here.
     }
   }
 
