@@ -119,7 +119,7 @@ struct ClipboardCleanupTests {
         snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
 
       guard
-        case .granted(let payload, let baseline) = ClipboardCleanup.beginTakeover(
+        case .granted(let payload, let baseline, _) = ClipboardCleanup.beginTakeover(
           maximumBytes: 1 << 20, from: pb)
       else {
         Issue.record("the takeover was refused on a small clipboard")
@@ -153,11 +153,23 @@ struct ClipboardCleanupTests {
         snapshot, changeCountAfterPaste: pb.changeCount, tier: .cgEvent, on: pb)
       #expect(ClipboardCleanup.hasPending)
 
-      _ = ClipboardCleanup.beginTakeover(maximumBytes: 1 << 20, from: pb)
+      guard case .granted(_, _, let token) = ClipboardCleanup.beginTakeover(
+        maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("the takeover was refused on a small clipboard")
+        return
+      }
 
-      // **`snapshotForDelivery` would have left this armed**, because a delivery goes on to
-      // schedule its own cleanup that supersedes it. This caller schedules nothing, so a surviving
+      // **Asserted AFTER releasing the takeover, and the indirection is the point (#2465).**
+      // `hasPending` became the union of "a cleanup is scheduled" and "a takeover is in flight" when
+      // the takeover was made visible to delivery, so during one it is true for a reason that says
+      // nothing about the pending RESTORE. Releasing removes only the takeover's half, so a `false`
+      // here can only mean the restore was consumed.
+      //
+      // `snapshotForDelivery` would have left that restore armed, because a delivery goes on to
+      // schedule its own cleanup which supersedes it. This caller schedules nothing, so a surviving
       // restore fires on top of the board it just handed back.
+      ClipboardCleanup.endTakeover(token)
       #expect(!ClipboardCleanup.hasPending, "an armed restore would overwrite the fallback's work")
 
       // The board the caller is about to write is whatever it was; nothing else will touch it now.
@@ -234,6 +246,118 @@ struct ClipboardCleanupTests {
         Issue.record("the same clipboard must be accepted under a budget that fits it")
         return
       }
+    }
+  }
+
+  /// **The two clipboard transactions are two owners of one board, and only one used to be
+  /// visible.** Quick Add's fallback holds the board across awaits, so a dictation can reach its
+  /// paste in the middle of one. Before #2465's confirming round the takeover cleared `pending` and
+  /// registered nothing, so a delivery beginning mid-fallback saw an idle `ClipboardCleanup`.
+  ///
+  /// Product Outcome, and it is the one this codebase exists to prevent: the delivery photographs a
+  /// board mid-transaction, Quick Add reads the DICTATION's payload as the target app's Copy
+  /// response, and its restore then pulls that payload off the board before the target app has read
+  /// the paste already posted. Wrong text in the user's document, reached through a limb.
+  @Test("A delivery starting mid-takeover inherits the user's clipboard, never the board")
+  func aDeliveryDuringATakeoverInheritsRatherThanPhotographing() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+
+      guard case .granted = ClipboardCleanup.beginTakeover(maximumBytes: 1 << 20, from: pb) else {
+        Issue.record("the takeover was refused on a small clipboard")
+        return
+      }
+      // The fallback has written to the board: this is the target app's Copy response.
+      put("the copied word", on: pb)
+
+      // A dictation reaches its paste now. Photographing the board would save "the copied word" as
+      // the user's clipboard and hand it back to them later.
+      #expect(string(ClipboardCleanup.snapshotForDelivery(from: pb)) == "the user's own clipboard")
+    }
+  }
+
+  /// The other half, and the half that prevents the wrong-text paste: the takeover must LEARN it
+  /// lost the board, so it abandons instead of restoring over the dictation's payload.
+  @Test("A takeover that lost the board to a delivery is told, once")
+  func aSupersededTakeoverIsTold() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+
+      guard case .granted(_, _, let token) = ClipboardCleanup.beginTakeover(
+        maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("the takeover was refused on a small clipboard")
+        return
+      }
+      #expect(!ClipboardCleanup.wasSuperseded(token), "nothing has claimed the board yet")
+
+      _ = ClipboardCleanup.snapshotForDelivery(from: pb)
+      #expect(ClipboardCleanup.wasSuperseded(token), "the holder would restore over the dictation")
+
+      // And releasing clears it, so a later takeover cannot inherit this one's verdict.
+      ClipboardCleanup.endTakeover(token)
+      #expect(!ClipboardCleanup.wasSuperseded(token))
+    }
+  }
+
+  /// **The restore-OFF delivery path writes the board and never snapshots, so it needed its own
+  /// way to say so.** `snapshotForDelivery` runs only when `restoreClipboardAfterPaste` is on; with
+  /// the setting off a delivery writes and schedules a legacy rewrite without asking this type
+  /// anything. A takeover in flight would never learn it lost the board and would restore over a
+  /// payload the target app had not read yet — the same wrong-text failure, reached through a
+  /// SETTING rather than through timing.
+  ///
+  /// Found by sweeping the concurrency axis after round 5 named it, rather than by a later round.
+  @Test("A delivery that does not snapshot still takes the board from a takeover")
+  func aDeliveryWithRestoreOffStillSupersedes() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+
+      guard case .granted(_, _, let token) = ClipboardCleanup.beginTakeover(
+        maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("the takeover was refused on a small clipboard")
+        return
+      }
+
+      // This is the whole restore-off delivery path's interaction with this type.
+      ClipboardCleanup.deliveryClaimsBoard()
+
+      #expect(
+        ClipboardCleanup.wasSuperseded(token),
+        "a delivery that never snapshots still writes the board, and the holder must abandon")
+      #expect(!ClipboardCleanup.hasPending, "the takeover is released, not merely flagged")
+    }
+  }
+
+  /// The pair: with no takeover in flight this is a no-op, so the restore-off path pays nothing and
+  /// cannot corrupt state that is not there.
+  @Test("Claiming the board with nothing in flight changes nothing")
+  func claimingWithNoTakeoverIsANoOp() async {
+    await withFastCleanup {
+      ClipboardCleanup.deliveryClaimsBoard()
+      #expect(!ClipboardCleanup.hasPending)
+    }
+  }
+
+  /// **An update installing mid-takeover loses the user's clipboard the same way the 200 ms window
+  /// does**, so the property the update coordinator reads has to cover both.
+  @Test("An active takeover counts as pending, so an update install is refused during one")
+  func anActiveTakeoverBlocksAnUpdateInstall() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+      #expect(!ClipboardCleanup.hasPending)
+
+      guard case .granted(_, _, let token) = ClipboardCleanup.beginTakeover(
+        maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("the takeover was refused on a small clipboard")
+        return
+      }
+      #expect(ClipboardCleanup.hasPending, "a Sparkle relaunch here takes the clipboard with it")
+
+      ClipboardCleanup.endTakeover(token)
+      #expect(!ClipboardCleanup.hasPending)
     }
   }
 

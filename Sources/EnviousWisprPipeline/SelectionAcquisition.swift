@@ -76,6 +76,7 @@ import EnviousWisprServices
 /// | Correlated-value atomicity | the same site, the same fix |
 /// | Lifetime | FIXED TWICE, and the second time is the lesson. The first fix re-asked the policy questions after the modifier wait and passed the same stale context, so three of four inputs were live and the fourth — the one whose failure mode is a secret on the clipboard — still answered from memory, inside a block whose comment said it was live. `focusedElementIsSecure` is now a PARAMETER, so no call site can read it off a sample without saying so, and step 2b probes the target's focus live and fails closed |
 /// | Identity of INSTANCE | pid plus bundle id proves the same application KIND, not the same launch. See `targetStillPresent` |
+/// | Concurrent OWNERSHIP of one resource | **the axis this table did not have.** Quick Add's takeover and a dictation delivery are two owners of one pasteboard, and the takeover registered nothing, so a delivery starting mid-fallback saw an idle `ClipboardCleanup`. Found by the confirming round; fixed by making the takeover visible, letting delivery inherit from it, and having the limb ABANDON |
 /// | Exhaustive enum consumption | nothing found; every enum here is switched exhaustively |
 /// | Unsafe default consumption | nothing found; the menu's missing `representedObject` collapses to a refusing empty context |
 ///
@@ -83,10 +84,17 @@ import EnviousWisprServices
 /// axis not in that table. A new member on an axis already listed is an adjudication error on one
 /// row, which is a smaller thing and does not reopen the enumeration.
 ///
-/// **That prediction was then tested, which is the only reason it is worth anything.** The
-/// confirming round returned exactly one code finding and it was a WRONG ROW on the lifetime axis,
-/// not a missing axis — which is what a complete enumeration fails like, and what an incomplete one
-/// does not.
+/// **That prediction was then tested twice, which is the only reason any of it is worth anything,
+/// and it failed the second time.** The first confirming round returned a WRONG ROW on the lifetime
+/// axis — the shape a complete enumeration fails like. The next round returned a MISSING AXIS:
+/// concurrent ownership of one resource, which every row above is blind to because every row above
+/// is about ONE value's states, ordering or provenance rather than about two owners.
+///
+/// The lesson is not that the enumeration should have been longer. It is that an axis list built by
+/// sweeping VALUES cannot contain an axis about RELATIONSHIPS between transactions, and the sweep
+/// that produced it — grep the file for reduced returns — could not have surfaced one. A second
+/// refutation run asked specifically about concurrency would have; it was not run because the first
+/// one came back with four axes and that felt like enough.
 @MainActor
 public enum SelectionAcquisition {
 
@@ -121,6 +129,13 @@ public enum SelectionAcquisition {
     case declined
     /// Never taken over, so there was nothing to put back.
     case notTouched = "not_touched"
+    /// A dictation delivery claimed the board mid-takeover and inherited the user's clipboard, so
+    /// this invocation restored nothing on purpose (#2465).
+    ///
+    /// Its own value rather than `declined`, because `declined` means "somebody wrote and their
+    /// write survives" and this means "the heart took the board and owns putting it back". They
+    /// need different answers if the fallback ever looks expensive in the funnel.
+    case supersededByDelivery = "superseded_by_delivery"
   }
 
   /// One acquisition, as facts.
@@ -339,7 +354,7 @@ public enum SelectionAcquisition {
     // STEP 3 — take the board over. This is the line the file's doc comment is about: past it, the
     // pending cleanup is cancelled and we are the only party left who will restore anything.
     guard
-      case .granted(let payload, let baseline) = ClipboardCleanup.beginTakeover(
+      case .granted(let payload, let baseline, let token) = ClipboardCleanup.beginTakeover(
         maximumBytes: maximumPreservedClipboardBytes, from: board)
     else {
       await log(
@@ -358,6 +373,21 @@ public enum SelectionAcquisition {
     /// comment promises, and it is checkable by grepping this function for `return` — every one of
     /// them after this point is a `concluding(...)`.
     func concluding(_ result: SelectionReader.Result, acquired: Acquired) async -> Outcome {
+      // **A dictation delivery took the board while we held it, and the heart does not yield to a
+      // limb (#2465).** It has already inherited the user's real clipboard from our takeover and
+      // written its own payload, so restoring here would pull that payload off the board before the
+      // target app has read the paste it already posted — the wrong-text failure, reached through
+      // Quick Add. We restore NOTHING and say so.
+      guard !ClipboardCleanup.wasSuperseded(token) else {
+        ClipboardCleanup.endTakeover(token)
+        await log(
+          context: context, acquired: .nothing, refusal: .copyRefused, ms: elapsedMs(),
+          restore: .supersededByDelivery)
+        return Outcome(
+          result: .refused(.copyRefused), context: context, acquired: .nothing,
+          acquisitionMs: elapsedMs(), clipboardRestore: .supersededByDelivery)
+      }
+      ClipboardCleanup.endTakeover(token)
       let restored = PasteService.restoreClipboard(
         payload, changeCountAfterPaste: ownedChangeCount, on: board)
       let restore: ClipboardRestore = restored ? .restored : .declined

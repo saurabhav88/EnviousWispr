@@ -510,6 +510,101 @@ def clipboard():
         print(f"Clipboard: {t[:200]}{'...' if len(t)>200 else ''}"); return t
     except Exception as e: print(f"clipboard error: {e}"); return None
 
+# ── #2465: staging a selection elsewhere, and reading modifier state ──
+#
+# Added here rather than as a separate script (tools-and-apps.md
+# RULE: use-existing-uat-harness-first). The Quick Add clipboard fallback's
+# subject is a selection in a THIRD-PARTY app, which no AX call can create —
+# those are precisely the apps that publish no selection.
+
+
+def select_word_at(x, y, settle=0.4):
+    """Double-click at absolute screen coordinates to select the word under them.
+
+    Coordinates are top-left origin, the same space `screenshot()` produces, so
+    the workflow is: screenshot, read the word's position off it, call this.
+    """
+    import Quartz
+    src = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
+    point = Quartz.CGPointMake(float(x), float(y))
+    for click_count in (1, 2):
+        for kind in (Quartz.kCGEventLeftMouseDown, Quartz.kCGEventLeftMouseUp):
+            e = Quartz.CGEventCreateMouseEvent(src, kind, point, Quartz.kCGMouseButtonLeft)
+            Quartz.CGEventSetIntegerValueField(e, Quartz.kCGMouseEventClickState, click_count)
+            Quartz.CGEventPost(Quartz.kCGHIDEventTap, e)
+    time.sleep(settle)
+    print(f"Selected word at ({x}, {y})")
+
+
+def modifier_flags():
+    """The machine's CURRENT modifier state, from BOTH event sources.
+
+    **A verdict channel, not a convenience.** Posting a chord by setting the
+    modifier FLAG on the key events alone leaves that modifier latched DOWN
+    system-wide, and nothing in a normal run notices because the damage is to a
+    global no test reads. Every case that fires the clipboard fallback asserts
+    this comes back clean afterwards.
+
+    Both sources, because the latch was measured in both.
+    Returns a dict; nonzero on either is a failure.
+    """
+    import Quartz
+    interesting = (Quartz.kCGEventFlagMaskCommand | Quartz.kCGEventFlagMaskShift
+                   | Quartz.kCGEventFlagMaskAlternate | Quartz.kCGEventFlagMaskControl)
+    out = {}
+    for name, state in (("hid", Quartz.kCGEventSourceStateHIDSystemState),
+                        ("session", Quartz.kCGEventSourceStateCombinedSessionState)):
+        out[name] = Quartz.CGEventSourceFlagsState(state) & interesting
+    clean = all(v == 0 for v in out.values())
+    print(f"Modifier flags: {out} — {'CLEAN' if clean else 'LATCHED'}")
+    return out
+
+
+def clear_modifier_flags():
+    """Post one flags-changed event with no flags, undoing a latch.
+
+    The documented recovery, kept beside the reader so anyone who sees LATCHED
+    has the fix in the same file rather than in a session transcript.
+    """
+    import Quartz
+    src = Quartz.CGEventSourceCreate(Quartz.kCGEventSourceStateHIDSystemState)
+    e = Quartz.CGEventCreateKeyboardEvent(src, 55, False)  # 55 = Command
+    Quartz.CGEventSetType(e, Quartz.kCGEventFlagsChanged)
+    Quartz.CGEventSetFlags(e, 0)
+    Quartz.CGEventPost(Quartz.kCGHIDEventTap, e)
+    print("Posted a clearing flags-changed event")
+
+
+def acquisition_verdict(after=None):
+    """The last Quick Add acquisition line from app.log, parsed into a dict.
+
+    **The verdict channel** (tools-and-apps.md RULE: uat-verdicts-from-app-log).
+    The clipboard is NOT the oracle here: the whole point of the feature is that
+    the clipboard goes back to what it was, so reading it cannot tell a
+    successful fallback from one that never ran.
+
+    `after` is an ISO timestamp prefix; lines at or before it are ignored, so a
+    case cannot pass on a verdict from the case before it.
+    """
+    import re
+    path = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
+    marker = "Quick Add acquisition:"
+    last = None
+    with open(path, "r", errors="replace") as fh:
+        for line in fh:
+            if marker not in line:
+                continue
+            if after and line[1:len(after) + 1] <= after:
+                continue
+            last = line.rstrip()
+    if last is None:
+        print("No Quick Add acquisition line found" + (f" after {after}" if after else ""))
+        return None
+    fields = dict(re.findall(r"(\w+)=(\S+)", last.split(marker, 1)[1]))
+    print(f"Acquisition: {fields}")
+    return fields
+
+
 # ── Screenshot + Zoom ────────────────────────────────────────────────
 
 _SCREENSHOT_DIR = "/tmp/wispr_eyes"

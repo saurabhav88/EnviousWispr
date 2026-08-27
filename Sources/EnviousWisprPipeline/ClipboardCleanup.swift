@@ -165,6 +165,8 @@ public enum ClipboardCleanup {
   static func resetPendingForTests() {
     pending?.task.cancel()
     pending = nil
+    activeTakeover = nil
+    supersededTakeovers.removeAll()
   }
 
   /// Cancels pending cleanup and waits for that task to actually finish.
@@ -188,7 +190,66 @@ public enum ClipboardCleanup {
   /// relaunch inside the window would take the process down before the user's
   /// clipboard came back. Declining to *start* an install for 200 ms is a
   /// strictly smaller refusal than the one already shipping.
-  public static var hasPending: Bool { pending != nil }
+  ///
+  /// **Includes an active takeover since #2465.** A Sparkle relaunch during one takes the process
+  /// down while the user's clipboard is held in memory by a caller that has already written to the
+  /// board, which loses it exactly the way the 200 ms window this property was created for does.
+  public static var hasPending: Bool { pending != nil || activeTakeover != nil }
+
+  // MARK: - The takeover, and why it has to be visible to delivery (#2465)
+
+  /// A clipboard transaction that is NOT a dictation delivery, currently in flight.
+  ///
+  /// **This exists because the fallback and a dictation are two owners of one board, and only one
+  /// of them used to be visible.** The takeover cleared `pending` and registered nothing, so a
+  /// delivery beginning during the fallback's wait — which awaits, releasing the main actor — saw
+  /// an idle `ClipboardCleanup` and photographed a board mid-transaction. Two failures follow, and
+  /// the second is the one this codebase is built to prevent: Quick Add reads the DICTATION's
+  /// payload as the target app's Copy response, and then its restore pulls that payload off the
+  /// board before the target app has read the paste we already posted. That is the wrong-text
+  /// failure, reached through a limb.
+  ///
+  /// **Heart and limbs decides who yields.** Dictation is the heart and must never wait for Quick
+  /// Add, so delivery takes the board and the takeover ABANDONS: it inherits nothing, restores
+  /// nothing, and refuses.
+  private struct ActiveTakeover {
+    let id: UUID
+    /// The user's real clipboard, held so a delivery starting mid-takeover inherits IT rather than
+    /// photographing whatever the board holds at that instant.
+    let payload: ClipboardSnapshot
+  }
+
+  private static var activeTakeover: ActiveTakeover?
+  /// Tokens whose takeover was taken over. Read by the holder after each await.
+  private static var supersededTakeovers: Set<UUID> = []
+
+  /// Whether the delivery path claimed the board while this takeover was in flight.
+  ///
+  /// **Check after EVERY await.** Between two awaits the main actor is free and a dictation can run
+  /// to a paste.
+  static func wasSuperseded(_ token: UUID) -> Bool { supersededTakeovers.contains(token) }
+
+  /// Tell an in-flight takeover that a dictation delivery is claiming the board.
+  ///
+  /// **`snapshotForDelivery` is NOT called on every delivery, which is the hole this closes.** It
+  /// runs only when `restoreClipboardAfterPaste` is on; with the setting OFF a delivery writes the
+  /// board and schedules a legacy rewrite without ever asking this type anything. A takeover in
+  /// flight would then never learn it had lost the board, and would restore over a payload the
+  /// target app had not read yet — the same wrong-text failure, reached through a setting.
+  ///
+  /// Called by `snapshotForDelivery` itself, so the restore-on path needs no second call, and
+  /// called directly by the restore-off path.
+  static func deliveryClaimsBoard() {
+    guard let takeover = activeTakeover else { return }
+    supersededTakeovers.insert(takeover.id)
+    activeTakeover = nil
+  }
+
+  /// Release a takeover that finished on its own terms.
+  static func endTakeover(_ token: UUID) {
+    if activeTakeover?.id == token { activeTakeover = nil }
+    supersededTakeovers.remove(token)
+  }
 
   /// The user's clipboard as it stood before OUR payloads began landing on it.
   ///
@@ -196,6 +257,20 @@ public enum ClipboardCleanup {
   /// beginning while cleanup is outstanding cannot photograph our own previous
   /// payload and mistake it for the user's clipboard.
   static func snapshotForDelivery(from board: NSPasteboard = .general) -> ClipboardSnapshot {
+    // **A NON-DELIVERY transaction is in flight, and the heart does not wait for a limb (#2465).**
+    // Quick Add's clipboard fallback holds the board across awaits, so a dictation can reach its
+    // paste in the middle of one. The board right now may hold the target app's Copy response or
+    // nothing meaningful, and photographing it would hand the user that instead of their clipboard.
+    //
+    // So delivery INHERITS the user's clipboard from the takeover, exactly as it inherits from a
+    // pending restore, and the takeover is marked superseded: it will abandon rather than restore
+    // over the payload this delivery is about to write. Checked FIRST because a takeover has
+    // already cancelled any `pending`, so there is nothing below to find.
+    if let payload = activeTakeover?.payload {
+      deliveryClaimsBoard()
+      return payload
+    }
+
     guard let current = pending else { return PasteService.saveClipboard(from: board) }
 
     guard board.changeCount == current.changeCountAfterPaste else {
@@ -245,7 +320,11 @@ public enum ClipboardCleanup {
     /// cleanup has been cancelled, which is the point — an armed restore would otherwise fire on
     /// top of yours — and it is also the obligation: an early return between here and the restore
     /// strands whatever is on the board.
-    case granted(payload: ClipboardSnapshot, baseline: Int)
+    /// `token` identifies THIS takeover. Hand it back to `endTakeover`, and check
+    /// `wasSuperseded(_:)` after every await — a dictation delivery starting while you hold the
+    /// board takes it from you, and continuing after that would put your restore on top of a
+    /// payload the target app has not read yet.
+    case granted(payload: ClipboardSnapshot, baseline: Int, token: UUID)
     /// The clipboard is larger than the caller's budget, so nothing was touched.
     ///
     /// **Pending cleanup is left ARMED on this path**, deliberately. Refusing must not damage the
@@ -321,9 +400,14 @@ public enum ClipboardCleanup {
       current.task.cancel()
     }
 
+    // Registered BEFORE returning, so a delivery starting one line later can already see it. The
+    // window between granting and registering would otherwise be the very race this closes.
+    let token = UUID()
+    activeTakeover = ActiveTakeover(id: token, payload: payload)
+
     // The baseline is the count that was VERIFIED to describe this payload, never a fresh read
     // taken here — a fresh read would reintroduce the gap this method just closed.
-    return .granted(payload: payload, baseline: baseline)
+    return .granted(payload: payload, baseline: baseline, token: token)
   }
 
   /// How many times to try for a payload and a change count that describe the same moment.
