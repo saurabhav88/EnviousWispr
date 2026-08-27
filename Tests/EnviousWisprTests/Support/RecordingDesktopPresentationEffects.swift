@@ -12,10 +12,16 @@ import Foundation
 /// foreground mid-suite.
 ///
 /// It RECORDS rather than absorbing, for the same reason
-/// `RecordingDesktopHotkeyEffects` does: activation ordering is load-bearing —
-/// `QuickAddPanelHost.takeFocus` activates BEFORE keying the panel, because the
-/// selection was read while another app was frontmost — and nothing could assert
-/// that ordering while the calls went straight to AppKit.
+/// `RecordingDesktopHotkeyEffects` does: nothing could assert what was called
+/// while the calls went straight to AppKit.
+///
+/// **The Quick Add example this used to cite is gone (#2479).** It read:
+/// "activation ordering is load-bearing — `QuickAddPanelHost.takeFocus`
+/// activates BEFORE keying the panel". That host no longer activates at all; its
+/// panel is `.nonactivatingPanel` and takes the keyboard without bringing our
+/// application forward, which is what stopped it dragging the Settings window in
+/// front of whatever the user was working in. Other consumers still make these
+/// calls, so this double stays.
 @MainActor
 final class RecordingDesktopPresentationEffects: ApplicationActivating, PanelPresenting {
 

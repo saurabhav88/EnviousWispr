@@ -7,12 +7,22 @@ import SwiftUI
 /// coordinator after the fact; this starts where that ended up. The coordinator below it decides
 /// WHAT to show and never touches a window.
 ///
-/// **This panel is key-capable, and that is the one way it must differ from the dictation overlay.**
-/// `OverlayWindowHost` builds `[.borderless, .nonactivatingPanel]`, and a non-activating panel can
-/// never become key — so it could never receive the Return keypress this whole feature is built
-/// around. The shape here follows `RelocationCardPanel` instead, which is the app's existing
-/// key-capable card: `.titled` + `.fullSizeContentView` with the title bar hidden, which also buys
-/// native rounding and shadow rather than hand-drawn ones.
+/// **This panel is key-capable AND non-activating, and the second half is what keeps our other
+/// windows out of the user's way (#2479).** It follows `RelocationCardPanel`'s shape — `.titled` +
+/// `.fullSizeContentView` with the title bar hidden, which buys native rounding and shadow rather
+/// than hand-drawn ones — plus `.nonactivatingPanel`.
+///
+/// **Corrected 2026-08-27: the text here used to say a non-activating panel "can never become key".**
+/// That attributed to `.nonactivatingPanel` what `.borderless` actually does. The dictation overlay
+/// carries BOTH flags, and it is borderless that defaults `canBecomeKey` to false; `KeyCapablePanel`
+/// overrides it. The two are independent, so this panel takes the keyboard without our application
+/// becoming frontmost.
+///
+/// **Verified by a human keypress, because nothing else can verify it on this OS.** A synthetic
+/// Escape never reaches this app (`code-tooling.md` FACT: synthetic-escape-does-not-reach-a-carbon-hotkey),
+/// so an automated run reports "the key did not arrive" for a working panel and a broken one alike.
+/// Three automated verdicts were produced against that unusable oracle before the founder confirmed
+/// on 2026-08-27 that the panel opens without the app taking over and that Escape dismisses it.
 ///
 /// Nonmodal on purpose. A modal panel would trap the user in a limb: Quick Add is something you
 /// abandon by pressing Escape or clicking away, and a run loop that refuses to let you is worse than
@@ -20,14 +30,15 @@ import SwiftUI
 @MainActor
 final class QuickAddPanelHost: NSObject, NSWindowDelegate {
 
-  /// #2455 C3: both required and non-defaulted. `takeFocus` is the single
-  /// chokepoint for activating and keying the Quick Add panel, so these two are
-  /// exactly the calls a unit test must not be able to make.
-  private let application: any ApplicationActivating
+  /// #2455 C3: required and non-defaulted. `takeFocus` is the single chokepoint for keying the
+  /// Quick Add panel, so this is exactly the call a unit test must not be able to make.
+  ///
+  /// **`ApplicationActivating` was here too and is gone (#2479).** Nothing in this class activates
+  /// any more, and an injected seam nothing uses is worse than no seam: it is a live route back to
+  /// the behaviour just removed, sitting in the initializer where the next edit will find it.
   private let presenter: any PanelPresenting
 
-  init(application: any ApplicationActivating, presenter: any PanelPresenting) {
-    self.application = application
+  init(presenter: any PanelPresenting) {
     self.presenter = presenter
     super.init()
   }
@@ -112,8 +123,8 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
     panel.setContentSize(size)
     panel.center()
 
-    // Activate BEFORE making key, and only now — the selection was read while the other app was
-    // still frontmost, which is the whole reason this happens here rather than at capture time.
+    // Keyed only now, not at capture time — the selection was read while the other app was still
+    // frontmost, and that ordering still matters even though nothing activates any more (#2479).
     takeFocus(panel)
     return true
   }
@@ -125,10 +136,23 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
   /// word the user is already reaching for the place they want to type, so putting the caret
   /// somewhere on their behalf competes with the click they were going to make.
   ///
-  /// **One owner for both takers.** `present` and `raise` both activate and both call
-  /// `makeKeyAndOrderFront`, so a third taker cannot be added without coming through here.
+  /// **One owner for both takers.** `present` and `raise` both call `makeKeyAndOrderFront`, so a
+  /// third taker cannot be added without coming through here.
+  ///
+  /// **No application activation (#2479), and that IS the fix.** `NSApp.activate` activates the
+  /// APPLICATION, which raises every window it owns — so opening Quick Add while the Settings window
+  /// was open dragged Settings in front of whatever the user was working in. Measured through the
+  /// window server: our main window climbed from index 2 to index 0.
+  ///
+  /// **Two lighter repairs were tried and both measurably failed**, which is why the panel's style
+  /// mask is carrying this rather than the call site. `NSApp.activate()` — the parameterless overload
+  /// — still raised the main window to index 0. So did activating and then calling `orderBack(nil)`
+  /// on every other visible window we own. Activation and window-raising are not separable from here.
+  ///
+  /// It also settles the focus-return question by removing it: seven review rounds went into giving
+  /// focus back after a Quick Add and the founder retired the requirement (2026-08-25). With no
+  /// activation there is nothing to give back, because the user's app never stopped being frontmost.
   private func takeFocus(_ panel: NSPanel) {
-    application.activate(.ignoringOtherApps)
     presenter.makeKeyAndOrderFront(panel)
   }
 
@@ -221,7 +245,7 @@ final class QuickAddPanelHost: NSObject, NSWindowDelegate {
     #endif
     let p = KeyCapablePanel(
       contentRect: NSRect(x: 0, y: 0, width: 360, height: 240),
-      styleMask: [.titled, .fullSizeContentView],
+      styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel],
       backing: .buffered,
       defer: false)
     p.titleVisibility = .hidden
