@@ -50,6 +50,80 @@ struct QuickAddPanelCopyTests {
     #expect(low.contains("kubernets"), "name what was read, especially when nothing matched it")
   }
 
+  /// **A paragraph selection made the header as tall as the selection.** `SelectionReader.classify`
+  /// trims only SURROUNDING whitespace and permits up to `maximumSelectionScalars`, so a two-line
+  /// selection carried its newline straight into a `Text` with no bound. The menu row solved this
+  /// first and the header never did — two renderers of one value with two answers (#2476).
+  @Test("The header collapses internal whitespace instead of growing lines")
+  func headerCollapsesInternalWhitespace() {
+    for state in QuickAddPanelCopy.GroupHeaderState.allCases {
+      let header = QuickAddPanelCopy.groupHeader(state, heard: "clawwed\nmachine")
+      #expect(!header.contains("\n"), "\(state) rendered a newline into fixed chrome")
+      #expect(header.contains("clawwed machine"), "\(state) lost the word to the collapse")
+    }
+    #expect(
+      QuickAddPanelCopy.groupHeader(.lowConfidence, heard: "one\ttwo   three")
+        .contains("one two three"))
+  }
+
+  /// The bound applies to EVERY state, not the one a review happened to name. Three of the four
+  /// interpolate the word; bounding one and leaving the others is the pair-shaped fix that reads
+  /// as complete and is not.
+  @Test("The header truncates a selection no chrome could hold, in every state")
+  func headerTruncatesInEveryState() {
+    let paragraph = String(repeating: "beads ", count: 120)
+    for state in QuickAddPanelCopy.GroupHeaderState.allCases {
+      let header = QuickAddPanelCopy.groupHeader(state, heard: paragraph)
+      #expect(
+        header.count < 120,
+        "\(state) rendered an unbounded selection: \(header.count) characters")
+      #expect(header.contains("\u{2026}"), "\(state) truncated without saying so")
+    }
+  }
+
+  /// **The structural half, because no behavioural test can see a state that forgot to ask.** A
+  /// fifth state added below the `let word` line inherits the bound; one that interpolates `heard`
+  /// directly does not, and would pass every assertion above that does not happen to name it.
+  /// Same defence as the ladder's twice-only policy check, for the same reason.
+  @Test("No header state can interpolate the unbounded selection")
+  func headerStatesCannotReachTheRawSelection() throws {
+    let source = try String(
+      contentsOf: Self.repoRoot.appendingPathComponent(
+        "Sources/EnviousWisprAppKit/Views/QuickAdd/QuickAddPanelView.swift"), encoding: .utf8)
+    let body = try #require(Self.groupHeaderBody(in: source), "could not locate groupHeader")
+    #expect(
+      body.contains("HeardWordDisplay.bounded(heard)"),
+      "the bound is what every state below it inherits")
+    // **Two-way control, because the negative alone passes vacuously if the escaping is wrong.**
+    // A source-string check that never matches anything is indistinguishable from one that matches
+    // nothing bad. This proves the same escaping mechanism DOES resolve against this body.
+    #expect(
+      body.contains("\\(word)"),
+      "the interpolation check cannot see the source, so its negative proves nothing")
+    #expect(
+      !body.contains("\\(heard)"),
+      "a state interpolated the unbounded selection directly")
+  }
+
+  /// The function body of `groupHeader`, from its signature to its closing brace.
+  private static func groupHeaderBody(in source: String) -> String? {
+    guard
+      let start = source.range(
+        of: "static func groupHeader(_ state: GroupHeaderState, heard: String) -> String {"),
+      let end = source.range(of: "\n  }\n", range: start.upperBound..<source.endIndex)
+    else { return nil }
+    return String(source[start.lowerBound..<end.upperBound])
+  }
+
+  private static var repoRoot: URL {
+    URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()  // QuickAdd
+      .deletingLastPathComponent()  // Views
+      .deletingLastPathComponent()  // EnviousWisprTests
+      .deletingLastPathComponent()  // Tests
+      .deletingLastPathComponent()  // repo root
+  }
+
   @Test("EVERY header state names the word that was read")
   func everyHeaderStateNamesTheHeardWord() {
     // Enumerated from the type rather than listed by hand, so a fifth state cannot be added with

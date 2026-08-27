@@ -129,11 +129,17 @@ enum QuickAddPanelCopy {
   /// no other on-screen confirmation that the right text was picked up at all.
   /// The verb still stays off this state: naming what was read is not offering to add it.
   static func groupHeader(_ state: GroupHeaderState, heard: String) -> String {
-    switch state {
-    case .confident: "Add \"\(heard)\" to"
-    case .lowConfidence: "No close match for \"\(heard)\" · pick one or keep typing"
-    case .alreadySaved: "Already knows \"\(heard)\" · nothing to add"
-    case .searching: "Add \"\(heard)\" to"
+    // **Bounded ONCE, above the switch, so no state can render the raw value.** Three of the
+    // four interpolate the word, and bounding only the one a review names would leave the other
+    // two — the pair-shaped fix that reads as complete and is not. `SelectionReader.classify`
+    // strips only SURROUNDING whitespace and permits a paragraph, so an unbounded header is as
+    // tall as the selection is long. Shared with the menu row, which solved this first (#2476).
+    let word = HeardWordDisplay.bounded(heard)
+    return switch state {
+    case .confident: "Add \"\(word)\" to"
+    case .lowConfidence: "No close match for \"\(word)\" · pick one or keep typing"
+    case .alreadySaved: "Already knows \"\(word)\" · nothing to add"
+    case .searching: "Add \"\(word)\" to"
     }
   }
 
