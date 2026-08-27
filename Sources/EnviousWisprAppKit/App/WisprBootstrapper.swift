@@ -109,7 +109,8 @@ package final class WisprBootstrapper {
   /// EnviousWisprAppCeilingsTests).
   let recordingOverlay: OverlayDirector
 
-  /// - Parameter makeHotkeyService: supplies the one shared `HotkeyService`.
+  /// - Parameter makeHotkeyEffects: supplies the live desktop-effect adapter the
+  ///   one shared `HotkeyService` will use.
   ///
   /// **Required and non-defaulted, which is the point (#2455 C1).** A default here
   /// would let this module assemble a production root on its own and would make
@@ -117,12 +118,11 @@ package final class WisprBootstrapper {
   /// rejected in advance. With no default, every caller must state its choice, and
   /// AppLive is the only production-choice site.
   ///
-  /// This is not yet unlinkability: `EnviousWisprTests` still links
-  /// `EnviousWisprServices` in C1 and can construct a live `HotkeyService` itself.
-  /// C2 (#2459) replaces what AppLive passes here with a live adapter from
-  /// `EnviousWisprDesktopEffects` and removes the live implementation from the
-  /// test link graph. The seam does not move.
-  package init(makeHotkeyService: () -> HotkeyService) {
+  /// C2 (#2459) made what AppLive passes here a live adapter from
+  /// `EnviousWisprDesktopEffects`, which `EnviousWisprTests` may not import —
+  /// enforced by `scripts/check-dependency-direction.sh`, not by the module graph,
+  /// which does not enforce itself under Xcode. The seam does not move.
+  package init(makeHotkeyEffects: () -> any DesktopHotkeyEffects) {
     // ===== Subsystem construction (epic #763) =====
     // `EnviousWisprApp` is the composition root: every subsystem is constructed
     // here. Construction order is load-bearing: `pasteCompletionRegistry` before
@@ -473,9 +473,12 @@ package final class WisprBootstrapper {
     // `DictationLifecycleCoordinator`, and `AppDelegate` termination.
     // #1175: the live telemetry sink is constructor-injected so it is in place
     // before `start()` runs any registration (heart-path + bootstrap ordering).
-    // #2455 C1: constructed by the caller, at exactly this position, so
-    // construction ORDER is unchanged. Only WHO chooses the implementation moved.
-    let hotkeyService = makeHotkeyService()
+    // #2455 C1/C2: the SERVICE is still constructed here, at exactly this
+    // position, so construction ORDER is unchanged. What the caller supplies is
+    // the desktop-effect adapter it will use — the only part that touches the OS.
+    // #1175: the live telemetry sink is constructor-injected so it is in place
+    // before `start()` runs any registration (heart path + bootstrap ordering).
+    let hotkeyService = HotkeyService(effects: makeHotkeyEffects(), telemetry: .live)
 
     // 2c: the Remove drain's engine-unload seam — assignable only now that the
     // driver (and its adapter) exist; the wiring that built the coordinator ran

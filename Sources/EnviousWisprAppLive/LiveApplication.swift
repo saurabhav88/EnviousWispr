@@ -1,30 +1,26 @@
 import EnviousWisprAppKit
-import EnviousWisprServices
+import EnviousWisprDesktopEffects
 import SwiftUI
 
 /// The production composition root (#2455 C1, issue #2458).
 ///
-/// **What this module owns, and why it is not a forwarder.** `WisprBootstrapper`
-/// now takes a REQUIRED, non-defaulted `makeHotkeyService`, so
-/// `EnviousWisprAppKit` no longer exposes an IMPLICIT production assembly path.
-/// AppKit can still be made to assemble one — it imports Services, so a caller
-/// there could pass a live factory explicitly — but nothing does, and the
-/// production source chooses the live implementation here and nowhere else. That
+/// **What this module owns.** `WisprBootstrapper` takes a REQUIRED, non-defaulted
+/// `makeHotkeyEffects`, so `EnviousWisprAppKit` exposes no implicit production
+/// assembly path, and this is the only place a live implementation is named. That
 /// is the ownership grounded review r2 demanded when it rejected "a passive
 /// forwarding module would preserve the wording while changing nothing".
 ///
-/// **Why the choice has to live above AppKit, and what that is not yet.**
-/// `EnviousWisprTests` links `EnviousWisprAppKit` and `EnviousWisprServices`. After
-/// C1 it cannot get a production root by accident — `WisprBootstrapper.init` has no
-/// default — but it CAN still construct `HotkeyService(telemetry: .live)` directly,
-/// because Services is still in its link graph. C2 (#2459) moves the live
-/// implementation into `EnviousWisprDesktopEffects`, which the test target does not
-/// link, and that is the wall. C0's environment tripwire (#2457) is the tripwire in
-/// front of it.
+/// **Why the choice has to live here.** `EnviousWisprTests` declares
+/// `EnviousWisprAppKit` and `EnviousWisprServices`, and NOT
+/// `EnviousWisprDesktopEffects`. After C2 the Carbon and `NSEvent` calls live only
+/// in that module.
 ///
-/// C2 (#2459) replaces the concrete `HotkeyService` construction below with a live
-/// adapter from `EnviousWisprDesktopEffects` and drops this module's direct
-/// `EnviousWisprServices` edge. The seam itself does not move.
+/// What stops a unit test reaching them is `scripts/check-dependency-direction.sh`,
+/// which scans the test targets and rejects that module by name — NOT the module
+/// graph. Under Xcode the graph does not enforce itself: an undeclared import of
+/// that module from the test target compiles and links (measured 2026-08-26).
+/// C0's environment tripwire (#2457) stood in front of that gap; C5 (#2462) can
+/// retire it for hotkeys now that the gate covers them.
 @MainActor
 package final class LiveApplication {
   /// App-lifetime owner of the bootstrapper. The shell strongly retains this
@@ -38,12 +34,7 @@ package final class LiveApplication {
     // always has: home construction must keep its pre-#919 ordering, and the
     // delegate must be attached before `applicationWillFinishLaunching` fires.
     bootstrapper = WisprBootstrapper(
-      makeHotkeyService: {
-        // #1175: the live telemetry sink is constructor-injected so it is in
-        // place before `start()` runs any registration (heart path + bootstrap
-        // ordering). Moving the construction here did not move that guarantee.
-        HotkeyService(telemetry: .live)
-      })
+      makeHotkeyEffects: { LiveDesktopHotkeyEffects() })
   }
 
   // MARK: - Scene surface

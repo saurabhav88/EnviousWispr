@@ -87,12 +87,12 @@ struct HotkeyQuickAddShortcutTests {
     let cancelWaiter = Waiter()
     let toggleWaiter = Waiter()
     let service = HotkeyService(
+      effects: RecordingDesktopHotkeyEffects(),
       telemetry: HotkeyTelemetrySink(
         registrationFailed: { _, _, _, _ in },
         pressed: { trigger, _, keyShape, _, action in
           sink.presses.append((trigger, keyShape, action))
-        }),
-      onDeniedDesktopEffect: DesktopEffectDenial.recordOnly)
+        }))
     service.recordingMode = .toggle
     service.toggleKeyCode = recordKey
     service.toggleModifiers = recordModifiers

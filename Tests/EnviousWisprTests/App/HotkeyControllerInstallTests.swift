@@ -41,7 +41,7 @@ import Testing
     let settings = SettingsManager()
     let overlay = OverlayTestDouble.headlessDirector()
     let permissions = PermissionsService()
-    let hotkey = HotkeyService(onDeniedDesktopEffect: DesktopEffectDenial.recordOnly)
+    let hotkey = HotkeyService(effects: RecordingDesktopHotkeyEffects())
     let settingsSync = PipelineSettingsSync(
       kernelDriver: pipeline,
       whisperKitKernelDriver: whisperKitKernelDriver,

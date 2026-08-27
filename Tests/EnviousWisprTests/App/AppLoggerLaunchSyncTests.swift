@@ -66,7 +66,7 @@ struct AppLoggerLaunchSyncTests {
       audioCapture: audioCapture, asrManager: asrManager, store: transcriptStore)
     let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audioCapture, store: transcriptStore)
-    let hotkeyService = HotkeyService()
+    let hotkeyService = HotkeyService(effects: RecordingDesktopHotkeyEffects())
 
     let sync = PipelineSettingsSync(
       kernelDriver: pipeline,

@@ -6,12 +6,13 @@
 # Edit `permitted_imports_for` below when Package.swift changes (and update the
 # Bible if the new edge represents an architectural decision):
 #   EnviousWispr           -> AppLive (thin launchable shell; #919/#2455 C1). Imports ONLY AppLive.
-#   EnviousWisprAppLive    -> AppKit, Services (production composition root; #2455 C1). The unit-test
-#                             target does not link this, and WisprBootstrapper.init has no default, so
-#                             there is no implicit production assembly path. NOT yet unlinkability:
-#                             tests still link Services and can build a live HotkeyService themselves.
-#                             The Services edge is TEMPORARY — C2 (#2459) replaces it with
-#                             EnviousWisprDesktopEffects, which is the chunk that earns the word.
+#   EnviousWisprAppLive    -> AppKit, DesktopEffects (production composition root; #2455 C1/C2).
+#   EnviousWisprDesktopEffects -> AppKit, Services (#2455 C2). The ONLY module holding Carbon and
+#                             NSEvent calls. Neither test target declares it — but that alone does
+#                             NOT stop a test importing it (see the Tests/ loop below for why), so
+#                             this script is the enforcement. Adding either test target to that
+#                             loop's allowlist would silently reopen the hole this epic exists to
+#                             close.
 #   EnviousWisprAppKit     -> Core, Storage, PostProcessing, Audio, Services, ASR, LLM, Pipeline, Contacts (app-shell library; #919, top of stack)
 #   EnviousWisprASRService -> Core, ASR, Audio, ObservabilityCore (XPC executable; the audio capture XPC service was removed at #1543)
 #   EnviousWisprPipeline   -> Core, ASR, Audio, LLM, PostProcessing, Services, Storage
@@ -66,7 +67,8 @@ permitted_imports_for() {
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
     EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprObservabilityCore" ;;
     EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter" ;;
-    EnviousWisprAppLive)           echo "EnviousWisprAppKit EnviousWisprServices" ;;
+    EnviousWisprDesktopEffects)    echo "EnviousWisprAppKit EnviousWisprServices" ;;
+    EnviousWisprAppLive)           echo "EnviousWisprAppKit EnviousWisprDesktopEffects" ;;
     EnviousWispr)                  echo "EnviousWisprAppLive" ;;
     *)                             return 1 ;;
   esac
@@ -124,6 +126,99 @@ for module_dir in Sources/*/; do
     esac
   done < <(grep -rEn "$import_grep_pattern" "$module_dir" || true)
 done
+
+# #2455 C2: the TEST targets, scanned for the same reason but by name rather than
+# by directory.
+#
+# **This exists because the module graph does NOT enforce itself under Xcode.**
+# Measured 2026-08-26 on this repo: a file in `Tests/EnviousWisprTests/` that
+# `import EnviousWisprDesktopEffects` and constructed `LiveDesktopHotkeyEffects()`
+# COMPILED AND LINKED, with no dependency edge declared anywhere. Xcode puts every
+# built product in one search path, so a declared edge orders the link — it does
+# not gate module visibility. SwiftPM would reject it, but CI runs Tuist and
+# xcodebuild only (`pr-check.yml`, `main-post-merge.yml`); no `swift build` ever
+# runs. So "the missing dependency IS the wall" was false, and this loop is the
+# wall instead.
+#
+# Keep the lists exhaustive: a test target absent from here is unchecked, which
+# looks exactly like a test target that passes.
+# The hotkey OS calls, wherever they appear.
+#
+# No trailing `(` on the Carbon names ON PURPOSE: `let register = RegisterEventHotKey`
+# takes a function reference and calls it later, which a call-shaped pattern would
+# miss entirely. Matching the bare name deliberately permits conservative false
+# positives from multiline block comments and string literals — the stripper below
+# removes a `//` or `/*` and its tail on ONE line, not the continuation lines of a
+# block comment. A false positive is a sentence to rewrite; a false negative is a
+# suite back on the developer's real desktop.
+live_effect_pattern='RegisterEventHotKey|InstallEventHandler|NSEvent[.]add(Global|Local)MonitorForEvents'
+
+test_targets_and_permitted() {
+  case "$1" in
+    # Everything the unit suite legitimately links. EnviousWisprDesktopEffects and
+    # EnviousWisprAppLive are ABSENT on purpose — that absence is the point.
+    EnviousWisprTests) echo "EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprContacts EnviousWisprServices EnviousWisprASR" ;;
+    EnviousWisprASRTests) echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprFluidAudioBridge EnviousWisprServices" ;;
+    *) return 1 ;;
+  esac
+}
+
+for test_dir in Tests/*/; do
+  target=$(basename "$test_dir")
+  # Non-target directories under Tests/ (RuntimeUAT scripts, fixtures) are not
+  # Swift targets and carry no import contract.
+  if ! permitted=$(test_targets_and_permitted "$target"); then
+    # A directory with no Swift in it (RuntimeUAT scripts, fixtures) carries no
+    # import contract. A directory WITH Swift that nobody listed is an unchecked
+    # test target, which looks exactly like a passing one — so it fails loudly.
+    first_swift=$(find "$test_dir" -type f -name '*.swift' -print -quit)
+    if [ -n "$first_swift" ]; then
+      echo "DEP-DIRECTION: unknown Swift test target '$target' — add it to test_targets_and_permitted() or remove it" >&2
+      violations=$((violations + 1))
+    fi
+    continue
+  fi
+  modules_scanned=$((modules_scanned + 1))
+  while IFS= read -r line; do
+    file=$(echo "$line" | cut -d: -f1)
+    code=$(echo "$line" | cut -d: -f3- | sed -E 's|//.*$||; s|/\*.*$||')
+    imp=$(echo "$code" | sed -E "s/^.*import[[:space:]]+(${import_kinds}[[:space:]]+)?(EnviousWispr[A-Za-z_]*).*/\\3/")
+    case "$imp" in
+      EnviousWispr*)
+        if ! echo " $permitted " | grep -q " $imp "; then
+          echo "DEP-DIRECTION: $file: test target '$target' imports '$imp' (not in allowed: $permitted)"
+          violations=$((violations + 1))
+        fi
+        ;;
+    esac
+  done < <(grep -rEn "$import_grep_pattern" "$test_dir" || true)
+done
+
+# OWNERSHIP: the hotkey OS calls may appear in EnviousWisprDesktopEffects and
+# nowhere else, in Sources OR Tests.
+#
+# Import discipline is necessary and NOT sufficient. `RegisterEventHotKey` comes
+# from Carbon and `NSEvent` from AppKit — Apple frameworks any file may import, and
+# 36 test files already do. So a test can reach the real desktop by writing the
+# call itself, never naming EnviousWisprDesktopEffects. Scanning Sources too catches
+# the other direction: a convenience wrapper added to Services would put the call
+# back inside the module the test target links, reopening the hole through a door
+# marked "helper". Found by Codex chunk review 2026-08-26.
+#
+# `--include='*.swift'` because `Tests/RuntimeUAT/*.py` DRIVES the real desktop on
+# purpose — that is what Live UAT is. Those scripts are the sanctioned way to reach
+# the OS; this rule governs compiled code, which is not.
+while IFS= read -r line; do
+  file=$(echo "$line" | cut -d: -f1)
+  case "$file" in
+    Sources/EnviousWisprDesktopEffects/*) continue ;;
+  esac
+  code=$(echo "$line" | cut -d: -f3- | sed -E 's|//.*$||; s|/\*.*$||')
+  if echo "$code" | grep -Eq "$live_effect_pattern"; then
+    echo "DEP-DIRECTION: $file: hotkey OS call outside Sources/EnviousWisprDesktopEffects/"
+    violations=$((violations + 1))
+  fi
+done < <(grep -rEn --include='*.swift' "$live_effect_pattern" Sources Tests || true)
 
 if [ "$violations" -gt 0 ]; then
   echo "FAIL: $violations dep-direction violation(s)" >&2
