@@ -5,7 +5,13 @@
 # Authoritative dep graph (verified against Package.swift on 2026-04-30).
 # Edit `permitted_imports_for` below when Package.swift changes (and update the
 # Bible if the new edge represents an architectural decision):
-#   EnviousWispr           -> AppKit (thin launchable shell; #919). Imports ONLY the kit.
+#   EnviousWispr           -> AppLive (thin launchable shell; #919/#2455 C1). Imports ONLY AppLive.
+#   EnviousWisprAppLive    -> AppKit, Services (production composition root; #2455 C1). The unit-test
+#                             target does not link this, and WisprBootstrapper.init has no default, so
+#                             there is no implicit production assembly path. NOT yet unlinkability:
+#                             tests still link Services and can build a live HotkeyService themselves.
+#                             The Services edge is TEMPORARY — C2 (#2459) replaces it with
+#                             EnviousWisprDesktopEffects, which is the chunk that earns the word.
 #   EnviousWisprAppKit     -> Core, Storage, PostProcessing, Audio, Services, ASR, LLM, Pipeline, Contacts (app-shell library; #919, top of stack)
 #   EnviousWisprASRService -> Core, ASR, Audio, ObservabilityCore (XPC executable; the audio capture XPC service was removed at #1543)
 #   EnviousWisprPipeline   -> Core, ASR, Audio, LLM, PostProcessing, Services, Storage
@@ -60,7 +66,8 @@ permitted_imports_for() {
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
     EnviousWisprASRService)        echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprObservabilityCore" ;;
     EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter" ;;
-    EnviousWispr)                  echo "EnviousWisprAppKit" ;;
+    EnviousWisprAppLive)           echo "EnviousWisprAppKit EnviousWisprServices" ;;
+    EnviousWispr)                  echo "EnviousWisprAppLive" ;;
     *)                             return 1 ;;
   esac
 }

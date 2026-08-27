@@ -262,13 +262,31 @@ let package = Package(
       path: "Sources/EnviousWisprASRService",
       exclude: ["Resources"]
     ),
+    // #2455 C1 (#2458): the production composition root. Chooses the live
+    // desktop-effect implementations and hands them to `WisprBootstrapper`,
+    // whose init requires them.
+    //
+    // NOT yet the wall. EnviousWisprTests still links EnviousWisprServices in C1
+    // and can construct `HotkeyService(telemetry: .live)` itself. What C1 buys is
+    // that no IMPLICIT production assembly path exists, and that AppLive is the
+    // only production-choice site. C2 (#2459) removes the live implementation
+    // from the test link graph and replaces the Services edge below with
+    // EnviousWisprDesktopEffects; unlinkable becomes true then, not now.
+    .target(
+      name: "EnviousWisprAppLive",
+      dependencies: [
+        "EnviousWisprAppKit",
+        "EnviousWisprServices",
+      ],
+      path: "Sources/EnviousWisprAppLive"
+    ),
     // #919: thin launchable shell. Owns @main + the AppDelegate adaptor +
-    // app identity/Resources; delegates ALL construction + lifecycle to
-    // `WisprBootstrapper` in EnviousWisprAppKit. Depends ONLY on the kit.
+    // app identity/Resources; delegates ALL construction + lifecycle downward.
+    // #2455 C1: depends ONLY on EnviousWisprAppLive.
     .executableTarget(
       name: "EnviousWispr",
       dependencies: [
-        "EnviousWisprAppKit"
+        "EnviousWisprAppLive"
       ],
       path: "Sources/EnviousWispr",
       exclude: ["Resources"]

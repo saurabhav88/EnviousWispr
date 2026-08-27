@@ -264,7 +264,10 @@ private func envWisprAppURL() -> URL {
 
 private func structBodyOfEnviousWisprApp() throws -> String {
   let source = try String(contentsOf: envWisprAppURL(), encoding: .utf8)
-  guard let openRange = source.range(of: "public final class WisprBootstrapper {") else {
+  // #2455 C1: narrowed `public` -> `package`. The shell no longer names this
+  // type at all — it reaches it through `LiveApplication` in EnviousWisprAppLive —
+  // so nothing outside the package needs to see it.
+  guard let openRange = source.range(of: "package final class WisprBootstrapper {") else {
     Issue.record("WisprBootstrapper declaration not found at expected path/shape")
     throw POSIXError(.ENOENT)
   }

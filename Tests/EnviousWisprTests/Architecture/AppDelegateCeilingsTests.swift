@@ -19,8 +19,11 @@ import Testing
   private static let sourcePath =
     "Sources/EnviousWispr/AppDelegate.swift"
 
+  /// #2455 C1 (#2458): `bootstrapper` -> `application`. The shell delegate now
+  /// forwards into `LiveApplication`, which owns the bootstrapper, because the
+  /// live desktop-effect choice belongs above `EnviousWisprAppKit`.
   private static let storedPropertyAllowlist: Set<String> = [
-    "bootstrapper"
+    "application"
   ]
 
   @Test func storedPropertyNamesMatchAllowlist() throws {
@@ -59,7 +62,14 @@ import Testing
     let actual = RouterCeilingParser.imports(in: source)
     // #919: Services dropped, EnviousWisprAppKit added — the shell delegate
     // forwards into the bootstrapper instead of holding engine-module homes.
-    let allowed: Set<String> = ["AppKit", "EnviousWisprAppKit", "Foundation"]
+    //
+    // #2455 C1 (#2458): AppKit REPLACED by EnviousWisprAppLive, not joined by it.
+    // The shell must reach the kit only THROUGH the module that chooses live
+    // desktop-effect implementations; letting it import both would restore the
+    // ability to assemble a production root without AppLive, which is the whole
+    // thing this boundary buys. `EnviousWisprAppKit` reappearing here is a
+    // regression, not a widening.
+    let allowed: Set<String> = ["AppKit", "EnviousWisprAppLive", "Foundation"]
     let extras = actual.subtracting(allowed)
     #expect(
       extras.isEmpty,
@@ -115,7 +125,7 @@ import Testing
       // `// assertAttached()` must not satisfy this check.
       let guardRange = RouterCeilingParser.rangeOfStatement("assertAttached()", in: body)
       let forwardRange = RouterCeilingParser.rangeOfStatement(
-        "bootstrapper?.\(functionName)()", in: body)
+        "application?.\(functionName)()", in: body)
       #expect(guardRange != nil, "\(functionName) must call assertAttached()")
       #expect(forwardRange != nil, "\(functionName) must forward into the bootstrapper")
       if let guardRange, let forwardRange {
