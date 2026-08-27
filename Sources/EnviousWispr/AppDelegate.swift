@@ -1,5 +1,5 @@
 import AppKit
-import EnviousWisprAppKit
+import EnviousWisprAppLive
 import Foundation
 
 /// AppDelegate manages the menu bar status item lifecycle via AppKit.
@@ -9,62 +9,45 @@ import Foundation
 ///
 /// #919: `AppDelegate` stays in the thin shell (the `@NSApplicationDelegateAdaptor`
 /// must live in the `@main` `App` struct's module). It is a pure AppKit adapter:
-/// it owns no app state and holds a single `weak` ref to the `WisprBootstrapper`
+/// it owns no app state and holds a single `weak` ref to the `LiveApplication`
 /// (constructed and attached synchronously in `EnviousWisprApp.init()`, before
-/// any delegate callback fires). The forced delegate callbacks forward to the
-/// bootstrapper, which drives Sparkle + the lifecycle coordinator internally —
-/// so the shell imports ONLY `EnviousWisprAppKit`, never the engine modules.
+/// any delegate callback fires). The forced delegate callbacks forward to it, and
+/// it drives Sparkle + the lifecycle coordinator internally — so the shell imports
+/// ONLY `EnviousWisprAppLive` (#2455 C1), never AppKit and never the engine
+/// modules.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-  private weak var bootstrapper: WisprBootstrapper?
+  private weak var application: LiveApplication?
 
   /// Receive the composition root from `EnviousWisprApp.init()` before any
   /// delegate callback fires.
-  func attach(bootstrapper: WisprBootstrapper) {
-    self.bootstrapper = bootstrapper
+  func attach(application: LiveApplication) {
+    self.application = application
   }
 
   /// Issue #739: Sparkle's cross-launch correlation must run at this earliest
   /// callback, before SwiftUI mounts the App's scenes.
   func applicationWillFinishLaunching(_ notification: Notification) {
     assertAttached()
-    bootstrapper?.applicationWillFinishLaunching()
-    // #2377 Phase 6: arm the DEBUG marker sink here — in the callback BEFORE the
-    // measured one, and AFTER this callback's own production work.
-    //
-    // Before `applicationDidFinishLaunching` because that interval is what is
-    // measured, and the sink's one-time setup must not land inside it once
-    // Phase 6 moves root construction earlier. After the forwarding above
-    // because #739 requires Sparkle's cross-launch correlation to run at the
-    // earliest callback, and putting measurement in front of it would make a
-    // DEBUG instrument the first thing a launch does.
-    #if DEBUG
-      OverlayFirstRenderMarkers.prepare()
-    #endif
+    // #2455 C1: the DEBUG marker arming moved into `LiveApplication`, keeping its
+    // position relative to the production call unchanged, so this shell imports
+    // only `EnviousWisprAppLive`.
+    application?.applicationWillFinishLaunching()
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     assertAttached()
-    // #2377 Phase 6: DEBUG-only measurement of this forwarding call, which is
-    // where launch work happens. `capture` reads the clock and nothing else; the
-    // environment read, the string and the write all run in `emit`, after the
-    // interval has closed.
-    #if DEBUG
-      let launchEnter = OverlayFirstRenderMarkers.capture(.launchEnter)
-    #endif
-    bootstrapper?.applicationDidFinishLaunching()
-    #if DEBUG
-      OverlayFirstRenderMarkers.emit(
-        launchEnter, OverlayFirstRenderMarkers.capture(.launchExit))
-    #endif
+    // #2455 C1: the DEBUG launch measurement moved into `LiveApplication`,
+    // wrapping the same production call in the same order.
+    application?.applicationDidFinishLaunching()
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {
-    bootstrapper?.applicationDidBecomeActive()
+    application?.applicationDidBecomeActive()
   }
 
   func applicationWillTerminate(_ notification: Notification) {
-    bootstrapper?.applicationWillTerminate()
+    application?.applicationWillTerminate()
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -82,9 +65,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// any wiring regression at development time.
   private func assertAttached() {
     #if DEBUG
-      if bootstrapper == nil {
+      if application == nil {
         assertionFailure(
-          "AppDelegate.bootstrapper was nil during a lifecycle callback — "
+          "AppDelegate.application was nil during a lifecycle callback — "
             + "EnviousWisprApp.init() wiring failure.")
       }
     #endif

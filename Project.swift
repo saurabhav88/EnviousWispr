@@ -463,6 +463,38 @@ let project = Project(
       // Open Source Licenses screen, read via Bundle.module at runtime.
       hasResources: true),
 
+    // #2455 C1 (#2458): the PRODUCTION composition root. The app target imports
+    // ONLY this, and the unit-test target does not link it.
+    //
+    // Not a forwarding shim: `WisprBootstrapper` takes a required, non-defaulted
+    // `makeHotkeyService`, so EnviousWisprAppKit contains no IMPLICIT production
+    // assembly path — every caller must state its hotkey-service choice
+    // explicitly — and this module is the only production-choice site.
+    //
+    // It is NOT yet unlinkability. EnviousWisprTests still links
+    // EnviousWisprServices in C1 and can construct the same live HotkeyService
+    // itself. C2 (#2459) removes the live implementation from the test link
+    // graph; that is the chunk that earns the word.
+    //
+    // The direct EnviousWisprServices edge is TEMPORARY — C2 (#2459) replaces the
+    // concrete HotkeyService construction with a live adapter from
+    // EnviousWisprDesktopEffects and drops this edge.
+    firstPartyLibrary(
+      "EnviousWisprAppLive",
+      dependencies: [
+        .target(name: "EnviousWisprAppKit"),
+        .target(name: "EnviousWisprServices"),
+        // Declared directly for the same reason EnviousWisprAppKit declares
+        // them: Xcode does not propagate a static framework's package products
+        // transitively, so a module importing AppKit must resolve AppKit's
+        // vendor modules itself. Without these, AppLive fails to build with
+        // "unable to resolve module dependency: 'FastClusterWrapper'" — a
+        // FluidAudio internal named nowhere in this project's source.
+        .package(product: "WhisperKit"),
+        .package(product: "FluidAudio"),
+        .package(product: "Sparkle"),
+      ]),
+
     // ---- XPC services (audio capture is in-process since #1543; ASR stays isolated) ----
     .target(
       name: "EnviousWisprASRService",
@@ -567,7 +599,9 @@ let project = Project(
       // service stays direct so it bundles into Contents/XPCServices (#1543:
       // the audio capture service was removed — capture is in-process).
       dependencies: [
-        .target(name: "EnviousWisprAppKit"),
+        // #2455 C1: AppLive, not AppKit. The shell reaches the kit only THROUGH
+        // the module that chooses live implementations.
+        .target(name: "EnviousWisprAppLive"),
         .package(product: "Sparkle"),
         .target(name: "EnviousWisprASRService"),
       ],

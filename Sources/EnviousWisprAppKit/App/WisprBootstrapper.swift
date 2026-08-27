@@ -18,7 +18,7 @@ import SwiftUI
 /// bootstrapper type + its init + 4 lifecycle methods + 2 view factories + 2
 /// window-title accessors cross to the shell.
 @MainActor
-public final class WisprBootstrapper {
+package final class WisprBootstrapper {
   // App-owned homes (epic #763 composition root). Held as `let` on this
   // bootstrapper (which the shell keeps alive via a single `@State`); injected
   // into views via `.environment(...)` inside the view factories below.
@@ -109,7 +109,20 @@ public final class WisprBootstrapper {
   /// EnviousWisprAppCeilingsTests).
   let recordingOverlay: OverlayDirector
 
-  public init() {
+  /// - Parameter makeHotkeyService: supplies the one shared `HotkeyService`.
+  ///
+  /// **Required and non-defaulted, which is the point (#2455 C1).** A default here
+  /// would let this module assemble a production root on its own and would make
+  /// `EnviousWisprAppLive` a passive forwarder — the shape grounded review r2
+  /// rejected in advance. With no default, every caller must state its choice, and
+  /// AppLive is the only production-choice site.
+  ///
+  /// This is not yet unlinkability: `EnviousWisprTests` still links
+  /// `EnviousWisprServices` in C1 and can construct a live `HotkeyService` itself.
+  /// C2 (#2459) replaces what AppLive passes here with a live adapter from
+  /// `EnviousWisprDesktopEffects` and removes the live implementation from the
+  /// test link graph. The seam does not move.
+  package init(makeHotkeyService: () -> HotkeyService) {
     // ===== Subsystem construction (epic #763) =====
     // `EnviousWisprApp` is the composition root: every subsystem is constructed
     // here. Construction order is load-bearing: `pasteCompletionRegistry` before
@@ -460,7 +473,9 @@ public final class WisprBootstrapper {
     // `DictationLifecycleCoordinator`, and `AppDelegate` termination.
     // #1175: the live telemetry sink is constructor-injected so it is in place
     // before `start()` runs any registration (heart-path + bootstrap ordering).
-    let hotkeyService = HotkeyService(telemetry: .live)
+    // #2455 C1: constructed by the caller, at exactly this position, so
+    // construction ORDER is unchanged. Only WHO chooses the implementation moved.
+    let hotkeyService = makeHotkeyService()
 
     // 2c: the Remove drain's engine-unload seam — assignable only now that the
     // driver (and its adapter) exist; the wiring that built the coordinator ran
@@ -1233,7 +1248,7 @@ public final class WisprBootstrapper {
   // `applicationWillFinishLaunching`, before the first SwiftUI scene body
   // evaluates (issue #739 / SparkleUpdateController contract).
 
-  public func applicationWillFinishLaunching() {
+  package func applicationWillFinishLaunching() {
     sparkleUpdateController.startUpdater()
     // #1019: wire the active-dictation guard so the new install affordances
     // (menu item / notification) never relaunch the app mid-capture.
@@ -1254,7 +1269,7 @@ public final class WisprBootstrapper {
     updateTriggerCoordinator.start()
   }
 
-  public func applicationDidFinishLaunching() {
+  package func applicationDidFinishLaunching() {
     appLifecycleCoordinator.runDidFinishLaunching()
     // #2381. AFTER launch, not during: `NSApp.servicesProvider` set before the app has finished
     // launching is registered against an app that cannot yet answer, and the menu item is then
@@ -1277,13 +1292,13 @@ public final class WisprBootstrapper {
     recordingOverlay.prewarmFirstRender()
   }
 
-  public func applicationDidBecomeActive() {
+  package func applicationDidBecomeActive() {
     appLifecycleCoordinator.runDidBecomeActive()
     // #958: proactive foreground check (post-sleep freshness), strict >=3600 gated.
     sparkleUpdateController.updateCoordinator?.checkForUpdatesProactively(trigger: "foreground")
   }
 
-  public func applicationWillTerminate() {
+  package func applicationWillTerminate() {
     // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive
     // parent exit (Codex r1 proved empirically); crash orphans are reaped by
     // the stale-sweep in EGOneServerManager.start on next launch.
@@ -1303,18 +1318,18 @@ public final class WisprBootstrapper {
 
   // MARK: - Window titles (so the shell needs no EnviousWisprCore dependency)
 
-  public var mainWindowTitle: String { AppConstants.appName }
-  public var onboardingWindowTitle: String { AppConstants.onboardingWindowTitle }
+  package var mainWindowTitle: String { AppConstants.appName }
+  package var onboardingWindowTitle: String { AppConstants.onboardingWindowTitle }
 
   // MARK: - Root content
   // Homes are injected here, INSIDE the kit — the shell injects nothing, so no
   // home type crosses the module boundary (keeps the public surface tiny).
 
-  public func mainWindowContent() -> some View {
+  package func mainWindowContent() -> some View {
     MainWindowRoot(b: self)
   }
 
-  public func onboardingWindowContent() -> some View {
+  package func onboardingWindowContent() -> some View {
     OnboardingWindowRoot(b: self)
   }
 }
