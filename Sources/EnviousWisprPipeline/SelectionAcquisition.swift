@@ -297,6 +297,41 @@ public enum SelectionAcquisition {
     }
 
     // STEP 5 — wait for the board to move, then for it to hold still.
+    //
+    // **KNOWN LIMIT, and it is the sharpest edge in this file: `changeCount` says the board moved,
+    // never WHO moved it.** macOS publishes no writer identity for the pasteboard, so a write that
+    // lands between our chord and our read is indistinguishable from the target answering. If the
+    // target answers in the measured 37 to 49 ms the window is that small; if it never answers we
+    // poll to the cap, and a write inside that window is misattributed to it.
+    //
+    // THREE ways to mis-decide this were considered and REJECTED, all stated so nobody re-derives
+    // them as improvements:
+    //
+    // - **Counting the increments** (`settled == baseline + 1` means one writer) is not sound. A
+    //   single logical copy can advance `changeCount` more than once, because an app that calls
+    //   `clearContents()` and then writes objects increments it at each step. The check would fire
+    //   on ordinary copies in ordinary apps, and a partial check that looks complete is worse than
+    //   no check.
+    // - **A sentinel write before the chord** would make the board's content ours, so a change is
+    //   provably somebody's write. It does not distinguish WHOSE, it costs the user a third
+    //   clipboard-history entry, and the help page's honesty about those entries is the reason
+    //   there are only two.
+    // - **Refusing when the bytes come back UNCHANGED** (the board moved and holds exactly what the
+    //   user already had, so a rewrite rather than an answer) was built, tested, and REVERTED. It
+    //   does not address this finding's actual harm, which is the restore overwriting a NEWER value
+    //   with DIFFERENT bytes, and it breaks an ordinary flow: copy the correct spelling from
+    //   somewhere, paste it, highlight it, press the shortcut. That user gets a refusal for a copy
+    //   that worked perfectly.
+    //
+    // **So there is no check here, deliberately, and the residue is documented rather than
+    // mitigated away.** A user who copies something else inside this window, in an app that did not
+    // answer, sees the wrong word in the panel and loses that copy to the restore. The panel showing
+    // the word before anything is written is this feature's safety property and it still holds; the
+    // help page and the release notes both state the window rather than promising it away.
+    //
+    // The 400 ms cap is not shortened to narrow the window either. It is sized for the slowest
+    // SUPPORTED Mac, not for this one, and trading the feature's reliability everywhere against a
+    // rare race is the wrong direction.
     guard let settled = await settledChangeCountAfterCopy(board: board, from: ownedChangeCount)
     else {
       return await concluding(.refused(.copyRefused), acquired: .nothing)

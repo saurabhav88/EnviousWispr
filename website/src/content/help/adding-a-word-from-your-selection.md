@@ -28,13 +28,13 @@ In those apps EnviousWispr asks a second way: it copies your selection, reads it
 Two things follow from that, and both are worth knowing:
 
 - **Your clipboard history will show two extra entries** when this happens: the word that was copied, and the restore that put your own clipboard back. Every app that does this leaves the first one behind. We do not try to hide the second.
-- **If you copy something yourself while the panel is opening, your copy wins.** EnviousWispr checks whether anything else claimed the clipboard before putting yours back, and if something did, it leaves it alone.
+- **If you copy something yourself while the panel is open, your copy wins.** EnviousWispr checks whether anything else claimed the clipboard before putting yours back, and if something did, it leaves it alone. There is a fraction of a second while it is asking the app, before the panel appears, where a copy you make at that exact moment can be mistaken for the app's answer. If that happens you will see the wrong word in the panel and can close it.
 
 ### Turning it off
 
 If you would rather EnviousWispr never touched your clipboard for this, open **Settings**, go to **Clipboard**, and switch off **Read selections through the clipboard**. The shortcut keeps working everywhere else; in the apps that will not share a selection, it will simply tell you it could not read one.
 
-The setting takes effect on your very next press. It is also off automatically in remote desktop and virtual machine apps, where a copy would be sent to the other computer rather than to yours.
+The setting takes effect on your very next press. It is also turned off automatically in several common remote desktop and virtual machine apps, where a copy would be sent to the other computer rather than to yours. That list cannot cover every such app, so use the setting to turn it off for any other remote-access app you use.
 
 ### If it says it could not read your selection
 
