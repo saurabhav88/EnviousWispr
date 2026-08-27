@@ -49,6 +49,30 @@ import EnviousWisprServices
 ///    place and the identity one call later described two different applications, found by cloud
 ///    review on PR #2428; asking `NSWorkspace` again here recreates that defect one layer up and
 ///    posts a keystroke at whatever came forward in between.
+///
+/// **AND ONE DEFECT CLASS, ENUMERATED HERE RATHER THAN DISCOVERED ONE MEMBER PER REVIEW ROUND.**
+/// Two local review rounds each found an instance of the same shape: a value this change introduces
+/// has MORE states than the caller that reads it, so one state is spent as another. Round 1 found
+/// it in the pasteboard's change count (ours / theirs / cannot tell, read as ours); round 2 in the
+/// focused element's subrole (a subrole / none / cannot tell, read as none, which meant NOT SECURE
+/// and would have copied from a password field). Two members is the signal to stop describing the
+/// set and enumerate it from the producing code, so every reduced value in this file is listed with
+/// what its collapse COSTS:
+///
+/// | Value | States at the producer | What the caller does | Cost |
+/// |---|---|---|---|
+/// | `AcquisitionContext.focusedSubrole` | subrole / none / unreadable | FAILS CLOSED at the read | none; `resolveSubrole` owns it |
+/// | `AcquisitionContext.pid` | pid / none | refuses on nil and on non-positive | none |
+/// | `AcquisitionContext.bundleIdentifier` | identifier / none | see the two notes below | **fails OPEN, deliberately, twice** |
+/// | `settledChangeCountAfterCopy` -> `Int?` | settled / cap expired / cancelled | last two both refuse and restore | none: the right action is identical |
+/// | `modifiersCleared` -> `Bool` | cleared / cap expired / cancelled | last two both refuse, board untouched | none: identical action |
+/// | `pause` -> `Bool` | slept / cancelled | caller abandons and restores | none |
+/// | `board.string(forType:)` -> `String?` | text / no text representation | `?? ""` then `classify` | none: an image-only copy and an empty copy are both "nothing to add" |
+/// | `SyntheticCopyChord.PostResult` | posted / clearFailed / notPosted | exhaustive `switch` | none |
+/// | `ClipboardCleanup.Takeover` | granted / too large | exhaustive `guard case` | none |
+///
+/// The two deliberate fail-OPEN cases are both on a MISSING bundle identifier, and both are stated
+/// at their call sites rather than here.
 @MainActor
 public enum SelectionAcquisition {
 
@@ -424,6 +448,11 @@ public enum SelectionAcquisition {
     "org.virtualbox.app.VirtualBox",
   ]
 
+  /// **Nil FAILS OPEN, deliberately, and the reason is that the alternative buys nothing.** An
+  /// application with no bundle identifier is not on any denylist, so refusing there would block the
+  /// fallback in every unbundled binary in exchange for no protection at all: every remote-desktop
+  /// and virtual-machine client ships bundled. Stated rather than left to a reader to notice,
+  /// because "nil means not forwarding" is exactly the collapse the type doc enumerates.
   static func isKeystrokeForwarding(_ bundleIdentifier: String?) -> Bool {
     guard let bundleIdentifier else { return false }
     return keystrokeForwardingBundleIdentifiers.contains(bundleIdentifier)
@@ -438,8 +467,12 @@ public enum SelectionAcquisition {
   /// application, and by the time the menu-bar door reaches here the answer would be us. A pid is a
   /// reusable handle, and a menu can sit open long enough for one to be recycled.
   ///
-  /// A context with no bundle identifier to compare cannot be checked this way, so a live process at
-  /// that pid is all this can honestly require.
+  /// **A context with no bundle identifier to compare gets a WEAKER check, and that is the second
+  /// deliberate fail-open the type doc names.** All that remains is "a process still exists at this
+  /// pid", which a recycled pid also satisfies. Refusing instead would block the fallback in every
+  /// unbundled application to close a window that requires the target to quit AND its pid to be
+  /// reissued AND the user to still be looking at a menu, so the check is weakened rather than the
+  /// feature. What it must not do is pretend to be the same check, which is why this says so.
   private static func targetStillPresent(_ context: SelectionReader.AcquisitionContext) -> Bool {
     guard let pid = context.pid, pid > 0,
       let running = NSRunningApplication(processIdentifier: pid)

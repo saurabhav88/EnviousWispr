@@ -343,15 +343,14 @@ public enum SelectionReader {
     var subroleRef: CFTypeRef?
     let subroleError = AXUIElementCopyAttributeValue(
       focused, kAXSubroleAttribute as CFString, &subroleRef)
-    // A missing subrole is the ORDINARY case, not a failure: plenty of elements advertise none.
-    // Type-checked before the cast for the same reason the selection is — an attribute answering
-    // with a number is a broken element, and `as? String` would report it as "no subrole".
-    let focusedSubrole: String? = {
-      guard subroleError == .success, let subroleRef,
-        CFGetTypeID(subroleRef) == CFStringGetTypeID()
-      else { return nil }
-      return subroleRef as? String
-    }()
+
+    // See `resolveSubrole`, which is pure and carries every branch: this attribute has three
+    // answers and an earlier version collapsed them into two, which was a security defect.
+    let focusedSubrole: String?
+    switch resolveSubrole(error: subroleError, value: subroleRef) {
+    case .subrole(let value): focusedSubrole = value
+    case .unreadable: return (.refused(.unreadable), sampled)
+    }
 
     return (
       result,
@@ -497,6 +496,55 @@ public enum SelectionReader {
     // about the selection the user made. Closing that too would mean asking the workspace to hold
     // still, which it does not offer.
     return nil
+  }
+
+  /// What the focused element's subrole query said, as THREE states rather than two.
+  ///
+  /// **Collapsing these into an optional was a security defect, and it is the exact shape
+  /// `validation-discipline.md` names: a three-valued tool read by a two-valued caller.** The
+  /// attribute has an ordinary "this element advertises no subrole" answer, and it separately has
+  /// "I could not tell you" — a timeout, a messaging failure, or a successful read carrying
+  /// something that is not a string. An earlier version mapped every one of them to `nil`, and
+  /// `AcquisitionContext.focusedElementIsSecure` reads `nil` as NOT secure.
+  ///
+  /// So a subrole query that timed out on a PASSWORD FIELD, in an app that had not enabled
+  /// process-wide secure input, would have let the acquisition ladder synthesize a Copy and put the
+  /// secret on the clipboard. Ranked by what the caller DOES with the collapsed value, that is the
+  /// CORRUPTING kind of collapse rather than the merely lossy kind. Found by local Codex review,
+  /// round 2 (#2465).
+  ///
+  /// Pure and separate for the same reason `resolve` is: otherwise no test can reach any of it.
+  static func resolveSubrole(error: AXError, value: CFTypeRef?) -> SubroleOutcome {
+    switch error {
+    case .success:
+      // `.success` with NO value is the same fact as `.noValue` from here: the element answered and
+      // has nothing. Allowed through as "no subrole" rather than refused.
+      guard let value else { return .subrole(nil) }
+      // Type-checked before the cast for the same reason the selection is: an attribute answering
+      // with a number is a broken element, and `as? String` would report it as "no subrole" — which
+      // is precisely the collapse this function exists to prevent.
+      guard CFGetTypeID(value) == CFStringGetTypeID(), let text = value as? String else {
+        return .unreadable
+      }
+      return .subrole(text)
+    case .noValue, .attributeUnsupported:
+      // The ordinary case. Plenty of elements advertise no subrole, and that is a fact rather than
+      // a failure.
+      return .subrole(nil)
+    default:
+      // A timeout, a dead element, a messaging failure. We do not know what this element is, and
+      // "we do not know" must never be spent as "it is safe to copy from".
+      return .unreadable
+    }
+  }
+
+  /// The three answers a subrole query can give. See `resolveSubrole`.
+  enum SubroleOutcome: Equatable {
+    /// The element answered. Nil means it genuinely advertises no subrole.
+    case subrole(String?)
+    /// The query failed or answered with something that is not a subrole. FAILS CLOSED at the call
+    /// site: the read refuses rather than proceeding as if the element were ordinary.
+    case unreadable
   }
 
   /// Map one Accessibility answer onto what the user is told.

@@ -166,7 +166,6 @@ final class QuickAddCoordinator {
   /// would have to invent one.
   func begin(door: QuickAddDoor, selection source: SelectionSource) -> QuickAddPanelModel? {
     let startedAt = environment.now()
-    let bundleID = environment.frontmostBundleID()
 
     // Read BEFORE anything activates our app — by the time a panel exists, the frontmost application
     // is us and the answer would be about our own window.
@@ -184,23 +183,38 @@ final class QuickAddCoordinator {
     // the result it arrived with. Split across four separate expressions, the Services door would
     // be four independent chances to borrow a neighbouring value, which is the defect this cluster
     // has already produced three times.
+    //
+    // **The bundle id comes out of the SAME switch since #2465, and that is a fix rather than
+    // tidying.** It used to be a live `frontmostBundleID()` read taken here. For the menu door that
+    // is reliably WRONG — the comments two files over establish that EnviousWispr is frontmost by
+    // click time, so every menu-route acquisition was attributed to us — and after the shortcut
+    // door's asynchronous wait it can be wrong too. An acquisition already knows which application
+    // answered, from the sample its own read used, so it carries it. Found by local Codex review,
+    // round 2.
     let acquisition:
       (
         result: SelectionReader.Result, acquired: SelectionAcquisition.Acquired,
-        milliseconds: Int?, restore: SelectionAcquisition.ClipboardRestore
+        milliseconds: Int?, restore: SelectionAcquisition.ClipboardRestore, bundleID: String?
       ) = {
         switch source {
         case .text(let raw):
           // The Services system hands us whatever was on the pasteboard. Nothing was acquired and
-          // no clipboard of the user's was ever ours, so both of those say so.
-          return (SelectionReader.classify(raw), .handed, nil, .notTouched)
+          // no clipboard of the user's was ever ours, so both of those say so — and this is the one
+          // door with no sample of its own, so the live lookup is the only answer available and is
+          // still the right one: macOS handed us the text while the user's app was frontmost.
+          return (
+            SelectionReader.classify(raw), .handed, nil, .notTouched,
+            environment.frontmostBundleID()
+          )
         case .acquired(let outcome):
           return (
-            outcome.result, outcome.acquired, outcome.acquisitionMs, outcome.clipboardRestore
+            outcome.result, outcome.acquired, outcome.acquisitionMs, outcome.clipboardRestore,
+            outcome.context.bundleIdentifier
           )
         }
       }()
     var selection = acquisition.result
+    let bundleID = acquisition.bundleID
 
     // Refresh before ranking, every invocation. A sibling instance or the Settings window can have
     // changed the library since launch, and ranking a stale snapshot offers words that no longer

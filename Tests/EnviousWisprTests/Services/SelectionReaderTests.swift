@@ -335,6 +335,60 @@ struct SelectionReaderTests {
     #expect(SelectionReader.classify("   codecs   ") == .text("codecs"))
   }
 
+  // MARK: - The focused element's subrole, which has THREE answers (#2465)
+
+  /// **This block exists because collapsing three answers into two was a security defect.** The
+  /// subrole attribute has an ordinary "no subrole" answer AND a separate "I could not tell you" —
+  /// a timeout, a dead element, a value that is not a string. An earlier version mapped all of them
+  /// to `nil`, and `focusedElementIsSecure` reads `nil` as NOT secure, so a query that timed out on
+  /// a password field in an app without process-wide secure input would have let the acquisition
+  /// ladder copy the secret to the clipboard.
+  ///
+  /// Product Outcome, and the outcome is a password on the user's clipboard.
+  @Test("An element that genuinely advertises no subrole is not a failure")
+  func noSubroleIsAnOrdinaryAnswer() {
+    #expect(SelectionReader.resolveSubrole(error: .noValue, value: nil) == .subrole(nil))
+    #expect(
+      SelectionReader.resolveSubrole(error: .attributeUnsupported, value: nil) == .subrole(nil))
+    // `.success` with no value is the same fact: the element answered and has nothing.
+    #expect(SelectionReader.resolveSubrole(error: .success, value: nil) == .subrole(nil))
+  }
+
+  @Test("A real subrole comes back as itself")
+  func aSubroleIsReturned() {
+    #expect(
+      SelectionReader.resolveSubrole(error: .success, value: kAXSecureTextFieldSubrole as CFString)
+        == .subrole(kAXSecureTextFieldSubrole as String))
+  }
+
+  /// **The rows that matter: every way of NOT KNOWING refuses.** Without these, each one silently
+  /// means "ordinary element, safe to copy from".
+  @Test(
+    "A failed query is unreadable, never an absent subrole",
+    arguments: [AXError.cannotComplete, .failure, .invalidUIElement, .notImplemented])
+  func aFailedSubroleQueryRefuses(error: AXError) {
+    #expect(
+      SelectionReader.resolveSubrole(error: error, value: nil) == .unreadable,
+      "\(error) collapsed into an absent subrole, which reads as NOT SECURE")
+    // And with a value attached, because a failed query can still leave one behind.
+    #expect(
+      SelectionReader.resolveSubrole(error: error, value: "AXTextField" as CFString) == .unreadable)
+  }
+
+  @Test("A successful read carrying something that is not a string is unreadable")
+  func aMalformedSubroleRefuses() {
+    for value in [NSNumber(value: 7), NSNumber(value: true), [1, 2, 3] as NSArray] as [CFTypeRef] {
+      #expect(SelectionReader.resolveSubrole(error: .success, value: value) == .unreadable)
+    }
+  }
+
+  /// The consumer half, paired with the rows above: `unreadable` has to be TERMINAL, or failing
+  /// closed at the read would be undone by the ladder trying again anyway.
+  @Test("Unreadable is terminal, so failing closed actually stops the fallback")
+  func unreadableDoesNotReEnterTheLadder() {
+    #expect(!SelectionReader.isFallbackEligible(.refused(.unreadable)))
+  }
+
   @Test("No reader outcome is a coordinator-owned refusal — those members have other producers")
   func noReadOutcomeIsCoordinatorOwned() {
     // `Refusal` is the panel's one reason line AND the telemetry refuse_reason, so it holds cases

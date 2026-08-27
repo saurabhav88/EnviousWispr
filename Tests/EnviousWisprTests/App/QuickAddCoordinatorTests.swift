@@ -115,6 +115,63 @@ struct QuickAddCoordinatorTests {
     #expect(empty.refusal == .nothingSelected)
   }
 
+  /// **Telemetry must name the application the READ sampled, not whoever is frontmost now (#2465).**
+  ///
+  /// For the menu door this is reliably wrong the other way: the menu's read happens while the
+  /// user's own app is frontmost, and by click time EnviousWispr is. So every menu-route
+  /// acquisition used to be attributed to us, which makes the one field that says WHICH APPS need
+  /// the clipboard fallback answer "ours". After the shortcut door's asynchronous wait it can be
+  /// wrong too.
+  ///
+  /// The fixture's live lookup returns a DIFFERENT identifier from the outcome's on purpose: with
+  /// both the same, this row would pass against the defect.
+  @Test("An acquired outcome is attributed to the application it was sampled from")
+  func acquiredOutcomesCarryTheirOwnBundleID() throws {
+    let (coordinator, recorder) = makeCoordinator()
+
+    let outcome = SelectionAcquisition.Outcome(
+      result: .text("codecs"),
+      context: .init(pid: 501, bundleIdentifier: "net.whatsapp.WhatsApp", focusedSubrole: nil),
+      acquired: .clipboardCopy,
+      acquisitionMs: 41,
+      clipboardRestore: .restored)
+
+    _ = coordinator.begin(door: .menuBar, selection: .acquired(outcome))
+    coordinator.didOpen()
+
+    guard case .opened(_, _, let bundle, _, _, _, _, let acquired, let ms, let restore) =
+      try #require(recorder.opened)
+    else {
+      Issue.record("not an opened event")
+      return
+    }
+    #expect(bundle == "net.whatsapp.WhatsApp", "the live lookup would have said com.apple.TextEdit")
+    #expect(acquired == .clipboardCopy)
+    #expect(ms == 41)
+    #expect(restore == .restored)
+  }
+
+  /// The pair: the Services door has no sample of its own, so the live lookup is the only answer
+  /// available and is still the right one. Without this row, "always use the outcome" would pass.
+  @Test("The Services door still uses the live lookup, because it has no sample")
+  func theServiceDoorUsesTheLiveLookup() throws {
+    let (coordinator, recorder) = makeCoordinator()
+
+    _ = coordinator.begin(door: .service, selection: .text("codecs"))
+    coordinator.didOpen()
+
+    guard case .opened(_, _, let bundle, _, _, _, _, let acquired, let ms, let restore) =
+      try #require(recorder.opened)
+    else {
+      Issue.record("not an opened event")
+      return
+    }
+    #expect(bundle == "com.apple.TextEdit")
+    #expect(acquired == .handed, "macOS handed this text over; nothing was acquired")
+    #expect(ms == nil, "a zero would be a real measurement of something that did not happen")
+    #expect(restore == .notTouched)
+  }
+
   /// Build an acquisition outcome for a test, with the fields no row here is about left neutral.
   private func outcome(_ result: SelectionReader.Result) -> SelectionAcquisition.Outcome {
     SelectionAcquisition.Outcome(
