@@ -239,7 +239,11 @@ public enum ClipboardCleanup {
   ///
   /// Called by `snapshotForDelivery` itself, so the restore-on path needs no second call, and
   /// called directly by the restore-off path.
-  static func deliveryClaimsBoard() {
+  /// Public because a delivery writer lives in AppKit too: Escape Recovery's Undo pastes through
+  /// `PasteService` directly rather than through the cascade. The visibility follows the CALL GRAPH
+  /// rather than the layer, which is what stops the one writer outside this module from being the
+  /// one that is invisible.
+  public static func deliveryClaimsBoard() {
     guard let takeover = activeTakeover else { return }
     supersededTakeovers.insert(takeover.id)
     activeTakeover = nil
@@ -331,6 +335,13 @@ public enum ClipboardCleanup {
     /// state we declined to take responsibility for, and a caller that gets this back has no
     /// restore obligation precisely because it was given nothing to restore.
     case clipboardTooLarge
+    /// Another takeover already holds the board.
+    ///
+    /// **Its own case rather than reusing `clipboardTooLarge`, because that one carries a SENTENCE.**
+    /// The caller maps refusals to user-facing copy, and "your clipboard is too large to be kept
+    /// safe" would be a confident lie about a state that has nothing to do with size. Unreachable in
+    /// production, which is not a reason to answer it wrongly.
+    case alreadyInFlight
   }
 
   /// Take the user's clipboard over for a write that is not a dictation delivery.
@@ -358,6 +369,16 @@ public enum ClipboardCleanup {
     maximumBytes: Int,
     from board: NSPasteboard = .general
   ) -> Takeover {
+    // **A second takeover REFUSES rather than replacing the first.** Overwriting `activeTakeover`
+    // would leave the first token unmarked, so its owner would pass `wasSuperseded`, fail to clear
+    // the newer takeover because the ids differ, and restore over work it does not own.
+    //
+    // Production cannot reach this today — both doors sit behind one `isAcquiring` flag in
+    // `QuickAddWiring` — and that is exactly why the primitive has to say no rather than rely on it.
+    // A guard one layer up in another module is a convention; this is the contract. Refusing rather
+    // than choosing is what `tools-and-apps.md` asks of anything that ACTS on a shared resource.
+    guard activeTakeover == nil else { return .alreadyInFlight }
+
     // **The payload and the baseline must describe the SAME MOMENT, and an earlier version sampled
     // them at two.** It read the payload, then took `board.changeCount` afterwards as the baseline.
     // A write landing between those two reads produced a stale payload paired with a baseline

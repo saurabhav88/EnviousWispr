@@ -353,14 +353,27 @@ public enum SelectionAcquisition {
 
     // STEP 3 — take the board over. This is the line the file's doc comment is about: past it, the
     // pending cleanup is cancelled and we are the only party left who will restore anything.
-    guard
-      case .granted(let payload, let baseline, let token) = ClipboardCleanup.beginTakeover(
-        maximumBytes: maximumPreservedClipboardBytes, from: board)
-    else {
+    //
+    // Each takeover outcome gets the refusal that is TRUE of it. Collapsing them would put "your
+    // clipboard is too large to be kept safe" in front of a user whose clipboard is nothing of the
+    // kind — a confident sentence about a state the code never checked.
+    let takeover = ClipboardCleanup.beginTakeover(
+      maximumBytes: maximumPreservedClipboardBytes, from: board)
+    guard case .granted(let payload, let baseline, let token) = takeover else {
+      let refusal: SelectionReader.Refusal = {
+        switch takeover {
+        case .clipboardTooLarge: return .clipboardTooLarge
+        // Unreachable in production — one `isAcquiring` flag guards both doors — and answered
+        // honestly regardless: we could not read the selection, which is what `unreadable` says and
+        // is the only member of the set that is true here.
+        case .alreadyInFlight: return .unreadable
+        case .granted: return .unreadable
+        }
+      }()
       await log(
-        context: context, acquired: .nothing, refusal: .clipboardTooLarge, ms: elapsedMs(),
+        context: context, acquired: .nothing, refusal: refusal, ms: elapsedMs(),
         restore: .notTouched)
-      return refusing(.clipboardTooLarge)
+      return refusing(refusal)
     }
 
     // The board count we OWN: the takeover baseline at first, then the settled copy count.
@@ -460,6 +473,15 @@ public enum SelectionAcquisition {
       return await concluding(.refused(.copyRefused), acquired: .nothing)
     }
     ownedChangeCount = settled
+
+    // **Asked again HERE, not only at the exit.** `concluding` re-checks before restoring, which
+    // stops us writing over a delivery's payload — but the poll above suspends, so by this line the
+    // board may belong to a dictation, and the next statement READS it. Without this the panel can
+    // offer the user their own dictated text as the word they highlighted. Losing the restore was
+    // the loud half of round 5's finding; this is the quiet half.
+    guard !ClipboardCleanup.wasSuperseded(token) else {
+      return await concluding(.refused(.copyRefused), acquired: .nothing)
+    }
 
     // STEP 6 — classify through the reader's own function, so the doors cannot disagree about
     // trimming or the store's ceiling. There is no second copy of either.

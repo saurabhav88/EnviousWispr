@@ -994,6 +994,9 @@ struct KernelFinalizationWiring {
           deliveryOutcome = .clipboardOnly
         }
       } else if config?.autoCopyToClipboard == true {
+        // #2465: auto-copy never enters `PasteCascadeExecutor`, so it reaches the board without
+        // passing any of the claim sites there. Same ownership failure as Tier 3, one layer up.
+        ClipboardCleanup.deliveryClaimsBoard()
         copyToClipboard(text)
         deliveryOutcome = .clipboardOnly
       } else {

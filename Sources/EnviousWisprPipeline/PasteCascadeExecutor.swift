@@ -737,6 +737,10 @@ internal final class PasteCascadeExecutor {
     // Tier 2 because a non-text element was focused (PR #220's void-protection
     // path). Nil-element paths reach Tier 2 and log their own tier=cgevent.
     if tier == .clipboardOnly {
+      // #2465: Tier 3 WRITES the board and takes neither of the two routes that used to be the only
+      // ways to say so — it never snapshots and never restores. A Quick Add takeover in flight would
+      // have read this payload as the target app's Copy response and then restored over it.
+      ClipboardCleanup.deliveryClaimsBoard()
       PasteService.copyToClipboard(request.legacyText, to: self.pasteboard)
       // An earlier route may have SUBMITTED the contextual payload and failed.
       // What the user can now paste by hand is this legacy text, so that is what

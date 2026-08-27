@@ -63,7 +63,15 @@ enum EscapeRecoveryWiring {
       EscapeRecoveryPasteAction.paste(
         payload: payload,
         restorable: { coordinator.restorableHeldRow(id: $0) },
-        copyToClipboard: { PasteService.copyToClipboard($0) },
+        // #2465: this is a DELIVERY, so it claims the board like every other one. The three
+        // remaining general-board writers in this app — History copy, onboarding error copy,
+        // diagnostics path copy — are the user deliberately copying in our own UI, which is a
+        // foreign write like any other and lands in the documented undecidable case rather than
+        // here.
+        copyToClipboard: {
+          ClipboardCleanup.deliveryClaimsBoard()
+          PasteService.copyToClipboard($0)
+        },
         dispatchPaste: { PasteService.simulatePaste() },
         report: report,
         retarget: EscapeRecoveryPasteAction.liveRetarget(application: application))

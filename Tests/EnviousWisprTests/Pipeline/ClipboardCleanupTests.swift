@@ -330,6 +330,49 @@ struct ClipboardCleanupTests {
     }
   }
 
+  /// **A second takeover REFUSES rather than replacing the first, and the case it returns matters.**
+  ///
+  /// Overwriting would leave the first token unmarked, so its owner passes `wasSuperseded`, fails to
+  /// clear the newer takeover because the ids differ, and restores over work it does not own.
+  ///
+  /// Production cannot reach this — both Quick Add doors sit behind one flag in `QuickAddWiring` —
+  /// and that is exactly why the primitive says no rather than relying on a convention one layer up
+  /// in another module. `tools-and-apps.md` RULE: a-harness-that-ACTS-on-a-shared-resource-must-
+  /// refuse-not-choose is about precisely this.
+  @Test("A second takeover is refused, with a case that does not claim a size problem")
+  func aSecondTakeoverIsRefused() async {
+    await withFastCleanup {
+      let pb = board(holding: "the user's own clipboard")
+
+      guard case .granted(_, _, let first) = ClipboardCleanup.beginTakeover(
+        maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("the first takeover was refused on a small clipboard")
+        return
+      }
+
+      guard case .alreadyInFlight = ClipboardCleanup.beginTakeover(maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("a second takeover replaced the first instead of refusing")
+        return
+      }
+
+      // And the first is untouched: still in flight, still not superseded, still its own token.
+      #expect(!ClipboardCleanup.wasSuperseded(first))
+      #expect(ClipboardCleanup.hasPending)
+
+      ClipboardCleanup.endTakeover(first)
+      // The pair: once released, a takeover is available again.
+      guard case .granted(_, _, let second) = ClipboardCleanup.beginTakeover(
+        maximumBytes: 1 << 20, from: pb)
+      else {
+        Issue.record("a released takeover must be re-grantable")
+        return
+      }
+      ClipboardCleanup.endTakeover(second)
+    }
+  }
+
   /// The pair: with no takeover in flight this is a no-op, so the restore-off path pays nothing and
   /// cannot corrupt state that is not there.
   @Test("Claiming the board with nothing in flight changes nothing")
