@@ -40,7 +40,12 @@ package final class LiveApplication {
       makeHotkeyEffects: { LiveDesktopHotkeyEffects() },
       presentationEffects: DesktopPresentationEffects(
         application: presentation, panels: presentation),
-      relocationRelauncher: LiveRelocationRelauncher())
+      relocationRelauncher: LiveRelocationRelauncher(),
+      // #2455 C4: the pill. `makePanel` is a factory rather than an instance
+      // because the host builds its panel lazily, on first presentation.
+      overlayEffects: DesktopOverlayEffects(
+        makePanel: { LiveOverlayPanelDriver() },
+        workspace: LiveWorkspaceObserver()))
   }
 
   // MARK: - Scene surface

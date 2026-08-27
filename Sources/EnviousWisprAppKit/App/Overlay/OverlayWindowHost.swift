@@ -67,10 +67,14 @@ protocol OverlayWindowHosting: AnyObject {
 }
 
 @MainActor
-final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate {
+final class OverlayWindowHost: OverlayWindowHosting {
 
-  /// `nil` until the first presentation. Never closed, never released.
-  private var panel: NSPanel?
+  /// `nil` until the first presentation. Never released.
+  ///
+  /// #2455 C4: this type is the sole AppKit CONSUMER of the overlay panel driver;
+  /// the live driver owns the `NSPanel` itself. "Never closed" is now structural
+  /// rather than a discipline — `OverlayPanelDriving` declares no `close`.
+  private var panel: (any OverlayPanelDriving)?
   private var placement = OverlayPlacementState()
   private let screens: () -> OverlayScreenResolver
 
@@ -90,7 +94,10 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
   /// not flagged.
   private var programmaticMoveDepth = 0
 
-  private let panelFactory: OverlayPanelFactory
+  /// #2455 C4: required and non-defaulted. The old `OverlayPanelFactory` vended
+  /// an `NSPanel`, so every implementation WAS a window — including the test
+  /// double, which is why the suite flashed a real pill.
+  private let effects: DesktopOverlayEffects
 
   /// Registered here rather than on the panel because **every fact this
   /// callback needs already lives in this object**: the placement anchor, the
@@ -101,27 +108,25 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
   /// used: the notification centre guarantees the main thread, so hopping
   /// through a `Task` only adds a scheduling round trip and delays how fast the
   /// pill reacts to the swipe.
-  private nonisolated(unsafe) var spaceChangeObserver: NSObjectProtocol?
+  private var spaceChangeObservation: (any WorkspaceObservation)?
 
   init(
     screens: @escaping () -> OverlayScreenResolver = { .live },
-    panelFactory: OverlayPanelFactory = .live
+    effects: DesktopOverlayEffects
   ) {
     self.screens = screens
-    self.panelFactory = panelFactory
-    super.init()
-    spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
-      forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
-    ) { [weak self] _ in
-      MainActor.assumeIsolated { self?.repositionForActiveSpaceChange() }
+    self.effects = effects
+    spaceChangeObservation = effects.workspace.observeActiveSpaceChanges { [weak self] in
+      self?.repositionForActiveSpaceChange()
     }
   }
 
-  deinit {
-    if let spaceChangeObserver {
-      NSWorkspace.shared.notificationCenter.removeObserver(spaceChangeObserver)
-    }
-  }
+  // No `deinit`. The observation owns its own token and cancels in ITS deinit, so
+  // releasing this host releases the observation and unsubscribes — one owner for
+  // one lifetime. A `deinit` here could not touch the property anyway: `deinit` is
+  // nonisolated and the observation is `@MainActor`-isolated and non-Sendable, and
+  // the compiler says so. That constraint pointed at the better shape rather than
+  // an obstacle to work around.
 
   // MARK: - Presenting
 
@@ -266,7 +271,7 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
   /// window that still swallows clicks — the panel accepts events across its
   /// whole frame because it is drag-to-relocate.
   func hide() {
-    panel?.orderOut(nil)
+    panel?.orderOut()
     // **Release the hosting view, or a hidden pill keeps working.** The shipped
     // panel got this for free by being destroyed. `RecordingOverlayView` runs a
     // `.task` polling the audio level every 50 ms and `OverlayCapsuleBackground`
@@ -289,14 +294,14 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
 
   // MARK: - Window ownership
 
-  private func ensurePanel() -> NSPanel {
+  private func ensurePanel() -> any OverlayPanelDriving {
     if let panel { return panel }
     // Configuration below is copied verbatim from
     // `05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift` so
     // this chunk changes the panel's LIFETIME and nothing about its identity;
     // the panel object itself comes from the injected factory so a test can
     // observe every AppKit command issued against it.
-    let p = panelFactory.makePanel()
+    var p = effects.makePanel()
     p.isReleasedWhenClosed = false
     p.isOpaque = false
     p.backgroundColor = .clear
@@ -304,7 +309,10 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
     p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     p.isMovableByWindowBackground = true
     p.hasShadow = true
-    p.delegate = self
+    // The move callback replaces `NSWindowDelegate.windowDidMove`. The driver
+    // owns the delegate relationship now, so this type no longer inherits
+    // `NSObject` and the callback is plain `@MainActor` rather than `nonisolated`.
+    p.onMove = { [weak self] frame in self?.panelDidMove(to: frame) }
     panel = p
     return p
   }
@@ -406,37 +414,12 @@ final class OverlayWindowHost: NSObject, OverlayWindowHosting, NSWindowDelegate 
   /// against it later, so a wrong one makes a pill the user deliberately placed
   /// stop counting as user-anchored on its own display — and the next Space
   /// change moves it out from under them.
-  nonisolated func windowDidMove(_ notification: Notification) {
-    MainActor.assumeIsolated {
-      guard programmaticMoveDepth == 0, let panel else { return }
-      guard let screen = screens().containing(panel.frame) ?? screens().current() else { return }
-      placement.userDidMove(to: panel.frame.origin, screen: screen)
-    }
+  private func panelDidMove(to frame: CGRect) {
+    guard programmaticMoveDepth == 0 else { return }
+    guard let screen = screens().containing(frame) ?? screens().current() else { return }
+    placement.userDidMove(to: frame.origin, screen: screen)
   }
 
-}
-
-/// How the host builds its `NSPanel`.
-///
-/// A seam rather than a direct construction, mirroring `OverlayScreenResolver`
-/// immediately below: a test injects a recording subclass through this same
-/// point instead of reading private state off the host, so the real AppKit
-/// commands the host issues are what a test observes (#2377, P6-C2).
-@MainActor
-struct OverlayPanelFactory {
-  let makePanel: () -> NSPanel
-
-  init(makePanel: @escaping () -> NSPanel) {
-    self.makePanel = makePanel
-  }
-
-  static let live = OverlayPanelFactory {
-    NSPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 185, height: 44),
-      styleMask: [.borderless, .nonactivatingPanel],
-      backing: .buffered,
-      defer: false)
-  }
 }
 
 /// How the host learns about screens.

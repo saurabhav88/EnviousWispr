@@ -492,6 +492,17 @@ let project = Project(
     // `scripts/check-dependency-direction.sh` is the enforcing wall: it rejects the
     // import from the test targets, and rejects the OS calls themselves anywhere
     // outside this module.
+    // #2455 C4: non-shipping fakes shared by both test targets.
+    firstPartyLibrary(
+      "EnviousWisprAppKitTestSupport",
+      dependencies: [
+        .target(name: "EnviousWisprAppKit"),
+        .target(name: "EnviousWisprCore"),
+        .package(product: "WhisperKit"),
+        .package(product: "FluidAudio"),
+        .package(product: "Sparkle"),
+      ]),
+
     firstPartyLibrary(
       "EnviousWisprDesktopEffects",
       dependencies: [
@@ -643,6 +654,33 @@ let project = Project(
     // #919: depends on EnviousWisprAppKit (the app-shell library), NOT the app
     // target — Tuist therefore wires NO test host, so `xcodebuild test` runs
     // hermetically without launching EnviousWispr.app.
+    // #2455 C4: the only test target the dep-direction gate permits to construct a
+    // live desktop effect. Nothing in the module graph enforces that — the gate does.
+    // Three suites: `LiveOverlayPanelDriverTests`,
+    // `OverlayRetainedWindowRealPanelTests`, `RecordingPollingRealPanelTests`.
+    // Each needs REAL AppKit behaviour — panel construction, window retention
+    // across hide/show, and view-hierarchy teardown cancelling a SwiftUI task —
+    // none of which a recorder can reproduce.
+    .target(
+      name: "EnviousWisprDesktopEffectsTests",
+      destinations: .macOS,
+      product: .unitTests,
+      bundleId: "com.enviouswispr.desktopeffects.tests",
+      deploymentTargets: deploymentTargets,
+      infoPlist: .default,
+      sources: ["Tests/EnviousWisprDesktopEffectsTests/**"],
+      dependencies: [
+        .target(name: "EnviousWisprCore"),
+        .target(name: "EnviousWisprAppKit"),
+        .target(name: "EnviousWisprAppKitTestSupport"),
+        .target(name: "EnviousWisprDesktopEffects"),
+        .package(product: "WhisperKit"),
+        .package(product: "FluidAudio"),
+        .package(product: "Sparkle"),
+      ],
+      settings: testTargetSettings
+    ),
+
     .target(
       name: "EnviousWisprTests",
       destinations: .macOS,
@@ -653,6 +691,7 @@ let project = Project(
       sources: ["Tests/EnviousWisprTests/**"],
       dependencies: firstPartyTargetDeps + [
         .target(name: "EnviousWisprAppKit"),
+        .target(name: "EnviousWisprAppKitTestSupport"),
         .target(name: "EnviousWisprContacts"),
         .target(name: "EnviousWisprLivePreview"),
         // #2108: the preview-engine tests import the adapter directly. Xcode
@@ -708,7 +747,7 @@ let project = Project(
         findImplicitDependencies: true
       ),
       testAction: .targets(
-        ["EnviousWisprTests", "EnviousWisprASRTests"],
+        ["EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"],
         arguments: denyDesktopEffects,
         configuration: "Debug"
       )
@@ -726,7 +765,7 @@ let project = Project(
         findImplicitDependencies: true
       ),
       testAction: .targets(
-        ["EnviousWisprTests", "EnviousWisprASRTests"],
+        ["EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"],
         arguments: denyDesktopEffects,
         configuration: "Dev"
       )
@@ -742,7 +781,7 @@ let project = Project(
       // `xcodebuild test -scheme EnviousWispr-Release -configuration Release`,
       // preserving the release-config test coverage the old post-merge job ran.
       testAction: .targets(
-        ["EnviousWisprTests", "EnviousWisprASRTests"],
+        ["EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"],
         arguments: denyDesktopEffects,
         configuration: "Release"
       )

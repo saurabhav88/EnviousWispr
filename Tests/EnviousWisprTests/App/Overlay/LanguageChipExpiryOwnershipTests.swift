@@ -3,6 +3,7 @@ import EnviousWisprCore
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// The language chip's dismissal belongs to the director, and the leaf owns no
 /// clock (#2377 Phase 5, C3).
@@ -61,7 +62,7 @@ struct LanguageChipExpiryOwnershipTests {
   func theDirectorOwnsTheChipsDismissal() throws {
     let counts = Counts()
     let armed = Armed()
-    let host = OverlayWindowHost(screens: { OverlayScreenResolver { Self.screen } })
+    let host = OverlayWindowHost(screens: { OverlayScreenResolver { Self.screen } }, effects: .recording())
     defer { host.hide() }
     let d = OverlayDirector(
       host: host,

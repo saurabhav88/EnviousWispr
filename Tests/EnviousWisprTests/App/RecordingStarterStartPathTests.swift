@@ -8,6 +8,7 @@ import Testing
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage

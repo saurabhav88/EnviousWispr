@@ -282,6 +282,14 @@ let package = Package(
     // it, and this manifest is what makes `swift build` reject it, but CI runs
     // Tuist and xcodebuild only. `scripts/check-dependency-direction.sh` is what
     // actually catches it on every run.
+    // #2455 C4: a NON-SHIPPING library holding fakes both test targets need.
+    // Not a `.testTarget`: SwiftPM does not let one test target depend on another,
+    // and duplicating the fakes would let two copies drift apart silently.
+    .target(
+      name: "EnviousWisprAppKitTestSupport",
+      dependencies: ["EnviousWisprAppKit", "EnviousWisprCore"],
+      path: "Sources/EnviousWisprAppKitTestSupport"
+    ),
     .target(
       name: "EnviousWisprDesktopEffects",
       dependencies: [
@@ -309,6 +317,23 @@ let package = Package(
       path: "Sources/EnviousWispr",
       exclude: ["Resources"]
     ),
+    // #2455 C4: the only test target the dep-direction gate permits to construct a
+    // live desktop effect. Nothing in the module graph enforces that — the gate does.
+    // Three suites live here, each of which DELIBERATELY drives a real window:
+    // `LiveOverlayPanelDriverTests`, `OverlayRetainedWindowRealPanelTests`, and
+    // `RecordingPollingRealPanelTests`. `OverlayHostingParityTests` is NOT one of
+    // them — with the panel injected it compares two host implementations and
+    // needs no live effect, so it stays in the unit target.
+    .testTarget(
+      name: "EnviousWisprDesktopEffectsTests",
+      dependencies: [
+        "EnviousWisprCore",
+        "EnviousWisprAppKit",
+        "EnviousWisprAppKitTestSupport",
+        "EnviousWisprDesktopEffects",
+      ],
+      path: "Tests/EnviousWisprDesktopEffectsTests"
+    ),
     .testTarget(
       name: "EnviousWisprTests",
       dependencies: [
@@ -328,6 +353,7 @@ let package = Package(
         // #919: link the app-shell code from the library, NOT the app target,
         // so `swift test` / `xcodebuild test` never launch the app.
         "EnviousWisprAppKit",
+        "EnviousWisprAppKitTestSupport",
         "EnviousWisprContacts",
         // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift
         // parser (replaces its hand-rolled comment/string scanner). This is

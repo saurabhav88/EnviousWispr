@@ -1,127 +1,84 @@
 import AppKit
-import CoreGraphics
+import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
+import Foundation
 
-@testable import EnviousWisprAppKit
-
-/// One AppKit command `OverlayWindowHost` issued against a panel (#2377, P6-C2).
+/// Every command the host issued against a panel, in order.
 ///
-/// **These observe the actual overridden AppKit calls, not the host's INTENT.**
-/// A receipt shaped `.presented(width:height:isFresh:position:)` would restate
-/// what the host meant to do and could stay green after the real command
-/// disappeared from `present()` — exactly the risk the deleted `*ForTesting`
-/// accessors carried, one layer down. `setFrame`/`setContentView`/
-/// `orderFrontRegardless`/`orderOut`/`close` are the actual AppKit surface the
-/// host drives; recording those, and nothing higher-level, is what makes a
-/// missing call visible instead of a missing INTENTION.
+/// **`close` is gone (#2455 C4).** It existed as a negative tripwire — production
+/// must never call it — and `OverlayPanelDriving` simply does not declare it, so
+/// the case it guarded is now unrepresentable rather than merely unasserted. That
+/// is the stronger form of the same check.
 enum OverlayPanelCommand: Equatable {
   case constructed(panel: ObjectIdentifier)
   case setFrame(panel: ObjectIdentifier, frame: CGRect, display: Bool, animated: Bool)
   case setContentView(panel: ObjectIdentifier, view: ObjectIdentifier?)
   case orderFrontRegardless(panel: ObjectIdentifier)
   case orderOut(panel: ObjectIdentifier)
-  case close(panel: ObjectIdentifier)
 }
 
-/// Owns every panel `OverlayPanelFactory` has produced and the commands each
-/// one received.
+/// Owns every panel the host has produced and the commands each one received.
 ///
-/// **One recorder per test, one factory closure per recorder.** `panel`
-/// answers `panelForTesting`'s old question (the current occupant) without
-/// reading private host state; `constructionCount` answers
-/// `panelConstructionCount`'s old question by counting `.constructed` receipts
-/// instead of keeping a second, independently-incrementable counter — one
-/// authority for "how many panels exist" instead of two that could drift.
+/// **The panels are no longer `NSPanel`s (#2455 C4.)** This type's predecessor
+/// vended `CommandRecordingPanel: NSPanel`, which called `super` on every
+/// override — so a suite asking for a fake pill got a real one, and the founder
+/// watched it flash. The seam vended an `NSPanel`, so a non-displaying double was
+/// not expressible; C4 moved the seam to behaviour and this records against that.
+///
+/// **One recorder per test, one factory closure per recorder.** `panel` answers
+/// "the current occupant" without reading private host state; `constructionCount`
+/// counts `.constructed` receipts rather than keeping a second, independently
+/// incrementable counter — one authority for "how many panels exist" instead of
+/// two that could drift.
 @MainActor
 final class OverlayPanelCommandRecorder {
-  fileprivate(set) var commands: [OverlayPanelCommand] = []
-  fileprivate(set) var panels: [NSPanel] = []
 
-  var panel: NSPanel? { panels.last }
+  private(set) var panels: [RecordingOverlayPanelDriver] = []
 
-  var constructionCount: Int {
-    commands.reduce(into: 0) { count, command in
-      if case .constructed = command { count += 1 }
+  var panel: RecordingOverlayPanelDriver? { panels.last }
+
+  /// Flattened from every panel this recorder vended, tagged by panel identity,
+  /// so the assertions that ask "which panel got this" still can.
+  var commands: [OverlayPanelCommand] {
+    var out: [OverlayPanelCommand] = []
+    for p in panels {
+      let id = ObjectIdentifier(p)
+      out.append(.constructed(panel: id))
+      for c in p.commands {
+        switch c {
+        case .setFrame(let f, let display, let animated):
+          out.append(.setFrame(panel: id, frame: f, display: display, animated: animated))
+        case .setContentView(let view):
+          out.append(.setContentView(panel: id, view: view))
+        case .orderFrontRegardless:
+          out.append(.orderFrontRegardless(panel: id))
+        case .orderOut:
+          out.append(.orderOut(panel: id))
+        case .accessibilityIdentifier:
+          // Not in the original vocabulary; the suites that care assert on the
+          // driver directly rather than through this flattening.
+          break
+        }
+      }
     }
+    return out
   }
 
-  func makeFactory() -> OverlayPanelFactory {
-    OverlayPanelFactory { [weak self] in
-      let p = CommandRecordingPanel(recorder: self)
-      self?.panels.append(p)
-      self?.commands.append(.constructed(panel: ObjectIdentifier(p)))
-      return p
-    }
-  }
-}
+  var constructionCount: Int { panels.count }
 
-/// A real `NSPanel` that reports every command this suite cares about to its
-/// recorder — the panel behaves exactly as the production one does; only the
-/// reporting is added.
-///
-/// **`close()` records BEFORE calling `super`; every successful command records
-/// AFTER.** Closing is a negative tripwire on the attempted call itself, so its
-/// receipt must not depend on the superclass operation completing. Production
-/// never calls `close()`.
-///
-/// **`setFrame` is normalized to one receipt per Host call.** `NSWindow`
-/// exposes animated and non-animated overloads. `animatedSetFrameDepth`
-/// normalizes either AppKit implementation: independent overloads or an
-/// animated overload that internally routes through the non-animated one.
-private final class CommandRecordingPanel: NSPanel {
-  private weak var recorder: OverlayPanelCommandRecorder?
-  private var animatedSetFrameDepth = 0
-
-  init(recorder: OverlayPanelCommandRecorder?) {
-    self.recorder = recorder
-    super.init(
-      contentRect: NSRect(x: 0, y: 0, width: 185, height: 44),
-      styleMask: [.borderless, .nonactivatingPanel],
-      backing: .buffered,
-      defer: false)
-  }
-
-  override func setFrame(_ frameRect: NSRect, display displayFlag: Bool) {
-    super.setFrame(frameRect, display: displayFlag)
-    guard animatedSetFrameDepth == 0 else { return }
-    recorder?.commands.append(
-      .setFrame(
-        panel: ObjectIdentifier(self), frame: frameRect, display: displayFlag, animated: false))
-  }
-
-  override func setFrame(_ frameRect: NSRect, display displayFlag: Bool, animate animateFlag: Bool)
-  {
-    animatedSetFrameDepth += 1
-    defer { animatedSetFrameDepth -= 1 }
-    super.setFrame(frameRect, display: displayFlag, animate: animateFlag)
-    recorder?.commands.append(
-      .setFrame(
-        panel: ObjectIdentifier(self), frame: frameRect, display: displayFlag,
-        animated: animateFlag))
-  }
-
-  override var contentView: NSView? {
-    get { super.contentView }
-    set {
-      super.contentView = newValue
-      recorder?.commands.append(
-        .setContentView(
-          panel: ObjectIdentifier(self),
-          view: newValue.map(ObjectIdentifier.init)))
-    }
-  }
-
-  override func orderFrontRegardless() {
-    super.orderFrontRegardless()
-    recorder?.commands.append(.orderFrontRegardless(panel: ObjectIdentifier(self)))
-  }
-
-  override func orderOut(_ sender: Any?) {
-    super.orderOut(sender)
-    recorder?.commands.append(.orderOut(panel: ObjectIdentifier(self)))
-  }
-
-  override func close() {
-    recorder?.commands.append(.close(panel: ObjectIdentifier(self)))
-    super.close()
+  /// The effects a host under test receives.
+  ///
+  /// Replaces `makeFactory()`. Each call vends a NEW driver, matching the old
+  /// factory's contract — the host builds its panel lazily and may rebuild it.
+  func makeEffects(
+    workspace: RecordingWorkspaceObserver = RecordingWorkspaceObserver()
+  ) -> DesktopOverlayEffects {
+    DesktopOverlayEffects(
+      makePanel: { [weak self] in
+        let driver = RecordingOverlayPanelDriver()
+        self?.panels.append(driver)
+        return driver
+      },
+      workspace: workspace)
   }
 }
