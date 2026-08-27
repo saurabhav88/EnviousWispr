@@ -188,38 +188,18 @@ final class MenuBarController: NSObject {
   }
 
   /// The title for a readable selection.
+  ///
+  /// **Display only.** `representedObject` still carries the ORIGINAL selection, so what gets added
+  /// is what the user selected rather than what fitted in a menu — the same separation this cluster
+  /// has had to relearn three times, where a sentence was composed from a neighbouring value
+  /// instead of from what the write path was given.
+  ///
+  /// Trimming, whitespace collapsing and truncation moved to `HeardWordDisplay` (#2476), which the
+  /// panel header now shares. Two renderers of one value had two answers, and only this one bounded
+  /// it; the algorithm is unchanged, so this row's existing assertions still pin it.
   private static func readyTitle(_ selection: String) -> String {
-    let trimmed = selection.trimmingCharacters(in: .whitespacesAndNewlines)
-    // **Collapse INTERNAL whitespace, not just the ends.** A selection spanning two document lines
-    // carries a newline, and a newline in an `NSMenuItem` title renders as a malformed, multi-line
-    // row. Tabs and runs of spaces are the same problem, one character over.
-    //
-    // **Display only.** `representedObject` still carries the ORIGINAL selection, so what gets added
-    // is what the user selected rather than what fitted in a menu — the same separation this cluster
-    // has had to relearn three times, where a sentence was composed from a neighbouring value
-    // instead of from what the write path was given.
-    //
-    // Collapsed BEFORE truncating, so the limit counts characters the user can actually see.
-    let collapsed = trimmed.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
-      .joined(separator: " ")
-    // **Truncate on CHARACTERS, not scalars.** A family emoji, a flag, or a letter written as a
-    // base plus a combining mark is several scalars and one character; cutting between them renders
-    // a broken glyph. The scalar ceiling still bounds the worst case, because a character can carry
-    // many scalars — both limits, and the tighter one wins.
-    let shown: String = {
-      guard
-        collapsed.count > Self.quickAddTitleCharacters
-          || collapsed.unicodeScalars.count > Self.quickAddTitleScalars
-      else { return collapsed }
-      var out = ""
-      for character in collapsed {
-        guard out.count < Self.quickAddTitleCharacters,
-          out.unicodeScalars.count + character.unicodeScalars.count <= Self.quickAddTitleScalars
-        else { break }
-        out.append(character)
-      }
-      return out + "\u{2026}"
-    }()
+    let shown = HeardWordDisplay.bounded(
+      selection, characters: Self.quickAddTitleCharacters, scalars: Self.quickAddTitleScalars)
     return "Add \u{201C}\(shown)\u{201D}"
   }
 
@@ -310,8 +290,12 @@ final class MenuBarController: NSObject {
   /// Longer than any healthy Accessibility read, shorter than a user tolerates a menu not opening.
   static let quickAddReadTimeout: Float = 0.25
 
-  static let quickAddTitleCharacters = 24
-  static let quickAddTitleScalars = 96
+  /// **One answer, aliased rather than repeated.** The panel header bounds the same heard word for
+  /// the same reason, and two constants carrying 24 in two files is the shape that agrees today and
+  /// drifts silently later. A site that genuinely wants a different bound passes one — `bounded`
+  /// takes both limits — rather than declaring a second copy of this one.
+  static let quickAddTitleCharacters = HeardWordDisplay.characters
+  static let quickAddTitleScalars = HeardWordDisplay.scalars
 
   /// Pure menu builder. Fills `menu` from `state`. Logic byte-identical to the
   /// pre-PR-B.3 `AppDelegate.populateMenu(_:)`. Internal (not private) so

@@ -120,12 +120,26 @@ enum QuickAddPanelCopy {
   /// It is also the panel's confidence signal in words rather than in styling. Below the bar nothing
   /// is preselected, and a list that looks identical either way leaves the user to infer the
   /// difference from a missing tint.
+  ///
+  /// **EVERY state names the heard word, and `lowConfidence` needs it most.** It was the one state
+  /// that dropped it, which inverted the need: the other three show a word the user can check
+  /// against a match we found, while this one shows a list of things that are NOT it. With the word
+  /// withheld there is no way to tell a correct read of an unknown word from a misread of a known
+  /// one. It matters more since #2465, because a selection acquired by borrowing the clipboard has
+  /// no other on-screen confirmation that the right text was picked up at all.
+  /// The verb still stays off this state: naming what was read is not offering to add it.
   static func groupHeader(_ state: GroupHeaderState, heard: String) -> String {
-    switch state {
-    case .confident: "Add \"\(heard)\" to"
-    case .lowConfidence: "No close match · pick one or keep typing"
-    case .alreadySaved: "Already knows \"\(heard)\" · nothing to add"
-    case .searching: "Add \"\(heard)\" to"
+    // **Bounded ONCE, above the switch, so no state can render the raw value.** Three of the
+    // four interpolate the word, and bounding only the one a review names would leave the other
+    // two — the pair-shaped fix that reads as complete and is not. `SelectionReader.classify`
+    // strips only SURROUNDING whitespace and permits a paragraph, so an unbounded header is as
+    // tall as the selection is long. Shared with the menu row, which solved this first (#2476).
+    let word = HeardWordDisplay.bounded(heard)
+    return switch state {
+    case .confident: "Add \"\(word)\" to"
+    case .lowConfidence: "No close match for \"\(word)\" · pick one or keep typing"
+    case .alreadySaved: "Already knows \"\(word)\" · nothing to add"
+    case .searching: "Add \"\(word)\" to"
     }
   }
 
