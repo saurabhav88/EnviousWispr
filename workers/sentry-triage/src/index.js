@@ -62,11 +62,47 @@ export default {
 
     const body = await request.text();
 
+    // **Sentry's alert-rule-action SETTINGS probe, answered before the HMAC gate and
+    // deliberately doing nothing (#2486).** The integration's schema declares
+    // `"settings": { "type": "alert-rule-settings", "uri": "/" }`, so when a workflow
+    // action is saved Sentry POSTs the submitted fields to this same root path. That
+    // probe carries NO `sentry-hook-signature`, so the gate below answered it 401 and
+    // Sentry surfaced `{"actionFilters":{"nonfielderrors":["Claude Triage Webhook:
+    // Something went wrong!"]}}` on every save — measured on
+    // `PUT /organizations/envious-labs-llc/workflows/3202076/`, which is why the
+    // integration could not be wired as an explicit workflow action at all.
+    //
+    // **The discriminator is the PRESENCE of the signature header, not the body.** A
+    // real webhook always carries it, so requiring it for the triage path is unchanged
+    // and a forged probe cannot reach `handleTriage`: this branch returns before any
+    // Sentry, GitHub, KV or Discord work is scheduled. The endpoint becomes
+    // unauthenticated only for a request that performs no action and reads no state.
+    //
+    // Sentry uses the STATUS to decide whether the action saved; the body is not read
+    // for `alert-rule-settings` (a `select` field's options come from its own `uri`,
+    // and this schema declares none). So `{}` is the honest answer.
+    if (!request.headers.has("sentry-hook-signature")) {
+      console.log(
+        `[sentry-triage] settings probe answered 200; headers=${headerNames(request)}`
+      );
+      return new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     // Verify HMAC-SHA256 signature — must happen before 202 so we can 401 on bad sig
     const sigHeader = request.headers.get("sentry-hook-signature") ?? "";
     const verified = await verifyHmac(body, sigHeader, env.SENTRY_WEBHOOK_SECRET);
     if (!verified) {
-      console.error("[sentry-triage] HMAC verification failed");
+      // **Header NAMES, never values.** A signature value is a credential and a
+      // body can carry user content; the names alone answer the only question a
+      // refusal leaves open — whether this was a forged webhook or a Sentry
+      // request shape we do not yet handle — which is precisely what could not be
+      // answered while #2486 was open.
+      console.error(
+        `[sentry-triage] HMAC verification failed; headers=${headerNames(request)}`
+      );
       return new Response("Unauthorized", { status: 401 });
     }
 
@@ -76,6 +112,11 @@ export default {
     return new Response("Accepted", { status: 202 });
   },
 };
+
+/** Sorted header NAMES, comma-joined. Never values: one of them is a credential. */
+export function headerNames(request) {
+  return [...request.headers.keys()].sort().join(",");
+}
 
 // ── HMAC verification ─────────────────────────────────────────────────────────
 
