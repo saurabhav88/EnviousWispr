@@ -39,12 +39,24 @@ enum WhatsNewContent {
     // Control Option W is `ShortcutRole.quickAdd.defaultBinding`
     // (ShortcutBinding.swift), keyCode 13 with .control and .option. No dashes,
     // per GR-NO-DASHES.
+    //
+    // **"puts your clipboard back" IS NOT QUALIFIED WITH "exactly as it was", AND
+    // THAT IS DELIBERATE.** The restore is conditional, not guaranteed: when the
+    // target never answers the synthetic Copy and the user copies something in
+    // the same window, `settledChangeCountAfterCopy` settles on the USER'"'"'s write
+    // and cannot tell whose it was, so `concluding` can restore the older payload
+    // over it (SelectionAcquisition.swift). `SelectionAcquisition.swift`'"'"'s own
+    // comment at the copy-answer guard says the release notes are expected to
+    // STATE that window rather than promise it away, and
+    // website/src/content/help/adding-a-word-from-your-selection.md already does.
+    // This copy now says the same thing the help page says; where the app is
+    // narrower than the note, the note is wrong.
     Entry(
       id: "quick-add",
       icon: "text.badge.plus",
       title: "Add a custom word to your dictionary with a click of a button",
       description:
-        "Highlight a misheard word anywhere on macOS, press Control Option W, and save the right spelling without opening settings. A small panel ranks that spelling against the words you have already saved, so one Return usually finishes the job. It is also in the menu bar menu, which reads whatever you have highlighted at the moment you open it. Some apps will not tell us what you have selected, such as messaging apps built for iPad and some terminals. There, Quick Add copies your selection, reads it, and puts your clipboard back exactly as it was. A switch in Clipboard settings turns that off, and it turns itself off in common remote desktop and virtual machine apps. The keybind is yours to change in Keybinds settings.",
+        "Highlight a misheard word anywhere on macOS, press Control Option W, and save the right spelling without opening settings. A small panel ranks that spelling against the words you have already saved, so one Return usually finishes the job. It is also in the menu bar menu, which reads whatever you have highlighted at the moment you open it. Some apps will not tell us what you have selected, such as messaging apps built for iPad and some terminals. There, Quick Add copies your selection, reads it, and puts your clipboard back. Your clipboard history will show both, which we do not try to hide. There is a fraction of a second where a copy you make yourself can be read as the app answering, and if that happens the panel shows the wrong word and you can close it. A switch in Clipboard settings turns all of this off, and it turns itself off in common remote desktop and virtual machine apps. The keybind is yours to change in Keybinds settings.",
       version: "2.4.6"
     ),
 

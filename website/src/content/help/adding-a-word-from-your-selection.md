@@ -23,7 +23,7 @@ The panel shows you the word first and ranks the terms already in your library, 
 
 Most apps tell other apps what you have selected. Some do not, and there is nothing you can do about that from the outside. Messaging apps built for iPad and running on your Mac are the common case, and some terminals behave the same way.
 
-In those apps EnviousWispr asks a second way: it copies your selection, reads it, and then puts your clipboard back exactly as it was. It only ever does this when the first way found nothing, so in every app that answers normally your clipboard is never touched at all.
+In those apps EnviousWispr asks a second way: it copies your selection, reads it, and then puts your clipboard back. It only ever does this when the first way found nothing, so in every app that answers normally your clipboard is never touched at all.
 
 Two things follow from that, and both are worth knowing:
 
