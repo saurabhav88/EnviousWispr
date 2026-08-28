@@ -830,3 +830,35 @@ test("headerNames: names only, sorted, never values", () => {
   assert.ok(!names.includes("deadbeef"), "a signature value must never reach a log line");
   assert.deepEqual(names.split(","), [...names.split(",")].sort(), "sorted, so two runs compare");
 });
+
+test("gate: a probe signed with sentry-app-signature is accepted, no work", async () => {
+  const { scheduled, ctx } = ctxSpy();
+  const body = JSON.stringify({ fields: { note: "New issue detected" } });
+  const res = await worker.fetch(
+    new Request("https://w/", {
+      method: "POST",
+      body,
+      headers: { "sentry-app-signature": signed(body) },
+    }),
+    { SENTRY_WEBHOOK_SECRET: GATE_SECRET },
+    ctx
+  );
+  assert.equal(res.status, 200);
+  assert.equal(scheduled.length, 0);
+});
+
+test("gate: a probe whose sentry-app-signature is WRONG is a forgery, not a probe", async () => {
+  const { scheduled, ctx } = ctxSpy();
+  const body = JSON.stringify({ fields: { note: "New issue detected" } });
+  const res = await worker.fetch(
+    new Request("https://w/", {
+      method: "POST",
+      body,
+      headers: { "sentry-app-signature": signed(body, "wrong-secret") },
+    }),
+    { SENTRY_WEBHOOK_SECRET: GATE_SECRET },
+    ctx
+  );
+  assert.equal(res.status, 401, "present-but-invalid must never be treated as unsigned");
+  assert.equal(scheduled.length, 0);
+});

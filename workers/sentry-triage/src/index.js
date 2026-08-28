@@ -82,8 +82,26 @@ export default {
     // for `alert-rule-settings` (a `select` field's options come from its own `uri`,
     // and this schema declares none). So `{}` is the honest answer.
     if (!request.headers.has("sentry-hook-signature")) {
+      // **A UI-component request is signed under a DIFFERENT header name.** Sentry's
+      // webhooks carry `Sentry-Hook-Signature`; its integration-platform component
+      // requests carry `Sentry-App-Signature`, over the same client secret. So the
+      // probe is authenticated whenever that header is present, and a signature that
+      // is present and WRONG is a forgery rather than a probe — refuse it.
+      //
+      // The `appSig` absent case still answers 200, deliberately: the header name is
+      // Sentry's to change, and refusing an unrecognised shape is exactly the failure
+      // this commit exists to end. That path returns a constant with no work behind
+      // it, so the cost of being wrong here is an endpoint that says `{}`.
+      const appSig = request.headers.get("sentry-app-signature");
+      if (appSig && !(await verifyHmac(body, appSig, env.SENTRY_WEBHOOK_SECRET))) {
+        console.error(
+          `[sentry-triage] component request signature invalid; headers=${headerNames(request)}`
+        );
+        return new Response("Unauthorized", { status: 401 });
+      }
       console.log(
-        `[sentry-triage] settings probe answered 200; headers=${headerNames(request)}`
+        `[sentry-triage] settings probe answered 200; signed=${appSig ? "yes" : "no"}; ` +
+          `headers=${headerNames(request)}`
       );
       return new Response("{}", {
         status: 200,
