@@ -164,6 +164,31 @@ def days_since(date_str, now=None):
     return (now.date() - seen.date()).days
 
 
+def threshold_is_answerable(threshold_days):
+    """None if this threshold can be decided, else why it cannot.
+
+    **The query window is a FIXED 30 days, so a threshold at or beyond it cannot
+    produce a true verdict — only a confident false one.** With a threshold of 60 and
+    a last invocation 31 days ago, that invocation falls outside the window,
+    `last_invocation_date` returns None, and the run reports the alarm "has not run
+    once in 30 days" about a notifier that is healthy by the threshold it was given.
+
+    Refusing at the door rather than widening the window: Cloudflare's retention for
+    this dataset is not a number we have measured, so a longer window would trade a
+    known false alarm for an unknown one. UNKNOWN is the honest answer to a question
+    this instrument cannot reach. Cloud review, PR for #2486.
+    """
+    if threshold_days < 1:
+        return f"threshold must be at least 1 day, got {threshold_days}"
+    if threshold_days >= LOOKBACK_DAYS:
+        return (
+            f"threshold of {threshold_days} days cannot be judged from a "
+            f"{LOOKBACK_DAYS}-day query window; anything older simply is not in the "
+            f"data, so a verdict here would be invented rather than measured"
+        )
+    return None
+
+
 def verdict(rows, script_name, threshold_days, now=None):
     """(exit_code, message). The only place staleness is decided."""
     last = last_invocation_date(rows, script_name)
@@ -321,6 +346,16 @@ def _self_test():
     assert notify_if_stale(EXIT_FRESH, "m", "https://hook", lambda *a: posted.append(a) or 204) == EXIT_FRESH
     assert posted == [], "a healthy heartbeat must never post"
 
+    # A threshold the 30-day window cannot decide must be refused, not answered.
+    # The worked example from review: threshold 60, last run 31 days ago — outside
+    # the window, so the data alone would say "never ran" about a healthy notifier.
+    assert threshold_is_answerable(7) is None
+    assert threshold_is_answerable(29) is None
+    assert threshold_is_answerable(LOOKBACK_DAYS) is not None, "at the window it is already unanswerable"
+    assert threshold_is_answerable(60) is not None
+    assert threshold_is_answerable(0) is not None
+    assert threshold_is_answerable(-1) is not None
+
     print("self-test OK")
     return 0
 
@@ -335,6 +370,13 @@ def main():
 
     if args.self_test:
         return _self_test()
+
+    # Before spending a credential or a request: a threshold this window cannot
+    # answer must be refused, not answered wrongly.
+    unanswerable = threshold_is_answerable(args.threshold_days)
+    if unanswerable:
+        print(f"UNKNOWN: {unanswerable}", file=sys.stderr)
+        return EXIT_UNKNOWN
 
     missing = [
         n
