@@ -62,11 +62,65 @@ export default {
 
     const body = await request.text();
 
+    // **Sentry's alert-rule-action SETTINGS probe, answered before the HMAC gate and
+    // deliberately doing nothing (#2486).** The integration's schema declares
+    // `"settings": { "type": "alert-rule-settings", "uri": "/" }`, so when a workflow
+    // action is saved Sentry POSTs the submitted fields to this same root path. That
+    // probe carries NO `sentry-hook-signature`, so the gate below answered it 401 and
+    // Sentry surfaced `{"actionFilters":{"nonfielderrors":["Claude Triage Webhook:
+    // Something went wrong!"]}}` on every save — measured on
+    // `PUT /organizations/envious-labs-llc/workflows/3202076/`, which is why the
+    // integration could not be wired as an explicit workflow action at all.
+    //
+    // **The discriminator is the PRESENCE of the signature header, not the body.** A
+    // real webhook always carries it, so requiring it for the triage path is unchanged
+    // and a forged probe cannot reach `handleTriage`: this branch returns before any
+    // Sentry, GitHub, KV or Discord work is scheduled. The endpoint becomes
+    // unauthenticated only for a request that performs no action and reads no state.
+    //
+    // Sentry uses the STATUS to decide whether the action saved; the body is not read
+    // for `alert-rule-settings` (a `select` field's options come from its own `uri`,
+    // and this schema declares none). So `{}` is the honest answer.
+    if (!request.headers.has("sentry-hook-signature")) {
+      // **A UI-component request is signed under a DIFFERENT header name.** Sentry's
+      // webhooks carry `Sentry-Hook-Signature`; its integration-platform component
+      // requests carry `Sentry-App-Signature`, over the same client secret. So the
+      // probe is authenticated whenever that header is present, and a signature that
+      // is present and WRONG is a forgery rather than a probe — refuse it.
+      //
+      // The `appSig` absent case still answers 200, deliberately: the header name is
+      // Sentry's to change, and refusing an unrecognised shape is exactly the failure
+      // this commit exists to end. That path returns a constant with no work behind
+      // it, so the cost of being wrong here is an endpoint that says `{}`.
+      const appSig = request.headers.get("sentry-app-signature");
+      if (appSig && !(await verifyHmac(body, appSig, env.SENTRY_WEBHOOK_SECRET))) {
+        console.error(
+          `[sentry-triage] component request signature invalid; headers=${headerNames(request)}`
+        );
+        return new Response("Unauthorized", { status: 401 });
+      }
+      console.log(
+        `[sentry-triage] settings probe answered 200; signed=${appSig ? "yes" : "no"}; ` +
+          `headers=${headerNames(request)}`
+      );
+      return new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     // Verify HMAC-SHA256 signature — must happen before 202 so we can 401 on bad sig
     const sigHeader = request.headers.get("sentry-hook-signature") ?? "";
     const verified = await verifyHmac(body, sigHeader, env.SENTRY_WEBHOOK_SECRET);
     if (!verified) {
-      console.error("[sentry-triage] HMAC verification failed");
+      // **Header NAMES, never values.** A signature value is a credential and a
+      // body can carry user content; the names alone answer the only question a
+      // refusal leaves open — whether this was a forged webhook or a Sentry
+      // request shape we do not yet handle — which is precisely what could not be
+      // answered while #2486 was open.
+      console.error(
+        `[sentry-triage] HMAC verification failed; headers=${headerNames(request)}`
+      );
       return new Response("Unauthorized", { status: 401 });
     }
 
@@ -76,6 +130,11 @@ export default {
     return new Response("Accepted", { status: 202 });
   },
 };
+
+/** Sorted header NAMES, comma-joined. Never values: one of them is a credential. */
+export function headerNames(request) {
+  return [...request.headers.keys()].sort().join(",");
+}
 
 // ── HMAC verification ─────────────────────────────────────────────────────────
 

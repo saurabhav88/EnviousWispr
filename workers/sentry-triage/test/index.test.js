@@ -733,3 +733,132 @@ test("buildFailOpenEmbed: Unknown build source + details-unavailable note", () =
   const details = embed.fields.find((f) => f.name === "Details");
   assert.match(details.value, /unavailable/i);
 });
+
+// ── Entry point: the request gate (#2486) ────────────────────────────────────
+//
+// The gate had NO tests before this, which is why an unsigned request being
+// refused was invisible: Sentry's alert-rule-action settings probe carries no
+// `sentry-hook-signature`, so it was answered 401 and the integration could
+// never be attached as a workflow action.
+//
+// The load-bearing property is NOT the status code, it is that the unsigned
+// path performs NO WORK. `ctx.waitUntil` is the only route to `handleTriage`,
+// so asserting it was never called asserts the subject rather than something
+// beside it: a future edit that answers 200 and also schedules triage fails
+// here.
+
+import worker, { headerNames } from "../src/index.js";
+import { createHmac } from "node:crypto";
+
+function ctxSpy() {
+  const scheduled = [];
+  return { scheduled, ctx: { waitUntil: (p) => scheduled.push(p) } };
+}
+
+const GATE_SECRET = "test-secret";
+
+function signed(body, secret = GATE_SECRET) {
+  return createHmac("sha256", secret).update(body, "utf8").digest("hex");
+}
+
+test("gate: a non-POST is refused before anything reads the body", async () => {
+  const { scheduled, ctx } = ctxSpy();
+  const res = await worker.fetch(new Request("https://w/", { method: "GET" }), {}, ctx);
+  assert.equal(res.status, 405);
+  assert.equal(scheduled.length, 0);
+});
+
+test("gate: an UNSIGNED post is answered 200 and schedules no work", async () => {
+  const { scheduled, ctx } = ctxSpy();
+  const body = JSON.stringify({ fields: { note: "New issue detected" } });
+  const res = await worker.fetch(
+    new Request("https://w/", { method: "POST", body }),
+    { SENTRY_WEBHOOK_SECRET: GATE_SECRET },
+    ctx
+  );
+  assert.equal(res.status, 200, "Sentry reads the STATUS to decide the action saved");
+  assert.equal(await res.text(), "{}");
+  assert.equal(
+    res.headers.get("content-type"),
+    "application/json",
+    "Sentry's client expects JSON, not the default text/plain"
+  );
+  assert.equal(scheduled.length, 0, "the probe must never reach handleTriage");
+});
+
+test("gate: a post with a WRONG signature is still 401 and schedules no work", async () => {
+  const { scheduled, ctx } = ctxSpy();
+  const body = JSON.stringify({ action: "created", data: { issue: { id: "1" } } });
+  const res = await worker.fetch(
+    new Request("https://w/", {
+      method: "POST",
+      body,
+      headers: { "sentry-hook-signature": signed(body, "wrong-secret") },
+    }),
+    { SENTRY_WEBHOOK_SECRET: GATE_SECRET },
+    ctx
+  );
+  assert.equal(res.status, 401);
+  assert.equal(scheduled.length, 0, "a forged webhook must not reach handleTriage");
+});
+
+test("gate: a CORRECTLY signed webhook still reaches triage with 202", async () => {
+  const { scheduled, ctx } = ctxSpy();
+  const body = JSON.stringify({ action: "created", data: { issue: { id: "1" } } });
+  const res = await worker.fetch(
+    new Request("https://w/", {
+      method: "POST",
+      body,
+      headers: { "sentry-hook-signature": signed(body) },
+    }),
+    { SENTRY_WEBHOOK_SECRET: GATE_SECRET },
+    ctx
+  );
+  assert.equal(res.status, 202);
+  assert.equal(scheduled.length, 1, "the real path is unchanged by the probe branch");
+  await Promise.allSettled(scheduled);
+});
+
+test("headerNames: names only, sorted, never values", () => {
+  const req = new Request("https://w/", {
+    method: "POST",
+    body: "{}",
+    headers: { "sentry-hook-signature": "deadbeef", "z-last": "1", "a-first": "2" },
+  });
+  const names = headerNames(req);
+  assert.match(names, /sentry-hook-signature/);
+  assert.ok(!names.includes("deadbeef"), "a signature value must never reach a log line");
+  assert.deepEqual(names.split(","), [...names.split(",")].sort(), "sorted, so two runs compare");
+});
+
+test("gate: a probe signed with sentry-app-signature is accepted, no work", async () => {
+  const { scheduled, ctx } = ctxSpy();
+  const body = JSON.stringify({ fields: { note: "New issue detected" } });
+  const res = await worker.fetch(
+    new Request("https://w/", {
+      method: "POST",
+      body,
+      headers: { "sentry-app-signature": signed(body) },
+    }),
+    { SENTRY_WEBHOOK_SECRET: GATE_SECRET },
+    ctx
+  );
+  assert.equal(res.status, 200);
+  assert.equal(scheduled.length, 0);
+});
+
+test("gate: a probe whose sentry-app-signature is WRONG is a forgery, not a probe", async () => {
+  const { scheduled, ctx } = ctxSpy();
+  const body = JSON.stringify({ fields: { note: "New issue detected" } });
+  const res = await worker.fetch(
+    new Request("https://w/", {
+      method: "POST",
+      body,
+      headers: { "sentry-app-signature": signed(body, "wrong-secret") },
+    }),
+    { SENTRY_WEBHOOK_SECRET: GATE_SECRET },
+    ctx
+  );
+  assert.equal(res.status, 401, "present-but-invalid must never be treated as unsigned");
+  assert.equal(scheduled.length, 0);
+});
