@@ -67,16 +67,32 @@ jobs:
         run: |
           set -uo pipefail
 
-          ARGS=""
-          if [ -n "${THRESHOLD:-}" ]; then ARGS="$ARGS --threshold-days $THRESHOLD"; fi
-          if [ "${NOTIFY}" = "true" ]; then ARGS="$ARGS --notify"; fi
+          # An ARRAY, not a string. `threshold_days` is free-text from
+          # workflow_dispatch, and appending it to a string then expanding `$ARGS`
+          # unquoted lets a value with spaces or shell metacharacters change the
+          # command's structure. Cloud review, PR for #2486.
+          #
+          # Validated here as well as quoted: argparse would reject a non-integer,
+          # but failing at the door with a readable message beats a stack trace,
+          # and it keeps the injection surface at zero rather than merely inert.
+          ARGS=()
+          if [ -n "${THRESHOLD:-}" ]; then
+            case "$THRESHOLD" in
+              ''|*[!0-9]*)
+                echo "::error::threshold_days must be a whole number, got '$THRESHOLD'"
+                exit 1
+                ;;
+            esac
+            ARGS+=(--threshold-days "$THRESHOLD")
+          fi
+          if [ "${NOTIFY}" = "true" ]; then ARGS+=(--notify); fi
 
           # Deliberately capturing the status rather than letting `set -e` abort:
           # the three outcomes need three different reports, and an aborted shell
           # would render "could not measure" identically to "the notifier is dead".
           # Claiming an outage we did not observe is its own kind of wrong.
           RC=0
-          python3 scripts/ci/check-alerting-heartbeat.py $ARGS | tee /tmp/heartbeat.txt || RC=$?
+          python3 scripts/ci/check-alerting-heartbeat.py "${ARGS[@]}" | tee /tmp/heartbeat.txt || RC=$?
           OUT="$(cat /tmp/heartbeat.txt)"
 
           case "$RC" in

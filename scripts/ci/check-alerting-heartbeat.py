@@ -195,6 +195,34 @@ def post_discord(webhook_url, message, *, opener=None):
     return getattr(resp, "status", None) or resp.getcode()
 
 
+def notify_if_stale(code, message, webhook, poster):
+    """Post when stale, and return the exit code the caller should use.
+
+    **A FAILED DELIVERY DOES NOT UNMAKE THE VERDICT.** The measurement already
+    succeeded and said stale; only the notification failed. Returning UNKNOWN here
+    would make the workflow report "could not measure", which is false, and would
+    hide a real outage behind a Discord problem.
+
+    `urlopen` RAISES on a non-2xx rather than returning one, so an unguarded call
+    exits with a traceback and status 1 — indistinguishable from a clean stale
+    verdict, with the message lost. Cloud review, PR for #2486.
+    """
+    if code != EXIT_STALE:
+        return code
+    if not webhook:
+        print("DISCORD DELIVERY FAILED: DISCORD_WEBHOOK_URL is unset", file=sys.stderr)
+        return EXIT_STALE
+    try:
+        status = poster(webhook, f"Error alerts may have stopped. {message}")
+    except Exception as exc:  # transport, DNS, TLS, or a non-2xx raised as HTTPError
+        print(f"DISCORD DELIVERY FAILED: {exc}", file=sys.stderr)
+        return EXIT_STALE
+    print(f"Discord responded {status}")
+    if status not in (200, 204):
+        print(f"DISCORD DELIVERY FAILED: status {status}", file=sys.stderr)
+    return EXIT_STALE
+
+
 def _self_test():
     """Pure checks over the decision layer. No network."""
     now = dt.datetime(2026, 8, 28, tzinfo=dt.timezone.utc)
@@ -256,6 +284,19 @@ def _self_test():
         else:
             raise AssertionError(f"expected Unknown for {body!r}")
 
+    # A Discord problem must never be able to downgrade a real STALE verdict, and
+    # must never be able to upgrade a FRESH one.
+    def raiser(*_a, **_k):
+        raise urllib.error.HTTPError("u", 500, "boom", None, None)
+
+    assert notify_if_stale(EXIT_STALE, "m", "https://hook", raiser) == EXIT_STALE
+    assert notify_if_stale(EXIT_STALE, "m", None, raiser) == EXIT_STALE
+    assert notify_if_stale(EXIT_STALE, "m", "https://hook", lambda *_a: 500) == EXIT_STALE
+    assert notify_if_stale(EXIT_STALE, "m", "https://hook", lambda *_a: 204) == EXIT_STALE
+    posted = []
+    assert notify_if_stale(EXIT_FRESH, "m", "https://hook", lambda *a: posted.append(a) or 204) == EXIT_FRESH
+    assert posted == [], "a healthy heartbeat must never post"
+
     print("self-test OK")
     return 0
 
@@ -295,15 +336,10 @@ def main():
     code, message = verdict(rows, args.script_name, args.threshold_days)
     print(message)
 
-    if code == EXIT_STALE and args.notify:
-        webhook = os.environ.get("DISCORD_WEBHOOK_URL")
-        if not webhook:
-            print("UNKNOWN: stale, but DISCORD_WEBHOOK_URL is unset", file=sys.stderr)
-            return EXIT_UNKNOWN
-        status = post_discord(webhook, f"Error alerts may have stopped. {message}")
-        print(f"Discord responded {status}")
-        if status not in (200, 204):
-            return EXIT_UNKNOWN
+    if args.notify:
+        code = notify_if_stale(
+            code, message, os.environ.get("DISCORD_WEBHOOK_URL"), post_discord
+        )
     return code
 
 
