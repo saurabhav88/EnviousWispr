@@ -175,7 +175,13 @@ def verdict(rows, script_name, threshold_days, now=None):
             f"'{script_name}' no longer exists under that name. Someone has to look.",
         )
     age = days_since(last, now=now)
-    if age > threshold_days:
+    # **`>=`, NOT `>`.** The input is described as "days of silence before this
+    # alerts", so at exactly the threshold it must alert. With `>` a 7-day setting
+    # first fired on day 8, which quietly made this file's own claim — that it would
+    # have caught #2486 on Aug 23 — false by a day. Cloud review, PR for #2486.
+    # The boundary is pinned in the self-test at both 6 and 7 days so the off-by-one
+    # cannot come back silently.
+    if age >= threshold_days:
         return (
             EXIT_STALE,
             f"The Sentry alerter last ran {age} days ago, on {last}. Anything longer "
@@ -245,12 +251,30 @@ def _self_test():
     )
     assert code == EXIT_FRESH, msg
 
-    # A six-day gap is NORMAL traffic and must not fire, or the guard cries wolf.
+    # THE BOUNDARY, pinned on both sides. A six-day gap is NORMAL traffic (Aug 8 to
+    # Aug 14 really happened) and must stay quiet, or the guard cries wolf. Exactly
+    # seven days IS the threshold and must fire — "days of silence before this
+    # alerts" means at seven it alerts, and a `>` here silently pushed that to eight.
     code, _ = verdict(
         [row("enviouswispr-sentry-triage", "2026-08-22")],
         "enviouswispr-sentry-triage", 7, now=now,
     )
     assert code == EXIT_FRESH, "a 6-day gap is real healthy traffic; firing here would train dismissal"
+    code, msg = verdict(
+        [row("enviouswispr-sentry-triage", "2026-08-21")],
+        "enviouswispr-sentry-triage", 7, now=now,
+    )
+    assert code == EXIT_STALE, "at exactly the threshold it must alert, not on the day after"
+    assert "7 days ago" in msg, msg
+
+    # The dated promise this file makes about #2486, asserted rather than claimed:
+    # last run Aug 16, so a check on Aug 23 fires.
+    code, _ = verdict(
+        [row("enviouswispr-sentry-triage", "2026-08-16")],
+        "enviouswispr-sentry-triage", 7,
+        now=dt.datetime(2026, 8, 23, tzinfo=dt.timezone.utc),
+    )
+    assert code == EXIT_STALE, "the prose says Aug 23; the code must agree"
 
     # No rows at all is the alarm, never the quiet case.
     code, _ = verdict([], "enviouswispr-sentry-triage", 7, now=now)
