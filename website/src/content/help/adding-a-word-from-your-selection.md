@@ -6,7 +6,7 @@ section: "Custom Words"
 order: 4
 keywords: ["quick add", "add selected word", "highlight a word", "selection", "shortcut", "whatsapp", "terminal", "menu bar", "clipboard", "add word from selection"]
 related: ["adding-custom-words", "clipboard-preservation", "how-custom-word-correction-works"]
-updated: 2026-08-26
+updated: 2026-08-28
 ---
 When EnviousWispr writes a name the wrong way, you do not have to open settings to fix it. Highlight the word it should have written, press the Quick Add shortcut, and a small panel appears offering to attach that spelling to the word it keeps getting wrong.
 
