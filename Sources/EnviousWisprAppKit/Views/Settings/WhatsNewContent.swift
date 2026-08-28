@@ -51,12 +51,19 @@ enum WhatsNewContent {
     // website/src/content/help/adding-a-word-from-your-selection.md already does.
     // This copy now says the same thing the help page says; where the app is
     // narrower than the note, the note is wrong.
+    //
+    // **AND IT NAMES THE LOST COPY, not only the wrong word.** The residue is
+    // stated verbatim at `SelectionAcquisition.swift`'"'"'s known-limit block: a user
+    // who copies inside this window, in an app that did not answer, "sees the
+    // wrong word in the panel and loses that copy to the restore". An earlier
+    // revision disclosed only the first half, which is the softer of the two and
+    // the one that costs the user nothing.
     Entry(
       id: "quick-add",
       icon: "text.badge.plus",
       title: "Add a custom word to your dictionary with a click of a button",
       description:
-        "Highlight a misheard word anywhere on macOS, press Control Option W, and save the right spelling without opening settings. A small panel ranks that spelling against the words you have already saved, so one Return usually finishes the job. It is also in the menu bar menu, which reads whatever you have highlighted at the moment you open it. Some apps will not tell us what you have selected, such as messaging apps built for iPad and some terminals. There, Quick Add copies your selection, reads it, and puts your clipboard back. Your clipboard history will show both, which we do not try to hide. There is a fraction of a second where a copy you make yourself can be read as the app answering, and if that happens the panel shows the wrong word and you can close it. A switch in Clipboard settings turns all of this off, and it turns itself off in common remote desktop and virtual machine apps. The keybind is yours to change in Keybinds settings.",
+        "Highlight a misheard word anywhere on macOS, press Control Option W, and save the right spelling without opening settings. A small panel ranks that spelling against the words you have already saved, so one Return usually finishes the job. It is also in the menu bar menu, which reads whatever you have highlighted at the moment you open it. Some apps will not tell us what you have selected, such as messaging apps built for iPad and some terminals. There, Quick Add copies your selection, reads it, and puts your clipboard back. Your clipboard history will show both, which we do not try to hide. There is a fraction of a second where a copy you make yourself can be read as the app answering. If that happens the panel shows the wrong word, and that copy of yours is lost when your clipboard is put back. A switch in Clipboard settings turns all of this off, and it turns itself off in common remote desktop and virtual machine apps. The keybind is yours to change in Keybinds settings.",
       version: "2.4.6"
     ),
 
@@ -105,7 +112,7 @@ enum WhatsNewContent {
       icon: "cursorarrow.rays",
       title: "Settings respond as your pointer moves",
       description:
-        "Rows, cards, the sidebar and History respond to your pointer across every settings page, so it is clearer what is a control and what is only text.",
+        "Rows, cards, the sidebar and the History list respond to your pointer across the settings window, so it is clearer what is a control and what is only text.",
       version: "2.4.6"
     ),
 
@@ -171,7 +178,7 @@ enum WhatsNewContent {
       icon: "globe",
       title: "Real German, Dutch, Danish and Norwegian words are no longer deleted",
       description:
-        "The step that strips out ums and uhs used an English list, and it ran whatever language you were dictating in. That deleted real, common words: er means he in German, Dutch, Danish and Norwegian, and um is an ordinary German word too. Filler removal now reads the language you are dictating in and leaves those words alone. Every other word and every other language is unchanged.",
+        "The step that strips out ums and uhs used an English list, and it ran whatever language you were dictating in. That deleted real, common words: er means he in German, there in Dutch, and is in Danish and Norwegian, and um is an ordinary German word too. Filler removal now reads the language you are dictating in and leaves those words alone. Every other word and every other language is unchanged.",
       version: "2.4.6"
     ),
 
