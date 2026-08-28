@@ -20,75 +20,113 @@ enum WhatsNewContent {
   static let entries: [Entry] = [
     // MARK: - v2.4.6
 
-    // #2376. FIRST in the 2.4.6 group because order is the hierarchy
-    // (whats-new-protocol.md RULE: whats-new-content-rules): headline feature,
-    // then supporting features, then fixes. This is the feature; the entry below
-    // is a removal.
+    // Every title and every collapsed line in this group was written or edited by
+    // the founder on 2026-08-28, reviewing the release-log draft line by line.
+    // Where he supplied a sentence it is used verbatim; do not "improve" it.
     //
-    // The 2.4.6 group is already open and already matches
-    // `WhatsNewConstants.currentContentVersion`, so this needs no Core edit —
-    // bumping it here would invent a release.
+    // #2381 opens the group. Quick Add reaches users for the FIRST time here, so
+    // this entry INTRODUCES the feature and deliberately carries no repair copy:
+    // the clipboard fallback (#2465), the menu-bar door (#2412) and the panel
+    // rebuild all landed before anyone had the feature, so describing them as
+    // fixes would report a broken version no user ever ran (founder, 2026-08-28).
     //
-    // **The copy names what a user GAINS, not what moved underneath.** Most of
-    // this phase is a refactor nobody should be able to see, and saying so would
-    // be talking about our code on a page about their app. What is genuinely new
-    // is a choice they did not have and a meter most of them have never seen: it
-    // has shipped since #2216 with exactly one construction site, inside the live
-    // preview pill, so only users who can and do run that feature have ever laid
-    // eyes on it.
+    // The clipboard sentences STAY, and they are not repair copy. The feature
+    // writes to the user's clipboard, and a user who finds two unexplained rows
+    // in their clipboard history has been surprised by their own dictation app.
+    // It names no app as the culprit: naming one dates the entry the moment that
+    // app starts publishing a selection.
     //
-    // It deliberately does NOT promise the meter to everyone: it is one of two
-    // options, and the capsule stays the default so nobody's pill changes on
-    // upgrade. No dash characters, per GR-NO-DASHES.
+    // Control Option W is `ShortcutRole.quickAdd.defaultBinding`
+    // (ShortcutBinding.swift), keyCode 13 with .control and .option. No dashes,
+    // per GR-NO-DASHES.
     //
-    // TITLE NOT YET FOUNDER-EDITED. He read and edited every title in the 2.4.5
-    // group by hand on 2026-08-20; this one was written without him and is the
-    // obvious thing for him to change.
+    // **"puts your clipboard back" IS NOT QUALIFIED WITH "exactly as it was", AND
+    // THAT IS DELIBERATE.** The restore is conditional, not guaranteed: when the
+    // target never answers the synthetic Copy and the user copies something in
+    // the same window, `settledChangeCountAfterCopy` settles on the USER'"'"'s write
+    // and cannot tell whose it was, so `concluding` can restore the older payload
+    // over it (SelectionAcquisition.swift). `SelectionAcquisition.swift`'"'"'s own
+    // comment at the copy-answer guard says the release notes are expected to
+    // STATE that window rather than promise it away, and
+    // website/src/content/help/adding-a-word-from-your-selection.md already does.
+    // This copy now says the same thing the help page says; where the app is
+    // narrower than the note, the note is wrong.
+    //
+    // **AND IT NAMES THE LOST COPY, not only the wrong word.** The residue is
+    // stated verbatim at `SelectionAcquisition.swift`'"'"'s known-limit block: a user
+    // who copies inside this window, in an app that did not answer, "sees the
+    // wrong word in the panel and loses that copy to the restore". An earlier
+    // revision disclosed only the first half, which is the softer of the two and
+    // the one that costs the user nothing.
     Entry(
-      id: "recording-pill-designs",
-      icon: "waveform.badge.mic",
-      title: "Choose how your recording pill looks",
+      id: "quick-add",
+      icon: "text.badge.plus",
+      title: "Add a custom word to your dictionary with a click of a button",
       description:
-        "The pill that appears while you dictate now comes in more than one shape, and you pick which one you see. Appearance settings has a new Recording Pill section with two groups: pills that show your words as you speak, and pills that do not. Alongside the capsule you already know there is a new Level Rail, a wider pill carrying your timer beside a live rainbow meter of your voice. That meter has been in the app for a while, but until now only people running Live Preview ever saw it. Each group remembers its own choice, so if you switch Live Preview off and on again you get back the pill you picked for each. The group that does not apply to you right now stays visible and greyed, and tells you why rather than leaving you to guess.",
+        "Highlight a misheard word anywhere on macOS, press Control Option W, and save the right spelling without opening settings. A small panel ranks that spelling against the words you have already saved, so one Return usually finishes the job. It is also in the menu bar menu, which reads whatever you have highlighted at the moment you open it. Some apps will not tell us what you have selected, such as messaging apps built for iPad and some terminals. There, Quick Add copies your selection, reads it, and puts your clipboard back. Your clipboard history will show both, which we do not try to hide. There is a fraction of a second where a copy you make yourself can be read as the app answering. If that happens the panel shows the wrong word, and that copy of yours is lost when your clipboard is put back. A switch in Clipboard settings turns all of this off, and it turns itself off in common remote desktop and virtual machine apps. The keybind is yours to change in Keybinds settings.",
       version: "2.4.6"
     ),
 
-    // #1831. OPENS THE 2.4.6 GROUP, and that placement is load-bearing.
+    // #2376. Founder's own sentence, replacing a three sentence draft that named
+    // the Level Rail, the two groups and the per-group memory. He cut all three:
+    // "This all can be one sentence."
+    Entry(
+      id: "recording-pill-designs",
+      icon: "waveform.badge.mic",
+      title: "A new pill design for recording",
+      description:
+        "We have now added a new pill design for recording, and you can toggle between these options in the appearance section.",
+      version: "2.4.6"
+    ),
+
+    // #2196. Founder's own sentence. The measured defect behind it is that 51
+    // people in 90 days never once had a successful paste, but he cut the
+    // number and the diagnosis, so neither is restated here.
+    Entry(
+      id: "onboarding-practice-dictation",
+      icon: "graduationcap",
+      title: "Try dictation during setup",
+      description:
+        "Improved the onboarding experience so that users can test dictation during the onboarding process.",
+      version: "2.4.6"
+    ),
+
+    // #2436. Founder's own sentence. He dictated "light preview"; the feature is
+    // named Live Preview everywhere in the app, so the name is written correctly.
+    // The redesign's own follow up repairs (#2445) are omitted for the same reason
+    // as Quick Add's: the page it repaired has never shipped.
+    Entry(
+      id: "live-preview-settings-decluttered",
+      icon: "eye",
+      title: "A less cluttered Live Preview settings screen",
+      description:
+        "Improved the Live Preview settings screen to be less cluttered.",
+      version: "2.4.6"
+    ),
+
+    // #2447. 39 sites, one shared vocabulary in SettingsHover.swift. The count is
+    // deliberately NOT in the copy: a published count of anything that changes
+    // without touching this comment cannot stay correct.
+    Entry(
+      id: "settings-hover-states",
+      icon: "cursorarrow.rays",
+      title: "Settings respond as your pointer moves",
+      description:
+        "Rows, cards, the sidebar and the History list respond to your pointer across the settings window, so it is clearer what is a control and what is only text.",
+      version: "2.4.6"
+    ),
+
+    // #1831. A REMOVAL, so it sits after the features and before the fixes.
     //
-    // v2.4.5 shipped 2026-08-20. Anyone who has opened What's New since
-    // then has `lastSeenWhatsNewVersion == "2.4.5"`, and the unread badge
-    // is `lastSeen != currentContentVersion` (SettingsManager.swift:633),
-    // so an entry added to the 2.4.5 group is never surfaced to exactly the
-    // population it is written for. An earlier revision of this change put
-    // it there; cloud review caught it.
-    //
-    // Bumping `currentContentVersion` from a feature PR is the established
-    // shape, not an invented release: #2027 opened 2.4.5 the same way after
-    // 2.4.4 shipped, touching WhatsNewConstants and NOT Info.plist. The
-    // marketing version stays 2.4.5 until a release PR moves it.
-    //
-    // This entry exists because a REMOVAL is the case where saying nothing is
-    // worst. The user who deliberately turned this on will not file a bug; they
-    // will notice the switch is gone, assume their polish changed, and trust the
-    // app less. Stating the measurement is what makes that a decision they can
-    // check rather than something done to them quietly.
+    // This entry exists because saying nothing about a removal is the worst
+    // option: the user who deliberately turned this on will not file a bug, they
+    // will notice the switch is gone and trust the app less.
     //
     // The numbers are the #1832 thinking-level run: 100 topic_shift cases from
-    // type_b_parakeet, gemini-3.7-flash, arms low/medium/high, one judge. NOT
-    // the 1,462-case sealed_v1 run — that one compared MODELS at a fixed `low`
-    // and is where 93.5% comes from. An earlier draft of this entry merged the
-    // two and cloud review caught it; they are different corpora answering
-    // different questions.
-    //
-    // Measured: 57.0 / 58.0 / 61.0% pass, McNemar exact two-sided p=0.42 for
-    // low vs high, so the nominal edge is not distinguishable from chance at
-    // n=100; p90 2.83x. Full table in the run's README.
-    //
-    // The copy deliberately does NOT promise unchanged output. Every arm here is
-    // Gemini; #1831 also moves OpenAI reasoning models from medium to low and
-    // that combination was never measured, so "your polish will read the same"
-    // would be a claim about an unmeasured provider. No dash characters, per
-    // GR-NO-DASHES.
+    // type_b_parakeet, gemini-3.7-flash, arms low/medium/high, one judge. NOT the
+    // 1,462-case sealed_v1 run, which compared MODELS at a fixed `low` and is
+    // where 93.5% comes from. An earlier draft merged the two and cloud review
+    // caught it. No dashes, per GR-NO-DASHES.
     Entry(
       id: "deep-reasoning-retired",
       icon: "slider.horizontal.3",
@@ -98,26 +136,65 @@ enum WhatsNewContent {
       version: "2.4.6"
     ),
 
-    // #2465. LAST in the 2.4.6 group, because order is the hierarchy
-    // (whats-new-protocol.md RULE: whats-new-content-rules) and this is a fix
-    // rather than a feature: the shortcut was always meant to work here.
+    // #2315 (stray period, leftover "dot", garbled "h slash slash"), #2297 (Return
+    // in a Chromium address bar) and #2272 (trailing space). Three PRs, one thing
+    // the user notices, so one entry.
     //
-    // **The entry exists because the change WRITES to the user's clipboard**,
-    // which the feature never did before. A user who notices two new rows in
-    // their clipboard history and finds no mention of it anywhere has been
-    // surprised by their own dictation app. So the copy states the side effect
-    // plainly and names the switch, rather than only announcing the win.
-    //
-    // It names no app class as the culprit. WhatsApp is the case the founder
-    // reported and terminals are the other one, but naming them dates the entry
-    // the moment either starts publishing a selection, and it is a diagnosis of
-    // software we did not inspect. No dash characters, per GR-NO-DASHES.
+    // SCOPES ARE NARROW ON PURPOSE and each is a gate, not a generality. The
+    // trailing-space skip requires a recognized browser AND a matching focused
+    // element signature, measured against Safari, Chrome and Brave (#2272). The
+    // Return fix is the Chromium address bar specifically; Safari was measured
+    // unaffected and keeps the direct write (#2451). Do not widen either to
+    // "browsers".
     Entry(
-      id: "quick-add-reads-more-apps",
-      icon: "text.viewfinder",
-      title: "Adding a word from your selection works in more apps",
+      id: "spoken-web-addresses",
+      icon: "link",
+      title: "Dictated web addresses come out ready to use",
       description:
-        "Highlighting a word and pressing your Quick Add keybind did nothing in some apps, because they will not tell other apps what you have selected. Messaging apps built for iPad are the common ones, and some terminals do it too. In those apps EnviousWispr now asks a second way: it copies your selection, reads it, and puts your clipboard back exactly as it was. It only does that where the ordinary way found nothing, so in every app that already worked your clipboard is never touched. If you copy something yourself while the panel is open, your copy wins and yours is left alone. Your clipboard history will show the copy and the restore, which we do not try to hide. If you would rather it never touched your clipboard, there is a new switch in Clipboard settings, and it is turned off automatically in several common remote desktop and virtual machine apps. That list cannot cover every one of them, so use the switch for any other remote-access app you use.",
+        "Saying a web address out loud used to leave you something to fix by hand. A stray period at the end of a bare address is now dropped, while a real sentence period is kept. A leftover dot word sitting beside an address we already joined up is folded into the address. A garbled h slash slash from a half heard https is repaired before polish ever sees it. Dictating into the address bar of Safari, Chrome, Brave or Edge no longer adds a trailing space you have to delete. And in Chrome and Brave, pressing Return after dictating an address now goes there, which it did not before.",
+      version: "2.4.6"
+    ),
+
+    // #2312 and #2298. Two places a saved word could swallow a domain ending:
+    // the multi-word fuzzy pass and single-word custom-word correction. The
+    // measured case is "international platforn.com" against a saved
+    // "international platform", which corrected the spelling and deleted the
+    // ".com" (PR #2406).
+    Entry(
+      id: "saved-words-keep-address-endings",
+      icon: "textformat.abc",
+      title: "Your saved words no longer eat the end of an address",
+      description:
+        "If you had saved a word or phrase that looked like the start of a web address, correcting it could swallow the ending, so a company name with dot com stuck on it came back as the company name alone. Both places that could happen are fixed, and the ending now survives the correction.",
+      version: "2.4.6"
+    ),
+
+    // #2262. The four languages are the exact set the fix exempts, and the two
+    // tokens are the colliding ones: "er" collides in all four, "um" in German.
+    // Every other token and every other language is unchanged, which is why the
+    // last sentence is a scope statement rather than a flourish.
+    Entry(
+      id: "filler-removal-respects-language",
+      icon: "globe",
+      title: "Real German, Dutch, Danish and Norwegian words are no longer deleted",
+      description:
+        "The step that strips out ums and uhs used an English list, and it ran whatever language you were dictating in. That deleted real, common words: er means he in German, there in Dutch, and is in Danish and Norwegian, and um is an ordinary German word too. Filler removal now reads the language you are dictating in and leaves those words alone. Every other word and every other language is unchanged.",
+      version: "2.4.6"
+    ),
+
+    // #2319, #2110 and #2318. LAST, and the collective title is licensed by
+    // whats-new-protocol.md RULE: whats-new-content-rules only because all four
+    // conditions hold: it is last, every other entry here is specifically titled,
+    // the title is written fresh for this release, and no member is something a
+    // user goes looking for. `codex review` raises this as a P2 every time
+    // because it reads the prohibition literally; adjudicate against those four
+    // conditions and cite that row rather than re-asking the founder.
+    Entry(
+      id: "smaller-wins-2-4-6",
+      icon: "wrench.and.screwdriver",
+      title: "The smaller wins",
+      description:
+        "Delete, Cancel and Save stay visible in the custom word panel however many spellings you have saved against a word, and a long spelling wraps instead of pushing them off. Cancelling a model download you started yourself no longer stops the next automatic upgrade being offered. And if the speech engine was not ready when you finished speaking, your recording is kept and given another go rather than lost.",
       version: "2.4.6"
     ),
 

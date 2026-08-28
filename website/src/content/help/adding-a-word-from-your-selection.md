@@ -6,7 +6,7 @@ section: "Custom Words"
 order: 4
 keywords: ["quick add", "add selected word", "highlight a word", "selection", "shortcut", "whatsapp", "terminal", "menu bar", "clipboard", "add word from selection"]
 related: ["adding-custom-words", "clipboard-preservation", "how-custom-word-correction-works"]
-updated: 2026-08-26
+updated: 2026-08-28
 ---
 When EnviousWispr writes a name the wrong way, you do not have to open settings to fix it. Highlight the word it should have written, press the Quick Add shortcut, and a small panel appears offering to attach that spelling to the word it keeps getting wrong.
 
@@ -23,12 +23,12 @@ The panel shows you the word first and ranks the terms already in your library, 
 
 Most apps tell other apps what you have selected. Some do not, and there is nothing you can do about that from the outside. Messaging apps built for iPad and running on your Mac are the common case, and some terminals behave the same way.
 
-In those apps EnviousWispr asks a second way: it copies your selection, reads it, and then puts your clipboard back exactly as it was. It only ever does this when the first way found nothing, so in every app that answers normally your clipboard is never touched at all.
+In those apps EnviousWispr asks a second way: it copies your selection, reads it, and then puts your clipboard back. It only ever does this when the first way found nothing, so in every app that answers normally your clipboard is never touched at all.
 
 Two things follow from that, and both are worth knowing:
 
 - **Your clipboard history will show two extra entries** when this happens: the word that was copied, and the restore that put your own clipboard back. Every app that does this leaves the first one behind. We do not try to hide the second.
-- **If you copy something yourself while the panel is open, your copy wins.** EnviousWispr checks whether anything else claimed the clipboard before putting yours back, and if something did, it leaves it alone. There is a fraction of a second while it is asking the app, before the panel appears, where a copy you make at that exact moment can be mistaken for the app's answer. If that happens you will see the wrong word in the panel and can close it.
+- **If you copy something yourself while the panel is open, your copy wins.** EnviousWispr checks whether anything else claimed the clipboard before putting yours back, and if something did, it leaves it alone. There is a fraction of a second while it is asking the app, before the panel appears, where a copy you make at that exact moment can be mistaken for the app's answer. If that happens you will see the wrong word in the panel, and that copy of yours is lost when your clipboard is put back.
 
 ### Turning it off
 
