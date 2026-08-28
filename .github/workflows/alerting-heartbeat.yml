@@ -1,0 +1,111 @@
+name: Alerting Heartbeat
+
+# Asks one question daily: is anything still reaching the Sentry -> Discord
+# notifier? On 2026-08-16 Sentry stopped firing it and nobody noticed for 12 days,
+# because the only symptom was an absence and no alert is not a signal (#2486).
+#
+# HERE RATHER THAN IN A WORKER, for two reasons. A watchdog that lives inside the
+# system it watches dies with it. And the Cloudflare account is at its 5-cron
+# free-plan limit (#1092), which is why daily-report-ping.yml already schedules from
+# here too.
+#
+# Reuses secrets this repo already holds. No new credential is introduced by this
+# workflow: CLOUDFLARE_* drive the analytics query, and DISCORD_RELEASE_WEBHOOK is
+# the same channel release.yml already uses for proactive "something needs you"
+# posts, which is exactly this message's shape.
+
+on:
+  schedule:
+    # ~10:41am EDT / ~9:41am EST. Offset minute, not top-of-hour: GitHub flags
+    # :00 as a high-load window where scheduled runs are delayed or dropped
+    # (#1131), and a watchdog that silently does not run is the failure it exists
+    # to prevent.
+    - cron: "41 14 * * *"
+  workflow_dispatch:
+    inputs:
+      threshold_days:
+        description: "Days of silence before this alerts (default 7)"
+        required: false
+        type: string
+      notify:
+        description: "Post to Discord when stale (off for a dry run)"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: alerting-heartbeat
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      # Runs first and takes no credentials. If the decision layer is broken, that
+      # is a fact about this checkout, and finding it out here is cheaper than
+      # finding it out from a verdict nobody can trust.
+      - name: Self-test the decision layer
+        run: python3 scripts/ci/check-alerting-heartbeat.py --self-test
+
+      - name: Check the notifier heartbeat
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          THRESHOLD: ${{ inputs.threshold_days }}
+          # A scheduled run always notifies. A manual run notifies only when asked,
+          # so this can be exercised without posting to the founder's channel.
+          NOTIFY: ${{ github.event_name == 'schedule' || inputs.notify }}
+        run: |
+          set -uo pipefail
+
+          ARGS=""
+          if [ -n "${THRESHOLD:-}" ]; then ARGS="$ARGS --threshold-days $THRESHOLD"; fi
+          if [ "${NOTIFY}" = "true" ]; then ARGS="$ARGS --notify"; fi
+
+          # Deliberately capturing the status rather than letting `set -e` abort:
+          # the three outcomes need three different reports, and an aborted shell
+          # would render "could not measure" identically to "the notifier is dead".
+          # Claiming an outage we did not observe is its own kind of wrong.
+          RC=0
+          python3 scripts/ci/check-alerting-heartbeat.py $ARGS | tee /tmp/heartbeat.txt || RC=$?
+          OUT="$(cat /tmp/heartbeat.txt)"
+
+          case "$RC" in
+            0)
+              echo "### Alerting heartbeat: healthy" >> "$GITHUB_STEP_SUMMARY"
+              echo "$OUT" >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            1)
+              echo "::error::Sentry error alerts appear to have stopped reaching Discord."
+              {
+                echo "### Alerting heartbeat: STALE"
+                echo ""
+                echo "$OUT"
+                echo ""
+                echo "Runbook: \`.claude/knowledge/sentry-triage-pipeline.md\`"
+                echo "FACT: the-notifier-can-go-silent-and-silence-is-indistinguishable-from-quiet"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+              ;;
+            *)
+              # UNKNOWN. Red, because a watchdog that cannot see must not look green,
+              # but explicitly NOT an outage claim.
+              echo "::error::The alerting heartbeat could not be measured. This is not a claim that alerting is broken."
+              {
+                echo "### Alerting heartbeat: COULD NOT MEASURE"
+                echo ""
+                echo "The check failed to read Cloudflare. Nothing is asserted about"
+                echo "whether alerts are flowing; only that this could not tell."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+              ;;
+          esac
