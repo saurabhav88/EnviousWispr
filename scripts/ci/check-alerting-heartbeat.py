@@ -125,20 +125,35 @@ def fetch_rows(account_id, api_key, email, *, now=None, opener=None):
     except ValueError as exc:
         raise Unknown("Cloudflare response was not JSON") from exc
 
-    # Producer 2: a 200 carrying a GraphQL errors array. Silently rendering this as
+    # **EVERY shape below is read defensively, and that is a CLASS decision rather
+    # than a list of shapes.** Review found this file mis-classifying an
+    # unmeasurable state as a measured verdict four separate times, each a different
+    # member: a GraphQL error array, a missing account, a threshold past the window,
+    # and finally valid JSON of an unexpected shape (`null`, a list, `accounts:
+    # [null]`) raising an uncaught `AttributeError`. Enumerating shapes only ever
+    # produces the next member, so the question asked here is the closed one — is
+    # this thing the type I need — and `main` additionally maps ANY escaping
+    # exception to UNKNOWN so the exit code cannot be wrong even if this misses one.
+    if not isinstance(body, dict):
+        raise Unknown(f"Cloudflare response was {type(body).__name__}, not an object")
+
+    # Producer: a 200 carrying a GraphQL errors array. Silently rendering this as
     # zero rows is exactly how a broken query became "0" in #1589.
     if body.get("errors"):
         raise Unknown(f"Cloudflare GraphQL errors: {json.dumps(body['errors'])[:300]}")
 
-    try:
-        accounts = body["data"]["viewer"]["accounts"]
-    except (KeyError, TypeError) as exc:
-        raise Unknown("Cloudflare response missing data.viewer.accounts") from exc
-    if not accounts:  # producer 3: the account filter matched nothing
+    data = body.get("data")
+    viewer = data.get("viewer") if isinstance(data, dict) else None
+    accounts = viewer.get("accounts") if isinstance(viewer, dict) else None
+    if not isinstance(accounts, list):
+        raise Unknown("Cloudflare response missing data.viewer.accounts")
+    if not accounts:  # the account filter matched nothing
         raise Unknown("Cloudflare returned no account for the given account id")
+    if not isinstance(accounts[0], dict):
+        raise Unknown("Cloudflare returned a malformed account entry")
 
     rows = accounts[0].get("workersInvocationsAdaptive")
-    if rows is None:
+    if not isinstance(rows, list):
         raise Unknown("Cloudflare response missing workersInvocationsAdaptive")
     return rows
 
@@ -312,12 +327,20 @@ def _self_test():
     )
     assert code == EXIT_STALE
 
-    # Each Cloudflare failure producer is UNKNOWN, never a number.
+    # EVERY malformed shape is UNKNOWN, never a number and never a crash. The last
+    # five are the ones review found by inspection rather than by imagination:
+    # valid JSON that simply is not the shape this code assumed.
     for body in (
         b'{"errors":[{"message":"bad query"}]}',
         b'{"data":{"viewer":{"accounts":[]}}}',
         b"not json",
         b'{"data":{"viewer":{"accounts":[{}]}}}',
+        b"null",
+        b"[]",
+        b'{"data":null}',
+        b'{"data":{"viewer":{"accounts":[null]}}}',
+        b'{"data":{"viewer":{"accounts":{}}}}',
+        b'{"data":{"viewer":{"accounts":[{"workersInvocationsAdaptive":"nope"}]}}}',
     ):
         class _R:
             def __init__(self, b):
@@ -387,19 +410,30 @@ def main():
         print(f"UNKNOWN: missing {', '.join(missing)}", file=sys.stderr)
         return EXIT_UNKNOWN
 
+    # **THE MEASUREMENT AND THE DECISION SIT INSIDE ONE BLANKET GUARD, and the
+    # bare `except Exception` is the point rather than a lapse.** An escaping
+    # exception exits Python with status 1, and 1 is this script's STALE code — so
+    # any unforeseen crash would be read by the workflow as "your alerting is dead",
+    # a confident outage claim produced by a bug. Mapping every unhandled failure to
+    # UNKNOWN makes that structurally impossible instead of dependent on having
+    # enumerated the failure shapes correctly, which four review rounds showed was
+    # not a thing to rely on.
     try:
         rows = fetch_rows(
             os.environ["CLOUDFLARE_ACCOUNT_ID"],
             os.environ["CLOUDFLARE_API_KEY"],
             os.environ["CLOUDFLARE_EMAIL"],
         )
+        code, message = verdict(rows, args.script_name, args.threshold_days)
     except Unknown as exc:
         # Loud, and deliberately NOT a Discord post: we did not observe an outage,
         # we failed to look. Saying otherwise would be a claim we cannot support.
         print(f"UNKNOWN: {exc}", file=sys.stderr)
         return EXIT_UNKNOWN
+    except Exception as exc:
+        print(f"UNKNOWN: unexpected {type(exc).__name__}: {exc}", file=sys.stderr)
+        return EXIT_UNKNOWN
 
-    code, message = verdict(rows, args.script_name, args.threshold_days)
     print(message)
 
     if args.notify:
