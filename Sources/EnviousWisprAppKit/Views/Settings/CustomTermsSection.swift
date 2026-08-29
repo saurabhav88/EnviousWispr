@@ -29,6 +29,11 @@ struct CustomTermsSection<Actions: View>: View {
   }
 
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
+  /// See `EnvironmentValues.dictionaryScrollToTop`. This list has paged since
+  /// it shipped and has always swapped rows under an unchanged scroll offset;
+  /// the cloud review that named it on the pack list applies here too, so both
+  /// are fixed through the one owner rather than one of them.
+  @Environment(\.dictionaryScrollToTop) private var scrollToTop
   @State private var searchQuery: String = ""
   /// #2494: `nil` is "All categories," the default pill. One combined
   /// projection (`filteredWords`) feeds search, this filter, count,
@@ -238,6 +243,10 @@ struct CustomTermsSection<Actions: View>: View {
         }
       }
     }
+    // Every page starts at its first row. Keyed on the page rather than fired
+    // from the buttons, so it also covers the clamps that reset to page one
+    // when a search or category filter shortens the list.
+    .onChange(of: currentPage) { _, _ in scrollToTop() }
     .onChange(of: allWords) { _, newWords in
       // Prune against current ELIGIBILITY, not merely current ID existence:
       // if a live refresh replaces an already-selected ID with a word that

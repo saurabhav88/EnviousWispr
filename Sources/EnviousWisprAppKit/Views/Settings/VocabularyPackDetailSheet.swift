@@ -17,6 +17,10 @@ struct VocabularyPackDetailSection: View {
   let id: VocabularyPackID
   let onClose: () -> Void
   @Environment(VocabularyPackManager.self) private var packManager
+  /// See `EnvironmentValues.dictionaryScrollToTop`. Paging swaps the rows
+  /// under an unchanged scroll offset, so without this the next page opens in
+  /// its middle.
+  @Environment(\.dictionaryScrollToTop) private var scrollToTop
   @State private var searchQuery: String = ""
 
   @State private var currentPage: Int = 0
@@ -99,6 +103,10 @@ struct VocabularyPackDetailSection: View {
     .onChange(of: pageCount) { _, newCount in
       if currentPage >= newCount { currentPage = max(0, newCount - 1) }
     }
+    // Every page starts at its first row. Keyed on the page rather than fired
+    // from the buttons, so it also covers the clamp above and a search that
+    // resets to page one.
+    .onChange(of: currentPage) { _, _ in scrollToTop() }
   }
 
   private func pager(page: Int, of pageCount: Int) -> some View {

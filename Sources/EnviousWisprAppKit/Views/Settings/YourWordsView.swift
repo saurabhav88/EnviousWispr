@@ -12,6 +12,24 @@ private enum YourWordsSheetRoute: String, Identifiable {
   var id: Self { self }
 }
 
+/// Scrolls the Dictionary page's content pane back to its first row.
+///
+/// Set by `YourWordsView`, which owns the scroll view; read by every paged
+/// list inside it. The default is a no-op, so a list rendered outside that
+/// pane — a preview, a test — simply does nothing rather than needing a
+/// different code path. Mirrors `settingsNavigate`, the settings window's
+/// other environment-carried action.
+private struct DictionaryScrollToTopKey: EnvironmentKey {
+  static let defaultValue: @MainActor () -> Void = {}
+}
+
+extension EnvironmentValues {
+  var dictionaryScrollToTop: @MainActor () -> Void {
+    get { self[DictionaryScrollToTopKey.self] }
+    set { self[DictionaryScrollToTopKey.self] = newValue }
+  }
+}
+
 /// #2492: the Dictionary page's fixed left sub-menu, one case per tab. Owned
 /// here (not a nested type) so a later phase (#2497, the Quick Add tab) adds
 /// exactly one case rather than inventing a second tab mechanism — the
@@ -77,6 +95,9 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
 /// (#2493 explicitly scopes the terminology pass to user-facing copy, not
 /// Swift symbols).
 struct YourWordsView: View {
+  /// Identity of the zero-height anchor at the top of the scrolling pane.
+  fileprivate static let topAnchor = "dictionaryPaneTop"
+
   @Environment(SettingsManager.self) private var settings
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   @State private var selectedTab: DictionaryTab = .yourWords
@@ -102,13 +123,38 @@ struct YourWordsView: View {
           // the 750pt minimum the narrower value was defending).
           .frame(width: PolishRailMetrics.railWidth, alignment: .leading)
 
-        ScrollView {
-          VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
-            selectedTabContent
+        // `ScrollViewReader` so a paged list can return to its first row.
+        //
+        // The scroll offset belongs to THIS view — there is one scroll view
+        // for every tab — while the page buttons live two levels down, in
+        // `CustomTermsSection` and `VocabularyPackDetailSection`. Without a way
+        // to reach back up, pressing Next at the bottom of a 50-row page swaps
+        // the rows underneath an unchanged offset, so the next page opens
+        // somewhere in its middle and the reader has to scroll up to find its
+        // start (cloud review, PR #2504).
+        //
+        // Handed down through the environment as ONE action rather than
+        // solved twice: both paged lists are inside this scroll view and the
+        // Your Words list has had the same defect since it shipped.
+        ScrollViewReader { proxy in
+          ScrollView {
+            VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+              selectedTabContent
+            }
+            .padding(.bottom, SettingsLayout.contentBottom)
+            // The anchor the action scrolls to. Zero-height and behind
+            // everything, so it changes nothing about the layout.
+            .overlay(alignment: .top) {
+              Color.clear.frame(height: 0).id(Self.topAnchor)
+            }
           }
-          .padding(.bottom, SettingsLayout.contentBottom)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+          .environment(\.dictionaryScrollToTop) {
+            withAnimation(.easeOut(duration: 0.18)) {
+              proxy.scrollTo(Self.topAnchor, anchor: .top)
+            }
+          }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       }
     }
     .padding(.top, SettingsLayout.contentTop)
