@@ -162,7 +162,16 @@ package final class VocabularyPackOverridesStore: Sendable {
     let tempURL = fileURL.appendingPathExtension("tmp-\(UUID().uuidString)")
     do {
       try data.write(to: tempURL, options: .atomic)
-      _ = try FileManager.default.replaceItemAt(fileURL, withItemAt: tempURL)
+      // `replaceItemAt` requires an existing destination — the FIRST word
+      // anyone ever edits hits this while `fileURL` has never been created,
+      // and every subsequent edit would silently fail the same way (cloud
+      // review, PR #2501). `moveItem` covers that first-write case; every
+      // write after it takes the atomic-replace path.
+      if FileManager.default.fileExists(atPath: fileURL.path) {
+        _ = try FileManager.default.replaceItemAt(fileURL, withItemAt: tempURL)
+      } else {
+        try FileManager.default.moveItem(at: tempURL, to: fileURL)
+      }
       try? FileManager.default.setAttributes(
         [.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
       return true
