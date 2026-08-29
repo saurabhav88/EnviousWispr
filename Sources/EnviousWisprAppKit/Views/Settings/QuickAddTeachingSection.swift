@@ -21,18 +21,51 @@ import SwiftUI
 /// (cloud review, PR caught two invented product claims: a default-off
 /// shortcut and a category picker that don't exist).
 ///
-/// **The shortcut shown is the LIVE configured one (`settings.quickAddKeyCode`
-/// / `quickAddModifiers`, via `KeySymbols.format`), never the shipped
-/// default** — a second cloud-review round caught that a hardcoded "Control
-/// Option W" goes actively wrong the moment someone rebinds Quick Add on the
-/// Keybinds page, since that chord may then do nothing or trigger a different
-/// action entirely.
+/// **The shortcut shown is the LIVE configured one, run through the SAME
+/// ownership check the menu bar's own hint uses
+/// (`MenuBarController.quickAddShortcutLabel`) rather than a bare format
+/// call** — two more cloud-review rounds caught, in order: a hardcoded
+/// "Control Option W" that goes wrong the moment someone rebinds Quick Add
+/// on Keybinds; and, once that was fixed to read the live binding, that the
+/// live binding can still lose arbitration to Record or Cancel
+/// (`ShortcutMatcher.quickAddOwnsItsBinding`) — this tab must not advertise a
+/// chord that will not actually fire, so it falls back to pointing at the
+/// menu bar when that happens. The placeholder demo is deliberately NOT
+/// drawn as a play button (the whole area does nothing on click) — a third
+/// round caught that a filled play glyph implies tap-to-watch on something
+/// static.
 struct QuickAddTeachingSection: View {
   @Environment(\.settingsNavigate) private var navigate
   @Environment(SettingsManager.self) private var settings
 
-  private var shortcutDisplay: String {
-    KeySymbols.format(keyCode: settings.quickAddKeyCode, modifiers: settings.quickAddModifiers)
+  /// The chord to teach, or `nil` when Quick Add's configured binding has
+  /// lost arbitration to Record or Cancel (`MenuBarController
+  /// .quickAddShortcutLabel`, the same authority the menu bar's own hint
+  /// uses — never a second ownership check re-derived here). Showing a chord
+  /// that will not actually trigger Quick Add is worse than showing nothing.
+  private var shortcutDisplay: String? {
+    MenuBarController.quickAddShortcutLabel(
+      keyCode: settings.quickAddKeyCode, modifiers: settings.quickAddModifiers,
+      recordKeyCode: settings.toggleKeyCode, recordModifiers: settings.toggleModifiers,
+      cancelKeyCode: settings.cancelKeyCode, cancelModifiers: settings.cancelModifiers)
+  }
+
+  /// "press ⌃⌥W" when the chord is usable, or a shortcut-agnostic fallback
+  /// when it currently is not (conflicts with Record/Cancel, or Quick Add is
+  /// unbound) — never a sentence naming a chord that won't fire.
+  private var triggerPhrase: String {
+    if let shortcutDisplay { return "press \(shortcutDisplay)" }
+    return "use the menu bar"
+  }
+
+  /// Step 2's full sentence, built separately from `triggerPhrase` rather
+  /// than capitalizing a fragment of it — the "or the menu bar" half of the
+  /// sentence only makes sense as an ALTERNATIVE when a shortcut exists.
+  private var triggerStepBody: String {
+    if let shortcutDisplay {
+      return "Press \(shortcutDisplay), or open the EnviousWispr menu and choose the Add item."
+    }
+    return "Open the EnviousWispr menu and choose the Add item."
   }
 
   var body: some View {
@@ -58,11 +91,15 @@ struct QuickAddTeachingSection: View {
         .aspectRatio(16 / 10, contentMode: .fit)
 
       VStack(spacing: 10) {
-        Image(systemName: "play.circle.fill")
-          .font(.system(size: 34, weight: .regular))
+        // NOT a play button (cloud review, PR #2503) — this whole area is
+        // static and unresponsive to a click, and a filled play glyph reads
+        // as "tap to watch" to anyone who sees it. A film-strip glyph shows
+        // "this is video content" without implying it does anything yet.
+        Image(systemName: "film")
+          .font(.system(size: 30, weight: .regular))
           .foregroundStyle(.stAccent)
         Text(
-          "Highlight \u{201C}Kubernetes\u{201D} in Slack \u{2192} press \(shortcutDisplay) \u{2192} it\u{2019}s added."
+          "Highlight \u{201C}Kubernetes\u{201D} in Slack \u{2192} \(triggerPhrase) \u{2192} it\u{2019}s added."
         )
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
@@ -70,7 +107,7 @@ struct QuickAddTeachingSection: View {
         .padding(.horizontal, 24)
       }
 
-      Text("DEMO")
+      Text("PREVIEW COMING SOON")
         .font(.system(size: 11, weight: .bold))
         .foregroundStyle(.stTextSecondary)
         .padding(.horizontal, 8)
@@ -101,9 +138,7 @@ struct QuickAddTeachingSection: View {
     stepCard(
       1, title: "Highlight a word",
       body: "Select the word you want to fix in an email, chat, or document.")
-    stepCard(
-      2, title: "Trigger Quick Add",
-      body: "Press \(shortcutDisplay), or open the EnviousWispr menu and choose the Add item.")
+    stepCard(2, title: "Trigger Quick Add", body: triggerStepBody)
     stepCard(
       3, title: "Choose and save",
       body:
@@ -151,8 +186,11 @@ struct QuickAddTeachingSection: View {
         icon: "keyboard",
         label: "Keyboard shortcut",
         // The LIVE configured shortcut, not the shipped default — this must
-        // stay correct after someone rebinds Quick Add on Keybinds.
-        value: "\(shortcutDisplay). Change it under Keybinds."
+        // stay correct after someone rebinds Quick Add on Keybinds. When it
+        // currently conflicts with Record or Cancel, say so rather than
+        // showing a chord that will not fire.
+        value: shortcutDisplay.map { "\($0). Change it under Keybinds." }
+          ?? "Currently unavailable — set one under Keybinds."
       )
       // The button's own layout expands to full width and draws its own
       // background; without an explicit content shape the padding around
