@@ -64,9 +64,14 @@ struct YourWordsView: View {
     VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
       dictionaryBanner(settings: $settings)
 
-      HStack(alignment: .top, spacing: PolishRailMetrics.columnGap) {
+      HStack(alignment: .top, spacing: 12) {
         DictionaryTabRail(selection: $selectedTab)
-          .frame(width: PolishRailMetrics.railWidth, alignment: .leading)
+          // A dedicated width, not `PolishRailMetrics.railWidth` (216pt) —
+          // that rail's rows carry a provider logo tile and a tagline; a
+          // Dictionary tab is only an icon and one line of text, so it never
+          // needed that width, and every point reclaimed here matters at the
+          // app's 750pt minimum window (cloud review, PR #2499).
+          .frame(width: 168, alignment: .leading)
 
         ScrollView {
           VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {

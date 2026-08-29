@@ -42,17 +42,20 @@ struct LearningSection: View {
       // Row 2: Import from Contacts (Phase 6 #636)
       BrandedRow(showDivider: false) {
         VStack(alignment: .leading, spacing: 8) {
-          HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
-              Text("Import from Contacts")
-                .settingsRowLabel()
-              Text(
-                "Add the names of people you know to your word list, so dictation spells them right."
-              )
-              .settingsReadingCopy()
+          // ViewThatFits: the Dictionary rail (#2492) narrows this row to
+          // roughly 228pt at the app's 750pt minimum window, where the
+          // imported-count pill + button can't share a line with the copy
+          // (cloud review, PR #2499).
+          ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top) {
+              contactsRowLabel
+              Spacer()
+              importControl
             }
-            Spacer()
-            importControl
+            VStack(alignment: .leading, spacing: 8) {
+              contactsRowLabel
+              importControl
+            }
           }
 
           if case .imported(let count) = contactsImport.phase {
@@ -96,6 +99,17 @@ struct LearningSection: View {
           onConfirm: { contactsImport.confirmImport() },
           onCancel: { contactsImport.cancelImport() })
       }
+    }
+  }
+
+  private var contactsRowLabel: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text("Import from Contacts")
+        .settingsRowLabel()
+      Text(
+        "Add the names of people you know to your word list, so dictation spells them right."
+      )
+      .settingsReadingCopy()
     }
   }
 
