@@ -51,7 +51,13 @@ enum CustomTermListPolicy {
   /// Slice of `filtered` for `page` (0-indexed). Returns empty if page is
   /// out of range. Caller is responsible for clamping `page` after a search
   /// changes the filtered count.
-  static func paged(_ filtered: [CustomWord], page: Int) -> [CustomWord] {
+  ///
+  /// Generic over the element because the vocabulary-pack word list pages by
+  /// the same rule and must not answer "how many words fit on a page" for
+  /// itself — `pageSize` has ONE owner. It was `[CustomWord]` only because the
+  /// Your Words list was the only caller; nothing in the arithmetic ever read
+  /// the element.
+  static func paged<Element>(_ filtered: [Element], page: Int) -> [Element] {
     let start = page * pageSize
     let end = min(start + pageSize, filtered.count)
     guard start < filtered.count else { return [] }

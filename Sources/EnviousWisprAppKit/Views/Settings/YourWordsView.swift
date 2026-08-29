@@ -12,6 +12,24 @@ private enum YourWordsSheetRoute: String, Identifiable {
   var id: Self { self }
 }
 
+/// Scrolls the Dictionary page's content pane back to its first row.
+///
+/// Set by `YourWordsView`, which owns the scroll view; read by every paged
+/// list inside it. The default is a no-op, so a list rendered outside that
+/// pane — a preview, a test — simply does nothing rather than needing a
+/// different code path. Mirrors `settingsNavigate`, the settings window's
+/// other environment-carried action.
+private struct DictionaryScrollToTopKey: EnvironmentKey {
+  static let defaultValue: @MainActor () -> Void = {}
+}
+
+extension EnvironmentValues {
+  var dictionaryScrollToTop: @MainActor () -> Void {
+    get { self[DictionaryScrollToTopKey.self] }
+    set { self[DictionaryScrollToTopKey.self] = newValue }
+  }
+}
+
 /// #2492: the Dictionary page's fixed left sub-menu, one case per tab. Owned
 /// here (not a nested type) so a later phase (#2497, the Quick Add tab) adds
 /// exactly one case rather than inventing a second tab mechanism — the
@@ -43,6 +61,28 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
     case .quickAdd: return "bolt"
     }
   }
+
+  /// One line under the tab name, the way every AI Polish rail row carries a
+  /// tagline under its engine name (`PolishRailProvider.tagline`). A rail row
+  /// that is a bare word makes the reader open each tab to learn what is in
+  /// it; a tagline answers that from the rail.
+  ///
+  /// **Kept to about sixteen characters, and that is a measurement rather than
+  /// a style preference.** The rail is 216pt; after the card's padding, the
+  /// row's padding, the 32pt tile and the gap, a tagline gets roughly 132pt,
+  /// which is about eighteen characters at this size. Longer copy truncates —
+  /// measured 2026-08-29, when "Ready-made word lists" rendered as "Ready-made
+  /// word l...". `ProviderRailRow` has the same constraint and lives with a
+  /// truncated Ollama line; there is no reason to inherit that here when the
+  /// shorter phrasing is just as true.
+  var tagline: String {
+    switch self {
+    case .yourWords: return "Words you added"
+    case .vocabularyPacks: return "Ready-made lists"
+    case .learnFrom: return "Learn as you go"
+    case .quickAdd: return "Add from any app"
+    }
+  }
 }
 
 /// #2492 — the Dictionary page (was "Your Words"). Rebuilt onto a fixed
@@ -55,6 +95,9 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
 /// (#2493 explicitly scopes the terminology pass to user-facing copy, not
 /// Swift symbols).
 struct YourWordsView: View {
+  /// Identity of the zero-height anchor at the top of the scrolling pane.
+  fileprivate static let topAnchor = "dictionaryPaneTop"
+
   @Environment(SettingsManager.self) private var settings
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   @State private var selectedTab: DictionaryTab = .yourWords
@@ -69,22 +112,49 @@ struct YourWordsView: View {
     VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
       dictionaryBanner(settings: $settings)
 
-      HStack(alignment: .top, spacing: 12) {
+      HStack(alignment: .top, spacing: PolishRailMetrics.columnGap) {
         DictionaryTabRail(selection: $selectedTab)
-          // A dedicated width, not `PolishRailMetrics.railWidth` (216pt) —
-          // that rail's rows carry a provider logo tile and a tagline; a
-          // Dictionary tab is only an icon and one line of text, so it never
-          // needed that width, and every point reclaimed here matters at the
-          // app's 750pt minimum window (cloud review, PR #2499).
-          .frame(width: 168, alignment: .leading)
+          // `PolishRailMetrics.railWidth`, the SAME 216pt the AI Polish rail
+          // uses, because these rows now carry the same content it does — a
+          // 32pt tile, a name, and a tagline. The previous 168pt was chosen
+          // for a row that was an icon and one word, and it truncated the
+          // longest tab to "Vocabulary P..." at the window size the founder
+          // actually runs (measured 2026-08-29 at 1115pt wide, nowhere near
+          // the 750pt minimum the narrower value was defending).
+          .frame(width: PolishRailMetrics.railWidth, alignment: .leading)
 
-        ScrollView {
-          VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
-            selectedTabContent
+        // `ScrollViewReader` so a paged list can return to its first row.
+        //
+        // The scroll offset belongs to THIS view — there is one scroll view
+        // for every tab — while the page buttons live two levels down, in
+        // `CustomTermsSection` and `VocabularyPackDetailSection`. Without a way
+        // to reach back up, pressing Next at the bottom of a 50-row page swaps
+        // the rows underneath an unchanged offset, so the next page opens
+        // somewhere in its middle and the reader has to scroll up to find its
+        // start (cloud review, PR #2504).
+        //
+        // Handed down through the environment as ONE action rather than
+        // solved twice: both paged lists are inside this scroll view and the
+        // Your Words list has had the same defect since it shipped.
+        ScrollViewReader { proxy in
+          ScrollView {
+            VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+              selectedTabContent
+            }
+            .padding(.bottom, SettingsLayout.contentBottom)
+            // The anchor the action scrolls to. Zero-height and behind
+            // everything, so it changes nothing about the layout.
+            .overlay(alignment: .top) {
+              Color.clear.frame(height: 0).id(Self.topAnchor)
+            }
           }
-          .padding(.bottom, SettingsLayout.contentBottom)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+          .environment(\.dictionaryScrollToTop) {
+            withAnimation(.easeOut(duration: 0.18)) {
+              proxy.scrollTo(Self.topAnchor, anchor: .top)
+            }
+          }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       }
     }
     .padding(.top, SettingsLayout.contentTop)
@@ -203,22 +273,6 @@ struct YourWordsView: View {
         WordsLoadFailureBanner(failure: failure)
       }
 
-      // ViewThatFits: at the app's 750pt minimum window, the right pane is
-      // roughly 228pt wide after the global sidebar, page padding, the
-      // Dictionary rail, and its gap — one row of three labeled buttons
-      // cannot stay readable there (#2492 review r1). The horizontal row is
-      // tried first and used whenever the width allows it.
-      ViewThatFits(in: .horizontal) {
-        HStack {
-          Spacer()
-          actionButtons
-        }
-        VStack(alignment: .trailing, spacing: 8) {
-          actionButtons
-        }
-        .frame(maxWidth: .infinity, alignment: .trailing)
-      }
-
       // Visibility and the progress numerator both read `pendingEnrichmentCount`
       // — the observable in-memory count, never `pendingEnrichmentWords()`
       // (a real locked file read) and never the total's mere presence
@@ -237,7 +291,14 @@ struct YourWordsView: View {
         )
       }
 
-      CustomTermsSection()
+      // The three page actions are handed to the list card rather than drawn
+      // above it. They used to be their own right-aligned row, with the word
+      // count on a third row below that, so the pane opened as three stacked
+      // bands and the buttons belonged to nothing (founder, 2026-08-29: they
+      // "push the whole UI down, making it look disjointed and not unified").
+      // Count and actions are one bar now: what you have, and what you can do
+      // to it.
+      CustomTermsSection { actionButtons }
     case .vocabularyPacks:
       VocabPacksSection()
     case .learnFrom:
@@ -322,53 +383,100 @@ struct YourWordsView: View {
   }
 }
 
-/// #2492: the Dictionary page's fixed left sub-menu. Deliberately its own
-/// small view rather than a reuse of `ProviderRail` — that rail's row draws a
-/// provider logo tile and a tagline (`ProviderLogoTile`, `entry.tagline`),
-/// neither of which a Dictionary tab has; forcing this onto that type would
-/// mean widening it with fields only this caller sends.
+/// #2492: the Dictionary page's fixed left sub-menu, drawn as a CARD.
+///
+/// **The card is the whole point, and shipping without it is what made this
+/// rail read as unfinished beside AI Polish's** (founder, 2026-08-29: "the sub
+/// menu for dictionary looks janky compared to the ai polish sub menue"). Four
+/// pills floating directly on the page background have no container, so the
+/// empty space beneath the last tab belongs to nothing and the rail stops
+/// looking like an object. `ProviderRail` solves the identical problem with a
+/// `stSectionBg` fill, a `stDivider` border, radius 14 and 10pt of padding, and
+/// the approved mockup (`.subnav-card`, `height:fit-content`) draws exactly
+/// that. These are the same four values, read off `ProviderRail.body`.
+///
+/// Still its own type rather than a reuse of `ProviderRail`: that rail is
+/// hard-wired to `PolishRailCatalog` and `LLMProvider`, and its rows draw a
+/// `ProviderLogoTile` carrying six brand marks. What is shared is the visual
+/// vocabulary, not the data model.
 private struct DictionaryTabRail: View {
   @Binding var selection: DictionaryTab
+  /// One highlight that GLIDES between rows rather than four that blink,
+  /// matching `ProviderRail`'s `selectionNS`.
+  @Namespace private var selectionNS
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
+    VStack(alignment: .leading, spacing: 5) {
       ForEach(DictionaryTab.allCases) { tab in
-        DictionaryTabRow(tab: tab, isSelected: selection == tab) {
-          selection = tab
+        DictionaryTabRow(tab: tab, isSelected: selection == tab, namespace: selectionNS) {
+          withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.82)) {
+            selection = tab
+          }
         }
       }
     }
+    .padding(10)
+    .background(
+      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius, style: .continuous)
+        .fill(Color.stSectionBg)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius, style: .continuous)
+        .strokeBorder(Color.stDivider, lineWidth: 1)
+        // A decoration is never in the hit path. `strokeBorder` covers only
+        // the 1pt ring, not the interior, so the tab buttons underneath stay
+        // reachable either way — this is the house rule applied rather than a
+        // defect repaired.
+        .allowsHitTesting(false)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("Dictionary section")
   }
 }
 
 private struct DictionaryTabRow: View {
   let tab: DictionaryTab
   let isSelected: Bool
+  let namespace: Namespace.ID
   let onSelect: () -> Void
-  /// See `SettingsHover.respondsToPointer`.
-  @Environment(\.isEnabled) private var environmentEnabled
-  @State private var pointerInside = false
-
-  private var hovering: Bool {
-    SettingsHover.respondsToPointer(pointerInside, true, environmentEnabled)
-  }
 
   var body: some View {
     Button(action: onSelect) {
-      HStack(spacing: 10) {
+      HStack(spacing: 12) {
+        // A 32pt rounded tile, the same object `ProviderLogoTile` draws at the
+        // same size in the AI Polish rail. A bare 15pt glyph beside 14pt text
+        // has no weight of its own, which is the other half of why these rows
+        // read as a list of links rather than a list of destinations.
         Image(systemName: tab.icon)
-          .font(.system(size: 15, weight: .medium))
-          .foregroundStyle(isSelected ? Color.stAccent : Color.stTextSecondary)
-          .frame(width: 20)
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(isSelected ? Color.white : Color.stAccent)
+          .frame(width: 32, height: 32)
+          .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+              .fill(isSelected ? Color.stAccentSolid : Color.stAccentLight)
+          )
           .accessibilityHidden(true)
-        Text(tab.label)
-          .font(.system(size: 14, weight: .semibold))
-          .foregroundStyle(isSelected ? Color.stAccent : Color.stTextPrimary)
-          .lineLimit(1)
+
+        VStack(alignment: .leading, spacing: 2) {
+          Text(tab.label)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(isSelected ? Color.stAccent : Color.stTextPrimary)
+            .lineLimit(1)
+            // The rail is sized for the longest label, but a user can shrink
+            // the window; shrink the text a little before truncating it, the
+            // way `ProviderRailRow` does for "Apple Intelligence".
+            .minimumScaleFactor(0.85)
+          Text(tab.tagline)
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextSecondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+        }
         Spacer(minLength: 0)
       }
-      .padding(.horizontal, 12)
-      .padding(.vertical, 10)
+      .padding(.horizontal, 10)
+      .padding(.vertical, 9)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background {
         if isSelected {
@@ -378,15 +486,16 @@ private struct DictionaryTabRow: View {
               RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(Color.stAccent, lineWidth: 1.5)
             )
-        } else if hovering {
-          RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(Color.stTextPrimary.opacity(0.05))
+            .matchedGeometryEffect(id: "dictionaryTabSelection", in: namespace)
         }
       }
+      // The shared hover treatment rather than a fifth hand-rolled one. It
+      // paints the button's own rectangle, reads the environment's `isEnabled`,
+      // and is not disabled by Reduce Motion — see `SettingsHover`.
+      .settingsHoverRow(cornerRadius: 10)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .onHover { pointerInside = $0 }
     .accessibilityElement(children: .combine)
     .accessibilityLabel(tab.label)
     .accessibilityValue(isSelected ? "Selected" : "Not selected")

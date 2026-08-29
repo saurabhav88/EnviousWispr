@@ -17,7 +17,13 @@ struct VocabularyPackDetailSection: View {
   let id: VocabularyPackID
   let onClose: () -> Void
   @Environment(VocabularyPackManager.self) private var packManager
+  /// See `EnvironmentValues.dictionaryScrollToTop`. Paging swaps the rows
+  /// under an unchanged scroll offset, so without this the next page opens in
+  /// its middle.
+  @Environment(\.dictionaryScrollToTop) private var scrollToTop
   @State private var searchQuery: String = ""
+
+  @State private var currentPage: Int = 0
 
   private var words: [VocabularyPackWordDisplay] { packManager.packWords(id) }
 
@@ -31,11 +37,14 @@ struct VocabularyPackDetailSection: View {
   }
 
   var body: some View {
-    // Computed ONCE per body evaluation. `filteredWords` re-decodes and
-    // re-sorts the whole pack (`packManager.packWords(id)`) on every access;
-    // reading the computed property three times (emptiness check, ForEach,
-    // divider count) tripled that cost per render for no reason.
+    // Computed ONCE per body evaluation. `filteredWords` re-sorts the whole
+    // pack (`packManager.packWords(id)`) on every access; reading the computed
+    // property three times (emptiness check, ForEach, divider count) tripled
+    // that cost per render for no reason.
     let displayedWords = filteredWords
+    let pageCount = CustomTermListPolicy.pageCount(of: displayedWords.count)
+    let safePage = max(0, min(currentPage, pageCount - 1))
+    let pagedWords = CustomTermListPolicy.paged(displayedWords, page: safePage)
 
     BrandedSection {
       BrandedRow(showDivider: true) { header }
@@ -49,7 +58,7 @@ struct VocabularyPackDetailSection: View {
         }
       }
 
-      if displayedWords.isEmpty {
+      if pagedWords.isEmpty {
         BrandedRow(showDivider: false) {
           Text(
             searchQuery.isEmpty
@@ -60,12 +69,71 @@ struct VocabularyPackDetailSection: View {
           .foregroundStyle(.stTextSecondary)
         }
       } else {
-        ForEach(Array(displayedWords.enumerated()), id: \.element.id) { index, word in
-          BrandedRow(showDivider: index < displayedWords.count - 1) {
-            PackWordRow(packID: id, word: word)
+        // **Paged, and this is what stops the beachball.** Every row here
+        // carries a live `TextField`, a shadowed toggle, and one hover-tracking
+        // area per alias chip, and they were ALL built before the pane could
+        // draw: Brands is 106 words and Medical is 87 words carrying 453
+        // aliases between them (measured 2026-08-29), so opening a pack
+        // constructed several hundred interactive controls on the main thread
+        // and the founder got a spinning wheel. Nothing was cached and nothing
+        // was deferred.
+        //
+        // 50 per page via `CustomTermListPolicy` — the SAME paging the Your
+        // Words tab next door already uses, rather than a second answer to the
+        // same question. `LazyVStack` then defers even those until they scroll
+        // into view.
+        LazyVStack(alignment: .leading, spacing: 0) {
+          ForEach(Array(pagedWords.enumerated()), id: \.element.id) { index, word in
+            BrandedRow(showDivider: index < pagedWords.count - 1 || pageCount > 1) {
+              PackWordRow(packID: id, word: word)
+            }
           }
         }
       }
+
+      if pageCount > 1 {
+        BrandedRow(showDivider: false) {
+          pager(page: safePage, of: pageCount)
+        }
+      }
+    }
+    // A search that shortens the list can strand the reader on a page that no
+    // longer exists; the Your Words tab clamps the same way.
+    .onChange(of: searchQuery) { _, _ in currentPage = 0 }
+    .onChange(of: pageCount) { _, newCount in
+      if currentPage >= newCount { currentPage = max(0, newCount - 1) }
+    }
+    // Every page starts at its first row. Keyed on the page rather than fired
+    // from the buttons, so it also covers the clamp above and a search that
+    // resets to page one.
+    .onChange(of: currentPage) { _, _ in scrollToTop() }
+  }
+
+  private func pager(page: Int, of pageCount: Int) -> some View {
+    HStack {
+      Button {
+        if currentPage > 0 { currentPage -= 1 }
+      } label: {
+        Image(systemName: "chevron.left")
+          .settingsHoverQuiet(isEnabled: page > 0)
+      }
+      .buttonStyle(.plain)
+      .disabled(page == 0)
+      .accessibilityLabel("Previous page")
+      Spacer()
+      Text("Page \(page + 1) of \(pageCount)")
+        .font(.stHelper)
+        .foregroundStyle(.stTextSecondary)
+      Spacer()
+      Button {
+        if currentPage < pageCount - 1 { currentPage += 1 }
+      } label: {
+        Image(systemName: "chevron.right")
+          .settingsHoverQuiet(isEnabled: page < pageCount - 1)
+      }
+      .buttonStyle(.plain)
+      .disabled(page >= pageCount - 1)
+      .accessibilityLabel("Next page")
     }
   }
 

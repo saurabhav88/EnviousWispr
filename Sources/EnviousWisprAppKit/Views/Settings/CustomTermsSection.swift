@@ -15,8 +15,25 @@ private struct BulkDeleteRequest: Identifiable {
 /// when frequency is 0 to avoid the "0 times" looks-like-a-bug case). Bible §10.2.
 /// Bulk select/delete (#1703): a "Select" mode lets several of the user's own
 /// words be checked off and removed in one action.
-struct CustomTermsSection: View {
+struct CustomTermsSection<Actions: View>: View {
+  /// The page-level actions (Add word / Import / Export), rendered on the same
+  /// line as the word count instead of in a band above this card. Passed in
+  /// rather than built here because they belong to `YourWordsView` — they open
+  /// its sheets and use its export plumbing — while the count they sit beside
+  /// is this view's own projection. Taking them as a view keeps that ownership
+  /// and still puts them on one line.
+  @ViewBuilder let actions: Actions
+
+  init(@ViewBuilder actions: () -> Actions) {
+    self.actions = actions()
+  }
+
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
+  /// See `EnvironmentValues.dictionaryScrollToTop`. This list has paged since
+  /// it shipped and has always swapped rows under an unchanged scroll offset;
+  /// the cloud review that named it on the pack list applies here too, so both
+  /// are fixed through the one owner rather than one of them.
+  @Environment(\.dictionaryScrollToTop) private var scrollToTop
   @State private var searchQuery: String = ""
   /// #2494: `nil` is "All categories," the default pill. One combined
   /// projection (`filteredWords`) feeds search, this filter, count,
@@ -68,36 +85,85 @@ struct CustomTermsSection: View {
 
   var body: some View {
     // #2492: no "Your Words" repeated here — the left sub-menu's selected
-    // tab already says it. Keep the count, which is the useful part.
-    BrandedSection(
-      header: "\(filteredWords.count) \(filteredWords.count == 1 ? "word" : "words")"
-    ) {
+    // tab already says it. The count moved INSIDE the card as the first row,
+    // beside the actions, so the eyebrow above the card is gone too.
+    BrandedSection {
+      // The top bar: what you have on the left, what you can do on the right,
+      // one line. Founder, 2026-08-29 — the count and the three buttons "should
+      // all be on one line to create a cleaner UI".
+      BrandedRow(showDivider: true) {
+        // ViewThatFits: at the app's 750pt minimum window this pane is roughly
+        // 180pt after the sidebar, page padding, the 216pt rail and its gap, so
+        // a count plus three labelled buttons cannot share a line there. The
+        // one-line form is tried first and is what the founder's window gets.
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 10) {
+            wordCountLabel
+            Spacer(minLength: 12)
+            actions
+          }
+          VStack(alignment: .leading, spacing: 10) {
+            wordCountLabel
+            // `WrappingHStack`, not a second `HStack` — `ViewThatFits` uses its
+            // LAST candidate whether or not that one fits either, so a fallback
+            // that can still overflow is not a fallback. This one wraps onto as
+            // many lines as the width needs, so there is no width at which the
+            // buttons run off the card.
+            WrappingHStack(spacing: 8) { actions }
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+        }
+      }
+
       // Search + selection controls
       BrandedRow(showDivider: true) {
-        HStack(spacing: 6) {
-          Image(systemName: "magnifyingglass")
-            .foregroundStyle(.stTextSecondary)
-            .font(.system(size: 12))
-          TextField("Search by name, alias, or category", text: $searchQuery)
-            .textFieldStyle(.plain)
-            .onChange(of: searchQuery) { _, _ in currentPage = 0 }
-            .onChange(of: selectedCategory) { _, _ in currentPage = 0 }
-            .onChange(of: pageCount) { _, newCount in
-              if currentPage >= newCount { currentPage = max(0, newCount - 1) }
+        HStack(spacing: 10) {
+          // A real input box. The field used to be bare text on the card, the
+          // same colour as everything around it, so nothing said where to type
+          // (founder, 2026-08-29: "making it unclear where people need to
+          // type"). `stPageBg` is the recessed surface — darker than the card
+          // in dark mode, tinted below white in light mode — and the accent
+          // hairline is the approved mockup's `.search-row` border.
+          HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+              .foregroundStyle(.stTextSecondary)
+              .font(.system(size: 12))
+              .accessibilityHidden(true)
+            TextField("Search by name, alias, or category", text: $searchQuery)
+              .textFieldStyle(.plain)
+              .onChange(of: searchQuery) { _, _ in currentPage = 0 }
+              .onChange(of: selectedCategory) { _, _ in currentPage = 0 }
+              .onChange(of: pageCount) { _, newCount in
+                if currentPage >= newCount { currentPage = max(0, newCount - 1) }
+              }
+            if !searchQuery.isEmpty {
+              Button {
+                searchQuery = ""
+              } label: {
+                Image(systemName: "xmark.circle.fill")
+                  .foregroundStyle(.stTextSecondary)
+                  .font(.system(size: 12))
+                  .settingsHoverQuiet(inset: 3)
+              }
+              .buttonStyle(.plain)
+              .accessibilityLabel("Clear search")
             }
-          if !searchQuery.isEmpty {
-            Button {
-              searchQuery = ""
-            } label: {
-              Image(systemName: "xmark.circle.fill")
-                .foregroundStyle(.stTextSecondary)
-                .font(.system(size: 12))
-                .settingsHoverQuiet()
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Clear search")
           }
-          Spacer()
+          .padding(.horizontal, 10)
+          .padding(.vertical, 7)
+          .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+              .fill(Color.stPageBg)
+          )
+          .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+              .strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1)
+              // This decoration sits over the text field, and a Shape in an
+              // overlay can take the click. A decoration is never in the hit
+              // path.
+              .allowsHitTesting(false)
+          )
+
           selectionControls
         }
       }
@@ -177,6 +243,10 @@ struct CustomTermsSection: View {
         }
       }
     }
+    // Every page starts at its first row. Keyed on the page rather than fired
+    // from the buttons, so it also covers the clamps that reset to page one
+    // when a search or category filter shortens the list.
+    .onChange(of: currentPage) { _, _ in scrollToTop() }
     .onChange(of: allWords) { _, newWords in
       // Prune against current ELIGIBILITY, not merely current ID existence:
       // if a live refresh replaces an already-selected ID with a word that
@@ -252,6 +322,18 @@ struct CustomTermsSection: View {
     }
   }
 
+  /// The count, in the card's own eyebrow treatment — the same accent
+  /// uppercase `BrandedSection` used to draw above the card, kept so moving it
+  /// inside changed the POSITION and not the voice.
+  private var wordCountLabel: some View {
+    Text("\(filteredWords.count) \(filteredWords.count == 1 ? "word" : "words")".uppercased())
+      .font(.stSectionHeader)
+      .tracking(0.6)
+      .foregroundStyle(.stAccent)
+      .lineLimit(1)
+      .fixedSize(horizontal: true, vertical: false)
+  }
+
   /// #2494: one pill per `WordCategory` plus "All categories," selected
   /// state driven by `selectedCategory`. `WrappingHStack` (not a horizontal
   /// scroller) so the row is fully visible and never hides a category behind
@@ -287,14 +369,19 @@ struct CustomTermsSection: View {
         .overlay {
           // #2494 review: a filled Shape overlay is hit-testable even where
           // its own fill is invisible, so an undecorated stroke sitting over
-          // the pill's Text can steal the tap from the Button underneath it
-          // (code-gotchas.md RULE: a-decoration-drawn-over-a-control-swallows-its-clicks).
+          // the pill's Text can steal the tap from the Button underneath it.
           if isSelected {
             Capsule()
               .strokeBorder(Color.stAccent.opacity(0.35), lineWidth: 1)
               .allowsHitTesting(false)
           }
         }
+        // These pills were the one clickable thing on the page that stayed
+        // dead under the pointer while the Edit buttons beside them lit up
+        // (founder, 2026-08-29). The shared row treatment, at a radius large
+        // enough that the tint is a capsule and matches the pill it covers —
+        // `RoundedRectangle` clamps the radius to half the shorter side.
+        .settingsHoverRow(cornerRadius: 100)
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
