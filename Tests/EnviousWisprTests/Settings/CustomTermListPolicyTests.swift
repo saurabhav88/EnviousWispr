@@ -83,6 +83,51 @@ struct CustomTermListPolicyTests {
     #expect(result.isEmpty)
   }
 
+  // MARK: - category filter (#2494)
+
+  @Test("nil category (default) returns every category, matching pre-#2494 behavior")
+  func nilCategoryReturnsAll() {
+    // Omits `category:` entirely — this exercises the DEFAULT argument, not
+    // an explicitly passed `nil`, so it stands in for every existing search-
+    // only call site this diff did not touch (#2494 review).
+    let words = WordCategory.allCases.map { Self.make($0.rawValue, category: $0) }
+    let result = CustomTermListPolicy.filtered(words, query: "")
+    #expect(result.count == WordCategory.allCases.count)
+    for category in WordCategory.allCases {
+      #expect(result.contains { $0.category == category })
+    }
+  }
+
+  @Test("A given category returns only that category, regardless of the others' names")
+  func categoryFiltersToExactMatch() {
+    let words = [
+      Self.make("Anand", category: .person),
+      Self.make("Arvind", category: .person),
+      Self.make("Kubernetes", category: .brand),
+    ]
+    let result = CustomTermListPolicy.filtered(words, query: "", category: .person)
+    #expect(result.map(\.canonical) == ["Anand", "Arvind"])
+  }
+
+  @Test("Category with no members returns empty, not a fallback to all")
+  func categoryWithNoMembersReturnsEmpty() {
+    let words = [Self.make("Anand", category: .person)]
+    let result = CustomTermListPolicy.filtered(words, query: "", category: .acronym)
+    #expect(result.isEmpty)
+  }
+
+  @Test("Query and category combine as AND, not OR")
+  func queryAndCategoryCombineAsAnd() {
+    let words = [
+      Self.make("Anand", category: .person),
+      Self.make("Anand Vaish", category: .general),
+      Self.make("API", category: .acronym),
+    ]
+    // "Anand" matches two words by name, but only one is category .person.
+    let result = CustomTermListPolicy.filtered(words, query: "Anand", category: .person)
+    #expect(result.map(\.canonical) == ["Anand"])
+  }
+
   // MARK: - pageCount
 
   @Test("pageCount: 0 → 1, 50 → 1, 51 → 2, 100 → 2, 101 → 3")
