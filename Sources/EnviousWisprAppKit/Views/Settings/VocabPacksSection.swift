@@ -26,56 +26,74 @@ struct VocabPacksSection: View {
   }
 
   private var packList: some View {
-    BrandedSection {
+    BrandedPanel(
+      icon: "shippingbox",
+      header: "Vocabulary Packs",
+      description:
+        "Ready-made word lists for a field. Turn one on and EnviousWispr starts fixing the words it already knows that field gets wrong."
+    ) {
       let ids = packManager.availablePackIDs
       if ids.isEmpty {
-        BrandedRow(showDivider: false) {
-          Text("No vocabulary packs available.")
-            .font(.stHelper)
-            .foregroundStyle(.stTextSecondary)
-        }
+        Text("No vocabulary packs available.")
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
       } else {
-        ForEach(Array(ids.enumerated()), id: \.element) { index, id in
-          BrandedRow(showDivider: index < ids.count - 1) {
-            // ViewThatFits: the Dictionary rail (#2492) leaves this row roughly
-            // 228pt at the app's 750pt minimum window — enough for the old
-            // full-width page, not for text + a button + a toggle on one line
-            // (cloud review, PR #2499). The horizontal row is tried first.
-            ViewThatFits(in: .horizontal) {
-              HStack(alignment: .center) {
-                packInfo(id)
-                Spacer()
-                packControls(id)
-              }
-              VStack(alignment: .leading, spacing: 8) {
-                packInfo(id)
-                packControls(id)
-              }
-            }
-          }
+        VStack(alignment: .leading, spacing: 10) {
+          ForEach(ids, id: \.self) { packCard($0) }
         }
       }
     }
   }
 
-  @ViewBuilder
-  private func packInfo(_ id: VocabularyPackID) -> some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(id.displayName)
-        .font(.body)
+  /// One pack, as its own recessed card.
+  ///
+  /// **The controls are pinned to the TITLE line, and that is the fix.** They
+  /// were previously centred against a three-line block, so "See all" landed
+  /// mid-paragraph at a different horizontal position in every row — the
+  /// button's x followed the intrinsic width of whichever blurb sat beside it
+  /// (founder screenshot, 2026-08-29). Anchoring them to the first line puts
+  /// every button in the same place and next to the thing it acts on.
+  private func packCard(_ id: VocabularyPackID) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      // ViewThatFits: at the app's 750pt minimum window this card is too
+      // narrow for a name, a button and a toggle on one line (cloud review,
+      // PR #2499). The one-line form is tried first.
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 10) {
+          Text(id.displayName).settingsRowLabel()
+          Spacer(minLength: 12)
+          packControls(id)
+        }
+        VStack(alignment: .leading, spacing: 8) {
+          Text(id.displayName).settingsRowLabel()
+          packControls(id)
+        }
+      }
+
       Text(id.blurb)
-        .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
+        .settingsReadingCopy()
+        .fixedSize(horizontal: false, vertical: true)
       Text(rowDetail(for: id))
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 2)
     }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .fill(Color.stPageBg)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .strokeBorder(Color.stDivider, lineWidth: 1)
+    )
   }
 
   @ViewBuilder
   private func packControls(_ id: VocabularyPackID) -> some View {
-    HStack {
+    HStack(spacing: 10) {
       // No `.controlSize` here: this control owns its own metrics, so the
       // modifier the previous system `Button` needed became a dead line
       // that reads as if it still sizes something.
@@ -91,8 +109,10 @@ struct VocabPacksSection: View {
       )
       .toggleStyle(BrandedToggleStyle())
       .labelsHidden()
+      // BrandedToggleStyle's internal Spacer otherwise claims the whole
+      // remaining row (swift-patterns.md RULE: plain-button-content-shape).
+      .fixedSize()
       .accessibilityLabel("Enable \(id.displayName) pack")
-      .padding(.leading, 6)
     }
   }
 

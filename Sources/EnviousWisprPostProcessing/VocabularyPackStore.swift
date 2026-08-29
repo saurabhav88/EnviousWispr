@@ -51,6 +51,31 @@ public final class VocabularyPackStore: Sendable {
   private let bundle: Bundle
   private static let logger = Logger(subsystem: "com.enviouswispr", category: "VocabularyPackStore")
 
+  /// Decoded packs, kept after the first read.
+  ///
+  /// **A pack's bytes are a bundled resource: they cannot change while the app
+  /// runs, so decoding them more than once is pure waste.** Without this,
+  /// `load(_:)` re-read the file and re-ran `JSONDecoder` on every call, and
+  /// the settings UI calls it from inside SwiftUI `body` evaluations — a
+  /// single render of the pack list costs about twenty decodes, because
+  /// `rowDetail` asks for both a count and examples per pack and `ViewThatFits`
+  /// builds the row twice (measured 2026-08-29: 4.62 ms per body evaluation,
+  /// 0.354 ms per `load(medical)`).
+  ///
+  /// **This is a real waste and it is NOT what made the tab beachball.** Single-
+  /// digit milliseconds cannot stall the main thread visibly; the stall is the
+  /// view tree the detail pane builds. Fixing this does not close that, and
+  /// nobody should read the cache as the answer to the lag.
+  ///
+  /// A lock rather than a `lazy`: the type is `Sendable` and reachable from any
+  /// thread, so an unsynchronised stored dictionary would be a data race. The
+  /// decode runs OUTSIDE the lock, so a slow read never blocks another pack's
+  /// lookup; two threads racing the same miss both decode and the second store
+  /// wins, which is harmless because the result is a pure function of bytes
+  /// that cannot change.
+  private let decoded = OSAllocatedUnfairLock(
+    initialState: [VocabularyPackID: VocabularyPack]())
+
   /// Production: loads from this module's `Bundle.module`.
   public init() {
     self.bundle = .module
@@ -63,7 +88,14 @@ public final class VocabularyPackStore: Sendable {
   }
 
   /// Load one pack's terms, or nil if the resource is missing/corrupt.
+  ///
+  /// Memoized — see `decoded`. A MISSING or CORRUPT pack is deliberately not
+  /// cached: the failure is logged each time rather than silently answered from
+  /// a remembered `nil`, and a fail-open path that has genuinely nothing to
+  /// return costs one bundle lookup, not a decode.
   public func load(_ id: VocabularyPackID) -> VocabularyPack? {
+    if let hit = decoded.withLock({ $0[id] }) { return hit }
+
     guard let raw = loadRaw(id) else { return nil }
     let terms = raw.map { canonical, aliases in
       CustomWord(
@@ -74,7 +106,9 @@ public final class VocabularyPackStore: Sendable {
         source: .pack
       )
     }
-    return VocabularyPack(terms: terms)
+    let pack = VocabularyPack(terms: terms)
+    decoded.withLock { $0[id] = pack }
+    return pack
   }
 
   /// Flattened terms for every enabled pack (deterministic order). Missing
