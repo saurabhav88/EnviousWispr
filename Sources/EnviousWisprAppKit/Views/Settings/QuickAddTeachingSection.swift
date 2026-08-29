@@ -1,3 +1,4 @@
+import EnviousWisprServices
 import SwiftUI
 
 /// Quick Add tab of the Dictionary page (#2497). Quick Add itself shipped in
@@ -19,8 +20,20 @@ import SwiftUI
 /// (the menu item's real title and behavior) rather than composed from memory
 /// (cloud review, PR caught two invented product claims: a default-off
 /// shortcut and a category picker that don't exist).
+///
+/// **The shortcut shown is the LIVE configured one (`settings.quickAddKeyCode`
+/// / `quickAddModifiers`, via `KeySymbols.format`), never the shipped
+/// default** — a second cloud-review round caught that a hardcoded "Control
+/// Option W" goes actively wrong the moment someone rebinds Quick Add on the
+/// Keybinds page, since that chord may then do nothing or trigger a different
+/// action entirely.
 struct QuickAddTeachingSection: View {
   @Environment(\.settingsNavigate) private var navigate
+  @Environment(SettingsManager.self) private var settings
+
+  private var shortcutDisplay: String {
+    KeySymbols.format(keyCode: settings.quickAddKeyCode, modifiers: settings.quickAddModifiers)
+  }
 
   var body: some View {
     BrandedSection {
@@ -49,7 +62,7 @@ struct QuickAddTeachingSection: View {
           .font(.system(size: 34, weight: .regular))
           .foregroundStyle(.stAccent)
         Text(
-          "Highlight \u{201C}Kubernetes\u{201D} in Slack \u{2192} press Control Option W \u{2192} it\u{2019}s added."
+          "Highlight \u{201C}Kubernetes\u{201D} in Slack \u{2192} press \(shortcutDisplay) \u{2192} it\u{2019}s added."
         )
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
@@ -90,7 +103,7 @@ struct QuickAddTeachingSection: View {
       body: "Select the word you want to fix in an email, chat, or document.")
     stepCard(
       2, title: "Trigger Quick Add",
-      body: "Press Control Option W, or open the EnviousWispr menu and choose the Add item.")
+      body: "Press \(shortcutDisplay), or open the EnviousWispr menu and choose the Add item.")
     stepCard(
       3, title: "Choose and save",
       body:
@@ -137,10 +150,9 @@ struct QuickAddTeachingSection: View {
       calloutContent(
         icon: "keyboard",
         label: "Keyboard shortcut",
-        // Verified against ShortcutBinding.swift: Quick Add ships bound to
-        // Control Option W (keyCode 13, .control + .option) on a fresh
-        // install — it is not off by default.
-        value: "Control Option W by default. Change it under Keybinds."
+        // The LIVE configured shortcut, not the shipped default — this must
+        // stay correct after someone rebinds Quick Add on Keybinds.
+        value: "\(shortcutDisplay). Change it under Keybinds."
       )
       // The button's own layout expands to full width and draws its own
       // background; without an explicit content shape the padding around
