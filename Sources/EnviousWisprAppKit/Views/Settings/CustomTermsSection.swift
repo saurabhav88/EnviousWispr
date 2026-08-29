@@ -18,6 +18,11 @@ private struct BulkDeleteRequest: Identifiable {
 struct CustomTermsSection: View {
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   @State private var searchQuery: String = ""
+  /// #2494: `nil` is "All categories," the default pill. One combined
+  /// projection (`filteredWords`) feeds search, this filter, count,
+  /// pagination, selection, and the empty state — never two separate lists
+  /// that could disagree about which words are showing.
+  @State private var selectedCategory: WordCategory?
   @State private var currentPage: Int = 0
   @State private var editingWord: CustomWord?
   @State private var isSelecting = false
@@ -29,7 +34,7 @@ struct CustomTermsSection: View {
   }
 
   private var filteredWords: [CustomWord] {
-    CustomTermListPolicy.filtered(allWords, query: searchQuery)
+    CustomTermListPolicy.filtered(allWords, query: searchQuery, category: selectedCategory)
   }
 
   /// IDs eligible for bulk selection within the current search/filter — never
@@ -48,6 +53,19 @@ struct CustomTermsSection: View {
     return CustomTermListPolicy.paged(filteredWords, page: safePage)
   }
 
+  /// #2494 review: an empty result can mean three different things — say
+  /// which one, don't claim the whole dictionary is empty when it's really
+  /// "no words in this category."
+  private var emptyStateMessage: String {
+    if !searchQuery.isEmpty {
+      return "No matches for \"\(searchQuery)\"."
+    }
+    if selectedCategory != nil {
+      return "No words in this category."
+    }
+    return "No words yet. Add one with the button above."
+  }
+
   var body: some View {
     // #2492: no "Your Words" repeated here — the left sub-menu's selected
     // tab already says it. Keep the count, which is the useful part.
@@ -63,6 +81,7 @@ struct CustomTermsSection: View {
           TextField("Search by name, alias, or category", text: $searchQuery)
             .textFieldStyle(.plain)
             .onChange(of: searchQuery) { _, _ in currentPage = 0 }
+            .onChange(of: selectedCategory) { _, _ in currentPage = 0 }
             .onChange(of: pageCount) { _, newCount in
               if currentPage >= newCount { currentPage = max(0, newCount - 1) }
             }
@@ -81,6 +100,14 @@ struct CustomTermsSection: View {
           Spacer()
           selectionControls
         }
+      }
+
+      // #2494: category filter pills, directly under search. Wraps to a
+      // second line rather than scrolling sideways — this row is short
+      // (6 pills) and the tab pane can be as narrow as ~228pt at the app's
+      // 750pt minimum window.
+      BrandedRow(showDivider: true) {
+        categoryFilterRow
       }
 
       // Bulk-delete action row, shown only once something is selected.
@@ -107,13 +134,9 @@ struct CustomTermsSection: View {
       // List or empty state
       if pagedWords.isEmpty {
         BrandedRow(showDivider: false) {
-          Text(
-            searchQuery.isEmpty
-              ? "No words yet. Add one with the button above."
-              : "No matches for \"\(searchQuery)\"."
-          )
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
+          Text(emptyStateMessage)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
         }
       } else {
         ForEach(Array(pagedWords.enumerated()), id: \.element.id) { idx, word in
@@ -227,6 +250,55 @@ struct CustomTermsSection: View {
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
     }
+  }
+
+  /// #2494: one pill per `WordCategory` plus "All categories," selected
+  /// state driven by `selectedCategory`. `WrappingHStack` (not a horizontal
+  /// scroller) so the row is fully visible and never hides a category behind
+  /// a scroll gesture.
+  private var categoryFilterRow: some View {
+    WrappingHStack(spacing: 6) {
+      categoryPill(title: "All categories", isSelected: selectedCategory == nil) {
+        selectedCategory = nil
+      }
+      ForEach(WordCategory.allCases, id: \.self) { category in
+        categoryPill(title: category.rawValue.capitalized, isSelected: selectedCategory == category)
+        {
+          selectedCategory = category
+        }
+      }
+    }
+  }
+
+  private func categoryPill(title: String, isSelected: Bool, action: @escaping () -> Void)
+    -> some View
+  {
+    Button(action: action) {
+      Text(title)
+        .font(.stHelper)
+        .fontWeight(isSelected ? .semibold : .regular)
+        .foregroundStyle(isSelected ? Color.stAccent : Color.stTextSecondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background {
+          Capsule()
+            .fill(isSelected ? Color.stAccentLight : Color.stTextPrimary.opacity(0.04))
+        }
+        .overlay {
+          // #2494 review: a filled Shape overlay is hit-testable even where
+          // its own fill is invisible, so an undecorated stroke sitting over
+          // the pill's Text can steal the tap from the Button underneath it
+          // (code-gotchas.md RULE: a-decoration-drawn-over-a-control-swallows-its-clicks).
+          if isSelected {
+            Capsule()
+              .strokeBorder(Color.stAccent.opacity(0.35), lineWidth: 1)
+              .allowsHitTesting(false)
+          }
+        }
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityAddTraits(isSelected ? [.isSelected] : [])
   }
 
   /// Trailing controls in the search row: "Select" when idle (only offered

@@ -8,18 +8,24 @@ enum CustomTermListPolicy {
   static let pageSize = 50
 
   /// Filter `all` against `query` (case + diacritic insensitive substring
-  /// across canonical, aliases, category). Empty query returns the full
-  /// list. Sort is alphabetical by canonical, localized + case-insensitive.
-  static func filtered(_ all: [CustomWord], query: String) -> [CustomWord] {
+  /// across canonical, aliases, category) and, independently, against
+  /// `category` (#2494) — a word must satisfy BOTH when both are given.
+  /// `category: nil` means "all categories," matching the filter pill row's
+  /// default. Empty query + nil category returns the full list. Sort is
+  /// alphabetical by canonical, localized + case-insensitive.
+  static func filtered(
+    _ all: [CustomWord], query: String, category: WordCategory? = nil
+  ) -> [CustomWord] {
+    let byCategory = category.map { cat in all.filter { $0.category == cat } } ?? all
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else {
-      return all.sorted {
+      return byCategory.sorted {
         $0.canonical.localizedCaseInsensitiveCompare($1.canonical) == .orderedAscending
       }
     }
     let opts: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
     let locale = Locale.current
-    return all.filter { word in
+    return byCategory.filter { word in
       if word.canonical.range(of: trimmed, options: opts, locale: locale) != nil {
         return true
       }
