@@ -210,13 +210,51 @@ export async function handleTriage(body, env) {
   // payloads DO carry `data.issue`, so this guard never once fired for them and
   // every rate alert fell straight through to the ordinary error path, where it
   // rendered as `What: unknown / Version: unknown / Impact: 0 user(s)` (#1965).
-  const issue = payload?.data?.issue;
+  // **TWO PAYLOAD SHAPES REACH HERE, and only one of them carries an issue.**
+  // A lifecycle webhook sends `data.issue`. An alert-rule ACTION — which is how
+  // alerting was rewired after Sentry stopped firing the implicit `issue.created`
+  // webhook on 2026-08-16 (#2486) — sends `data.event` instead, an EVENT carrying
+  // `issue_id` and none of `count`, `userCount`, `shortId` or `permalink`.
+  //
+  // So the action payload is not an issue wearing a different name, and reading it
+  // as one would score severity off blanks. The issue is FETCHED by id instead, and
+  // everything downstream is unchanged.
+  let issue = payload?.data?.issue;
+  let action = payload.action ?? "";
+
+  if (!issue) {
+    const eventIssueId = payload?.data?.event?.issue_id;
+    if (eventIssueId) {
+      issue = await fetchIssueById(String(eventIssueId), env, lookupDeadlineAt);
+      if (!issue) {
+        // Loud: Sentry delivered a real alert and we could not resolve it. Silence
+        // here is the exact failure #2486 is about, so it must not be silent.
+        console.error(
+          `[sentry-triage] event_alert for issue ${eventIssueId} but the issue lookup failed — alert DROPPED`
+        );
+        return;
+      }
+      // **`triggered` is normalised to `created`, and the coupling is stated
+      // rather than assumed.** `decideNotification` supports only `created` and
+      // `unresolved`; an alert action always arrives as `triggered`, which would be
+      // ineligible and silently post nothing. This workflow's trigger is literally
+      // "A new issue is created" (Sentry workflow 3202076), so for THIS rule the two
+      // mean the same thing. If that trigger is ever widened, this mapping is the
+      // line to revisit — `data.triggered_rule` is logged so the record says which
+      // rule fired.
+      console.log(
+        `[sentry-triage] event_alert.triggered rule=${payload?.data?.triggered_rule ?? "?"} ` +
+          `issue=${issue.id} — resolved via issue lookup`
+      );
+      action = "created";
+    }
+  }
+
   if (!issue) {
     console.log("[sentry-triage] No data.issue — skipping malformed or unknown payload");
     return;
   }
 
-  const action = payload.action ?? "";
   const issueId = issue.id ?? "";
   if (!issueId) {
     console.error("[sentry-triage] Missing issue ID, skipping");
@@ -818,6 +856,44 @@ async function handleSpike({ action, issue, issueId, env, lookupDeadlineAt, oper
  * failed page, malformed body, deadline expiry, or page-cap-with-more-pending
  * returns an incomplete/malformed status so severity fails open (rule 4).
  */
+/** The issue behind an `event_alert.triggered` payload, or null.
+ *
+ * **WHY THIS EXISTS.** An issue-lifecycle webhook carries `data.issue`, a whole
+ * issue object. An alert-rule ACTION carries `data.event` instead — an EVENT, with
+ * `issue_id` and no `count`, `userCount`, `shortId` or `permalink`. Those four are
+ * exactly what severity scoring, exact-ticket suppression and the embed need, so the
+ * two shapes are not interchangeable and the action payload cannot be read as an
+ * issue.
+ *
+ * Measured 2026-08-28, which is why this exists rather than as a precaution: with
+ * the action freshly wired, Sentry sent `event_alert.triggered`, the Worker answered
+ * 202 and dropped it with "No data.issue". Sentry's request log said delivered, the
+ * save button said saved, and no card reached Discord (#2486).
+ *
+ * One extra subrequest, inside the existing lookup deadline, against an endpoint
+ * this token already reaches (verified 2026-08-28: returns id, shortId, title,
+ * permalink, count, userCount, level, substatus). Returns null on ANY failure so the
+ * caller logs and skips rather than posting a card built from blanks.
+ */
+async function fetchIssueById(issueId, env, deadlineAt) {
+  const url = `https://us.sentry.io/api/0/organizations/${SENTRY_ORG}/issues/${issueId}/`;
+  try {
+    const res = await fetchBefore(
+      url,
+      { headers: { Authorization: `Bearer ${env.SENTRY_AUTH_TOKEN}` } },
+      deadlineAt,
+      SENTRY_FETCH_TIMEOUT_MS,
+      "sentry-issue"
+    );
+    if (!res.ok) return null;
+    const body = await res.json();
+    // The id must come back, or downstream has nothing to key a throttle on.
+    return body && typeof body === "object" && body.id ? body : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchEventPartition(issueId, env, deadlineAt) {
   const base =
     `https://us.sentry.io/api/0/organizations/${SENTRY_ORG}/issues/${issueId}/events/` +
