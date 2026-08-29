@@ -68,7 +68,7 @@ enum CustomWordsExportPanel {
     // points it, including a synced folder, and it can contain real names.
     panel.message =
       exportSummary(exportableCount: exportableCount) + "\n\n"
-      + "Exported files may contain personal names and other private terms. "
+      + "Exported files may contain personal names and other private words. "
       + "Usage history is not included."
 
     return panel.runModal() == .OK ? panel.url : nil

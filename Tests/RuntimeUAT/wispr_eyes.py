@@ -439,31 +439,35 @@ def read_cards(group):
 
 
 def nav(tab):
+    """Open a Settings page. #1296 replaced the sidebar's AXOutline/AXRow
+    list with a ScrollView of AXButton rows (code-conventions.md FACT:
+    view-patterns); this pre-dates the Dictionary rename and blocked
+    every tab, not only this one. Fixed here because the Dictionary
+    diff needed a working nav() to verify itself, and touching the
+    caller string (faultInjection.py) without repairing the callee
+    would have left it silently unreachable."""
     _ensure_connected()
     try:
-        outline = find_element(_app, role="AXOutline")
-        if not outline:
-            w = find_element(_app, role="AXWindow")
-            outline = find_element(w, role="AXOutline") if w else None
-            if not outline:
-                # Auto-open Settings and retry once
-                settings_item = _find_match(_app, "Settings...", "AXMenuItem", exact=True)
-                if settings_item:
-                    perform_action(settings_item, "AXPress")
-                    time.sleep(0.8)
-                    print("Auto-opened Settings")
-                    outline = find_element(_app, role="AXOutline")
-                    if not outline:
-                        w = find_element(_app, role="AXWindow")
-                        outline = find_element(w, role="AXOutline") if w else None
-                if not outline: print("No sidebar found. Is Settings open?"); return False
-        for row in (get_attr(outline,"AXRows") or get_attr(outline,"AXChildren") or []):
-            if get_attr(row,"AXRole") != "AXRow": continue
-            t = _row_text(row)
-            if t and _fuzzy(tab, t):
-                set_attr(row,"AXSelected",True); time.sleep(0.3)
-                print(f"Navigated to {t}"); return True
-        print(f"Tab '{tab}' not found in sidebar"); return False
+        if tap(tab, role="AXButton"):
+            time.sleep(0.3)  # settle: unchanged from the pre-#1296 nav(), let the page swap render
+            print(f"Navigated to {tab}")
+            return True
+
+        settings_item = _find_match(_app, "Settings...", "AXMenuItem", exact=True)
+        if not settings_item:
+            print("No Settings sidebar found. Is Settings available?")
+            return False
+        perform_action(settings_item, "AXPress")
+        time.sleep(0.8)  # settle: unchanged from the pre-#1296 nav(), let the Settings window open
+        print("Auto-opened Settings")
+
+        if tap(tab, role="AXButton"):
+            time.sleep(0.3)  # settle: unchanged from the pre-#1296 nav(), let the page swap render
+            print(f"Navigated to {tab}")
+            return True
+
+        print(f"Tab '{tab}' not found in sidebar")
+        return False
     except Exception as e: print(f"nav error: {e}"); return False
 
 def menu():
@@ -1127,7 +1131,7 @@ def scan(toggle=False):
         # fail every run, and naming none asserts the tab still renders.
         ("AI Polish", [], ["Provider", "Model"],
          ["style"], ["Save", "Clear", "Refresh", "Copy Diagnostics"]),
-        ("Your Words", ["Enable custom words"], [], [], []),
+        ("Dictionary", ["Enable Dictionary"], [], [], []),
         ("Clipboard",
          ["Auto-copy to clipboard", "Restore clipboard after paste"],
          [], [], []),
@@ -1403,19 +1407,11 @@ def switch_backend(name, wait=3.0):
     if name not in _BACKEND_LABELS:
         raise ValueError(f"Unknown backend '{name}'. Use one of: {list(_BACKEND_LABELS)}")
     connect()
-    # nav("Transcription") requires AXOutline and silently no-ops against the
-    # button sidebar (#1296); tap() on the sidebar button itself is reliable
-    # once Settings is open. But nav()'s own auto-open-Settings fallback still
-    # ran before it gave up on the sidebar search, so a caller relying on that
-    # side effect (e.g. after Settings closed between two switch_backend calls)
-    # needs the same explicit open here (Codex code-diff review, 2026-07-22).
-    if not tap("Transcription"):
-        if not tap("Settings..."):
-            raise RuntimeError("Could not open Settings to reach Transcription")
-        time.sleep(0.8)  # settle: mirrors nav()'s own post-auto-open wait for the window to animate in
-        if not tap("Transcription"):
-            raise RuntimeError("Could not tap 'Transcription' in the Settings sidebar")
-    time.sleep(0.3)
+    # nav() now uses the button sidebar directly (#1296 fix, Dictionary
+    # redesign review) and owns the auto-open-Settings fallback, so this
+    # no longer needs its own copy of that logic.
+    if not nav("Transcription"):
+        raise RuntimeError("Could not navigate to Transcription")
     label = _BACKEND_LABELS[name]
     # These two engine buttons carry their label in AXDescription with an EMPTY
     # AXTitle, which `tap()` does not search — so `tap("Fast")` reported

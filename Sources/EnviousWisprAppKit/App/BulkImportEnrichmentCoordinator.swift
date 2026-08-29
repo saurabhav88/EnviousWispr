@@ -35,7 +35,7 @@ final class BulkImportEnrichmentCoordinator {
 
   private static let checkpointChunkSize = 25
   private static let startMessage =
-    "Importing your words now. Check progress in the Your Words menu."
+    "Importing your words now. Check progress on the Dictionary page."
   private static let finishMessage = "Finished importing your words."
   /// Same shipped 1/2/4s schedule as `ManifestFetchTask`, not a new timing invention.
   private static let busyRetryDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4)]

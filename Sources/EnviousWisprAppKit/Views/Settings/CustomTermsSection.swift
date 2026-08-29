@@ -49,7 +49,11 @@ struct CustomTermsSection: View {
   }
 
   var body: some View {
-    BrandedSection(header: "Custom terms · \(filteredWords.count)") {
+    // #2492: no "Your Words" repeated here — the left sub-menu's selected
+    // tab already says it. Keep the count, which is the useful part.
+    BrandedSection(
+      header: "\(filteredWords.count) \(filteredWords.count == 1 ? "word" : "words")"
+    ) {
       // Search + selection controls
       BrandedRow(showDivider: true) {
         HStack(spacing: 6) {
@@ -105,7 +109,7 @@ struct CustomTermsSection: View {
         BrandedRow(showDivider: false) {
           Text(
             searchQuery.isEmpty
-              ? "No custom terms yet. Add one with the button above."
+              ? "No words yet. Add one with the button above."
               : "No matches for \"\(searchQuery)\"."
           )
           .font(.stHelper)

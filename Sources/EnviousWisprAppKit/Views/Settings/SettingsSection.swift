@@ -69,7 +69,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .recordingSounds: return "Sounds"
     case .keybinds: return "Keybinds"
     case .aiPolish: return "AI Polish"
-    case .wordCorrection: return "Your Words"
+    case .wordCorrection: return "Dictionary"
     case .clipboard: return "Clipboard"
     case .permissions: return "Permissions"
     case .checkForUpdates: return "Check for Updates"
@@ -117,7 +117,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .keybinds: return "Set the keybinds that start, stop, and cancel dictation."
     case .aiPolish: return "Clean up and rewrite your dictation with AI."
     case .wordCorrection:
-      return "Custom terms and vocabulary the app uses to recognize what you say."
+      return "Improve recognition with your words and vocabulary."
     case .clipboard: return "How your transcript reaches the clipboard and the app you're in."
     case .permissions: return "The microphone and accessibility access EnviousWispr needs."
     case .checkForUpdates: return ""

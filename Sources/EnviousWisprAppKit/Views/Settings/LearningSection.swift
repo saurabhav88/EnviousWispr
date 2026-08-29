@@ -2,9 +2,10 @@ import AppKit
 import EnviousWisprServices
 import SwiftUI
 
-/// Phase 4 (#634) — Learning section of the Your Words settings tab. Two rows:
-/// auto-learn (Phase 7 #629, still "Coming soon") and contacts import (Phase 6
-/// #636, live). Bible §10.2.
+/// Learn from... tab of the Dictionary page. Two rows: auto-learn (Phase 7
+/// #629, still "Coming soon") and contacts import (Phase 6 #636, live).
+/// Bible §10.2. #2492: no section header here — the left sub-menu's selected
+/// tab already says "Learn from...".
 struct LearningSection: View {
   @Environment(ContactsImportCoordinator.self) private var contactsImport
   @Environment(SettingsManager.self) private var settings
@@ -12,7 +13,7 @@ struct LearningSection: View {
   var body: some View {
     @Bindable var settings = settings
 
-    BrandedSection(header: "Learning") {
+    BrandedSection {
       // Row 1: Auto-learn from transcripts (Phase 7 #629)
       BrandedRow(showDivider: true) {
         VStack(alignment: .leading, spacing: 4) {
@@ -21,7 +22,7 @@ struct LearningSection: View {
               Text("Learn from my transcripts")
                 .settingsRowLabel()
               Text(
-                "EnviousWispr will watch for edits to text it just pasted, to suggest custom words. Edits stay on this Mac."
+                "EnviousWispr will watch for edits to text it just pasted, to suggest new words. Edits stay on this Mac."
               )
               .settingsReadingCopy()
             }

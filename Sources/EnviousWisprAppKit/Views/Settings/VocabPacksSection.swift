@@ -1,17 +1,20 @@
 import EnviousWisprPostProcessing
 import SwiftUI
 
-/// Vocabulary Packs section of the Your Words settings tab (#633 Phase 9).
-/// One row per installed ASR-mined pack: a toggle to enable it and a "See all"
-/// button that opens the pack's full word list with the spoken variants each
-/// word catches (#992). Default OFF. Enabling a pack feeds its known mis-hearing
+/// Vocabulary Packs tab of the Dictionary page (#633 Phase 9). One row per
+/// installed ASR-mined pack: a toggle to enable it and a "See all" button
+/// that opens the pack's full word list with the spoken variants each word
+/// catches (#992). Default OFF. Enabling a pack feeds its known mis-hearing
 /// fixes into the corrector; raw dictation is unaffected when off. Bible §10.2.
+/// #2492: no section header here — the left sub-menu's selected tab already
+/// says "Vocabulary Packs"; repeating it inside the content would be the same
+/// title rendered twice.
 struct VocabPacksSection: View {
   @Environment(VocabularyPackManager.self) private var packManager
   @State private var selectedPack: VocabularyPackID?
 
   var body: some View {
-    BrandedSection(header: "Vocabulary packs") {
+    BrandedSection {
       let ids = packManager.availablePackIDs
       if ids.isEmpty {
         BrandedRow(showDivider: false) {
