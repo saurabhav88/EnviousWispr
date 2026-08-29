@@ -1742,7 +1742,7 @@ def _read_setting(key: str) -> Optional[str]:
 def A6_settings_storm(**_) -> dict:
     """User behavior: dictation in progress, user opens Settings and
     flips heart-side toggles whose live-sync runs *during* an active
-    recording — `wordCorrectionEnabled` (Your Words tab) and
+    recording — `wordCorrectionEnabled` (Dictionary tab) and
     `fillerRemovalEnabled` (Transcription tab). These two flow through
     `PipelineSettingsSync` and modify the streaming-time inline post-
     process; the negative control on this scenario specifically names
@@ -1773,12 +1773,12 @@ def A6_settings_storm(**_) -> dict:
         return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
     with _TTSAudio():
         time.sleep(0.5)  # let audio flow into streaming ASR
-        # Storm 1: flip wordCorrectionEnabled twice on the Your Words tab.
-        eyes.nav("Your Words")
+        # Storm 1: flip wordCorrectionEnabled twice on the Dictionary tab.
+        eyes.nav("Dictionary")
         time.sleep(0.4)
-        eyes.tap("Enable custom words")
+        eyes.tap("Enable Dictionary")
         time.sleep(0.25)
-        eyes.tap("Enable custom words")
+        eyes.tap("Enable Dictionary")
         time.sleep(0.25)
         # Storm 2: flip fillerRemovalEnabled twice on the Transcription tab.
         eyes.nav("Transcription")
@@ -1798,10 +1798,10 @@ def A6_settings_storm(**_) -> dict:
     # Restore pre-state so successive runs do not accumulate. The toggles
     # were each flipped twice during the storm so they should already
     # match pre-state, but read defaults to confirm and re-flip if not.
-    eyes.nav("Your Words")
+    eyes.nav("Dictionary")
     time.sleep(0.4)
     if (_read_setting("wordCorrectionEnabled") or "0") != (pre_word_correction or "0"):
-        eyes.tap("Enable custom words")
+        eyes.tap("Enable Dictionary")
         time.sleep(0.3)
     eyes.nav("Transcription")
     time.sleep(0.4)

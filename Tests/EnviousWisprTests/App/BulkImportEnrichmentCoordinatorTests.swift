@@ -329,7 +329,7 @@ struct BulkImportEnrichmentCoordinatorTests {
     bulkCoordinator.requestDrain()
     await bulkCoordinator.awaitDrainForTesting()
 
-    #expect(presented.contains("Importing your words now. Check progress in the Your Words menu."))
+    #expect(presented.contains("Importing your words now. Check progress on the Dictionary page."))
     #expect(
       !presented.contains("Finished importing your words."),
       "a failed checkpoint write must never announce completion")
@@ -396,7 +396,7 @@ struct BulkImportEnrichmentCoordinatorTests {
     #expect(coordinator.pendingEnrichmentCount == 0, "eventually persisted despite the busy repair")
     #expect(
       presented == [
-        "Importing your words now. Check progress in the Your Words menu.",
+        "Importing your words now. Check progress on the Dictionary page.",
         "Finished importing your words.",
       ], "no duplicate pills across the retry")
   }
@@ -436,7 +436,7 @@ struct BulkImportEnrichmentCoordinatorTests {
     #expect(word.aliases == ["k8s"], "the word is eventually persisted despite the busy checkpoint")
     #expect(
       presented == [
-        "Importing your words now. Check progress in the Your Words menu.",
+        "Importing your words now. Check progress on the Dictionary page.",
         "Finished importing your words.",
       ], "the pills are not duplicated by the retry")
   }
@@ -653,7 +653,7 @@ struct BulkImportEnrichmentCoordinatorTests {
 
       #expect(
         presented == [
-          "Importing your words now. Check progress in the Your Words menu.",
+          "Importing your words now. Check progress on the Dictionary page.",
           "Finished importing your words.",
         ],
         "the lingering session must finalize exactly once, with no duplicate start pill")
@@ -669,9 +669,9 @@ struct BulkImportEnrichmentCoordinatorTests {
 
       #expect(
         presented == [
-          "Importing your words now. Check progress in the Your Words menu.",
+          "Importing your words now. Check progress on the Dictionary page.",
           "Finished importing your words.",
-          "Importing your words now. Check progress in the Your Words menu.",
+          "Importing your words now. Check progress on the Dictionary page.",
           "Finished importing your words.",
         ],
         "the new session's start pill must fire, and its own completion must land, not be suppressed"
@@ -815,7 +815,7 @@ struct BulkImportEnrichmentCoordinatorTests {
     await bulkCoordinator.awaitDrainForTesting()
 
     #expect(
-      presented.filter { $0 == "Importing your words now. Check progress in the Your Words menu." }
+      presented.filter { $0 == "Importing your words now. Check progress on the Dictionary page." }
         .count == 1)
     #expect(presented.filter { $0 == "Finished importing your words." }.count == 1)
   }
