@@ -11,9 +11,21 @@ import SwiftUI
 /// title rendered twice.
 struct VocabPacksSection: View {
   @Environment(VocabularyPackManager.self) private var packManager
+  /// #2495 UI decision (recorded on issue #2495): "See all" fills the whole
+  /// Vocabulary Packs pane instead of opening a small popup, so the per-word
+  /// editing controls have room. `selectedPack` therefore switches this
+  /// view's own content rather than presenting a `.sheet`.
   @State private var selectedPack: VocabularyPackID?
 
   var body: some View {
+    if let selectedPack {
+      VocabularyPackDetailSection(id: selectedPack, onClose: { self.selectedPack = nil })
+    } else {
+      packList
+    }
+  }
+
+  private var packList: some View {
     BrandedSection {
       let ids = packManager.availablePackIDs
       if ids.isEmpty {
@@ -43,9 +55,6 @@ struct VocabPacksSection: View {
           }
         }
       }
-    }
-    .sheet(item: $selectedPack) { id in
-      VocabularyPackDetailSheet(id: id, terms: packManager.packTerms(id))
     }
   }
 
