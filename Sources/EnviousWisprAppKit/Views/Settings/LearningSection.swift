@@ -62,9 +62,10 @@ struct LearningSection: View {
             .toggleStyle(BrandedToggleStyle())
             .disabled(true)
             .labelsHidden()
-            // BrandedToggleStyle's internal Spacer claims whatever width it is
-            // handed, which here is the rest of the row (swift-patterns.md
-            // RULE: plain-button-content-shape, reverse direction).
+            // BrandedToggleStyle wraps label-Spacer-track in a content shape so
+            // a labelled row is clickable end to end. With the label hidden its
+            // Spacer claims the whole remaining row, which would make the empty
+            // middle of this card toggle the switch. `fixedSize` collapses it.
             .fixedSize()
         }
         Text(
@@ -161,6 +162,9 @@ struct LearningSection: View {
       .overlay(
         RoundedRectangle(cornerRadius: 12, style: .continuous)
           .strokeBorder(Color.stDivider, lineWidth: 1)
+          // A decoration is never in the hit path — these cards contain
+          // toggles and a button.
+          .allowsHitTesting(false)
       )
   }
 

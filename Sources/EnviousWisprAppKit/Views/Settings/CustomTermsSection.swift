@@ -153,9 +153,9 @@ struct CustomTermsSection<Actions: View>: View {
           .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
               .strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1)
-              // A stroked Shape is still hit-testable, and this one sits over
-              // the text field it decorates (code-gotchas.md
-              // RULE: a-decoration-drawn-over-a-control-swallows-its-clicks).
+              // This decoration sits over the text field, and a Shape in an
+              // overlay can take the click. A decoration is never in the hit
+              // path.
               .allowsHitTesting(false)
           )
 
@@ -360,8 +360,7 @@ struct CustomTermsSection<Actions: View>: View {
         .overlay {
           // #2494 review: a filled Shape overlay is hit-testable even where
           // its own fill is invisible, so an undecorated stroke sitting over
-          // the pill's Text can steal the tap from the Button underneath it
-          // (code-gotchas.md RULE: a-decoration-drawn-over-a-control-swallows-its-clicks).
+          // the pill's Text can steal the tap from the Button underneath it.
           if isSelected {
             Capsule()
               .strokeBorder(Color.stAccent.opacity(0.35), lineWidth: 1)

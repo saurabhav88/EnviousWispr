@@ -378,6 +378,11 @@ private struct DictionaryTabRail: View {
     .overlay(
       RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius, style: .continuous)
         .strokeBorder(Color.stDivider, lineWidth: 1)
+        // A decoration is never in the hit path. `strokeBorder` covers only
+        // the 1pt ring, not the interior, so the tab buttons underneath stay
+        // reachable either way — this is the house rule applied rather than a
+        // defect repaired.
+        .allowsHitTesting(false)
     )
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Dictionary section")

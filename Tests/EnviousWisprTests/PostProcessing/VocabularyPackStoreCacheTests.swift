@@ -12,8 +12,8 @@ import Testing
 /// introduces is answering with the wrong or a stale pack, and that is what
 /// these cases check. The speed itself is not a public product promise and gets
 /// no timing assertion — a wall-clock bound would be a measurement of this
-/// machine (`validation-discipline.md`
-/// RULE: measure-with-the-real-tool-never-a-simulation).
+/// machine rather than of the code, and this Mac is far faster than the
+/// slowest supported one.
 ///
 /// These read the REAL bundled packs rather than a fixture, because the defect
 /// class is "the second read disagrees with the first" and a hand-built pack

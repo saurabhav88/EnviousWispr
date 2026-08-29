@@ -88,6 +88,9 @@ struct VocabPacksSection: View {
     .overlay(
       RoundedRectangle(cornerRadius: 12, style: .continuous)
         .strokeBorder(Color.stDivider, lineWidth: 1)
+        // A decoration is never in the hit path — each card contains a
+        // "See all" button and the pack's toggle.
+        .allowsHitTesting(false)
     )
   }
 
@@ -109,8 +112,10 @@ struct VocabPacksSection: View {
       )
       .toggleStyle(BrandedToggleStyle())
       .labelsHidden()
-      // BrandedToggleStyle's internal Spacer otherwise claims the whole
-      // remaining row (swift-patterns.md RULE: plain-button-content-shape).
+      // BrandedToggleStyle wraps label-Spacer-track in a content shape so a
+      // labelled row is clickable end to end. With the label hidden its Spacer
+      // would claim the whole remaining row, making the empty space beside the
+      // pack name toggle the pack. `fixedSize` collapses it.
       .fixedSize()
       .accessibilityLabel("Enable \(id.displayName) pack")
     }
