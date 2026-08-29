@@ -20,6 +20,9 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
   case yourWords
   case vocabularyPacks
   case learnFrom
+  // #2497: the fourth catalog entry the Phase 1 plan called for — no second
+  // tab mechanism, no change to `DictionaryTabRail`/`DictionaryTabRow`.
+  case quickAdd
 
   var id: Self { self }
 
@@ -28,6 +31,7 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
     case .yourWords: return "Your Words"
     case .vocabularyPacks: return "Vocabulary Packs"
     case .learnFrom: return "Learn from..."
+    case .quickAdd: return "Quick Add"
     }
   }
 
@@ -36,6 +40,7 @@ enum DictionaryTab: String, CaseIterable, Identifiable {
     case .yourWords: return "textformat.abc"
     case .vocabularyPacks: return "shippingbox"
     case .learnFrom: return "sparkle.magnifyingglass"
+    case .quickAdd: return "bolt"
     }
   }
 }
@@ -237,6 +242,8 @@ struct YourWordsView: View {
       VocabPacksSection()
     case .learnFrom:
       LearningSection()
+    case .quickAdd:
+      QuickAddTeachingSection()
     }
   }
 
