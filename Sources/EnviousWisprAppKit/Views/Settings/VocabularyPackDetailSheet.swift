@@ -278,10 +278,6 @@ private struct PackWordRow: View {
     }
   }
 
-  private var sortedAliases: [String] {
-    word.aliases.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-  }
-
   @ViewBuilder
   private var aliasChips: some View {
     if word.aliases.isEmpty {
@@ -289,8 +285,13 @@ private struct PackWordRow: View {
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
     } else {
+      // `displayAliases` arrives already sorted — `VocabularyPackManager`
+      // sorts once when it builds the row. This used to be a `sortedAliases`
+      // computed property, so every visible row re-ran a localized sort on
+      // every body evaluation. The mutation helpers below still read
+      // `word.aliases`, whose ORDER is load-bearing for edit detection.
       WrappingHStack(spacing: 6) {
-        ForEach(sortedAliases, id: \.self) { alias in
+        ForEach(word.displayAliases, id: \.self) { alias in
           HStack(spacing: 3) {
             Text(alias)
               .font(.stHelper)
