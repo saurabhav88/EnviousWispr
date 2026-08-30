@@ -1256,16 +1256,40 @@ def reindented(anchor, delta):
     return "\n".join(out)
 
 
+def first_content_line_offset(text):
+    """Where `text`'s first line that has content begins, as an index into `text`.
+
+    Zero for the ordinary anchor. Non-zero when an anchor opens with blank lines or a
+    bare newline, which say nothing about indentation and must not be the thing tested
+    for beginning a line. Ref: #2529 review r3.
+    """
+    offset = 0
+    for line in text.split("\n"):
+        if line.strip():
+            return offset
+        offset += len(line) + 1
+    return 0
+
+
 def line_start_occurrences(src, text):
-    """How many times `text` occurs BEGINNING A LINE.
+    """How many times `text` occurs with its FIRST CONTENT LINE beginning a line.
 
     `str.count` is a substring test, so it would accept a shifted anchor found in the
     middle of a longer line — which is not indentation, and the sentence this feeds
-    says the word "indentation". Ref: #2529 review r1.
+    says the word "indentation".
+
+    **The subject is the first CONTENT line, not the first character**, which is the
+    general form of a finding about anchors opening with a newline: there the match
+    begins at the separator, whose preceding character is ordinary content from the
+    line before, so an exact uniquely-reindented match was never reported. Testing the
+    content line covers that, leading blank lines, and the ordinary case at once.
+    Ref: #2529 review r1 and r3.
     """
+    lead = first_content_line_offset(text)
     total, start = 0, 0
     while (found := src.find(text, start)) != -1:
-        if found == 0 or src[found - 1] == "\n":
+        anchored = found + lead
+        if anchored == 0 or src[anchored - 1] == "\n":
             total += 1
         start = found + 1
     return total

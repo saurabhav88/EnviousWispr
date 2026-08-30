@@ -258,6 +258,12 @@ check("an anchor covering only the START of a line still names its offset",
       extra_files={"Sources/Thing.swift":
                    "func f() {\n    guard let value = item else { return }\n}\n"})
 
+check("an anchor opening with a newline still names its offset",
+      [dict(VALID_ROW, anchor="\nlet a = 1\nlet b = 2")],
+      expect_exit=2, expect_text="matches exactly once at +4 spaces",
+      extra_files={"Sources/Thing.swift":
+                   "func f() {\n    let a = 1\n    let b = 2\n}\n"})
+
 check("a non-unique anchor is refused",
       [dict(VALID_ROW, anchor="x")],
       expect_exit=2, expect_text="must be unique",
