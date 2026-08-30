@@ -1280,23 +1280,30 @@ def indentation_hint(src, anchor):
     and REPORTS ONLY: re-pointing a frozen row is a judgement, never the runner's.
     Ref: #2529.
 
-    **The candidate offsets are READ OFF THE FILE, never a range chosen here.** A
-    fixed span is a parameter that can be wrong, and it fails toward SILENCE: a first
-    draft searched +-12 and could not see code that moved four Swift nesting levels,
-    reporting the anchor as gone. Every line whose stripped text equals the anchor's
-    first stripped line names its own offset, so nesting depth is unbounded and there
-    is nothing left to tune. Ref: #2529 review r1.
+    **The candidate offsets are READ OFF THE FILE, never chosen here.** A fixed span
+    is a parameter that can be wrong, and it fails toward SILENCE: a first draft
+    searched +-12 and could not see code that moved four Swift nesting levels,
+    reporting the anchor as gone.
+
+    **Two rounds then landed on WHICH LINES are candidates, so that question is gone
+    too.** Requiring a line to equal the anchor's first line suppressed a legitimate
+    anchor covering only the START of a line (`guard let value` against
+    `guard let value = item else {`). Rather than trade one matching rule for
+    another, the candidates are now every distinct INDENTATION WIDTH the file
+    actually uses. There is no matching heuristic left to get wrong: an offset that
+    could line up with any real line is tried, and the verification below — the whole
+    shifted anchor, occurring exactly once, BEGINNING A LINE — is what decides.
+    Ref: #2529 review r1 and r2.
     """
     first = next((line for line in anchor.split("\n") if line.strip()), None)
     if first is None:
         return ""
     anchor_indent = len(first) - len(first.lstrip(" "))
-    body = first.strip()
 
     candidates = {
         (len(line) - len(line.lstrip(" "))) - anchor_indent
         for line in src.split("\n")
-        if line.strip() == body
+        if line.strip()
     }
     offsets = [
         delta
