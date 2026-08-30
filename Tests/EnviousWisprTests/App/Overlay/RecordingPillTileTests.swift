@@ -770,48 +770,55 @@ struct RecordingPillPreviewWiringTests {
       """)
 
     // **The row above reads the NAME, so it cannot see what the name binds to.**
-    // A `let design = RecordingPillDesign.classic` introduced before the
-    // construction leaves `chrome: design.chrome` spelled exactly as required
-    // while every card draws one design — the same failure the row exists to
-    // prevent, passing it. So the binding is checked separately: the tile
-    // declares `design` once, as its own stored property, and nothing inside it
-    // shadows that name.
+    // A `let design = RecordingPillDesign.classic` ahead of the construction
+    // leaves `chrome: design.chrome` spelled exactly as required while every card
+    // draws one design — the failure this row exists to prevent, passing it.
+    //
+    // Chasing the SHAPES a shadow can take is the wrong shape of answer: a local
+    // `let`, a closure parameter, a capture and a `for` binding are four members
+    // of a set with no last member, and two review rounds each returned a new one.
+    // So the question below is a CLOSED one instead, and it is closed because the
+    // enum enumerates it: this tile knows no design BY NAME. A shadow that does
+    // damage has to bind some particular design, and naming one is exactly what
+    // this refuses — whatever syntax carries it.
+    //
+    // `allCases` is the producer, so a design added later is covered with no edit
+    // here.
     let text = try String(
       contentsOf: RepoRoot.url.appending(path: Self.panel), encoding: .utf8)
     let tile = try #require(
       Self.structDecl(named: "RecordingPillPreview", in: Parser.parse(source: text)),
       "RecordingPillPreview is not in \(Self.panel) — this guard is pointed at the wrong type")
-    let bindings = Self.bindingsNamed("design", in: tile)
 
+    let caseNames = Set(RecordingPillDesign.allCases.map { String(describing: $0) })
     #expect(
-      bindings == 1,
+      caseNames.count == RecordingPillDesign.allCases.count,
+      "two designs describe themselves identically, so the sweep below cannot tell them apart")
+
+    let named = Self.memberNames(in: tile).intersection(caseNames).sorted()
+    #expect(
+      named.isEmpty,
       """
-      RecordingPillPreview declares `design` \(bindings) times. One is the stored \
-      property every row above assumes; a second SHADOWS it, so `chrome: design.chrome` \
-      can read a fixed design while still being spelled correctly.
+      RecordingPillPreview names \(named.joined(separator: ", ")). This tile draws \
+      whatever design it is handed and must know none by name — a named one is how a \
+      fixed chrome reaches the card while `chrome: design.chrome` still reads correctly.
       """)
   }
 
-  /// Every `let`/`var` binding of one name anywhere inside a declaration, the
-  /// stored property included. Used as a count rather than a lookup: the answer
-  /// that matters is whether the name is declared more than once.
-  private final class BindingCounter: SyntaxVisitor {
-    let wanted: String
-    private(set) var count = 0
-    init(_ wanted: String) {
-      self.wanted = wanted
-      super.init(viewMode: .sourceAccurate)
-    }
-    override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
-      if node.identifier.text == wanted { count += 1 }
+  /// Every member name accessed anywhere inside a declaration — `a.b` and a bare
+  /// `.b` alike. Comments and strings are not members, so they cannot trip it.
+  private final class MemberNameFinder: SyntaxVisitor {
+    private(set) var names: Set<String> = []
+    override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
+      names.insert(node.declName.baseName.text)
       return .visitChildren
     }
   }
 
-  private static func bindingsNamed(_ name: String, in decl: StructDeclSyntax) -> Int {
-    let counter = BindingCounter(name)
-    counter.walk(decl)
-    return counter.count
+  private static func memberNames(in decl: StructDeclSyntax) -> Set<String> {
+    let finder = MemberNameFinder(viewMode: .sourceAccurate)
+    finder.walk(decl)
+    return finder.names
   }
 
   /// **THE CLOSURE ROW. Every piece of `@State` the poll writes must be seedable,
