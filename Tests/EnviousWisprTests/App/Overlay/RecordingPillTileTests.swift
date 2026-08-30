@@ -776,14 +776,24 @@ struct RecordingPillPreviewWiringTests {
     //
     // Chasing the SHAPES a shadow can take is the wrong shape of answer: a local
     // `let`, a closure parameter, a capture and a `for` binding are four members
-    // of a set with no last member, and two review rounds each returned a new one.
-    // So the question below is a CLOSED one instead, and it is closed because the
-    // enum enumerates it: this tile knows no design BY NAME. A shadow that does
-    // damage has to bind some particular design, and naming one is exactly what
-    // this refuses — whatever syntax carries it.
+    // of a set with no last member, and three review rounds each returned a new
+    // one — the third being `RecordingPillDesign.allCases[0]`, which names no case
+    // at all. So the two rows below are CLOSED questions instead of a list.
     //
-    // `allCases` is the producer, so a design added later is covered with no edit
-    // here.
+    // THE CLOSURE ARGUMENT, stated so it can be held to: to bind a fixed design
+    // inside this struct you must obtain a value of that type, and within one
+    // struct there are exactly two ways to reach one — name a CASE, or name the
+    // TYPE. The first row refuses every case name, enumerated from `allCases` so a
+    // design added later is covered with no edit here. The second refuses every
+    // mention of the type beyond the stored property's own annotation, which is
+    // what `allCases`, a static, an initialiser and a type alias all need.
+    //
+    // WHAT A FOURTH FINDING WOULD HAVE TO LOOK LIKE: a fixed design arriving from
+    // OUTSIDE this struct, from some helper that hands one back without the tile
+    // naming anything — say a `RecordingPillPreviewTile.someFixedDesign`. That is
+    // a different change in a different type, and no assertion inside this struct
+    // can see it. Said out loud because a clean round is not evidence a set is
+    // closed; the falsification condition is.
     let text = try String(
       contentsOf: RepoRoot.url.appending(path: Self.panel), encoding: .utf8)
     let tile = try #require(
@@ -803,6 +813,40 @@ struct RecordingPillPreviewWiringTests {
       whatever design it is handed and must know none by name — a named one is how a \
       fixed chrome reaches the card while `chrome: design.chrome` still reads correctly.
       """)
+
+    // The TYPE, which is the other half and the one `allCases[0]` walks through.
+    // Exactly one mention is allowed and it is the stored property's annotation,
+    // so this also fails loudly if that property is ever removed or retyped.
+    let type = "\(RecordingPillDesign.self)"
+    let mentions = Self.identifierCount(type, in: tile)
+    #expect(
+      mentions == 1,
+      """
+      RecordingPillPreview mentions \(type) \(mentions) times. One is the stored \
+      property's own type; any other is a way to reach a fixed design without naming \
+      a case — `\(type).allCases[0]` is the one that prompted this row.
+      """)
+  }
+
+  /// How many times one identifier appears as a TOKEN inside a declaration.
+  /// Tokens, so comments and string literals are not counted.
+  private final class IdentifierCounter: SyntaxVisitor {
+    let wanted: String
+    private(set) var count = 0
+    init(_ wanted: String) {
+      self.wanted = wanted
+      super.init(viewMode: .sourceAccurate)
+    }
+    override func visit(_ node: TokenSyntax) -> SyntaxVisitorContinueKind {
+      if node.tokenKind == .identifier(wanted) { count += 1 }
+      return .visitChildren
+    }
+  }
+
+  private static func identifierCount(_ name: String, in decl: StructDeclSyntax) -> Int {
+    let counter = IdentifierCounter(name)
+    counter.walk(decl)
+    return counter.count
   }
 
   /// Every member name accessed anywhere inside a declaration — `a.b` and a bare
