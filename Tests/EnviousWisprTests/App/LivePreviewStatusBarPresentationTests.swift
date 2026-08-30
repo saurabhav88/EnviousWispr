@@ -197,12 +197,24 @@ struct LivePreviewStatusBarPresentationTests {
   /// `activeSource` shipped and had to withdraw.
   @Test("Provenance names the Mac on Auto and the user on a lock")
   func provenanceDistinguishesAutoFromLocked() {
-    #expect(
-      bar(.active, languageMode: .auto).language?.provenance
-        == LivePreviewSettingsCopy.languageProvenanceFromMac)
-    #expect(
-      bar(.active, languageMode: .locked("de")).language?.provenance
-        == LivePreviewSettingsCopy.languageProvenanceUserPicked)
+    let auto = bar(.active, languageMode: .auto).language?.provenance
+    let locked = bar(.active, languageMode: .locked("de")).language?.provenance
+
+    // **THE ROWS BELOW CANNOT FAIL ON A COPY CHANGE, WHICH IS WHY THIS ONE IS
+    // FIRST.** They compare the bar's answer against the same constant the bar
+    // read to produce it, so editing either sentence moves both sides together.
+    // A #2441 mutation making the two provenances IDENTICAL — the one thing
+    // this test's name promises to prevent — survived. DISTINCTNESS is the
+    // property, and no constant can satisfy it vacuously.
+    #expect(auto != nil)
+    #expect(auto != locked, "auto and locked must not say the same thing")
+
+    // And one literal, so the pair cannot drift together into wording that
+    // distinguishes nothing a reader would notice.
+    #expect(auto == "from your Mac")
+
+    #expect(auto == LivePreviewSettingsCopy.languageProvenanceFromMac)
+    #expect(locked == LivePreviewSettingsCopy.languageProvenanceUserPicked)
   }
 
   @Test("No language is named while nothing can run, on either engine")
