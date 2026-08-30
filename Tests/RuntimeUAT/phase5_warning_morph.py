@@ -98,15 +98,35 @@ MORPH_FROM, MORPH_TO = [400, 34], [400, 60]
 # `PillAppearanceModel.resolve(capabilityHasWords:)` SUBSTITUTES a wordless design
 # when the words capability is absent, and `chooseCoupled` writes
 # `livePreviewEnabled = design.canHoldWords` — so in the app, picking this pill and
-# turning Live Preview on are one action. Setting the design without it reproduces
-# the original failure exactly: measured 2026-08-30, the pin read back correctly
-# and the pill was still 288x92.
+# turning Live Preview on are one action.
+#
+# **AND THEY GO IN A DIFFERENT DOMAIN FROM THE TIMING OVERRIDES, WHICH IS THE
+# WHOLE REASON THIS ROW LOOKED UNFIXABLE.** `SettingsDefaults.store` sends the dev
+# build's USER PREFERENCES to the SHARED suite `com.enviouswispr.app`; only the
+# `EWDebug*` flags are read straight out of the dev domain. Pins written to
+# `com.enviouswispr.app.dev` therefore read back perfectly and reach nobody — a
+# plausible value from a domain the app never consults, which is worse than an
+# empty one because `overrides_landed` went true on it.
+#
+# Measured 2026-08-30 with the pins in the wrong domain: the shared suite held
+# `recordingPillDesignWithoutWords = levelRail` and `livePreviewEnabled = 0`, so
+# the wordless design applied and the pill was 288x92 — exactly Level Rail's
+# width. The words capability was never the obstacle.
+#
+# **THESE ARE THE USER'S REAL PREFERENCES, shared with the release build.** The
+# snapshot and restore below are not tidiness: getting them wrong changes the
+# appearance of the app this person actually dictates with.
 DESIGN = "readingWell"
+SHARED_DOMAIN = "com.enviouswispr.app"
 DESIGN_OVERRIDES = {"recordingPillDesignWithoutWords": DESIGN,
                     "recordingPillDesignWithWords": DESIGN}
 BOOL_OVERRIDES = {"livePreviewEnabled": "true"}
 OVERRIDES = {"EWDebugMaxRecordingSeconds": CAP_SECONDS,
              "EWDebugWarningLeadSeconds": LEAD_SECONDS}
+# Which domain each key is read from, by the code that reads it.
+DOMAIN_OF = {**{k: DEV_DOMAIN for k in OVERRIDES},
+             **{k: SHARED_DOMAIN for k in DESIGN_OVERRIDES},
+             **{k: SHARED_DOMAIN for k in BOOL_OVERRIDES}}
 # Every key this row writes, with the `defaults` type flag each one needs. A
 # string written with `-float` lands as 0 and silently selects nothing.
 PINNED = {**{k: "-float" for k in OVERRIDES},
@@ -137,8 +157,13 @@ def same_default(flag, a, b):
     return a == b
 
 
-def read_dev_default(k):
-    r = subprocess.run(["defaults", "read", DEV_DOMAIN, k], capture_output=True, text=True)
+def read_default(k):
+    """Read one key FROM THE DOMAIN THE CODE THAT USES IT READS.
+
+    Not a convenience. A key read from the wrong domain returns a well-formed
+    value that is simply about nothing, and the caller cannot tell.
+    """
+    r = subprocess.run(["defaults", "read", DOMAIN_OF[k], k], capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else None
 
 
@@ -283,7 +308,7 @@ def _terminal_after_start():
 def main():
     # BEFORE ANY MUTATION OR STOP (see phase5_geometry_relaunch.require_bundle).
     g.require_bundle()
-    snapshot = {k: read_dev_default(k) for k in PINNED}
+    snapshot = {k: read_default(k) for k in PINNED}
     report = {"snapshot": snapshot, "screen_locked": g.screen_is_locked(),
               "cap_seconds": CAP_SECONDS,
               "lead_seconds": LEAD_SECONDS,
@@ -292,11 +317,12 @@ def main():
               "expected_warning_at_s": CAP_SECONDS - LEAD_SECONDS}
     try:
         if not g.stop_app():
-            print(json.dumps({"verdict": "ABORT_INSTANCE_SURVIVED_TERM"}))
+            report["verdict"] = "ABORT_INSTANCE_SURVIVED_TERM"
+            print(json.dumps({"verdict": report["verdict"]}))
             return
         for k, flag in PINNED.items():
-            subprocess.run(["defaults", "write", DEV_DOMAIN, k, flag, WANTED[k]], check=True)
-        written = {k: read_dev_default(k) for k in PINNED}
+            subprocess.run(["defaults", "write", DOMAIN_OF[k], k, flag, WANTED[k]], check=True)
+        written = {k: read_default(k) for k in PINNED}
         report["overrides_written"] = written
         # **ASSERTED, not noted.** A pin that did not land leaves the row reading
         # whatever appearance this machine had selected, and the geometry above is
@@ -310,7 +336,8 @@ def main():
             if written.get(k) is not None)
         report["overrides_landed"] = landed and None not in written.values()
         if not report["overrides_landed"]:
-            print(json.dumps({"verdict": "ABORT_OVERRIDES_DID_NOT_LAND",
+            report["verdict"] = "ABORT_OVERRIDES_DID_NOT_LAND"
+            print(json.dumps({"verdict": report["verdict"],
                               "wanted": WANTED, "read_back": written}, indent=2))
             return
 
@@ -333,7 +360,8 @@ def main():
             # the build was present at `require_bundle` and still produced no
             # instance, which is an incomplete or unsignable deploy — not the
             # product failing to start. Nothing was measured either way.
-            print(json.dumps({"verdict": "ABORT_LAUNCH_FAILED", "bundle": g.BUNDLE}))
+            report["verdict"] = "ABORT_LAUNCH_FAILED"
+            print(json.dumps({"verdict": report["verdict"], "bundle": g.BUNDLE}))
             return
         report["pid"] = pid
         g.await_idle()
@@ -412,15 +440,17 @@ def main():
         drawn = sorted({s["w"] for s in series})
         report["drawn_widths"] = drawn
         if drawn and MORPH_FROM[0] not in drawn:
+            report["verdict"] = "ABORT_DESIGN_NOT_DRAWN"
             print(json.dumps({
-                "verdict": "ABORT_DESIGN_NOT_DRAWN",
+                "verdict": report["verdict"],
                 "pinned_design": DESIGN,
                 "expected_width": MORPH_FROM[0],
                 "drawn_widths": drawn,
-                "why": ("the pins landed but a different pill was drawn, so the words "
-                        "capability is absent for a reason this row cannot set — see "
-                        "LivePreviewCoordinator.wordsCapability, which logs none of its "
-                        "three refusals"),
+                "why": ("the pins read back correctly and a different pill was drawn. "
+                        "Check the DOMAIN first — user preferences live in "
+                        "com.enviouswispr.app, not the dev domain — then the words "
+                        "capability, whose three refusals LivePreviewCoordinator logs "
+                        "none of"),
             }, indent=2))
             return
 
@@ -531,11 +561,11 @@ def main():
         # design at all — this row must give the machine back exactly what it took.
         for k, v in snapshot.items():
             if v is None:
-                subprocess.run(["defaults", "delete", DEV_DOMAIN, k], capture_output=True)
+                subprocess.run(["defaults", "delete", DOMAIN_OF[k], k], capture_output=True)
             else:
                 value = bool_word(v) if PINNED[k] == "-bool" else v
-                subprocess.run(["defaults", "write", DEV_DOMAIN, k, PINNED[k], value], check=True)
-        report["restored"] = {k: read_dev_default(k) for k in PINNED}
+                subprocess.run(["defaults", "write", DOMAIN_OF[k], k, PINNED[k], value], check=True)
+        report["restored"] = {k: read_default(k) for k in PINNED}
         # Compared by MEANING per key, not by dict equality: `defaults` hands a
         # bool back as `1` where it was written as `true`, so a literal comparison
         # reports a clean restore as dirty.
