@@ -293,10 +293,9 @@ def main():
             g.stop_app()
             subprocess.run(["defaults", "write", SHARED_DOMAIN, "selectedBackend",
                             REQUIRED_BACKEND], check=True)
+            # `start_app` raises with the exact cause; `ABORT_NO_INSTANCE` here
+            # could not tell a missing build from an app that crashes on launch.
             pid = g.start_app()
-            if not pid:
-                print(json.dumps({"verdict": "ABORT_NO_INSTANCE"}))
-                return
             report["pid"] = pid
         g.await_idle()
 

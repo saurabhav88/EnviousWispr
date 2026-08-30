@@ -135,10 +135,9 @@ def main():
     subprocess.run(["defaults", "write", DOMAIN, "cancelModifiersRaw", "-int", "0"], check=True)
     subprocess.run(["defaults", "write", DOMAIN, "escapeRecoveryEnabled", "-bool", "YES"], check=True)
     try:
+        # `start_app` raises with the exact cause; `ABORT_NO_INSTANCE` here
+        # could not tell a missing build from an app that crashes on launch.
         pid = g.start_app()
-        if not pid:
-            report["verdict"] = "ABORT_NO_INSTANCE"
-            return report
         report["pid"] = pid
 
         pt.ensure()  # best effort; a missing paste target never blocks a row

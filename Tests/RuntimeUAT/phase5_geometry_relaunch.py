@@ -235,8 +235,22 @@ def stop_app(timeout=30.0):
 
 
 def start_app(timeout=30.0):
-    # Every relaunch funnels through here, so the refusal cannot be forgotten at
-    # a call site.
+    """Launch this checkout's build and return its pid.
+
+    RAISES rather than returning None when the launch fails, because by the time
+    this is called the running instance is already gone and `None` reaches the
+    caller as `ABORT_NO_INSTANCE` — the same words an app that crashes on launch
+    produces, and a reader cannot tell "there was nothing to launch" from "the
+    product would not start".
+
+    NO STATIC CHECK CAN PROVE A BUNDLE WILL LAUNCH, and four review rounds each
+    found a subtler partial state than the last: a missing directory, then a
+    directory with no executable, then an executable inside an incomplete
+    bundle. That is a set with no closing member, so `require_bundle` stays a
+    cheap FAST FAIL for the common case and is not asked to be exhaustive. The
+    exact question — did it launch, and had something been stopped first — is
+    answered here, after the fact, where the answer set is closed.
+    """
     require_bundle()
     subprocess.run(["open", "-n", BUNDLE], capture_output=True)
     deadline = time.time() + timeout
@@ -245,7 +259,13 @@ def start_app(timeout=30.0):
         if len(pids) == 1:
             return pids[0]
         time.sleep(0.2)  # test-fixture-timer: process-table polling for the new instance
-    return None
+    raise SystemExit(
+        f"phase5 harness: LAUNCH FAILED and the previous instance is already stopped.\n"
+        f"bundle: {BUNDLE}\n"
+        "The build is present but did not produce a running instance within "
+        f"{timeout:.0f}s — an incomplete or unsignable deploy looks exactly like this. "
+        "Rebuild with scripts/build-dev-app.sh in THIS checkout. This is NOT a product "
+        "finding: nothing was measured.")
 
 
 def await_idle(timeout=60.0):
@@ -360,10 +380,13 @@ def main():
                 write_default(k, v)
             observed = {k: read_default(k) for k in settings}
             wanted = {k: expected_read(k, v) for k, v in settings.items()}
+            # `start_app` RAISES when the launch fails, so there is no None to
+            # test. That aborts the whole run rather than skipping this row, and
+            # that is the intended change: an app that will not launch fails
+            # every remaining row too, and the old per-row error said
+            # "relaunch produced no single instance" for a build that was never
+            # there.
             pid = start_app()
-            if not pid:
-                report["rows"][name] = {"error": "relaunch produced no single instance"}
-                continue
             if not await_idle():
                 report["rows"][name] = {
                     "pid": pid, "settings": {k: str(v) for k, v in settings.items()},
