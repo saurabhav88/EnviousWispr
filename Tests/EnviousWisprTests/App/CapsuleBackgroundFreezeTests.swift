@@ -647,21 +647,47 @@ struct CapsuleBackgroundFreezeTests {
   /// reachable without the corner style ever being rounded — the label check is
   /// correct and the conclusion drawn from it is wrong.
   ///
-  /// Walks BACKWARDS while each preceding case ends in `fallthrough`, because a
+  /// Walks BACKWARDS while each preceding case CONTAINS a `fallthrough`, because a
   /// chain of them reaches just as far as one does.
+  ///
+  /// **Contains, not ends with, and that distinction was its own review round.**
+  /// Reading only the last top-level statement is a proxy: `if flag { fallthrough }`
+  /// puts the enclosing `if` last, and the case still reaches this one whenever the
+  /// flag holds. A `fallthrough` is not expressible outside a switch case, so
+  /// "anywhere in the body" needs no further qualification — except a NESTED switch,
+  /// whose `fallthrough` targets its own next case rather than ours.
   private static func isReachedByFallthrough(_ switchCase: SwitchCaseSyntax) -> Bool {
     guard let list = switchCase.parent?.as(SwitchCaseListSyntax.self) else { return false }
     let cases = Array(list)
-    guard var index = cases.firstIndex(where: { $0.id == Syntax(switchCase).id }) else {
-      return false
-    }
+    let target = cases.firstIndex(where: { $0.id == Syntax(switchCase).id })
+    guard var index = target else { return false }
     while index > 0 {
       guard let previous = cases[index - 1].as(SwitchCaseSyntax.self),
-        previous.statements.last?.item.is(FallThroughStmtSyntax.self) == true
+        containsFallthrough(previous)
       else { return false }
       index -= 1
     }
-    return index != cases.firstIndex(where: { $0.id == Syntax(switchCase).id })
+    return index != target
+  }
+
+  /// Whether a case body can hand control to the NEXT case.
+  private static func containsFallthrough(_ switchCase: SwitchCaseSyntax) -> Bool {
+    let finder = FallthroughFinder(viewMode: .sourceAccurate)
+    finder.walk(switchCase.statements)
+    return finder.found
+  }
+
+  /// Any `fallthrough` belonging to THIS switch, at any depth.
+  private final class FallthroughFinder: SyntaxVisitor {
+    private(set) var found = false
+    override func visit(_ node: FallThroughStmtSyntax) -> SyntaxVisitorContinueKind {
+      found = true
+      return .skipChildren
+    }
+    /// A nested switch's `fallthrough` reaches ITS next case, never ours.
+    override func visit(_ node: SwitchExprSyntax) -> SyntaxVisitorContinueKind {
+      .skipChildren
+    }
   }
 
   /// The palette reads that are NOT inside the preview branch, named by line.
