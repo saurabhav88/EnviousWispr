@@ -50,6 +50,46 @@ struct LivePreviewStatusMappingTests {
       activeDescribesAnotherLanguage: activeDescribesAnotherLanguage)
   }
 
+  // MARK: - The KIND itself, which decides which remedy the card offers
+
+  /// **Nothing bound which `Kind` this mapping picks, in either suite.** Two
+  /// mutations from #2441 — `.needsLanguage(name:)` becoming `.needsDownload`,
+  /// and `.off` becoming `.checking` — survived here AND in
+  /// `LivePreviewStatusBarPresentationTests`, which is where they were aimed.
+  /// They could not be caught there: that suite hands a `Kind` in and asserts
+  /// what is RENDERED, so it never exercises the code that CHOOSES one. This
+  /// suite is the right home and had no case for either state.
+  ///
+  /// The consequence is user-facing, not tidiness. `.needsLanguage` is the ONLY
+  /// kind carrying an action at all — `action(for:)` returns
+  /// `.browseDownloads(initialSearch: name)` for it and `nil` for every other
+  /// case — so choosing `.needsDownload` instead leaves someone who is missing a
+  /// language looking at a card with no way forward.
+  @Test("A language this Mac lacks is needsLanguage, named, and not the model's own download state")
+  func aMissingLanguageIsNeedsLanguageAndNamesIt() {
+    #expect(
+      summary(active: .needsDownload(name: "German")).kind == .needsLanguage(name: "German"))
+    // The NAME travels, because the remedy is seeded with it. A kind that
+    // carried the wrong name would still satisfy an `if case` check.
+    #expect(
+      summary(active: .needsDownload(name: "Japanese")).kind == .needsLanguage(name: "Japanese"))
+    // PAIRED, or "always needsLanguage" satisfies the rows above: an install in
+    // flight refuses to answer instead, because the input is stale by
+    // construction during that window.
+    #expect(
+      summary(active: .needsDownload(name: "German"), anInstallIsInFlight: true).kind
+        == .checking)
+  }
+
+  /// The switch being off is its own answer and must not read as `.checking`,
+  /// which is what the card says while it genuinely cannot tell.
+  @Test("Off is off, not checking")
+  func offIsItsOwnKind() {
+    #expect(summary(isEnabled: false).kind == .off)
+    // Paired: the same inputs with the switch ON are not `.off`.
+    #expect(summary(isEnabled: true).kind != .off)
+  }
+
   // MARK: - The two answers that must never be wrong
 
   @Test("Ready means ready, on either engine, and both say it the same way")
@@ -294,8 +334,9 @@ struct LivePreviewStatusMappingTests {
   /// downloads — otherwise every download would blank a working status.
   @Test("A download elsewhere does not disturb an already-ready language")
   func installInFlightDoesNotDisturbReady() {
-    let s = summary(engine: .apple, active: .ready(tag: "en-US", name: "English"),
-                    anInstallIsInFlight: true)
+    let s = summary(
+      engine: .apple, active: .ready(tag: "en-US", name: "English"),
+      anInstallIsInFlight: true)
     #expect(s.chip.tone == .ready)
   }
 
