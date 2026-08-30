@@ -850,38 +850,65 @@ struct RecordingPillPreviewWiringTests {
       """)
 
     // The TYPE, which is the other half and the one `allCases[0]` walks through.
-    // Exactly one mention is allowed and it is the stored property's annotation,
-    // so this also fails loudly if that property is ever removed or retyped.
+    //
+    // **REACHES THROUGH THE TYPE, NOT MENTIONS OF IT.** Counting every token
+    // spelled `RecordingPillDesign` counted the stored property's own
+    // ANNOTATION, so it allowed exactly one — and an ordinary explicit
+    // `init(design: RecordingPillDesign)`, which keeps `chrome: design.chrome`
+    // wired correctly, would have made it two and failed this row. That is the
+    // class the spelling row above already normalises: a guard refusing innocent
+    // work is how bypasses get trained
+    // (`validation-discipline.md` RULE: false-positives-not-gates-train-evasion).
+    //
+    // The grammar separates the two for free, so this needs no list of allowed
+    // annotation sites: an ANNOTATION is a type node, a REACH is an expression
+    // node. `\(RecordingPillDesign.self).allCases[0]` is the second; every
+    // property, parameter and return annotation is the first, however many the
+    // struct grows.
+    //
+    // The old row also claimed to fail loudly if the stored property were
+    // removed or retyped. Dropping that claim costs nothing, because the
+    // COMPILER owns it: `design.chrome` does not build without a `design` that
+    // has chrome.
     let type = "\(RecordingPillDesign.self)"
-    let mentions = Self.identifierCount(type, in: tile)
+    let reaches = Self.typeReaches(type, in: tile).sorted()
     #expect(
-      mentions == 1,
+      reaches.isEmpty,
       """
-      RecordingPillPreview mentions \(type) \(mentions) times. One is the stored \
-      property's own type; any other is a way to reach a fixed design without naming \
-      a case — `\(type).allCases[0]` is the one that prompted this row.
+      RecordingPillPreview reaches through \(type) at \(reaches.joined(separator: ", ")). \
+      This tile draws whatever design it is handed, so any reach through the type is a \
+      way to a fixed design without naming a case — `\(type).allCases[0]` is the one \
+      that prompted this row. Annotations are not counted.
       """)
   }
 
-  /// How many times one identifier appears as a TOKEN inside a declaration.
-  /// Tokens, so comments and string literals are not counted.
-  private final class IdentifierCounter: SyntaxVisitor {
+  /// Every place a TYPE NAME is used as an EXPRESSION inside a declaration —
+  /// `RecordingPillDesign.allCases`, never `let design: RecordingPillDesign`.
+  /// `DeclReferenceExprSyntax` is the expression node, so annotations, parameter
+  /// types and return types are invisible here by construction rather than by an
+  /// allow-list that would need extending every time the struct grew one.
+  ///
+  /// Each hit is reported as the expression AROUND it, since the type name alone
+  /// would say nothing about which reach was found.
+  private final class TypeReachFinder: SyntaxVisitor {
     let wanted: String
-    private(set) var count = 0
+    private(set) var reaches: Set<String> = []
     init(_ wanted: String) {
       self.wanted = wanted
       super.init(viewMode: .sourceAccurate)
     }
-    override func visit(_ node: TokenSyntax) -> SyntaxVisitorContinueKind {
-      if node.tokenKind == .identifier(wanted) { count += 1 }
+    override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
+      if node.baseName.text == wanted {
+        reaches.insert(node.parent?.trimmedDescription ?? node.trimmedDescription)
+      }
       return .visitChildren
     }
   }
 
-  private static func identifierCount(_ name: String, in decl: StructDeclSyntax) -> Int {
-    let counter = IdentifierCounter(name)
-    counter.walk(decl)
-    return counter.count
+  private static func typeReaches(_ name: String, in decl: StructDeclSyntax) -> Set<String> {
+    let finder = TypeReachFinder(name)
+    finder.walk(decl)
+    return finder.reaches
   }
 
   static let designEnum = "Sources/EnviousWisprCore/SettingsEnums.swift"
