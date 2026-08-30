@@ -931,10 +931,26 @@ public actor ModelDeliveryController {
     /// `Model delivery admitted` and `Model delivery failed` reproduce the
     /// wording of the two ad-hoc lines this replaces, verbatim, because those
     /// are what someone greps for today.
+    ///
+    /// THE STRING RETURNED HERE IS NOT THE LINE A READER SEES. `AppLogger`
+    /// prefixes a timestamp, a level and the CATEGORY before writing
+    /// (`AppLogger.swift`, `writeRendered`), and this event's category is
+    /// `Delivery` — see the `AppLogger.shared.log(... category: "Delivery")`
+    /// call a few lines above. So the composed line reads:
+    ///
+    ///     [2026-08-25T01:14:02-0400] [INFO] [Delivery] [#1] Model delivery admitted …
+    ///
+    /// The sequence prefix is therefore `[#N]` and not `[delivery #N]`: the
+    /// category token already says Delivery, and the longer form stuttered the
+    /// word three times in two adjacent bracketed tokens (#2399). Anyone
+    /// editing this prefix is editing the middle of that composed line, which
+    /// nothing at this declaration would otherwise say — the unit test below
+    /// pins THIS string and is downstream of the wrapper, so it cannot see the
+    /// composed form at all.
     package static func deliveryLogLine(
       identity: ModelIdentity, event: DeliveryEvent, sequence: UInt64
     ) -> String {
-      let prefix = "[delivery #\(sequence)]"
+      let prefix = "[#\(sequence)]"
       let key = identity.cacheKey
       switch event {
       case .attemptStarted(let resumed):
