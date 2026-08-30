@@ -775,194 +775,126 @@ struct RecordingPillPreviewWiringTests {
       offer three pictures of one design.
       """)
 
-    // **The row above reads the NAME, so it cannot see what the name binds to.**
-    // A `let design = RecordingPillDesign.classic` ahead of the construction
-    // leaves `chrome: design.chrome` spelled exactly as required while every card
-    // draws one design — the failure this row exists to prevent, passing it.
+    // **THE ROW ABOVE READS A NAME; THIS ONE ANSWERS WHAT THE NAME BINDS TO.**
     //
-    // Chasing the SHAPES a shadow can take is the wrong shape of answer: a local
-    // `let`, a closure parameter, a capture and a `for` binding are four members
-    // of a set with no last member, and three review rounds each returned a new
-    // one — the third being `RecordingPillDesign.allCases[0]`, which names no case
-    // at all. So the two rows below are CLOSED questions instead of a list.
+    // Nine review rounds landed on this guard and every finding was one shape: a
+    // local `design` introduced ahead of the construction, so `chrome:
+    // design.chrome` stays spelled exactly as required while every card draws one
+    // design. The rounds differed only in where the fixed design came from — a
+    // case, a closure capture, `allCases[0]`, `type(of: self.design).allCases[0]`,
+    // and finally `.canonicalWithoutWords`, a static member that already exists in
+    // `PillDefinition.swift` and is neither a case nor a mention of the type.
     //
-    // A closure argument was published here and then FALSIFIED, which is worth
-    // keeping rather than quietly replacing. It claimed that reaching a design
-    // inside this struct requires naming a CASE or naming the TYPE, so refusing
-    // both closes the set. Round four answered `type(of: self.design).allCases[0]`
-    // — a third route, naming neither.
+    // **Two text sweeps stood here and both are gone.** One matched case
+    // spellings, the other the type name, and each was a DESCRIPTION of where a
+    // design can come from. A description always has a next member, which is why
+    // the rounds kept producing one, and the last one walked past both.
     //
-    // **SO THE HONEST STATEMENT IS A SCOPE, NOT A CLOSURE.** Deciding what
-    // `design` BINDS TO is name resolution, and no syntax test can do it; the
-    // reviewer's own repair each round was "resolve the base", which needs a
-    // compiler. Four rounds is the evidence, not a guess.
+    // **THE CLOSED QUESTION IS THE ONE SWIFT ITSELF ASKS: is anything named
+    // `design` in scope at the construction other than the stored property?** If
+    // nothing is, then a bare `design` there IS the stored property, whatever a
+    // hypothetical shadow's right-hand side would have been. That settles every
+    // shape at once, including the two previously declared out of scope, and it
+    // stops caring what a fixed design is spelled like.
     //
-    // COVERED, and these are the shapes an ordinary edit produces — each verified
-    // by mutation: the argument taking a fixed design outright; a local `let`; a
-    // closure capture; a design named anywhere else in the struct; `allCases[0]`.
-    // NOT COVERED: deliberately obfuscated reaches such as `type(of:)`, and a
-    // fixed design handed in from another type. This is a drift guard, so the
-    // threat is an accidental edit, not code written to get past it.
+    // Scoped to the DECLARATION the construction sits in, not to the whole
+    // struct, and the scoping is load-bearing in both directions: a binding
+    // anywhere else cannot reach this expression, and an ordinary
+    // `init(design:)` parameter is named `design` on purpose and must not be
+    // blamed for it. A round already found that false positive in the previous
+    // shape of this guard.
     //
-    // **THE TWO ROWS BELOW SPLIT ONE QUESTION ON THE GRAMMAR'S OWN TWO-STATE
-    // BASE, so this axis is closed rather than described.** A reach with NO base
-    // resolves against the contextual type and is judged by case name; a reach
-    // WITH one names a type and is judged by whether that type is this one.
-    // There is no third state, so the list cannot grow a member.
+    // The binding forms are closed because the GRAMMAR closes them, not because
+    // the list looked complete: a simple name enters scope through a pattern, a
+    // function parameter, a closure parameter in either spelling, or a capture.
+    // `IdentifierPatternSyntax` is `let`, `var`, `guard let`, `if let`, `for` and
+    // `case let` at once, which is why an earlier round's four-member list was
+    // the wrong unit to be counting.
     //
-    // The closure is falsifiable, which is the point of writing it down: a next
-    // finding on this axis would have to be a reach that is neither an implicit
-    // member nor a reference to the type name. Every such reach known to us goes
-    // through `type(of:)` or through another type's stored value, and both are
-    // already declared out of scope above. A finding inside the scope would mean
-    // this paragraph is wrong, not that the list needs extending.
-    //
-    // The two rounds that produced this were FALSE POSITIVES, not evasions —
-    // an explicit initializer, and an unrelated `SomeStyle.classic`. Both were
-    // one unqualified text match reading more than it meant to, in the direction
-    // that accuses innocent work.
-    //
-    // The structural fix that would end the class — the leaf deriving chrome from
-    // the design it is already given, so there is no argument to get wrong at
-    // either call site — is #2520, and it changes shipped source rather than a
-    // test.
-    let text = try String(
-      contentsOf: RepoRoot.url.appending(path: Self.panel), encoding: .utf8)
-    let tile = try #require(
-      Self.structDecl(named: "RecordingPillPreview", in: Parser.parse(source: text)),
-      "RecordingPillPreview is not in \(Self.panel) — this guard is pointed at the wrong type")
-
-    // **THE CASE IDENTIFIERS, READ OFF THE ENUM'S OWN DECLARATION.**
-    // `String(describing:)` was used here and is wrong for this: it returns a
-    // type's `CustomStringConvertible` description if one is ever added, and the
-    // panel's source names CASES. The sweep would then look for user-facing
-    // sentences, match nothing, and pass — silently, with the count check still
-    // green. Raw values have the same defect from the other side, since a raw
-    // value may diverge from its case name.
-    //
-    // So this parses the declaration, which is the producing code. `allCases` is
-    // the two-way control: a parse that found a different number than the type
-    // reports is a broken parse, and it says so rather than sweeping for a short
-    // list.
-    let enums = try String(
-      contentsOf: RepoRoot.url.appending(path: Self.designEnum), encoding: .utf8)
-    let design = try #require(
-      Self.enumDecl(named: "\(RecordingPillDesign.self)", in: Parser.parse(source: enums)),
-      "\(RecordingPillDesign.self) is not in \(Self.designEnum) — this guard reads the wrong file")
-    let caseNames = Self.caseNames(of: design)
+    // NOT COVERED, and stated rather than implied: a design handed in from
+    // another type through a differently-named property. That needs the stored
+    // property to stop being the thing the preview reads, which the row above
+    // already refuses. The structural fix that would end the whole class — the
+    // leaf deriving chrome from the design it is already given, so there is no
+    // argument to get wrong at either call site — is #2520, and it changes
+    // shipped source rather than a test.
+    let scope = try #require(
+      Self.enclosingDeclaration(of: call),
+      "the chrome argument sits in no declaration, so this guard cannot say what is in scope")
+    let shadows = Self.bindings(named: "design", in: scope).sorted()
     #expect(
-      caseNames.count == RecordingPillDesign.allCases.count,
+      shadows.isEmpty,
       """
-      parsed \(caseNames.count) case names from \(Self.designEnum) but the type reports \
-      \(RecordingPillDesign.allCases.count). The sweep below would be looking for a \
-      short list and would pass on a design it never checked.
-      """)
-
-    // **BARE `.classic`, not `Other.classic`** — see `implicitMemberNames`. The
-    // two rows are one question split on the grammar's own two-state base: a
-    // reach with no base is a contextual design, and a reach with one is a named
-    // type, which the row below refuses when that type is this one. Counting
-    // every member name spelled like a case blamed an unrelated `SomeStyle.classic`.
-    let named = Self.implicitMemberNames(in: tile).intersection(caseNames).sorted()
-    #expect(
-      named.isEmpty,
-      """
-      RecordingPillPreview names \(named.joined(separator: ", ")). This tile draws \
-      whatever design it is handed and must know none by name — a named one is how a \
-      fixed chrome reaches the card while `chrome: design.chrome` still reads correctly.
-      """)
-
-    // The TYPE, which is the other half and the one `allCases[0]` walks through.
-    //
-    // **REACHES THROUGH THE TYPE, NOT MENTIONS OF IT.** Counting every token
-    // spelled `RecordingPillDesign` counted the stored property's own
-    // ANNOTATION, so it allowed exactly one — and an ordinary explicit
-    // `init(design: RecordingPillDesign)`, which keeps `chrome: design.chrome`
-    // wired correctly, would have made it two and failed this row. That is the
-    // class the spelling row above already normalises: a guard refusing innocent
-    // work is how bypasses get trained
-    // (`validation-discipline.md` RULE: false-positives-not-gates-train-evasion).
-    //
-    // The grammar separates the two for free, so this needs no list of allowed
-    // annotation sites: an ANNOTATION is a type node, a REACH is an expression
-    // node. `\(RecordingPillDesign.self).allCases[0]` is the second; every
-    // property, parameter and return annotation is the first, however many the
-    // struct grows.
-    //
-    // The old row also claimed to fail loudly if the stored property were
-    // removed or retyped. Dropping that claim costs nothing, because the
-    // COMPILER owns it: `design.chrome` does not build without a `design` that
-    // has chrome.
-    let type = "\(RecordingPillDesign.self)"
-    let reaches = Self.typeReaches(type, in: tile).sorted()
-    #expect(
-      reaches.isEmpty,
-      """
-      RecordingPillPreview reaches through \(type) at \(reaches.joined(separator: ", ")). \
-      This tile draws whatever design it is handed, so any reach through the type is a \
-      way to a fixed design without naming a case — `\(type).allCases[0]` is the one \
-      that prompted this row. Annotations are not counted.
+      \(shadows.joined(separator: ", ")) named `design` where the preview is built, so \
+      `chrome: design.chrome` reads that instead of the design this tile was handed. \
+      Every card would draw the same pill and the picker would offer three pictures \
+      of one design.
       """)
   }
 
-  /// Every place a TYPE NAME is used as an EXPRESSION inside a declaration —
-  /// `RecordingPillDesign.allCases`, never `let design: RecordingPillDesign`.
-  /// `DeclReferenceExprSyntax` is the expression node, so annotations, parameter
-  /// types and return types are invisible here by construction rather than by an
-  /// allow-list that would need extending every time the struct grew one.
-  ///
-  /// Each hit is reported as the expression AROUND it, since the type name alone
-  /// would say nothing about which reach was found.
-  private final class TypeReachFinder: SyntaxVisitor {
-    let wanted: String
-    private(set) var reaches: Set<String> = []
-    init(_ wanted: String) {
-      self.wanted = wanted
-      super.init(viewMode: .sourceAccurate)
-    }
-    override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
-      if node.baseName.text == wanted {
-        reaches.insert(node.parent?.trimmedDescription ?? node.trimmedDescription)
+  /// The declaration an expression sits inside — the property or function whose
+  /// body holds it. Scope for a bare name starts here, so this is what a shadow
+  /// has to be inside to reach that name.
+  private static func enclosingDeclaration(of node: some SyntaxProtocol) -> Syntax? {
+    var current = node.parent
+    while let here = current {
+      if here.is(VariableDeclSyntax.self) || here.is(FunctionDeclSyntax.self)
+        || here.is(InitializerDeclSyntax.self)
+      {
+        return here
       }
-      return .visitChildren
+      current = here.parent
     }
+    return nil
   }
 
-  private static func typeReaches(_ name: String, in decl: StructDeclSyntax) -> Set<String> {
-    let finder = TypeReachFinder(name)
-    finder.walk(decl)
-    return finder.reaches
-  }
-
-  static let designEnum = "Sources/EnviousWisprCore/SettingsEnums.swift"
-
-  private final class EnumFinder: SyntaxVisitor {
+  /// Every site inside a declaration that brings `name` into scope, described in
+  /// the words of the form that does it.
+  ///
+  /// The forms are the grammar's rather than a guess. `IdentifierPatternSyntax`
+  /// covers `let`, `var`, `guard let`, `if let`, `for` and `case let` in one
+  /// node; the other four are the parameter and capture spellings. A name cannot
+  /// enter scope any other way, which is what makes this a closed question
+  /// instead of a list that grows a member every review round.
+  private final class BindingFinder: SyntaxVisitor {
     let wanted: String
-    private(set) var found: EnumDeclSyntax?
+    private(set) var sites: Set<String> = []
+
     init(_ wanted: String) {
       self.wanted = wanted
       super.init(viewMode: .sourceAccurate)
     }
-    override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
-      if node.name.text == wanted { found = node }
+
+    override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
+      note(node.identifier, "a local binding")
       return .visitChildren
     }
-  }
-
-  private static func enumDecl(named: String, in tree: SourceFileSyntax) -> EnumDeclSyntax? {
-    let finder = EnumFinder(named)
-    finder.walk(tree)
-    return finder.found
-  }
-
-  /// The case IDENTIFIERS an enum declares, as source writes them.
-  private static func caseNames(of decl: EnumDeclSyntax) -> Set<String> {
-    var names: Set<String> = []
-    for member in decl.memberBlock.members {
-      guard let cases = member.decl.as(EnumCaseDeclSyntax.self) else { continue }
-      for element in cases.elements { names.insert(element.name.text) }
+    override func visit(_ node: FunctionParameterSyntax) -> SyntaxVisitorContinueKind {
+      note(node.secondName ?? node.firstName, "a parameter")
+      return .visitChildren
     }
-    return names
+    override func visit(_ node: ClosureParameterSyntax) -> SyntaxVisitorContinueKind {
+      note(node.secondName ?? node.firstName, "a closure parameter")
+      return .visitChildren
+    }
+    override func visit(_ node: ClosureShorthandParameterSyntax) -> SyntaxVisitorContinueKind {
+      note(node.name, "a closure parameter")
+      return .visitChildren
+    }
+    override func visit(_ node: ClosureCaptureSyntax) -> SyntaxVisitorContinueKind {
+      note(node.name, "a capture")
+      return .visitChildren
+    }
+
+    private func note(_ token: TokenSyntax, _ form: String) {
+      if token.text == wanted { sites.insert(form) }
+    }
+  }
+
+  private static func bindings(named name: String, in decl: Syntax) -> Set<String> {
+    let finder = BindingFinder(name)
+    finder.walk(decl)
+    return finder.sites
   }
 
   /// Whether an expression is this tile reading its OWN `design` — `design` or
@@ -977,34 +909,6 @@ struct RecordingPillPreviewWiringTests {
       return true
     }
     return false
-  }
-
-  /// Member names reached with NO base — a bare `.classic`, never `Other.classic`.
-  ///
-  /// **The base is the whole discriminator, and it has two states, so this axis
-  /// is closed rather than described.** An implicit member resolves against the
-  /// CONTEXTUAL type, and the only contextual type in this struct carrying a
-  /// design's case names is the design type, so a bare `.classic` here is always
-  /// a fixed design. An explicit base names a type, and that type is either the
-  /// design type — which `typeReaches` already refuses — or an unrelated one that
-  /// happens to spell a member the same way, which is innocent and must not be
-  /// blamed.
-  ///
-  /// Counting both is what a review round found: an unrelated `SomeStyle.classic`
-  /// would have failed the row while `chrome: design.chrome` stayed correct.
-  /// Comments and strings are not members, so they cannot trip it either way.
-  private final class ImplicitMemberFinder: SyntaxVisitor {
-    private(set) var names: Set<String> = []
-    override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
-      if node.base == nil { names.insert(node.declName.baseName.text) }
-      return .visitChildren
-    }
-  }
-
-  private static func implicitMemberNames(in decl: StructDeclSyntax) -> Set<String> {
-    let finder = ImplicitMemberFinder(viewMode: .sourceAccurate)
-    finder.walk(decl)
-    return finder.names
   }
 
   /// **THE CLOSURE ROW. Every piece of `@State` the poll writes must be seedable,
