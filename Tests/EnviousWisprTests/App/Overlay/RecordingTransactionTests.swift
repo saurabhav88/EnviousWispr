@@ -258,18 +258,44 @@ struct RecordingTransactionTests {
 
   /// **The narrowing, at the level the loop reads it.** A hover must not move the
   /// slot revision, or every hover would invalidate a prepared recording.
+  ///
+  /// **THE FIXTURE IS A HOVER-PAUSABLE PILL, and that is the whole test.** This
+  /// case used `reducerWithLiveRecording()`, whose expiry is not
+  /// `.after(_, pausesOnHover: true)`, so `reduceHover` returned `.noChange` at
+  /// its guard and `state.set` was never reached. It was asserting that a
+  /// revision does not move across an event that does nothing — true of any
+  /// implementation, including one that advances the revision on every hover
+  /// it does accept.
+  ///
+  /// Measured on #2402 row 5, which makes `slotRevision &+= 1` unconditional:
+  /// this case stayed GREEN while three siblings failed. Same trap
+  /// `incumbentHoverDoesNotInvalidate` above already carries a comment about —
+  /// there it was a non-pausable incumbent, here a non-pausable current — so the
+  /// accepted-hover assertions come first and the revision claim rests on them.
   @Test("a hover does not move the slot revision")
   func hoverDoesNotMoveTheSlotRevision() throws {
-    var r = Self.reducerWithLiveRecording()
-    let id = try #require(r.state.current?.id)
+    var r = OverlayReducer()
+    let pill = try #require(
+      r.reduce(.pipeline(.escapeRecovery(transcriptID: UUID()))).presentation)
     let before = r.recordingReconciliationSnapshot.revision
 
-    _ = r.reduce(.hoverChanged(id, true))
+    let entered = r.reduce(.hoverChanged(pill.id, true))
+    #expect(r.state.isHovered, "the fixture never entered the hovered state")
+    #expect(entered.expiryCommand == .cancel, "the hover event was not accepted")
     #expect(
       r.recordingReconciliationSnapshot.revision == before,
       "a hover advanced the slot revision, which would discard prepared recordings")
 
-    _ = r.reduce(.hoverChanged(id, false))
-    #expect(r.recordingReconciliationSnapshot.revision == before)
+    // Leaving RE-ARMS from full, so the accepted answer is an `arm` rather than
+    // merely "not unchanged" — `.unchanged` is what a dropped stale event returns
+    // and is exactly the reading this precondition exists to refuse.
+    let left = r.reduce(.hoverChanged(pill.id, false))
+    var rearmed = false
+    if case .arm = left.expiryCommand { rearmed = true }
+    #expect(!r.state.isHovered, "the fixture never left the hovered state")
+    #expect(rearmed, "the hover-exit event did not re-arm: \(left.expiryCommand)")
+    #expect(
+      r.recordingReconciliationSnapshot.revision == before,
+      "leaving a hover advanced the slot revision")
   }
 }
