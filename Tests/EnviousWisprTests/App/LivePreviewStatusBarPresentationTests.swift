@@ -123,7 +123,23 @@ struct LivePreviewStatusBarPresentationTests {
     }
 
     for kind in Self.allKinds {
-      let name = "\(kind)".split(separator: "(").first.map(String.init) ?? "\(kind)"
+      // **`caseName`, not `"\(kind)"` split on the first paren.**
+      //
+      // #2441 asks about a rename flipping this row's expectation. **Checked, and
+      // the issue overstates it:** renaming `.checking` leaves `mayHide` matching
+      // nothing, so that state moves to the must-show branch and the row FAILS
+      // loudly. Flipping an expectation silently would need a case renamed TO one
+      // of `mayHide`'s three names, which is impossible while their current owners
+      // exist. Recorded rather than left implied, so nobody re-derives it.
+      //
+      // What this DOES remove is ad-hoc string surgery on a value nothing pins.
+      // The old key was the case's DESCRIPTION, parsed by splitting on the first
+      // `(`. A `CustomStringConvertible` conformance on `Kind` — the kind of thing
+      // added for a log line — changes every key at once, and `mayHide` then
+      // matches nothing. That also fails loudly, so it is a robustness change
+      // rather than a hole being closed. `caseName` is an exhaustive switch, so
+      // the key is whatever the compiler has already forced someone to write.
+      let name = Self.caseName(kind)
       for engine in [LivePreviewEngineChoice.apple, .universal] {
         // Universal reads no pack state at all, so it must answer for every kind
         // the page can reach — #2154 r7 hid it here and stranded locked users.
