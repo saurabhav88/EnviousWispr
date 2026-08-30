@@ -465,14 +465,56 @@ struct CapsuleBackgroundFreezeTests {
   }
 
 
+  // MARK: - Spelling normalisers, in ONE place
+  //
+  // **Three review rounds on this guard have been SPELLING, not meaning.** A
+  // comment satisfying a text match; a condition negated; a case consolidated; a
+  // module qualifier; a pair of parentheses. Renderings the compiler treats as one
+  // thing, matched separately at each site, are how a guard grows a new hole every
+  // round — so they are normalised HERE and nowhere else.
+  //
+  // **The closure, so it is falsifiable rather than hopeful:** a next finding on
+  // this axis has to be a rendering that changes the base's LAST component or
+  // survives parenthesis unwrapping. Every such rendering is name resolution — a
+  // `typealias`, a local binding, an `import` alias — which a syntax test cannot do
+  // and which this guard has always declared out of scope. A finding INSIDE the
+  // scope means this paragraph is wrong, not that another case needs adding.
+
+  /// Whether an expression names `PreviewPillPalette`, however it is qualified.
+  ///
+  /// `nonisolated` because the visitor that calls it is not on the main actor;
+  /// nothing here touches actor state.
+  ///
+  /// `EnviousWisprAppKit.PreviewPillPalette.surface` is the same read as
+  /// `PreviewPillPalette.surface`; only the last component decides.
+  nonisolated private static func namesThePalette(_ base: ExprSyntax?) -> Bool {
+    guard let base else { return false }
+    return CodeOnly().rewrite(base).trimmedDescription
+      .split(separator: ".").last.map(String.init) == "PreviewPillPalette"
+  }
+
+  /// An expression with its redundant parentheses removed.
+  ///
+  /// `(isPreview) ? …` gates exactly as `isPreview ? …` does, and rejecting it
+  /// would accuse correct code — the direction that trains bypasses.
+  private static func unparenthesised(_ expr: ExprSyntax) -> ExprSyntax {
+    var current = expr
+    while let tuple = current.as(TupleExprSyntax.self),
+      tuple.elements.count == 1,
+      tuple.elements.first?.label == nil,
+      let inner = tuple.elements.first?.expression
+    {
+      current = inner
+    }
+    return current
+  }
+
   /// Every `PreviewPillPalette.…` read inside a declaration, as syntax rather
   /// than as matching text.
   private final class PaletteReadFinder: SyntaxVisitor {
     private(set) var reads: [MemberAccessExprSyntax] = []
     override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
-      if node.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "PreviewPillPalette" {
-        reads.append(node)
-      }
+      if CapsuleBackgroundFreezeTests.namesThePalette(node.base) { reads.append(node) }
       return .visitChildren
     }
   }
@@ -518,8 +560,8 @@ struct CapsuleBackgroundFreezeTests {
       // nothing left to spell around.
       if here.is(UnresolvedTernaryExprSyntax.self),
         let sequence = here.parent?.parent?.as(SequenceExprSyntax.self),
-        sequence.elements.first?.as(DeclReferenceExprSyntax.self)?.baseName.text
-          == "isPreview"
+        sequence.elements.first.map(unparenthesised)?
+          .as(DeclReferenceExprSyntax.self)?.baseName.text == "isPreview"
       {
         return true
       }
