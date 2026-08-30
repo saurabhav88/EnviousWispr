@@ -603,6 +603,26 @@ def main():
             or (report["restored"][k] is not None and snapshot[k] is not None
                 and same_default(flag, report["restored"][k], snapshot[k]))
             for k, flag in PINNED.items())
+
+        # **A DIRTY RESTORE INVALIDATES THE VERDICT, it does not sit beside it.**
+        # `defaults delete` failures are not checked and cannot be, so the only
+        # honest oracle is the read-back above. These keys are the USER'S REAL
+        # preferences, shared with the release build, and a run that took them and
+        # did not give them back left this person's pill appearance changed.
+        #
+        # Recording PASS next to `restore_clean: false` puts a green verdict in
+        # the artifact for a run that did harm, and the artifact is what anyone
+        # reads later. The verdict carries the damage instead, with the original
+        # kept so nothing is lost.
+        if not report["restore_clean"]:
+            report["verdict_before_restore_check"] = report.get("verdict")
+            report["verdict"] = "DIRTY_RESTORE"
+            report["dirty_keys"] = sorted(
+                k for k, flag in PINNED.items()
+                if not ((report["restored"][k] is None and snapshot[k] is None)
+                        or (report["restored"][k] is not None and snapshot[k] is not None
+                            and same_default(flag, report["restored"][k], snapshot[k]))))
+
         (UAT / "warning-morph.json").write_text(json.dumps(report, indent=2, default=str))
         # **`morph_row` AND `clear_row` ARE IN THE PRINTED SUMMARY.** Without them
         # a REFUSED run says which RUN failed and not which ROW, and the two fail
@@ -611,7 +631,8 @@ def main():
                           ("verdict", "morph_row", "clear_row", "design",
                            "overrides_landed", "one_window_id", "morphs",
                            "morph_near_expected", "expected_warning_at_s",
-                           "restore_clean")}, indent=2, default=str))
+                           "restore_clean", "dirty_keys",
+                           "verdict_before_restore_check")}, indent=2, default=str))
 
 
 if __name__ == "__main__":
