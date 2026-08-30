@@ -333,7 +333,14 @@ def main():
             g.stop_app()
             subprocess.run(["defaults", "write", SHARED_DOMAIN, "selectedBackend",
                             backend_before], check=True)
-            g.start_app()
+            # A FAILED RELAUNCH MUST NOT ABORT THE RESTORE. `start_app` raises,
+            # and this is inside `finally`, so an unguarded call would skip the
+            # `STATE_KEYS` restore below and leave the founder's dev preferences
+            # deleted — worse than the failure it is reporting.
+            try:
+                g.start_app()
+            except SystemExit as exc:
+                report["relaunch_error"] = str(exc)
         report["backend_restored"] = subprocess.run(
             ["defaults", "read", SHARED_DOMAIN, "selectedBackend"],
             capture_output=True, text=True).stdout.strip() or None

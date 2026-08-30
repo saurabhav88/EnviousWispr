@@ -259,13 +259,18 @@ def start_app(timeout=30.0):
         if len(pids) == 1:
             return pids[0]
         time.sleep(0.2)  # test-fixture-timer: process-table polling for the new instance
+    # STATES THE OBSERVATION, NOT THE CAUSE. An earlier draft ended "this is NOT
+    # a product finding: rebuild" — which is a causal claim about a state with
+    # more than one producer, and the other producer is the app CRASHING during
+    # startup. That wording would send an operator to rebuild past a real
+    # startup regression. Name both producers and where to look.
     raise SystemExit(
         f"phase5 harness: LAUNCH FAILED and the previous instance is already stopped.\n"
         f"bundle: {BUNDLE}\n"
-        "The build is present but did not produce a running instance within "
-        f"{timeout:.0f}s — an incomplete or unsignable deploy looks exactly like this. "
-        "Rebuild with scripts/build-dev-app.sh in THIS checkout. This is NOT a product "
-        "finding: nothing was measured.")
+        f"The build is present but no instance appeared within {timeout:.0f}s. That has more "
+        "than one cause — an incomplete or unsignable deploy, or the app failing during "
+        "startup — so read ~/Library/Logs/EnviousWispr/app.log and the crash reporter before "
+        "classifying it. No UAT result was produced either way.")
 
 
 def await_idle(timeout=60.0):

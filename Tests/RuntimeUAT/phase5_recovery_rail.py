@@ -259,7 +259,12 @@ def main():
         report["restore_ok"] = bool(eru.restore(before))
         report["settings_after"] = {k: v[0] for k, v in eru.snapshot(REBIND_KEYS).items()}
         report["restore_clean"] = report["settings_after"] == report["settings_before"]
-        g.start_app()
+        # Guarded for the same reason as language-hover: an unguarded raise here
+        # would lose the report that records whether the restore succeeded.
+        try:
+            g.start_app()
+        except SystemExit as exc:
+            report["relaunch_error"] = str(exc)
         report.setdefault("verdict", "REFUSED")
         if report["verdict"] == "PASS" and not report["restore_clean"]:
             report["verdict"] = "REFUSED_RESTORE_FAILED"
