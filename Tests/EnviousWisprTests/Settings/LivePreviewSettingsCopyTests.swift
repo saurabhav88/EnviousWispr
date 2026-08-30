@@ -242,7 +242,8 @@ struct LivePreviewSettingsCopyTests {
     // Asserting its ABSENCE is the half that would have caught the shared-string defect.
     let universal = LivePreviewSettingsCopy.pickerUniversalCaveat.lowercased()
     #expect(
-      !["uses your mac", "follows your mac", "goes by your mac"].contains(where: universal.contains),
+      !["uses your mac", "follows your mac", "goes by your mac"].contains(
+        where: universal.contains),
       "Universal's caveat claims Apple's Mac fallback, which is false for that engine")
     #expect(universal.contains("auto"), "Universal's caveat stopped naming the mode")
 
@@ -255,19 +256,39 @@ struct LivePreviewSettingsCopyTests {
   /// The status bar's provenance describes CONFIGURATION, never activity: the chip
   /// renders in every state, including off and failed, so any word implying live
   /// detection is a claim the bar cannot keep.
-  @Test("Language provenance never claims the preview is doing something")
-  func provenanceIsConfigurationOnly() {
-    let strings = [
+  ///
+  /// **This test used to be a list of banned words, and #2441's independent evasion
+  /// pass walked past it — measured, not argued.** Replacing
+  /// `languageProvenanceDetected` with `"picking up your voice"` is a promise the bar
+  /// cannot keep, holds none of the banned words, and left the whole suite green. The
+  /// paired control, `"listening now"`, fired. So the list caught the words somebody
+  /// thought of and nothing else, which is what a vocabulary guard can do.
+  ///
+  /// **Whether a sentence promises output is a judgement about English, and no list
+  /// of substrings decides it.** What a test CAN hold is that the set of sentences is
+  /// closed and each one is the sentence a human approved, so any rewording is red
+  /// exactly once, here, on the copy surface where a reviewer is already reading the
+  /// words. That is the whole mechanism, and it is stated rather than implied.
+  ///
+  /// **Deliberately literals, and only in THIS file.** The presentation suite compares
+  /// against the symbols on purpose — its subject is which sentence is chosen, not
+  /// what it says, and pinning words there would fail on every honest correction.
+  /// Here the words ARE the subject.
+  @Test("Each provenance sentence is the one that was approved")
+  func provenanceSentencesAreFrozen() {
+    #expect(LivePreviewSettingsCopy.languageProvenanceFromMac == "from your Mac")
+    #expect(LivePreviewSettingsCopy.languageProvenanceUserPicked == "you picked this")
+    #expect(LivePreviewSettingsCopy.languageProvenanceDetected == "no language pinned")
+
+    // Distinctness, which no single constant can satisfy on its own: three sentences
+    // that had drifted into one would still pass every equality above only if all
+    // three were edited, and would pass nothing here.
+    let all = [
       LivePreviewSettingsCopy.languageProvenanceFromMac,
       LivePreviewSettingsCopy.languageProvenanceUserPicked,
       LivePreviewSettingsCopy.languageProvenanceDetected,
     ]
-    for s in strings {
-      let t = s.lowercased()
-      for claim in ["detect", "appear", "show", "ready", "working", "active", "hearing"] {
-        #expect(!t.contains(claim), "provenance claims activity: \(s)")
-      }
-    }
+    #expect(Set(all).count == 3, "two provenances say the same thing")
   }
 
   @Test("The description says the preview is not the pasted text")
@@ -322,7 +343,9 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewSettingsCopy.pausedForFasterTranscription,
       LivePreviewSettingsCopy.statusPausedDetail,
     ]
-    #expect(LivePreviewSettingsCopy.pausedForFasterTranscription == "Paused while Faster Transcription is on")
+    #expect(
+      LivePreviewSettingsCopy.pausedForFasterTranscription
+        == "Paused while Faster Transcription is on")
     #expect(
       LivePreviewSettingsCopy.statusPausedDetail
         == "Your dictation keeps its full speed. Turn Faster Transcription off to see the preview.")
