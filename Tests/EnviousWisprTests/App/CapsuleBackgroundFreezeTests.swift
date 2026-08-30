@@ -576,21 +576,37 @@ struct CapsuleBackgroundFreezeTests {
       // condition itself was still being read as text. A bare
       // `DeclReferenceExprSyntax` cannot be negated or compounded, so there is
       // nothing left to spell around.
+      //
+      // **And the sequence must hold EXACTLY the three parts of a plain ternary.**
+      // `isPreview || forcePreview ? …` still puts a bare `isPreview` first, so a
+      // check reading only the first element accepts a read reachable whenever the
+      // other operand is true. An unfolded sequence lists every operand, so the
+      // count IS the shape: three means condition, then, else, with nothing
+      // compounded into the condition.
       if here.is(UnresolvedTernaryExprSyntax.self),
         let sequence = here.parent?.parent?.as(SequenceExprSyntax.self),
+        sequence.elements.count == 3,
         sequence.elements.first.map(unparenthesised)?
           .as(DeclReferenceExprSyntax.self)?.baseName.text == "isPreview"
       {
         return true
       }
-      // **EXACTLY ONE case item, and it is `.rounded`.** Asking whether the label
-      // contained "rounded" accepted a consolidated `case .capsule, .rounded:`,
-      // which is reachable for every non-preview capsule — same finding, same
-      // round, same class. Counting the items is what makes it exclusive.
+      // **EXACTLY ONE case item, it is `.rounded`, and the switch is on
+      // `cornerStyle`.** Two rounds landed here on two different axes. Asking
+      // whether the label CONTAINED "rounded" accepted a consolidated
+      // `case .capsule, .rounded:`, reachable for every non-preview capsule;
+      // counting the items fixed that. Then `.rounded` alone accepted a NESTED
+      // switch on some other enum that happens to spell a case the same way — a
+      // question about MEANING rather than spelling, which no amount of matching
+      // the pattern text can answer. The subject of the switch is what decides
+      // whether this case means "the preview", so it is read here.
       if let switchCase = here.as(SwitchCaseSyntax.self),
         case .case(let label) = switchCase.label,
         label.caseItems.count == 1,
-        label.caseItems.first?.pattern.trimmedDescription == ".rounded"
+        label.caseItems.first?.pattern.trimmedDescription == ".rounded",
+        let switchExpr = switchCase.parent?.parent?.as(SwitchExprSyntax.self),
+        unparenthesised(switchExpr.subject)
+          .as(DeclReferenceExprSyntax.self)?.baseName.text == "cornerStyle"
       {
         return true
       }
