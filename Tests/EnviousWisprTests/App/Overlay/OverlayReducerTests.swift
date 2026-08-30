@@ -114,6 +114,42 @@ struct OverlayReducerTests {
     #expect(level == 0.0)
   }
 
+  /// **The case the dedup guard is exempt FOR, and nothing tested it.**
+  /// `reduce` drops a repeated intent, and `isRecordingIntent` exempts
+  /// recordings so metering keeps flowing. `meteringDoesNotChurnIdentity`
+  /// above pushes 0.2, 0.3, 0.9, 0.0 — all DIFFERENT, so each one is a new
+  /// intent and the exemption is never reached.
+  ///
+  /// Two consecutive IDENTICAL levels is not a contrived input: silence is the
+  /// one passage where consecutive audio samples are bit-identical, which is
+  /// the defect #2216 already paid for once — the meter froze mid-shape
+  /// exactly when the user stopped talking. Without the exemption the second
+  /// tick returns `.noChange` and the pill stops updating.
+  ///
+  /// Found by a mutation making `isRecordingIntent` always false, which no
+  /// test in this suite or in `PillRequestParityTests` noticed.
+  @Test("a repeated identical audio level is not deduped away")
+  func aRepeatedIdenticalLevelStillUpdates() {
+    var r = Self.makeReducer()
+    _ = r.startRecordingForTests(audioLevel: 0.4)
+
+    let first = r.reduce(.pipeline(.recording(audioLevel: 0.5)))
+    #expect(first.didChange)
+
+    // The SAME level again. `isNewIntent` is false here, so only the recording
+    // exemption keeps this from being dropped.
+    let repeated = r.reduce(.pipeline(.recording(audioLevel: 0.5)))
+    // A `Comment` takes a literal, so this cannot be a concatenation.
+    #expect(
+      repeated.didChange,
+      "a repeated identical level must still reach the pill: dropping it freezes the meter for as long as the audio is unchanging, which is what silence looks like")
+    guard case .recording(let level, _, _, _)? = r.state.current?.content else {
+      Issue.record("expected a recording pill")
+      return
+    }
+    #expect(level == 0.5)
+  }
+
   @Test("a stale expiry cannot dismiss the presentation that replaced it")
   func staleExpiryIsDropped() {
     var r = Self.makeReducer()
