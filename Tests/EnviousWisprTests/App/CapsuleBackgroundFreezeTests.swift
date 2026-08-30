@@ -398,8 +398,30 @@ struct CapsuleBackgroundFreezeTests {
       Self.structDecl(named: "OverlayCapsuleBackground", in: tree),
       "OverlayCapsuleBackground not found — this guard is pointed at nothing")
     // Zero-based, to index `lines` the way the brace walk's values did.
-    let open = converter.location(for: decl.position).line - 1
-    let close = converter.location(for: decl.endPosition).line - 1
+    //
+    // **`position` INCLUDES the leading trivia, so it is the wrong end of the
+    // declaration.** For this file it resolves to line 4 — the top of the struct's
+    // doc comment — while `struct OverlayCapsuleBackground` is on line 10. That
+    // widens the region upward, and a doc or MARK comment above the struct that
+    // mentions `PreviewPillPalette.` would then be counted as a palette read and
+    // judged for gating. Cloud review caught it on #2380; the failure is in the
+    // direction that ACCUSES correct code.
+    //
+    // `positionAfterSkippingLeadingTrivia` and `endPositionBeforeTrailingTrivia`
+    // are the declaration itself, which is what this guard is a claim about.
+    let open = converter.location(for: decl.positionAfterSkippingLeadingTrivia).line - 1
+    let close = converter.location(for: decl.endPositionBeforeTrailingTrivia).line - 1
+
+    // The bound is now a claim, so it is checked: the region must START on the
+    // struct's own declaration line. A parser that ever handed back trivia again
+    // would say so here rather than silently widening the scan.
+    #expect(
+      lines[open].contains("struct OverlayCapsuleBackground"),
+      """
+      the region starts on \(lines[open].trimmingCharacters(in: .whitespaces)), not on \
+      OverlayCapsuleBackground's own declaration line, so it is scanning text that is \
+      not the struct.
+      """)
 
     #expect(
       open < close && close < lines.count,
