@@ -39,6 +39,7 @@ RULE: a-harness-that-ACTS-on-a-shared-resource-must-refuse-not-choose.
 """
 
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -87,9 +88,16 @@ def require_bundle():
     checkout's bundle at all — `phase5_language_hover` has exactly that mode,
     and an import-time check aborted it.
     """
-    if not pathlib.Path(BUNDLE).exists():
+    # THE EXECUTABLE, NOT THE DIRECTORY. `build-dev-app.sh` copies INTO the
+    # bundle rather than replacing it atomically, so an interrupted deploy
+    # leaves a `.app` that exists and cannot run — and a directory check passes,
+    # kills every dev instance, and only then fails to launch, which is the
+    # behaviour this refusal exists to prevent. Existence is not function.
+    executable = pathlib.Path(BUNDLE) / "Contents" / "MacOS" / "EnviousWispr"
+    if not os.access(executable, os.X_OK):
         raise SystemExit(
-            f"phase5 harness: no dev build at {BUNDLE}\n"
+            f"phase5 harness: no runnable dev build at {BUNDLE}\n"
+            f"(looked for an executable at {executable})\n"
             "Run scripts/build-dev-app.sh in THIS checkout first. Refusing rather than "
             "terminating the running instance for a run that cannot start.")
 KEYS = ["livePreviewEnabled", "recordingPillDesignWithoutWords"]
