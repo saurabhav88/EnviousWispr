@@ -768,6 +768,50 @@ struct RecordingPillPreviewWiringTests {
       this tile's own. Every card would then draw the same pill and the picker would \
       offer three pictures of one design.
       """)
+
+    // **The row above reads the NAME, so it cannot see what the name binds to.**
+    // A `let design = RecordingPillDesign.classic` introduced before the
+    // construction leaves `chrome: design.chrome` spelled exactly as required
+    // while every card draws one design — the same failure the row exists to
+    // prevent, passing it. So the binding is checked separately: the tile
+    // declares `design` once, as its own stored property, and nothing inside it
+    // shadows that name.
+    let text = try String(
+      contentsOf: RepoRoot.url.appending(path: Self.panel), encoding: .utf8)
+    let tile = try #require(
+      Self.structDecl(named: "RecordingPillPreview", in: Parser.parse(source: text)),
+      "RecordingPillPreview is not in \(Self.panel) — this guard is pointed at the wrong type")
+    let bindings = Self.bindingsNamed("design", in: tile)
+
+    #expect(
+      bindings == 1,
+      """
+      RecordingPillPreview declares `design` \(bindings) times. One is the stored \
+      property every row above assumes; a second SHADOWS it, so `chrome: design.chrome` \
+      can read a fixed design while still being spelled correctly.
+      """)
+  }
+
+  /// Every `let`/`var` binding of one name anywhere inside a declaration, the
+  /// stored property included. Used as a count rather than a lookup: the answer
+  /// that matters is whether the name is declared more than once.
+  private final class BindingCounter: SyntaxVisitor {
+    let wanted: String
+    private(set) var count = 0
+    init(_ wanted: String) {
+      self.wanted = wanted
+      super.init(viewMode: .sourceAccurate)
+    }
+    override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
+      if node.identifier.text == wanted { count += 1 }
+      return .visitChildren
+    }
+  }
+
+  private static func bindingsNamed(_ name: String, in decl: StructDeclSyntax) -> Int {
+    let counter = BindingCounter(name)
+    counter.walk(decl)
+    return counter.count
   }
 
   /// **THE CLOSURE ROW. Every piece of `@State` the poll writes must be seedable,
