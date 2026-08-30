@@ -818,14 +818,14 @@ struct RecoveryCoordinatorTests {
   /// What that costs a user: crash recovery holds the engine, they press
   /// Discard, and nothing happens. The notice goes away and recovery does not.
   ///
-  /// This enters through `DictationRuntime.recoveryAccess`, which the app itself
+  /// This enters through `RecoveryWiring.access`, which the app itself
   /// calls, rather than through a hand-built one. All five seams are asserted
   /// rather than only Discard, because the slot binds them together and any one
   /// of them could be cut the same way.
   @Test("the composition root binds all five recovery seams to the real coordinator")
   func theCompositionRootBindsTheRecoverySeams() async throws {
     let h = Self.makeHarness()
-    let access = await DictationRuntime.recoveryAccess(binding: h.coordinator)
+    let access = await RecoveryWiring.access(binding: h.coordinator)
 
     #expect(
       await !access.isRecovering(),
