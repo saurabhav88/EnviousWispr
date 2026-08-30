@@ -687,6 +687,24 @@ final class OnboardingV2ViewModel {
     return stamp == current
   }
 
+  /// **The reopen DECISION, hoisted so a test can drive it** (#2371 row 20).
+  ///
+  /// It lived only inside `PracticeScreen.onAppear`, which no unit test can
+  /// reach. `reopeningClearsTheBox` calls `beginPractice()` directly, so it
+  /// exercises the RESET and never the decision that triggers it — and making
+  /// `practiceBelongsToCurrentVisit` always answer true left every test green
+  /// while a reopened window kept the previous visit's words and an already-lit
+  /// FINISH SETUP.
+  ///
+  /// That is the covered site and its uncovered twin
+  /// (`workflow-process.md` RULE: fix-the-path-that-runs-first-not-the-one-you-were-reading),
+  /// and #2371 asked for coverage rather than a corrected string. The view now
+  /// calls this and nothing else, so the decision has one home and a test names it.
+  func beginPracticeIfNewVisit() {
+    guard !practiceBelongsToCurrentVisit else { return }
+    beginPractice()
+  }
+
   func beginPractice() {
     practiceVisitStamp = sessionStartFloor?()
     practiceText = ""

@@ -265,9 +265,7 @@ struct PracticeScreenV2: View {
       // screen. Without this, someone who closed the window here and came back
       // would find a previous visit's words already in the box and FINISH SETUP
       // already lit (cloud review). Same class as the warm gate's reopen guard.
-      if !viewModel.practiceBelongsToCurrentVisit {
-        viewModel.beginPractice()
-      }
+      viewModel.beginPracticeIfNewVisit()
       boxFocused = true
       // A take can ALREADY be running when this view mounts — press the
       // shortcut during the warming transition and `isDictationActive` is true
