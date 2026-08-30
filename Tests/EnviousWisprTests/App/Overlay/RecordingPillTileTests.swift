@@ -780,20 +780,28 @@ struct RecordingPillPreviewWiringTests {
     // one — the third being `RecordingPillDesign.allCases[0]`, which names no case
     // at all. So the two rows below are CLOSED questions instead of a list.
     //
-    // THE CLOSURE ARGUMENT, stated so it can be held to: to bind a fixed design
-    // inside this struct you must obtain a value of that type, and within one
-    // struct there are exactly two ways to reach one — name a CASE, or name the
-    // TYPE. The first row refuses every case name, enumerated from `allCases` so a
-    // design added later is covered with no edit here. The second refuses every
-    // mention of the type beyond the stored property's own annotation, which is
-    // what `allCases`, a static, an initialiser and a type alias all need.
+    // A closure argument was published here and then FALSIFIED, which is worth
+    // keeping rather than quietly replacing. It claimed that reaching a design
+    // inside this struct requires naming a CASE or naming the TYPE, so refusing
+    // both closes the set. Round four answered `type(of: self.design).allCases[0]`
+    // — a third route, naming neither.
     //
-    // WHAT A FOURTH FINDING WOULD HAVE TO LOOK LIKE: a fixed design arriving from
-    // OUTSIDE this struct, from some helper that hands one back without the tile
-    // naming anything — say a `RecordingPillPreviewTile.someFixedDesign`. That is
-    // a different change in a different type, and no assertion inside this struct
-    // can see it. Said out loud because a clean round is not evidence a set is
-    // closed; the falsification condition is.
+    // **SO THE HONEST STATEMENT IS A SCOPE, NOT A CLOSURE.** Deciding what
+    // `design` BINDS TO is name resolution, and no syntax test can do it; the
+    // reviewer's own repair each round was "resolve the base", which needs a
+    // compiler. Four rounds is the evidence, not a guess.
+    //
+    // COVERED, and these are the shapes an ordinary edit produces — each verified
+    // by mutation: the argument taking a fixed design outright; a local `let`; a
+    // closure capture; a design named anywhere else in the struct; `allCases[0]`.
+    // NOT COVERED: deliberately obfuscated reaches such as `type(of:)`, and a
+    // fixed design handed in from another type. This is a drift guard, so the
+    // threat is an accidental edit, not code written to get past it.
+    //
+    // The structural fix that would end the class — the leaf deriving chrome from
+    // the design it is already given, so there is no argument to get wrong at
+    // either call site — is #2520, and it changes shipped source rather than a
+    // test.
     let text = try String(
       contentsOf: RepoRoot.url.appending(path: Self.panel), encoding: .utf8)
     let tile = try #require(
