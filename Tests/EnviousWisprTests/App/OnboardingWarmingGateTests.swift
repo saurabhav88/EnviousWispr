@@ -703,6 +703,51 @@ import Testing
         #expect(vm.practiceSucceeded == false, "the box opened already believing it had succeeded")
       }
 
+      /// **The reopen DECISION, which no test could reach** (#2371 row 20).
+      ///
+      /// `reopeningClearsTheBox` above calls `beginPractice()` directly, so it
+      /// proves the RESET works and says nothing about whether the screen decides
+      /// to run it. That decision lived in `PracticeScreen.onAppear` — unreachable
+      /// from a unit test — so making `practiceBelongsToCurrentVisit` always answer
+      /// true left the whole suite green while a reopened window kept the previous
+      /// visit's words and an already-lit FINISH SETUP.
+      ///
+      /// All three states, because any single one is satisfiable by a constant: a
+      /// decision stuck on "always reset" passes the two reopen cases and destroys
+      /// work mid-visit; one stuck on "never reset" passes the mid-visit case and
+      /// is the shipped defect.
+      @Test("reopening in a NEW visit clears the box; staying in the same one does not")
+      func theScreenDecidesWhetherToClearTheBox() {
+        let vm = makePracticeViewModel()
+
+        // Never visited: there is no stamp, so the box must open fresh.
+        var floor = Date(timeIntervalSince1970: 1_000)
+        vm.sessionStartFloor = { floor }
+        vm.beginPracticeIfNewVisit()
+        #expect(vm.currentScreen == .tryItOut, "a first visit never opened the box")
+
+        // SAME visit: the user's words must survive a re-appear. This is the half
+        // a decision stuck on "always reset" would destroy.
+        vm.setPracticeText("hey Mike pick up Emma from school today")
+        #expect(vm.practiceSucceeded)
+        vm.beginPracticeIfNewVisit()
+        #expect(
+          vm.practiceText == "hey Mike pick up Emma from school today",
+          "re-appearing inside one visit wiped the words the user had just dictated")
+        #expect(vm.practiceSucceeded, "re-appearing inside one visit undid a success the user earned")
+
+        // NEW visit: the floor moves, so the previous visit's words and its lit
+        // FINISH SETUP must not survive. This is the shipped defect's half.
+        floor = Date(timeIntervalSince1970: 2_000)
+        vm.beginPracticeIfNewVisit()
+        #expect(
+          vm.practiceText.isEmpty,
+          "a reopened window kept the previous visit's words")
+        #expect(
+          vm.practiceSucceeded == false,
+          "a reopened window offered FINISH SETUP to someone who has not dictated in it")
+      }
+
       /// The gate's ready exit opens the box; it no longer ends setup. If this
       /// regresses, the warm gate silently becomes the last screen again and the
       /// entire feature is absent while every other test still passes.
