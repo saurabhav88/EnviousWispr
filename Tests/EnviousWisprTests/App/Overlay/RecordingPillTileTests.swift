@@ -761,8 +761,14 @@ struct RecordingPillPreviewWiringTests {
     #expect(
       member.declName.baseName.text == "chrome",
       "chrome is \(expr.trimmedDescription), which does not read a design's chrome at all")
+    // **BOTH SPELLINGS OF THE SAME REFERENCE.** `design` and `self.design` are one
+    // thing to the compiler, and rejecting the explicit form would fail a correct
+    // rewrite — a guard that refuses innocent work is how bypasses get trained
+    // (`validation-discipline.md` RULE: false-positives-not-gates-train-evasion).
+    // Spelling axes are finite, so this is normalised in ONE place rather than
+    // matched at each site.
     #expect(
-      member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "design",
+      Self.readsTheTilesOwnDesign(member.base),
       """
       chrome is \(expr.trimmedDescription), which is a fixed design's chrome rather than \
       this tile's own. Every card would then draw the same pill and the picker would \
@@ -855,6 +861,20 @@ struct RecordingPillPreviewWiringTests {
     let counter = IdentifierCounter(name)
     counter.walk(decl)
     return counter.count
+  }
+
+  /// Whether an expression is this tile reading its OWN `design` — `design` or
+  /// `self.design`, which the compiler treats as one thing. The two spellings are
+  /// the whole set: an implicit member reference and an explicit `self` one.
+  private static func readsTheTilesOwnDesign(_ expr: ExprSyntax?) -> Bool {
+    if expr?.as(DeclReferenceExprSyntax.self)?.baseName.text == "design" { return true }
+    if let explicit = expr?.as(MemberAccessExprSyntax.self),
+      explicit.declName.baseName.text == "design",
+      explicit.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self"
+    {
+      return true
+    }
+    return false
   }
 
   /// Every member name accessed anywhere inside a declaration — `a.b` and a bare
