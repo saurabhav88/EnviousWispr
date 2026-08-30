@@ -62,6 +62,21 @@ final class VocabularyPackManager {
     let termCount: Int
     let examples: [String]
   }
+
+  /// How many example canonicals a pack row shows.
+  ///
+  /// A CONSTANT, not a parameter, and that is the fix for a real defect rather
+  /// than a style choice. This began as `summary(_:exampleLimit:)` carried over
+  /// from the old `exampleCanonicals(_:limit:)`, while the memo below is keyed
+  /// on the pack id ALONE — so the first caller's limit would have been baked
+  /// in for the life of the process, and every later caller asking for a
+  /// different count would have silently received the first one's answer
+  /// (cloud review, PR #2505). No caller ever varied it; a defaulted parameter
+  /// nobody varies is a parameter no test checks. Removing it deletes the
+  /// class instead of keying the cache on a tuple to preserve a knob nothing
+  /// turns.
+  private static let exampleLimit = 3
+
   @ObservationIgnored private var summaries: [VocabularyPackID: PackSummary] = [:]
 
   /// Display rows per pack, memoized. Invalidated by `mutateOverride` — the
@@ -130,14 +145,14 @@ final class VocabularyPackManager {
   /// Not override-adjusted: this is the shipped pack size and shipped
   /// examples, shown before anyone has opened the pack to edit anything, so
   /// nothing a user does can invalidate it and it never needs clearing.
-  func summary(_ id: VocabularyPackID, exampleLimit: Int = 3) -> PackSummary {
+  func summary(_ id: VocabularyPackID) -> PackSummary {
     if let hit = summaries[id] { return hit }
     guard let pack = store.load(id) else {
       let empty = PackSummary(termCount: 0, examples: [])
       summaries[id] = empty
       return empty
     }
-    let examples = pack.terms.map(\.canonical).sorted().prefix(exampleLimit).map { $0 }
+    let examples = pack.terms.map(\.canonical).sorted().prefix(Self.exampleLimit).map { $0 }
     let value = PackSummary(termCount: pack.terms.count, examples: examples)
     summaries[id] = value
     return value

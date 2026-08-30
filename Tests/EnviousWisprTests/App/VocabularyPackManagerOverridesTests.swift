@@ -267,5 +267,11 @@ struct VocabularyPackManagerOverridesTests {
     #expect(summary.examples == summary.examples.sorted())
     // Repeating the call must not change the answer — it is memoized.
     #expect(manager.summary(.tech) == summary)
+    // The example count is a constant, so a call that arrives AFTER
+    // `termCount` primed the memo still sees the full set. This is the shape
+    // the cloud review caught while `summary` still took an `exampleLimit`
+    // the memo was not keyed on.
+    _ = manager.termCount(.medical)
+    #expect(manager.summary(.medical).examples.count == min(3, manager.packWords(.medical).count))
   }
 }
