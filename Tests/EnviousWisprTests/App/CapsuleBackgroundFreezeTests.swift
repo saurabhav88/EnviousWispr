@@ -161,6 +161,43 @@ struct CapsuleBackgroundFreezeTests {
   /// Both kinds, because the owners are not all structs — the notice colour lives
   /// on `enum PillInk`. A struct-only finder would have returned nil for it and,
   /// with a `#require` above, failed for the wrong reason.
+  /// **CODE ONLY — comments and string contents are removed before counting.**
+  ///
+  /// `trimmedDescription` preserves both, so a comment documenting the previous
+  /// frozen value satisfies the count while the expression it documents is gone —
+  /// and a comment reading "was Color(red: 0.078, ...)" is exactly what someone
+  /// deleting that colour would leave behind. Found by cloud review on PR #2532.
+  ///
+  /// Worth naming as a class rather than a one-off: this suite's whole history is
+  /// a guard reading more text than it means to. First `contains` over both files,
+  /// then a count over both files, now a count over one declaration — and each
+  /// time the surplus text is where the false green came from.
+  private final class CodeOnly: SyntaxRewriter {
+    override func visit(_ token: TokenSyntax) -> TokenSyntax {
+      token
+        .with(\.leadingTrivia, Self.withoutComments(token.leadingTrivia))
+        .with(\.trailingTrivia, Self.withoutComments(token.trailingTrivia))
+    }
+
+    /// String CONTENT, blanked. The delimiters stay so the syntax is still legal
+    /// to print; only the text a literal could hide inside is dropped.
+    override func visit(_ node: StringSegmentSyntax) -> StringSegmentSyntax {
+      node.with(\.content, .stringSegment(""))
+    }
+
+    static func withoutComments(_ trivia: Trivia) -> Trivia {
+      Trivia(
+        pieces: trivia.filter { piece in
+          switch piece {
+          case .lineComment, .blockComment, .docLineComment, .docBlockComment:
+            return false
+          default:
+            return true
+          }
+        })
+    }
+  }
+
   private final class DeclFinder: SyntaxVisitor {
     let wanted: String
     private(set) var found: String?
@@ -168,12 +205,15 @@ struct CapsuleBackgroundFreezeTests {
       self.wanted = wanted
       super.init(viewMode: .sourceAccurate)
     }
+    private func keep(_ node: some SyntaxProtocol) -> String {
+      CodeOnly().rewrite(node).trimmedDescription
+    }
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
-      if node.name.text == wanted { found = node.trimmedDescription }
+      if node.name.text == wanted { found = keep(node) }
       return .visitChildren
     }
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
-      if node.name.text == wanted { found = node.trimmedDescription }
+      if node.name.text == wanted { found = keep(node) }
       return .visitChildren
     }
   }
