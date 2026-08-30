@@ -221,36 +221,45 @@ private struct PackWordRow: View {
   @State private var newAlias: String = ""
 
   var body: some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(alignment: .top, spacing: 12) {
-        info
-        Spacer(minLength: 8)
-        controls
-      }
-      VStack(alignment: .leading, spacing: 8) {
-        info
-        controls
-      }
-    }
-    .opacity(word.isEnabled ? 1 : 0.5)
-  }
-
-  private var info: some View {
+    // The on/off switch stays on the word's TITLE line however many aliases
+    // the word carries. `ViewThatFits` used to compare a horizontal candidate
+    // that INCLUDED the wrapping alias chips, so `amoxicillin` (11 aliases)
+    // made that candidate too wide and the switch fell to the fallback's
+    // bottom left — under the "Add alias" field, reading as a control for
+    // that field rather than for the word (#2507). The chips and the add
+    // field now sit BENEATH the title row instead of competing with it for
+    // the same width, and `ViewThatFits` governs only the title row, which is
+    // the case the fallback was written for: a genuinely narrow window.
     VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 8) {
-        Text(word.canonical)
-          .settingsRowLabel()
-        if word.isEdited {
-          Text("EDITED")
-            .font(.system(size: 10, weight: .bold))
-            .foregroundStyle(.stWarning)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.stWarningSoft, in: Capsule())
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .top, spacing: 12) {
+          titleRow
+          Spacer(minLength: 8)
+          controls
+        }
+        VStack(alignment: .leading, spacing: 8) {
+          titleRow
+          controls
         }
       }
       aliasChips
       addAliasRow
+    }
+    .opacity(word.isEnabled ? 1 : 0.5)
+  }
+
+  private var titleRow: some View {
+    HStack(spacing: 8) {
+      Text(word.canonical)
+        .settingsRowLabel()
+      if word.isEdited {
+        Text("EDITED")
+          .font(.system(size: 10, weight: .bold))
+          .foregroundStyle(.stWarning)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 2)
+          .background(Color.stWarningSoft, in: Capsule())
+      }
     }
   }
 
