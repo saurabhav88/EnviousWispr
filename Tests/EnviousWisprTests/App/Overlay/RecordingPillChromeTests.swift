@@ -93,6 +93,38 @@ struct RecordingPillChromeTests {
     #expect(chrome.isContentSizedVertically)
   }
 
+  /// **The third design, which had no pin at all.** Its two siblings above fix
+  /// every field; the level rail had none, so every value here could move with
+  /// nothing going red. Found by a mutation of `noticeMaxWidth` that neither
+  /// this suite nor `LevelRailDesignTests` noticed — and the source comment at
+  /// that line already said so: "Nothing fails if it keeps the old 232 —
+  /// notices would just wrap 28pt early, for ever, with no test red anywhere."
+  /// A window written down rather than closed (code-design-rules.md
+  /// RULE: close-the-window-never-handle-it); this closes it.
+  @Test("the level rail's chrome is pinned, and its notice cap is derived rather than typed")
+  func levelRailChromeIsPinned() {
+    let chrome = RecordingPillDesign.levelRail.chrome
+    #expect(chrome.header == .clockAndRail)
+    #expect(chrome.stackSpacing == 6)
+    #expect(chrome.rootInsets == EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14))
+    #expect(chrome.cornerStyle == .capsule)
+    #expect(chrome.levelAnimation == .none)
+    #expect(chrome.showsListeningSentence == false)
+    #expect(chrome.noticeInk == .capsuleWhite)
+    #expect(chrome.noticeInsets == EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+    #expect(chrome.wellInsets == EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+    #expect(chrome.wellInk == .capsuleWhite)
+    #expect(chrome.fadesWhenWellIsFull == false)
+
+    // THE ARITHMETIC, NOT THE NUMBER. 260 is the design's own width less the
+    // root inset either side, and the source says so in words. Pinning the
+    // literal would let a width change leave this behind silently, which is
+    // exactly the miss that comment records; pinning the relation makes the
+    // width and the cap move together or go red.
+    let sideInsets = chrome.rootInsets.leading + chrome.rootInsets.trailing
+    #expect(chrome.noticeMaxWidth == RecordingPillDesign.levelRail.width - sideInsets)
+  }
+
   /// **The one field that must never be typed, only derived.** A design that
   /// reserves a fixed box is not content-sized, by definition; two independent
   /// answers to that is how a pill comes to be measured inside the panel being

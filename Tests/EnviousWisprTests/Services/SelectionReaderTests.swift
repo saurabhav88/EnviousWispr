@@ -109,6 +109,18 @@ struct SelectionReaderTests {
   /// The family is CLOSED, and a row per member so adding one without deciding is visible.
   @Test("Only our own identifiers are the app; everything else is somebody's document")
   func theIdentityFamilyIsExactlyOurTwoBuilds() {
+    // THE LITERALS, because the two rows below cannot fail on a rename.
+    // `isOurs(AppBundleIdentity.production)` asks the subject about itself:
+    // change either constant and both sides move together, so the row stays
+    // green while the family stops naming a build that exists. Found by a
+    // mutation that renamed `development` and turned nothing red
+    // (validation-discipline.md
+    // RULE: an-expectation-built-with-the-mechanism-under-test-cannot-fail).
+    //
+    // These strings are `Project.swift:175` and `:201`. That file is the
+    // authority and this is the only place a drift between them goes red.
+    #expect(AppBundleIdentity.production == "com.enviouswispr.app")
+    #expect(AppBundleIdentity.development == "com.enviouswispr.app.dev")
     #expect(AppBundleIdentity.isOurs(AppBundleIdentity.production))
     #expect(AppBundleIdentity.isOurs(AppBundleIdentity.development))
     #expect(AppBundleIdentity.all.count == 2)
