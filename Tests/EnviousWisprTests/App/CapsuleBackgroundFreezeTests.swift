@@ -629,13 +629,39 @@ struct CapsuleBackgroundFreezeTests {
         identifierName(member.declName.baseName) == "rounded",
         let switchExpr = switchCase.parent?.parent?.as(SwitchExprSyntax.self),
         (unparenthesised(switchExpr.subject)
-          .as(DeclReferenceExprSyntax.self)?.baseName).map(identifierName) == "cornerStyle"
+          .as(DeclReferenceExprSyntax.self)?.baseName).map(identifierName) == "cornerStyle",
+        !isReachedByFallthrough(switchCase)
       {
         return true
       }
       current = here.parent
     }
     return false
+  }
+
+  /// Whether an earlier case can fall INTO this one.
+  ///
+  /// **Matching the case label answers which values SELECT this branch, and that is
+  /// not the same question as which executions REACH it.** A `.capsule` arm ending
+  /// in `fallthrough` runs the `.rounded` body for every capsule, so a read there is
+  /// reachable without the corner style ever being rounded — the label check is
+  /// correct and the conclusion drawn from it is wrong.
+  ///
+  /// Walks BACKWARDS while each preceding case ends in `fallthrough`, because a
+  /// chain of them reaches just as far as one does.
+  private static func isReachedByFallthrough(_ switchCase: SwitchCaseSyntax) -> Bool {
+    guard let list = switchCase.parent?.as(SwitchCaseListSyntax.self) else { return false }
+    let cases = Array(list)
+    guard var index = cases.firstIndex(where: { $0.id == Syntax(switchCase).id }) else {
+      return false
+    }
+    while index > 0 {
+      guard let previous = cases[index - 1].as(SwitchCaseSyntax.self),
+        previous.statements.last?.item.is(FallThroughStmtSyntax.self) == true
+      else { return false }
+      index -= 1
+    }
+    return index != cases.firstIndex(where: { $0.id == Syntax(switchCase).id })
   }
 
   /// The palette reads that are NOT inside the preview branch, named by line.
