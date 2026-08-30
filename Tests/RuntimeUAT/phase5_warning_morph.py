@@ -392,6 +392,38 @@ def main():
         life = lc.describe(before, {s["id"] for s in bounds.series}, after)
         series = [s for s in bounds.series if s["id"] == life["window_id"]] if life["window_id"] else []
 
+        # **THE PIN LANDING IN `defaults` IS NOT THE PILL BEING DRAWN.**
+        # `PillAppearanceModel.resolvedSelection()` goes through
+        # `resolve(capabilityHasWords:)`, and `LivePreviewCoordinator.wordsCapability`
+        # refuses on THREE conditions — a model being removed, an unsupported engine
+        # route, and the preview toggle. Only the last is a setting this row writes,
+        # so a substituted design is a state the pins cannot rule out.
+        #
+        # Measured 2026-08-30: with the design AND the toggle both pinned and read
+        # back correctly, the pill was still 288x92, which is the Level Rail. The
+        # geometry below then matches nothing and both rows report REFUSED with every
+        # mechanical check green — indistinguishable from the product being broken.
+        #
+        # So the WIDTH is the oracle, because it is the thing the geometry depends on
+        # and it is observable from here. Any width but the pinned design's means a
+        # different pill was drawn, and that is an ABORT: nothing was measured, and
+        # saying so is the whole difference between this row and the one that spent
+        # its life dead.
+        drawn = sorted({s["w"] for s in series})
+        report["drawn_widths"] = drawn
+        if drawn and MORPH_FROM[0] not in drawn:
+            print(json.dumps({
+                "verdict": "ABORT_DESIGN_NOT_DRAWN",
+                "pinned_design": DESIGN,
+                "expected_width": MORPH_FROM[0],
+                "drawn_widths": drawn,
+                "why": ("the pins landed but a different pill was drawn, so the words "
+                        "capability is absent for a reason this row cannot set — see "
+                        "LivePreviewCoordinator.wordsCapability, which logs none of its "
+                        "three refusals"),
+            }, indent=2))
+            return
+
         # The morph: the first size change at least 5s in, which is past the
         # hands-free expansion and before the cap. Reported with its offset so the
         # claim is checkable rather than asserted.
@@ -480,6 +512,20 @@ def main():
         report["clear_row"] = "PASS" if clear_ok else "REFUSED"
         report["verdict"] = "PASS" if (morph_ok and clear_ok) else "REFUSED"
     finally:
+        # **STOP THE APP FIRST, OR THE RESTORE ONLY REACHES THE DISK.**
+        # The instance this row launched is still running and its `SettingsManager`
+        # holds the PINNED design and toggle, loaded at launch. Every one of those
+        # properties persists on `didSet`, so the next settings change of any kind
+        # writes the pinned values straight back over the restore — and the person
+        # whose Mac this is would find their pill appearance silently changed, with
+        # `restore_clean` reporting true because the disk was correct at the moment
+        # it was read.
+        #
+        # The window is real and was open for the runs on #2431: the keys read back
+        # absent afterwards, and a live instance could have re-persisted them at any
+        # point. Killed by hand on discovery; closed here so it cannot recur.
+        report["stopped_before_restore"] = g.stop_app()
+
         # THE SAME TYPE FLAG THE KEY WAS WRITTEN WITH. Restoring the user's own
         # appearance through `-float` would leave them on a number, which is not a
         # design at all — this row must give the machine back exactly what it took.
