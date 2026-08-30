@@ -67,7 +67,13 @@ struct CapsuleBackgroundFreezeTests {
   ]
 
   private static func read(_ path: String) throws -> String {
-    let url = RepoRoot.url.appending(path: path)
+    try read(at: RepoRoot.url.appending(path: path), naming: path)
+  }
+
+  /// Split from `read(_:)` so `anEmptyMemberIsRefused` can hand it a file it made
+  /// itself. Nothing else about the refusal changes: this is where the throw
+  /// lives, and it is the one the count-based guards go through.
+  private static func read(at url: URL, naming path: String) throws -> String {
     let text = try String(contentsOf: url, encoding: .utf8)
     // Fails closed: an empty or unreadable member makes every count below read
     // low, which is indistinguishable from a deleted literal.
@@ -87,6 +93,45 @@ struct CapsuleBackgroundFreezeTests {
   /// make it vacuous.
   private static func capsuleBackgroundSource() throws -> String {
     try read(capsuleSourcePaths[0])
+  }
+
+  /// **The fail-closed read, which nothing exercised until #2380.**
+  ///
+  /// Every count in this file goes through `read`. An empty or missing member
+  /// makes each of them read LOW, and low is exactly what a deleted literal
+  /// produces — so without the throw the two failures are indistinguishable, and
+  /// the suite reports the wrong one. That is why the migration was written to
+  /// refuse rather than to contribute zero.
+  ///
+  /// **Asserts the THROW, never a count.** Observing a count here would pass for
+  /// the wrong reason: zero occurrences is the very thing being disambiguated.
+  ///
+  /// Both halves, because they fail differently. An EMPTY file reaches our own
+  /// refusal; a MISSING one never gets past `String(contentsOf:)`, and a guard
+  /// that only ever saw the second would not prove the first exists.
+  @Test("an empty or missing source member is refused, never counted as zero")
+  func anEmptyMemberIsRefused() throws {
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appending(path: "ew-2380-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let blank = dir.appending(path: "Blank.swift")
+    try "   \n\t\n".write(to: blank, atomically: true, encoding: .utf8)
+    #expect(throws: CapsuleFreezeSourceError.self) {
+      _ = try Self.read(at: blank, naming: "Blank.swift")
+    }
+
+    let absent = dir.appending(path: "NeverWritten.swift")
+    #expect(throws: (any Error).self) {
+      _ = try Self.read(at: absent, naming: "NeverWritten.swift")
+    }
+
+    // The two-way half: a member with content comes back, so the refusal above
+    // is about emptiness rather than about this helper refusing everything.
+    let real = dir.appending(path: "Real.swift")
+    try "struct S {}\n".write(to: real, atomically: true, encoding: .utf8)
+    #expect(try Self.read(at: real, naming: "Real.swift").contains("struct S"))
   }
 
   enum CapsuleFreezeSourceError: Error, CustomStringConvertible {
@@ -198,6 +243,28 @@ struct CapsuleBackgroundFreezeTests {
     }
   }
 
+  /// The parsed declaration itself, for a caller that needs its BOUNDS rather
+  /// than its text. `DeclFinder` below returns comment-stripped source, which is
+  /// what the ownership rows want and is useless for locating anything.
+  private final class StructLocator: SyntaxVisitor {
+    let wanted: String
+    private(set) var found: StructDeclSyntax?
+    init(_ wanted: String) {
+      self.wanted = wanted
+      super.init(viewMode: .sourceAccurate)
+    }
+    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
+      if node.name.text == wanted { found = node }
+      return .visitChildren
+    }
+  }
+
+  private static func structDecl(named: String, in tree: SourceFileSyntax) -> StructDeclSyntax? {
+    let locator = StructLocator(named)
+    locator.walk(tree)
+    return locator.found
+  }
+
   private final class DeclFinder: SyntaxVisitor {
     let wanted: String
     private(set) var found: String?
@@ -297,42 +364,69 @@ struct CapsuleBackgroundFreezeTests {
     let source = try Self.capsuleBackgroundSource()
     let lines = source.split(separator: "\n", omittingEmptySubsequences: false)
 
-    let open = try #require(
-      lines.firstIndex { $0.contains("struct OverlayCapsuleBackground") },
+    // **THE PARSER BOUNDS THE STRUCT. A BRACE WALK USED TO, AND IT WAS EVADABLE.**
+    //
+    // The old version counted `{` and `}` per line from the struct's declaration
+    // and stopped at depth zero, then asserted the landing line was exactly `}`
+    // on the grounds that this closed the one SILENT failure — a stray brace in
+    // a comment shrinking the region so a later ungated palette read escapes.
+    //
+    // It did not. Measured on #2380, both directions, source restored byte-exact:
+    //
+    //   one bare `}` line in a comment, then an ungated read   RED  (landed on "  }")
+    //   TWO bare `}` lines in a comment, then an ungated read  GREEN — the read escaped
+    //
+    // One stray brace cannot reach depth zero from inside `body`, so it lands on
+    // an indented line and the equality catches it. Two can, and then the landing
+    // line IS `}` and the assertion is satisfied by the very thing it was added
+    // to detect. The defence was one character wider than the attack, which is
+    // the shape this file has paid for twice already.
+    //
+    // So the region no longer comes from text. `SwiftParser` knows where a
+    // declaration ends, and no amount of punctuation inside a comment moves it.
+    // #2380 asked for exactly this and said not to make the walk cleverer at
+    // counting braces, because that is the same comparison one character wider
+    // again.
+    //
+    // The per-read CONTEXT check below is still text proximity, and that is a
+    // separate weakness #2380 names and holds out of this row deliberately: it
+    // needs reachability rather than a wider match, and folding it in here would
+    // mix a fix with a redesign.
+    let tree = Parser.parse(source: source)
+    let converter = SourceLocationConverter(fileName: Self.capsuleSourcePaths[0], tree: tree)
+    let decl = try #require(
+      Self.structDecl(named: "OverlayCapsuleBackground", in: tree),
       "OverlayCapsuleBackground not found — this guard is pointed at nothing")
+    // Zero-based, to index `lines` the way the brace walk's values did.
+    //
+    // **`position` INCLUDES the leading trivia, so it is the wrong end of the
+    // declaration.** For this file it resolves to line 4 — the top of the struct's
+    // doc comment — while `struct OverlayCapsuleBackground` is on line 10. That
+    // widens the region upward, and a doc or MARK comment above the struct that
+    // mentions `PreviewPillPalette.` would then be counted as a palette read and
+    // judged for gating. Cloud review caught it on #2380; the failure is in the
+    // direction that ACCUSES correct code.
+    //
+    // `positionAfterSkippingLeadingTrivia` and `endPositionBeforeTrailingTrivia`
+    // are the declaration itself, which is what this guard is a claim about.
+    let open = converter.location(for: decl.positionAfterSkippingLeadingTrivia).line - 1
+    let close = converter.location(for: decl.endPositionBeforeTrailingTrivia).line - 1
 
-    var depth = 0
-    var end: Int? = nil
-    for i in open..<lines.count {
-      depth += lines[i].filter { $0 == "{" }.count
-      depth -= lines[i].filter { $0 == "}" }.count
-      if depth == 0 && i > open {
-        end = i
-        break
-      }
-    }
-    let close = try #require(
-      end,
-      "OverlayCapsuleBackground's braces never balance — the guard cannot bound the struct")
-
-    // The walk counts braces textually, so a stray brace inside a comment or a
-    // string literal could land it somewhere other than the struct's own closing
-    // line. Measured on this file today: zero braces in comments or strings, no
-    // `#if`, no interpolation — so this is a bound on a hypothetical, not a fix
-    // for an observed defect. It is here because ONE of the walk's failure modes
-    // is silent: an unmatched `}` in a comment placed AFTER both palette reads
-    // would shrink the region without moving `reads` below 2, so an ungated read
-    // added later would escape. The other two modes (never balancing, balancing
-    // early enough to drop `reads`) already fail loudly. Requiring the landing
-    // line to be a top-level closing brace closes the silent one and cannot be
-    // broken by reindentation, unlike a frozen source-text match.
+    // The bound is now a claim, so it is checked: the region must START on the
+    // struct's own declaration line. A parser that ever handed back trivia again
+    // would say so here rather than silently widening the scan.
     #expect(
-      lines[close] == "}",
+      lines[open].contains("struct OverlayCapsuleBackground"),
       """
-      the brace walk ended on \(lines[close].trimmingCharacters(in: .whitespaces)), \
-      not on OverlayCapsuleBackground's own closing brace. A stray brace in a comment \
-      or string literal has moved the region this guard checks.
+      the region starts on \(lines[open].trimmingCharacters(in: .whitespaces)), not on \
+      OverlayCapsuleBackground's own declaration line, so it is scanning text that is \
+      not the struct.
       """)
+
+    #expect(
+      open < close && close < lines.count,
+      "the parsed bounds of OverlayCapsuleBackground are \(open)...\(close), which cannot index its own source"
+    )
 
     var reads = 0
     for i in open..<close where lines[i].contains("PreviewPillPalette.") {
