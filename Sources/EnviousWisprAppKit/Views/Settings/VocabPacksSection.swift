@@ -38,7 +38,12 @@ struct VocabPacksSection: View {
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
       } else {
-        VStack(alignment: .leading, spacing: 10) {
+        // Lazy, for the same reason the word list inside a pack is lazy: this
+        // list is about to grow. Five cards today, and the founder intends 25
+        // to 30 — at which point an eager stack builds every card, and each
+        // card's `ViewThatFits` builds two candidate subtrees, before the tab
+        // can draw anything (grounded review, 2026-08-29).
+        LazyVStack(alignment: .leading, spacing: 10) {
           ForEach(ids, id: \.self) { packCard($0) }
         }
       }
@@ -122,11 +127,15 @@ struct VocabPacksSection: View {
   }
 
   /// "248 fixes · e.g. async, bazel, cypress"
+  ///
+  /// ONE lookup, not two. This asked `termCount` and `exampleCanonicals`
+  /// separately, and each walked the pack — the examples call sorted every
+  /// canonical in the pack to take three. Two questions per card, doubled by
+  /// `ViewThatFits`, is 120 of them for a 30-pack list per render pass.
   private func rowDetail(for id: VocabularyPackID) -> String {
-    let count = packManager.termCount(id)
-    let examples = packManager.exampleCanonicals(id, limit: 3)
-    let countText = "\(count) \(count == 1 ? "fix" : "fixes")"
-    guard !examples.isEmpty else { return countText }
-    return "\(countText) · e.g. \(examples.joined(separator: ", "))"
+    let summary = packManager.summary(id)
+    let countText = "\(summary.termCount) \(summary.termCount == 1 ? "fix" : "fixes")"
+    guard !summary.examples.isEmpty else { return countText }
+    return "\(countText) · e.g. \(summary.examples.joined(separator: ", "))"
   }
 }

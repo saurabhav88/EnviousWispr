@@ -594,20 +594,46 @@ struct BrandedStatusRow: View {
 // MARK: - Wrapping HStack (flow layout for chips)
 
 /// Layout that wraps items to the next line when they exceed the available width.
+///
+/// **Caches its flow computation, keyed on the width it was computed for.**
+/// SwiftUI calls `sizeThatFits` and then `placeSubviews` for the same pass, and
+/// with no cache this ran the whole flow twice — each run calling
+/// `sizeThatFits` on every chip. A pack word row can carry ten alias chips and
+/// a pack can carry hundreds of aliases, so the duplicate pass was paid per
+/// row, per layout (grounded review, 2026-08-29).
+///
+/// The key is the WIDTH, not a counter. SwiftUI calls `updateCache` whenever
+/// the subviews change, which is where the stored result is dropped; a width
+/// mismatch drops it too, so a resized window recomputes rather than placing
+/// chips at coordinates measured for a different width. Both conditions are
+/// checked before the cached positions are used, so a stale entry can only
+/// cause a recompute, never a wrong placement.
 struct WrappingHStack: Layout {
   var spacing: CGFloat = 6
 
-  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-    layout(proposal: proposal, subviews: subviews).size
+  struct Cache {
+    /// The proposal width `result` was computed for. `nil` means empty.
+    var width: CGFloat?
+    var result: (size: CGSize, positions: [CGPoint], sizes: [CGSize])?
+  }
+
+  func makeCache(subviews: Subviews) -> Cache { Cache() }
+
+  /// Called by SwiftUI when the subviews change. Anything cached described the
+  /// OLD set, so it goes.
+  func updateCache(_ cache: inout Cache, subviews: Subviews) {
+    cache.width = nil
+    cache.result = nil
+  }
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+    resolved(width: proposal.width, subviews: subviews, cache: &cache).size
   }
 
   func placeSubviews(
-    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache
   ) {
-    let result = layout(
-      proposal: ProposedViewSize(width: bounds.width, height: nil),
-      subviews: subviews
-    )
+    let result = resolved(width: bounds.width, subviews: subviews, cache: &cache)
     for (index, position) in result.positions.enumerated() {
       let size = result.sizes[index]
       subviews[index].place(
@@ -615,6 +641,29 @@ struct WrappingHStack: Layout {
         proposal: ProposedViewSize(width: size.width, height: size.height)
       )
     }
+  }
+
+  /// The cached flow for `width`, computing it only on a miss.
+  ///
+  /// Guards on the subview COUNT as well as the width. `updateCache` is the
+  /// documented invalidation point and this does not rely on it alone: placing
+  /// N positions against a different number of subviews would be an index
+  /// crash, so the count is checked where it is used rather than trusted from
+  /// a callback.
+  private func resolved(
+    width: CGFloat?, subviews: Subviews, cache: inout Cache
+  ) -> (size: CGSize, positions: [CGPoint], sizes: [CGSize]) {
+    if let cachedWidth = cache.width, let result = cache.result,
+      cachedWidth == width ?? .infinity, result.positions.count == subviews.count
+    {
+      return result
+    }
+    let proposal =
+      width.map { ProposedViewSize(width: $0, height: nil) } ?? ProposedViewSize.unspecified
+    let computed = layout(proposal: proposal, subviews: subviews)
+    cache.width = width ?? .infinity
+    cache.result = computed
+    return computed
   }
 
   private func layout(
@@ -780,7 +829,8 @@ struct EngineCard<Footer: View>: View {
         .frame(
           maxWidth: .infinity,
           maxHeight: fillsHeight ? .infinity : nil,
-          alignment: .topLeading)
+          alignment: .topLeading
+        )
         // Applied to the LABEL, inside the same frame the hit region uses, so
         // the tint and the target are one rectangle and stay one rectangle when
         // `fillsHeight` grows them. On a card that carries a footer button the
@@ -1012,9 +1062,9 @@ struct SettingsActionButton: View {
   var body: some View {
     shortcutBound(button)
       .buttonStyle(.plain)
-    .disabled(!isEnabled)
-    .onHover { pointerInside = $0 }
-    .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
+      .disabled(!isEnabled)
+      .onHover { pointerInside = $0 }
+      .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
   }
 
   private var button: some View {

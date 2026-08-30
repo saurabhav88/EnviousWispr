@@ -40,6 +40,52 @@ final class VocabularyPackManager {
   /// edit. Cleared by the next successful mutation.
   private(set) var persistenceError: String?
 
+  /// Packs that resolve in the bundle, in display order. Resolved ONCE.
+  ///
+  /// This was a computed property doing one `Bundle.url(forResource:)` per
+  /// pack, and it is read inside a SwiftUI `body`, so every render of the pack
+  /// list paid a bundle lookup per pack. What is inside the app bundle cannot
+  /// change while the app runs, so the answer is fixed at launch. At the five
+  /// packs that ship today this was invisible; the founder intends 25 to 30,
+  /// and this is the kind of cost that only ever grows.
+  let availablePackIDs: [VocabularyPackID]
+
+  /// The pack list row's two numbers, computed ONCE per pack.
+  ///
+  /// The row used to ask `termCount` and `exampleCanonicals` separately, and
+  /// each call walked the pack — `exampleCanonicals` sorted every canonical in
+  /// the pack in order to take three of them. Two questions per card, and
+  /// `ViewThatFits` builds each card twice, so a 30-pack list asked 120 of
+  /// them per render pass (grounded review, 2026-08-29). One value, built
+  /// lazily on first display and kept.
+  struct PackSummary: Equatable {
+    let termCount: Int
+    let examples: [String]
+  }
+
+  /// How many example canonicals a pack row shows.
+  ///
+  /// A CONSTANT, not a parameter, and that is the fix for a real defect rather
+  /// than a style choice. This began as `summary(_:exampleLimit:)` carried over
+  /// from the old `exampleCanonicals(_:limit:)`, while the memo below is keyed
+  /// on the pack id ALONE — so the first caller's limit would have been baked
+  /// in for the life of the process, and every later caller asking for a
+  /// different count would have silently received the first one's answer
+  /// (cloud review, PR #2505). No caller ever varied it; a defaulted parameter
+  /// nobody varies is a parameter no test checks. Removing it deletes the
+  /// class instead of keying the cache on a tuple to preserve a knob nothing
+  /// turns.
+  private static let exampleLimit = 3
+
+  @ObservationIgnored private var summaries: [VocabularyPackID: PackSummary] = [:]
+
+  /// Display rows per pack, memoized. Invalidated by `mutateOverride` — the
+  /// only thing that can change them — so the detail screen's search box no
+  /// longer rebuilds and re-sorts the whole pack on every keystroke.
+  @ObservationIgnored private var wordDisplayCache:
+    [VocabularyPackID: [VocabularyPackWordDisplay]] =
+      [:]
+
   init(
     store: VocabularyPackStore = VocabularyPackStore(),
     overridesStore: VocabularyPackOverridesStore = VocabularyPackOverridesStore(),
@@ -49,17 +95,13 @@ final class VocabularyPackManager {
     self.overridesStore = overridesStore
     self.defaults = defaults
     self.overrides = overridesStore.load()
+    let present = Set(store.availablePackIDs())
+    self.availablePackIDs = VocabularyPackID.allCases.filter { present.contains($0) }
     if let raw = defaults.array(forKey: Self.defaultsKey) as? [String] {
       self.enabled = Set(raw.compactMap(VocabularyPackID.init(rawValue:)))
     } else {
       self.enabled = []  // default OFF
     }
-  }
-
-  /// Packs that resolve in the bundle, in display order.
-  var availablePackIDs: [VocabularyPackID] {
-    let present = Set(store.availablePackIDs())
-    return VocabularyPackID.allCases.filter { present.contains($0) }
   }
 
   func isEnabled(_ id: VocabularyPackID) -> Bool { enabled.contains(id) }
@@ -98,16 +140,28 @@ final class VocabularyPackManager {
 
   // MARK: - UI metadata
 
-  /// Number of correctable terms in a pack (for the Settings row). Not
-  /// override-adjusted — this is the shipped pack size, shown before anyone
-  /// has opened the pack to edit anything.
-  func termCount(_ id: VocabularyPackID) -> Int { store.load(id)?.terms.count ?? 0 }
-
-  /// A few example "fix" canonicals for the Settings row blurb.
-  func exampleCanonicals(_ id: VocabularyPackID, limit: Int = 3) -> [String] {
-    guard let pack = store.load(id) else { return [] }
-    return pack.terms.map(\.canonical).sorted().prefix(limit).map { $0 }
+  /// The pack list row's count and examples, in ONE lookup, memoized.
+  ///
+  /// Not override-adjusted: this is the shipped pack size and shipped
+  /// examples, shown before anyone has opened the pack to edit anything, so
+  /// nothing a user does can invalidate it and it never needs clearing.
+  func summary(_ id: VocabularyPackID) -> PackSummary {
+    if let hit = summaries[id] { return hit }
+    guard let pack = store.load(id) else {
+      let empty = PackSummary(termCount: 0, examples: [])
+      summaries[id] = empty
+      return empty
+    }
+    let examples = pack.terms.map(\.canonical).sorted().prefix(Self.exampleLimit).map { $0 }
+    let value = PackSummary(termCount: pack.terms.count, examples: examples)
+    summaries[id] = value
+    return value
   }
+
+  /// Number of correctable terms in a pack. Kept as the narrow question some
+  /// callers actually ask; it reads the same memoized summary rather than
+  /// walking the pack again.
+  func termCount(_ id: VocabularyPackID) -> Int { summary(id).termCount }
 
   // MARK: - Pack word overrides (#2495)
 
@@ -116,18 +170,41 @@ final class VocabularyPackManager {
   /// aliases, and whether it differs from shipped. Includes DISABLED words
   /// (unlike `enabledPackTerms()`) — the detail screen is where a disabled
   /// word gets found again and restored. Sorted alphabetically, case-insensitive.
+  /// Memoized. The detail screen reads this from inside `body`, and its search
+  /// box filters the result, so before this every keystroke rebuilt every
+  /// display row for the pack and re-sorted them. `mutateOverride` is the only
+  /// thing that can change the answer and it clears this.
   func packWords(_ id: VocabularyPackID) -> [VocabularyPackWordDisplay] {
+    if let hit = wordDisplayCache[id] { return hit }
+    let built = buildPackWords(id)
+    wordDisplayCache[id] = built
+    return built
+  }
+
+  private func buildPackWords(_ id: VocabularyPackID) -> [VocabularyPackWordDisplay] {
     guard let pack = store.load(id) else { return [] }
     let packOverrides = overrides.packs[id.rawValue] ?? [:]
     return pack.terms.map { term in
       let override = packOverrides[Self.overrideKey(for: term.canonical)]
       let effectiveAliases = override?.aliases ?? term.aliases
       let isEnabled = override?.isEnabled ?? true
+      // Sorted HERE, once, rather than in the row's body. `PackWordRow` had a
+      // `sortedAliases` computed property, so every visible row re-ran a
+      // localized sort of its aliases on every body evaluation, and a
+      // localized compare is not cheap (grounded review, 2026-08-29).
+      //
+      // Into its OWN field. `aliases` keeps its stored order because
+      // `setWordAliases` compares it against the shipped array to decide
+      // whether an edit has returned to the default.
+      let displayAliases = effectiveAliases.sorted {
+        $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+      }
       return VocabularyPackWordDisplay(
         id: term.id,
         canonical: term.canonical,
         shippedAliases: term.aliases,
         aliases: effectiveAliases,
+        displayAliases: displayAliases,
         isEnabled: isEnabled,
         // Computed from the EFFECTIVE state, not from "does an override
         // record exist" — an aliases override that has drifted back to
@@ -207,6 +284,14 @@ final class VocabularyPackManager {
       return
     }
     overrides = saved
+    // The display rows are derived from `overrides`, so they are stale the
+    // instant it changes. Cleared for EVERY pack rather than just `id`: the
+    // store's `update` returns the whole file as saved, which can carry a
+    // concurrent writer's change to another pack, so clearing only this one
+    // would leave that pack's rows wrong on screen. Rebuilding a pack costs
+    // well under a millisecond, so the wider clear is the cheap side of the
+    // trade as well as the correct one.
+    wordDisplayCache.removeAll(keepingCapacity: true)
     persistenceError = nil
     rebroadcast()
   }
@@ -223,7 +308,17 @@ struct VocabularyPackWordDisplay: Identifiable, Equatable {
   /// "Remove alias" in the detail screen can build the next full list
   /// without re-reading the pack file.
   let shippedAliases: [String]
+  /// The effective alias list, IN ITS STORED ORDER. This is the value the
+  /// editor reads to build the next list, and `setWordAliases` decides whether
+  /// an edit has returned to the shipped default by comparing against the
+  /// shipped array — an ORDER-SENSITIVE comparison. Sorting this field would
+  /// mean an add-then-remove round trip wrote back a reordered list that no
+  /// longer equalled the shipped one, so the word would stay marked EDITED
+  /// forever. Display order is a separate concern; see `displayAliases`.
   let aliases: [String]
+  /// The same aliases, sorted for the chip row, computed ONCE here rather than
+  /// in every row's body on every render.
+  let displayAliases: [String]
   let isEnabled: Bool
   let isEdited: Bool
 }
