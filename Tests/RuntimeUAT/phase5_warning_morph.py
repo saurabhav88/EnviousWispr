@@ -72,12 +72,101 @@ CAP_SECONDS = 45.0
 LEAD_SECONDS = 30.0          # so the warning fires 15s into the take
 HOLD_SECONDS = 26.0          # comfortably past the warning, well short of the cap
 MORPH_FROM, MORPH_TO = [400, 34], [400, 60]
+
+# **THE PAIR ABOVE BELONGS TO ONE OF THREE APPEARANCES, SO THIS ROW PINS IT.**
+# `PillDefinition.swift` is the authority and makes the widths a closed set:
+# classic 185, readingWell 400, levelRail 288. Both rows here read an EXACT frame
+# pair on purpose — see the comments at the two morph predicates, which record why
+# "same width, taller near the deadline" was refused — so the geometry cannot be
+# loosened, and the world it was measured in has to be declared instead.
+#
+# Undeclared, whichever appearance this machine happens to have selected decides
+# whether the row can work at all, and it fails toward REFUSED, which reads
+# exactly like a product failure. Measured 2026-08-30 on clean `main`: with the
+# Level Rail selected the pill was 288x92 throughout, `morph` and `clear` both
+# came back `None`, and BOTH rows refused with every mechanical check green —
+# staged command accepted, one window id, lifecycle OK, recording still live.
+#
+# Classic could never work here whatever the timing: it is documented as "a fixed
+# 185x92 interaction frame that holds ... the #1060 notice expansion without
+# resizing", so on that design the morph this row watches for does not exist.
+#
+# Both keys are pinned because the pill picks between them on whether words are
+# shown (`PillAppearanceModel`), and this row must not depend on that.
+#
+# **AND LIVE PREVIEW WITH IT, because the design alone does not decide.**
+# `PillAppearanceModel.resolve(capabilityHasWords:)` SUBSTITUTES a wordless design
+# when the words capability is absent, and `chooseCoupled` writes
+# `livePreviewEnabled = design.canHoldWords` — so in the app, picking this pill and
+# turning Live Preview on are one action.
+#
+# **AND THEY GO IN A DIFFERENT DOMAIN FROM THE TIMING OVERRIDES, WHICH IS THE
+# WHOLE REASON THIS ROW LOOKED UNFIXABLE.** `SettingsDefaults.store` sends the dev
+# build's USER PREFERENCES to the SHARED suite `com.enviouswispr.app`; only the
+# `EWDebug*` flags are read straight out of the dev domain. Pins written to
+# `com.enviouswispr.app.dev` therefore read back perfectly and reach nobody — a
+# plausible value from a domain the app never consults, which is worse than an
+# empty one because `overrides_landed` went true on it.
+#
+# Measured 2026-08-30 with the pins in the wrong domain: the shared suite held
+# `recordingPillDesignWithoutWords = levelRail` and `livePreviewEnabled = 0`, so
+# the wordless design applied and the pill was 288x92 — exactly Level Rail's
+# width. The words capability was never the obstacle.
+#
+# **THESE ARE THE USER'S REAL PREFERENCES, shared with the release build.** The
+# snapshot and restore below are not tidiness: getting them wrong changes the
+# appearance of the app this person actually dictates with.
+DESIGN = "readingWell"
+SHARED_DOMAIN = "com.enviouswispr.app"
+# `SettingsDefaultsMigration.devSentinelKey`, in the DEV domain. Set once the
+# one-time yield to the shared suite has happened.
+MIGRATION_SENTINEL = "didYieldToSharedDefaults_v1"
+DESIGN_OVERRIDES = {"recordingPillDesignWithoutWords": DESIGN,
+                    "recordingPillDesignWithWords": DESIGN}
+BOOL_OVERRIDES = {"livePreviewEnabled": "true"}
 OVERRIDES = {"EWDebugMaxRecordingSeconds": CAP_SECONDS,
              "EWDebugWarningLeadSeconds": LEAD_SECONDS}
+# Which domain each key is read from, by the code that reads it.
+DOMAIN_OF = {**{k: DEV_DOMAIN for k in OVERRIDES},
+             **{k: SHARED_DOMAIN for k in DESIGN_OVERRIDES},
+             **{k: SHARED_DOMAIN for k in BOOL_OVERRIDES}}
+# Every key this row writes, with the `defaults` type flag each one needs. A
+# string written with `-float` lands as 0 and silently selects nothing.
+PINNED = {**{k: "-float" for k in OVERRIDES},
+          **{k: "-string" for k in DESIGN_OVERRIDES},
+          **{k: "-bool" for k in BOOL_OVERRIDES}}
+WANTED = {**{k: str(v) for k, v in OVERRIDES.items()},
+          **DESIGN_OVERRIDES, **BOOL_OVERRIDES}
 
 
-def read_dev_default(k):
-    r = subprocess.run(["defaults", "read", DEV_DOMAIN, k], capture_output=True, text=True)
+def bool_word(v):
+    """A boolean in the spelling `defaults write -bool` accepts.
+
+    **`defaults write <domain> <key> -bool 1` EXITS 255 and prints its usage.**
+    It takes `true`/`false`/`YES`/`NO`, while `defaults read` hands the same key
+    back as `1`/`0` — so a value round-tripped through this script without this
+    conversion kills the run, and on the RESTORE path it would kill it after the
+    measurement, leaving the machine on the pinned appearance.
+    """
+    return "true" if str(v).strip().lower() in {"1", "true", "yes"} else "false"
+
+
+def same_default(flag, a, b):
+    """Whether two `defaults` values mean the same thing under one type flag."""
+    if flag == "-float":
+        return float(a) == float(b)
+    if flag == "-bool":
+        return bool_word(a) == bool_word(b)
+    return a == b
+
+
+def read_default(k):
+    """Read one key FROM THE DOMAIN THE CODE THAT USES IT READS.
+
+    Not a convenience. A key read from the wrong domain returns a well-formed
+    value that is simply about nothing, and the caller cannot tell.
+    """
+    r = subprocess.run(["defaults", "read", DOMAIN_OF[k], k], capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else None
 
 
@@ -222,18 +311,64 @@ def _terminal_after_start():
 def main():
     # BEFORE ANY MUTATION OR STOP (see phase5_geometry_relaunch.require_bundle).
     g.require_bundle()
-    snapshot = {k: read_dev_default(k) for k in OVERRIDES}
+    snapshot = {k: read_default(k) for k in PINNED}
     report = {"snapshot": snapshot, "screen_locked": g.screen_is_locked(),
               "cap_seconds": CAP_SECONDS,
               "lead_seconds": LEAD_SECONDS,
+              "design": DESIGN,
+              "morph_from": MORPH_FROM, "morph_to": MORPH_TO,
               "expected_warning_at_s": CAP_SECONDS - LEAD_SECONDS}
     try:
         if not g.stop_app():
-            print(json.dumps({"verdict": "ABORT_INSTANCE_SURVIVED_TERM"}))
+            report["verdict"] = "ABORT_INSTANCE_SURVIVED_TERM"
+            print(json.dumps({"verdict": report["verdict"]}))
             return
-        for k, v in OVERRIDES.items():
-            subprocess.run(["defaults", "write", DEV_DOMAIN, k, "-float", str(v)], check=True)
-        report["overrides_written"] = {k: read_dev_default(k) for k in OVERRIDES}
+        # **THE ONE-TIME MIGRATION MUST ALREADY HAVE RUN, or the pins are written
+        # into a store the next launch overwrites.** On a dev install where
+        # `didYieldToSharedDefaults_v1` is still unset,
+        # `SettingsDefaultsMigration.migrateIfNeeded` seeds the shared suite from
+        # the dev domain's legacy values at first launch — after this row has
+        # written, and therefore over it.
+        #
+        # This row cannot fix that and must not paper over it: launching once to
+        # trigger the migration would be a second unannounced side effect on a
+        # store shared with the release build. It refuses and names the one manual
+        # step instead.
+        migrated = subprocess.run(
+            ["defaults", "read", DEV_DOMAIN, MIGRATION_SENTINEL],
+            capture_output=True, text=True)
+        report["migration_done"] = migrated.returncode == 0 and migrated.stdout.strip() == "1"
+        if not report["migration_done"]:
+            report["verdict"] = "ABORT_SETTINGS_MIGRATION_NOT_RUN"
+            print(json.dumps({
+                "verdict": report["verdict"],
+                "sentinel": f"{DEV_DOMAIN} {MIGRATION_SENTINEL}",
+                "why": ("the shared-suite pins below would be overwritten by "
+                        "SettingsDefaultsMigration at the next launch. Launch the dev "
+                        "app once by hand, then re-run."),
+            }, indent=2))
+            return
+
+        for k, flag in PINNED.items():
+            subprocess.run(["defaults", "write", DOMAIN_OF[k], k, flag, WANTED[k]], check=True)
+        written = {k: read_default(k) for k in PINNED}
+        report["overrides_written"] = written
+        # **ASSERTED, not noted.** A pin that did not land leaves the row reading
+        # whatever appearance this machine had selected, and the geometry above is
+        # correct for exactly one of three — so the failure would present as
+        # REFUSED with every mechanical check green, which is how this row spent
+        # its life dead. `defaults` reads floats back with formatting of its own,
+        # so the numbers are compared as numbers and the design as a string.
+        landed = all(
+            same_default(flag, written[k], WANTED[k])
+            for k, flag in PINNED.items()
+            if written.get(k) is not None)
+        report["overrides_landed"] = landed and None not in written.values()
+        if not report["overrides_landed"]:
+            report["verdict"] = "ABORT_OVERRIDES_DID_NOT_LAND"
+            print(json.dumps({"verdict": report["verdict"],
+                              "wanted": WANTED, "read_back": written}, indent=2))
+            return
 
         # This row opens the bundle itself rather than through `start_app`, so it
         # asks for the same refusal explicitly.
@@ -254,7 +389,8 @@ def main():
             # the build was present at `require_bundle` and still produced no
             # instance, which is an incomplete or unsignable deploy — not the
             # product failing to start. Nothing was measured either way.
-            print(json.dumps({"verdict": "ABORT_LAUNCH_FAILED", "bundle": g.BUNDLE}))
+            report["verdict"] = "ABORT_LAUNCH_FAILED"
+            print(json.dumps({"verdict": report["verdict"], "bundle": g.BUNDLE}))
             return
         report["pid"] = pid
         g.await_idle()
@@ -312,6 +448,40 @@ def main():
         started = recording_started_at(since)
         life = lc.describe(before, {s["id"] for s in bounds.series}, after)
         series = [s for s in bounds.series if s["id"] == life["window_id"]] if life["window_id"] else []
+
+        # **THE PIN LANDING IN `defaults` IS NOT THE PILL BEING DRAWN.**
+        # `PillAppearanceModel.resolvedSelection()` goes through
+        # `resolve(capabilityHasWords:)`, and `LivePreviewCoordinator.wordsCapability`
+        # refuses on THREE conditions — a model being removed, an unsupported engine
+        # route, and the preview toggle. Only the last is a setting this row writes,
+        # so a substituted design is a state the pins cannot rule out.
+        #
+        # Measured 2026-08-30: with the design AND the toggle both pinned and read
+        # back correctly, the pill was still 288x92, which is the Level Rail. The
+        # geometry below then matches nothing and both rows report REFUSED with every
+        # mechanical check green — indistinguishable from the product being broken.
+        #
+        # So the WIDTH is the oracle, because it is the thing the geometry depends on
+        # and it is observable from here. Any width but the pinned design's means a
+        # different pill was drawn, and that is an ABORT: nothing was measured, and
+        # saying so is the whole difference between this row and the one that spent
+        # its life dead.
+        drawn = sorted({s["w"] for s in series})
+        report["drawn_widths"] = drawn
+        if drawn and MORPH_FROM[0] not in drawn:
+            report["verdict"] = "ABORT_DESIGN_NOT_DRAWN"
+            print(json.dumps({
+                "verdict": report["verdict"],
+                "pinned_design": DESIGN,
+                "expected_width": MORPH_FROM[0],
+                "drawn_widths": drawn,
+                "why": ("the pins read back correctly and a different pill was drawn. "
+                        "Check the DOMAIN first — user preferences live in "
+                        "com.enviouswispr.app, not the dev domain — then the words "
+                        "capability, whose three refusals LivePreviewCoordinator logs "
+                        "none of"),
+            }, indent=2))
+            return
 
         # The morph: the first size change at least 5s in, which is past the
         # hands-free expansion and before the cap. Reported with its offset so the
@@ -401,17 +571,68 @@ def main():
         report["clear_row"] = "PASS" if clear_ok else "REFUSED"
         report["verdict"] = "PASS" if (morph_ok and clear_ok) else "REFUSED"
     finally:
+        # **STOP THE APP FIRST, OR THE RESTORE ONLY REACHES THE DISK.**
+        # The instance this row launched is still running and its `SettingsManager`
+        # holds the PINNED design and toggle, loaded at launch. Every one of those
+        # properties persists on `didSet`, so the next settings change of any kind
+        # writes the pinned values straight back over the restore — and the person
+        # whose Mac this is would find their pill appearance silently changed, with
+        # `restore_clean` reporting true because the disk was correct at the moment
+        # it was read.
+        #
+        # The window is real and was open for the runs on #2431: the keys read back
+        # absent afterwards, and a live instance could have re-persisted them at any
+        # point. Killed by hand on discovery; closed here so it cannot recur.
+        report["stopped_before_restore"] = g.stop_app()
+
+        # THE SAME TYPE FLAG THE KEY WAS WRITTEN WITH. Restoring the user's own
+        # appearance through `-float` would leave them on a number, which is not a
+        # design at all — this row must give the machine back exactly what it took.
         for k, v in snapshot.items():
             if v is None:
-                subprocess.run(["defaults", "delete", DEV_DOMAIN, k], capture_output=True)
+                subprocess.run(["defaults", "delete", DOMAIN_OF[k], k], capture_output=True)
             else:
-                subprocess.run(["defaults", "write", DEV_DOMAIN, k, "-float", v], check=True)
-        report["restored"] = {k: read_dev_default(k) for k in OVERRIDES}
-        report["restore_clean"] = report["restored"] == snapshot
+                value = bool_word(v) if PINNED[k] == "-bool" else v
+                subprocess.run(["defaults", "write", DOMAIN_OF[k], k, PINNED[k], value], check=True)
+        report["restored"] = {k: read_default(k) for k in PINNED}
+        # Compared by MEANING per key, not by dict equality: `defaults` hands a
+        # bool back as `1` where it was written as `true`, so a literal comparison
+        # reports a clean restore as dirty.
+        report["restore_clean"] = all(
+            (report["restored"][k] is None and snapshot[k] is None)
+            or (report["restored"][k] is not None and snapshot[k] is not None
+                and same_default(flag, report["restored"][k], snapshot[k]))
+            for k, flag in PINNED.items())
+
+        # **A DIRTY RESTORE INVALIDATES THE VERDICT, it does not sit beside it.**
+        # `defaults delete` failures are not checked and cannot be, so the only
+        # honest oracle is the read-back above. These keys are the USER'S REAL
+        # preferences, shared with the release build, and a run that took them and
+        # did not give them back left this person's pill appearance changed.
+        #
+        # Recording PASS next to `restore_clean: false` puts a green verdict in
+        # the artifact for a run that did harm, and the artifact is what anyone
+        # reads later. The verdict carries the damage instead, with the original
+        # kept so nothing is lost.
+        if not report["restore_clean"]:
+            report["verdict_before_restore_check"] = report.get("verdict")
+            report["verdict"] = "DIRTY_RESTORE"
+            report["dirty_keys"] = sorted(
+                k for k, flag in PINNED.items()
+                if not ((report["restored"][k] is None and snapshot[k] is None)
+                        or (report["restored"][k] is not None and snapshot[k] is not None
+                            and same_default(flag, report["restored"][k], snapshot[k]))))
+
         (UAT / "warning-morph.json").write_text(json.dumps(report, indent=2, default=str))
+        # **`morph_row` AND `clear_row` ARE IN THE PRINTED SUMMARY.** Without them
+        # a REFUSED run says which RUN failed and not which ROW, and the two fail
+        # for unrelated reasons.
         print(json.dumps({k: report.get(k) for k in
-                          ("verdict", "one_window_id", "morphs", "morph_near_expected",
-                           "expected_warning_at_s", "restore_clean")}, indent=2, default=str))
+                          ("verdict", "morph_row", "clear_row", "design",
+                           "overrides_landed", "one_window_id", "morphs",
+                           "morph_near_expected", "expected_warning_at_s",
+                           "restore_clean", "dirty_keys",
+                           "verdict_before_restore_check")}, indent=2, default=str))
 
 
 if __name__ == "__main__":
