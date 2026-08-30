@@ -94,7 +94,7 @@ def make_tree(tmp: Path):
 
 
 def check(name, rows, *, expect_exit, expect_text=None, extra_files=None, top=None, remove=None,
-          non_executable=None):
+          non_executable=None, forbid_text=None):
     """Run --validate-only against a throwaway tree and assert the exit code and message."""
     global ran
     ran += 1
@@ -123,6 +123,8 @@ def check(name, rows, *, expect_exit, expect_text=None, extra_files=None, top=No
             return
         if expect_text and expect_text not in out:
             failures.append(f"{name}: message missing {expect_text!r}\n{out.strip()[:400]}")
+        if forbid_text and forbid_text in out:
+            failures.append(f"{name}: message should not carry {forbid_text!r}\n{out.strip()[:400]}")
             return
         print(f"  ok  {name}")
 
@@ -217,6 +219,58 @@ check("a non-backup file in the dedicated backup root refuses the whole run",
 check("an anchor absent from the target file is refused",
       [dict(VALID_ROW, anchor="this text is nowhere in the file")],
       expect_exit=2, expect_text="anchor not found")
+
+# #2529: an anchor is TEXT, so a reflow that changes only nesting depth retires a row
+# while the behaviour it binds is untouched. Both rows below are "anchor not found",
+# and the pair is the point — one has moved and one is gone, and the refusal has to
+# tell them apart or a baseline gets spent rediscovering it.
+check("an anchor that only moved indentation names the offset",
+      [dict(VALID_ROW, anchor="let a = 1\nlet b = 2")],
+      expect_exit=2, expect_text="matches exactly once at +4 spaces",
+      extra_files={"Sources/Thing.swift": "func f() {\n    let a = 1\n    let b = 2\n}\n"})
+
+check("an anchor that is genuinely gone gets no offset hint",
+      [dict(VALID_ROW, anchor="let deleted = 1\nlet alsoDeleted = 2")],
+      expect_exit=2, expect_text="anchor not found",
+      forbid_text="matches exactly once",
+      extra_files={"Sources/Thing.swift": "func f() {\n    let a = 1\n    let b = 2\n}\n"})
+
+# Review r1, both directions of the same defect: a RANGE chosen here rather than read
+# off the file, and a SUBSTRING test standing in for a line-start one.
+check("an anchor that moved four Swift nesting levels is still found",
+      [dict(VALID_ROW, anchor="let a = 1\nlet b = 2")],
+      expect_exit=2, expect_text="matches exactly once at +16 spaces",
+      extra_files={"Sources/Thing.swift":
+                   "func f() {\n" + " " * 16 + "let a = 1\n" + " " * 16 + "let b = 2\n}\n"})
+
+check("a shifted anchor found MID-LINE is not reported as indentation",
+      [dict(VALID_ROW, anchor="let a = 1\nlet b = 2")],
+      expect_exit=2, expect_text="anchor not found",
+      forbid_text="matches exactly once",
+      # The shifted anchor DOES occur here, but its first line begins mid-line
+      # inside `zzz(`, so it is not indentation and must not be reported as such.
+      extra_files={"Sources/Thing.swift":
+                   "func f() {\n    zzz(    let a = 1\n    let b = 2)\n}\n"})
+
+check("an anchor covering only the START of a line still names its offset",
+      [dict(VALID_ROW, anchor="        guard let value")],
+      expect_exit=2, expect_text="matches exactly once at -4 spaces",
+      extra_files={"Sources/Thing.swift":
+                   "func f() {\n    guard let value = item else { return }\n}\n"})
+
+check("an anchor opening with a newline still names its offset",
+      [dict(VALID_ROW, anchor="\nlet a = 1\nlet b = 2")],
+      expect_exit=2, expect_text="matches exactly once at +4 spaces",
+      extra_files={"Sources/Thing.swift":
+                   "func f() {\n    let a = 1\n    let b = 2\n}\n"})
+
+check("an offset whose re-cut anchor would NOT be unique is not offered",
+      [dict(VALID_ROW, anchor="let a = 1\nlet b = 2")],
+      expect_exit=2, expect_text="anchor not found",
+      forbid_text="matches exactly once",
+      extra_files={"Sources/Thing.swift":
+                   "func f() {\n    let a = 1\n    let b = 2\n"
+                   "    // zz    let a = 1\n    let b = 2\n}\n"})
 
 check("a non-unique anchor is refused",
       [dict(VALID_ROW, anchor="x")],

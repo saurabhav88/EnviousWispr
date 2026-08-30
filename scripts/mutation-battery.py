@@ -1220,11 +1220,13 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
         # nothing. The row re-checks at apply time because an earlier row may share the file.
         # Reads the resolved, contained path through the helper, so a binary resource under Sources/
         # is refused HERE — before any row runs — rather than raising mid-battery.
-        occurrences = read_recipe_target(target, f"row {i}'s target").count(row["anchor"])
+        clean = read_recipe_target(target, f"row {i}'s target")
+        occurrences = clean.count(row["anchor"])
         if occurrences == 0:
             raise Refusal(
                 f"row {i} anchor not found in {row['file']} — the mutation would never be applied, "
                 "and a row that never applied is not a row that passed."
+                + indentation_hint(clean, row["anchor"])
             )
         if occurrences > 1:
             raise Refusal(
@@ -1232,6 +1234,122 @@ def load_recipes(path: Path, worktree: Path, raw: str = None):
                 "the mutation lands somewhere you did not choose."
             )
     return rows
+
+
+def reindented(anchor, delta):
+    """`anchor` with every non-blank line's leading indentation shifted by `delta` spaces.
+
+    Returns None when a dedent would eat a non-space character, so a shift that
+    changes the TEXT can never be offered as the same anchor.
+    """
+    out = []
+    for line in anchor.split("\n"):
+        if not line.strip():
+            out.append(line)
+            continue
+        if delta >= 0:
+            out.append(" " * delta + line)
+        else:
+            if line[:-delta].strip():
+                return None
+            out.append(line[-delta:])
+    return "\n".join(out)
+
+
+def first_content_line_offset(text):
+    """Where `text`'s first line that has content begins, as an index into `text`.
+
+    Zero for the ordinary anchor. Non-zero when an anchor opens with blank lines or a
+    bare newline, which say nothing about indentation and must not be the thing tested
+    for beginning a line. Ref: #2529 review r3.
+    """
+    offset = 0
+    for line in text.split("\n"):
+        if line.strip():
+            return offset
+        offset += len(line) + 1
+    return 0
+
+
+def line_start_occurrences(src, text):
+    """How many times `text` occurs with its FIRST CONTENT LINE beginning a line.
+
+    `str.count` is a substring test, so it would accept a shifted anchor found in the
+    middle of a longer line — which is not indentation, and the sentence this feeds
+    says the word "indentation".
+
+    **The subject is the first CONTENT line, not the first character**, which is the
+    general form of a finding about anchors opening with a newline: there the match
+    begins at the separator, whose preceding character is ordinary content from the
+    line before, so an exact uniquely-reindented match was never reported. Testing the
+    content line covers that, leading blank lines, and the ordinary case at once.
+    Ref: #2529 review r1 and r3.
+    """
+    lead = first_content_line_offset(text)
+    total, start = 0, 0
+    while (found := src.find(text, start)) != -1:
+        anchored = found + lead
+        if anchored == 0 or src[anchored - 1] == "\n":
+            total += 1
+        start = found + 1
+    return total
+
+
+def indentation_hint(src, anchor):
+    """A sentence naming the offsets at which this anchor matches exactly once, or ''.
+
+    An anchor is TEXT, so a formatter reflow or an extract that changes only nesting
+    depth retires a row while the behaviour it binds is untouched. `anchor not found`
+    is true in both cases and reads like the subject is gone. This distinguishes them
+    and REPORTS ONLY: re-pointing a frozen row is a judgement, never the runner's.
+    Ref: #2529.
+
+    **The candidate offsets are READ OFF THE FILE, never chosen here.** A fixed span
+    is a parameter that can be wrong, and it fails toward SILENCE: a first draft
+    searched +-12 and could not see code that moved four Swift nesting levels,
+    reporting the anchor as gone.
+
+    **Two rounds then landed on WHICH LINES are candidates, so that question is gone
+    too.** Requiring a line to equal the anchor's first line suppressed a legitimate
+    anchor covering only the START of a line (`guard let value` against
+    `guard let value = item else {`). Rather than trade one matching rule for
+    another, the candidates are now every distinct INDENTATION WIDTH the file
+    actually uses. There is no matching heuristic left to get wrong: an offset that
+    could line up with any real line is tried, and the verification below — the whole
+    shifted anchor, occurring exactly once, BEGINNING A LINE — is what decides.
+    Ref: #2529 review r1 and r2.
+    """
+    first = next((line for line in anchor.split("\n") if line.strip()), None)
+    if first is None:
+        return ""
+    anchor_indent = len(first) - len(first.lstrip(" "))
+
+    candidates = {
+        (len(line) - len(line.lstrip(" "))) - anchor_indent
+        for line in src.split("\n")
+        if line.strip()
+    }
+    offsets = [
+        delta
+        for delta in sorted(candidates)
+        if delta != 0
+        and (shifted := reindented(anchor, delta)) is not None
+        # BOTH counts, because an offset is only useful as advice if a row re-cut at
+        # it would RUN. A shifted text unique at a line start but repeated mid-line —
+        # duplicate bytes inside a comment or a string — passes the first count and is
+        # then refused as non-unique by the check above. Naming it points the reader at
+        # a number that cannot work, which is worse than naming none. Ref: #2529 r4.
+        and line_start_occurrences(src, shifted) == 1
+        and src.count(shifted) == 1
+    ]
+    if not offsets:
+        return ""
+    named = ", ".join(f"{delta:+d}" for delta in sorted(offsets))
+    return (
+        f" The same text matches exactly once at {named} spaces of indentation, so the code "
+        "MOVED rather than changed. File a corrected row on a new issue; a frozen row is never "
+        "edited in place."
+    )
 
 
 def select_recipe_row(rows, number):
@@ -1578,7 +1696,9 @@ def main(argv=None):
             src = read_recipe_target(target, f"row {i}'s target")
             occurrences = src.count(row["anchor"])
             if occurrences == 0:
-                detail = "anchor not found — the mutation was never applied"
+                detail = "anchor not found — the mutation was never applied" + indentation_hint(
+                    src, row["anchor"]
+                )
             elif occurrences > 1:
                 detail = f"anchor occurs {occurrences} times; it must be unique"
             else:
