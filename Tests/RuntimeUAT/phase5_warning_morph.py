@@ -72,8 +72,69 @@ CAP_SECONDS = 45.0
 LEAD_SECONDS = 30.0          # so the warning fires 15s into the take
 HOLD_SECONDS = 26.0          # comfortably past the warning, well short of the cap
 MORPH_FROM, MORPH_TO = [400, 34], [400, 60]
+
+# **THE PAIR ABOVE BELONGS TO ONE OF THREE APPEARANCES, SO THIS ROW PINS IT.**
+# `PillDefinition.swift` is the authority and makes the widths a closed set:
+# classic 185, readingWell 400, levelRail 288. Both rows here read an EXACT frame
+# pair on purpose — see the comments at the two morph predicates, which record why
+# "same width, taller near the deadline" was refused — so the geometry cannot be
+# loosened, and the world it was measured in has to be declared instead.
+#
+# Undeclared, whichever appearance this machine happens to have selected decides
+# whether the row can work at all, and it fails toward REFUSED, which reads
+# exactly like a product failure. Measured 2026-08-30 on clean `main`: with the
+# Level Rail selected the pill was 288x92 throughout, `morph` and `clear` both
+# came back `None`, and BOTH rows refused with every mechanical check green —
+# staged command accepted, one window id, lifecycle OK, recording still live.
+#
+# Classic could never work here whatever the timing: it is documented as "a fixed
+# 185x92 interaction frame that holds ... the #1060 notice expansion without
+# resizing", so on that design the morph this row watches for does not exist.
+#
+# Both keys are pinned because the pill picks between them on whether words are
+# shown (`PillAppearanceModel`), and this row must not depend on that.
+#
+# **AND LIVE PREVIEW WITH IT, because the design alone does not decide.**
+# `PillAppearanceModel.resolve(capabilityHasWords:)` SUBSTITUTES a wordless design
+# when the words capability is absent, and `chooseCoupled` writes
+# `livePreviewEnabled = design.canHoldWords` — so in the app, picking this pill and
+# turning Live Preview on are one action. Setting the design without it reproduces
+# the original failure exactly: measured 2026-08-30, the pin read back correctly
+# and the pill was still 288x92.
+DESIGN = "readingWell"
+DESIGN_OVERRIDES = {"recordingPillDesignWithoutWords": DESIGN,
+                    "recordingPillDesignWithWords": DESIGN}
+BOOL_OVERRIDES = {"livePreviewEnabled": "true"}
 OVERRIDES = {"EWDebugMaxRecordingSeconds": CAP_SECONDS,
              "EWDebugWarningLeadSeconds": LEAD_SECONDS}
+# Every key this row writes, with the `defaults` type flag each one needs. A
+# string written with `-float` lands as 0 and silently selects nothing.
+PINNED = {**{k: "-float" for k in OVERRIDES},
+          **{k: "-string" for k in DESIGN_OVERRIDES},
+          **{k: "-bool" for k in BOOL_OVERRIDES}}
+WANTED = {**{k: str(v) for k, v in OVERRIDES.items()},
+          **DESIGN_OVERRIDES, **BOOL_OVERRIDES}
+
+
+def bool_word(v):
+    """A boolean in the spelling `defaults write -bool` accepts.
+
+    **`defaults write <domain> <key> -bool 1` EXITS 255 and prints its usage.**
+    It takes `true`/`false`/`YES`/`NO`, while `defaults read` hands the same key
+    back as `1`/`0` — so a value round-tripped through this script without this
+    conversion kills the run, and on the RESTORE path it would kill it after the
+    measurement, leaving the machine on the pinned appearance.
+    """
+    return "true" if str(v).strip().lower() in {"1", "true", "yes"} else "false"
+
+
+def same_default(flag, a, b):
+    """Whether two `defaults` values mean the same thing under one type flag."""
+    if flag == "-float":
+        return float(a) == float(b)
+    if flag == "-bool":
+        return bool_word(a) == bool_word(b)
+    return a == b
 
 
 def read_dev_default(k):
@@ -222,18 +283,36 @@ def _terminal_after_start():
 def main():
     # BEFORE ANY MUTATION OR STOP (see phase5_geometry_relaunch.require_bundle).
     g.require_bundle()
-    snapshot = {k: read_dev_default(k) for k in OVERRIDES}
+    snapshot = {k: read_dev_default(k) for k in PINNED}
     report = {"snapshot": snapshot, "screen_locked": g.screen_is_locked(),
               "cap_seconds": CAP_SECONDS,
               "lead_seconds": LEAD_SECONDS,
+              "design": DESIGN,
+              "morph_from": MORPH_FROM, "morph_to": MORPH_TO,
               "expected_warning_at_s": CAP_SECONDS - LEAD_SECONDS}
     try:
         if not g.stop_app():
             print(json.dumps({"verdict": "ABORT_INSTANCE_SURVIVED_TERM"}))
             return
-        for k, v in OVERRIDES.items():
-            subprocess.run(["defaults", "write", DEV_DOMAIN, k, "-float", str(v)], check=True)
-        report["overrides_written"] = {k: read_dev_default(k) for k in OVERRIDES}
+        for k, flag in PINNED.items():
+            subprocess.run(["defaults", "write", DEV_DOMAIN, k, flag, WANTED[k]], check=True)
+        written = {k: read_dev_default(k) for k in PINNED}
+        report["overrides_written"] = written
+        # **ASSERTED, not noted.** A pin that did not land leaves the row reading
+        # whatever appearance this machine had selected, and the geometry above is
+        # correct for exactly one of three — so the failure would present as
+        # REFUSED with every mechanical check green, which is how this row spent
+        # its life dead. `defaults` reads floats back with formatting of its own,
+        # so the numbers are compared as numbers and the design as a string.
+        landed = all(
+            same_default(flag, written[k], WANTED[k])
+            for k, flag in PINNED.items()
+            if written.get(k) is not None)
+        report["overrides_landed"] = landed and None not in written.values()
+        if not report["overrides_landed"]:
+            print(json.dumps({"verdict": "ABORT_OVERRIDES_DID_NOT_LAND",
+                              "wanted": WANTED, "read_back": written}, indent=2))
+            return
 
         # This row opens the bundle itself rather than through `start_app`, so it
         # asks for the same refusal explicitly.
@@ -401,17 +480,33 @@ def main():
         report["clear_row"] = "PASS" if clear_ok else "REFUSED"
         report["verdict"] = "PASS" if (morph_ok and clear_ok) else "REFUSED"
     finally:
+        # THE SAME TYPE FLAG THE KEY WAS WRITTEN WITH. Restoring the user's own
+        # appearance through `-float` would leave them on a number, which is not a
+        # design at all — this row must give the machine back exactly what it took.
         for k, v in snapshot.items():
             if v is None:
                 subprocess.run(["defaults", "delete", DEV_DOMAIN, k], capture_output=True)
             else:
-                subprocess.run(["defaults", "write", DEV_DOMAIN, k, "-float", v], check=True)
-        report["restored"] = {k: read_dev_default(k) for k in OVERRIDES}
-        report["restore_clean"] = report["restored"] == snapshot
+                value = bool_word(v) if PINNED[k] == "-bool" else v
+                subprocess.run(["defaults", "write", DEV_DOMAIN, k, PINNED[k], value], check=True)
+        report["restored"] = {k: read_dev_default(k) for k in PINNED}
+        # Compared by MEANING per key, not by dict equality: `defaults` hands a
+        # bool back as `1` where it was written as `true`, so a literal comparison
+        # reports a clean restore as dirty.
+        report["restore_clean"] = all(
+            (report["restored"][k] is None and snapshot[k] is None)
+            or (report["restored"][k] is not None and snapshot[k] is not None
+                and same_default(flag, report["restored"][k], snapshot[k]))
+            for k, flag in PINNED.items())
         (UAT / "warning-morph.json").write_text(json.dumps(report, indent=2, default=str))
+        # **`morph_row` AND `clear_row` ARE IN THE PRINTED SUMMARY.** Without them
+        # a REFUSED run says which RUN failed and not which ROW, and the two fail
+        # for unrelated reasons.
         print(json.dumps({k: report.get(k) for k in
-                          ("verdict", "one_window_id", "morphs", "morph_near_expected",
-                           "expected_warning_at_s", "restore_clean")}, indent=2, default=str))
+                          ("verdict", "morph_row", "clear_row", "design",
+                           "overrides_landed", "one_window_id", "morphs",
+                           "morph_near_expected", "expected_warning_at_s",
+                           "restore_clean")}, indent=2, default=str))
 
 
 if __name__ == "__main__":
