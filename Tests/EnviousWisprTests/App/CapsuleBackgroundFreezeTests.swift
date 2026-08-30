@@ -464,7 +464,6 @@ struct CapsuleBackgroundFreezeTests {
       """)
   }
 
-
   // MARK: - Spelling normalisers, in ONE place
   //
   // **Three review rounds on this guard have been SPELLING, not meaning.** A
@@ -473,31 +472,50 @@ struct CapsuleBackgroundFreezeTests {
   // thing, matched separately at each site, are how a guard grows a new hole every
   // round — so they are normalised HERE and nowhere else.
   //
-  // **The closure, so it is falsifiable rather than hopeful:** a next finding on
-  // this axis has to be a rendering that changes the base's LAST component or
-  // survives parenthesis unwrapping. Every such rendering is name resolution — a
-  // `typealias`, a local binding, an `import` alias — which a syntax test cannot do
-  // and which this guard has always declared out of scope. A finding INSIDE the
-  // scope means this paragraph is wrong, not that another case needs adding.
+  // **Round 4 falsified the previous closure, and the way it failed is the point.**
+  // That paragraph claimed parentheses were unwrapped; they were unwrapped on the
+  // CONDITION only, so `(PreviewPillPalette).surface` walked straight through. A
+  // normaliser applied at one of its two sites is not a normaliser — it is the
+  // per-site matching this section exists to replace, one indirection further in.
+  //
+  // **So the base is no longer RENDERED TO TEXT at all.** Rendering asks what the
+  // source looks like, which is the question with infinitely many answers;
+  // `declName` / `baseName` asks which identifier is written, which is the question
+  // the compiler answers and has exactly one. Parentheses, module qualifiers and
+  // comments are all trivia or wrappers around that token and cannot reach it.
+  //
+  // **The closure, so it is falsifiable rather than hopeful:** a next finding here
+  // has to be a spelling whose *written identifier* is not `PreviewPillPalette` and
+  // which still reads the palette. That is name resolution — a `typealias`, a local
+  // binding, an `import` alias — which no syntax test can do and which this guard
+  // has always declared out of scope. A finding INSIDE the scope means this
+  // paragraph is wrong, not that another case needs adding.
 
-  /// Whether an expression names `PreviewPillPalette`, however it is qualified.
+  /// Whether an expression names `PreviewPillPalette`, however it is written.
   ///
   /// `nonisolated` because the visitor that calls it is not on the main actor;
   /// nothing here touches actor state.
   ///
-  /// `EnviousWisprAppKit.PreviewPillPalette.surface` is the same read as
-  /// `PreviewPillPalette.surface`; only the last component decides.
+  /// `EnviousWisprAppKit.PreviewPillPalette.surface` and `(PreviewPillPalette).surface`
+  /// are the same read as `PreviewPillPalette.surface`. Only the written identifier
+  /// decides, so it is taken from the node rather than from the rendered source.
   nonisolated private static func namesThePalette(_ base: ExprSyntax?) -> Bool {
     guard let base else { return false }
-    return CodeOnly().rewrite(base).trimmedDescription
-      .split(separator: ".").last.map(String.init) == "PreviewPillPalette"
+    let bare = unparenthesised(base)
+    let written =
+      bare.as(MemberAccessExprSyntax.self)?.declName.baseName.text
+      ?? bare.as(DeclReferenceExprSyntax.self)?.baseName.text
+    return written == "PreviewPillPalette"
   }
 
   /// An expression with its redundant parentheses removed.
   ///
   /// `(isPreview) ? …` gates exactly as `isPreview ? …` does, and rejecting it
   /// would accuse correct code — the direction that trains bypasses.
-  private static func unparenthesised(_ expr: ExprSyntax) -> ExprSyntax {
+  ///
+  /// Used by BOTH sites, which is what round 4 established: applied to only one of
+  /// them it is per-site matching wearing a normaliser's name.
+  nonisolated private static func unparenthesised(_ expr: ExprSyntax) -> ExprSyntax {
     var current = expr
     while let tuple = current.as(TupleExprSyntax.self),
       tuple.elements.count == 1,
@@ -587,7 +605,9 @@ struct CapsuleBackgroundFreezeTests {
   ) -> [String] {
     paletteReads(in: decl)
       .filter { !isInsideThePreviewBranch($0) }
-      .map { "line \(converter.location(for: $0.positionAfterSkippingLeadingTrivia).line): \($0.trimmedDescription)" }
+      .map {
+        "line \(converter.location(for: $0.positionAfterSkippingLeadingTrivia).line): \($0.trimmedDescription)"
+      }
   }
 
   /// A two-way control: the guard above is worthless if the palette is never
