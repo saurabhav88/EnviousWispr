@@ -503,20 +503,36 @@ struct CapsuleBackgroundFreezeTests {
       // is a sibling after it. So the else branch — the shipped default that paints
       // seven pills — is correctly refused rather than accepted for sharing a
       // ternary with the preview.
+      //
       // The parent of the unresolved ternary is an `ExprListSyntax`, not the
       // sequence itself — measured, after a version that went one level short
       // reported the shipped, correctly-gated read as ungated.
+      //
+      // **The condition must BE `isPreview`, not merely contain it.** A version
+      // that asked whether the condition text contained the word accepted
+      // `!isPreview ? PreviewPillPalette.surface : …`, where the then branch is the
+      // NON-preview one — cloud review, and it is this guard's own defect class
+      // arriving one level in: reachability replaced the proximity match, and the
+      // condition itself was still being read as text. A bare
+      // `DeclReferenceExprSyntax` cannot be negated or compounded, so there is
+      // nothing left to spell around.
       if here.is(UnresolvedTernaryExprSyntax.self),
         let sequence = here.parent?.parent?.as(SequenceExprSyntax.self),
-        let condition = sequence.elements.first,
-        CodeOnly().rewrite(condition).trimmedDescription.contains("isPreview")
+        sequence.elements.first?.as(DeclReferenceExprSyntax.self)?.baseName.text
+          == "isPreview"
       {
         return true
       }
-      if let switchCase = here.as(SwitchCaseSyntax.self) {
-        let label = CodeOnly().rewrite(switchCase).trimmedDescription
-          .split(separator: "\n", maxSplits: 1).first.map(String.init) ?? ""
-        if label.contains("rounded") { return true }
+      // **EXACTLY ONE case item, and it is `.rounded`.** Asking whether the label
+      // contained "rounded" accepted a consolidated `case .capsule, .rounded:`,
+      // which is reachable for every non-preview capsule — same finding, same
+      // round, same class. Counting the items is what makes it exclusive.
+      if let switchCase = here.as(SwitchCaseSyntax.self),
+        case .case(let label) = switchCase.label,
+        label.caseItems.count == 1,
+        label.caseItems.first?.pattern.trimmedDescription == ".rounded"
+      {
+        return true
       }
       current = here.parent
     }
