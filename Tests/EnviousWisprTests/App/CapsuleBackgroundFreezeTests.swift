@@ -428,19 +428,33 @@ struct CapsuleBackgroundFreezeTests {
       "the parsed bounds of OverlayCapsuleBackground are \(open)...\(close), which cannot index its own source"
     )
 
-    var reads = 0
-    for i in open..<close where lines[i].contains("PreviewPillPalette.") {
-      reads += 1
-      let context = lines[max(open, i - 3)...min(close, i + 1)].joined(separator: "\n")
-      #expect(
-        context.contains("isPreview") || context.contains("case .rounded"),
-        """
-        line \(i + 1) of OverlayCapsuleBackground reads the preview palette outside \
-        its preview branch: \(lines[i].trimmingCharacters(in: .whitespaces)). That \
-        struct paints seven pills that are not the preview.
-        """)
-    }
+    // **REACHABILITY, not text proximity** (#2536).
+    //
+    // This used to join the four lines around each read and accept the presence of
+    // `isPreview` or `case .rounded` anywhere in them. Those are raw source lines,
+    // so a COMMENT mentioning either phrase satisfied it: the real gate could be
+    // deleted and the words left nearby, and the check passed.
+    //
+    // #2380 named that as its own weakness and held it out of the region fix
+    // deliberately, because a wider or cleverer string match is the same defect one
+    // character along — the shape this file has now paid for four times.
+    //
+    // So the question is asked of the SYNTAX TREE instead: is this read inside the
+    // preview branch? A read is gated when one of its ANCESTORS is either the
+    // ternary whose condition names `isPreview`, or the `case .rounded` of a switch.
+    // A comment is trivia and cannot be an ancestor, so the class disappears rather
+    // than narrowing. Both conditions are read through `CodeOnly`, so a comment
+    // inside the condition itself cannot satisfy them either.
+    let ungated = Self.ungatedPaletteReads(in: decl, converter: converter)
+    #expect(
+      ungated.isEmpty,
+      """
+      OverlayCapsuleBackground reads the preview palette outside its preview branch \
+      at \(ungated.joined(separator: "; ")). That struct paints seven pills that are \
+      not the preview.
+      """)
 
+    let reads = Self.paletteReads(in: decl).count
     #expect(
       reads >= 2,
       """
@@ -448,6 +462,74 @@ struct CapsuleBackgroundFreezeTests {
       passes vacuously with nothing to gate, so this pins that the preview branch \
       really is wired to the palette.
       """)
+  }
+
+
+  /// Every `PreviewPillPalette.…` read inside a declaration, as syntax rather
+  /// than as matching text.
+  private final class PaletteReadFinder: SyntaxVisitor {
+    private(set) var reads: [MemberAccessExprSyntax] = []
+    override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
+      if node.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "PreviewPillPalette" {
+        reads.append(node)
+      }
+      return .visitChildren
+    }
+  }
+
+  private static func paletteReads(in decl: StructDeclSyntax) -> [MemberAccessExprSyntax] {
+    let finder = PaletteReadFinder(viewMode: .sourceAccurate)
+    finder.walk(decl)
+    return finder.reads
+  }
+
+  /// Whether a node sits inside the preview branch.
+  ///
+  /// **An ANCESTOR, which a comment can never be.** The two shipped gates are the
+  /// ternary on `isPreview` and the `case .rounded` of the corner-style switch, so
+  /// a read is gated exactly when one of those encloses it. Both are read through
+  /// `CodeOnly`, so a comment inside a condition cannot satisfy the check either.
+  private static func isInsideThePreviewBranch(_ node: some SyntaxProtocol) -> Bool {
+    var current = Syntax(node).parent
+    while let here = current {
+      // **`SwiftParser` does not FOLD operators, so there is no `TernaryExprSyntax`
+      // in this tree.** `a ? b : c` arrives as a `SequenceExprSyntax` whose elements
+      // are the condition, an `UnresolvedTernaryExprSyntax` holding the THEN branch,
+      // and the else branch. Looking for a folded ternary found nothing and reported
+      // the shipped, correctly-gated read as ungated — caught on the first run.
+      //
+      // Matching the UNRESOLVED node is also more precise than matching a folded
+      // one: a read in the THEN branch is INSIDE it, while a read in the else branch
+      // is a sibling after it. So the else branch — the shipped default that paints
+      // seven pills — is correctly refused rather than accepted for sharing a
+      // ternary with the preview.
+      // The parent of the unresolved ternary is an `ExprListSyntax`, not the
+      // sequence itself — measured, after a version that went one level short
+      // reported the shipped, correctly-gated read as ungated.
+      if here.is(UnresolvedTernaryExprSyntax.self),
+        let sequence = here.parent?.parent?.as(SequenceExprSyntax.self),
+        let condition = sequence.elements.first,
+        CodeOnly().rewrite(condition).trimmedDescription.contains("isPreview")
+      {
+        return true
+      }
+      if let switchCase = here.as(SwitchCaseSyntax.self) {
+        let label = CodeOnly().rewrite(switchCase).trimmedDescription
+          .split(separator: "\n", maxSplits: 1).first.map(String.init) ?? ""
+        if label.contains("rounded") { return true }
+      }
+      current = here.parent
+    }
+    return false
+  }
+
+  /// The palette reads that are NOT inside the preview branch, named by line.
+  private static func ungatedPaletteReads(
+    in decl: StructDeclSyntax, converter: SourceLocationConverter
+  ) -> [String] {
+    paletteReads(in: decl)
+      .filter { !isInsideThePreviewBranch($0) }
+      .map { "line \(converter.location(for: $0.positionAfterSkippingLeadingTrivia).line): \($0.trimmedDescription)" }
   }
 
   /// A two-way control: the guard above is worthless if the palette is never
