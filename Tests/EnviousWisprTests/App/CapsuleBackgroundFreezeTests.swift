@@ -1,4 +1,6 @@
 import AppKit
+import SwiftParser
+import SwiftSyntax
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -116,6 +118,92 @@ struct CapsuleBackgroundFreezeTests {
     ("capsule notice text", 1, "Color.white.opacity(0.95)"),
   ]
 
+  /// **Which DECLARATION owns each literal, which the count above cannot say.**
+  ///
+  /// #2380. `capsuleLiteralsAreFrozen` counts across an aggregate of two files and
+  /// asserts a total, so a literal that LEAVES its intended declaration while
+  /// another occurrence appears anywhere else in those files leaves the count
+  /// unchanged and the suite green. That is this suite's own recorded defect one
+  /// level up: counting fixed the two-copies case and not the which-declaration
+  /// case.
+  ///
+  /// Read off the SYNTAX TREE rather than the balanced brace walk #2380 proposed.
+  /// A walk is a second implementation of something the parser already knows, and
+  /// this suite has been bitten twice by text-shaped boundaries — a
+  /// `hasPrefix("private struct DistressCapsuleBackground")` sentinel that stopped
+  /// existing when #2374 widened the type to `internal`, and the whole-file
+  /// `contains` before it.
+  ///
+  /// The notice literal's owner is `PillInk`, not `RecordingOverlayView` as #2380
+  /// describes it. Tighter, and checked rather than transcribed.
+  nonisolated static let literalOwners:
+    [(what: String, declaration: String, expected: Int, path: String, literal: String)] = [
+      (
+        "capsule fill", "OverlayCapsuleBackground", 1, capsuleSourcePaths[0],
+        "Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82)"
+      ),
+      (
+        "capsule fill", "DistressCapsuleBackground", 1, capsuleSourcePaths[0],
+        "Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82)"
+      ),
+      (
+        "capsule border", "OverlayCapsuleBackground", 1, capsuleSourcePaths[0],
+        "Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)"
+      ),
+      (
+        "capsule notice text", "PillInk", 1, capsuleSourcePaths[1],
+        "Color.white.opacity(0.95)"
+      ),
+    ]
+
+  /// One named `struct` or `enum` declaration's own source, or nil.
+  ///
+  /// Both kinds, because the owners are not all structs — the notice colour lives
+  /// on `enum PillInk`. A struct-only finder would have returned nil for it and,
+  /// with a `#require` above, failed for the wrong reason.
+  private final class DeclFinder: SyntaxVisitor {
+    let wanted: String
+    private(set) var found: String?
+    init(_ wanted: String) {
+      self.wanted = wanted
+      super.init(viewMode: .sourceAccurate)
+    }
+    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
+      if node.name.text == wanted { found = node.trimmedDescription }
+      return .visitChildren
+    }
+    override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
+      if node.name.text == wanted { found = node.trimmedDescription }
+      return .visitChildren
+    }
+  }
+
+  @Test(
+    "each frozen literal is owned by the declaration that is supposed to hold it",
+    arguments: CapsuleBackgroundFreezeTests.literalOwners)
+  func frozenLiteralsStayInTheirOwnDeclaration(
+    entry: (what: String, declaration: String, expected: Int, path: String, literal: String)
+  ) throws {
+    let finder = DeclFinder(entry.declaration)
+    finder.walk(Parser.parse(source: try Self.read(entry.path)))
+    let body = try #require(
+      finder.found,
+      """
+      \(entry.declaration) is not a struct or enum in \(entry.path) — this row is \
+      pointed at nothing, which is not the same as the literal having moved.
+      """)
+
+    let found = body.components(separatedBy: entry.literal).count - 1
+    #expect(
+      found == entry.expected,
+      """
+      the \(entry.what) literal appears \(found) times inside \(entry.declaration), \
+      expected \(entry.expected). The aggregate count can stay right while this is \
+      wrong: a literal that moved OUT of this declaration and reappeared anywhere \
+      else in the same two files leaves the total unchanged.
+      """)
+  }
+
   /// **Counts occurrences rather than asking whether the literal exists anywhere,
   /// and the mutation control is what found that.** The first version used
   /// `source.contains(...)`. Deleting the capsule fill entirely — the exact leak
@@ -123,6 +211,10 @@ struct CapsuleBackgroundFreezeTests {
   /// `DistressCapsuleBackground` carries the same literal and the whole-file
   /// search found it there. A guard that reads the whole file cannot tell which
   /// copy it found.
+  ///
+  /// Kept ALONGSIDE `frozenLiteralsStayInTheirOwnDeclaration` rather than replaced
+  /// by it (#2380): the aggregate is a cheap floor that notices a literal vanishing
+  /// from the two files entirely, and the ownership row is the sharp edge.
   @Test(
     "the capsule's own colours are unchanged",
     arguments: CapsuleBackgroundFreezeTests.frozenCapsuleLiterals)
