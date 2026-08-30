@@ -235,6 +235,23 @@ check("an anchor that is genuinely gone gets no offset hint",
       forbid_text="matches exactly once",
       extra_files={"Sources/Thing.swift": "func f() {\n    let a = 1\n    let b = 2\n}\n"})
 
+# Review r1, both directions of the same defect: a RANGE chosen here rather than read
+# off the file, and a SUBSTRING test standing in for a line-start one.
+check("an anchor that moved four Swift nesting levels is still found",
+      [dict(VALID_ROW, anchor="let a = 1\nlet b = 2")],
+      expect_exit=2, expect_text="matches exactly once at +16 spaces",
+      extra_files={"Sources/Thing.swift":
+                   "func f() {\n" + " " * 16 + "let a = 1\n" + " " * 16 + "let b = 2\n}\n"})
+
+check("a shifted anchor found MID-LINE is not reported as indentation",
+      [dict(VALID_ROW, anchor="let a = 1\nlet b = 2")],
+      expect_exit=2, expect_text="anchor not found",
+      forbid_text="matches exactly once",
+      # The shifted anchor DOES occur here, but its first line begins mid-line
+      # inside `zzz(`, so it is not indentation and must not be reported as such.
+      extra_files={"Sources/Thing.swift":
+                   "func f() {\n    zzz(    let a = 1\n    let b = 2)\n}\n"})
+
 check("a non-unique anchor is refused",
       [dict(VALID_ROW, anchor="x")],
       expect_exit=2, expect_text="must be unique",

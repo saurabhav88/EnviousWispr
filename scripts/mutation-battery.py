@@ -1256,6 +1256,21 @@ def reindented(anchor, delta):
     return "\n".join(out)
 
 
+def line_start_occurrences(src, text):
+    """How many times `text` occurs BEGINNING A LINE.
+
+    `str.count` is a substring test, so it would accept a shifted anchor found in the
+    middle of a longer line — which is not indentation, and the sentence this feeds
+    says the word "indentation". Ref: #2529 review r1.
+    """
+    total, start = 0, 0
+    while (found := src.find(text, start)) != -1:
+        if found == 0 or src[found - 1] == "\n":
+            total += 1
+        start = found + 1
+    return total
+
+
 def indentation_hint(src, anchor):
     """A sentence naming the offsets at which this anchor matches exactly once, or ''.
 
@@ -1264,11 +1279,31 @@ def indentation_hint(src, anchor):
     is true in both cases and reads like the subject is gone. This distinguishes them
     and REPORTS ONLY: re-pointing a frozen row is a judgement, never the runner's.
     Ref: #2529.
+
+    **The candidate offsets are READ OFF THE FILE, never a range chosen here.** A
+    fixed span is a parameter that can be wrong, and it fails toward SILENCE: a first
+    draft searched +-12 and could not see code that moved four Swift nesting levels,
+    reporting the anchor as gone. Every line whose stripped text equals the anchor's
+    first stripped line names its own offset, so nesting depth is unbounded and there
+    is nothing left to tune. Ref: #2529 review r1.
     """
+    first = next((line for line in anchor.split("\n") if line.strip()), None)
+    if first is None:
+        return ""
+    anchor_indent = len(first) - len(first.lstrip(" "))
+    body = first.strip()
+
+    candidates = {
+        (len(line) - len(line.lstrip(" "))) - anchor_indent
+        for line in src.split("\n")
+        if line.strip() == body
+    }
     offsets = [
         delta
-        for delta in list(range(1, 13)) + list(range(-1, -13, -1))
-        if (shifted := reindented(anchor, delta)) is not None and src.count(shifted) == 1
+        for delta in sorted(candidates)
+        if delta != 0
+        and (shifted := reindented(anchor, delta)) is not None
+        and line_start_occurrences(src, shifted) == 1
     ]
     if not offsets:
         return ""
