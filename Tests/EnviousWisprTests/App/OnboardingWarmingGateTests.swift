@@ -13,7 +13,7 @@ import Testing
   /// under contention the guess can expire before the subject has run, so a
   /// negative assertion passes having exercised nothing.
   @MainActor
-  fileprivate final class EntrySignal {
+  private final class EntrySignal {
     private var waiters: [(UUID, CheckedContinuation<Bool, Never>)] = []
     private var fired = false
 
@@ -633,7 +633,6 @@ import Testing
       }
     }
 
-
     /// #2196 chunk 2 — the box.
     ///
     /// When these fail a new person reaches the end of setup without ever
@@ -762,7 +761,8 @@ import Testing
         vm.practiceTakeStarted()
         vm.practiceTakeEnded()
 
-        #expect(vm.practiceState == .saidNothing, "a silent take inherited the previous take's words")
+        #expect(
+          vm.practiceState == .saidNothing, "a silent take inherited the previous take's words")
       }
 
       /// FOUNDER-FOUND IN LIVE UAT, 2026-08-24, and the most valuable finding
@@ -785,6 +785,53 @@ import Testing
         #expect(
           vm.practiceState != .saidNothing,
           "the screen told someone it heard nothing when it heard them fine")
+      }
+
+      /// **The twin of the case above, with the focus flag the other way — and
+      /// the flag is the ONLY thing keeping the wrong advice off this screen.**
+      ///
+      /// Words existed and the box did not grow, exactly as above. The
+      /// difference is that the box WAS focused, so "you missed the box" is
+      /// advice that cannot be right: they were typing into it. The code falls
+      /// through to `saidNothing` for precisely that reason.
+      ///
+      /// **Nothing bound it.** #2371 row 16 replaces
+      /// `boxWasFocusedAtTakeStart = boxFocused` with `= false`, which turns
+      /// this case into `missedTheBox`, and the whole suite stayed green. The
+      /// row named three silence cases, and no silence case can ever see it:
+      /// silence means `producedWords` is false, which short-circuits the flag
+      /// before it is read. Only a take that PRODUCED words can observe it, and
+      /// this is the only such take with the box focused.
+      @Test("a focused box that words missed is not called a missed box")
+      func focusedBoxIsNeverBlamedForMissing() {
+        let vm = makePracticeViewModel()
+        vm.practiceTakeStarted(boxFocused: true, transcriptCount: 3)
+
+        // The same shape as `missedBoxIsNotSilence`: a transcript appeared, so
+        // words genuinely existed, and none of them reached this box.
+        vm.practiceTakeEnded(transcriptCount: 4)
+
+        #expect(
+          vm.practiceState != .missedTheBox,
+          """
+          the screen told someone they missed a box they were focused on, which sends \
+          them to click somewhere they already were.
+          """)
+
+        // **THE `saidNothing` THIS CURRENTLY FALLS THROUGH TO IS NOT ASSERTED,
+        // DELIBERATELY.** Its screen says "We just did not hear anything"
+        // (`PracticeScreen.swift:138-142`), and this setup has just proved the
+        // opposite by growing the transcript. Pinning it would cement a second
+        // piece of wrong advice as the expected answer, and a later change that
+        // gave this state an honest message would fail a test for improving it.
+        //
+        // The property this row exists for is the one above: a focused box is
+        // never blamed for missing. That alone kills #2371 row 16, which turns
+        // this case into `missedTheBox`.
+        //
+        // What the screen SHOULD say for a focused take whose words went
+        // elsewhere is a product question, open as #2527. Cloud review raised it
+        // on this PR.
       }
 
       /// Cloud review, and it is the founder's own defect pointed the other way,
@@ -890,7 +937,8 @@ import Testing
         let vm = makePracticeViewModel()
         vm.applyPracticePosture(micGranted: true, accessibilityGranted: false)
         #expect(
-          vm.practiceState == .cannotHear(reason: "accessibility_denied", permission: "accessibility"))
+          vm.practiceState
+            == .cannotHear(reason: "accessibility_denied", permission: "accessibility"))
       }
 
       @Test("granting the permission afterwards clears the blocked state")
