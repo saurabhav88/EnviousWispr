@@ -264,6 +264,14 @@ check("an anchor opening with a newline still names its offset",
       extra_files={"Sources/Thing.swift":
                    "func f() {\n    let a = 1\n    let b = 2\n}\n"})
 
+check("an offset whose re-cut anchor would NOT be unique is not offered",
+      [dict(VALID_ROW, anchor="let a = 1\nlet b = 2")],
+      expect_exit=2, expect_text="anchor not found",
+      forbid_text="matches exactly once",
+      extra_files={"Sources/Thing.swift":
+                   "func f() {\n    let a = 1\n    let b = 2\n"
+                   "    // zz    let a = 1\n    let b = 2\n}\n"})
+
 check("a non-unique anchor is refused",
       [dict(VALID_ROW, anchor="x")],
       expect_exit=2, expect_text="must be unique",

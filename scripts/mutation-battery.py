@@ -1334,7 +1334,13 @@ def indentation_hint(src, anchor):
         for delta in sorted(candidates)
         if delta != 0
         and (shifted := reindented(anchor, delta)) is not None
+        # BOTH counts, because an offset is only useful as advice if a row re-cut at
+        # it would RUN. A shifted text unique at a line start but repeated mid-line —
+        # duplicate bytes inside a comment or a string — passes the first count and is
+        # then refused as non-unique by the check above. Naming it points the reader at
+        # a number that cannot work, which is worse than naming none. Ref: #2529 r4.
         and line_start_occurrences(src, shifted) == 1
+        and src.count(shifted) == 1
     ]
     if not offsets:
         return ""
