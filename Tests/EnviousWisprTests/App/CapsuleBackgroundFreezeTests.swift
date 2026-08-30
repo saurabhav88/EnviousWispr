@@ -502,10 +502,25 @@ struct CapsuleBackgroundFreezeTests {
   nonisolated private static func namesThePalette(_ base: ExprSyntax?) -> Bool {
     guard let base else { return false }
     let bare = unparenthesised(base)
-    let written =
-      bare.as(MemberAccessExprSyntax.self)?.declName.baseName.text
-      ?? bare.as(DeclReferenceExprSyntax.self)?.baseName.text
-    return written == "PreviewPillPalette"
+    let token =
+      bare.as(MemberAccessExprSyntax.self)?.declName.baseName
+      ?? bare.as(DeclReferenceExprSyntax.self)?.baseName
+    return token.map(identifierName) == "PreviewPillPalette"
+  }
+
+  /// A token's canonical identifier, with any escaping removed.
+  ///
+  /// **`baseName.text` INCLUDES the backticks**, so `` `PreviewPillPalette`.surface ``
+  /// — a valid spelling the compiler resolves to the same declaration — did not
+  /// match. `identifier?.name` is SwiftSyntax's own canonical, escaping-stripped
+  /// identifier, which is the general answer rather than a backtick special case.
+  ///
+  /// Two sibling gates already reached for it, `TestInventoryFreezeTests` and
+  /// `EngineMutationInventoryFreezeTests`, and this file matches them rather than
+  /// hand-rolling a third answer to one question. It is nil for a non-identifier
+  /// token, so the raw text stays as the fallback rather than as the mechanism.
+  nonisolated private static func identifierName(_ token: TokenSyntax) -> String {
+    token.identifier?.name ?? token.text
   }
 
   /// An expression with its redundant parentheses removed.
@@ -586,8 +601,8 @@ struct CapsuleBackgroundFreezeTests {
       if here.is(UnresolvedTernaryExprSyntax.self),
         let sequence = here.parent?.parent?.as(SequenceExprSyntax.self),
         sequence.elements.count == 3,
-        sequence.elements.first.map(unparenthesised)?
-          .as(DeclReferenceExprSyntax.self)?.baseName.text == "isPreview"
+        (sequence.elements.first.map(unparenthesised)?
+          .as(DeclReferenceExprSyntax.self)?.baseName).map(identifierName) == "isPreview"
       {
         return true
       }
@@ -600,13 +615,21 @@ struct CapsuleBackgroundFreezeTests {
       // question about MEANING rather than spelling, which no amount of matching
       // the pattern text can answer. The subject of the switch is what decides
       // whether this case means "the preview", so it is read here.
+      //
+      // The case's own name goes through `identifierName` for the same reason the
+      // other two do. Reading `pattern.trimmedDescription` was the THIRD site
+      // asking "which identifier is written" and answering it in raw text, so it
+      // is normalised here rather than left for a later round to find.
       if let switchCase = here.as(SwitchCaseSyntax.self),
         case .case(let label) = switchCase.label,
         label.caseItems.count == 1,
-        label.caseItems.first?.pattern.trimmedDescription == ".rounded",
+        let pattern = label.caseItems.first?.pattern.as(ExpressionPatternSyntax.self),
+        let member = pattern.expression.as(MemberAccessExprSyntax.self),
+        member.base == nil,
+        identifierName(member.declName.baseName) == "rounded",
         let switchExpr = switchCase.parent?.parent?.as(SwitchExprSyntax.self),
-        unparenthesised(switchExpr.subject)
-          .as(DeclReferenceExprSyntax.self)?.baseName.text == "cornerStyle"
+        (unparenthesised(switchExpr.subject)
+          .as(DeclReferenceExprSyntax.self)?.baseName).map(identifierName) == "cornerStyle"
       {
         return true
       }
