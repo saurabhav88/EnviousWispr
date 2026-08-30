@@ -733,6 +733,43 @@ struct RecordingPillPreviewWiringTests {
       """)
   }
 
+  /// **Nothing observed which chrome a tile draws.** #2438's row for it named
+  /// `tileHeightTracksTheLeaf`, which was deliberately retired when the founder
+  /// replaced the layout with three identical cards on 2026-08-26. Its successor
+  /// `thePreviewIsTheRealPillScaled` measures HEIGHT, and chrome is paint: with
+  /// `chrome: RecordingPillDesign.classic.chrome` substituted, all sixteen rows
+  /// in `RecordingPillTileTests` still passed. The row was right and only its
+  /// witness was gone.
+  ///
+  /// The user consequence is the whole point of the picker. Chrome carries the
+  /// header, the notice cap and the ink, so a fixed one makes every card draw the
+  /// same pill and there is nothing to choose between.
+  ///
+  /// The property is that the chrome comes from THIS tile's own `design`, not
+  /// that it is spelled a particular way — a concrete design constant is exactly
+  /// what fails here, however it is written.
+  @Test("each tile draws its own design's chrome, not one design's for all three")
+  func theTileDrawsItsOwnChrome() throws {
+    let call = try Self.theConstruction()
+    let expr = try #require(
+      Self.argument("chrome", of: call),
+      "the tile passes no chrome, so it cannot be a picture of any particular design")
+    let member = try #require(
+      expr.as(MemberAccessExprSyntax.self),
+      "chrome is \(expr.trimmedDescription), which this guard cannot judge")
+
+    #expect(
+      member.declName.baseName.text == "chrome",
+      "chrome is \(expr.trimmedDescription), which does not read a design's chrome at all")
+    #expect(
+      member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "design",
+      """
+      chrome is \(expr.trimmedDescription), which is a fixed design's chrome rather than \
+      this tile's own. Every card would then draw the same pill and the picker would \
+      offer three pictures of one design.
+      """)
+  }
+
   /// **THE CLOSURE ROW. Every piece of `@State` the poll writes must be seedable,
   /// and this ENUMERATES them from the poll body rather than from a list I wrote.**
   ///
