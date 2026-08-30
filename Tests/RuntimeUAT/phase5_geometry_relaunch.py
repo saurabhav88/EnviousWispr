@@ -56,7 +56,32 @@ SHOTS = UAT / "geometry-relaunch"
 SHOTS.mkdir(parents=True, exist_ok=True)
 LOG = pathlib.Path.home() / "Library/Logs/EnviousWispr/app.log"
 DOMAIN = "com.enviouswispr.app"
-BUNDLE = "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-2377-phase5/build/EnviousWispr Local.app"
+# **THE BUNDLE IS DERIVED FROM THIS CHECKOUT, NOT PINNED TO A WORKTREE.** It used
+# to name `EnviousWispr-2377-phase5`, the worktree #2377 was written in, which
+# `post-sync-cleanup.sh` removed on the fetch after that PR merged. Every row
+# that opens `BUNDLE` — this file, `phase5_warning_morph`, `phase5_recovery_rail`
+# and `phase5_language_hover` — has been unrunnable since, and the failure is
+# late and misleading: `stop_app()` kills the running instance FIRST, the `open`
+# then fails against a path that is not there, and the harness reports
+# `ABORT_NO_INSTANCE`, which reads as "the app would not start".
+#
+# A hardcoded absolute path is not a pinned oracle (tools-and-apps.md
+# RULE: cwd-is-sticky-never-cd-for-a-one-off): it pins whatever branch some other
+# tree happens to be on, and this repo's rules put feature work in worktrees that
+# are deleted on merge. Deriving it from `__file__` drives the build belonging to
+# the checkout the harness itself came from, which is the tree whose change is
+# under test.
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+BUNDLE = str(_REPO_ROOT / "build" / "EnviousWispr Local.app")
+
+# FAIL LOUDLY AND EARLY, before anything is killed. A missing build and an app
+# that will not launch are the same `ABORT_NO_INSTANCE` to every caller, and only
+# one of them is a product finding.
+if not pathlib.Path(BUNDLE).exists():
+    raise SystemExit(
+        f"phase5 harness: no dev build at {BUNDLE}\n"
+        "Run scripts/build-dev-app.sh in THIS checkout first. Refusing rather than "
+        "terminating the running instance for a run that cannot start.")
 KEYS = ["livePreviewEnabled", "recordingPillDesignWithoutWords"]
 
 # **WRITE A BOOL AS A BOOL.** `livePreviewEnabled` is read as
