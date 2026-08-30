@@ -174,8 +174,16 @@ def test_unknown_schema_or_malformed_line_blocks():
     expect_verdict("a line with a missing field blocks",
                    text() + f"{m.SCHEMA}\trun={RUN}\tpid={PID}\n",
                    m.BLOCKED_MALFORMED_MARKER)
+    # **Substituted, never truncated.** This row used to build its input by
+    # cutting the text at the last `\twindow=` and appending `\twindow=0`, which
+    # also DROPPED the `\tintent=` field that follows it. The line was then
+    # malformed by field count, so the missing-field check answered and the
+    # window rule was never reached: with `if window_id <= 0:` disabled, this row
+    # stayed GREEN. Measured on #2434 — a row named for the window value that was
+    # testing the field count instead. The neighbouring rows already substitute;
+    # this one is now the same shape as they are.
     expect_verdict("a host marker naming window 0 blocks",
-                   text()[: text().rindex("\twindow=")] + "\twindow=0\n",
+                   text().replace(f"window={HOST_WINDOW}", "window=0"),
                    m.BLOCKED_MALFORMED_MARKER)
     expect_verdict("a non-numeric window id blocks",
                    text().replace(f"window={HOST_WINDOW}", "window=main"),
@@ -803,6 +811,22 @@ def test_p95_uses_nearest_rank():
     # Order of the input must not matter.
     expect("p95 is order-independent",
            m.nearest_rank(list(reversed(values)), 95), 19.0)
+    # **The row that binds the INTEGER arithmetic, and it has to be taken at a
+    # percentile this harness does not use.** `nearest_rank`'s doc warns that
+    # `math.ceil(p / 100 * n)` lands one rank high where the true product is a
+    # whole number, and the rows above cannot see that: measured on #2434 by
+    # brute force over every n to 20000, the float form NEVER differs from the
+    # exact one at p95 or p50, so swapping the implementation left all five rows
+    # above green. The hazard is real at twelve other percentiles — 7, 14, 17,
+    # 27, 28, 34, 54, 55, 56, 67, 68 and 81 — and p14 over 50 values is the
+    # cheapest of them: exact rank 7, float rank 8.
+    #
+    # So this row is not about a percentile anyone reports. It is the only thing
+    # standing between the integer expression and a "simplification" to
+    # `math.ceil`, which would be silently correct for every number this harness
+    # prints and wrong for the next one it is asked to print.
+    expect("p14 of 1..50 is the 7th value, not the 8th",
+           m.nearest_rank([float(i) for i in range(1, 51)], 14), 7.0)
 
 
 # ------------------------------------------- 12. the OTHER implementation
