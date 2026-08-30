@@ -54,56 +54,56 @@ import Testing
 
       #expect(
         line(.attemptStarted(resumed: true))
-          == "[delivery #1] Model delivery attempt started \(key): resumed=true")
+          == "[#1] Model delivery attempt started \(key): resumed=true")
 
       #expect(
         line(
           .attemptCompleted(
             durationBucket: "10_30s", bytesDownloadedBucket: "100_500mb", sourcesUsed: 2,
             finalSourceID: "backup", repairedComponentsCount: 1))
-          == "[delivery #1] Model delivery admitted \(key): duration=10_30s "
+          == "[#1] Model delivery admitted \(key): duration=10_30s "
             + "bytes=100_500mb sources=2 final_source=backup repaired=1")
 
       #expect(
         line(
           .attemptFailed(
             reason: .sourceTimeout, failingSourceID: "primary", detail: "read_timeout"))
-          == "[delivery #1] Model delivery failed \(key): source_timeout (read_timeout) "
+          == "[#1] Model delivery failed \(key): source_timeout (read_timeout) "
             + "source=primary")
 
       #expect(
         line(.attemptFailed(reason: .insufficientDisk, failingSourceID: nil, detail: nil))
-          == "[delivery #1] Model delivery failed \(key): insufficient_disk",
+          == "[#1] Model delivery failed \(key): insufficient_disk",
         "an absent source and detail must add nothing, not empty parentheses")
 
       #expect(
         line(
           .sourceFailover(reason: .source5xx, fromSourceID: "primary", toSourceID: "backup"))
-          == "[delivery #1] Model delivery source failover \(key): primary -> backup, "
+          == "[#1] Model delivery source failover \(key): primary -> backup, "
             + "reason=source_5xx",
         "naming the transition IS the diagnostic: reason alone cannot say which mirror fell over")
 
       #expect(
         line(.validationRepair(componentsCount: 3, trigger: .loadMiss))
-          == "[delivery #1] Model delivery validation repair \(key): components=3 "
+          == "[#1] Model delivery validation repair \(key): components=3 "
             + "trigger=load_miss")
 
       #expect(
         line(.cancel(phaseAtCancel: "downloading", resumable: true))
-          == "[delivery #1] Model delivery cancelled \(key): phase=downloading resumable=true")
+          == "[#1] Model delivery cancelled \(key): phase=downloading resumable=true")
 
       #expect(
         line(.flagActive(flag: "modelDelivery.parakeet.sourceOrder", value: "backup_first"))
-          == "[delivery #1] Model delivery flag active \(key): "
+          == "[#1] Model delivery flag active \(key): "
             + "modelDelivery.parakeet.sourceOrder=backup_first")
 
       #expect(
         line(.admittedWithoutFetch(reason: .markerFastPath))
-          == "[delivery #1] Model delivery admitted \(key) without fetch: "
+          == "[#1] Model delivery admitted \(key) without fetch: "
             + "reason=marker_fast_path")
 
       #expect(
-        line(.attemptStarted(resumed: false), 42).hasPrefix("[delivery #42] "),
+        line(.attemptStarted(resumed: false), 42).hasPrefix("[#42] "),
         "the sequence is the line's own, not a constant")
     }
 
