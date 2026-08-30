@@ -814,10 +814,31 @@ struct RecordingPillPreviewWiringTests {
       Self.structDecl(named: "RecordingPillPreview", in: Parser.parse(source: text)),
       "RecordingPillPreview is not in \(Self.panel) — this guard is pointed at the wrong type")
 
-    let caseNames = Set(RecordingPillDesign.allCases.map { String(describing: $0) })
+    // **THE CASE IDENTIFIERS, READ OFF THE ENUM'S OWN DECLARATION.**
+    // `String(describing:)` was used here and is wrong for this: it returns a
+    // type's `CustomStringConvertible` description if one is ever added, and the
+    // panel's source names CASES. The sweep would then look for user-facing
+    // sentences, match nothing, and pass — silently, with the count check still
+    // green. Raw values have the same defect from the other side, since a raw
+    // value may diverge from its case name.
+    //
+    // So this parses the declaration, which is the producing code. `allCases` is
+    // the two-way control: a parse that found a different number than the type
+    // reports is a broken parse, and it says so rather than sweeping for a short
+    // list.
+    let enums = try String(
+      contentsOf: RepoRoot.url.appending(path: Self.designEnum), encoding: .utf8)
+    let design = try #require(
+      Self.enumDecl(named: "\(RecordingPillDesign.self)", in: Parser.parse(source: enums)),
+      "\(RecordingPillDesign.self) is not in \(Self.designEnum) — this guard reads the wrong file")
+    let caseNames = Self.caseNames(of: design)
     #expect(
       caseNames.count == RecordingPillDesign.allCases.count,
-      "two designs describe themselves identically, so the sweep below cannot tell them apart")
+      """
+      parsed \(caseNames.count) case names from \(Self.designEnum) but the type reports \
+      \(RecordingPillDesign.allCases.count). The sweep below would be looking for a \
+      short list and would pass on a design it never checked.
+      """)
 
     let named = Self.memberNames(in: tile).intersection(caseNames).sorted()
     #expect(
@@ -861,6 +882,37 @@ struct RecordingPillPreviewWiringTests {
     let counter = IdentifierCounter(name)
     counter.walk(decl)
     return counter.count
+  }
+
+  static let designEnum = "Sources/EnviousWisprCore/SettingsEnums.swift"
+
+  private final class EnumFinder: SyntaxVisitor {
+    let wanted: String
+    private(set) var found: EnumDeclSyntax?
+    init(_ wanted: String) {
+      self.wanted = wanted
+      super.init(viewMode: .sourceAccurate)
+    }
+    override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
+      if node.name.text == wanted { found = node }
+      return .visitChildren
+    }
+  }
+
+  private static func enumDecl(named: String, in tree: SourceFileSyntax) -> EnumDeclSyntax? {
+    let finder = EnumFinder(named)
+    finder.walk(tree)
+    return finder.found
+  }
+
+  /// The case IDENTIFIERS an enum declares, as source writes them.
+  private static func caseNames(of decl: EnumDeclSyntax) -> Set<String> {
+    var names: Set<String> = []
+    for member in decl.memberBlock.members {
+      guard let cases = member.decl.as(EnumCaseDeclSyntax.self) else { continue }
+      for element in cases.elements { names.insert(element.name.text) }
+    }
+    return names
   }
 
   /// Whether an expression is this tile reading its OWN `design` — `design` or
