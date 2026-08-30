@@ -214,18 +214,15 @@ def visible_overlays(pid):
 def stop_app(timeout=30.0):
     """TERM every dev instance and wait for the process table to agree it is gone.
 
-    REFUSES FIRST when this checkout has no build. Putting the check only in
-    `start_app` was too late: every caller in this family stops before it
-    starts, so a missing build still cost the running instance and only then
-    raised — the earlier path keeping the old behaviour while the one I was
-    reading looked fixed.
+    DOES NOT require a bundle, deliberately. Stopping needs no build, and
+    TEARDOWN calls this: `phase5_language_hover` deletes its state keys, stops,
+    and restores them in `finally` — so a refusal raised from here skips the
+    restore and leaves the founder's dev preferences deleted. That is worse
+    than the failure it would be reporting.
 
-    Safe for every caller here because each `stop_app` in this family is
-    immediately followed by a relaunch; the one mode that does neither
-    (`phase5_language_hover` inheriting a running instance) reaches neither
-    function.
+    The precondition belongs at the START of a run, before anything is stopped
+    OR written, and each harness's `main` asks for it there.
     """
-    require_bundle()
     for p in dev_pids():
         subprocess.run(["kill", "-TERM", str(p)], capture_output=True)
     deadline = time.time() + timeout
@@ -367,6 +364,9 @@ def measure_row(name, pid, since_bytes):
 
 
 def main():
+    # BEFORE ANY MUTATION OR STOP. This row relaunches, so it needs this
+    # checkout's build; asking here means a missing one costs nothing.
+    require_bundle()
     snapshot = {k: read_default(k) for k in KEYS}
     # Recorded, not refused: every frame this row takes is captured BY WINDOW ID,
     # which the lock cannot substitute. A row taking a full-SCREEN artifact still

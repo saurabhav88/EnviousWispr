@@ -121,6 +121,11 @@ def main():
         print(json.dumps({"verdict": "ABORT_SCREEN_LOCKED"}))
         return
 
+    # BEFORE ANY MUTATION OR STOP, and after the lock check so the lock
+    # verdict still comes first. This row relaunches, so it needs this
+    # checkout's build; asking here means a missing one costs nothing.
+    g.require_bundle()
+
     if len(g.dev_pids()) != 1:
         print(json.dumps({"verdict": "ABORT_INSTANCE", "found": g.dev_pids()}))
         return

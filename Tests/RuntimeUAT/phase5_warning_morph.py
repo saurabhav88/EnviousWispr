@@ -220,6 +220,8 @@ def _terminal_after_start():
 
 
 def main():
+    # BEFORE ANY MUTATION OR STOP (see phase5_geometry_relaunch.require_bundle).
+    g.require_bundle()
     snapshot = {k: read_dev_default(k) for k in OVERRIDES}
     report = {"snapshot": snapshot, "screen_locked": g.screen_is_locked(),
               "cap_seconds": CAP_SECONDS,
