@@ -831,6 +831,35 @@ struct RecoveryCoordinatorTests {
       await !access.isRecovering(),
       "isRecovering is not reading the coordinator: nothing is recovering yet")
 
+    // **makeDirective, taken BOTH ways**, because a seam replaced by a constant
+    // `nil` passes an off-only check and a seam replaced by a constant directive
+    // passes an on-only one. Off and on differ here, so neither constant survives.
+    #expect(
+      await access.makeDirective(
+        Self.freshSettings(crashRecoveryEnabled: false), .parakeet, false) == nil,
+      "makeDirective is not reading the coordinator: recovery is off, so there is no directive")
+    let armed = try #require(
+      await access.makeDirective(
+        Self.freshSettings(crashRecoveryEnabled: true), .whisperKit, true),
+      "makeDirective is not reading the coordinator: recovery is on and it armed nothing")
+    #expect(
+      try h.keyStore.retrieve(for: armed.recoverySessionID) != nil,
+      "the armed directive's key was never stored, so this is not the coordinator's directive")
+
+    // **cleanupArm, observed by its EFFECT**, since the seam discards the Task
+    // the coordinator returns. The spool for an aborted arm must be gone.
+    let aborted = "aborted-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, aborted)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: aborted)
+    await access.cleanupArm(aborted)
+    for _ in 0..<100_000
+    where FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: aborted).path) {
+      await Task.yield()
+    }
+    #expect(
+      !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: aborted).path),
+      "cleanupArm is not reaching the coordinator: the aborted arm's spool is still on disk")
+
     let id = "wire-\(UUID().uuidString)"
     try Self.writeSpool(h.spoolStore, id)
     try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
