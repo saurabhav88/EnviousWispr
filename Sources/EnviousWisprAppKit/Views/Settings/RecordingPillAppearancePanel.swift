@@ -255,7 +255,6 @@ struct RecordingPillPreviewTile: View {
   /// the pictures comparable to each other, which is the property that actually
   /// mattered underneath the life-size argument.
 
-
   /// The same rule against a REAL card width, which is what the view uses.
   ///
   /// Split out so a test can ask the question at any width rather than only at the
@@ -500,7 +499,13 @@ private struct RecordingPillPreview: View {
       recordingElapsedProvider: { RecordingPillPreviewTile.sampleElapsed },
       livePreviewProvider: { display },
       onContentHeightChange: { _ in },
-      chrome: design.chrome,
+      // **`self.` is required here and is not a style choice.** A bare `design`
+      // is whatever is nearest in scope, so a local of that name introduced above
+      // this line would make every card draw one design while this line still
+      // reads correctly. `self.design` cannot be shadowed, so writing it is what
+      // lets `theTileDrawsItsOwnChrome` be an exact question instead of a
+      // name-resolution guess.
+      chrome: self.design.chrome,
       // Hands free is not what is being chosen here, and the locked variants
       // differ per design, so a picker showing ONE mode is the honest one.
       isLocked: false,

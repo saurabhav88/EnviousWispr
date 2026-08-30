@@ -761,154 +761,49 @@ struct RecordingPillPreviewWiringTests {
     #expect(
       member.declName.baseName.text == "chrome",
       "chrome is \(expr.trimmedDescription), which does not read a design's chrome at all")
-    // **BOTH SPELLINGS OF THE SAME REFERENCE.** `design` and `self.design` are one
-    // thing to the compiler, and rejecting the explicit form would fail a correct
-    // rewrite — a guard that refuses innocent work is how bypasses get trained
-    // (`validation-discipline.md` RULE: false-positives-not-gates-train-evasion).
-    // Spelling axes are finite, so this is normalised in ONE place rather than
-    // matched at each site.
-    #expect(
-      Self.readsTheTilesOwnDesign(member.base),
-      """
-      chrome is \(expr.trimmedDescription), which is a fixed design's chrome rather than \
-      this tile's own. Every card would then draw the same pill and the picker would \
-      offer three pictures of one design.
-      """)
-
-    // **THE ROW ABOVE READS A NAME; THIS ONE ANSWERS WHAT THE NAME BINDS TO.**
+    // **THE EXPLICIT `self.` FORM IS REQUIRED, and that is the whole guard now.**
     //
-    // Nine review rounds landed on this guard and every finding was one shape: a
-    // local `design` introduced ahead of the construction, so `chrome:
-    // design.chrome` stays spelled exactly as required while every card draws one
-    // design. The rounds differed only in where the fixed design came from — a
-    // case, a closure capture, `allCases[0]`, `type(of: self.design).allCases[0]`,
-    // and finally `.canonicalWithoutWords`, a static member that already exists in
-    // `PillDefinition.swift` and is neither a case nor a mention of the type.
+    // Ten review rounds landed here and every finding was the same shape: a local
+    // `design` introduced near the construction, so `chrome: design.chrome` stays
+    // spelled exactly as required while every card draws one design. Only the
+    // source of the fixed design varied — a case, a capture, `allCases[0]`,
+    // `type(of:)`, a static on another type, and a backquoted `` `design` `` that
+    // reads as `design` but does not compare equal to it.
     //
-    // **Two text sweeps stood here and both are gone.** One matched case
-    // spellings, the other the type name, and each was a DESCRIPTION of where a
-    // design can come from. A description always has a next member, which is why
-    // the rounds kept producing one, and the last one walked past both.
+    // Three answers were tried and each was the same kind of thing: a text sweep
+    // over case spellings, a sweep over the type name, then a walk for anything
+    // BINDING the name. The last was closer, because it asked about scope rather
+    // than spelling — and the round that followed showed why it still could not
+    // be right. Deciding whether a binding is VISIBLE at an expression is name
+    // resolution, so a syntax test doing it is a small compiler, and the round
+    // returned exactly the errors a small compiler makes: a binding AFTER the
+    // call and a parameter in an unrelated closure counted as shadows, and a
+    // backquoted declaration did not.
     //
-    // **THE CLOSED QUESTION IS THE ONE SWIFT ITSELF ASKS: is anything named
-    // `design` in scope at the construction other than the stored property?** If
-    // nothing is, then a bare `design` there IS the stored property, whatever a
-    // hypothetical shadow's right-hand side would have been. That settles every
-    // shape at once, including the two previously declared out of scope, and it
-    // stops caring what a fixed design is spelled like.
+    // **So the ambiguity is removed rather than resolved.** `self.design` cannot
+    // be shadowed — Swift does not let anything rebind `self` — so the panel is
+    // asked to write it, and the guard becomes one exact comparison with no
+    // scope walk, no spelling list, and nothing to normalise. Every attack above
+    // stops mattering rather than being detected: a local named `design` can
+    // exist and the line still reads the stored property.
     //
-    // Scoped to the DECLARATION the construction sits in, not to the whole
-    // struct, and the scoping is load-bearing in both directions: a binding
-    // anywhere else cannot reach this expression, and an ordinary
-    // `init(design:)` parameter is named `design` on purpose and must not be
-    // blamed for it. A round already found that false positive in the previous
-    // shape of this guard.
+    // The cost is stated because it is real: a correct author who writes bare
+    // `design` gets a red. The message says what to write, the fix is five
+    // characters, and it buys a question that cannot grow a new member.
     //
-    // The binding forms are closed because the GRAMMAR closes them, not because
-    // the list looked complete: a simple name enters scope through a pattern, a
-    // function parameter, a closure parameter in either spelling, or a capture.
-    // `IdentifierPatternSyntax` is `let`, `var`, `guard let`, `if let`, `for` and
-    // `case let` at once, which is why an earlier round's four-member list was
-    // the wrong unit to be counting.
-    //
-    // NOT COVERED, and stated rather than implied: a design handed in from
-    // another type through a differently-named property. That needs the stored
-    // property to stop being the thing the preview reads, which the row above
-    // already refuses. The structural fix that would end the whole class — the
-    // leaf deriving chrome from the design it is already given, so there is no
+    // The structural fix that would delete this guard entirely — the leaf
+    // deriving chrome from the design it is already given, so there is no
     // argument to get wrong at either call site — is #2520, and it changes
     // shipped source rather than a test.
-    let scope = try #require(
-      Self.enclosingDeclaration(of: call),
-      "the chrome argument sits in no declaration, so this guard cannot say what is in scope")
-    let shadows = Self.bindings(named: "design", in: scope).sorted()
+    let base = member.base?.as(MemberAccessExprSyntax.self)
     #expect(
-      shadows.isEmpty,
+      base?.declName.baseName.text == "design"
+        && base?.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self",
       """
-      \(shadows.joined(separator: ", ")) named `design` where the preview is built, so \
-      `chrome: design.chrome` reads that instead of the design this tile was handed. \
-      Every card would draw the same pill and the picker would offer three pictures \
-      of one design.
+      chrome is \(expr.trimmedDescription). It must be exactly `self.design.chrome`: \
+      anything else is either a fixed design, which makes every card draw the same \
+      pill, or a bare name that some later local could quietly take over.
       """)
-  }
-
-  /// The declaration an expression sits inside — the property or function whose
-  /// body holds it. Scope for a bare name starts here, so this is what a shadow
-  /// has to be inside to reach that name.
-  private static func enclosingDeclaration(of node: some SyntaxProtocol) -> Syntax? {
-    var current = node.parent
-    while let here = current {
-      if here.is(VariableDeclSyntax.self) || here.is(FunctionDeclSyntax.self)
-        || here.is(InitializerDeclSyntax.self)
-      {
-        return here
-      }
-      current = here.parent
-    }
-    return nil
-  }
-
-  /// Every site inside a declaration that brings `name` into scope, described in
-  /// the words of the form that does it.
-  ///
-  /// The forms are the grammar's rather than a guess. `IdentifierPatternSyntax`
-  /// covers `let`, `var`, `guard let`, `if let`, `for` and `case let` in one
-  /// node; the other four are the parameter and capture spellings. A name cannot
-  /// enter scope any other way, which is what makes this a closed question
-  /// instead of a list that grows a member every review round.
-  private final class BindingFinder: SyntaxVisitor {
-    let wanted: String
-    private(set) var sites: Set<String> = []
-
-    init(_ wanted: String) {
-      self.wanted = wanted
-      super.init(viewMode: .sourceAccurate)
-    }
-
-    override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
-      note(node.identifier, "a local binding")
-      return .visitChildren
-    }
-    override func visit(_ node: FunctionParameterSyntax) -> SyntaxVisitorContinueKind {
-      note(node.secondName ?? node.firstName, "a parameter")
-      return .visitChildren
-    }
-    override func visit(_ node: ClosureParameterSyntax) -> SyntaxVisitorContinueKind {
-      note(node.secondName ?? node.firstName, "a closure parameter")
-      return .visitChildren
-    }
-    override func visit(_ node: ClosureShorthandParameterSyntax) -> SyntaxVisitorContinueKind {
-      note(node.name, "a closure parameter")
-      return .visitChildren
-    }
-    override func visit(_ node: ClosureCaptureSyntax) -> SyntaxVisitorContinueKind {
-      note(node.name, "a capture")
-      return .visitChildren
-    }
-
-    private func note(_ token: TokenSyntax, _ form: String) {
-      if token.text == wanted { sites.insert(form) }
-    }
-  }
-
-  private static func bindings(named name: String, in decl: Syntax) -> Set<String> {
-    let finder = BindingFinder(name)
-    finder.walk(decl)
-    return finder.sites
-  }
-
-  /// Whether an expression is this tile reading its OWN `design` — `design` or
-  /// `self.design`, which the compiler treats as one thing. The two spellings are
-  /// the whole set: an implicit member reference and an explicit `self` one.
-  private static func readsTheTilesOwnDesign(_ expr: ExprSyntax?) -> Bool {
-    if expr?.as(DeclReferenceExprSyntax.self)?.baseName.text == "design" { return true }
-    if let explicit = expr?.as(MemberAccessExprSyntax.self),
-      explicit.declName.baseName.text == "design",
-      explicit.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self"
-    {
-      return true
-    }
-    return false
   }
 
   /// **THE CLOSURE ROW. Every piece of `@State` the poll writes must be seedable,
