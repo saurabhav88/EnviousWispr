@@ -3,6 +3,7 @@ import EnviousWisprPipeline
 import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -1159,5 +1160,40 @@ struct QuickAddCoordinatorTests {
     #expect(authored?.aliases.isEmpty == true, "a word is not an alias of itself")
     // The selection is NON-empty, which is exactly what the old rule read.
     #expect(!model.spellingToWrite.isEmpty)
+  }
+
+  // MARK: - A panel nobody could measure is refused, not shown (#2542)
+
+  /// **The refusal's own comment names the failure and nothing exercised it.**
+  ///
+  /// `QuickAddPanelHost.present` refuses a panel whose size cannot be worked out,
+  /// because a window ordered onto the screen at a size nobody could compute is
+  /// invisible while the caller is told it opened: the user sees nothing, the
+  /// telemetry says `opened`, and every event after it describes a panel that was
+  /// never there. Measured on #2388 — replacing that refusal with "size it 360×240
+  /// and report success" left this whole suite green across 56 tests.
+  ///
+  /// **The return value is the assertion that matters**, because it is the only
+  /// thing the caller reads. Nothing being keyed is the second half: a refused
+  /// panel must not take the keyboard on its way out.
+  @Test("A panel whose size cannot be worked out is refused, and nothing is keyed")
+  func anUnmeasurablePanelIsRefused() {
+    let effects = RecordingDesktopPresentationEffects()
+    let host = QuickAddPanelHost(presenter: effects)
+
+    #expect(host.present(EmptyView().frame(width: 0, height: 0)) == false)
+    #expect(effects.calls.isEmpty, "a refused panel must not take the keyboard")
+  }
+
+  /// **The two-way control, without which the guard above passes for a host that
+  /// refuses everything** — which is the same invisible panel by another route.
+  @Test("An ordinary panel still opens, so the refusal is not blanket")
+  func aMeasurablePanelStillOpens() {
+    let effects = RecordingDesktopPresentationEffects()
+    let host = QuickAddPanelHost(presenter: effects)
+
+    #expect(host.present(Color.clear.frame(width: 320, height: 180)) == true)
+    #expect(effects.calls.count == 1, "exactly one keying, for the one panel shown")
+    host.dismiss()
   }
 }
