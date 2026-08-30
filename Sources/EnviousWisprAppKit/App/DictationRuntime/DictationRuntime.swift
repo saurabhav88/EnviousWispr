@@ -134,30 +134,7 @@ final class DictationRuntime {
       // arguments until the architectural ceiling caught the accretion. Still
       // bare closures, so the starter stays off its collaborator cap and the
       // kernel never sees the coordinator.
-      recovery: RecordingStarter.RecoveryAccess(
-        // #1063 PR1: arm crash recovery for this start.
-        makeDirective: { settings, backend, lid in
-          await recoveryCoordinator.makeDirective(
-            settings: settings, backendType: backend, supportsLanguageDetection: lid)
-        },
-        // #1063 PR1 (Codex r3): a PTT release or concurrent-toggle stop landing in
-        // the arm window mints no session, so the lifecycle coordinator sees no
-        // terminal state — the starter cleans the armed spool/key directly. #1464:
-        // a pre-start abort has no `RecordingOutcome`, so it routes to the
-        // dedicated coordinator entry point (always a discard — nothing was
-        // captured).
-        cleanupArm: { id in
-          recoveryCoordinator.handlePreStartAbort(recoverySessionID: id)
-        },
-        // #1063 PR2: the recording gate — a press while recovery holds the shared
-        // engine mints no session (shows the "recovering" pill).
-        isRecovering: { recoveryCoordinator.isRecovering },
-        // #1707 Phase 3 (§3.1): a refused press yields the engine BETWEEN a
-        // multi-item recovery scan's items, not only after the whole scan.
-        signalPendingLiveStart: { recoveryCoordinator.pendingLiveStartSignal = true },
-        // #2292 C4b: the recovery notice's Discard button, bound at its own
-        // presentation rather than routed through a settable overlay sink.
-        discardActive: { recoveryCoordinator.discardActiveRecovery() }),
+      recovery: RecoveryWiring.access(binding: recoveryCoordinator),
       // #1171: drive the selected engine to ready before recording, gate a press
       // during an in-flight switch, and hold the start-window state-gate so the
       // coordinator can't switch the engine out mid-startup.
@@ -202,6 +179,7 @@ final class DictationRuntime {
     self.hotkeyController = hotkeyController
     hotkeyController.install()
   }
+
 
   // MARK: - Facade (UI / menus / AppDelegate command surface)
 

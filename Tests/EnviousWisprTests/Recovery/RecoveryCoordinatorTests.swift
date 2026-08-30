@@ -805,6 +805,87 @@ struct RecoveryCoordinatorTests {
 
   // MARK: - Discard
 
+  /// **The WIRE, which nothing reached** (#2356).
+  ///
+  /// The two halves of Discard were both covered and the line between them was
+  /// not. `discardDuringRecovery` below drives `discardActiveRecovery()`
+  /// directly; `RecordingStarterStartPathTests.discardInvokesRecoveryOwner`
+  /// builds its own `RecoveryAccess` with a probe closure. So the composition
+  /// root's binding — the one line that joins the button to its owner — was the
+  /// single site no test named, and replacing it with `{}` left every suite
+  /// green.
+  ///
+  /// What that costs a user: crash recovery holds the engine, they press
+  /// Discard, and nothing happens. The notice goes away and recovery does not.
+  ///
+  /// This enters through `RecoveryWiring.access`, which the app itself
+  /// calls, rather than through a hand-built one. All five seams are asserted
+  /// rather than only Discard, because the slot binds them together and any one
+  /// of them could be cut the same way.
+  @Test("the composition root binds all five recovery seams to the real coordinator")
+  func theCompositionRootBindsTheRecoverySeams() async throws {
+    let h = Self.makeHarness()
+    let access = await RecoveryWiring.access(binding: h.coordinator)
+
+    #expect(
+      await !access.isRecovering(),
+      "isRecovering is not reading the coordinator: nothing is recovering yet")
+
+    // **makeDirective, taken BOTH ways**, because a seam replaced by a constant
+    // `nil` passes an off-only check and a seam replaced by a constant directive
+    // passes an on-only one. Off and on differ here, so neither constant survives.
+    #expect(
+      await access.makeDirective(
+        Self.freshSettings(crashRecoveryEnabled: false), .parakeet, false) == nil,
+      "makeDirective is not reading the coordinator: recovery is off, so there is no directive")
+    let armed = try #require(
+      await access.makeDirective(
+        Self.freshSettings(crashRecoveryEnabled: true), .whisperKit, true),
+      "makeDirective is not reading the coordinator: recovery is on and it armed nothing")
+    #expect(
+      try h.keyStore.retrieve(for: armed.recoverySessionID) != nil,
+      "the armed directive's key was never stored, so this is not the coordinator's directive")
+
+    // **cleanupArm, observed by its EFFECT**, since the seam discards the Task
+    // the coordinator returns. The spool for an aborted arm must be gone.
+    let aborted = "aborted-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, aborted)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: aborted)
+    await access.cleanupArm(aborted)
+    for _ in 0..<100_000
+    where FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: aborted).path) {
+      await Task.yield()
+    }
+    #expect(
+      !FileManager.default.fileExists(atPath: h.spoolStore.spoolURL(for: aborted).path),
+      "cleanupArm is not reaching the coordinator: the aborted arm's spool is still on disk")
+
+    let id = "wire-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    h.replayer.suspendFirstReplay = true
+    let scan = Task { await h.coordinator.scanAndRecover() }
+    while h.replayer.gateContinuation == nil { await Task.yield() }
+
+    #expect(
+      await access.isRecovering(),
+      "isRecovering is not reading the coordinator: a replay holds the engine")
+
+    await access.signalPendingLiveStart()
+    #expect(
+      h.coordinator.pendingLiveStartSignal,
+      "signalPendingLiveStart is not reaching the coordinator")
+
+    await access.discardActive()
+    #expect(
+      h.resetEngineCount.value == 1,
+      "Discard reached nobody — the button is bound to something that is not the coordinator")
+
+    h.replayer.gateContinuation?.resume()
+    await scan.value
+    #expect(!h.coordinator.isRecovering, "the gate never cleared after the discard")
+  }
+
   @Test("Discard mid-recovery bumps the generation, frees the gate, and deletes the orphan")
   func discardDuringRecovery() async throws {
     let h = Self.makeHarness()

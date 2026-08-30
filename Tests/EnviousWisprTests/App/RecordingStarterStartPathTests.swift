@@ -373,6 +373,36 @@ import EnviousWisprAppKitTestSupport
       "the notice the user already answered is still on screen")
   }
 
+  /// **The recovery notice's sink must answer ONLY to Discard** (#2356).
+  ///
+  /// The presentation carries one button today, so this is a filter standing in
+  /// front of a door nobody else knocks on — and that is exactly why nothing
+  /// reached it: dropping the `guard case .discardRecovery` and firing on ANY
+  /// action left every suite green, measured.
+  ///
+  /// It is worth a row rather than a comment because of what the failure would
+  /// be if a second button were ever added to this notice: pressing it would
+  /// SILENTLY discard the recording the user was being offered back. A destructive
+  /// action reached through the wrong button is the shape that has to fail loudly
+  /// the day it is written, not the day someone notices their recording is gone.
+  ///
+  /// Nothing is fabricated here. The action sent is a real member of `PillAction`
+  /// travelling the real root; the claim is that this sink ignores it.
+  @Test func onlyDiscardReachesTheRecoveryOwner() async throws {
+    let fx = Self.makeFixture(isRecovering: true)
+    fx.asr.activeBackendType = .parakeet
+    _ = await fx.starter.start()
+
+    try fx.overlayHost.sendCurrentUserActionThroughRoot(.lockLanguage)
+
+    #expect(
+      fx.discards.count == 0,
+      "a button that is not Discard discarded the recovering recording")
+    #expect(
+      Self.showsRecoveryOffer(fx.overlay),
+      "the recovery notice was dismissed by an action it does not own")
+  }
+
   @Test func toggleWhileRecoveringMintsNoSessionAndShowsRecoveringPill() async {
     let fx = Self.makeFixture(isRecovering: true)
     fx.asr.activeBackendType = .parakeet
