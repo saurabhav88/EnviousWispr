@@ -424,7 +424,21 @@ struct SelectionReaderTests {
     let coordinatorOwned = SelectionReader.Refusal.allCases.filter { !readerOwned.contains($0) }
     // The subtraction is only meaningful if it left something, and only honest if it left the
     // members this test was written about.
-    #expect(coordinatorOwned.count == SelectionReader.Refusal.allCases.count - readerOwned.count)
+    //
+    // **The count identity that stood here was a TAUTOLOGY, and it read as the check that made the
+    // subtraction safe.** `coordinatorOwned.count == allCases.count - readerOwned.count` is true for
+    // ANY `readerOwned` whose members are all in `allCases` and which holds no duplicate — and both
+    // are guaranteed, one by the type and the other by `Set`. So it could not fail. Measured on
+    // #2469: moving `.copyRefused` into `readerOwned` — a member the reader does not own — left that
+    // line green and was caught two lines down instead, because a wrongly-CLASSIFIED member moves
+    // both sides of the subtraction by one.
+    //
+    // What the comment above actually asks for is that the subtraction left something, so that is
+    // what is asserted. It fails on a `readerOwned` that has swallowed the whole enum, which is the
+    // one way this row could go quietly vacuous while every `contains` below still passed.
+    #expect(
+      !coordinatorOwned.isEmpty,
+      "readerOwned covers the whole enum, so this row is asserting nothing about a boundary")
     #expect(coordinatorOwned.contains(.wordsUnavailable))
     #expect(coordinatorOwned.contains(.nothingSelected))
     #expect(coordinatorOwned.contains(.copyRefused))
