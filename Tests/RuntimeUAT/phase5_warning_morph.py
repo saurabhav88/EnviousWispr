@@ -118,6 +118,9 @@ MORPH_FROM, MORPH_TO = [400, 34], [400, 60]
 # appearance of the app this person actually dictates with.
 DESIGN = "readingWell"
 SHARED_DOMAIN = "com.enviouswispr.app"
+# `SettingsDefaultsMigration.devSentinelKey`, in the DEV domain. Set once the
+# one-time yield to the shared suite has happened.
+MIGRATION_SENTINEL = "didYieldToSharedDefaults_v1"
 DESIGN_OVERRIDES = {"recordingPillDesignWithoutWords": DESIGN,
                     "recordingPillDesignWithWords": DESIGN}
 BOOL_OVERRIDES = {"livePreviewEnabled": "true"}
@@ -320,6 +323,32 @@ def main():
             report["verdict"] = "ABORT_INSTANCE_SURVIVED_TERM"
             print(json.dumps({"verdict": report["verdict"]}))
             return
+        # **THE ONE-TIME MIGRATION MUST ALREADY HAVE RUN, or the pins are written
+        # into a store the next launch overwrites.** On a dev install where
+        # `didYieldToSharedDefaults_v1` is still unset,
+        # `SettingsDefaultsMigration.migrateIfNeeded` seeds the shared suite from
+        # the dev domain's legacy values at first launch — after this row has
+        # written, and therefore over it.
+        #
+        # This row cannot fix that and must not paper over it: launching once to
+        # trigger the migration would be a second unannounced side effect on a
+        # store shared with the release build. It refuses and names the one manual
+        # step instead.
+        migrated = subprocess.run(
+            ["defaults", "read", DEV_DOMAIN, MIGRATION_SENTINEL],
+            capture_output=True, text=True)
+        report["migration_done"] = migrated.returncode == 0 and migrated.stdout.strip() == "1"
+        if not report["migration_done"]:
+            report["verdict"] = "ABORT_SETTINGS_MIGRATION_NOT_RUN"
+            print(json.dumps({
+                "verdict": report["verdict"],
+                "sentinel": f"{DEV_DOMAIN} {MIGRATION_SENTINEL}",
+                "why": ("the shared-suite pins below would be overwritten by "
+                        "SettingsDefaultsMigration at the next launch. Launch the dev "
+                        "app once by hand, then re-run."),
+            }, indent=2))
+            return
+
         for k, flag in PINNED.items():
             subprocess.run(["defaults", "write", DOMAIN_OF[k], k, flag, WANTED[k]], check=True)
         written = {k: read_default(k) for k in PINNED}
