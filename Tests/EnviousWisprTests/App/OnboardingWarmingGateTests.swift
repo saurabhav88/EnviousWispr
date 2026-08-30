@@ -817,7 +817,21 @@ import Testing
           the screen told someone they missed a box they were focused on, which sends \
           them to click somewhere they already were.
           """)
-        #expect(vm.practiceState == .saidNothing)
+
+        // **THE `saidNothing` THIS CURRENTLY FALLS THROUGH TO IS NOT ASSERTED,
+        // DELIBERATELY.** Its screen says "We just did not hear anything"
+        // (`PracticeScreen.swift:138-142`), and this setup has just proved the
+        // opposite by growing the transcript. Pinning it would cement a second
+        // piece of wrong advice as the expected answer, and a later change that
+        // gave this state an honest message would fail a test for improving it.
+        //
+        // The property this row exists for is the one above: a focused box is
+        // never blamed for missing. That alone kills #2371 row 16, which turns
+        // this case into `missedTheBox`.
+        //
+        // What the screen SHOULD say for a focused take whose words went
+        // elsewhere is a product question, open as #2527. Cloud review raised it
+        // on this PR.
       }
 
       /// Cloud review, and it is the founder's own defect pointed the other way,
