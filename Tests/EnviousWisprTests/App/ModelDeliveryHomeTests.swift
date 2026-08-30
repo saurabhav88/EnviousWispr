@@ -590,8 +590,17 @@ struct ModelDeliveryHomeTests {
 
     suite.set(false, forKey: "modelDelivery.parakeet.enabled")
 
-    // Signal, not clock: the re-read increments this from inside the door's Task.
-    for _ in 0..<400 where home.parakeetResumeRefusalsForTests == 0 { await Task.yield() }
+    // **A HANG GUARD, not a settle budget** — the convention this file already
+    // records at `baselineAfterLaunchProbe`. A small count is a bet on how many
+    // yields a contended runner needs before an unstructured task gets to run,
+    // and losing that bet fails correct production code. This bound can only be
+    // reached when the door never reports at all, and then it SAYS so rather
+    // than letting the expectation below read a silence as a verdict.
+    for _ in 0..<100_000 where home.parakeetResumeRefusalsForTests == 0 { await Task.yield() }
+    if home.parakeetResumeRefusalsForTests == 0 {
+      Issue.record(
+        "the Resume door's task never reported, so it is not known whether the re-read ran")
+    }
 
     #expect(
       home.parakeetResumeRefusalsForTests == 1,
