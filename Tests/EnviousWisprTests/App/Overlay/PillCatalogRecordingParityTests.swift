@@ -151,6 +151,26 @@ struct PillCatalogRecordingParityTests {
     let withoutWords = bad.resolve(capabilityHasWords: false)
     #expect(withoutWords.design == .classic)
     #expect(withoutWords.substituted == false, "an unnecessary substitution was reported")
+
+    // **THE MIRROR, which this case did not stage** (#2402). A with-words design
+    // sitting in the WITHOUT-words slot substitutes the other way, and only that
+    // half of the flag was bound: setting the mirror's `substituted` to a
+    // constant `false` left the whole suite green, measured, while the same lie
+    // on the branch above is caught here.
+    //
+    // The flag is not decoration. `PillCatalog` reads `.substituted == false` to
+    // decide whether a design is offerable, so a substitution that reports itself
+    // as "no substitution" makes the Appearance picker offer a design the pill
+    // will not actually use — the exact drift the fail-closed resolve exists to
+    // prevent, arriving through the flag instead of through the design.
+    let mirrored = PillDesignSelections(withoutWords: .readingWell, withWords: .readingWell)
+    let substitutedDown = mirrored.resolve(capabilityHasWords: false)
+    #expect(
+      substitutedDown.design == .classic,
+      "a words-holding design was accepted for a pill that will show no words")
+    #expect(
+      substitutedDown.substituted,
+      "the mirror substitution was silent, so the picker would offer a design the pill will not use")
   }
 
   /// The shipped pair never substitutes, in either state. If it ever does, the
