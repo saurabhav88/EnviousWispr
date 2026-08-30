@@ -733,6 +733,79 @@ struct RecordingPillPreviewWiringTests {
       """)
   }
 
+  /// **Nothing observed which chrome a tile draws.** #2438's row for it named
+  /// `tileHeightTracksTheLeaf`, which was deliberately retired when the founder
+  /// replaced the layout with three identical cards on 2026-08-26. Its successor
+  /// `thePreviewIsTheRealPillScaled` measures HEIGHT, and chrome is paint: with
+  /// `chrome: RecordingPillDesign.classic.chrome` substituted, all sixteen rows
+  /// in `RecordingPillTileTests` still passed. The row was right and only its
+  /// witness was gone.
+  ///
+  /// The user consequence is the whole point of the picker. Chrome carries the
+  /// header, the notice cap and the ink, so a fixed one makes every card draw the
+  /// same pill and there is nothing to choose between.
+  ///
+  /// The property is that the chrome comes from THIS tile's own `design`, not
+  /// that it is spelled a particular way — a concrete design constant is exactly
+  /// what fails here, however it is written.
+  @Test("each tile draws its own design's chrome, not one design's for all three")
+  func theTileDrawsItsOwnChrome() throws {
+    let call = try Self.theConstruction()
+    let expr = try #require(
+      Self.argument("chrome", of: call),
+      "the tile passes no chrome, so it cannot be a picture of any particular design")
+    let member = try #require(
+      expr.as(MemberAccessExprSyntax.self),
+      "chrome is \(expr.trimmedDescription), which this guard cannot judge")
+
+    #expect(
+      member.declName.baseName.text == "chrome",
+      "chrome is \(expr.trimmedDescription), which does not read a design's chrome at all")
+    // **THE EXPLICIT `self.` FORM IS REQUIRED, and that is the whole guard now.**
+    //
+    // Ten review rounds landed here and every finding was the same shape: a local
+    // `design` introduced near the construction, so `chrome: design.chrome` stays
+    // spelled exactly as required while every card draws one design. Only the
+    // source of the fixed design varied — a case, a capture, `allCases[0]`,
+    // `type(of:)`, a static on another type, and a backquoted `` `design` `` that
+    // reads as `design` but does not compare equal to it.
+    //
+    // Three answers were tried and each was the same kind of thing: a text sweep
+    // over case spellings, a sweep over the type name, then a walk for anything
+    // BINDING the name. The last was closer, because it asked about scope rather
+    // than spelling — and the round that followed showed why it still could not
+    // be right. Deciding whether a binding is VISIBLE at an expression is name
+    // resolution, so a syntax test doing it is a small compiler, and the round
+    // returned exactly the errors a small compiler makes: a binding AFTER the
+    // call and a parameter in an unrelated closure counted as shadows, and a
+    // backquoted declaration did not.
+    //
+    // **So the ambiguity is removed rather than resolved.** `self.design` cannot
+    // be shadowed — Swift does not let anything rebind `self` — so the panel is
+    // asked to write it, and the guard becomes one exact comparison with no
+    // scope walk, no spelling list, and nothing to normalise. Every attack above
+    // stops mattering rather than being detected: a local named `design` can
+    // exist and the line still reads the stored property.
+    //
+    // The cost is stated because it is real: a correct author who writes bare
+    // `design` gets a red. The message says what to write, the fix is five
+    // characters, and it buys a question that cannot grow a new member.
+    //
+    // The structural fix that would delete this guard entirely — the leaf
+    // deriving chrome from the design it is already given, so there is no
+    // argument to get wrong at either call site — is #2520, and it changes
+    // shipped source rather than a test.
+    let base = member.base?.as(MemberAccessExprSyntax.self)
+    #expect(
+      base?.declName.baseName.text == "design"
+        && base?.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self",
+      """
+      chrome is \(expr.trimmedDescription). It must be exactly `self.design.chrome`: \
+      anything else is either a fixed design, which makes every card draw the same \
+      pill, or a bare name that some later local could quietly take over.
+      """)
+  }
+
   /// **THE CLOSURE ROW. Every piece of `@State` the poll writes must be seedable,
   /// and this ENUMERATES them from the poll body rather than from a list I wrote.**
   ///
