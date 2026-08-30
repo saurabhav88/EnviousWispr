@@ -661,19 +661,23 @@ struct CapsuleBackgroundFreezeTests {
     let cases = Array(list)
     let target = cases.firstIndex(where: { $0.id == Syntax(switchCase).id })
     guard var index = target else { return false }
-    while index > 0 {
-      guard let previous = cases[index - 1].as(SwitchCaseSyntax.self),
-        containsFallthrough(previous)
-      else { return false }
+    while index > 0, containsFallthrough(cases[index - 1]) {
       index -= 1
     }
     return index != target
   }
 
-  /// Whether a case body can hand control to the NEXT case.
-  private static func containsFallthrough(_ switchCase: SwitchCaseSyntax) -> Bool {
+  /// Whether the preceding element can hand control to the NEXT case.
+  ///
+  /// **Takes the list ELEMENT, not a `SwitchCaseSyntax`, and that is the fix rather
+  /// than an implementation detail.** A preceding case wrapped in `#if` appears as an
+  /// `IfConfigDeclSyntax`, so a cast to `SwitchCaseSyntax` fails — and the guard it
+  /// guarded returned "no incoming fallthrough", which is the OPEN direction. The
+  /// question was never "is this node a case"; it is "can control arrive from above",
+  /// and a walk answers that for every node shape without knowing their names.
+  private static func containsFallthrough(_ element: some SyntaxProtocol) -> Bool {
     let finder = FallthroughFinder(viewMode: .sourceAccurate)
-    finder.walk(switchCase.statements)
+    finder.walk(element)
     return finder.found
   }
 
