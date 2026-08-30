@@ -758,6 +758,20 @@ jobs:
           python3 Tests/RuntimeUAT/ptt_binding.py --self-test
           python3 Tests/RuntimeUAT/faultInjection.py --self-test
 
+      # THROWAWAY MEASUREMENT, REMOVED BEFORE THIS PR MERGES (#2426).
+      # `wispr_eyes.py --self-test` exists, has six two-way rows, and no gate
+      # invokes it. It was left out because it imports Quartz transitively via
+      # `ui_helpers`, and whether PyObjC resolves on the hosted runner was never
+      # measured — the step above says outright "Neither module imports Quartz,
+      # so both run here."
+      #
+      # `continue-on-error` is the whole point: learn the answer without
+      # reddening `build-check`, which is the REQUIRED check, on a guess.
+      - name: does wispr_eyes import on the runner (#2426 probe)
+        continue-on-error: true
+        run: |
+          python3 -c "import sys; sys.path.insert(0,'Tests/RuntimeUAT'); import wispr_eyes; print('WISPR_EYES_IMPORT_OK')"
+
       - name: Judge receipt + billing contracts (#2007/#2008)
         run: |
           set -euo pipefail
