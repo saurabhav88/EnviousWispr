@@ -361,6 +361,15 @@ struct LivePreviewStatusBarPresentationTests {
       (.paused, .universal, nil, true),
       (.buildCannotRun, .universal, nil, false),
     ]
+    // **What this list is now FOR, after #2441's evasion pass.** The three
+    // provenance sentences are frozen literal-for-literal in
+    // `LivePreviewSettingsCopyTests.provenanceSentencesAreFrozen`, because a
+    // vocabulary check demonstrably cannot decide whether a sentence promises
+    // output — "picking up your voice" holds none of these words and walked past.
+    // So this list no longer carries the provenance; what it still covers is the
+    // COMPOSED text, which includes the language NAME the catalogue supplies and
+    // which no copy test pins. Kept as a tripwire on that, not as the guard.
+    //
     // **"detect" is here because its absence is what let a real defect through.**
     // `languageProvenanceDetected` said "detected as you speak", which the chip
     // rendered while the preview was off, paused, downloading or failed. The guard
