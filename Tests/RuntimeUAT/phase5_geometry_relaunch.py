@@ -204,7 +204,20 @@ def visible_overlays(pid):
 
 
 def stop_app(timeout=30.0):
-    """TERM every dev instance and wait for the process table to agree it is gone."""
+    """TERM every dev instance and wait for the process table to agree it is gone.
+
+    REFUSES FIRST when this checkout has no build. Putting the check only in
+    `start_app` was too late: every caller in this family stops before it
+    starts, so a missing build still cost the running instance and only then
+    raised — the earlier path keeping the old behaviour while the one I was
+    reading looked fixed.
+
+    Safe for every caller here because each `stop_app` in this family is
+    immediately followed by a relaunch; the one mode that does neither
+    (`phase5_language_hover` inheriting a running instance) reaches neither
+    function.
+    """
+    require_bundle()
     for p in dev_pids():
         subprocess.run(["kill", "-TERM", str(p)], capture_output=True)
     deadline = time.time() + timeout
