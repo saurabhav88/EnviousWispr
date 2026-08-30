@@ -39,6 +39,7 @@ RULE: a-harness-that-ACTS-on-a-shared-resource-must-refuse-not-choose.
 """
 
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -56,7 +57,49 @@ SHOTS = UAT / "geometry-relaunch"
 SHOTS.mkdir(parents=True, exist_ok=True)
 LOG = pathlib.Path.home() / "Library/Logs/EnviousWispr/app.log"
 DOMAIN = "com.enviouswispr.app"
-BUNDLE = "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-2377-phase5/build/EnviousWispr Local.app"
+# **THE BUNDLE IS DERIVED FROM THIS CHECKOUT, NOT PINNED TO A WORKTREE.** It used
+# to name `EnviousWispr-2377-phase5`, the worktree #2377 was written in, which
+# `post-sync-cleanup.sh` removed on the fetch after that PR merged. Every row
+# that opens `BUNDLE` — this file, `phase5_warning_morph`, `phase5_recovery_rail`
+# and `phase5_language_hover` — has been unrunnable since, and the failure is
+# late and misleading: `stop_app()` kills the running instance FIRST, the `open`
+# then fails against a path that is not there, and the harness reports
+# `ABORT_NO_INSTANCE`, which reads as "the app would not start".
+#
+# A hardcoded absolute path pins whatever branch some other tree happens to be
+# on, and feature work here lives in worktrees that are deleted on merge, so the
+# same rot recurs on every feature. Deriving it from `__file__` drives the build
+# belonging to the checkout the harness itself came from, which is the tree whose
+# change is under test.
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+BUNDLE = str(_REPO_ROOT / "build" / "EnviousWispr Local.app")
+
+
+def require_bundle():
+    """Refuse BEFORE anything is killed when this checkout has no dev build.
+
+    A missing build and an app that will not launch are the same
+    `ABORT_NO_INSTANCE` to every caller, and only one of them is a product
+    finding. The old shape terminated the running instance and only then
+    discovered it had nothing to launch.
+
+    Called from `start_app` rather than at import, because a row that INHERITS
+    an already-running instance never relaunches and does not need this
+    checkout's bundle at all — `phase5_language_hover` has exactly that mode,
+    and an import-time check aborted it.
+    """
+    # THE EXECUTABLE, NOT THE DIRECTORY. `build-dev-app.sh` copies INTO the
+    # bundle rather than replacing it atomically, so an interrupted deploy
+    # leaves a `.app` that exists and cannot run — and a directory check passes,
+    # kills every dev instance, and only then fails to launch, which is the
+    # behaviour this refusal exists to prevent. Existence is not function.
+    executable = pathlib.Path(BUNDLE) / "Contents" / "MacOS" / "EnviousWispr"
+    if not os.access(executable, os.X_OK):
+        raise SystemExit(
+            f"phase5 harness: no runnable dev build at {BUNDLE}\n"
+            f"(looked for an executable at {executable})\n"
+            "Run scripts/build-dev-app.sh in THIS checkout first. Refusing rather than "
+            "terminating the running instance for a run that cannot start.")
 KEYS = ["livePreviewEnabled", "recordingPillDesignWithoutWords"]
 
 # **WRITE A BOOL AS A BOOL.** `livePreviewEnabled` is read as
@@ -169,7 +212,17 @@ def visible_overlays(pid):
 
 
 def stop_app(timeout=30.0):
-    """TERM every dev instance and wait for the process table to agree it is gone."""
+    """TERM every dev instance and wait for the process table to agree it is gone.
+
+    DOES NOT require a bundle, deliberately. Stopping needs no build, and
+    TEARDOWN calls this: `phase5_language_hover` deletes its state keys, stops,
+    and restores them in `finally` — so a refusal raised from here skips the
+    restore and leaves the founder's dev preferences deleted. That is worse
+    than the failure it would be reporting.
+
+    The precondition belongs at the START of a run, before anything is stopped
+    OR written, and each harness's `main` asks for it there.
+    """
     for p in dev_pids():
         subprocess.run(["kill", "-TERM", str(p)], capture_output=True)
     deadline = time.time() + timeout
@@ -179,6 +232,23 @@ def stop_app(timeout=30.0):
 
 
 def start_app(timeout=30.0):
+    """Launch this checkout's build and return its pid.
+
+    RAISES rather than returning None when the launch fails, because by the time
+    this is called the running instance is already gone and `None` reaches the
+    caller as `ABORT_NO_INSTANCE` — the same words an app that crashes on launch
+    produces, and a reader cannot tell "there was nothing to launch" from "the
+    product would not start".
+
+    NO STATIC CHECK CAN PROVE A BUNDLE WILL LAUNCH, and four review rounds each
+    found a subtler partial state than the last: a missing directory, then a
+    directory with no executable, then an executable inside an incomplete
+    bundle. That is a set with no closing member, so `require_bundle` stays a
+    cheap FAST FAIL for the common case and is not asked to be exhaustive. The
+    exact question — did it launch, and had something been stopped first — is
+    answered here, after the fact, where the answer set is closed.
+    """
+    require_bundle()
     subprocess.run(["open", "-n", BUNDLE], capture_output=True)
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -186,7 +256,18 @@ def start_app(timeout=30.0):
         if len(pids) == 1:
             return pids[0]
         time.sleep(0.2)  # test-fixture-timer: process-table polling for the new instance
-    return None
+    # STATES THE OBSERVATION, NOT THE CAUSE. An earlier draft ended "this is NOT
+    # a product finding: rebuild" — which is a causal claim about a state with
+    # more than one producer, and the other producer is the app CRASHING during
+    # startup. That wording would send an operator to rebuild past a real
+    # startup regression. Name both producers and where to look.
+    raise SystemExit(
+        f"phase5 harness: LAUNCH FAILED and the previous instance is already stopped.\n"
+        f"bundle: {BUNDLE}\n"
+        f"The build is present but no instance appeared within {timeout:.0f}s. That has more "
+        "than one cause — an incomplete or unsignable deploy, or the app failing during "
+        "startup — so read ~/Library/Logs/EnviousWispr/app.log and the crash reporter before "
+        "classifying it. No UAT result was produced either way.")
 
 
 def await_idle(timeout=60.0):
@@ -283,6 +364,9 @@ def measure_row(name, pid, since_bytes):
 
 
 def main():
+    # BEFORE ANY MUTATION OR STOP. This row relaunches, so it needs this
+    # checkout's build; asking here means a missing one costs nothing.
+    require_bundle()
     snapshot = {k: read_default(k) for k in KEYS}
     # Recorded, not refused: every frame this row takes is captured BY WINDOW ID,
     # which the lock cannot substitute. A row taking a full-SCREEN artifact still
@@ -301,10 +385,13 @@ def main():
                 write_default(k, v)
             observed = {k: read_default(k) for k in settings}
             wanted = {k: expected_read(k, v) for k, v in settings.items()}
+            # `start_app` RAISES when the launch fails, so there is no None to
+            # test. That aborts the whole run rather than skipping this row, and
+            # that is the intended change: an app that will not launch fails
+            # every remaining row too, and the old per-row error said
+            # "relaunch produced no single instance" for a build that was never
+            # there.
             pid = start_app()
-            if not pid:
-                report["rows"][name] = {"error": "relaunch produced no single instance"}
-                continue
             if not await_idle():
                 report["rows"][name] = {
                     "pid": pid, "settings": {k: str(v) for k, v in settings.items()},

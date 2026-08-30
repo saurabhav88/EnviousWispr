@@ -220,6 +220,8 @@ def _terminal_after_start():
 
 
 def main():
+    # BEFORE ANY MUTATION OR STOP (see phase5_geometry_relaunch.require_bundle).
+    g.require_bundle()
     snapshot = {k: read_dev_default(k) for k in OVERRIDES}
     report = {"snapshot": snapshot, "screen_locked": g.screen_is_locked(),
               "cap_seconds": CAP_SECONDS,
@@ -233,6 +235,9 @@ def main():
             subprocess.run(["defaults", "write", DEV_DOMAIN, k, "-float", str(v)], check=True)
         report["overrides_written"] = {k: read_dev_default(k) for k in OVERRIDES}
 
+        # This row opens the bundle itself rather than through `start_app`, so it
+        # asks for the same refusal explicitly.
+        g.require_bundle()
         # `open` does not pass env vars, so the endpoint is armed with --env.
         subprocess.run(["open", "-n", "--env", "EW_FAULT_INJECTION=1", g.BUNDLE],
                        capture_output=True)
@@ -244,7 +249,12 @@ def main():
                 break
             time.sleep(0.2)  # test-fixture-timer: process-table polling
         if not pid:
-            print(json.dumps({"verdict": "ABORT_NO_INSTANCE"}))
+            # NAMES THE CAUSE. This row opens the bundle itself rather than
+            # through `start_app`, so it carries the same distinction by hand:
+            # the build was present at `require_bundle` and still produced no
+            # instance, which is an incomplete or unsignable deploy — not the
+            # product failing to start. Nothing was measured either way.
+            print(json.dumps({"verdict": "ABORT_LAUNCH_FAILED", "bundle": g.BUNDLE}))
             return
         report["pid"] = pid
         g.await_idle()

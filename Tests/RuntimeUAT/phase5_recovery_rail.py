@@ -121,6 +121,11 @@ def main():
         print(json.dumps({"verdict": "ABORT_SCREEN_LOCKED"}))
         return
 
+    # BEFORE ANY MUTATION OR STOP, and after the lock check so the lock
+    # verdict still comes first. This row relaunches, so it needs this
+    # checkout's build; asking here means a missing one costs nothing.
+    g.require_bundle()
+
     if len(g.dev_pids()) != 1:
         print(json.dumps({"verdict": "ABORT_INSTANCE", "found": g.dev_pids()}))
         return
@@ -135,10 +140,9 @@ def main():
     subprocess.run(["defaults", "write", DOMAIN, "cancelModifiersRaw", "-int", "0"], check=True)
     subprocess.run(["defaults", "write", DOMAIN, "escapeRecoveryEnabled", "-bool", "YES"], check=True)
     try:
+        # `start_app` raises with the exact cause; `ABORT_NO_INSTANCE` here
+        # could not tell a missing build from an app that crashes on launch.
         pid = g.start_app()
-        if not pid:
-            report["verdict"] = "ABORT_NO_INSTANCE"
-            return report
         report["pid"] = pid
 
         pt.ensure()  # best effort; a missing paste target never blocks a row
@@ -260,7 +264,12 @@ def main():
         report["restore_ok"] = bool(eru.restore(before))
         report["settings_after"] = {k: v[0] for k, v in eru.snapshot(REBIND_KEYS).items()}
         report["restore_clean"] = report["settings_after"] == report["settings_before"]
-        g.start_app()
+        # Guarded for the same reason as language-hover: an unguarded raise here
+        # would lose the report that records whether the restore succeeded.
+        try:
+            g.start_app()
+        except SystemExit as exc:
+            report["relaunch_error"] = str(exc)
         report.setdefault("verdict", "REFUSED")
         if report["verdict"] == "PASS" and not report["restore_clean"]:
             report["verdict"] = "REFUSED_RESTORE_FAILED"

@@ -271,6 +271,7 @@ def main():
         print(json.dumps({"verdict": "ABORT_SCREEN_LOCKED"}))
         return
 
+
     pids = g.dev_pids()
     if len(pids) != 1:
         print(json.dumps({"verdict": "ABORT_INSTANCE", "found": pids}))
@@ -290,13 +291,17 @@ def main():
         # the app STOPPED so the write is not overwritten by the instance it
         # replaces.
         if backend_before != REQUIRED_BACKEND:
+            # ONLY THIS BRANCH NEEDS A BUILD. The other mode inherits a running
+            # instance and never relaunches, so an unconditional check at the
+            # top of `main` refused valid runs on a checkout that simply had not
+            # been built. Asked here, before the first stop and the first write.
+            g.require_bundle()
             g.stop_app()
             subprocess.run(["defaults", "write", SHARED_DOMAIN, "selectedBackend",
                             REQUIRED_BACKEND], check=True)
+            # `start_app` raises with the exact cause; `ABORT_NO_INSTANCE` here
+            # could not tell a missing build from an app that crashes on launch.
             pid = g.start_app()
-            if not pid:
-                print(json.dumps({"verdict": "ABORT_NO_INSTANCE"}))
-                return
             report["pid"] = pid
         g.await_idle()
 
@@ -334,7 +339,14 @@ def main():
             g.stop_app()
             subprocess.run(["defaults", "write", SHARED_DOMAIN, "selectedBackend",
                             backend_before], check=True)
-            g.start_app()
+            # A FAILED RELAUNCH MUST NOT ABORT THE RESTORE. `start_app` raises,
+            # and this is inside `finally`, so an unguarded call would skip the
+            # `STATE_KEYS` restore below and leave the founder's dev preferences
+            # deleted — worse than the failure it is reporting.
+            try:
+                g.start_app()
+            except SystemExit as exc:
+                report["relaunch_error"] = str(exc)
         report["backend_restored"] = subprocess.run(
             ["defaults", "read", SHARED_DOMAIN, "selectedBackend"],
             capture_output=True, text=True).stdout.strip() or None
