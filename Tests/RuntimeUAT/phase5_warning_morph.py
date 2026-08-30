@@ -233,6 +233,9 @@ def main():
             subprocess.run(["defaults", "write", DEV_DOMAIN, k, "-float", str(v)], check=True)
         report["overrides_written"] = {k: read_dev_default(k) for k in OVERRIDES}
 
+        # This row opens the bundle itself rather than through `start_app`, so it
+        # asks for the same refusal explicitly.
+        g.require_bundle()
         # `open` does not pass env vars, so the endpoint is armed with --env.
         subprocess.run(["open", "-n", "--env", "EW_FAULT_INJECTION=1", g.BUNDLE],
                        capture_output=True)

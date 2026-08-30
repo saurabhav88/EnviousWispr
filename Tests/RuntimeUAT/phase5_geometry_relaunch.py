@@ -65,23 +65,33 @@ DOMAIN = "com.enviouswispr.app"
 # then fails against a path that is not there, and the harness reports
 # `ABORT_NO_INSTANCE`, which reads as "the app would not start".
 #
-# A hardcoded absolute path is not a pinned oracle (tools-and-apps.md
-# RULE: cwd-is-sticky-never-cd-for-a-one-off): it pins whatever branch some other
-# tree happens to be on, and this repo's rules put feature work in worktrees that
-# are deleted on merge. Deriving it from `__file__` drives the build belonging to
-# the checkout the harness itself came from, which is the tree whose change is
-# under test.
+# A hardcoded absolute path pins whatever branch some other tree happens to be
+# on, and feature work here lives in worktrees that are deleted on merge, so the
+# same rot recurs on every feature. Deriving it from `__file__` drives the build
+# belonging to the checkout the harness itself came from, which is the tree whose
+# change is under test.
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 BUNDLE = str(_REPO_ROOT / "build" / "EnviousWispr Local.app")
 
-# FAIL LOUDLY AND EARLY, before anything is killed. A missing build and an app
-# that will not launch are the same `ABORT_NO_INSTANCE` to every caller, and only
-# one of them is a product finding.
-if not pathlib.Path(BUNDLE).exists():
-    raise SystemExit(
-        f"phase5 harness: no dev build at {BUNDLE}\n"
-        "Run scripts/build-dev-app.sh in THIS checkout first. Refusing rather than "
-        "terminating the running instance for a run that cannot start.")
+
+def require_bundle():
+    """Refuse BEFORE anything is killed when this checkout has no dev build.
+
+    A missing build and an app that will not launch are the same
+    `ABORT_NO_INSTANCE` to every caller, and only one of them is a product
+    finding. The old shape terminated the running instance and only then
+    discovered it had nothing to launch.
+
+    Called from `start_app` rather than at import, because a row that INHERITS
+    an already-running instance never relaunches and does not need this
+    checkout's bundle at all — `phase5_language_hover` has exactly that mode,
+    and an import-time check aborted it.
+    """
+    if not pathlib.Path(BUNDLE).exists():
+        raise SystemExit(
+            f"phase5 harness: no dev build at {BUNDLE}\n"
+            "Run scripts/build-dev-app.sh in THIS checkout first. Refusing rather than "
+            "terminating the running instance for a run that cannot start.")
 KEYS = ["livePreviewEnabled", "recordingPillDesignWithoutWords"]
 
 # **WRITE A BOOL AS A BOOL.** `livePreviewEnabled` is read as
@@ -204,6 +214,9 @@ def stop_app(timeout=30.0):
 
 
 def start_app(timeout=30.0):
+    # Every relaunch funnels through here, so the refusal cannot be forgotten at
+    # a call site.
+    require_bundle()
     subprocess.run(["open", "-n", BUNDLE], capture_output=True)
     deadline = time.time() + timeout
     while time.time() < deadline:
