@@ -805,6 +805,58 @@ struct RecoveryCoordinatorTests {
 
   // MARK: - Discard
 
+  /// **The WIRE, which nothing reached** (#2356).
+  ///
+  /// The two halves of Discard were both covered and the line between them was
+  /// not. `discardDuringRecovery` below drives `discardActiveRecovery()`
+  /// directly; `RecordingStarterStartPathTests.discardInvokesRecoveryOwner`
+  /// builds its own `RecoveryAccess` with a probe closure. So the composition
+  /// root's binding — the one line that joins the button to its owner — was the
+  /// single site no test named, and replacing it with `{}` left every suite
+  /// green.
+  ///
+  /// What that costs a user: crash recovery holds the engine, they press
+  /// Discard, and nothing happens. The notice goes away and recovery does not.
+  ///
+  /// This enters through `DictationRuntime.recoveryAccess`, which the app itself
+  /// calls, rather than through a hand-built one. All five seams are asserted
+  /// rather than only Discard, because the slot binds them together and any one
+  /// of them could be cut the same way.
+  @Test("the composition root binds all five recovery seams to the real coordinator")
+  func theCompositionRootBindsTheRecoverySeams() async throws {
+    let h = Self.makeHarness()
+    let access = await DictationRuntime.recoveryAccess(binding: h.coordinator)
+
+    #expect(
+      await !access.isRecovering(),
+      "isRecovering is not reading the coordinator: nothing is recovering yet")
+
+    let id = "wire-\(UUID().uuidString)"
+    try Self.writeSpool(h.spoolStore, id)
+    try h.keyStore.store(keyData: RecoveryKeyStore.makeKey(), for: id)
+    h.replayer.suspendFirstReplay = true
+    let scan = Task { await h.coordinator.scanAndRecover() }
+    while h.replayer.gateContinuation == nil { await Task.yield() }
+
+    #expect(
+      await access.isRecovering(),
+      "isRecovering is not reading the coordinator: a replay holds the engine")
+
+    await access.signalPendingLiveStart()
+    #expect(
+      h.coordinator.pendingLiveStartSignal,
+      "signalPendingLiveStart is not reaching the coordinator")
+
+    await access.discardActive()
+    #expect(
+      h.resetEngineCount.value == 1,
+      "Discard reached nobody — the button is bound to something that is not the coordinator")
+
+    h.replayer.gateContinuation?.resume()
+    await scan.value
+    #expect(!h.coordinator.isRecovering, "the gate never cleared after the discard")
+  }
+
   @Test("Discard mid-recovery bumps the generation, frees the gate, and deletes the orphan")
   func discardDuringRecovery() async throws {
     let h = Self.makeHarness()

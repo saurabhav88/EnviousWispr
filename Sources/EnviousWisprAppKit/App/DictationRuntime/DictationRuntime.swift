@@ -134,30 +134,7 @@ final class DictationRuntime {
       // arguments until the architectural ceiling caught the accretion. Still
       // bare closures, so the starter stays off its collaborator cap and the
       // kernel never sees the coordinator.
-      recovery: RecordingStarter.RecoveryAccess(
-        // #1063 PR1: arm crash recovery for this start.
-        makeDirective: { settings, backend, lid in
-          await recoveryCoordinator.makeDirective(
-            settings: settings, backendType: backend, supportsLanguageDetection: lid)
-        },
-        // #1063 PR1 (Codex r3): a PTT release or concurrent-toggle stop landing in
-        // the arm window mints no session, so the lifecycle coordinator sees no
-        // terminal state — the starter cleans the armed spool/key directly. #1464:
-        // a pre-start abort has no `RecordingOutcome`, so it routes to the
-        // dedicated coordinator entry point (always a discard — nothing was
-        // captured).
-        cleanupArm: { id in
-          recoveryCoordinator.handlePreStartAbort(recoverySessionID: id)
-        },
-        // #1063 PR2: the recording gate — a press while recovery holds the shared
-        // engine mints no session (shows the "recovering" pill).
-        isRecovering: { recoveryCoordinator.isRecovering },
-        // #1707 Phase 3 (§3.1): a refused press yields the engine BETWEEN a
-        // multi-item recovery scan's items, not only after the whole scan.
-        signalPendingLiveStart: { recoveryCoordinator.pendingLiveStartSignal = true },
-        // #2292 C4b: the recovery notice's Discard button, bound at its own
-        // presentation rather than routed through a settable overlay sink.
-        discardActive: { recoveryCoordinator.discardActiveRecovery() }),
+      recovery: Self.recoveryAccess(binding: recoveryCoordinator),
       // #1171: drive the selected engine to ready before recording, gate a press
       // during an in-flight switch, and hold the start-window state-gate so the
       // coordinator can't switch the engine out mid-startup.
@@ -201,6 +178,56 @@ final class DictationRuntime {
     )
     self.hotkeyController = hotkeyController
     hotkeyController.install()
+  }
+
+
+  /// The five recovery seams, bound to one collaborator.
+  ///
+  /// **Extracted so a test can reach the WIRE, which nothing did** (#2356). Both
+  /// halves were well covered and the line between them was not:
+  /// `RecoveryCoordinatorTests` drives `discardActiveRecovery()` directly, and
+  /// `RecordingStarterStartPathTests` builds its own `RecoveryAccess` with a probe
+  /// closure — so the composition root's binding was the one site no test named.
+  /// Replacing `discardActive:` with `{}` here left every suite green, which is
+  /// the whole failure: Discard would reach nobody and crash recovery would keep
+  /// the engine while the user watched a button do nothing.
+  ///
+  /// A source-text guard was the alternative and was rejected: this repo has
+  /// spent several rounds learning that a check over spelling is evadable, and
+  /// the honest repair for an untested site is to make it REACHABLE rather than
+  /// to assert what it looks like.
+  ///
+  /// Every closure below binds the SAME coordinator; they were five separate
+  /// arguments until the architectural ceiling caught the accretion. Still bare
+  /// closures, so the starter stays off its collaborator cap and the kernel never
+  /// sees the coordinator.
+  static func recoveryAccess(
+    binding recoveryCoordinator: RecoveryCoordinator
+  ) -> RecordingStarter.RecoveryAccess {
+    RecordingStarter.RecoveryAccess(
+    // #1063 PR1: arm crash recovery for this start.
+    makeDirective: { settings, backend, lid in
+      await recoveryCoordinator.makeDirective(
+        settings: settings, backendType: backend, supportsLanguageDetection: lid)
+    },
+    // #1063 PR1 (Codex r3): a PTT release or concurrent-toggle stop landing in
+    // the arm window mints no session, so the lifecycle coordinator sees no
+    // terminal state — the starter cleans the armed spool/key directly. #1464:
+    // a pre-start abort has no `RecordingOutcome`, so it routes to the
+    // dedicated coordinator entry point (always a discard — nothing was
+    // captured).
+    cleanupArm: { id in
+      recoveryCoordinator.handlePreStartAbort(recoverySessionID: id)
+    },
+    // #1063 PR2: the recording gate — a press while recovery holds the shared
+    // engine mints no session (shows the "recovering" pill).
+    isRecovering: { recoveryCoordinator.isRecovering },
+    // #1707 Phase 3 (§3.1): a refused press yields the engine BETWEEN a
+    // multi-item recovery scan's items, not only after the whole scan.
+    signalPendingLiveStart: { recoveryCoordinator.pendingLiveStartSignal = true },
+    // #2292 C4b: the recovery notice's Discard button, bound at its own
+    // presentation rather than routed through a settable overlay sink.
+    discardActive: { recoveryCoordinator.discardActiveRecovery() })
   }
 
   // MARK: - Facade (UI / menus / AppDelegate command surface)
