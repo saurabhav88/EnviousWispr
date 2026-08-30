@@ -804,6 +804,24 @@ struct RecordingPillPreviewWiringTests {
     // fixed design handed in from another type. This is a drift guard, so the
     // threat is an accidental edit, not code written to get past it.
     //
+    // **THE TWO ROWS BELOW SPLIT ONE QUESTION ON THE GRAMMAR'S OWN TWO-STATE
+    // BASE, so this axis is closed rather than described.** A reach with NO base
+    // resolves against the contextual type and is judged by case name; a reach
+    // WITH one names a type and is judged by whether that type is this one.
+    // There is no third state, so the list cannot grow a member.
+    //
+    // The closure is falsifiable, which is the point of writing it down: a next
+    // finding on this axis would have to be a reach that is neither an implicit
+    // member nor a reference to the type name. Every such reach known to us goes
+    // through `type(of:)` or through another type's stored value, and both are
+    // already declared out of scope above. A finding inside the scope would mean
+    // this paragraph is wrong, not that the list needs extending.
+    //
+    // The two rounds that produced this were FALSE POSITIVES, not evasions —
+    // an explicit initializer, and an unrelated `SomeStyle.classic`. Both were
+    // one unqualified text match reading more than it meant to, in the direction
+    // that accuses innocent work.
+    //
     // The structural fix that would end the class — the leaf deriving chrome from
     // the design it is already given, so there is no argument to get wrong at
     // either call site — is #2520, and it changes shipped source rather than a
@@ -840,7 +858,12 @@ struct RecordingPillPreviewWiringTests {
       short list and would pass on a design it never checked.
       """)
 
-    let named = Self.memberNames(in: tile).intersection(caseNames).sorted()
+    // **BARE `.classic`, not `Other.classic`** — see `implicitMemberNames`. The
+    // two rows are one question split on the grammar's own two-state base: a
+    // reach with no base is a contextual design, and a reach with one is a named
+    // type, which the row below refuses when that type is this one. Counting
+    // every member name spelled like a case blamed an unrelated `SomeStyle.classic`.
+    let named = Self.implicitMemberNames(in: tile).intersection(caseNames).sorted()
     #expect(
       named.isEmpty,
       """
@@ -956,18 +979,30 @@ struct RecordingPillPreviewWiringTests {
     return false
   }
 
-  /// Every member name accessed anywhere inside a declaration — `a.b` and a bare
-  /// `.b` alike. Comments and strings are not members, so they cannot trip it.
-  private final class MemberNameFinder: SyntaxVisitor {
+  /// Member names reached with NO base — a bare `.classic`, never `Other.classic`.
+  ///
+  /// **The base is the whole discriminator, and it has two states, so this axis
+  /// is closed rather than described.** An implicit member resolves against the
+  /// CONTEXTUAL type, and the only contextual type in this struct carrying a
+  /// design's case names is the design type, so a bare `.classic` here is always
+  /// a fixed design. An explicit base names a type, and that type is either the
+  /// design type — which `typeReaches` already refuses — or an unrelated one that
+  /// happens to spell a member the same way, which is innocent and must not be
+  /// blamed.
+  ///
+  /// Counting both is what a review round found: an unrelated `SomeStyle.classic`
+  /// would have failed the row while `chrome: design.chrome` stayed correct.
+  /// Comments and strings are not members, so they cannot trip it either way.
+  private final class ImplicitMemberFinder: SyntaxVisitor {
     private(set) var names: Set<String> = []
     override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
-      names.insert(node.declName.baseName.text)
+      if node.base == nil { names.insert(node.declName.baseName.text) }
       return .visitChildren
     }
   }
 
-  private static func memberNames(in decl: StructDeclSyntax) -> Set<String> {
-    let finder = MemberNameFinder(viewMode: .sourceAccurate)
+  private static func implicitMemberNames(in decl: StructDeclSyntax) -> Set<String> {
+    let finder = ImplicitMemberFinder(viewMode: .sourceAccurate)
     finder.walk(decl)
     return finder.names
   }
