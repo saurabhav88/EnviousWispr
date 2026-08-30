@@ -37,6 +37,63 @@ struct AppearancePillPickerTests {
     return (settings, PillAppearanceModel(settings: settings, capability: { capability }))
   }
 
+  /// **A capability change INVALIDATES a page that read the capability.**
+  ///
+  /// `wordsCapability` opens with a bare `_ = capabilityGeneration`, and that
+  /// discard is the whole mechanism: the closure behind `capability` reaches a
+  /// class that is not `@Observable`, so a page reading only its RESULT would
+  /// never be told when removal suppression begins or ends. Reading the stored
+  /// property is what puts the page in this object's dependency graph.
+  ///
+  /// **Nothing bound it.** #2421 row 3 deletes that line and names
+  /// `aCapabilityReaderIsInvalidated()`, which does not exist in this suite or
+  /// anywhere else, and `capabilityGeneration` had ZERO test references — so the
+  /// line could be deleted as dead code with every suite green.
+  ///
+  /// What a user would meet: begin removing the model with the appearance page
+  /// open, and the greyed-out cards and their reason stay exactly as they were.
+  ///
+  /// The oracle is `withObservationTracking`, which is the same registration
+  /// SwiftUI performs — not a stand-in for it. A change that stops reading the
+  /// generation fails here because `onChange` never fires.
+  @Test("a page that read the capability is invalidated when the capability changes")
+  func aCapabilityReaderIsInvalidated() async {
+    let model = Self.model(.available)
+    let fired = Invalidation()
+
+    withObservationTracking {
+      _ = model.wordsCapability
+    } onChange: {
+      fired.mark()
+    }
+
+    model.capabilityDidChange()
+    await Task.yield()
+
+    #expect(
+      fired.happened,
+      """
+      reading wordsCapability registered no dependency, so a settings page showing \
+      the greyed cards is never invalidated when removal suppression begins or ends.
+      """)
+  }
+
+  /// A box `withObservationTracking`'s escaping handler can write to.
+  private final class Invalidation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    func mark() {
+      lock.lock()
+      value = true
+      lock.unlock()
+    }
+    var happened: Bool {
+      lock.lock()
+      defer { lock.unlock() }
+      return value
+    }
+  }
+
   /// **The tick marks what the NEXT RECORDING will use, not what is stored.**
   ///
   /// The recording director puts both stored slots through
@@ -103,7 +160,8 @@ struct AppearancePillPickerTests {
   @Test("the two groups between them offer every design")
   func groupsCoverEveryDesign() {
     let m = Self.model(.available)
-    let all = Set(PillCatalog.designs(holdingWords: true) + PillCatalog.designs(holdingWords: false))
+    let all = Set(
+      PillCatalog.designs(holdingWords: true) + PillCatalog.designs(holdingWords: false))
     #expect(
       all == Set(RecordingPillDesign.allCases),
       "the picker lays out \(all.count) of \(RecordingPillDesign.allCases.count) designs")
@@ -131,8 +189,9 @@ struct AppearancePillPickerTests {
   /// Both directions asserted, so a future change that greys a card without
   /// explaining it fails here, and so does one that leaves an orphaned sentence
   /// under a row where everything is selectable.
-  @Test("a state explains itself exactly when it greys something",
-        arguments: PillWordsCapability.allCases)
+  @Test(
+    "a state explains itself exactly when it greys something",
+    arguments: PillWordsCapability.allCases)
   func reasonAppearsExactlyWhenSomethingIsGreyed(capability: PillWordsCapability) throws {
     let reason = RecordingPillAppearancePanel.reason(for: capability)
     let switchCanFixIt = capability == .available || capability == .previewOff
@@ -190,8 +249,9 @@ struct AppearancePillPickerTests {
   /// remaining bar is whether the machine can produce words at all — something no
   /// tap can change. Asserted per state so the two cases the switch cannot fix
   /// stay closed.
-  @Test("a tap can reach any design the machine can actually run",
-        arguments: PillWordsCapability.allCases)
+  @Test(
+    "a tap can reach any design the machine can actually run",
+    arguments: PillWordsCapability.allCases)
   func couplingOpensEverythingTheMachineCanDo(capability: PillWordsCapability) {
     let model = Self.model(capability)
 
