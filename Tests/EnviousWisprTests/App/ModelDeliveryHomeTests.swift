@@ -486,6 +486,15 @@ struct ModelDeliveryHomeTests {
   ///
   /// The flag store is injected. Reading the real one would mean writing an
   /// operational delivery kill switch onto a developer's machine.
+  ///
+  /// **KNOWN SURVIVOR, and it is structural rather than an oversight (#2389).**
+  /// Deleting the `_ = await handle.ensureAvailable()` line inside the claim
+  /// leaves every row here green, confirmed by mutation. It cannot be otherwise:
+  /// `tryBegin` returns false, so `withClaim` refuses and never runs its
+  /// operation, which is exactly the property the paragraph above relies on to
+  /// keep real Parakeet delivery off the developer's cache and the network.
+  /// Binding "the download was actually asked for" needs a seam this file does
+  /// not have, and buying it by letting delivery run would be the worse trade.
   @Test("the Parakeet Resume door honours the parakeet kill switch, both ways")
   func parakeetResumeHonoursTheKillSwitch() async throws {
     final class Box: @unchecked Sendable {
@@ -529,6 +538,68 @@ struct ModelDeliveryHomeTests {
     #expect(
       onBox.refusedSites == ["parakeetResumeDownload"],
       "with the flag ON the door must still reach delivery; a welded-shut door would pass the assertions above"
+    )
+  }
+
+  /// The Resume door's SECOND kill-switch read — the one inside the Task (#2389).
+  ///
+  /// **Nothing bound it, and the case beside this one cannot.** Deleting that
+  /// guard left every row of `parakeetResumeHonoursTheKillSwitch()` green, found
+  /// by a mutation of the night session's own choosing rather than by the filed
+  /// recipe. The reason is structural: that case's flag-off arm returns at the
+  /// SYNCHRONOUS guard, so the re-read is never reached, and its flag-on arm
+  /// never turns the switch off. The second door was live code with no test
+  /// entering it at all.
+  ///
+  /// **The window is real, not contrived.** The flag is set remotely, so it can
+  /// go off between the user pressing Resume and the download starting. The
+  /// re-read exists for exactly that, and it must refuse BEFORE the mutation
+  /// claim: a download that is not going to happen must not serialise against a
+  /// dictation's engine switch.
+  ///
+  /// **Staged, never raced.** `resumeParakeetDownload()` is synchronous and
+  /// returns before its unstructured `Task` can run, so writing the flag on the
+  /// next line puts the store in the off state for the re-read and only for the
+  /// re-read. The first expectation is the precondition: if the synchronous
+  /// guard had already refused, this case would be testing the first door again
+  /// and would prove nothing about the second.
+  @Test("the Resume door re-reads the kill switch after the button, not only before")
+  func parakeetResumeRereadsTheKillSwitch() async throws {
+    final class Box: @unchecked Sendable {
+      var refusedSites: [String] = []
+    }
+
+    let box = Box()
+    let suite = try #require(UserDefaults(suiteName: "ew-2389-reread-\(UUID().uuidString)"))
+    suite.set(true, forKey: "modelDelivery.parakeet.enabled")
+    let home = ModelDeliveryHome(
+      engineMutationScope: .live(
+        tryBegin: { false },
+        end: { false },
+        wake: {},
+        onRefused: { box.refusedSites.append($0) }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport(),
+      deliveryFlagDefaults: suite)
+
+    home.resumeParakeetDownload()
+    #expect(
+      home.parakeetResumeRefusalsForTests == 0,
+      "the switch was ON at the button, so the synchronous guard must let this through — a refusal here means this case never reaches the door it exists for"
+    )
+
+    suite.set(false, forKey: "modelDelivery.parakeet.enabled")
+
+    // Signal, not clock: the re-read increments this from inside the door's Task.
+    for _ in 0..<400 where home.parakeetResumeRefusalsForTests == 0 { await Task.yield() }
+
+    #expect(
+      home.parakeetResumeRefusalsForTests == 1,
+      "the switch went off between the button and the download starting and the door carried on anyway"
+    )
+    #expect(
+      box.refusedSites.isEmpty,
+      "the re-read refused, so it must have refused BEFORE taking the mutation claim"
     )
   }
 
