@@ -139,8 +139,9 @@ struct QuickAddCoordinatorTests {
     _ = coordinator.begin(door: .menuBar, selection: .acquired(outcome))
     coordinator.didOpen()
 
-    guard case .opened(_, _, let bundle, _, _, _, _, let acquired, let ms, let restore) =
-      try #require(recorder.opened)
+    guard
+      case .opened(_, _, let bundle, _, _, _, _, let acquired, let ms, let restore) =
+        try #require(recorder.opened)
     else {
       Issue.record("not an opened event")
       return
@@ -160,8 +161,9 @@ struct QuickAddCoordinatorTests {
     _ = coordinator.begin(door: .service, selection: .text("codecs"))
     coordinator.didOpen()
 
-    guard case .opened(_, _, let bundle, _, _, _, _, let acquired, let ms, let restore) =
-      try #require(recorder.opened)
+    guard
+      case .opened(_, _, let bundle, _, _, _, _, let acquired, let ms, let restore) =
+        try #require(recorder.opened)
     else {
       Issue.record("not an opened event")
       return
@@ -281,7 +283,8 @@ struct QuickAddCoordinatorTests {
     _ = beginAndShow(coordinator)
     let opened = try #require(recorder.opened)
 
-    guard case .opened(let door, let refusal, let bundle, let count, _, _, _, _, _, _) = opened else {
+    guard case .opened(let door, let refusal, let bundle, let count, _, _, _, _, _, _) = opened
+    else {
       Issue.record("not an opened event")
       return
     }
@@ -728,7 +731,9 @@ struct QuickAddCoordinatorTests {
     let (coordinator, recorder) = makeCoordinator()
 
     _ = beginAndShow(coordinator, door: .service, selectionOverride: "codecs")
-    guard case .opened(let door, _, _, _, _, _, _, _, _, _) = try #require(recorder.opened) else { return }
+    guard case .opened(let door, _, _, _, _, _, _, _, _, _) = try #require(recorder.opened) else {
+      return
+    }
 
     #expect(door == .service)
     // Three since #2412 added the status-item menu. The count is here so a new door cannot be added
@@ -858,7 +863,32 @@ struct QuickAddCoordinatorTests {
     // And NOT a resolved either: nothing opened, so there is nothing to resolve, and inventing an
     // outcome would put a phantom row in the denominator of every rate built on this funnel.
     #expect(recorder.outcomes.isEmpty)
-    #expect(recorder.events.contains { if case .failed = $0 { true } else { false } })
+
+    // **EXACTLY ONE FAILURE, AND IT IS THIS STAGE'S.** `contains` was the whole
+    // assertion and cannot count: a second failure from somewhere else satisfies
+    // it just as well as the right one alone.
+    //
+    // Measured on #2388 row 11, which appends `finish(.cancelled, ...)` right
+    // after the emit above. `finish` refuses on a cleared `startedAt` — the
+    // deliberate second guard its own comment describes — so no outcome appears
+    // and `outcomes.isEmpty` still holds. What the mutant DOES produce is a
+    // second `failed`, at stage `resolve` with reason `double_resolution`, and
+    // `contains` could not see it. The row survived on a green that counted
+    // nothing.
+    let failures = recorder.events.compactMap { event -> (String, String)? in
+      if case .failed(let stage, let reason) = event { return (stage, reason) }
+      return nil
+    }
+    #expect(
+      failures.count == 1,
+      """
+      failedToOpen emitted \(failures.count) failures: \(failures). One panel that could not be \
+      shown is one failure; a second means something downstream also reported.
+      """)
+    #expect(
+      failures.first?.0 == "present",
+      "the failure came from stage \(failures.first?.0 ?? "none"), not the presentation that failed"
+    )
   }
 
   @Test("A panel that IS shown emits exactly one open")
