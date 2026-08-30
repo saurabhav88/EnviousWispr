@@ -24,12 +24,41 @@ struct LivePreviewStatusBarPresentationTests {
 
   /// Every kind the mapping can return, so the sweeps below are over the real
   /// closed set rather than the ones a test author happened to think of.
+  ///
+  /// **THAT SENTENCE WAS A CLAIM THE CODE DID NOT IMPLEMENT.** This is a
+  /// hand-written array, and an array literal is not exhaustive over an enum — the
+  /// compiler sees an omission from a `switch`, never from a list. A twelfth `Kind`
+  /// would have escaped this sweep and the four others that read `allKinds`, while
+  /// the sentence above told the next reader the set was closed.
+  ///
+  /// `allKindsCoversEveryKind` now holds it, with `caseName` as the compiler's half.
+  /// Raised by #2441, which asked whether a new case falls through safely. It does
+  /// not fall through: it is never swept at all.
   private static let allKinds: [LivePreviewStatusMapping.Kind] = [
     .active, .off, .needsMacOS26, .checking,
     .needsLanguage(name: "German"),
     .unsupportedLanguage, .needsDownload, .gettingReady,
     .downloadFailed, .buildCannotRun, .paused,
   ]
+
+  /// The case's own identifier, from an EXHAUSTIVE switch. A case added to `Kind`
+  /// stops this compiling until it is handled, which is why it is a switch rather
+  /// than a read of `"\(kind)"`.
+  private static func caseName(_ kind: LivePreviewStatusMapping.Kind) -> String {
+    switch kind {
+    case .active: return "active"
+    case .off: return "off"
+    case .needsMacOS26: return "needsMacOS26"
+    case .checking: return "checking"
+    case .needsLanguage: return "needsLanguage"
+    case .unsupportedLanguage: return "unsupportedLanguage"
+    case .needsDownload: return "needsDownload"
+    case .gettingReady: return "gettingReady"
+    case .downloadFailed: return "downloadFailed"
+    case .buildCannotRun: return "buildCannotRun"
+    case .paused: return "paused"
+    }
+  }
 
   private func summary(
     _ kind: LivePreviewStatusMapping.Kind,
@@ -117,6 +146,50 @@ struct LivePreviewStatusBarPresentationTests {
         }
       }
     }
+  }
+
+  /// **THE SWEEP LIST IS NOT ALLOWED TO FALL BEHIND THE ENUM.**
+  ///
+  /// Five tests in this file read `allKinds`, and it is a hand-written array, so a
+  /// twelfth `Kind` escapes all five at once — not falling through to a safe
+  /// default, simply never reached. The row above says the next kind added "has to
+  /// be classified"; that was only true once this existed.
+  ///
+  /// `Kind` carries an associated value, so `CaseIterable` cannot be synthesised.
+  /// `caseName` is the substitute the compiler CAN enforce, and both halves are
+  /// needed: the switch alone would let someone add a case without sweeping it,
+  /// and this row alone could be satisfied by editing one list to match the other.
+  @Test("every kind the mapping can return is in the list the sweeps read")
+  func allKindsCoversEveryKind() {
+    let swept = Set(Self.allKinds.map(Self.caseName))
+
+    // Every name `caseName` can produce. The compiler has already forced that
+    // switch to be complete, so a case added to `Kind` fails to BUILD there first;
+    // adding it there and not here then fails this row.
+    let declared: Set<String> = [
+      "active", "off", "needsMacOS26", "checking", "needsLanguage",
+      "unsupportedLanguage", "needsDownload", "gettingReady",
+      "downloadFailed", "buildCannotRun", "paused",
+    ]
+
+    let missing = declared.subtracting(swept).sorted()
+    let extra = swept.subtracting(declared).sorted()
+
+    #expect(
+      missing.isEmpty,
+      """
+      \(missing.joined(separator: ", ")) is a Kind the mapping can return and no \
+      sweep in this file reaches it.
+      """)
+    #expect(
+      extra.isEmpty,
+      """
+      allKinds carries \(extra.joined(separator: ", ")), which caseName cannot \
+      produce — the list and the enum have diverged.
+      """)
+    #expect(
+      Self.allKinds.count == swept.count,
+      "allKinds lists \(Self.allKinds.count) entries for \(swept.count) distinct kinds")
   }
 
   /// The locked language is NAMED when Apple cannot preview it, rather than the row
