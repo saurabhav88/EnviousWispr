@@ -428,19 +428,33 @@ struct CapsuleBackgroundFreezeTests {
       "the parsed bounds of OverlayCapsuleBackground are \(open)...\(close), which cannot index its own source"
     )
 
-    var reads = 0
-    for i in open..<close where lines[i].contains("PreviewPillPalette.") {
-      reads += 1
-      let context = lines[max(open, i - 3)...min(close, i + 1)].joined(separator: "\n")
-      #expect(
-        context.contains("isPreview") || context.contains("case .rounded"),
-        """
-        line \(i + 1) of OverlayCapsuleBackground reads the preview palette outside \
-        its preview branch: \(lines[i].trimmingCharacters(in: .whitespaces)). That \
-        struct paints seven pills that are not the preview.
-        """)
-    }
+    // **REACHABILITY, not text proximity** (#2536).
+    //
+    // This used to join the four lines around each read and accept the presence of
+    // `isPreview` or `case .rounded` anywhere in them. Those are raw source lines,
+    // so a COMMENT mentioning either phrase satisfied it: the real gate could be
+    // deleted and the words left nearby, and the check passed.
+    //
+    // #2380 named that as its own weakness and held it out of the region fix
+    // deliberately, because a wider or cleverer string match is the same defect one
+    // character along — the shape this file has now paid for four times.
+    //
+    // So the question is asked of the SYNTAX TREE instead: is this read inside the
+    // preview branch? A read is gated when one of its ANCESTORS is either the
+    // ternary whose condition names `isPreview`, or the `case .rounded` of a switch.
+    // A comment is trivia and cannot be an ancestor, so the class disappears rather
+    // than narrowing. Both conditions are read through `CodeOnly`, so a comment
+    // inside the condition itself cannot satisfy them either.
+    let ungated = Self.ungatedPaletteReads(in: decl, converter: converter)
+    #expect(
+      ungated.isEmpty,
+      """
+      OverlayCapsuleBackground reads the preview palette outside its preview branch \
+      at \(ungated.joined(separator: "; ")). That struct paints seven pills that are \
+      not the preview.
+      """)
 
+    let reads = Self.paletteReads(in: decl).count
     #expect(
       reads >= 2,
       """
@@ -448,6 +462,247 @@ struct CapsuleBackgroundFreezeTests {
       passes vacuously with nothing to gate, so this pins that the preview branch \
       really is wired to the palette.
       """)
+  }
+
+  // MARK: - Spelling normalisers, in ONE place
+  //
+  // **Three review rounds on this guard have been SPELLING, not meaning.** A
+  // comment satisfying a text match; a condition negated; a case consolidated; a
+  // module qualifier; a pair of parentheses. Renderings the compiler treats as one
+  // thing, matched separately at each site, are how a guard grows a new hole every
+  // round — so they are normalised HERE and nowhere else.
+  //
+  // **Round 4 falsified the previous closure, and the way it failed is the point.**
+  // That paragraph claimed parentheses were unwrapped; they were unwrapped on the
+  // CONDITION only, so `(PreviewPillPalette).surface` walked straight through. A
+  // normaliser applied at one of its two sites is not a normaliser — it is the
+  // per-site matching this section exists to replace, one indirection further in.
+  //
+  // **So the base is no longer RENDERED TO TEXT at all.** Rendering asks what the
+  // source looks like, which is the question with infinitely many answers;
+  // `declName` / `baseName` asks which identifier is written, which is the question
+  // the compiler answers and has exactly one. Parentheses, module qualifiers and
+  // comments are all trivia or wrappers around that token and cannot reach it.
+  //
+  // **The closure, so it is falsifiable rather than hopeful:** a next finding here
+  // has to be a spelling whose *written identifier* is not `PreviewPillPalette` and
+  // which still reads the palette. That is name resolution — a `typealias`, a local
+  // binding, an `import` alias — which no syntax test can do and which this guard
+  // has always declared out of scope. A finding INSIDE the scope means this
+  // paragraph is wrong, not that another case needs adding.
+
+  /// Whether an expression names `PreviewPillPalette`, however it is written.
+  ///
+  /// `nonisolated` because the visitor that calls it is not on the main actor;
+  /// nothing here touches actor state.
+  ///
+  /// `EnviousWisprAppKit.PreviewPillPalette.surface` and `(PreviewPillPalette).surface`
+  /// are the same read as `PreviewPillPalette.surface`. Only the written identifier
+  /// decides, so it is taken from the node rather than from the rendered source.
+  nonisolated private static func namesThePalette(_ base: ExprSyntax?) -> Bool {
+    guard let base else { return false }
+    let bare = unparenthesised(base)
+    let token =
+      bare.as(MemberAccessExprSyntax.self)?.declName.baseName
+      ?? bare.as(DeclReferenceExprSyntax.self)?.baseName
+    return token.map(identifierName) == "PreviewPillPalette"
+  }
+
+  /// A token's canonical identifier, with any escaping removed.
+  ///
+  /// **`baseName.text` INCLUDES the backticks**, so `` `PreviewPillPalette`.surface ``
+  /// — a valid spelling the compiler resolves to the same declaration — did not
+  /// match. `identifier?.name` is SwiftSyntax's own canonical, escaping-stripped
+  /// identifier, which is the general answer rather than a backtick special case.
+  ///
+  /// Two sibling gates already reached for it, `TestInventoryFreezeTests` and
+  /// `EngineMutationInventoryFreezeTests`, and this file matches them rather than
+  /// hand-rolling a third answer to one question. It is nil for a non-identifier
+  /// token, so the raw text stays as the fallback rather than as the mechanism.
+  nonisolated private static func identifierName(_ token: TokenSyntax) -> String {
+    token.identifier?.name ?? token.text
+  }
+
+  /// An expression with its redundant parentheses removed.
+  ///
+  /// `(isPreview) ? …` gates exactly as `isPreview ? …` does, and rejecting it
+  /// would accuse correct code — the direction that trains bypasses.
+  ///
+  /// Used by BOTH sites, which is what round 4 established: applied to only one of
+  /// them it is per-site matching wearing a normaliser's name.
+  nonisolated private static func unparenthesised(_ expr: ExprSyntax) -> ExprSyntax {
+    var current = expr
+    while let tuple = current.as(TupleExprSyntax.self),
+      tuple.elements.count == 1,
+      tuple.elements.first?.label == nil,
+      let inner = tuple.elements.first?.expression
+    {
+      current = inner
+    }
+    return current
+  }
+
+  /// Every `PreviewPillPalette.…` read inside a declaration, as syntax rather
+  /// than as matching text.
+  private final class PaletteReadFinder: SyntaxVisitor {
+    private(set) var reads: [MemberAccessExprSyntax] = []
+    override func visit(_ node: MemberAccessExprSyntax) -> SyntaxVisitorContinueKind {
+      if CapsuleBackgroundFreezeTests.namesThePalette(node.base) { reads.append(node) }
+      return .visitChildren
+    }
+  }
+
+  private static func paletteReads(in decl: StructDeclSyntax) -> [MemberAccessExprSyntax] {
+    let finder = PaletteReadFinder(viewMode: .sourceAccurate)
+    finder.walk(decl)
+    return finder.reads
+  }
+
+  /// Whether a node sits inside the preview branch.
+  ///
+  /// **An ANCESTOR, which a comment can never be.** The two shipped gates are the
+  /// ternary on `isPreview` and the `case .rounded` of the corner-style switch, so
+  /// a read is gated exactly when one of those encloses it. Both are read through
+  /// `CodeOnly`, so a comment inside a condition cannot satisfy the check either.
+  private static func isInsideThePreviewBranch(_ node: some SyntaxProtocol) -> Bool {
+    var current = Syntax(node).parent
+    while let here = current {
+      // **`SwiftParser` does not FOLD operators, so there is no `TernaryExprSyntax`
+      // in this tree.** `a ? b : c` arrives as a `SequenceExprSyntax` whose elements
+      // are the condition, an `UnresolvedTernaryExprSyntax` holding the THEN branch,
+      // and the else branch. Looking for a folded ternary found nothing and reported
+      // the shipped, correctly-gated read as ungated — caught on the first run.
+      //
+      // Matching the UNRESOLVED node is also more precise than matching a folded
+      // one: a read in the THEN branch is INSIDE it, while a read in the else branch
+      // is a sibling after it. So the else branch — the shipped default that paints
+      // seven pills — is correctly refused rather than accepted for sharing a
+      // ternary with the preview.
+      //
+      // The parent of the unresolved ternary is an `ExprListSyntax`, not the
+      // sequence itself — measured, after a version that went one level short
+      // reported the shipped, correctly-gated read as ungated.
+      //
+      // **The condition must BE `isPreview`, not merely contain it.** A version
+      // that asked whether the condition text contained the word accepted
+      // `!isPreview ? PreviewPillPalette.surface : …`, where the then branch is the
+      // NON-preview one — cloud review, and it is this guard's own defect class
+      // arriving one level in: reachability replaced the proximity match, and the
+      // condition itself was still being read as text. A bare
+      // `DeclReferenceExprSyntax` cannot be negated or compounded, so there is
+      // nothing left to spell around.
+      //
+      // **And the sequence must hold EXACTLY the three parts of a plain ternary.**
+      // `isPreview || forcePreview ? …` still puts a bare `isPreview` first, so a
+      // check reading only the first element accepts a read reachable whenever the
+      // other operand is true. An unfolded sequence lists every operand, so the
+      // count IS the shape: three means condition, then, else, with nothing
+      // compounded into the condition.
+      if here.is(UnresolvedTernaryExprSyntax.self),
+        let sequence = here.parent?.parent?.as(SequenceExprSyntax.self),
+        sequence.elements.count == 3,
+        (sequence.elements.first.map(unparenthesised)?
+          .as(DeclReferenceExprSyntax.self)?.baseName).map(identifierName) == "isPreview"
+      {
+        return true
+      }
+      // **EXACTLY ONE case item, it is `.rounded`, and the switch is on
+      // `cornerStyle`.** Two rounds landed here on two different axes. Asking
+      // whether the label CONTAINED "rounded" accepted a consolidated
+      // `case .capsule, .rounded:`, reachable for every non-preview capsule;
+      // counting the items fixed that. Then `.rounded` alone accepted a NESTED
+      // switch on some other enum that happens to spell a case the same way — a
+      // question about MEANING rather than spelling, which no amount of matching
+      // the pattern text can answer. The subject of the switch is what decides
+      // whether this case means "the preview", so it is read here.
+      //
+      // The case's own name goes through `identifierName` for the same reason the
+      // other two do. Reading `pattern.trimmedDescription` was the THIRD site
+      // asking "which identifier is written" and answering it in raw text, so it
+      // is normalised here rather than left for a later round to find.
+      if let switchCase = here.as(SwitchCaseSyntax.self),
+        case .case(let label) = switchCase.label,
+        label.caseItems.count == 1,
+        let pattern = label.caseItems.first?.pattern.as(ExpressionPatternSyntax.self),
+        let member = pattern.expression.as(MemberAccessExprSyntax.self),
+        member.base == nil,
+        identifierName(member.declName.baseName) == "rounded",
+        let switchExpr = switchCase.parent?.parent?.as(SwitchExprSyntax.self),
+        (unparenthesised(switchExpr.subject)
+          .as(DeclReferenceExprSyntax.self)?.baseName).map(identifierName) == "cornerStyle",
+        !isReachedByFallthrough(switchCase)
+      {
+        return true
+      }
+      current = here.parent
+    }
+    return false
+  }
+
+  /// Whether an earlier case can fall INTO this one.
+  ///
+  /// **Matching the case label answers which values SELECT this branch, and that is
+  /// not the same question as which executions REACH it.** A `.capsule` arm ending
+  /// in `fallthrough` runs the `.rounded` body for every capsule, so a read there is
+  /// reachable without the corner style ever being rounded — the label check is
+  /// correct and the conclusion drawn from it is wrong.
+  ///
+  /// Walks BACKWARDS while each preceding case CONTAINS a `fallthrough`, because a
+  /// chain of them reaches just as far as one does.
+  ///
+  /// **Contains, not ends with, and that distinction was its own review round.**
+  /// Reading only the last top-level statement is a proxy: `if flag { fallthrough }`
+  /// puts the enclosing `if` last, and the case still reaches this one whenever the
+  /// flag holds. A `fallthrough` is not expressible outside a switch case, so
+  /// "anywhere in the body" needs no further qualification — except a NESTED switch,
+  /// whose `fallthrough` targets its own next case rather than ours.
+  private static func isReachedByFallthrough(_ switchCase: SwitchCaseSyntax) -> Bool {
+    guard let list = switchCase.parent?.as(SwitchCaseListSyntax.self) else { return false }
+    let cases = Array(list)
+    let target = cases.firstIndex(where: { $0.id == Syntax(switchCase).id })
+    guard var index = target else { return false }
+    while index > 0, containsFallthrough(cases[index - 1]) {
+      index -= 1
+    }
+    return index != target
+  }
+
+  /// Whether the preceding element can hand control to the NEXT case.
+  ///
+  /// **Takes the list ELEMENT, not a `SwitchCaseSyntax`, and that is the fix rather
+  /// than an implementation detail.** A preceding case wrapped in `#if` appears as an
+  /// `IfConfigDeclSyntax`, so a cast to `SwitchCaseSyntax` fails — and the guard it
+  /// guarded returned "no incoming fallthrough", which is the OPEN direction. The
+  /// question was never "is this node a case"; it is "can control arrive from above",
+  /// and a walk answers that for every node shape without knowing their names.
+  private static func containsFallthrough(_ element: some SyntaxProtocol) -> Bool {
+    let finder = FallthroughFinder(viewMode: .sourceAccurate)
+    finder.walk(element)
+    return finder.found
+  }
+
+  /// Any `fallthrough` belonging to THIS switch, at any depth.
+  private final class FallthroughFinder: SyntaxVisitor {
+    private(set) var found = false
+    override func visit(_ node: FallThroughStmtSyntax) -> SyntaxVisitorContinueKind {
+      found = true
+      return .skipChildren
+    }
+    /// A nested switch's `fallthrough` reaches ITS next case, never ours.
+    override func visit(_ node: SwitchExprSyntax) -> SyntaxVisitorContinueKind {
+      .skipChildren
+    }
+  }
+
+  /// The palette reads that are NOT inside the preview branch, named by line.
+  private static func ungatedPaletteReads(
+    in decl: StructDeclSyntax, converter: SourceLocationConverter
+  ) -> [String] {
+    paletteReads(in: decl)
+      .filter { !isInsideThePreviewBranch($0) }
+      .map {
+        "line \(converter.location(for: $0.positionAfterSkippingLeadingTrivia).line): \($0.trimmedDescription)"
+      }
   }
 
   /// A two-way control: the guard above is worthless if the palette is never
