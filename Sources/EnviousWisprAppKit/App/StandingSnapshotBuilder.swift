@@ -47,10 +47,10 @@ struct StandingSnapshotBuilder {
       fillerRemoval: s.fillerRemovalEnabled,
       customWordsCount: customWordsCoordinator.customWords.count,
       hasApiKeys: hasKeys,
-      // Phase 3 (#1172): point-in-time microphone / Accessibility posture. A mic
-      // change is only observable across launches (macOS hides an out-of-process
-      // mic toggle from a running app), so the launch snapshot is the one place
-      // it surfaces.
+      // Phase 3 (#1172): point-in-time microphone / Accessibility posture. #2549
+      // keeps `microphoneStatus` refreshed periodically via the shared permission
+      // monitor (not just at launch), so this snapshot is now more likely to
+      // reflect an out-of-process mic toggle made while the app kept running.
       microphoneStatus: permissions.microphoneStatusString,
       accessibilityStatus: permissions.accessibilityGranted ? "granted" : "denied",
       accessibilityWarningDismissed: permissions.accessibilityWarningDismissed,

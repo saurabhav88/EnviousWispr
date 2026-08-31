@@ -369,6 +369,14 @@ final class AppLifecycleCoordinator {
       keychainManager: keychainManager
     )
 
+    // #2549: a permission revoked in System Settings while the app was
+    // backgrounded is otherwise invisible until the next poll tick.
+    // `accessibilityGranted` is a CACHED property (unlike mic, which reads
+    // live), so it must be refreshed before the restart decision reads it.
+    permissions.refreshAccessibilityStatus()
+    permissions.restartMonitoringIfNeeded()
+    menuBarController.updateIcon()
+
     setup.applicationDidBecomeActive()
   }
 

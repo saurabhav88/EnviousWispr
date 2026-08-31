@@ -398,6 +398,7 @@ package final class WisprBootstrapper {
         engineMutationScope: engineMutationScope,
         outputClassifierHolder: outputClassifierHolder,
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
+        microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
         parakeetDelivery: modelDelivery.parakeetHandle,
         batchDecodeFaultController: batchDecodeFaultController,
@@ -450,6 +451,7 @@ package final class WisprBootstrapper {
         engineMutationScope: engineMutationScope,
         outputClassifierHolder: outputClassifierHolder,
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
+        microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
         batchDecodeFaultController: batchDecodeFaultController,
         escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator)

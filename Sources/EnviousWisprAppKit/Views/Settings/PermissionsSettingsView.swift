@@ -16,7 +16,11 @@ struct PermissionsSettingsView: View {
             actionLabel: "Request Access",
             action: {
               Task {
-                _ = await permissions.requestMicrophoneAccess()
+                // #2549: `requestMicrophoneAccess()` is a guaranteed no-op once
+                // already denied — Apple never re-shows the system dialog after
+                // an explicit deny. This shared method sends the user to System
+                // Settings instead when that is the case.
+                await permissions.requestMicrophoneAccessOrOpenSettings()
               }
             }
           )

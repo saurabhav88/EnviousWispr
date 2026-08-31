@@ -72,7 +72,7 @@ final class MenuBarController: NSObject {
     // from `AppDelegate.applicationDidFinishLaunching`. `AppDelegate.swift:228`
     // was the sole assigner of this single-slot closure — a verified 1:1
     // transfer. The owner of the icon owns the trigger.
-    permissions.onAccessibilityChange = { [weak self] in self?.updateIcon() }
+    permissions.onPermissionChange = { [weak self] in self?.updateIcon() }
 
     // #1019: flip the icon to / from the "update waiting" gold-wave cue the
     // moment availability changes, even with no window or menu open. The
@@ -97,7 +97,11 @@ final class MenuBarController: NSObject {
   /// Pure icon-state mapping. Logic byte-identical to the pre-PR-B.3
   /// `AppDelegate.updateIcon()`.
   static func iconState(_ state: MenuBarViewState) -> MenuBarIconAnimator.IconState {
-    let needsAccessWarning = state.pipelineState == .idle && state.showAccessibilityWarning
+    // #2549: the microphone warning forces the same error icon state as
+    // Accessibility's, since either one means dictation is currently broken.
+    let needsAccessWarning =
+      state.pipelineState == .idle
+      && (state.showAccessibilityWarning || state.showMicrophoneWarning)
     let onboardingIncomplete = !state.onboardingComplete
 
     if needsAccessWarning || (onboardingIncomplete && state.pipelineState == .idle) {
@@ -247,7 +251,8 @@ final class MenuBarController: NSObject {
     let quickAdd = ShortcutBinding.keyboard(keyCode: keyCode, modifiers: modifiers)
     let record = ShortcutBinding.keyboard(keyCode: recordKeyCode, modifiers: recordModifiers)
     let cancel = ShortcutBinding.keyboard(keyCode: cancelKeyCode, modifiers: cancelModifiers)
-    guard ShortcutMatcher.quickAddOwnsItsBinding(quickAdd: quickAdd, record: record, cancel: cancel) else {
+    guard ShortcutMatcher.quickAddOwnsItsBinding(quickAdd: quickAdd, record: record, cancel: cancel)
+    else {
       return nil
     }
 
@@ -424,6 +429,22 @@ final class MenuBarController: NSObject {
       menu.addItem(warningItem)
     }
 
+    // #2549: microphone warning — always shown while denied (no dismiss,
+    // unlike Accessibility's, since a denied mic means zero dictation output
+    // at all rather than a clipboard-only fallback).
+    if state.showMicrophoneWarning {
+      let micWarningItem = NSMenuItem(
+        title: "Dictation disabled — Microphone access required",
+        action: #selector(openPermissionsAction),
+        keyEquivalent: ""
+      )
+      micWarningItem.image = NSImage(
+        systemSymbolName: "exclamationmark.shield.fill",
+        accessibilityDescription: "Microphone access required")
+      micWarningItem.target = self
+      menu.addItem(micWarningItem)
+    }
+
     menu.addItem(.separator())
 
     // Settings (opens unified window to Speech Engine tab)
@@ -535,6 +556,7 @@ final class MenuBarController: NSObject {
       vadAutoStop: settings.vadAutoStop,
       vadSilenceTimeout: settings.vadSilenceTimeout,
       showAccessibilityWarning: permissions.shouldShowAccessibilityWarning,
+      showMicrophoneWarning: permissions.microphonePermissionIsDenied,
       hasUpdater: sparkleUpdateController.hasUpdater,
       updateAvailable: pending != nil,
       updateDisplayVersion: pending?.displayVersion,
@@ -682,8 +704,9 @@ struct MenuBarActions: Sendable {
   /// Open Quick Add on the text the menu read while the user's own app was still frontmost (#2412).
   /// Takes the CONTEXT as well as the result (#2465): the click path may fall back to a synthetic
   /// Copy, and that chord must be aimed at the process the render-time read sampled.
-  let addSelectedWord: @MainActor (SelectionReader.Result, SelectionReader.AcquisitionContext) ->
-    Void
+  let addSelectedWord:
+    @MainActor (SelectionReader.Result, SelectionReader.AcquisitionContext) ->
+      Void
   let continueOnboarding: @MainActor () -> Void
   let openSettings: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void
@@ -775,6 +798,11 @@ struct MenuBarViewState: Equatable {
   let vadAutoStop: Bool
   let vadSilenceTimeout: Double
   let showAccessibilityWarning: Bool
+  /// #2549: no separate `PermissionsService` property — populated directly
+  /// from `permissions.microphonePermissionIsDenied`, mirroring how
+  /// `showAccessibilityWarning` above is populated from its own live/cached
+  /// property.
+  let showMicrophoneWarning: Bool
   let hasUpdater: Bool
   /// #1019: a non-critical update is waiting to install.
   var updateAvailable: Bool = false

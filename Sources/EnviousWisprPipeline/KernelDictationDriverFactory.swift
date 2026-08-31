@@ -97,6 +97,10 @@ public enum KernelDictationDriverFactory {
     /// frozen value, so an off-flip stops archiving on the very next
     /// dictation (cloud review, PR #1250).
     package let dictationAudioArchiveOptInProvider: @MainActor () -> Bool
+    /// #2549: live mic-permission read, forwarded into the kernel's own
+    /// `microphonePermissionIsDenied` init parameter. See that property's
+    /// doc comment on `RecordingSessionKernel`.
+    package let microphonePermissionIsDenied: @MainActor () -> Bool
     /// #1271: EG-1 runtime handle for `LLMPolishStep` — same
     /// composition-root threading as `keychainManager`. Nil (tests,
     /// pre-wiring) means every `.egOne` polish silently skips.
@@ -136,6 +140,7 @@ public enum KernelDictationDriverFactory {
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
+      microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
       parakeetDelivery: ParakeetDeliveryHandle? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
@@ -152,6 +157,7 @@ public enum KernelDictationDriverFactory {
       self.captureErrorSink = captureErrorSink
       self.outputClassifierHolder = outputClassifierHolder
       self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
+      self.microphonePermissionIsDenied = microphonePermissionIsDenied
       self.egOneRuntime = egOneRuntime
       self.parakeetDelivery = parakeetDelivery
       self.batchDecodeFaultController = batchDecodeFaultController
@@ -181,6 +187,8 @@ public enum KernelDictationDriverFactory {
     /// dictation-audio archive (#1230). See
     /// `ParakeetInputs.dictationAudioArchiveOptInProvider`.
     package let dictationAudioArchiveOptInProvider: @MainActor () -> Bool
+    /// #2549: live mic-permission read. See `ParakeetInputs.microphonePermissionIsDenied`.
+    package let microphonePermissionIsDenied: @MainActor () -> Bool
     /// #1271: EG-1 runtime handle. See `ParakeetInputs.egOneRuntime`.
     package let egOneRuntime: (any EGOneEndpointProviding)?
     /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — nil in
@@ -217,6 +225,7 @@ public enum KernelDictationDriverFactory {
       captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink,
       outputClassifierHolder: OutputClassifierHolder? = nil,
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
+      microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
       escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
@@ -233,6 +242,7 @@ public enum KernelDictationDriverFactory {
       self.captureErrorSink = captureErrorSink
       self.outputClassifierHolder = outputClassifierHolder
       self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
+      self.microphonePermissionIsDenied = microphonePermissionIsDenied
       self.egOneRuntime = egOneRuntime
       self.batchDecodeFaultController = batchDecodeFaultController
       self.escapeRecovery = escapeRecovery
@@ -309,6 +319,7 @@ public enum KernelDictationDriverFactory {
       captureErrorSink: inputs.captureErrorSink,
       outputClassifierHolder: inputs.outputClassifierHolder,
       dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
+      microphonePermissionIsDenied: inputs.microphonePermissionIsDenied,
       egOneRuntime: inputs.egOneRuntime,
       batchDecodeFaultController: inputs.batchDecodeFaultController,
       escapeRecovery: inputs.escapeRecovery)
@@ -344,6 +355,7 @@ public enum KernelDictationDriverFactory {
       captureErrorSink: inputs.captureErrorSink,
       outputClassifierHolder: inputs.outputClassifierHolder,
       dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
+      microphonePermissionIsDenied: inputs.microphonePermissionIsDenied,
       egOneRuntime: inputs.egOneRuntime,
       batchDecodeFaultController: inputs.batchDecodeFaultController,
       escapeRecovery: inputs.escapeRecovery)
@@ -366,6 +378,7 @@ public enum KernelDictationDriverFactory {
     captureErrorSink: @escaping HeartPathCaptureErrorSink,
     outputClassifierHolder: OutputClassifierHolder? = nil,
     dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
+    microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
     escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false }
@@ -583,6 +596,7 @@ public enum KernelDictationDriverFactory {
       },
       telemetryState: telemetryState,
       dictationAudioArchiveOptInProvider: dictationAudioArchiveOptInProvider,
+      microphonePermissionIsDenied: microphonePermissionIsDenied,
       batchDecodeFaultController: batchDecodeFaultController
     )
     telemetryRelay.kernel = kernel

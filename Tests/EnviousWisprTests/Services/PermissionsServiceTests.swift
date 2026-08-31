@@ -105,6 +105,33 @@ import Testing
       #expect(svc.accessibilityGranted == false)  // pure read did NOT mutate the cache
       #expect(box.events.isEmpty)  // and did NOT emit a flip event
     }
+
+    // #2549: `requestMicrophoneAccessOrOpenSettings()` — the denied branch is
+    // fully injectable and testable. The not-denied branch calls the real,
+    // un-injectable `AVCaptureDevice.requestAccess` (a pre-existing limit of
+    // `requestMicrophoneAccess()` this change does not alter), so it is not
+    // exercised here — matches the existing untested shape of that call.
+    @MainActor
+    @Test("requestMicrophoneAccessOrOpenSettings opens System Settings when already denied")
+    func deniedOpensSystemSettings() async {
+      final class OpenedURLBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: URL?
+        func set(_ url: URL) { lock.withLock { stored = url } }
+        var opened: URL? { lock.withLock { stored } }
+      }
+      let box = OpenedURLBox()
+      let svc = PermissionsService(
+        microphoneReader: { .denied },
+        openMicrophoneSettings: { box.set($0) }
+      )
+
+      await svc.requestMicrophoneAccessOrOpenSettings()
+
+      #expect(
+        box.opened?.absoluteString
+          == "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+    }
   }
 
 #endif

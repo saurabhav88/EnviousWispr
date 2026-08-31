@@ -589,7 +589,8 @@ final class OnboardingV2ViewModel {
       practiceState = .somethingBroke
       return
     }
-    let grew = practiceText != practiceTextAtTakeStart
+    let grew =
+      practiceText != practiceTextAtTakeStart
       && !practiceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     // A transcript that did not reach the box IS the missed-box case, and it
     // is the only evidence that words existed at all. Requiring BOTH — the box
@@ -1633,9 +1634,10 @@ private struct PermissionsPhaseView: View {
       // within one poll cycle. Mic stays one-way below — its source is cached.
       viewModel.accessibilityGranted = axNow
 
-      // Mic stays one-way: hasMicrophonePermission reads cached microphoneStatus
-      // (PermissionsService.swift:49-50), not a live check, so mirroring it both
-      // ways could flip a true flag false from stale cache.
+      // Mic stays one-way: hasMicrophonePermission reads cached microphoneStatus,
+      // not a live check — #2549 keeps it refreshed periodically via the shared
+      // permission monitor (never on every access), so mirroring it both ways
+      // could still flip a true flag false between poll ticks.
       if permissions.hasMicrophonePermission && !viewModel.micGranted {
         viewModel.micGranted = true
         viewModel.completeStep("mic_permission", result: "granted")
