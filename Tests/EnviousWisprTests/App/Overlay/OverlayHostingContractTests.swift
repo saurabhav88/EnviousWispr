@@ -1,10 +1,10 @@
 import AppKit
 import CoreGraphics
+import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import Testing
 
 @testable import EnviousWisprAppKit
-import EnviousWisprAppKitTestSupport
 
 /// The contract BOTH `OverlayWindowHosting` implementations must satisfy
 /// (#2292, C7).
@@ -50,6 +50,7 @@ struct OverlayHostingContractTests {
     let host = WindowlessOverlayHost()
     let d = OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      openMicrophoneSettings: {},
       selections: { .shipped },
       firstRenderSchedule: { $0() })
 

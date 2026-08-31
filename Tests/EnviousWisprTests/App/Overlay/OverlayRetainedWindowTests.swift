@@ -233,6 +233,7 @@ struct OverlayRetainedWindowBehaviourTests {
     let host = OverlayWindowHost(effects: recorder.makeEffects())
     let d = OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      openMicrophoneSettings: {},
       selections: { .shipped },
       firstRenderSchedule: { $0() })
     defer { recorder.panel?.orderOut() }
@@ -264,6 +265,7 @@ struct OverlayRetainedWindowBehaviourTests {
     let host = OverlayWindowHost(effects: recorder.makeEffects())
     let d = OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      openMicrophoneSettings: {},
       selections: { .shipped },
       firstRenderSchedule: { $0() })
     defer { recorder.panel?.orderOut() }

@@ -565,6 +565,11 @@ package final class WisprBootstrapper {
       // and that captures weakly. `WisprBootstrapper` owns the service for the
       // app's lifetime regardless.
       grantAccessibility: { _ = permissions.requestAccessibilityAccess() },
+      // #2549: the notice pill's "Open Settings" button, on the SAME shared
+      // owner Part 2 of #2549 already gave the Settings page and onboarding.
+      openMicrophoneSettings: {
+        Task { await permissions.requestMicrophoneAccessOrOpenSettings() }
+      },
       // **THE SEAM PHASE 3 LEFT, NOW SPENT** (#2376 Phase 4, C6). It is a closure
       // so that it can be: the director lives for the app's lifetime, so a stored
       // pair would freeze the user's choice at launch — a picker would appear to

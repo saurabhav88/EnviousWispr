@@ -1,9 +1,9 @@
 import CoreGraphics
+import EnviousWisprAppKitTestSupport
 import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
-import EnviousWisprAppKitTestSupport
 @testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
 
@@ -64,6 +64,7 @@ struct RecordingDirectorCaptureTests {
           return .off
         }),
       grantAccessibility: {},
+      openMicrophoneSettings: {},
       selections: {
         counts.selections += 1
         return selections
@@ -325,6 +326,7 @@ struct RecordingDirectorCaptureTests {
         wordsCapability: { .available },
         display: { .off }),
       grantAccessibility: {},
+      openMicrophoneSettings: {},
       selections: { .shipped },
       firstRenderSchedule: { $0() })
 

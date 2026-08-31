@@ -1,9 +1,9 @@
 import CoreGraphics
+import EnviousWisprAppKitTestSupport
 import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
-import EnviousWisprAppKitTestSupport
 @testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
 
@@ -77,6 +77,7 @@ struct RecordingReconciliationTests {
         wordsCapability: { capability() ? .available : .previewOff },
         display: { .off }),
       grantAccessibility: {},
+      openMicrophoneSettings: {},
       selections: selections,
       firstRenderSchedule: { $0() },
       scheduleReconciliation: { queue.schedule($0) })
@@ -277,7 +278,8 @@ struct RecordingReconciliationTests {
       "expected the initial effect plus two synchronous attempts, saw \(routes) routes")
     #expect(
       queue.enqueued == 1,
-      "expected exactly one queued continuation, saw \(queue.enqueued) — an unbounded loop would have run them all synchronously and queued none")
+      "expected exactly one queued continuation, saw \(queue.enqueued) — an unbounded loop would have run them all synchronously and queued none"
+    )
     #expect(queue.pending.count == 1, "a duplicate continuation was enqueued")
 
     // **The FIRST drain must leave another continuation queued**, which is what
@@ -412,7 +414,8 @@ struct RecordingReconciliationTests {
 
     #expect(
       queue.enqueued > afterFirst,
-      "a second reconciliation could not enqueue — the coalescing flag was never cleared, so it is a permanent mute rather than coalescing")
+      "a second reconciliation could not enqueue — the coalescing flag was never cleared, so it is a permanent mute rather than coalescing"
+    )
 
     turns = 0
     while !queue.pending.isEmpty, turns < 8 {
@@ -473,17 +476,20 @@ struct RecordingReconciliationTests {
     // about the wrong scenario without it.
     guard case .notice? = d.renderModel.state.presentation?.content else {
       Issue.record(
-        "the winner did not take the slot, so the recording was never discarded: \(String(describing: d.renderModel.state.presentation?.content))")
+        "the winner did not take the slot, so the recording was never discarded: \(String(describing: d.renderModel.state.presentation?.content))"
+      )
       return
     }
-    let winner = try #require(winnerReceipt, "the winner was itself refused, so it owns no receipt to inherit")
+    let winner = try #require(
+      winnerReceipt, "the winner was itself refused, so it owns no receipt to inherit")
     #expect(
       d.renderModel.state.presentation?.id == winner.presentationID,
       "the pill on screen is not the winner, so this fixture is staging something else")
 
     #expect(
       recordingReceipt == nil,
-      "the discarded recording was handed a receipt naming \(String(describing: recordingReceipt?.presentationID))")
+      "the discarded recording was handed a receipt naming \(String(describing: recordingReceipt?.presentationID))"
+    )
     #expect(results == [.notPresented], "the discarded recording was told it was presented")
   }
 
