@@ -215,7 +215,7 @@ public final class PermissionsService {
     guard permissionMonitoringStillNeeded else { return }
 
     var lastAccessibilityGranted = accessibilityGranted
-    var lastMicrophoneAuthorized = microphoneReader() == .authorized
+    var lastMicrophoneStatus = microphoneReader()
 
     permissionMonitorTask = Task { [weak self] in
       while true {
@@ -224,25 +224,30 @@ public final class PermissionsService {
         guard let self, !Task.isCancelled else { return }
         self.refreshAccessibilityStatus()
         // #2549: read the mic status ONCE this tick and reuse the single
-        // snapshot for the assignment, the authorized-state comparison, and
-        // the exit decision — never a second, independent
+        // snapshot for the assignment, the change-notification comparison,
+        // and the exit decision — never a second, independent
         // `microphoneReader()` read in the same tick, which would be a
         // separate OS call that could in principle disagree.
         //
-        // Round-1 cloud-review finding: track AUTHORIZED, not denied. Denied
-        // is what the WARNING shows (`microphonePermissionIsDenied`), but the
-        // MONITOR must also keep running through `.notDetermined` — the
-        // ordinary pre-prompt state — so a first-prompt deny is still caught,
-        // and a later grant via Open Settings is still caught too.
+        // Round-2 cloud-review finding: change-notification must compare the
+        // FULL STATUS VALUE, not a collapsed boolean. Round 1 fixed the
+        // LIFECYCLE question (keep running through `.notDetermined`) by
+        // tracking "authorized or not" — but that same boolean, reused for
+        // NOTIFICATION, is blind to a `.notDetermined` → `.denied` transition:
+        // both sides read `false`, so nothing looked like it changed, even
+        // though `microphonePermissionIsDenied` (what the warning reads) flips
+        // from false to true right there. Comparing the raw status closes the
+        // whole class at once — any transition between any two of the four
+        // states is caught, not just the ones that cross the authorized line.
         let microphoneStatusNow = self.microphoneReader()
         self.microphoneStatus = microphoneStatusNow
         let microphoneAuthorizedNow = microphoneStatusNow == .authorized
 
         if self.accessibilityGranted != lastAccessibilityGranted
-          || microphoneAuthorizedNow != lastMicrophoneAuthorized
+          || microphoneStatusNow != lastMicrophoneStatus
         {
           lastAccessibilityGranted = self.accessibilityGranted
-          lastMicrophoneAuthorized = microphoneAuthorizedNow
+          lastMicrophoneStatus = microphoneStatusNow
           self.onPermissionChange?()
         }
 
