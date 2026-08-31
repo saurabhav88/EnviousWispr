@@ -181,12 +181,20 @@ def main() -> int:
             return 2
 
     cases = []
-    for line in open(args.corpus):
+    for line in open(args.corpus, encoding="utf-8"):
         line = line.strip()
         if not line:
             continue
         d = json.loads(line)
-        text = (d.get("asr_input") or d.get("input") or "").replace("\n", " ").strip()
+        # `voice_text` FIRST: step 1 of the sealed chain emits only that field
+        # (gen_sealed_scenarios.py: "WHAT THIS STEP EMITS IS SPEECH, NOT A TEST CASE"),
+        # so without it every freshly generated scenario failed here with "has no input
+        # text" and the chain could not be run end to end. Reading `asr_input` for speech
+        # would also be wrong in kind: that is what the recogniser PRODUCED, and speaking
+        # it back re-speaks our own mishearings.
+        text = (
+            d.get("voice_text") or d.get("asr_input") or d.get("input") or ""
+        ).replace("\n", " ").strip()
         if not text:
             print(f"case {d.get('id')} has no input text", file=sys.stderr)
             return 2
@@ -204,7 +212,7 @@ def main() -> int:
     # and voice are folded in for the same reason: they change the audio.
     stamp_path = args.wav_dir / ".synthesis.json"
     try:
-        stamps = json.loads(stamp_path.read_text())
+        stamps = json.loads(stamp_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         stamps = {}
 
@@ -270,7 +278,7 @@ def main() -> int:
     # run under a reused case ID.
     written = 0
     missing = []
-    with open(args.manifest, "w") as m:
+    with open(args.manifest, "w", encoding="utf-8") as m:
         for cid, text in cases:
             p = args.wav_dir / f"{cid}.wav"
             if p.exists() and p.stat().st_size > 0 and stamps.get(cid) == stamp_of(text):
