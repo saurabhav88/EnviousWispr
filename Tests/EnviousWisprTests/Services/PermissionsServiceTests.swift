@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -131,6 +132,66 @@ import Testing
       #expect(
         box.opened?.absoluteString
           == "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+    }
+
+    // #2549: runs the monitor loop for real (fast injected interval, no
+    // mocked comparison logic) through the exact transition class two
+    // cloud-review rounds found broken: a not-yet-authorized mic status
+    // changing to a DIFFERENT not-yet-authorized status. Round 1's bug and
+    // round 2's bug both collapsed the four real statuses to a yes/no
+    // "authorized" flag somewhere in this loop, so a not-determined-to-denied
+    // change looked like no change at all under either buggy version. This
+    // test fails against both prior versions and only passes once the loop
+    // compares the real status value, closing the class rather than the one
+    // reported instance of it. Uses `CountWaiters` (Pipeline/TestSupport) to
+    // park on the callback firing instead of polling real time.
+    @MainActor
+    @Test("permission monitor notices a change between two not-yet-authorized mic states")
+    func monitorNoticesNotDeterminedToDeniedTransition() async {
+      final class MicStatusBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: AVAuthorizationStatus = .notDetermined
+        func set(_ status: AVAuthorizationStatus) { lock.withLock { stored = status } }
+        var current: AVAuthorizationStatus { lock.withLock { stored } }
+      }
+
+      let micStatus = MicStatusBox()
+      var observed: [AVAuthorizationStatus] = []
+      var waiters = CountWaiters("permission-monitor-changes")
+      let svc = PermissionsService(
+        accessibilityReader: { true },
+        microphoneReader: { micStatus.current },
+        permissionPollIntervalNanoseconds: 5_000_000  // 5ms: fast, deterministic ticks
+      )
+      svc.onPermissionChange = {
+        observed.append(svc.microphoneStatus)
+        waiters.notify(reached: observed.count)
+      }
+
+      func waitForChange(count: Int) async {
+        if observed.count >= count { return }
+        let id = UUID()
+        let timeoutTask = Task {
+          try? await Task.sleep(for: .seconds(5))  // deadline-fallback: fail fast if the monitor tick never fires
+          waiters.resume(id: id)
+        }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+          waiters.install(id: id, target: count, continuation)
+        }
+        timeoutTask.cancel()
+      }
+
+      svc.startMonitoring()
+      micStatus.set(.denied)
+      await waitForChange(count: 1)
+
+      #expect(observed == [.denied])
+      #expect(svc.microphoneStatus == .denied)
+
+      micStatus.set(.authorized)
+      await waitForChange(count: 2)
+
+      #expect(observed == [.denied, .authorized])
     }
   }
 

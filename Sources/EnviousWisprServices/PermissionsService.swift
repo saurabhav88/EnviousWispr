@@ -48,16 +48,24 @@ public final class PermissionsService {
   /// `NSWorkspace` call.
   private let openMicrophoneSettings: @MainActor (URL) -> Void
 
+  /// #2549: injected so tests can drive the monitor loop through several real
+  /// ticks in milliseconds instead of `TimingConstants.accessibilityPollIntervalSec`;
+  /// defaults to that same production value.
+  private let permissionPollIntervalNanoseconds: UInt64
+
   public init(
     accessibilityReader: @escaping () -> Bool = { AXIsProcessTrusted() },
     microphoneReader: @escaping () -> AVAuthorizationStatus = {
       AVCaptureDevice.authorizationStatus(for: .audio)
     },
-    openMicrophoneSettings: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) }
+    openMicrophoneSettings: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) },
+    permissionPollIntervalNanoseconds: UInt64 = UInt64(
+      TimingConstants.accessibilityPollIntervalSec * 1_000_000_000)
   ) {
     self.accessibilityReader = accessibilityReader
     self.microphoneReader = microphoneReader
     self.openMicrophoneSettings = openMicrophoneSettings
+    self.permissionPollIntervalNanoseconds = permissionPollIntervalNanoseconds
     microphoneStatus = microphoneReader()
     accessibilityGranted = accessibilityReader()
   }
@@ -206,8 +214,8 @@ public final class PermissionsService {
 
   /// Start smart polling for Accessibility AND Microphone permission (#2549:
   /// generalized from Accessibility-only).
-  /// Polls every TimingConstants.accessibilityPollIntervalSec seconds, but ONLY
-  /// while at least one permission is outstanding. Exits once BOTH are granted.
+  /// Polls every `permissionPollIntervalNanoseconds` (production: `TimingConstants.accessibilityPollIntervalSec`),
+  /// but ONLY while at least one permission is outstanding. Exits once BOTH are granted.
   public func startMonitoring() {
     guard permissionMonitorTask == nil || permissionMonitorTask?.isCancelled == true else {
       return
@@ -216,11 +224,11 @@ public final class PermissionsService {
 
     var lastAccessibilityGranted = accessibilityGranted
     var lastMicrophoneStatus = microphoneReader()
+    let pollInterval = permissionPollIntervalNanoseconds
 
     permissionMonitorTask = Task { [weak self] in
       while true {
-        try? await Task.sleep(
-          nanoseconds: UInt64(TimingConstants.accessibilityPollIntervalSec * 1_000_000_000))
+        try? await Task.sleep(nanoseconds: pollInterval)
         guard let self, !Task.isCancelled else { return }
         self.refreshAccessibilityStatus()
         // #2549: read the mic status ONCE this tick and reuse the single
