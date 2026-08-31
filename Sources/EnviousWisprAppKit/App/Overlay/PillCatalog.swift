@@ -136,7 +136,6 @@ enum PillCatalog {
     return announcement(for: intent)
   }
 
-
   /// The spoken announcement for a pipeline intent, and its priority.
   ///
   /// **Both halves come from the shipped `apply(intent:)` switch, read one arm
@@ -207,6 +206,22 @@ enum PillCatalog {
         expiry: .after(seconds: 2.5), severity: .warning)  // NotificationStyle 2.5
 
     case .error(let reason):
+      // #2549: `.permissionDenied` gets the richer badge+title+subtitle+button
+      // shape (founder-directed visual, matching the mockup he supplied) in a
+      // wider, taller box than the other `.error` reasons' 280×44 single line —
+      // the badge alone is 40pt tall. `accessibilityLabel` restates
+      // `DictationNarrator.copy(for: reason)` so VoiceOver keeps saying the
+      // shared, narrator-owned sentence even though the two on-screen lines
+      // are this pill's own copy, not the narrator's.
+      if reason == .permissionDenied {
+        return notice(
+          id: id, kind: .notification, text: "Microphone access needed",
+          secondary: "Turn it on to start dictating.",
+          accessibilityLabel: DictationNarrator.copy(for: reason),
+          width: .fixed(400), fixedHeight: 64,
+          expiry: .after(seconds: 6), severity: .error, isMultiline: true,
+          action: NoticeAction(label: "Open Settings", action: .openMicrophoneSettings))
+      }
       return notice(
         id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
         width: .fixed(280), fixedHeight: 44,
@@ -354,7 +369,6 @@ enum PillCatalog {
 
     }
   }
-
 
   // MARK: - Shared shape
 

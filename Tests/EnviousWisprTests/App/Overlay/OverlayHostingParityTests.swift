@@ -1,8 +1,9 @@
 import AppKit
-@testable import EnviousWisprAppKit
 import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import Testing
+
+@testable import EnviousWisprAppKit
 
 // #2455 C4 (#2461): STAYS in the unit target, and the chunk plan expected it to
 // move.
@@ -35,7 +36,8 @@ struct OverlayHostingParityTests {
   /// twice. A per-host copy is how the two definitions drift apart without
   /// anything failing.
   private static func hosts() -> [(name: String, host: any OverlayWindowHosting)] {
-    let real = OverlayWindowHost(screens: { OverlayScreenResolver { screen } }, effects: .recording())
+    let real = OverlayWindowHost(
+      screens: { OverlayScreenResolver { screen } }, effects: .recording())
     realHosts.append(real)
     return [("real", real), ("windowless", WindowlessOverlayHost())]
   }
@@ -48,6 +50,7 @@ struct OverlayHostingParityTests {
   private static func director(on host: any OverlayWindowHosting) -> OverlayDirector {
     OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      openMicrophoneSettings: {},
       selections: { .shipped },
       firstRenderSchedule: { $0() })
   }

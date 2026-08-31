@@ -36,6 +36,11 @@ import Foundation
 enum PillAction: Equatable, Sendable {
   /// grantHandler.
   case grantAccessibility
+  /// #2549: the "Open Settings" button on the microphone-permission-denied
+  /// notice pill. Named for what it does (open the Microphone privacy pane, or
+  /// re-request access if not yet asked — `PermissionsService.requestMicrophoneAccessOrOpenSettings()`
+  /// decides which), not for the handler field, matching every other case here.
+  case openMicrophoneSettings
   /// discardRecoveryHandler.
   case discardRecovery
   /// onEscapeRecoveryPaste, which takes the `CancelUndoPayload`.

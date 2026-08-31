@@ -301,6 +301,12 @@ final class OverlayDirector {
   /// which is the failure this whole phase exists to make unspellable.
   private let grantAccessibility: () -> Void
 
+  /// #2549: the "Open Settings" button on the microphone-permission-denied
+  /// notice pill. Same reasoning as `grantAccessibility` immediately above —
+  /// no default, so a composition-root caller that forgets to wire it fails to
+  /// compile rather than shipping a button that reaches nobody.
+  private let openMicrophoneSettings: () -> Void
+
   init(
     host: any OverlayWindowHosting,
     position: @escaping () -> OverlayPillPosition = { .top },
@@ -315,6 +321,8 @@ final class OverlayDirector {
     // about neither; choosing one is now visible in the source.
     livePreview: LivePreviewBridge,
     grantAccessibility: @escaping () -> Void,
+    // #2549: same no-default reasoning as `grantAccessibility` above.
+    openMicrophoneSettings: @escaping () -> Void,
     // **No default either, for the reason directly above** (#2375 C3a). This is
     // the seam Phase 4 replaces: a settings-backed snapshot at this same
     // construction point, changing this closure's BODY and nothing else. A
@@ -341,6 +349,7 @@ final class OverlayDirector {
     self.accessibilityEligibility = accessibilityEligibility
     self.livePreview = livePreview
     self.grantAccessibility = grantAccessibility
+    self.openMicrophoneSettings = openMicrophoneSettings
     self.position = position
     self.model = model
     self.expiryClock = PillExpiryClock(
@@ -1380,7 +1389,23 @@ extension OverlayDirector: OverlayPresenting {
     case .warning(let reason):
       handle(.pipeline(.warning(reason: reason)), binding: .none, relay: relay)
     case .error(let reason):
-      handle(.pipeline(.error(reason: reason)), binding: .none, relay: relay)
+      // #2549: only `.permissionDenied` carries a button (the "Open Settings"
+      // pill PillCatalog attaches for that one reason) — every other `.error`
+      // reason is unchanged and installs no action binding.
+      if reason == .permissionDenied {
+        handle(
+          .pipeline(.error(reason: reason)),
+          binding: .install(
+            deliver: { [weak self] action in
+              guard case .openMicrophoneSettings = action else { return }
+              self?.openMicrophoneSettings()
+              self?.dismissSilently()
+            },
+            onExpire: nil),
+          relay: relay)
+      } else {
+        handle(.pipeline(.error(reason: reason)), binding: .none, relay: relay)
+      }
     case .advisory(let reason):
       handle(.pipeline(.advisory(reason: reason)), binding: .none, relay: relay)
     case .interruption(let reason):

@@ -69,6 +69,20 @@ struct MenuBarControllerTests {
     #expect(MenuBarController.iconState(s) == .recording)
   }
 
+  @Test("iconState: idle + microphone warning → error")
+  func iconStateMicrophoneWarning() {
+    // #2549
+    let s = fixture(pipelineState: .idle, showMicrophoneWarning: true)
+    #expect(MenuBarController.iconState(s) == .error)
+  }
+
+  @Test("iconState: microphone warning ignored while recording")
+  func iconStateMicrophoneWarningIgnoredWhileRecording() {
+    // #2549 — mirrors iconStateWarningIgnoredWhileRecording for Accessibility.
+    let s = fixture(pipelineState: .recording, showMicrophoneWarning: true)
+    #expect(MenuBarController.iconState(s) == .recording)
+  }
+
   @Test("iconState: idle + onboarding incomplete → error")
   func iconStateOnboardingIncomplete() {
     let s = fixture(pipelineState: .idle, onboardingComplete: false)
@@ -457,6 +471,33 @@ struct MenuBarControllerTests {
     #expect(warning?.target as AnyObject? === controller)
   }
 
+  @Test("renderMenu (d2): microphone warning → Dictation disabled item")
+  func renderMenuMicrophoneWarning() {
+    // #2549
+    let controller = makeController()
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu, state: fixture(pipelineState: .idle, showMicrophoneWarning: true))
+
+    let warning = item(menu, "Dictation disabled — Microphone access required")
+    #expect(warning != nil)
+    #expect(warning?.target as AnyObject? === controller)
+  }
+
+  @Test("renderMenu (d3): both Accessibility and microphone warnings can show together")
+  func renderMenuBothWarnings() {
+    // #2549 — no special-cased interaction; each row renders independently.
+    let controller = makeController()
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu,
+      state: fixture(
+        pipelineState: .idle, showAccessibilityWarning: true, showMicrophoneWarning: true))
+
+    #expect(item(menu, "Paste disabled — Accessibility required") != nil)
+    #expect(item(menu, "Dictation disabled — Microphone access required") != nil)
+  }
+
   @Test("renderMenu (e): hasUpdater → Check for Updates targets SparkleUpdateController")
   func renderMenuCheckForUpdates() {
     let controller = makeController()
@@ -560,6 +601,18 @@ struct MenuBarControllerTests {
     #expect(spy.fired == ["openPermissions"])
   }
 
+  @Test("microphone-warning item dispatches openPermissions")
+  func microphoneWarningItemDispatchesPermissions() {
+    // #2549
+    let spy = ActionSpy()
+    let controller = makeController(spy: spy)
+    let menu = NSMenu()
+    controller.renderMenu(
+      into: menu, state: fixture(pipelineState: .idle, showMicrophoneWarning: true))
+    perform(item(menu, "Dictation disabled — Microphone access required"))
+    #expect(spy.fired == ["openPermissions"])
+  }
+
   // MARK: - Fixtures
 
   private func fixture(
@@ -567,6 +620,7 @@ struct MenuBarControllerTests {
     onboardingComplete: Bool = true,
     vadAutoStop: Bool = false,
     showAccessibilityWarning: Bool = false,
+    showMicrophoneWarning: Bool = false,
     hasUpdater: Bool = false,
     updateAvailable: Bool = false,
     updateDisplayVersion: String? = nil,
@@ -590,6 +644,7 @@ struct MenuBarControllerTests {
       vadAutoStop: vadAutoStop,
       vadSilenceTimeout: 2.0,
       showAccessibilityWarning: showAccessibilityWarning,
+      showMicrophoneWarning: showMicrophoneWarning,
       hasUpdater: hasUpdater,
       updateAvailable: updateAvailable,
       updateDisplayVersion: updateDisplayVersion,
@@ -729,7 +784,9 @@ struct QuickAddMenuItemTests {
   /// boundary is the ordinary case, not an edge one.
   @Test("Surrounding whitespace does not reach the title")
   func whitespaceIsTrimmed() {
-    #expect(MenuBarController.quickAddItem(.ready("  clawwed \n"), fallbackEnabled: true).title == "Add \u{201C}clawwed\u{201D}")
+    #expect(
+      MenuBarController.quickAddItem(.ready("  clawwed \n"), fallbackEnabled: true).title
+        == "Add \u{201C}clawwed\u{201D}")
   }
 
   /// **A selection spanning two lines carries a newline, and a newline in a native menu title
@@ -750,7 +807,8 @@ struct QuickAddMenuItemTests {
   /// tells them nothing. Enabled, so the panel opens and states the reason.
   @Test("A refused read stays clickable so the panel can say why")
   func aRefusedReadIsNotAnEmptySelection() {
-    let blocked = MenuBarController.quickAddItem(.blocked(.accessibilityNotTrusted), fallbackEnabled: true)
+    let blocked = MenuBarController.quickAddItem(
+      .blocked(.accessibilityNotTrusted), fallbackEnabled: true)
     #expect(blocked.enabled, "the door that must be reliable cannot fail silently")
     #expect(blocked.title == "Add Selected Word")
 
@@ -758,7 +816,9 @@ struct QuickAddMenuItemTests {
     // display is deliberately uniform — the panel states the reason, not the menu — but dropping the
     // reason here is what forced the click path to re-read without the menu's cap (PR #2427).
     for why in SelectionReader.Refusal.allCases where why != .accessibilityNotTrusted {
-      #expect(MenuBarController.quickAddItem(.blocked(why), fallbackEnabled: true) == blocked, "one row for every refusal")
+      #expect(
+        MenuBarController.quickAddItem(.blocked(why), fallbackEnabled: true) == blocked,
+        "one row for every refusal")
       #expect(
         QuickAddMenuState.blocked(why).selectionResult == .refused(why),
         "and the panel is handed the refusal we measured, not a fresh guess")

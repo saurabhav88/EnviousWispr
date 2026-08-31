@@ -273,7 +273,12 @@ final class KernelRecordingSession: RecordingSessionDriving {
     /// at the kernel's construction site survived every test — the sink and the
     /// event were covered, and the step that FILLS the field was not. Defaulted
     /// so every existing scenario is unchanged.
-    onTerminalSnapshot: @escaping @MainActor (KernelTerminalTelemetrySnapshot) -> Void = { _ in }
+    onTerminalSnapshot: @escaping @MainActor (KernelTerminalTelemetrySnapshot) -> Void = { _ in },
+    /// #2549: defaults to `{ false }` (permission granted), matching the
+    /// kernel's own production default, so every existing scenario in the
+    /// 37-scenario inventory is unchanged. A scenario that wants to exercise
+    /// the denied-mic preflight passes `{ true }` explicitly.
+    microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false }
   ) {
     self.vad = vad
     let limb = self.limb
@@ -344,7 +349,8 @@ final class KernelRecordingSession: RecordingSessionDriving {
       zeroSignalRefusalSink: zeroSignalRefusalSink,
       sessionTerminalTelemetry: onTerminalSnapshot,
       markASRTimingEnd: { [asrTimingLog] in asrTimingLog.count += 1 },
-      telemetryState: telemetryState)
+      telemetryState: telemetryState,
+      microphonePermissionIsDenied: microphonePermissionIsDenied)
   }
 
   // MARK: RecordingSessionDriving — observation

@@ -1,11 +1,11 @@
 import CoreGraphics
+import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
-import EnviousWisprAppKitTestSupport
 
 /// What the typed pill boundary DOES, asserted on outputs an observer outside
 /// the director can see (#2292 Phase 1).
@@ -68,6 +68,9 @@ struct PillRequestParityTests {
     /// "granted, then dismissed" from "dismissed, then granted".
     var grantSawPresentation: Bool?
     var discardSawPresentation: Bool?
+    /// #2549: same reasoning as `grantSawPresentation` above, for the
+    /// microphone notice's "Open Settings" button.
+    var openMicrophoneSettingsSawPresentation: Bool?
 
     @MainActor
     init(manualClock: Bool = false) {
@@ -85,6 +88,10 @@ struct PillRequestParityTests {
         grantAccessibility: { [self] in
           appActions.append(.grantAccessibility)
           grantSawPresentation = director.renderModel.state.presentation != nil
+        },
+        openMicrophoneSettings: { [self] in
+          appActions.append(.openMicrophoneSettings)
+          openMicrophoneSettingsSawPresentation = director.renderModel.state.presentation != nil
         },
         selections: { .shipped },
         firstRenderSchedule: { $0() })
@@ -127,8 +134,9 @@ struct PillRequestParityTests {
       lang: "es", displayName: "Spanish", state: .askToLock, generation: 1)
     let rig = Rig()
 
-    let receipt = rig.director.present(.languageChip(
-      payload: payload, onLock: {}, onDismiss: {}, onExpire: {}))
+    let receipt = rig.director.present(
+      .languageChip(
+        payload: payload, onLock: {}, onDismiss: {}, onExpire: {}))
 
     #expect(receipt != nil, "the chip was refused on an empty slot")
     // **The pipeline-intent half moved to `OverlayReducerTests`**
@@ -173,9 +181,12 @@ struct PillRequestParityTests {
     var hiddenWhenPasted: Bool?
     // Hoisted out of `#require`: the macro cannot expand a call whose argument
     // closure captures the rig, and fails with an internal diagnostic error.
-    let presented = rig.director.present(.escapeRecovery(payload: payload, onPaste: { [rig] _ in
-      hiddenWhenPasted = rig.host.isShowing == false
-    }))
+    let presented = rig.director.present(
+      .escapeRecovery(
+        payload: payload,
+        onPaste: { [rig] _ in
+          hiddenWhenPasted = rig.host.isShowing == false
+        }))
     let receipt = try #require(presented)
     try rig.host.sendUserActionThroughRoot(
       .pasteEscapeRecovery(transcriptID: payload.transcriptID), for: receipt)
@@ -226,12 +237,15 @@ struct PillRequestParityTests {
   /// presentation it does not own — which `dismissIfCurrent` would then dismiss.
   @Test("a refused feature request returns nil and leaves the incumbent") func refusalReturnsNil() {
     let rig = Rig()
-    let recording = rig.director.present(.recording(RecordingPillInput(
-      audioLevel: 0.3, audioLevelProvider: { 0.3 },
-      recordingElapsedProvider: { nil }, isLocked: false)))
+    let recording = rig.director.present(
+      .recording(
+        RecordingPillInput(
+          audioLevel: 0.3, audioLevelProvider: { 0.3 },
+          recordingElapsedProvider: { nil }, isLocked: false)))
     #expect(recording != nil)
-    let refused = rig.director.present(.bluetoothAwareness(
-      onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
+    let refused = rig.director.present(
+      .bluetoothAwareness(
+        onAcknowledge: {}, onClose: {}, onOpenSettings: {}))
     #expect(refused == nil, "a recording holds the slot, so the card is refused")
     #expect(rig.director.isCurrent(recording!), "the recording still owns the slot")
   }
@@ -253,14 +267,18 @@ struct PillRequestParityTests {
   @Test("a language chip is refused while a recording owns the slot")
   func refusedLanguageRequestDoesNotReplaceRecording() throws {
     let rig = Rig()
-    let recording = try #require(rig.director.present(.recording(RecordingPillInput(
-      audioLevel: 0.3, audioLevelProvider: { 0.3 },
-      recordingElapsedProvider: { nil }, isLocked: false))))
+    let recording = try #require(
+      rig.director.present(
+        .recording(
+          RecordingPillInput(
+            audioLevel: 0.3, audioLevelProvider: { 0.3 },
+            recordingElapsedProvider: { nil }, isLocked: false))))
 
-    let refused = rig.director.present(.languageChip(
-      payload: LanguageChipPayload(
-        lang: "es", displayName: "Spanish", state: .askToLock, generation: 1),
-      onLock: {}, onDismiss: {}, onExpire: {}))
+    let refused = rig.director.present(
+      .languageChip(
+        payload: LanguageChipPayload(
+          lang: "es", displayName: "Spanish", state: .askToLock, generation: 1),
+        onLock: {}, onDismiss: {}, onExpire: {}))
 
     #expect(refused == nil, "the chip was admitted over a live recording")
     #expect(
@@ -272,12 +290,16 @@ struct PillRequestParityTests {
   /// id is an ACCEPTED continuation rather than a refusal.
   @Test("a recording morph still returns a receipt") func morphReturnsReceipt() {
     let rig = Rig()
-    let first = rig.director.present(.recording(RecordingPillInput(
-      audioLevel: 0.1, audioLevelProvider: { 0.1 },
-      recordingElapsedProvider: { nil }, isLocked: false)))
-    let morph = rig.director.present(.recording(RecordingPillInput(
-      audioLevel: 0.8, audioLevelProvider: { 0.8 },
-      recordingElapsedProvider: { nil }, isLocked: false)))
+    let first = rig.director.present(
+      .recording(
+        RecordingPillInput(
+          audioLevel: 0.1, audioLevelProvider: { 0.1 },
+          recordingElapsedProvider: { nil }, isLocked: false)))
+    let morph = rig.director.present(
+      .recording(
+        RecordingPillInput(
+          audioLevel: 0.8, audioLevelProvider: { 0.8 },
+          recordingElapsedProvider: { nil }, isLocked: false)))
     #expect(first != nil)
     #expect(morph != nil, "a morph is accepted, not refused")
   }
@@ -290,17 +312,23 @@ struct PillRequestParityTests {
   func everyActionIsBound() throws {
     var fired: [String] = []
     let chipRig = Rig()
-    let chipReceipt = try #require(chipRig.director.present(.languageChip(
-      payload: LanguageChipPayload(lang: "es", displayName: "Spanish", state: .askToLock, generation: 1),
-      onLock: { fired.append("lock") },
-      onDismiss: { fired.append("dismiss") },
-      onExpire: { fired.append("expire") })))
+    let chipReceipt = try #require(
+      chipRig.director.present(
+        .languageChip(
+          payload: LanguageChipPayload(
+            lang: "es", displayName: "Spanish", state: .askToLock, generation: 1),
+          onLock: { fired.append("lock") },
+          onDismiss: { fired.append("dismiss") },
+          onExpire: { fired.append("expire") })))
     try chipRig.host.sendUserActionThroughRoot(.lockLanguage, for: chipReceipt)
 
     let dismissRig = Rig()
-    let dismissReceipt = try #require(dismissRig.director.present(.languageChip(
-      payload: LanguageChipPayload(lang: "es", displayName: "Spanish", state: .askToLock, generation: 1),
-      onLock: {}, onDismiss: { fired.append("dismiss") }, onExpire: {})))
+    let dismissReceipt = try #require(
+      dismissRig.director.present(
+        .languageChip(
+          payload: LanguageChipPayload(
+            lang: "es", displayName: "Spanish", state: .askToLock, generation: 1),
+          onLock: {}, onDismiss: { fired.append("dismiss") }, onExpire: {})))
     try dismissRig.host.sendUserActionThroughRoot(.dismissChip, for: dismissReceipt)
 
     for (action, label) in [
@@ -309,10 +337,12 @@ struct PillRequestParityTests {
       (PillAction.openBluetoothSettings, "settings"),
     ] {
       let rig = Rig()
-      let receipt = try #require(rig.director.present(.bluetoothAwareness(
-        onAcknowledge: { fired.append("gotIt") },
-        onClose: { fired.append("close") },
-        onOpenSettings: { fired.append("settings") })))
+      let receipt = try #require(
+        rig.director.present(
+          .bluetoothAwareness(
+            onAcknowledge: { fired.append("gotIt") },
+            onClose: { fired.append("close") },
+            onOpenSettings: { fired.append("settings") })))
       try rig.host.sendUserActionThroughRoot(action, for: receipt)
       #expect(fired.last == label, "\(label) must reach its own callback")
     }
@@ -370,6 +400,36 @@ struct PillRequestParityTests {
       "the notice the user already answered is still on screen")
   }
 
+  /// #2549: same REPRODUCIBLE shape as the Grant test above, for the
+  /// microphone-permission-denied notice's "Open Settings" button — a user
+  /// with mic access denied sees the notice and clicks the button. If it
+  /// reaches nobody, the button does nothing and the user is never sent to
+  /// the Microphone privacy pane.
+  @Test("Open Settings reaches the app action sink") func openMicrophoneSettingsIsBound() throws {
+    let rig = Rig()
+    let receipt = try #require(rig.director.present(.error(reason: .permissionDenied)))
+    try rig.host.sendUserActionThroughRoot(.openMicrophoneSettings, for: receipt)
+    #expect(rig.appActions == [.openMicrophoneSettings])
+  }
+
+  /// Same ordering guarantee as `grantRunsBeforeDismissal` above: the action
+  /// must run WHILE the notice is still showing, and the notice must be gone
+  /// by the time the button's own handler returns — never the reverse.
+  @Test("Open Settings runs before the notice is dismissed, and the notice then goes")
+  func openMicrophoneSettingsRunsBeforeDismissal() throws {
+    let rig = Rig()
+    let receipt = try #require(rig.director.present(.error(reason: .permissionDenied)))
+
+    try rig.host.sendUserActionThroughRoot(.openMicrophoneSettings, for: receipt)
+
+    #expect(
+      rig.openMicrophoneSettingsSawPresentation == true,
+      "the notice was dismissed before Open Settings ran")
+    #expect(
+      rig.director.renderModel.state.presentation == nil,
+      "the notice the user already answered is still on screen")
+  }
+
   /// **Preserves the temporary recovery transaction: notify the owner, then
   /// dismiss.** The owner still lives outside the director until C4, so only the
   /// DISMISSAL moved here; C4 replaces this split with the request-owned
@@ -412,10 +472,11 @@ struct PillRequestParityTests {
   func expiryReachesItsCallback() {
     let rig = Rig(manualClock: true)
     var expiries = 0
-    rig.director.present(.languageChip(
-      payload: LanguageChipPayload(
-        lang: "fr", displayName: "French", state: .askToLock, generation: 7),
-      onLock: {}, onDismiss: {}, onExpire: { expiries += 1 }))
+    rig.director.present(
+      .languageChip(
+        payload: LanguageChipPayload(
+          lang: "fr", displayName: "French", state: .askToLock, generation: 7),
+        onLock: {}, onDismiss: {}, onExpire: { expiries += 1 }))
 
     let armed = try! #require(rig.armedExpiry)
     armed.fire()

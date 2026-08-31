@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import AppKit
 import ApplicationServices
 import EnviousWisprCore
 
@@ -9,10 +10,12 @@ public final class PermissionsService {
   public private(set) var microphoneStatus: AVAuthorizationStatus = .notDetermined
   public private(set) var accessibilityGranted: Bool = false
 
-  /// Called when accessibility permission status changes — set by AppDelegate for icon updates.
-  public var onAccessibilityChange: (() -> Void)?
+  /// Called when either permission's status changes — set by AppDelegate/MenuBarController for
+  /// icon and menu updates. #2549: renamed from `onAccessibilityChange`; the monitor below now
+  /// observes both permissions, so a single accessibility-only name would be misleading.
+  public var onPermissionChange: (() -> Void)?
 
-  private var accessibilityMonitorTask: Task<Void, Never>?
+  private var permissionMonitorTask: Task<Void, Never>?
 
   /// Whether the user has explicitly dismissed the accessibility warning banner.
   /// Stored property so @Observable tracks changes and SwiftUI re-renders.
@@ -40,14 +43,29 @@ public final class PermissionsService {
   /// no-prompt system check.
   private let microphoneReader: () -> AVAuthorizationStatus
 
+  /// #2549: injected so tests can observe/intercept the System Settings
+  /// deep-link without a real window opening; defaults to the real
+  /// `NSWorkspace` call.
+  private let openMicrophoneSettings: @MainActor (URL) -> Void
+
+  /// #2549: injected so tests can drive the monitor loop through several real
+  /// ticks in milliseconds instead of `TimingConstants.accessibilityPollIntervalSec`;
+  /// defaults to that same production value.
+  private let permissionPollIntervalNanoseconds: UInt64
+
   public init(
     accessibilityReader: @escaping () -> Bool = { AXIsProcessTrusted() },
     microphoneReader: @escaping () -> AVAuthorizationStatus = {
       AVCaptureDevice.authorizationStatus(for: .audio)
-    }
+    },
+    openMicrophoneSettings: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) },
+    permissionPollIntervalNanoseconds: UInt64 = UInt64(
+      TimingConstants.accessibilityPollIntervalSec * 1_000_000_000)
   ) {
     self.accessibilityReader = accessibilityReader
     self.microphoneReader = microphoneReader
+    self.openMicrophoneSettings = openMicrophoneSettings
+    self.permissionPollIntervalNanoseconds = permissionPollIntervalNanoseconds
     microphoneStatus = microphoneReader()
     accessibilityGranted = accessibilityReader()
   }
@@ -70,6 +88,24 @@ public final class PermissionsService {
     TelemetryService.shared.permissionStatus(
       permission: "microphone", status: granted ? "granted" : "denied", context: "request")
     return granted
+  }
+
+  /// #2549: request microphone access when not yet asked, or send the user to
+  /// System Settings when access is already denied. Apple's `requestAccess`
+  /// API only ever shows the system dialog once, from the "not yet asked"
+  /// state — after an explicit deny it returns `false` immediately with no
+  /// dialog, every time. Single shared owner for both Settings → Permissions
+  /// and onboarding, so the branch is not copied at each call site.
+  public func requestMicrophoneAccessOrOpenSettings() async {
+    if microphonePermissionIsDenied {
+      if let url = URL(
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+      {
+        openMicrophoneSettings(url)
+      }
+    } else {
+      _ = await requestMicrophoneAccess()
+    }
   }
 
   /// Whether microphone permission has been granted.
@@ -161,34 +197,80 @@ public final class PermissionsService {
     }
   }
 
-  /// Start smart polling for Accessibility permission.
-  /// Polls every TimingConstants.accessibilityPollIntervalSec seconds, but ONLY
-  /// while accessibilityGranted == false. Once granted, loop exits.
+  /// #2549: true while EITHER permission still needs the monitor watching it.
+  /// Shared by `startMonitoring()` and `restartMonitoringIfNeeded()` so they
+  /// can never disagree about when the monitor is needed.
+  ///
+  /// **Round-1 cloud-review finding: this must read "not yet AUTHORIZED", not
+  /// "denied".** `.notDetermined` — the ordinary state before the user has
+  /// ever been asked — is neither granted nor denied, so a denied-only check
+  /// never starts the monitor for it. A user whose very first system prompt
+  /// is a DENY is then watched by nothing: the monitor never ran, so nothing
+  /// notices the transition into denied, and nothing notices a later grant
+  /// via Open Settings either.
+  private var permissionMonitoringStillNeeded: Bool {
+    !accessibilityGranted || microphoneReader() != .authorized
+  }
+
+  /// Start smart polling for Accessibility AND Microphone permission (#2549:
+  /// generalized from Accessibility-only).
+  /// Polls every `permissionPollIntervalNanoseconds` (production: `TimingConstants.accessibilityPollIntervalSec`),
+  /// but ONLY while at least one permission is outstanding. Exits once BOTH are granted.
   public func startMonitoring() {
-    guard accessibilityMonitorTask == nil || accessibilityMonitorTask?.isCancelled == true else {
+    guard permissionMonitorTask == nil || permissionMonitorTask?.isCancelled == true else {
       return
     }
-    guard !accessibilityGranted else { return }
+    guard permissionMonitoringStillNeeded else { return }
 
-    accessibilityMonitorTask = Task { [weak self] in
+    var lastAccessibilityGranted = accessibilityGranted
+    var lastMicrophoneStatus = microphoneReader()
+    let pollInterval = permissionPollIntervalNanoseconds
+
+    permissionMonitorTask = Task { [weak self] in
       while true {
-        try? await Task.sleep(
-          nanoseconds: UInt64(TimingConstants.accessibilityPollIntervalSec * 1_000_000_000))
+        try? await Task.sleep(nanoseconds: pollInterval)
         guard let self, !Task.isCancelled else { return }
         self.refreshAccessibilityStatus()
-        if self.accessibilityGranted {
-          self.onAccessibilityChange?()
-          self.accessibilityMonitorTask = nil
+        // #2549: read the mic status ONCE this tick and reuse the single
+        // snapshot for the assignment, the change-notification comparison,
+        // and the exit decision — never a second, independent
+        // `microphoneReader()` read in the same tick, which would be a
+        // separate OS call that could in principle disagree.
+        //
+        // Round-2 cloud-review finding: change-notification must compare the
+        // FULL STATUS VALUE, not a collapsed boolean. Round 1 fixed the
+        // LIFECYCLE question (keep running through `.notDetermined`) by
+        // tracking "authorized or not" — but that same boolean, reused for
+        // NOTIFICATION, is blind to a `.notDetermined` → `.denied` transition:
+        // both sides read `false`, so nothing looked like it changed, even
+        // though `microphonePermissionIsDenied` (what the warning reads) flips
+        // from false to true right there. Comparing the raw status closes the
+        // whole class at once — any transition between any two of the four
+        // states is caught, not just the ones that cross the authorized line.
+        let microphoneStatusNow = self.microphoneReader()
+        self.microphoneStatus = microphoneStatusNow
+        let microphoneAuthorizedNow = microphoneStatusNow == .authorized
+
+        if self.accessibilityGranted != lastAccessibilityGranted
+          || microphoneStatusNow != lastMicrophoneStatus
+        {
+          lastAccessibilityGranted = self.accessibilityGranted
+          lastMicrophoneStatus = microphoneStatusNow
+          self.onPermissionChange?()
+        }
+
+        if self.accessibilityGranted && microphoneAuthorizedNow {
+          self.permissionMonitorTask = nil
           return
         }
       }
     }
   }
 
-  /// Restart monitoring if not running and permission is missing.
+  /// Restart monitoring if not running and either permission is still missing.
   public func restartMonitoringIfNeeded() {
-    let taskDone = accessibilityMonitorTask == nil || accessibilityMonitorTask?.isCancelled == true
-    guard taskDone && !accessibilityGranted else { return }
+    let taskDone = permissionMonitorTask == nil || permissionMonitorTask?.isCancelled == true
+    guard taskDone && permissionMonitoringStillNeeded else { return }
     startMonitoring()
   }
 }

@@ -7,13 +7,13 @@
 // for, all of which are production surface. 39 cases moved into the Release lane
 // with this line.
 import AppKit
+import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
-import EnviousWisprAppKitTestSupport
 
 /// #2292 chunk C4b. The presentation transaction.
 ///
@@ -116,6 +116,7 @@ struct OverlayDirectorTests {
         wordsCapability: { preview.isEnabled ? .available : .previewOff },
         display: { preview.display() }),
       grantAccessibility: { sink.appActions.append(.grantAccessibility) },
+      openMicrophoneSettings: { sink.appActions.append(.openMicrophoneSettings) },
       selections: { .shipped },
       firstRenderSchedule: { $0() })
     return (d, host, sink)
@@ -188,7 +189,7 @@ struct OverlayDirectorTests {
       scheduler: .manual { _ in },
       announce: { _ in },
       livePreview: .disabled,
-      grantAccessibility: {}, selections: { .shipped },
+      grantAccessibility: {}, openMicrophoneSettings: {}, selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
   }
 
@@ -256,7 +257,8 @@ struct OverlayDirectorTests {
     // Real HOST, inert panel driver (#2455 C4): the director renders through the
     // production host, whose panel is a recorder rather than a window. Held so the
     // caller can hide the host and release its content when the test ends.
-    let host = OverlayWindowHost(screens: { OverlayScreenResolver { screen } }, effects: .recording())
+    let host = OverlayWindowHost(
+      screens: { OverlayScreenResolver { screen } }, effects: .recording())
     let d = OverlayDirector(
       host: host,
       position: position,
@@ -282,6 +284,7 @@ struct OverlayDirectorTests {
         wordsCapability: { preview.isEnabled ? .available : .previewOff },
         display: { preview.display() }),
       grantAccessibility: { sink.appActions.append(.grantAccessibility) },
+      openMicrophoneSettings: { sink.appActions.append(.openMicrophoneSettings) },
       selections: { .shipped },
       firstRenderSchedule: { $0() })
     hosts.append(host)
@@ -313,7 +316,7 @@ struct OverlayDirectorTests {
       scheduler: .manual { armed.work = $0 },
       announce: { _ in },
       livePreview: .disabled,
-      grantAccessibility: {}, selections: { .shipped },
+      grantAccessibility: {}, openMicrophoneSettings: {}, selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
 
     d.present(.warning(reason: .polishFailed))
@@ -940,7 +943,8 @@ struct OverlayDirectorTests {
   @Test("a recording's effect is delivered before its geometry is resolved")
   func recordingEffectsPrecedeGeometry() {
     var recordingStarted = false
-    let host = OverlayWindowHost(screens: { OverlayScreenResolver { Self.screen } }, effects: .recording())
+    let host = OverlayWindowHost(
+      screens: { OverlayScreenResolver { Self.screen } }, effects: .recording())
     // **Both halves ride on the SAME bridge now** (#2292 C2), which states the
     // ordering this case is about more directly than the old pair did: the
     // recording signal and the geometry answer arrive together, so "did the
@@ -953,7 +957,8 @@ struct OverlayDirectorTests {
         isEnabledForGeometry: { recordingStarted },
         wordsCapability: { recordingStarted ? .available : .previewOff },
         display: { .off }),
-      grantAccessibility: {}, selections: { .shipped }, firstRenderSchedule: { $0() })
+      grantAccessibility: {}, openMicrophoneSettings: {}, selections: { .shipped },
+      firstRenderSchedule: { $0() })
     Self.hosts.append(host)
     defer { Self.closeAllWindows() }
 
@@ -1424,7 +1429,7 @@ struct OverlayDirectorTests {
     let deferral = Deferral()
     let d = OverlayDirector(
       host: host, scheduler: .manual { _ in }, announce: { _ in }, livePreview: .disabled,
-      grantAccessibility: {}, selections: { .shipped },
+      grantAccessibility: {}, openMicrophoneSettings: {}, selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
     defer { recorder.panel?.orderOut() }
 
@@ -1454,7 +1459,8 @@ struct OverlayDirectorTests {
     var announcements: [OverlayAnnouncement] = []
     let d = OverlayDirector(
       host: host, scheduler: .manual { _ in }, announce: { announcements.append($0) },
-      livePreview: .disabled, grantAccessibility: {}, selections: { .shipped },
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
 
     Self.record(d, level: 0.2)
@@ -1482,7 +1488,8 @@ struct OverlayDirectorTests {
     let deferral = Deferral()
     let d = OverlayDirector(
       host: host, scheduler: .manual { _ in }, announce: { _ in },
-      livePreview: .disabled, grantAccessibility: {}, selections: { .shipped },
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
 
     Self.record(d, level: 0.2)
@@ -1689,7 +1696,8 @@ struct OverlayDirectorTests {
     // The production `firstRenderSchedule` — the default — is the subject here.
     let d = OverlayDirector(
       host: host, announce: { _ in },
-      livePreview: .disabled, grantAccessibility: {}, selections: { .shipped })
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      selections: { .shipped })
 
     d.present(.warning(reason: .polishFailed))
     #expect(
@@ -1715,7 +1723,8 @@ struct OverlayDirectorTests {
     let host = WindowlessOverlayHost()
     let d = OverlayDirector(
       host: host, announce: { _ in },
-      livePreview: .disabled, grantAccessibility: {}, selections: { .shipped })
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      selections: { .shipped })
 
     // First request, deferred. A second replaces it before the run loop turns,
     // so the first drops on its identity gate and builds nothing.
@@ -1739,7 +1748,8 @@ struct OverlayDirectorTests {
     let host = WindowlessOverlayHost()
     let d = OverlayDirector(
       host: host, announce: { _ in },
-      livePreview: .disabled, grantAccessibility: {}, selections: { .shipped })
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      selections: { .shipped })
     d.present(.warning(reason: .polishFailed))
     await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } }
 
@@ -1918,6 +1928,7 @@ struct OverlayDirectorTests {
       announce: { sink.announcements.append($0) },
       livePreview: .disabled,
       grantAccessibility: { sink.appActions.append(.grantAccessibility) },
+      openMicrophoneSettings: { sink.appActions.append(.openMicrophoneSettings) },
       selections: { .shipped },
       firstRenderSchedule: { $0() })
     hosts.append(host)

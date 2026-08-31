@@ -443,6 +443,15 @@ final class RecordingSessionKernel {
   /// ORs with the `EW_KEEP_DICTATION_AUDIO` env var at the archive call site.
   private let dictationAudioArchiveOptInProvider: @MainActor () -> Bool
 
+  /// #2549: live, uncached mic-permission read consulted immediately before
+  /// each capture-start attempt. macOS does not reliably throw from the
+  /// engine on a TCC-denied mic — it can start and deliver real, well-formed
+  /// zero-value buffers — so a denied take would otherwise fall through to
+  /// the zero-signal/VAD classifiers and show the muted-mic advisory instead
+  /// of "Microphone access is off." Defaults to `{ false }` so every existing
+  /// test construction site is unaffected.
+  private let microphonePermissionIsDenied: @MainActor () -> Bool
+
   // MARK: Observable surface
 
   /// The current FSM state. Callers observe; they never mutate it.
@@ -955,6 +964,8 @@ final class RecordingSessionKernel {
     markASRTimingEnd: @escaping @MainActor () -> Void = {},
     telemetryState: KernelTelemetryState = KernelTelemetryState(),
     dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
+    // #2549: see the stored property's doc comment.
+    microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
     // #1707 Phase 2: oracle for the shared-backend overlap Live UAT
     // (§3.2a-i). Defaulted `nil` so every existing test construction site is
     // unaffected. `BatchDecodeFaultController` is always compiled (a plain
@@ -1025,6 +1036,7 @@ final class RecordingSessionKernel {
     self.markASRTimingEnd = markASRTimingEnd
     self.telemetryState = telemetryState
     self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
+    self.microphonePermissionIsDenied = microphonePermissionIsDenied
     self.batchDecodeFaultController = batchDecodeFaultController
   }
 
@@ -1487,6 +1499,24 @@ final class RecordingSessionKernel {
       }
     }
 
+    // #2549: check the LIVE mic permission before the first capture attempt.
+    // Re-check stopLatched/cancelRequested here too, so a stop/cancel the
+    // user already requested during warm-up cannot be preempted by a
+    // permission-denied terminal firing after it.
+    guard isCurrent(sid) else { return }
+    if stopLatched {
+      finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
+      return
+    }
+    if cancelRequested {
+      finishTerminal(.cancelled, sid: sid)
+      return
+    }
+    if microphonePermissionIsDenied() {
+      finishTerminal(.failed(.permissionDenied), sid: sid)
+      return
+    }
+
     // Capture start.
     do {
       try await audioCapture.startEnginePhase()
@@ -1532,6 +1562,23 @@ final class RecordingSessionKernel {
     captureRebuiltForFormatThisSession = !stabilized
     if !stabilized {
       audioCapture.rebuildEngine()
+      // #2549: identical check before the rebuild-retry attempt — see the
+      // first attempt's comment above for why both the user-command
+      // priority and the permission read are re-checked here rather than
+      // reused from before the rebuild.
+      guard isCurrent(sid) else { return }
+      if stopLatched {
+        finishTerminal(.discarded(.releasedBeforeRecording), sid: sid)
+        return
+      }
+      if cancelRequested {
+        finishTerminal(.cancelled, sid: sid)
+        return
+      }
+      if microphonePermissionIsDenied() {
+        finishTerminal(.failed(.permissionDenied), sid: sid)
+        return
+      }
       do {
         try await audioCapture.startEnginePhase()
       } catch {

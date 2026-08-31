@@ -91,6 +91,7 @@ struct PillCatalogParityTests {
   private static func name(_ action: PillAction) -> String {
     switch action {
     case .grantAccessibility: return "grantAccessibility"
+    case .openMicrophoneSettings: return "openMicrophoneSettings"
     case .discardRecovery: return "discardRecovery"
     case .pasteEscapeRecovery: return "pasteEscapeRecovery"
     case .lockLanguage: return "lockLanguage"

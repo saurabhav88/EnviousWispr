@@ -1,8 +1,8 @@
+import EnviousWisprAppKitTestSupport
 import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
-import EnviousWisprAppKitTestSupport
 
 /// A director for tests that need one only as a DEPENDENCY (#2292, C4c).
 ///
@@ -35,7 +35,8 @@ enum OverlayTestDouble {
       host: WindowlessOverlayHost(),
       // Announcements go nowhere: a test that has not asked for a screen has not
       // asked for VoiceOver either, and the real post reaches the system.
-      announce: { _ in }, livePreview: .disabled, grantAccessibility: {}, selections: { .shipped },
+      announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
+      openMicrophoneSettings: {}, selections: { .shipped },
       firstRenderSchedule: { $0() })
   }
 
@@ -46,7 +47,8 @@ enum OverlayTestDouble {
     return (
       OverlayDirector(
         host: host, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {}, selections: { .shipped }, firstRenderSchedule: { $0() }),
+        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+        selections: { .shipped }, firstRenderSchedule: { $0() }),
       host
     )
   }

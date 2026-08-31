@@ -62,7 +62,7 @@ public final class UpdateAvailabilityService {
   /// #1019: AppKit-facing change hook (the `@Observable` macro only notifies
   /// SwiftUI dependency tracking; AppKit consumers — the menu-bar icon, the
   /// once-per-version notification — get no callback from it). Mirrors the
-  /// `SettingsManager.onChange` / `PermissionsService.onAccessibilityChange`
+  /// `SettingsManager.onChange` / `PermissionsService.onPermissionChange`
   /// single-slot pattern. Fired from every `state` mutation.
   @ObservationIgnored public var onAvailabilityChange: (() -> Void)?
 

@@ -75,19 +75,14 @@ struct PracticeScreenV2: View {
 
   private func grantPermission(reason: String) async {
     if reason == "mic_denied" {
-      // `AVCaptureDevice.requestAccess` only presents the prompt from the
-      // UNDETERMINED state. After a prior denial it returns false immediately
-      // and nothing appears, so the button did nothing at all and the recovery
-      // path read as broken (cloud review). Send them where the switch is.
-      if permissions.microphonePermissionIsDenied {
-        if let url = URL(
-          string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
-        {
-          NSWorkspace.shared.open(url)
-        }
-      } else {
-        _ = await permissions.requestMicrophoneAccess()
-      }
+      // #2549: consolidated into `PermissionsService.requestMicrophoneAccessOrOpenSettings()`,
+      // the same shared owner Settings → Permissions now calls — this used to
+      // carry its own copy of the same branch. `AVCaptureDevice.requestAccess`
+      // only presents the prompt from the UNDETERMINED state; after a prior
+      // denial it returns false immediately and nothing appears, so the
+      // button did nothing at all and the recovery path read as broken
+      // (cloud review). Send them where the switch is.
+      await permissions.requestMicrophoneAccessOrOpenSettings()
     } else {
       _ = permissions.requestAccessibilityAccess()
     }
@@ -113,7 +108,9 @@ struct PracticeScreenV2: View {
     case .missedTheBox: return "Click the box first"
     case .saidNothing: return "All quiet"
     case .worked: return "That is it. You are set."
-    case .waiting: return viewModel.practiceSucceeded ? "That is it. You are set." : "Time for your first dictation!"
+    case .waiting:
+      return viewModel.practiceSucceeded
+        ? "That is it. You are set." : "Time for your first dictation!"
     }
   }
 
@@ -129,17 +126,20 @@ struct PracticeScreenV2: View {
       // Takes the blame explicitly. Someone told "we did not hear anything"
       // tries harder at a thing that is broken; someone told it was us tries
       // once more and then moves on, which is the honest ask.
-      return "Something went wrong on our side, not yours.\nTry once more, or skip ahead and dictate anywhere."
+      return
+        "Something went wrong on our side, not yours.\nTry once more, or skip ahead and dictate anywhere."
     case .missedTheBox:
       // Says what happened and what to do, and takes the blame off them. The
       // words are genuinely on the clipboard, so telling them that is useful
       // rather than a consolation.
-      return "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold \(shortcutName) again."
+      return
+        "We heard you. The box was not selected, so your words went to the clipboard.\nClick inside the box, then hold \(shortcutName) again."
     case .saidNothing:
       // Not an error, and never worded as one: the microphone worked, there
       // was simply nothing to hear. The prompt is drawn from the persona banks
       // so it sounds like something a person would actually say.
-      return "Your microphone is working. We just did not hear anything.\nTry holding \(shortcutName) and saying: tell grandma I will call Sunday."
+      return
+        "Your microphone is working. We just did not hear anything.\nTry holding \(shortcutName) and saying: tell grandma I will call Sunday."
     case .worked:
       return "Those are your words, typed for you.\nIn any other app, click into a text box first."
     case .waiting:
@@ -168,11 +168,11 @@ struct PracticeScreenV2: View {
         .padding(.bottom, 6)
 
       Text(subhead)
-      .font(.obBody)
-      .foregroundStyle(Color.obTextSecondary)
-      .multilineTextAlignment(.center)
-      .fixedSize(horizontal: false, vertical: true)
-      .padding(.bottom, 18)
+        .font(.obBody)
+        .foregroundStyle(Color.obTextSecondary)
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.bottom, 18)
 
       // The target. Focused on appear, because an unfocused box is exactly the
       // state this whole feature exists to remove.
@@ -185,7 +185,8 @@ struct PracticeScreenV2: View {
         .overlay(
           RoundedRectangle(cornerRadius: 12)
             .strokeBorder(
-              viewModel.practiceSucceeded ? Color.obSuccess.opacity(0.55) : Color.obAccent.opacity(0.35),
+              viewModel.practiceSucceeded
+                ? Color.obSuccess.opacity(0.55) : Color.obAccent.opacity(0.35),
               lineWidth: boxFocused ? 2 : 1)
         )
         .focused($boxFocused)
