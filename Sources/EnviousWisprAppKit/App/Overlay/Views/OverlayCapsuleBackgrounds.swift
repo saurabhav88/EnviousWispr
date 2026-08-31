@@ -62,6 +62,22 @@ struct OverlayCapsuleBackground: View {
   /// ships OFF by default and is macOS 26+.
   private var isPreview: Bool { cornerStyle == .rounded }
 
+  /// The nine brand spectrum colors, shared with anything else that draws the
+  /// rainbow gradient (#2549: the mic-permission notice's left accent bar) so
+  /// there is one list to keep in sync with `brand-guide`'s `--rainbow-full`,
+  /// not a second hand-copied one.
+  static let rainbowColors: [Color] = [
+    Color(red: 1.0, green: 0.165, blue: 0.251),  // #ff2a40 red
+    Color(red: 1.0, green: 0.549, blue: 0.0),  // #ff8c00 orange
+    Color(red: 1.0, green: 0.843, blue: 0.0),  // #ffd700 yellow
+    Color(red: 0.678, green: 1.0, blue: 0.184),  // #adff2f yellow-green
+    Color(red: 0.0, green: 0.98, blue: 0.604),  // #00fa9a mint
+    Color(red: 0.0, green: 1.0, blue: 1.0),  // #00ffff cyan
+    Color(red: 0.118, green: 0.565, blue: 1.0),  // #1e90ff dodger blue
+    Color(red: 0.255, green: 0.412, blue: 0.882),  // #4169e1 royal blue
+    Color(red: 0.541, green: 0.169, blue: 0.886),  // #8a2be2 purple
+  ]
+
   var body: some View {
     shape
       .fill(
@@ -86,19 +102,7 @@ struct OverlayCapsuleBackground: View {
       )
       .overlay(alignment: .bottom) {
         LinearGradient(
-          colors: [
-            .clear,
-            Color(red: 1.0, green: 0.165, blue: 0.251),  // #ff2a40 red
-            Color(red: 1.0, green: 0.549, blue: 0.0),  // #ff8c00 orange
-            Color(red: 1.0, green: 0.843, blue: 0.0),  // #ffd700 yellow
-            Color(red: 0.678, green: 1.0, blue: 0.184),  // #adff2f yellow-green
-            Color(red: 0.0, green: 0.98, blue: 0.604),  // #00fa9a mint
-            Color(red: 0.0, green: 1.0, blue: 1.0),  // #00ffff cyan
-            Color(red: 0.118, green: 0.565, blue: 1.0),  // #1e90ff dodger blue
-            Color(red: 0.255, green: 0.412, blue: 0.882),  // #4169e1 royal blue
-            Color(red: 0.541, green: 0.169, blue: 0.886),  // #8a2be2 purple
-            .clear,
-          ],
+          colors: [.clear] + Self.rainbowColors + [.clear],
           startPoint: .leading,
           endPoint: .trailing
         )
@@ -107,7 +111,8 @@ struct OverlayCapsuleBackground: View {
         // else — the reading well, and any capsule asked to hold still — takes
         // the chosen steady one.
         .opacity(
-          animatesGlow && cornerStyle == .capsule ? glowOpacity : Self.steadyGlowOpacity)
+          animatesGlow && cornerStyle == .capsule ? glowOpacity : Self.steadyGlowOpacity
+        )
         .padding(.horizontal, 20)
         .offset(y: -1)
       }

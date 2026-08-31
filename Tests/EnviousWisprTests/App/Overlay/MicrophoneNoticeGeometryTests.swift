@@ -17,22 +17,28 @@ import Testing
 @Suite(.tags(.productOutcome))
 struct MicrophoneNoticeGeometryTests {
 
-  @Test("permissionDenied reserves the same fixed box the other button-carrying notices use")
+  @Test("permissionDenied gets the wider badge+title+subtitle+button box")
   func permissionDeniedGeometry() throws {
     let entry = PillCatalog.entry(
       for: .error(reason: .permissionDenied), id: PresentationID())
     let definition = try #require(entry.definition)
 
-    #expect(definition.requestedWidth == .fixed(340))
+    #expect(definition.requestedWidth == .fixed(400))
     #expect(
-      definition.reservesFixedHeight == 56,
-      "matches the accessibility-toast/recovery box for a notice that carries a button")
+      definition.reservesFixedHeight == 64,
+      "the 40pt circular badge needs a taller box than the other button-carrying notices")
 
     guard case .notice(let model) = definition.content else {
       Issue.record("expected a notice, got \(definition.content)")
       return
     }
     #expect(model.isMultiline == true)
+    #expect(model.text == "Microphone access needed")
+    #expect(model.secondaryText == "Turn it on to start dictating.")
+    #expect(
+      model.accessibilityLabel == DictationNarrator.copy(for: .permissionDenied),
+      "VoiceOver keeps reading the narrator's shared sentence even though the on-screen copy is this pill's own"
+    )
     #expect(model.action?.action == .openMicrophoneSettings)
     #expect(model.action?.label == "Open Settings")
   }

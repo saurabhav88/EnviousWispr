@@ -230,8 +230,15 @@ struct OverlayRootView: View {
     case .notification:
       NotificationOverlayView(
         message: notice.text, style: Self.style(for: notice.severity),
-        isMultiline: notice.isMultiline, action: notice.action,
-        onAction: notice.action == nil ? nil : { dispatch(notice.action, on: presentation) })
+        isMultiline: notice.isMultiline, secondaryText: notice.secondaryText,
+        action: notice.action,
+        onAction: notice.action == nil ? nil : { dispatch(notice.action, on: presentation) }
+      )
+      // Same shape `.recovery` already ships: `.contain` (not `.combine`) so
+      // the action button below stays its own reachable VoiceOver element
+      // instead of being flattened into one non-interactive label.
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel(notice.accessibilityLabel ?? notice.text)
     case .importStatus:
       ImportStatusOverlayView(message: notice.text)
     case .recovery:
