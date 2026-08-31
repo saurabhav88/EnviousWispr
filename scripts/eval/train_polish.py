@@ -36,6 +36,30 @@ ap.add_argument("--alpha", type=int, default=32)
 ap.add_argument("--micro-bs", type=int, default=4)
 ap.add_argument("--grad-accum", type=int, default=4)
 ap.add_argument("--max-seq", type=int, default=512)
+# SPEED KNOBS. Each defaults to the EG-1 recipe's behaviour and is OMITTED unless
+# asked for, exactly as `--dataset-num-proc` already is, so a run that does not pass
+# them trains byte-for-byte the recipe that produced the shipped model.
+#
+# WHY THEY EXIST, and the first reason as originally written here was WRONG.
+# The claim was that only 32% of moved tokens are real, from p50 312 against a 1024
+# window. Codex refuted it 2026-08-31: `--max-seq` is a CEILING, not a pad target, and
+# at --micro-bs 1 a batch holds one row, so dynamic collation pads it to itself. There
+# was no padding waste in the EG-1 1.2 run to recover. Padding only becomes real at a
+# micro-batch above 1, which is what makes `--group-by-length` a companion to that
+# change rather than a win on its own.
+# The SURVIVING reason is the second one and it is measured: the run used 6.5 GB of the
+# card's 24 GB at 38% utilisation while paying gradient checkpointing's recompute cost
+# for memory it never needed. Codex sizes that at 1.25-1.4x, ~80 min against 105.
+ap.add_argument("--group-by-length", action="store_true",
+                help="batch rows of similar length together. NOT free: it changes row "
+                     "ORDER and batch COMPOSITION, so it does change what the model "
+                     "sees per step even though no row's content changes. And it buys "
+                     "nothing at --micro-bs 1, where a batch holds one row and there is "
+                     "nothing to pad to.")
+ap.add_argument("--no-grad-checkpoint", action="store_true",
+                help="trade memory back for speed. Checkpointing recomputes activations "
+                     "instead of storing them; with headroom on the card that is a "
+                     "straight loss. Numerically identical, only slower and smaller.")
 ap.add_argument("--dataset-num-proc", type=int, default=None,
                 help="Worker processes for dataset tokenization. Unset = the "
                      "library default (one per core). Set 1 to tokenize in-process.")
@@ -97,7 +121,7 @@ SYSTEM = ("Copy-edit the dictated transcript into clean text: fix grammar and "
 # shipped prompt while the log claims otherwise.
 if args.system_file:
     _payload = "\n".join(
-        l for l in open(args.system_file).read().splitlines()
+        l for l in open(args.system_file, encoding="utf-8").read().splitlines()
         if not l.lstrip().startswith("#")).strip()
     if not _payload:
         raise SystemExit(f"FATAL: no prompt payload in {args.system_file}")
@@ -168,11 +192,16 @@ model = FastLanguageModel.get_peft_model(
     bias="none",
     target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
                     "gate_proj", "up_proj", "down_proj"],
-    use_gradient_checkpointing="unsloth",
+    use_gradient_checkpointing=(False if args.no_grad_checkpoint else "unsloth"),
     random_state=1265,
 )
 
-rows = [json.loads(l) for l in open(args.data)]
+# ENCODING IS EXPLICIT BECAUSE THIS NOW RUNS ON WINDOWS. A bare `open()` takes the
+# platform default, which is UTF-8 on Linux and cp1252 on Windows, so the identical
+# corpus that trains on one dies on the other with
+# `UnicodeDecodeError: charmap codec can't decode byte 0x90` -- our rows carry names
+# like Tomas with an accent. Nothing about the data changed; the reader did.
+rows = [json.loads(l) for l in open(args.data, encoding="utf-8")]
 def to_text(r):
     msgs = [
         {"role": "system", "content": SYSTEM},
@@ -210,7 +239,10 @@ trainer = _sft_trainer(
         # discard it — see _sft_config.
         **({} if args.dataset_num_proc is None
            else {"dataset_num_proc": args.dataset_num_proc}),
-        _required=() if args.dataset_num_proc is None else ("dataset_num_proc",),
+        **({"group_by_length": True} if args.group_by_length else {}),
+        _required=(tuple(k for k, on in
+                         (("dataset_num_proc", args.dataset_num_proc is not None),
+                          ("group_by_length", args.group_by_length)) if on)),
     ),
 )
 

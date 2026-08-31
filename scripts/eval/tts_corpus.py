@@ -181,12 +181,30 @@ def main() -> int:
             return 2
 
     cases = []
-    for line in open(args.corpus):
+    for line in open(args.corpus, encoding="utf-8"):
         line = line.strip()
         if not line:
             continue
         d = json.loads(line)
-        text = (d.get("asr_input") or d.get("input") or "").replace("\n", " ").strip()
+        # `voice_text` FIRST: step 1 of the sealed chain emits only that field
+        # (gen_sealed_scenarios.py: "WHAT THIS STEP EMITS IS SPEECH, NOT A TEST CASE"),
+        # so without it every freshly generated scenario failed here with "has no input
+        # text" and the chain could not be run end to end. Reading `asr_input` for speech
+        # would also be wrong in kind: that is what the recogniser PRODUCED, and speaking
+        # it back re-speaks our own mishearings.
+        # NORMALISE EACH CANDIDATE BEFORE CHOOSING, not after. A whitespace-only
+        # `voice_text` is TRUTHY, so a bare `or` chain selects it and then strips
+        # it to nothing -- the row is refused as having no input text even though
+        # a usable `asr_input` sat right beside it. The failure is loud rather
+        # than silent, but it accuses the wrong field, which is the expensive
+        # part. Only ONE chain of this shape exists across both files; swept.
+        def _first_nonblank(*fields):
+            for f in fields:
+                v = (d.get(f) or "").replace("\n", " ").strip()
+                if v:
+                    return v
+            return ""
+        text = _first_nonblank("voice_text", "asr_input", "input")
         if not text:
             print(f"case {d.get('id')} has no input text", file=sys.stderr)
             return 2
@@ -204,7 +222,7 @@ def main() -> int:
     # and voice are folded in for the same reason: they change the audio.
     stamp_path = args.wav_dir / ".synthesis.json"
     try:
-        stamps = json.loads(stamp_path.read_text())
+        stamps = json.loads(stamp_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         stamps = {}
 
@@ -263,14 +281,20 @@ def main() -> int:
                 print(f"  {done}/{len(todo)} ({errors} errors, {int(time.monotonic()-t0)}s)",
                       file=sys.stderr)
 
-    stamp_path.write_text(json.dumps(stamps, ensure_ascii=False, indent=0))
+    # UTF-8 on the WRITE too, and this is the half that matters most: line 215
+    # now READS this file as UTF-8, so a platform-default write makes the pair
+    # ASYMMETRIC -- cp1252 out, UTF-8 in -- which is worse than leaving both
+    # alone. `ensure_ascii=False` means a non-ASCII case id reaches the encoder,
+    # so the mismatch is reachable rather than theoretical.
+    stamp_path.write_text(json.dumps(stamps, ensure_ascii=False, indent=0),
+                          encoding="utf-8")
 
     # Manifest lists only cases whose audio actually exists AND was produced from
     # the current text, so a stale WAV left by an earlier corpus cannot enter the
     # run under a reused case ID.
     written = 0
     missing = []
-    with open(args.manifest, "w") as m:
+    with open(args.manifest, "w", encoding="utf-8") as m:
         for cid, text in cases:
             p = args.wav_dir / f"{cid}.wav"
             if p.exists() and p.stat().st_size > 0 and stamps.get(cid) == stamp_of(text):
