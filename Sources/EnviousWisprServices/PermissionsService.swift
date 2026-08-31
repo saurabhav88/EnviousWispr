@@ -192,8 +192,16 @@ public final class PermissionsService {
   /// #2549: true while EITHER permission still needs the monitor watching it.
   /// Shared by `startMonitoring()` and `restartMonitoringIfNeeded()` so they
   /// can never disagree about when the monitor is needed.
+  ///
+  /// **Round-1 cloud-review finding: this must read "not yet AUTHORIZED", not
+  /// "denied".** `.notDetermined` — the ordinary state before the user has
+  /// ever been asked — is neither granted nor denied, so a denied-only check
+  /// never starts the monitor for it. A user whose very first system prompt
+  /// is a DENY is then watched by nothing: the monitor never ran, so nothing
+  /// notices the transition into denied, and nothing notices a later grant
+  /// via Open Settings either.
   private var permissionMonitoringStillNeeded: Bool {
-    !accessibilityGranted || microphonePermissionIsDenied
+    !accessibilityGranted || microphoneReader() != .authorized
   }
 
   /// Start smart polling for Accessibility AND Microphone permission (#2549:
@@ -207,7 +215,7 @@ public final class PermissionsService {
     guard permissionMonitoringStillNeeded else { return }
 
     var lastAccessibilityGranted = accessibilityGranted
-    var lastMicrophoneDenied = microphonePermissionIsDenied
+    var lastMicrophoneAuthorized = microphoneReader() == .authorized
 
     permissionMonitorTask = Task { [weak self] in
       while true {
@@ -216,24 +224,29 @@ public final class PermissionsService {
         guard let self, !Task.isCancelled else { return }
         self.refreshAccessibilityStatus()
         // #2549: read the mic status ONCE this tick and reuse the single
-        // snapshot for the assignment, the denied-state comparison, and the
-        // exit decision — never a second, independent
-        // `microphonePermissionIsDenied` read in the same tick, which would
-        // be a separate OS call that could in principle disagree.
+        // snapshot for the assignment, the authorized-state comparison, and
+        // the exit decision — never a second, independent
+        // `microphoneReader()` read in the same tick, which would be a
+        // separate OS call that could in principle disagree.
+        //
+        // Round-1 cloud-review finding: track AUTHORIZED, not denied. Denied
+        // is what the WARNING shows (`microphonePermissionIsDenied`), but the
+        // MONITOR must also keep running through `.notDetermined` — the
+        // ordinary pre-prompt state — so a first-prompt deny is still caught,
+        // and a later grant via Open Settings is still caught too.
         let microphoneStatusNow = self.microphoneReader()
         self.microphoneStatus = microphoneStatusNow
-        let microphoneDeniedNow =
-          microphoneStatusNow == .denied || microphoneStatusNow == .restricted
+        let microphoneAuthorizedNow = microphoneStatusNow == .authorized
 
         if self.accessibilityGranted != lastAccessibilityGranted
-          || microphoneDeniedNow != lastMicrophoneDenied
+          || microphoneAuthorizedNow != lastMicrophoneAuthorized
         {
           lastAccessibilityGranted = self.accessibilityGranted
-          lastMicrophoneDenied = microphoneDeniedNow
+          lastMicrophoneAuthorized = microphoneAuthorizedNow
           self.onPermissionChange?()
         }
 
-        if self.accessibilityGranted && !microphoneDeniedNow {
+        if self.accessibilityGranted && microphoneAuthorizedNow {
           self.permissionMonitorTask = nil
           return
         }
