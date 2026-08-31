@@ -17,16 +17,16 @@ import Testing
 @Suite(.tags(.productOutcome))
 struct MicrophoneNoticeGeometryTests {
 
-  @Test("permissionDenied is content-sized, capped at 320, with the Open Settings action")
+  @Test("permissionDenied reserves the same fixed box the other button-carrying notices use")
   func permissionDeniedGeometry() throws {
     let entry = PillCatalog.entry(
       for: .error(reason: .permissionDenied), id: PresentationID())
     let definition = try #require(entry.definition)
 
-    #expect(definition.requestedWidth == .fixed(320))
+    #expect(definition.requestedWidth == .fixed(340))
     #expect(
-      definition.reservesFixedHeight == nil,
-      "omitting fixedHeight is what makes showPanel content-size the box")
+      definition.reservesFixedHeight == 56,
+      "matches the accessibility-toast/recovery box for a notice that carries a button")
 
     guard case .notice(let model) = definition.content else {
       Issue.record("expected a notice, got \(definition.content)")

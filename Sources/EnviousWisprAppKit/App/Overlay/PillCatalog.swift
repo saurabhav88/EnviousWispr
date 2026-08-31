@@ -206,17 +206,17 @@ enum PillCatalog {
         expiry: .after(seconds: 2.5), severity: .warning)  // NotificationStyle 2.5
 
     case .error(let reason):
-      // #2549: `.permissionDenied` gets a wider, content-sized box (no
-      // `fixedHeight` — see `notice`'s doc comment: omitting it is what makes
-      // `showPanel` call `fitToContent: true`) plus a button to the
-      // Microphone settings pane, because the fixed 280×44 single-line box
+      // #2549: `.permissionDenied` gets the same wider box the accessibility
+      // toast and recovery pills already use for a notice that carries a
+      // button (`width: .fixed(300..340), fixedHeight: 56`), plus a button to
+      // the Microphone settings pane. The fixed 280×44 single-line box
       // truncated "Microphone access is off." mid-word. Every other `.error`
       // reason keeps the original fixed box unchanged — those sentences are
       // short and this is the one that was actually broken.
       if reason == .permissionDenied {
         return notice(
           id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
-          width: .fixed(320),
+          width: .fixed(340), fixedHeight: 56,
           expiry: .after(seconds: 6), severity: .error, isMultiline: true,
           action: NoticeAction(label: "Open Settings", action: .openMicrophoneSettings))
       }

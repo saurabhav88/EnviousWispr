@@ -56,8 +56,7 @@ struct OverlayRootView: View {
   ///
   /// It reports the values PASSED to the leaf, never the values present on the
   /// definition, because those two agreeing is the thing being tested.
-  @MainActor static var leafObserverForTesting:
-    ((PresentationID, Bool, String?) -> Void)?
+  @MainActor static var leafObserverForTesting: ((PresentationID, Bool, String?) -> Void)?
 
   var body: some View {
     // **ONE snapshot read, at the top, used by everything below** (#2377 Phase 5
@@ -231,7 +230,8 @@ struct OverlayRootView: View {
     case .notification:
       NotificationOverlayView(
         message: notice.text, style: Self.style(for: notice.severity),
-        isMultiline: notice.isMultiline)
+        isMultiline: notice.isMultiline, action: notice.action,
+        onAction: notice.action == nil ? nil : { dispatch(notice.action, on: presentation) })
     case .importStatus:
       ImportStatusOverlayView(message: notice.text)
     case .recovery:

@@ -55,6 +55,12 @@ struct NotificationOverlayView: View {
   /// row, so one pill's wrapping was stated twice and the model's copy was
   /// ignored. The style's copy is deleted; this is the survivor.
   let isMultiline: Bool
+  /// #2549: the one button a notification may carry (mirrors
+  /// `AccessibilityToastView`'s "Grant"). `nil` for every notice that carries
+  /// none today, so this is additive to the existing single-line and advisory
+  /// shapes.
+  var action: NoticeAction?
+  var onAction: (() -> Void)?
 
   var body: some View {
     HStack(spacing: 8) {
@@ -75,6 +81,21 @@ struct NotificationOverlayView: View {
         .lineLimit(isMultiline ? nil : 1)
         .fixedSize(horizontal: false, vertical: isMultiline)
         .multilineTextAlignment(.leading)
+
+      if let action, let onAction {
+        Spacer(minLength: 8)
+        Button(action: onAction) {
+          Text(action.label)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .background(Capsule().fill(style.iconColor.opacity(0.85)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(action.spokenLabel)
+      }
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
