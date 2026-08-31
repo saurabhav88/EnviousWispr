@@ -271,7 +271,13 @@ def main() -> int:
                 print(f"  {done}/{len(todo)} ({errors} errors, {int(time.monotonic()-t0)}s)",
                       file=sys.stderr)
 
-    stamp_path.write_text(json.dumps(stamps, ensure_ascii=False, indent=0))
+    # UTF-8 on the WRITE too, and this is the half that matters most: line 215
+    # now READS this file as UTF-8, so a platform-default write makes the pair
+    # ASYMMETRIC -- cp1252 out, UTF-8 in -- which is worse than leaving both
+    # alone. `ensure_ascii=False` means a non-ASCII case id reaches the encoder,
+    # so the mismatch is reachable rather than theoretical.
+    stamp_path.write_text(json.dumps(stamps, ensure_ascii=False, indent=0),
+                          encoding="utf-8")
 
     # Manifest lists only cases whose audio actually exists AND was produced from
     # the current text, so a stale WAV left by an earlier corpus cannot enter the
