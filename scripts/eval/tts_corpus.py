@@ -192,9 +192,19 @@ def main() -> int:
         # text" and the chain could not be run end to end. Reading `asr_input` for speech
         # would also be wrong in kind: that is what the recogniser PRODUCED, and speaking
         # it back re-speaks our own mishearings.
-        text = (
-            d.get("voice_text") or d.get("asr_input") or d.get("input") or ""
-        ).replace("\n", " ").strip()
+        # NORMALISE EACH CANDIDATE BEFORE CHOOSING, not after. A whitespace-only
+        # `voice_text` is TRUTHY, so a bare `or` chain selects it and then strips
+        # it to nothing -- the row is refused as having no input text even though
+        # a usable `asr_input` sat right beside it. The failure is loud rather
+        # than silent, but it accuses the wrong field, which is the expensive
+        # part. Only ONE chain of this shape exists across both files; swept.
+        def _first_nonblank(*fields):
+            for f in fields:
+                v = (d.get(f) or "").replace("\n", " ").strip()
+                if v:
+                    return v
+            return ""
+        text = _first_nonblank("voice_text", "asr_input", "input")
         if not text:
             print(f"case {d.get('id')} has no input text", file=sys.stderr)
             return 2
