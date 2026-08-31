@@ -466,6 +466,19 @@ struct LivePreviewStatusMappingTests {
     // Positive control: the ready detail DOES make the weaker, true claim.
     #expect(LivePreviewSettingsCopy.statusActiveDetail.lowercased().contains("ready to show"))
   }
+
+  @Test("A build defect stays unrepresentable as a language in the composed status bar")
+  func buildDefectDoesNotGrowALanguageControl() {
+    let mapped = summary(
+      engine: .universal, universalExists: false, universalState: .notReady)
+    let bar = LivePreviewStatusBarPresentation.bar(
+      summary: mapped, engine: .universal, appleActive: nil, languageMode: .auto)
+
+    #expect(mapped.chip.tone == .error)
+    #expect(bar.language == nil)
+    #expect(bar.action == nil)
+  }
+
   // **`universalReadinessAgreesWithTheHero` and `universalRowPromisesOnlyWhenRunning`
   // are DELETED by #2436, not retargeted, and that is the point.**
   //

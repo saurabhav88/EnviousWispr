@@ -386,7 +386,7 @@ struct RecordingPillPreviewTile: View {
         // decided by the grid above, which reflows, so any constant is wrong at
         // every width except the one it was picked at.
         GeometryReader { geo in
-          RecordingPillPreview(design: design)
+          RecordingPillPreview(design: self.design)
             // Natural WIDTH, natural height. `scaleEffect` is a draw-time
             // transform and does not change layout, so the frames here are what
             // reserve space; letting the height come from the pill is what keeps a

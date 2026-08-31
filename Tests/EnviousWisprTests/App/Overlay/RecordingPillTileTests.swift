@@ -505,12 +505,18 @@ struct RecordingPillTileTests {
 @Suite(.tags(.driftGuard))
 struct RecordingPillPreviewWiringTests {
 
-  private final class OverlayConstructionFinder: SyntaxVisitor {
+  private final class DirectConstructionFinder: SyntaxVisitor {
+    let wanted: String
     private(set) var calls: [FunctionCallExprSyntax] = []
+
+    init(_ wanted: String) {
+      self.wanted = wanted
+      super.init(viewMode: .sourceAccurate)
+    }
 
     override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
       if let callee = node.calledExpression.as(DeclReferenceExprSyntax.self),
-        callee.baseName.text == "RecordingOverlayView"
+        callee.baseName.text == wanted
       {
         calls.append(node)
       }
@@ -526,7 +532,7 @@ struct RecordingPillPreviewWiringTests {
   private static func theConstruction() throws -> FunctionCallExprSyntax {
     let text = try String(
       contentsOf: RepoRoot.url.appending(path: panel), encoding: .utf8)
-    let finder = OverlayConstructionFinder(viewMode: .sourceAccurate)
+    let finder = DirectConstructionFinder("RecordingOverlayView")
     finder.walk(Parser.parse(source: text))
 
     #expect(
@@ -535,6 +541,22 @@ struct RecordingPillPreviewWiringTests {
       \(panel) constructs RecordingOverlayView \(finder.calls.count) times. Zero means \
       this guard is pointed at the wrong file and proves nothing; more than one means \
       the rows below are checking an arbitrary one of them.
+      """)
+    return try #require(finder.calls.first)
+  }
+
+  private static func thePreviewConstruction() throws -> FunctionCallExprSyntax {
+    let text = try String(
+      contentsOf: RepoRoot.url.appending(path: panel), encoding: .utf8)
+    let finder = DirectConstructionFinder("RecordingPillPreview")
+    finder.walk(Parser.parse(source: text))
+
+    #expect(
+      finder.calls.count == 1,
+      """
+      \(panel) constructs RecordingPillPreview \(finder.calls.count) times. Zero means \
+      the tile no longer hands a design to the preview; more than one makes the \
+      guard ambiguous.
       """)
     return try #require(finder.calls.first)
   }
@@ -564,6 +586,31 @@ struct RecordingPillPreviewWiringTests {
     let f = StructFinder(named)
     f.walk(tree)
     return f.found
+  }
+
+  private final class MemberCallFinder: SyntaxVisitor {
+    let wanted: String
+    private(set) var calls: [FunctionCallExprSyntax] = []
+
+    init(_ wanted: String) {
+      self.wanted = wanted
+      super.init(viewMode: .sourceAccurate)
+    }
+
+    override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+      if node.calledExpression.as(MemberAccessExprSyntax.self)?.declName.baseName.text == wanted {
+        calls.append(node)
+      }
+      return .visitChildren
+    }
+  }
+
+  private static func previewTileDeclaration() throws -> StructDeclSyntax {
+    let text = try String(
+      contentsOf: RepoRoot.url.appending(path: panel), encoding: .utf8)
+    return try #require(
+      Self.structDecl(named: "RecordingPillPreviewTile", in: Parser.parse(source: text)),
+      "RecordingPillPreviewTile is not in \(panel)")
   }
 
   /// Names of the `@State` properties declared DIRECTLY on this struct.
@@ -634,6 +681,65 @@ struct RecordingPillPreviewWiringTests {
       }
     }
     return names
+  }
+
+  @Test("the outer tile hands the preview its own design")
+  func theOuterTilePassesItsOwnDesign() throws {
+    let call = try Self.thePreviewConstruction()
+    let expr = try #require(
+      Self.argument("design", of: call)?.as(MemberAccessExprSyntax.self),
+      "the outer tile passes \(Self.argument("design", of: call)?.trimmedDescription ?? "nothing")")
+
+    #expect(
+      expr.declName.baseName.text == "design"
+        && expr.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self",
+      """
+      the outer tile passes \(expr.trimmedDescription). It must be `self.design`, or \
+      every card can hand the preview one fixed design while the inner chrome guard \
+      still reports green.
+      """)
+  }
+
+  @Test("the rendered tile applies the scale function its fit tests exercise")
+  func theTileAppliesTheComputedScale() throws {
+    let decl = try Self.previewTileDeclaration()
+    let finder = MemberCallFinder("scaleEffect")
+    finder.walk(decl)
+    let call = try #require(
+      finder.calls.count == 1 ? finder.calls.first : nil,
+      "RecordingPillPreviewTile has \(finder.calls.count) scaleEffect calls")
+    let appliedDescription = call.arguments.first?.expression.trimmedDescription ?? "nothing"
+    let applied = try #require(
+      call.arguments.first?.expression.as(FunctionCallExprSyntax.self),
+      "scaleEffect takes \(appliedDescription), not a computed scale")
+    let member = try #require(
+      applied.calledExpression.as(MemberAccessExprSyntax.self),
+      "the applied scale is \(applied.trimmedDescription), which this guard cannot judge")
+    let design = try #require(
+      applied.arguments.first { $0.label?.text == "for" }?.expression
+        .as(DeclReferenceExprSyntax.self),
+      "the scale does not take the tile's design as a plain reference")
+    let width = try #require(
+      applied.arguments.first { $0.label?.text == "inWidth" }?.expression
+        .as(MemberAccessExprSyntax.self),
+      "the scale does not take the GeometryReader's width")
+    let size = width.base?.as(MemberAccessExprSyntax.self)
+
+    #expect(
+      member.declName.baseName.text == "scale"
+        && member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "Self",
+      """
+      the tile applies \(applied.trimmedDescription), not `Self.scale`. The fit suite \
+      can keep proving a helper the rendered view no longer calls.
+      """)
+    #expect(
+      design.baseName.text == "design",
+      "the rendered tile scales \(design.trimmedDescription), not its own design")
+    #expect(
+      width.declName.baseName.text == "width"
+        && size?.declName.baseName.text == "size"
+        && size?.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "geo",
+      "the rendered tile scales for \(width.trimmedDescription), not geo.size.width")
   }
 
   @Test("the settings tile parks its poll instead of running one")
