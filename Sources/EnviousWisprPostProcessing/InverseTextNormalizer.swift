@@ -152,6 +152,12 @@ public struct InverseTextNormalizer: Sendable {
   static let ordTailAlt = alt(Array(ordTail.keys))
   static let ordScaleAlt = alt(Array(ordScale.keys))
   static let cardRun = #"(?:"# + numwordAlt + #")(?:\s+(?:"# + numwordAlt + #"))*"#
+  /// Horizontal-only variant of `numwordRun`, for the #2496 list-marker passes ONLY. A marker
+  /// is one spoken phrase, so a number ending one line must never glue to a capital starting
+  /// the next: with `\s+`, "There are twenty\nA dog ran home" became "There are 20A dog ran
+  /// home" (Codex diff review r1). Every other pass keeps the `\s+` form — this narrowing is
+  /// deliberately scoped to #2496 rather than applied to the shared primitive.
+  static let numwordRunH = #"(?:"# + numwordNoAndAlt + #")(?:[ \t]+(?:"# + numwordAlt + #"))*"#
 
   // MARK: - URL/email TLDs and host/path shapes (#2257)
   // `ai`/`app`/`xyz` are ordinary words/notation ("open the dot app", "I use X dot XYZ
@@ -334,6 +340,9 @@ public struct InverseTextNormalizer: Sendable {
       guard let yr = Self.parseYear(Self.splitWords(m.g("yr") ?? "")) else { return nil }
       return " \(Self.monthsW[mon]) \(day), \(yr) "
     }
+
+    // #2496 alphanumeric list markers: after the date pass, BEFORE ordinals()/years().
+    t = listMarkers(t)
 
     // standalone ordinals: after dates consume "Month Nth Year", before cardinals.
     t = ordinals(t)
@@ -1076,6 +1085,501 @@ public struct InverseTextNormalizer: Sendable {
 
   // MARK: - Years
 
+  // MARK: - #2496 alphanumeric list markers
+
+  /// The whitespace-separated token immediately preceding `start`, with its start offset.
+  ///
+  /// Adjacency is whitespace-only on purpose: punctuation BREAKS the chain, so
+  /// "P one, then two B" is two independent markers rather than an alternating run.
+  /// Returns "" when the preceding character is not a space/tab, when there is no preceding
+  /// token, or when that token carries anything but ASCII letters.
+  /// The token with attached punctuation stripped from BOTH ends, or "" if what remains is not
+  /// pure ASCII letters.
+  ///
+  /// Attached punctuation hiding a token from a check is ONE class, and it surfaced twice:
+  /// trailing punctuation defeated the title-case guard ("Day's"), and a LEADING opening
+  /// delimiter defeated the run walk, so `He said, "P one Q two"` paired the wrong tokens and
+  /// produced `"P 1Q two"` (Codex diff review r6 and r9). Asked in the closed direction — keep
+  /// only what is letters — rather than listing which delimiters count.
+  ///
+  /// Stripping can only make a run LONGER, which can only turn an even run odd and refuse; it
+  /// cannot invent a conversion. MEASURED, and it is not free — an earlier version of this
+  /// comment claimed "identical", which was wrong. On the founder's 38,113 real texts, converted
+  /// utterances go 99 → 97. Both losses are correct refusals: "P one Q two R," is an odd run with
+  /// a dangling R, and a garbled priorities dictation ("P0, P1 zero, P one, P two…") gains a
+  /// dangling "zero" once the comma stops hiding it, which costs four tags the speaker did want.
+  /// Stripping only LEADING openers would keep those four, but it mis-pairs a bracketed list —
+  /// "(one B two C)" comes back "(one B 2C)" — and a wrong glue is worse than a missed one, so
+  /// both ends is the deliberate choice.
+  static func tokenCore(_ tok: String) -> String {
+    let core = tok.trimmingCharacters(in: tokenStripSet)
+    return isASCIILetters(core) ? core : ""
+  }
+
+  static let tokenStripSet = CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019}([{<\u{00AB})]}>\u{00BB}.,;:!?-\u{2014}\u{2013}*\u{2022}")
+
+  /// Sentinel for "there IS a neighbour but it cannot be classified" — distinct from "no
+  /// neighbour". Collapsing those two is what produced the bug: the walk helpers answered "" for
+  /// both, and the caller read both as a clean run boundary. So `one B/two C` — where "B/" is
+  /// glued to "two" with no space — looked like a run that simply started at "two", and the
+  /// second marker converted alone: `one B/2C`. Same for `P one/Q two` → `P one/Q2` (cloud
+  /// review r1). Closed test, no separator list: look at the glued characters between us and the
+  /// nearest whitespace. Only strippable punctuation means there genuinely is no neighbour —
+  /// that is `(one B two C)`, which must still convert. A letter or digit means something is
+  /// glued to this match and the run cannot be read, so refuse.
+  static let unreadableToken = "\u{0}unreadable"
+
+  /// The Unicode White_Space property, written out so the Python oracle carries the SAME literal
+  /// and the two cannot drift. Whitespace is never part of a token, so an adjacent whitespace
+  /// character means there is nothing glued to us — a clean run boundary — even for the kinds the
+  /// walk does not cross. The walk crosses only space and tab on purpose (the marker patterns are
+  /// horizontal-whitespace-only via numwordRunH, so a marker never spans lines), and a newline
+  /// therefore STOPS the walk rather than making the run unreadable. Cloud review r2 caught the
+  /// difference: without this, `Tasks:\nP one is urgent` refused, because the newline entered the
+  /// glued branch and no newline appears in tokenStripSet.
+  static let whitespaceSet = CharacterSet(charactersIn:
+    "\t\n\u{000B}\u{000C}\r \u{0085}\u{00A0}\u{1680}"
+    + "\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200A}"
+    + "\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}")
+
+  /// Unicode's line terminators — also a closed external set, not a list of ours. Everything the
+  /// White_Space property contains that is NOT one of these is horizontal, so the third question
+  /// this pass asks ("is this a gap WITHIN a line") is DERIVED rather than written out. Three
+  /// closed questions, no hand-made character lists:
+  ///
+  /// - is it whitespace        → `whitespaceSet`          (token boundaries, end of a marker)
+  /// - is it a line terminator → `lineTerminatorSet`      (never crossed; a new line starts here)
+  /// - is it horizontal space  → `horizontalWhitespaceSet` (crossed to reach the next token)
+  ///
+  /// The two regex patterns keep a literal `[ \t]` instead. Widening them would change what
+  /// MATCHES rather than how a match is judged, and the failure direction there is a MISS
+  /// (`one\u{00A0}B` simply does not match), which this design accepts.
+  static let lineTerminatorSet =
+    CharacterSet(charactersIn: "\n\u{000B}\u{000C}\r\u{0085}\u{2028}\u{2029}")
+
+  static let horizontalWhitespaceSet = whitespaceSet.subtracting(lineTerminatorSet)
+
+  static func isWhitespace(_ u: unichar) -> Bool {
+    guard let scalar = Unicode.Scalar(u) else { return false }
+    return whitespaceSet.contains(scalar)
+  }
+
+  static func isHorizontalWhitespace(_ u: unichar) -> Bool {
+    guard let scalar = Unicode.Scalar(u) else { return false }
+    return horizontalWhitespaceSet.contains(scalar)
+  }
+
+  static func gluedRunIsOnlyPunctuation(_ ns: NSString, _ from: Int, _ to: Int) -> Bool {
+    guard from < to else { return true }
+    let glued = ns.substring(with: NSRange(location: from, length: to - from))
+    return glued.unicodeScalars.allSatisfy { tokenStripSet.contains($0) }
+  }
+
+  static func adjacentTokenBefore(_ ns: NSString, _ start: Int) -> (String, Int) {
+    guard start > 0 else { return ("", start) }
+    if !isHorizontalWhitespace(ns.character(at: start - 1)) {
+      // Whitespace we do not cross (a line terminator) is still a clean run boundary: nothing is
+      // glued to us. Otherwise something IS glued — only-punctuation still means no neighbour, and
+      // anything else is a neighbour we cannot read, which must not be half-converted.
+      if isWhitespace(ns.character(at: start - 1)) { return ("", start) }
+      var k = start
+      while k > 0, !isWhitespace(ns.character(at: k - 1)) { k -= 1 }
+      return gluedRunIsOnlyPunctuation(ns, k, start) ? ("", start) : (unreadableToken, start)
+    }
+    var i = start - 1
+    while i > 0, isHorizontalWhitespace(ns.character(at: i - 1)) { i -= 1 }
+    var j = i
+    while j > 0, !isWhitespace(ns.character(at: j - 1)) { j -= 1 }
+    let core = tokenCore(ns.substring(with: NSRange(location: j, length: i - j)))
+    return core.isEmpty ? ("", start) : (core, j)
+  }
+
+  /// The whitespace-separated token immediately following `end`, with its end offset.
+  /// Same punctuation-breaks-the-chain rule as `adjacentTokenBefore`.
+  static func adjacentTokenAfter(_ ns: NSString, _ end: Int) -> (String, Int) {
+    let n = ns.length
+    guard end < n else { return ("", end) }
+    if !isHorizontalWhitespace(ns.character(at: end)) {
+      if isWhitespace(ns.character(at: end)) { return ("", end) }
+      var k = end
+      while k < n, !isWhitespace(ns.character(at: k)) { k += 1 }
+      return gluedRunIsOnlyPunctuation(ns, end, k) ? ("", end) : (unreadableToken, end)
+    }
+    var i = end
+    while i < n, isHorizontalWhitespace(ns.character(at: i)) { i += 1 }
+    var j = i
+    while j < n, !isWhitespace(ns.character(at: j)) { j += 1 }
+    let core = tokenCore(ns.substring(with: NSRange(location: i, length: j - i)))
+    return core.isEmpty ? ("", end) : (core, j)
+  }
+
+  static func isASCIILetters(_ s: String) -> Bool {
+    !s.isEmpty && s.allSatisfy { ("a"..."z").contains($0) || ("A"..."Z").contains($0) }
+  }
+
+  /// Shared rule 1: convert an UPPERCASE marker letter, never "I", never lowercase.
+  ///
+  /// The case is the SHIPPED ASR's own article-versus-tag decision, recorded as
+  /// capitalisation because the article "a" is a reduced schwa and the letter "A" is spoken
+  /// as its name. "I" is the one letter where case carries no signal, because English
+  /// capitalises the pronoun regardless of meaning.
+  static func markerLetterOK(_ letter: String) -> Bool {
+    letter != "I" && isASCIILetters(letter) && letter == letter.uppercased()
+  }
+
+  /// Is this token a lone letter, and therefore a RUN UNIT?
+  ///
+  /// Deliberately a different question from `markerLetterOK`. Case decides whether a letter can
+  /// BE a tag letter; adjacency decides whether it is part of a spelled abbreviation, and the
+  /// recogniser does not reliably capitalise both letters of one — "EG-1" came back as
+  /// "e G One", whose [G][One] pair is a perfectly clean marker in isolation and glued to
+  /// "e G1". Asking only the accept question here made the run rule refuse "E G one" and accept
+  /// "e G One", which is the same utterance.
+  ///
+  /// The two standalone single-letter English words are the only exception, and they are a
+  /// CLOSED set: "a" and "i" are ordinary words rather than spelled letters, so counting them
+  /// would refuse "make it a three D model" and "a P two ticket".
+  ///
+  /// MEASURED on the founder's real transcripts: this refuses two conversions on stuttered
+  /// input where a stray single letter sits beside a real marker ("a 2D s image", "phase t 2A")
+  /// — both MISSES, the acceptable direction — and removes one wrong glue.
+  /// CASE MATTERS HERE, and getting it wrong cost a real refusal: excluding every "a" also
+  /// excluded the UPPERCASE "A", which is an ordinary tag letter, and "the sequence is A one B
+  /// two C" then read as an even [one][B][two][C] run and converted. Only the LOWERCASE "a" is
+  /// the article. "I"/"i" is never a tag letter in either case — English capitalises the pronoun
+  /// regardless of meaning, which is the whole reason it is excluded from markers.
+  static func isMarkerLetterShape(_ tok: String) -> Bool {
+    tok.count == 1 && isASCIILetters(tok) && tok != "a" && tok != "I" && tok != "i"
+  }
+
+  static func isCardinalWord(_ tok: String) -> Bool { numwordNoAnd.contains(tok.lowercased()) }
+
+  /// True when a capital at `start` is there for POSITION rather than for meaning.
+  ///
+  /// Only absent-signal for a letter that is ALSO an English word: "A one time thing
+  /// happened." cannot be told from a tag, while "P zero is blocked." can, because no English
+  /// word is a bare "P". So the caller applies this to "A" only. Direction 2 only; direction 1's
+  /// letter always has a cardinal word in front of it.
+  ///
+  /// ENUMERATED, not listed. Two rounds of diff review each returned a new member of this set
+  /// — opening quotes, then colons — so the question is asked in its closed form instead: a
+  /// capital is positional UNLESS the preceding non-space character is a letter or a digit.
+  /// That covers every sentence, clause, delimiter, bullet and newline case in one line, with
+  /// nothing left to extend. A comma also refuses, which is a deliberate under-conversion:
+  /// mid-clause "A one" after a comma is genuinely ambiguous.
+  static func isPositionalCapital(_ ns: NSString, _ start: Int) -> Bool {
+    var i = start - 1
+    while i >= 0, isHorizontalWhitespace(ns.character(at: i)) { i -= 1 }
+    if i < 0 { return true }
+    let c = ns.character(at: i)
+    let isASCIIAlnum =
+      (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122)
+    if !isASCIIAlnum { return true }
+    // A spoken-punctuation COMMAND is a pending delimiter: once `applyPunct` rewrites it, the
+    // capital after it is positional. "Note colon A one time fee applies." became
+    // "Note: A1 time fee applies." (Codex diff review r5). The trigger set is the LAST word of
+    // each of the nine commands that pass owns — a closed table, not a list to extend.
+    let (tok, _) = adjacentTokenBefore(ns, start)
+    return punctCommandTails.contains(tok.lowercased())
+  }
+
+  /// Last word of each of the nine spoken-punctuation commands `punct` rewrites ("new
+  /// paragraph", "new line", "comma", "period", "full stop", "question mark", "exclamation
+  /// mark/point", "colon", "semicolon"). `punct` is the authority; if a command is added there,
+  /// add its last word here. Applied unconditionally rather than gated on `spokenPunctuation`,
+  /// so this port and the Python oracle stay identical — with the setting off the cost is an
+  /// under-conversion after a rare phrase ("the finish line A one"), which is the safe direction.
+  static let punctCommandTails: Set<String> = [
+    "paragraph", "line", "comma", "period", "stop", "mark", "point", "colon", "semicolon",
+  ]
+
+  /// True when the marker letter ending at `end` really is a bare single letter.
+  ///
+  /// `\b` ends a match at any non-word character, so "ten C++ developers" and "twenty C#
+  /// libraries" matched with letter="C" and emitted "10C++" / "20C#" (Codex diff review r2).
+  /// Asked in the closed direction: the letter ends here only if what follows is the end of the
+  /// text, whitespace, or ordinary sentence/closing punctuation. Every other character — `+`
+  /// `#` `*` `_` `/` `=` `~` `^` `$` `%` `&` and the rest — means the letter is part of a larger
+  /// token, and there is no list to keep extending. `-` is deliberately EXCLUDED, so a
+  /// hyphenated compound under-converts rather than risking "10C-sharp".
+  /// TWO questions, and only the punctuation half is a list. Whitespace goes through the single
+  /// `whitespaceSet` authority, because a hand-written whitespace subset is exactly what failed
+  /// here: this set held space, tab and newline with no carriage return, so CRLF text
+  /// half-converted (`P one\r\nQ two` normalised the second marker only), and the same hole
+  /// covered vertical tab, form feed, U+2028, U+2029 and a non-breaking space (cloud review r3).
+  static let letterEndsHereFollowers: Set<unichar> = [
+    46, 44, 59, 58, 33, 63,  // . , ; : ! ?
+    41, 93, 125,  // ) ] }
+    34, 39, 0x201D, 0x2019, 0x00BB,  // " ' ” ’ »
+  ]
+
+  static func letterEndsHere(_ ns: NSString, _ end: Int) -> Bool {
+    guard end < ns.length else { return true }
+    let c = ns.character(at: end)
+    return isWhitespace(c) || letterEndsHereFollowers.contains(c)
+  }
+
+  /// Ceiling on how far `runIsCleanlyPaired` walks out from a match, in run units.
+  ///
+  /// The walk is O(run length) and happens once per match, so an uninterrupted alternating run
+  /// is O(n²). Measured on the founder's 19,711 real transcripts this pass adds a median of
+  /// 0.015 ms and a p99 of 0.08 ms — the shape simply does not occur in speech — but 1,000
+  /// synthetic markers cost 1,257 ms, and this is a limb with a wall-clock deadline. The cap
+  /// makes each walk O(1) and fails SAFE: hitting it refuses the conversion rather than
+  /// classifying a truncated run. 64 units is ~32 markers in ONE uninterrupted run, far past
+  /// anything a person says, so it is a ceiling rather than a tuned threshold. Controlled on a
+  /// fixed 38,111-text snapshot with the cap on and off in one process: zero results differ.
+  static let runWalkCap = 64
+
+  /// A COUNT NOUN right after the cardinal means the number belongs to that noun, not to the
+  /// letter: "I took Plan B one time" is "Plan B" plus "one time", not a "B1" tag, and it came
+  /// back "Plan B1 time" (Codex diff review r10). Reuses the file's EXISTING closed authorities
+  /// rather than inventing a list; the only additions are "time"/"times", which are count words
+  /// the other sets happen not to carry. Measured on the founder's 38,113 real texts: this
+  /// refuses ZERO of today's 97 conversions, so it costs nothing.
+  static let countNouns: Set<String> =
+    Set(unitNouns).union(agePeriods).union(durationNouns).union(["time", "times"])
+
+  static func cardinalBelongsToAFollowingNoun(_ ns: NSString, _ end: Int) -> Bool {
+    let tok = nextRawToken(ns, end)
+      .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?\"')]}"))
+    return countNouns.contains(tok.lowercased())
+  }
+
+  /// True when the alternating run containing `[start, end)` partitions into complete markers.
+  ///
+  /// `inner` is the match's own shape, known by construction and passed by the caller.
+  ///
+  /// A run is the maximal whitespace-adjacent sequence of tokens that are each either a lone
+  /// ACCEPTABLE marker letter (L) or a maximal group of cardinal words (N). Anything else ends
+  /// the run — including "and", which is why "P one and Q two" is two runs and both convert.
+  ///
+  /// Three conditions, all necessary: the run must STRICTLY ALTERNATE, its length must be EVEN,
+  /// and the match must begin on a pair boundary. An odd run has an unmatched endpoint by
+  /// construction, and an aligned match cannot straddle two pairs.
+  ///
+  /// Replaces three separate pairwise checks and subsumes all of them:
+  /// ```
+  /// "one B two"       N L N     odd              -> refuse
+  /// "P one B"         L N L     odd              -> refuse
+  /// "P one Q two R"   L N L N L odd              -> refuse
+  /// "P one Q two"     L N L N   even, but the direction-1 match "one Q" starts at unit 1
+  ///                             -> refuse on ALIGNMENT; direction 2 then pairs it correctly
+  /// "fifty M B"       N L L     not alternating  -> refuse (a spelled "MB")
+  /// "E G one"         L L N     not alternating  -> refuse (a spelled "EG")
+  /// "one D two D"     N L N L   even, aligned    -> convert, which the issue's own example needs
+  /// ```
+  /// The pairwise version this replaces was not incomplete but WRONG: it could not see an
+  /// unmatched endpoint three tokens away, and emitted "P one Q 2R" for the first example.
+  /// The next whitespace-adjacent token, WHATEVER characters it carries.
+  ///
+  /// `adjacentTokenAfter` deliberately rejects a token that is not pure ASCII letters, which is
+  /// right for run classification — punctuation ends a run. It is WRONG for asking "is the next
+  /// word capitalised", because "Day's", "Day." and "Day," all answered "" and defeated the
+  /// title-case guard: "I take One A Day's vitamins" became "I take 1A Day's vitamins" while the
+  /// unpunctuated form was correctly preserved (Codex diff review r6). Same whitespace-adjacency
+  /// rule, no character filter.
+  static func nextRawToken(_ ns: NSString, _ end: Int) -> String {
+    let n = ns.length
+    guard end < n, isHorizontalWhitespace(ns.character(at: end)) else { return "" }
+    var i = end
+    while i < n, isHorizontalWhitespace(ns.character(at: i)) { i += 1 }
+    var j = i
+    while j < n, !isWhitespace(ns.character(at: j)) { j += 1 }
+    return ns.substring(with: NSRange(location: i, length: j - i))
+  }
+
+  static func runIsCleanlyPaired(
+    _ ns: NSString, _ start: Int, _ end: Int, _ inner: [Character]
+  ) -> Bool {
+    // (kind, word) pairs outward from `pos`. Words are kept so each cardinal GROUP can be
+    // VALIDATED, not merely counted.
+    func walk(
+      _ from: Int, _ step: (NSString, Int) -> (String, Int)
+    ) -> [(Character, String)]? {
+      var out: [(Character, String)] = []
+      var pos = from
+      while out.count < runWalkCap {
+        let (tok, next) = step(ns, pos)
+        if tok == unreadableToken { return nil }  // a run we cannot read must not be half-converted
+        if tok.isEmpty { break }
+        if isMarkerLetterShape(tok) {
+          out.append(("L", tok))
+        } else if isCardinalWord(tok) {
+          out.append(("N", tok))
+        } else if tok.lowercased() == "and", out.last?.0 == "N" {
+          // "and" is AMBIGUOUS: a conjunction BETWEEN markers ("P one and Q two", two runs) or a
+          // word INSIDE one cardinal ("one hundred and five"). The discriminator is whether the
+          // walk is already mid-number. Without this the walk stopped at the internal "and", so
+          // "P one hundred and five Q two" left the second marker orphaned and produced
+          // "P105 Q two" (Codex diff review r7). `wordsToInt` already ignores "and", so the
+          // group still validates.
+          out.append(("N", tok))
+        } else {
+          break
+        }
+        pos = next
+      }
+      return out
+    }
+
+    guard var left = walk(start, adjacentTokenBefore) else { return false }
+    left.reverse()
+    guard let right = walk(end, adjacentTokenAfter) else { return false }
+    // A capped walk saw a TRUNCATED run, so it must refuse rather than classify what it saw.
+    // The TOTAL matters, not each side: checking the sides independently left a hole exactly
+    // past the ceiling, where both walks stay under the cap while the run exceeds it. Measured
+    // at 33 repetitions of "P one" (66 units): the middle matches passed and the output came
+    // back MIXED — 31 converted, 2 left spoken — which is the partial rewrite this ceiling
+    // exists to prevent (Codex diff review r8). The test that should have caught it probed 100
+    // markers, far past the boundary where both sides are individually over the cap.
+    guard left.count + inner.count + right.count <= runWalkCap else { return false }
+
+    /// Collapse consecutive N into ONE unit and validate each group with the same parser the
+    /// pass itself uses. Returns nil when a group is not a valid cardinal. The inner span
+    /// arrives as bare kinds because its cardinal has ALREADY been parsed by the caller.
+    func collapse(_ seq: [(Character, String?)]) -> [Character]? {
+      var out: [Character] = []
+      var group: [String] = []
+      func flush() -> Bool {
+        if !group.isEmpty, wordsToInt(group.map { $0.lowercased() }) == nil { return false }
+        group.removeAll()
+        return true
+      }
+      for (k, w) in seq {
+        if k == "N" {
+          if let w { group.append(w) }
+          if out.last != "N" { out.append("N") }
+        } else {
+          if !flush() { return nil }
+          out.append(k)
+        }
+      }
+      return flush() ? out : nil
+    }
+
+    let leftPairs = left.map { ($0.0, Optional($0.1)) }
+    let rightPairs = right.map { ($0.0, Optional($0.1)) }
+    let innerPairs: [(Character, String?)] = inner.map { ($0, nil) }
+    guard let collapsed = collapse(leftPairs + innerPairs + rightPairs) else {
+      return false  // a run group is not a valid cardinal
+    }
+    guard collapsed.count % 2 == 0 else { return false }
+    for i in 0..<max(0, collapsed.count - 1) where collapsed[i] == collapsed[i + 1] {
+      return false
+    }
+    // ALIGNMENT. An even, alternating run is necessary and NOT sufficient: the match must also
+    // begin on a pair boundary. "P one Q two" is L N L N — even and alternating — but the
+    // direction-1 pattern matches "one Q" starting at unit 1, which straddles two pairs and
+    // emitted "P 1Q two". Count the units to the LEFT of the match: even means aligned.
+    guard var leftUnits = collapse(leftPairs)?.count else { return false }
+    if left.last?.0 == "N", inner.first == "N" { leftUnits -= 1 }
+    return leftUnits % 2 == 0
+  }
+
+  /// #2496: glue a spoken cardinal and a spoken single letter into a compact tag, in both
+  /// orders — "two B"→"2B", "three D"→"3D", "P zero"→"P0", "A one"→"A1".
+  ///
+  /// Runs after the date pass and BEFORE `ordinals()`/`years()`: `years()`'s
+  /// "two thousand <low>" pattern (`:1096-1107`) consumes a valid cardinal magnitude
+  /// unconditionally, so a later placement would see "phase 2023 B" with the words gone.
+  ///
+  /// Declining a match preserves the span AT THIS PASS ONLY — later passes still run, so
+  /// "ten a page" becomes "10 a page" under the existing AP rule, never "10a page".
+  private func listMarkers(_ t0: String) -> String {
+    // Direction 1: cardinal then letter. The trailing lookahead is the dotted-abbreviation
+    // guard: without it "three p.m." matches with letter="p" (the \b lands before the period)
+    // and emits "3p.m.". Every measured dotted case is lowercase and would be refused by the
+    // case rule anyway, but an uppercase "three P.M." would not be, and nothing prevents one.
+    var t = reSub(
+      #"\b(?<card>"# + Self.numwordRunH + #")[ \t]+(?<letter>[A-Za-z])\b(?!\.[ \t]*[A-Za-z]\b)"#,
+      t0
+    ) { m in
+      guard let letter = m.g("letter"), Self.markerLetterOK(letter) else { return nil }
+      let r = m.result.range
+      // "ten C++ developers", "twenty C# libraries" — the letter is part of a larger token.
+      guard Self.letterEndsHere(m.ns, r.location + r.length) else { return nil }
+      let words = Self.splitWords((m.g("card") ?? "").lowercased())
+      // "and" sits BETWEEN the number and the letter in this shape ("one and B" reads as two
+      // separate things), so the whole match is refused rather than reordered. Direction 2 is
+      // deliberately different: there the conjunction follows a COMPLETE marker.
+      guard let last = words.last, last != "and" else { return nil }
+      guard let n = Self.wordsToInt(words) else { return nil }
+      // Title Case: a capitalised cardinal AND a capitalised word right after the marker
+      // letter. "I take One A Day vitamins" became "I take 1A Day vitamins" (Codex diff review
+      // r2). "One A, two B, three C." is unaffected — the comma is glued to the "A", so there
+      // is no adjacent token at all and the list still converts.
+      if let head = (m.g("card") ?? "").first, head.isUppercase {
+        // RAW token here, not the run-classification one: punctuation attached to the title
+        // word ("Day's", "Day.", "Day,") must not hide the capital.
+        let next = Self.nextRawToken(m.ns, r.location + r.length)
+        if let firstNext = next.first, firstNext.isUppercase { return nil }
+      }
+      // Run-level pairing: the whole alternating run must split into complete markers, and this
+      // match must sit on a pair boundary. See `runIsCleanlyPaired` for why the local
+      // neighbour check this replaced was the wrong question rather than an incomplete answer.
+      // "version one C sharp" is NOT this shape — see the known limit in the doc comment.
+      if Self.cardinalBelongsToAFollowingNoun(m.ns, r.location + r.length) { return nil }
+      guard Self.runIsCleanlyPaired(m.ns, r.location, r.location + r.length, ["N", "L"])
+      else { return nil }
+      return "\(comma(n))\(letter)"
+    }
+
+    // Direction 2: letter then cardinal. No dotted guard is needed — the letter comes FIRST,
+    // so "P. one" cannot match this pattern at all.
+    t = reSub(#"\b(?<letter>[A-Za-z])[ \t]+(?<card>"# + Self.numwordRunH + #")\b"#, t) { m in
+      guard let letter = m.g("letter"), Self.markerLetterOK(letter) else { return nil }
+      let r = m.result.range
+      // Positional-capital refusals. Both close the same hole: a capital that is there for
+      // POSITION rather than for meaning, which is the one thing that can turn this rule from
+      // a miss into a mangle.
+      //
+      // (a) Sentence-initial, and for "A" ALONE — it is the only accepted letter that is also
+      //     an English word, so it is the only one whose sentence-initial capital carries no
+      //     signal. ("I" never reaches here at all.)
+      if letter == "A", Self.isPositionalCapital(m.ns, r.location) { return nil }
+      // (b) TITLE CASE: a capitalised cardinal right after the letter. In a genuine tag the
+      //     number is data and the ASR writes it lowercase ("the tag is A one", "For Q one").
+      //     capitalises the FOLLOWING word too, which is the half that carries the signal.
+      //     Found by the 2,114-row parity corpus, which turned "I read A Hundred Years of
+      //     Solitude" into "I read A100 Years of Solitude" — a MANGLE.
+      //
+      //     A capitalised cardinal ALONE is not that signal, and testing only that half cost
+      //     real tags. The founder's own transcripts contain "A One steak sauce", "a W Two
+      //     job", "accomplished in Q One" and "create a beat for that, P Zero" — four genuine
+      //     tags this refused — while the shape it defends against occurs ZERO times in 19,738
+      //     transcripts. Live Azure TTS → Parakeet confirms why: spoken "A Hundred Years of
+      //     Solitude" comes back all lowercase, so the recogniser never produces the Title Case
+      //     form at all. So this now asks BOTH halves, exactly as direction 1 above does.
+      let card = m.g("card") ?? ""
+      if let head = card.first, head.isUppercase,
+        let firstNext = Self.nextRawToken(m.ns, r.location + r.length).first,
+        firstNext.isUppercase
+      { return nil }
+      var words = Self.splitWords(card.lowercased())
+      // Strip-and-reappend, and ONLY in this direction: here "and" follows a complete marker
+      // ("P one and Q two" is two markers joined by a conjunction), so lifting it off, parsing
+      // the number and putting it back is faithful.
+      // Keep the ORIGINAL spelling of each stripped conjunction: hard-coding "and" rewrote the
+      // user's own text, turning "P one AND Q two" into "P1 and Q2" (confirming review round).
+      var original = Self.splitWords(card)
+      var tail = ""
+      while let last = words.last, last == "and" {
+        words.removeLast()
+        tail = " " + (original.popLast() ?? "and") + tail
+      }
+      guard let n = Self.wordsToInt(words) else { return nil }
+      guard Self.letterEndsHere(m.ns, r.location + r.length) else { return nil }
+      // The reappended conjunction is not part of the tag, so the run ends before it.
+      let tagEnd = r.location + r.length - (tail as NSString).length
+      // "Plan B one time", "Plan B two years ago".
+      if Self.cardinalBelongsToAFollowingNoun(m.ns, tagEnd) { return nil }
+      guard Self.runIsCleanlyPaired(m.ns, r.location, tagEnd, ["L", "N"]) else { return nil }
+      return "\(letter)\(comma(n))\(tail)"
+    }
+    return t
+  }
+
   private func years(_ t0: String) -> String {
     var t = t0
     // low part for a century pair: tens[+unit] (20-99) | teen (10-19) | oh/o + unit (01-09).
@@ -1191,7 +1695,14 @@ public struct InverseTextNormalizer: Sendable {
     // fires where \b failed on the full figure — ordinal suffixes ('1,000,000,000th' #1201),
     // decimals past the (?!\.\d) block ('$5,000,000,000.00'), plurals ('1,000,000,000s').
     return reSub(
-      #"(?<cur>\$)?(?<n>\d{1,3}(?:,\d{3})+)\b(?!\.\d)(?!,\d)"#, t, caseInsensitive: false
+      // `(?<![A-Za-z])` so a compact alphanumeric tag is never split: "P one million" renders
+      // "P1,000,000" and must stay that way, matching the reverse form "one million P" ->
+      // "1,000,000P". Without it the two directions of #2496 disagreed — "P1 million" against
+      // "1,000,000P" (Codex diff review r1). A letter glued directly to a comma-grouped number
+      // is a tag by construction; every real house-style case is preceded by "$", a space, or
+      // the start of the text.
+      #"(?<![A-Za-z])(?<cur>\$)?(?<n>\d{1,3}(?:,\d{3})+)\b(?!\.\d)(?!,\d)"#, t,
+      caseInsensitive: false
     ) {
       m in
       let cur = m.g("cur") ?? ""
