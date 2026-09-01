@@ -95,7 +95,20 @@ ARMS = [
 
 
 def read_receipts() -> dict:
-    """Every scored run, keyed by the candidate file it graded."""
+    """Every scored run, keyed by the candidate file it graded.
+
+    REFUSES when the receipt directory is absent or holds nothing. `runs/` is
+    gitignored and the default path names one user's checkout, so on a fresh clone
+    or any other machine `rglob` finds nothing, returns cleanly, and this script
+    would overwrite the tracked registry with zero evaluations — destroying the
+    record of which model won while exiting 0. That is the failure that matters
+    here, because it is silent and it is the normal state of every other machine.
+    """
+    if not RUNS.is_dir():
+        raise SystemExit(
+            f"REFUSED: no receipt directory at {RUNS}. Set EW_EVAL_RUNS to the "
+            f"checkout that holds scripts/eval/runs. Rebuilding from nothing would "
+            f"erase every evaluation in the tracked registry.")
     out = {}
     for f in sorted(RUNS.rglob("summary.json")):
         try:
@@ -122,6 +135,10 @@ def read_receipts() -> dict:
 
 def main() -> int:
     receipts = read_receipts()
+    if not receipts:
+        raise SystemExit(
+            f"REFUSED: {RUNS} holds no readable score receipts. Refusing to write a "
+            f"registry with no evaluations over one that has them.")
     counters, records = {}, []
     for release, legacy, cand_files, status, reason in ARMS:
         counters[release] = counters.get(release, 0) + 1

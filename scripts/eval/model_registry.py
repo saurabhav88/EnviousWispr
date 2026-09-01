@@ -16,7 +16,7 @@ CLI:
     model_registry.py list                 every artifact, newest release first
     model_registry.py list --release 1.2   one release
     model_registry.py validate             schema + convention + one-winner rules
-    model_registry.py floor --corpus sealed_v1.jsonl --rubric <id>
+    model_registry.py floor --corpus sealed_v1.jsonl --rubric <id> --judge <id>
 """
 import argparse
 import json
@@ -69,7 +69,11 @@ def load(path: Path = REGISTRY_PATH) -> dict:
         if not aid.startswith(f"eg1-{a.get('release')}-"):
             raise RegistryError(f"{aid}: id does not match release {a.get('release')!r}")
         if a["status"] in EXCLUSIVE:
-            winners.setdefault((a["release"], a["status"]), []).append(aid)
+            # Keyed by RELEASE ALONE, not by (release, status). Both statuses set
+            # the floor, so a release holding one `selected` and a different
+            # `shipped` artifact has two winners and the floor would depend on
+            # which. Grouping by status would have let that pass.
+            winners.setdefault(a["release"], []).append(f"{aid} ({a['status']})")
         for e in a.get("evaluations") or []:
             for field in ("corpus", "passRatePct", "s4Count", "casesScored",
                           "summaryPath"):
@@ -88,19 +92,26 @@ def load(path: Path = REGISTRY_PATH) -> dict:
                     f"{aid}: an evaluation omits the rubricIdentity key. Write null "
                     f"for a run scored from external verdicts; do not leave it out.")
 
-    for (release, status), ids in winners.items():
+    for release, ids in winners.items():
         if len(ids) > 1:
             raise RegistryError(
-                f"release {release} has {len(ids)} artifacts marked {status}: "
-                f"{', '.join(ids)}. Exactly one may win.")
+                f"release {release} has {len(ids)} winning artifacts: "
+                f"{', '.join(ids)}. Exactly one may be selected or shipped.")
     return doc
 
 
-def comparable(evaluation: dict, corpus: str, rubric: str) -> bool:
-    return evaluation["corpus"] == corpus and evaluation["rubricIdentity"] == rubric
+def comparable(evaluation: dict, corpus: str, rubric: str, judge: str) -> bool:
+    """All three, because the module docstring says all three and a predicate that
+    checked two would have quietly contradicted it. An Azure deployment can be
+    repointed in place, so the same corpus and rubric graded through a different
+    deployment are two different graders wearing one name."""
+    return (evaluation["corpus"] == corpus
+            and evaluation["rubricIdentity"] == rubric
+            and evaluation["judgeIdentity"] == judge)
 
 
-def floor(corpus: str, rubric: str, doc: dict | None = None) -> tuple[int | None, str]:
+def floor(corpus: str, rubric: str, judge: str,
+          doc: dict | None = None) -> tuple[int | None, str]:
     """The best S4 count on record for this corpus and rubric, and where it came from.
 
     Only `shipped` and `selected` artifacts set the floor. A `candidate` has not
@@ -121,13 +132,14 @@ def floor(corpus: str, rubric: str, doc: dict | None = None) -> tuple[int | None
         if a["status"] not in EXCLUSIVE:
             continue
         for e in a.get("evaluations") or []:
-            if not comparable(e, corpus, rubric) or e.get("runComplete") is not True:
+            if (not comparable(e, corpus, rubric, judge)
+                    or e.get("runComplete") is not True):
                 continue
             if best is None or e["s4Count"] < best[0]:
                 best = (e["s4Count"], a["artifactId"], e["summaryPath"])
     if best is None:
         return None, (f"no complete evaluation of a shipped or selected artifact on "
-                      f"corpus {corpus} under rubric {rubric}")
+                      f"corpus {corpus} under rubric {rubric} judged by {judge}")
     return best[0], f"{best[1]} ({best[2]})"
 
 
@@ -174,7 +186,7 @@ def cmd_validate(_args) -> int:
 
 
 def cmd_floor(args) -> int:
-    count, where = floor(args.corpus, args.rubric)
+    count, where = floor(args.corpus, args.rubric, args.judge)
     if count is None:
         print(f"NO FLOOR: {where}", file=sys.stderr)
         return 1
@@ -189,6 +201,7 @@ def main() -> int:
     p = sub.add_parser("validate"); p.set_defaults(fn=cmd_validate)
     p = sub.add_parser("floor")
     p.add_argument("--corpus", required=True); p.add_argument("--rubric", required=True)
+    p.add_argument("--judge", required=True, help="judge identity, exactly as recorded")
     p.set_defaults(fn=cmd_floor)
     args = ap.parse_args()
     try:
