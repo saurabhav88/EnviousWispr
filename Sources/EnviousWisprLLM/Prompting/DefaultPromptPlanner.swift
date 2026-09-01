@@ -5,8 +5,8 @@ import EnviousWisprCore
 /// Never throws. Bad/missing inputs degrade gracefully.
 public struct DefaultPromptPlanner: PromptPlanning {
   /// Which EG-1 prompt THIS app build serves. Read from the bundled `eg1-manifest.json`'s
-  /// `promptTemplateID`, because the artifact and its prompt are one contract
-  /// (`eg1-operations.md` RULE: eg1-hot-swap-contract) and one app build ships exactly one
+  /// `promptTemplateID`, because the artifact and its prompt are one contract — a model may
+  /// only ever be sent the instruction it was tuned on — and one app build ships exactly one
   /// manifest. Held as a value rather than re-read per polish so the decision is made once,
   /// and injectable so a test can drive a template id this build does not ship.
   let egOneFamily: PromptFamily

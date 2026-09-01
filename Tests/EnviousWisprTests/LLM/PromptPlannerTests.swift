@@ -215,7 +215,7 @@ struct PromptPlannerTests {
   }
 
   @Test("EG-1 1.2 builder emits its own exact training prompt (golden)")
-  func egOneEnvelopeGoldenPrompt() {
+  func egOneEnvelopeGoldenPrompt() throws {
     // Byte-exact 1.2 training system prompt. The model artifact and this text are one
     // contract; edits here require retraining. Canonical file of record:
     // `scripts/eval/prompts/eg1-polish-prompt-v2.txt`.
@@ -245,6 +245,32 @@ struct PromptPlannerTests {
         """)
     // The two prompts are different text, so a copy-paste of one over the other is caught.
     #expect(EGOneEnvelopePromptBuilder.systemPrompt != EGOnePromptBuilder.systemPrompt)
+
+    // AND against the tracked file itself, which is the artifact the 1.2 scores were
+    // measured through. The literal above pins the bytes a reviewer read; this pins the
+    // bytes the eval ran. Without it both copies could drift from the file together and
+    // the row would stay green while the advertised contract was broken.
+    let canonical = Self.repoRoot
+      .appendingPathComponent("scripts/eval/prompts/eg1-polish-prompt-v2.txt")
+    let fileText = try String(contentsOf: canonical, encoding: .utf8)
+    // The eval runner drops `#` comment lines before sending the prompt, then trims. This
+    // file carries none, so trimming is the whole transform — asserted rather than assumed,
+    // because a future file that gained one would make this comparison quietly wrong.
+    #expect(!fileText.split(separator: "\n").contains { $0.trimmingCharacters(
+      in: .whitespaces).hasPrefix("#") })
+    #expect(
+      EGOneEnvelopePromptBuilder.systemPrompt
+        == fileText.trimmingCharacters(in: .whitespacesAndNewlines))
+  }
+
+  /// The checkout this test was compiled from, so the canonical prompt file is read out of
+  /// the tree under test rather than whichever checkout happens to be the working directory.
+  static var repoRoot: URL {
+    URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()  // (file)
+      .deletingLastPathComponent()  // LLM
+      .deletingLastPathComponent()  // EnviousWisprTests
+      .deletingLastPathComponent()  // Tests
   }
 
   @Test("a manifest declaring eg1-v2 gets the 1.2 prompt through the whole planner")

@@ -33,7 +33,8 @@ public enum PromptFamily: String, Sendable {
   /// greeting/sign-off envelope rule and three worked self-correction examples, and it is
   /// the prompt the 1.2 weights were tuned on. The two cases must coexist: a user still
   /// holding 1.1 bytes has to keep receiving 1.1's prompt, because the artifact and its
-  /// prompt are one contract (`eg1-operations.md` RULE: eg1-hot-swap-contract).
+  /// prompt are one contract: a model may only ever be sent the instruction it was
+  /// tuned on, so a prompt change is a new template id and a new case, never an edit.
   /// Selected from the shipped manifest's `promptTemplateID`, never from the model's name.
   /// Canonical text: `scripts/eval/prompts/eg1-polish-prompt-v2.txt`.
   case egOneEnvelope

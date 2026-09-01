@@ -8,8 +8,8 @@ import EnviousWisprCore
 /// text changed between the two training runs.
 ///
 /// EG-1 1.2 was fine-tuned on exactly this text. The artifact and this constant are one
-/// contract (`eg1-operations.md` RULE: eg1-hot-swap-contract): editing either without the
-/// other silently serves a model an instruction it never saw. Both builders ship together
+/// contract: editing either without the other silently serves a model an instruction it
+/// never saw, and nothing fails when that happens. Both builders ship together
 /// and stay together, because a user still holding 1.1 bytes must keep 1.1's prompt.
 ///
 /// Canonical prompt text of record: `scripts/eval/prompts/eg1-polish-prompt-v2.txt`.
