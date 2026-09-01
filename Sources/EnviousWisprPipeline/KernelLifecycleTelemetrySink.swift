@@ -1027,12 +1027,14 @@ final class KernelLifecycleTelemetrySink {
         asrFailedExtra,
         snapshot: recordingSnapshot())
     case .permissionDenied:
+      // #2550: microphone permission denial is a user/OS condition. Keep it
+      // countable in PostHog and available as Sentry context without filing
+      // an alerting handled-error event.
       let error =
         telemetryState.captureFailureError
         ?? KernelFallbackSentryError.permissionDenied
-      emitCaptureError(
-        error,
-        .audioCaptureFailed, "recording",
+      breadcrumb(
+        "recording", "Microphone permission denied",
         captureFailureExtra(error: error, failureMode: "permission_denied"))
     case .prepareFailed:
       let error =

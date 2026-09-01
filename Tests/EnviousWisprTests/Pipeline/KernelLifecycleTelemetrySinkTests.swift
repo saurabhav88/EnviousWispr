@@ -84,6 +84,10 @@ import Testing
     }
 
     var breadcrumbs: [BreadcrumbCall] = []
+    /// #2550: the raw data dict alongside `breadcrumbs`, whose `dataKeys` only
+    /// carries sorted key names (`Any`-typed values aren't `Equatable`). Needed
+    /// to assert a specific data VALUE, e.g. `capture.failure_mode`.
+    var breadcrumbData: [[String: Any]] = []
     var vadGateNoSpeechCalls: [VADGateNoSpeechCall] = []
     var recordingStates: [RecordingStateCall] = []
     var audioRoutes: [String] = []
@@ -132,6 +136,7 @@ import Testing
           Recorder.BreadcrumbCall(
             stage: stage, message: message,
             dataKeys: (data?.keys.map { $0 } ?? []).sorted()))
+        recorder.breadcrumbData.append(data ?? [:])
       },
       updateRecordingState: { active, backend, isStreaming in
         recorder.recordingStates.append(
@@ -1216,14 +1221,22 @@ import Testing
     #expect(capturedIdentity == "boundary.unexpected_transcription_failure")
   }
 
-  @Test(".failed(.permissionDenied) emits .audioCaptureFailed captureError")
-  func failedPermissionDeniedEmission() {
+  @Test(
+    ".failed(.permissionDenied) downgrades to a breadcrumb, emits NO captureError (#2550)",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/2550", "permission-denied Sentry noise"))
+  func failedPermissionDeniedEmission() throws {
     let recorder = Recorder()
     let sink = makeSink(recorder: recorder)
     sink.emit(.failed(.permissionDenied))
-    #expect(recorder.captureErrors.count == 1)
-    #expect(recorder.captureErrors.first?.category == .audioCaptureFailed)
-    #expect(recorder.captureErrors.first?.stage == "recording")
+    // #2550: a denied microphone is a user/OS permission state, not our
+    // defect — no alerting Sentry error, only a non-alerting breadcrumb.
+    #expect(recorder.captureErrors.isEmpty)
+    let crumb = try #require(recorder.breadcrumbs.first)
+    #expect(crumb.stage == "recording")
+    #expect(crumb.message == "Microphone permission denied")
+    #expect(
+      recorder.breadcrumbData.first?["capture.failure_mode"] as? String == "permission_denied")
   }
 
   @Test(".failed(.prepareFailed) emits .audioCaptureFailed captureError")
