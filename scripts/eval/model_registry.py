@@ -176,6 +176,14 @@ def load(path: Path = REGISTRY_PATH) -> dict:
                 "corpus": str, "summaryPath": str, "judgeIdentity": str,
                 "promptVariant": str, "s4Count": int, "casesScored": int,
                 "passRatePct": (int, float),
+                # THIRD instance in this PR of "a value that could not be determined
+                # takes the permissive branch", so the fix is one gate at the DOOR
+                # rather than a guard at each comparison: require `system` here and
+                # `comparable()` can never see it absent. `judgeBlind` is checked
+                # separately below because None is a LEGITIMATE value for it — a
+                # receipt that never recorded blinding — and None must stay
+                # distinguishable from False rather than be required away.
+                "system": str,
             }
             for field, want in required.items():
                 value = e.get(field)
@@ -215,7 +223,12 @@ def load(path: Path = REGISTRY_PATH) -> dict:
             # is real history. What must not happen is the key going MISSING, because
             # `floor()` reads both and a dropped key would silently skip the row while
             # `validate` reported success.
-            for optional, want in (("rubricIdentity", str), ("runComplete", bool)):
+            # `judgeBlind` joins the optional-but-present set rather than `required`:
+            # null is REAL history (a receipt that never recorded blinding), and it must
+            # stay distinguishable from False, because `comparable()` compares it
+            # exactly and unknown blinding may not set a bar.
+            for optional, want in (("rubricIdentity", str), ("runComplete", bool),
+                                   ("judgeBlind", bool)):
                 if optional not in e:
                     raise RegistryError(
                         f"{aid}: an evaluation omits the {optional} key. Write null "
@@ -305,7 +318,14 @@ def comparable(evaluation: dict, corpus: str, rubric: str, judge: str,
                 == canonical_rubric(rubric, doc)
             and evaluation["judgeIdentity"] == judge
             and evaluation.get("system") == system
-            and bool(evaluation.get("judgeBlind")) == bool(blind)
+            # EXACT, never `bool(...)`: `bool(None) == bool(False)` made an
+            # evaluation whose receipt never recorded blinding compare as SIGHTED.
+            # Twelve of the 71 evaluations on record are exactly that, and twenty are
+            # genuinely blind — so this is live data, not a hypothetical. Unknown
+            # blinding is excluded from every floor, which is the only honest reading:
+            # blind and sighted are measured non-comparable, so "we do not know which"
+            # cannot set a bar.
+            and evaluation.get("judgeBlind") == blind
             and evaluation["promptVariant"] == "own")
 
 

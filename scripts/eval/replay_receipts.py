@@ -200,9 +200,19 @@ def main() -> int:
         corpora = [resolve(c, rdir) for c in (meta.get("corpus_files") or [])]
         cand = resolve(meta.get("candidates_file"), rdir)
         prod = resolve(meta.get("production_file"), rdir)
-        if not corpora or any(c is None for c in corpora) or cand is None:
+        # A NAMED production file that does not resolve is UNRESOLVED, not "run it
+        # without --production". Dropping it silently removes the pairwise evidence
+        # from the fingerprint, and if BOTH arms drop it the same way the comparison
+        # still reports score-neutral over a receipt neither arm fully scored.
+        prod_named = meta.get("production_file")
+        if not corpora or any(c is None for c in corpora) or cand is None or (
+                prod_named and prod is None):
             results[key] = {"state": "unresolved",
-                            "why": f"corpus={meta.get('corpus_files')} candidates={meta.get('candidates_file')}"}
+                            "why": (f"corpus={meta.get('corpus_files')} "
+                                    f"candidates={meta.get('candidates_file')} "
+                                    f"production={prod_named}"
+                                    + (" (NAMED but unresolvable)"
+                                       if prod_named and prod is None else ""))}
             counts["unresolved"] += 1
             continue
 
