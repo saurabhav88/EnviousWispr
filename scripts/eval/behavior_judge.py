@@ -595,6 +595,40 @@ def _rubric_identity() -> str:
         return "unreadable"
 
 
+# The floor may only ever move DOWN. Founder decision 2026-08-31: the old
+# `full_corpus_no_s4` demanded zero absolute S4, a bar NOTHING we have ever
+# shipped has cleared — EG-1 1.0 shipped at 73 and EG-1 1.1 at 65 — so it fired
+# BLOCK on every release and taught everyone to waive it. A gate that is always
+# waived is not a gate. The bar is now "never worse than the best we have on
+# record", which is passable, gets strictly harder every time we ship, and makes
+# an improvement visible instead of reporting it as a failure.
+#
+# The floor is NOT a number kept here or in a file of its own. It is derived from
+# `model-registry.json`, which already has to know which artifact won and what it
+# scored. A second home for the same fact is how the two come to disagree.
+
+
+def _s4_floor(corpus: str | None, rubric: str | None) -> tuple[int | None, str]:
+    """The floor for this corpus and rubric, or a reason there is none.
+
+    Fails toward NO FLOOR with a stated reason, never toward a permissive default:
+    a ratchet that cannot find its bar must refuse, and refusing is what makes the
+    missing-registry case loud rather than silently disarming the gate.
+    """
+    if not corpus or not rubric:
+        return None, ("this run has no corpus or rubric identity, so its count "
+                      "cannot be compared to any recorded one")
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from model_registry import floor as registry_floor, RegistryError
+    except ImportError as exc:
+        return None, f"cannot load the model registry ({exc})"
+    try:
+        return registry_floor(corpus, rubric)
+    except RegistryError as exc:
+        return None, str(exc)
+
+
 def judge_identity(model: str) -> str:
     """What actually graded, as one string safe to hash into a resume stamp.
 
@@ -1467,7 +1501,8 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
               adjudicate_pct: float = DEFAULT_ADJUDICATE_PCT,
               adjudicate_min: int = DEFAULT_ADJUDICATE_MIN,
               adjudicate: bool = True,
-              blind: bool = False) -> dict:
+              blind: bool = False,
+              corpus_name: str | None = None) -> dict:
     """Run (or ingest) the behavior-aware judge and aggregate. Returns the full
     report dict. Cases with no candidate or an engine error are recorded as
     infra-skips (NOT scored as fails — an engine error is not a grading signal).
@@ -1596,7 +1631,18 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
                            # Same distinction `cacheable` already draws: an ABSENT
                            # answer and a FALSE answer are different situations,
                            # and collapsing them shipped a wrong claim twice.
-                           blind=None if external_verdicts is not None else blind)
+                           blind=None if external_verdicts is not None else blind,
+                           # Same distinction again: this file's sha IS the rubric, so
+                           # it identifies the grading only when this file did the
+                           # grading. Borrowed verdicts get None, and the ratchet then
+                           # refuses to compare rather than assuming.
+                           rubric_identity=(None if external_verdicts is not None
+                                            else _rubric_identity()),
+                           # Joined exactly as `meta.corpus_files` is, because the
+                           # registry's recorded corpus strings were read from that
+                           # field. Two spellings of one corpus would make every
+                           # comparison silently unmatchable.
+                           corpus_name=corpus_name)
     report["skipped"] = skipped
     report["missing_scores"] = missing
     report["per_case"] = per_case
@@ -1634,7 +1680,9 @@ def _is_pass(verdict: str) -> bool:
 def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list[str],
                   has_production: bool, missing_count: int = 0, skipped_count: int = 0,
                   adjudication_missing_count: int = 0,
-                  blind: bool | None = False) -> dict:
+                  blind: bool | None = False,
+                  rubric_identity: str | None = None,
+                  corpus_name: str | None = None) -> dict:
     total = len(per_case)
 
     def rate(items, pred):
@@ -1751,9 +1799,14 @@ def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list
         wobble = {"status": "single replication (no wobble check)"}
 
     # Release gate — apply the conditions for which we have data.
+    # Resolved OUTSIDE the gate so a registry failure is one value the gate must
+    # handle, not an exception raised from inside a check — a guard that raises
+    # returns no verdict at all, which the caller reads as no objection.
+    s4_floor, s4_floor_source = _s4_floor(corpus_name, rubric_identity)
     gate = evaluate_new_gate(overall, smoke_metrics, trap_metrics, wobble, pairwise,
                              has_production, missing_count, skipped_count,
-                             adjudication_missing_count)
+                             adjudication_missing_count,
+                             s4_floor=s4_floor, s4_floor_source=s4_floor_source)
 
     return {
         "system": "new",
@@ -1784,9 +1837,37 @@ def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list
     }
 
 
+def _add_s4_ratchet(add, overall, floor, floor_source) -> None:
+    """Never worse than the best on record, and say by how much.
+
+    `floor` is None when the comparison cannot be made — no registry, no recorded
+    winner on this corpus and rubric, or a run with no rubric of its own. Each of
+    those FAILS rather than passing, because "I could not compare" recorded as a
+    pass is how a ratchet quietly stops ratcheting. None of them is a quality
+    failure, so the message says what to fix instead of blaming the model.
+    """
+    count = overall["critical_fail_count"]
+    if floor is None:
+        add("full_corpus_s4_ratchet", False, f"{count} S4, but there is no floor to "
+            f"compare against: {floor_source}")
+        return
+    delta = floor - count
+    if count > floor:
+        add("full_corpus_s4_ratchet", False,
+            f"{count} S4, WORSE than the {floor} on record from {floor_source} "
+            f"(+{-delta}). The floor only ever moves down.")
+    else:
+        moved = (f"Accepting this lowers the floor to {count}." if delta
+                 else "Level with the floor, which therefore does not move.")
+        add("full_corpus_s4_ratchet", True,
+            f"{count} S4 against a floor of {floor} from {floor_source} "
+            f"({'-' + str(delta) if delta else 'level'}). {moved}")
+
+
 def evaluate_new_gate(overall, smoke, traps, wobble, pairwise, has_production,
                       missing_count=0, skipped_count=0,
-                      adjudication_missing_count=0) -> dict:
+                      adjudication_missing_count=0,
+                      s4_floor=None, s4_floor_source="not resolved") -> dict:
     """Apply the proposed release gate. Three-valued verdict:
       BLOCK      — a quality check FAILED (S4 / wobble / pairwise).
       INCOMPLETE — quality clean but the run did not cover every case (engine
@@ -1800,10 +1881,18 @@ def evaluate_new_gate(overall, smoke, traps, wobble, pairwise, has_production,
     def add(name, ok, detail):
         quality_checks.append({"check": name, "status": "PASS" if ok else "FAIL", "detail": detail})
 
-    add("critical_smoke_no_s4", smoke["s4_count"] == 0,
-        f"{smoke['s4_count']} S4 in {smoke['n']} critical-smoke cases (limit 0)")
-    add("full_corpus_no_s4", overall["critical_fail_count"] == 0,
-        f"{overall['critical_fail_count']} S4 across full corpus (limit 0; waiver needs founder sign-off)")
+    # A check over ZERO cases is not a pass, it is an absent measurement. Reporting
+    # PASS for `0 S4 in 0 cases` put a green row in front of the reader for a
+    # question nobody asked. N/A is the same treatment `pairwise_vs_production`
+    # already gives a missing baseline.
+    if smoke["n"] == 0:
+        quality_checks.append({"check": "critical_smoke_no_s4", "status": "N/A",
+                               "detail": "no critical-smoke cases in this run"})
+    else:
+        add("critical_smoke_no_s4", smoke["s4_count"] == 0,
+            f"{smoke['s4_count']} S4 in {smoke['n']} critical-smoke cases (limit 0)")
+
+    _add_s4_ratchet(add, overall, s4_floor, s4_floor_source)
     if wobble.get("unreliable") is not None:
         add("judge_stable", not wobble["unreliable"],
             f"rep pass-rate delta {wobble.get('delta_pp')}pp (limit {REP_PASSRATE_DELTA_MAX}pp)")
@@ -2277,7 +2366,8 @@ def main() -> int:
     if args.system == "new":
         report = score_new(norm_cases, cands, prod, args.judge, args.chunk_size,
                            external_verdicts, args.adjudicate_pct, args.adjudicate_min,
-                           adjudicate=not args.no_adjudicate, blind=args.blind)
+                           adjudicate=not args.no_adjudicate, blind=args.blind,
+                           corpus_name=",".join(p.name for p in corpus_paths))
     else:
         report = score_old(norm_cases, cands, args.judge, args.reps, args.chunk_size)
 
