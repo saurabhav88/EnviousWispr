@@ -28,4 +28,13 @@ public enum PromptFamily: String, Sendable {
   /// `cloudFixed`; the tuned behaviors live in the model weights, and the prompt must
   /// match training byte-for-byte.
   case egOneFixed
+
+  /// EG-1's training prompt from version 1.2 onward. It extends `egOneFixed` with the
+  /// greeting/sign-off envelope rule and three worked self-correction examples, and it is
+  /// the prompt the 1.2 weights were tuned on. The two cases must coexist: a user still
+  /// holding 1.1 bytes has to keep receiving 1.1's prompt, because the artifact and its
+  /// prompt are one contract (`eg1-operations.md` RULE: eg1-hot-swap-contract).
+  /// Selected from the shipped manifest's `promptTemplateID`, never from the model's name.
+  /// Canonical text: `scripts/eval/prompts/eg1-polish-prompt-v2.txt`.
+  case egOneEnvelope
 }

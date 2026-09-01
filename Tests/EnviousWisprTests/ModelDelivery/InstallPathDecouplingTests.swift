@@ -245,7 +245,16 @@ private enum InstallPathFixture {
   // Per-shard sizes are byte-identical to v2-sharded's because the
   // architecture and quantization did not change; only the sha256 values move.
   // That coincidence was verified against the real files rather than assumed.
-  static let goldenDigest = "dd3cc5d3eb3c237f8e18fd85138da1cffcd4eb0f263ef0f6fc96a60d2e742f1b"
+  //
+  // EG-1 1.2 (2026-08-31, #2547): revision `v4-e1`, weights generation `eg-1-v3-*`, still
+  // an 8-shard componentSet. The split was re-run with `llama-gguf-split --split-max-size
+  // 400M` and every size and hash below comes from the real files. Sizes are NOT identical
+  // to the previous revision this time — the split was taken at a different boundary — so
+  // the "same sizes" note above describes v3-eg2 and does not carry forward.
+  // The shards were proved equivalent to the unsplit model by running 40 real email cases
+  // through both at temperature 0 and requiring byte-identical output, because
+  // split-then-merge rewrites headers and so is NOT byte-identical to the original.
+  static let goldenDigest = "530d0587ab958da9301ac96dfbbd0ffce5eb9214ec5af97b02bdc5b1bf63d9cd"
 
   @Test func shippedDeliveryManifestLoadsAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.deliveryManifestURL)
@@ -253,7 +262,7 @@ private enum InstallPathFixture {
     #expect(manifest.manifestDigest == Self.goldenDigest)
     #expect(try DeliveryManifest.canonicalDigest(of: data) == Self.goldenDigest)
     #expect(manifest.identity.family == .egOne)
-    #expect(manifest.identity.revision == "v3-eg2")
+    #expect(manifest.identity.revision == "v4-e1")
     #expect(manifest.admission.layout == "componentSet")
     #expect(manifest.files.count == 8)
     #expect(manifest.totalBytes == manifest.files.reduce(0) { $0 + $1.sizeBytes })
@@ -262,11 +271,11 @@ private enum InstallPathFixture {
         file.sizeBytes <= 450_000_000, "\(file.path) exceeds the cache-eligible shard ceiling")
     }
     let entrypointPath = try #require(manifest.resolvedEntrypointPath)
-    #expect(entrypointPath == "eg-1-v2-00001-of-00008.gguf")
+    #expect(entrypointPath == "eg-1-v3-00001-of-00008.gguf")
     let entrypointFile = try #require(
       manifest.files.first { $0.resolvedInstallPath == entrypointPath })
-    #expect(entrypointFile.path == "v3-eg2/eg-1-v2-00001-of-00008.gguf")  // server object key
-    #expect(entrypointFile.component == "eg-1-v2-00001-of-00008.gguf")
+    #expect(entrypointFile.path == "v4-e1/eg-1-v3-00001-of-00008.gguf")  // server object key
+    #expect(entrypointFile.component == "eg-1-v3-00001-of-00008.gguf")
     #expect(manifest.sources.map(\.id) == ["our_copy"])
   }
 

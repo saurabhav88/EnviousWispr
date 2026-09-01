@@ -56,7 +56,7 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
   ///
   /// Optional so an older or malformed bundle decodes rather than throwing.
   /// A nil or blank value renders NO label — never a fallback to `version`,
-  /// which would put `v3-eg2` in front of a user.
+  /// which would put an internal revision string in front of a user.
   public let displayVersion: String?
 
   public init(
@@ -91,6 +91,7 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
   public var promptFamily: PromptFamily? {
     switch promptTemplateID {
     case "eg1-v1": return .egOneFixed
+    case "eg1-v2": return .egOneEnvelope
     default: return nil
     }
   }

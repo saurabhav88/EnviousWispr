@@ -3,7 +3,7 @@
   "identity": {
     "family": "eg_one",
     "name": "eg-1",
-    "revision": "v3-eg2",
+    "revision": "v4-e1",
     "variant": "q5km",
     "runtimeABI": "llamacpp-eg1-v1"
   },
@@ -12,64 +12,64 @@
   },
   "files": [
     {
-      "path": "v3-eg2/eg-1-v2-00001-of-00008.gguf",
-      "installPath": "eg-1-v2-00001-of-00008.gguf",
-      "sizeBytes": 399884576,
-      "sha256": "7169a0f1e6d356f75b464960c2104a36859f74e7d37dfcd95248ea50d660a64e",
-      "component": "eg-1-v2-00001-of-00008.gguf"
+      "path": "v4-e1/eg-1-v3-00001-of-00008.gguf",
+      "installPath": "eg-1-v3-00001-of-00008.gguf",
+      "sizeBytes": 399884640,
+      "sha256": "8f05b91acb93ed9c0ef833d617f4cefb492f697c4fe783f6ba26ce4add14e3c0",
+      "component": "eg-1-v3-00001-of-00008.gguf"
     },
     {
-      "path": "v3-eg2/eg-1-v2-00002-of-00008.gguf",
-      "installPath": "eg-1-v2-00002-of-00008.gguf",
+      "path": "v4-e1/eg-1-v3-00002-of-00008.gguf",
+      "installPath": "eg-1-v3-00002-of-00008.gguf",
       "sizeBytes": 395007008,
-      "sha256": "e6660da85546f9c92fc98cbf5c7668047cfc96bb466719a1fd4cbeb117ce79d1",
-      "component": "eg-1-v2-00002-of-00008.gguf"
+      "sha256": "011892fa153cf95f3dc68c049860ad35c752a990f582e4b33c974205df2486fa",
+      "component": "eg-1-v3-00002-of-00008.gguf"
     },
     {
-      "path": "v3-eg2/eg-1-v2-00003-of-00008.gguf",
-      "installPath": "eg-1-v2-00003-of-00008.gguf",
+      "path": "v4-e1/eg-1-v3-00003-of-00008.gguf",
+      "installPath": "eg-1-v3-00003-of-00008.gguf",
       "sizeBytes": 393972896,
-      "sha256": "eeeb38446e304f58522b81a88d8a0edcabe50243747662d5b5cf14e88691ab73",
-      "component": "eg-1-v2-00003-of-00008.gguf"
+      "sha256": "5769143e7fc28cf4b052237da617cfcbebf2f16bf1500acc4c7ed483fbc18a6f",
+      "component": "eg-1-v3-00003-of-00008.gguf"
     },
     {
-      "path": "v3-eg2/eg-1-v2-00004-of-00008.gguf",
-      "installPath": "eg-1-v2-00004-of-00008.gguf",
+      "path": "v4-e1/eg-1-v3-00004-of-00008.gguf",
+      "installPath": "eg-1-v3-00004-of-00008.gguf",
       "sizeBytes": 397618336,
-      "sha256": "bee2eb0dabdbaaef177e1e053e8d30edb4349ac12886c60c9bb76a710f9ffa79",
-      "component": "eg-1-v2-00004-of-00008.gguf"
+      "sha256": "52724cb4812115d993c5f4e4f4ae5e87a44e005fd05b51e14bf427d353dd9d78",
+      "component": "eg-1-v3-00004-of-00008.gguf"
     },
     {
-      "path": "v3-eg2/eg-1-v2-00005-of-00008.gguf",
-      "installPath": "eg-1-v2-00005-of-00008.gguf",
+      "path": "v4-e1/eg-1-v3-00005-of-00008.gguf",
+      "installPath": "eg-1-v3-00005-of-00008.gguf",
       "sizeBytes": 389508864,
-      "sha256": "97d9a9cf56774fe5f598ac05d91dc59a4ddfd235b95ea1810b379a41bdc57d55",
-      "component": "eg-1-v2-00005-of-00008.gguf"
+      "sha256": "9b414a065c40e25dea077ae9fe8198ae9c13965cb5df5e997df0580aef452450",
+      "component": "eg-1-v3-00005-of-00008.gguf"
     },
     {
-      "path": "v3-eg2/eg-1-v2-00006-of-00008.gguf",
-      "installPath": "eg-1-v2-00006-of-00008.gguf",
+      "path": "v4-e1/eg-1-v3-00006-of-00008.gguf",
+      "installPath": "eg-1-v3-00006-of-00008.gguf",
       "sizeBytes": 388606432,
-      "sha256": "c810a8e2d3c51e4b70d67f25d2c861909ecf32cb315a5c00d86439b11080626a",
-      "component": "eg-1-v2-00006-of-00008.gguf"
+      "sha256": "00ccd4bcf1507db1ca57252ed3465672a3acd1ec49eb450512183bd20e67f25e",
+      "component": "eg-1-v3-00006-of-00008.gguf"
     },
     {
-      "path": "v3-eg2/eg-1-v2-00007-of-00008.gguf",
-      "installPath": "eg-1-v2-00007-of-00008.gguf",
+      "path": "v4-e1/eg-1-v3-00007-of-00008.gguf",
+      "installPath": "eg-1-v3-00007-of-00008.gguf",
       "sizeBytes": 397168384,
-      "sha256": "9dc0f6258253f96f51b1c7b48d4385c4e40dc2fa5c0494902ff36262bd0712fa",
-      "component": "eg-1-v2-00007-of-00008.gguf"
+      "sha256": "3a7b065f44ab398f9eb9656aa263f43a9be1acd6af55a0790c7960162675e729",
+      "component": "eg-1-v3-00007-of-00008.gguf"
     },
     {
-      "path": "v3-eg2/eg-1-v2-00008-of-00008.gguf",
-      "installPath": "eg-1-v2-00008-of-00008.gguf",
+      "path": "v4-e1/eg-1-v3-00008-of-00008.gguf",
+      "installPath": "eg-1-v3-00008-of-00008.gguf",
       "sizeBytes": 127746048,
-      "sha256": "b212ce6af1fc83ed2df28f8f7c517b627747e8436aee452ac62185fa54da6546",
-      "component": "eg-1-v2-00008-of-00008.gguf"
+      "sha256": "91160e7d004150b44a360a7db69237b5405f34d29855c15480324a4abfdf5c0c",
+      "component": "eg-1-v3-00008-of-00008.gguf"
     }
   ],
   "optionalFiles": [],
-  "totalBytes": 2889512544,
+  "totalBytes": 2889512608,
   "sources": [
     {
       "id": "our_copy",
@@ -85,7 +85,7 @@
     "installLocation": "polishModelsCache",
     "diskHeadroomFactor": "2.2",
     "evictPreviousRevisions": true,
-    "entrypointFile": "eg-1-v2-00001-of-00008.gguf"
+    "entrypointFile": "eg-1-v3-00001-of-00008.gguf"
   },
-  "manifestDigest": "dd3cc5d3eb3c237f8e18fd85138da1cffcd4eb0f263ef0f6fc96a60d2e742f1b"
+  "manifestDigest": "530d0587ab958da9301ac96dfbbd0ffce5eb9214ec5af97b02bdc5b1bf63d9cd"
 }

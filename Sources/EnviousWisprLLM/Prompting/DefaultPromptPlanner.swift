@@ -4,7 +4,26 @@ import EnviousWisprCore
 /// Analyzes transcript, selects the appropriate builder, and produces a PolishPlan.
 /// Never throws. Bad/missing inputs degrade gracefully.
 public struct DefaultPromptPlanner: PromptPlanning {
-  public init() {}
+  /// Which EG-1 prompt THIS app build serves. Read from the bundled `eg1-manifest.json`'s
+  /// `promptTemplateID`, because the artifact and its prompt are one contract
+  /// (`eg1-operations.md` RULE: eg1-hot-swap-contract) and one app build ships exactly one
+  /// manifest. Held as a value rather than re-read per polish so the decision is made once,
+  /// and injectable so a test can drive a template id this build does not ship.
+  let egOneFamily: PromptFamily
+
+  public init() { self.init(egOneFamily: Self.bundledEGOneFamily) }
+
+  init(egOneFamily: PromptFamily) { self.egOneFamily = egOneFamily }
+
+  /// The bundled manifest's declared family, resolved once.
+  ///
+  /// The `.egOneFixed` fallback keeps this total; it is not a behaviour anyone reaches.
+  /// `EGOneManifest.loadBundled` throws only when the resource is absent, and
+  /// `activationBlockers()` already refuses to activate EG-1 on an unknown
+  /// `promptTemplateID`, so a build that cannot answer this question cannot have EG-1 as
+  /// its active provider either.
+  static let bundledEGOneFamily: PromptFamily =
+    (try? EGOneManifest.loadBundled())?.promptFamily ?? .egOneFixed
 
   public func plan(input: PromptBuildInput) -> PolishPlan {
     // #1255: the cloud providers use one fixed, modeless prompt. Force the plan mode to
@@ -20,7 +39,8 @@ public struct DefaultPromptPlanner: PromptPlanning {
     let family = Self.family(
       for: input.provider,
       modelID: input.modelID,
-      ollamaIsRemote: input.ollamaIsRemote
+      ollamaIsRemote: input.ollamaIsRemote,
+      egOneFamily: egOneFamily
     )
     let mode: PolishMode = .message
 
@@ -42,6 +62,7 @@ public struct DefaultPromptPlanner: PromptPlanning {
     case .cloudFixed: return CloudFixedPromptBuilder()
     case .localFixed: return LocalFixedPromptBuilder()
     case .egOneFixed: return EGOnePromptBuilder()
+    case .egOneEnvelope: return EGOneEnvelopePromptBuilder()
     }
   }
 
@@ -53,7 +74,8 @@ public struct DefaultPromptPlanner: PromptPlanning {
   static func family(
     for provider: LLMProvider,
     modelID: String,
-    ollamaIsRemote: Bool?
+    ollamaIsRemote: Bool?,
+    egOneFamily: PromptFamily
   ) -> PromptFamily {
     switch provider {
     case .openAI, .gemini, .claude:
@@ -65,6 +87,10 @@ public struct DefaultPromptPlanner: PromptPlanning {
       // training prompt. Single first-party definition shared with telemetry:
       // `OllamaSetupService.isFirstPartyModel`.
       if OllamaSetupService.isFirstPartyModel(modelID) {
+        // KNOWN LIMIT, stated rather than hidden: an EG-1 pulled through Ollama carries no
+        // manifest, so the app cannot learn which revision those bytes are and holds the
+        // 1.1 prompt. A user who sideloads 1.2 this way gets 1.1's instruction. The native
+        // `.egOne` path above is the supported one and does know.
         return .egOneFixed
       }
       // #1948: the daemon's own report decides it — never the model's name or size.
@@ -76,11 +102,13 @@ public struct DefaultPromptPlanner: PromptPlanning {
       // `PromptBuildInput.ollamaIsRemote` for why local is the fail-safe direction.
       return ollamaIsRemote == true ? .cloudFixed : .localFixed
     case .egOne:
-      // Native EG-1 (#1271): the bundled first-party server always runs the
-      // model's training prompt. Model identity is manifest-enforced by
-      // `EGOneRuntime` (activation refuses a name/template mismatch), so no
-      // per-model-id heuristics apply here.
-      return .egOneFixed
+      // Native EG-1 (#1271): the bundled first-party server always runs the model's
+      // training prompt. WHICH training prompt is the manifest's answer, not a constant —
+      // 1.1 and 1.2 were tuned on different text, and serving either model the other's
+      // instruction is the drift the hot-swap contract exists to prevent. Model identity
+      // is manifest-enforced by `EGOneRuntime` (activation refuses a name/template
+      // mismatch), so no per-model-id heuristics apply here.
+      return egOneFamily
     case .appleIntelligence, .none:
       // Should not reach the planner — Apple Intelligence has its own prompt path
       // (`LLMPolishStep` branches before planning). Fall back to the fixed cloud prompt,

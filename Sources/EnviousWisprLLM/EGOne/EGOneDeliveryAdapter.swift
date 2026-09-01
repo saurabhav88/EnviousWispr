@@ -22,7 +22,7 @@ public final class EGOneDeliveryAdapter {
   /// USER-FACING display label surfaced as `.installed(version:)`, e.g. "1.1"
   /// rendered as "EG-1 V1.1" (#2109). Optional: a manifest without one shows
   /// no label rather than falling back to the internal revision, which is a
-  /// path component (`v3-eg2`) and not a thing to put in front of a user.
+  /// path component and not a thing to put in front of a user.
   private let version: String?
 
   public init(

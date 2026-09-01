@@ -12,7 +12,9 @@ struct EGOneManifestTests {
   /// revision it belongs to. The revision is in the NAME deliberately: when
   /// the pin moves, this constant has to be renamed as well as revalued, so
   /// the pairing cannot be updated by half.
-  private static let expectedDisplayVersionForV3EG2 = "1.1"
+  private static let shippedRevision = "v4-e1"
+  private static let expectedDisplayVersionForShippedRevision = "1.2"
+  private static let expectedPromptTemplateForShippedRevision = "eg1-v2"
 
   static func makeManifest(
     modelName: String = "eg-1",
@@ -160,12 +162,17 @@ struct EGOneManifestTests {
     #expect(manifest.resolvedDisplayVersion != nil)
 
     // Pinned to the literal, deliberately. This CANNOT establish that "1.1"
-    // is the correct label for revision `v3-eg2` — that correspondence is a
+    // is the correct label for the shipped revision — that correspondence is a
     // founder decision, not a derivable fact, and the plan records it as an
     // accepted known limit (§14 Q3). What it does establish is that the two
     // cannot drift apart silently: changing the manifest without changing
     // this line, or the reverse, fails here.
-    #expect(manifest.resolvedDisplayVersion == Self.expectedDisplayVersionForV3EG2)
-    #expect(manifest.version == "v3-eg2")
+    #expect(manifest.resolvedDisplayVersion == Self.expectedDisplayVersionForShippedRevision)
+    #expect(manifest.version == Self.shippedRevision)
+    // The prompt id is pinned for the same reason as the label: EG-1 1.2 was tuned on
+    // the `eg1-v2` text, and a revision bump that forgets this line would serve the new
+    // weights the previous prompt with nothing failing.
+    #expect(manifest.promptTemplateID == Self.expectedPromptTemplateForShippedRevision)
+    #expect(manifest.promptFamily == .egOneEnvelope)
   }
 }
