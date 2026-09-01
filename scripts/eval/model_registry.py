@@ -74,7 +74,14 @@ def load(path: Path = REGISTRY_PATH) -> dict:
             # `shipped` artifact has two winners and the floor would depend on
             # which. Grouping by status would have let that pass.
             winners.setdefault(a["release"], []).append(f"{aid} ({a['status']})")
-        for e in a.get("evaluations") or []:
+        # The KEY must exist. `a.get("evaluations") or []` reads a typo'd or dropped
+        # key as "this artifact was never scored", which is a claim, not an absence.
+        # The three other reads of this field all run on a doc that came through here,
+        # so guarding it once is enough.
+        if not isinstance(a.get("evaluations"), list):
+            raise RegistryError(f"{aid}: no evaluations list. Write [] for an artifact "
+                                f"with no receipt; do not omit the key.")
+        for e in a["evaluations"]:
             # `judgeIdentity` is REQUIRED, not optional: `comparable()` reads it, so a
             # row without it raises KeyError from inside `floor()` — a validator that
             # passed such a row would be certifying data that crashes its own reader.
@@ -180,7 +187,7 @@ def cmd_list(args) -> int:
                 if key not in groups or e["s4Count"] < groups[key]["s4Count"]:
                     groups[key] = e
             for (_c, rubric, judge), e in sorted(
-                    groups.items(), key=lambda kv: -(kv[1]["passRatePct"] or 0)):
+                    groups.items(), key=lambda kv: -kv[1]["passRatePct"]):
                 print(f"      {e['passRatePct']}% pass, {e['s4Count']} serious "
                       f"({e['casesScored']} cases, rubric "
                       f"{(rubric or 'external')[:8]}, judge {judge})")

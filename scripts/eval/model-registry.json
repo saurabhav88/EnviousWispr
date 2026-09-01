@@ -169,7 +169,7 @@
         },
         {
           "corpus": "type_b_approved_1890.jsonl",
-          "judgeIdentity": "claude-sonnet-5",
+          "judgeIdentity": "name-only:claude-sonnet-5",
           "rubricIdentity": null,
           "runComplete": null,
           "passRatePct": 93.7,

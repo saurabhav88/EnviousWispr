@@ -127,7 +127,13 @@ def read_receipts() -> dict:
             continue
         out.setdefault(cand, []).append({
             "corpus": ",".join(m.get("corpus_files") or []) or None,
-            "judgeIdentity": m.get("judge_identity") or m.get("judge"),
+            # A pinned identity where we have one; otherwise the coarse judge NAME,
+            # PREFIXED so the two can never be mistaken for each other. An Azure
+            # deployment can be repointed in place, so `azure/gpt-5-6-luna` alone can
+            # name two different models — a bare fallback would silently let those
+            # compare as one judge, which is the failure this field exists to prevent.
+            "judgeIdentity": (m.get("judge_identity")
+                              or (f"name-only:{m['judge']}" if m.get("judge") else None)),
             "rubricIdentity": m.get("rubric_identity"),
             "runComplete": d.get("run_complete"),
             "passRatePct": o.get("pass_rate_pct"),
