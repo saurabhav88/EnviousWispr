@@ -1472,7 +1472,8 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
               adjudicate_min: int = DEFAULT_ADJUDICATE_MIN,
               adjudicate: bool = True,
               blind: bool = False,
-              ratchet_corpus: str | None = None) -> dict:
+              ratchet_corpus: str | None = None,
+              production_name: str | None = None) -> dict:
     """Run (or ingest) the behavior-aware judge and aggregate. Returns the full
     report dict. Cases with no candidate or an engine error are recorded as
     infra-skips (NOT scored as fails — an engine error is not a grading signal).
@@ -1611,6 +1612,8 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
                                "system": "new",
                                # score_new's OWN parameters, not `args` — this runs
                                # inside score_new, where `args` does not exist.
+                               "production": (Path(production_name).name
+                                              if production_name else "none"),
                                "adjudication": (
                                    f"{adjudicate_pct}:{adjudicate_min}"
                                    if adjudicate else "none"),
@@ -2252,7 +2255,8 @@ def main() -> int:
                            # once a comparable evaluation existed — the run could then
                            # clear above its floor as long as it stayed under the
                            # catastrophe ceiling.
-                           ratchet_corpus=",".join(p.name for p in corpus_paths) or None)
+                           ratchet_corpus=",".join(p.name for p in corpus_paths) or None,
+                           production_name=args.production)
     else:
         report = score_old(norm_cases, cands, args.judge, args.reps, args.chunk_size)
 

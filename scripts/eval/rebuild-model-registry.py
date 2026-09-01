@@ -170,6 +170,10 @@ def read_receipts() -> dict:
             # adjudicating" and "adjudication was off" are indistinguishable there.
             # Null is excluded from every floor, exactly like unknown blinding.
             "adjudication": _adjudication_policy(m, d),
+            # "none" rather than null: NO baseline is a real, distinct setup, not a
+            # gap in the record. Null would mean "the receipt cannot say", which for
+            # this field never happens — `production_file` is written on every run.
+            "productionBaseline": m.get("production_file") or "none",
             "runComplete": d.get("run_complete"),
             "passRatePct": o.get("pass_rate_pct"),
             "s4Count": o.get("critical_fail_count"),

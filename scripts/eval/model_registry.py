@@ -44,6 +44,43 @@ RUBRIC_RE = re.compile(r"^[0-9a-f]{12}$")
 JUDGE_PATH = Path(__file__).parent / "behavior_judge.py"
 
 
+# THE REPLAY PROOF HAS A BLIND SPOT, AND THESE ARE ITS EDGES.
+# `--verdicts` short-circuits: "no judge calls, nothing to adjudicate". So a replay
+# runs the AGGREGATION path and never runs the reconciliation path — the adjudication
+# selection, the second look, or the worse-of-two merge. A change confined to those
+# functions replays IDENTICALLY and would be declared score-neutral on evidence that
+# never touched it. Cloud review, PR #2576.
+#
+# Documenting that is not enough, because a documented limit is read as a limit that
+# was checked. Hashing the un-exercised code makes the blind spot DETECTABLE: if these
+# functions differ from what they were when an equivalence was proven, the proof does
+# not cover the change and `check-live` says so.
+UNREPLAYED_FUNCTIONS = ("select_adjudication_ids", "_worse_new_score")
+
+
+def unreplayed_digest() -> str:
+    """Hash the scorer code a `--verdicts` replay does NOT execute.
+
+    Extracts each named function from its `def` to the next top-level `def`. A name
+    that is absent is recorded as such rather than skipped: a function that has been
+    RENAMED must not silently drop out of the digest and make the hash look stable.
+    """
+    try:
+        src = JUDGE_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return "unreadable"
+    chunks = []
+    for name in UNREPLAYED_FUNCTIONS:
+        marker = f"\ndef {name}("
+        i = src.find(marker)
+        if i == -1:
+            chunks.append(f"<<ABSENT:{name}>>")
+            continue
+        j = src.find("\ndef ", i + 1)
+        chunks.append(src[i:j if j != -1 else len(src)])
+    return hashlib.sha256("".join(chunks).encode("utf-8")).hexdigest()[:12]
+
+
 def live_rubric_identity() -> str:
     """What `behavior_judge._rubric_identity()` returns for THIS checkout.
 
@@ -228,7 +265,8 @@ def load(path: Path = REGISTRY_PATH) -> dict:
             # stay distinguishable from False, because `comparable()` compares it
             # exactly and unknown blinding may not set a bar.
             for optional, want in (("rubricIdentity", str), ("runComplete", bool),
-                                   ("judgeBlind", bool), ("adjudication", str)):
+                                   ("judgeBlind", bool), ("adjudication", str),
+                                   ("productionBaseline", str)):
                 if optional not in e:
                     raise RegistryError(
                         f"{aid}: an evaluation omits the {optional} key. Write null "
@@ -289,7 +327,8 @@ def canonical_rubric(rubric: str | None, doc: dict | None = None) -> str | None:
 def comparable(evaluation: dict, corpus: str, rubric: str, judge: str,
                cases: int, doc: dict | None = None,
                system: str = "new", blind: bool = False,
-               adjudication: str | None = None) -> bool:
+               adjudication: str | None = None,
+               production: str | None = None) -> bool:
     """Corpus AND its case count, rubric, judge, GRADING SYSTEM, BLINDING — and the
     artifact's OWN prompt.
 
@@ -341,13 +380,22 @@ def comparable(evaluation: dict, corpus: str, rubric: str, judge: str,
             # an S4 count. The falsification condition published with that exclusion
             # is what made the finding checkable.
             and evaluation.get("adjudication") == adjudication
+            # The production baseline is a SCORING input, not just a pairwise one:
+            # `select_adjudication_ids()` guarantees a second look at `critical_loss`
+            # cases ONLY when production is present, and the second look can only
+            # raise severity. So a run without a baseline gets fewer second looks and
+            # can score better than the same model with one. Recorded as the
+            # filename, or the string "none" — never null-for-absent, because absent
+            # is a real and distinct setup.
+            and evaluation.get("productionBaseline") == production
             and evaluation["promptVariant"] == "own")
 
 
 def floor(corpus: str, rubric: str, judge: str, cases: int,
           doc: dict | None = None,
           system: str = "new", blind: bool = False,
-          adjudication: str | None = None) -> tuple[int | None, str]:
+          adjudication: str | None = None,
+          production: str | None = None) -> tuple[int | None, str]:
     """The best S4 count on record for this corpus and rubric, and where it came from.
 
     Only `shipped` and `selected` artifacts set the floor. A `candidate` has not
@@ -370,7 +418,7 @@ def floor(corpus: str, rubric: str, judge: str, cases: int,
         for e in a.get("evaluations") or []:
             if (not comparable(e, corpus, rubric, judge, cases, doc,
                                system=system, blind=blind,
-                               adjudication=adjudication)
+                               adjudication=adjudication, production=production)
                     or e.get("runComplete") is not True):
                 continue
             if best is None or e["s4Count"] < best[0]:
@@ -380,7 +428,7 @@ def floor(corpus: str, rubric: str, judge: str, cases: int,
                       f"corpus {corpus} ({cases} cases) under rubric {rubric} "
                       f"judged by {judge}, system={system}, "
                       f"blind={'yes' if blind else 'no'}, "
-                      f"adjudication={adjudication}")
+                      f"adjudication={adjudication}, production={production}")
     return best[0], f"{best[1]} ({best[2]})"
 
 
@@ -402,11 +450,29 @@ def cmd_check_live(args) -> int:
     stamped = {e.get("rubricIdentity")
                for a in doc["artifacts"] for e in a.get("evaluations") or []}
     listed = {r for g in doc.get("_rubricEquivalence") or [] for r in g["identities"]}
+    def blind_spot_note(g):
+        """Whether the un-replayed reconciliation code has moved since the proof."""
+        was = g.get("unreplayedDigest")
+        now = unreplayed_digest()
+        if was is None:
+            return (f"  NOTE: this group predates the blind-spot digest, so whether "
+                    f"{', '.join(UNREPLAYED_FUNCTIONS)} changed since it was proven "
+                    f"is unknown.")
+        if was != now:
+            return (f"  WARNING: {', '.join(UNREPLAYED_FUNCTIONS)} changed since this "
+                    f"equivalence was proven ({was} -> {now}). A --verdicts replay does "
+                    f"NOT execute them, so the score-neutral proof does not cover that "
+                    f"change. Re-prove by another means or narrow the claim.")
+        return f"  blind-spot digest unchanged ({now})"
+
     if live in stamped:
         print(f"OK: live scorer identity {live} has stamped evaluations on record")
         return 0
     if live in listed:
         print(f"OK: live scorer identity {live} is recorded in an equivalence group")
+        for g in doc.get("_rubricEquivalence") or []:
+            if live in g["identities"]:
+                print(blind_spot_note(g))
         return 0
     print(f"UNRECORDED: the scorer emits {live}, which has stamped no evaluation and is in no "
           f"equivalence group.\n"
@@ -440,21 +506,35 @@ def cmd_record_live(args) -> int:
     stamped = {e.get("rubricIdentity")
                for a in doc["artifacts"] for e in a.get("evaluations") or []}
     g = groups[args.group]
-    if live in g["identities"]:
-        print(f"nothing to do: {live} is already recorded")
-        return 0
+    # NOT "nothing to do". Recording is the author ASSERTING a fresh proof, and the
+    # blind-spot digest is part of that assertion — an identity can be unchanged while
+    # the un-replayed reconciliation code has moved, which is exactly the case the
+    # digest exists to catch. Returning early here left the digest unwritten and
+    # `check-live` reporting "predates the digest" forever.
+    identity_already_there = live in g["identities"]
     keep = [r for r in g["identities"] if r in stamped]
-    if not keep:
+    if not keep and not identity_already_there:
         print(f"REFUSE: group {args.group} has no stamped identity to anchor it; "
               f"replacing its members would leave a group nothing can check")
         return 2
     old_ids = list(g["identities"])
-    g["identities"] = keep + [live]
+    if not identity_already_there:
+        g["identities"] = keep + [live]
+    # Stamped WITH the proof, so a later change to the un-replayed reconciliation code
+    # is detectable rather than merely documented.
+    g["unreplayedDigest"] = unreplayed_digest()
     with REGISTRY_PATH.open("w", encoding="utf-8") as fh:
         json.dump(doc, fh, indent=2, ensure_ascii=False)
         fh.write("\n")
     load()  # fail loudly rather than leave an invalid registry on disk
-    print(f"recorded {live}\n  was: {old_ids}\n  now: {g['identities']}")
+    if identity_already_there:
+        print(f"identity {live} was already recorded; stamped the blind-spot digest "
+              f"{g['unreplayedDigest']}.\n"
+              f"  This asserts you have just re-proven score neutrality for THIS "
+              f"scorer. If you have not, revert the registry and re-run the replay.")
+    else:
+        print(f"recorded {live}\n  was: {old_ids}\n  now: {g['identities']}\n"
+              f"  blind-spot digest: {g['unreplayedDigest']}")
     return 0
 
 
