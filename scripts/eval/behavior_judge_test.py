@@ -2965,3 +2965,43 @@ def _run() -> int:
 
 if __name__ == "__main__":
     sys.exit(_run())
+
+
+# --------------------------------------------------------------------------- #
+# the rubric-identity guard, which cloud review on #2576 is the reason for      #
+# --------------------------------------------------------------------------- #
+
+def test_live_rubric_identity_matches_the_scorer():
+    # `model_registry.live_rubric_identity()` re-implements one line of
+    # `behavior_judge._rubric_identity()` because importing it would be circular.
+    # A duplicated answer to one question is exactly the accretion this repo warns
+    # about, so the two are pinned together here rather than trusted to stay equal.
+    import model_registry
+    assert model_registry.live_rubric_identity() == bj._rubric_identity()
+
+
+def test_registry_refuses_a_rubric_identity_that_stamped_nothing():
+    # The defect cloud review caught: a hash read from the scorer, one further edit
+    # made to it, and the stale value recorded. It is silent — a real run stamps the
+    # true hash, no group holds it, and the ratchet reports N/A forever.
+    import copy, model_registry
+    doc = copy.deepcopy(model_registry.load())
+    doc["_rubricEquivalence"][0]["identities"][1] = "0123456789ab"
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "model-registry.json"
+        p.write_text(json.dumps(doc), encoding="utf-8")
+        try:
+            model_registry.load(p)
+        except model_registry.RegistryError as exc:
+            assert "stamped no evaluation" in str(exc), str(exc)
+        else:
+            raise AssertionError("load() accepted an identity that stamped nothing")
+
+
+def test_registry_accepts_the_live_scorer_identity():
+    # Two-way control: the guard must not simply refuse everything. The identity the
+    # committed scorer emits is legitimate precisely because it has stamped nothing yet.
+    import model_registry
+    doc = model_registry.load()
+    live = model_registry.live_rubric_identity()
+    assert live in doc["_rubricEquivalence"][0]["identities"], (live, doc["_rubricEquivalence"])

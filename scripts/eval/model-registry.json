@@ -1142,10 +1142,10 @@
     {
       "identities": [
         "626d3a1c5219",
-        "cc91f15de09f"
+        "ac1f2eb18f39"
       ],
       "reason": "The release gate moved out of behavior_judge.py into release_gate.py so the bar can change without invalidating history. _rubric_identity() hashes behavior_judge.py whole, so removing code from it mints a new identity even when no scoring logic moved.",
-      "provenBy": "scripts/eval/replay_receipts.py re-aggregated all 71 registry receipts from their frozen per-case verdicts under both revisions; scripts/eval/diff_replays.py reported SCORES MOVED: 0. Zero judge calls, so the claim is a measurement and is re-runnable by anyone.",
+      "provenBy": "scripts/eval/replay_receipts.py re-aggregated all 71 registry receipts from their frozen per-case verdicts under both revisions; scripts/eval/diff_replays.py reported SCORES MOVED: 0. Zero judge calls, so the claim is a measurement and is re-runnable by anyone. The new identity is read from the scorer, never typed: cloud review on PR #2576 caught a stale cc91f15de09f recorded after one further edit to behavior_judge.py, and load() now refuses any identity that stamped no evaluation and is not the live scorer.",
       "provenOn": "2026-09-01"
     }
   ],

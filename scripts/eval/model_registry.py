@@ -19,6 +19,7 @@ CLI:
     model_registry.py floor --corpus sealed_v1.jsonl --cases 1462 --rubric <id> --judge <id>
 """
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -37,6 +38,23 @@ class RegistryError(Exception):
 
 # A rubric identity is the first 12 hex chars of a sha256.
 RUBRIC_RE = re.compile(r"^[0-9a-f]{12}$")
+
+# The scorer whose bytes ARE the rubric. Hashed here rather than imported,
+# because behavior_judge imports release_gate which imports this module.
+JUDGE_PATH = Path(__file__).parent / "behavior_judge.py"
+
+
+def live_rubric_identity() -> str:
+    """What `behavior_judge._rubric_identity()` returns for THIS checkout.
+
+    Deliberately a re-implementation of one line rather than an import: the
+    import is circular. Kept honest by `test_live_rubric_identity_matches_the_scorer`,
+    which asserts the two agree.
+    """
+    try:
+        return hashlib.sha256(JUDGE_PATH.read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "unreadable"
 
 
 def load(path: Path = REGISTRY_PATH) -> dict:
@@ -83,6 +101,29 @@ def load(path: Path = REGISTRY_PATH) -> dict:
             for field in ("reason", "provenBy", "provenOn"):
                 if not isinstance(g.get(field), str) or not g[field].strip():
                     raise RegistryError(f"_rubricEquivalence[{i}] has no {field}")
+
+        # EVERY listed identity must be REAL: either it stamped an evaluation on
+        # record, or it is the identity this checkout's scorer emits right now.
+        # A hand-typed hash belongs to neither, and cloud review caught exactly
+        # that on PR #2576 — `cc91f15de09f` was read from the scorer, one further
+        # edit was made to it, and the stale value was recorded. The consequence
+        # is silent and total: a real run stamps the true hash, no group contains
+        # it, the floor resolves to None and the ratchet reports N/A forever.
+        # A remembered identifier is not a measurement (validation-discipline.md
+        # RULE: measure-with-the-real-tool-never-a-simulation); this makes the
+        # registry check it instead of trusting it.
+        stamped = {e.get("rubricIdentity")
+                   for a in doc.get("artifacts") or []
+                   for e in a.get("evaluations") or []}
+        live = live_rubric_identity()
+        for i, g in enumerate(groups):
+            unknown = [r for r in g["identities"] if r not in stamped and r != live]
+            if unknown:
+                raise RegistryError(
+                    f"_rubricEquivalence[{i}] lists {', '.join(unknown)}, which stamped no "
+                    f"evaluation and is not this checkout's scorer identity "
+                    f"({live}). A rubric identity is MEASURED, never typed: read it from "
+                    f"the scorer after your last edit to it.")
 
     artifacts = doc.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
