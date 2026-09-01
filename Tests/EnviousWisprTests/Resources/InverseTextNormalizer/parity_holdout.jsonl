@@ -3768,7 +3768,7 @@
 {"input": "Okay, swap to Gemini Polish, testing one, two, three.", "expected": "Okay, swap to Gemini Polish, testing one, two, three.", "category": "realnb", "slice": "realnb"}
 {"input": "I'm testing parakeet 1, 2, 3, 4, 5.", "expected": "I'm testing parakeet 1, 2, 3, 4, 5.", "category": "realnb", "slice": "realnb"}
 {"input": "This is me testing Whisper Kit, one, two, three, four.", "expected": "This is me testing Whisper Kit, one, two, three, four.", "category": "realnb", "slice": "realnb"}
-{"input": "Let's uh wrap here after you're done with this and I'll start C two in a fresh session.", "expected": "Let's uh wrap here after you're done with this and I'll start C two in a fresh session.", "category": "realnb", "slice": "realnb"}
+{"input": "Let's uh wrap here after you're done with this and I'll start C two in a fresh session.", "expected": "Let's uh wrap here after you're done with this and I'll start C2 in a fresh session.", "category": "realnb", "slice": "realnb"}
 {"input": "Some testing one, two, three.", "expected": "Some testing one, two, three.", "category": "realnb", "slice": "realnb"}
 {"input": "Testing, testing, one, two, three.", "expected": "Testing, testing, one, two, three.", "category": "realnb", "slice": "realnb"}
 {"input": "Audio test one, two, three.", "expected": "Audio test one, two, three.", "category": "realnb", "slice": "realnb"}
