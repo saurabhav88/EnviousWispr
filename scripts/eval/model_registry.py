@@ -85,12 +85,31 @@ def load(path: Path = REGISTRY_PATH) -> dict:
             # `judgeIdentity` is REQUIRED, not optional: `comparable()` reads it, so a
             # row without it raises KeyError from inside `floor()` — a validator that
             # passed such a row would be certifying data that crashes its own reader.
-            for field in ("corpus", "passRatePct", "s4Count", "casesScored",
-                          "summaryPath", "judgeIdentity", "promptVariant"):
-                if e.get(field) is None:
+            # TYPE, not just presence. `floor()` compares with `is not True` and with
+            # `==`, so a value of the right NAME and the wrong type — `run_complete:
+            # "true"`, or a case count as a string — passes validation and then makes
+            # `floor()` silently skip a winning row. Checking every field's type here
+            # closes that axis rather than the one field a reviewer happened to name.
+            # `bool` is excluded from the numeric checks deliberately: in Python
+            # `isinstance(True, int)` is True, so a boolean would sneak through as a
+            # count.
+            required = {
+                "corpus": str, "summaryPath": str, "judgeIdentity": str,
+                "promptVariant": str, "s4Count": int, "casesScored": int,
+                "passRatePct": (int, float),
+            }
+            for field, want in required.items():
+                value = e.get(field)
+                if value is None:
                     raise RegistryError(
                         f"{aid}: an evaluation is missing {field}; a score with no "
                         f"provenance cannot be compared to anything")
+                if isinstance(value, bool) or not isinstance(value, want):
+                    raise RegistryError(
+                        f"{aid}: {field} is {type(value).__name__} {value!r}, expected "
+                        f"{want if isinstance(want, type) else 'a number'}. A value of "
+                        f"the right name and the wrong type passes every comparison "
+                        f"floor() makes, by failing all of them.")
             # `rubricIdentity` may be NULL and the key must still be present. A run
             # scored from borrowed verdicts genuinely has no rubric of its own —
             # 197 of our 329 historical receipts are that shape. Deleting them
@@ -103,11 +122,16 @@ def load(path: Path = REGISTRY_PATH) -> dict:
             # is real history. What must not happen is the key going MISSING, because
             # `floor()` reads both and a dropped key would silently skip the row while
             # `validate` reported success.
-            for optional in ("rubricIdentity", "runComplete"):
+            for optional, want in (("rubricIdentity", str), ("runComplete", bool)):
                 if optional not in e:
                     raise RegistryError(
                         f"{aid}: an evaluation omits the {optional} key. Write null "
                         f"when the receipt does not record it; do not leave it out.")
+                value = e[optional]
+                if value is not None and not isinstance(value, want):
+                    raise RegistryError(
+                        f"{aid}: {optional} is {type(value).__name__} {value!r}; "
+                        f"expected {want.__name__} or null.")
 
     for release, ids in winners.items():
         if len(ids) > 1:
