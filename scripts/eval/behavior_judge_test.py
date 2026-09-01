@@ -2931,42 +2931,6 @@ def test_list_requirement_reaches_the_judge_and_survives_blinding():
 # originally borrowed from cleanup_metrics_test.py, deleted 2026-08-15 with the
 # rest of the deterministic polish grading; the zero-test trap it guards is
 # unchanged.)
-EXPECTED_TESTS = 135
-
-
-def _run() -> int:
-    tests = [v for k, v in sorted(globals().items())
-             if k.startswith("test_") and callable(v)]
-    if len(tests) != EXPECTED_TESTS:
-        print(f"FAIL: discovered {len(tests)} tests, expected {EXPECTED_TESTS}. "
-              f"A suite that silently shrinks still exits 0 without this check.")
-        return 1
-    passed = failed = 0
-    for t in tests:
-        try:
-            t()
-            passed += 1
-            print(f"  PASS {t.__name__}")
-        # BaseException, not Exception: a test that drives `main()` can reach
-        # `sys.exit()` (preflight_judge does exactly that when the Claude CLI is
-        # absent), and `SystemExit` does NOT derive from Exception. Catching only
-        # Exception let that kill the process mid-suite with no summary line and no
-        # count assertion — a truncated run that reported nothing about the tests
-        # it never reached. KeyboardInterrupt is re-raised so Ctrl-C still works.
-        except KeyboardInterrupt:
-            raise
-        except BaseException:
-            failed += 1
-            print(f"  FAIL {t.__name__}")
-            traceback.print_exc()
-    print(f"\n{passed} passed, {failed} failed ({len(tests)} total)")
-    return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    sys.exit(_run())
-
-
 # --------------------------------------------------------------------------- #
 # the rubric-identity guard, which cloud review on #2576 is the reason for      #
 # --------------------------------------------------------------------------- #
@@ -3005,3 +2969,39 @@ def test_registry_accepts_the_live_scorer_identity():
     doc = model_registry.load()
     live = model_registry.live_rubric_identity()
     assert live in doc["_rubricEquivalence"][0]["identities"], (live, doc["_rubricEquivalence"])
+
+
+EXPECTED_TESTS = 138
+
+
+def _run() -> int:
+    tests = [v for k, v in sorted(globals().items())
+             if k.startswith("test_") and callable(v)]
+    if len(tests) != EXPECTED_TESTS:
+        print(f"FAIL: discovered {len(tests)} tests, expected {EXPECTED_TESTS}. "
+              f"A suite that silently shrinks still exits 0 without this check.")
+        return 1
+    passed = failed = 0
+    for t in tests:
+        try:
+            t()
+            passed += 1
+            print(f"  PASS {t.__name__}")
+        # BaseException, not Exception: a test that drives `main()` can reach
+        # `sys.exit()` (preflight_judge does exactly that when the Claude CLI is
+        # absent), and `SystemExit` does NOT derive from Exception. Catching only
+        # Exception let that kill the process mid-suite with no summary line and no
+        # count assertion — a truncated run that reported nothing about the tests
+        # it never reached. KeyboardInterrupt is re-raised so Ctrl-C still works.
+        except KeyboardInterrupt:
+            raise
+        except BaseException:
+            failed += 1
+            print(f"  FAIL {t.__name__}")
+            traceback.print_exc()
+    print(f"\n{passed} passed, {failed} failed ({len(tests)} total)")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(_run())

@@ -55,8 +55,23 @@ REPLAY_CANNOT_REPRODUCE = {"judge_stable"}
 GATE_FIELDS = {"gate_verdict", "gate_checks"}
 
 
+# EXCLUDED BY NAME, and the list is short on purpose. An INCLUDE list is a partial
+# check wearing a complete one's clothes: it covers the fields whoever wrote it
+# thought of, and a scorer change touching any other field passes. The first version
+# of this digest hashed four fields — id, verdict, severity, behavior — and cloud
+# review pointed out that `coerce_new_score()` also emits scored booleans,
+# `pairwise_vs_production`, `failure_types` and changed-content detail, none of which
+# were covered. So the rule inverts: hash EVERYTHING, and name the few fields that
+# are not a score.
+#
+# `latencyMs` is wall-clock and differs run to run, so including it would make every
+# comparison fail. `rationale` is the judge's free text, which a replay carries
+# through verbatim from the frozen verdicts; it is not produced by the scorer.
+PER_CASE_EXCLUDE = {"latencyMs", "rationale"}
+
+
 def per_case_digest(per_case_path: pathlib.Path) -> str | None:
-    """A digest over EVERY per-case verdict, keyed by case id.
+    """A digest over EVERY scored field of EVERY per-case row, keyed by case id.
 
     The aggregates below can agree while individual verdicts move: swap a `pass`
     for a `minor` in one case and the reverse in another within the same behavior
@@ -79,8 +94,8 @@ def per_case_digest(per_case_path: pathlib.Path) -> str | None:
             r = json.loads(line)
         except ValueError:
             return None
-        rows.append((str(r.get("id")), r.get("verdict"), r.get("severity"),
-                     r.get("behavior")))
+        rows.append((str(r.get("id")),
+                     {k: v for k, v in sorted(r.items()) if k not in PER_CASE_EXCLUDE}))
     rows.sort(key=lambda t: t[0])
     return hashlib.sha256(
         json.dumps(rows, sort_keys=True, ensure_ascii=False).encode("utf-8")
