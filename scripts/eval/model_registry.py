@@ -157,7 +157,12 @@ def cmd_list(args) -> int:
     doc = load()
     rows = [a for a in doc["artifacts"]
             if args.release is None or a["release"] == args.release]
-    for release in sorted({a["release"] for a in rows}, reverse=True):
+    # NUMERIC, not string: at 1.10 a string sort puts 1.9 above it and the CLI's
+    # promise of "newest release first" would point a reader at an older winner.
+    # Same axis as the pinned ids — an ordering derived from the wrong property.
+    for release in sorted({a["release"] for a in rows},
+                          key=lambda v: tuple(int(part) for part in v.split(".")),
+                          reverse=True):
         print(f"\n=== EG-1 {release} " + "=" * 46)
         for a in [r for r in rows if r["release"] == release]:
             mark = {"shipped": "SHIPPED", "selected": "WON, not shipped",

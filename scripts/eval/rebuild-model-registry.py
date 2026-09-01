@@ -23,12 +23,15 @@ RUNS = Path(os.environ.get("EW_EVAL_RUNS")
             or "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/scripts/eval/runs")
 OUT = Path(__file__).parent / "model-registry.json"
 
-# release -> ordered arms. The candidate number is position in this list, which is
-# the ledger's own order (arm version numbers), NOT measured timestamps. Said out
-# loud in the file so nobody reads c007 as "trained seventh on the calendar".
+# Each row carries its OWN immutable id. The candidate numbers were originally
+# assigned from the ledger's order (arm version numbers, NOT measured timestamps —
+# do not read c007 as "trained seventh on the calendar"), but they are PINNED here
+# rather than recomputed: deriving an immutable identifier from list POSITION means
+# inserting a forgotten arm silently renames every later candidate in that release,
+# including the shipped winner, which is exactly what the convention forbids.
 ARMS = [
     # --- 1.0: the original EG-1, the only artifact of its line that we still have
-    ("1.0", "eg1-v1-monolith", ["eg1_sealed.jsonl", "eg1_shipped.jsonl",
+    ("eg1-1.0-c001", "1.0", "eg1-v1-monolith", ["eg1_sealed.jsonl", "eg1_shipped.jsonl",
                                 "arm_eg1_candidates.jsonl", "eg1_gold150_candidates.jsonl",
                                 "candidates_eg1_native_1890.jsonl",
                                 "eg1_shipped_holdout900.jsonl",
@@ -39,54 +42,54 @@ ARMS = [
      "superseded", "Replaced by 1.1. The monolith is retired and deleted on upgrade."),
 
     # --- 1.1: the campaign that produced the shipped model
-    ("1.1", "v6capped", ["arm_v6capped_candidates.jsonl"], "rejected",
+    ("eg1-1.1-c001", "1.1", "v6capped", ["arm_v6capped_candidates.jsonl"], "rejected",
      "No-op rate trimmed. +0.1pp, p=0.90 — null."),
-    ("1.1", "v6prod", ["arm_v6prod_candidates.jsonl"], "rejected",
+    ("eg1-1.1-c002", "1.1", "v6prod", ["arm_v6prod_candidates.jsonl"], "rejected",
      "All non-production inputs reshaped. -2.0pp, p=0.015 — WORSE."),
-    ("1.1", "v7drills", ["arm_v7drills_candidates.jsonl"], "rejected",
+    ("eg1-1.1-c003", "1.1", "v7drills", ["arm_v7drills_candidates.jsonl"], "rejected",
      "Drills reshaped to production shape. +0.5pp, p=0.55 — null."),
-    ("1.1", "v8", ["arm_v8_candidates.jsonl"], "rejected",
+    ("eg1-1.1-c004", "1.1", "v8", ["arm_v8_candidates.jsonl"], "rejected",
      "+3,437 synthetic SFT drills. -2.0pp, p=0.021 — WORSE."),
-    ("1.1", "dpo1", ["dpo1_sealed.jsonl"], "rejected",
+    ("eg1-1.1-c005", "1.1", "dpo1", ["dpo1_sealed.jsonl"], "rejected",
      "Preference pairs at 5e-6 x1. 99% of outputs byte-identical to the base — null."),
-    ("1.1", "dpo2", [], "rejected",
+    ("eg1-1.1-c006", "1.1", "dpo2", [], "rejected",
      "Preference pairs at 3e-5 x2. Over-optimised: formatted 100% of wanted cases AND "
      "39.9% of flat ones, restraint 85% -> 49%. Killed before a sealed run, so it has "
      "no evaluation receipt."),
-    ("1.1", "dpo3", ["dpo3_sealed.jsonl", "dpo3_speechpath.jsonl"], "rejected",
+    ("eg1-1.1-c007", "1.1", "dpo3", ["dpo3_sealed.jsonl", "dpo3_speechpath.jsonl"], "rejected",
      "Preference pairs at 1.2e-5 x1. Beaten by dpo4 on the same corpus."),
-    ("1.1", "dpo4", ["dpo4_sealed.jsonl", "dpo4_speechpath.jsonl"], "rejected",
+    ("eg1-1.1-c008", "1.1", "dpo4", ["dpo4_sealed.jsonl", "dpo4_speechpath.jsonl"], "rejected",
      "Meaning-weighted pairs, 30% structure. The only arm of its line to improve every "
      "dimension at once, and still not the arm that shipped."),
-    ("1.1", "v13", ["v13_sealed.jsonl"], "rejected",
+    ("eg1-1.1-c009", "1.1", "v13", ["v13_sealed.jsonl"], "rejected",
      "SFT list drills. Lists solved, self_correction fell 71.2 -> 65.3."),
-    ("1.1", "v14", ["v14_sealed.jsonl", "v14_promptprobe_sealed.jsonl",
+    ("eg1-1.1-c010", "1.1", "v14", ["v14_sealed.jsonl", "v14_promptprobe_sealed.jsonl",
                     "v14_fluidprompt_sealed.jsonl"], "rejected",
      "SFT hinge gate. Superseded within the same line."),
-    ("1.1", "v15", ["v15_sealed.jsonl"], "rejected",
+    ("eg1-1.1-c011", "1.1", "v15", ["v15_sealed.jsonl"], "rejected",
      "SFT marker classes. Superseded within the same line."),
-    ("1.1", "v15align", ["v15align_sealed.jsonl"], "rejected",
+    ("eg1-1.1-c012", "1.1", "v15align", ["v15align_sealed.jsonl"], "rejected",
      "v15 corpus trained ON a fuller prompt. p=1.00 — in SFT the system prompt is a "
      "constant prefix and carries no gradient."),
-    ("1.1", "v17", ["v17_sealed.jsonl"], "rejected",
+    ("eg1-1.1-c013", "1.1", "v17", ["v17_sealed.jsonl"], "rejected",
      "Marker prior rebalanced. First arm ever to beat EG-1 1.0 on self_correction."),
-    ("1.1", "v18", ["v18_sealed.jsonl", "v18_speechpath.jsonl"], "rejected",
+    ("eg1-1.1-c014", "1.1", "v18", ["v18_sealed.jsonl", "v18_speechpath.jsonl"], "rejected",
      "+ list-trigger prior rebalanced. Beat cloud +120/-89, p=0.038."),
-    ("1.1", "v19", ["v19_sealed.jsonl"], "rejected",
+    ("eg1-1.1-c015", "1.1", "v19", ["v19_sealed.jsonl"], "rejected",
      "Superseded by v20 within the same line."),
-    ("1.1", "v20", ["v20_sealed.jsonl", "v20_speechpath.jsonl",
+    ("eg1-1.1-c016", "1.1", "v20", ["v20_sealed.jsonl", "v20_speechpath.jsonl",
                     "eg1_v2_installed_sealed.jsonl"], "shipped",
      "SHIPPED as EG-1 1.1, delivery revision v3-eg2, shards eg-1-v2-*. Lineage evidence: "
      "branch feat/eg2-v20-model, docs/eg2-campaign/build_v20_manifest.py and shard_v20.sh, "
      "and the commit 'point the shipped manifests at model revision v3-eg2' on that branch."),
 
     # --- 1.2: the email-structure campaign
-    ("1.2", "v21email", ["sealed_v21.jsonl", "typeb_v21.jsonl", "tail_v21.jsonl"],
+    ("eg1-1.2-c001", "1.2", "v21email", ["sealed_v21.jsonl", "typeb_v21.jsonl", "tail_v21.jsonl"],
      "rejected", "Round 1. 4 genuine stable critical regressions against shipped 1.1."),
-    ("1.2", "v22round2", ["sealed_v22.jsonl", "email_v22.jsonl", "tail_v22.jsonl"],
+    ("eg1-1.2-c002", "1.2", "v22round2", ["sealed_v22.jsonl", "email_v22.jsonl", "tail_v22.jsonl"],
      "rejected", "Round 2. Made meaning WORSE (5 genuine regressions): a drill gate forced "
      "every one of 263 rows shorter, so the model learned to delete."),
-    ("1.2", "v23round3", ["sealed_v23.jsonl", "email_v23.jsonl", "typeb_v23.jsonl",
+    ("eg1-1.2-c003", "1.2", "v23round3", ["sealed_v23.jsonl", "email_v23.jsonl", "typeb_v23.jsonl",
                           "tail_v23.jsonl"],
      "selected", "Round 3. Zero genuine stable critical regressions, email held at +75. "
      "Won but NOT yet shipped: the shards are not uploaded, and two founder decisions are "
@@ -156,17 +159,19 @@ def main() -> int:
     # script happily writes an artifact with zero evaluations when a run directory has
     # been moved or deleted, and the row then reads as "never scored" rather than
     # "its receipt is gone".
-    missing = sorted({cf for _, _, cand_files, _, _ in ARMS
-                      for cf in cand_files if cf not in receipts})
+    missing = sorted({cf for row in ARMS for cf in row[3] if cf not in receipts})
     if missing:
         raise SystemExit(
             "REFUSED: these declared candidate files have no receipt under "
             f"{RUNS}:\n  " + "\n  ".join(missing) +
             "\nEither the receipts moved, or the table names a file that never existed.")
-    counters, records = {}, []
-    for release, legacy, cand_files, status, reason in ARMS:
-        counters[release] = counters.get(release, 0) + 1
-        artifact_id = f"eg1-{release}-c{counters[release]:03d}"
+    records, seen = [], set()
+    for artifact_id, release, legacy, cand_files, status, reason in ARMS:
+        if artifact_id in seen:
+            raise SystemExit(f"REFUSED: {artifact_id} appears twice in ARMS")
+        if not artifact_id.startswith(f"eg1-{release}-"):
+            raise SystemExit(f"REFUSED: {artifact_id} does not match release {release}")
+        seen.add(artifact_id)
         evals = []
         for cf in cand_files:
             evals.extend(receipts.get(cf, []))
