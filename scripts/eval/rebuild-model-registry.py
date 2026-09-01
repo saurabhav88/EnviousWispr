@@ -234,6 +234,15 @@ def main() -> int:
             raise SystemExit(f"REFUSED: the registry being replaced is unreadable ({exc})")
         was = {a["artifactId"]: len(a.get("evaluations") or [])
                for a in previous.get("artifacts", [])}
+        # CARRY THE RUBRIC EQUIVALENCE FORWARD. It is not derivable from receipts —
+        # it records a proven-score-neutral refactor of the scorer — so this template
+        # would silently DELETE it, and the ratchet would lose its floor on the next
+        # run with nothing said. Same class of loss the evaluation-count check below
+        # exists to refuse, arriving through the template rather than the data.
+        for key in ("_rubricEquivalence", "_rubricEquivalenceContract"):
+            if key in previous:
+                doc[key] = previous[key]
+
         lost = [(r["artifactId"], was[r["artifactId"]], len(r["evaluations"]))
                 for r in records
                 if r["artifactId"] in was and len(r["evaluations"]) < was[r["artifactId"]]]

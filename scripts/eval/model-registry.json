@@ -1137,5 +1137,17 @@
         }
       ]
     }
-  ]
+  ],
+  "_rubricEquivalence": [
+    {
+      "identities": [
+        "626d3a1c5219",
+        "cc91f15de09f"
+      ],
+      "reason": "The release gate moved out of behavior_judge.py into release_gate.py so the bar can change without invalidating history. _rubric_identity() hashes behavior_judge.py whole, so removing code from it mints a new identity even when no scoring logic moved.",
+      "provenBy": "scripts/eval/replay_receipts.py re-aggregated all 71 registry receipts from their frozen per-case verdicts under both revisions; scripts/eval/diff_replays.py reported SCORES MOVED: 0. Zero judge calls, so the claim is a measurement and is re-runnable by anyone.",
+      "provenOn": "2026-09-01"
+    }
+  ],
+  "_rubricEquivalenceContract": "Two rubric identities may be listed together ONLY when a replay of every receipt under both revisions moved no score. This is the one mechanism that can merge rubrics, so it is also the one that could silently rank two real rubrics together: never add a group without re-running scripts/eval/replay_receipts.py under both revisions and pasting the SCORES MOVED count into provenBy."
 }

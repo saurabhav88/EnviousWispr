@@ -58,6 +58,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+
+# The release gate lives OUTSIDE this file on purpose: `_rubric_identity()` hashes
+# this file whole, so a gate edit here would invalidate every stored score. See
+# release_gate.py's module docstring.
+from release_gate import REP_PASSRATE_DELTA_MAX, evaluate_new_gate
 import http.client
 import json
 import os
@@ -136,7 +141,6 @@ HTTP_JUDGE_MAX_WORKERS = int(os.environ.get("EW_JUDGE_WORKERS", "12"))
 DEFAULT_REPLICATIONS = 2              # old-system judge instability net (no temperature knob on CLI)
 DEFAULT_ADJUDICATE_PCT = 0.15          # new-system: fraction of pass/minor/soft_fail
 DEFAULT_ADJUDICATE_MIN = 15            # cases re-judged as a calibration sample
-REP_PASSRATE_DELTA_MAX = 5.0          # pp; wobble above this flags the run unreliable
 DEFAULT_CHUNK_SIZE = 8
 
 # Azure OpenAI data-plane version for the chat-completions route. Pinned rather than
@@ -1467,7 +1471,8 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
               adjudicate_pct: float = DEFAULT_ADJUDICATE_PCT,
               adjudicate_min: int = DEFAULT_ADJUDICATE_MIN,
               adjudicate: bool = True,
-              blind: bool = False) -> dict:
+              blind: bool = False,
+              ratchet_corpus: str | None = None) -> dict:
     """Run (or ingest) the behavior-aware judge and aggregate. Returns the full
     report dict. Cases with no candidate or an engine error are recorded as
     infra-skips (NOT scored as fails — an engine error is not a grading signal).
@@ -1596,7 +1601,19 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
                            # Same distinction `cacheable` already draws: an ABSENT
                            # answer and a FALSE answer are different situations,
                            # and collapsing them shipped a wrong claim twice.
-                           blind=None if external_verdicts is not None else blind)
+                           blind=None if external_verdicts is not None else blind,
+                           # Minted HERE, not in main: `_resolved_judge_identity` is
+                           # set by the judging above, so a context built before this
+                           # call carries judge=None and every real run loses its
+                           # ratchet while still reporting a verdict.
+                           ratchet_ctx={
+                               "corpus": ratchet_corpus,
+                               "rubric": (_rubric_identity()
+                                          if external_verdicts is None else None),
+                               "judge": (os.environ.get("EW_JUDGE_IDENTITY")
+                                         or _resolved_judge_identity),
+                               "cases": len(norm_cases),
+                           })
     report["skipped"] = skipped
     report["missing_scores"] = missing
     report["per_case"] = per_case
@@ -1634,7 +1651,8 @@ def _is_pass(verdict: str) -> bool:
 def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list[str],
                   has_production: bool, missing_count: int = 0, skipped_count: int = 0,
                   adjudication_missing_count: int = 0,
-                  blind: bool | None = False) -> dict:
+                  blind: bool | None = False,
+                  ratchet_ctx: dict | None = None) -> dict:
     total = len(per_case)
 
     def rate(items, pred):
@@ -1753,7 +1771,8 @@ def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list
     # Release gate — apply the conditions for which we have data.
     gate = evaluate_new_gate(overall, smoke_metrics, trap_metrics, wobble, pairwise,
                              has_production, missing_count, skipped_count,
-                             adjudication_missing_count)
+                             adjudication_missing_count, ratchet_ctx=ratchet_ctx,
+                             cases_scored=total)
 
     return {
         "system": "new",
@@ -1784,63 +1803,21 @@ def aggregate_new(per_case: list[dict], rep_scores: list[dict], judged_ids: list
     }
 
 
-def evaluate_new_gate(overall, smoke, traps, wobble, pairwise, has_production,
-                      missing_count=0, skipped_count=0,
-                      adjudication_missing_count=0) -> dict:
-    """Apply the proposed release gate. Three-valued verdict:
-      BLOCK      — a quality check FAILED (S4 / wobble / pairwise).
-      INCOMPLETE — quality clean but the run did not cover every case (engine
-                   skips or judge-dropped scores); re-run the gaps, do not ship.
-      CLEAR      — quality clean AND full coverage.
-    Conditions needing a production baseline are reported N/A, never silently
-    passed. Completeness is tracked separately from quality so the founder can
-    tell 'just re-run the missing cases' from 'real quality failure'."""
-    quality_checks = []
+def build_old_payload(norm: dict, cand: dict) -> dict:
+    # Old system judges candidate vs the RAW transcript only.
+    return {"id": norm["id"], "baseline": norm["raw_transcript"],
+            "candidate": cand.get("candidate") or ""}
 
-    def add(name, ok, detail):
-        quality_checks.append({"check": name, "status": "PASS" if ok else "FAIL", "detail": detail})
 
-    add("critical_smoke_no_s4", smoke["s4_count"] == 0,
-        f"{smoke['s4_count']} S4 in {smoke['n']} critical-smoke cases (limit 0)")
-    add("full_corpus_no_s4", overall["critical_fail_count"] == 0,
-        f"{overall['critical_fail_count']} S4 across full corpus (limit 0; waiver needs founder sign-off)")
-    if wobble.get("unreliable") is not None:
-        add("judge_stable", not wobble["unreliable"],
-            f"rep pass-rate delta {wobble.get('delta_pp')}pp (limit {REP_PASSRATE_DELTA_MAX}pp)")
-    if has_production:
-        add("critical_smoke_no_critical_loss", smoke["critical_loss_count"] == 0,
-            f"{smoke['critical_loss_count']} critical_loss in critical-smoke (limit 0)")
-        add("pairwise_net_positive", pairwise.get("net_wins", 0) > 0,
-            f"net wins {pairwise.get('net_wins')} (must be > 0)")
-    else:
-        quality_checks.append({"check": "pairwise_vs_production", "status": "N/A",
-                               "detail": "no --production baseline supplied"})
-
-    # An adjudication drop is a COVERAGE gap, not a quality failure: routing it
-    # into `quality_checks` would report BLOCK and tell the reader a transient
-    # judge omission was a quality regression. This gate's own contract keeps the
-    # two separate so "re-run the gaps" is distinguishable from "real failure".
-    complete = (missing_count == 0 and skipped_count == 0
-                and adjudication_missing_count == 0)
-    completeness = {"check": "run_complete", "status": "PASS" if complete else "INCOMPLETE",
-                    "detail": f"{skipped_count} engine-skipped, {missing_count} judge-dropped, "
-                              f"{adjudication_missing_count} adjudication-dropped "
-                              f"(all must be 0 to ship; re-run the gaps)"}
-
-    blocking = [c for c in quality_checks if c["status"] == "FAIL"]
-    if blocking:
-        verdict = "BLOCK"
-    elif not complete:
-        verdict = "INCOMPLETE"
-    else:
-        verdict = "CLEAR"
-    return {
-        "verdict": verdict,
-        "run_complete": complete,
-        "checks": quality_checks + [completeness],
-        "note": ("Behavior-regression, trap-regression and mixed-regression checks "
-                 "require a prior run to diff against; run two builds to enable them."),
-    }
+def coerce_old_score(raw: dict) -> dict:
+    def axis(k):
+        v = raw.get(k, 0)
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            v = 0
+        return max(0, min(3, v))
+    return {a: axis(a) for a in OLD_ABSOLUTE_AXES + ("regression",)}
 
 
 # ---------------------------------------------------------------------------
@@ -1872,23 +1849,6 @@ RULES:
 - Integer 0-3 only. Never 0.5, never 4.
 - reasoning: ONE sentence, 15 words max. Never "Let me analyze..." or "First,..."
 - Nothing outside the JSON array."""
-
-
-def build_old_payload(norm: dict, cand: dict) -> dict:
-    # Old system judges candidate vs the RAW transcript only.
-    return {"id": norm["id"], "baseline": norm["raw_transcript"],
-            "candidate": cand.get("candidate") or ""}
-
-
-def coerce_old_score(raw: dict) -> dict:
-    def axis(k):
-        v = raw.get(k, 0)
-        try:
-            v = int(v)
-        except (TypeError, ValueError):
-            v = 0
-        return max(0, min(3, v))
-    return {a: axis(a) for a in OLD_ABSOLUTE_AXES + ("regression",)}
 
 
 def score_old(norm_cases: dict, cands: dict, judge: str, reps: int, chunk_size: int) -> dict:
@@ -2277,7 +2237,9 @@ def main() -> int:
     if args.system == "new":
         report = score_new(norm_cases, cands, prod, args.judge, args.chunk_size,
                            external_verdicts, args.adjudicate_pct, args.adjudicate_min,
-                           adjudicate=not args.no_adjudicate, blind=args.blind)
+                           adjudicate=not args.no_adjudicate, blind=args.blind,
+                           ratchet_corpus=(corpus_paths[0].name
+                                           if len(corpus_paths) == 1 else None))
     else:
         report = score_old(norm_cases, cands, args.judge, args.reps, args.chunk_size)
 

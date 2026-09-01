@@ -35,6 +35,10 @@ class RegistryError(Exception):
     """Anything that would make the registry answer confidently and wrongly."""
 
 
+# A rubric identity is the first 12 hex chars of a sha256.
+RUBRIC_RE = re.compile(r"^[0-9a-f]{12}$")
+
+
 def load(path: Path = REGISTRY_PATH) -> dict:
     """Read and validate. Every failure raises; none returns a default.
 
@@ -48,6 +52,37 @@ def load(path: Path = REGISTRY_PATH) -> dict:
         raise RegistryError(f"cannot read {path.name} ({exc})") from exc
     except ValueError as exc:
         raise RegistryError(f"{path.name} is not valid JSON ({exc})") from exc
+
+    # The equivalence map can MERGE two rubrics, so it is validated before anything
+    # reads it. Every failure below is a refusal, never a skip: a malformed group
+    # that is quietly ignored takes the floor away with nothing said.
+    groups = doc.get("_rubricEquivalence")
+    if groups is not None:
+        if not isinstance(groups, list):
+            raise RegistryError("_rubricEquivalence must be a list")
+        seen_ids: dict[str, int] = {}
+        for i, g in enumerate(groups):
+            if not isinstance(g, dict):
+                raise RegistryError(f"_rubricEquivalence[{i}] is not an object")
+            ids = g.get("identities")
+            if not isinstance(ids, list) or len(ids) < 2:
+                raise RegistryError(f"_rubricEquivalence[{i}] needs 2+ identities")
+            if len(set(ids)) != len(ids):
+                raise RegistryError(f"_rubricEquivalence[{i}] repeats an identity")
+            for r in ids:
+                if not isinstance(r, str) or not RUBRIC_RE.match(r):
+                    raise RegistryError(
+                        f"_rubricEquivalence[{i}]: {r!r} is not a 12-hex rubric identity")
+                # Two groups sharing an identity make the canonical form depend on
+                # list order, which is the same positional defect the pinned ids
+                # exist to prevent.
+                if r in seen_ids:
+                    raise RegistryError(
+                        f"rubric {r} appears in groups {seen_ids[r]} and {i}")
+                seen_ids[r] = i
+            for field in ("reason", "provenBy", "provenOn"):
+                if not isinstance(g.get(field), str) or not g[field].strip():
+                    raise RegistryError(f"_rubricEquivalence[{i}] has no {field}")
 
     artifacts = doc.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
@@ -171,8 +206,31 @@ def corpus_identity(evaluation: dict) -> tuple[str, int]:
     return (evaluation["corpus"], evaluation["casesScored"])
 
 
+def canonical_rubric(rubric: str | None, doc: dict | None = None) -> str | None:
+    """Map a rubric identity onto its equivalence group's FIRST member.
+
+    `_rubric_identity()` hashes behavior_judge.py IN ITS ENTIRETY, so a change that
+    provably moves no score — moving the release gate into its own module, say —
+    still mints a new identity and orphans every stored evaluation from it. Without
+    this map the ratchet has no floor on its first run after any such refactor, and
+    a gate with no floor is the defect that got the first ratchet reverted.
+
+    This is the ONLY mechanism that can merge two rubrics, so it is also the only
+    one that could rank two genuinely different rubrics together. `load()` refuses a
+    group that does not carry its evidence; the registry's
+    `_rubricEquivalenceContract` states what that evidence has to be.
+    """
+    if rubric is None:
+        return None
+    doc = doc if doc is not None else load()
+    for group in doc.get("_rubricEquivalence") or []:
+        if rubric in group["identities"]:
+            return group["identities"][0]
+    return rubric
+
+
 def comparable(evaluation: dict, corpus: str, rubric: str, judge: str,
-               cases: int) -> bool:
+               cases: int, doc: dict | None = None) -> bool:
     """Corpus AND its case count, rubric, judge — and the artifact's OWN prompt.
 
     An Azure deployment can be repointed in place, so the same corpus and rubric
@@ -181,7 +239,8 @@ def comparable(evaluation: dict, corpus: str, rubric: str, judge: str,
     configuration that was never selected or shipped, so letting one set the floor
     would gate releases on a prompt we do not serve."""
     return (corpus_identity(evaluation) == (corpus, cases)
-            and evaluation["rubricIdentity"] == rubric
+            and canonical_rubric(evaluation["rubricIdentity"], doc)
+                == canonical_rubric(rubric, doc)
             and evaluation["judgeIdentity"] == judge
             and evaluation["promptVariant"] == "own")
 
@@ -208,7 +267,7 @@ def floor(corpus: str, rubric: str, judge: str, cases: int,
         if a["status"] not in EXCLUSIVE:
             continue
         for e in a.get("evaluations") or []:
-            if (not comparable(e, corpus, rubric, judge, cases)
+            if (not comparable(e, corpus, rubric, judge, cases, doc)
                     or e.get("runComplete") is not True):
                 continue
             if best is None or e["s4Count"] < best[0]:

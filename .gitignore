@@ -263,6 +263,12 @@ scripts/eval/apple_runner/Package.resolved
 !scripts/eval/model-registry.json
 !scripts/eval/model_registry.py
 !scripts/eval/rebuild-model-registry.py
+# The release gate, and the harness that proves a scorer change moved no score.
+# Tracked because the rubric-equivalence claims in model-registry.json cite them:
+# an equivalence nobody can re-run is an assertion, not evidence.
+!scripts/eval/release_gate.py
+!scripts/eval/replay_receipts.py
+!scripts/eval/diff_replays.py
 !scripts/eval/classify_redundant.py
 !scripts/eval/run_cloud_type_b.py
 !scripts/eval/tts_corpus.py
