@@ -3,7 +3,7 @@
   "identity": {
     "family": "eg_one",
     "name": "eg-1",
-    "revision": "v4-e1",
+    "revision": "eg1-1.2-c003",
     "variant": "q5km",
     "runtimeABI": "llamacpp-eg1-v1"
   },
@@ -12,60 +12,60 @@
   },
   "files": [
     {
-      "path": "v4-e1/eg-1-v3-00001-of-00008.gguf",
-      "installPath": "eg-1-v3-00001-of-00008.gguf",
+      "path": "eg1-1.2-c003/eg1-1.2-c003-00001-of-00008.gguf",
+      "installPath": "eg1-1.2-c003-00001-of-00008.gguf",
       "sizeBytes": 399884640,
       "sha256": "8f05b91acb93ed9c0ef833d617f4cefb492f697c4fe783f6ba26ce4add14e3c0",
-      "component": "eg-1-v3-00001-of-00008.gguf"
+      "component": "eg1-1.2-c003-00001-of-00008.gguf"
     },
     {
-      "path": "v4-e1/eg-1-v3-00002-of-00008.gguf",
-      "installPath": "eg-1-v3-00002-of-00008.gguf",
+      "path": "eg1-1.2-c003/eg1-1.2-c003-00002-of-00008.gguf",
+      "installPath": "eg1-1.2-c003-00002-of-00008.gguf",
       "sizeBytes": 395007008,
       "sha256": "011892fa153cf95f3dc68c049860ad35c752a990f582e4b33c974205df2486fa",
-      "component": "eg-1-v3-00002-of-00008.gguf"
+      "component": "eg1-1.2-c003-00002-of-00008.gguf"
     },
     {
-      "path": "v4-e1/eg-1-v3-00003-of-00008.gguf",
-      "installPath": "eg-1-v3-00003-of-00008.gguf",
+      "path": "eg1-1.2-c003/eg1-1.2-c003-00003-of-00008.gguf",
+      "installPath": "eg1-1.2-c003-00003-of-00008.gguf",
       "sizeBytes": 393972896,
       "sha256": "5769143e7fc28cf4b052237da617cfcbebf2f16bf1500acc4c7ed483fbc18a6f",
-      "component": "eg-1-v3-00003-of-00008.gguf"
+      "component": "eg1-1.2-c003-00003-of-00008.gguf"
     },
     {
-      "path": "v4-e1/eg-1-v3-00004-of-00008.gguf",
-      "installPath": "eg-1-v3-00004-of-00008.gguf",
+      "path": "eg1-1.2-c003/eg1-1.2-c003-00004-of-00008.gguf",
+      "installPath": "eg1-1.2-c003-00004-of-00008.gguf",
       "sizeBytes": 397618336,
       "sha256": "52724cb4812115d993c5f4e4f4ae5e87a44e005fd05b51e14bf427d353dd9d78",
-      "component": "eg-1-v3-00004-of-00008.gguf"
+      "component": "eg1-1.2-c003-00004-of-00008.gguf"
     },
     {
-      "path": "v4-e1/eg-1-v3-00005-of-00008.gguf",
-      "installPath": "eg-1-v3-00005-of-00008.gguf",
+      "path": "eg1-1.2-c003/eg1-1.2-c003-00005-of-00008.gguf",
+      "installPath": "eg1-1.2-c003-00005-of-00008.gguf",
       "sizeBytes": 389508864,
       "sha256": "9b414a065c40e25dea077ae9fe8198ae9c13965cb5df5e997df0580aef452450",
-      "component": "eg-1-v3-00005-of-00008.gguf"
+      "component": "eg1-1.2-c003-00005-of-00008.gguf"
     },
     {
-      "path": "v4-e1/eg-1-v3-00006-of-00008.gguf",
-      "installPath": "eg-1-v3-00006-of-00008.gguf",
+      "path": "eg1-1.2-c003/eg1-1.2-c003-00006-of-00008.gguf",
+      "installPath": "eg1-1.2-c003-00006-of-00008.gguf",
       "sizeBytes": 388606432,
       "sha256": "00ccd4bcf1507db1ca57252ed3465672a3acd1ec49eb450512183bd20e67f25e",
-      "component": "eg-1-v3-00006-of-00008.gguf"
+      "component": "eg1-1.2-c003-00006-of-00008.gguf"
     },
     {
-      "path": "v4-e1/eg-1-v3-00007-of-00008.gguf",
-      "installPath": "eg-1-v3-00007-of-00008.gguf",
+      "path": "eg1-1.2-c003/eg1-1.2-c003-00007-of-00008.gguf",
+      "installPath": "eg1-1.2-c003-00007-of-00008.gguf",
       "sizeBytes": 397168384,
       "sha256": "3a7b065f44ab398f9eb9656aa263f43a9be1acd6af55a0790c7960162675e729",
-      "component": "eg-1-v3-00007-of-00008.gguf"
+      "component": "eg1-1.2-c003-00007-of-00008.gguf"
     },
     {
-      "path": "v4-e1/eg-1-v3-00008-of-00008.gguf",
-      "installPath": "eg-1-v3-00008-of-00008.gguf",
+      "path": "eg1-1.2-c003/eg1-1.2-c003-00008-of-00008.gguf",
+      "installPath": "eg1-1.2-c003-00008-of-00008.gguf",
       "sizeBytes": 127746048,
       "sha256": "91160e7d004150b44a360a7db69237b5405f34d29855c15480324a4abfdf5c0c",
-      "component": "eg-1-v3-00008-of-00008.gguf"
+      "component": "eg1-1.2-c003-00008-of-00008.gguf"
     }
   ],
   "optionalFiles": [],
@@ -85,7 +85,7 @@
     "installLocation": "polishModelsCache",
     "diskHeadroomFactor": "2.2",
     "evictPreviousRevisions": true,
-    "entrypointFile": "eg-1-v3-00001-of-00008.gguf"
+    "entrypointFile": "eg1-1.2-c003-00001-of-00008.gguf"
   },
-  "manifestDigest": "530d0587ab958da9301ac96dfbbd0ffce5eb9214ec5af97b02bdc5b1bf63d9cd"
+  "manifestDigest": "52405c2e71d8bee1a24c9b06c31a84de5df5021a6a7914ebb019c0376d678038"
 }

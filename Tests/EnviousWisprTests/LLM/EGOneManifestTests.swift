@@ -12,7 +12,7 @@ struct EGOneManifestTests {
   /// revision it belongs to. The revision is in the NAME deliberately: when
   /// the pin moves, this constant has to be renamed as well as revalued, so
   /// the pairing cannot be updated by half.
-  private static let shippedRevision = "v4-e1"
+  private static let shippedRevision = "eg1-1.2-c003"
   private static let expectedDisplayVersionForShippedRevision = "1.2"
   private static let expectedPromptTemplateForShippedRevision = "eg1-v2"
 
