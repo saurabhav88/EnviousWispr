@@ -102,28 +102,31 @@ def load(path: Path = REGISTRY_PATH) -> dict:
                 if not isinstance(g.get(field), str) or not g[field].strip():
                     raise RegistryError(f"_rubricEquivalence[{i}] has no {field}")
 
-        # EVERY listed identity must be REAL: either it stamped an evaluation on
-        # record, or it is the identity this checkout's scorer emits right now.
-        # A hand-typed hash belongs to neither, and cloud review caught exactly
-        # that on PR #2576 — `cc91f15de09f` was read from the scorer, one further
-        # edit was made to it, and the stale value was recorded. The consequence
-        # is silent and total: a real run stamps the true hash, no group contains
-        # it, the floor resolves to None and the ratchet reports N/A forever.
-        # A remembered identifier is not a measurement (validation-discipline.md
-        # RULE: measure-with-the-real-tool-never-a-simulation); this makes the
-        # registry check it instead of trusting it.
+        # EVERY GROUP must be CONNECTED TO REALITY: at least one of its identities
+        # stamped an evaluation on record, or is the scorer this checkout runs now.
+        #
+        # DELIBERATELY NOT "every identity must be stamped or live", which was the
+        # first version and which cloud review showed to be a time bomb. `live` is a
+        # MOVING TARGET: the identity added by a refactor has stamped nothing yet, so
+        # the next ordinary edit to behavior_judge.py made it neither stamped nor
+        # live and `load()` rejected the WHOLE registry — every consumer down, and
+        # `s4_floor()` reporting the registry unreadable, which now BLOCKS. Measured:
+        # appending one comment line to the scorer produced exactly that.
+        #
+        # A condition that must hold FOREVER cannot be written against a value that
+        # changes every time anyone edits a file. Stamped-ness does not change, so
+        # this one holds. The liveness question is real but belongs at WRITE time,
+        # where the answer is knowable — see `cmd_check_live`.
         stamped = {e.get("rubricIdentity")
                    for a in doc.get("artifacts") or []
                    for e in a.get("evaluations") or []}
         live = live_rubric_identity()
         for i, g in enumerate(groups):
-            unknown = [r for r in g["identities"] if r not in stamped and r != live]
-            if unknown:
+            if not any(r in stamped or r == live for r in g["identities"]):
                 raise RegistryError(
-                    f"_rubricEquivalence[{i}] lists {', '.join(unknown)}, which stamped no "
-                    f"evaluation and is not this checkout's scorer identity "
-                    f"({live}). A rubric identity is MEASURED, never typed: read it from "
-                    f"the scorer after your last edit to it.")
+                    f"_rubricEquivalence[{i}] lists {', '.join(g['identities'])}, and NONE of "
+                    f"them stamped an evaluation or is this checkout's scorer ({live}). A group "
+                    f"with no connection to real history cannot be checked by anyone.")
 
     artifacts = doc.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
@@ -320,6 +323,41 @@ def floor(corpus: str, rubric: str, judge: str, cases: int,
     return best[0], f"{best[1]} ({best[2]})"
 
 
+def cmd_check_live(args) -> int:
+    """Refuse unless the LIVE scorer identity is stamped or listed in a group.
+
+    This is the check that catches a TYPED rubric hash, and it is a WRITE-time
+    question by nature: "is this identity the one the scorer emits" is only
+    meaningful at the moment you record it. Run it after adding an equivalence
+    group and after any edit to `behavior_judge.py` that you believe score-neutral.
+
+    A live identity that is neither stamped nor listed is NOT an error in itself —
+    that is the ordinary state of a genuinely new rubric, and the ratchet correctly
+    reports N/A. It IS an error when you meant to record an equivalence and recorded
+    a stale value, which is the case this command exists to make visible.
+    """
+    doc = load()
+    live = live_rubric_identity()
+    stamped = {e.get("rubricIdentity")
+               for a in doc["artifacts"] for e in a.get("evaluations") or []}
+    listed = {r for g in doc.get("_rubricEquivalence") or [] for r in g["identities"]}
+    if live in stamped:
+        print(f"OK: live scorer identity {live} has stamped evaluations on record")
+        return 0
+    if live in listed:
+        print(f"OK: live scorer identity {live} is recorded in an equivalence group")
+        return 0
+    print(f"UNRECORDED: the scorer emits {live}, which has stamped no evaluation and is in no "
+          f"equivalence group.\n"
+          f"  If you intended a score-neutral refactor, prove it and record the pair:\n"
+          f"    python3 scripts/eval/replay_receipts.py before.json  # at the old revision\n"
+          f"    python3 scripts/eval/replay_receipts.py after.json\n"
+          f"    python3 scripts/eval/diff_replays.py before.json after.json\n"
+          f"  If this is a genuinely NEW rubric, nothing is wrong: the ratchet reports N/A "
+          f"until a shipped or selected artifact is evaluated under it.")
+    return 1
+
+
 def cmd_list(args) -> int:
     doc = load()
     rows = [a for a in doc["artifacts"]
@@ -395,6 +433,7 @@ def main() -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("list"); p.add_argument("--release"); p.set_defaults(fn=cmd_list)
     p = sub.add_parser("validate"); p.set_defaults(fn=cmd_validate)
+    p = sub.add_parser("check-live"); p.set_defaults(fn=cmd_check_live)
     p = sub.add_parser("floor")
     p.add_argument("--corpus", required=True); p.add_argument("--rubric", required=True)
     p.add_argument("--judge", required=True, help="judge identity, exactly as recorded")
