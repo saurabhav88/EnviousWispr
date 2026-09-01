@@ -16,7 +16,7 @@ CLI:
     model_registry.py list                 every artifact, newest release first
     model_registry.py list --release 1.2   one release
     model_registry.py validate             schema + convention + one-winner rules
-    model_registry.py floor --corpus sealed_v1.jsonl --rubric <id> --judge <id>
+    model_registry.py floor --corpus sealed_v1.jsonl --cases 1462 --rubric <id> --judge <id>
 """
 import argparse
 import json
@@ -97,10 +97,17 @@ def load(path: Path = REGISTRY_PATH) -> dict:
             # would destroy real history; the honest record is the number WITH the
             # fact that nothing produced by us graded it. `floor()` requires an
             # exact rubric match, so a null can never set a bar.
-            if "rubricIdentity" not in e:
-                raise RegistryError(
-                    f"{aid}: an evaluation omits the rubricIdentity key. Write null "
-                    f"for a run scored from external verdicts; do not leave it out.")
+            # These two may be NULL and the key must still be PRESENT. A receipt can
+            # genuinely lack them — a run scored from borrowed verdicts has no rubric
+            # of its own, and an older summary may not record completeness — so null
+            # is real history. What must not happen is the key going MISSING, because
+            # `floor()` reads both and a dropped key would silently skip the row while
+            # `validate` reported success.
+            for optional in ("rubricIdentity", "runComplete"):
+                if optional not in e:
+                    raise RegistryError(
+                        f"{aid}: an evaluation omits the {optional} key. Write null "
+                        f"when the receipt does not record it; do not leave it out.")
 
     for release, ids in winners.items():
         if len(ids) > 1:
@@ -110,21 +117,38 @@ def load(path: Path = REGISTRY_PATH) -> dict:
     return doc
 
 
-def comparable(evaluation: dict, corpus: str, rubric: str, judge: str) -> bool:
-    """Corpus, rubric, judge — and the run must have used the artifact's OWN prompt.
+def corpus_identity(evaluation: dict) -> tuple[str, int]:
+    """A corpus NAME is a proxy, and in our own receipts it is a WRONG one.
+
+    Measured in the checked-in registry: `tail_corpus.jsonl` names four different
+    case sets (117, 132, 139, 249 cases), `speechpath_1861.jsonl` three, and
+    `speechpath_1861_v3.jsonl` two — files edited in place while keeping the name.
+    Comparing by name alone therefore merges genuinely different exams.
+
+    The case COUNT is the strongest identity recoverable from a receipt, since the
+    receipts never recorded a content digest. It is still a proxy — two edits that
+    keep the size would collide — so a future harness should record a digest and
+    this should use it. Stated rather than left implied.
+    """
+    return (evaluation["corpus"], evaluation["casesScored"])
+
+
+def comparable(evaluation: dict, corpus: str, rubric: str, judge: str,
+               cases: int) -> bool:
+    """Corpus AND its case count, rubric, judge — and the artifact's OWN prompt.
 
     An Azure deployment can be repointed in place, so the same corpus and rubric
     graded through a different deployment are two graders wearing one name. And a
     prompt PROBE attaches to the artifact it experimented on while describing a
     configuration that was never selected or shipped, so letting one set the floor
     would gate releases on a prompt we do not serve."""
-    return (evaluation["corpus"] == corpus
+    return (corpus_identity(evaluation) == (corpus, cases)
             and evaluation["rubricIdentity"] == rubric
             and evaluation["judgeIdentity"] == judge
             and evaluation["promptVariant"] == "own")
 
 
-def floor(corpus: str, rubric: str, judge: str,
+def floor(corpus: str, rubric: str, judge: str, cases: int,
           doc: dict | None = None) -> tuple[int | None, str]:
     """The best S4 count on record for this corpus and rubric, and where it came from.
 
@@ -146,14 +170,15 @@ def floor(corpus: str, rubric: str, judge: str,
         if a["status"] not in EXCLUSIVE:
             continue
         for e in a.get("evaluations") or []:
-            if (not comparable(e, corpus, rubric, judge)
+            if (not comparable(e, corpus, rubric, judge, cases)
                     or e.get("runComplete") is not True):
                 continue
             if best is None or e["s4Count"] < best[0]:
                 best = (e["s4Count"], a["artifactId"], e["summaryPath"])
     if best is None:
         return None, (f"no complete evaluation of a shipped or selected artifact on "
-                      f"corpus {corpus} under rubric {rubric} judged by {judge}")
+                      f"corpus {corpus} ({cases} cases) under rubric {rubric} "
+                      f"judged by {judge}")
     return best[0], f"{best[1]} ({best[2]})"
 
 
@@ -192,11 +217,11 @@ def cmd_list(args) -> int:
             complete = [e for e in sealed if e.get("runComplete") is True]
             groups: dict[tuple, dict] = {}
             for e in complete:
-                key = (e["corpus"], e["rubricIdentity"], e["judgeIdentity"],
+                key = (corpus_identity(e), e["rubricIdentity"], e["judgeIdentity"],
                        e["promptVariant"])
                 if key not in groups or e["s4Count"] < groups[key]["s4Count"]:
                     groups[key] = e
-            for (_c, rubric, judge, variant), e in sorted(
+            for (_cid, rubric, judge, variant), e in sorted(
                     groups.items(), key=lambda kv: -kv[1]["passRatePct"]):
                 tag = "" if variant == "own" else f", PROMPT PROBE: {variant}"
                 print(f"      {e['passRatePct']}% pass, {e['s4Count']} serious "
@@ -219,7 +244,7 @@ def cmd_validate(_args) -> int:
 
 
 def cmd_floor(args) -> int:
-    count, where = floor(args.corpus, args.rubric, args.judge)
+    count, where = floor(args.corpus, args.rubric, args.judge, args.cases)
     if count is None:
         print(f"NO FLOOR: {where}", file=sys.stderr)
         return 1
@@ -235,6 +260,8 @@ def main() -> int:
     p = sub.add_parser("floor")
     p.add_argument("--corpus", required=True); p.add_argument("--rubric", required=True)
     p.add_argument("--judge", required=True, help="judge identity, exactly as recorded")
+    p.add_argument("--cases", required=True, type=int,
+                   help="cases scored; a corpus FILENAME is reused for different sets")
     p.set_defaults(fn=cmd_floor)
     args = ap.parse_args()
     try:
