@@ -1,0 +1,1141 @@
+{
+  "_comment": "Every EG-1 model we have trained, under the artifact-ID convention. The authority for candidate status and evaluation provenance. Numbers are read from score receipts, never typed.",
+  "_idFormat": "eg1-<release>-c<NNN>. The release is what the candidate was AIMED at; the candidate number resets when the release changes. A candidate is never renamed, including when it wins.",
+  "_candidateOrder": "For rows carrying legacyExemption, the candidate number is position in the historical arm ledger (arm version order), NOT a measured training timestamp. Do not read c007 as 'trained seventh by date'.",
+  "_comparability": "An evaluation is comparable to another ONLY when corpus, rubricIdentity and judgeIdentity all match. Nine rubrics and 38 corpora appear across this history; ranking across them is the mistake this file exists to prevent.",
+  "artifacts": [
+    {
+      "artifactId": "eg1-1.0-c001",
+      "release": "1.0",
+      "status": "superseded",
+      "statusReason": "Replaced by 1.1. The monolith is retired and deleted on upgrade.",
+      "legacyNames": [
+        "eg1-v1-monolith",
+        "eg1_sealed.jsonl",
+        "eg1_shipped.jsonl",
+        "arm_eg1_candidates.jsonl",
+        "eg1_gold150_candidates.jsonl",
+        "candidates_eg1_native_1890.jsonl",
+        "eg1_shipped_holdout900.jsonl",
+        "eg1_shipped_trained1690.jsonl",
+        "eg1_promptprobe_sealed.jsonl",
+        "eg1_probe_v3_sealed.jsonl",
+        "arm_eg1_candidates_v3.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 81.8,
+          "s4Count": 73,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/s1mini-2026-08-26/scores_eg1_v1_archived/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 81.6,
+          "s4Count": 75,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_eg1/summary.json"
+        },
+        {
+          "promptVariant": "probe_v3",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 82.6,
+          "s4Count": 85,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_eg1_probe_v3/summary.json"
+        },
+        {
+          "promptVariant": "promptprobe",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 81.2,
+          "s4Count": 87,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_eg1_promptprobe/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "c9cf6ca83fc4",
+          "runComplete": true,
+          "passRatePct": 89.7,
+          "s4Count": 72,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/scores_eg1_sealed/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "401bcf0b2929",
+          "runComplete": true,
+          "passRatePct": 75.9,
+          "s4Count": 66,
+          "casesScored": 1861,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/eg2-2026-08-15/scores_arm_eg1/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "14e84d338924",
+          "runComplete": true,
+          "passRatePct": 69.4,
+          "s4Count": 52,
+          "casesScored": 1861,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/speechpath-2026-08-13-r2/scores/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "531e6c619736",
+          "runComplete": true,
+          "passRatePct": 68.7,
+          "s4Count": 67,
+          "casesScored": 1861,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/speechpath-2026-08-13-r2/scores_v2/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "1f7313cb4f29",
+          "runComplete": false,
+          "passRatePct": 73.2,
+          "s4Count": 50,
+          "casesScored": 1837,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/speechpath-2026-08-13-r2/scores_v3/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "b2b8274414f0",
+          "runComplete": false,
+          "passRatePct": 72.6,
+          "s4Count": 53,
+          "casesScored": 1860,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/speechpath-2026-08-13-r2/scores_v4/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861_v2.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "c9cf6ca83fc4",
+          "runComplete": true,
+          "passRatePct": 76.5,
+          "s4Count": 53,
+          "casesScored": 1861,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/eg2-2026-08-15/scores_v2_eg1/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861_v3.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "c9cf6ca83fc4",
+          "runComplete": true,
+          "passRatePct": 76.8,
+          "s4Count": 50,
+          "casesScored": 1861,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/goldset-2026-08-15/scores_v3_eg1/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_gold150.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "c9cf6ca83fc4",
+          "runComplete": true,
+          "passRatePct": 78.7,
+          "s4Count": 2,
+          "casesScored": 150,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/eg2-v8-2026-08-15/scores_gold150_eg1/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "type_b_approved_1890.jsonl",
+          "judgeIdentity": "name-only:claude-sonnet-5",
+          "rubricIdentity": null,
+          "runComplete": null,
+          "passRatePct": 93.7,
+          "s4Count": 8,
+          "casesScored": 1890,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/type-b-1199/eg1_native_shipped_1890/scores/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "type_b_parakeet.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": null,
+          "runComplete": true,
+          "passRatePct": 81.1,
+          "s4Count": 42,
+          "casesScored": 1690,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/typeb-holdout-parakeet-2026-08-12/scores_eg1_trained/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "type_b_parakeet_holdout900.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": null,
+          "runComplete": true,
+          "passRatePct": 76.0,
+          "s4Count": 18,
+          "casesScored": 900,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/typeb-holdout-parakeet-2026-08-12/scores_eg1_shipped/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "type_b_v2_2559.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": null,
+          "runComplete": true,
+          "passRatePct": 61.7,
+          "s4Count": 207,
+          "casesScored": 2559,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/typeb-v2-2026-08-13/scores_eg1/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c001",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "No-op rate trimmed. +0.1pp, p=0.90 — null.",
+      "legacyNames": [
+        "v6capped",
+        "arm_v6capped_candidates.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "401bcf0b2929",
+          "runComplete": true,
+          "passRatePct": 76.0,
+          "s4Count": 51,
+          "casesScored": 1861,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/eg2-2026-08-15/scores_arm_v6capped/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c002",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "All non-production inputs reshaped. -2.0pp, p=0.015 — WORSE.",
+      "legacyNames": [
+        "v6prod",
+        "arm_v6prod_candidates.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "401bcf0b2929",
+          "runComplete": true,
+          "passRatePct": 73.9,
+          "s4Count": 71,
+          "casesScored": 1861,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/eg2-2026-08-15/scores_arm_v6prod/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c003",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "Drills reshaped to production shape. +0.5pp, p=0.55 — null.",
+      "legacyNames": [
+        "v7drills",
+        "arm_v7drills_candidates.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "401bcf0b2929",
+          "runComplete": true,
+          "passRatePct": 76.4,
+          "s4Count": 57,
+          "casesScored": 1861,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/eg2-2026-08-15/scores_arm_v7drills/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c004",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "+3,437 synthetic SFT drills. -2.0pp, p=0.021 — WORSE.",
+      "legacyNames": [
+        "v8",
+        "arm_v8_candidates.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861_v3.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "c9cf6ca83fc4",
+          "runComplete": true,
+          "passRatePct": 74.4,
+          "s4Count": 78,
+          "casesScored": 1861,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/eg2-v8-2026-08-15/scores_v8/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c005",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "Preference pairs at 5e-6 x1. 99% of outputs byte-identical to the base — null.",
+      "legacyNames": [
+        "dpo1",
+        "dpo1_sealed.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "c9cf6ca83fc4",
+          "runComplete": true,
+          "passRatePct": 89.7,
+          "s4Count": 69,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/scores_dpo1_sealed/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c006",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "Preference pairs at 3e-5 x2. Over-optimised: formatted 100% of wanted cases AND 39.9% of flat ones, restraint 85% -> 49%. Killed before a sealed run, so it has no evaluation receipt.",
+      "legacyNames": [
+        "dpo2"
+      ],
+      "legacyExemption": true,
+      "evaluations": []
+    },
+    {
+      "artifactId": "eg1-1.1-c007",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "Preference pairs at 1.2e-5 x1. Beaten by dpo4 on the same corpus.",
+      "legacyNames": [
+        "dpo3",
+        "dpo3_sealed.jsonl",
+        "dpo3_speechpath.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 83.7,
+          "s4Count": 72,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_dpo3/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "c9cf6ca83fc4",
+          "runComplete": true,
+          "passRatePct": 89.9,
+          "s4Count": 64,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/scores_dpo3_sealed/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861_v3.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "c9cf6ca83fc4",
+          "runComplete": true,
+          "passRatePct": 75.9,
+          "s4Count": 56,
+          "casesScored": 1861,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/eg2-v8-2026-08-15/scores_dpo3_speechpath/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c008",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "Meaning-weighted pairs, 30% structure. The only arm of its line to improve every dimension at once, and still not the arm that shipped.",
+      "legacyNames": [
+        "dpo4",
+        "dpo4_sealed.jsonl",
+        "dpo4_speechpath.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 83.4,
+          "s4Count": 71,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_dpo4/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "c9cf6ca83fc4",
+          "runComplete": true,
+          "passRatePct": 90.6,
+          "s4Count": 59,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/scores_dpo4_sealed/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861_v3.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "c9cf6ca83fc4",
+          "runComplete": false,
+          "passRatePct": 76.5,
+          "s4Count": 43,
+          "casesScored": 1765,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/eg2-v8-2026-08-15/scores_dpo4_speechpath/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c009",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "SFT list drills. Lists solved, self_correction fell 71.2 -> 65.3.",
+      "legacyNames": [
+        "v13",
+        "v13_sealed.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 84.7,
+          "s4Count": 65,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v13/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c010",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "SFT hinge gate. Superseded within the same line.",
+      "legacyNames": [
+        "v14",
+        "v14_sealed.jsonl",
+        "v14_promptprobe_sealed.jsonl",
+        "v14_fluidprompt_sealed.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 87.8,
+          "s4Count": 65,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v14/summary.json"
+        },
+        {
+          "promptVariant": "fluidprompt",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 86.9,
+          "s4Count": 61,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v14_fluidprompt/summary.json"
+        },
+        {
+          "promptVariant": "promptprobe",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 89.1,
+          "s4Count": 67,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v14_promptprobe/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c011",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "SFT marker classes. Superseded within the same line.",
+      "legacyNames": [
+        "v15",
+        "v15_sealed.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 87.2,
+          "s4Count": 69,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v15/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c012",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "v15 corpus trained ON a fuller prompt. p=1.00 — in SFT the system prompt is a constant prefix and carries no gradient.",
+      "legacyNames": [
+        "v15align",
+        "v15align_sealed.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 87.8,
+          "s4Count": 75,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v15align/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c013",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "Marker prior rebalanced. First arm ever to beat EG-1 1.0 on self_correction.",
+      "legacyNames": [
+        "v17",
+        "v17_sealed.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 88.7,
+          "s4Count": 66,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v17/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c014",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "+ list-trigger prior rebalanced. Beat cloud +120/-89, p=0.038.",
+      "legacyNames": [
+        "v18",
+        "v18_sealed.jsonl",
+        "v18_speechpath.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 89.7,
+          "s4Count": 67,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v18/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861_v3.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 71.3,
+          "s4Count": 99,
+          "casesScored": 1861,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/speechpath-2026-08-13-r2/scores_v18/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c015",
+      "release": "1.1",
+      "status": "rejected",
+      "statusReason": "Superseded by v20 within the same line.",
+      "legacyNames": [
+        "v19",
+        "v19_sealed.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 88.9,
+          "s4Count": 69,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v19/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.1-c016",
+      "release": "1.1",
+      "status": "shipped",
+      "statusReason": "SHIPPED as EG-1 1.1, delivery revision v3-eg2, shards eg-1-v2-*. Lineage evidence: branch feat/eg2-v20-model, docs/eg2-campaign/build_v20_manifest.py and shard_v20.sh, and the commit 'point the shipped manifests at model revision v3-eg2' on that branch.",
+      "legacyNames": [
+        "v20",
+        "v20_sealed.jsonl",
+        "v20_speechpath.jsonl",
+        "eg1_v2_installed_sealed.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "ce234dcb8cac",
+          "runComplete": true,
+          "passRatePct": 89.9,
+          "s4Count": 65,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/ratchet-seed-2026-08-31/eg1_11/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 90.3,
+          "s4Count": 66,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/s1mini-2026-08-26/scores_eg1_v2_installed/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 90.6,
+          "s4Count": 65,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v20/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 90.4,
+          "s4Count": 63,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v20_confirm/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "speechpath_1861_v3.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 72.6,
+          "s4Count": 98,
+          "casesScored": 1861,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/speechpath-2026-08-13-r2/scores_v20/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.2-c001",
+      "release": "1.2",
+      "status": "rejected",
+      "statusReason": "Round 1. 4 genuine stable critical regressions against shipped 1.1.",
+      "legacyNames": [
+        "v21email",
+        "sealed_v21.jsonl",
+        "typeb_v21.jsonl",
+        "tail_v21.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 91.6,
+          "s4Count": 36,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/scores_sealed/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": false,
+          "passRatePct": 92.1,
+          "s4Count": 28,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/scores_sealed_incomplete_commute/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 64.1,
+          "s4Count": 9,
+          "casesScored": 117,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/sealed_tail_five/read1/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 60.7,
+          "s4Count": 13,
+          "casesScored": 117,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/sealed_tail_five/read2/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 65.0,
+          "s4Count": 10,
+          "casesScored": 117,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/sealed_tail_five/read3/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 59.0,
+          "s4Count": 16,
+          "casesScored": 117,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/sealed_tail_five/read4/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 63.2,
+          "s4Count": 10,
+          "casesScored": 117,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/sealed_tail_five/read5/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 68.3,
+          "s4Count": 8,
+          "casesScored": 249,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/tail_read1/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 65.9,
+          "s4Count": 8,
+          "casesScored": 249,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/tail_read2/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 69.1,
+          "s4Count": 8,
+          "casesScored": 249,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/tail_read3/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 66.3,
+          "s4Count": 8,
+          "casesScored": 249,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/tail_read4/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 69.1,
+          "s4Count": 10,
+          "casesScored": 249,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/tail_read5/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "type_b_parakeet.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 86.7,
+          "s4Count": 22,
+          "casesScored": 1690,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/v21email-2026-08-31/scores_typeb/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.2-c002",
+      "release": "1.2",
+      "status": "rejected",
+      "statusReason": "Round 2. Made meaning WORSE (5 genuine regressions): a drill gate forced every one of 263 rows shorter, so the model learned to delete.",
+      "legacyNames": [
+        "v22round2",
+        "sealed_v22.jsonl",
+        "email_v22.jsonl",
+        "tail_v22.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "email_bench_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 76.4,
+          "s4Count": 16,
+          "casesScored": 356,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/email-bench-2026-08-31/scores_email_v22/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 91.9,
+          "s4Count": 32,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round2-2026-08-31/scores_sealed_v22/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 63.3,
+          "s4Count": 9,
+          "casesScored": 139,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round2-2026-08-31/tail_read1/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 64.0,
+          "s4Count": 9,
+          "casesScored": 139,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round2-2026-08-31/tail_read2/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 62.6,
+          "s4Count": 12,
+          "casesScored": 139,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round2-2026-08-31/tail_read3/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 64.0,
+          "s4Count": 4,
+          "casesScored": 139,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round2-2026-08-31/tail_read4/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 64.0,
+          "s4Count": 12,
+          "casesScored": 139,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round2-2026-08-31/tail_read5/summary.json"
+        }
+      ]
+    },
+    {
+      "artifactId": "eg1-1.2-c003",
+      "release": "1.2",
+      "status": "selected",
+      "statusReason": "Round 3. Zero genuine stable critical regressions, email held at +75. Won but NOT yet shipped: the shards are not uploaded, and two founder decisions are open (the absolute S4 waiver, and two verbatim_passthrough refusals).",
+      "legacyNames": [
+        "v23round3",
+        "sealed_v23.jsonl",
+        "email_v23.jsonl",
+        "typeb_v23.jsonl",
+        "tail_v23.jsonl"
+      ],
+      "legacyExemption": true,
+      "evaluations": [
+        {
+          "promptVariant": "own",
+          "corpus": "email_bench_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 75.8,
+          "s4Count": 11,
+          "casesScored": 356,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round3-2026-08-31/scores_email_v23/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "sealed_v1.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 92.4,
+          "s4Count": 31,
+          "casesScored": 1462,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round3-2026-08-31/scores_sealed_v23/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 73.5,
+          "s4Count": 12,
+          "casesScored": 132,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round3-2026-08-31/tail_read1/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 75.8,
+          "s4Count": 7,
+          "casesScored": 132,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round3-2026-08-31/tail_read2/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 70.5,
+          "s4Count": 9,
+          "casesScored": 132,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round3-2026-08-31/tail_read3/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 68.9,
+          "s4Count": 10,
+          "casesScored": 132,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round3-2026-08-31/tail_read4/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "tail_corpus.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 74.2,
+          "s4Count": 7,
+          "casesScored": 132,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round3-2026-08-31/tail_read5/summary.json"
+        },
+        {
+          "promptVariant": "own",
+          "corpus": "type_b_parakeet.jsonl",
+          "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
+          "rubricIdentity": "626d3a1c5219",
+          "runComplete": true,
+          "passRatePct": 87.0,
+          "s4Count": 30,
+          "casesScored": 1690,
+          "verdict": "BLOCK",
+          "summaryPath": "scripts/eval/runs/round3-2026-08-31/scores_typeb_v23/summary.json"
+        }
+      ]
+    }
+  ]
+}

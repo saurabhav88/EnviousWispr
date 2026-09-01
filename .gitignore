@@ -256,6 +256,13 @@ scripts/eval/apple_runner/Package.resolved
 # numbers was gitignored, got deleted, and cost a session rediscovering that
 # those scores had been measured through the wrong prompt. Tooling that produces
 # a number we later cite must survive in git.
+# EG-1 artifact registry (#2547, 2026-08-31) — the authority for which model won.
+# Tracked for the reason stated above and then some: an untracked registry is a
+# record of which artifact shipped that cannot survive a fresh clone, which is the
+# exact confusion it exists to remove.
+!scripts/eval/model-registry.json
+!scripts/eval/model_registry.py
+!scripts/eval/rebuild-model-registry.py
 !scripts/eval/classify_redundant.py
 !scripts/eval/run_cloud_type_b.py
 !scripts/eval/tts_corpus.py
