@@ -25,6 +25,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -36,6 +37,7 @@
           "summaryPath": "scripts/eval/runs/s1mini-2026-08-26/scores_eg1_v1_archived/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -47,6 +49,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_eg1/summary.json"
         },
         {
+          "promptVariant": "probe_v3",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -58,6 +61,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_eg1_probe_v3/summary.json"
         },
         {
+          "promptVariant": "promptprobe",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -69,6 +73,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_eg1_promptprobe/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "c9cf6ca83fc4",
@@ -80,6 +85,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/scores_eg1_sealed/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "401bcf0b2929",
@@ -91,6 +97,7 @@
           "summaryPath": "scripts/eval/runs/eg2-2026-08-15/scores_arm_eg1/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "14e84d338924",
@@ -102,6 +109,7 @@
           "summaryPath": "scripts/eval/runs/speechpath-2026-08-13-r2/scores/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "531e6c619736",
@@ -113,6 +121,7 @@
           "summaryPath": "scripts/eval/runs/speechpath-2026-08-13-r2/scores_v2/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "1f7313cb4f29",
@@ -124,6 +133,7 @@
           "summaryPath": "scripts/eval/runs/speechpath-2026-08-13-r2/scores_v3/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "b2b8274414f0",
@@ -135,6 +145,7 @@
           "summaryPath": "scripts/eval/runs/speechpath-2026-08-13-r2/scores_v4/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861_v2.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "c9cf6ca83fc4",
@@ -146,6 +157,7 @@
           "summaryPath": "scripts/eval/runs/eg2-2026-08-15/scores_v2_eg1/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861_v3.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "c9cf6ca83fc4",
@@ -157,6 +169,7 @@
           "summaryPath": "scripts/eval/runs/goldset-2026-08-15/scores_v3_eg1/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "speechpath_gold150.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "c9cf6ca83fc4",
@@ -168,6 +181,7 @@
           "summaryPath": "scripts/eval/runs/eg2-v8-2026-08-15/scores_gold150_eg1/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "type_b_approved_1890.jsonl",
           "judgeIdentity": "name-only:claude-sonnet-5",
           "rubricIdentity": null,
@@ -179,6 +193,7 @@
           "summaryPath": "scripts/eval/runs/type-b-1199/eg1_native_shipped_1890/scores/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "type_b_parakeet.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": null,
@@ -190,6 +205,7 @@
           "summaryPath": "scripts/eval/runs/typeb-holdout-parakeet-2026-08-12/scores_eg1_trained/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "type_b_parakeet_holdout900.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": null,
@@ -201,6 +217,7 @@
           "summaryPath": "scripts/eval/runs/typeb-holdout-parakeet-2026-08-12/scores_eg1_shipped/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "type_b_v2_2559.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": null,
@@ -225,6 +242,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "401bcf0b2929",
@@ -249,6 +267,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "401bcf0b2929",
@@ -273,6 +292,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "401bcf0b2929",
@@ -297,6 +317,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861_v3.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "c9cf6ca83fc4",
@@ -321,6 +342,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "c9cf6ca83fc4",
@@ -357,6 +379,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -368,6 +391,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_dpo3/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "c9cf6ca83fc4",
@@ -379,6 +403,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/scores_dpo3_sealed/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861_v3.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "c9cf6ca83fc4",
@@ -404,6 +429,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -415,6 +441,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_dpo4/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "c9cf6ca83fc4",
@@ -426,6 +453,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/scores_dpo4_sealed/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861_v3.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "c9cf6ca83fc4",
@@ -450,6 +478,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -476,6 +505,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -487,6 +517,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v14/summary.json"
         },
         {
+          "promptVariant": "fluidprompt",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -498,6 +529,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v14_fluidprompt/summary.json"
         },
         {
+          "promptVariant": "promptprobe",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -522,6 +554,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -546,6 +579,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -570,6 +604,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -595,6 +630,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -606,6 +642,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v18/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861_v3.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -630,6 +667,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -656,6 +694,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "ce234dcb8cac",
@@ -667,6 +706,7 @@
           "summaryPath": "scripts/eval/runs/ratchet-seed-2026-08-31/eg1_11/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -678,6 +718,7 @@
           "summaryPath": "scripts/eval/runs/s1mini-2026-08-26/scores_eg1_v2_installed/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -689,6 +730,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v20/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -700,6 +742,7 @@
           "summaryPath": "scripts/eval/runs/sealed-2026-08-15/regrade_v20_confirm/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "speechpath_1861_v3.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -726,6 +769,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -737,6 +781,7 @@
           "summaryPath": "scripts/eval/runs/v21email-2026-08-31/scores_sealed/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -748,6 +793,7 @@
           "summaryPath": "scripts/eval/runs/v21email-2026-08-31/scores_sealed_incomplete_commute/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -759,6 +805,7 @@
           "summaryPath": "scripts/eval/runs/v21email-2026-08-31/sealed_tail_five/read1/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -770,6 +817,7 @@
           "summaryPath": "scripts/eval/runs/v21email-2026-08-31/sealed_tail_five/read2/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -781,6 +829,7 @@
           "summaryPath": "scripts/eval/runs/v21email-2026-08-31/sealed_tail_five/read3/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -792,6 +841,7 @@
           "summaryPath": "scripts/eval/runs/v21email-2026-08-31/sealed_tail_five/read4/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -803,6 +853,7 @@
           "summaryPath": "scripts/eval/runs/v21email-2026-08-31/sealed_tail_five/read5/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -814,6 +865,7 @@
           "summaryPath": "scripts/eval/runs/v21email-2026-08-31/tail_read1/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -825,6 +877,7 @@
           "summaryPath": "scripts/eval/runs/v21email-2026-08-31/tail_read2/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -836,6 +889,7 @@
           "summaryPath": "scripts/eval/runs/v21email-2026-08-31/tail_read3/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -847,6 +901,7 @@
           "summaryPath": "scripts/eval/runs/v21email-2026-08-31/tail_read4/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -858,6 +913,7 @@
           "summaryPath": "scripts/eval/runs/v21email-2026-08-31/tail_read5/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "type_b_parakeet.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -884,6 +940,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "email_bench_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -895,6 +952,7 @@
           "summaryPath": "scripts/eval/runs/email-bench-2026-08-31/scores_email_v22/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -906,6 +964,7 @@
           "summaryPath": "scripts/eval/runs/round2-2026-08-31/scores_sealed_v22/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -917,6 +976,7 @@
           "summaryPath": "scripts/eval/runs/round2-2026-08-31/tail_read1/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -928,6 +988,7 @@
           "summaryPath": "scripts/eval/runs/round2-2026-08-31/tail_read2/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -939,6 +1000,7 @@
           "summaryPath": "scripts/eval/runs/round2-2026-08-31/tail_read3/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -950,6 +1012,7 @@
           "summaryPath": "scripts/eval/runs/round2-2026-08-31/tail_read4/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -977,6 +1040,7 @@
       "legacyExemption": true,
       "evaluations": [
         {
+          "promptVariant": "own",
           "corpus": "email_bench_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -988,6 +1052,7 @@
           "summaryPath": "scripts/eval/runs/round3-2026-08-31/scores_email_v23/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "sealed_v1.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -999,6 +1064,7 @@
           "summaryPath": "scripts/eval/runs/round3-2026-08-31/scores_sealed_v23/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -1010,6 +1076,7 @@
           "summaryPath": "scripts/eval/runs/round3-2026-08-31/tail_read1/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -1021,6 +1088,7 @@
           "summaryPath": "scripts/eval/runs/round3-2026-08-31/tail_read2/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -1032,6 +1100,7 @@
           "summaryPath": "scripts/eval/runs/round3-2026-08-31/tail_read3/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -1043,6 +1112,7 @@
           "summaryPath": "scripts/eval/runs/round3-2026-08-31/tail_read4/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "tail_corpus.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",
@@ -1054,6 +1124,7 @@
           "summaryPath": "scripts/eval/runs/round3-2026-08-31/tail_read5/summary.json"
         },
         {
+          "promptVariant": "own",
           "corpus": "type_b_parakeet.jsonl",
           "judgeIdentity": "azure/gpt-5-6-luna@d9697a344ff6",
           "rubricIdentity": "626d3a1c5219",

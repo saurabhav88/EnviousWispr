@@ -128,7 +128,18 @@ def read_receipts() -> dict:
         # skipping an unreadable file is not, which is why they are separate.
         if not cand or o.get("total_scored") is None:
             continue
+        # WHICH PROMPT the run used, relative to the artifact's OWN training prompt.
+        # A prompt probe is an experiment ON an artifact, so it attaches to that
+        # artifact — but its score describes a configuration that was never selected
+        # or shipped, and merging it with the artifact's own runs reports the probe as
+        # the headline. Measured: v14, v14_promptprobe and v14_fluidprompt collapsed
+        # into one group and the fluid-prompt result was shown as v14's score.
+        # The receipts do not record prompt identity, so it is assigned here from the
+        # candidate filename, which is the only place the distinction survives.
+        probe = next((tag for tag in ("promptprobe", "fluidprompt", "probe_v3")
+                      if tag in cand), None)
         out.setdefault(cand, []).append({
+            "promptVariant": probe or "own",
             "corpus": ",".join(m.get("corpus_files") or []) or None,
             # A pinned identity where we have one; otherwise the coarse judge NAME,
             # PREFIXED so the two can never be mistaken for each other. An Azure

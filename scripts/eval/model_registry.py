@@ -86,7 +86,7 @@ def load(path: Path = REGISTRY_PATH) -> dict:
             # row without it raises KeyError from inside `floor()` — a validator that
             # passed such a row would be certifying data that crashes its own reader.
             for field in ("corpus", "passRatePct", "s4Count", "casesScored",
-                          "summaryPath", "judgeIdentity"):
+                          "summaryPath", "judgeIdentity", "promptVariant"):
                 if e.get(field) is None:
                     raise RegistryError(
                         f"{aid}: an evaluation is missing {field}; a score with no "
@@ -111,13 +111,17 @@ def load(path: Path = REGISTRY_PATH) -> dict:
 
 
 def comparable(evaluation: dict, corpus: str, rubric: str, judge: str) -> bool:
-    """All three, because the module docstring says all three and a predicate that
-    checked two would have quietly contradicted it. An Azure deployment can be
-    repointed in place, so the same corpus and rubric graded through a different
-    deployment are two different graders wearing one name."""
+    """Corpus, rubric, judge — and the run must have used the artifact's OWN prompt.
+
+    An Azure deployment can be repointed in place, so the same corpus and rubric
+    graded through a different deployment are two graders wearing one name. And a
+    prompt PROBE attaches to the artifact it experimented on while describing a
+    configuration that was never selected or shipped, so letting one set the floor
+    would gate releases on a prompt we do not serve."""
     return (evaluation["corpus"] == corpus
             and evaluation["rubricIdentity"] == rubric
-            and evaluation["judgeIdentity"] == judge)
+            and evaluation["judgeIdentity"] == judge
+            and evaluation["promptVariant"] == "own")
 
 
 def floor(corpus: str, rubric: str, judge: str,
@@ -188,14 +192,16 @@ def cmd_list(args) -> int:
             complete = [e for e in sealed if e.get("runComplete") is True]
             groups: dict[tuple, dict] = {}
             for e in complete:
-                key = (e["corpus"], e["rubricIdentity"], e["judgeIdentity"])
+                key = (e["corpus"], e["rubricIdentity"], e["judgeIdentity"],
+                       e["promptVariant"])
                 if key not in groups or e["s4Count"] < groups[key]["s4Count"]:
                     groups[key] = e
-            for (_c, rubric, judge), e in sorted(
+            for (_c, rubric, judge, variant), e in sorted(
                     groups.items(), key=lambda kv: -kv[1]["passRatePct"]):
+                tag = "" if variant == "own" else f", PROMPT PROBE: {variant}"
                 print(f"      {e['passRatePct']}% pass, {e['s4Count']} serious "
                       f"({e['casesScored']} cases, rubric "
-                      f"{(rubric or 'external')[:8]}, judge {judge})")
+                      f"{(rubric or 'external')[:8]}, judge {judge}{tag})")
             if not groups:
                 why = (f"{len(sealed)} sealed_v1 run(s) on record, all INCOMPLETE"
                        if sealed else "no sealed_v1 score on record")
