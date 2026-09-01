@@ -75,8 +75,11 @@ def load(path: Path = REGISTRY_PATH) -> dict:
             # which. Grouping by status would have let that pass.
             winners.setdefault(a["release"], []).append(f"{aid} ({a['status']})")
         for e in a.get("evaluations") or []:
+            # `judgeIdentity` is REQUIRED, not optional: `comparable()` reads it, so a
+            # row without it raises KeyError from inside `floor()` — a validator that
+            # passed such a row would be certifying data that crashes its own reader.
             for field in ("corpus", "passRatePct", "s4Count", "casesScored",
-                          "summaryPath"):
+                          "summaryPath", "judgeIdentity"):
                 if e.get(field) is None:
                     raise RegistryError(
                         f"{aid}: an evaluation is missing {field}; a score with no "
@@ -161,15 +164,27 @@ def cmd_list(args) -> int:
             # serious beside its real 91.6% / 36, and the first version of this
             # display printed the incomplete one — which made round 1 look better
             # than the round that actually won.
+            #
+            # And ONE ROW PER PROVENANCE GROUP, never a best-of across them. Sorting
+            # every sealed run together by pass rate silently crosses the rubric and
+            # judge boundary this module refuses to cross everywhere else: it printed
+            # 1.0's 89.7% from an older rubric, and 1.1's S4 65 when its comparable
+            # floor is 63. Within a group the LOWEST s4Count is shown, matching what
+            # `floor()` takes.
             sealed = [e for e in a.get("evaluations") or []
                       if e["corpus"] == "sealed_v1.jsonl"]
             complete = [e for e in sealed if e.get("runComplete") is True]
-            best = sorted(complete, key=lambda e: -(e["passRatePct"] or 0))
-            for e in best[:1]:
-                rubric = (e["rubricIdentity"] or "external")[:8]
+            groups: dict[tuple, dict] = {}
+            for e in complete:
+                key = (e["corpus"], e["rubricIdentity"], e["judgeIdentity"])
+                if key not in groups or e["s4Count"] < groups[key]["s4Count"]:
+                    groups[key] = e
+            for (_c, rubric, judge), e in sorted(
+                    groups.items(), key=lambda kv: -(kv[1]["passRatePct"] or 0)):
                 print(f"      {e['passRatePct']}% pass, {e['s4Count']} serious "
-                      f"({e['casesScored']} cases, rubric {rubric})")
-            if not best:
+                      f"({e['casesScored']} cases, rubric "
+                      f"{(rubric or 'external')[:8]}, judge {judge})")
+            if not groups:
                 why = (f"{len(sealed)} sealed_v1 run(s) on record, all INCOMPLETE"
                        if sealed else "no sealed_v1 score on record")
                 print(f"      {why}")

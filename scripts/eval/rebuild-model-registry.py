@@ -113,10 +113,16 @@ def read_receipts() -> dict:
     for f in sorted(RUNS.rglob("summary.json")):
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
+        except (OSError, ValueError) as exc:
+            # RAISE, never skip. A `continue` here drops real history and the script
+            # still exits 0 over a tracked file, so the loss is invisible exactly
+            # when it matters.
+            raise SystemExit(f"REFUSED: cannot read receipt {f} ({exc})")
         o, m = d.get("overall") or {}, d.get("meta") or {}
         cand = m.get("candidates_file")
+        # A summary with no candidate file or no score is not a receipt for any
+        # artifact — a partial write, or an aggregate. Skipping THOSE is correct;
+        # skipping an unreadable file is not, which is why they are separate.
         if not cand or o.get("total_scored") is None:
             continue
         out.setdefault(cand, []).append({
@@ -139,6 +145,18 @@ def main() -> int:
         raise SystemExit(
             f"REFUSED: {RUNS} holds no readable score receipts. Refusing to write a "
             f"registry with no evaluations over one that has them.")
+
+    # Every candidate file this table DECLARES must have a receipt. Without this the
+    # script happily writes an artifact with zero evaluations when a run directory has
+    # been moved or deleted, and the row then reads as "never scored" rather than
+    # "its receipt is gone".
+    missing = sorted({cf for _, _, cand_files, _, _ in ARMS
+                      for cf in cand_files if cf not in receipts})
+    if missing:
+        raise SystemExit(
+            "REFUSED: these declared candidate files have no receipt under "
+            f"{RUNS}:\n  " + "\n  ".join(missing) +
+            "\nEither the receipts moved, or the table names a file that never existed.")
     counters, records = {}, []
     for release, legacy, cand_files, status, reason in ARMS:
         counters[release] = counters.get(release, 0) + 1
