@@ -15,6 +15,8 @@ their subject rather than as rows of their own.
 """
 import json
 import os
+import sys
+import tempfile
 from pathlib import Path
 
 # Receipts live in the MAIN checkout: `runs/` is gitignored, so a worktree has
@@ -214,7 +216,45 @@ def main() -> int:
                           "the mistake this file exists to prevent.",
         "artifacts": records,
     }
-    OUT.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    # VALIDATE BEFORE REPLACING, and refuse a rebuild that LOSES history.
+    #
+    # Writing first and validating afterwards means a malformed receipt overwrites a
+    # good registry and the damage is on disk by the time anything objects. And the
+    # earlier "every declared candidate file has a receipt" check is SET-based: a
+    # candidate whose four summaries became one still passes it, because the KEY is
+    # present. Comparing per-artifact evaluation COUNTS against the file being
+    # replaced catches that, which the key check cannot.
+    sys.path.insert(0, str(Path(__file__).parent))
+    import model_registry
+
+    if OUT.exists():
+        try:
+            previous = json.loads(OUT.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise SystemExit(f"REFUSED: the registry being replaced is unreadable ({exc})")
+        was = {a["artifactId"]: len(a.get("evaluations") or [])
+               for a in previous.get("artifacts", [])}
+        lost = [(r["artifactId"], was[r["artifactId"]], len(r["evaluations"]))
+                for r in records
+                if r["artifactId"] in was and len(r["evaluations"]) < was[r["artifactId"]]]
+        if lost:
+            raise SystemExit(
+                "REFUSED: this rebuild would LOSE evaluations:\n  " +
+                "\n  ".join(f"{aid}: {b} -> {a}" for aid, b, a in lost) +
+                "\nSome receipts are missing. Restore them, or say why history shrinks.")
+
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False,
+                                     encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+        staged = Path(fh.name)
+    try:
+        model_registry.load(staged)
+    except model_registry.RegistryError as exc:
+        staged.unlink()
+        raise SystemExit(f"REFUSED: the registry this would write is invalid ({exc}). "
+                         f"The existing file is untouched.")
+    staged.replace(OUT)
 
     print(f"{len(records)} artifacts written to {OUT}")
     for r in records:

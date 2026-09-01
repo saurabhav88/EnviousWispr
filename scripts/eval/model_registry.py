@@ -110,6 +110,20 @@ def load(path: Path = REGISTRY_PATH) -> dict:
                         f"{want if isinstance(want, type) else 'a number'}. A value of "
                         f"the right name and the wrong type passes every comparison "
                         f"floor() makes, by failing all of them.")
+
+            # RANGE, after type. A number can be well-typed and impossible, and an
+            # impossible one is not caught by any comparison either: a negative
+            # s4Count would set a floor nothing can ever beat, and a count larger
+            # than the corpus describes an exam that did not happen.
+            n, s4, pct = e["casesScored"], e["s4Count"], e["passRatePct"]
+            if n <= 0:
+                raise RegistryError(f"{aid}: casesScored {n} — an exam with no cases")
+            if not 0 <= s4 <= n:
+                raise RegistryError(
+                    f"{aid}: s4Count {s4} outside 0..{n}. A negative floor can never "
+                    f"be beaten; one above the corpus size describes a different exam.")
+            if not 0 <= pct <= 100:
+                raise RegistryError(f"{aid}: passRatePct {pct} outside 0..100")
             # `rubricIdentity` may be NULL and the key must still be present. A run
             # scored from borrowed verdicts genuinely has no rubric of its own —
             # 197 of our 329 historical receipts are that shape. Deleting them
