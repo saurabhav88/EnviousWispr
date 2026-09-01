@@ -2,7 +2,7 @@
   "_comment": "Every EG-1 model we have trained, under the artifact-ID convention. The authority for candidate status and evaluation provenance. Numbers are read from score receipts, never typed.",
   "_idFormat": "eg1-<release>-c<NNN>. The release is what the candidate was AIMED at; the candidate number resets when the release changes. A candidate is never renamed, including when it wins.",
   "_candidateOrder": "For rows carrying legacyExemption, the candidate number is position in the historical arm ledger (arm version order), NOT a measured training timestamp. Do not read c007 as 'trained seventh by date'.",
-  "_comparability": "An evaluation is comparable to another ONLY when corpus, rubricIdentity and judgeIdentity all match. Nine rubrics and 38 corpora appear across this history; ranking across them is the mistake this file exists to prevent.",
+  "_comparability": "model_registry.comparable() is the ONLY authority on whether two evaluations may be ranked together. Read that function rather than any prose, here or elsewhere: it states every axis it compares and argues each field it deliberately excludes. Ranking across incomparable evaluations is the mistake this file exists to prevent.",
   "artifacts": [
     {
       "artifactId": "eg1-1.0-c001",

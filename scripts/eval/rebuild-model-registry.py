@@ -243,10 +243,17 @@ def main() -> int:
                            "position in the historical arm ledger (arm version order), "
                            "NOT a measured training timestamp. Do not read c007 as "
                            "'trained seventh by date'.",
-        "_comparability": "An evaluation is comparable to another ONLY when corpus, "
-                          "rubricIdentity and judgeIdentity all match. Nine rubrics and "
-                          "38 corpora appear across this history; ranking across them is "
-                          "the mistake this file exists to prevent.",
+        # NAMES THE OWNER, does not list the axes. The previous version enumerated
+        # three of them and went stale the day a fourth was added — a description of a
+        # set is a claim about that set, and nothing links the two edits. Nine rubrics
+        # and 38 corpora appear across this history; ranking across them is the mistake
+        # this file exists to prevent.
+        "_comparability": "model_registry.comparable() is the ONLY authority on whether "
+                          "two evaluations may be ranked together. Read that function "
+                          "rather than any prose, here or elsewhere: it states every "
+                          "axis it compares and argues each field it deliberately "
+                          "excludes. Ranking across incomparable evaluations is the "
+                          "mistake this file exists to prevent.",
         "artifacts": records,
     }
     # VALIDATE BEFORE REPLACING, and refuse a rebuild that LOSES history.
