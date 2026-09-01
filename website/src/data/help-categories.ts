@@ -55,7 +55,7 @@ export const HELP_CATEGORIES: readonly HelpCategory[] = [
   },
   {
     slug: 'custom-words',
-    label: 'Custom Words',
+    label: 'Dictionary',
     blurb: 'Teach it names, jargon, and anything it keeps getting wrong.',
   },
   {
