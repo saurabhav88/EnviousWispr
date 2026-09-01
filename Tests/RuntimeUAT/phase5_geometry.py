@@ -25,6 +25,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
+import defaults_store as ds  # noqa: E402  (type-preserving park-and-restore)
 import wispr_eyes as rk  # noqa: E402  (record-key helpers; merged in #2425)
 import wispr_eyes as w  # noqa: E402
 
@@ -64,19 +65,20 @@ def read_default(key):
 
 
 def write_default(key, value):
-    """Write one preference, in the spelling the app's own reader accepts.
+    """Write one row value, in the spelling the app's own reader accepts.
 
-    `defaults write <dom> <key> -bool 1` EXITS 255 -- the tool takes only
-    true/false/yes/no for `-bool`, while `defaults read` PRINTS a boolean back as
-    `1`. So the round-trip shape and the write shape differ, and normalising at
-    this single point covers apply and restore together.
+    `SettingsManager` reads `livePreviewEnabled` with `object(forKey:) as? Bool`
+    (SettingsManager.swift:966). `defaults write <dom> <key> 1` stores a STRING,
+    so that cast yields nil and the app falls back to the SHIPPED DEFAULT --
+    while `defaults read` still prints the `1` back, so nothing looks wrong. With
+    the shipped default ON since 2026-09-01, the two `False` rows below would
+    have captured reading-well geometry under the labels levelRail and classic,
+    which is the evidence this harness exists to produce.
     """
     if key in BOOL_KEYS:
-        text = str(value).strip().lower()
-        word = "true" if text in ("1", "true", "yes", "y", "on") else "false"
-        subprocess.run(["defaults", "write", DOMAIN, key, "-bool", word], check=True)
+        ds.write_typed(DOMAIN, key, value, "-bool")
         return
-    subprocess.run(["defaults", "write", DOMAIN, key, str(value)], check=True)
+    ds.write_typed(DOMAIN, key, value, "-string")
 
 
 def expected_readback(key, value):
@@ -84,7 +86,7 @@ def expected_readback(key, value):
 
     A bool comes back as `1`/`0`, never as `true`/`false`, so comparing the
     read-back against the value as written would fail forever on exactly the keys
-    the fix above was for.
+    the writer above was fixed for.
     """
     if key in BOOL_KEYS:
         return "1" if value else "0"
@@ -147,7 +149,11 @@ def await_visible(pid, timeout=8.0):
 
 def main():
     pid = int(sys.argv[1])
-    snapshot = {k: read_default(k) for k in KEYS}
+    # TYPE-PRESERVING, not text-only. `defaults read` prints a boolean `false`
+    # and a string "0" identically, so a text-only park-and-restore silently
+    # rewrites the developer's own preference into a different plist type -- and
+    # a text-only restore check cannot see it. Owner: defaults_store.
+    snapshot = ds.snapshot(DOMAIN, KEYS)
     report = {"pid": pid, "settings_snapshot": snapshot, "rows": {}}
     print("snapshot:", snapshot)
 
@@ -169,13 +175,10 @@ def main():
             }
             print(f"  {name}: {seen}")
     finally:
-        for k, v in snapshot.items():
-            if v is None:
-                subprocess.run(["defaults", "delete", DOMAIN, k], capture_output=True)
-            else:
-                write_default(k, v)
-        report["settings_restored"] = {k: read_default(k) for k in KEYS}
-        report["restore_clean"] = report["settings_restored"] == snapshot
+        landed = ds.restore(DOMAIN, snapshot)
+        report["settings_restored"] = {k: ds.read_typed(DOMAIN, k) for k in KEYS}
+        report["restore_clean"] = all(landed.values())
+        report["restore_failed_keys"] = [k for k, good in landed.items() if not good]
         (UAT / "geometry.json").write_text(json.dumps(report, indent=2, default=str))
         print(json.dumps(report, indent=2, default=str)[:2000])
 
