@@ -300,6 +300,61 @@ struct SettingsDefaultsRoutingTests {
     #expect(SettingsManager(defaults: suite).overlayPillPosition == .top)
   }
 
+  // MARK: - What an UPGRADE does to the three 2026-09-01 defaults
+
+  /// The founder's question, asserted rather than reasoned about: does an
+  /// existing user get the new default, and does their own choice survive?
+  ///
+  /// **Both halves in one row per setting, because either alone is satisfiable
+  /// by a broken store.** A store that ignored every write would pass the
+  /// "new default reaches an untouched install" half; a store that never applied
+  /// defaults would pass the "a user's choice survives" half.
+  ///
+  /// The absent key IS the upgrade case. Nothing in the app writes any of these
+  /// keys unless a person changes something, so a user who never opened the
+  /// setting arrives at a new version with no stored value and resolves to
+  /// whatever `SettingsDefaultValues` now says.
+  /// Keyed by the DEFAULTS KEY NAME rather than by `SettingKey`, which is not
+  /// `Sendable` and so cannot cross into a parameterised test. The name is also
+  /// the thing the store is actually addressed by, which is what this row is
+  /// about.
+  @Test(
+    "an untouched install takes the new default; a stored choice survives a reload",
+    arguments: ["escapeRecoveryEnabled", "livePreviewEnabled", "playRecordingSounds"])
+  func upgradeTakesTheDefaultButNeverOverridesAChoice(_ name: String) {
+    let shipped: Bool
+    let read: (SettingsManager) -> Bool
+    let write: (SettingsManager, Bool) -> Void
+    switch name {
+    case "escapeRecoveryEnabled":
+      shipped = SettingsDefaultValues.escapeRecoveryEnabled
+      read = { $0.escapeRecoveryEnabled }
+      write = { $0.escapeRecoveryEnabled = $1 }
+    case "livePreviewEnabled":
+      shipped = SettingsDefaultValues.livePreviewEnabled
+      read = { $0.livePreviewEnabled }
+      write = { $0.livePreviewEnabled = $1 }
+    default:
+      shipped = SettingsDefaultValues.playRecordingSounds
+      read = { $0.playRecordingSounds }
+      write = { $0.playRecordingSounds = $1 }
+    }
+
+    // 1. The upgrade case: no stored value, so the shipped default applies.
+    let upgraded = Self.freshSuite()
+    #expect(upgraded.object(forKey: name) == nil, "the upgrade case IS the absent key")
+    #expect(read(SettingsManager(defaults: upgraded)) == shipped)
+    #expect(shipped, "all three ship ON as of 2026-09-01")
+
+    // 2. The user's own choice, written to the value the default is NOT, and
+    //    read back through a SECOND manager — which is what a relaunch is.
+    let chosen = Self.freshSuite()
+    write(SettingsManager(defaults: chosen), !shipped)
+    #expect(
+      read(SettingsManager(defaults: chosen)) == !shipped,
+      "a stored choice outranks the default")
+  }
+
   // MARK: - Recording sound cues (#1342)
 
   @Test("recording sounds default to on, whisperTick pairing, on a fresh install")
