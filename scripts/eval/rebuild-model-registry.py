@@ -160,6 +160,16 @@ def read_receipts() -> dict:
             # Ranking across either is the mistake this file exists to prevent.
             "system": m.get("system"),
             "judgeBlind": d.get("judge_blind"),
+            # ADJUDICATION POLICY, and it is directional rather than merely different:
+            # `_worse_new_score` keeps the harsher of the two looks, so a run that
+            # skipped adjudication can only score BETTER than the same model
+            # adjudicated. Comparing it to an adjudicated floor is a free pass.
+            # `meta.adjudicate` exists only on receipts written after 2026-09-01; for
+            # older ones it is inferred from whether anything was SELECTED or
+            # RE-JUDGED, and left null when both are zero, because "nothing needed
+            # adjudicating" and "adjudication was off" are indistinguishable there.
+            # Null is excluded from every floor, exactly like unknown blinding.
+            "adjudication": _adjudication_policy(m, d),
             "runComplete": d.get("run_complete"),
             "passRatePct": o.get("pass_rate_pct"),
             "s4Count": o.get("critical_fail_count"),
@@ -168,6 +178,20 @@ def read_receipts() -> dict:
             "summaryPath": str(f.relative_to(RUNS.parent.parent.parent)),
         })
     return out
+
+
+def _adjudication_policy(meta: dict, doc: dict) -> str | None:
+    """`"<pct>:<min>"`, `"none"`, or None when the receipt cannot say."""
+    enabled = meta.get("adjudicate")
+    if enabled is None:
+        adj = doc.get("adjudication") or {}
+        if (adj.get("adjudicated_n") or 0) or (adj.get("rejudged_n") or 0):
+            enabled = True
+        else:
+            return None
+    if not enabled:
+        return "none"
+    return f"{meta.get('adjudicate_pct')}:{meta.get('adjudicate_min')}"
 
 
 def main() -> int:

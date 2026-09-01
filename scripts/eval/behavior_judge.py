@@ -1609,6 +1609,11 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
                            ratchet_ctx={
                                "corpus": ratchet_corpus,
                                "system": "new",
+                               # score_new's OWN parameters, not `args` — this runs
+                               # inside score_new, where `args` does not exist.
+                               "adjudication": (
+                                   f"{adjudicate_pct}:{adjudicate_min}"
+                                   if adjudicate else "none"),
                                "blind": (None if external_verdicts is not None
                                          else bool(blind)),
                                "rubric": (_rubric_identity()
@@ -2307,6 +2312,13 @@ def main() -> int:
         # separate change with its own flag.
         "rubric_identity": _rubric_identity() if external_verdicts is None else None,
         "reps": args.reps if args.system == "old" else None,
+        # WHETHER adjudication ran, not only how it was configured. `--no-adjudicate`
+        # leaves pct/min at their defaults, so the two settings alone cannot tell an
+        # adjudicated run from a single-pass one — and the difference is DIRECTIONAL:
+        # `_worse_new_score` keeps the MORE severe of the two looks, so skipping
+        # adjudication can only lower an S4 count. A single-pass run compared against
+        # an adjudicated floor is a free pass.
+        "adjudicate": (not args.no_adjudicate) if args.system == "new" else None,
         "adjudicate_pct": args.adjudicate_pct if args.system == "new" else None,
         "adjudicate_min": args.adjudicate_min if args.system == "new" else None,
         "corpus_files": [p.name for p in corpus_paths],

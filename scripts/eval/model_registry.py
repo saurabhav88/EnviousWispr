@@ -228,7 +228,7 @@ def load(path: Path = REGISTRY_PATH) -> dict:
             # stay distinguishable from False, because `comparable()` compares it
             # exactly and unknown blinding may not set a bar.
             for optional, want in (("rubricIdentity", str), ("runComplete", bool),
-                                   ("judgeBlind", bool)):
+                                   ("judgeBlind", bool), ("adjudication", str)):
                 if optional not in e:
                     raise RegistryError(
                         f"{aid}: an evaluation omits the {optional} key. Write null "
@@ -288,7 +288,8 @@ def canonical_rubric(rubric: str | None, doc: dict | None = None) -> str | None:
 
 def comparable(evaluation: dict, corpus: str, rubric: str, judge: str,
                cases: int, doc: dict | None = None,
-               system: str = "new", blind: bool = False) -> bool:
+               system: str = "new", blind: bool = False,
+               adjudication: str | None = None) -> bool:
     """Corpus AND its case count, rubric, judge, GRADING SYSTEM, BLINDING — and the
     artifact's OWN prompt.
 
@@ -302,11 +303,17 @@ def comparable(evaluation: dict, corpus: str, rubric: str, judge: str,
     properties of the measurement.
 
     ARGUED EXCLUSION, stated so it can be challenged rather than discovered:
-    `adjudicate_pct` and `adjudicate_min` perturb a SAMPLED fraction of non-severe
-    cases; they change how much correction is applied, not the scale the numbers live
-    on, and both have been stable defaults across every evaluation on record. A
-    finding of this class would have to show two evaluations differing ONLY in those
-    values and disagreeing materially.
+    RETRACTED, and the retraction is the point. This docstring previously argued that
+    `adjudicate_pct`/`adjudicate_min` merely perturb a sample and could not move the
+    scale, with a falsification condition attached. Cloud review met it: the
+    reconciliation is DIRECTIONAL — `_worse_new_score()` keeps the MORE severe of the
+    primary and adjudicated looks — so a run that skipped adjudication can only score
+    BETTER than the same model adjudicated, and comparing it to an adjudicated floor
+    is a free pass. Adjudication policy is now IN, as one string: `"<pct>:<min>"`,
+    `"none"`, or null when the receipt cannot say.
+
+    Every floor-setting evaluation on `sealed_v1.jsonl` was measured to have
+    adjudication ENABLED, so this costs no history: the floor is still 31.
 
     An Azure deployment can be repointed in place, so the same corpus and rubric
     graded through a different deployment are two graders wearing one name. And a
@@ -326,12 +333,21 @@ def comparable(evaluation: dict, corpus: str, rubric: str, judge: str,
             # blind and sighted are measured non-comparable, so "we do not know which"
             # cannot set a bar.
             and evaluation.get("judgeBlind") == blind
+            # Exact, and null never matches: a receipt that cannot say whether it
+            # adjudicated sets no floor. My own ARGUED EXCLUSION said these settings
+            # only perturb a sample and could not move the scale; that was wrong for
+            # a reason I had not considered and cloud review supplied — the
+            # reconciliation is DIRECTIONAL, so skipping adjudication can only lower
+            # an S4 count. The falsification condition published with that exclusion
+            # is what made the finding checkable.
+            and evaluation.get("adjudication") == adjudication
             and evaluation["promptVariant"] == "own")
 
 
 def floor(corpus: str, rubric: str, judge: str, cases: int,
           doc: dict | None = None,
-          system: str = "new", blind: bool = False) -> tuple[int | None, str]:
+          system: str = "new", blind: bool = False,
+          adjudication: str | None = None) -> tuple[int | None, str]:
     """The best S4 count on record for this corpus and rubric, and where it came from.
 
     Only `shipped` and `selected` artifacts set the floor. A `candidate` has not
@@ -353,7 +369,8 @@ def floor(corpus: str, rubric: str, judge: str, cases: int,
             continue
         for e in a.get("evaluations") or []:
             if (not comparable(e, corpus, rubric, judge, cases, doc,
-                               system=system, blind=blind)
+                               system=system, blind=blind,
+                               adjudication=adjudication)
                     or e.get("runComplete") is not True):
                 continue
             if best is None or e["s4Count"] < best[0]:
@@ -362,7 +379,8 @@ def floor(corpus: str, rubric: str, judge: str, cases: int,
         return None, (f"no complete evaluation of a shipped or selected artifact on "
                       f"corpus {corpus} ({cases} cases) under rubric {rubric} "
                       f"judged by {judge}, system={system}, "
-                      f"blind={'yes' if blind else 'no'}")
+                      f"blind={'yes' if blind else 'no'}, "
+                      f"adjudication={adjudication}")
     return best[0], f"{best[1]} ({best[2]})"
 
 
@@ -399,6 +417,45 @@ def cmd_check_live(args) -> int:
           f"  If this is a genuinely NEW rubric, nothing is wrong: the ratchet reports N/A "
           f"until a shipped or selected artifact is evaluated under it.")
     return 1
+
+
+def cmd_record_live(args) -> int:
+    """Replace a group's non-historical identity with the one the scorer emits NOW.
+
+    Exists because hand-recording the identity was invalidated THREE times in one
+    change: every edit to `behavior_judge.py` moves it, including the edit that fixes
+    the review finding you are recording it for. A value that must be measured after
+    the LAST edit is a value nobody should type — so this reads it, and re-running it
+    is one command rather than a habit anyone can forget.
+
+    Refuses when the live identity is already correct (nothing to do) and when the
+    group would lose its last stamped member, which is the anchor `load()` requires.
+    """
+    doc = load()
+    live = live_rubric_identity()
+    groups = doc.get("_rubricEquivalence") or []
+    if not groups:
+        print("REFUSE: no _rubricEquivalence group to record into")
+        return 2
+    stamped = {e.get("rubricIdentity")
+               for a in doc["artifacts"] for e in a.get("evaluations") or []}
+    g = groups[args.group]
+    if live in g["identities"]:
+        print(f"nothing to do: {live} is already recorded")
+        return 0
+    keep = [r for r in g["identities"] if r in stamped]
+    if not keep:
+        print(f"REFUSE: group {args.group} has no stamped identity to anchor it; "
+              f"replacing its members would leave a group nothing can check")
+        return 2
+    old_ids = list(g["identities"])
+    g["identities"] = keep + [live]
+    with REGISTRY_PATH.open("w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    load()  # fail loudly rather than leave an invalid registry on disk
+    print(f"recorded {live}\n  was: {old_ids}\n  now: {g['identities']}")
+    return 0
 
 
 def cmd_list(args) -> int:
@@ -477,6 +534,9 @@ def main() -> int:
     p = sub.add_parser("list"); p.add_argument("--release"); p.set_defaults(fn=cmd_list)
     p = sub.add_parser("validate"); p.set_defaults(fn=cmd_validate)
     p = sub.add_parser("check-live"); p.set_defaults(fn=cmd_check_live)
+    p = sub.add_parser("record-live")
+    p.add_argument("--group", type=int, default=0)
+    p.set_defaults(fn=cmd_record_live)
     p = sub.add_parser("floor")
     p.add_argument("--corpus", required=True); p.add_argument("--rubric", required=True)
     p.add_argument("--judge", required=True, help="judge identity, exactly as recorded")

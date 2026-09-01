@@ -72,7 +72,8 @@ def s4_floor(ratchet_ctx: dict | None) -> tuple[int | None, str, bool]:
         return None, ("the run did not report whether the judge was blinded, and blind "
                       "and sighted grading are not comparable (122 of 472 verdicts "
                       "moved when the judge saw the key)"), False
-    missing = [k for k in ("corpus", "rubric", "judge", "cases", "system")
+    missing = [k for k in ("corpus", "rubric", "judge", "cases", "system",
+                          "adjudication")
                if ratchet_ctx.get(k) in (None, "")]
     if missing:
         # A run scored from external verdicts has no rubric identity by design,
@@ -88,7 +89,8 @@ def s4_floor(ratchet_ctx: dict | None) -> tuple[int | None, str, bool]:
             # absent key and an explicit False must not be conflated either. Default
             # to the SIGHTED reading only when the caller says so; a caller that does
             # not know passes None and gets no floor rather than a wrong one.
-            blind=bool(ratchet_ctx.get("blind")))
+            blind=bool(ratchet_ctx.get("blind")),
+            adjudication=ratchet_ctx.get("adjudication"))
         return count, source, False
     except Exception as exc:  # noqa: BLE001 - any registry failure is an INSTRUMENT failure
         return None, f"registry unreadable: {type(exc).__name__}: {exc}", True
