@@ -184,14 +184,21 @@ struct EGOnePipelineRoutingTests {
 
   // MARK: - Planner routing
 
-  @Test("planner maps .egOne to the egOneFixed family regardless of model id")
+  @Test("planner takes .egOne's family from the manifest, never from the model id")
   func plannerRoutesEGOne() {
+    // The model id is ignored on this path — that half is unchanged.
+    for id in ["eg-1", "anything"] {
+      #expect(
+        DefaultPromptPlanner.family(
+          for: .egOne, modelID: id, ollamaIsRemote: nil, egOneFamily: .egOneFixed)
+          == .egOneFixed)
+    }
+    // And the manifest's answer is what comes back. Without this direction the branch
+    // could return a constant and every row above would still pass.
     #expect(
-      DefaultPromptPlanner.family(for: .egOne, modelID: "eg-1", ollamaIsRemote: nil)
-        == .egOneFixed)
-    #expect(
-      DefaultPromptPlanner.family(for: .egOne, modelID: "anything", ollamaIsRemote: nil)
-        == .egOneFixed)
+      DefaultPromptPlanner.family(
+        for: .egOne, modelID: "eg-1", ollamaIsRemote: nil, egOneFamily: .egOneEnvelope)
+        == .egOneEnvelope)
   }
 
   @Test("skip reasons carry the local_polish_ telemetry prefix")
