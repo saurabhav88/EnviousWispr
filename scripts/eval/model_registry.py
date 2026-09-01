@@ -274,8 +274,26 @@ def canonical_rubric(rubric: str | None, doc: dict | None = None) -> str | None:
 
 
 def comparable(evaluation: dict, corpus: str, rubric: str, judge: str,
-               cases: int, doc: dict | None = None) -> bool:
-    """Corpus AND its case count, rubric, judge — and the artifact's OWN prompt.
+               cases: int, doc: dict | None = None,
+               system: str = "new", blind: bool = False) -> bool:
+    """Corpus AND its case count, rubric, judge, GRADING SYSTEM, BLINDING — and the
+    artifact's OWN prompt.
+
+    The axes were enumerated from the RECEIPT rather than from review findings: every
+    non-metric field a summary carries was read and judged in or out. In:
+    `corpus_files` (+ case count), `rubric_identity`, `judge_identity`, `system`,
+    `judge_blind`, and the prompt variant. Out, each for a stated reason:
+    `judge`/`judge_model_version` are folded into `judge_identity`; `reps` is
+    old-system wobble and does not move S4; `candidates_file` names the ARTIFACT under
+    test, not the exam; `production_file` feeds pairwise only; timestamps are not
+    properties of the measurement.
+
+    ARGUED EXCLUSION, stated so it can be challenged rather than discovered:
+    `adjudicate_pct` and `adjudicate_min` perturb a SAMPLED fraction of non-severe
+    cases; they change how much correction is applied, not the scale the numbers live
+    on, and both have been stable defaults across every evaluation on record. A
+    finding of this class would have to show two evaluations differing ONLY in those
+    values and disagreeing materially.
 
     An Azure deployment can be repointed in place, so the same corpus and rubric
     graded through a different deployment are two graders wearing one name. And a
@@ -286,11 +304,14 @@ def comparable(evaluation: dict, corpus: str, rubric: str, judge: str,
             and canonical_rubric(evaluation["rubricIdentity"], doc)
                 == canonical_rubric(rubric, doc)
             and evaluation["judgeIdentity"] == judge
+            and evaluation.get("system") == system
+            and bool(evaluation.get("judgeBlind")) == bool(blind)
             and evaluation["promptVariant"] == "own")
 
 
 def floor(corpus: str, rubric: str, judge: str, cases: int,
-          doc: dict | None = None) -> tuple[int | None, str]:
+          doc: dict | None = None,
+          system: str = "new", blind: bool = False) -> tuple[int | None, str]:
     """The best S4 count on record for this corpus and rubric, and where it came from.
 
     Only `shipped` and `selected` artifacts set the floor. A `candidate` has not
@@ -311,7 +332,8 @@ def floor(corpus: str, rubric: str, judge: str, cases: int,
         if a["status"] not in EXCLUSIVE:
             continue
         for e in a.get("evaluations") or []:
-            if (not comparable(e, corpus, rubric, judge, cases, doc)
+            if (not comparable(e, corpus, rubric, judge, cases, doc,
+                               system=system, blind=blind)
                     or e.get("runComplete") is not True):
                 continue
             if best is None or e["s4Count"] < best[0]:
@@ -319,7 +341,8 @@ def floor(corpus: str, rubric: str, judge: str, cases: int,
     if best is None:
         return None, (f"no complete evaluation of a shipped or selected artifact on "
                       f"corpus {corpus} ({cases} cases) under rubric {rubric} "
-                      f"judged by {judge}")
+                      f"judged by {judge}, system={system}, "
+                      f"blind={'yes' if blind else 'no'}")
     return best[0], f"{best[1]} ({best[2]})"
 
 

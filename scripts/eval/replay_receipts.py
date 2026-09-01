@@ -260,9 +260,16 @@ def main() -> int:
     for k, v in counts.items():
         print(f"  {k}: {v}")
     print(f"\nwrote {out_path}")
-    # A mismatch against the STORED summary means this receipt cannot serve as
-    # evidence in either direction; say so loudly rather than exiting 0.
-    return 1 if counts["mismatch"] or counts["judge_error"] else 0
+    # UNRESOLVED counts too. A run where nothing resolved produces "replayed: 0,
+    # mismatch: 0" and exited 0 — a sweep whose emptiness reads as success, which is
+    # this repo's silent-empty family arriving in the tool built to prevent it.
+    # Measured: a worktree run resolved NOTHING and still exited 0.
+    bad = counts["mismatch"] + counts["judge_error"] + counts["unresolved"]
+    if counts["replayed"] == 0:
+        print("REFUSE: not one receipt replayed; this is an instrument failure, "
+              "not a clean result", file=sys.stderr)
+        return 1
+    return 1 if bad else 0
 
 
 if __name__ == "__main__":

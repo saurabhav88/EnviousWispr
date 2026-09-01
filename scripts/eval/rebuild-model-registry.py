@@ -151,6 +151,15 @@ def read_receipts() -> dict:
             "judgeIdentity": (m.get("judge_identity")
                               or (f"name-only:{m['judge']}" if m.get("judge") else None)),
             "rubricIdentity": m.get("rubric_identity"),
+            # TWO MORE COMPARABILITY AXES, both enumerated from the receipt rather
+            # than from a review finding. `system` is the whole grading scheme —
+            # an "old" 5-axis run and a "new" behavior-aware one produce numbers on
+            # different scales. `judgeBlind` is measured non-comparable in
+            # behavior_judge.py: showing the judge the key moved 122 of 472 verdicts,
+            # and report_ollama_bench.py already refuses to rank the modes together.
+            # Ranking across either is the mistake this file exists to prevent.
+            "system": m.get("system"),
+            "judgeBlind": d.get("judge_blind"),
             "runComplete": d.get("run_complete"),
             "passRatePct": o.get("pass_rate_pct"),
             "s4Count": o.get("critical_fail_count"),

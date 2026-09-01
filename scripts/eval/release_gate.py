@@ -68,7 +68,11 @@ def s4_floor(ratchet_ctx: dict | None) -> tuple[int | None, str, bool]:
     """
     if not ratchet_ctx:
         return None, "no ratchet context supplied by the caller", False
-    missing = [k for k in ("corpus", "rubric", "judge", "cases")
+    if ratchet_ctx.get("blind") is None:
+        return None, ("the run did not report whether the judge was blinded, and blind "
+                      "and sighted grading are not comparable (122 of 472 verdicts "
+                      "moved when the judge saw the key)"), False
+    missing = [k for k in ("corpus", "rubric", "judge", "cases", "system")
                if ratchet_ctx.get(k) in (None, "")]
     if missing:
         # A run scored from external verdicts has no rubric identity by design,
@@ -77,7 +81,14 @@ def s4_floor(ratchet_ctx: dict | None) -> tuple[int | None, str, bool]:
     try:
         count, source = model_registry.floor(
             ratchet_ctx["corpus"], ratchet_ctx["rubric"],
-            ratchet_ctx["judge"], ratchet_ctx["cases"])
+            ratchet_ctx["judge"], ratchet_ctx["cases"],
+            system=ratchet_ctx["system"],
+            # `blind` is a BOOLEAN, so it must never join the `missing` check above:
+            # False is a legitimate value and `in (None, "")` would be fine, but an
+            # absent key and an explicit False must not be conflated either. Default
+            # to the SIGHTED reading only when the caller says so; a caller that does
+            # not know passes None and gets no floor rather than a wrong one.
+            blind=bool(ratchet_ctx.get("blind")))
         return count, source, False
     except Exception as exc:  # noqa: BLE001 - any registry failure is an INSTRUMENT failure
         return None, f"registry unreadable: {type(exc).__name__}: {exc}", True

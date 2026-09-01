@@ -1608,6 +1608,9 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
                            # ratchet while still reporting a verdict.
                            ratchet_ctx={
                                "corpus": ratchet_corpus,
+                               "system": "new",
+                               "blind": (None if external_verdicts is not None
+                                         else bool(blind)),
                                "rubric": (_rubric_identity()
                                           if external_verdicts is None else None),
                                "judge": (os.environ.get("EW_JUDGE_IDENTITY")
@@ -2238,8 +2241,13 @@ def main() -> int:
         report = score_new(norm_cases, cands, prod, args.judge, args.chunk_size,
                            external_verdicts, args.adjudicate_pct, args.adjudicate_min,
                            adjudicate=not args.no_adjudicate, blind=args.blind,
-                           ratchet_corpus=(corpus_paths[0].name
-                                           if len(corpus_paths) == 1 else None))
+                           # The SAME deterministic join the registry rebuild uses
+                           # (`",".join(corpus_files)`). Passing None for a multi-file
+                           # run disabled the ratchet permanently for that shape, even
+                           # once a comparable evaluation existed — the run could then
+                           # clear above its floor as long as it stayed under the
+                           # catastrophe ceiling.
+                           ratchet_corpus=",".join(p.name for p in corpus_paths) or None)
     else:
         report = score_old(norm_cases, cands, args.judge, args.reps, args.chunk_size)
 
