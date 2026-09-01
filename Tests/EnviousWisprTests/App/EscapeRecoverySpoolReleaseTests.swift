@@ -35,6 +35,7 @@ struct EscapeRecoverySpoolReleaseTests {
 
   private func makeHandler(_ spy: Spy) -> PipelineStateChangeHandler {
     let steps = LimbSteps(
+      snippetExpansion: SnippetExpansionStep(),
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),

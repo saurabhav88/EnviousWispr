@@ -48,3 +48,40 @@ public struct PolishVocabulary: Sendable, Equatable {
 
   public static let empty = PolishVocabulary(terms: [], generation: 0)
 }
+
+/// Snippet vocabulary (#628) — the THIRD lane, and it reaches neither of the other two.
+///
+/// A snippet trigger must never enter the polish prompt (the model would then see the words
+/// the user is trying to replace) and must never enter `WordCorrector` (its passes are fuzzy,
+/// and a snippet trigger that fires approximately is a defect, not a feature). Giving it its
+/// own value type makes both leaks a compile error rather than a code-review promise, the same
+/// reasoning Phase 0 (#640) applied to the corrector/polish split above.
+///
+/// `keyword` rides in this lane rather than being read live because it is a matching input:
+/// the whole snapshot must be frozen together for a take, or a mid-dictation edit in Settings
+/// changes the rule for text already in flight.
+public struct SnippetVocabulary: Sendable, Equatable {
+  public let snippets: [Snippet]
+  /// The word the user must speak before a trigger. Compared through `SnippetText.normalize`.
+  public let keyword: String
+  public let generation: UInt64
+
+  public init(snippets: [Snippet], keyword: String, generation: UInt64) {
+    self.snippets = snippets
+    self.keyword = keyword
+    self.generation = generation
+  }
+
+  public static let empty = SnippetVocabulary(snippets: [], keyword: "", generation: 0)
+
+  /// The default keyword (founder, 2026-09-01). Chosen because nothing in the text pipeline
+  /// consumes a spoken "backslash" — unlike "slash", which `InverseTextNormalizer` already
+  /// converts contextually for URLs, dates and ranges, so it has a second owner.
+  public static let defaultKeyword = "backslash"
+
+  /// Nothing can fire without both halves, so the expansion step is disabled rather than run
+  /// as a no-op. Keeps the empty-store chain byte-identical to a build without the step (P4).
+  public var canFire: Bool {
+    !snippets.isEmpty && !SnippetText.normalize(keyword).isEmpty
+  }
+}

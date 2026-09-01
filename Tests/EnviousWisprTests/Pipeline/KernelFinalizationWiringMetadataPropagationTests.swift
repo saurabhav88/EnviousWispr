@@ -37,6 +37,7 @@ import Testing
       context: KernelSessionContext(),
       adapter: engine,
       steps: LimbSteps(
+        snippetExpansion: SnippetExpansionStep(),
         wordCorrection: WordCorrectionStep(),
         fillerRemoval: FillerRemovalStep(),
         emojiFormatter: EmojiFormatterStep(),

@@ -369,6 +369,7 @@ struct EscapeRecoveryPillTests {
 
   private static func makeHandler(recording box: IntentBox) -> PipelineStateChangeHandler {
     let steps = LimbSteps(
+      snippetExpansion: SnippetExpansionStep(),
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),

@@ -84,12 +84,40 @@ private final class TerminalResumeLatch: Sendable {
 /// the final step, re-inserting emoji the on-device polish stripped (#761).
 @MainActor
 struct LimbSteps {
+  /// #628. Listed first because it runs first: a snippet trigger is matched literally, so it
+  /// must read the raw ASR surface before the fuzzy corrector can alter one of its words.
+  /// Its partner is NOT in this struct — `SnippetFinalizer` is not a step, and its own header
+  /// says why.
+  let snippetExpansion: SnippetExpansionStep
   let wordCorrection: WordCorrectionStep
   let fillerRemoval: FillerRemovalStep
   let emojiFormatter: EmojiFormatterStep
   let inverseTextNormalization: InverseTextNormalizationStep
   let llmPolish: LLMPolishStep
   let emojiRestore: EmojiRestoreStep
+
+  /// The post-ASR chain, in order, and the ONLY place that order is written (#628).
+  ///
+  /// Before this existed, the live path and the recovery path each spelled the array out for
+  /// themselves. Two lists that must agree and nothing making them agree is a defect waiting on
+  /// whoever adds the next step and updates one of them — which is exactly what adding the
+  /// snippet step surfaced. One property means a new limb is added once, and the paths cannot
+  /// drift.
+  ///
+  /// `snippetExpansion` is first because a snippet trigger is matched literally and must read
+  /// the raw ASR surface before the fuzzy corrector can alter one of its words. `llmPolish` sits
+  /// after `inverseTextNormalization` so ITN doubles as the raw-fallback floor (#145), and
+  /// `emojiRestore` sits after polish because it repairs what polish dropped (#761).
+  ///
+  /// The chain is NOT the last thing that touches the text: `SnippetFinalizer` runs after the
+  /// runner in both paths, and `CursorInsertionRepair` runs after that on the live path.
+  @MainActor
+  var orderedChain: [any TextProcessingStep] {
+    [
+      snippetExpansion, wordCorrection, fillerRemoval, emojiFormatter,
+      inverseTextNormalization, llmPolish, emojiRestore,
+    ]
+  }
 }
 
 /// Issue #1339: sessionless model-load wedge guard for `ensureEngineWarm`.

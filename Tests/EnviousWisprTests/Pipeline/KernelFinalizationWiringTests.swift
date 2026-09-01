@@ -1696,6 +1696,7 @@ import os
 
   private func makeSteps(polish: LLMPolishStep? = nil) -> LimbSteps {
     LimbSteps(
+      snippetExpansion: SnippetExpansionStep(),
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),

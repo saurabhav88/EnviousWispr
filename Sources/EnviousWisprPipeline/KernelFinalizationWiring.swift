@@ -158,6 +158,15 @@ final class KernelSessionContext {
   /// Canonicals only. Aliases are recognition triggers — the misheard forms we
   /// correct FROM — never protected output spellings.
   var protectedSpellings: Set<String> = []
+  /// #628. True when a snippet expanded on this take, which makes the delivered text carry a
+  /// span that must arrive byte-for-byte.
+  ///
+  /// Its neighbour above answers a DIFFERENT question and cannot be reused for this:
+  /// `protectedSpellings` is a set of custom-word canonicals, and `CursorInsertionRepair`
+  /// consults it only to veto LEADING RECASING. The same repair may still change seam spacing
+  /// and delete a repeated leading token, so protecting an expansion through that set would be
+  /// a fix that covers one third of the ways the text can move.
+  var snippetExpansionFired = false
 
   init() {}
 }
@@ -365,17 +374,20 @@ struct KernelFinalizationWiring {
         rawText: raw,
         language: language,
         targetAppName: context.targetApp?.localizedName,
-        steps: [
-          steps.wordCorrection, steps.fillerRemoval, steps.emojiFormatter,
-          steps.inverseTextNormalization, steps.llmPolish, steps.emojiRestore,
-        ],
+        steps: steps.orderedChain,
         // #1846: the LIVE in-flight take, not the concluded one. Polish runs before
         // the session terminal, and starting a session CLEARS `kernel.lastTakeID`,
         // so it is nil here — substituting it would emit no take key at all. Same
         // key as the completion events, read at a different point; swapping the two
         // reads would silently blank one family.
         takeID: telemetryState.takeID)
-      let ctx = result.context
+      var ctx = result.context
+      // #628. Mandatory, non-throwing, and it MUST be here: every read below — the outcome
+      // field copy, the empty-output floor, storage, History, the paste cascade — happens
+      // after this line, and any of them seeing a raw sentinel is the failure this whole
+      // design exists to make impossible. A no-op when no snippet fired.
+      SnippetFinalizer.finalize(&ctx)
+      context.snippetExpansionFired = !ctx.protectedExpansions.isEmpty
       // #145: thread the ITN run outcome onto `dictation.completed` (metadata
       // only — `telemetry-privacy-boundary`). Read on the same actor right after
       // the chain; `itn_floor_delivered` is computed later in
@@ -646,7 +658,20 @@ struct KernelFinalizationWiring {
         // `withOrderedDeadline`, not bare `withDeadline`: on timeout the runtime
         // must be latched BEFORE paste resumes, so a later dictation can never
         // race an abandoned call against AppKit's one shared spell checker.
-        let repairContext: CursorInsertionRepair.CaretText? = caretContext.map {
+        // #628. A take that expanded a snippet takes the LEGACY payload: `repair` with no caret
+        // context returns exactly that, so refusing the context here is the whole bypass and
+        // needs no new branch inside the repair.
+        //
+        // The cost is real and was accepted at Gate 2 (plan §14.4): this take loses the
+        // join-up that makes a half-typed sentence and a dictated ending read as one person's
+        // writing. It is the safe answer for v1 because the repair owns seam spacing, seam
+        // capitalisation and cross-seam de-duplication, any of which would silently edit a
+        // saved email address, and "exactly as written" is the promise the feature is FOR.
+        // Teaching the repair to treat a resolved expansion as an opaque region is filed as
+        // the follow-up.
+        let snippetFired = context.snippetExpansionFired
+        let repairContext: CursorInsertionRepair.CaretText? =
+          snippetFired ? nil : caretContext.map {
           CursorInsertionRepair.CaretText(
             left: $0.leftWindow, right: $0.rightWindow,
             // Read, not derived. This was `leftWindow.utf16.count ==

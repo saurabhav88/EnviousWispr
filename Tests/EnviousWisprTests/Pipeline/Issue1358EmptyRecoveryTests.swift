@@ -178,6 +178,7 @@ struct Issue1358EmptyRecoveryTests {
 
   private func makeSteps() -> LimbSteps {
     LimbSteps(
+      snippetExpansion: SnippetExpansionStep(),
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),

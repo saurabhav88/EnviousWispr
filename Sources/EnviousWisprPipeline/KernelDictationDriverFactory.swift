@@ -411,6 +411,7 @@ public enum KernelDictationDriverFactory {
     // no-ops when no emoji were dropped) — NOT gated on the converter toggle, so
     // a mid-dictation toggle flip can never strand an already-inserted glyph.
     let limbSteps = LimbSteps(
+      snippetExpansion: SnippetExpansionStep(),
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
