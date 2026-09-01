@@ -6,7 +6,7 @@ section: "Recording"
 order: 2
 keywords: ["hands free", "handsfree", "long dictation", "dont want to hold", "without holding", "let go", "keep recording", "long recording", "stop holding the key"]
 related: ["voice-activity-detection-and-auto-stop", "recording-won-t-stop-or-seems-stuck"]
-updated: 2026-08-06
+updated: 2026-09-01
 ---
 Hands-free mode locks recording on, for when you do not want to hold the key down while you talk. This mode suits any text longer than a sentence or two, such as a blog post, a long email, or meeting notes.
 
@@ -24,7 +24,7 @@ You have two choices when you finish speaking, depending on whether you want to 
 
 **Press your keybind once.** Stop recording and insert your text into the app you were working in.
 
-**Press Escape.** Stop recording and discard the audio without producing any text.
+**Press Escape.** Stop recording without any text landing where you were typing. By default EnviousWispr still keeps what you said and offers it back, which is [Escape Recovery](/help/escape-recovery/). To throw the recording away instead, click **Cancel** in the recording bar.
 
 ### Time limits
 

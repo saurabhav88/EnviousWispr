@@ -37,7 +37,7 @@ If holding a key down is uncomfortable, toggle mode asks less of your hand: one 
 
 ### The cancel key
 
-Pressing Escape throws the current recording away without transcribing it. You can change this cancel key on the same **Keybinds** page if you prefer a different one.
+Pressing Escape ends the current recording without pasting anything. You can change this cancel key on the same **Keybinds** page if you prefer a different one.
 
 The same page carries a setting called **Escape Recovery**, on unless you switch it off. With it on, your cancel keybind keeps the recording and offers to paste it back rather than discarding it, which is worth knowing before you reassign the key. See [Escape Recovery](/help/escape-recovery/).
 

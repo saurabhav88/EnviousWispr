@@ -7,9 +7,11 @@ order: 7
 keywords: ["wont stop", "stuck", "keeps recording", "frozen", "hung", "still recording", "cant stop", "spinning"]
 related: ["canceling-a-recording"]
 seeAlso: "mac-dictation-keeps-stopping"
-updated: 2026-08-06
+updated: 2026-09-01
 ---
-If a recording will not stop, press **Escape**. This ends any recording in progress and discards the audio, in every recording mode. The on-screen bar disappears, which confirms it worked.
+If a recording will not stop, press **Escape**. This ends any recording in progress, in every recording mode. The on-screen bar disappears, which confirms it worked.
+
+By default Escape keeps what you said rather than throwing it away: EnviousWispr transcribes it and offers it back, and it waits in your History for 24 hours. That is a setting called [Escape Recovery](/help/escape-recovery/), on unless you switch it off. If you want the recording gone instead, click **Cancel** in the recording bar, which always discards immediately.
 
 ### Recording cannot run forever
 

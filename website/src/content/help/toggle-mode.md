@@ -6,7 +6,7 @@ section: "Recording"
 order: 3
 keywords: ["toggle", "press once", "click to start click to stop", "on off mode", "start stop"]
 related: ["customizing-your-keybind"]
-updated: 2026-08-06
+updated: 2026-09-01
 ---
 Toggle mode changes how you interact with your recording keybind. Instead of holding the key down for every sentence, you press the keybind once to start recording and press it again to stop.
 
@@ -37,6 +37,6 @@ You can switch to this mode in settings.
 
 **Select Toggle.** Under **1. Choose recording mode**, pick **Toggle**.
 
-You will know the setting took effect when a single press starts recording instead of requiring a constant hold. The recording keybind stays the same in both modes, so the rest of your setup remains unchanged. Pressing the Escape key still cancels and discards a recording.
+You will know the setting took effect when a single press starts recording instead of requiring a constant hold. The recording keybind stays the same in both modes, so the rest of your setup remains unchanged. Pressing the Escape key still ends a recording. By default it keeps what you said and offers it back rather than discarding it, which is [Escape Recovery](/help/escape-recovery/); the Cancel button in the recording bar is the one that always discards.
 
 The double-press lock from push to talk does not apply in toggle mode. There is nothing to lock on, because your hands are already free.
