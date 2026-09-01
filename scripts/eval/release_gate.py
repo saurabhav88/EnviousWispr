@@ -50,28 +50,37 @@ ASPIRATION_S4 = 0
 CATASTROPHE_S4_RATE_PCT = 25.0
 
 
-def s4_floor(ratchet_ctx: dict | None) -> tuple[int | None, str]:
-    """The S4 count this run must not exceed, and where it came from.
+def s4_floor(ratchet_ctx: dict | None) -> tuple[int | None, str, bool]:
+    """The S4 count this run must not exceed, where it came from, and whether the
+    ABSENCE of a floor is an ordinary state or a broken instrument.
 
-    Returns (None, reason) when no floor can be established. A missing floor is
-    reported N/A and is NEVER a FAIL: a gate that blocks because it cannot find a
-    comparator blocks forever, since the only way to populate the comparator is to
-    complete a run the gate refuses to pass. That failure is not hypothetical — it
-    is why the first version of this ratchet was reverted.
+    THREE-VALUED, because collapsing the third value is the defect cloud review
+    found on PR #2576. "No comparable evaluation yet" and "the registry could not
+    be read" both produce no floor, and the first version reported both as N/A.
+    A run with 32 S4 against a recorded floor of 31 then read CLEAR — over the bar,
+    under the 25% catastrophe ceiling, and passed — because a malformed registry
+    silently disarmed the only check that would have caught it.
+
+    So: no comparable evaluation is N/A and never blocks, since a gate that blocks
+    for want of a comparator blocks forever (the defect that got the first ratchet
+    reverted). A registry that cannot be READ is a broken instrument and BLOCKS,
+    because an instrument failure must never be reported as a passing quality check.
     """
     if not ratchet_ctx:
-        return None, "no ratchet context supplied by the caller"
+        return None, "no ratchet context supplied by the caller", False
     missing = [k for k in ("corpus", "rubric", "judge", "cases")
                if ratchet_ctx.get(k) in (None, "")]
     if missing:
         # A run scored from external verdicts has no rubric identity by design,
         # so this is an ordinary state, not an error.
-        return None, f"run lacks {', '.join(missing)}, so no comparable set exists"
+        return None, f"run lacks {', '.join(missing)}, so no comparable set exists", False
     try:
-        return model_registry.floor(ratchet_ctx["corpus"], ratchet_ctx["rubric"],
-                                    ratchet_ctx["judge"], ratchet_ctx["cases"])
-    except Exception as exc:  # noqa: BLE001 - a broken registry must be LOUD and N/A
-        return None, f"registry unreadable: {type(exc).__name__}: {exc}"
+        count, source = model_registry.floor(
+            ratchet_ctx["corpus"], ratchet_ctx["rubric"],
+            ratchet_ctx["judge"], ratchet_ctx["cases"])
+        return count, source, False
+    except Exception as exc:  # noqa: BLE001 - any registry failure is an INSTRUMENT failure
+        return None, f"registry unreadable: {type(exc).__name__}: {exc}", True
 
 
 def evaluate_new_gate(overall, smoke, traps, wobble, pairwise, has_production,
@@ -98,8 +107,14 @@ def evaluate_new_gate(overall, smoke, traps, wobble, pairwise, has_production,
         f"{smoke['s4_count']} S4 in {smoke['n']} critical-smoke cases (limit 0)")
 
     observed = overall["critical_fail_count"]
-    floor, source = s4_floor(ratchet_ctx)
-    if floor is None:
+    floor, source, broken = s4_floor(ratchet_ctx)
+    if broken:
+        # FAIL, not N/A. The bar may well be exceeded and we cannot tell; reporting
+        # that as a passing check is how a regression ships on a filesystem error.
+        add("full_corpus_s4_ratchet", False,
+            f"{observed} S4 across full corpus, but the floor could not be read, so this "
+            f"run CANNOT be cleared on quality — {source}")
+    elif floor is None:
         na("full_corpus_s4_ratchet",
            f"{observed} S4 across full corpus; no floor to compare against — {source}")
     else:
@@ -162,6 +177,7 @@ def evaluate_new_gate(overall, smoke, traps, wobble, pairwise, has_production,
         "checks": quality_checks + [aspiration, completeness],
         "s4_floor": floor,
         "s4_floor_source": source,
+        "s4_floor_unreadable": broken,
         "note": ("Behavior-regression, trap-regression and mixed-regression checks "
                  "require a prior run to diff against; run two builds to enable them."),
     }

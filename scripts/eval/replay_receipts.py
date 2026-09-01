@@ -19,6 +19,7 @@ cannot serve as evidence either way.
 Usage: replay_all_receipts.py <out.json> [--limit N]
 """
 
+import hashlib
 import json
 import pathlib
 import subprocess
@@ -31,6 +32,12 @@ import tempfile
 REPO = pathlib.Path(__file__).resolve().parents[2]
 JUDGE = REPO / "scripts/eval/behavior_judge.py"
 REGISTRY = REPO / "scripts/eval/model-registry.json"
+# Receipts live under `scripts/eval/runs/`, which is GITIGNORED — so a WORKTREE has
+# none of them and every receipt resolves as missing. The code root and the receipt
+# root are therefore two different questions, and conflating them made a worktree run
+# report 71 individual unresolved receipts rather than one missing directory.
+# Defaults to the code root; point it at the main checkout from a worktree.
+RECEIPTS_ROOT = REPO
 
 # `judge_stable` is the ONE check a replay legitimately cannot reproduce: it
 # compares pass-rate across judge REPLICATIONS, and a replay re-aggregates a
@@ -46,6 +53,38 @@ REPLAY_CANNOT_REPRODUCE = {"judge_stable"}
 # diff_replays.py can report gate movement, but never compared against a stored
 # receipt — see the note at the comparison.
 GATE_FIELDS = {"gate_verdict", "gate_checks"}
+
+
+def per_case_digest(per_case_path: pathlib.Path) -> str | None:
+    """A digest over EVERY per-case verdict, keyed by case id.
+
+    The aggregates below can agree while individual verdicts move: swap a `pass`
+    for a `minor` in one case and the reverse in another within the same behavior
+    and the pass rate, the S4 count and the per-behavior table are all unchanged.
+    Cloud review raised this on PR #2576 — without it, "SCORES MOVED: 0" is a claim
+    about TOTALS wearing the words of a claim about scores.
+
+    Sorted by id so row ORDER cannot register as a change; JSON-serialised with
+    sorted keys so key order cannot either. Returns None when the file is absent,
+    which the caller must treat as unusable rather than as agreement.
+    """
+    if not per_case_path.exists():
+        return None
+    rows = []
+    for line in per_case_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            r = json.loads(line)
+        except ValueError:
+            return None
+        rows.append((str(r.get("id")), r.get("verdict"), r.get("severity"),
+                     r.get("behavior")))
+    rows.sort(key=lambda t: t[0])
+    return hashlib.sha256(
+        json.dumps(rows, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()[:16]
 
 
 # The fields that carry a SCORE. A refactor may not move any of them.
@@ -89,11 +128,12 @@ def resolve(name: str, receipt_dir: pathlib.Path) -> pathlib.Path | None:
         return None
     for cand in (receipt_dir / name,
                  receipt_dir.parent / name,
+                 RECEIPTS_ROOT / "scripts/eval/corpus" / name,
                  REPO / "scripts/eval/corpus" / name,
-                 REPO / name):
+                 RECEIPTS_ROOT / name):
         if cand.exists():
             return cand
-    hits = sorted((REPO / "scripts/eval").rglob(name))
+    hits = sorted((RECEIPTS_ROOT / "scripts/eval").rglob(name))
     return hits[0] if len(hits) == 1 else None
 
 
@@ -102,6 +142,18 @@ def main() -> int:
     limit = None
     if "--limit" in sys.argv:
         limit = int(sys.argv[sys.argv.index("--limit") + 1])
+    global RECEIPTS_ROOT
+    if "--receipts-root" in sys.argv:
+        RECEIPTS_ROOT = pathlib.Path(sys.argv[sys.argv.index("--receipts-root") + 1]).resolve()
+
+    # REFUSE on the missing DIRECTORY, loudly and once. Reporting it as N missing
+    # receipts describes the symptom N times and names the cause zero times.
+    runs = RECEIPTS_ROOT / "scripts/eval/runs"
+    if not runs.is_dir():
+        print(f"REFUSE: no receipts under {runs}. That directory is gitignored, so a "
+              f"worktree does not have it — pass --receipts-root <main checkout>.",
+              file=sys.stderr)
+        return 2
 
     reg = json.loads(REGISTRY.read_text())
     targets = []
@@ -116,7 +168,7 @@ def main() -> int:
 
     for artifact_id, ev in targets:
         key = f"{artifact_id}::{ev['summaryPath']}"
-        sp = REPO / ev["summaryPath"]
+        sp = RECEIPTS_ROOT / ev["summaryPath"]
         if not sp.exists():
             results[key] = {"state": "unresolved", "why": f"summary missing: {ev['summaryPath']}"}
             counts["unresolved"] += 1
@@ -158,6 +210,9 @@ def main() -> int:
                 counts["judge_error"] += 1
                 continue
             replayed = json.loads(replayed_path.read_text())
+            # Read INSIDE the temp dir's lifetime, or the digest is always None
+            # and the strongest half of this comparison silently vanishes.
+            replay_digest = per_case_digest(pathlib.Path(td) / "per_case.jsonl")
 
         fp_new = fingerprint(replayed)
         fp_old = fingerprint(stored)
@@ -168,6 +223,7 @@ def main() -> int:
         # the business of diff_replays.py, which compares two REPLAYS.
         cmp_new = {k: v for k, v in fp_new.items() if k not in GATE_FIELDS}
         cmp_old = {k: v for k, v in fp_old.items() if k not in GATE_FIELDS}
+        fp_new["per_case_digest"] = replay_digest
         entry = {"state": "replayed", "fingerprint": fp_new,
                  "agrees_with_stored": cmp_new == cmp_old,
                  "dropped_from_stored": dropped_checks(stored),
