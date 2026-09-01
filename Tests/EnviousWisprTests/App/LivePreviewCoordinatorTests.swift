@@ -1338,12 +1338,42 @@ struct LivePreviewCoordinatorTests {
 
   // MARK: - Shipped default
 
-  @Test("Live preview ships off")
-  func shipsOff() {
-    // Off by default is the founder-approved shipped state: it costs screen
-    // attention some users explicitly asked to be able to decline, and it needs
-    // macOS 26, so on by default would read as broken on every older Mac.
-    #expect(SettingsDefaultValues.livePreviewEnabled == false)
+  @Test("Live preview ships on")
+  func shipsOn() {
+    // On by default is the founder-approved shipped state as of 2026-09-01. The
+    // older-Mac objection that once argued for off is answered by the effective
+    // resolution below: where no engine can run, the app behaves exactly as if
+    // the switch were off. The screen-attention objection is answered by the
+    // toggle, which remains the user's escape hatch.
+    #expect(SettingsDefaultValues.livePreviewEnabled == true)
+  }
+
+  /// The one exception the shipped-on default is allowed to have, asserted rather
+  /// than trusted: with the setting ON and no engine available on this machine,
+  /// the coordinator's effective answer must still be off — same behaviour as a
+  /// user who never turned it on. This is what makes "on by default" safe to ship
+  /// to macOS 14 through 25.
+  ///
+  /// **Two-way, because one direction proves nothing here.** A coordinator that
+  /// answered `.engineUnsupported` unconditionally — the exact bug that would
+  /// delete the feature for everyone — satisfies the unsupported row alone. The
+  /// supported row is what separates "the machine cannot" from "the coordinator
+  /// never can", and both read the SHIPPED default rather than a literal, so a
+  /// future flip back to off fails here rather than passing quietly.
+  @Test(
+    "the shipped default resolves to words only where an engine can run",
+    arguments: [(false, PillWordsCapability.engineUnsupported), (true, .available)])
+  func defaultOnResolvesByEngineAvailability(
+    _ engineRuns: Bool, _ expected: PillWordsCapability
+  ) {
+    #expect(SettingsDefaultValues.livePreviewEnabled, "both rows assume the shipped ON default")
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { SettingsDefaultValues.livePreviewEnabled },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute(supported: engineRuns) { _ in .blocked(.unsupportedSystem) }
+    )
+    #expect(coordinator.wordsCapability == expected)
   }
 
   // MARK: - Custom Words on preview text (#1988 acceptance)

@@ -667,8 +667,13 @@ def main():
         # so writing it leaves any existing modifiers in place and the binding
         # stays Carbon-registrable — the exact condition the rebind exists to
         # avoid, failing only on a machine that had a customised shortcut.
+        # **WRITTEN FALSE, NEVER DELETED.** Deleting the key hands the phase
+        # whatever the shipped default is, and that default became ON on
+        # 2026-09-01. A deleted key would have run this phase with the feature
+        # switched on, and every assertion below would have failed against a
+        # correct app while passing against one that never keeps anything.
         apply_settings([
-            ("escapeRecoveryEnabled", None, None),
+            ("escapeRecoveryEnabled", 0, "-bool"),
             ("cancelKeyCode", LCTRL, "-int"),
             ("cancelModifiersRaw", 0, "-int"),
         ], "OFF phase")

@@ -472,12 +472,12 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Live preview while speaking</td>
-            <td><span class="table-check">Yes</span>: off by default, one setting to turn on</td>
+            <td><span class="table-check">Yes</span>: on by default, one setting to turn off; a Mac that cannot run it shows the ordinary recording bar</td>
             <td><span class="table-check">With some models</span>: overlay is on by default, but only shows live text with a compatible Whisper model; falls back to a waveform with Parakeet</td>
           </tr>
           <tr>
             <td>Recover a cancelled dictation</td>
-            <td><span class="table-highlight">Yes</span> (Escape Recovery, opt-in, keybind/triple-press cancel only, 24-hour History)</td>
+            <td><span class="table-highlight">Yes</span> (Escape Recovery, on by default, keybind/triple-press cancel only, 24-hour History)</td>
             <td><span class="table-cross">Not documented</span></td>
           </tr>
           <tr>
@@ -550,12 +550,12 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">👀</div>
         <div class="advantage-title">See your words as you speak</div>
-        <p class="advantage-desc">Live Preview shows your words in the recording pill while you talk, so you always know you are being heard. It is off by default; turn it on in Settings, Record, Live Preview, and pick an engine: Apple's needs macOS 26, or Universal works from macOS 14 with a one-time 217MB download. Your finished text is still decoded from the whole recording after you stop, so nothing is lost waiting for the preview to catch up. Handy has a live overlay too, on by default, though it only shows live text with certain Whisper models and falls back to a waveform with Parakeet.</p>
+        <p class="advantage-desc">Live Preview shows your words in the recording pill while you talk, so you always know you are being heard. It is on by default, and unavailable engines simply show nothing rather than a warning; you pick the engine in Settings, Record, Live Preview: Apple's needs macOS 26, or Universal works from macOS 14 with a one-time 217MB download. Your finished text is still decoded from the whole recording after you stop, so nothing is lost waiting for the preview to catch up. Handy has a live overlay too, on by default, though it only shows live text with certain Whisper models and falls back to a waveform with Parakeet.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">↩️</div>
         <div class="advantage-title">Undo an accidental cancel</div>
-        <p class="advantage-desc">Escape Recovery keeps a dictation you cancel with your keybind or a triple press, instead of discarding it instantly. The app finishes transcribing and polishing, then offers an Undo button, and the text waits in your History for 24 hours if you let it fade. Off by default; you choose to turn it on. The Cancel button in the recording bar always discards immediately, with or without it on.</p>
+        <p class="advantage-desc">Escape Recovery keeps a dictation you cancel with your keybind or a triple press, instead of discarding it instantly. The app finishes transcribing and polishing, then offers an Undo button, and the text waits in your History for 24 hours if you let it fade. On by default; you can switch it off. The Cancel button in the recording bar always discards immediately, with or without it on.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>

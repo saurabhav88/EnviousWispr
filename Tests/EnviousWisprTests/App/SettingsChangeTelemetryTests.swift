@@ -80,20 +80,20 @@ import Testing
     /// Asserts the logical name and both endpoints, not just that something was
     /// emitted. Without the endpoints, a projection wired to the wrong setting
     /// would still emit one `escape_recovery` delta and pass.
-    @Test("Escape Recovery emits one privacy-safe off-to-on delta")
+    @Test("Escape Recovery emits one privacy-safe on-to-off delta")
     func escapeRecoveryDelta() {
       let (settings, telemetry, box, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
 
-      settings.escapeRecoveryEnabled = true
+      settings.escapeRecoveryEnabled = false
       telemetry.flush()
 
       let d = deltas(box, setting: "escape_recovery")
       #expect(d.count == 1)
-      #expect(d.first?.stringProps["from"] == "off", "ships off — that is the baseline")
-      #expect(d.first?.stringProps["to"] == "on")
+      #expect(d.first?.stringProps["from"] == "on", "ships on — that is the baseline")
+      #expect(d.first?.stringProps["to"] == "off")
       #expect(d.first?.stringProps["source"] == "user")
-      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "on")
+      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "off")
     }
 
     /// The projection must follow the SETTING, not a constant. A value hard-wired
@@ -103,11 +103,11 @@ import Testing
       let (settings, _, _, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
 
-      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "off")
-      settings.escapeRecoveryEnabled = true
       #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "on")
       settings.escapeRecoveryEnabled = false
       #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "off")
+      settings.escapeRecoveryEnabled = true
+      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "on")
     }
 
     // MARK: - #1987 toggle hotkey identity fan-out
@@ -272,12 +272,12 @@ import Testing
       // had it on before the window. Adding `.escapeRecovery` to the snapshot
       // exclusion set would do exactly that while every delta test stayed green.
       #expect(
-        atDefault?.stringProps["escape_recovery"] == "off",
+        atDefault?.stringProps["escape_recovery"] == "on",
         "the shipped default must appear in the baseline, not only in deltas")
 
-      settings.escapeRecoveryEnabled = true
+      settings.escapeRecoveryEnabled = false
       #expect(
-        emitSnapshot()?.stringProps["escape_recovery"] == "on",
+        emitSnapshot()?.stringProps["escape_recovery"] == "off",
         "the baseline must track the setting, not report a constant")
 
       settings.toggleKeyCode = ModifierKeyCodes.globe
@@ -343,14 +343,17 @@ import Testing
     func recordingSoundsDelta() {
       let (settings, telemetry, box, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
-      settings.playRecordingSounds = true
+      // Written to the NON-default value in both cases: sounds ship ON, so a
+      // write of `true` produces no delta at all and every assertion below would
+      // be measuring an event that was never emitted.
+      settings.playRecordingSounds = false
       settings.recordingSoundPairing = .velvetTap
       telemetry.flush()
 
       let enabledDeltas = deltas(box, setting: "play_recording_sounds")
       #expect(enabledDeltas.count == 1)
-      #expect(enabledDeltas.first?.stringProps["from"] == "off")
-      #expect(enabledDeltas.first?.stringProps["to"] == "on")
+      #expect(enabledDeltas.first?.stringProps["from"] == "on")
+      #expect(enabledDeltas.first?.stringProps["to"] == "off")
 
       let pairingDeltas = deltas(box, setting: "recording_sound_pairing")
       #expect(pairingDeltas.count == 1)
@@ -358,7 +361,7 @@ import Testing
       #expect(pairingDeltas.first?.stringProps["to"] == "velvetTap")
 
       #expect(
-        SettingsProjection.value(for: .playRecordingSounds, settings: settings) == "on")
+        SettingsProjection.value(for: .playRecordingSounds, settings: settings) == "off")
       #expect(
         SettingsProjection.value(for: .recordingSoundPairing, settings: settings)
           == "velvetTap")

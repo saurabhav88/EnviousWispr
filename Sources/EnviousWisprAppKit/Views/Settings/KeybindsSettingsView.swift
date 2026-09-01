@@ -161,10 +161,11 @@ struct KeybindsSettingsView: View {
                 """
               )
               // `stBody` at PRIMARY colour: the tokens define this as
-              // reading-copy, and this is the disclosure a user has to actually
-              // read before turning the feature on. Quieting it would be a
-              // legibility choice made against the one paragraph that explains
-              // what changes about their cancel key.
+              // reading-copy, and this is the one paragraph explaining what
+              // changed about their cancel key. That mattered when the feature
+              // was opt in; it matters MORE now that it ships on (2026-09-01),
+              // because a user arrives here having never chosen it. Quieting it
+              // would be a legibility choice made against the only disclosure.
               .font(.stBody)
               .foregroundStyle(.stTextPrimary)
               .fixedSize(horizontal: false, vertical: true)

@@ -18,6 +18,36 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.4.7
+
+    // **THIS GROUP IS OPEN AND 2.4.6 HAS SHIPPED** (tag v2.4.6, 2026-08-28), so
+    // the entry below could not live in that group. The unread badge is
+    // `lastSeen != currentContentVersion`; a user who opened What's New after
+    // 2.4.6 shipped has `lastSeen == "2.4.6"`, so an entry appended there raises
+    // no badge and is never seen by the exact people it was written for, with
+    // nothing failing. `WhatsNewConstants.currentContentVersion` moves to 2.4.7
+    // with this group. Only the CONTENT version moves; the marketing version in
+    // Info.plist waits for a release PR. Owner, not restated:
+    // .claude/knowledge/whats-new-protocol.md FACT: whats-new-grouping.
+
+    // Founder direction 2026-09-01: settings that were opt in now ship on.
+    // ONE entry rather than three, because a user does not experience three
+    // settings changing; they experience the app doing more on the day they
+    // update. The sentence names what they will SEE and where the switch is,
+    // since every one of these is still theirs to turn off.
+    //
+    // The macOS 26 caveat on Live Preview is stated as behaviour rather than as
+    // a requirement: on a Mac that cannot run it, nothing appears and nothing is
+    // said, which is the whole reason on-by-default is safe to ship.
+    Entry(
+      id: "better-out-of-the-box-defaults",
+      icon: "sparkles",
+      title: "More of EnviousWispr is switched on from the start",
+      description:
+        "Cancelling with your keybind now keeps the dictation and offers it back instead of throwing it away. Your words appear in the recording bar while you speak, on Macs that can show them. A short tick confirms when recording starts and stops. Every one of these is a switch you can turn off, in Keybinds, Live Preview and Sounds settings.",
+      version: "2.4.7"
+    ),
+
     // MARK: - v2.4.6
 
     // Every title and every collapsed line in this group was written or edited by

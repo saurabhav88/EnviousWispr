@@ -76,16 +76,16 @@ enum SettingsDefaultValues {
   static let smartInsertion = true
 
   /// Escape Recovery (#2087): keep a dictation the user cancelled with their
-  /// cancel shortcut, instead of discarding it. Default OFF, and that default is
-  /// the product decision, not a cautious rollout — persona review put every
-  /// persona at "off" and one at "on", so the feature is opt-in by consensus.
+  /// cancel shortcut, instead of discarding it. Default ON (founder, 2026-09-01),
+  /// superseding the opt-in-by-persona-consensus default this key shipped with.
   ///
-  /// It is off because ON changes what a cancel MEANS. Escape stops being
-  /// destructive, the transcription engine runs on text the user tried to throw
-  /// away, a new recording cannot start until that finishes, and a BYOK user
-  /// pays their provider for the polish. Every one of those is defensible when
-  /// chosen and indefensible when imposed.
-  static let escapeRecoveryEnabled = false
+  /// The cost of ON is unchanged and is accepted rather than unrecognised: a
+  /// cancel stops being destructive, the transcription engine runs on text the
+  /// user tried to throw away, a new recording cannot start until that finishes,
+  /// and a BYOK user pays their provider for the polish. The founder's reading is
+  /// that losing a dictation you meant to keep is the more expensive mistake, and
+  /// the pill offers the recovery rather than performing it.
+  static let escapeRecoveryEnabled = true
 
   static let wordCorrectionEnabled = true
   static let fillerRemovalEnabled = true
@@ -124,11 +124,18 @@ enum SettingsDefaultValues {
   static let warmEnginePolicy: WarmEnginePolicy = .seconds30
 
   // #1988: show the words in the recording pill while the user is still speaking.
-  // OFF by default. It costs screen attention some users explicitly do not want
-  // (the Reddit request that prompted it asked for it to be toggleable for exactly
-  // that reason), and it needs macOS 26, so a default-on toggle would read as
-  // broken on every older Mac. Display only: the pasted text never comes from it.
-  static let livePreviewEnabled = false
+  // ON by default (founder, 2026-09-01), superseding the shipped OFF.
+  //
+  // The older-Mac objection that argued for OFF is answered by machinery that did
+  // not exist when this key was written: `LivePreviewCoordinator` resolves an
+  // EFFECTIVE enabled value per recording, so where no engine can run the app
+  // behaves exactly as if the switch were off — ordinary pill, no message, nothing
+  // to escape from. That is the only exception to this default, and it is
+  // automatic rather than a second stored value.
+  //
+  // The screen-attention objection stands and is answered by the toggle. Display
+  // only: the pasted text never comes from the preview.
+  static let livePreviewEnabled = true
   /// #2123: Apple first. The universal engine is opt-in, never a default toll.
   static let livePreviewEngine: LivePreviewEngineChoice = .apple
 
@@ -138,13 +145,14 @@ enum SettingsDefaultValues {
   // The permanent Microphone-settings guide stays regardless of this flag.
   static let showBluetoothTips = true
 
-  // Recording start/stop sounds default OFF — silent for every existing user
-  // until they opt in. The pairing default only matters once the toggle is
-  // on; Whisper Tick is the fresh-install choice (#1618). No migration for
-  // users who enabled sounds under the prior Air Glint default: no tagged
-  // release has ever shipped recording sound cues (v2.3.1 predates #1342
-  // merging), so no installed base has an implicit old default to protect —
-  // #1342 and #1618 ship together, for the first time, in the same release.
-  static let playRecordingSounds = false
+  // Recording start/stop sounds default ON, paired to Whisper Tick (founder,
+  // 2026-09-01), superseding the shipped OFF. Start and stop are the two moments
+  // a user most needs confirmed without looking at the pill. Whisper Tick was
+  // already the fresh-install pairing (#1618) and is unchanged here; only the
+  // on/off default moved. The toggle is the escape hatch for anyone in a shared
+  // room. No migration is owed to the prior Air Glint pairing default: no
+  // tagged release has ever shipped recording sound cues (v2.3.1 predates #1342
+  // merging), so no installed base has an implicit old pairing to protect.
+  static let playRecordingSounds = true
   static let recordingSoundPairing: RecordingSoundPairing = .whisperTick
 }

@@ -108,7 +108,8 @@ struct LivePreviewSettingsView: View {
   private var anyEngineAvailable: Bool { isAppleSupported || universalExists }
 
   /// The toggle's own value, NOT whether a preview could run. Anything the page
-  /// says about a live preview is false while this is off, and it is off by default.
+  /// says about a live preview is false while this is off. The shipped default is
+  /// `SettingsDefaultValues.livePreviewEnabled` and is not restated here.
   private var isPreviewOn: Bool { settings.livePreviewEnabled }
 
   private var universalState: DeliveryState {

@@ -204,7 +204,7 @@ uat.defaults_delete = lambda k: None  # the delete goes nowhere
 try:
     uat.apply_settings([("escapeRecoveryEnabled", None, None)], "row")
     ok("a delete that goes nowhere ABORTS", False,
-       "the OFF phase would then run with the feature ON")
+       "a restore-to-default row would then leave the previous value in place")
 except uat.Aborted as e:
     ok("a delete that goes nowhere ABORTS", True, str(e))
 

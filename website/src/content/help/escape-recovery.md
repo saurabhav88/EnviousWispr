@@ -6,19 +6,19 @@ section: "Recording"
 order: 6
 keywords: ["escape recovery", "cancelled by mistake", "i cancelled by accident", "get my dictation back", "undo cancel", "recover a cancelled recording", "keep a cancelled recording", "pressed escape by mistake", "lost what i said", "accidental cancel"]
 related: ["canceling-a-recording", "transcript-history"]
-updated: 2026-08-18
+updated: 2026-09-01
 ---
-Cancelling a recording normally throws it away. If you have ever pressed your cancel keybind and wished a second later that you had not, Escape Recovery is the setting that changes that. It is off until you turn it on, and turning it off puts everything back exactly as it was.
+If you have ever pressed your cancel keybind and wished a second later that you had not, Escape Recovery is what saves you. It is on from the start. Your cancel keybind keeps the recording and offers it back to you instead of throwing it away. Switch it off and cancelling discards immediately, exactly as it used to.
 
 A recording follows the setting as it stood when that recording started. Changing the toggle applies from the next recording you begin, never to one already running.
 
-### Turning it on
+### Where the setting lives
 
 1. **Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Keybinds**.
 2. **Find Cancel Recording.** It is the section below your recording keybind.
-3. **Switch on Escape Recovery.**
+3. **Escape Recovery is the toggle there**, on unless you switch it off.
 
-### What changes when it is on
+### What it does
 
 Your cancel keybind, Escape by default, still stops the recording. Instead of discarding it, EnviousWispr transcribes and polishes it the same way it would any dictation, then holds the text rather than pasting it.
 

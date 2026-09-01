@@ -25,6 +25,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
+import defaults_store as ds  # noqa: E402  (type-preserving park-and-restore)
 import wispr_eyes as rk  # noqa: E402  (record-key helpers; merged in #2425)
 import wispr_eyes as w  # noqa: E402
 
@@ -39,10 +40,22 @@ OVERLAY_ID = 64874
 
 KEYS = ["livePreviewEnabled", "recordingPillDesignWithoutWords"]
 
+# **A BOOL MUST BE WRITTEN AS A BOOL, AND THIS HARNESS WAS NOT.**
+# `SettingsManager` reads `livePreviewEnabled` with `object(forKey:) as? Bool`
+# (SettingsManager.swift:966). `defaults write <dom> <key> 1` stores a STRING, so
+# that cast yields nil and the app silently falls back to the SHIPPED DEFAULT --
+# `defaults read` still prints back the `1` you wrote, so nothing here looks
+# wrong. With the shipped default now ON (2026-09-01) the two `False` rows would
+# have recorded reading-well geometry while labelled levelRail and classic, which
+# is the exact evidence this harness exists to produce.
+# Owner of the trap, not restated: .claude/knowledge/settings-defaults.md
+# RULE: preset-a-dev-setting-in-the-shared-suite-never-the-dev-domain.
+BOOL_KEYS = {"livePreviewEnabled"}
+
 ROWS = [
-    ("readingWell", {"livePreviewEnabled": "1"}),
-    ("levelRail", {"livePreviewEnabled": "0", "recordingPillDesignWithoutWords": "levelRail"}),
-    ("classic", {"livePreviewEnabled": "0", "recordingPillDesignWithoutWords": "classic"}),
+    ("readingWell", {"livePreviewEnabled": True}),
+    ("levelRail", {"livePreviewEnabled": False, "recordingPillDesignWithoutWords": "levelRail"}),
+    ("classic", {"livePreviewEnabled": False, "recordingPillDesignWithoutWords": "classic"}),
 ]
 
 
@@ -52,7 +65,32 @@ def read_default(key):
 
 
 def write_default(key, value):
-    subprocess.run(["defaults", "write", DOMAIN, key, value], check=True)
+    """Write one row value, in the spelling the app's own reader accepts.
+
+    `SettingsManager` reads `livePreviewEnabled` with `object(forKey:) as? Bool`
+    (SettingsManager.swift:966). `defaults write <dom> <key> 1` stores a STRING,
+    so that cast yields nil and the app falls back to the SHIPPED DEFAULT --
+    while `defaults read` still prints the `1` back, so nothing looks wrong. With
+    the shipped default ON since 2026-09-01, the two `False` rows below would
+    have captured reading-well geometry under the labels levelRail and classic,
+    which is the evidence this harness exists to produce.
+    """
+    if key in BOOL_KEYS:
+        ds.write_typed(DOMAIN, key, value, "-bool")
+        return
+    ds.write_typed(DOMAIN, key, value, "-string")
+
+
+def expected_readback(key, value):
+    """What `defaults read` prints for a value this harness just wrote.
+
+    A bool comes back as `1`/`0`, never as `true`/`false`, so comparing the
+    read-back against the value as written would fail forever on exactly the keys
+    the writer above was fixed for.
+    """
+    if key in BOOL_KEYS:
+        return "1" if value else "0"
+    return str(value)
 
 
 def apply_settings(settings, timeout=5.0):
@@ -66,7 +104,7 @@ def apply_settings(settings, timeout=5.0):
         write_default(k, v)
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if all(read_default(k) == v for k, v in settings.items()):
+        if all(read_default(k) == expected_readback(k, v) for k, v in settings.items()):
             return True
         time.sleep(0.05)  # test-fixture-timer: read-back polling cadence
     return False
@@ -111,7 +149,11 @@ def await_visible(pid, timeout=8.0):
 
 def main():
     pid = int(sys.argv[1])
-    snapshot = {k: read_default(k) for k in KEYS}
+    # TYPE-PRESERVING, not text-only. `defaults read` prints a boolean `false`
+    # and a string "0" identically, so a text-only park-and-restore silently
+    # rewrites the developer's own preference into a different plist type -- and
+    # a text-only restore check cannot see it. Owner: defaults_store.
+    snapshot = ds.snapshot(DOMAIN, KEYS)
     report = {"pid": pid, "settings_snapshot": snapshot, "rows": {}}
     print("snapshot:", snapshot)
 
@@ -133,13 +175,10 @@ def main():
             }
             print(f"  {name}: {seen}")
     finally:
-        for k, v in snapshot.items():
-            if v is None:
-                subprocess.run(["defaults", "delete", DOMAIN, k], capture_output=True)
-            else:
-                write_default(k, v)
-        report["settings_restored"] = {k: read_default(k) for k in KEYS}
-        report["restore_clean"] = report["settings_restored"] == snapshot
+        landed = ds.restore(DOMAIN, snapshot)
+        report["settings_restored"] = {k: ds.read_typed(DOMAIN, k) for k in KEYS}
+        report["restore_clean"] = all(landed.values())
+        report["restore_failed_keys"] = [k for k, good in landed.items() if not good]
         (UAT / "geometry.json").write_text(json.dumps(report, indent=2, default=str))
         print(json.dumps(report, indent=2, default=str)[:2000])
 
