@@ -187,6 +187,13 @@ public final class CustomWordsManager {
         category: .brand
       )),
     BuiltinWord(
+      id: "eg1",
+      word: CustomWord(
+        canonical: "EG-1",
+        aliases: ["E G One", "EG 1", "E G 1"],
+        category: .brand
+      )),
+    BuiltinWord(
       id: "macos",
       word: CustomWord(
         canonical: "macOS",
