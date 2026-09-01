@@ -274,4 +274,21 @@ struct AppearancePillPickerTests {
         """)
     }
   }
+
+  @Test("A coupled choice updates Live Preview and only its matching remembered slot")
+  func coupledChoiceUpdatesTheSwitchAndCorrectSlot() {
+    let (settings, model) = Self.settingsAndModel(.previewOff)
+    settings.recordingPillDesignWithoutWords = .classic
+    settings.recordingPillDesignWithWords = .readingWell
+
+    model.chooseCoupled(.readingWell)
+    #expect(settings.livePreviewEnabled)
+    #expect(settings.recordingPillDesignWithWords == .readingWell)
+    #expect(settings.recordingPillDesignWithoutWords == .classic)
+
+    model.chooseCoupled(.levelRail)
+    #expect(settings.livePreviewEnabled == false)
+    #expect(settings.recordingPillDesignWithoutWords == .levelRail)
+    #expect(settings.recordingPillDesignWithWords == .readingWell)
+  }
 }

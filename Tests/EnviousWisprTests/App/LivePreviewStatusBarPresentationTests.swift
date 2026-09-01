@@ -288,6 +288,9 @@ struct LivePreviewStatusBarPresentationTests {
   func provenanceDistinguishesAutoFromLocked() {
     let auto = bar(.active, languageMode: .auto).language?.provenance
     let locked = bar(.active, languageMode: .locked("de")).language?.provenance
+    func visible(_ value: String?) -> String? {
+      value.map { $0.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
+    }
 
     // **THE ROWS BELOW CANNOT FAIL ON A COPY CHANGE, WHICH IS WHY THIS ONE IS
     // FIRST.** They compare the bar's answer against the same constant the bar
@@ -296,7 +299,9 @@ struct LivePreviewStatusBarPresentationTests {
     // this test's name promises to prevent — survived. DISTINCTNESS is the
     // property, and no constant can satisfy it vacuously.
     #expect(auto != nil)
-    #expect(auto != locked, "auto and locked must not say the same thing")
+    #expect(
+      visible(auto) != visible(locked),
+      "auto and locked must not say the same visible thing after whitespace normalization")
 
     // And one literal, so the pair cannot drift together into wording that
     // distinguishes nothing a reader would notice.

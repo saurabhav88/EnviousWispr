@@ -1,4 +1,6 @@
 import Foundation
+import SwiftParser
+import SwiftSyntax
 import Testing
 
 /// The settings window draws its own controls, and this suite freezes the two
@@ -21,6 +23,19 @@ import Testing
 /// button starts depending on its container again.
 @Suite("Settings controls own their own affordance (#2447)", .tags(.driftGuard))
 struct SettingsControlAffordanceTests {
+
+  private final class AccessibilityLabelFinder: SyntaxVisitor {
+    private(set) var calls: [FunctionCallExprSyntax] = []
+
+    override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+      if node.calledExpression.as(MemberAccessExprSyntax.self)?.declName.baseName.text
+        == "accessibilityLabel"
+      {
+        calls.append(node)
+      }
+      return .visitChildren
+    }
+  }
 
   private static var repoRoot: URL {
     URL(fileURLWithPath: #filePath)
@@ -178,6 +193,34 @@ struct SettingsControlAffordanceTests {
       index = cursor
     }
     return results
+  }
+
+  @Test("The Live Preview language control announces its provenance")
+  func livePreviewLanguageAccessibilityKeepsTheProvenance() throws {
+    let file = try #require(
+      try Self.settingsSources().first { $0.path.hasSuffix("LivePreviewSettingsView.swift") },
+      "LivePreviewSettingsView.swift is absent from the settings source scan")
+    let finder = AccessibilityLabelFinder(viewMode: .sourceAccurate)
+    finder.walk(Parser.parse(source: file.text))
+    let labels = finder.calls.compactMap { call -> StringLiteralExprSyntax? in
+      guard let literal = call.arguments.first?.expression.as(StringLiteralExprSyntax.self),
+        literal.trimmedDescription.contains("Change dictation language:")
+      else { return nil }
+      return literal
+    }
+    let label = try #require(
+      labels.count == 1 ? labels.first : nil,
+      "found \(labels.count) language-control accessibility labels")
+
+    #expect(
+      label.trimmedDescription.contains(#"\(language.name)"#)
+        && label.trimmedDescription.contains(#"\(language.provenance)"#),
+      """
+      The language button's explicit accessibility label no longer includes the \
+      same provenance a sighted user reads. An explicit label replaces its child \
+      announcement, so omitting that value makes VoiceOver lose the distinction \
+      between a Mac-chosen language and one the user picked.
+      """)
   }
 
   /// A keyboard shortcut is never applied to the OUTSIDE of `SettingsActionButton`.

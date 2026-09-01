@@ -15,11 +15,10 @@ import Testing
 /// secondary line on a two-line stack changes HEIGHT; a longer button label
 /// changes WIDTH by the button's own delta.
 ///
-/// Against the base revision `.recovery` and `.accessibilityToast` measure
-/// IDENTICALLY under every model, because they took no model at all — they read
-/// `DictationNarrator` themselves and hardcoded both button strings. So these
-/// rows fail before the change, which is the parent-commit-equivalent control
-/// this repo licenses inline, with no mutant run.
+/// A parent-commit control is structurally unavailable here: the base leaves
+/// took no model parameters and the suite names `NoticeAction`, which the same
+/// change introduced, so this test does not compile against that revision.
+/// #2418 therefore carries the mutation proof that these rows are not vacuous.
 ///
 /// **Product Outcome.** When one of these fails the user is shown a pill whose
 /// words are not the words the app decided to say.
@@ -34,6 +33,18 @@ struct NoticeLeafModelTests {
       for: PillDefinition(
         id: RenderedPillHarness.id(), content: .notice(model),
         expiry: .untilReplaced, requestedWidth: .measured))
+  }
+
+  private static func leafSize<Leaf: View>(_ leaf: Leaf) -> CGSize {
+    let host = NSHostingView(rootView: leaf)
+    let frame = NSRect(x: 0, y: 0, width: 1000, height: 600)
+    let window = NSWindow(
+      contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    host.frame = frame
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    return host.fittingSize
   }
 
   /// The base model per kind, deliberately minimal so each row below changes one
@@ -152,6 +163,42 @@ struct NoticeLeafModelTests {
       \(kind) measured \(without.width)pt with no action and \(withButton.width)pt \
       with one. A button is being drawn for a notice that carries no action, which \
       means its label came from somewhere other than the model.
+      """)
+  }
+
+  /// The model values may all arrive correctly while the root sends one kind to
+  /// another kind's leaf. Use byte-identical models apart from `kind`, so the
+  /// measured difference comes from routing rather than copy or action width.
+  @Test("Recovery and Accessibility notices keep distinct visual treatments")
+  func noticeKindsRouteThroughDistinctLeaves() throws {
+    let action = NoticeAction(label: "Act", action: .grantAccessibility)
+    let recovery = NoticeModel(
+      kind: .recovery, text: "Same notice", accessibilityLabel: "Same notice",
+      action: action)
+    let accessibility = NoticeModel(
+      kind: .accessibilityToast, text: "Same notice", accessibilityLabel: "Same notice",
+      action: action)
+
+    let routedRecovery = Self.size(recovery)
+    let routedAccessibility = Self.size(accessibility)
+    let expectedRecovery = Self.leafSize(
+      RecoveryNoticeView(
+        title: recovery.text, subtitle: recovery.secondaryText,
+        accessibilityLabel: recovery.accessibilityLabel ?? recovery.text,
+        action: recovery.action, onAction: {}))
+    let expectedAccessibility = Self.leafSize(
+      AccessibilityToastView(
+        text: accessibility.text, action: accessibility.action, onAction: {}))
+
+    try #require(routedRecovery.width > 0 && routedAccessibility.width > 0)
+    #expect(routedRecovery == expectedRecovery)
+    #expect(routedAccessibility == expectedAccessibility)
+    #expect(
+      routedRecovery != routedAccessibility,
+      """
+      recovery and Accessibility both measured \(routedRecovery). The root routed two \
+      different notice kinds through one leaf, so the model is correct but the user \
+      sees the wrong treatment.
       """)
   }
 

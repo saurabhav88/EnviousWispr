@@ -253,6 +253,26 @@ struct LivePreviewSettingsCopyTests {
     }
   }
 
+  @Test("Each engine caveat is the sentence a human approved")
+  func caveatSentencesAreFrozen() {
+    #expect(
+      LivePreviewSettingsCopy.pickerAppleCaveat
+        == """
+        This changes dictation too, not just the preview. On Automatic, dictation \
+        follows what you speak, but the preview must pick one language up front and \
+        uses your Mac's.
+        """)
+    #expect(
+      LivePreviewSettingsCopy.pickerUniversalCaveat
+        == """
+        This changes dictation too, not just the preview. On Automatic, this engine \
+        works the language out as you speak.
+        """)
+    #expect(
+      LivePreviewSettingsCopy.pickerAppleCaveat
+        != LivePreviewSettingsCopy.pickerUniversalCaveat)
+  }
+
   /// The status bar's provenance describes CONFIGURATION, never activity: the chip
   /// renders in every state, including off and failed, so any word implying live
   /// detection is a claim the bar cannot keep.
