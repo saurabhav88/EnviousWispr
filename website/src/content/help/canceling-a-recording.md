@@ -6,7 +6,7 @@ section: "Recording"
 order: 5
 keywords: ["cancel", "stop without pasting", "throw away", "discard", "escape", "abort", "undo", "didnt mean to record", "delete recording"]
 related: ["recording-won-t-stop-or-seems-stuck", "escape-recovery"]
-updated: 2026-08-17
+updated: 2026-09-01
 ---
 If you misspeak, get interrupted, or start recording by accident, you can stop the recording without leaving any text behind. EnviousWispr ends the recording, discards the audio, and leaves your cursor untouched. This works in every recording mode and at any point during a recording.
 
@@ -28,6 +28,6 @@ You can change the cancel key if you prefer a different keybind. Click the Envio
 
 ### If you would rather keep what you said
 
-Everything above describes how EnviousWispr behaves out of the box. There is an optional setting, **Escape Recovery**, that changes it: with the setting on, your cancel keybind keeps the dictation instead of discarding it, transcribes it, and offers to paste it back. The triple press of your recording keybind does the same. The Cancel button in the recording bar still discards immediately either way.
+Everything above describes what the Cancel button does. Your cancel keybind behaves differently, because of a setting called **Escape Recovery** that is on from the start: the keybind keeps the dictation instead of discarding it, transcribes it, and offers to paste it back. The triple press of your recording keybind does the same. The Cancel button in the recording bar discards immediately whatever the setting says.
 
-The setting is off unless you turn it on, in **Settings**, **Keybinds**, under Cancel Recording. [Escape Recovery](/help/escape-recovery/) explains what it changes and what it costs you.
+The setting is on unless you switch it off, in **Settings**, **Keybinds**, under Cancel Recording. [Escape Recovery](/help/escape-recovery/) explains what it changes and what it costs you.

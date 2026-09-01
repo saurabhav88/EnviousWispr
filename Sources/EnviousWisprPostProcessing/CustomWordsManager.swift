@@ -176,7 +176,41 @@ public final class CustomWordsManager {
           "envious whisper", "envious wisper", "envious whispr",
           "envious visper", "envious cisper", "mbs cisper",
           "in vious wispr", "envy us wispr", "NVS Visper", "NBS Vesper",
+          // Added 2026-09-01 from the founder's own library, where each of these
+          // is a mishearing his recognizer actually produced. They are kept
+          // verbatim rather than tidied: the alias has to match what the engine
+          // emits, not what the phrase looks like written down.
+          "envious wispr", "Enviousvisper", "NVSBesper", "NVSBSPur",
+          "NVIS VICPRSO", "EnvyS Visper", "senvy wpr", "Dambius Bispe",
         ],
+        category: .brand
+      )),
+    BuiltinWord(
+      id: "eg1",
+      word: CustomWord(
+        canonical: "EG-1",
+        // Our own on-device polish model. Every alias here carries the DIGIT,
+        // and that is the whole design rather than a stylistic preference.
+        //
+        // **The spelled-out "one" forms were proposed and REMOVED, measured
+        // rather than reasoned about.** The fuzzy multi-word pass matches a
+        // two-token alias against any two-token phrase close enough to it, and
+        // English is full of near neighbours: "egg one" ate "she cracked an egg
+        // on the pan", and "E G one" ate "the item is e g on the list". Both came
+        // out with "EG-1" swallowing the following preposition. Matching is
+        // case-insensitive, so dropping only the lowercase spelling would have
+        // changed nothing.
+        //
+        // "EG1" is a single token and therefore reaches the single-word fuzzy
+        // pass; its neighbours are checked as standing controls rather than
+        // assumed safe.
+        //
+        // The cost is stated rather than hidden: a user who says "EG one" and
+        // whose recognizer writes it out in words gets no correction. That is a
+        // missed fix, and the alternative was corrupting ordinary sentences.
+        // `BuiltinDictionaryCorrectionTests` keeps every one of those sentences,
+        // so re-adding a spelled-out form fails a test rather than shipping.
+        aliases: ["EG 1", "E G 1", "EG-one", "EG1"],
         category: .brand
       )),
     BuiltinWord(

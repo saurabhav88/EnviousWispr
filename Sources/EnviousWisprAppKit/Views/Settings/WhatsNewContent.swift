@@ -58,6 +58,24 @@ enum WhatsNewContent {
     // wrong word in the panel and loses that copy to the restore". An earlier
     // revision disclosed only the first half, which is the softer of the two and
     // the one that costs the user nothing.
+    // Founder direction 2026-09-01: four settings that were opt in now ship on.
+    // ONE entry rather than four, because a user does not experience four
+    // settings changing; they experience the app doing more on the day they
+    // update. The sentence names what they will SEE and where the switch is,
+    // since every one of these is still theirs to turn off.
+    //
+    // The macOS 26 caveat on Live Preview is stated as behaviour rather than as
+    // a requirement: on a Mac that cannot run it, nothing appears and nothing is
+    // said, which is the whole reason on-by-default is safe to ship.
+    Entry(
+      id: "better-out-of-the-box-defaults",
+      icon: "sparkles",
+      title: "More of EnviousWispr is switched on from the start",
+      description:
+        "Cancelling with your keybind now keeps the dictation and offers it back instead of throwing it away. Your words appear in the recording bar while you speak, on Macs that can show them. A short tick confirms when recording starts and stops. Every one of these is a switch you can turn off, in Keybinds, Live Preview and Sounds settings.",
+      version: "2.4.6"
+    ),
+
     Entry(
       id: "quick-add",
       icon: "text.badge.plus",

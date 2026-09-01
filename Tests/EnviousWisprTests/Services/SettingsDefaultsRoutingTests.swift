@@ -94,20 +94,21 @@ struct SettingsDefaultsRoutingTests {
       SettingsManager.unifiedDefaultsKeys.filter { $0 == "smartInsertion" }.count == 1)
   }
 
-  /// #2087. Tested in the ON direction because OFF is the default: writing the
-  /// default proves nothing about persistence, since a store that dropped the
-  /// write entirely would still read back `false`.
-  @Test("Escape Recovery persists ON and belongs to unified defaults")
-  func escapeRecoveryPersistsOn() {
+  /// #2087, default flipped to ON 2026-09-01. Tested in the OFF direction
+  /// because ON is now the default: writing the default proves nothing about
+  /// persistence, since a store that dropped the write entirely would still read
+  /// back the default.
+  @Test("Escape Recovery persists OFF and belongs to unified defaults")
+  func escapeRecoveryPersistsOff() {
     let suite = Self.freshSuite()
     let settings = SettingsManager(defaults: suite)
 
-    #expect(settings.escapeRecoveryEnabled == false, "ships OFF — the product decision")
+    #expect(settings.escapeRecoveryEnabled == true, "ships ON — the product decision")
 
-    settings.escapeRecoveryEnabled = true
+    settings.escapeRecoveryEnabled = false
 
-    #expect(suite.object(forKey: "escapeRecoveryEnabled") as? Bool == true)
-    #expect(SettingsManager(defaults: suite).escapeRecoveryEnabled == true)
+    #expect(suite.object(forKey: "escapeRecoveryEnabled") as? Bool == false)
+    #expect(SettingsManager(defaults: suite).escapeRecoveryEnabled == false)
     #expect(
       SettingsManager.unifiedDefaultsKeys.filter { $0 == "escapeRecoveryEnabled" }.count == 1,
       "missing from unified keys means it never migrates to the shared suite (#923)")
@@ -122,7 +123,7 @@ struct SettingsDefaultsRoutingTests {
       if case .escapeRecoveryEnabled = key { matchingChanges += 1 }
     }
 
-    settings.escapeRecoveryEnabled = true
+    settings.escapeRecoveryEnabled = false
     #expect(matchingChanges == 1)
   }
 
@@ -301,10 +302,10 @@ struct SettingsDefaultsRoutingTests {
 
   // MARK: - Recording sound cues (#1342)
 
-  @Test("recording sounds default to off, whisperTick pairing, on a fresh install")
+  @Test("recording sounds default to on, whisperTick pairing, on a fresh install")
   func recordingSoundsDefaults() {
     let settings = SettingsManager(defaults: Self.freshSuite())
-    #expect(settings.playRecordingSounds == false)
+    #expect(settings.playRecordingSounds == true)
     #expect(settings.recordingSoundPairing == .whisperTick)
   }
 
@@ -312,13 +313,15 @@ struct SettingsDefaultsRoutingTests {
   func recordingSoundsPersist() {
     let suite = Self.freshSuite()
     let settings = SettingsManager(defaults: suite)
-    settings.playRecordingSounds = true
+    // Written to the NON-default value: sounds now ship ON, so writing `true`
+    // would read back identically from a store that dropped the write entirely.
+    settings.playRecordingSounds = false
     settings.recordingSoundPairing = .cloudPop
-    #expect(suite.object(forKey: "playRecordingSounds") as? Bool == true)
+    #expect(suite.object(forKey: "playRecordingSounds") as? Bool == false)
     #expect(suite.string(forKey: "recordingSoundPairing") == "cloudPop")
     // Reload from the same store → the choice survives.
     let reloaded = SettingsManager(defaults: suite)
-    #expect(reloaded.playRecordingSounds == true)
+    #expect(reloaded.playRecordingSounds == false)
     #expect(reloaded.recordingSoundPairing == .cloudPop)
     #expect(SettingsManager.unifiedDefaultsKeys.contains("playRecordingSounds"))
     #expect(SettingsManager.unifiedDefaultsKeys.contains("recordingSoundPairing"))

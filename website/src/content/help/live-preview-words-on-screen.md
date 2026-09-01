@@ -5,21 +5,21 @@ category: "features"
 section: "Recording"
 order: 6
 keywords: ["live preview", "preview", "see words as i speak", "see my words", "words on screen", "on screen preview", "while i speak", "recording pill", "watch it type", "is it hearing me", "nothing appears", "no words showing"]
-updated: 2026-08-18
+updated: 2026-09-01
 ---
-Live Preview shows your words in the recording pill while you are still speaking, so you can see that EnviousWispr is hearing you. It is off unless you turn it on.
+Live Preview shows your words in the recording pill while you are still speaking, so you can see that EnviousWispr is hearing you. It is on unless you switch it off. On a Mac that cannot run it, EnviousWispr behaves as though it were off: you get the ordinary recording bar and no message.
 
 **It is only a preview.** The words in the pill are a rough draft from a second, lighter engine. They are thrown away when the recording ends, and they never change a character of the text that gets pasted. That text comes from the main engine, which is more accurate.
 
 Your voice and preview text stay on your Mac.
 
-### Turning it on
+### Where the setting lives
 
 **Open settings.** Click the EnviousWispr menu bar icon and select **Settings**, or press Cmd+,.
 
 **Go to Live Preview.** Under **Record**, click **Live Preview**.
 
-**Switch on Show words while I speak.** The card at the top of the page tells you whether the preview is ready, and if it is not, what is missing.
+**Show words while I speak** is the toggle there, on unless you switch it off. The card at the top of the page tells you whether the preview is ready, and if it is not, what is missing.
 
 ### Live Preview is not Faster Transcription
 
