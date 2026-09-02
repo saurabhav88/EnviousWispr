@@ -22,6 +22,16 @@ import Testing
   // These tests assert on the REAL spool files on disk, not manager internals:
   // the user-visible property is "the previous recording's file is properly
   // closed", and that is what the replayer reads.
+  //
+  // #2594: every test pins the low-disk preflight to `true`. Arming has one
+  // machine-dependent early return: `hasSufficientDiskSpace`, the configured
+  // low-disk watermark (`RecoveryConstants.lowDiskWatermarkBytes`) on the spool
+  // volume, and this suite writes under the temp directory. A CI failure of all five within milliseconds, writer never
+  // created, matched that preflight returning false, although runner capacity
+  // was not measured; a re-run on another VM passed. It was first read as a
+  // race on the feed task's start, which it cannot be — the task handle is
+  // assigned synchronously before arming returns. The watermark branch itself
+  // is test 5 below, driven through the same seam.
   @MainActor
   @Suite("AudioCaptureManager recovery-spool predecessor retirement (#1579)")
   struct AudioCaptureManagerSpoolPredecessorTests {
@@ -88,6 +98,7 @@ import Testing
       let dir = try Self.makeTempDir()
       defer { try? FileManager.default.removeItem(at: dir) }
       let manager = AudioCaptureManager()
+      manager.installDiskSpaceCheckForTesting { _ in true }
       manager.isCapturing = true  // the feed loop's guard, armed without hardware
 
       manager.armRecoverySpoolingForTesting(payload: try Self.payload(sessionID: "first", dir: dir))
@@ -119,6 +130,7 @@ import Testing
       let dir = try Self.makeTempDir()
       defer { try? FileManager.default.removeItem(at: dir) }
       let manager = AudioCaptureManager()
+      manager.installDiskSpaceCheckForTesting { _ in true }
       manager.isCapturing = true
 
       manager.armRecoverySpoolingForTesting(payload: try Self.payload(sessionID: "only", dir: dir))
@@ -148,6 +160,7 @@ import Testing
       let dir = try Self.makeTempDir()
       defer { try? FileManager.default.removeItem(at: dir) }
       let manager = AudioCaptureManager()
+      manager.installDiskSpaceCheckForTesting { _ in true }
       manager.isCapturing = true
 
       manager.armRecoverySpoolingForTesting(payload: try Self.payload(sessionID: "live", dir: dir))
@@ -178,6 +191,7 @@ import Testing
       let dir = try Self.makeTempDir()
       defer { try? FileManager.default.removeItem(at: dir) }
       let manager = AudioCaptureManager()
+      manager.installDiskSpaceCheckForTesting { _ in true }
       manager.isCapturing = true
 
       manager.armRecoverySpoolingForTesting(payload: try Self.payload(sessionID: "tail", dir: dir))
@@ -211,6 +225,7 @@ import Testing
       let dir = try Self.makeTempDir()
       defer { try? FileManager.default.removeItem(at: dir) }
       let manager = AudioCaptureManager()
+      manager.installDiskSpaceCheckForTesting { _ in true }
       let stub = StopFenceStub()
       manager.installSourceFactoryForTesting { _ in stub }
       try await manager.startEnginePhase()
@@ -236,6 +251,56 @@ import Testing
       #expect(try Self.terminationReason(of: "interrupted-take", in: dir) == .cleanFinalized)
       #expect(
         manager.debugHasLiveRecoveryFeedTask == false, "and its feed task is cancelled")
+    }
+
+    // MARK: - 5. The low-disk preflight arms nothing — and still retires (#2594)
+    //
+    // The branch whose outcome matches the observed CI failure shape. It had no
+    // test: a user on a nearly full disk silently records with no recovery
+    // spool, which is the documented design, and the predecessor must still be
+    // closed on that path because retirement runs before the preflight.
+
+    @Test("arming below the low-disk watermark creates no writer and no feed, and still retires")
+    func lowDiskPreflightArmsNothingAndStillRetires() async throws {
+      let dir = try Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let manager = AudioCaptureManager()
+      manager.isCapturing = true
+
+      // One answer per PATH, installed once: the "before" spool has room, the
+      // "starved" spool does not. Path-keyed rather than flipped between arms so
+      // the first take's feed loop can never see the second take's answer, and
+      // every query is recorded so the assertions below can prove the preflight
+      // was consulted for the starved take rather than merely never reached.
+      let starvedFile = "starved.\(RecoveryConstants.fileExtension)"
+      var queried: [String] = []
+      manager.installDiskSpaceCheckForTesting { path in
+        queried.append(path)
+        return path.hasSuffix(starvedFile) == false
+      }
+
+      manager.armRecoverySpoolingForTesting(
+        payload: try Self.payload(sessionID: "before", dir: dir))
+      let liveWriter = try #require(manager.debugRecoverySpoolWriter, "precondition: a live spool")
+
+      manager.armRecoverySpoolingForTesting(
+        payload: try Self.payload(sessionID: "starved", dir: dir))
+      // Synchronous facts first, before any suspension: the arm returned with
+      // nothing created, and it asked about the starved path to get there.
+      #expect(manager.debugRecoverySpoolWriter == nil, "no writer is created below the watermark")
+      #expect(manager.debugHasLiveRecoveryFeedTask == false, "and no feed task is started")
+      #expect(
+        queried.last?.hasSuffix(starvedFile) == true,
+        "the preflight was consulted for the starved spool, and answered false")
+
+      await Self.drain(liveWriter)
+      #expect(
+        try Self.terminationReason(of: "before", in: dir) == .interrupted,
+        "the predecessor is retired before the preflight, so it is still closed")
+      #expect(
+        FileManager.default.fileExists(atPath: dir.appendingPathComponent(starvedFile).path)
+          == false,
+        "nothing was written for the starved take")
     }
   }
 

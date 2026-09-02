@@ -255,6 +255,16 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// read there would be the stale-selection defect this whole issue avoids.
     private var debugSourceFactory: ((CaptureRouteDecision) -> any AudioInputSource)?
 
+    /// #2594 test seam: when set, `hasSufficientDiskSpace(forSpoolAt:)` answers
+    /// from this closure instead of reading the volume. The spool-predecessor
+    /// tests exercise retirement behaviour, not runner disk state, so they pin
+    /// this input (the answer is per PATH, so one closure can say yes to one
+    /// spool and no to another): a CI failure of all five within milliseconds, writer never
+    /// created, matched the preflight returning false (runner capacity was not
+    /// measured). Installed via `installDiskSpaceCheckForTesting`; nil in
+    /// production, always.
+    private var debugDiskSpaceOverride: ((String) -> Bool)?
+
     /// #1317 proof-bench (DEBUG only): arm the injector from the in-process
     /// DEBUG fault endpoint (#1543). Translates the Core wire enum into the
     /// controller's associated-value `Mode` here so the injector type stays
@@ -1021,6 +1031,14 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       startRecoverySpooling(payload: payload)
     }
 
+    /// Test seam (#2594): pin the low-disk preflight's answer. `nil` restores the
+    /// real volume read. Consumed by `hasSufficientDiskSpace(forSpoolAt:)` at both
+    /// its call sites — arm-time preflight and the feed loop's periodic re-check —
+    /// so one seam governs both.
+    func installDiskSpaceCheckForTesting(_ check: ((String) -> Bool)?) {
+      debugDiskSpaceOverride = check
+    }
+
     /// Test oracle (#1579): whether a live feed task is currently retained. A
     /// retired predecessor must leave none.
     var debugHasLiveRecoveryFeedTask: Bool {
@@ -1668,7 +1686,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     else { return }
     // Low-disk preflight: don't start a spool when free space is already below
     // the watermark the heart path needs (History save / ASR temp / model cache).
-    guard Self.hasSufficientDiskSpace(forSpoolAt: directive.spoolPath) else { return }
+    guard hasSufficientDiskSpace(forSpoolAt: directive.spoolPath) else { return }
 
     let writer = RecoverySpoolWriter(
       recoverySessionID: directive.recoverySessionID,
@@ -1708,7 +1726,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
           writer.flush()
           // Low-disk watermark re-check: stop spooling with an honest terminal
           // marker before recovery can starve the disk the heart path needs.
-          if !Self.hasSufficientDiskSpace(forSpoolAt: spoolPath) {
+          if !self.hasSufficientDiskSpace(forSpoolAt: spoolPath) {
             self.finalizeRecovery(.lowDiskWatermark)
             return
           }
@@ -1749,7 +1767,14 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// the spool's parent directory (the file may not exist yet). Fail-open: an
   /// unreadable value arms recovery anyway — the writer's backpressure cap is
   /// the backstop.
-  private static func hasSufficientDiskSpace(forSpoolAt path: String) -> Bool {
+  private func hasSufficientDiskSpace(forSpoolAt path: String) -> Bool {
+    #if DEBUG
+      if let debugDiskSpaceOverride { return debugDiskSpaceOverride(path) }
+    #endif
+    return Self.volumeHasSufficientSpace(forSpoolAt: path)
+  }
+
+  private static func volumeHasSufficientSpace(forSpoolAt path: String) -> Bool {
     let dir = URL(fileURLWithPath: path).deletingLastPathComponent()
     guard
       let values = try? dir.resourceValues(
