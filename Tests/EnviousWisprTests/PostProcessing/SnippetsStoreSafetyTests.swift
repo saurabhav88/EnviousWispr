@@ -134,6 +134,35 @@ struct SnippetsStoreSafetyTests {
     #expect(try Data(contentsOf: url) == bytesBefore)
   }
 
+  // MARK: - A file from a newer app
+
+  /// Same rule as an unreadable file, different cause: a store written by a LATER release holds
+  /// fields this version cannot see, and saving our narrower shape back would delete them. The
+  /// `version` field existed from the first commit and nothing read it until review asked.
+  @Test("A store from a newer app version refuses writes instead of narrowing it")
+  func newerSchemaRefusesMutation() throws {
+    let (manager, url) = makeStore()
+    let future = """
+      {"version": 99, "keyword": "backslash", "snippets": [], "somethingNew": true}
+      """
+    try Data(future.utf8).write(to: url)
+
+    #expect(manager.unreadableExisting)
+    #expect(throws: SnippetStoreError.existingFileUnreadable) {
+      try manager.upsert(Snippet(trigger: "my email", expansion: "sam@example.com"))
+    }
+    #expect(try String(contentsOf: url, encoding: .utf8) == future)
+  }
+
+  @Test("A store at the current version loads normally")
+  func currentSchemaLoads() throws {
+    let (manager, _) = makeStore()
+    try manager.upsert(Snippet(trigger: "my email", expansion: "sam@example.com"))
+
+    #expect(manager.unreadableExisting == false)
+    #expect(manager.load().snippets.count == 1)
+  }
+
   // MARK: - Keyword validation
 
   /// A multi-word keyword passed `canFire` and could never match, so every snippet went quiet

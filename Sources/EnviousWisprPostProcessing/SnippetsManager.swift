@@ -149,6 +149,20 @@ public final class SnippetsManager: @unchecked Sendable {
 
     do {
       let file = try JSONDecoder().decode(StoredFile.self, from: data)
+      // A file from a NEWER app is data we do not fully understand. Synthesized decoding accepts
+      // it happily and drops every field this version has never heard of, and the next save
+      // would then write our narrower shape back over it — the user losing whatever the newer
+      // release stored, by opening the older one.
+      //
+      // This is the same rule as the unreadable case one branch down, and the field it needs
+      // already existed: `version` was added "so a later migration has something to branch on"
+      // and then nothing branched on it. A version stamp nobody reads is a comment.
+      guard file.version <= Self.currentVersion else {
+        Self.logger.error(
+          "snippets.json is version \(file.version, privacy: .public), newer than this app understands (\(Self.currentVersion, privacy: .public)); refusing to write over it."
+        )
+        return .unreadable
+      }
       return .loaded(
         SnippetVocabulary(
           snippets: file.snippets,
