@@ -237,6 +237,26 @@ public final class SnippetsManager: @unchecked Sendable {
         )
         return .unreadable
       }
+      // Put an EMPTY store back where the archived one was.
+      //
+      // This is the load-bearing half, and the in-memory `archivedCorrupt` case above is only
+      // the window before it lands. Archiving removed the file, and the FILE is the only
+      // durable answer to "has this install ever had a snippets store" — which is exactly the
+      // question `loadOrSeedStarters` asks. Without the tombstone the next launch reads
+      // `missing`, decides this is a new user, and writes six examples on top of somebody's
+      // data-loss event. Review found that twice, one round apart, which is what said the
+      // repair belonged on disk rather than in a return value.
+      //
+      // Enumerated rather than patched again. The producers of "no file at `fileURL`" are:
+      // never written (a real fresh install), this archive, a hand-deleted file, and a seed
+      // whose write failed. Only the archive was wrong, and only the archive is repaired here
+      // — deleting the file by hand is asking for a reset, and a failed seed must retry.
+      //
+      // Best effort on purpose: if this write fails the next launch re-seeds, which is the old
+      // behaviour, and refusing to load would be worse than that.
+      _ = try? saveWhileLocked(
+        SnippetVocabulary(
+          snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation))
       Self.logger.error(
         "snippets.json could not be parsed; archived and starting empty. \(String(describing: error), privacy: .public)"
       )

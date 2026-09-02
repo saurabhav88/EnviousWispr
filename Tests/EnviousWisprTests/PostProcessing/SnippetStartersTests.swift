@@ -119,6 +119,24 @@ struct SnippetStartersSeedingTests {
     #expect(siblings.filter { $0.contains("corrupted") }.count == 1)
   }
 
+  @Test("The launch AFTER an archive still gets no examples")
+  func archivedCorruptionSurvivesARelaunch() throws {
+    // Round 1 fixed the call that does the archiving; this is the call after it, which is where
+    // the state actually had to live. Archiving removed the file, and the file is the only
+    // durable answer to "has this install ever had a store", so the repair is a tombstone on
+    // disk rather than a value returned once.
+    let (manager, url) = makeStore()
+    try manager.upsert(Snippet(trigger: "my email", expansion: "sam@example.com"))
+    try Data("{ this is not json".utf8).write(to: url)
+    _ = manager.loadOrSeedStarters()
+
+    // A second manager over the same path is what the next launch actually is.
+    let afterRelaunch = SnippetsManager(fileURL: url).loadOrSeedStarters()
+
+    #expect(afterRelaunch.snippets.isEmpty)
+    #expect(FileManager.default.fileExists(atPath: url.path))
+  }
+
   @Test("After an archive the user can still save, and still gets no examples")
   func savingWorksAfterAnArchive() throws {
     let (manager, url) = makeStore()
