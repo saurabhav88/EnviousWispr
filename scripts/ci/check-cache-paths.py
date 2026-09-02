@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/ci/check-cache-paths.py — the four Xcode cache path lists must agree.
+"""scripts/ci/check-cache-paths.py — the two Xcode cache path lists must agree.
 
 WHY THIS EXISTS, measured 2026-09-02 on #2580. `actions/cache` derives a cache
 VERSION from a hash of the path list. A restore only matches a save whose
@@ -18,6 +18,13 @@ The existing warning in main-post-merge.yml already said the lists "MUST stay
 identical … a save/restore pair that disagrees produces a permanently cold cache
 with no error anywhere". It was right, it was read, and prose does not execute.
 
+There were FOUR lists when this was written: the composite action's restore,
+the post-merge save, and pr-check.yml's two inline restores. #2592 wired both
+pr-check.yml lanes to the composite action, so there are now exactly two —
+one restore (used by all four macOS lanes) and one save. Two is the floor:
+`actions/cache/restore` and `actions/cache/save` are separate steps in
+separate workflows, and each must spell the list itself.
+
 WHAT IS CHECKED
   1. Every actions/cache restore or save step across the workflows and the
      composite action is found by PARSING, never by grepping for a name.
@@ -27,7 +34,7 @@ WHAT IS CHECKED
      called out separately so the failure names its own cause.
 
 Usage:
-  check-cache-paths.sh [--self-test]
+  check-cache-paths.py [--self-test]
 """
 import glob
 import subprocess
@@ -110,8 +117,8 @@ XCODE_KEY_MARKERS = ("-xcode-", "cache-primary-key")
 # WHAT THE ANSWER IS, stated independently of what the workflows happen to say.
 #
 # Two review rounds found the same root here and the second one is the reason
-# this exists: the guard compared the four lists TO EACH OTHER. Consistency is
-# not correctness. Four sites agreeing on `Build/` passed, and so did a writer
+# this exists: the guard compared the (then four) lists TO EACH OTHER.
+# Consistency is not correctness. Four sites agreeing on `Build/` passed, and so did a writer
 # that fell out of the family because its key was reworded — a smaller clean set
 # prints exactly like a complete one.
 #
@@ -130,8 +137,6 @@ EXPECTED_PATHS = (
 )
 
 EXPECTED_OWNERS = frozenset({
-    ("pr-check.yml", "build-debug"),
-    ("pr-check.yml", "build-release"),
     ("main-post-merge.yml", "release-validation"),
     ("action.yml", "composite"),
 })
@@ -360,11 +365,13 @@ def self_test() -> int:
                     .derivedData/CI/Build
         """)
 
+    empty = fixture("jobs:\n  e:\n    steps: []\n")
+
     cases = [
         ("two spellings of one list agree", [good_a, good_b], 0),
         ("a comment inside path: is caught", [good_a, commented], 1),
         ("two different lists are caught", [good_a, divergent], 1),
-        ("no Xcode cache steps at all is NOT clean", [fixture("jobs:\n  e:\n    steps: []\n")], 1),
+        ("no Xcode cache steps at all is NOT clean", [empty], 1),
         ("a DIFFERENT root is a difference, not <DD>", [good_a, other_root], 1),
         ("an unrelated cache is ignored, not reded", [good_a, good_b, unrelated], 0),
         ("a save keyed by cache-primary-key IS in the family", [good_a, primary_keyed], 1),
@@ -410,7 +417,22 @@ def self_test() -> int:
         print("FAIL [an expected writer missing from the family] passed")
         fails += 1
 
-    for p in [good_a, good_b, commented, divergent, other_root, unrelated, spaced, primary_keyed, shared_wrong]:
+    # The other direction: a site holding an in-family cache step that the
+    # expectation does not name. This is the branch #2592 relies on — the two
+    # pr-check.yml restores it removed must never come back unnoticed — and a
+    # world-mutation control (the new checker against a tree still holding four
+    # lists) is how it was first proven. Pinned here so the branch cannot be
+    # deleted with the self-test still green.
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = check([good_a], F, set())
+    if rc == 1:
+        print("ok   [an owner the check does not expect is caught] rc=1")
+    else:
+        print("FAIL [an owner the check does not expect] passed")
+        fails += 1
+
+    for p in [good_a, good_b, commented, divergent, other_root, unrelated, spaced, primary_keyed, shared_wrong, empty]:
         os.unlink(p)
 
     if fails:
