@@ -12,23 +12,37 @@ public enum SnippetValidationError: Error, Equatable, Sendable {
   /// deletes the words the user spoke.
   case expansionEmpty
   /// Another snippet already fires on the same spoken words. Refusing here is what makes
-  /// `SnippetExpander`'s longest-match tie-break UNREACHABLE rather than merely unlikely —
-  /// without it two snippets could share a trigger and the winner would be list order, which is
-  /// a rule nobody chose.
+  /// `SnippetExpander`'s longest-match tie-break UNREACHABLE rather than merely unlikely.
   case duplicateTrigger(existing: String)
+  /// The keyword is more than one spoken word. The matcher compares the keyword against ONE
+  /// transcript token, so a multi-word keyword can never match — it would report itself armed
+  /// and silently switch every snippet off, which is worse than refusing it.
+  case keywordNotOneWord
+}
+
+/// Why the store cannot be written right now. Distinct from a validation error: nothing the
+/// user typed is wrong, the data on disk is the problem.
+public enum SnippetStoreError: Error, Equatable, Sendable {
+  /// An existing file could not be read, and its contents are still unknown. Every mutation is
+  /// refused: writing now would rename a new file over data we never managed to load.
+  case existingFileUnreadable
+  /// Another process holds the store.
+  case busy
+  /// The lock could not be taken at all.
+  case coordinationUnavailable
+  case writeFailed(String)
 }
 
 /// On-disk store for the user's snippets (#628).
 ///
-/// Mirrors `CustomWordsManager`'s durability discipline through the shared `DurableJSONFile`:
-/// 0700 directory with a Spotlight opt-out marker, 0600 file, unique-temp + fsync + atomic
-/// rename, and a corrupt file archived rather than silently replaced.
+/// Durability discipline shared with `CustomWordsManager` through `DurableJSONFile`: 0700
+/// directory with a Spotlight opt-out marker, 0600 file, unique-temp + fsync + atomic rename, a
+/// cross-process companion-file lock, and a corrupt file archived rather than replaced.
 ///
-/// Deliberately much smaller than `CustomWordsManager`, and the difference is not an oversight:
-/// that type carries built-in defaults, tombstones, a pack tier, debounced usage counters and a
-/// cross-process file lock because custom words are written from several places. Snippets have
-/// exactly one writer — the Settings screen — so a second copy of that machinery would be
-/// weight with no reader.
+/// **The load result is three-valued on purpose.** A missing file and an unreadable one are NOT
+/// the same thing: the first is a new user, the second is a user whose snippets exist and could
+/// not be read. Collapsing them means the next save renames an empty store over data that was
+/// merely temporarily unavailable — the user's snippets deleted by opening Settings.
 public final class SnippetsManager: @unchecked Sendable {
 
   /// The persisted shape. Versioned from the first release so a later migration has something
@@ -37,6 +51,16 @@ public final class SnippetsManager: @unchecked Sendable {
     var version: Int
     var keyword: String
     var snippets: [Snippet]
+  }
+
+  /// What is on disk right now. The `unreadable` case is the whole reason this is not an
+  /// optional.
+  enum LoadResult: Equatable {
+    case missing
+    case loaded(SnippetVocabulary)
+    /// The file exists and its contents are unknown — a read error, or a corrupt file that
+    /// could not be archived to safety. Either way the bytes must not be overwritten.
+    case unreadable
   }
 
   /// The schema version stamped into both the store and an export. Public because the export
@@ -48,16 +72,14 @@ public final class SnippetsManager: @unchecked Sendable {
   private static let logger = Logger(subsystem: "com.enviouswispr.app", category: "Snippets")
 
   private let fileURL: URL
-  private let lock = NSLock()
   /// Bumped on every successful save, and deliberately NOT persisted.
   ///
   /// A generation exists so a cross-actor reader can notice "I am holding an older snapshot
   /// than the other lane" WITHIN a process run (`VocabularyLanes.swift`). Nothing compares
-  /// generations across launches, so writing it to disk would store a runtime concern and
-  /// invite someone to read meaning into a number that only counts saves since app start.
+  /// generations across launches, so writing it to disk would store a runtime concern.
   ///
-  /// Its first version WAS inert — every load reset it to 0, so `current.generation &+ 1` was
-  /// always 1 — which the store's own test caught rather than a user.
+  /// Its first version WAS inert — every load reset it to 0 — which the store's own test caught
+  /// rather than a user.
   private var generation: UInt64 = 0
 
   public init() {
@@ -91,56 +113,86 @@ public final class SnippetsManager: @unchecked Sendable {
       .appendingPathComponent(fileName)
   }
 
-  // MARK: - Load and save
+  // MARK: - Load
 
-  /// Read the store. A missing file is the EMPTY store, not an error — that is what a user who
-  /// has never opened Snippets has, and it must not be reported as a failure.
+  /// Read the store for DISPLAY. An unreadable file reads as empty here, because the screen has
+  /// to render something — but `unreadableExisting` tells it to say so, and every mutation is
+  /// refused until the file can be read.
   public func load() -> SnippetVocabulary {
-    lock.lock()
-    defer { lock.unlock() }
-    return loadWhileLocked()
+    let empty = SnippetVocabulary(
+      snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation)
+    guard let result = try? withLock(blocking: true, { loadWhileLocked() }) else { return empty }
+    if case .loaded(let vocabulary) = result { return vocabulary }
+    return empty
   }
 
-  private func loadWhileLocked() -> SnippetVocabulary {
-    guard let data = try? Data(contentsOf: fileURL) else {
-      return SnippetVocabulary(
-        snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation)
+  /// True when a file exists that could not be read. The screen shows a banner, and saves are
+  /// refused, rather than a silent empty list the next edit would make permanent.
+  public var unreadableExisting: Bool {
+    (try? withLock(blocking: true) { loadWhileLocked() }) == .unreadable
+  }
+
+  private func loadWhileLocked() -> LoadResult {
+    guard FileManager.default.fileExists(atPath: fileURL.path) else { return .missing }
+
+    let data: Data
+    do {
+      data = try Data(contentsOf: fileURL)
+    } catch {
+      // The file is THERE and we could not read it. Saying "empty" here is what would let the
+      // next save rename a new store over snippets that still exist.
+      Self.logger.error(
+        "snippets.json exists but could not be read; refusing to write over it. \(String(describing: error), privacy: .public)"
+      )
+      return .unreadable
     }
+
     do {
       let file = try JSONDecoder().decode(StoredFile.self, from: data)
-      return SnippetVocabulary(
-        snippets: file.snippets,
-        keyword: file.keyword.isEmpty ? SnippetVocabulary.defaultKeyword : file.keyword,
-        generation: generation)
+      return .loaded(
+        SnippetVocabulary(
+          snippets: file.snippets,
+          keyword: file.keyword.isEmpty ? SnippetVocabulary.defaultKeyword : file.keyword,
+          generation: generation))
     } catch {
-      // Archived, never deleted and never overwritten in place. The user's snippets are typed
-      // by hand and exist nowhere else, so a parse failure must leave the bytes recoverable —
-      // same reasoning as `custom-words.json.corrupted-*`.
+      // Archived, never deleted and never overwritten in place. These snippets were typed by
+      // hand and exist nowhere else.
       let archive = fileURL.deletingLastPathComponent()
         .appendingPathComponent("\(Self.fileName).corrupted-\(UUID().uuidString)")
-      try? FileManager.default.moveItem(at: fileURL, to: archive)
+      do {
+        try FileManager.default.moveItem(at: fileURL, to: archive)
+      } catch {
+        // The bytes are still the only copy. Reporting empty-and-writable here would let a
+        // later save destroy the one recoverable version of the user's snippets.
+        Self.logger.error(
+          "snippets.json is corrupt AND could not be archived; refusing to write over it. \(String(describing: error), privacy: .public)"
+        )
+        return .unreadable
+      }
       Self.logger.error(
         "snippets.json could not be parsed; archived and starting empty. \(String(describing: error), privacy: .public)"
       )
-      return SnippetVocabulary(
-        snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation)
+      return .missing
     }
   }
 
   /// Persist, bump, and hand back the SAVED vocabulary stamped with its new generation.
   ///
-  /// Both halves of that matter. The bump happens only after the write returns, so a failed
-  /// save cannot advance a generation no reader's snapshot corresponds to. And the return value
-  /// is re-stamped rather than the caller's input being returned, because a caller who took the
-  /// pre-save value would publish a snapshot claiming a generation one behind the manager — a
-  /// staleness signal that itself reads stale.
+  /// The bump happens only after the write returns, so a failed save cannot advance a
+  /// generation no reader's snapshot corresponds to. And the return value is re-stamped rather
+  /// than echoing the caller's input, because a caller taking the pre-save value would publish
+  /// a snapshot claiming a generation one behind the manager — a staleness signal reading stale.
   private func saveWhileLocked(_ vocabulary: SnippetVocabulary) throws -> SnippetVocabulary {
-    try DurableJSONFile.write(
-      StoredFile(
-        version: Self.currentVersion, keyword: vocabulary.keyword,
-        snippets: vocabulary.snippets),
-      to: fileURL,
-      tempPrefix: ".\(Self.fileName)")
+    do {
+      try DurableJSONFile.write(
+        StoredFile(
+          version: Self.currentVersion, keyword: vocabulary.keyword,
+          snippets: vocabulary.snippets),
+        to: fileURL,
+        tempPrefix: ".\(Self.fileName)")
+    } catch {
+      throw SnippetStoreError.writeFailed(error.localizedDescription)
+    }
     generation &+= 1
     return SnippetVocabulary(
       snippets: vocabulary.snippets, keyword: vocabulary.keyword, generation: generation)
@@ -148,58 +200,89 @@ public final class SnippetsManager: @unchecked Sendable {
 
   // MARK: - Mutations
 
-  /// Add or update one snippet, validating first. Returns the new vocabulary so the caller has
-  /// exactly one source for what is now on disk.
+  /// Every mutation is one load-transform-save inside ONE cross-process lock hold, and refuses
+  /// outright when the existing file could not be read.
+  ///
+  /// The lock matters because two EnviousWispr processes can be open at once — a shipped copy
+  /// and a dev build on this machine, routinely. Without it both load the same snapshot and
+  /// atomically publish different valid files, and the second rename silently discards the
+  /// first person's edit.
+  private func mutate(
+    _ transform: (SnippetVocabulary) throws -> SnippetVocabulary
+  ) throws -> SnippetVocabulary {
+    try withLock {
+      let current: SnippetVocabulary
+      switch loadWhileLocked() {
+      case .missing:
+        current = SnippetVocabulary(
+          snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation)
+      case .loaded(let vocabulary):
+        current = vocabulary
+      case .unreadable:
+        throw SnippetStoreError.existingFileUnreadable
+      }
+      return try saveWhileLocked(try transform(current))
+    }
+  }
+
+  private func withLock<T>(blocking: Bool = false, _ body: () throws -> T) throws -> T {
+    do {
+      return try DurableJSONFile.withExclusiveLock(on: fileURL, blocking: blocking, body)
+    } catch DurableJSONFile.LockFailure.busy {
+      throw SnippetStoreError.busy
+    } catch DurableJSONFile.LockFailure.unavailable {
+      throw SnippetStoreError.coordinationUnavailable
+    }
+  }
+
   @discardableResult
   public func upsert(_ snippet: Snippet) throws -> SnippetVocabulary {
-    lock.lock()
-    defer { lock.unlock() }
-    let current = loadWhileLocked()
-    try Self.validate(snippet, against: current.snippets)
-
-    var snippets = current.snippets
-    if let index = snippets.firstIndex(where: { $0.id == snippet.id }) {
-      snippets[index] = snippet
-    } else {
-      snippets.insert(snippet, at: 0)
+    try mutate { current in
+      try Self.validate(snippet, against: current.snippets)
+      var snippets = current.snippets
+      if let index = snippets.firstIndex(where: { $0.id == snippet.id }) {
+        snippets[index] = snippet
+      } else {
+        snippets.insert(snippet, at: 0)
+      }
+      return SnippetVocabulary(
+        snippets: snippets, keyword: current.keyword, generation: current.generation)
     }
-    return try saveWhileLocked(
-      SnippetVocabulary(
-        snippets: snippets, keyword: current.keyword, generation: current.generation))
   }
 
   @discardableResult
   public func remove(id: UUID) throws -> SnippetVocabulary {
-    lock.lock()
-    defer { lock.unlock() }
-    let current = loadWhileLocked()
-    return try saveWhileLocked(
+    try mutate { current in
       SnippetVocabulary(
         snippets: current.snippets.filter { $0.id != id },
         keyword: current.keyword,
-        generation: current.generation))
+        generation: current.generation)
+    }
   }
 
-  /// Change the keyword. A blank keyword is stored as the default rather than refused: the user
-  /// is clearing a text field, not asking to disable the feature, and leaving the field empty
-  /// would silently switch every snippet off.
+  /// Change the keyword. A blank keyword restores the default rather than being refused: the
+  /// user is clearing a text field, not asking to disable the feature, and an empty field would
+  /// silently switch every snippet off.
   @discardableResult
   public func setKeyword(_ keyword: String) throws -> SnippetVocabulary {
-    lock.lock()
-    defer { lock.unlock() }
-    let current = loadWhileLocked()
-    let cleaned = SnippetText.normalize(keyword)
-    return try saveWhileLocked(
-      SnippetVocabulary(
-        snippets: current.snippets,
-        keyword: cleaned.isEmpty ? SnippetVocabulary.defaultKeyword : cleaned,
-        generation: current.generation))
+    try mutate { current in
+      let cleaned = SnippetText.normalize(keyword)
+      guard !cleaned.isEmpty else {
+        return SnippetVocabulary(
+          snippets: current.snippets,
+          keyword: SnippetVocabulary.defaultKeyword,
+          generation: current.generation)
+      }
+      try Self.validateKeyword(cleaned)
+      return SnippetVocabulary(
+        snippets: current.snippets, keyword: cleaned, generation: current.generation)
+    }
   }
 
   // MARK: - Validation
 
-  /// The two founder calls from Gate 2, in one place so the sheet and any future caller cannot
-  /// disagree about what a valid snippet is.
+  /// The rules from Gate 2, in one place so the sheet and any future caller cannot disagree
+  /// about what a valid snippet is.
   public static func validate(_ snippet: Snippet, against existing: [Snippet]) throws {
     guard !snippet.triggerTokens.isEmpty else { throw SnippetValidationError.triggerEmpty }
     guard !snippet.expansion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -208,5 +291,16 @@ public final class SnippetsManager: @unchecked Sendable {
     if let clash = existing.first(where: { $0.id != snippet.id && $0.collidesWith(snippet) }) {
       throw SnippetValidationError.duplicateTrigger(existing: clash.trigger)
     }
+  }
+
+  /// A keyword must be exactly one spoken word.
+  ///
+  /// `SnippetExpander` compares the keyword against ONE transcript token, so "hey wispr" would
+  /// pass `canFire` and never match — every snippet silently dead while the screen insists the
+  /// feature is on. Refusing at the door is the honest failure; the alternative is a feature
+  /// that reports itself working and is not.
+  public static func validateKeyword(_ keyword: String) throws {
+    let words = keyword.split(whereSeparator: { $0.isWhitespace })
+    guard words.count <= 1 else { throw SnippetValidationError.keywordNotOneWord }
   }
 }

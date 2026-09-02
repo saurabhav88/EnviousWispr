@@ -21,9 +21,13 @@ import OSLog
 public final class SnippetExpansionStep: TextProcessingStep {
   public let name = "Snippet Expansion"
 
-  /// The frozen per-take vocabulary. Assigned by the wiring before the chain runs and never
-  /// read live, so an edit in Settings cannot change the rule for a dictation already in
-  /// flight — the same freeze `KernelFinalizationWiring` applies to `protectedSpellings`.
+  /// The active vocabulary, assigned by the wiring and re-assigned whenever the user saves.
+  ///
+  /// NOT a per-take freeze, and an earlier version of this comment said it was. The App layer
+  /// replaces this on every save, so a snippet edited while a dictation is in flight applies to
+  /// that take. Same behaviour custom words already have — `KernelFinalizationWiring` says so at
+  /// its `protectedSpellings` snapshot, which exists precisely because the vocabulary behind it
+  /// is NOT frozen. Nothing is delivered wrongly; the newest snippet simply wins.
   public var snippetVocabulary: SnippetVocabulary = .empty
 
   /// Disabled rather than run as a no-op. `TextProcessingRunner` skips a disabled step

@@ -88,7 +88,12 @@ public struct SnippetExpander: Sendable {
     let pieces = Self.split(text)
     let wordIndices = pieces.indices.filter { !pieces[$0].isWhitespaceRun }
 
-    var out = ""
+    // Seeded with any whitespace BEFORE the first word. The loop below walks word pieces and
+    // appends the gap that FOLLOWS each one, so a leading run belongs to no word and was
+    // silently dropped — on every dictation that armed the step, whether or not a snippet
+    // matched. Found by review, not by a test, because every fixture happened to start with a
+    // letter.
+    var out = pieces.first?.isWhitespaceRun == true ? pieces[0].text : ""
     var records: [SnippetExpansionRecord] = []
     var issued: Set<String> = []
     var cursor = 0

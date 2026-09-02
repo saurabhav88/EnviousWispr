@@ -681,8 +681,16 @@ package final class WisprBootstrapper {
     // custom-words wiring above has to satisfy. Seed both now, then republish on every change
     // so a snippet saved mid-session is live on the next dictation without a relaunch.
     //
-    // Recovery is NOT wired here: `RecoveryTextProcessor` is built per replay and takes the
-    // store through its own `applySnippetVocabulary` seam at that point.
+    // KNOWN LIMIT, stated rather than claimed away: this replaces the vocabulary on the live
+    // step, so a snippet edited WHILE a dictation is in flight applies to that take. The step's
+    // own header used to call this a per-take freeze, and that was an overclaim — corrected
+    // there. It matches how custom words already behave (`CustomWordsPropagator` can replace
+    // `correctorVocabulary` mid-session, which `KernelFinalizationWiring` says out loud), and
+    // the outcome is that the user's NEWEST snippet wins rather than any data being wrong.
+    // A real record-start freeze is a separate change with a hook recording does not have yet.
+    //
+    // Recovery is wired separately, at `RecoverySpoolReplayer`'s `currentSnippets` provider,
+    // because that processor is built per replay.
     let seedSnippets: @MainActor (SnippetVocabulary) -> Void = {
       [kernelDriver, whisperKitKernelDriver] vocabulary in
       kernelDriver.snippetExpansion.snippetVocabulary = vocabulary
@@ -858,7 +866,8 @@ package final class WisprBootstrapper {
         LanePartitioner.split(
           customWordsCoordinator.customWords,
           generation: UInt64(customWordsCoordinator.customWords.count) &+ 1)
-      })
+      },
+      currentSnippets: { [snippetsCoordinator] in snippetsCoordinator.vocabulary })
     // GitHub cloud review, PR #1732: captured by `isDictationActive` below,
     // assigned once `engineCoordinator` exists a few lines down. A record
     // press that has called `beginMinting()` but not yet reached an active

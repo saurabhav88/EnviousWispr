@@ -82,6 +82,9 @@ final class SnippetsCoordinator {
     } catch let error as SnippetValidationError {
       errorMessage = Self.message(for: error)
       return false
+    } catch let error as SnippetStoreError {
+      errorMessage = Self.message(for: error)
+      return false
     } catch {
       errorMessage = "That could not be saved. \(error.localizedDescription)"
       return false
@@ -99,6 +102,31 @@ final class SnippetsCoordinator {
     case .duplicateTrigger(let existing):
       return
         "You already have a snippet for those words: \u{201C}\(existing)\u{201D}. Change one of them."
+    case .keywordNotOneWord:
+      return "Your keyword has to be a single word. Pick one you would not say by accident."
     }
   }
+
+  /// The store's own failures, which are not the user's fault and must never read as one.
+  ///
+  /// `existingFileUnreadable` is the important sentence here. It stands between a temporary read
+  /// failure and a saved empty list overwriting snippets that still exist, so it tells the user
+  /// their snippets ARE still there rather than implying they are gone.
+  static func message(for error: SnippetStoreError) -> String {
+    switch error {
+    case .existingFileUnreadable:
+      return
+        "Your saved snippets could not be read, so nothing was changed. They are still on disk. Restart EnviousWispr, and tell us if it keeps happening."
+    case .busy:
+      return "Another copy of EnviousWispr is editing snippets right now. Try that again."
+    case .coordinationUnavailable:
+      return "Snippets could not be saved just now. Try that again."
+    case .writeFailed(let reason):
+      return "That could not be saved. \(reason)"
+    }
+  }
+
+  /// True when a file exists that could not be read. The screen shows this instead of an empty
+  /// list, because an empty list is a lie the user would act on by adding snippets over the top.
+  var storeUnreadable: Bool { manager.unreadableExisting }
 }

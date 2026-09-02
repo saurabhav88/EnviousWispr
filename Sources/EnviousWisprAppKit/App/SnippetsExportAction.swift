@@ -24,13 +24,19 @@ enum SnippetsExportAction {
 
   /// The exported shape. Deliberately the same field names the store persists, so a file a user
   /// keeps for a year still means what it says, and Import has nothing to translate.
-  struct Document: Encodable {
+  struct Document: Encodable, Sendable {
     let version: Int
     let keyword: String
     let snippets: [Snippet]
   }
 
-  static func run(vocabulary: SnippetVocabulary) -> Outcome {
+  /// Ask for a destination on the main actor, then WRITE off it.
+  ///
+  /// The write and its full filesystem sync are not free on a network, external or cloud-synced
+  /// destination, and running them here would freeze the settings window until the storage
+  /// answers. Only the panel needs the main actor; the bytes do not. Matches the custom-words
+  /// export path, which learned this in its own review.
+  static func run(vocabulary: SnippetVocabulary) async -> Outcome {
     // Checked BEFORE the panel: opening a save dialog and then announcing there was nothing to
     // save wastes the one interaction the user paid for.
     guard !vocabulary.snippets.isEmpty else { return .nothingToExport }
@@ -55,15 +61,23 @@ enum SnippetsExportAction {
       return .refusedLiveStore
     }
 
+    let document = Document(
+      version: SnippetsManager.currentVersion,
+      keyword: vocabulary.keyword,
+      snippets: vocabulary.snippets)
+    return await write(document, to: destination, count: vocabulary.snippets.count)
+  }
+
+  /// `@concurrent` so this always runs OFF the caller's actor. A plain `async` on a `@MainActor`
+  /// type would inherit that isolation and put the slow write straight back on the main thread —
+  /// the whole point of splitting it out.
+  @concurrent
+  private static func write(
+    _ document: Document, to destination: URL, count: Int
+  ) async -> Outcome {
     do {
-      try DurableJSONFile.write(
-        Document(
-          version: SnippetsManager.currentVersion,
-          keyword: vocabulary.keyword,
-          snippets: vocabulary.snippets),
-        to: destination,
-        tempPrefix: ".ew-snippets-export")
-      return .written(destination, count: vocabulary.snippets.count)
+      try DurableJSONFile.write(document, to: destination, tempPrefix: ".ew-snippets-export")
+      return .written(destination, count: count)
     } catch {
       return .failed(error.localizedDescription)
     }

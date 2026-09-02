@@ -514,25 +514,18 @@ public final class CustomWordsManager {
   private func withExclusiveFileLock<T>(
     blocking: Bool = false, _ body: () throws -> T
   ) throws -> T {
-    let lockURL = fileURL.appendingPathExtension("lock")
-    let fd = lockURL.path.withCString {
-      Foundation.open($0, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
-    }
-    guard fd >= 0 else {
+    // The companion-file `flock` mechanism moved to `DurableJSONFile.withExclusiveLock` when
+    // #628 gave a second user-owned store the same need. Still exactly ONE declaration here,
+    // and this function keeps what is genuinely this type's: the mapping onto
+    // `CustomWordsPersistenceError`, which callers throughout this file catch by case.
+    do {
+      return try DurableJSONFile.withExclusiveLock(
+        on: fileURL, blocking: blocking, lockSyscall: lockSyscall, body)
+    } catch DurableJSONFile.LockFailure.busy {
+      throw CustomWordsPersistenceError.libraryBusy
+    } catch DurableJSONFile.LockFailure.unavailable {
       throw CustomWordsPersistenceError.coordinationUnavailable
     }
-    defer { close(fd) }
-
-    let flags: Int32 = blocking ? LOCK_EX : (LOCK_EX | LOCK_NB)
-    guard lockSyscall(fd, flags) == 0 else {
-      if !blocking, errno == EWOULDBLOCK {
-        throw CustomWordsPersistenceError.libraryBusy
-      }
-      throw CustomWordsPersistenceError.coordinationUnavailable
-    }
-    defer { _ = flock(fd, LOCK_UN) }
-
-    return try body()
   }
 
   /// Wraps an explicit mutation's load-transform-save in one non-blocking

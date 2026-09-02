@@ -24,6 +24,48 @@ import Foundation
 ///    already changed. A failure here only narrows the crash window; it does not undo the save.
 public enum DurableJSONFile {
 
+  /// Why a cross-process lock could not be taken.
+  public enum LockFailure: Error, Equatable {
+    /// Another process holds the lock right now (non-blocking acquisition only).
+    case busy
+    /// The lock file could not be opened, or `flock` failed for a reason other than contention.
+    case unavailable
+  }
+
+  /// Hold an exclusive cross-process lock while `body` runs (#1690, generalised by #628).
+  ///
+  /// Takes `flock` on a stable COMPANION file beside the store, never on the store itself: the
+  /// store is replaced by rename on every save, so a lock held on it would be a lock on a file
+  /// that no longer exists the moment it mattered.
+  ///
+  /// Non-blocking by default, so a mutation fails closed rather than freezing the main actor
+  /// behind another process. Blocking acquisition is for a load path that can afford to wait.
+  ///
+  /// - Parameter lockSyscall: test seam. Production always passes the real `flock`; a test can
+  ///   force a non-contention failure without needing a second process.
+  public static func withExclusiveLock<T>(
+    on storeURL: URL,
+    blocking: Bool = false,
+    lockSyscall: (Int32, Int32) -> Int32 = { flock($0, $1) },
+    _ body: () throws -> T
+  ) throws -> T {
+    let lockURL = storeURL.appendingPathExtension("lock")
+    let fd = lockURL.path.withCString {
+      Foundation.open($0, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+    }
+    guard fd >= 0 else { throw LockFailure.unavailable }
+    defer { close(fd) }
+
+    let flags: Int32 = blocking ? LOCK_EX : (LOCK_EX | LOCK_NB)
+    guard lockSyscall(fd, flags) == 0 else {
+      if !blocking, errno == EWOULDBLOCK { throw LockFailure.busy }
+      throw LockFailure.unavailable
+    }
+    defer { _ = flock(fd, LOCK_UN) }
+
+    return try body()
+  }
+
   /// Whether `destination` is the same file on disk as `live`.
   ///
   /// The guard behind every export: choosing the app's own store as the destination would

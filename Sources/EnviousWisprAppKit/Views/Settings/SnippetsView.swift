@@ -100,8 +100,11 @@ struct SnippetsView: View {
       SettingsActionButton(
         title: "Export", isEnabled: !coordinator.snippets.isEmpty, emphasis: .outlined
       ) {
-        exportMessage = SnippetsExportAction.message(
-          for: SnippetsExportAction.run(vocabulary: coordinator.vocabulary))
+        let vocabulary = coordinator.vocabulary
+        Task {
+          exportMessage = SnippetsExportAction.message(
+            for: await SnippetsExportAction.run(vocabulary: vocabulary))
+        }
       }
       SettingsActionButton(title: "Add snippet", isEnabled: true, emphasis: .filled) {
         editing = SnippetDraft(snippet: nil)

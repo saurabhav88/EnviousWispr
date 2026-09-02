@@ -150,6 +150,20 @@ struct SnippetExpanderTests {
     #expect(out.records.count == 1)
   }
 
+  /// Leading whitespace belongs to no word, and the reconstruction walks words. It was dropped
+  /// on EVERY dictation once the step was armed — match or no match — and no fixture caught it
+  /// because every one of them started with a letter.
+  @Test("Whitespace before the first word survives, with and without a match")
+  func leadingWhitespaceIsPreserved() {
+    let vocab = vocabulary([("my email", "sam@example.com")])
+    let expander = fixedExpander(["EWSNIPlead"])
+
+    #expect(expander.expand("\n  hello there", using: vocab).text == "\n  hello there")
+    #expect(
+      fixedExpander(["EWSNIPlead"]).expand("  backslash my email", using: vocab).text
+        == "  EWSNIPlead")
+  }
+
   // MARK: - The disabled path, which is what an ordinary user takes
 
   @Test("An empty store returns the input unchanged and identical")
