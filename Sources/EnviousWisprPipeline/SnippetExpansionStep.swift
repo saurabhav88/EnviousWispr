@@ -35,9 +35,27 @@ public final class SnippetExpansionStep: TextProcessingStep {
   /// without this file — which is premise P4, and it has a test rather than a hope.
   public var isEnabled: Bool { snippetVocabulary.canFire }
 
-  /// Pure string work over one utterance. A generous runaway BACKSTOP, not a real budget —
-  /// mirrors `EmojiFormatterStep` and `EmojiRestoreStep`.
-  public var maxDuration: Duration { .milliseconds(50) }
+  /// One second, and the number is a measurement rather than a preference.
+  ///
+  /// The work here is microseconds — the same call runs 55 unit tests in 0.15s. But the runner's
+  /// budget covers the actor HOP as well as the work, and the FIRST step in the chain is the one
+  /// that pays it: every later step is already on the main actor and hops for free.
+  ///
+  /// Measured on the real app, two consecutive live dictations, with the 50ms backstop this file
+  /// originally copied from `EmojiFormatterStep`:
+  ///   `Snippet Expansion timed out after 51.7ms — skipping`
+  ///   `Snippet Expansion timed out after 51.8ms — skipping`
+  /// Consistent, so not a cold start; and every other step in the same take completed, so not a
+  /// stalled main actor. The step simply never got to run inside its own budget, and the user's
+  /// snippet silently did not fire.
+  ///
+  /// 50ms was wrong because it was copied from a step that runs LATE. `WordCorrectionStep` — the
+  /// step that was first before this one — declares 3 seconds, and had been absorbing this cost
+  /// invisibly for everyone.
+  ///
+  /// Still a runaway backstop, not a latency budget: nothing here should approach it, and if a
+  /// future change makes it does, the timeout is the right outcome.
+  public var maxDuration: Duration { .seconds(1) }
 
   private static let logger = Logger(
     subsystem: "com.enviouswispr.app", category: "SnippetExpansion")

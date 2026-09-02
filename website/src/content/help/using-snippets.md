@@ -30,7 +30,7 @@ The keyword is what keeps snippets out of your way. Say the same trigger without
 
 That sentence comes out exactly as you said it.
 
-The same is true if you say the keyword and nothing after it matches a snippet you saved. "The path is backslash users" comes through untouched, keyword and all.
+The same is true if you say the keyword and nothing after it matches a snippet you saved. No snippet fires, and your words carry on through EnviousWispr normally. (Normally still includes AI Polish, so a sentence can be tidied up the way any other sentence would be. Snippets simply had nothing to do with it.)
 
 ### Add a snippet
 
