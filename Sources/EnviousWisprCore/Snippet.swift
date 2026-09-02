@@ -14,7 +14,7 @@ import Foundation
 /// compares literally — this is deliberately NOT fuzzy, unlike `WordCorrector`.
 public enum SnippetText {
   /// Punctuation dropped from the FRONT of a spoken token before comparison.
-  private static let leading: Set<Character> = ["(", "[", "{", "\"", "'", "\u{201C}", "\u{2018}"]
+  static let leading: Set<Character> = ["(", "[", "{", "\"", "'", "\u{201C}", "\u{2018}"]
 
   /// Punctuation dropped from the END of a spoken token before comparison. This is also the
   /// set `SnippetExpander` re-attaches AFTER an expansion, so a full stop that clung to the
@@ -39,6 +39,22 @@ public enum SnippetText {
     while let first = s.first, leading.contains(first) { s = s.dropFirst() }
     while let last = s.last, trailing.contains(last) { s = s.dropLast() }
     return String(s.trimmingWhitespace())
+  }
+
+  /// The leading punctuation run on a token, in source order.
+  ///
+  /// Its partner below handles the end of the trigger; this handles the start of the KEYWORD.
+  /// Both are needed, and having only one is a silent loss: in a quoted phrase the opening
+  /// quote is stripped so the keyword can match, and without restoring it the user gets the
+  /// pasted text with a closing quote and no opening one.
+  public static func leadingPunctuation(_ token: String) -> String {
+    var run: [Character] = []
+    var s = Substring(token)
+    while let first = s.first, leading.contains(first) {
+      run.append(first)
+      s = s.dropFirst()
+    }
+    return String(run)
   }
 
   /// The trailing punctuation run on a token, in source order — what `normalize` removed from

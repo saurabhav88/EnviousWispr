@@ -164,6 +164,29 @@ struct SnippetExpanderTests {
         == "  EWSNIPlead")
   }
 
+  /// Both ends of a quoted phrase. The opening mark is stripped from the KEYWORD so the match
+  /// can happen, the closing one from the last trigger word; restoring only the tail leaves an
+  /// orphan closing quote in the user's sentence.
+  @Test("A quoted trigger keeps BOTH quotes around the pasted text")
+  func quotesSurviveOnBothSides() {
+    let expander = fixedExpander(["EWSNIPq"])
+    let out = expander.expand(
+      "he said \u{201C}backslash my email\u{201D} and left",
+      using: vocabulary([("my email", "sam@example.com")]))
+
+    #expect(out.text == "he said \u{201C}EWSNIPq\u{201D} and left")
+  }
+
+  @Test("A trigger in brackets keeps both brackets")
+  func bracketsSurviveOnBothSides() {
+    let expander = fixedExpander(["EWSNIPb"])
+    let out = expander.expand(
+      "(backslash my email)",
+      using: vocabulary([("my email", "sam@example.com")]))
+
+    #expect(out.text == "(EWSNIPb)")
+  }
+
   // MARK: - The disabled path, which is what an ordinary user takes
 
   @Test("An empty store returns the input unchanged and identical")

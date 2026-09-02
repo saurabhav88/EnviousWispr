@@ -17,6 +17,10 @@ struct SnippetsView: View {
   /// Held here rather than on the coordinator: an export never changes the store, so a failed
   /// one must not sit in the same slot as a failed save and read as though a snippet was lost.
   @State private var exportMessage: String?
+  /// The keyword field commits on focus loss as well as on Return. Only `.onSubmit` meant a
+  /// user could type a new keyword, click Add snippet, and be silently left on the old one,
+  /// with nothing on screen saying Return was required.
+  @FocusState private var keywordFocused: Bool
 
   var body: some View {
     SettingsContentView {
@@ -43,7 +47,11 @@ struct SnippetsView: View {
         TextField("", text: $keywordField)
           .textFieldStyle(.roundedBorder)
           .frame(width: 190)
+          .focused($keywordFocused)
           .onSubmit { commitKeyword() }
+          .onChange(of: keywordFocused) { _, focused in
+            if !focused { commitKeyword() }
+          }
         Text("then your snippet, and it expands.").settingsHelperCopy()
         Spacer(minLength: 0)
       }
@@ -71,7 +79,11 @@ struct SnippetsView: View {
     BrandedSection(header: "Your snippets") {
       VStack(alignment: .leading, spacing: 0) {
         header
-        if coordinator.snippets.isEmpty {
+        if coordinator.storeUnreadable {
+          // NOT the empty state. An empty list is a lie the user would act on by adding
+          // snippets over the top of ones that still exist.
+          unreadableState
+        } else if coordinator.snippets.isEmpty {
           emptyState
         } else {
           searchField
@@ -186,6 +198,24 @@ struct SnippetsView: View {
   /// the point of the sign-off case.
   private func oneLine(_ text: String) -> String {
     text.split(whereSeparator: \.isNewline).joined(separator: " ")
+  }
+
+  private var unreadableState: some View {
+    VStack(spacing: 10) {
+      Image(systemName: "exclamationmark.triangle")
+        .font(.system(size: 34, weight: .light))
+        .foregroundStyle(.stWarning)
+        .accessibilityHidden(true)
+      Text("Your snippets could not be read").settingsRowTitle()
+      Text(
+        "They are still saved on your Mac. Nothing has been changed or deleted, and EnviousWispr will not write over them. Restart the app, and tell us if this keeps happening."
+      )
+      .settingsHelperCopy()
+      .multilineTextAlignment(.center)
+      .frame(maxWidth: 380)
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 32)
   }
 
   // MARK: - Empty state

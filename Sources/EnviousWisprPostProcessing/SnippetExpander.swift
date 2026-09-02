@@ -121,9 +121,14 @@ public struct SnippetExpander: Sendable {
       records.append(
         SnippetExpansionRecord(sentinel: sentinel, expansion: hit.snippet.expansion))
 
-      // The punctuation the user actually spoke belongs after the pasted text, not swallowed
-      // with the trigger. Same set `SnippetText.normalize` stripped, so the two cannot drift.
-      out += sentinel + SnippetText.trailingPunctuation(lastToken)
+      // The punctuation the user actually spoke belongs AROUND the pasted text, not swallowed
+      // with the trigger. Both ends, and both are load-bearing: the opening mark is stripped
+      // from the KEYWORD token so the match can happen, the closing one from the LAST trigger
+      // token. Restoring only the tail leaves an orphan closing quote, which review caught.
+      // Same sets `SnippetText.normalize` strips, so the pairs cannot drift apart.
+      out +=
+        SnippetText.leadingPunctuation(token) + sentinel
+        + SnippetText.trailingPunctuation(lastToken)
       if let gap = Self.whitespaceAfter(lastWordIndex, in: pieces) { out += gap }
       cursor += hit.length + 1
     }

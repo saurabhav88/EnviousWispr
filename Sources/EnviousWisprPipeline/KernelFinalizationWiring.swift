@@ -940,83 +940,105 @@ struct KernelFinalizationWiring {
               : ""),
           level: .info, category: "KernelFinalizationWiring")
 
-        // The legacy payload is what a route falls back to; §6 decides per route
-        // whether the candidate may be committed instead.
-        let pasteText = payloads.legacyText
-        let result = await deliverPaste(
-          PasteDeliveryRequest(
-            legacyText: pasteText,
-            repairedText: payloads.repairedText,
-            caretContext: caretContext,
-            // Asked of the RULES, not enumerated here. Listing the destructive
-            // ones at this call site is how the first version missed
-            // `.droppedTerminalPeriod` — a rule that also removes a character
-            // the user dictated, found by cloud review. `deletesDictatedText`
-            // is an exhaustive switch beside the enum, so a new rule cannot
-            // inherit "not destructive" by being forgotten out here.
-            candidateDeletesDictatedText: payloads.candidateRules.contains {
-              $0.deletesDictatedText
-            },
-            targetApp: context.targetApp,
-            targetElement: context.targetElement,
-            // Same local boolean the outcome fields above were stamped from —
-            // not re-derived from `targetElement` presence, which cannot tell
-            // "retried and recovered" apart from "captured at record-start".
-            targetElementIsRetried: caretCaptureRetried,
-            restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
-            terminalBudget: terminalBudget))
-        pasteResult = result
-
-        // WHICH payload actually went to the app, which `CURSOR_REPAIR` cannot
-        // say because it is logged before the write happens.
+        // #628. A snippet-bearing payload carrying a NEWLINE never reaches a terminal
+        // automatically. In a terminal a newline can SUBMIT the command, and a multi-line
+        // sign-off snippet would run whatever its first line happens to say.
         //
-        // This is the gap that made the founder's original report
-        // undiagnosable: the repair can decide `lowercased_first`, offer a
-        // candidate, and the route can still commit the LEGACY text because
-        // `payloadAtCommitBoundary` re-reads the caret and refuses when
-        // anything changed. From the log alone those two outcomes were
-        // indistinguishable — both showed `candidate=offered` and the user saw
-        // the capital survive.
+        // `CursorInsertionRepair`'s screen-derived refusal does NOT already cover this, and
+        // checking rather than assuming is what found it: that refusal declines the CONTEXTUAL
+        // repair and still returns the legacy text, newline included, so the payload went out
+        // either way. The behaviour predates snippets — but before snippets a newline in a
+        // terminal payload was rare, and a saved multi-line expansion makes it ordinary. The
+        // feature that made it reachable is the one that has to hold the line.
         //
-        // A second line rather than a field on the first, only because the fact
-        // does not exist until after the write. `tier` rides along so the two
-        // can be matched without a timestamp join.
-        // The FULL budget spend, which `CURSOR_REPAIR` structurally cannot show:
-        // that line is written before the paste, and the commit-boundary
-        // re-check runs after the target app is activated. On 2026-08-04 the
-        // repair line reported a healthy 1.6 ms and the breaker tripped anyway,
-        // because the whole overspend lived in the half no line covered.
-        //
-        // Everything before `|recheck|` was already on the repair line; the
-        // suffix is new, and the total is what the cumulative cap is judged
-        // against. That cap is `TerminalResolutionBudget.defaultTotal`, which
-        // owns the current value — do not restate the number here, because a
-        // second copy is what goes stale (it read "100 ms" until 2026-08-05).
-        await AppLogger.shared.log(
-          "CURSOR_COMMIT submitted=\(result.submittedPayload?.rawValue ?? "none") "
-            + "tier=\(result.pasteTierLabel ?? "none") "
-            + "timing=[\(terminalBudget.timingDescription)]",
-          level: .info, category: "KernelFinalizationWiring")
-
-        if case .delivered = result.outcome {
-          // The text that actually LANDED, which is not always the one this
-          // closure passed in: a route may have committed the contextual
-          // candidate. `pasteCompletionRegistry`'s subscriber (#629) watches for
-          // later edits to the pasted text and learns custom words from them, so
-          // announcing the legacy payload after delivering the repaired one
-          // would make our own spacing and casing look like the user correcting
-          // us. Falls back to the legacy payload for `.legacy` and for a
-          // delivered route that reported no payload at all.
-          let deliveredText =
-            result.submittedPayload == .repaired
-            ? (payloads.repairedText ?? pasteText) : pasteText
-          pasteCompletionRegistry?.emit(
-            PasteCompletionEvent(
-              pastedText: deliveredText,
-              destinationBundleID: context.targetApp?.bundleIdentifier))
-          deliveryOutcome = .pasted
-        } else {
+        // Clipboard-only rather than a silent drop: the text still exists and is one Cmd+V
+        // away, which is the shape every other refused delivery here already takes.
+        if context.snippetExpansionFired,
+          payloads.legacyText.contains(where: \.isNewline),
+          caretContext?.isScreenDerived == true
+        {
+          ClipboardCleanup.deliveryClaimsBoard()
+          copyToClipboard(text)
           deliveryOutcome = .clipboardOnly
+        } else {
+          // The legacy payload is what a route falls back to; §6 decides per route
+          // whether the candidate may be committed instead.
+          let pasteText = payloads.legacyText
+          let result = await deliverPaste(
+            PasteDeliveryRequest(
+              legacyText: pasteText,
+              repairedText: payloads.repairedText,
+              caretContext: caretContext,
+              // Asked of the RULES, not enumerated here. Listing the destructive
+              // ones at this call site is how the first version missed
+              // `.droppedTerminalPeriod` — a rule that also removes a character
+              // the user dictated, found by cloud review. `deletesDictatedText`
+              // is an exhaustive switch beside the enum, so a new rule cannot
+              // inherit "not destructive" by being forgotten out here.
+              candidateDeletesDictatedText: payloads.candidateRules.contains {
+                $0.deletesDictatedText
+              },
+              targetApp: context.targetApp,
+              targetElement: context.targetElement,
+              // Same local boolean the outcome fields above were stamped from —
+              // not re-derived from `targetElement` presence, which cannot tell
+              // "retried and recovered" apart from "captured at record-start".
+              targetElementIsRetried: caretCaptureRetried,
+              restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
+              terminalBudget: terminalBudget))
+          pasteResult = result
+
+          // WHICH payload actually went to the app, which `CURSOR_REPAIR` cannot
+          // say because it is logged before the write happens.
+          //
+          // This is the gap that made the founder's original report
+          // undiagnosable: the repair can decide `lowercased_first`, offer a
+          // candidate, and the route can still commit the LEGACY text because
+          // `payloadAtCommitBoundary` re-reads the caret and refuses when
+          // anything changed. From the log alone those two outcomes were
+          // indistinguishable — both showed `candidate=offered` and the user saw
+          // the capital survive.
+          //
+          // A second line rather than a field on the first, only because the fact
+          // does not exist until after the write. `tier` rides along so the two
+          // can be matched without a timestamp join.
+          // The FULL budget spend, which `CURSOR_REPAIR` structurally cannot show:
+          // that line is written before the paste, and the commit-boundary
+          // re-check runs after the target app is activated. On 2026-08-04 the
+          // repair line reported a healthy 1.6 ms and the breaker tripped anyway,
+          // because the whole overspend lived in the half no line covered.
+          //
+          // Everything before `|recheck|` was already on the repair line; the
+          // suffix is new, and the total is what the cumulative cap is judged
+          // against. That cap is `TerminalResolutionBudget.defaultTotal`, which
+          // owns the current value — do not restate the number here, because a
+          // second copy is what goes stale (it read "100 ms" until 2026-08-05).
+          await AppLogger.shared.log(
+            "CURSOR_COMMIT submitted=\(result.submittedPayload?.rawValue ?? "none") "
+              + "tier=\(result.pasteTierLabel ?? "none") "
+              + "timing=[\(terminalBudget.timingDescription)]",
+            level: .info, category: "KernelFinalizationWiring")
+
+          if case .delivered = result.outcome {
+            // The text that actually LANDED, which is not always the one this
+            // closure passed in: a route may have committed the contextual
+            // candidate. `pasteCompletionRegistry`'s subscriber (#629) watches for
+            // later edits to the pasted text and learns custom words from them, so
+            // announcing the legacy payload after delivering the repaired one
+            // would make our own spacing and casing look like the user correcting
+            // us. Falls back to the legacy payload for `.legacy` and for a
+            // delivered route that reported no payload at all.
+            let deliveredText =
+              result.submittedPayload == .repaired
+              ? (payloads.repairedText ?? pasteText) : pasteText
+            pasteCompletionRegistry?.emit(
+              PasteCompletionEvent(
+                pastedText: deliveredText,
+                destinationBundleID: context.targetApp?.bundleIdentifier))
+            deliveryOutcome = .pasted
+          } else {
+            deliveryOutcome = .clipboardOnly
+          }
         }
       } else if config?.autoCopyToClipboard == true {
         // #2465: auto-copy never enters `PasteCascadeExecutor`, so it reaches the board without
