@@ -39,7 +39,11 @@ public final class SnippetsManager: @unchecked Sendable {
     var snippets: [Snippet]
   }
 
-  static let currentVersion = 1
+  /// The schema version stamped into both the store and an export. Public because the export
+  /// document must carry the SAME number the store writes — two literals would let a schema
+  /// bump land in one and not the other, and the file that lies about its version is the one
+  /// a future import trusts.
+  public static let currentVersion = 1
   private static let fileName = "snippets.json"
   private static let logger = Logger(subsystem: "com.enviouswispr.app", category: "Snippets")
 
@@ -76,6 +80,16 @@ public final class SnippetsManager: @unchecked Sendable {
   }
 
   package var storageURL: URL { fileURL }
+
+  /// The production store's path, for the export guard. Static and `nonisolated` for the same
+  /// reason `CustomWordsManager.liveFileURL` is: the export writer runs off the main actor and
+  /// must be able to refuse the app's own file as a destination without holding a manager.
+  nonisolated public static var liveFileURL: URL? {
+    FileManager.default
+      .urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+      .appendingPathComponent("EnviousWispr", isDirectory: true)
+      .appendingPathComponent(fileName)
+  }
 
   // MARK: - Load and save
 

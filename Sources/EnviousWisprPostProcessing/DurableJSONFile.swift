@@ -24,6 +24,34 @@ import Foundation
 ///    already changed. A failure here only narrows the crash window; it does not undo the save.
 public enum DurableJSONFile {
 
+  /// Whether `destination` is the same file on disk as `live`.
+  ///
+  /// The guard behind every export: choosing the app's own store as the destination would
+  /// atomically replace it with the transfer format, and the next launch would archive it as
+  /// corrupt — the user destroying their own data by backing it up. Extracted from
+  /// `CustomWordsExportWriter.wouldOverwriteLiveWords` when #628 gave a second store an export.
+  ///
+  /// Ask the FILESYSTEM, not the strings. macOS is case-insensitive by default, so
+  /// `SNIPPETS.JSON` and `snippets.json` are ONE file that string equality calls two — and
+  /// picking the shouty spelling would walk straight past the guard into the loss it prevents.
+  ///
+  /// The destination may not exist yet, so there is no identity to compare. The fallback is a
+  /// case-insensitive path match: on the default volume that is the truth, and on a
+  /// case-sensitive one it is merely stricter than necessary — the safe direction to be wrong.
+  public static func isSameFile(_ destination: URL, as live: URL) -> Bool {
+    let target = destination.resolvingSymlinksInPath().standardizedFileURL
+    let liveURL = live.resolvingSymlinksInPath().standardizedFileURL
+
+    if let targetID = try? target.resourceValues(forKeys: [.fileResourceIdentifierKey])
+      .fileResourceIdentifier,
+      let liveID = try? liveURL.resourceValues(forKeys: [.fileResourceIdentifierKey])
+        .fileResourceIdentifier
+    {
+      return targetID.isEqual(liveID)
+    }
+    return target.path.compare(liveURL.path, options: .caseInsensitive) == .orderedSame
+  }
+
   /// Create the store's directory at 0700 and drop a `.metadata_never_index` Spotlight marker.
   ///
   /// Re-enforced on every init, in case a backup restore or a user action loosened permissions

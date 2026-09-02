@@ -14,6 +14,9 @@ struct SnippetsView: View {
   @State private var query = ""
   @State private var editing: SnippetDraft?
   @State private var keywordField = ""
+  /// Held here rather than on the coordinator: an export never changes the store, so a failed
+  /// one must not sit in the same slot as a failed save and read as though a snippet was lost.
+  @State private var exportMessage: String?
 
   var body: some View {
     SettingsContentView {
@@ -77,7 +80,7 @@ struct SnippetsView: View {
         }
       }
     } footer: {
-      if let message = coordinator.errorMessage {
+      if let message = coordinator.errorMessage ?? exportMessage {
         Text(message)
           .font(.stHelper)
           .foregroundStyle(.stError)
@@ -94,6 +97,12 @@ struct SnippetsView: View {
       // path exists and is not ready; hiding it would make the feature look absent instead.
       SettingsActionButton(title: "Import", isEnabled: false, emphasis: .outlined) {}
         .help("Coming soon")
+      SettingsActionButton(
+        title: "Export", isEnabled: !coordinator.snippets.isEmpty, emphasis: .outlined
+      ) {
+        exportMessage = SnippetsExportAction.message(
+          for: SnippetsExportAction.run(vocabulary: coordinator.vocabulary))
+      }
       SettingsActionButton(title: "Add snippet", isEnabled: true, emphasis: .filled) {
         editing = SnippetDraft(snippet: nil)
       }
