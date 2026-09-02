@@ -54,12 +54,20 @@ public final class SnippetsManager: @unchecked Sendable {
   }
 
   /// What is on disk right now. The `unreadable` case is the whole reason this is not an
-  /// optional.
+  /// optional, and `archivedCorrupt` is the second reason: THREE different situations produce
+  /// no readable snippets, and they do not all license the same next action.
   enum LoadResult: Equatable {
+    /// No file has ever been written here. The only state a fresh install is in.
     case missing
     case loaded(SnippetVocabulary)
-    /// The file exists and its contents are unknown — a read error, or a corrupt file that
-    /// could not be archived to safety. Either way the bytes must not be overwritten.
+    /// A file was there, could not be parsed, and was moved aside to a `.corrupted-<uuid>`
+    /// archive. Reading and writing may proceed from empty — but this is NOT a new user, and
+    /// anything that treats it as one acts on somebody's data-loss moment. Split out after
+    /// review found starter snippets being written into exactly this state, where they would
+    /// have read as recovered content.
+    case archivedCorrupt
+    /// The file exists and its contents are unknown — a read error, a file from a NEWER app, or
+    /// a corrupt file that could not be archived. Either way the bytes must not be overwritten.
     case unreadable
   }
 
@@ -122,8 +130,81 @@ public final class SnippetsManager: @unchecked Sendable {
     let empty = SnippetVocabulary(
       snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation)
     guard let result = try? withLock(blocking: true, { loadWhileLocked() }) else { return empty }
+    // `archivedCorrupt` renders as empty exactly like `missing`: the screen has to draw, and the
+    // bytes are safe in the archive. Only `loadOrSeedStarters` needs the two kept apart.
     if case .loaded(let vocabulary) = result { return vocabulary }
     return empty
+  }
+
+  /// Read the store, and on a brand-new install write the starter examples first (#628).
+  ///
+  /// The seed is attempted for `missing` ONLY, which is what makes it a one-time event: after
+  /// it runs the file exists, so a user who deletes every starter is left with a file holding
+  /// none, and the next launch loads that empty list instead of putting them back. An
+  /// `unreadable` file is never seeded over, for the same reason no mutation touches one — the
+  /// snippets on disk are still the only copy.
+  ///
+  /// The load and the write happen inside ONE lock hold. Two of these racing on first launch
+  /// (a shipped copy and a dev build both starting) would otherwise both read `missing` and
+  /// both write the starters, and the second rename would discard whichever edit the first
+  /// user had already made.
+  ///
+  /// A failed seed returns the EMPTY vocabulary rather than the starters it could not persist.
+  /// Showing a list the store does not hold is how the next delete writes a file with the other
+  /// five missing; the honest outcome is an empty screen now and the examples on the next
+  /// launch that can write.
+  public func loadOrSeedStarters() -> SnippetVocabulary {
+    let empty = SnippetVocabulary(
+      snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation)
+    let result = try? withLock(blocking: true) { () -> SnippetVocabulary in
+      switch loadWhileLocked() {
+      case .loaded(let vocabulary):
+        return vocabulary
+      case .unreadable, .archivedCorrupt:
+        // Neither is a new install. `archivedCorrupt` is the one that looks like one and is not:
+        // the user HAD snippets, they were just moved aside, and writing six John Doe examples
+        // into that moment presents sample data as recovered content.
+        return empty
+      case .missing:
+        // `missing` means no file HERE, NOW. It does not mean this install never had one: the
+        // corrupt-file archive moves the store aside, so the same read reports `missing` for a
+        // user who just lost their snippets. Ask the disk the question actually being asked.
+        guard !hasStoreHistoryOnDisk() else { return empty }
+        let seeded = SnippetVocabulary(
+          snippets: SnippetStarters.all,
+          keyword: SnippetVocabulary.defaultKeyword,
+          generation: generation)
+        guard let saved = try? saveWhileLocked(seeded) else {
+          Self.logger.error("Starter snippets could not be written; starting empty.")
+          return empty
+        }
+        return saved
+      }
+    }
+    return result ?? empty
+  }
+
+  /// Whether anything on disk says this install has EVER held a snippets store.
+  ///
+  /// The single reader of the only question the seed needs answered, and it is deliberately
+  /// broader than "does `snippets.json` exist". Three rounds of review found three ways the
+  /// primary file can be absent from an install that had one, and every one of them ran through
+  /// the corrupt-file archive: the archive removes the file, so a read reports `missing`, so the
+  /// seed would write six John Doe examples into somebody's data-loss moment where they read as
+  /// recovered content.
+  ///
+  /// A `.corrupted-<uuid>` sibling is that history, and it needs no write to create — which is
+  /// what makes it strictly stronger than writing an empty file back, the previous fix. That
+  /// write could fail, and the failure landed on exactly the launch after a data loss.
+  ///
+  /// Deleting the archives is not covered and should not be: a user who cleared them out has
+  /// asked for a clean slate, and a clean slate is what they get.
+  private func hasStoreHistoryOnDisk() -> Bool {
+    if FileManager.default.fileExists(atPath: fileURL.path) { return true }
+    let directory = fileURL.deletingLastPathComponent()
+    let siblings =
+      (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+    return siblings.contains { $0.hasPrefix("\(Self.fileName).corrupted-") }
   }
 
   /// True when a file exists that could not be read. The screen shows a banner, and saves are
@@ -183,10 +264,14 @@ public final class SnippetsManager: @unchecked Sendable {
         )
         return .unreadable
       }
+      // NOT repaired by writing an empty file back. That was the round-2 fix and it is
+      // dominated by `hasStoreHistoryOnDisk` below, which answers the same question and also
+      // survives the case where the replacement write itself fails. One reader for one
+      // question, and no write on a read path.
       Self.logger.error(
         "snippets.json could not be parsed; archived and starting empty. \(String(describing: error), privacy: .public)"
       )
-      return .missing
+      return .archivedCorrupt
     }
   }
 
@@ -227,7 +312,9 @@ public final class SnippetsManager: @unchecked Sendable {
     try withLock {
       let current: SnippetVocabulary
       switch loadWhileLocked() {
-      case .missing:
+      case .missing, .archivedCorrupt:
+        // A save is allowed after an archive: the old bytes are safe under their own name, and
+        // refusing here would leave the user unable to type anything new.
         current = SnippetVocabulary(
           snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation)
       case .loaded(let vocabulary):

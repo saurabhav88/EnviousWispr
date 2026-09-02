@@ -56,12 +56,26 @@ struct SnippetsView: View {
         Spacer(minLength: 0)
       }
     } footnote: {
-      // The example is worth its line: the rule is easy to state and easy to misread, and one
-      // concrete sentence answers "so what do I actually say" faster than the description.
+      keywordExample.settingsHelperCopy()
+    }
+  }
+
+  /// The one concrete instruction on the screen: the rule is easy to state and easy to misread,
+  /// and one sentence answers "so what do I actually say" faster than the description does.
+  ///
+  /// Built from a trigger the user ACTUALLY HAS, never from a literal. A hardcoded "my email"
+  /// was true on a fresh install and became a lie the moment they renamed or deleted that
+  /// starter: the screen would keep telling them to say words that fire nothing. With no
+  /// snippets at all there is no honest example, so it names none.
+  @ViewBuilder private var keywordExample: some View {
+    if let trigger = coordinator.snippets.first?.trigger {
       Text(
-        "Example — say \u{201C}\(coordinator.keyword) my email address\u{201D} and your email is pasted."
+        "For example, say \u{201C}\(coordinator.keyword) \(trigger)\u{201D} and that snippet is pasted."
       )
-      .settingsHelperCopy()
+    } else {
+      Text(
+        "Say your keyword, then the words you saved a snippet under, and that snippet is pasted."
+      )
     }
   }
 
@@ -174,7 +188,14 @@ struct SnippetsView: View {
     } label: {
       HStack(spacing: 12) {
         VStack(alignment: .leading, spacing: 2) {
-          Text(snippet.trigger).settingsRowLabel()
+          HStack(spacing: 7) {
+            Text(snippet.trigger).settingsRowLabel()
+            // Shown only while a starter is still exactly as it shipped. It is the one thing
+            // standing between "John Doe" and a real message, and it disappears the moment the
+            // user makes the snippet theirs, because the answer is recomputed from the text on
+            // screen rather than stored.
+            if SnippetStarters.isUneditedExample(snippet) { exampleTag }
+          }
           // One line, ellipsised: an expansion can be a whole signature, and a list that grows
           // a row to fit one of them stops being scannable.
           Text(oneLine(snippet.expansion))
@@ -193,7 +214,23 @@ struct SnippetsView: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .accessibilityLabel("\(snippet.trigger), pastes \(oneLine(snippet.expansion))")
+    .accessibilityLabel(
+      SnippetStarters.isUneditedExample(snippet)
+        ? "\(snippet.trigger), example, pastes \(oneLine(snippet.expansion))"
+        : "\(snippet.trigger), pastes \(oneLine(snippet.expansion))")
+  }
+
+  /// The quiet tag on an untouched starter. Outlined rather than filled: it labels the row, and
+  /// a filled accent pill would read as a recommendation to keep the example rather than a note
+  /// that it is one.
+  private var exampleTag: some View {
+    Text("Example")
+      .font(.system(size: 11, weight: .semibold))
+      .foregroundStyle(Color.stTextTertiary)
+      .padding(.horizontal, 7)
+      .padding(.vertical, 1)
+      .background(Capsule().strokeBorder(Color.stDivider, lineWidth: 1))
+      .accessibilityHidden(true)
   }
 
   /// Line breaks flattened for the row preview only. The stored expansion keeps them — they are

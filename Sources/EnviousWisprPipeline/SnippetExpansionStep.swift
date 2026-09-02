@@ -33,6 +33,12 @@ public final class SnippetExpansionStep: TextProcessingStep {
   /// Disabled rather than run as a no-op. `TextProcessingRunner` skips a disabled step
   /// entirely, so an empty store costs one boolean and the chain is identical to a build
   /// without this file — which is premise P4, and it has a test rather than a hope.
+  ///
+  /// The property is unchanged since starter snippets landed; the population it covers is
+  /// smaller. A fresh install is no longer an empty store, because `SnippetStarters` are
+  /// written on the first launch, so this now reads false only for someone who deleted them
+  /// all. Examples that fire are worth the step running, and a decorative example nobody can
+  /// try is a screenshot.
   public var isEnabled: Bool { snippetVocabulary.canFire }
 
   /// One second, and the number is a measurement rather than a preference.
