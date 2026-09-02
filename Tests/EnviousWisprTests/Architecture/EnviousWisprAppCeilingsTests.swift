@@ -178,6 +178,10 @@ import Testing
   ///   (`docs/feature-requests/issue-2377-2026-08-26-phase6-c4-idle-prewarm.md`
   ///   §3 step 4) places the app-lifetime overlay owner here rather than on
   ///   `AppLifecycleCoordinator`, which gains no overlay dependency.
+  /// - 41 → 42 in #628 (2026-09-01): App-owned `snippetsCoordinator`. Snippets is a new
+  ///   top-level Settings section with its own on-disk store, and the coordinator must outlive
+  ///   any one view so the pipeline can be re-seeded on every change. Sibling of
+  ///   `customWordsCoordinator`, placed here for the same reason.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
@@ -186,7 +190,7 @@ import Testing
       // needs for the onboarding-dismissal policy change. ONE property, not two:
       // the panel seam is consumed by collaborators and is passed through rather
       // than retained here.
-      count <= 41,
+      count <= 42,
       """
       EnviousWisprApp stored-property ceiling exceeded: \(count) > 41. \
       Raising the ceiling requires a Bible changelog entry. \

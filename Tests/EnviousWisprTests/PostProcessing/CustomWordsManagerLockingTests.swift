@@ -1016,11 +1016,31 @@ struct CustomWordsManagerLockingTests {
       backupCallRange.lowerBound < shouldSaveTrueRange.lowerBound,
       "writePreImportBackup() must run before the transform returns shouldSave: true.")
 
-    // 10. The save helper's atomic-write shape is intact.
-    #expect(saveFileWhileLockedSlice.contains("Foundation.open"))
-    #expect(saveFileWhileLockedSlice.contains("O_EXCL"))
-    #expect(saveFileWhileLockedSlice.contains("0o600"))
-    #expect(saveFileWhileLockedSlice.contains("Foundation.rename"))
+    // 10. The atomic-write shape is intact — at its OWNER.
+    //
+    // #628 moved the sequence out of `saveFileWhileLocked` into `DurableJSONFile`, verbatim,
+    // when a second user-owned store needed the identical primitive. The guarantee this clause
+    // protects did not change; the address did. So it now asserts BOTH halves: the save helper
+    // delegates rather than growing its own write back, and the sequence still exists in one
+    // place. Asserting only the delegation would let the shape rot in the file nothing else
+    // checks, which is the failure mode extraction invites.
+    #expect(saveFileWhileLockedSlice.contains("DurableJSONFile.write"))
+    #expect(
+      saveFileWhileLockedSlice.contains("Foundation.open") == false,
+      "The save helper must delegate the write, not carry a second copy of it.")
+
+    let durableSource = try String(
+      contentsOf: RepoRoot.sourceURL(
+        "Sources/EnviousWisprPostProcessing/DurableJSONFile.swift"),
+      encoding: .utf8)
+    let durableWriteSlice = try functionBody(
+      in: durableSource,
+      declaring: "public static func write(data: Data, to url: URL, tempPrefix: String) throws")
+    #expect(durableWriteSlice.contains("Foundation.open"))
+    #expect(durableWriteSlice.contains("O_EXCL"))
+    #expect(durableWriteSlice.contains("0o600"))
+    #expect(durableWriteSlice.contains("F_FULLFSYNC"))
+    #expect(durableWriteSlice.contains("Foundation.rename"))
 
     // 11. Neither removed helper name reappears anywhere, as code or prose.
     let ns = source as NSString

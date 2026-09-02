@@ -57,6 +57,7 @@ package final class WisprBootstrapper {
   /// capped at its single benchmark collaborator by design.
   let activeEngine: ActiveEngineOperation
   let customWordsCoordinator: CustomWordsCoordinator
+  let snippetsCoordinator: SnippetsCoordinator
   let contactsImportCoordinator: ContactsImportCoordinator
   /// #1701 Chunk 2 — UI Cancel routes through `customWordsCoordinator.cancelBulkImportEnrichment`.
   let bulkImportEnrichmentCoordinator: BulkImportEnrichmentCoordinator
@@ -187,6 +188,7 @@ package final class WisprBootstrapper {
       availableDevices: audioDeviceList.availableInputDevices)
     let captureTelemetry = CaptureTelemetryState()
     let customWordsCoordinator = CustomWordsCoordinator()
+    let snippetsCoordinator = SnippetsCoordinator()
     // #636: contacts-import orchestrator (opt-in import + bulk-remove + background
     // alias enrichment via the reused on-device suggester). #636 follow-up.
     let contactsImportCoordinator = ContactsImportCoordinator(
@@ -674,6 +676,20 @@ package final class WisprBootstrapper {
       coordinator: customWordsCoordinator,
       packManager: vocabularyPackManager
     )
+
+    // #628 snippet wiring. TWO drivers, and seeding one is half the job — the same shape the
+    // custom-words wiring above has to satisfy. Seed both now, then republish on every change
+    // so a snippet saved mid-session is live on the next dictation without a relaunch.
+    //
+    // Recovery is NOT wired here: `RecoveryTextProcessor` is built per replay and takes the
+    // store through its own `applySnippetVocabulary` seam at that point.
+    let seedSnippets: @MainActor (SnippetVocabulary) -> Void = {
+      [kernelDriver, whisperKitKernelDriver] vocabulary in
+      kernelDriver.snippetExpansion.snippetVocabulary = vocabulary
+      whisperKitKernelDriver.snippetExpansion.snippetVocabulary = vocabulary
+    }
+    seedSnippets(snippetsCoordinator.vocabulary)
+    snippetsCoordinator.onVocabularyChanged = seedSnippets
 
     // Restore persisted backend selection synchronously (no race with first record).
     asrManager.setInitialBackendType(settings.selectedBackend)
@@ -1187,6 +1203,7 @@ package final class WisprBootstrapper {
     self.asrManager = asrManager
     self.activeEngine = activeEngine
     self.customWordsCoordinator = customWordsCoordinator
+    self.snippetsCoordinator = snippetsCoordinator
     self.contactsImportCoordinator = contactsImportCoordinator
     self.bulkImportEnrichmentCoordinator = bulkImportEnrichmentCoordinator
     self.setup = setup
@@ -1411,6 +1428,7 @@ private struct MainWindowRoot: View {
       .environment(b.pillAppearance)
       .environment(b.permissions)
       .environment(b.customWordsCoordinator)
+      .environment(b.snippetsCoordinator)
       .environment(b.contactsImportCoordinator)
       .environment(b.setup)
       .environment(b.egOneRuntime)

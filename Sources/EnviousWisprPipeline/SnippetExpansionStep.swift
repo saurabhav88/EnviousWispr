@@ -18,33 +18,33 @@ import OSLog
 /// Limb semantics: pure CPU string work, no model, no network. Disabled outright when the
 /// frozen vocabulary cannot fire, so a user with no snippets takes a byte-identical chain.
 @MainActor
-final class SnippetExpansionStep: TextProcessingStep {
-  let name = "Snippet Expansion"
+public final class SnippetExpansionStep: TextProcessingStep {
+  public let name = "Snippet Expansion"
 
   /// The frozen per-take vocabulary. Assigned by the wiring before the chain runs and never
   /// read live, so an edit in Settings cannot change the rule for a dictation already in
   /// flight — the same freeze `KernelFinalizationWiring` applies to `protectedSpellings`.
-  var snippetVocabulary: SnippetVocabulary = .empty
+  public var snippetVocabulary: SnippetVocabulary = .empty
 
   /// Disabled rather than run as a no-op. `TextProcessingRunner` skips a disabled step
   /// entirely, so an empty store costs one boolean and the chain is identical to a build
   /// without this file — which is premise P4, and it has a test rather than a hope.
-  var isEnabled: Bool { snippetVocabulary.canFire }
+  public var isEnabled: Bool { snippetVocabulary.canFire }
 
   /// Pure string work over one utterance. A generous runaway BACKSTOP, not a real budget —
   /// mirrors `EmojiFormatterStep` and `EmojiRestoreStep`.
-  var maxDuration: Duration { .milliseconds(50) }
+  public var maxDuration: Duration { .milliseconds(50) }
 
   private static let logger = Logger(
     subsystem: "com.enviouswispr.app", category: "SnippetExpansion")
 
   private let expander: SnippetExpander
 
-  init(expander: SnippetExpander = SnippetExpander()) {
+  public init(expander: SnippetExpander = SnippetExpander()) {
     self.expander = expander
   }
 
-  func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+  public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
     let outcome = expander.expand(context.text, using: snippetVocabulary)
     guard outcome.didFire else { return context }
 

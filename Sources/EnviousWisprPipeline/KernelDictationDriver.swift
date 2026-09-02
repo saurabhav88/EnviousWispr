@@ -719,6 +719,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   // MARK: Limb-step accessors (read by `PipelineSettingsSync` + custom-words)
 
   public var wordCorrection: WordCorrectionStep { steps.wordCorrection }
+  /// #628. Exposed for the same reason as `wordCorrection`: the App layer owns the store and
+  /// must hand this driver its frozen vocabulary, and there are TWO drivers, so a caller that
+  /// seeds one has done half the job.
+  public var snippetExpansion: SnippetExpansionStep { steps.snippetExpansion }
   public var fillerRemoval: FillerRemovalStep { steps.fillerRemoval }
   public var emojiFormatter: EmojiFormatterStep { steps.emojiFormatter }
   public var llmPolish: LLMPolishStep { steps.llmPolish }

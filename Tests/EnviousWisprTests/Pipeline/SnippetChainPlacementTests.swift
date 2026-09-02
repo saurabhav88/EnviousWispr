@@ -18,7 +18,10 @@ import Testing
 /// costs nothing to the user who never opens it. Premise P4 in the plan, and it is proved by
 /// RUNNING the chain rather than by reading that the step is disabled — reaching a guard is not
 /// reaching its branch.
-@Suite("Snippet chain placement (#628)")
+// One class on the suite, as the inventory requires. `.productOutcome` rather than
+// `.driftGuard`: the empty-store test is the load-bearing one — it is the promise that a user
+// who never opens Snippets is unaffected — and the order freeze is the supporting detail.
+@Suite("Snippet chain placement (#628)", .tags(.productOutcome))
 struct SnippetChainPlacementTests {
 
   @MainActor
@@ -33,7 +36,7 @@ struct SnippetChainPlacementTests {
       emojiRestore: EmojiRestoreStep())
   }
 
-  @Test("The chain order is frozen, and snippet expansion is first", .tags(.driftGuard))
+  @Test("The chain order is frozen, and snippet expansion is first")
   @MainActor
   func chainOrderIsFrozen() {
     let names = makeSteps().orderedChain.map(\.name)
@@ -56,7 +59,7 @@ struct SnippetChainPlacementTests {
   ///
   /// Reading the source is the right instrument here: the question is "does a second list
   /// exist", and no runtime assertion can observe a list nobody called.
-  @Test("Both chain callers read the single ordered authority", .tags(.driftGuard))
+  @Test("Both chain callers read the single ordered authority")
   func bothCallersUseTheSingleAuthority() throws {
     for file in ["KernelFinalizationWiring.swift", "RecoveryTextProcessor.swift"] {
       // Walk UP to the package root rather than counting `..` hops. A hop count is a
@@ -81,7 +84,7 @@ struct SnippetChainPlacementTests {
 
   /// P4. Run the SAME text through the chain with the snippet step present and absent, and
   /// require the outputs to be identical — not merely that the step reported itself disabled.
-  @Test("An empty snippet store leaves the chain output byte-identical", .tags(.productOutcome))
+  @Test("An empty snippet store leaves the chain output byte-identical")
   @MainActor
   func emptyStoreChangesNothing() async throws {
     let steps = makeSteps()
@@ -103,32 +106,40 @@ struct SnippetChainPlacementTests {
     #expect(withStep.context.pipelineFellBackToRaw == withoutStep.context.pipelineFellBackToRaw)
   }
 
-  /// The other half of P4: with a vocabulary loaded, the step is armed. Without this the test
-  /// above passes against a step that can NEVER fire, which is the shape of a guard that is
-  /// green because it is broken.
-  @Test("A loaded snippet store arms the step", .tags(.productOutcome))
+  /// The other half of P4: with a vocabulary loaded, the step transforms. Without this the
+  /// test above passes against a step that can NEVER fire, which is a guard that is green
+  /// because it is broken.
+  ///
+  /// Driven through `process` directly, NOT through the runner, and that is deliberate. Every
+  /// step carries a wall-clock budget (`maxDuration`, 50 ms here), and the runner silently
+  /// skips a step that exceeds it, keeping that step's input. Under a full parallel suite this
+  /// machine can miss 50 ms of pure string work, so a chain-level assertion here would fail on
+  /// correct code — which it did, once, at 56 seconds. The load-dependent assertion is the
+  /// defect, not the budget: the question this test asks is what the STEP does, and the runner's
+  /// timing is a different question with its own coverage.
+  @Test("A loaded snippet store arms the step")
   @MainActor
   func loadedStoreArmsTheStep() async throws {
-    let steps = makeSteps()
-    steps.snippetExpansion.snippetVocabulary = SnippetVocabulary(
+    let step = SnippetExpansionStep()
+    step.snippetVocabulary = SnippetVocabulary(
       snippets: [Snippet(trigger: "my email address", expansion: "sam@example.com")],
       keyword: SnippetVocabulary.defaultKeyword,
       generation: 1)
 
-    #expect(steps.snippetExpansion.isEnabled)
+    #expect(step.isEnabled)
 
-    let runner = TextProcessingRunner()
-    let result = try await runner.run(
-      rawText: "email me at backslash my email address",
-      language: "en", targetAppName: nil, steps: steps.orderedChain)
+    let context = TextProcessingContext(
+      text: "email me at backslash my email address", language: "en")
+    let result = try await step.process(context)
 
-    #expect(result.context.protectedExpansions.count == 1)
-    #expect(result.context.protectedExpansions.first?.expansion == "sam@example.com")
+    #expect(result.protectedExpansions.count == 1)
+    #expect(result.protectedExpansions.first?.expansion == "sam@example.com")
     // The chain carries the SENTINEL, not the address: the address must not reach polish.
-    #expect(!result.context.text.contains("sam@example.com"))
+    #expect(!result.text.contains("sam@example.com"))
+    #expect(result.text.contains(try #require(result.protectedExpansions.first).sentinel))
 
-    var resolved = result.context
+    var resolved = result
     SnippetFinalizer.finalize(&resolved)
-    #expect(resolved.text.contains("sam@example.com"))
+    #expect(resolved.text == "email me at sam@example.com")
   }
 }

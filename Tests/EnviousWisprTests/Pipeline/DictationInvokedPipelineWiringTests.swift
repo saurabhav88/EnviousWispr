@@ -116,7 +116,9 @@ struct DictationInvokedPipelineWiringTests {
     let runCall = try Self.slice(
       wiringSource,
       from: "let result = try await textProcessingRunner.run(",
-      to: "let ctx = result.context"
+      // #628: `let` became `var` so `SnippetFinalizer.finalize(&ctx)` can resolve the context
+      // before anything reads it. Same line, same position in the flow.
+      to: "var ctx = result.context"
     )
     #expect(
       runCall.contains("takeID: telemetryState.takeID)"),

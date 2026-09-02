@@ -1095,6 +1095,19 @@ import Testing
       text: "let retry = await finalize(sid, batchSamples: Array(samples[trim...]))",
       classification: .transitivelyCoveredByCaller),
 
+    // #628 snippet finalization. The matcher catches the NAME `finalize`, and these two are
+    // not engine touches at all: `SnippetFinalizer` is a pure in-process substitution over the
+    // context, reaching no adapter, no XPC and no model. Both live and recovery must carry one,
+    // and their presence in this table is what makes a THIRD copy — or a missing one — visible.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/KernelFinalizationWiring.swift", matcher: "finalize",
+      text: "SnippetFinalizer.finalize(&ctx)",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/RecoveryTextProcessor.swift", matcher: "finalize",
+      text: "SnippetFinalizer.finalize(&context)",
+      classification: .structurallySafe),
+
     // MARK: ParakeetEngineAdapter — Chunk 11 additions.
     // Streaming-feed dispatch, guarded by session/terminal checks on the
     // `@MainActor` hop — session-scoped, same as this file's existing
