@@ -31,6 +31,9 @@ final class SnippetsCoordinator {
 
   init(manager: SnippetsManager = SnippetsManager()) {
     self.manager = manager
+    // Assigned directly, not through `adopt`: nothing has registered a listener yet, and the
+    // bootstrapper seeds both drivers from `vocabulary` immediately after construction. This is
+    // the ONE site that may write it without publishing, and it is one line from the property.
     vocabulary = manager.load()
   }
 
@@ -74,10 +77,8 @@ final class SnippetsCoordinator {
   /// user's next dictation running against the previous list.
   private func apply(_ mutation: () throws -> SnippetVocabulary) -> Bool {
     do {
-      let updated = try mutation()
-      vocabulary = updated
+      adopt(try mutation())
       errorMessage = nil
-      onVocabularyChanged?(updated)
       return true
     } catch let error as SnippetValidationError {
       errorMessage = Self.message(for: error)
@@ -133,8 +134,21 @@ final class SnippetsCoordinator {
   /// snapshot would omit or resurrect snippets without saying so.
   @discardableResult
   func refreshFromDisk() -> SnippetVocabulary {
-    vocabulary = manager.load()
-    return vocabulary
+    adopt(manager.load())
+  }
+
+  /// Adopt a vocabulary and publish it. THE ONLY writer of `vocabulary`.
+  ///
+  /// `apply` below already carried a comment saying the adopt-and-publish pair must never be
+  /// done by one caller and forgotten by the next — and then `refreshFromDisk` was added and
+  /// forgot the publish, leaving the settings screen showing one list while both dictation
+  /// drivers still held the previous one. A comment asking callers to remember is not a
+  /// mechanism; a single private writer is. Nothing else in this type assigns `vocabulary`.
+  @discardableResult
+  private func adopt(_ updated: SnippetVocabulary) -> SnippetVocabulary {
+    vocabulary = updated
+    onVocabularyChanged?(updated)
+    return updated
   }
 
   /// True when a file exists that could not be read. The screen shows this instead of an empty
