@@ -41,6 +41,16 @@ public enum SnippetText {
     return String(s.trimmingWhitespace())
   }
 
+  /// Punctuation that ENDS a sentence. A subset of `trailing`, and the distinction matters: a
+  /// comma inside a matched phrase is noise, a full stop is a boundary.
+  public static let sentenceEnding: Set<Character> = [".", "!", "?"]
+
+  /// True when this token ends a sentence.
+  public static func endsSentence(_ token: String) -> Bool {
+    guard let last = token.last else { return false }
+    return sentenceEnding.contains(last)
+  }
+
   /// The leading punctuation run on a token, in source order.
   ///
   /// Its partner below handles the end of the trigger; this handles the start of the KEYWORD.

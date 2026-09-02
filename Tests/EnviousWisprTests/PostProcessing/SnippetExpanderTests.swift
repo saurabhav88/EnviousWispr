@@ -199,6 +199,44 @@ struct SnippetExpanderTests {
     #expect(out.text == "(EWSNIPb)")
   }
 
+  /// A full stop INSIDE the phrase means the user said two sentences, not one trigger.
+  /// Normalisation strips it so the words still compare equal, which is exactly why this needs
+  /// its own guard rather than falling out of the comparison.
+  @Test("A trigger does not match across a sentence boundary")
+  func triggerDoesNotSpanASentenceBoundary() {
+    let input = "send me backslash my. Email address is below"
+    let out = SnippetExpander().expand(
+      input, using: vocabulary([("my email address", "sam@example.com")]))
+
+    #expect(out.text == input)
+    #expect(out.records.isEmpty)
+  }
+
+  /// The other side of the same rule: punctuation on the LAST trigger word is the sentence the
+  /// trigger legitimately ends, and it is re-attached after the expansion rather than blocking.
+  @Test("A full stop on the last trigger word still matches, and survives")
+  func sentenceEndingOnLastTokenStillMatches() {
+    let expander = fixedExpander(["EWSNIPend2"])
+    let out = expander.expand(
+      "write to backslash my email address. Thanks.",
+      using: vocabulary([("my email address", "sam@example.com")]))
+
+    #expect(out.text == "write to EWSNIPend2. Thanks.")
+  }
+
+  /// Punctuation strictly INSIDE the phrase is dropped with the words it sat between, and that
+  /// is correct rather than a gap: the phrase is REPLACED, so an interior comma has no
+  /// destination in the pasted text. Frozen here so nobody "fixes" it back.
+  @Test("A comma inside the phrase is consumed with the phrase")
+  func interiorCommaIsConsumed() {
+    let expander = fixedExpander(["EWSNIPcomma"])
+    let out = expander.expand(
+      "email me at backslash my, email today",
+      using: vocabulary([("my email", "sam@example.com")]))
+
+    #expect(out.text == "email me at EWSNIPcomma today")
+  }
+
   // MARK: - The disabled path, which is what an ordinary user takes
 
   @Test("An empty store returns the input unchanged and identical")

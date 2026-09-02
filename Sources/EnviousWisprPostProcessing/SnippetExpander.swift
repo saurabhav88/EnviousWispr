@@ -202,6 +202,17 @@ public struct SnippetExpander: Sendable {
           matched = false
           break
         }
+        // A trigger does not span a sentence boundary. Normalisation strips a full stop so the
+        // words still compare equal, which means "send me my. Email address is below" would
+        // otherwise match the trigger "my email address" and paste an address across two
+        // sentences the user never joined.
+        //
+        // Only an INTERIOR boundary blocks: punctuation on the LAST token is the sentence the
+        // trigger legitimately ends, and it is re-attached after the expansion.
+        if offset < tokens.count - 1, SnippetText.endsSentence(piece.text) {
+          matched = false
+          break
+        }
       }
       guard matched else { continue }
       if best == nil || tokens.count > best!.length {
