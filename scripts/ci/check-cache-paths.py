@@ -44,9 +44,9 @@ WHAT IS CHECKED
      (a step, or a job calling a reusable workflow), with the env expression
      substituted by the value in force at that point. Anything this script
      cannot resolve — a reusable-workflow input, an env expression with no
-     value in force — is a failure, not a match. The composite's own input
-     default is a producer, and a caller that omits the argument resolves
-     through it. `root_producers` states the scopes it does not cover; a
+     value in force — is a failure, not a match. A caller that omits the
+     argument resolves through the manifest's input default at the call
+     site, which is the only place a default is live. `root_producers` states the scopes it does not cover; a
      `-derivedDataPath` typed into a `run:` line is a BUILD location, not a
      cache location, and is outside this script. (#2593 item 1, and the
      second-pass finding on #2592.)
@@ -293,6 +293,8 @@ def _resolve_root(raw, effective, in_composite: bool):
         return (None if effective is None else effective + c[len(ENV_EXPR):]), "env"
     if c.startswith(INPUT_EXPR):
         if in_composite and c == INPUT_EXPR:
+            # Accepted by the caller only when the manifest DECLARES the input;
+            # an undeclared forward is an empty string on the runner.
             return "<forwarded>", "forward"
         return None, "inputs"
     return c, "literal"
@@ -347,12 +349,19 @@ def root_producers(path: str, root: str = "."):
     doc = _load(path)
     if doc is None:
         return
-    if (doc.get("runs") or {}).get("using") == "composite":
-        # The manifest's own default is a producer: a caller that omits the
-        # argument builds and caches wherever this says.
-        inp = (doc.get("inputs") or {}).get("derived-data-path")
-        if isinstance(inp, dict) and "default" in inp:
-            yield path, "composite", "inputs.derived-data-path.default", str(inp["default"])
+    # Whether THIS manifest declares the input a nested call may forward. A
+    # composite that forwards `${{ inputs.derived-data-path }}` without declaring
+    # it hands the nested action an empty string, and its own callers cannot be
+    # asked to supply what it never asked for (cloud review on #2593).
+    #
+    # A manifest's input DEFAULT is deliberately not a producer on its own: it
+    # is live only for a caller that omits the argument, and that call site is
+    # where it is resolved (`_manifest_input_default`). Checking it here as well
+    # counted an active default twice and an unused one once (local lens review).
+    declares_forwardable = (
+        (doc.get("runs") or {}).get("using") == "composite"
+        and isinstance((doc.get("inputs") or {}).get("derived-data-path"), dict)
+    )
     if "jobs" in doc:
         top = (doc.get("env") or {}).get("DERIVED_DATA_PATH")
         if top is not None:
@@ -387,9 +396,12 @@ def root_producers(path: str, root: str = "."):
             if _is_local_action(uses):
                 if "derived-data-path" in with_:
                     value, reason = _resolve_root(with_["derived-data-path"], step_effective, in_composite)
-                    if reason == "forward":
+                    if reason == "forward" and declares_forwardable:
                         continue
                     what = f"with.derived-data-path -> {uses}"
+                    if reason == "forward":
+                        what += " (forwards an input this manifest does not declare)"
+                        value = None
                     if reason == "inputs":
                         what += " (a reusable-workflow input this check cannot resolve)"
                     elif reason == "whitespace":
@@ -863,6 +875,9 @@ def self_test() -> int:
                run([good_a, reusable_job], F, owners(good_a)), 1)
         nested_forward = fixture("""
             name: outer
+            inputs:
+              derived-data-path:
+                required: true
             runs:
               using: composite
               steps:
@@ -870,8 +885,19 @@ def self_test() -> int:
                   with:
                     derived-data-path: ${{ inputs.derived-data-path }}
             """, env=None)
-        expect("(control) a composite forwarding its own input whole is accepted",
+        expect("(control) a composite forwarding an input it DECLARES is accepted",
                run([good_a, nested_forward], F, owners(good_a)), 0)
+        nested_forward_undeclared = fixture("""
+            name: outer
+            runs:
+              using: composite
+              steps:
+                - uses: ./.github/actions/xcode-ci-setup
+                  with:
+                    derived-data-path: ${{ inputs.derived-data-path }}
+            """, env=None)
+        expect("a composite forwarding an input it never declared is caught (empty on the runner)",
+               run([good_a, nested_forward_undeclared], F, owners(good_a)), 1, "does not declare")
         nested_literal = fixture("""
             name: outer
             runs:
@@ -924,9 +950,6 @@ def self_test() -> int:
                 steps:
                   - uses: ./.github/actions/setup
             """, os.path.join("mrepo", ".github/workflows/y.yml"))
-        expect("a manifest default other than the root is caught even with no caller passing it",
-               run([good_a, os.path.join(mroot, ".github/actions/setup/action.yml")], F, owners(good_a), DD_LITERAL, (), mroot), 1,
-               "inputs.derived-data-path.default")
         expect("a caller omitting the argument resolves through the manifest default",
                run([good_a, omitting], F, owners(good_a), DD_LITERAL, (), mroot), 1, "manifest default")
         fixture("""
