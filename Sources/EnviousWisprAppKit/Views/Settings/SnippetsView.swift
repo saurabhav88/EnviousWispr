@@ -58,8 +58,12 @@ struct SnippetsView: View {
     } footnote: {
       // The example is worth its line: the rule is easy to state and easy to misread, and one
       // concrete sentence answers "so what do I actually say" faster than the description.
+      //
+      // It names "my email" because that is a STARTER trigger a new install really has, so the
+      // sentence is an instruction the reader can follow rather than an illustration. Phrased
+      // as "the snippet saved for those words" so it stays true after they delete that one.
       Text(
-        "Example — say \u{201C}\(coordinator.keyword) my email address\u{201D} and your email is pasted."
+        "For example, say \u{201C}\(coordinator.keyword) my email\u{201D} and the snippet saved for those words is pasted."
       )
       .settingsHelperCopy()
     }
@@ -174,7 +178,14 @@ struct SnippetsView: View {
     } label: {
       HStack(spacing: 12) {
         VStack(alignment: .leading, spacing: 2) {
-          Text(snippet.trigger).settingsRowLabel()
+          HStack(spacing: 7) {
+            Text(snippet.trigger).settingsRowLabel()
+            // Shown only while a starter is still exactly as it shipped. It is the one thing
+            // standing between "John Doe" and a real message, and it disappears the moment the
+            // user makes the snippet theirs, because the answer is recomputed from the text on
+            // screen rather than stored.
+            if SnippetStarters.isUneditedExample(snippet) { exampleTag }
+          }
           // One line, ellipsised: an expansion can be a whole signature, and a list that grows
           // a row to fit one of them stops being scannable.
           Text(oneLine(snippet.expansion))
@@ -193,7 +204,23 @@ struct SnippetsView: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .accessibilityLabel("\(snippet.trigger), pastes \(oneLine(snippet.expansion))")
+    .accessibilityLabel(
+      SnippetStarters.isUneditedExample(snippet)
+        ? "\(snippet.trigger), example, pastes \(oneLine(snippet.expansion))"
+        : "\(snippet.trigger), pastes \(oneLine(snippet.expansion))")
+  }
+
+  /// The quiet tag on an untouched starter. Outlined rather than filled: it labels the row, and
+  /// a filled accent pill would read as a recommendation to keep the example rather than a note
+  /// that it is one.
+  private var exampleTag: some View {
+    Text("Example")
+      .font(.system(size: 11, weight: .semibold))
+      .foregroundStyle(Color.stTextTertiary)
+      .padding(.horizontal, 7)
+      .padding(.vertical, 1)
+      .background(Capsule().strokeBorder(Color.stDivider, lineWidth: 1))
+      .accessibilityHidden(true)
   }
 
   /// Line breaks flattened for the row preview only. The stored expansion keeps them — they are

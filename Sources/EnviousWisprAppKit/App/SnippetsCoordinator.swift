@@ -34,7 +34,11 @@ final class SnippetsCoordinator {
     // Assigned directly, not through `adopt`: nothing has registered a listener yet, and the
     // bootstrapper seeds both drivers from `vocabulary` immediately after construction. This is
     // the ONE site that may write it without publishing, and it is one line from the property.
-    vocabulary = manager.load()
+    //
+    // `loadOrSeedStarters` rather than `load`: a first launch writes the example snippets here,
+    // before either driver is seeded, so the examples are live in the very first dictation
+    // rather than after a restart.
+    vocabulary = manager.loadOrSeedStarters()
   }
 
   var snippets: [Snippet] { vocabulary.snippets }

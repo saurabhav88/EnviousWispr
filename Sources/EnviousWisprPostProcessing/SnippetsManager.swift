@@ -126,6 +126,47 @@ public final class SnippetsManager: @unchecked Sendable {
     return empty
   }
 
+  /// Read the store, and on a brand-new install write the starter examples first (#628).
+  ///
+  /// The seed is attempted for `missing` ONLY, which is what makes it a one-time event: after
+  /// it runs the file exists, so a user who deletes every starter is left with a file holding
+  /// none, and the next launch loads that empty list instead of putting them back. An
+  /// `unreadable` file is never seeded over, for the same reason no mutation touches one — the
+  /// snippets on disk are still the only copy.
+  ///
+  /// The load and the write happen inside ONE lock hold. Two of these racing on first launch
+  /// (a shipped copy and a dev build both starting) would otherwise both read `missing` and
+  /// both write the starters, and the second rename would discard whichever edit the first
+  /// user had already made.
+  ///
+  /// A failed seed returns the EMPTY vocabulary rather than the starters it could not persist.
+  /// Showing a list the store does not hold is how the next delete writes a file with the other
+  /// five missing; the honest outcome is an empty screen now and the examples on the next
+  /// launch that can write.
+  public func loadOrSeedStarters() -> SnippetVocabulary {
+    let empty = SnippetVocabulary(
+      snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation)
+    let result = try? withLock(blocking: true) { () -> SnippetVocabulary in
+      switch loadWhileLocked() {
+      case .loaded(let vocabulary):
+        return vocabulary
+      case .unreadable:
+        return empty
+      case .missing:
+        let seeded = SnippetVocabulary(
+          snippets: SnippetStarters.all,
+          keyword: SnippetVocabulary.defaultKeyword,
+          generation: generation)
+        guard let saved = try? saveWhileLocked(seeded) else {
+          Self.logger.error("Starter snippets could not be written; starting empty.")
+          return empty
+        }
+        return saved
+      }
+    }
+    return result ?? empty
+  }
+
   /// True when a file exists that could not be read. The screen shows a banner, and saves are
   /// refused, rather than a silent empty list the next edit would make permanent.
   public var unreadableExisting: Bool {

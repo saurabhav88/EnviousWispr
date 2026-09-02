@@ -12,21 +12,38 @@ A snippet is a voice shortcut. You save a piece of text once, then say a short p
 
 Snippets live in **Settings** \> **Snippets**.
 
+### What you start with
+
+EnviousWispr ships with six example snippets so you can try the feature before you write anything. They belong to a made-up person called John Doe, and each one is marked **Example** in the list until you change it.
+
+| Say | You get |
+| --- | --- |
+| `backslash my email` | john.doe@example.com |
+| `backslash my phone` | (555) 010-4477 |
+| `backslash my address` | 1600 Example Way, Suite 200, Springfield, IL 62704 |
+| `backslash my calendar` | https://cal.example.com/john-doe |
+| `backslash my signature` | Thanks so much. John Doe, Product at Example Co. |
+| `backslash my intro` | Hi, I'm John Doe. I lead product at Example Co, and I'm happy to help however I can. |
+
+These are ordinary snippets. Open one, replace John Doe's details with yours, and click **Save**. The **Example** mark disappears once the text is yours.
+
+Delete the ones you do not want. They stay deleted, and EnviousWispr will not add them back on the next launch.
+
 ### How a snippet fires
 
 A snippet only expands when you say your **keyword** first, then the trigger. The keyword is `backslash` unless you change it.
 
 Say this:
 
-> Feel free to email me at **backslash my email address** any time.
+> Feel free to email me at **backslash my email** any time.
 
 You get this:
 
-> Feel free to email me at you@example.com any time.
+> Feel free to email me at john.doe@example.com any time.
 
 The keyword is what keeps snippets out of your way. Say the same trigger without it and nothing happens:
 
-> Can you send me **my email address** from that form?
+> Can you send me **my email** from that form?
 
 That sentence comes out exactly as you said it.
 
@@ -48,7 +65,7 @@ Clearing the field puts the default back rather than switching snippets off.
 
 ### What EnviousWispr will not do to your snippet
 
-The text you save is pasted exactly as you typed it. AI Polish never rewrites it, so an email address, a web link or a signature arrives character for character. The rest of your dictation is still polished as normal.
+The text you save is pasted exactly as you typed it. AI Polish never rewrites it, so an email address, a web link or a signature arrives character for character. Everything else you dictate is still polished as normal.
 
 Line breaks are kept, so a two-line sign-off arrives as two lines.
 
