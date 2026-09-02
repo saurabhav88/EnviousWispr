@@ -102,8 +102,18 @@ public struct SnippetExpander: Sendable {
       let pieceIndex = wordIndices[cursor]
       let token = pieces[pieceIndex].text
 
+      // The KEYWORD is a consumed token too, and it was the one the first version of this guard
+      // could not see: "backslash. My email address is below" has the boundary on the keyword,
+      // normalisation strips it, and the trigger words after it match perfectly. Checking the
+      // trigger tokens alone let that fire.
+      //
+      // The complete set a boundary must be checked against is every token the match CONSUMES —
+      // the keyword plus every trigger token — minus the last, which legitimately ends the
+      // sentence the trigger is in. Written as one named condition so the set is visible rather
+      // than split across two loops that each see half of it.
       guard
         SnippetText.normalize(token) == keyword,
+        !SnippetText.endsSentence(token),
         let hit = Self.longestMatch(
           in: vocabulary.snippets, pieces: pieces, wordIndices: wordIndices, startingAt: cursor + 1)
       else {
@@ -202,13 +212,10 @@ public struct SnippetExpander: Sendable {
           matched = false
           break
         }
-        // A trigger does not span a sentence boundary. Normalisation strips a full stop so the
-        // words still compare equal, which means "send me my. Email address is below" would
-        // otherwise match the trigger "my email address" and paste an address across two
-        // sentences the user never joined.
-        //
         // Only an INTERIOR boundary blocks: punctuation on the LAST token is the sentence the
-        // trigger legitimately ends, and it is re-attached after the expansion.
+        // trigger legitimately ends, and it is re-attached after the expansion. The keyword's
+        // own boundary is checked by the CALLER, because the keyword is consumed too and this
+        // loop cannot see it — see `consumedTokensSpanASentenceBoundary`.
         if offset < tokens.count - 1, SnippetText.endsSentence(piece.text) {
           matched = false
           break

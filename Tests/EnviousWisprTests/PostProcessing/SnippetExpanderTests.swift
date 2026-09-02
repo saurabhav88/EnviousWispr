@@ -212,6 +212,17 @@ struct SnippetExpanderTests {
     #expect(out.records.isEmpty)
   }
 
+  /// The KEYWORD is consumed too, and it was the token the first boundary guard could not see.
+  @Test("A sentence boundary on the KEYWORD blocks the match")
+  func keywordBoundaryBlocksTheMatch() {
+    let input = "send me backslash. My email address is below"
+    let out = SnippetExpander().expand(
+      input, using: vocabulary([("my email address", "sam@example.com")]))
+
+    #expect(out.text == input)
+    #expect(out.records.isEmpty)
+  }
+
   /// The other side of the same rule: punctuation on the LAST trigger word is the sentence the
   /// trigger legitimately ends, and it is re-attached after the expansion rather than blocking.
   @Test("A full stop on the last trigger word still matches, and survives")

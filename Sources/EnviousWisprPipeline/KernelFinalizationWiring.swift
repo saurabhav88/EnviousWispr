@@ -954,33 +954,32 @@ struct KernelFinalizationWiring {
         // Clipboard-only rather than a silent drop: the text still exists and is one Cmd+V
         // away, which is the shape every other refused delivery here already takes.
         //
-        // Written as "is the destination POSITIVELY KNOWN to be safe", not "is it known to be
-        // dangerous", and the inversion is the point.
+        // A snippet-bearing payload containing a NEWLINE is never auto-pasted. It goes to the
+        // clipboard, always.
         //
-        // Counting the routes here found three, not one. A caret context that is screen-derived
-        // is a terminal. A target whose bundle id is in `TerminalSurface` is a terminal without
-        // any caret read — which matters because `caretContext` is nil whenever Smart Insertion
-        // is off or the read failed, and delivery still falls back to a blind Cmd+V. And
-        // `TerminalSurface` knows exactly three apps (Ghostty, Terminal.app, iTerm2), so Warp,
-        // kitty, Alacritty and WezTerm are terminals it cannot name.
+        // This is the third shape of this guard and the first honest one. Enumerating what we
+        // can actually KNOW about a destination closes the question:
+        //   - `caretContext.isScreenDerived` — which IS `terminalEvidence != nil` — says
+        //     terminal.
+        //   - a bundle id in `TerminalSurface` says terminal, without a caret read.
+        //   - everything else says NOTHING. Warp, kitty, Alacritty and WezTerm are terminals in
+        //     neither list, and they hand back an ordinary accessibility caret, so they land in
+        //     the same bucket as a text editor.
         //
-        // A danger list has to be complete to be safe and this one is not, so the guard asks the
-        // other question: deliver a snippet-bearing newline automatically ONLY when we have a
-        // caret context, it is not screen-derived, and the app is not a terminal we recognise.
-        // Anything else goes to the clipboard. The cost is a two-line sign-off reaching the
-        // clipboard instead of the cursor when the caret read fails; the alternative cost is a
-        // line of the user's signature running as a shell command.
-        let targetIsKnownTerminal =
-          context.targetApp?.bundleIdentifier
-          .flatMap(TerminalSurface.init(bundleIdentifier:)) != nil
-        // Parenthesised deliberately. `??` binds tighter than `&&`, so the unparenthesised form
-        // means what is intended — and a safety condition should not require the reader to
-        // recall an operator precedence table to confirm that.
-        let destinationConfirmedSafeForNewline =
-          (caretContext.map { !$0.isScreenDerived } ?? false) && !targetIsKnownTerminal
+        // There is no positive "this app is safe for a newline" signal to ask for. The previous
+        // version claimed to require one and did not: "has a caret, not screen-derived, not a
+        // known terminal" is satisfied exactly by an unrecognised terminal, so the inversion was
+        // wording rather than logic. A danger list has to be complete to be safe, and this one
+        // cannot be.
+        //
+        // So the guard stops trying to tell destinations apart. In a terminal a newline SUBMITS
+        // the line before it, and a multi-line sign-off would run whatever that line says. The
+        // cost of always using the clipboard is that a multi-line snippet needs one Cmd+V; the
+        // cost of the other default is a user's signature executing as a shell command. Nothing
+        // is lost — the text is on the clipboard, which is where every other refused delivery
+        // here puts it.
         if context.snippetExpansionFired,
-          payloads.legacyText.contains(where: \.isNewline),
-          !destinationConfirmedSafeForNewline
+          payloads.legacyText.contains(where: \.isNewline)
         {
           ClipboardCleanup.deliveryClaimsBoard()
           copyToClipboard(text)

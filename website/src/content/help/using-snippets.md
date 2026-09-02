@@ -54,7 +54,7 @@ Line breaks are kept, so a two-line sign-off arrives as two lines.
 
 ### Two things worth knowing
 
-**A snippet with a line break goes to your clipboard rather than being typed, unless EnviousWispr is sure the app is safe for it.** In a terminal, a line break runs whatever came before it, so we will not put one there for you. We only type a multi-line snippet straight in when we can confirm where your cursor is and that the app is not a terminal. Otherwise your text waits on the clipboard, ready for Command V. Single-line snippets are never affected.
+**A snippet with a line break goes to your clipboard instead of being typed in.** In a terminal, a line break runs whatever came before it, and we cannot reliably tell every terminal apart from every other app. Rather than guess, a multi-line snippet always waits on your clipboard, ready for Command V. Single-line snippets are never affected and type straight in as normal.
 
 **A dictation containing a snippet skips the cursor tidy-up.** Normally, when you dictate into the middle of a sentence you already typed, EnviousWispr fixes the spacing and capital letters where the two halves meet. On a dictation that expanded a snippet, it leaves the text alone instead, so nothing can alter your saved text.
 
