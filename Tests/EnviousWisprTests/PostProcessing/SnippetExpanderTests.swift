@@ -177,6 +177,18 @@ struct SnippetExpanderTests {
     #expect(out.text == "he said \u{201C}EWSNIPq\u{201D} and left")
   }
 
+  /// The OTHER arrangement. The user can attach the opening mark to the keyword or to the first
+  /// trigger word, and a fix covering one looks identical to a fix covering both.
+  @Test("An opening mark on the first trigger word is kept too")
+  func openingMarkOnTriggerSurvives() {
+    let expander = fixedExpander(["EWSNIPt"])
+    let out = expander.expand(
+      "he said backslash \u{201C}my email\u{201D} and left",
+      using: vocabulary([("my email", "sam@example.com")]))
+
+    #expect(out.text == "he said \u{201C}EWSNIPt\u{201D} and left")
+  }
+
   @Test("A trigger in brackets keeps both brackets")
   func bracketsSurviveOnBothSides() {
     let expander = fixedExpander(["EWSNIPb"])

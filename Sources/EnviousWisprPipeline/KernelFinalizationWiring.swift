@@ -953,9 +953,34 @@ struct KernelFinalizationWiring {
         //
         // Clipboard-only rather than a silent drop: the text still exists and is one Cmd+V
         // away, which is the shape every other refused delivery here already takes.
+        //
+        // Written as "is the destination POSITIVELY KNOWN to be safe", not "is it known to be
+        // dangerous", and the inversion is the point.
+        //
+        // Counting the routes here found three, not one. A caret context that is screen-derived
+        // is a terminal. A target whose bundle id is in `TerminalSurface` is a terminal without
+        // any caret read — which matters because `caretContext` is nil whenever Smart Insertion
+        // is off or the read failed, and delivery still falls back to a blind Cmd+V. And
+        // `TerminalSurface` knows exactly three apps (Ghostty, Terminal.app, iTerm2), so Warp,
+        // kitty, Alacritty and WezTerm are terminals it cannot name.
+        //
+        // A danger list has to be complete to be safe and this one is not, so the guard asks the
+        // other question: deliver a snippet-bearing newline automatically ONLY when we have a
+        // caret context, it is not screen-derived, and the app is not a terminal we recognise.
+        // Anything else goes to the clipboard. The cost is a two-line sign-off reaching the
+        // clipboard instead of the cursor when the caret read fails; the alternative cost is a
+        // line of the user's signature running as a shell command.
+        let targetIsKnownTerminal =
+          context.targetApp?.bundleIdentifier
+          .flatMap(TerminalSurface.init(bundleIdentifier:)) != nil
+        // Parenthesised deliberately. `??` binds tighter than `&&`, so the unparenthesised form
+        // means what is intended — and a safety condition should not require the reader to
+        // recall an operator precedence table to confirm that.
+        let destinationConfirmedSafeForNewline =
+          (caretContext.map { !$0.isScreenDerived } ?? false) && !targetIsKnownTerminal
         if context.snippetExpansionFired,
           payloads.legacyText.contains(where: \.isNewline),
-          caretContext?.isScreenDerived == true
+          !destinationConfirmedSafeForNewline
         {
           ClipboardCleanup.deliveryClaimsBoard()
           copyToClipboard(text)

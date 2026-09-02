@@ -126,8 +126,15 @@ public struct SnippetExpander: Sendable {
       // from the KEYWORD token so the match can happen, the closing one from the LAST trigger
       // token. Restoring only the tail leaves an orphan closing quote, which review caught.
       // Same sets `SnippetText.normalize` strips, so the pairs cannot drift apart.
+      // BOTH tokens that can carry an opening mark, because the user can put the quote in
+      // either place: `"backslash my email"` attaches it to the keyword, `backslash "my email"`
+      // to the first trigger word. Normalisation strips it from whichever one has it so the
+      // match can happen, and restoring only the keyword's left an orphan closing quote in the
+      // other arrangement. Two routes to one effect; fixing one looked exactly like fixing both.
+      let firstTriggerToken = pieces[wordIndices[cursor + 1]].text
       out +=
-        SnippetText.leadingPunctuation(token) + sentinel
+        SnippetText.leadingPunctuation(token)
+        + SnippetText.leadingPunctuation(firstTriggerToken) + sentinel
         + SnippetText.trailingPunctuation(lastToken)
       if let gap = Self.whitespaceAfter(lastWordIndex, in: pieces) { out += gap }
       cursor += hit.length + 1
