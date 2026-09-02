@@ -1,6 +1,13 @@
 import Foundation
 import Observation
 
+// #2580 cache measurement, not for merge. A one-line inert edit is how #805
+// established that a workflow-only change cannot exercise the build cache —
+// `classify-changes.sh` excludes `.github/`, so a real Swift file has to move.
+// This PR exists to read `build-debug`'s wall clock against the 15.7-21.3 min
+// baseline of the twelve runs before compilation caching landed. Close it, do
+// not merge it.
+
 /// PR7 of epic #763. Owns post-recording polish/error state — the single
 /// observable fact "did the last polish fail, and with what message" — for
 /// views to render an error banner after a recording completes.
