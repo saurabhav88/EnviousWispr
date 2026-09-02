@@ -231,6 +231,11 @@ scripts/lib/*
 # CI tooling scripts invoked by .github/workflows (issue #1151)
 !scripts/ci/
 !scripts/ci/**
+# ...but the negation above un-ignores EVERYTHING under scripts/ci, including
+# build detritus. Re-ignore it explicitly (#2580: a __pycache__ directory was
+# staged the first time a Python checker landed there).
+scripts/ci/**/__pycache__/
+scripts/ci/**/*.pyc
 # Polish eval harness — PUBLIC tracked files only (see .claude/knowledge/polish-eval.md for scope rules)
 !scripts/eval/
 scripts/eval/*

@@ -150,20 +150,30 @@ jobs:
       # a different shape from the flat SourcePackages/Build the explicit
       # -derivedDataPath build step below writes to. The glob covers both
       # without the workflow needing to predict the hash name.
+      # #2580: the compilation cache REPLACES Build/ here rather than joining it —
+      # Two numbers, and they are not the same measurement, which is why the
+      # earlier one-line version of this comment read as arithmetic that did not
+      # add up. LOCAL directory sizes: 1.5 GB of content cache against 2.4 GB of
+      # built products. REAL CI cache entries, which is what actually gets
+      # stored: 3.10 GB for the first entry written after the swap against 3.67
+      # GB before it, so 0.57 GB smaller per entry. The CI figure is the one that
+      # decides whether storage is bought, and it is the smaller of the two
+      # because SourcePackages dominates both. Linking is not content-cached and
+      # re-runs; that is the 5s between 20s and 25s locally.
+      #
+      # THIS PROSE MUST STAY OUTSIDE `path:`. It first shipped INSIDE the block
+      # scalar below, where YAML has no comments — so `actions/cache` read eight
+      # comment lines as eight more paths, and since the cache VERSION is a hash
+      # of the path list, these two lanes asked for a version no writer ever
+      # saves. Result: `Cache not found for input keys` on all four keys, a
+      # permanently cold cache, and nothing red anywhere. Guarded by
+      # scripts/ci/check-cache-paths.py.
       - name: Restore Xcode build cache
         id: xcode-cache
         if: steps.changes.outputs.needs_build == 'true'
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
-            # #2580: the compilation cache REPLACES Build/ here rather than joining it.
-            # Measured: restoring only the content cache, with Build/ deleted
-            # outright, rebuilt in 25s against today's 61s — and it is SMALLER,
-            # 1.5 GB of content cache for 2.4 GB of built products, so the cache
-            # shrinks by ~0.9 GB per entry and no extra storage is bought.
-            # Linking is not content-cached, so it re-runs; that is the 5s
-            # between 20s and 25s. If CI shows that trade is wrong, adding
-            # Build/ back is one line in each of the four path lists.
             .derivedData/CI/SourcePackages
             .derivedData/CI/CompilationCache.noindex
             .derivedData/CI/*/SourcePackages
@@ -385,20 +395,30 @@ jobs:
           )"
           echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
 
+      # #2580: the compilation cache REPLACES Build/ here rather than joining it —
+      # Two numbers, and they are not the same measurement, which is why the
+      # earlier one-line version of this comment read as arithmetic that did not
+      # add up. LOCAL directory sizes: 1.5 GB of content cache against 2.4 GB of
+      # built products. REAL CI cache entries, which is what actually gets
+      # stored: 3.10 GB for the first entry written after the swap against 3.67
+      # GB before it, so 0.57 GB smaller per entry. The CI figure is the one that
+      # decides whether storage is bought, and it is the smaller of the two
+      # because SourcePackages dominates both. Linking is not content-cached and
+      # re-runs; that is the 5s between 20s and 25s locally.
+      #
+      # THIS PROSE MUST STAY OUTSIDE `path:`. It first shipped INSIDE the block
+      # scalar below, where YAML has no comments — so `actions/cache` read eight
+      # comment lines as eight more paths, and since the cache VERSION is a hash
+      # of the path list, these two lanes asked for a version no writer ever
+      # saves. Result: `Cache not found for input keys` on all four keys, a
+      # permanently cold cache, and nothing red anywhere. Guarded by
+      # scripts/ci/check-cache-paths.py.
       - name: Restore Xcode build cache
         id: xcode-cache
         if: steps.changes.outputs.needs_build == 'true'
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
-            # #2580: the compilation cache REPLACES Build/ here rather than joining it.
-            # Measured: restoring only the content cache, with Build/ deleted
-            # outright, rebuilt in 25s against today's 61s — and it is SMALLER,
-            # 1.5 GB of content cache for 2.4 GB of built products, so the cache
-            # shrinks by ~0.9 GB per entry and no extra storage is bought.
-            # Linking is not content-cached, so it re-runs; that is the 5s
-            # between 20s and 25s. If CI shows that trade is wrong, adding
-            # Build/ back is one line in each of the four path lists.
             .derivedData/CI/SourcePackages
             .derivedData/CI/CompilationCache.noindex
             .derivedData/CI/*/SourcePackages
@@ -755,11 +775,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - name: CI self-tests (classify-changes + fetch-depth lint + compile cache)
+      - name: CI self-tests (classify-changes + fetch-depth + compile cache + cache paths)
         run: |
           set -euo pipefail
           scripts/ci/classify-changes.sh --self-test
           scripts/ci/check-pr-check-fetch-depth.sh
+          # #2580. `actions/cache` hashes the PATH LIST into a cache version, and
+          # a restore matches on version BEFORE key — so two lists that differ in
+          # any way describe caches that can never see each other, with nothing
+          # red and every lane simply rebuilding forever. Measured: eight lines of
+          # prose written inside a `path: |` block scalar became eight paths,
+          # because YAML block scalars have no comments. Verified to fail against
+          # that exact commit.
+          python3 scripts/ci/check-cache-paths.py --self-test
+          python3 scripts/ci/check-cache-paths.py
           # #2580. Runs here because the failure it catches is SILENT: a config
           # missing a setting, or written and never exported, leaves every lane
           # building correctly and slowly with nothing red. Needs no Xcode, so
