@@ -32,6 +32,7 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
   /// transcript carries no recovery session so no cleanup fires.
   private func makeHandler(recording box: WarningBox) -> PipelineStateChangeHandler {
     let steps = LimbSteps(
+      snippetExpansion: SnippetExpansionStep(),
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
@@ -147,6 +148,7 @@ struct PipelineStateChangeHandlerFactoryCopyTests {
       #expect(wrapper.testKernel.lastInputResolutionSource == source)
 
       let steps = LimbSteps(
+        snippetExpansion: SnippetExpansionStep(),
         wordCorrection: WordCorrectionStep(),
         fillerRemoval: FillerRemovalStep(),
         emojiFormatter: EmojiFormatterStep(),

@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprPostProcessing
 import Foundation
 
 /// Context passed through the text processing chain after ASR transcription.
@@ -71,6 +72,21 @@ public struct TextProcessingContext: Sendable {
   /// module reads it, and a stringly-typed receipt is what let the first version of the
   /// emoji gate accept a family from the wrong provider.
   var promptFamily: PromptFamily?
+
+  /// Snippet expansions owed to the user (#628): each sentinel standing in the text, and the
+  /// saved text that must replace it before anything is stored, shown or pasted.
+  ///
+  /// Written ONLY by `SnippetExpansionStep` and read ONLY by `SnippetFinalizer` — one writer,
+  /// one reader, so "which spans must survive the chain byte-for-byte" has a single authority.
+  ///
+  /// Deliberately NOT folded into `KernelFinalizationWiring`'s `protectedSpellings`, which
+  /// looks adjacent and is not: that set is custom-word canonicals, its only consumer is
+  /// `CursorInsertionRepair`, and it vetoes LEADING RECASING alone. It carries words; this
+  /// carries positioned spans, and it must survive a different stage.
+  ///
+  /// Non-`Codable` and never persisted: a sentinel is meaningless outside the run that minted
+  /// it, and a stored one would be a live token pointing at nothing.
+  public var protectedExpansions: [SnippetExpansionRecord] = []
 
   public init(text: String, language: String?) {
     self.text = text

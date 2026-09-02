@@ -41,6 +41,7 @@ import Testing
 
     private func makeFixture() -> Fixture {
       let steps = LimbSteps(
+        snippetExpansion: SnippetExpansionStep(),
         wordCorrection: WordCorrectionStep(),
         fillerRemoval: FillerRemovalStep(),
         emojiFormatter: EmojiFormatterStep(),

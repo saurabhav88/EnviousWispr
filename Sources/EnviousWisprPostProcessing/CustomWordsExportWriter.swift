@@ -30,28 +30,10 @@ package enum CustomWordsExportWriter {
   /// corrupt, and the user would have destroyed their dictionary by exporting
   /// it. Compared on resolved paths so a symlink or `..` cannot walk around it.
   package static func wouldOverwriteLiveWords(_ destination: URL) -> Bool {
+    // The filesystem-identity comparison, and the reasoning for it, moved to
+    // `DurableJSONFile.isSameFile` when #628 gave a second store an export. Same test, one owner.
     guard let live = CustomWordsManager.liveFileURL else { return false }
-    let target = destination.resolvingSymlinksInPath().standardizedFileURL
-    let liveURL = live.resolvingSymlinksInPath().standardizedFileURL
-
-    // Ask the FILESYSTEM whether these are the same file, not the strings
-    // (code review r6). macOS is case-insensitive by default, so
-    // `CUSTOM-WORDS.JSON` and `custom-words.json` are one file that string
-    // equality calls two — and picking the shouty spelling would walk straight
-    // past this guard into the data loss it exists to prevent.
-    if let targetID = try? target.resourceValues(forKeys: [.fileResourceIdentifierKey])
-      .fileResourceIdentifier,
-      let liveID = try? liveURL.resourceValues(forKeys: [.fileResourceIdentifierKey])
-        .fileResourceIdentifier
-    {
-      return targetID.isEqual(liveID)
-    }
-
-    // The destination may not exist yet, so there is no identity to compare.
-    // Fall back to a case-insensitive path match: on the default volume that
-    // is the truth, and on a case-sensitive one it is merely stricter than
-    // necessary — which is the safe direction to be wrong in.
-    return target.path.compare(liveURL.path, options: .caseInsensitive) == .orderedSame
+    return DurableJSONFile.isSameFile(destination, as: live)
   }
 
   /// `@concurrent` so this always runs OFF the caller's actor (code review r5).

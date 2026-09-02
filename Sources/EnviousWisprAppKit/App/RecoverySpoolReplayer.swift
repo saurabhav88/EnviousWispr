@@ -106,6 +106,13 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   private let currentVocabulary:
     @MainActor () -> (corrector: CorrectorVocabulary, polish: PolishVocabulary)
 
+  /// #628. Current snippets, on the same best-effort footing as the words above: the recording
+  /// snapshot carries settings, never vocabulary CONTENTS, so a replay uses what the user has
+  /// now. Deliberately NOT defaulted — `RecoveryTextProcessor` already had the seam and nothing
+  /// called it, so recovered speech kept "backslash my email" as literal words. A default here
+  /// is exactly what would let the next path go unwired the same way.
+  private let currentSnippets: @MainActor () -> SnippetVocabulary
+
   /// Test-only observation seam (GitHub cloud review, PR #1732): fires right
   /// after the attempt marker write succeeds, before the Keychain retrieve
   /// begins. Nil in production — exists so a test can deterministically
@@ -133,7 +140,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     now: @escaping @Sendable () -> Date = { Date() },
     currentVocabulary: @escaping @MainActor () -> (
       corrector: CorrectorVocabulary, polish: PolishVocabulary
-    )
+    ),
+    currentSnippets: @escaping @MainActor () -> SnippetVocabulary
   ) {
     self.now = now
     self.activeEngine = activeEngine
@@ -145,6 +153,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.outputClassifierHolder = outputClassifierHolder
     self.egOneRuntime = egOneRuntime
     self.currentVocabulary = currentVocabulary
+    self.currentSnippets = currentSnippets
   }
 
   /// #2207 test seam: invoked synchronously the instant the readiness-retry
@@ -424,6 +433,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     if let settings = recovered.settings { processor.applySettings(settings) }
     let vocab = currentVocabulary()
     processor.applyCustomWordsVocabulary(corrector: vocab.corrector, polish: vocab.polish)
+    processor.applySnippetVocabulary(currentSnippets())
     let textOutcome = await processor.process(rawText: result.text)
     if isAborted() { return .aborted }
 

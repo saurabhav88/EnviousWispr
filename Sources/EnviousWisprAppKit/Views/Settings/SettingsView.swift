@@ -191,6 +191,8 @@ struct UnifiedWindowView: View {
       page(.aiPolish) { AIPolishSettingsView() }
     case .wordCorrection:
       page(.wordCorrection) { YourWordsView() }
+    case .snippets:
+      page(.snippets) { SnippetsView() }
     case .clipboard:
       page(.clipboard) { ClipboardSettingsView() }
     case .permissions:

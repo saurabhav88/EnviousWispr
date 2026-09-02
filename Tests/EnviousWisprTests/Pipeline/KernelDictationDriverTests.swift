@@ -779,6 +779,7 @@ import Testing
       emitLifecycleEvent: { _ in })
     let outcome = KernelFinalizationOutcome()
     let steps = LimbSteps(
+      snippetExpansion: SnippetExpansionStep(),
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),

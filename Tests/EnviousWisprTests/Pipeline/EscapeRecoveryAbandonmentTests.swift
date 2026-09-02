@@ -195,6 +195,7 @@ struct EscapeRecoveryAbandonmentTests {
           backend: .parakeet, captureTelemetry: CaptureTelemetryState()),
         emitLifecycleEvent: { _ in })
       let steps = LimbSteps(
+        snippetExpansion: SnippetExpansionStep(),
         wordCorrection: WordCorrectionStep(),
         fillerRemoval: FillerRemovalStep(),
         emojiFormatter: EmojiFormatterStep(),

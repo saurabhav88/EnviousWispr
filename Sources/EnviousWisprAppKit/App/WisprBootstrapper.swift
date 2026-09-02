@@ -57,6 +57,7 @@ package final class WisprBootstrapper {
   /// capped at its single benchmark collaborator by design.
   let activeEngine: ActiveEngineOperation
   let customWordsCoordinator: CustomWordsCoordinator
+  let snippetsCoordinator: SnippetsCoordinator
   let contactsImportCoordinator: ContactsImportCoordinator
   /// #1701 Chunk 2 — UI Cancel routes through `customWordsCoordinator.cancelBulkImportEnrichment`.
   let bulkImportEnrichmentCoordinator: BulkImportEnrichmentCoordinator
@@ -187,6 +188,7 @@ package final class WisprBootstrapper {
       availableDevices: audioDeviceList.availableInputDevices)
     let captureTelemetry = CaptureTelemetryState()
     let customWordsCoordinator = CustomWordsCoordinator()
+    let snippetsCoordinator = SnippetsCoordinator()
     // #636: contacts-import orchestrator (opt-in import + bulk-remove + background
     // alias enrichment via the reused on-device suggester). #636 follow-up.
     let contactsImportCoordinator = ContactsImportCoordinator(
@@ -675,6 +677,28 @@ package final class WisprBootstrapper {
       packManager: vocabularyPackManager
     )
 
+    // #628 snippet wiring. TWO drivers, and seeding one is half the job — the same shape the
+    // custom-words wiring above has to satisfy. Seed both now, then republish on every change
+    // so a snippet saved mid-session is live on the next dictation without a relaunch.
+    //
+    // KNOWN LIMIT, stated rather than claimed away: this replaces the vocabulary on the live
+    // step, so a snippet edited WHILE a dictation is in flight applies to that take. The step's
+    // own header used to call this a per-take freeze, and that was an overclaim — corrected
+    // there. It matches how custom words already behave (`CustomWordsPropagator` can replace
+    // `correctorVocabulary` mid-session, which `KernelFinalizationWiring` says out loud), and
+    // the outcome is that the user's NEWEST snippet wins rather than any data being wrong.
+    // A real record-start freeze is a separate change with a hook recording does not have yet.
+    //
+    // Recovery is wired separately, at `RecoverySpoolReplayer`'s `currentSnippets` provider,
+    // because that processor is built per replay.
+    let seedSnippets: @MainActor (SnippetVocabulary) -> Void = {
+      [kernelDriver, whisperKitKernelDriver] vocabulary in
+      kernelDriver.snippetExpansion.snippetVocabulary = vocabulary
+      whisperKitKernelDriver.snippetExpansion.snippetVocabulary = vocabulary
+    }
+    seedSnippets(snippetsCoordinator.vocabulary)
+    snippetsCoordinator.onVocabularyChanged = seedSnippets
+
     // Restore persisted backend selection synchronously (no race with first record).
     asrManager.setInitialBackendType(settings.selectedBackend)
     SentryBreadcrumb.updateASRBackend(settings.selectedBackend.rawValue)
@@ -842,7 +866,8 @@ package final class WisprBootstrapper {
         LanePartitioner.split(
           customWordsCoordinator.customWords,
           generation: UInt64(customWordsCoordinator.customWords.count) &+ 1)
-      })
+      },
+      currentSnippets: { [snippetsCoordinator] in snippetsCoordinator.vocabulary })
     // GitHub cloud review, PR #1732: captured by `isDictationActive` below,
     // assigned once `engineCoordinator` exists a few lines down. A record
     // press that has called `beginMinting()` but not yet reached an active
@@ -1187,6 +1212,7 @@ package final class WisprBootstrapper {
     self.asrManager = asrManager
     self.activeEngine = activeEngine
     self.customWordsCoordinator = customWordsCoordinator
+    self.snippetsCoordinator = snippetsCoordinator
     self.contactsImportCoordinator = contactsImportCoordinator
     self.bulkImportEnrichmentCoordinator = bulkImportEnrichmentCoordinator
     self.setup = setup
@@ -1411,6 +1437,7 @@ private struct MainWindowRoot: View {
       .environment(b.pillAppearance)
       .environment(b.permissions)
       .environment(b.customWordsCoordinator)
+      .environment(b.snippetsCoordinator)
       .environment(b.contactsImportCoordinator)
       .environment(b.setup)
       .environment(b.egOneRuntime)

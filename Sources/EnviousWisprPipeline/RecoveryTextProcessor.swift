@@ -62,6 +62,7 @@ public final class RecoveryTextProcessor {
     // Intelligence, or local Ollama since #1948) and a glyph was dropped, so it
     // needs no settings from the snapshot.
     self.steps = LimbSteps(
+      snippetExpansion: SnippetExpansionStep(),
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
@@ -149,6 +150,21 @@ public final class RecoveryTextProcessor {
     steps.llmPolish.polishVocabulary = polish
   }
 
+  /// Hand recovery the CURRENT snippet store and keyword (#628).
+  ///
+  /// A separate seam, deliberately parallel to `applyCustomWordsVocabulary` above, because
+  /// recovery has exactly the same shape of gap for both: `applySettings` restores record-time
+  /// TOGGLES, and the vocabulary CONTENTS are not in that snapshot — only its version. Without
+  /// this call the expansion step would replay every recovered dictation against an empty
+  /// vocabulary, which fails silently and looks like a recording that simply had no snippets.
+  ///
+  /// Current-store semantics rather than record-time, matching custom words: a snippet the
+  /// user has since edited replays with the text they have now, which is the version they
+  /// would expect to be pasted today.
+  public func applySnippetVocabulary(_ vocabulary: SnippetVocabulary) {
+    steps.snippetExpansion.snippetVocabulary = vocabulary
+  }
+
   /// Run the chain. Limb failures inside the chain (a step erroring or timing
   /// A blank polish is not a polish (#1948). Returns nil for nil, empty, or
   /// whitespace-only input so the caller delivers the deterministic floor instead.
@@ -175,10 +191,7 @@ public final class RecoveryTextProcessor {
         rawText: rawText,
         language: recordedLanguage,
         targetAppName: targetAppName,
-        steps: [
-          steps.wordCorrection, steps.fillerRemoval, steps.emojiFormatter,
-          steps.inverseTextNormalization, steps.llmPolish, steps.emojiRestore,
-        ])
+        steps: steps.orderedChain)
       // #1948: a BLANK polish is not a polish. Live finalization has an empty-output
       // recovery floor (`KernelFinalizationWiring` `:349`) that turns "" into the intact
       // deterministic text; this replay path has none, so a blank result would be saved to
@@ -190,9 +203,16 @@ public final class RecoveryTextProcessor {
       //
       // Normalising to nil here delivers `context.text`, the post-ITN deterministic floor,
       // which is what the live path's floor produces for the same input.
+      // #628. Before `usablePolish`, and before either field is read: this replay path has no
+      // empty-output floor of its own (see the comment above), so a sentinel reaching
+      // `RecoveryTextOutcome` would be written to History with nothing left to resolve it.
+      // The finalizer does NOT replace `usablePolish` — it resolves snippets, `usablePolish`
+      // normalises a blank polish, and the two answer different questions.
+      var context = result.context
+      SnippetFinalizer.finalize(&context)
       return RecoveryTextOutcome(
-        text: result.context.text,
-        polishedText: Self.usablePolish(result.context.polishedText),
+        text: context.text,
+        polishedText: Self.usablePolish(context.polishedText),
         polishError: result.polishError)
     } catch {
       return RecoveryTextOutcome(text: rawText, polishedText: nil, polishError: nil)
