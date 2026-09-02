@@ -84,6 +84,34 @@ struct SnippetStartersSeedingTests {
     #expect(!SnippetStarters.isUneditedExample(reloaded))
   }
 
+  @Test("Deleting some starters and renaming others leaves a coherent list")
+  func theRealFirstFiveMinutes() throws {
+    // What the founder actually did within minutes of the first build: kept four, deleted two,
+    // renamed two triggers, and replaced every expansion with his own. Worth a row because it
+    // is the only sequence that exercises delete, rename and re-expansion against ONE store,
+    // and because every survivor must come back with its badge gone.
+    let (manager, _) = makeStore()
+    let seeded = manager.loadOrSeedStarters()
+    let kept = Array(seeded.snippets.prefix(4))
+    for doomed in seeded.snippets.dropFirst(4) { try manager.remove(id: doomed.id) }
+    for (index, starter) in kept.enumerated() {
+      try manager.upsert(
+        Snippet(
+          id: starter.id,
+          trigger: index == 1 ? "my cell" : starter.trigger,
+          expansion: "mine-\(index)@enviouslabs.co",
+          createdAt: starter.createdAt))
+    }
+
+    let afterRelaunch = manager.loadOrSeedStarters()
+
+    #expect(afterRelaunch.snippets.count == 4)
+    #expect(afterRelaunch.snippets.contains { $0.trigger == "my cell" })
+    for snippet in afterRelaunch.snippets {
+      #expect(!SnippetStarters.isUneditedExample(snippet), "\(snippet.trigger) still reads as an example")
+    }
+  }
+
   // MARK: - The case where seeding must not happen at all
 
   @Test("An unreadable file is never seeded over")
