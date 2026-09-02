@@ -75,9 +75,10 @@ env:
 # ~36 after the debug run has eaten into them.
 #
 # `release-validation` remains the sole cache WRITER and still builds BOTH
-# configurations, because pr-check.yml restores this cache (two restore steps,
-# no save) and depends on its directory shape. Splitting the cache across two
-# writers would change that contract; this change deliberately does not.
+# configurations, because pr-check.yml restores this cache (both lanes, through
+# the same composite action, no save) and depends on its directory shape.
+# Splitting the cache across two writers would change that contract; this
+# change deliberately does not.
 jobs:
   # Cheap Linux gate so both macOS jobs share ONE classification decision
   # rather than each computing its own and risking disagreement.
@@ -366,6 +367,9 @@ jobs:
           # MUST stay identical to the restore paths in
           # .github/actions/xcode-ci-setup/action.yml — a save/restore pair that
           # disagrees produces a permanently cold cache with no error anywhere.
+          # Since #2592 that restore is the ONLY other copy of this list (all
+          # four macOS lanes go through it), and scripts/ci/check-cache-paths.py
+          # holds both to the same literal expectation.
           path: |
             ${{ env.DERIVED_DATA_PATH }}/SourcePackages
             ${{ env.DERIVED_DATA_PATH }}/CompilationCache.noindex

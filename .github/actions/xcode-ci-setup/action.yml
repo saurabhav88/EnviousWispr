@@ -1,19 +1,34 @@
 name: Xcode CI setup
 description: >-
-  Toolchain selection, Tuist install, DerivedData cache redirect, build-cache
-  restore, and Xcode project generation — the setup every macOS validation job
-  in main-post-merge.yml needs before it can build or test.
+  Toolchain selection, Tuist install, compilation-cache and DerivedData
+  redirects, build-cache restore, and Xcode project generation — the setup
+  every lane in pr-check.yml and main-post-merge.yml that builds the app with
+  xcodebuild needs before it can build or test. (eval-packages builds
+  standalone SwiftPM packages with `swift build` and deliberately does not
+  use it.)
 
 # Why this exists (#1994): main-post-merge.yml runs its debug and release
-# validation as two parallel jobs, and each needs an identical eleven-step
+# validation as two parallel jobs, and each needs the same multi-step
 # setup. Two hand-mirrored copies of one decision is the shape that diverges —
 # .claude/rules/workflow-process.md RULE: port-proven-patterns-wholesale
 # records two separate cases in this repo where exactly that happened. One
 # owner, both callers.
 #
+# #2592: pr-check.yml's build-debug and build-release lanes were the third and
+# fourth copies, hand-mirrored inline, and one of them is where #2580's cold
+# cache shipped from. They now call this action too, so the Xcode cache path
+# list exists in exactly TWO places — the restore below and the save in
+# main-post-merge.yml's release-validation job — instead of four.
+# scripts/ci/check-cache-paths.py asserts both against a literal expectation.
+#
 # The caller must check the repository out BEFORE using this action: a local
 # `uses: ./...` action is read from the working tree, so it cannot perform its
 # own checkout.
+#
+# Gating: the steps here carry no `if:`. pr-check.yml skips the whole setup
+# for a docs-only PR by putting `if: steps.changes.outputs.needs_build == 'true'`
+# on the step that USES this action — a caller-step condition governs every
+# step of a composite action — and main-post-merge.yml gates at the job level.
 
 inputs:
   derived-data-path:
@@ -31,10 +46,32 @@ outputs:
   cache-hit:
     description: Whether the restore was an exact hit on the primary key.
     value: ${{ steps.xcode-cache.outputs.cache-hit }}
+  cache-matched-key:
+    description: The key the restore actually matched (empty when nothing matched).
+    value: ${{ steps.xcode-cache.outputs.cache-matched-key }}
 
 runs:
   using: composite
   steps:
+    # A wrong input here produces a permanently cold cache and nothing red: an
+    # absolute path renders as `$GITHUB_WORKSPACE//abs` in the redirect and as
+    # `/abs/...` in the cache list, an empty one caches `/SourcePackages`, and
+    # a trailing slash spells every cache entry with `//`. Both callers pass a
+    # workspace-relative path; refuse anything else loudly. Spaces are fine —
+    # every shell use is quoted and cache entries are line-delimited.
+    - name: Check derived-data-path input
+      shell: bash
+      env:
+        DD: ${{ inputs.derived-data-path }}
+      run: |
+        set -euo pipefail
+        case "$DD" in
+          "") echo "::error::derived-data-path is empty"; exit 1 ;;
+          /*) echo "::error::derived-data-path must be workspace-relative, got '$DD'"; exit 1 ;;
+          */) echo "::error::derived-data-path must not end in '/', got '$DD'"; exit 1 ;;
+        esac
+        echo "derived-data-path: $DD"
+
     - name: Select Xcode
       uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
       with:
@@ -70,18 +107,30 @@ runs:
         "$HOME/.local/bin/mise" install "tuist@${TUIST_VERSION}"
         "$HOME/.local/bin/mise" x "tuist@${TUIST_VERSION}" -- tuist version
 
-    # See pr-check.yml's "Configure DerivedData cache redirect" comment
-    # (issue #1295) — same rationale. main-post-merge.yml remains the cache
-    # WRITER, so it must produce the same directory shape pr-check.yml restores.
-    # #2580: see pr-check.yml's "Configure compilation cache" comment — same
-    # rationale, and this action is why it is stated once for both post-merge
-    # jobs. Must precede every xcodebuild below, which is what an exported
-    # XCODE_XCCONFIG_FILE gives without repeating three settings on ten
-    # command lines.
+    # #2580: Xcode 26 compilation caching. Content-addressed, so what gets
+    # reused is decided by hashing a compile job's actual inputs — the file
+    # timestamps `actions/checkout` destroys stop mattering. Measured on one
+    # machine, paired arms: the debug lane's shape went 61s -> 20s with every
+    # one of its 1343 Swift compiles served from the cache, and two builds
+    # differing only in these flags produced byte-identical code in every
+    # binary. Owner, cost and the equivalence controls:
+    # scripts/ci/configure-compilation-cache.sh.
+    #
+    # Must precede every xcodebuild in the calling job, which is what an
+    # exported XCODE_XCCONFIG_FILE gives without repeating three settings on
+    # ten command lines.
     - name: Configure compilation cache
       shell: bash
       run: scripts/ci/configure-compilation-cache.sh
 
+    # tuist generate's internal `xcodebuild -resolvePackageDependencies` call
+    # passes no -derivedDataPath, so it resolves into Xcode's global default
+    # DerivedData location — NOT the directory this job caches — paying a
+    # full, uncached network resolution every run (issue #1295). Redirecting
+    # the global default here, before generate runs and before the cache is
+    # restored, makes that resolve land somewhere the cache below actually
+    # covers. main-post-merge.yml is the cache WRITER, so it must produce the
+    # same directory shape pr-check.yml restores; both go through this step.
     - name: Configure DerivedData cache redirect
       shell: bash
       run: scripts/ci/configure-tuist-deriveddata-cache.sh "$GITHUB_WORKSPACE/${{ inputs.derived-data-path }}"
@@ -99,15 +148,45 @@ runs:
         )"
         echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
 
-    # The third path entry is a glob (issue #1295) — see pr-check.yml's restore
-    # step comment for why.
+    # Rolling key (github.sha suffix) so the primary key is never an exact hit
+    # on a PR. pr-check.yml is restore-only by design — main-post-merge.yml's
+    # release-validation job is the sole writer (issue #804), and it saves
+    # under this step's exported cache-primary-key. restore-keys fall through
+    # to the freshest cache.
+    #
+    # The third path entry is a glob (issue #1295): the redirect above makes
+    # tuist generate's implicit resolve write into a per-project hash-named
+    # subfolder under the DerivedData root (Xcode's normal global-default
+    # naming), a different shape from the flat SourcePackages the explicit
+    # -derivedDataPath build steps write to. The glob covers both without the
+    # workflow needing to predict the hash name.
     #
     # These paths are derived from the input rather than hardcoded to
-    # `.derivedData/CI`, which is what the single-job version did. With two
-    # callers the hardcoded form becomes a silent trap: a caller passing a
-    # different derived-data-path would build in one place and cache another,
-    # and the only symptom is a permanently cold cache. pr-check.yml's restore
-    # paths must continue to match whatever this resolves to.
+    # `.derivedData/CI`, which is what the single-job version did. With
+    # several callers the hardcoded form becomes a silent trap: a caller
+    # passing a different derived-data-path would build in one place and cache
+    # another, and the only symptom is a permanently cold cache. The save in
+    # main-post-merge.yml must continue to match whatever this resolves to.
+    #
+    # #2580: the compilation cache REPLACES Build/ here rather than joining it.
+    # Two numbers, and they are not the same measurement, which is why the
+    # earlier one-line version of this comment read as arithmetic that did not
+    # add up. LOCAL directory sizes: 1.5 GB of content cache against 2.4 GB of
+    # built products. REAL CI cache entries, which is what actually gets
+    # stored: 3.10 GB for the first entry written after the swap against 3.67
+    # GB before it, so 0.57 GB smaller per entry. The CI figure is the one that
+    # decides whether storage is bought, and it is the smaller of the two
+    # because SourcePackages dominates both. Linking is not content-cached and
+    # re-runs; that is the 5s between 20s and 25s locally.
+    #
+    # THIS PROSE MUST STAY OUTSIDE `path:`. It first shipped INSIDE the block
+    # scalar below (in pr-check.yml's then-inline copy of this step), where
+    # YAML has no comments — so `actions/cache` read eight comment lines as
+    # eight more paths, and since the cache VERSION is a hash of the path
+    # list, both PR lanes asked for a version no writer ever saves. Result:
+    # `Cache not found for input keys` on all four keys, a permanently cold
+    # cache, and nothing red anywhere. Guarded by
+    # scripts/ci/check-cache-paths.py.
     - name: Restore Xcode build cache
       id: xcode-cache
       uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -122,6 +201,19 @@ runs:
           ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-
           ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-
 
+    # The one line that says whether the cache did anything. `Cache not found
+    # for input keys` on every key is what a permanently cold cache looks like
+    # (#2580), and it is otherwise buried in the restore step's own output.
+    # A diagnostic must never be the thing that fails the lane.
+    - name: Log Xcode cache restore
+      continue-on-error: true
+      shell: bash
+      env:
+        MATCHED: ${{ steps.xcode-cache.outputs.cache-matched-key }}
+        HIT: ${{ steps.xcode-cache.outputs.cache-hit }}
+      run: |
+        echo "==> Xcode cache: matched=${MATCHED:-<none>} hit=${HIT:-false}"
+
     - name: Generate Xcode project
       shell: bash
       env:
@@ -129,6 +221,7 @@ runs:
       run: |
         set -euo pipefail
         "$HOME/.local/bin/mise" x "tuist@${TUIST_VERSION}" -- tuist generate --no-open
+        # Generated project / DerivedData must never be committed.
         git status --porcelain -- '*.xcodeproj' '*.xcworkspace' '.derivedData'
 
     - name: Log DerivedData package-resolution location
