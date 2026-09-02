@@ -54,12 +54,20 @@ public final class SnippetsManager: @unchecked Sendable {
   }
 
   /// What is on disk right now. The `unreadable` case is the whole reason this is not an
-  /// optional.
+  /// optional, and `archivedCorrupt` is the second reason: THREE different situations produce
+  /// no readable snippets, and they do not all license the same next action.
   enum LoadResult: Equatable {
+    /// No file has ever been written here. The only state a fresh install is in.
     case missing
     case loaded(SnippetVocabulary)
-    /// The file exists and its contents are unknown — a read error, or a corrupt file that
-    /// could not be archived to safety. Either way the bytes must not be overwritten.
+    /// A file was there, could not be parsed, and was moved aside to a `.corrupted-<uuid>`
+    /// archive. Reading and writing may proceed from empty — but this is NOT a new user, and
+    /// anything that treats it as one acts on somebody's data-loss moment. Split out after
+    /// review found starter snippets being written into exactly this state, where they would
+    /// have read as recovered content.
+    case archivedCorrupt
+    /// The file exists and its contents are unknown — a read error, a file from a NEWER app, or
+    /// a corrupt file that could not be archived. Either way the bytes must not be overwritten.
     case unreadable
   }
 
@@ -122,6 +130,8 @@ public final class SnippetsManager: @unchecked Sendable {
     let empty = SnippetVocabulary(
       snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation)
     guard let result = try? withLock(blocking: true, { loadWhileLocked() }) else { return empty }
+    // `archivedCorrupt` renders as empty exactly like `missing`: the screen has to draw, and the
+    // bytes are safe in the archive. Only `loadOrSeedStarters` needs the two kept apart.
     if case .loaded(let vocabulary) = result { return vocabulary }
     return empty
   }
@@ -150,7 +160,10 @@ public final class SnippetsManager: @unchecked Sendable {
       switch loadWhileLocked() {
       case .loaded(let vocabulary):
         return vocabulary
-      case .unreadable:
+      case .unreadable, .archivedCorrupt:
+        // Neither is a new install. `archivedCorrupt` is the one that looks like one and is not:
+        // the user HAD snippets, they were just moved aside, and writing six John Doe examples
+        // into that moment presents sample data as recovered content.
         return empty
       case .missing:
         let seeded = SnippetVocabulary(
@@ -227,7 +240,7 @@ public final class SnippetsManager: @unchecked Sendable {
       Self.logger.error(
         "snippets.json could not be parsed; archived and starting empty. \(String(describing: error), privacy: .public)"
       )
-      return .missing
+      return .archivedCorrupt
     }
   }
 
@@ -268,7 +281,9 @@ public final class SnippetsManager: @unchecked Sendable {
     try withLock {
       let current: SnippetVocabulary
       switch loadWhileLocked() {
-      case .missing:
+      case .missing, .archivedCorrupt:
+        // A save is allowed after an archive: the old bytes are safe under their own name, and
+        // refusing here would leave the user unable to type anything new.
         current = SnippetVocabulary(
           snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation)
       case .loaded(let vocabulary):

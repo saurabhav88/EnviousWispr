@@ -100,6 +100,37 @@ struct SnippetStartersSeedingTests {
     #expect(try Data(contentsOf: url) == bytesBefore)
   }
 
+  @Test("A corrupt store that was archived is not treated as a new install")
+  func archivedCorruptionIsNotSeeded() throws {
+    // Found by review, not imagined. `loadWhileLocked` archives a corrupt file and used to
+    // report `.missing`, which reads exactly like a fresh install — so the seed would write six
+    // John Doe examples into the one moment a user has just lost their own snippets, and they
+    // would read as recovered content.
+    let (manager, url) = makeStore()
+    try manager.upsert(Snippet(trigger: "my email", expansion: "sam@example.com"))
+    try Data("{ this is not json".utf8).write(to: url)
+
+    let loaded = manager.loadOrSeedStarters()
+
+    #expect(loaded.snippets.isEmpty)
+    // And the archive still holds the bytes, so this is a recovery state rather than a loss.
+    let siblings = try FileManager.default.contentsOfDirectory(
+      atPath: url.deletingLastPathComponent().path)
+    #expect(siblings.filter { $0.contains("corrupted") }.count == 1)
+  }
+
+  @Test("After an archive the user can still save, and still gets no examples")
+  func savingWorksAfterAnArchive() throws {
+    let (manager, url) = makeStore()
+    try manager.upsert(Snippet(trigger: "my email", expansion: "sam@example.com"))
+    try Data("{ this is not json".utf8).write(to: url)
+    _ = manager.loadOrSeedStarters()
+
+    try manager.upsert(Snippet(trigger: "my new one", expansion: "typed after the archive"))
+
+    #expect(manager.load().snippets.map(\.trigger) == ["my new one"])
+  }
+
   // MARK: - The seeded list has to be editable
 
   @Test("Every starter can be saved back through the real store without a refusal")
