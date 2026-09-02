@@ -52,11 +52,30 @@ struct UnifiedWindowView: View {
         // rest. Placed trailing next to the record button (not centered, which
         // would collide with the principal wordmark) so pages without the
         // History status row still explain why the record button is disabled.
-        ToolbarItem(placement: .primaryAction) {
-          StatusBadge()
-        }
-        ToolbarItem(placement: .primaryAction) {
-          RecordButton()
+        // macOS 26 gives adjacent items in one placement a SHARED Liquid Glass
+        // capsule and packs them flush, so the record button's gradient pill was
+        // drawn over the status badge and covered its words. `ToolbarSpacer` is
+        // the documented way to split the run into separate groups. Both items
+        // paint their own pill, so both hide the system capsule for the same
+        // reason the principal wordmark does. Below macOS 26 there is no shared
+        // capsule and no spacer API, so the pair stays as it was.
+        if #available(macOS 26.0, *) {
+          ToolbarItem(placement: .primaryAction) {
+            StatusBadge()
+          }
+          .sharedBackgroundVisibility(.hidden)
+          ToolbarSpacer(.fixed, placement: .primaryAction)
+          ToolbarItem(placement: .primaryAction) {
+            RecordButton()
+          }
+          .sharedBackgroundVisibility(.hidden)
+        } else {
+          ToolbarItem(placement: .primaryAction) {
+            StatusBadge()
+          }
+          ToolbarItem(placement: .primaryAction) {
+            RecordButton()
+          }
         }
       }
     }
