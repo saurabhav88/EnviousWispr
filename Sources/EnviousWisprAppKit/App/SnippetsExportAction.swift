@@ -36,7 +36,15 @@ enum SnippetsExportAction {
   /// destination, and running them here would freeze the settings window until the storage
   /// answers. Only the panel needs the main actor; the bytes do not. Matches the custom-words
   /// export path, which learned this in its own review.
-  static func run(vocabulary: SnippetVocabulary) async -> Outcome {
+  /// - Parameter currentVocabulary: re-read AFTER the panel closes. A save panel is modal for
+  ///   this process and not for any other, so a second EnviousWispr — a shipped copy beside a
+  ///   dev build, which is routine — can add or delete a snippet while the dialog is open. A
+  ///   backup written from the pre-panel snapshot would silently omit what was added and keep
+  ///   what was deleted, and the user would not find out until they restored it.
+  static func run(
+    vocabulary: SnippetVocabulary,
+    currentVocabulary: () -> SnippetVocabulary = { .empty }
+  ) async -> Outcome {
     // Checked BEFORE the panel: opening a save dialog and then announcing there was nothing to
     // save wastes the one interaction the user paid for.
     guard !vocabulary.snippets.isEmpty else { return .nothingToExport }
@@ -61,11 +69,15 @@ enum SnippetsExportAction {
       return .refusedLiveStore
     }
 
+    // Re-read here, not before the panel: this is the latest moment before the bytes are
+    // written, and it is the only read whose result the file actually reflects.
+    let latest = currentVocabulary()
+    let exported = latest.snippets.isEmpty ? vocabulary : latest
     let document = Document(
       version: SnippetsManager.currentVersion,
-      keyword: vocabulary.keyword,
-      snippets: vocabulary.snippets)
-    return await write(document, to: destination, count: vocabulary.snippets.count)
+      keyword: exported.keyword,
+      snippets: exported.snippets)
+    return await write(document, to: destination, count: exported.snippets.count)
   }
 
   /// `@concurrent` so this always runs OFF the caller's actor. A plain `async` on a `@MainActor`

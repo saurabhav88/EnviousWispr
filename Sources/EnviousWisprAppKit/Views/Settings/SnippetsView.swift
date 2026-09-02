@@ -115,7 +115,9 @@ struct SnippetsView: View {
         let vocabulary = coordinator.vocabulary
         Task {
           exportMessage = SnippetsExportAction.message(
-            for: await SnippetsExportAction.run(vocabulary: vocabulary))
+            for: await SnippetsExportAction.run(
+              vocabulary: vocabulary,
+              currentVocabulary: { coordinator.refreshFromDisk() }))
         }
       }
       SettingsActionButton(title: "Add snippet", isEnabled: true, emphasis: .filled) {

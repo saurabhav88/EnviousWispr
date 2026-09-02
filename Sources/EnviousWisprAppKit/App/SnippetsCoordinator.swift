@@ -126,6 +126,17 @@ final class SnippetsCoordinator {
     }
   }
 
+  /// Re-read the store and adopt what is on disk.
+  ///
+  /// For the export, which asks the user for a destination first: another EnviousWispr process
+  /// can change the store while that panel is open, and a backup written from the pre-panel
+  /// snapshot would omit or resurrect snippets without saying so.
+  @discardableResult
+  func refreshFromDisk() -> SnippetVocabulary {
+    vocabulary = manager.load()
+    return vocabulary
+  }
+
   /// True when a file exists that could not be read. The screen shows this instead of an empty
   /// list, because an empty list is a lie the user would act on by adding snippets over the top.
   var storeUnreadable: Bool { manager.unreadableExisting }
