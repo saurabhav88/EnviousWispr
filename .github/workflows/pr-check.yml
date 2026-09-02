@@ -151,9 +151,15 @@ jobs:
       # -derivedDataPath build step below writes to. The glob covers both
       # without the workflow needing to predict the hash name.
       # #2580: the compilation cache REPLACES Build/ here rather than joining it —
-      # 1.5 GB of content cache for 2.4 GB of built products, so the cache shrinks
-      # by ~0.6 GB per entry and no extra storage is bought. Linking is not
-      # content-cached and re-runs; that is the 5s between 20s and 25s locally.
+      # Two numbers, and they are not the same measurement, which is why the
+      # earlier one-line version of this comment read as arithmetic that did not
+      # add up. LOCAL directory sizes: 1.5 GB of content cache against 2.4 GB of
+      # built products. REAL CI cache entries, which is what actually gets
+      # stored: 3.10 GB for the first entry written after the swap against 3.67
+      # GB before it, so 0.57 GB smaller per entry. The CI figure is the one that
+      # decides whether storage is bought, and it is the smaller of the two
+      # because SourcePackages dominates both. Linking is not content-cached and
+      # re-runs; that is the 5s between 20s and 25s locally.
       #
       # THIS PROSE MUST STAY OUTSIDE `path:`. It first shipped INSIDE the block
       # scalar below, where YAML has no comments — so `actions/cache` read eight
@@ -390,9 +396,15 @@ jobs:
           echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
 
       # #2580: the compilation cache REPLACES Build/ here rather than joining it —
-      # 1.5 GB of content cache for 2.4 GB of built products, so the cache shrinks
-      # by ~0.6 GB per entry and no extra storage is bought. Linking is not
-      # content-cached and re-runs; that is the 5s between 20s and 25s locally.
+      # Two numbers, and they are not the same measurement, which is why the
+      # earlier one-line version of this comment read as arithmetic that did not
+      # add up. LOCAL directory sizes: 1.5 GB of content cache against 2.4 GB of
+      # built products. REAL CI cache entries, which is what actually gets
+      # stored: 3.10 GB for the first entry written after the swap against 3.67
+      # GB before it, so 0.57 GB smaller per entry. The CI figure is the one that
+      # decides whether storage is bought, and it is the smaller of the two
+      # because SourcePackages dominates both. Linking is not content-cached and
+      # re-runs; that is the 5s between 20s and 25s locally.
       #
       # THIS PROSE MUST STAY OUTSIDE `path:`. It first shipped INSIDE the block
       # scalar below, where YAML has no comments — so `actions/cache` read eight
