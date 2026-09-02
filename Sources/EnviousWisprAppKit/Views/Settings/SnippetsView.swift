@@ -56,16 +56,26 @@ struct SnippetsView: View {
         Spacer(minLength: 0)
       }
     } footnote: {
-      // The example is worth its line: the rule is easy to state and easy to misread, and one
-      // concrete sentence answers "so what do I actually say" faster than the description.
-      //
-      // It names "my email" because that is a STARTER trigger a new install really has, so the
-      // sentence is an instruction the reader can follow rather than an illustration. Phrased
-      // as "the snippet saved for those words" so it stays true after they delete that one.
+      keywordExample.settingsHelperCopy()
+    }
+  }
+
+  /// The one concrete instruction on the screen: the rule is easy to state and easy to misread,
+  /// and one sentence answers "so what do I actually say" faster than the description does.
+  ///
+  /// Built from a trigger the user ACTUALLY HAS, never from a literal. A hardcoded "my email"
+  /// was true on a fresh install and became a lie the moment they renamed or deleted that
+  /// starter: the screen would keep telling them to say words that fire nothing. With no
+  /// snippets at all there is no honest example, so it names none.
+  @ViewBuilder private var keywordExample: some View {
+    if let trigger = coordinator.snippets.first?.trigger {
       Text(
-        "For example, say \u{201C}\(coordinator.keyword) my email\u{201D} and the snippet saved for those words is pasted."
+        "For example, say \u{201C}\(coordinator.keyword) \(trigger)\u{201D} and that snippet is pasted."
       )
-      .settingsHelperCopy()
+    } else {
+      Text(
+        "Say your keyword, then the words you saved a snippet under, and that snippet is pasted."
+      )
     }
   }
 

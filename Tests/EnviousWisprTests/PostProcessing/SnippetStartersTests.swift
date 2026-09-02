@@ -134,7 +134,26 @@ struct SnippetStartersSeedingTests {
     let afterRelaunch = SnippetsManager(fileURL: url).loadOrSeedStarters()
 
     #expect(afterRelaunch.snippets.isEmpty)
-    #expect(FileManager.default.fileExists(atPath: url.path))
+    // And no file was written back to make that work. The `.corrupted-` sibling IS the history,
+    // which is why nothing has to succeed at writing for the next launch to stay correct.
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+    let siblings = try FileManager.default.contentsOfDirectory(
+      atPath: url.deletingLastPathComponent().path)
+    #expect(siblings.filter { $0.contains("corrupted") }.count == 1)
+  }
+
+  @Test("A store deleted by hand does seed again, and that is the deliberate boundary")
+  func handDeletedStoreDoesSeed() throws {
+    // The archive is what says "this install had snippets". Clearing everything out, archives
+    // included, is asking for a clean slate, and a clean slate is what it gets. Stated as a
+    // test so the boundary is a decision rather than an accident of the implementation.
+    let (manager, url) = makeStore()
+    _ = manager.loadOrSeedStarters()
+    try FileManager.default.removeItem(at: url)
+
+    let afterRelaunch = SnippetsManager(fileURL: url).loadOrSeedStarters()
+
+    #expect(afterRelaunch.snippets.count == SnippetStarters.all.count)
   }
 
   @Test("After an archive the user can still save, and still gets no examples")

@@ -166,6 +166,10 @@ public final class SnippetsManager: @unchecked Sendable {
         // into that moment presents sample data as recovered content.
         return empty
       case .missing:
+        // `missing` means no file HERE, NOW. It does not mean this install never had one: the
+        // corrupt-file archive moves the store aside, so the same read reports `missing` for a
+        // user who just lost their snippets. Ask the disk the question actually being asked.
+        guard !hasStoreHistoryOnDisk() else { return empty }
         let seeded = SnippetVocabulary(
           snippets: SnippetStarters.all,
           keyword: SnippetVocabulary.defaultKeyword,
@@ -178,6 +182,29 @@ public final class SnippetsManager: @unchecked Sendable {
       }
     }
     return result ?? empty
+  }
+
+  /// Whether anything on disk says this install has EVER held a snippets store.
+  ///
+  /// The single reader of the only question the seed needs answered, and it is deliberately
+  /// broader than "does `snippets.json` exist". Three rounds of review found three ways the
+  /// primary file can be absent from an install that had one, and every one of them ran through
+  /// the corrupt-file archive: the archive removes the file, so a read reports `missing`, so the
+  /// seed would write six John Doe examples into somebody's data-loss moment where they read as
+  /// recovered content.
+  ///
+  /// A `.corrupted-<uuid>` sibling is that history, and it needs no write to create — which is
+  /// what makes it strictly stronger than writing an empty file back, the previous fix. That
+  /// write could fail, and the failure landed on exactly the launch after a data loss.
+  ///
+  /// Deleting the archives is not covered and should not be: a user who cleared them out has
+  /// asked for a clean slate, and a clean slate is what they get.
+  private func hasStoreHistoryOnDisk() -> Bool {
+    if FileManager.default.fileExists(atPath: fileURL.path) { return true }
+    let directory = fileURL.deletingLastPathComponent()
+    let siblings =
+      (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+    return siblings.contains { $0.hasPrefix("\(Self.fileName).corrupted-") }
   }
 
   /// True when a file exists that could not be read. The screen shows a banner, and saves are
@@ -237,26 +264,10 @@ public final class SnippetsManager: @unchecked Sendable {
         )
         return .unreadable
       }
-      // Put an EMPTY store back where the archived one was.
-      //
-      // This is the load-bearing half, and the in-memory `archivedCorrupt` case above is only
-      // the window before it lands. Archiving removed the file, and the FILE is the only
-      // durable answer to "has this install ever had a snippets store" — which is exactly the
-      // question `loadOrSeedStarters` asks. Without the tombstone the next launch reads
-      // `missing`, decides this is a new user, and writes six examples on top of somebody's
-      // data-loss event. Review found that twice, one round apart, which is what said the
-      // repair belonged on disk rather than in a return value.
-      //
-      // Enumerated rather than patched again. The producers of "no file at `fileURL`" are:
-      // never written (a real fresh install), this archive, a hand-deleted file, and a seed
-      // whose write failed. Only the archive was wrong, and only the archive is repaired here
-      // — deleting the file by hand is asking for a reset, and a failed seed must retry.
-      //
-      // Best effort on purpose: if this write fails the next launch re-seeds, which is the old
-      // behaviour, and refusing to load would be worse than that.
-      _ = try? saveWhileLocked(
-        SnippetVocabulary(
-          snippets: [], keyword: SnippetVocabulary.defaultKeyword, generation: generation))
+      // NOT repaired by writing an empty file back. That was the round-2 fix and it is
+      // dominated by `hasStoreHistoryOnDisk` below, which answers the same question and also
+      // survives the case where the replacement write itself fails. One reader for one
+      // question, and no write on a read path.
       Self.logger.error(
         "snippets.json could not be parsed; archived and starting empty. \(String(describing: error), privacy: .public)"
       )
