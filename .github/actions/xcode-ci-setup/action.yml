@@ -73,6 +73,15 @@ runs:
     # See pr-check.yml's "Configure DerivedData cache redirect" comment
     # (issue #1295) — same rationale. main-post-merge.yml remains the cache
     # WRITER, so it must produce the same directory shape pr-check.yml restores.
+    # #2580: see pr-check.yml's "Configure compilation cache" comment — same
+    # rationale, and this action is why it is stated once for both post-merge
+    # jobs. Must precede every xcodebuild below, which is what an exported
+    # XCODE_XCCONFIG_FILE gives without repeating three settings on ten
+    # command lines.
+    - name: Configure compilation cache
+      shell: bash
+      run: scripts/ci/configure-compilation-cache.sh
+
     - name: Configure DerivedData cache redirect
       shell: bash
       run: scripts/ci/configure-tuist-deriveddata-cache.sh "$GITHUB_WORKSPACE/${{ inputs.derived-data-path }}"
@@ -105,7 +114,7 @@ runs:
       with:
         path: |
           ${{ inputs.derived-data-path }}/SourcePackages
-          ${{ inputs.derived-data-path }}/Build
+          ${{ inputs.derived-data-path }}/CompilationCache.noindex
           ${{ inputs.derived-data-path }}/*/SourcePackages
         key: ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-${{ github.sha }}
         restore-keys: |
