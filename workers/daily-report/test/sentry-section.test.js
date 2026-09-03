@@ -562,7 +562,7 @@ test("an issue Sentry returns from OUTSIDE the window is still not badged", asyn
 async function render(overrides, formatOpts = {}) {
   const { fetchFn } = digestFetch(overrides);
   const data = await fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn });
-  return { data, lines: formatSentrySection(data, { title: "Sentry, yesterday", ...formatOpts }) };
+  return { data, lines: formatSentrySection(data, { title: "Errors, yesterday", ...formatOpts }) };
 }
 
 test("the section groups lost from degraded and never prints a rate", async () => {
@@ -573,11 +573,16 @@ test("the section groups lost from degraded and never prints a rate", async () =
     ],
   });
   const text = lines.join("\n");
-  assert.match(text, /LOST THE DICTATION/);
-  assert.match(text, /STILL WORKED, JUST WORSE/);
-  assert.match(text, /7 people {3}microphone capture stalled/);
-  assert.match(text, /1 person {3}paste fell back to the clipboard/);
-  assert.match(text, /Impact rate unavailable/);
+  assert.match(text, /^Lost the dictation:$/m);
+  assert.match(text, /^Worked, but worse:$/m);
+  assert.match(text, /^  7 people: microphone capture stalled$/m);
+  assert.match(text, /^  1 person: paste fell back to the clipboard$/m);
+  // #2621: no rate, and no sentence about why there is no rate - the README
+  // owns that. The headline is people and direction, nothing else.
+  assert.doesNotMatch(text, /Impact rate|identity systems|errors across/);
+  // The headline keeps its DATA SCOPE: the count covers the release line and
+  // newer, and a bare count would read as the whole error population.
+  assert.match(text, /^\d+ (person|people) hit an error on 2\.4\.0 or newer, /m);
   assert.doesNotMatch(text, /\d+(\.\d+)?%/, "the section must never print a percentage");
 });
 
@@ -590,31 +595,31 @@ test("a conservative row says delivery is not proven and a proven one does not",
   });
   const text = lines.join("\n");
   assert.match(text, /transcription helper failed, delivery not proven/);
-  assert.match(text, /2 people {3}microphone capture stalled(\n|$)/);
+  assert.match(text, /2 people: microphone capture stalled(\n|$)/);
 });
 
 test("the crash row reads as a crash exactly once", async () => {
   const { lines } = await render({ problems: [problemRow("EW-1", "", 1, 4, "fatal")] });
   const text = lines.join("\n");
-  assert.match(text, /1 person {3}app crash, delivery not proven/);
+  assert.match(text, /1 person: app crash, delivery not proven/);
   assert.equal(text.match(/delivery not proven/g).length, 1);
 });
 
 test("the people delta is stated in both directions and when flat", async () => {
   const up = await render({ problems: [problemRow("EW-1", "asr_failed", 1, 1)], people: 13, priorPeople: 12 });
-  assert.match(up.lines.join("\n"), /1 more than the previous period \(12 people\)/);
+  assert.match(up.lines.join("\n"), /^13 people hit an error on 2\.4\.0 or newer, up from 12\.$/m);
 
   const down = await render({ problems: [problemRow("EW-1", "asr_failed", 1, 1)], people: 10, priorPeople: 12 });
-  assert.match(down.lines.join("\n"), /2 fewer than the previous period/);
+  assert.match(down.lines.join("\n"), /^10 people hit an error on 2\.4\.0 or newer, down from 12\.$/m);
 
   const flat = await render({ problems: [problemRow("EW-1", "asr_failed", 1, 1)], people: 12, priorPeople: 12 });
-  assert.match(flat.lines.join("\n"), /the same as the previous period/);
+  assert.match(flat.lines.join("\n"), /^12 people hit an error on 2\.4\.0 or newer, the same as last time\.$/m);
 });
 
 test("the old-build tail is reported as an upper bound", async () => {
   const { lines } = await render({ problems: [problemRow("EW-1", "asr_failed", 1, 1)] });
   // Non-additive per-release counts, so it must not claim a distinct-person count.
-  assert.match(lines.join("\n"), /up to 2 people on builds older than 2\.4\.0/);
+  assert.match(lines.join("\n"), /^Up to 2 people hit an error on builds older than 2\.4\.0\.$/m);
 });
 
 test("a truncated release page drops the upper-bound claim it can no longer support", async () => {
@@ -697,7 +702,7 @@ test("zero problems renders an explicit good-news line", async () => {
 });
 
 test("unavailable copy says nothing was measured and leaks nothing technical", () => {
-  const lines = formatSentryUnavailable("Sentry, yesterday");
+  const lines = formatSentryUnavailable("Errors, yesterday");
   assert.equal(lines.length, 2);
   assert.match(lines[1], /not a report of zero/);
   for (const line of lines) {
@@ -714,7 +719,7 @@ test("an over-budget section discloses what it omitted instead of truncating sil
   const many = Array.from({ length: 60 }, (_, i) => problemRow(`EW-${i}`, "audio_capture_stalled", 2, 2));
   const { lines } = await render({ problems: many });
   const text = lines.join("\n");
-  assert.match(text, /more problems are not listed here\. The totals above include them\./);
+  assert.match(text, /more problems are not listed here\. People affected by them are in the total above\./);
   // STRICT. A "near its budget" tolerance is what let a real 24-character
   // overrun pass: the disclosure line was appended after the budget was already
   // spent. The budget governs the DESCRIPTION, so the title is excluded.
@@ -728,14 +733,12 @@ test("a full page of problems is disclosed as a limited breakdown", async () => 
   const { lines } = await render({ problems: many });
   const text = lines.join("\n");
   assert.match(text, /more problems may exist/);
-  // The error total and the visible breakdown are bounded DIFFERENTLY: events
-  // are summed from every returned row, while the list can be cut short again
-  // by the Discord budget. Collapsing both into "those listed above" contradicts
-  // the omission notice printed just above it (Codex review r2).
-  assert.match(text, /the error count covers every problem Sentry returned/);
-  assert.match(text, /the breakdown covers only those listed above/);
-  // 100 DISTINCT issues, so the measured count really is 100 here.
-  assert.match(text, /across 100 or more problems/);
+  // The people total is bounded differently from the list: it comes from an
+  // ungrouped aggregate that is never paginated, while the list can be cut
+  // short by the page and again by the Discord budget. Since #2621 the page
+  // prints no error or problem count, so the line claims only that split.
+  assert.match(text, /People affected by all of them are in the total above; the list above is incomplete\./);
+  assert.doesNotMatch(text, /errors across|or more problems/, "no count is asserted");
 });
 
 test("a truncated page never claims more problems than it can count (#2023)", async () => {
@@ -750,11 +753,12 @@ test("a truncated page never claims more problems than it can count (#2023)", as
 
   assert.equal(data.rows.length, 40, "100 rows over 40 issues must collapse to 40 problems");
   assert.equal(data.truncated, true, "a full page is still treated as possibly incomplete");
-  assert.match(text, /across 40 or more problems/);
-  assert.doesNotMatch(text, /100 or more problems/, "the page size is not a problem count");
-  assert.doesNotMatch(text, /largest 100/, "nor is it a claim about what the breakdown covers");
+  // #2621: no problem count reaches the page at all, so nothing can assert a
+  // number nobody measured. The truncation is still disclosed.
+  assert.doesNotMatch(text, /\d+ or more problems|largest 100/);
+  assert.match(text, /more problems may exist/);
   // The people total is unaffected by truncation and must keep saying so.
-  assert.match(text, /The affected-people total covers all of them/);
+  assert.match(text, /People affected by all of them are in the total above/);
 });
 
 test("a full page issues no second Sentry request", async () => {
@@ -775,7 +779,7 @@ test("the worst realistic section still fits Discord's per-embed limits", async 
     priorPeople: 1,
   });
   const data = await fetchSentrySection(ENV, WINDOW, { ...OPTS, fetchFn });
-  const lines = formatSentrySection(data, { title: "Sentry, last 7 days" });
+  const lines = formatSentrySection(data, { title: "Errors, last 7 days" });
   const [title, ...body] = lines;
   assert.ok(title.length <= DISCORD_LIMITS.embedTitle);
   assert.ok(body.join("\n").length <= DISCORD_LIMITS.embedDescription);
@@ -836,7 +840,7 @@ test("one Sentry issue is one problem even when it returns several rows (#2023)"
   // Exactly one rendered line for that issue, not three.
   const crashLines = lines.filter((l) => l.includes("app crash"));
   assert.equal(crashLines.length, 1, `expected one crash line, got ${JSON.stringify(crashLines)}`);
-  assert.match(lines.join("\n"), /1 person {3}app crash \(EXC_BAD_ACCESS\)/);
+  assert.match(lines.join("\n"), /1 person: app crash \(EXC_BAD_ACCESS\)/);
 });
 
 test("a merged people count says it is a lower bound, an unmerged one does not", async () => {
@@ -852,10 +856,10 @@ test("a merged people count says it is a lower bound, an unmerged one does not",
   });
   const text = lines.join("\n");
 
-  assert.match(text, /at least 3 people {3}app crash \(EXC_BAD_ACCESS\)/);
+  assert.match(text, /at least 3 people: app crash \(EXC_BAD_ACCESS\)/);
   // The two-way control. Without it, a hedge applied to EVERY row would pass the
   // assertion above while quietly making every exact figure look uncertain.
-  assert.match(text, /\n {2}5 people {3}microphone capture stalled/);
+  assert.match(text, /\n {2}5 people: microphone capture stalled/);
   assert.doesNotMatch(text, /at least 5 people/);
 });
 
@@ -998,11 +1002,11 @@ test("two problems that would render identically are separated by their issue id
   const text = lines.join("\n");
   // These fixtures carry no exception type, so both land on the bare "app
   // crash" label and the issue id is the ONLY thing separating them.
-  assert.match(text, /1 person {3}app crash EW-34, delivery not proven/);
-  assert.match(text, /1 person {3}app crash EW-3V, delivery not proven/);
+  assert.match(text, /1 person: app crash EW-34, delivery not proven/);
+  assert.match(text, /1 person: app crash EW-3V, delivery not proven/);
   // The row that does NOT collide keeps its clean label, so the id is a
   // targeted disambiguation rather than noise on every line.
-  assert.match(text, /5 people {3}microphone capture stalled(\n|$)/);
+  assert.match(text, /5 people: microphone capture stalled(\n|$)/);
 });
 
 test("a collision straddling the two groups is still disambiguated", () => {
@@ -1141,25 +1145,25 @@ test("an unusable release line stops after the two stage-one calls", async () =>
   assert.equal(urls.length, 2, "stage two must not run without a resolved floor");
 });
 
-test("the truncated headline says 'at least', and never claims the totals are complete", async () => {
+test("a truncated page never claims the people total includes the omitted rows", async () => {
   // `events` is summed from the returned rows, so on a truncated page it
-  // EXCLUDES everything past the first hundred. Printing it as the total
-  // understates it, and the old disclosure then said the totals included them.
+  // EXCLUDES everything past the first hundred. Since #2621 no error count is
+  // printed, so the only claim left to get wrong is the omission notice's
+  // "includes them", which must not appear when the page was cut.
   const many = Array.from({ length: 100 }, (_, i) => problemRow(`EW-${i}`, "asr_failed", 1, 1));
   const { lines } = await render({ problems: many });
   const text = lines.join("\n");
-  assert.match(text, /at least \d+ errors across 100 or more problems/);
-  assert.doesNotMatch(text, /The totals above include them/);
-  assert.match(text, /The affected-people total covers all of them/);
+  assert.doesNotMatch(text, /People affected by them are in the total above/);
+  assert.match(text, /People affected by all of them are in the total above/);
 });
 
-test("an untruncated section still says the totals include the omitted rows", async () => {
+test("an untruncated section still says the people total includes the omitted rows", async () => {
   // Two-way control: the qualifier above must apply ONLY when truncated, or the
   // section would hedge a number it knows exactly.
   const many = Array.from({ length: 60 }, (_, i) => problemRow(`EW-${i}`, "asr_failed", 1, 1));
   const { lines } = await render({ problems: many });
   const text = lines.join("\n");
-  assert.match(text, /The totals above include them/);
+  assert.match(text, /People affected by them are in the total above/);
   assert.doesNotMatch(text, /at least/);
 });
 

@@ -2930,8 +2930,10 @@ test("rankMovers compares the first two selected releases and checks every displ
     assert.equal(row.cells.length, 1, 'one release means one column');
   }
   const oneText = formatScorecard({ ranking: oneRanking }).join('\n');
-  assert.match(oneText, /No comparable ranked changes were available/);
-  assert.match(oneText, /Dictations ending without a completed transcript/);
+  assert.match(oneText, /Biggest shifts: nothing to rank yet\./);
+  assert.match(oneText, /Failed dictations/);
+  assert.match(oneText, new RegExp(
+    `^This version covers ${(oneRanking.summary.coverage * 100).toFixed(1)}% of measured dictations this week\\.$`, "m"));
 
   // Duplicate catalog entries multiply observations and can manufacture enough
   // history to normalise a ranking that should fall back.
@@ -3172,30 +3174,88 @@ test("scorecard formatting freezes coverage release age rows reasons and missing
   const ranking = rankMovers({ measurements, selection });
   const text = formatScorecard({ measurements, selection, ranking }).join("\n");
 
-  assert.match(text, /last 7 complete Eastern days/);
+  assert.match(text, /^Version check, last 7 days$/m);
   assert.ok(!/[\u2013\u2014]/.test(text),
     "user-facing copy must contain no em-dashes or en-dashes");
-  assert.match(text, /84\.8% of measured dictations across 2 releases/,
-    "coverage must name its denominator, not just say 'of use'");
-  assert.match(text, /newest release is always included/);
-  assert.match(text, /4-version cap reached/);
-  assert.match(text, /non-additive/, "people counts must be declared non-additive");
+  assert.match(text, /These 2 versions cover 84\.8% of measured dictations this week\./,
+    "coverage is the one method fact on the page, and it names its denominator");
+  // #2621: the method lines are GONE from the page and owned by the README.
+  for (const finePrint of ["newest release is always included", "cap reached", "non-additive",
+                           "Builds before", "publicly available", "samples)", "median week-to-week",
+                           "by the safety classifier", "of the measured week"]) {
+    assert.ok(!text.includes(finePrint), `fine print must not reach the page: ${finePrint}`);
+  }
   // stamp(3) is 2026-07-26T00:00:00Z, which is 20:00 EASTERN on July 25, so the
   // release was publicly available for July 25-28: FOUR days of window 0. Under
   // the previous UTC flooring this read as three. That difference is the bug.
-  assert.match(text, /2\.4\.1: 4\/7 days publicly available/);
-  assert.match(text, /no production data yet/, "an unobserved release must say so, not show zero");
-  assert.match(text, /Dictations ending without a completed transcript/);
+  // The header carries the age; an unobserved release says so instead of a
+  // column of "no data" being the only clue.
+  assert.match(text, /^2\.4\.1 \(out 4 days\) vs 2\.3\.2 \(no data yet\)$/m);
+  assert.match(text, /^Failed dictations: /m);
   assert.ok(!text.includes("Transcription failed"),
     "must never label the row as speech-engine reliability");
-  assert.match(text, /by the safety classifier/, "classifier split sits under Polish kept");
+  // Cells carry no version prefix: the header names the columns once.
+  assert.match(text, /^People: 10 vs 10$/m);
+  // Typical speed is identical across the two releases, so the RANKER drops
+  // it and the page names only the row that moved. Two-way on one fixture.
+  assert.match(text, /^Biggest shifts: Slowest 5% 3\.00s to 5\.00s\.$/m);
+  assert.ok(!ranking.movers.some((m) => m.metricKey === "speed_p50"),
+    "a measure that did not move is not a mover");
+  // A non-comparable row separates its cells with a bar, never "vs".
+  assert.match(text, /^Failed dictations: 1\.0% \| 1\.0% \(not compared: /m);
   // 2.4.1 and 2.3.2 straddle the typed-code boundary, so that row is not
   // comparable - and must still PRINT, with the reason in plain words.
-  assert.match(text, /not compared, definition changed between these releases/);
-  for (const label of Object.values({ p: "People", d: "Dictations", s: "Typical speed",
-      x: "Slowest 5%", a: "Auto-paste landed directly", k: "Polish kept" })) {
-    assert.ok(text.includes(label), `row ${label} must be present`);
+  assert.match(text, /\(not compared: definition changed between these releases\)/);
+  for (const label of ["People", "Dictations", "Typical speed", "Slowest 5%",
+                       "Auto-paste worked", "Apple polish kept", "Failed dictations"]) {
+    assert.match(text, new RegExp(`^${label.replace("%", "%")}: `, "m"), `row ${label} must be present`);
   }
+});
+
+test("scorecard cells format counts with separators and a missing value as 'no data'", () => {
+  // A synthetic ranking, because the fixture's counts are all under a
+  // thousand and never null. Built by hand rather than through the ranker so
+  // that each cell's rendering is the only thing under test.
+  const ranking = {
+    rows: [
+      { metricKey: "dictations", unit: "count", comparable: true, cells: [{ value: 9902 }, { value: null }] },
+      { metricKey: "speed_p50", unit: "seconds", comparable: true, cells: [{ value: 0.84 }, { value: 0.6 }] },
+      { metricKey: "autopaste_direct", unit: "share", comparable: true, cells: [{ value: 0.983 }, { value: 0.977 }] },
+    ],
+    ages: new Map([["2.4.6", 6], ["2.4.5", 7]]),
+    summary: { releases: [{ version: "2.4.6", observed: true }, { version: "2.4.5", observed: true }], coverage: 0.807 },
+    movers: [{ metricKey: "speed_p50", unit: "seconds", previousValue: 0.6, newestValue: 0.84 },
+             { metricKey: "autopaste_direct", unit: "share", previousValue: 0.977, newestValue: 0.983 }],
+  };
+  const lines = formatScorecard({ ranking });
+  assert.deepEqual(lines, [
+    "Version check, last 7 days",
+    "2.4.6 (out 6 days) vs 2.4.5",
+    "",
+    "Dictations: 9,902 vs no data",
+    "Typical speed: 0.84s vs 0.60s",
+    "Auto-paste worked: 98.3% vs 97.7%",
+    "",
+    "Biggest shifts: Typical speed 0.60s to 0.84s; Auto-paste worked 97.7% to 98.3%.",
+    "These 2 versions cover 80.7% of measured dictations this week.",
+  ]);
+  // Singular day, and a release out today.
+  const young = { ...ranking, ages: new Map([["2.4.6", 1], ["2.4.5", 0]]) };
+  assert.equal(formatScorecard({ ranking: young })[1], "2.4.6 (out 1 day) vs 2.4.5 (out today)");
+  // An age that is not a whole non-negative number is a producer defect, not
+  // "out NaN days".
+  for (const bad of [-1, 1.5, NaN, "3"]) {
+    assert.throws(
+      () => formatScorecard({ ranking: { ...ranking, ages: new Map([["2.4.6", bad], ["2.4.5", 7]]) } }),
+      /release age must be a non-negative integer/, String(bad));
+  }
+  // Every mover handed over is printed, in the ranker's order, even when the
+  // two values round to the same string: membership is the ranker's call.
+  const near = {
+    ...ranking,
+    movers: [{ metricKey: "speed_p50", unit: "seconds", previousValue: 0.6, newestValue: 0.604 }],
+  };
+  assert.ok(formatScorecard({ ranking: near }).includes("Biggest shifts: Typical speed 0.60s to 0.60s."));
 });
 
 test("ranked-change formatting freezes normalized raw-fallback and unavailable copy", async () => {
@@ -3210,20 +3270,17 @@ test("ranked-change formatting freezes normalized raw-fallback and unavailable c
   const ranking = rankMovers({ measurements, selection });
   const text = formatScorecard({ measurements, selection, ranking }).join("\n");
 
-  assert.match(text, /ranked changes, not alerts/,
-    "the section must state plainly that it is not an alarm");
-  assert.match(text, /samples\)/, "every mover must disclose both sample counts");
-  assert.match(text, /median week-to-week movement|size of change only/,
-    "each mover must say which basis ranked it");
+  // One sentence, "from X to Y" per mover, in the ranker's order, no basis, no
+  // sample counts (#2621). Two-way: the sentence names a real mover's numbers.
+  assert.match(text, /^Biggest shifts: [A-Z][^;]+ [0-9.]+(s|%) to [0-9.]+(s|%)(; [^;]+)*\.$/m);
+  assert.ok(!text.includes("samples"), "sample counts are README material, not page material");
 
-  // Prohibited copy: this is a scorecard, not a verdict. The only permitted
-  // occurrence of "alert" is the explicit not-alerts statement.
+  // Prohibited copy: this is a scorecard, not a verdict. No "alert" either -
+  // the page no longer needs to say what it is not.
   for (const banned of ["healthy", "unhealthy", "warning", "regression", "improvement",
-                        "threshold", "better", "worse"]) {
+                        "threshold", "better", "worse", "alert", "up ", "down "]) {
     assert.ok(!text.toLowerCase().includes(banned), `must not use verdict language: ${banned}`);
   }
-  assert.equal((text.toLowerCase().match(/alert/g) || []).length, 1,
-    "the only 'alert' must be the not-alerts statement");
 
   // SOURCE GUARD: the formatter must consume decisions, never re-derive them.
   // Importing a metric authority here would create a second opinion on row
@@ -3291,19 +3348,19 @@ test("a clean run resolves ONE context and posts ONE payload carrying all three 
     assert.equal(payload.content, reportHeader("2026-07-17"));
     assert.equal(payload.embeds.length, 3, "exactly three embeds");
     assert.equal(payload.embeds[0].title, "Adoption");
-    assert.match(payload.embeds[1].title, /^Version scorecard/);
-    assert.equal(payload.embeds[2].title, "Sentry, yesterday");
+    assert.match(payload.embeds[1].title, /^Version check/);
+    assert.equal(payload.embeds[2].title, "Errors, yesterday");
     // Real sections, not the unavailable copy.
     assert.match(payload.embeds[0].description, /Total users: 1 people used the app that day\./);
-    assert.match(payload.embeds[1].description, /2\.4\.1: 7\/7 days publicly available/);
-    assert.match(payload.embeds[1].description, /2\.4\.0: 7\/7 days publicly available/);
+    // Both releases out the whole week: bare versions in the header, no age.
+    assert.match(payload.embeds[1].description, /^2\.4\.1 vs 2\.4\.0$/m);
     // The Sentry section is REAL here, not the unavailable copy: the release
     // line resolves to 2.4.0 from the fixture's own per-release split, and both
     // groups render.
-    assert.match(payload.embeds[2].description, /on 2\.4\.0 and newer/);
-    assert.match(payload.embeds[2].description, /LOST THE DICTATION/);
-    assert.match(payload.embeds[2].description, /7 people {3}microphone capture stalled/);
-    assert.match(payload.embeds[2].description, /STILL WORKED, JUST WORSE/);
+    assert.match(payload.embeds[2].description, /^\d+ (person|people) hit an error on 2\.4\.0 or newer, /m);
+    assert.match(payload.embeds[2].description, /Lost the dictation:/);
+    assert.match(payload.embeds[2].description, /7 people: microphone capture stalled/);
+    assert.match(payload.embeds[2].description, /Worked, but worse:/);
     for (const embed of payload.embeds) {
       assert.doesNotMatch(embed.description, /unavailable today/);
     }
@@ -3450,7 +3507,7 @@ test("an adoption rejection releases its slot and the scorecard still runs and r
     assert.ok(mock.requests.some((u) => u === APPCAST_URL),
       "stage-2 release resolution must still run for the surviving section");
     assert.equal(mock.discordPayloads.length, 1);
-    assert.match(mock.discordPayloads[0].embeds[1].description, /2\.4\.1: 7\/7 days publicly available/);
+    assert.match(mock.discordPayloads[0].embeds[1].description, /^2\.4\.1 vs 2\.4\.0$/m);
   } finally {
     mock.restore();
   }
@@ -3464,7 +3521,7 @@ test("an adoption-only failure posts the scorecard beside an unavailable adoptio
     assert.equal(mock.discordPayloads.length, 1, "one combined report, not one message per section");
     const [adoption, scorecard] = mock.discordPayloads[0].embeds;
     assert.match(adoption.description, /could not be measured, so this is not a report of zero/);
-    assert.match(scorecard.description, /2\.4\.1: 7\/7 days publicly available/);
+    assert.match(scorecard.description, /^2\.4\.1 vs 2\.4\.0$/m);
   } finally {
     mock.restore();
   }
@@ -3506,14 +3563,13 @@ test("every section failing still posts exactly one message, with each marked un
     // Sentry is unaffected by a PostHog 401 and must still render for real.
     // A section that failed BECAUSE a different vendor failed would be a
     // coupling this design does not have.
-    assert.equal(sentry.title, "Sentry, yesterday");
-    // Checked against the unavailable COPY, not the word "unavailable": a
-    // healthy section deliberately contains the sentence "Impact rate
-    // unavailable", so a bare word match would confuse a working section with
-    // a broken one.
+    assert.equal(sentry.title, "Errors, yesterday");
+    // Checked against the unavailable COPY, not the word "unavailable", so a
+    // healthy section that happens to use the word is never confused with a
+    // broken one.
     assert.doesNotMatch(sentry.title, /unavailable today/);
     assert.doesNotMatch(sentry.description, /could not be measured/);
-    assert.match(sentry.description, /on 2\.4\.0 and newer/);
+    assert.match(sentry.description, /^\d+ (person|people) hit an error on 2\.4\.0 or newer, /m);
     // Still a report, still three embeds: the founder learns that nothing was
     // measured, which is not the same as learning that everything was zero.
     assert.equal(mock.discordPayloads[0].embeds.length, 3);
@@ -4103,7 +4159,7 @@ test("only a declared scorecard contract failure can trigger the whole-run path"
     const payload = mock.discordPayloads[0];
     assert.ok("embeds" in payload, "an adoption failure must still produce a combined report");
     assert.match(payload.embeds[0].title, /unavailable today/);
-    assert.match(payload.embeds[1].description, /2\.4\.1: 7\/7 days publicly available/,
+    assert.match(payload.embeds[1].description, /^2\.4\.1 vs 2\.4\.0$/m,
       "the scorecard is real, not discarded by an impostor property");
   } finally {
     mock.restore();
@@ -4175,19 +4231,14 @@ test("builds below the measurement floor are hidden everywhere, not shown with a
   const ranking = rankMovers({ measurements, selection });
   assert.equal(ranking.summary.minVersion, "2.2.0");
   const text = formatScorecard({ ranking }).join("\n");
-  assert.match(text, /Builds before 2\.2\.0 are not measured/);
-  // Those builds DID record filter_tripped; production shows classifier_discard
-  // on them. What they did not record was every fallback reason.
-  assert.match(text, /did not record every reason polished text was rejected/);
-  assert.doesNotMatch(text, /never recorded why/);
+  // #2621: the floor is no longer DISCLOSED on the page; the README owns the
+  // explanation. It still travels on the ranking (asserted above) so a reader
+  // of the data can see it, and the page must not print it or a hole where it
+  // was.
+  assert.doesNotMatch(text, /2\.2\.0|Builds before|undefined/);
   // The floor exists BECAUSE of the polish boundary, so the two must not drift.
   assert.equal(telemetryContractFor("polish_kept", "2.2.0"), "polish-v2-fallback-reason");
   assert.equal(telemetryContractFor("polish_kept", "2.1.9"), null);
-  assert.doesNotMatch(text, /undefined/);
-  assert.throws(
-    () => formatScorecard({ ranking: { ...ranking, summary: { ...ranking.summary, minVersion: undefined } } }),
-    /minVersion must be a version string/
-  );
 });
 
 test("a release published after the reported window is never crowned newest", async () => {

@@ -646,7 +646,7 @@ async function postFailureNotice(env, label, { fetchFn = fetch } = {}) {
 
 /** This digest always reports the same complete week for every section, so the
  * title needs no date of its own; the range is on the message's content line. */
-const SENTRY_TITLE = "Sentry, last 7 days";
+const SENTRY_TITLE = "Errors, last 7 days";
 
 /** Sentry's window, derived from the ONE resolved week and nothing else.
  *

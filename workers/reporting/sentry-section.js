@@ -836,37 +836,29 @@ export function formatSentrySection(data, { title, budget: requestedBudget = DEF
     return finishSection(lines, budget);
   }
 
-  // THE TRUNCATED CASE IS A DIFFERENT SENTENCE, not the same one with a note.
-  // `events` is summed from the returned problem rows, so on a truncated page
-  // it EXCLUDES everything past the first hundred: printing it as the error
-  // total understates it, and the old disclosure then said "the totals above
-  // include them", which was flatly untrue. The PEOPLE figure is unaffected -
-  // it comes from an ungrouped aggregate that is never paginated - so only the
-  // error count and the problem count need qualifying.
-  const errorText = data.truncated
-    ? `at least ${data.events} ${data.events === 1 ? "error" : "errors"}`
-    : `${data.events} ${data.events === 1 ? "error" : "errors"}`;
-  // COUNTED FROM THE ROWS, never from the page size. Before #2023 this said
-  // "100 or more problems", which was sound while one row WAS one problem. Now
-  // that rows collapse by issue, a full 100-row page can yield fewer than 100
-  // unique problems, and a hardcoded 100 would assert a number nobody measured.
-  // `rows.length` is what we actually saw either way; `truncated` only adds the
-  // "or more".
-  const problemText = data.truncated
-    ? `${data.rows.length} or more ${data.rows.length === 1 ? "problem" : "problems"}`
-    : `${data.rows.length} ${data.rows.length === 1 ? "problem" : "problems"}`;
-  lines.push(`${people(data.people)} hit ${errorText} across ${problemText}, on ${data.floor} and newer.`);
-
-  // The action metric. An absolute count rises with usage, so it cannot answer
-  // "is this spreading", which is the entire reason this section exists.
-  const delta = data.people - data.priorPeople;
-  const direction = delta === 0 ? "the same as" : delta > 0 ? `${delta} more than` : `${-delta} fewer than`;
-  lines.push(`That is ${direction} the previous period (${people(data.priorPeople)}).`);
+  // ONE headline: people, and which way it moved (#2621). The PEOPLE figure is
+  // the action metric - an absolute error count rises with usage and cannot
+  // answer "is this spreading" - and it comes from an ungrouped aggregate that
+  // is never paginated, so it needs no truncation qualifier. The error and
+  // problem counts, which did need qualifying, are no longer printed: the
+  // founder read "16 people hit 61 errors across 6 problems" as three numbers
+  // fighting for one sentence. `data.events` and `data.rows.length` still exist
+  // for the truncation logic below.
+  //
   // Never a rate. Sentry and PostHog join only per INSTALL and only partially
   // (sentry-operations.md RULE: join-sentry-to-posthog-by-install), so dividing
   // one system's distinct-user count by the other's would be arithmetic across
-  // two identity systems. Saying so is better than inventing a denominator.
-  lines.push("Impact rate unavailable: error counts and usage counts come from different identity systems.");
+  // two identity systems. The page no longer says so out loud; the README does.
+  const delta = data.people - data.priorPeople;
+  const movement =
+    delta === 0
+      ? "the same as last time"
+      : delta > 0
+        ? `up from ${data.priorPeople}`
+        : `down from ${data.priorPeople}`;
+  // The floor stays in the headline: the people count covers the release
+  // line and newer, and a bare count would read as the whole error population.
+  lines.push(`${people(data.people)} hit an error on ${data.floor} or newer, ${movement}.`);
 
   // TWO ERROR SOURCES PULLING OPPOSITE WAYS MEANS NO BOUND EXISTS, SO PRINT NO
   // NUMBER. The sum OVERSTATES, because per-release people counts are not
@@ -883,13 +875,15 @@ export function formatSentrySection(data, { title, budget: requestedBudget = DEF
   // conclusion this section must never let a reader draw by accident.
   if (data.releasesTruncated) {
     lines.push(
-      `Separately, the release list hit its ${RELEASE_PAGE_LIMIT}-row limit, ` +
+      `The release list hit its ${RELEASE_PAGE_LIMIT}-row limit, ` +
         `so people on builds older than ${data.floor} could not be counted.`
     );
   } else if (data.tailPeople > 0) {
     // "Up to", because these are per-release counts summed across releases and
     // one person can appear under more than one.
-    lines.push(`Separately, up to ${people(data.tailPeople)} on builds older than ${data.floor}.`);
+    // Not "plus" and not "not counted above": one person can hit errors on a
+    // current build AND an old one, so the two populations can overlap.
+    lines.push(`Up to ${people(data.tailPeople)} hit an error on builds older than ${data.floor}.`);
   }
   lines.push("");
 
@@ -921,8 +915,8 @@ export function formatSentrySection(data, { title, budget: requestedBudget = DEF
     (data.truncated ? TRUNCATED_LINE.length + 1 : 0) +
     (data.badgesIncomplete ? BADGES_INCOMPLETE_LINE.length + 1 : 0);
   const state = { budget: budget - reserve, omitted: 0 };
-  appendGroup(lines, "LOST THE DICTATION", lost, state);
-  appendGroup(lines, "STILL WORKED, JUST WORSE", degraded, state);
+  appendGroup(lines, "Lost the dictation:", lost, state);
+  appendGroup(lines, "Worked, but worse:", degraded, state);
 
   if (state.omitted > 0) lines.push(omittedLine(state.omitted, data.truncated));
   if (data.truncated) lines.push(TRUNCATED_LINE);
@@ -973,26 +967,24 @@ const BADGES_INCOMPLETE_LINE =
 /** Deliberately carries NO number. Sentry cut the page at 100 ROWS, and since
  * #2023 those rows collapse by issue, so the page size is no longer the count of
  * problems it covers - "the largest 100" would name a quantity this line cannot
- * support. The headline sentence above already states the measured count and
- * qualifies it with "or more"; this line's job is the CLAIM, which is that the
- * error count and breakdown are bounded by what came back while the people
- * total is not.
+ * support. Since #2621 the headline prints no error or problem count at all, so
+ * this line's whole job is the CLAIM: the list is bounded by what came back
+ * while the people total is not.
  *
  * `BADGES_INCOMPLETE_LINE` above keeps its 100 on purpose: it describes the
  * ISSUES endpoint, whose rows are one-per-issue and are never collapsed, so the
  * page size there really is a problem count. Two different axes, and only this
  * one moved. */
 const TRUNCATED_LINE =
-  "Sentry returned a full page, so more problems may exist. The affected-people total " +
-  "covers all of them; the error count covers every problem Sentry returned, while the " +
-  "breakdown covers only those listed above.";
+  "Sentry returned a full page, so more problems may exist. People affected by all of them " +
+  "are in the total above; the list above is incomplete.";
 
 /** `truncated` changes the CLAIM, not just the wording: when the problem page
  * was cut off, the totals above genuinely do NOT include the omitted rows, so
  * the sentence that says they do must not be printed. */
 const omittedLine = (n, truncated) =>
   `${n} more ${n === 1 ? "problem is" : "problems are"} not listed here.` +
-  (truncated ? "" : " The totals above include them.");
+  (truncated ? "" : " People affected by them are in the total above.");
 
 /** The rendered description length, which is every line EXCEPT the title.
  *
@@ -1094,7 +1086,7 @@ function appendGroup(lines, heading, rows, state) {
     const mixed = others > 0
       ? ` and ${others} other ${others === 1 ? "failure" : "failures"} on the same issue`
       : "";
-    lines.push(`  ${peopleText}   ${row.label}${mixed}${suffix}${row.isNew ? "   NEW" : ""}`);
+    lines.push(`  ${peopleText}: ${row.label}${mixed}${suffix}${row.isNew ? "   NEW" : ""}`);
     if (descriptionLength(lines) > state.budget) {
       lines.pop();
       state.omitted += 1;

@@ -543,7 +543,7 @@ async function postFailureNotice(env, dateStr) {
 
 /** Just "Sentry, yesterday": the day is on the message's content line, and this
  * section always reports the day the rest of the report is about. */
-const SENTRY_TITLE = "Sentry, yesterday";
+const SENTRY_TITLE = "Errors, yesterday";
 
 /** Sentry's window, derived from the ONE resolved report context and nothing
  * else - this file's orchestration rule, applied to a third vendor. Sentry's
