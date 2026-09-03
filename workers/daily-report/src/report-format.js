@@ -1,5 +1,5 @@
 /**
- * Version-scorecard presentation (issue #1838 chunk 5).
+ * Version-scorecard presentation (issue #1838 chunk 5, reshaped by #2621).
  *
  * Sole owner of every scorecard sentence the founder reads, and NOTHING else.
  * It imports no metric authority: row order, units, comparability, values,
@@ -10,9 +10,18 @@
  * The report is a SCORECARD, not an alarm. Defect detection is already owned by
  * the twice-daily Sentry triage routines, and the previous threshold-alarm shape
  * is exactly what made this report useless to its one reader. So: no thresholds,
- * no colours, no healthy/unhealthy states, and no better/worse language. Movers
- * are ranked changes, explicitly labelled as not alerts; their job is to guide
- * the eye, not to render a verdict.
+ * no colours, no healthy/unhealthy states, and no better/worse language. The
+ * biggest shifts are named to guide the eye, never to render a verdict.
+ *
+ * #2621: the page carries NUMBERS and nothing that explains method. The founder
+ * read the previous shape as "too much information I can't make heads or tails
+ * of": four lines of method before the first number, two versions packed into
+ * every row, sub-lines under rows, sample counts and a ranking basis under every
+ * mover. Every one of those facts still exists - coverage, the measurement
+ * floor, non-additive people, the polish split, the mover basis - and the
+ * worker README owns their explanation. The page shows one comparison in plain
+ * words. A footnote states coverage in one sentence because it is the one
+ * method fact that changes how much the numbers mean.
  */
 
 const ROW_LABELS = {
@@ -20,25 +29,51 @@ const ROW_LABELS = {
   dictations: "Dictations",
   speed_p50: "Typical speed",
   speed_p95: "Slowest 5%",
-  autopaste_direct: "Auto-paste landed directly",
-  polish_kept: "Polish kept",
+  autopaste_direct: "Auto-paste worked",
+  // Apple Intelligence attempts only (METRIC_CALCULATIONS.polish_kept's
+  // population), so the label must not read as every polish provider.
+  polish_kept: "Apple polish kept",
   // Never "Transcription failed", and never speech-engine reliability: the app
   // stamps EVERY terminal failure with the transcription stage, including
   // no-microphone and permission failures, so that label would send someone
-  // chasing the speech engine for a microphone bug.
-  transcription_failed: "Dictations ending without a completed transcript",
+  // chasing the speech engine for a microphone bug. "Failed dictations" names
+  // the outcome the user had, whatever stage produced it.
+  transcription_failed: "Failed dictations",
 };
 
-const pct = (v) => `${(v * 100).toFixed(1)}%`;
-const secs = (v) => `${v.toFixed(2)}s`;
+const pct = (v, decimals = 1) => `${(v * 100).toFixed(decimals)}%`;
+const secs = (v, decimals = 2) => `${v.toFixed(decimals)}s`;
+
+/** Two values of one unit, rendered so the reader can SEE the movement between
+ * them. The ranker decides which rows are movers; a nonzero movement smaller
+ * than the page's usual precision would otherwise print as "0.60s to 0.60s"
+ * under "Biggest shifts" (cloud review on #2622). Rather than the formatter
+ * dropping the mover - a second authority on membership - it adds decimals
+ * until the two differ, up to a bound: past four extra places the movement is
+ * not a shift a reader can act on, and both values print at the bound. */
+function renderPair(unit, from, to) {
+  const fmt = unit === "seconds" ? secs : pct;
+  const base = unit === "seconds" ? 2 : 1;
+  for (let decimals = base; decimals <= base + 4; decimals += 1) {
+    const a = fmt(from, decimals);
+    const b = fmt(to, decimals);
+    if (a !== b || decimals === base + 4) return [a, b];
+  }
+  /* unreachable: the loop returns at the bound */
+}
+// Explicit locale: a Worker's default locale is not something a reader can
+// see, and "9902" against "9,902" is the difference between a glance and a
+// count. Counts are integers; a fractional count would be a producer defect
+// and prints as-is rather than being rounded into a lie.
+const count = (v) => new Intl.NumberFormat("en-US").format(v);
 const render = (value, unit) =>
   value === null || value === undefined
-    ? "not enough data"
+    ? "no data"
     : unit === "seconds"
       ? secs(value)
       : unit === "share"
         ? pct(value)
-        : String(value);
+        : count(value);
 
 function requireNumber(value, label) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -47,111 +82,91 @@ function requireNumber(value, label) {
   return value;
 }
 
+/** One release's name for the header: the version, plus the one fact about it
+ * that changes how to read its column. Under a week old says how many days it
+ * has been out; no data yet says so instead of a column of "no data" being the
+ * only clue. A release out the whole week is just its version. */
+function releaseHeading(release, age) {
+  if (!Number.isInteger(age) || age < 0) {
+    throw new TypeError(`release age must be a non-negative integer, got ${String(age)}`);
+  }
+  if (!release.observed) return `${release.version} (no data yet)`;
+  if (age === 0) return `${release.version} (out today)`;
+  if (age < 7) return `${release.version} (out ${age} ${age === 1 ? "day" : "days"})`;
+  return release.version;
+}
+
 /** One deterministic scorecard section, as an array of lines. */
 export function formatScorecard({ ranking }) {
   if (!ranking || !Array.isArray(ranking.rows) || !(ranking.ages instanceof Map) ||
-      !ranking.summary || !Array.isArray(ranking.summary.releases)) {
-    throw new TypeError("formatScorecard requires ranking.rows, ranking.ages and ranking.summary");
+      !ranking.summary || !Array.isArray(ranking.summary.releases) ||
+      !Array.isArray(ranking.movers) || !Number.isInteger(ranking.comparableMeasures)) {
+    throw new TypeError(
+      "formatScorecard requires ranking.rows, ranking.ages, ranking.summary, ranking.movers and ranking.comparableMeasures"
+    );
   }
-  const lines = [];
   // The formatter takes ONLY the ranking. It has no access to the raw selection
   // at all, so a raw tag form, a stale coverage figure or a stale cap flag
   // cannot reach the page - the previous shape merely asked it not to look.
-  const { releases, coverage, capReached, minVersion } = ranking.summary;
+  const { releases, coverage } = ranking.summary;
   requireNumber(coverage, "ranking.summary.coverage");
-  if (typeof minVersion !== "string" || minVersion.length === 0) {
-    throw new TypeError(`ranking.summary.minVersion must be a version string, got ${String(minVersion)}`);
-  }
 
-  lines.push("Version scorecard, last 7 complete Eastern days");
+  const lines = ["Version check, last 7 days"];
   lines.push(
-    `Covering ${pct(coverage)} of measured dictations across ` +
-      `${releases.length} release${releases.length === 1 ? "" : "s"}.`
+    releases
+      .map((r) => {
+        if (!ranking.ages.has(r.version)) {
+          // Never defaulted to zero: a missing age would print a confident
+          // "out 0 days" for a release we simply failed to measure.
+          throw new TypeError(`ranking.ages is missing release ${r.version}`);
+        }
+        return releaseHeading(r, ranking.ages.get(r.version));
+      })
+      .join(" vs ")
   );
-  lines.push("The newest release is always included, whatever its share.");
-  lines.push(
-    `Builds before ${minVersion} are not measured: they did not record every reason ` +
-      "polished text was rejected, so their score would read a false 100%."
-  );
-  if (capReached) lines.push("4-version cap reached before the coverage target.");
-  lines.push("People counts are non-additive: one person can appear under more than one release.");
-
-  for (const r of releases) {
-    if (!ranking.ages.has(r.version)) {
-      // Never defaulted to zero: a missing age would print a confident
-      // "0/7 days publicly available" for a release we simply failed to measure.
-      throw new TypeError(`ranking.ages is missing release ${r.version}`);
-    }
-    lines.push(
-      `${r.version}: ${ranking.ages.get(r.version)}/7 days publicly available` +
-        (r.observed ? "" : ", no production data yet")
-    );
-  }
   lines.push("");
 
   for (const row of ranking.rows) {
-    const cells = row.cells.map((c) => `${c.version} ${render(c.value, row.unit)}`);
-    lines.push(`${ROW_LABELS[row.metricKey]}: ${cells.join("  |  ")}`);
-
-    if (row.metricKey === "dictations") {
-      lines.push(
-        "  " +
-          row.cells
-            .map((c) =>
-              c.shareOfWindow === null
-                ? `${c.version} share unavailable`
-                : `${c.version} ${pct(c.shareOfWindow)} of the measured week`
-            )
-            .join("  |  ")
-      );
-    }
-    if (row.metricKey === "polish_kept") {
-      lines.push(
-        "  " +
-          row.cells
-            .map((c) =>
-              c.classifierDiscards === null
-                ? `${c.version} breakdown unavailable`
-                : `${c.version} ${c.classifierDiscards} by the safety classifier, ` +
-                  `${c.otherDiscards} by other checks`
-            )
-            .join("  |  ")
-      );
-    }
+    // Cells in header order, so the reader never needs a version prefix on
+    // every number: the header names the columns once.
     // A non-comparable row still PRINTS, with the reason in plain words. Hiding
-    // it leaves a silent gap; drawing a comparison across it would be a lie.
-    if (!row.comparable) lines.push(`  not compared, ${row.reason}`);
+    // it leaves a silent gap; drawing a comparison across it would be a lie -
+    // so its cells are separated by a bar, never by "vs".
+    const cells = row.cells.map((c) => render(c.value, row.unit)).join(row.comparable ? " vs " : " | ");
+    const caveat = row.comparable ? "" : ` (not compared: ${row.reason})`;
+    lines.push(`${ROW_LABELS[row.metricKey]}: ${cells}${caveat}`);
   }
 
   lines.push("");
-  lines.push(...formatMovers(ranking));
+  lines.push(formatShifts(ranking));
+  lines.push(
+    `${releases.length === 1 ? "This version covers" : `These ${releases.length} versions cover`} ` +
+      `${pct(coverage)} of measured dictations this week.`
+  );
   return lines;
 }
 
-function formatMovers(ranking) {
-  const lines = ["Ranked changes (these are ranked changes, not alerts):"];
+/** The biggest shifts between the two newest releases, as one sentence. The
+ * ranker decided which rows and in what order; this names them "from X to Y",
+ * which is the whole fact, with no verdict attached. */
+function formatShifts(ranking) {
   if (ranking.movers.length === 0) {
-    // Not "nothing changed": with one release, or insufficient history, there
-    // was nothing rankable to begin with, which is a different statement.
-    lines.push("  No comparable ranked changes were available.");
-    return lines;
+    // Two different facts hide behind an empty list (cloud review on #2622):
+    // measures were ranked and none moved, which is a statement about the
+    // product; or nothing was rankable - one release, no comparable contract -
+    // which is a statement about the data. Only the ranker knows which.
+    return ranking.comparableMeasures > 0
+      ? "Biggest shifts: none, nothing moved between these two releases."
+      : "Biggest shifts: nothing to rank yet.";
   }
-  for (const m of ranking.movers) {
-    const unit = m.unit === "seconds" ? secs : pct;
-    const sign = m.signedDifference >= 0 ? "up" : "down";
-    lines.push(
-      `  ${ROW_LABELS[m.metricKey]}: ${m.newestVersion} ${unit(m.newestValue)} ` +
-        `vs ${m.previousVersion} ${unit(m.previousValue)}, ${sign} ` +
-        `${unit(Math.abs(m.signedDifference))} ` +
-        `(${m.newestSamples} and ${m.previousSamples} samples).`
-    );
-    lines.push(
-      m.basis === "median-historical-movement"
-        ? "    Ranked against this measure's median week-to-week movement."
-        : `    Ranked by size of change only, ${m.fallbackReason}.`
-    );
-  }
-  return lines;
+  // Every mover the ranker handed over is printed: which rows are movers, and
+  // in what order, is the ranker's decision alone (it already drops a measure
+  // that did not move).
+  const parts = ranking.movers.map((m) => {
+    const [from, to] = renderPair(m.unit, m.previousValue, m.newestValue);
+    return `${ROW_LABELS[m.metricKey]} ${from} to ${to}`;
+  });
+  return `Biggest shifts: ${parts.join("; ")}.`;
 }
 
 /** Plain-language scorecard-unavailable copy, owned here so the integration
@@ -159,7 +174,7 @@ function formatMovers(ranking) {
  * technical: no error text, URL, status code or response body. */
 export function formatScorecardUnavailable() {
   return [
-    "Version scorecard, unavailable today.",
+    "Version check, unavailable today.",
     "Version measurements could not be completed, so this is not a report of zero.",
   ];
 }

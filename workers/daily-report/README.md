@@ -35,6 +35,49 @@ integer, no decimals. If `total_users` is 0 that day, the whole
 engine/polish section is omitted (no divide-by-zero, no misleading "0%"
 noise on a genuinely empty day).
 
+## Reading the version check and the error section (#2621)
+
+The two lower embeds print numbers and one footnote, nothing that explains method. The founder read
+the earlier shape ("Covering 80.7% of measured dictations across 2 releases", "People counts are
+non-additive", "Ranked against this measure's median week-to-week movement") as noise he could not
+decode, so the explanations live here instead.
+
+**Version check, last 7 days.** Header: the displayed releases, newest first, each with the one fact
+that changes how to read its column: `(out N days)` when it shipped inside the window, `(no data yet)`
+when nothing has been measured on it. A release out the whole week is just its version.
+
+- Which releases appear: the newest published release is ALWAYS shown, whatever its share, then
+  releases are added in descending share of the week's dictations until 80% is covered or four are
+  shown. The footnote `These N versions cover X% of the week's dictations` is the coverage that
+  selection reached; the denominator is every measured dictation, including versions not displayed.
+- Builds before 2.2.0 are never measured. They did not record every reason polished text was
+  rejected, so their AI-polish figure would read a false 100%; the founder chose (2026-07-29) to hide
+  them rather than print a figure known to be wrong beside a caveat.
+- `People` is non-additive: one person can appear under more than one release in a week.
+- `Typical speed` is the median end-to-end time; `Slowest 5%` the 95th percentile.
+- `Auto-paste worked` is the share of paste attempts that landed directly rather than via the
+  clipboard fallback. `Apple polish kept` is the share of Apple Intelligence polish attempts whose
+  output was kept (that provider only, `METRIC_CALCULATIONS.polish_kept`); the split between the safety
+  classifier and other checks is still measured (`classifierDiscards`) and no longer printed. `Failed dictations` counts dictations that ended without a completed transcript, whatever
+  stage failed; it is deliberately not labelled as a transcription-engine figure because the app stamps
+  no-microphone and permission failures with that stage too.
+- `(not compared: …)` on a row means the displayed releases do not share one telemetry contract for
+  that metric, so the numbers are printed but no shift is drawn across them.
+- `Biggest shifts` names the rows whose movement between the two newest releases ranked highest,
+  as "from X to Y" with no verdict. Ranking is against each measure's median week-to-week movement
+  where enough history exists, otherwise by size of change; the sample counts behind each are in
+  `ranking.movers`. A measure that did not move between the two releases is never a mover.
+
+**Errors, yesterday.** One headline: people who hit an error on the release line and newer, and the
+direction against the previous period. The error and problem counts are still measured (`data.events`, `data.rows.length`) and no
+longer printed. No rate is ever shown: Sentry and PostHog join only per install and only partially
+(`sentry-operations.md` RULE: join-sentry-to-posthog-by-install), so dividing one system's people by
+the other's would be arithmetic across two identity systems. `Lost the dictation` and `Worked, but
+worse` are the two severity groups; `delivery not proven` marks a row whose producer cannot confirm
+the text was lost; `NEW` marks a problem first seen in the window. The tail line `Up to N people hit an
+error on builds older than X` is an upper bound because per-release people counts are not additive, and
+it can overlap the headline: one person can hit errors on a current build and an old one.
+
 ## Release list source (the appcast, not GitHub)
 
 The version scorecard needs two facts per release: the version and when it

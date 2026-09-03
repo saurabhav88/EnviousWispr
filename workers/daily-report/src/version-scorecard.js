@@ -1529,7 +1529,7 @@ export function rankMovers({ measurements, selection }) {
 
   if (displayed.length < 2) {
     // Fewer than two displayed releases: render the grid, invent no comparison.
-    return { movers: [], ages, rows: buildRows(), summary, comparisonPair: null };
+    return { movers: [], comparableMeasures: 0, ages, rows: buildRows(), summary, comparisonPair: null };
   }
 
   const [newest, previous] = displayed;
@@ -1602,8 +1602,14 @@ export function rankMovers({ measurements, selection }) {
   }
 
   const order = Object.keys(METRIC_CALCULATIONS);
-  const normalizedFirst = candidates.filter((c) => c.historicalVariation !== null);
-  const rawOnly = candidates.filter((c) => c.historicalVariation === null);
+  // A measure that did not move is not a mover (#2621 review). Membership is
+  // decided HERE, once: the formatter prints every mover it is handed, so a
+  // zero-movement candidate would print as "1.00s to 1.00s" under "Biggest
+  // shifts", and a formatter that skipped it would be a second authority on
+  // which rows are movers.
+  const moved = candidates.filter((c) => c.rawMovement > 0);
+  const normalizedFirst = moved.filter((c) => c.historicalVariation !== null);
+  const rawOnly = moved.filter((c) => c.historicalVariation === null);
   const byScore = (a, b) =>
     b.score - a.score || order.indexOf(a.metricKey) - order.indexOf(b.metricKey);
   // Normalized candidates always precede raw-fallback ones. The two scores are
@@ -1615,7 +1621,11 @@ export function rankMovers({ measurements, selection }) {
   // labelled with the basis used. Founder may overrule.
   const movers = [...normalizedFirst.sort(byScore), ...rawOnly.sort(byScore)].slice(0, 2);
 
-  return { movers, ages, rows: buildRows(), summary,
+  // How many measures were RANKABLE, before the zero-movement drop. The
+  // formatter needs it to tell "nothing moved" from "nothing could be ranked"
+  // (cloud review on #2622): an empty mover list means either, and only the
+  // first is a fact about the product.
+  return { movers, comparableMeasures: candidates.length, ages, rows: buildRows(), summary,
            comparisonPair: [newest.version, previous.version] };
 }
 

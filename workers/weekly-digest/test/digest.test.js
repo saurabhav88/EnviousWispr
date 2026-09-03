@@ -527,7 +527,7 @@ test("the digest posts five section embeds carrying the brand colour", async () 
   assert.equal(digest.embeds.length, 5);
   assert.deepEqual(digest.embeds.map((e) => e.title), [
     "All website traffic", "Tracked visitor activity", "Downloads", "App usage",
-    "Sentry, last 7 days",
+    "Errors, last 7 days",
   ]);
   for (const embed of digest.embeds) {
     assert.equal(embed.color, 0x7c3aed);
@@ -956,13 +956,12 @@ test("the weekly Sentry section spends the fixed call budget and scopes to the r
     "five fixed Sentry calls, never a per-issue fan-out");
   const [digest] = h.state.posts;
   const sentry = digest.embeds[4];
-  assert.match(sentry.description, /on 2\.4\.0 and newer/);
-  assert.match(sentry.description, /25 people {3}microphone capture stalled/);
-  assert.match(sentry.description, /13 people {3}paste fell back to the clipboard/);
+  assert.match(sentry.description, /25 people: microphone capture stalled/);
+  assert.match(sentry.description, /13 people: paste fell back to the clipboard/);
   // 8 more people than the prior week (38 vs 30).
-  assert.match(sentry.description, /8 more than the previous period \(30 people\)/);
+  assert.match(sentry.description, /^38 people hit an error on 2\.4\.0 or newer, up from 30\.$/m);
   // The tail line: 2.3.1 sits below the resolved 2.4.0 line.
-  assert.match(sentry.description, /up to 2 people on builds older than 2\.4\.0/);
+  assert.match(sentry.description, /^Up to 2 people hit an error on builds older than 2\.4\.0\.$/m);
 });
 
 test("the weekly badge window is the reported week, absolutely, not a relative lookback", async () => {
