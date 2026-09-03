@@ -1,5 +1,5 @@
 // Pre-deploy live-query smoke: runs the REAL report against production
-// PostHog and GitHub, prints the exact message that would be sent, and posts
+// PostHog and the appcast, prints the exact message that would be sent, and posts
 // NOTHING to Discord.
 //
 // Usage (with POSTHOG_KEY already injected):
@@ -24,7 +24,7 @@ const CAPTURED_WEBHOOK = "https://smoke.invalid/never-posted";
 const env = {
   POSTHOG_PROJECT_ID: "354235",
   POSTHOG_PERSONAL_API_KEY: process.env.POSTHOG_KEY,
-  GITHUB_REPO: "saurabhav88/EnviousWispr",
+  APPCAST_URL: "https://enviouswispr.com/appcast.xml",
   DISCORD_WEBHOOK_URL: CAPTURED_WEBHOOK,
   SENTRY_ORG: "envious-labs-llc",
   SENTRY_PROJECT_ID: "4511097112428544",
@@ -53,8 +53,8 @@ globalThis.fetch = async (url, init) => {
   requests.push(
     target.startsWith("https://us.posthog.com")
       ? `posthog:${JSON.parse(init.body).name}`
-      : target.startsWith("https://api.github.com")
-        ? "github:releases"
+      : target === env.APPCAST_URL
+        ? "appcast"
         : target.startsWith("https://us.sentry.io")
           ? `sentry:${new URL(target).pathname}`
           : target
@@ -91,7 +91,7 @@ if (captured) {
   }
 }
 
-// A missing or unavailable section means PostHog, GitHub or a calculation did
+// A missing or unavailable section means PostHog, the appcast or a calculation did
 // not answer DURING this smoke run - the exact thing a pre-deploy check exists
 // to prove did not happen. Printing "Smoke OK" regardless would let a real
 // degradation pass silently, so this fails loud and lets the caller decide

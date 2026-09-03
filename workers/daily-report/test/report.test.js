@@ -20,6 +20,7 @@ import {
   compareVersions,
   selectReleases,
   resolveReleases,
+  normalizeAppcastPubDate,
   telemetryContractFor,
   decideComparability,
   COMPARABILITY_REASONS,
@@ -1115,12 +1116,33 @@ const SCORECARD_NON_ADDITIVE_ROWS = [
   [0, "2.4.1", 2, 12, 60, 60, 1.2, 2.4],
   [0, "2.4.0", 2, 9, 40, 40, 1.3, 2.9],
 ];
-const PUBLISHED_RELEASES = [
-  { tag_name: "v2.4.1", published_at: "2026-07-10T12:00:00Z", draft: false, prerelease: false },
-  { tag_name: "v2.4.0", published_at: "2026-06-28T12:00:00Z", draft: false, prerelease: false },
-];
-
-const GITHUB_HOST = "https://api.github.com";
+/** One appcast `<item>` in exactly the shape release.yml writes. */
+function item(version, pubDate) {
+  return `      <item>
+        <title>Version ${version}</title>
+        <pubDate>${pubDate}</pubDate>
+        <sparkle:version>${version}</sparkle:version>
+        <sparkle:shortVersionString>${version}</sparkle:shortVersionString>
+        <enclosure url="https://enviouswispr.com/downloads/EnviousWispr-${version}.dmg" length="1" type="application/octet-stream" sparkle:edSignature="x" />
+      </item>`;
+}
+/** A whole appcast document around the given items. */
+function appcastXml(items) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>EnviousWispr Updates</title>
+${items.join("\n")}
+  </channel>
+</rss>
+`;
+}
+const APPCAST_URL = "https://enviouswispr.com/appcast.xml";
+// Deliberately NOT in publication order: document order must never decide.
+const PUBLISHED_APPCAST = appcastXml([
+  item("2.4.0", "Sun, 28 Jun 2026 12:00:00 +0000"),
+  item("2.4.1", "Fri, 10 Jul 2026 12:00:00 +0000"),
+]);
 const SENTRY_HOST = "https://us.sentry.io";
 
 /** Answers the five Sentry calls the digest section makes (#1965).
@@ -1183,12 +1205,13 @@ function sentryAnswer(target) {
   });
 }
 
-function githubResponse(status, body) {
+function appcastResponse(status, xml, { onCancel } = {}) {
   return {
     ok: status >= 200 && status < 300,
     status,
     headers: { get: () => null },
-    json: async () => body,
+    text: async () => xml,
+    body: onCancel ? { cancel: async () => onCancel() } : undefined,
   };
 }
 
@@ -1197,7 +1220,7 @@ function githubResponse(status, body) {
  * post) succeed, and lets the caller redirect any one of them. `seen` records
  * every PostHog query name in order; `requests` records every outbound call so
  * a test can count what actually left the worker. Returns a restore fn. */
-function mockPostHog({ failQuery, failWith, github, discordStatus, onDiscord, sentry } = {}) {
+function mockPostHog({ failQuery, failWith, appcast, discordStatus, onDiscord, sentry } = {}) {
   const realFetch = globalThis.fetch;
   const seen = [];
   const requests = [];
@@ -1237,10 +1260,10 @@ function mockPostHog({ failQuery, failWith, github, discordStatus, onDiscord, se
   };
 
   async function answer(target, init) {
-    if (target.startsWith(GITHUB_HOST)) {
-      if (github instanceof Error) throw github;
-      if (typeof github === "number") return githubResponse(github, null);
-      return githubResponse(200, github ?? PUBLISHED_RELEASES);
+    if (target === APPCAST_URL) {
+      if (appcast instanceof Error) throw appcast;
+      if (typeof appcast === "number") return appcastResponse(appcast, "");
+      return appcastResponse(200, appcast ?? PUBLISHED_APPCAST);
     }
     if (target.startsWith(SENTRY_HOST)) {
       if (sentry instanceof Error) throw sentry;
@@ -1302,7 +1325,7 @@ function mockPostHog({ failQuery, failWith, github, discordStatus, onDiscord, se
 const TEST_ENV = {
   POSTHOG_PROJECT_ID: "x",
   POSTHOG_PERSONAL_API_KEY: "k",
-  GITHUB_REPO: "saurabhav88/EnviousWispr",
+  APPCAST_URL,
   DISCORD_WEBHOOK_URL: "https://discord.example/webhook",
   // #1965. Present in the base env so a "clean run" test exercises the Sentry
   // section for real. An env WITHOUT these is a legitimate deployment state
@@ -1711,22 +1734,6 @@ test("worst-case explicit fetch count stays under Cloudflare's 50-subrequest cap
 // coverage. Comparability depends solely on declared contracts, never on which
 // event codes happen to appear.
 
-function ghResponse(status, body, { headers = {}, onCancel } = {}) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: { get: (k) => headers[k.toLowerCase()] ?? null },
-    json: async () => body,
-    body: onCancel ? { cancel: async () => onCancel() } : undefined,
-  };
-}
-const release = (tag, publishedAt, extra = {}) => ({
-  tag_name: tag,
-  published_at: publishedAt,
-  draft: false,
-  prerelease: false,
-  ...extra,
-});
 const usage = (v, n) => ({ app_version: v, dictations: n });
 /** A sparse array whose PROTOTYPE supplies the missing index. `i in arr` walks
  * the prototype and reads true, so this looks dense while owning no element -
@@ -1739,7 +1746,7 @@ function protoBackedSparse(length, protoValue) {
   return arr;
 }
 
-test("normalizeReleaseVersion: maps a GitHub tag to a telemetry version", () => {
+test("normalizeReleaseVersion: maps a git tag or an appcast version to a telemetry version", () => {
   for (const [input, expected] of [
     ["v2.4.1", "2.4.1"],
     ["2.4.1", "2.4.1"],
@@ -1806,7 +1813,9 @@ test("malformed tags, versions and usage rows are refused, never silently absorb
   // the sort is not observably wrong today - both agree on every input that
   // survives validation - so no behavioural test can catch it. It is still a
   // second authority that would drift, which is exactly what a source guard is
-  // for. Permitted occurrences are inside parseGitHubTimestamp only.
+  // for. Permitted occurrences are inside the registered strict parsers only:
+  // parseUtcTimestamp owns milliseconds, normalizeAppcastPubDate feeds it the
+  // wire form and is the one other place a Date may be constructed.
   const fs = await import("node:fs");
   const scSrc = fs.readFileSync(new URL("../src/version-scorecard.js", import.meta.url), "utf8");
   // Every `new Date(` must sit inside a declared STRICT parser. Counting
@@ -1815,7 +1824,7 @@ test("malformed tags, versions and usage rows are refused, never silently absorb
   // does not track closing braces, so a loose call placed AFTER a parser's body
   // gets attributed to that already-closed parser. This extracts each parser's
   // bounded body, then requires zero operational uses anywhere else.
-  const STRICT_PARSERS = ["parseGitHubTimestamp", "parseEasternDay", "easternDayOf"];
+  const STRICT_PARSERS = ["parseUtcTimestamp", "normalizeAppcastPubDate", "parseEasternDay", "easternDayOf"];
   const operational = (text) =>
     text.split("\n").filter((l) => l.includes("new Date(") && !l.trimStart().startsWith("*")).length;
 
@@ -1889,464 +1898,227 @@ test("malformed tags, versions and usage rows are refused, never silently absorb
   }
 });
 
-test("resolveReleases: GITHUB_TOKEN is optional, and a blank one is ABSENT not a credential", async () => {
-  // #2411. A token is not needed to READ a public repo - it is what raises the
-  // rate limit from 60 requests an hour per shared IP to 5,000. Inert until the
-  // secret exists, which is the point: installing it is a separate action.
-  const sent = async (env) => {
-    let headers = null;
-    await resolveReleases(env, [usage("2.4.1", 1)], {
-      windowEndExclusive: "2026-07-29",
-      fetchFn: async (_url, init) => {
-        headers = init.headers;
-        return ghResponse(200, [release("v2.4.1", "2026-07-24T00:00:00Z")]);
-      },
-      sleepFn: async () => {},
-    });
-    return headers;
-  };
-
-  const none = await sent({ GITHUB_REPO: "o/r" });
-  assert.equal(none.Authorization, undefined, "no secret means no Authorization header");
-  assert.equal(none["User-Agent"], "EnviousWispr-Daily-Report", "the UA is unconditional");
-
-  const withToken = await sent({ GITHUB_REPO: "o/r", GITHUB_TOKEN: "ghp_example" });
-  assert.equal(withToken.Authorization, "token ghp_example");
-
-  // The rejected twin, and it is the one that would hurt: `Authorization: token `
-  // makes GitHub answer 401, which classifies FATAL and fails the whole run. An
-  // unset secret must never turn into a loud failure by way of an empty string.
-  for (const blank of ["", "   ", "\n"]) {
-    const h = await sent({ GITHUB_REPO: "o/r", GITHUB_TOKEN: blank });
-    assert.equal(h.Authorization, undefined, `a blank token (${JSON.stringify(blank)}) is absent`);
-  }
-  // A token with surrounding whitespace is a real secret someone pasted with a
-  // trailing newline - trimmed, not refused.
-  const padded = await sent({ GITHUB_REPO: "o/r", GITHUB_TOKEN: "  ghp_padded\n" });
-  assert.equal(padded.Authorization, "token ghp_padded");
-});
-
-test("resolveReleases: uses GITHUB_REPO + User-Agent, drops draft/prerelease, newest by published_at", async () => {
-  let seenUrl = null;
-  let seenUA = null;
-  const body = [
-    // Deliberately NOT in published_at order - array order must not decide.
-    release("v2.3.2", "2026-07-10T10:00:00Z"),
-    release("v2.4.1", "2026-07-24T17:00:00Z"),
-    release("v9.9.9", "2026-07-28T00:00:00Z", { draft: true }),
-    release("v8.8.8", "2026-07-27T00:00:00Z", { prerelease: true }),
-    release("v2.4.0", "2026-07-18T21:00:00Z"),
-  ];
-  const out = await resolveReleases(
-    { GITHUB_REPO: "saurabhav88/EnviousWispr" },
-    [usage("2.4.1", 100)],
-    {
-      windowEndExclusive: "2026-07-29",
-        fetchFn: async (url, init) => {
-        seenUrl = url;
-        seenUA = init.headers["User-Agent"];
-        return ghResponse(200, body);
-      },
-      sleepFn: async () => {},
-    }
-  );
-  assert.ok(seenUrl.includes("/repos/saurabhav88/EnviousWispr/releases"), seenUrl);
-  assert.equal(seenUA, "EnviousWispr-Daily-Report");
-  assert.equal(out.releases[0].version, "2.4.1", "newest by published_at must lead");
-  const shown = out.releases.map((r) => r.version);
-  assert.ok(!shown.includes("9.9.9"), "draft must be excluded");
-  assert.ok(!shown.includes("8.8.8"), "prerelease must be excluded");
-});
-
-test("resolveReleases: bad configuration and malformed release data fail loud, never silently", async () => {
-  // Configuration is checked before any request, and validated as a real
-  // owner/repo slug - "EnviousWispr" alone would build a URL that 404s and read
-  // as a genuine API failure.
-  // URL syntax and path traversal are not repository names: each of these
-  // previously built a request URL that meant something else entirely.
-  for (const repo of [undefined, "", "   ", "EnviousWispr", "owner/repo/extra", "owner /repo",
-                      "owner/repo?per_page=1", "owner#fragment/repo", "../repo", "owner/..",
-                      "./repo", "owner/.", 42, null, {}]) {
+test("resolveReleases: APPCAST_URL is validated before any request, and a bad one is a contract failure", async () => {
+  // Configuration is not a blip, and must never consume retries or look
+  // transient. Parsed as a real absolute https URL: a relative path, an http
+  // scheme, or embedded credentials each build a request that fails in a way
+  // that would read as an outage.
+  for (const url of [undefined, "", "   ", "appcast.xml", "/appcast.xml",
+                     "http://enviouswispr.com/appcast.xml",
+                     "https://user:pw@enviouswispr.com/appcast.xml", "ftp://x/y",
+                     " https://enviouswispr.com/appcast.xml", "https://enviouswispr.com/appcast.xml\n",
+                     42, null, {}]) {
     let called = false;
     await assert.rejects(
       () =>
-        resolveReleases(repo === undefined ? {} : { GITHUB_REPO: repo }, [], {
+        resolveReleases(url === undefined ? {} : { APPCAST_URL: url }, [], {
           windowEndExclusive: "2026-07-29",
-        fetchFn: async () => { called = true; return ghResponse(200, []); },
+          fetchFn: async () => { called = true; return appcastResponse(200, PUBLISHED_APPCAST); },
         }),
       (err) => err instanceof ReleaseResolutionError && err.transient === false,
-      `repo ${JSON.stringify(repo)}`
+      `url ${JSON.stringify(url)}`
     );
-    assert.equal(called, false, `config error for ${JSON.stringify(repo)} must not make a request`);
+    assert.equal(called, false, `config error for ${JSON.stringify(url)} must not make a request`);
   }
-
-  // A malformed NEWEST release must never be silently filtered out: dropping it
-  // crowns the second-newest and changes the entire displayed set with nothing
-  // reporting a problem.
-  const env = { GITHUB_REPO: "o/r" };
-  const bodies = [
-    [release("v9.9.9", null), release("v2.4.1", "2026-07-24T00:00:00Z")],
-    [release("v9.9.9", "not-a-date"), release("v2.4.1", "2026-07-24T00:00:00Z")],
-    [release("v9.9.9", "2026-07-29T00:00:00Z", { draft: "yes" })],
-    [release("bad-tag", "2026-07-29T00:00:00Z")],
-    ["not-an-object"],
-    [null],
-    [release("v2.4.1", "2026-07-24T00:00:00Z"), release("2.4.1", "2026-07-25T00:00:00Z")],
-    { not: "an array" },
-    [release("v2.4.1", "July 24, 2026")],
-    [release("v2.4.1", "2026-02-30T00:00:00Z")],
-    [release("v2.4.1", "0")],
-    new Array(1),
-    protoBackedSparse(1, release("v2.4.1", "2026-07-24T00:00:00Z")),
-  ];
-  for (const body of bodies) {
-    await assert.rejects(
-      () => resolveReleases(env, [usage("2.4.1", 1)], {
-        windowEndExclusive: "2026-07-29",
-        fetchFn: async () => ghResponse(200, body),
-        sleepFn: async () => {},
-      }),
-      (err) => err instanceof ReleaseResolutionError && err.transient === false,
-      `body ${JSON.stringify(body)}`
-    );
-  }
-
-  // Invalid JSON is a contract failure, not a transient blip.
-  await assert.rejects(
-    () => resolveReleases(env, [], {
-      windowEndExclusive: "2026-07-29",
-        fetchFn: async () => ({ ok: true, status: 200, headers: { get: () => null },
-        json: async () => { throw new SyntaxError("bad json"); } }),
-      sleepFn: async () => {},
-    }),
-    (err) => err instanceof ReleaseResolutionError && err.transient === false
-  );
 });
 
-test("resolveReleases: a RETRYABLE failure takes 3 attempts with real backoff between them", async () => {
-  // A network-level rejection produces no response to inspect, so without
-  // explicit handling it escapes unretried AND unclassified.
-  let netAttempts = 0;
-  const netSleeps = [];
-  await assert.rejects(
-    () =>
-      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
-        windowEndExclusive: "2026-07-29",
-        fetchFn: async () => {
-          netAttempts += 1;
-          throw new TypeError("network failure");
-        },
-        sleepFn: async (ms) => netSleeps.push(ms),
-      }),
-    (err) => err instanceof ReleaseResolutionError && err.transient === true,
-    "network rejection"
-  );
-  assert.equal(netAttempts, 3, "a network rejection must retry to exactly 3 attempts");
-  // THE DELAYS MUST BE REAL AND GROWING (#2411). They were `0`, which is the
-  // shape of a retry with none of the effect: three requests inside a few
-  // milliseconds is arithmetically one attempt against anything with a recovery
-  // time. Asserting the VALUES, not merely that sleep was called - a call with 0
-  // is exactly the defect.
-  assert.deepEqual(netSleeps, [500, 1500], "network retries must back off");
+test("resolveReleases: fetches APPCAST_URL exactly as configured, newest by pubDate never by document order", async () => {
+  let seenUrl = null;
+  let seenHeaders = null;
+  const xml = appcastXml([
+    // Deliberately NOT in publication order - the committed appcast lists 1.3.0
+    // first - so document order must not decide.
+    item("2.3.2", "Fri, 10 Jul 2026 10:00:00 +0000"),
+    item("2.4.1", "Fri, 24 Jul 2026 17:00:00 +0000"),
+    item("2.4.0", "Sat, 18 Jul 2026 21:00:00 +0000"),
+  ]);
+  const out = await resolveReleases({ APPCAST_URL }, [usage("2.4.1", 100)], {
+    windowEndExclusive: "2026-07-29",
+    fetchFn: async (url, init) => {
+      seenUrl = url;
+      seenHeaders = init.headers;
+      return appcastResponse(200, xml);
+    },
+  });
+  // OBSERVED, not assumed: a hard-coded URL would still pass a count check
+  // while reading somebody else's release history.
+  assert.equal(seenUrl, APPCAST_URL);
+  assert.equal(seenHeaders["User-Agent"], "EnviousWispr-Daily-Report");
+  assert.equal(seenHeaders.Authorization, undefined, "no credential is ever sent to our own site");
+  assert.equal(out.releases[0].version, "2.4.1", "newest by pubDate must lead");
+  for (const v of ["2.3.2", "2.4.0", "2.4.1"]) {
+    assert.ok(out.releaseCatalog.some((r) => r.version === v), `${v} is in the catalog`);
+  }
+});
 
-  let attempts = 0;
-  const sleeps = [];
-  await assert.rejects(
-    () =>
-      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
+test("normalizeAppcastPubDate: applies the offset, tolerates a wrong weekday name, and refuses anything off the date -R shape", () => {
+  // Real forms from the committed appcast, both offsets. The -0400 entries are
+  // releases cut locally before July 2026; a parser that assumed UTC would
+  // shift them four hours and could move one across an Eastern day.
+  assert.equal(normalizeAppcastPubDate("Fri, 28 Aug 2026 18:45:54 +0000"), "2026-08-28T18:45:54Z");
+  assert.equal(normalizeAppcastPubDate("Mon, 02 Mar 2026 14:55:59 +0000"), "2026-03-02T14:55:59Z");
+  assert.equal(normalizeAppcastPubDate("Wed, 20 May 2026 23:40:54 -0400"), "2026-05-21T03:40:54Z",
+    "a negative offset late in the evening lands on the next UTC day");
+  assert.equal(normalizeAppcastPubDate("Thu, 01 Jan 2026 00:30:00 +0100"), "2025-12-31T23:30:00Z",
+    "a positive offset can cross a year boundary");
+  assert.equal(normalizeAppcastPubDate("\n  Fri, 28 Aug 2026 18:45:54 +0000\n  "), "2026-08-28T18:45:54Z",
+    "element whitespace is not part of the value");
+  // The committed 1.7.0 entry, verbatim: 25 Mar 2026 was a Wednesday. The
+  // weekday is a shape token only; cross-checking it would fail the whole run
+  // on a historical typo in a field nothing downstream reads.
+  assert.equal(normalizeAppcastPubDate("Tue, 25 Mar 2026 21:34:52 -0400"), "2026-03-26T01:34:52Z");
+  for (const bad of [
+    "Fri, 28 Aug 2026 18:45:54",       // no offset
+    "Friday, 28 Aug 2026 18:45:54 +0000", // not a date -R weekday token
+    "Fri, 28 Aug 2026 18:45:54 GMT",   // named zone
+    "Tue, 31 Feb 2026 00:00:00 +0000", // rolls over to March
+    "Fri, 28 Aug 2026 24:00:00 +0000", // rolls over to the next day
+    "Fri, 28 Aug 2026 18:45:54 +2500", // offset hours out of range
+    "Fri, 28 Aug 2026 18:45:54 +0060", // offset minutes out of range
+    "Fri, 8 Aug 2026 18:45:54 +0000",  // date -R always pads the day
+    "2026-08-28T18:45:54Z",            // the wire form is not a pubDate
+    "July 24, 2026",
+    "", null, undefined, 42,
+  ]) {
+    assert.equal(normalizeAppcastPubDate(bad), null, JSON.stringify(bad));
+  }
+});
+
+test("resolveReleases: a malformed appcast fails loud, never silently", async () => {
+  // A malformed NEWEST release must never be silently filtered out: dropping it
+  // crowns the second-newest and changes the entire displayed set with nothing
+  // reporting a problem. Every malformed item below is dated after the good one.
+  const good = item("2.4.1", "Fri, 24 Jul 2026 00:00:00 +0000");
+  const later = "Sat, 25 Jul 2026 00:00:00 +0000";
+  const docs = [
+    ["an HTML page answered with 200", "<!doctype html><html><body>Not found</body></html>"],
+    ["rss without the sparkle namespace", `<rss version="2.0"><channel>${good}</channel></rss>`],
+    ["an empty body", ""],
+    ["no items", appcastXml([])],
+    ["an item without a version", appcastXml([`<item><pubDate>${later}</pubDate></item>`, good])],
+    ["an item with two versions", appcastXml([
+      item("9.9.9", later).replace("</item>",
+        "<sparkle:shortVersionString>9.9.8</sparkle:shortVersionString></item>"), good])],
+    ["an item without a pubDate", appcastXml([
+      "<item><sparkle:shortVersionString>9.9.9</sparkle:shortVersionString></item>", good])],
+    ["an item with two pubDates", appcastXml([
+      item("9.9.9", later).replace("</item>", `<pubDate>${later}</pubDate></item>`), good])],
+    ["a malformed version", appcastXml([item("9.9", later), good])],
+    ["a malformed pubDate", appcastXml([item("9.9.9", "July 25, 2026"), good])],
+    ["a duplicate version", appcastXml([good, item("2.4.1", later)])],
+    ["a duplicate version spelled with a v", appcastXml([good, item("v2.4.1", later)])],
+    // STRUCTURE, not only content (#2619 review r2): a page quoting an appcast
+    // is not the appcast, and an unbalanced item must not be skipped while its
+    // neighbours parse - a skipped item is a release that silently vanishes.
+    ["an HTML page embedding a real appcast", `<html><body>${appcastXml([good])}</body></html>`],
+    ["two rss documents concatenated", appcastXml([good]) + appcastXml([good])],
+    ["the wrong sparkle namespace", appcastXml([good]).replace(
+      "http://www.andymatuschak.org/xml-namespaces/sparkle", "urn:not-sparkle")],
+    ["an unclosed item beside a good one", appcastXml([good]).replace("</channel>", "<item></channel>")],
+    ["a stray item close beside a good one", appcastXml([good]).replace("</channel>", "</item></channel>")],
+    ["an item nested in an item", appcastXml([good.replace("</item>", `${item("9.9.9", later)}</item>`)])],
+  ];
+  for (const [label, xml] of docs) {
+    await assert.rejects(
+      () => resolveReleases({ APPCAST_URL }, [usage("2.4.1", 1)], {
+        windowEndExclusive: "2026-07-29",
+        fetchFn: async () => appcastResponse(200, xml),
+      }),
+      (err) => err instanceof ReleaseResolutionError && err.transient === false,
+      label
+    );
+  }
+  // And the two-way control: the same good item alone resolves.
+  const out = await resolveReleases({ APPCAST_URL }, [usage("2.4.1", 1)], {
+    windowEndExclusive: "2026-07-29",
+    fetchFn: async () => appcastResponse(200, appcastXml([good])),
+  });
+  assert.equal(out.releases[0].version, "2.4.1");
+});
+
+test("resolveReleases: network, 5xx and 429 take 3 attempts with real backoff, then are TRANSIENT", async () => {
+  for (const [label, answer, detail, drains] of [
+    ["network rejection", () => { throw new Error("ECONNRESET"); }, /network error/, 0],
+    // A body that fails to READ is a reset mid-stream: transport, not contract.
+    ["body read failure", () => ({ ok: true, status: 200, text: async () => { throw new Error("stream reset"); } }),
+      /network error/, 0],
+    // Every retryable response carries a body, so the drain-before-retry path
+    // is exercised here and not only on the contract-failure side.
+    ["503", (onCancel) => appcastResponse(503, "", { onCancel }), /HTTP 503/, 3],
+    ["429", (onCancel) => appcastResponse(429, "", { onCancel }), /HTTP 429/, 3],
+  ]) {
+    let attempts = 0;
+    let cancelled = 0;
+    const sleeps = [];
+    await assert.rejects(
+      () => resolveReleases({ APPCAST_URL }, [], {
+        windowEndExclusive: "2026-07-29",
+        fetchFn: async () => { attempts += 1; return answer(() => { cancelled += 1; }); },
+        sleepFn: async (ms) => { sleeps.push(ms); },
+      }),
+      (err) =>
+        err instanceof ReleaseResolutionError && err.transient === true &&
+        /appcast unavailable after 3 attempts/.test(err.message) && detail.test(err.message),
+      label
+    );
+    assert.equal(attempts, 3, `${label}: three attempts`);
+    assert.equal(cancelled, drains, `${label}: every failed body is drained before the retry`);
+    assert.deepEqual(sleeps, [500, 1500], `${label}: real backoff between attempts, none after the last`);
+  }
+  // Recovery on a later attempt still returns the list - the retry has an effect.
+  let n = 0;
+  const out = await resolveReleases({ APPCAST_URL }, [usage("2.4.1", 1)], {
+    windowEndExclusive: "2026-07-29",
+    fetchFn: async () => { n += 1; return n < 3 ? appcastResponse(503, "") : appcastResponse(200, PUBLISHED_APPCAST); },
+    sleepFn: async () => {},
+  });
+  assert.equal(out.releases[0].version, "2.4.1");
+  assert.equal(n, 3);
+});
+
+test("resolveReleases: any other non-2xx is a CONTRACT failure after ONE attempt, and the body is drained", async () => {
+  // A 404 on our own appcast is a broken site, not a blip; retrying it spends
+  // the budget on an answer that will not change, and calling it transient would
+  // let a broken deploy read as "temporarily unavailable" every morning.
+  for (const status of [400, 401, 403, 404, 410]) {
+    let attempts = 0;
+    let cancelled = 0;
+    await assert.rejects(
+      () => resolveReleases({ APPCAST_URL }, [], {
         windowEndExclusive: "2026-07-29",
         fetchFn: async () => {
           attempts += 1;
-          return ghResponse(503, null, { headers: {} });
+          return appcastResponse(status, "", { onCancel: () => { cancelled += 1; } });
         },
-        sleepFn: async (ms) => sleeps.push(ms),
+        sleepFn: async () => { throw new Error("must not sleep on a contract failure"); },
       }),
-    (err) => err instanceof ReleaseResolutionError && err.transient === true,
-    "status 503"
-  );
-  assert.equal(attempts, 3, "a 5xx must make exactly 3 attempts");
-  assert.deepEqual(sleeps, [500, 1500], "5xx retries must back off");
-});
-
-test("a rate limit's 500 body says WHY, and never claims a retry loop that did not run", async () => {
-  // #2415 review r1. The section prefix used to read "exhausted its retries",
-  // true while every temporary failure was retried three times - and false the
-  // moment a rate limit started failing after ONE attempt, which is what this
-  // same change did. The body a human reads is the only place that shows.
-  const mock = mockPostHog({ github: 429 });
-  try {
-    const res = await trigger("&date=2026-07-17");
-    assert.equal(res.status, 500);
-    const body = await res.text();
-    assert.match(body, /rate-limited/, "the body names the mechanism");
-    assert.doesNotMatch(body, /exhausted its retries/,
-      "and does not claim a retry loop that never ran");
-    assert.equal(mock.requests.filter((u) => u.startsWith(GITHUB_HOST)).length, 1,
-      "one attempt, because retrying a rate limit cannot help");
-    // Still only the SECTION: a rate limit must not cost the adoption numbers.
-    assert.equal(mock.discordPayloads.length, 1);
-    const [adoption, scorecard] = mock.discordPayloads[0].embeds;
-    assert.match(adoption.description, /Total users:/);
-    assert.match(scorecard.title, /unavailable today/);
-  } finally {
-    mock.restore();
-  }
-});
-
-test("resolveReleases: a SHORT Retry-After is honoured once; a long one is declined out loud", async () => {
-  // #2415 review r2. The primary hourly limit resets at the top of an hour and
-  // no request can wait for it - that is why this change stopped retrying. The
-  // SECONDARY limit is a different animal: it carries `Retry-After`, the value
-  // can be a second, and refusing it threw away a recovery the server offered.
-  const NOW_MS = 1_787_670_000_000;
-  const nowFn = () => NOW_MS;
-  const resetAt = String(Math.floor(NOW_MS / 1000) + 1800);
-
-  // 1. A one-second secondary limit RECOVERS, and the request succeeds.
-  let calls = 0;
-  const sleeps = [];
-  const out = await resolveReleases({ GITHUB_REPO: "o/r" }, [usage("2.4.1", 1)], {
-    windowEndExclusive: "2026-07-29",
-    fetchFn: async () => {
-      calls += 1;
-      if (calls === 1) return ghResponse(429, null, { headers: { "retry-after": "1" } });
-      return ghResponse(200, [release("v2.4.1", "2026-07-24T00:00:00Z")]);
-    },
-    sleepFn: async (ms) => sleeps.push(ms),
-    nowFn,
-  });
-  assert.equal(calls, 2, "the offered wait is taken and the request retried");
-  assert.deepEqual(sleeps, [1000], "it waits exactly what the server asked for");
-  assert.ok(out.releases.length > 0, "and the lookup succeeds");
-
-  // 2. ONCE, not per attempt. A server that keeps answering "wait one second"
-  // would otherwise turn a bounded budget into a multiple of it.
-  let repeat = 0;
-  const repeatSleeps = [];
-  await assert.rejects(
-    () =>
-      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
-        windowEndExclusive: "2026-07-29",
-        fetchFn: async () => {
-          repeat += 1;
-          return ghResponse(429, null, { headers: { "retry-after": "1", "x-ratelimit-reset": resetAt } });
-        },
-        sleepFn: async (ms) => repeatSleeps.push(ms),
-        nowFn,
-      }),
-    (err) =>
-      err instanceof ReleaseResolutionError &&
-      err.transient === true &&
-      /already waited once on Retry-After/.test(err.message),
-    "a repeated Retry-After is obeyed once"
-  );
-  assert.equal(repeat, 2, "two requests: the original and the one honoured wait");
-  assert.deepEqual(repeatSleeps, [1000]);
-
-  // 3. A wait longer than the budget is DECLINED, and the message says so.
-  // "GitHub said 900 seconds" and "GitHub did not say" send a reader to
-  // different places, so they must not collapse into one sentence.
-  let longCalls = 0;
-  await assert.rejects(
-    () =>
-      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
-        windowEndExclusive: "2026-07-29",
-        fetchFn: async () => {
-          longCalls += 1;
-          return ghResponse(429, null, { headers: { "retry-after": "900", "x-ratelimit-reset": resetAt } });
-        },
-        sleepFn: async () => {},
-        nowFn,
-      }),
-    (err) =>
-      err instanceof ReleaseResolutionError &&
-      /Retry-After 900s exceeds the 2s budget/.test(err.message),
-    "a long Retry-After is named, not silently ignored"
-  );
-  assert.equal(longCalls, 1, "and it is not waited on");
-
-  // 4. `Retry-After` also has an HTTP-date form. GitHub sends seconds here, and
-  // a date we half-parsed would be a guess wearing a measurement's clothes - so
-  // it reads as no usable wait rather than as a number.
-  let dateCalls = 0;
-  await assert.rejects(
-    () =>
-      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
-        windowEndExclusive: "2026-07-29",
-        fetchFn: async () => {
-          dateCalls += 1;
-          return ghResponse(429, null, {
-            headers: { "retry-after": "Wed, 21 Oct 2026 07:28:00 GMT", "x-ratelimit-reset": resetAt },
-          });
-        },
-        sleepFn: async () => {},
-        nowFn,
-      }),
-    (err) => err instanceof ReleaseResolutionError && err.transient === true,
-    "an HTTP-date Retry-After is not parsed as a number"
-  );
-  assert.equal(dateCalls, 1, "an unusable Retry-After is not waited on");
-
-  // 5. A FRACTIONAL value, and this row exists because a mutant found that
-  // nothing else needed the digit check: an HTTP-date already dies at
-  // `Number.isSafeInteger`, so dropping the regex changed nothing observable
-  // there - two mechanisms covering one outcome. `1.5` is the input where the
-  // regex does unique work: without it, `Number("1.5") * 1000` is a safe integer
-  // and a fractional header would be honoured as a real wait.
-  let fracCalls = 0;
-  await assert.rejects(
-    () =>
-      resolveReleases({ GITHUB_REPO: "o/r" }, [], {
-        windowEndExclusive: "2026-07-29",
-        fetchFn: async () => {
-          fracCalls += 1;
-          return ghResponse(429, null, {
-            headers: { "retry-after": "1.5", "x-ratelimit-reset": resetAt },
-          });
-        },
-        sleepFn: async () => {},
-        nowFn,
-      }),
-    (err) => err instanceof ReleaseResolutionError && err.transient === true,
-    "a fractional Retry-After is not a wait we honour"
-  );
-  assert.equal(fracCalls, 1, "a fractional Retry-After is not waited on");
-
-  // 6. A SECONDARY LIMIT CAN ARRIVE AS 403 WITH `x-ratelimit-remaining` NONZERO
-  // (#2415 review r3). Keying only on that header called it FATAL - and fatal
-  // means `wholeRun`, so the founder loses the ENTIRE report over a condition
-  // that resolves in seconds. Strictly worse than the defect this PR started on.
-  let secCalls = 0;
-  const secSleeps = [];
-  const secOut = await resolveReleases({ GITHUB_REPO: "o/r" }, [usage("2.4.1", 1)], {
-    windowEndExclusive: "2026-07-29",
-    fetchFn: async () => {
-      secCalls += 1;
-      if (secCalls === 1) {
-        return ghResponse(403, null, {
-          headers: { "retry-after": "1", "x-ratelimit-remaining": "57" },
-        });
-      }
-      return ghResponse(200, [release("v2.4.1", "2026-07-24T00:00:00Z")]);
-    },
-    sleepFn: async (ms) => secSleeps.push(ms),
-    nowFn,
-  });
-  assert.equal(secCalls, 2, "a 403 carrying Retry-After is a rate limit, and recovers");
-  assert.deepEqual(secSleeps, [1000]);
-  assert.ok(secOut.releases.length > 0);
-
-  // 7. `Retry-After: 0` is a VALID delta-seconds value meaning "retry now"
-  // (#2415 review r4). A `> 0` test rejected it and threw away the cheapest
-  // recovery there is - no wait at all - reporting the section unavailable
-  // instead. The row asserts the retry happens AND that the wait is zero, since
-  // "recovered" alone would also be true of a version that slept a default.
-  let zeroCalls = 0;
-  const zeroSleeps = [];
-  const zeroOut = await resolveReleases({ GITHUB_REPO: "o/r" }, [usage("2.4.1", 1)], {
-    windowEndExclusive: "2026-07-29",
-    fetchFn: async () => {
-      zeroCalls += 1;
-      if (zeroCalls === 1) return ghResponse(429, null, { headers: { "retry-after": "0" } });
-      return ghResponse(200, [release("v2.4.1", "2026-07-24T00:00:00Z")]);
-    },
-    sleepFn: async (ms) => zeroSleeps.push(ms),
-    nowFn,
-  });
-  assert.equal(zeroCalls, 2, "Retry-After: 0 is honoured, not discarded");
-  assert.deepEqual(zeroSleeps, [0], "and it waits for exactly no time");
-  assert.ok(zeroOut.releases.length > 0);
-});
-
-test("resolveReleases: a RATE LIMIT is temporary but NOT retried, and says when it resets", async () => {
-  // #2411. This used to retry three times like any other transient status. The
-  // window resets at the top of an hour and a request cannot wait that long, so
-  // the two extra attempts only spend more of an already-exhausted budget and
-  // fail anyway. It stays TEMPORARY - the section degrades, the run survives -
-  // and only the retry is dropped.
-  const NOW_MS = 1_787_670_000_000;
-  const nowFn = () => NOW_MS;
-  const resetAt = String(Math.floor(NOW_MS / 1000) + 1800);
-
-  for (const [label, status, headers] of [
-    ["primary limit", 403, { "x-ratelimit-remaining": "0", "x-ratelimit-reset": resetAt }],
-    ["secondary limit", 429, { "x-ratelimit-reset": resetAt }],
-  ]) {
-    let attempts = 0;
-    const sleeps = [];
-    await assert.rejects(
-      () =>
-        resolveReleases({ GITHUB_REPO: "o/r" }, [], {
-          windowEndExclusive: "2026-07-29",
-          fetchFn: async () => {
-            attempts += 1;
-            return ghResponse(status, null, { headers });
-          },
-          sleepFn: async (ms) => sleeps.push(ms),
-          nowFn,
-        }),
-      (err) =>
-        err instanceof ReleaseResolutionError &&
-        err.transient === true &&
-        /rate-limited/.test(err.message) &&
-        /resets in 1800s/.test(err.message),
-      label
-    );
-    assert.equal(attempts, 1, `${label} must not retry`);
-    assert.deepEqual(sleeps, [], `${label} must not sleep`);
-  }
-
-  // A reset we cannot read is reported as unknown, never guessed: the next
-  // reader plans around whatever this says.
-  for (const [label, headers] of [
-    ["absent", { "x-ratelimit-remaining": "0" }],
-    ["not a number", { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "soon" }],
-    ["already past", { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1" }],
-  ]) {
-    await assert.rejects(
-      () =>
-        resolveReleases({ GITHUB_REPO: "o/r" }, [], {
-          windowEndExclusive: "2026-07-29",
-          fetchFn: async () => ghResponse(403, null, { headers }),
-          sleepFn: async () => {},
-          nowFn,
-        }),
-      (err) =>
-        err instanceof ReleaseResolutionError &&
-        err.transient === true &&
-        /reset not reported/.test(err.message),
-      `reset ${label}`
-    );
-  }
-});
-
-test("resolveReleases: a non-transient 4xx fails loud after ONE attempt", async () => {
-  for (const [status, headers] of [
-    [404, {}],
-    // A forbidden response that is NOT rate-limit exhaustion is a real failure,
-    // not a blip - retrying it would report a permission problem as temporary.
-    // THE REJECTED TWIN of the Retry-After widening (#2415 review r3): a 403
-    // WITHOUT that header is still "you may not", not "slow down". GitHub does
-    // not send Retry-After for a permission failure, which is what makes the
-    // header a discriminator rather than a loosening.
-    [403, { "x-ratelimit-remaining": "57" }],
-  ]) {
-    let attempts = 0;
-    await assert.rejects(
-      () =>
-        resolveReleases({ GITHUB_REPO: "o/r" }, [], {
-          windowEndExclusive: "2026-07-29",
-        fetchFn: async () => {
-            attempts += 1;
-            return ghResponse(status, null, { headers });
-          },
-          sleepFn: async () => {},
-        }),
-      (err) => err instanceof ReleaseResolutionError && err.transient === false,
+      (err) => err instanceof ReleaseResolutionError && err.transient === false &&
+        err.message.includes(`HTTP ${status}`),
       `status ${status}`
     );
     assert.equal(attempts, 1, `status ${status} must not retry`);
+    assert.equal(cancelled, 1, `status ${status} drains the body before throwing`);
   }
+});
+
+test("the committed appcast parses end to end, every item, and the newest shipped release leads", async () => {
+  // The real producer's real output, read from the repo rather than restated:
+  // a format drift in release.yml's appcast entry fails here at PR time, before
+  // it can reach the worker as a whole-run failure one morning.
+  const xml = readFileSync(new URL("../../../website/public/appcast.xml", import.meta.url), "utf8");
+  const items = (xml.match(/<item\b/g) || []).length;
+  assert.ok(items >= 49, `expected at least the 49 releases shipped by 2026-09-03, found ${items}`);
+  const versions = [...xml.matchAll(/<sparkle:shortVersionString>([^<]*)</g)].map((m) => m[1]);
+  const newest = versions.reduce((a, b) => (compareVersions(a, b) >= 0 ? a : b));
+  const out = await resolveReleases({ APPCAST_URL }, [usage(newest, 1)], {
+    windowEndExclusive: "2099-01-01",
+    fetchFn: async () => appcastResponse(200, xml),
+  });
+  assert.equal(out.releases[0].version, newest);
+  // Both offsets survive: 2.3.0 shipped locally (-0400), 2.4.6 from CI (+0000).
+  assert.ok(out.releaseCatalog.some((r) => r.version === "2.4.6"));
+  assert.ok(out.releaseCatalog.some((r) => r.version === "2.3.0"));
+  assert.ok(!out.releaseCatalog.some((r) => r.version === "1.3.0"), "below the measurement floor");
 });
 
 test("selectReleases: newest is always included at 1% share, then fills by descending share to 80%", () => {
@@ -3551,18 +3323,20 @@ test("a clean run's seventeen requests go to the expected queries, repository, S
 
     assert.equal(mock.requests.length, 17);
     const posthog = mock.requests.filter((u) => u.includes("posthog.com"));
-    const github = mock.requests.filter((u) => u.startsWith(GITHUB_HOST));
+    const appcast = mock.requests.filter((u) => u === APPCAST_URL);
     const sentry = mock.requests.filter((u) => u.startsWith(SENTRY_HOST));
     const discord = mock.requests.filter((u) => u === TEST_ENV.DISCORD_WEBHOOK_URL);
     assert.equal(posthog.length, 10, "1 dev-ID + 7 adoption + 2 scorecard");
-    assert.equal(github.length, 1, "the release list is fetched exactly once");
+    assert.equal(appcast.length, 1, "the release list is fetched exactly once");
     assert.equal(sentry.length, SENTRY_CALLS_PER_DIGEST, "the fixed Sentry budget, never a per-issue fan-out");
     assert.equal(discord.length, 1, "one delivery");
-    assert.equal(posthog.length + github.length + sentry.length + discord.length, mock.requests.length,
+    assert.equal(posthog.length + appcast.length + sentry.length + discord.length, mock.requests.length,
       "no unaccounted outbound request");
-    // GITHUB_REPO is OBSERVED, not assumed: a hard-coded repository would still
-    // pass a count check while reading somebody else's release history.
-    assert.equal(github[0], `${GITHUB_HOST}/repos/${TEST_ENV.GITHUB_REPO}/releases`);
+    // APPCAST_URL is OBSERVED, not assumed: a hard-coded URL would still pass a
+    // count check while reading somebody else's release history. And it is our
+    // own site - nothing goes to GitHub any more (#2619).
+    assert.equal(appcast[0], TEST_ENV.APPCAST_URL);
+    assert.ok(!mock.requests.some((u) => u.includes("github.com")), "no request reaches GitHub");
     assert.equal(mock.seen.filter((n) => n === "dev_ids").length, 1);
     assert.equal(mock.seen.filter((n) => n.startsWith("scorecard_")).length, 2);
   } finally {
@@ -3673,7 +3447,7 @@ test("an adoption rejection releases its slot and the scorecard still runs and r
     await assert.rejects(() => runReport(TEST_ENV, "2026-07-17", { hogqlOpts: { sleepFn: async () => {} } }));
     assert.ok(mock.seen.includes("scorecard_additive"), "the scorecard's queries must still run");
     assert.ok(mock.seen.includes("scorecard_non_additive"));
-    assert.ok(mock.requests.some((u) => u.startsWith(GITHUB_HOST)),
+    assert.ok(mock.requests.some((u) => u === APPCAST_URL),
       "stage-2 release resolution must still run for the surviving section");
     assert.equal(mock.discordPayloads.length, 1);
     assert.match(mock.discordPayloads[0].embeds[1].description, /2\.4\.1: 7\/7 days publicly available/);
@@ -3754,7 +3528,7 @@ test("every section failing still posts exactly one message, with each marked un
 });
 
 test("exhausted TRANSIENT release resolution loses only the scorecard, and never falls back to telemetry versions", async () => {
-  const mock = mockPostHog({ github: 503 });
+  const mock = mockPostHog({ appcast: 503 });
   try {
     const res = await trigger("&date=2026-07-17");
     assert.equal(res.status, 500);
@@ -3773,12 +3547,12 @@ test("exhausted TRANSIENT release resolution loses only the scorecard, and never
     assert.doesNotMatch(body, /exhausted its retries/,
       "the prefix does not assert a retry loop it does not control");
     assert.match(body, /HTTP 503/, "and it now carries the status that caused it");
-    assert.equal(mock.requests.filter((u) => u.startsWith(GITHUB_HOST)).length, 3,
+    assert.equal(mock.requests.filter((u) => u === APPCAST_URL).length, 3,
       "three attempts, then give up");
     assert.equal(mock.discordPayloads.length, 1);
     const [adoption, scorecard] = mock.discordPayloads[0].embeds;
     assert.match(adoption.description, /Total users: 1 people used the app that day\./,
-      "a GitHub outage costs the scorecard, never adoption");
+      "an appcast outage costs the scorecard, never adoption");
     assert.match(scorecard.title, /unavailable today/);
     // The versions ARE in the telemetry we already hold. Printing them anyway
     // would silently restore the version-blind report this issue removed.
@@ -3791,8 +3565,8 @@ test("exhausted TRANSIENT release resolution loses only the scorecard, and never
 
 test("a release-resolution CONTRACT failure fails the whole run and never posts a normal report", async () => {
   for (const [label, opts, env] of [
-    ["a 404 from the release list", { github: 404 }, TEST_ENV],
-    ["an unusable GITHUB_REPO", {}, { ...TEST_ENV, GITHUB_REPO: "EnviousWispr" }],
+    ["a 404 from the appcast", { appcast: 404 }, TEST_ENV],
+    ["an unusable APPCAST_URL", {}, { ...TEST_ENV, APPCAST_URL: "appcast.xml" }],
   ]) {
     const mock = mockPostHog(opts);
     try {
@@ -3807,7 +3581,7 @@ test("a release-resolution CONTRACT failure fails the whole run and never posts 
       assert.equal(mock.discordPayloads.length, 1, label);
       assert.ok(!("embeds" in mock.discordPayloads[0]), `${label}: no combined report`);
       assert.match(mock.discordPayloads[0].content, /could not be generated/);
-      assert.doesNotMatch(mock.discordPayloads[0].content, /404|GITHUB_REPO|http/i,
+      assert.doesNotMatch(mock.discordPayloads[0].content, /404|APPCAST_URL|http/i,
         "the notice discloses no technical detail");
     } finally {
       mock.restore();
@@ -3828,7 +3602,7 @@ test("a shared-preflight failure starts NEITHER section", async () => {
         `${label}: must be refused AS a bad override, not by an incidental
          downstream crash - a report for a day nobody asked for is the failure`);
       assert.equal(mock.seen.length, 0, `${label}: no PostHog query may start`);
-      assert.ok(!mock.requests.some((u) => u.startsWith(GITHUB_HOST)), `${label}: no GitHub call`);
+      assert.ok(!mock.requests.some((u) => u === APPCAST_URL), `${label}: no appcast call`);
       assert.equal(mock.discordPayloads.length, 1, `${label}: one fixed notice`);
       assert.ok(!("embeds" in mock.discordPayloads[0]), `${label}: never a partial report`);
     } finally {
@@ -4417,22 +4191,22 @@ test("builds below the measurement floor are hidden everywhere, not shown with a
 });
 
 test("a release published after the reported window is never crowned newest", async () => {
-  // GitHub returns every published release, including ones published AFTER the
-  // window being reported. A build shipped at 08:00 would otherwise be crowned
+  // The appcast lists every published release, including ones published AFTER
+  // the window being reported. A build shipped at 08:00 would otherwise be crowned
   // newest in the 09:12 report covering yesterday, and a backfill would crown a
   // release that did not exist during the reported week at all - both printing
   // "0/7 days publicly available, no production data yet" for the build
   // supposedly most worth watching, while displacing one that has real data.
-  const body = [
-    release("v2.4.0", "2026-07-18T21:00:00Z"),
-    release("v2.4.1", "2026-07-24T17:00:00Z"),
-    release("v2.5.0", "2026-07-29T08:00:00Z"), // published the morning of the run
-  ];
+  const body = appcastXml([
+    item("2.4.0", "Sat, 18 Jul 2026 21:00:00 +0000"),
+    item("2.4.1", "Fri, 24 Jul 2026 17:00:00 +0000"),
+    item("2.5.0", "Wed, 29 Jul 2026 08:00:00 +0000"), // published the morning of the run
+  ]);
   const opts = {
-    fetchFn: async () => ghResponse(200, body),
+    fetchFn: async () => appcastResponse(200, body),
     sleepFn: async () => {},
   };
-  const env = { GITHUB_REPO: "saurabhav88/EnviousWispr" };
+  const env = { APPCAST_URL };
   const usageRows = [usage("2.4.1", 100), usage("2.4.0", 60)];
 
   const excluded = await resolveReleases(env, usageRows,
@@ -4456,6 +4230,21 @@ test("a release published after the reported window is never crowned newest", as
   const backfill = await resolveReleases(env, [usage("2.4.0", 60)],
     { ...opts, windowEndExclusive: "2026-07-19" });
   assert.deepEqual(backfill.releases.map((r) => r.version), ["2.4.0"]);
+
+  // BOUNDARY CONTROL (#2619 grounded review). The appcast's pubDate is taken a
+  // step before GitHub publishes the release, 30 to 70 seconds earlier. A build
+  // whose pubDate is 23:59:30 Eastern on the 28th would have carried a GitHub
+  // published_at of 00:00:xx on the 29th. Membership follows the appcast, so
+  // the 28th's own report (window end 29th) includes it, and that is the
+  // documented, accepted difference - not a bug in the window filter.
+  const midnight = appcastXml([
+    item("2.4.1", "Fri, 24 Jul 2026 17:00:00 +0000"),
+    item("2.5.0", "Tue, 28 Jul 2026 23:59:30 -0400"), // 03:59:30Z on the 29th
+  ]);
+  const edge = await resolveReleases(env, usageRows,
+    { ...opts, fetchFn: async () => appcastResponse(200, midnight), windowEndExclusive: "2026-07-29" });
+  assert.equal(edge.releases[0].version, "2.5.0",
+    "a pubDate before Eastern midnight belongs to that day, whatever GitHub's clock said");
 
   // The anchor is REQUIRED, never defaulted to "no filter": a forgotten caller
   // would silently restore the defect this closes.

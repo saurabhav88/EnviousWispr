@@ -22,7 +22,7 @@
  * with the literal SQL its freeze test must hash.
  *
  * Privacy: this module handles version strings and counts. It never logs or
- * returns a GitHub response body.
+ * returns an appcast document.
  */
 
 import { hogql, rowsToObjects } from "../../shared/posthog.js";
@@ -40,9 +40,8 @@ export class ReleaseResolutionError extends Error {
   }
 }
 
-const GITHUB_API = "https://api.github.com";
 const USER_AGENT = "EnviousWispr-Daily-Report";
-const GITHUB_MAX_ATTEMPTS = 3;
+const APPCAST_MAX_ATTEMPTS = 3;
 
 // Approved product policy, deliberately NOT caller-overridable parameters: a
 // later caller must not be able to quietly widen coverage or show more releases
@@ -77,28 +76,25 @@ const SCORECARD_MIN_VERSION = POLISH_FALLBACK_REASON_FROM;
 export function isScorecardEligible(version) {
   return version !== null && compareVersions(version, SCORECARD_MIN_VERSION) >= 0;
 }
-// Constrained to GitHub's own slug charset, not merely "no slashes or spaces".
-// A looser pattern let "owner/repo?per_page=1", "../repo" and "owner/.." through
-// into a URL, where they mean something entirely different from a repo name.
-const REPO_SLUG = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const isSafeRepoSegment = (seg) => seg !== "." && seg !== "..";
 const SEMVER = /^v?(\d+)\.(\d+)\.(\d+)$/;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const GITHUB_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/;
+const UTC_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/;
 
 /** Strict UTC timestamp parser, the single owner for every publication date.
  *
  * `new Date(...)` is far too permissive to validate with: "0" becomes the year
  * 2000, "July 24, 2026" parses in local time, and "2026-02-30" silently rolls
  * forward to March 2nd. Any of those would be accepted as a publication date and
- * could reorder the displayed release set. Requires GitHub's exact wire form,
- * then re-checks the calendar components so a rolled-over date is refused rather
- * than reinterpreted. Returns null on anything else. */
-function parseGitHubTimestamp(value) {
+ * could reorder the displayed release set. Requires the exact wire form
+ * `YYYY-MM-DDTHH:MM:SSZ` - what normalizeAppcastPubDate emits and what every
+ * selector test writes by hand - then re-checks the calendar components so a
+ * rolled-over date is refused rather than reinterpreted. Returns null on
+ * anything else. */
+function parseUtcTimestamp(value) {
   if (typeof value !== "string") return null;
-  const m = GITHUB_TIMESTAMP.exec(value);
+  const m = UTC_TIMESTAMP.exec(value);
   if (!m) return null;
   const [, y, mo, d, h, mi, sec] = m.map(Number);
   const ms = Date.UTC(y, mo - 1, d, h, mi, sec);
@@ -131,7 +127,8 @@ function assertDenseArray(value, label) {
   }
 }
 
-/** GitHub tags are `v2.4.1`; telemetry `app_version` is `2.4.1`. Returns null
+/** The appcast carries `2.4.1`, git tags `v2.4.1`, telemetry `app_version`
+ * `2.4.1`; the optional `v` keeps every shape canonical. Returns null
  * for anything that is not a plain three-part semantic version, so a malformed
  * tag is REFUSED rather than silently selected around. */
 export function normalizeReleaseVersion(value) {
@@ -162,177 +159,229 @@ export function compareVersions(a, b) {
   return a1 - b1 || a2 - b2 || a3 - b3;
 }
 
-/** THREE outcomes, because "transient" was hiding two different things (#2411).
- *
- * A 403 is temporary ONLY when GitHub says the rate limit is exhausted; treating
- * every forbidden response as temporary would retry a genuine permission or
- * configuration failure and then report it as a blip. That part is unchanged.
- *
- * What changed is that a rate limit is no longer RETRIED. Its window resets at
- * the top of an hour and a Worker cannot wait that long, so the two extra
- * requests spend more of an already-exhausted budget and fail anyway - three
- * attempts inside a few milliseconds is arithmetically one attempt against
- * anything with a recovery time. It stays TEMPORARY, so the section still
- * degrades rather than killing the run; only the retry is dropped.
- *
- * Returns "retry" | "rate-limited" | "fatal".
- */
-function classifyGitHubStatus(res) {
-  const status = res.status;
-  if (status >= 500) return "retry";
-  if (status === 429) return "rate-limited";
-  if (status !== 403) return "fatal";
-  // A SECONDARY RATE LIMIT CAN ARRIVE AS 403 WITH `x-ratelimit-remaining`
-  // NONZERO (#2415 review r3). Keying only on that header called it FATAL, which
-  // is the worst outcome available here: fatal means `wholeRun`, so the founder
-  // loses the entire report - not just the scorecard - over a condition that
-  // resolves in seconds, and the `Retry-After` recovery never runs.
-  //
-  // `Retry-After` is the precise discriminator rather than a widening: GitHub
-  // sends it for rate limiting and NOT for a genuine permission failure, so a
-  // 403 carrying it is the server saying "slow down", and a 403 without it is
-  // still "you may not" and still fatal. Presence is what is tested, not
-  // usability - an unparseable value degrades to reported-and-not-retried, never
-  // to killing the run.
-  if (typeof res.headers?.get?.("retry-after") === "string") return "rate-limited";
-  return res.headers?.get?.("x-ratelimit-remaining") === "0" ? "rate-limited" : "fatal";
-}
+/** Backoff between RETRYABLE attempts against the appcast. Sums to the same
+ * two-second ceiling the GitHub lookup had (#2415): a daily report's release
+ * lookup may block a request somebody is waiting on for about that long, and
+ * nothing measured 2000 - it is a ceiling chosen to be small. */
+const APPCAST_RETRY_DELAYS_MS = [500, 1500];
 
-/** A `Retry-After` we can actually honour, in MILLISECONDS, or null.
+/** THE RELEASE LIST IS OUR OWN APPCAST, NOT GITHUB'S API (#2619).
  *
- * **A SECONDARY RATE LIMIT IS NOT THE SAME ANIMAL AS THE HOURLY ONE (#2415 review
- * r2).** The primary limit resets at the top of an hour and no request can wait
- * for it, which is why this change stopped retrying. GitHub's SECONDARY limit is
- * different: it carries `Retry-After`, and the value can be a second or two - a
- * wait we can afford, and the only case where a rate limit is recoverable inside
- * one request. Refusing it threw away a recovery the server had explicitly
- * offered.
+ * The scorecard needs two facts per release: the version and when it was
+ * published. `.github/workflows/release.yml` writes both into `website/public/appcast.xml` on
+ * every release, Cloudflare Pages serves it, and every installed app reads it
+ * to learn a release exists. It has no external rate limit and needs no secret.
  *
- * Two ways this returns null, and they are different situations rather than one:
- * the header is ABSENT or unparseable, and the wait is LONGER than the budget.
- * The caller reports which, because "GitHub did not say" and "GitHub said 900
- * seconds" send a reader to different places.
+ * GitHub's releases API had both problems. Unauthenticated it allows 60 requests
+ * an hour PER IP, a Worker's outbound traffic leaves from a shared egress pool,
+ * so strangers spent our ceiling and five of nine mornings lost the scorecard
+ * (run history in #2619). We made ONE request a day; there was nothing to
+ * throttle. The coded `GITHUB_TOKEN` remedy (#2415) needed a founder-created
+ * token that expires within a year, after which a 401 classifies FATAL and the
+ * whole report stops. Reading what we already publish removes the limit, the
+ * secret and the expiry at once.
  *
- * Integer seconds only. `Retry-After` also has an HTTP-date form; GitHub sends
- * seconds here, and a date we half-parsed would be a guess wearing a
- * measurement's clothes. An unrecognised value is reported as unusable, never
- * silently treated as absent. */
-function retryAfterMs(res) {
-  const raw = res.headers?.get?.("retry-after");
-  if (typeof raw !== "string" || !/^\d+$/.test(raw.trim())) return null;
-  const ms = Number(raw.trim()) * 1000;
-  // `>= 0`, not `> 0`. **`Retry-After: 0` IS A VALID DELTA-SECONDS VALUE** and it
-  // means "you may retry immediately" (#2415 review r4). Rejecting it threw away
-  // the CHEAPEST recovery available - no wait at all - and reported the section
-  // unavailable instead. The negative branch is unreachable given the `^\d+$`
-  // above and is kept as a floor, not as live logic.
-  if (!Number.isSafeInteger(ms) || ms < 0) return null;
-  return ms;
-}
+ * Membership follows the appcast. A release that reached GitHub but whose
+ * appcast publication failed (`publish-appcast` is a separately failable job)
+ * is absent here until `appcast-only` recovery runs - and no installed app can
+ * see it either, so the scorecard is describing what users could get. */
+// The WHOLE document must be one Sparkle RSS element (optional XML
+// declaration, then `<rss` declaring the Sparkle namespace, closed at the end),
+// not merely contain one - an HTML page that quotes an appcast fragment is not
+// the appcast. Item tags are counted open against close against matched: an
+// unbalanced `<item>` would otherwise be skipped by the non-greedy match while
+// its neighbours succeed, and a skipped item is a release that silently
+// vanishes (#2619 review r2).
+// These regexes parse the ONE document shape `.github/workflows/release.yml`
+// writes, not XML in general: no comments, CDATA, attributes on the two
+// elements read, or entity escapes occur in it, and a drift toward any of them
+// fails LOUD here and in the suite's real-file control, never silently.
+const APPCAST_ROOT =
+  /^\s*(?:<\?xml\b[\s\S]*?\?>\s*)?<rss\b(?=[^>]*\bxmlns:sparkle\s*=\s*(["'])http:\/\/www\.andymatuschak\.org\/xml-namespaces\/sparkle\1)[^>]*>[\s\S]*<\/rss>\s*$/;
+const APPCAST_RSS_OPEN = /<rss\b/g;
+const APPCAST_RSS_CLOSE = /<\/rss>/g;
+const APPCAST_ITEM = /<item\b[^>]*>([\s\S]*?)<\/item>/g;
+const APPCAST_ITEM_OPEN = /<item\b[^>]*>/g;
+const APPCAST_ITEM_CLOSE = /<\/item>/g;
+const APPCAST_VERSION = /<sparkle:shortVersionString>([^<]*)<\/sparkle:shortVersionString>/g;
+const APPCAST_PUBDATE = /<pubDate>([^<]*)<\/pubDate>/g;
 
-/** How long until the rate-limit window resets, in SECONDS FROM NOW.
- *
- * Deliberately not a formatted instant. The first version returned
- * `new Date(ms).toISOString()` and the suite's source guardrail refused it -
- * correctly, because that guard exists to keep `parseGitHubTimestamp` the ONLY
- * date authority in this file, and a second one would drift. Seconds-from-now
- * needs no date construction, and it is the more useful number in a log anyway:
- * an operator reading the failure wants "how long", not a timestamp to subtract.
- *
- * `x-ratelimit-reset` is unix SECONDS. Absent, unparseable, or already past
- * yields null rather than a guess - an invented reset is worse than an unknown
- * one, because the next reader plans around it. */
-function rateLimitResetInSeconds(res, nowFn = Date.now) {
-  const raw = res.headers?.get?.("x-ratelimit-reset");
-  if (typeof raw !== "string" || !/^\d+$/.test(raw)) return null;
-  const resetSec = Number(raw);
-  if (!Number.isSafeInteger(resetSec) || resetSec <= 0) return null;
-  const delta = resetSec - Math.floor(nowFn() / 1000);
-  return delta > 0 ? delta : null;
-}
+/** `.github/workflows/release.yml` writes `<pubDate>$(date -R)</pubDate>`: RFC 2822 as GNU and BSD
+ * `date -R` print it, `Fri, 28 Aug 2026 18:45:54 +0000`. Releases cut locally
+ * before July 2026 carry `-0400` (24 of the 49 entries on 2026-09-03), so the
+ * offset is parsed and applied, never assumed to be zero - four hours is enough
+ * to move a midnight-adjacent release across an Eastern day. Anything outside
+ * this exact shape is refused. */
+const APPCAST_PUBDATE_FORM =
+  /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) ([+-])(\d{2})(\d{2})$/;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** ONE waiting budget for this lookup, and everything that waits derives from it.
+/** Strict appcast `pubDate` normaliser: returns the UTC wire form
+ * `YYYY-MM-DDTHH:MM:SSZ` that parseUtcTimestamp owns, or null.
  *
- * The delays below and the `Retry-After` ceiling started as three separate
- * numbers I had chosen and nothing had measured (#2415 review r1, my own
- * question). Reducing them to one leaves one thing to justify: **how long may a
- * daily report's release lookup block a request somebody is waiting on.** The
- * ping workflow's `curl` sets no `--max-time` and the job budget is hours, so the
- * real constraint is that a human reading a failed run should not be waiting on
- * arithmetic - 2 seconds is beneath notice beside the PostHog, Sentry and Discord
- * work the same run already does.
+ * Emits a STRING rather than milliseconds on purpose: parseUtcTimestamp stays
+ * the single millisecond authority, every downstream reader keeps the shape it
+ * has, and the suite's date guard registers this function as the one other
+ * place `new Date(` may appear. The components must survive a round trip so a
+ * rolled-over date is refused, not reinterpreted.
  *
- * Stated so the next reader can disagree with the number rather than reverse-
- * engineer it: nothing measured 2000. It is a ceiling chosen to be small.
- */
-const GITHUB_MAX_WAIT_MS = 2000;
-
-/** Backoff between RETRYABLE attempts. Was `0`, which made the retry loop three
- * requests inside a few milliseconds - the shape of a retry with none of the
- * effect. Sums to exactly the budget above. */
-const GITHUB_RETRY_DELAYS_MS = [500, 1500];
-
-/** OPTIONAL authentication, matching what `workers/weekly-digest` already does
- * (`src/index.js`, its `fetchGitHubDownloads`).
- *
- * A token is not needed to READ a public repo - authorization was never the
- * question. It is what raises the RATE LIMIT: unauthenticated GitHub allows 60
- * requests an hour PER IP (measured, `x-ratelimit-limit: 60`), and a Cloudflare
- * Worker's outbound requests leave from a shared egress pool, so that ceiling is
- * shared with every other tenant on the same address. Our own usage is one
- * request a day, so nothing about our call rate reaches it.
- *
- * `wrangler.toml` claimed this lookup "needs no token and no secret - the same
- * unauthenticated pattern workers/weekly-digest already uses". The second half
- * was false: the sibling has had this header since it was written. Corrected
- * there rather than deleted.
- *
- * INERT until the secret exists, which is deliberate. This is the code half of
- * #2411; installing `GITHUB_TOKEN` is a separate, founder-owned action, and the
- * diagnostic added in this same change is what will say whether it is needed. */
-function githubHeaders(env) {
-  const headers = { "User-Agent": USER_AGENT, Accept: "application/vnd.github+json" };
-  const token = env?.GITHUB_TOKEN;
-  // A blank or whitespace-only secret is ABSENT, not a credential. Sending
-  // `Authorization: token ` makes GitHub answer 401, which classifies fatal and
-  // would turn a missing secret into a whole-run failure - the loud-but-wrong
-  // direction, from a value nobody meant to set.
-  if (typeof token === "string" && token.trim() !== "") {
-    headers.Authorization = `token ${token.trim()}`;
-  }
-  return headers;
-}
-
-/** Fetches published, non-draft, non-prerelease releases. Newest is decided by
- * `published_at`, never by the API's array order (which is creation order and
- * can disagree after a re-publish). */
-async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep, nowFn = Date.now } = {}) {
-  // Checked BEFORE any request: configuration is not a blip, and must never
-  // consume retries or look transient. Validated as a real owner/repo slug
-  // rather than merely truthy - a value like "EnviousWispr" would otherwise
-  // build a URL that 404s and read as a genuine API failure.
-  const repo = env?.GITHUB_REPO;
+ * The weekday name is shape-checked and NOT cross-checked against the date.
+ * The committed appcast's 1.7.0 entry reads `Tue, 25 Mar 2026`, and that day was
+ * a Wednesday (measured 2026-09-03, 1 of 49 entries): a hand-edited value from
+ * the pre-CI era. A cross-check would turn that historical typo into a
+ * whole-run failure every morning, for a field nothing downstream reads. */
+export function normalizeAppcastPubDate(value) {
+  if (typeof value !== "string") return null;
+  const m = APPCAST_PUBDATE_FORM.exec(value.trim());
+  if (!m) return null;
+  const [, , dd, mon, yyyy, hh, mi, ss, sign, offH, offM] = m;
+  const [d, y, h, min, sec, oh, om] = [dd, yyyy, hh, mi, ss, offH, offM].map(Number);
+  const mo = MONTHS.indexOf(mon);
+  const localMs = Date.UTC(y, mo, d, h, min, sec);
+  if (!Number.isFinite(localMs)) return null;
+  // ONE Date object, reused: the suite's guard allows a registered parser a
+  // single construction. It first carries the literal components for the
+  // round-trip check, then is moved onto the UTC instant for serialisation.
+  const stamp = new Date(localMs);
+  // A date that normalises to a DIFFERENT calendar date was impossible.
   if (
-    typeof repo !== "string" ||
-    !REPO_SLUG.test(repo) ||
-    !repo.split("/").every(isSafeRepoSegment)
+    stamp.getUTCFullYear() !== y || stamp.getUTCMonth() !== mo || stamp.getUTCDate() !== d ||
+    stamp.getUTCHours() !== h || stamp.getUTCMinutes() !== min || stamp.getUTCSeconds() !== sec
+  ) {
+    return null;
+  }
+  if (oh > 23 || om > 59) return null;
+  const offsetMs = (sign === "-" ? -1 : 1) * (oh * 60 + om) * 60 * 1000;
+  stamp.setTime(localMs - offsetMs);
+  const pad = (n, width = 2) => String(n).padStart(width, "0");
+  return (
+    `${pad(stamp.getUTCFullYear(), 4)}-${pad(stamp.getUTCMonth() + 1)}-${pad(stamp.getUTCDate())}` +
+    `T${pad(stamp.getUTCHours())}:${pad(stamp.getUTCMinutes())}:${pad(stamp.getUTCSeconds())}Z`
+  );
+}
+
+/** The single captured group of the ONE occurrence of `re` in `text`, or null
+ * when the element is absent or repeated. An item carrying two dates or two
+ * versions is ambiguous, and "first wins" would pick silently. */
+function exactlyOne(re, text) {
+  const matches = [...text.matchAll(re)];
+  return matches.length === 1 ? matches[0][1].trim() : null;
+}
+
+/** Keeps a quoted document value readable in a message a human will scan. */
+const brief = (s) => (s.length > 80 ? `${s.slice(0, 80)}…` : s);
+
+/** Extracts `{ version, publishedAt }` from an appcast document.
+ *
+ * Every branch fails LOUD. Silently skipping a malformed item is the whole
+ * hazard: a newest release with a missing date would simply vanish and the
+ * SECOND-newest would be crowned, changing the entire displayed set with
+ * nothing reporting a problem. The root check is what stops a 200 that is not
+ * the appcast - an HTML page from a wrong path, say - from reading as "no
+ * releases": that is a broken source, and a contract failure names it. */
+function parseAppcast(text) {
+  if (
+    typeof text !== "string" ||
+    !APPCAST_ROOT.test(text) ||
+    [...text.matchAll(APPCAST_RSS_OPEN)].length !== 1 ||
+    [...text.matchAll(APPCAST_RSS_CLOSE)].length !== 1
+  ) {
+    throw new ReleaseResolutionError("appcast response is not a Sparkle RSS document", {
+      transient: false,
+    });
+  }
+  const items = [...text.matchAll(APPCAST_ITEM)];
+  const itemOpens = [...text.matchAll(APPCAST_ITEM_OPEN)].length;
+  const itemCloses = [...text.matchAll(APPCAST_ITEM_CLOSE)].length;
+  if (items.length !== itemOpens || items.length !== itemCloses) {
+    throw new ReleaseResolutionError("appcast contains malformed item structure", {
+      transient: false,
+    });
+  }
+  const parsed = [];
+  const seen = new Set();
+  for (const [, item] of items) {
+    const rawVersion = exactlyOne(APPCAST_VERSION, item);
+    if (rawVersion === null) {
+      throw new ReleaseResolutionError(
+        "appcast item must carry exactly one sparkle:shortVersionString",
+        { transient: false }
+      );
+    }
+    const version = normalizeReleaseVersion(rawVersion);
+    if (version === null) {
+      throw new ReleaseResolutionError(`malformed appcast version: ${brief(rawVersion)}`, {
+        transient: false,
+      });
+    }
+    const rawDate = exactlyOne(APPCAST_PUBDATE, item);
+    if (rawDate === null) {
+      throw new ReleaseResolutionError(`appcast item ${version} must carry exactly one pubDate`, {
+        transient: false,
+      });
+    }
+    const publishedAt = normalizeAppcastPubDate(rawDate);
+    if (publishedAt === null) {
+      throw new ReleaseResolutionError(
+        `malformed pubDate on appcast item ${version}: ${brief(rawDate)}`,
+        { transient: false }
+      );
+    }
+    if (seen.has(version)) {
+      // Two items for one version make "newest" ambiguous.
+      throw new ReleaseResolutionError(`duplicate release version: ${version}`, {
+        transient: false,
+      });
+    }
+    seen.add(version);
+    parsed.push({ version, publishedAt });
+  }
+  if (parsed.length === 0) {
+    throw new ReleaseResolutionError("appcast has no items", { transient: false });
+  }
+  return parsed;
+}
+
+/** The appcast location, validated as an absolute https URL carrying no
+ * credentials. Returned as the exact string the env carried, so the request
+ * URL is observable in tests as configured rather than as re-serialised. */
+function appcastUrl(env) {
+  const raw = env?.APPCAST_URL;
+  let parsed = null;
+  if (typeof raw === "string" && raw !== "" && raw.trim() === raw) {
+    try {
+      parsed = new URL(raw);
+    } catch (_) {
+      parsed = null;
+    }
+  }
+  if (
+    parsed === null ||
+    parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== ""
   ) {
     throw new ReleaseResolutionError(
-      `GITHUB_REPO must be "owner/repo", got: ${String(repo)}`,
+      `APPCAST_URL must be an absolute https URL, got: ${String(raw)}`,
       { transient: false }
     );
   }
+  return raw;
+}
+
+/** Fetches the appcast and returns every release it lists. Newest is decided by
+ * `pubDate`, never by document order: the committed appcast lists 1.3.0 first. */
+async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep } = {}) {
+  // Checked BEFORE any request: configuration is not a blip, and must never
+  // consume retries or look transient.
+  const url = appcastUrl(env);
 
   let lastStatus = null;
-  // ONCE, not per attempt. A server that keeps answering "wait one second" would
-  // otherwise be obeyed for as many attempts as the loop has, turning a bounded
-  // budget into a multiple of it.
-  let honouredRetryAfter = false;
-  for (let attempt = 1; attempt <= GITHUB_MAX_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= APPCAST_MAX_ATTEMPTS; attempt += 1) {
     let res;
     try {
-      res = await fetchFn(`${GITHUB_API}/repos/${repo}/releases`, {
-        headers: githubHeaders(env),
+      res = await fetchFn(url, {
+        headers: { "User-Agent": USER_AGENT, Accept: "application/xml" },
       });
     } catch (_) {
       // A network-level rejection (DNS, reset, abort) never produces a response
@@ -341,74 +390,30 @@ async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep, n
       // the scorecard section degrades on. Deliberately does not surface the
       // original error: it can carry a URL or body.
       lastStatus = "network error";
-      if (attempt < GITHUB_MAX_ATTEMPTS) {
-        await sleepFn(GITHUB_RETRY_DELAYS_MS[attempt - 1]);
+      if (attempt < APPCAST_MAX_ATTEMPTS) {
+        await sleepFn(APPCAST_RETRY_DELAYS_MS[attempt - 1]);
         continue;
       }
       break;
     }
 
     if (res.ok) {
-      // Every branch below fails LOUD. Silently filtering a malformed release
-      // is the whole hazard: a newest release with a missing publish date would
-      // simply disappear and the SECOND-newest would be crowned, changing the
-      // entire displayed set with nothing reporting a problem.
-      let body;
+      let text;
       try {
-        body = await res.json();
+        text = await res.text();
       } catch (_) {
-        throw new ReleaseResolutionError("GitHub releases response was not valid JSON", {
-          transient: false,
-        });
+        // A body that fails to READ is a connection reset mid-stream, the same
+        // transport failure as a rejected fetch, and takes the same bounded
+        // retry (#2619 review r2). Only a body that reads and is not an appcast
+        // is a contract failure.
+        lastStatus = "network error";
+        if (attempt < APPCAST_MAX_ATTEMPTS) {
+          await sleepFn(APPCAST_RETRY_DELAYS_MS[attempt - 1]);
+          continue;
+        }
+        break;
       }
-      assertDenseArray(body, "GitHub releases response");
-
-      const parsed = [];
-      const seen = new Set();
-      for (const r of body) {
-        if (r === null || typeof r !== "object" || Array.isArray(r)) {
-          throw new ReleaseResolutionError("GitHub releases entry was not an object", {
-            transient: false,
-          });
-        }
-        if (typeof r.draft !== "boolean" || typeof r.prerelease !== "boolean") {
-          throw new ReleaseResolutionError(
-            `GitHub release ${String(r.tag_name)} has non-boolean draft/prerelease flags`,
-            { transient: false }
-          );
-        }
-        // Drafts and prereleases are legitimately EXCLUDED, not errors.
-        if (r.draft || r.prerelease) continue;
-
-        if (typeof r.tag_name !== "string" || typeof r.published_at !== "string") {
-          throw new ReleaseResolutionError(
-            `release tag_name and published_at must be strings: ${String(r.tag_name)}`,
-            { transient: false }
-          );
-        }
-        const version = normalizeReleaseVersion(r.tag_name);
-        if (version === null) {
-          throw new ReleaseResolutionError(`malformed release tag: ${r.tag_name}`, {
-            transient: false,
-          });
-        }
-        const publishedMs = parseGitHubTimestamp(r.published_at);
-        if (publishedMs === null) {
-          throw new ReleaseResolutionError(
-            `missing or malformed published_at on release ${version}`,
-            { transient: false }
-          );
-        }
-        if (seen.has(version)) {
-          // Two tags normalising to one version makes "newest" ambiguous.
-          throw new ReleaseResolutionError(`duplicate release version: ${version}`, {
-            transient: false,
-          });
-        }
-        seen.add(version);
-        parsed.push({ version, publishedAt: r.published_at });
-      }
-      return parsed;
+      return parseAppcast(text);
     }
 
     lastStatus = res.status;
@@ -422,53 +427,21 @@ async function fetchPublishedReleases(env, { fetchFn = fetch, sleepFn = sleep, n
       }
     }
 
-    const disposition = classifyGitHubStatus(res);
-    if (disposition === "fatal") {
-      throw new ReleaseResolutionError(`GitHub releases request failed: HTTP ${lastStatus}`, {
+    // Two classes only. Our own site never rate-limits us the way GitHub did,
+    // so the Retry-After and reset-window machinery left with the API. A 5xx or
+    // a 429 is the edge having a moment and is retried on the bounded budget;
+    // anything else non-2xx - a 404 on our own appcast is a broken site, not a
+    // blip - is a contract failure after ONE attempt, as a 404 always was.
+    if (!(res.status >= 500 || res.status === 429)) {
+      throw new ReleaseResolutionError(`appcast request failed: HTTP ${lastStatus}`, {
         transient: false,
       });
     }
-    if (disposition === "rate-limited") {
-      // A SHORT `Retry-After` IS A RECOVERY THE SERVER OFFERED, so take it once
-      // (#2415 review r2). Only once, and only inside the budget: this is the
-      // secondary-limit case, where the wait is seconds. The primary hourly limit
-      // carries no such header and still fails immediately, which is the whole
-      // point of not retrying it.
-      const waitMs = retryAfterMs(res);
-      if (waitMs !== null && waitMs <= GITHUB_MAX_WAIT_MS && !honouredRetryAfter) {
-        honouredRetryAfter = true;
-        lastStatus = res.status;
-        await sleepFn(waitMs);
-        continue;
-      }
-      // Reported at once rather than after two more refusals. The reset instant
-      // is the fact that decides what to do about it, so it is in the message
-      // and not only in a header nobody will see.
-      const resetIn = rateLimitResetInSeconds(res, nowFn);
-      // Three facts, each of which sends a reader somewhere different: the
-      // status, when the window reopens, and whether the server offered a wait
-      // we could not afford. A `Retry-After` that was present and too long is
-      // NOT the same situation as one that was absent - the first says GitHub
-      // knows and we declined, the second says nobody knows.
-      const declined =
-        waitMs !== null && waitMs > GITHUB_MAX_WAIT_MS
-          ? `, Retry-After ${waitMs / 1000}s exceeds the ${GITHUB_MAX_WAIT_MS / 1000}s budget`
-          : honouredRetryAfter
-            ? ", already waited once on Retry-After"
-            : "";
-      throw new ReleaseResolutionError(
-        `GitHub releases rate-limited: HTTP ${lastStatus}` +
-          (resetIn === null ? ", reset not reported" : `, resets in ${resetIn}s`) +
-          declined +
-          " (not retried: the window is far longer than a request can wait)",
-        { transient: true }
-      );
-    }
-    if (attempt < GITHUB_MAX_ATTEMPTS) await sleepFn(GITHUB_RETRY_DELAYS_MS[attempt - 1]);
+    if (attempt < APPCAST_MAX_ATTEMPTS) await sleepFn(APPCAST_RETRY_DELAYS_MS[attempt - 1]);
   }
 
   throw new ReleaseResolutionError(
-    `GitHub releases unavailable after ${GITHUB_MAX_ATTEMPTS} attempts: HTTP ${lastStatus}`,
+    `appcast unavailable after ${APPCAST_MAX_ATTEMPTS} attempts: HTTP ${lastStatus}`,
     { transient: true }
   );
 }
@@ -537,7 +510,7 @@ export function selectReleases(publishedReleases, usageRows) {
         transient: false,
       });
     }
-    const publishedMs = parseGitHubTimestamp(r.publishedAt);
+    const publishedMs = parseUtcTimestamp(r.publishedAt);
     if (publishedMs === null) {
       throw new ReleaseResolutionError(`malformed publishedAt on ${version}`, {
         transient: false,
@@ -631,7 +604,7 @@ export function selectReleases(publishedReleases, usageRows) {
  * that would silently restore the version-blind behaviour this issue exists to
  * remove, and it would do so invisibly. */
 export async function resolveReleases(env, usageRows, opts = {}) {
-  // REQUIRED, not defaulted. GitHub returns every published release including
+  // REQUIRED, not defaulted. The appcast lists every published release including
   // ones published AFTER the window being reported: a build shipped at 08:00
   // would be crowned newest in the 09:12 report covering yesterday, and a
   // backfill would crown a release that did not exist during the reported week
@@ -650,7 +623,7 @@ export async function resolveReleases(env, usageRows, opts = {}) {
   // Published DURING the window is fine - it has partial data and its age line
   // says so. Published at or after the window end cannot have any.
   const withinWindow = published.filter((r) => {
-    const ms = parseGitHubTimestamp(r.publishedAt);
+    const ms = parseUtcTimestamp(r.publishedAt);
     if (ms === null) return true; // malformed dates fail loudly in selectReleases
     return easternDayOf(ms).dayMs < anchorMs;
   });
@@ -1003,7 +976,7 @@ function parseAdditiveRows(rows, windowEndExclusiveMs) {
 
 const EASTERN_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-/** Strict Eastern calendar-day parser, matching parseGitHubTimestamp's rigour:
+/** Strict Eastern calendar-day parser, matching parseUtcTimestamp's rigour:
  * a permissive `new Date` would accept "2026-02-30" and roll it to March 2nd,
  * which would silently move a day into the wrong window. */
 function parseEasternDay(value) {
@@ -1451,7 +1424,7 @@ export function rankMovers({ measurements, selection }) {
         transient: false,
       });
     }
-    const ms = parseGitHubTimestamp(r.publishedAt);
+    const ms = parseUtcTimestamp(r.publishedAt);
     if (ms === null) {
       throw new ReleaseResolutionError(`${label} entry has a malformed publishedAt`, {
         transient: false,
@@ -1660,7 +1633,7 @@ export function rankMovers({ measurements, selection }) {
  *
  * It is FALSE for everything the section can survive as a missing section: a
  * query failure, a truncated response, a measurement or ranking fault, or an
- * exhausted TRANSIENT GitHub failure. Collapsing the two directions would
+ * exhausted TRANSIENT appcast failure. Collapsing the two directions would
  * either lose the adoption half to a blip, or let a misconfigured worker
  * report "scorecard temporarily unavailable" every morning for months.
  */
