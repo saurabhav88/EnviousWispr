@@ -35,6 +35,30 @@ integer, no decimals. If `total_users` is 0 that day, the whole
 engine/polish section is omitted (no divide-by-zero, no misleading "0%"
 noise on a genuinely empty day).
 
+## Release list source (the appcast, not GitHub)
+
+The version scorecard needs two facts per release: the version and when it
+shipped. Both come from **our own Sparkle appcast**, `APPCAST_URL` in
+`wrangler.toml` (`https://enviouswispr.com/appcast.xml`): `.github/workflows/release.yml` writes
+an `<item>` on every release, Cloudflare Pages serves the file, and every
+installed app reads it to learn a release exists. No token, no secret, no
+external rate limit, one request per run.
+
+It replaced GitHub's releases API on 2026-09-03 (#2619). That API allows 60
+unauthenticated requests an hour **per IP**, a Worker's outbound IP is shared
+with other Cloudflare tenants, and the scorecard went missing five of nine
+mornings while we made one request a day. The `GITHUB_TOKEN` remedy coded in
+#2415 was never installed and would have expired within a year, after which a
+401 fails the whole run.
+
+Two consequences worth knowing: a release counts once the appcast carries it,
+so a GitHub release whose `publish-appcast` job failed is absent until
+`appcast-only` recovery runs (no installed app can see it either); and the
+appcast `pubDate` is taken a step before the GitHub release is published, so a
+build cut within a minute of midnight Eastern is attributed to the earlier day.
+The test suite parses the committed `website/public/appcast.xml` end to end, so
+a format drift in the release job fails at PR time rather than one morning.
+
 ## Correctness guardrail (why this worker trusts nothing on faith)
 
 An early planning-time bug: a naive PostHog query silently truncated at 100
@@ -195,8 +219,8 @@ Three independent signals:
    message is still posted, with "Adoption, unavailable today" in place of the
    figures and the version scorecard intact beside it, and then the worker
    returns non-2xx so the GitHub Actions job goes red. The scorecard behaves
-   the same way in reverse, including when GitHub's release list is
-   unreachable after its retries. If both sections fail you get one message
+   the same way in reverse, including when the appcast (the release list;
+   see § Release list source) is unreachable after its retries. If both sections fail you get one message
    with both marked unavailable — never two messages, and never silence.
 
    `totals` is deliberately the ONE adoption query that never degrades to
@@ -206,8 +230,8 @@ Three independent signals:
 
    **Whole-run failures post a fixed notice and no report at all.** An invalid
    `?date=` override, a dev-ID resolution failure or overflow, and a release
-   -resolution CONTRACT failure (misconfigured `GITHUB_REPO`, auth, malformed
-   response, no eligible stable release) all mean there is nothing honest to
+   -resolution CONTRACT failure (misconfigured `APPCAST_URL`, a non-2xx that is
+   not an outage, a malformed appcast, no eligible stable release) all mean there is nothing honest to
    send: at most one fixed "could not be generated" notice goes to Discord,
    carrying no error text, status code or response body, and the run rejects.
    A dev-ID list that will not resolve is never treated as "no dev accounts".
