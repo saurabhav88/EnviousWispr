@@ -6,7 +6,7 @@ section: "Transcription Issues"
 order: 2
 keywords: ["inaccurate", "wrong words", "typos", "bad accuracy", "not accurate", "gets my words wrong", "misheard", "poor quality", "garbled", "names spelled wrong", "improve accuracy"]
 related: ["adding-custom-words", "choosing-your-microphone"]
-updated: 2026-08-06
+updated: 2026-09-01
 ---
 Dictation accuracy drops when the audio is weak, the input microphone is the wrong one, the language setting does not match your speech, or the engine meets an unfamiliar word. Work through these steps in order to improve accuracy.
 
@@ -20,9 +20,9 @@ Audio quality directly affects transcription accuracy. Try a headset microphone,
 
 ### 3. Teach it the words it keeps missing
 
-Names, companies, and terms from your field are not in a general speech model.
+Names, companies, and specialised words from your field are not in a general speech model.
 
-**Add the missing terms.** Open settings, go to **Your Words**, and add them. Each word appears in the list once you have added it. Switch on the vocabulary packs that match your work. This is the fix for a colleague's name that comes out spelled wrong every single time.
+**Add the missing words.** Open **Settings**, go to **Dictionary** \> **Your Words**, and add them. Each word appears in the list once you have added it. Then open **Vocabulary Packs** and switch on the packs that match your work. This is the fix for a colleague's name that comes out spelled wrong every single time.
 
 ### 4. Check your language
 

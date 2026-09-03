@@ -5,7 +5,7 @@ category: "ai-polish"
 section: "Polish"
 order: 3
 keywords: ["smart polish", "context", "context aware", "knows what app", "different apps", "tone", "formal", "casual"]
-updated: 2026-08-06
+updated: 2026-09-01
 ---
 When EnviousWispr sends your dictation to an AI for polishing, it includes a small set of background facts along with your words. That extra context helps the AI make better corrections than it could by reading the transcript alone.
 
@@ -34,7 +34,7 @@ Every Ollama model gets the app name, whichever one you picked and wherever it r
 
 Custom words say "usually" for a reason. When the app cannot tell with confidence which language you spoke, it holds your word list back for that dictation instead of risking English spellings being pushed onto text in another language. That applies to every option in the Yes rows, not just Ollama.
 
-Your custom words are applied to your text before AI Polish runs anyway, as long as custom words are switched on under **Your Words**. Sending them to the AI as well is a second layer, not the only one.
+Your custom words are applied to your text before AI Polish runs anyway, as long as **Enable Dictionary** is switched on under **Settings** \> **Dictionary**. Sending them to the AI as well is a second layer, not the only one.
 
 ### Your words are treated as words
 
