@@ -64,6 +64,13 @@ final class KernelFinalizationOutcome {
   var itnLatencyMs: Double?
   var itnLenBefore: Int?
   var itnLenAfter: Int?
+  /// #2614: the language the cleanup chain resolved (a base code such as "de"),
+  /// which resolver rung answered, and the text rung's confidence bucket. Read
+  /// from the chain's context right after the runner returns; threaded onto
+  /// `dictation.completed`. Metadata only (`telemetry-privacy-boundary`).
+  var cleanupLanguage: String?
+  var cleanupLanguageSource: String?
+  var cleanupLanguageBucket: String?
   /// #761: deterministic emoji-restore facts, threaded onto `dictation.completed`.
   /// Counts only (`telemetry-privacy-boundary`). Populated on a RESTORING run — AFM, plus
   /// local Ollama on the fixed L3 prompt since #1948; the optionals stay nil for cloud,
@@ -366,13 +373,20 @@ struct KernelFinalizationWiring {
       // wire above.
       steps.inverseTextNormalization.backendSupportsLID =
         adapter.capabilities.supportsLanguageDetection
-      let language: String? = context.config?.lockedLanguageCode
+      // #2614: the same three reads the repair path snapshots below; the runner
+      // resolves them once for the whole chain. The repair keeps its own
+      // snapshot because it feeds a `@Sendable` deadline closure and adds the
+      // caret window.
+      let evidence = LanguageEvidence(
+        lockedLanguage: context.config?.lockedLanguageCode,
+        engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
+        engineReportedLanguage: adapter.lastResult?.language)
       let start = CFAbsoluteTimeGetCurrent()
       // #145: ITN runs BEFORE polish so it doubles as the raw-fallback floor —
       // polish-rejected/disabled both deliver the post-ITN text.
       let result = try await textProcessingRunner.run(
         rawText: raw,
-        language: language,
+        evidence: evidence,
         targetAppName: context.targetApp?.localizedName,
         steps: steps.orderedChain,
         // #1846: the LIVE in-flight take, not the concluded one. Polish runs before
@@ -382,6 +396,11 @@ struct KernelFinalizationWiring {
         // reads would silently blank one family.
         takeID: telemetryState.takeID)
       var ctx = result.context
+      // #2614: which language the chain cleaned under, and on what evidence.
+      // Source and bucket only, never the score (`telemetry-privacy-boundary`).
+      outcome.cleanupLanguage = ctx.language
+      outcome.cleanupLanguageSource = ctx.languageSource?.rawValue
+      outcome.cleanupLanguageBucket = ctx.languageConfidenceBucket?.rawValue
       // #628. Mandatory, non-throwing, and it MUST be here: every read below — the outcome
       // field copy, the empty-output floor, storage, History, the paste cascade — happens
       // after this line, and any of them seeing a raw sentinel is the failure this whole
@@ -449,8 +468,11 @@ struct KernelFinalizationWiring {
       if !(ctx.polishedText ?? ctx.text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         return ctx.polishedText ?? ctx.text  // unchanged happy path
       }
+      // #2614: the RESOLVED language and the veto, the same pair the chain's
+      // filler step read, so the floor never strips a token the chain protected.
       let floor = Self.emptyOutputRecoveryFloor(
-        deterministicText: ctx.text, rawASR: raw, language: language)
+        deterministicText: ctx.text, rawASR: raw, language: ctx.language,
+        englishVetoed: ctx.englishRulesVetoed)
       if !floor.isEmpty {
         outcome.rawText = floor
         outcome.polishedText = nil  // the "" polish never persists; History == clipboard
@@ -1146,11 +1168,13 @@ struct KernelFinalizationWiring {
   /// (the filler classifier reads the shared regex). Tested parametrically.
   @MainActor
   static func emptyOutputRecoveryFloor(
-    deterministicText: String, rawASR: String, language: String?
+    deterministicText: String, rawASR: String, language: String?, englishVetoed: Bool = false
   ) -> String {
     let deterministicFloor = deterministicText.trimmingCharacters(in: .whitespacesAndNewlines)
     if !deterministicFloor.isEmpty { return deterministicFloor }
-    if TextLexicalContent.hasLexicalContentAfterRemovingFillers(rawASR, language: language) {
+    if TextLexicalContent.hasLexicalContentAfterRemovingFillers(
+      rawASR, language: language, englishVetoed: englishVetoed)
+    {
       return rawASR.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     return ""
@@ -1229,6 +1253,10 @@ struct KernelFinalizationWiring {
       itnLatencyMs: outcome.itnLatencyMs,
       itnLenBefore: outcome.itnLenBefore,
       itnLenAfter: outcome.itnLenAfter,
+      // #2614: carried through unchanged, like the repair's resolution fields above.
+      cleanupLanguage: outcome.cleanupLanguage,
+      cleanupLanguageSource: outcome.cleanupLanguageSource,
+      cleanupLanguageBucket: outcome.cleanupLanguageBucket,
       // #950 tail-trim diagnostic — kernel-computed, read from the shared
       // telemetry state (eligible Parakeet batch only; nil for streaming /
       // WhisperKit / non-success). Carried onto `asr.completed`.

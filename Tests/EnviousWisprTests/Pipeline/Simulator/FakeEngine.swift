@@ -118,11 +118,18 @@ final class FakeEngine: ASREngineAdapter, @unchecked Sendable {
   var capabilities: ASREngineCapabilities {
     switch behavior {
     case .streamingSuccess:
-      return ASREngineCapabilities(supportsStreaming: true, supportsLanguageDetection: false)
+      return ASREngineCapabilities(
+        supportsStreaming: true, supportsLanguageDetection: detectsLanguage)
     default:
-      return ASREngineCapabilities(supportsStreaming: false, supportsLanguageDetection: false)
+      return ASREngineCapabilities(
+        supportsStreaming: false, supportsLanguageDetection: detectsLanguage)
     }
   }
+
+  /// #2614: a WhisperKit-shaped fake advertises language detection, so the
+  /// finalization wiring's `LanguageEvidence` takes the engine rung. Off by
+  /// default: every existing scenario keeps its Parakeet-class capabilities.
+  var detectsLanguage = false
 
   private(set) var readiness: ASREngineReadiness = .notReady
 

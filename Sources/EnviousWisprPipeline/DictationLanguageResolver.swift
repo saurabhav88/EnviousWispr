@@ -2,6 +2,35 @@ import EnviousWisprCore
 import Foundation
 import NaturalLanguage
 
+/// The three facts a caller can know about a dictation's language BEFORE
+/// reading the text (#2614). Built by both production chain callers
+/// (`KernelFinalizationWiring`, `RecoveryTextProcessor`) and handed to
+/// `TextProcessingRunner.run`, which resolves once through
+/// `DictationLanguageResolver.resolve` and seeds the context for every step.
+package struct LanguageEvidence: Sendable {
+  package let lockedLanguage: String?
+  package let engineDetectsLanguage: Bool
+  package let engineReportedLanguage: String?
+
+  package init(
+    lockedLanguage: String?, engineDetectsLanguage: Bool, engineReportedLanguage: String?
+  ) {
+    self.lockedLanguage = lockedLanguage
+    self.engineDetectsLanguage = engineDetectsLanguage
+    self.engineReportedLanguage = engineReportedLanguage
+  }
+
+  /// The user locked a language: nothing else is consulted.
+  package static func locked(_ language: String) -> LanguageEvidence {
+    LanguageEvidence(
+      lockedLanguage: language, engineDetectsLanguage: false, engineReportedLanguage: nil)
+  }
+
+  /// Automatic on an engine that does not detect: the text alone decides.
+  package static let none = LanguageEvidence(
+    lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil)
+}
+
 /// Decides what language a finished dictation is in, for consumers that must not
 /// act on a guess (#1785, #1921).
 ///
@@ -64,6 +93,17 @@ package enum DictationLanguageResolver {
     package enum Bucket: String, Sendable {
       case none, lt50, f50to70, f70to90, ge90
 
+      /// Whether an ABSTAINED text answer in this bucket may veto English
+      /// cleanup rules (#2614). A switch rather than a comparison because the
+      /// enum is not `Comparable`, and exhaustiveness is what makes a new
+      /// bucket a compile error here instead of a silent non-veto.
+      var permitsEnglishVeto: Bool {
+        switch self {
+        case .none, .lt50: return false
+        case .f50to70, .f70to90, .ge90: return true
+        }
+      }
+
       init(_ confidence: Double) {
         // A non-finite score falls to `none` rather than through the range
         // ladder. NaN compares false against every bound, so it would otherwise
@@ -86,6 +126,20 @@ package enum DictationLanguageResolver {
     let language: String?
     let source: Source
     let confidenceBucket: Bucket
+    /// #2614: true ONLY on the abstention path, when the text rung's top
+    /// hypothesis is a non-English language at a bucket that
+    /// `permitsEnglishVeto`. The locked, engine, dictation and document
+    /// answers all carry `false`. Same philosophy as the document rung below:
+    /// a veto, never an authorisation. Nothing below the floor resolves a
+    /// language; this only says "do not apply English-only rules to it".
+    let englishVeto: Bool
+
+    init(language: String?, source: Source, confidenceBucket: Bucket, englishVeto: Bool = false) {
+      self.language = language
+      self.source = source
+      self.confidenceBucket = confidenceBucket
+      self.englishVeto = englishVeto
+    }
   }
 
   /// What the recogniser thinks, and how sure it is. No policy.
@@ -171,7 +225,17 @@ package enum DictationLanguageResolver {
       fromDocument.confidence >= minConfidence,
       fromDocument.language != "en"
     else {
-      return Resolution(language: nil, source: .none, confidenceBucket: dictationBucket)
+      // #2614: the abstention. A confident-enough NON-English top hypothesis
+      // vetoes English-only cleanup (ITN, the English filler table) without
+      // resolving anything. Measured on the language-gate fixture
+      // (`docs/feature-requests/issue-2614-artifacts/resolver-on-fixture.txt`):
+      // the recogniser was never confidently wrong TOWARD English, so an
+      // English top hypothesis keeps today's behaviour and a foreign one at
+      // >= f50to70 stops the rules that damage it.
+      let englishVeto =
+        fromDictation.map { $0.language != "en" && dictationBucket.permitsEnglishVeto } ?? false
+      return Resolution(
+        language: nil, source: .none, confidenceBucket: dictationBucket, englishVeto: englishVeto)
     }
     return Resolution(
       language: fromDocument.language,

@@ -241,6 +241,7 @@ scripts/ci/**/*.pyc
 scripts/eval/*
 !scripts/eval/acceptance_gate.py
 !scripts/eval/chunk_size_benchmark.py
+!scripts/eval/language_gate_corpus.py
 !scripts/eval/overpolish-eval.py
 !scripts/eval/golden_judge_scores.json
 !scripts/eval/prompts/

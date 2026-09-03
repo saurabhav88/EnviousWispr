@@ -93,3 +93,58 @@ struct FillerRemovalLanguageProtectionTests {
     #expect(out == "kommt")
   }
 }
+
+// MARK: - #2614 rows grounded by the language-gate benchmark, and the veto union
+
+/// Portuguese "um" (a / one), Swedish "er" (your), Slovenian and Croatian "um" (mind)
+/// were measured as damaged on real engine output (`LanguageGateBenchmarkTests`), and
+/// a take whose language the resolver could not place but read as NOT English keeps
+/// every tabled token while the base fillers still go.
+@MainActor
+extension FillerRemovalLanguageProtectionTests {
+
+  @Test("Portuguese: \"um\" (a / one) survives")
+  func portugueseUmSurvives() async throws {
+    let out = try await process("Comprei um carro novo ontem", language: "pt")
+    #expect(out == "Comprei um carro novo ontem")
+  }
+
+  @Test("Swedish: \"er\" (your) survives")
+  func swedishErSurvives() async throws {
+    let out = try await process("Tack för er hjälp igår", language: "sv")
+    #expect(out == "Tack för er hjälp igår")
+  }
+
+  @Test("Slovenian: \"um\" (mind) survives")
+  func slovenianUmSurvives() async throws {
+    let out = try await process("Njegov um je bister", language: "sl")
+    #expect(out == "Njegov um je bister")
+  }
+
+  @Test("Croatian: \"um\" (mind) survives")
+  func croatianUmSurvives() async throws {
+    let out = try await process("Njegov um je bistar", language: "hr")
+    #expect(out == "Njegov um je bistar")
+  }
+
+  @Test("#2614 a vetoed take protects every tabled token and still drops the base fillers")
+  func vetoProtectsTheUnion() async throws {
+    let out = FillerRemovalStep.removingFillers(
+      from: "uh er ist um drei ah da", language: nil, englishVetoed: true)
+    #expect(out == "er ist um drei da")
+    // Control: the same text with no veto and no language loses both real words.
+    #expect(
+      FillerRemovalStep.removingFillers(from: "uh er ist um drei ah da", language: nil)
+        == "ist drei da")
+  }
+
+  @Test("#2614 the step reads the veto off the context")
+  func stepReadsTheVetoFromTheContext() async throws {
+    var context = makeContext(text: "uh er ist um drei ah da", language: nil)
+    context.englishRulesVetoed = true
+    let step = FillerRemovalStep()
+    step.fillerRemovalEnabled = true
+    let result = try await step.process(context)
+    #expect(result.text == "er ist um drei da")
+  }
+}

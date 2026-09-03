@@ -26,6 +26,9 @@ struct LLMPolishStepLanguageFallbackTests {
   /// happens-after, no concurrent access).
   private final class LanguageCapture: @unchecked Sendable {
     var detectedLanguage: String?
+    /// #2614: the system prompt the planner built, so the locked-only language hint
+    /// can be asserted alongside the config's language.
+    var systemPrompt: String?
   }
 
   /// Captures the config's `detectedLanguage`, then returns a fixed polish.
@@ -42,6 +45,7 @@ struct LLMPolishStepLanguageFallbackTests {
       onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
       capture.detectedLanguage = config.detectedLanguage
+      capture.systemPrompt = instructions.systemPrompt
       return LLMResult(polishedText: result)
     }
   }
@@ -69,5 +73,56 @@ struct LLMPolishStepLanguageFallbackTests {
     _ = try await step.process(context)
 
     #expect(capture.detectedLanguage == "de")
+  }
+}
+
+// MARK: - #2614 a RESOLVED language is a new producer of `context.language`
+
+/// `TextProcessingRunner` now seeds `context.language` from the resolver, not only from
+/// the lock. Two readers, two contracts: the Apple Intelligence preflight config takes
+/// the resolved language (the fallback above), while the prompt builders' `LANGUAGE:`
+/// hint is documented as locked-only and must NOT fire for a text-resolved language.
+@MainActor
+extension LLMPolishStepLanguageFallbackTests {
+
+  private func capturedPolish(
+    language: String?, source: DictationLanguageResolver.Resolution.Source?
+  ) async throws -> LanguageCapture {
+    let step = LLMPolishStep(keychainManager: KeychainManager())
+    step.llmProvider = .openAI
+    step.llmModel = "gpt-4o-mini"
+    step.languageDetection = nil
+    let capture = LanguageCapture()
+    step.makePolisher = { _, _, _ in
+      CapturingPolisher(capture: capture, result: Self.polishedSentence)
+    }
+    var context = TextProcessingContext(text: Self.inputSentence, language: language)
+    context.languageSource = source
+    _ = try await step.process(context)
+    return capture
+  }
+
+  @Test("#2614 a text-resolved language reaches the polisher config but not the prompt hint")
+  func resolvedLanguageReachesConfigNotPrompt() async throws {
+    let capture = try await capturedPolish(language: "de", source: .dictation)
+    #expect(capture.detectedLanguage == "de")
+    let prompt = try #require(capture.systemPrompt)
+    #expect(!prompt.contains("LANGUAGE: This transcript is in"), "\(prompt)")
+  }
+
+  @Test("#2614 a locked language still reaches both the config and the prompt hint")
+  func lockedLanguageReachesConfigAndPrompt() async throws {
+    let capture = try await capturedPolish(language: "de", source: .locked)
+    #expect(capture.detectedLanguage == "de")
+    let prompt = try #require(capture.systemPrompt)
+    #expect(prompt.contains("LANGUAGE: This transcript is in de"), "\(prompt)")
+  }
+
+  @Test("#2614 a legacy context that never went through the resolver keeps today's hint")
+  func legacyContextKeepsTheHint() async throws {
+    let capture = try await capturedPolish(language: "de", source: nil)
+    #expect(capture.detectedLanguage == "de")
+    let prompt = try #require(capture.systemPrompt)
+    #expect(prompt.contains("LANGUAGE: This transcript is in de"), "\(prompt)")
   }
 }

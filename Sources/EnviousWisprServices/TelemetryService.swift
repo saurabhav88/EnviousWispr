@@ -253,6 +253,9 @@ public final class TelemetryService {
       itnLatencyMs: m?.itnLatencyMs,
       itnLenBefore: m?.itnLenBefore,
       itnLenAfter: m?.itnLenAfter,
+      cleanupLanguage: m?.cleanupLanguage,
+      cleanupLanguageSource: m?.cleanupLanguageSource,
+      cleanupLanguageBucket: m?.cleanupLanguageBucket,
       emojiInInput: m?.emojiInInput,
       emojiDropped: m?.emojiDropped,
       emojiRestored: m?.emojiRestored,
@@ -1369,6 +1372,8 @@ public final class TelemetryService {
     itnRan: Bool? = nil, itnChanged: Bool? = nil, itnFloorDelivered: Bool? = nil,
     itnSkipReason: String? = nil, itnLatencyMs: Double? = nil,
     itnLenBefore: Int? = nil, itnLenAfter: Int? = nil,
+    cleanupLanguage: String? = nil, cleanupLanguageSource: String? = nil,
+    cleanupLanguageBucket: String? = nil,
     emojiInInput: Int? = nil, emojiDropped: Int? = nil, emojiRestored: Int? = nil,
     emojiRestoreIncomplete: Bool? = nil, emojiLatencyMs: Double? = nil,
     recordingSeconds: Double? = nil, stopReason: String? = nil,
@@ -1435,6 +1440,11 @@ public final class TelemetryService {
     if let lat = itnLatencyMs { props["itn_latency_ms"] = String(format: "%.3f", lat) }
     if let lb = itnLenBefore { props["itn_len_before"] = lb }
     if let la = itnLenAfter { props["itn_len_after"] = la }
+    // #2614: the language the cleanup chain ran under, its source and bucket
+    // (metadata only — `telemetry-privacy-boundary`; never the score).
+    if let cl = cleanupLanguage { props["cleanup_language"] = cl }
+    if let cs = cleanupLanguageSource { props["cleanup_language_source"] = cs }
+    if let cb = cleanupLanguageBucket { props["cleanup_language_bucket"] = cb }
     // #761: deterministic emoji-restore facts (counts only — `telemetry-privacy-boundary`).
     // Present for dictations that ran the guard: AFM, plus local Ollama on the fixed L3
     // prompt since #1948. A dashboard reading `emoji_*` as Apple-Intelligence-only silently

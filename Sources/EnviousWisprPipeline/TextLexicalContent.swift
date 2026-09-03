@@ -16,11 +16,14 @@ public enum TextLexicalContent {
   /// `true` iff removing fillers from `text` leaves at least one alphanumeric
   /// scalar (a letter or digit). "uh" → false; "OK" / "1988" / "I" → true;
   /// "..." → false; "uh OK" → true.
+  /// `englishVetoed` (#2614) forwards the chain's veto so a protected foreign
+  /// token is lexical here exactly when the filler step kept it.
   @MainActor
-  public static func hasLexicalContentAfterRemovingFillers(_ text: String, language: String?)
-    -> Bool
-  {
-    let stripped = FillerRemovalStep.removingFillers(from: text, language: language)
+  public static func hasLexicalContentAfterRemovingFillers(
+    _ text: String, language: String?, englishVetoed: Bool = false
+  ) -> Bool {
+    let stripped = FillerRemovalStep.removingFillers(
+      from: text, language: language, englishVetoed: englishVetoed)
     return stripped.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) }
   }
 }

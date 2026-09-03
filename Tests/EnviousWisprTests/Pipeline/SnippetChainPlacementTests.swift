@@ -95,9 +95,9 @@ struct SnippetChainPlacementTests {
     let input = "backslash my email address, and the path is backslash users"
 
     let withStep = try await runner.run(
-      rawText: input, language: "en", targetAppName: nil, steps: steps.orderedChain)
+      rawText: input, evidence: .locked("en"), targetAppName: nil, steps: steps.orderedChain)
     let withoutStep = try await runner.run(
-      rawText: input, language: "en", targetAppName: nil,
+      rawText: input, evidence: .locked("en"), targetAppName: nil,
       steps: steps.orderedChain.filter { $0.name != "Snippet Expansion" })
 
     #expect(withStep.context.text == withoutStep.context.text)

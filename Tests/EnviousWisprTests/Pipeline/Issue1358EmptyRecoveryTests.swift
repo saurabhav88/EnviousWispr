@@ -102,6 +102,17 @@ struct Issue1358EmptyRecoveryTests {
         == "hello")
   }
 
+  @Test("#2614 the raw floor honours the chain's veto: a protected token under a veto is lexical")
+  func rawFloorHonoursTheVeto() {
+    #expect(
+      KernelFinalizationWiring.emptyOutputRecoveryFloor(
+        deterministicText: "", rawASR: "er", language: nil, englishVetoed: true) == "er")
+    // Control: with no veto the same lone token is a filler and the floor is empty.
+    #expect(
+      KernelFinalizationWiring.emptyOutputRecoveryFloor(
+        deterministicText: "", rawASR: "er", language: nil) == "")
+  }
+
   @Test(
     "the raw floor is language-aware: a German pronoun is not floored away as filler (#2259)")
   func rawFloorGermanLoneWordRecovered() {

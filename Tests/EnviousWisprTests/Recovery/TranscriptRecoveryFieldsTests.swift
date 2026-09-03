@@ -82,3 +82,45 @@ struct TranscriptRecoveryFieldsTests {
     #expect((decoded.inputDeviceWasRemoved == true) == false, "the badge must not render")
   }
 }
+
+// MARK: - #2614 `ExecutionMetrics` cleanup-language fields
+
+/// Three additive optionals beside `itnSkipReason`. A pre-#2614 metrics blob must
+/// decode with them nil, and a reverted build must decode a forward-written one.
+extension TranscriptRecoveryFieldsTests {
+
+  @Test("#2614 a pre-field metrics JSON decodes with the cleanup-language fields nil")
+  func preCleanupLanguageMetricsDecode() throws {
+    // A blob written by a build that had the three keys, with the keys REMOVED: exactly
+    // what a pre-#2614 build wrote, without hand-listing every required key of the type.
+    var forward = ExecutionMetrics()
+    forward.itnSkipReason = "non_english"
+    forward.cleanupLanguage = "de"
+    forward.cleanupLanguageSource = "dictation"
+    forward.cleanupLanguageBucket = "ge90"
+    var object = try #require(
+      JSONSerialization.jsonObject(with: JSONEncoder().encode(forward)) as? [String: Any])
+    for key in ["cleanupLanguage", "cleanupLanguageSource", "cleanupLanguageBucket"] {
+      #expect(object.removeValue(forKey: key) != nil, "\(key) was never encoded")
+    }
+    let legacy = try JSONSerialization.data(withJSONObject: object)
+    let metrics = try JSONDecoder().decode(ExecutionMetrics.self, from: legacy)
+    #expect(metrics.itnSkipReason == "non_english")
+    #expect(metrics.cleanupLanguage == nil)
+    #expect(metrics.cleanupLanguageSource == nil)
+    #expect(metrics.cleanupLanguageBucket == nil)
+  }
+
+  @Test("#2614 the cleanup-language fields round-trip through Codable")
+  func cleanupLanguageFieldsRoundTrip() throws {
+    var metrics = ExecutionMetrics()
+    metrics.cleanupLanguage = "de"
+    metrics.cleanupLanguageSource = "dictation"
+    metrics.cleanupLanguageBucket = "ge90"
+    let data = try JSONEncoder().encode(metrics)
+    let decoded = try JSONDecoder().decode(ExecutionMetrics.self, from: data)
+    #expect(decoded.cleanupLanguage == "de")
+    #expect(decoded.cleanupLanguageSource == "dictation")
+    #expect(decoded.cleanupLanguageBucket == "ge90")
+  }
+}

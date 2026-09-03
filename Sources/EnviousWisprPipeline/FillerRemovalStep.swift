@@ -29,18 +29,41 @@ public final class FillerRemovalStep: TextProcessingStep {
   }()
 
   /// Filler tokens that collide with real, common words in specific languages and
-  /// must never be stripped when the user has locked that language. Keyed by
-  /// `LanguageNormalizer.baseCode`. Confirmed by native-word meaning, not by corpus
-  /// measurement — scope approved by founder 2026-08-20 to these four languages;
-  /// extending to another language is adding one line here, not new logic.
+  /// must never be stripped when the dictation is in that language. Keyed by
+  /// `LanguageNormalizer.baseCode`. The first four rows were confirmed by
+  /// native-word meaning (scope approved by founder 2026-08-20, issue #2259); the
+  /// pt/sv/sl/hr rows were grounded by the language-gate benchmark on real engine
+  /// output (#2614, `LanguageGateBenchmarkTests`, fixture
+  /// `Tests/EnviousWisprTests/Resources/LanguageGate/transcripts.jsonl`).
+  /// Extending to another language is adding one line here, not new logic.
+  ///
+  /// Cost, stated: a protection row keeps EVERY occurrence of that token in that
+  /// language, including a genuine hesitation spelled the same, because a table
+  /// cannot tell lexical use from filler use; a lexical word outranks a
+  /// hesitation. Coverage boundary: a colliding token in an unlisted language
+  /// keeps today's behaviour.
   private static let languageProtectedTokens: [String: Set<String>] = [
     "de": ["er", "um"],  // "er" = he, "um" = at [time] / in order to (issue #2259)
     "nl": ["er"],  // "er" = there (existential "er is...")
     "da": ["er"],  // "er" = is
     "no": ["er"],  // "er" = is (nb/nn collapse to "no" via LanguageNormalizer)
+    "pt": ["um"],  // "um" = a / one (indefinite article) (#2614)
+    "sv": ["er"],  // "er" = your (formal) (#2614)
+    "sl": ["um"],  // "um" = mind (#2614)
+    "hr": ["um"],  // "um" = mind (#2614)
   ]
 
-  private static func protectedTokens(forLanguage language: String?) -> Set<String> {
+  /// Every token any row protects (#2614). Derived from the table, never listed
+  /// beside it, so a new row cannot leave the union stale. Used when the resolver
+  /// VETOED English rules: the language is unknown but is not English, so every
+  /// known collision is kept while the base fillers are still removed.
+  private static let allLanguageProtectedTokens: Set<String> =
+    languageProtectedTokens.values.reduce(into: []) { $0.formUnion($1) }
+
+  private static func protectedTokens(forLanguage language: String?, englishVetoed: Bool)
+    -> Set<String>
+  {
+    if englishVetoed { return allLanguageProtectedTokens }
     guard let base = LanguageNormalizer.baseCode(language) else { return [] }
     return languageProtectedTokens[base] ?? []
   }
@@ -54,12 +77,15 @@ public final class FillerRemovalStep: TextProcessingStep {
   /// `TextLexicalContent.hasLexicalContentAfterRemovingFillers` both call it so
   /// there is never a second filler algorithm.
   ///
-  /// `language` gates per-token removal via `protectedTokens(forLanguage:)`
-  /// (issue #2259) — a token that collides with a real word in the locked
+  /// `language` gates per-token removal via `protectedTokens(forLanguage:englishVetoed:)`
+  /// (issue #2259) — a token that collides with a real word in the resolved
   /// language is left in place; every other match is removed exactly as before.
-  public static func removingFillers(from text: String, language: String?) -> String {
+  /// `englishVetoed` (#2614) selects the union of every protected row instead.
+  public static func removingFillers(
+    from text: String, language: String?, englishVetoed: Bool = false
+  ) -> String {
     guard let pattern = fillerPattern else { return text }
-    let protected = protectedTokens(forLanguage: language)
+    let protected = protectedTokens(forLanguage: language, englishVetoed: englishVetoed)
     let range = NSRange(text.startIndex..., in: text)
     var result = text
     // Walk matches in REVERSE so ranges computed against the ORIGINAL string
@@ -87,7 +113,8 @@ public final class FillerRemovalStep: TextProcessingStep {
       }
       return context
     }
-    let result = Self.removingFillers(from: text, language: context.language)
+    let result = Self.removingFillers(
+      from: text, language: context.language, englishVetoed: context.englishRulesVetoed)
 
     let removedCount = (text.count - result.count)
     if removedCount > 0 {

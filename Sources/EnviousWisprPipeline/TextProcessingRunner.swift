@@ -144,6 +144,11 @@ internal final class TextProcessingRunner {
 
   private let logger: any PipelineLogging
   private let timeoutExecutor: TimeoutExecutor
+  /// #2614 language-recogniser seam, mirroring `DictationLanguageResolver.resolve`'s
+  /// own `identify` parameter. Production is the real recogniser; a test injects a
+  /// fixed answer for the boundary cases real output cannot reproducibly land on
+  /// (an abstention whose top hypothesis sits at exactly 0.50).
+  private let languageIdentifier: (String) -> (language: String, confidence: Double)?
   private let captureError: CaptureError
   private let recordPolishFailed: RecordPolishFailed
   private let recordPolishSkipped: RecordPolishSkipped
@@ -151,6 +156,8 @@ internal final class TextProcessingRunner {
   init(
     logger: any PipelineLogging = AppLoggerAdapter(),
     telemetry: TelemetrySeams = .live,
+    languageIdentifier: @escaping (String) -> (language: String, confidence: Double)? =
+      DictationLanguageResolver.identify,
     timeoutExecutor: @escaping TimeoutExecutor = { seconds, op in
       // nonisolated(unsafe) bridges @MainActor `op` to withThrowingTimeout's
       // @Sendable contract. Safety: op is @MainActor and its return value
@@ -170,12 +177,18 @@ internal final class TextProcessingRunner {
     self.captureError = telemetry.captureError
     self.recordPolishFailed = telemetry.recordPolishFailed
     self.recordPolishSkipped = telemetry.recordPolishSkipped
+    self.languageIdentifier = languageIdentifier
     self.timeoutExecutor = timeoutExecutor
   }
 
   func run(
     rawText: String,
-    language: String?,
+    /// #2614: what the caller knows about the language before reading the text.
+    /// Resolved ONCE here, through the same ladder the cursor-insertion repair
+    /// uses, and frozen into the context so every step reads one answer. The
+    /// alternative — each step resolving for itself — meant two recogniser calls
+    /// per take and two answers that could disagree.
+    evidence: LanguageEvidence,
     targetAppName: String?,
     steps: [any TextProcessingStep],
     /// #1846: the live in-flight take. Frozen into the context below so every
@@ -183,7 +196,19 @@ internal final class TextProcessingRunner {
     /// moves on mid-chain.
     takeID: String? = nil
   ) async throws -> TextProcessingRunResult {
-    var context = TextProcessingContext(text: rawText, language: language)
+    // No surrounding text: the chain has no caret window. The repair path
+    // resolves again later with one, and the two share one floor and one
+    // precedence ladder, so a disagreement is a difference in INPUT only.
+    let resolution = DictationLanguageResolver.resolve(
+      lockedLanguage: evidence.lockedLanguage,
+      engineDetectsLanguage: evidence.engineDetectsLanguage,
+      engineReportedLanguage: evidence.engineReportedLanguage,
+      text: rawText,
+      identify: languageIdentifier)
+    var context = TextProcessingContext(text: rawText, language: resolution.language)
+    context.languageSource = resolution.source
+    context.languageConfidenceBucket = resolution.confidenceBucket
+    context.englishRulesVetoed = resolution.englishVeto
     context.targetAppName = targetAppName
     context.takeID = takeID
     var polishError: String?

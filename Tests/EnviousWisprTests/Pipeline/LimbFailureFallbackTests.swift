@@ -28,7 +28,7 @@ struct LimbFailureFallbackTests {
 
     let result = try await runner.run(
       rawText: raw,
-      language: nil,
+      evidence: .none,
       targetAppName: nil,
       steps: [failing]
     )
@@ -48,7 +48,7 @@ struct LimbFailureFallbackTests {
     let skip = ContextWindowSkipStep(stage: .predicted)
 
     let result = try await runner.run(
-      rawText: raw, language: nil, targetAppName: nil, steps: [skip])
+      rawText: raw, evidence: .none, targetAppName: nil, steps: [skip])
 
     // Heart contract: raw text survives.
     #expect(result.context.text == raw)
@@ -65,7 +65,7 @@ struct LimbFailureFallbackTests {
     let skip = ContextWindowSkipStep(stage: .caught)
 
     let result = try await runner.run(
-      rawText: raw, language: nil, targetAppName: nil, steps: [skip])
+      rawText: raw, evidence: .none, targetAppName: nil, steps: [skip])
 
     #expect(result.context.text == raw)
     #expect(result.context.polishedText == nil)
@@ -86,7 +86,7 @@ struct LimbFailureFallbackTests {
     step.llmProvider = .appleIntelligence
 
     let result = try await runner.run(
-      rawText: raw, language: nil, targetAppName: nil, steps: [step])
+      rawText: raw, evidence: .none, targetAppName: nil, steps: [step])
 
     // The on-device model stalled, but a too-long dictation isn't a failure —
     // raw deterministically-cleaned text ships and NO "AI polish failed"
@@ -109,7 +109,7 @@ struct LimbFailureFallbackTests {
     step.llmProvider = .openAI
 
     let result = try await runner.run(
-      rawText: raw, language: nil, targetAppName: nil, steps: [step])
+      rawText: raw, evidence: .none, targetAppName: nil, steps: [step])
 
     #expect(result.context.text == raw)
     #expect(result.context.polishedText == nil)
@@ -133,7 +133,7 @@ struct LimbFailureFallbackTests {
     let raw = "raw asr transcript"
 
     let result = try await runner.run(
-      rawText: raw, language: nil, targetAppName: nil, steps: [step])
+      rawText: raw, evidence: .none, targetAppName: nil, steps: [step])
 
     // RED before the snapshot fix (catch read the now-.openAI live value →
     // surfaced); GREEN after (snapshot-at-start is .appleIntelligence → silent).
@@ -150,7 +150,7 @@ struct LimbFailureFallbackTests {
 
     let result = try await runner.run(
       rawText: raw,
-      language: nil,
+      evidence: .none,
       targetAppName: nil,
       steps: [disabled]
     )
