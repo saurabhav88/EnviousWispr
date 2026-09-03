@@ -48,6 +48,26 @@ enum WhatsNewContent {
       version: "2.4.7"
     ),
 
+    // #2497 follow-up. Repair copy is allowed here and was NOT allowed in the
+    // 2.4.6 entry above, and the protocol draws that line by whether anyone RAN
+    // the version being repaired: Quick Add reached users in 2.4.6, so its keys
+    // moving under them is a change they will feel the moment they reach for the
+    // old ones.
+    //
+    // "could start a recording" rather than "started": the collision is real but
+    // it is not universal. Record ships as bare RIGHT Option, so only a hand that
+    // took the right-hand Option key hit it, and anyone who had rebound Record
+    // never hit it at all. An unearned absolute here would be the same defect
+    // RULE: verify-every-claim-in-an-entry exists to catch.
+    Entry(
+      id: "quick-add-shortcut-moved",
+      icon: "keyboard",
+      title: "Quick Add has a new keyboard shortcut",
+      description:
+        "Quick Add has moved to Control Shift W. Its old keys shared the Option key with the record key, so it could start a recording instead of opening the panel. If you chose your own Quick Add keys, yours are untouched. You can change it in Keybinds settings.",
+      version: "2.4.7"
+    ),
+
     // MARK: - v2.4.6
 
     // Every title and every collapsed line in this group was written or edited by
@@ -66,9 +86,20 @@ enum WhatsNewContent {
     // It names no app as the culprit: naming one dates the entry the moment that
     // app starts publishing a selection.
     //
-    // Control Option W is `ShortcutRole.quickAdd.defaultBinding`
-    // (ShortcutBinding.swift), keyCode 13 with .control and .option. No dashes,
-    // per GR-NO-DASHES.
+    // **THIS ENTRY NAMES NO CHORD, AND THAT IS WHY.** It used to say "press Control
+    // Option W", which is what 2.4.6 really shipped. When that default moved to
+    // Control Shift W (#2497 follow-up, 2026-09-02) the obvious repair looked like
+    // updating this sentence to the new chord — and that is the one thing a version
+    // group may never do. A patch note is a permanent record OF ITS OWN RELEASE and
+    // feeds the published GitHub release body from this same literal
+    // (FACT: whats-new-feeds-github-release-notes), so editing it would have made
+    // 2.4.6 claim it shipped a binding that did not exist until 2.4.7. Cloud review
+    // caught the rewrite.
+    //
+    // A version-neutral phrase is the exit from that bind: it was true for 2.4.6,
+    // it is true now, and it stays true through the next rebind, because the one
+    // thing a reader must not be sent to is a stale chord. The MOVE is announced in
+    // the 2.4.7 group above, which is the group entitled to describe it.
     //
     // **"puts your clipboard back" IS NOT QUALIFIED WITH "exactly as it was", AND
     // THAT IS DELIBERATE.** The restore is conditional, not guaranteed: when the
@@ -93,7 +124,7 @@ enum WhatsNewContent {
       icon: "text.badge.plus",
       title: "Add a custom word to your dictionary with a click of a button",
       description:
-        "Highlight a misheard word anywhere on macOS, press Control Option W, and save the right spelling without opening settings. A small panel ranks that spelling against the words you have already saved, so one Return usually finishes the job. It is also in the menu bar menu, which reads whatever you have highlighted at the moment you open it. Some apps will not tell us what you have selected, such as messaging apps built for iPad and some terminals. There, Quick Add copies your selection, reads it, and puts your clipboard back. Your clipboard history will show both, which we do not try to hide. There is a fraction of a second where a copy you make yourself can be read as the app answering. If that happens the panel shows the wrong word, and that copy of yours is lost when your clipboard is put back. A switch in Clipboard settings turns all of this off, and it turns itself off in common remote desktop and virtual machine apps. The keybind is yours to change in Keybinds settings.",
+        "Highlight a misheard word anywhere on macOS, press your Quick Add keybind, and save the right spelling without opening settings. A small panel ranks that spelling against the words you have already saved, so one Return usually finishes the job. It is also in the menu bar menu, which reads whatever you have highlighted at the moment you open it. Some apps will not tell us what you have selected, such as messaging apps built for iPad and some terminals. There, Quick Add copies your selection, reads it, and puts your clipboard back. Your clipboard history will show both, which we do not try to hide. There is a fraction of a second where a copy you make yourself can be read as the app answering. If that happens the panel shows the wrong word, and that copy of yours is lost when your clipboard is put back. A switch in Clipboard settings turns all of this off, and it turns itself off in common remote desktop and virtual machine apps. The keybind is yours to change in Keybinds settings.",
       version: "2.4.6"
     ),
 

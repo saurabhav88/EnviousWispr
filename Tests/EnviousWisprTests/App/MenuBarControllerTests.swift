@@ -397,7 +397,24 @@ struct MenuBarControllerTests {
   @Test("A chord Record or Cancel owns is not advertised as Quick Add's")
   func acontestedChordIsNotAdvertised() {
     // The shipped default is uncontested and still shows, so the guard cannot be a blanket nil.
-    #expect(Self.label(13, [.control, .option]) != nil, "the default is nobody else's")
+    //
+    // **ASKED AGAINST THE OTHER TWO SHIPPED DEFAULTS, not against this file's `label` fallbacks,
+    // and that is the whole point of the row.** `label` defaults `record` to key code 49 — Space,
+    // which is not a modifier key at all, so `isBareModifier` is false and the bare-modifier
+    // interception branch above cannot fire. Read at that constant this row asserted "the shipped
+    // chord is nobody else's" against a Record key no install has ever had, and it passed for the
+    // whole time the real pair was broken: Record ships as bare Right Option, Quick Add shipped as
+    // Control-Option-W, and the Option half is Record's (founder report, 2026-09-02, fixed by
+    // moving the default to Control-Shift-W).
+    //
+    // Every value is read from `ShortcutRole` rather than written out, so the row asks about
+    // whatever we currently ship instead of about three numbers that were true when it was typed.
+    #expect(
+      Self.label(
+        ShortcutRole.quickAdd.defaultKeyCode, ShortcutRole.quickAdd.defaultModifiers,
+        record: (ShortcutRole.record.defaultKeyCode, ShortcutRole.record.defaultModifiers),
+        cancel: (ShortcutRole.cancel.defaultKeyCode, ShortcutRole.cancel.defaultModifiers)) != nil,
+      "the three shipped defaults must not contend with each other")
 
     #expect(Self.label(49, [], record: (49, [])) == nil, "Record owns this chord")
     #expect(Self.label(53, [], cancel: (53, [])) == nil, "Cancel owns this chord")
