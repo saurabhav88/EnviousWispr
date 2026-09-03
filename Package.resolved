@@ -1,5 +1,5 @@
 {
-  "originHash" : "a2082a3cba31b95369a2d5048fc31dd1ab704cbf56fcc3aeebe0201113b36421",
+  "originHash" : "b3664c13dfe1f09cf94dbd8988d3f80b62d0f2cfbad8c681364b3191fec86a5a",
   "pins" : [
     {
       "identity" : "argmax-oss-swift",
@@ -23,8 +23,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/PostHog/posthog-ios.git",
       "state" : {
-        "revision" : "cf56a54a4316616a17a538fb96bd8239b6dd0105",
-        "version" : "3.70.1"
+        "revision" : "131859db52a6d65bc77a6f8846239a22bad8dd14",
+        "version" : "3.68.2"
       }
     },
     {
