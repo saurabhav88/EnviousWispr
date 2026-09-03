@@ -129,7 +129,7 @@ struct SettingsDefaultsRoutingTests {
 
   // MARK: - Quick Add's shortcut (#2381)
 
-  @Test("Quick Add ships on Control-Option-W and belongs to unified defaults")
+  @Test("Quick Add ships on Control-Shift-W and belongs to unified defaults")
   func quickAddShortcutDefaults() {
     let suite = Self.freshSuite()
     let settings = SettingsManager(defaults: suite)
@@ -137,7 +137,7 @@ struct SettingsDefaultsRoutingTests {
     // W (13), not a modifier: the default is deliberately a CHORD, so it takes the Carbon path and
     // nobody who has never heard of the feature reaches it by accident.
     #expect(settings.quickAddKeyCode == 13)
-    #expect(settings.quickAddModifiers == [.control, .option])
+    #expect(settings.quickAddModifiers == [.control, .shift])
     #expect(
       SettingsManager.unifiedDefaultsKeys.filter { $0 == "quickAddKeyCode" }.count == 1,
       "missing from unified keys means it never migrates to the shared suite (#923)")

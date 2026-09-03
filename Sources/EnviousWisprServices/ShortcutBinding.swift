@@ -53,10 +53,29 @@ extension ShortcutRole {
     case .record: .keyboard(keyCode: ModifierKeyCodes.rightOption, modifiers: [])
     // Escape, bare.
     case .cancel: .keyboard(keyCode: 53, modifiers: [])
-    // Control-Option-W (#2381). A CHORD deliberately: it takes the Carbon path, and the persona
-    // review's hard requirement is that a user who has never heard of this feature never triggers
-    // it by accident. Still reachable with one hand.
-    case .quickAdd: .keyboard(keyCode: 13, modifiers: [.control, .option])
+    // Control-Shift-W. A CHORD deliberately: it takes the Carbon path, and the persona review's
+    // hard requirement is that a user who has never heard of this feature never triggers it by
+    // accident. Still reachable with one hand.
+    //
+    // **SHIFT, not the Option this shipped with in #2381, because Option is RECORD'S OWN KEY.**
+    // Record above is bare Right Option, so the two shipped defaults collided out of the box: the
+    // Option half of Control-Option-W is dispatched by the modifier monitor before the W ever
+    // reaches Carbon (`HotkeyService.handleFlagsChangedValues`), so on the right-hand Option key a
+    // user following our own hint started a push-to-talk recording instead of opening the panel.
+    // `quickAddOwnsItsBinding` saw the collision and correctly refused to advertise the chord, so
+    // every fresh install read "Currently unavailable" on the Quick Add tab (founder report,
+    // 2026-09-02).
+    //
+    // **And not plain Control-W, which is free in Cocoa text fields and taken everywhere else.**
+    // Two measurements, taken 2026-09-02 on the dev machine, and one thing that is merely widely
+    // documented, kept apart on purpose:
+    //   - MEASURED: zsh binds Control-W to `backward-kill-word` (`bindkey | grep '\^W'`).
+    //   - MEASURED: AppKit's own StandardKeyBinding.dict carries no `^W` entry at all, which is why
+    //     the chord looks free from inside a Cocoa text field.
+    //   - NOT VERIFIED HERE, documented elsewhere: readline, vim and emacs each bind it too.
+    // A global hotkey outranks the focused app, so binding Control-W would take word-delete away
+    // from every terminal on the Mac. Adding Shift clears both measured cases.
+    case .quickAdd: .keyboard(keyCode: 13, modifiers: [.control, .shift])
     }
   }
 

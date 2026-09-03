@@ -387,7 +387,7 @@ struct HotkeyQuickAddShortcutTests {
   func differentChordsDoNotContend() {
     // The paired accepted case. A rule that refused whenever cancel was armed would pass the test
     // above and break Quick Add for every user who never rebound anything.
-    let quickAdd = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .option])
+    let quickAdd = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .shift])
     let cancel = ShortcutBinding.keyboard(keyCode: 53, modifiers: [])
 
     #expect(
@@ -398,7 +398,7 @@ struct HotkeyQuickAddShortcutTests {
 
   @Test("A stopped or suspended service holds no Quick Add chord, collision or not")
   func stoppedOrSuspendedHoldsNothing() {
-    let quickAdd = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .option])
+    let quickAdd = ShortcutBinding.keyboard(keyCode: 13, modifiers: [.control, .shift])
     let cancel = ShortcutBinding.keyboard(keyCode: 53, modifiers: [])
 
     #expect(
