@@ -1,21 +1,21 @@
 ---
 title: "Adding Custom Words"
-description: "Teaching EnviousWispr names and terms it keeps getting wrong."
+description: "Teaching EnviousWispr names and words it keeps getting wrong."
 category: "custom-words"
-section: "Custom Words"
+section: "Dictionary"
 order: 1
-keywords: ["custom words", "vocabulary", "add a word", "my name", "names", "jargon", "technical terms", "spells my name wrong", "dictionary", "teach it a word", "acronyms"]
+keywords: ["custom words", "vocabulary", "add a word", "my name", "names", "jargon", "technical terms", "spells my name wrong", "dictionary", "teach it a word", "acronyms", "how do I add a name", "where is your words", "fix a misspelled name", "turn on vocabulary packs", "import my contacts"]
 related: ["why-is-my-dictation-inaccurate", "how-custom-word-correction-works"]
-updated: 2026-08-06
+updated: 2026-09-01
 ---
-When EnviousWispr repeatedly misspells a name or a specialised term, you can teach it the exact spelling you want to use.
+When EnviousWispr repeatedly misspells a name or a specialised word, you can teach it the exact spelling you want to use.
 
 ### Adding a custom word
 
-Open settings to enter your preferred terms and override what the speech engine produces.
+Open settings to enter your preferred words and override what the speech engine produces.
 
-1. **Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **Your Words**.
-2. **Add your term.** Type the exact spelling you want to appear.
+1. **Open settings.** Click the EnviousWispr icon in your menu bar, choose **Settings**, then go to **Dictionary** \> **Your Words**.
+2. **Add your word.** Type the exact spelling you want to appear.
 
 From then on, when you speak that word, EnviousWispr writes your chosen spelling. If it writes out "Chat G P T", adding "ChatGPT" to your words corrects that for every dictation from then on.
 
@@ -25,19 +25,19 @@ Building a reliable list saves you time editing afterwards. These are the catego
 
 - Names of people you write to regularly.
 - Your company name and your internal product names.
-- Technical terms, acronyms, and jargon from your field that a general dictionary misses.
+- Technical vocabulary, acronyms, and jargon from your field that a general dictionary misses.
 
 ### Using ready-made vocabulary packs
 
-Vocabulary packs group common terms by industry, so you do not have to type every word in yourself.
+Vocabulary packs group common words by industry, so you do not have to type every word in yourself.
 
-**Switch on a pack.** On the same **Your Words** page, turn on any of the packs: Tech, Medical, Legal, and Brands and Names. Turn on the ones that match your daily work to cover those terms straight away.
+**Switch on a pack.** Go to **Settings** \> **Dictionary** \> **Vocabulary Packs**, then turn on any of the packs: Tech, Medical, Legal, and Brands and Names. Turn on the ones that match your daily work to cover those words straight away.
 
 ### Importing from Contacts
 
 You can pull names directly out of your macOS Contacts app, so the people you write to are spelled correctly from your very first dictation.
 
-**Import your contacts.** Use the Contacts import on the **Your Words** page. macOS asks for your permission the first time you do this.
+**Import your contacts.** Go to **Settings** \> **Dictionary** \> **Learn from...**, then use the Contacts import. macOS asks for your permission the first time you do this.
 
 **Keep it up to date.** Switch on **Keep in sync on launch** if you want EnviousWispr to check for new contacts each time it starts. This setting is off unless you turn it on.
 

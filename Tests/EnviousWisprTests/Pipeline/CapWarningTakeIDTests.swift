@@ -147,6 +147,7 @@ import Testing
 
     private static func makeDriverFixture() -> DriverFixture {
       let steps = LimbSteps(
+        snippetExpansion: SnippetExpansionStep(),
         wordCorrection: WordCorrectionStep(),
         fillerRemoval: FillerRemovalStep(),
         emojiFormatter: EmojiFormatterStep(),

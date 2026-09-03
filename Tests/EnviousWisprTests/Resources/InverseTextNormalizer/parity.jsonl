@@ -2112,3 +2112,125 @@
 {"input": "3m dot com slash products", "expected": "3m.com/products", "category": "url", "slice": "gold"}
 {"input": "1password dot com", "expected": "1password.com", "category": "url", "slice": "gold"}
 {"input": "check out 1password.com slash downloads", "expected": "check out 1password.com/downloads", "category": "url", "slice": "gold"}
+{"input": "two B", "expected": "2B", "category": "listmarker", "slice": "mixedstate"}
+{"input": "three C", "expected": "3C", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one A", "expected": "1A", "category": "listmarker", "slice": "mixedstate"}
+{"input": "make it a three D model", "expected": "make it a 3D model", "category": "listmarker", "slice": "mixedstate"}
+{"input": "cat five E cables", "expected": "cat 5E cables", "category": "listmarker", "slice": "mixedstate"}
+{"input": "I swapped to Gemma three N", "expected": "I swapped to Gemma 3N", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one F sitting room", "expected": "1F sitting room", "category": "listmarker", "slice": "mixedstate"}
+{"input": "phase twenty three B", "expected": "phase 23B", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one thousand B", "expected": "1,000B", "category": "listmarker", "slice": "mixedstate"}
+{"input": "phase two thousand twenty three B", "expected": "phase 2,023B", "category": "listmarker", "slice": "mixedstate"}
+{"input": "two B and three C", "expected": "2B and 3C", "category": "listmarker", "slice": "mixedstate"}
+{"input": "cats and two B", "expected": "cats and 2B", "category": "listmarker", "slice": "mixedstate"}
+{"input": "we need one D two D and three D versions", "expected": "we need 1D 2D and 3D versions", "category": "listmarker", "slice": "mixedstate"}
+{"input": "One A, two B, three C.", "expected": "1A, 2B, 3C.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "focus on videos one A and one B", "expected": "focus on videos 1A and 1B", "category": "listmarker", "slice": "mixedstate"}
+{"input": "phase two A", "expected": "phase 2A", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P zero", "expected": "P0", "category": "listmarker", "slice": "mixedstate"}
+{"input": "Q one", "expected": "Q1", "category": "listmarker", "slice": "mixedstate"}
+{"input": "V two", "expected": "V2", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P zero to P four", "expected": "P0 to P4", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one and Q two", "expected": "P1 and Q2", "category": "listmarker", "slice": "mixedstate"}
+{"input": "the tag is A one", "expected": "the tag is A1", "category": "listmarker", "slice": "mixedstate"}
+{"input": "section A one is complete", "expected": "section A1 is complete", "category": "listmarker", "slice": "mixedstate"}
+{"input": "the answer is A one and B two", "expected": "the answer is A1 and B2", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one a", "expected": "one a", "category": "listmarker", "slice": "mixedstate"}
+{"input": "phase two a", "expected": "phase two a", "category": "listmarker", "slice": "mixedstate"}
+{"input": "the answer is a one", "expected": "the answer is a one", "category": "listmarker", "slice": "mixedstate"}
+{"input": "section a one is complete", "expected": "section a one is complete", "category": "listmarker", "slice": "mixedstate"}
+{"input": "three d model", "expected": "three d model", "category": "listmarker", "slice": "mixedstate"}
+{"input": "cat five e cables", "expected": "cat five e cables", "category": "listmarker", "slice": "mixedstate"}
+{"input": "the one I like", "expected": "the one I like", "category": "listmarker", "slice": "mixedstate"}
+{"input": "step six I completely understand", "expected": "step six I completely understand", "category": "listmarker", "slice": "mixedstate"}
+{"input": "which one I should go for", "expected": "which one I should go for", "category": "listmarker", "slice": "mixedstate"}
+{"input": "I two", "expected": "I two", "category": "listmarker", "slice": "mixedstate"}
+{"input": "a two word version", "expected": "a two word version", "category": "listmarker", "slice": "mixedstate"}
+{"input": "I need a one hour meeting", "expected": "I need a one hour meeting", "category": "listmarker", "slice": "mixedstate"}
+{"input": "this is a one time video", "expected": "this is a one time video", "category": "listmarker", "slice": "mixedstate"}
+{"input": "this is a one time thing", "expected": "this is a one time thing", "category": "listmarker", "slice": "mixedstate"}
+{"input": "three p.m.", "expected": "three p.m.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one a.m.", "expected": "one a.m.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "twelve thirty five a.m.", "expected": "twelve thirty five a.m.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "two s states", "expected": "two s states", "category": "listmarker", "slice": "mixedstate"}
+{"input": "five s sentences", "expected": "five s sentences", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one and B", "expected": "one and B", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one and A", "expected": "one and A", "category": "listmarker", "slice": "mixedstate"}
+{"input": "A one is the one I want", "expected": "A one is the one I want", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one B", "expected": "P one B", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one B two", "expected": "one B two", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one f bedroom", "expected": "one f bedroom", "category": "listmarker", "slice": "mixedstate"}
+{"input": "ten a page", "expected": "10 a page", "category": "listmarker", "slice": "mixedstate"}
+{"input": "2B", "expected": "2B", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P0", "expected": "P0", "category": "listmarker", "slice": "mixedstate"}
+{"input": "1A, 2B, 3C.", "expected": "1A, 2B, 3C.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "For Q one, I also internally created the plan", "expected": "For Q1, I also internally created the plan", "category": "listmarker", "slice": "mixedstate"}
+{"input": "He said, \"A one time fix is enough.\"", "expected": "He said, \"A one time fix is enough.\"", "category": "listmarker", "slice": "mixedstate"}
+{"input": "(A one time exception)", "expected": "(A one time exception)", "category": "listmarker", "slice": "mixedstate"}
+{"input": "He said, \"P one is blocked.\"", "expected": "He said, \"P1 is blocked.\"", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one million", "expected": "P1,000,000", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one million P", "expected": "1,000,000P", "category": "listmarker", "slice": "mixedstate"}
+{"input": "ten C++ developers", "expected": "10 C++ developers", "category": "listmarker", "slice": "mixedstate"}
+{"input": "twenty C# libraries", "expected": "20 C# libraries", "category": "listmarker", "slice": "mixedstate"}
+{"input": "I take One A Day vitamins", "expected": "I take One A Day vitamins", "category": "listmarker", "slice": "mixedstate"}
+{"input": "Note: A one time fee applies.", "expected": "Note: A one time fee applies.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "Warning; A one time fee applies.", "expected": "Warning; A one time fee applies.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "- A one time fee applies.", "expected": "- A one time fee applies.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "only getting fifty M B in my bedroom", "expected": "only getting 50 M B in my bedroom", "category": "listmarker", "slice": "mixedstate"}
+{"input": "give me the T L D R of how he trained E G one", "expected": "give me the T L D R of how he trained E G one", "category": "listmarker", "slice": "mixedstate"}
+{"input": "Testing with eight K on the model power", "expected": "Testing with 8K on the model power", "category": "listmarker", "slice": "mixedstate"}
+{"input": "that means over five hundred K context", "expected": "that means over 500K context", "category": "listmarker", "slice": "mixedstate"}
+{"input": "mark that as like a P two ticket", "expected": "mark that as like a P2 ticket", "category": "listmarker", "slice": "mixedstate"}
+{"input": "the sequence is P one Q two R", "expected": "the sequence is P one Q two R", "category": "listmarker", "slice": "mixedstate"}
+{"input": "the sequence is A one B two C", "expected": "the sequence is A one B two C", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one A two B three", "expected": "one A two B three", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one Q two", "expected": "P1 Q2", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one AND Q two", "expected": "P1 AND Q2", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one And Q two", "expected": "P1 And Q2", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one hundred and five", "expected": "P105", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one hundred and five B", "expected": "105B", "category": "listmarker", "slice": "mixedstate"}
+{"input": "phase two thousand and twenty three B", "expected": "phase 2,023B", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one two Q three", "expected": "P one two Q three", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one twenty Q two", "expected": "P one twenty Q two", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one Q three", "expected": "P1 Q3", "category": "listmarker", "slice": "mixedstate"}
+{"input": "I take One A Day's vitamins", "expected": "I take One A Day's vitamins", "category": "listmarker", "slice": "mixedstate"}
+{"input": "I take One A Day.", "expected": "I take One A Day.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "One A Day, every day", "expected": "One A Day, every day", "category": "listmarker", "slice": "mixedstate"}
+{"input": "US$1,000,000", "expected": "US$1 million", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one hundred and five Q two", "expected": "P105 Q2", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one hundred and five B two C", "expected": "105B 2C", "category": "listmarker", "slice": "mixedstate"}
+{"input": "He said, \"P one Q two\"", "expected": "He said, \"P1 Q2\"", "category": "listmarker", "slice": "mixedstate"}
+{"input": "(one B two C)", "expected": "(1B 2C)", "category": "listmarker", "slice": "mixedstate"}
+{"input": "\"one B two\"", "expected": "\"one B two\"", "category": "listmarker", "slice": "mixedstate"}
+{"input": "\"P one B\"", "expected": "\"P one B\"", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one B two C)", "expected": "1B 2C)", "category": "listmarker", "slice": "mixedstate"}
+{"input": "I took Plan B one time", "expected": "I took Plan B one time", "category": "listmarker", "slice": "mixedstate"}
+{"input": "we chose Plan B two years ago", "expected": "we chose Plan B two years ago", "category": "listmarker", "slice": "mixedstate"}
+{"input": "vitamin D three", "expected": "vitamin D3", "category": "listmarker", "slice": "mixedstate"}
+{"input": "grade A one beef", "expected": "grade A1 beef", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one B/two C", "expected": "one B/two C", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one/Q two", "expected": "P one/Q two", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one B|two C", "expected": "one B|two C", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one B / two C", "expected": "1B / 2C", "category": "listmarker", "slice": "mixedstate"}
+{"input": "Tasks:\nP one is urgent", "expected": "Tasks:\nP1 is urgent", "category": "listmarker", "slice": "mixedstate"}
+{"input": "line one\nP one Q two\nline three", "expected": "line one\nP1 Q2\nline three", "category": "listmarker", "slice": "mixedstate"}
+{"input": "Tasks:\n(one B two C)", "expected": "Tasks:\n(1B 2C)", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one Q two\nR three", "expected": "P1 Q2\nR3", "category": "listmarker", "slice": "mixedstate"}
+{"input": "There are twenty\nA dog ran home", "expected": "There are 20 \nA dog ran home", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one\r\nQ two", "expected": "P1\r\nQ2", "category": "listmarker", "slice": "mixedstate"}
+{"input": "one B\r\ntwo C", "expected": "1B\r\n2C", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one\u2028Q two", "expected": "P1\u2028Q2", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one\u00a0Q two", "expected": "P1\u00a0Q2", "category": "listmarker", "slice": "mixedstate"}
+{"input": "P one\u00a0Q two R", "expected": "P one\u00a0Q two R", "category": "listmarker", "slice": "mixedstate"}
+{"input": "I take One A\u00a0Day vitamins", "expected": "I take One A\u00a0Day vitamins", "category": "listmarker", "slice": "mixedstate"}
+{"input": "I'm a big fan of A One steak sauce.", "expected": "I'm a big fan of A1 steak sauce.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "So she has a W Two job, her money from selling homes", "expected": "So she has a W2 job, her money from selling homes", "category": "listmarker", "slice": "mixedstate"}
+{"input": "I created a tab called like what I accomplished in Q One.", "expected": "I created a tab called like what I accomplished in Q1.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "Okay, create a beat for that, P Zero.", "expected": "Okay, create a beat for that, P0.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "I read A Hundred Years of Solitude last summer", "expected": "I read A Hundred Years of Solitude last summer", "category": "listmarker", "slice": "mixedstate"}
+{"input": "I take One A Day vitamins", "expected": "I take One A Day vitamins", "category": "listmarker", "slice": "mixedstate"}
+{"input": "We can leave that to e G One.", "expected": "We can leave that to e G One.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "Hey, confirming that you use the proper E G One prompt.", "expected": "Hey, confirming that you use the proper E G One prompt.", "category": "listmarker", "slice": "mixedstate"}
+{"input": "make it a three D model", "expected": "make it a 3D model", "category": "listmarker", "slice": "mixedstate"}
+{"input": "a P two ticket", "expected": "a P2 ticket", "category": "listmarker", "slice": "mixedstate"}

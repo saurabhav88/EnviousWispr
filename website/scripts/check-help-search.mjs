@@ -27,7 +27,7 @@ if (docs.length === 0) {
 }
 const mini = buildHelpIndex(docs);
 
-// The ten queries a real person types, pinned in the plan BEFORE they were
+// The fifteen queries a real person types, pinned in the plan BEFORE they were
 // measured. Four share no meaningful words with their article's title.
 const PINNED = [
   ['microphone not working', 'empty-or-missing-transcription'],
@@ -39,6 +39,11 @@ const PINNED = [
   ['paste not working', 'paste-not-working'],
   ['turn off ai', 'choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini'],
   ['custom words', 'adding-custom-words'],
+  ['how do I add a name', 'adding-custom-words'],
+  ['where is your words', 'adding-custom-words'],
+  ['fix a misspelled name', 'adding-custom-words'],
+  ['turn on vocabulary packs', 'adding-custom-words'],
+  ['import my contacts', 'adding-custom-words'],
   ['does it send my text anywhere', 'ai-polish-and-cloud-data'],
 ];
 

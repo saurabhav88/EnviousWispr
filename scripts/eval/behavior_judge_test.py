@@ -2931,7 +2931,83 @@ def test_list_requirement_reaches_the_judge_and_survives_blinding():
 # originally borrowed from cleanup_metrics_test.py, deleted 2026-08-15 with the
 # rest of the deterministic polish grading; the zero-test trap it guards is
 # unchanged.)
-EXPECTED_TESTS = 135
+# --------------------------------------------------------------------------- #
+# the rubric-identity guard, which cloud review on #2576 is the reason for      #
+# --------------------------------------------------------------------------- #
+
+def test_live_rubric_identity_matches_the_scorer():
+    # `model_registry.live_rubric_identity()` re-implements one line of
+    # `behavior_judge._rubric_identity()` because importing it would be circular.
+    # A duplicated answer to one question is exactly the accretion this repo warns
+    # about, so the two are pinned together here rather than trusted to stay equal.
+    import model_registry
+    assert model_registry.live_rubric_identity() == bj._rubric_identity()
+
+
+def _registry_with(mutate):
+    """Load the real registry, mutate a deep copy, write it, and load it back."""
+    import copy, model_registry
+    doc = copy.deepcopy(model_registry.load())
+    mutate(doc)
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "model-registry.json"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        return model_registry.load(path)
+
+
+def test_registry_refuses_a_group_with_no_connection_to_history():
+    # A group whose every identity is invented cannot be checked by anyone, so it is
+    # refused. This is the fabrication case the guard exists for.
+    import model_registry
+
+    def wreck(doc):
+        doc["_rubricEquivalence"][0]["identities"] = ["0123456789ab", "ba9876543210"]
+
+    try:
+        _registry_with(wreck)
+    except model_registry.RegistryError as exc:
+        assert "no connection to real history" in str(exc), str(exc)
+    else:
+        raise AssertionError("load() accepted a group with no connection to history")
+
+
+def test_registry_survives_an_ordinary_edit_to_the_scorer():
+    # THE TIME BOMB, and the reason the rule is connectedness rather than liveness.
+    # The identity added by a score-neutral refactor has stamped nothing yet, so a
+    # per-identity "stamped or live" rule made the NEXT ordinary edit to
+    # behavior_judge.py reject the whole registry. Simulated here by replacing the
+    # live identity with one that is neither stamped nor live, exactly as a scorer
+    # edit would: the group must still load, because its OTHER member is stamped.
+    import model_registry
+    live = model_registry.live_rubric_identity()
+
+    def as_if_the_scorer_moved(doc):
+        ids = doc["_rubricEquivalence"][0]["identities"]
+        assert live in ids, (live, ids)
+        ids[ids.index(live)] = "0123456789ab"
+
+    doc = _registry_with(as_if_the_scorer_moved)          # must NOT raise
+    assert doc["_rubricEquivalence"][0]["identities"][0] in {
+        e.get("rubricIdentity") for a in doc["artifacts"]
+        for e in a.get("evaluations") or []}, "the surviving member must be a stamped one"
+
+
+def test_check_live_reports_the_recorded_identity():
+    # Two-way control on the WRITE-time gate: it says OK for the identity actually
+    # recorded, and the test above covers the refusal direction for load(). Without
+    # this, a check-live that always printed OK would look identical.
+    import model_registry
+    doc = model_registry.load()
+    live = model_registry.live_rubric_identity()
+    listed = {r for g in doc.get("_rubricEquivalence") or [] for r in g["identities"]}
+    stamped = {e.get("rubricIdentity") for a in doc["artifacts"]
+               for e in a.get("evaluations") or []}
+    assert live in listed or live in stamped, (
+        f"the committed scorer emits {live}, which is neither recorded nor stamped; "
+        f"run `python3 scripts/eval/model_registry.py check-live`")
+
+
+EXPECTED_TESTS = 139
 
 
 def _run() -> int:

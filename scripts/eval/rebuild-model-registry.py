@@ -151,6 +151,29 @@ def read_receipts() -> dict:
             "judgeIdentity": (m.get("judge_identity")
                               or (f"name-only:{m['judge']}" if m.get("judge") else None)),
             "rubricIdentity": m.get("rubric_identity"),
+            # TWO MORE COMPARABILITY AXES, both enumerated from the receipt rather
+            # than from a review finding. `system` is the whole grading scheme —
+            # an "old" 5-axis run and a "new" behavior-aware one produce numbers on
+            # different scales. `judgeBlind` is measured non-comparable in
+            # behavior_judge.py: showing the judge the key moved 122 of 472 verdicts,
+            # and report_ollama_bench.py already refuses to rank the modes together.
+            # Ranking across either is the mistake this file exists to prevent.
+            "system": m.get("system"),
+            "judgeBlind": d.get("judge_blind"),
+            # ADJUDICATION POLICY, and it is directional rather than merely different:
+            # `_worse_new_score` keeps the harsher of the two looks, so a run that
+            # skipped adjudication can only score BETTER than the same model
+            # adjudicated. Comparing it to an adjudicated floor is a free pass.
+            # `meta.adjudicate` exists only on receipts written after 2026-09-01; for
+            # older ones it is inferred from whether anything was SELECTED or
+            # RE-JUDGED, and left null when both are zero, because "nothing needed
+            # adjudicating" and "adjudication was off" are indistinguishable there.
+            # Null is excluded from every floor, exactly like unknown blinding.
+            "adjudication": _adjudication_policy(m, d),
+            # "none" rather than null: NO baseline is a real, distinct setup, not a
+            # gap in the record. Null would mean "the receipt cannot say", which for
+            # this field never happens — `production_file` is written on every run.
+            "productionBaseline": m.get("production_file") or "none",
             "runComplete": d.get("run_complete"),
             "passRatePct": o.get("pass_rate_pct"),
             "s4Count": o.get("critical_fail_count"),
@@ -159,6 +182,20 @@ def read_receipts() -> dict:
             "summaryPath": str(f.relative_to(RUNS.parent.parent.parent)),
         })
     return out
+
+
+def _adjudication_policy(meta: dict, doc: dict) -> str | None:
+    """`"<pct>:<min>"`, `"none"`, or None when the receipt cannot say."""
+    enabled = meta.get("adjudicate")
+    if enabled is None:
+        adj = doc.get("adjudication") or {}
+        if (adj.get("adjudicated_n") or 0) or (adj.get("rejudged_n") or 0):
+            enabled = True
+        else:
+            return None
+    if not enabled:
+        return "none"
+    return f"{meta.get('adjudicate_pct')}:{meta.get('adjudicate_min')}"
 
 
 def main() -> int:
@@ -210,10 +247,17 @@ def main() -> int:
                            "position in the historical arm ledger (arm version order), "
                            "NOT a measured training timestamp. Do not read c007 as "
                            "'trained seventh by date'.",
-        "_comparability": "An evaluation is comparable to another ONLY when corpus, "
-                          "rubricIdentity and judgeIdentity all match. Nine rubrics and "
-                          "38 corpora appear across this history; ranking across them is "
-                          "the mistake this file exists to prevent.",
+        # NAMES THE OWNER, does not list the axes. The previous version enumerated
+        # three of them and went stale the day a fourth was added — a description of a
+        # set is a claim about that set, and nothing links the two edits. Nine rubrics
+        # and 38 corpora appear across this history; ranking across them is the mistake
+        # this file exists to prevent.
+        "_comparability": "model_registry.comparable() is the ONLY authority on whether "
+                          "two evaluations may be ranked together. Read that function "
+                          "rather than any prose, here or elsewhere: it states every "
+                          "axis it compares and argues each field it deliberately "
+                          "excludes. Ranking across incomparable evaluations is the "
+                          "mistake this file exists to prevent.",
         "artifacts": records,
     }
     # VALIDATE BEFORE REPLACING, and refuse a rebuild that LOSES history.
@@ -234,6 +278,15 @@ def main() -> int:
             raise SystemExit(f"REFUSED: the registry being replaced is unreadable ({exc})")
         was = {a["artifactId"]: len(a.get("evaluations") or [])
                for a in previous.get("artifacts", [])}
+        # CARRY THE RUBRIC EQUIVALENCE FORWARD. It is not derivable from receipts —
+        # it records a proven-score-neutral refactor of the scorer — so this template
+        # would silently DELETE it, and the ratchet would lose its floor on the next
+        # run with nothing said. Same class of loss the evaluation-count check below
+        # exists to refuse, arriving through the template rather than the data.
+        for key in ("_rubricEquivalence", "_rubricEquivalenceContract"):
+            if key in previous:
+                doc[key] = previous[key]
+
         lost = [(r["artifactId"], was[r["artifactId"]], len(r["evaluations"]))
                 for r in records
                 if r["artifactId"] in was and len(r["evaluations"]) < was[r["artifactId"]]]

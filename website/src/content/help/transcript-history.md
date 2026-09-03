@@ -6,11 +6,11 @@ section: "Transcript History"
 order: 1
 keywords: ["history", "past dictations", "previous", "find an old dictation", "where did my text go", "recover", "lost text", "copy again", "log"]
 related: ["clipboard-preservation", "escape-recovery"]
-updated: 2026-08-17
+updated: 2026-09-01
 ---
 EnviousWispr saves each finished dictation so you can find it again later. To see your past dictations, click the EnviousWispr icon in your menu bar, choose **Settings**, and go to **History**.
 
-Recordings where no speech was found are not saved, and neither are recordings you cancelled, unless you turned on [Escape Recovery](/help/escape-recovery/). With that setting on, a recording you cancel with your keybind is kept here for 24 hours with a **Kept** badge and a countdown, and press **Keep** to make it permanent. Until you do, it stays out of search and out of your dictation counts. If saving fails for a storage reason, EnviousWispr tells you.
+Recordings where no speech was found are not saved. A recording you cancel with your keybind IS saved, because [Escape Recovery](/help/escape-recovery/) is on unless you switch it off: it is kept here for 24 hours with a **Kept** badge and a countdown, and press **Keep** to make it permanent. Switch that setting off, or use the Cancel button in the recording bar, and nothing is saved. Until you do, it stays out of search and out of your dictation counts. If saving fails for a storage reason, EnviousWispr tells you.
 
 ### What you can do
 

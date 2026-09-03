@@ -341,6 +341,7 @@ private final class HeartPathHarness {
       context: context,
       adapter: adapter,
       steps: LimbSteps(
+        snippetExpansion: SnippetExpansionStep(),
         wordCorrection: WordCorrectionStep(),
         fillerRemoval: FillerRemovalStep(),
         emojiFormatter: EmojiFormatterStep(),

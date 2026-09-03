@@ -2,11 +2,11 @@
 title: "Adding a Word From Your Selection"
 description: "Highlight a word anywhere on your Mac, press the shortcut, and teach EnviousWispr the spelling."
 category: "custom-words"
-section: "Custom Words"
+section: "Dictionary"
 order: 4
 keywords: ["quick add", "add selected word", "highlight a word", "selection", "shortcut", "whatsapp", "terminal", "menu bar", "clipboard", "add word from selection"]
 related: ["adding-custom-words", "clipboard-preservation", "how-custom-word-correction-works"]
-updated: 2026-08-28
+updated: 2026-09-01
 ---
 When EnviousWispr writes a name the wrong way, you do not have to open settings to fix it. Highlight the word it should have written, press the Quick Add shortcut, and a small panel appears offering to attach that spelling to the word it keeps getting wrong.
 
@@ -17,7 +17,7 @@ Both do the same thing, so use whichever is closer to hand.
 1. **The shortcut.** Highlight the word, then press your Quick Add keybind. You can see and change it in **Settings**, under your keybinds.
 2. **The menu bar.** Highlight the word, click the EnviousWispr icon, and choose **Add Selected Word**. The row names the word it found, so you can check it before you click.
 
-The panel shows you the word first and ranks the terms already in your library, so you pick which one this spelling belongs to. Nothing is written until you choose.
+The panel shows you the word first and ranks the words already in your library, so you pick which one this spelling belongs to. Nothing is written until you choose.
 
 ### When an app will not say what you highlighted
 

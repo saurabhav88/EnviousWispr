@@ -2,11 +2,11 @@
 title: "How Custom Word Correction Works"
 description: "How EnviousWispr recognises the wrong versions of a word you added."
 category: "custom-words"
-section: "Custom Words"
+section: "Dictionary"
 order: 2
 keywords: ["how correction works", "why didnt my word work", "fuzzy match", "sounds like", "replacement rules"]
 related: ["adding-custom-words"]
-updated: 2026-08-06
+updated: 2026-09-01
 ---
 When you teach EnviousWispr a custom word, you give it one correct spelling, and it then recognises the many ways that word can come out wrong during transcription and corrects them for you.
 

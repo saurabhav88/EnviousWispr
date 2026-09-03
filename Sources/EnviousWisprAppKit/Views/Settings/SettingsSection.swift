@@ -48,6 +48,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   case keybinds
   case aiPolish
   case wordCorrection
+  case snippets
   case clipboard
   case permissions
   case checkForUpdates
@@ -70,6 +71,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .keybinds: return "Keybinds"
     case .aiPolish: return "AI Polish"
     case .wordCorrection: return "Dictionary"
+    case .snippets: return "Snippets"
     case .clipboard: return "Clipboard"
     case .permissions: return "Permissions"
     case .checkForUpdates: return "Check for Updates"
@@ -92,6 +94,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .keybinds: return "keyboard"
     case .aiPolish: return "sparkles"
     case .wordCorrection: return "textformat.abc"
+    case .snippets: return "curlybraces"
     case .clipboard: return "clipboard"
     case .permissions: return "lock.shield"
     case .checkForUpdates: return "arrow.triangle.2.circlepath"
@@ -118,6 +121,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .aiPolish: return "Clean up and rewrite your dictation with AI."
     case .wordCorrection:
       return "Improve recognition with your words and vocabulary."
+    case .snippets:
+      return "Say your keyword, then a snippet. The saved text lands for you."
     case .clipboard: return "How your transcript reaches the clipboard and the app you're in."
     case .permissions: return "The microphone and accessibility access EnviousWispr needs."
     case .checkForUpdates: return ""
@@ -133,7 +138,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     switch self {
     case .history, .whatsNew, .appearance: return .app
     case .speechEngine, .livePreview, .audio, .recordingSounds, .keybinds: return .record
-    case .aiPolish, .wordCorrection: return .process
+    case .aiPolish, .wordCorrection, .snippets: return .process
     case .clipboard: return .output
     case .permissions, .checkForUpdates, .openSourceLicenses: return .system
     #if DEBUG

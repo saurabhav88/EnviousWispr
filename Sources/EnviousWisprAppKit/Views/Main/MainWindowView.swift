@@ -317,14 +317,13 @@ struct StatusBadge: View {
     Group {
       switch liveRecordingState.pipelineState {
       case .recording:
-        HStack(spacing: 4) {
+        pill {
           Image(systemName: "mic.fill")
             .foregroundStyle(.stError)
             .symbolEffect(.pulse)
           Text(DictationNarrator.recordingStatus)
             .foregroundStyle(.secondary)
         }
-        .font(.caption)
 
       case .loadingModel:
         progressLabel(DictationNarrator.loadingModelBadge)
@@ -346,11 +345,26 @@ struct StatusBadge: View {
   }
 
   private func progressLabel(_ text: String) -> some View {
-    HStack(spacing: 4) {
+    pill {
       ProgressView().controlSize(.small)
       Text(text).foregroundStyle(.secondary)
     }
-    .font(.caption)
+  }
+
+  /// The badge owns its own capsule rather than borrowing the toolbar's.
+  /// macOS 26 draws a Liquid Glass capsule behind a toolbar item and sized it
+  /// narrower than this content, so the status words spilled past its
+  /// right-hand border (founder screenshot, 2026-09-02). Owning the shape means
+  /// the padding is ours; `fixedSize` keeps the words from being compressed by
+  /// whatever width the toolbar offers.
+  private func pill<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    HStack(spacing: 4, content: content)
+      .font(.caption)
+      .padding(.horizontal, 10)
+      .padding(.vertical, 5)
+      .background(Capsule().fill(Color.stTextSecondary.opacity(0.10)))
+      .overlay(Capsule().strokeBorder(Color.stDivider, lineWidth: 1))
+      .fixedSize()
   }
 }
 

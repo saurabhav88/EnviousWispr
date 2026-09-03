@@ -225,7 +225,8 @@ struct ReadinessRetryTelemetryContractTests {
         keychainManager: KeychainManager(),
         outputClassifierHolder: OutputClassifierHolder(),
         now: { Date() },
-        currentVocabulary: { (.empty, .empty) })
+        currentVocabulary: { (.empty, .empty) },
+        currentSnippets: { .empty })
       var store = RecoverySpoolStore(directory: spoolDir)
       store.readinessRetryFileOps = ops
       let id = "readiness-\(UUID().uuidString)"

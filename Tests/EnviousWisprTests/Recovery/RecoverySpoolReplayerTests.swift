@@ -172,7 +172,8 @@ struct RecoverySpoolReplayerTests {
       keychainManager: KeychainManager(),
       outputClassifierHolder: OutputClassifierHolder(),
       now: now,
-      currentVocabulary: { (.empty, .empty) })
+      currentVocabulary: { (.empty, .empty) },
+        currentSnippets: { .empty })
     return Harness(
       replayer: replayer, asr: asr,
       spoolStore: RecoverySpoolStore(directory: spoolDir), spoolDir: spoolDir, keyStore: keyStore,
@@ -839,7 +840,8 @@ struct RecoverySpoolReplayerTests {
         transcriptCoordinator: TranscriptCoordinator(store: transcriptStore),
         keychainManager: KeychainManager(),
         outputClassifierHolder: OutputClassifierHolder(),
-        currentVocabulary: { (.empty, .empty) })
+        currentVocabulary: { (.empty, .empty) },
+        currentSnippets: { .empty })
       let id = "tel-defer-\(UUID().uuidString)"
       let box = await Self.capturingTelemetry {
         let outcome = await replayer.replay(recoverySessionID: id, isAborted: { false })

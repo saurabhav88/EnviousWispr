@@ -49,11 +49,6 @@ jobs:
           # build runs. Do not re-shallow without explicitly fetching BASE_SHA.
           fetch-depth: 0
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: latest-stable
-
       - name: Detect code changes
         id: changes
         env:
@@ -79,96 +74,19 @@ jobs:
       # #2146's clipboard guard followed the same path for the same reason: the shell scanner and its
       # two CI steps are gone, and `ClipboardIsolationFreezeTests` parses with SwiftParser inside this
       # lane's existing `xcodebuild test`.
-      - name: Verify environment
+
+      # #2592: the whole Xcode setup (toolchain through project generation) is
+      # ONE owner, shared with both main-post-merge.yml jobs. This lane and
+      # build-release used to carry it inline, hand-mirrored, and that is where
+      # #2580's permanently cold cache shipped from. The `if:` here skips the
+      # entire action for a docs-only PR; the action's header says why the
+      # steps inside carry none.
+      - name: Xcode CI setup
+        id: setup
         if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          swift --version
-          xcodebuild -version
-          SDK_VER="$(xcrun --sdk macosx --show-sdk-version)"
-          echo "macOS SDK: $SDK_VER"
-
-          if ! swift --version 2>&1 | grep -q "Swift version 6"; then
-            echo "::error::Swift 6.0+ required"
-            exit 1
-          fi
-
-          if [ "$(printf '%s\n' "26.0" "$SDK_VER" | sort -V | head -n1)" != "26.0" ]; then
-            echo "::error::macOS SDK 26.0+ required for FoundationModels (found: $SDK_VER)"
-            exit 1
-          fi
-
-      - name: Install mise + Tuist
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          curl https://mise.run | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/mise" install tuist@4.195.11
-          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version
-
-      # tuist generate's internal `xcodebuild -resolvePackageDependencies` call
-      # passes no -derivedDataPath, so it resolves into Xcode's global default
-      # DerivedData location — NOT the .derivedData/CI path this job caches —
-      # paying a full, uncached network resolution every run (issue #1295).
-      # Redirecting the global default here, before generate runs and before
-      # the cache is restored, makes that resolve land somewhere the cache
-      # below actually covers.
-      - name: Configure DerivedData cache redirect
-        if: steps.changes.outputs.needs_build == 'true'
-        run: scripts/ci/configure-tuist-deriveddata-cache.sh "$GITHUB_WORKSPACE/${{ env.DERIVED_DATA_PATH }}"
-
-      - name: Compute Xcode build cache key
-        id: xcode-cache-key
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          TOOLCHAIN_ID="$(
-            { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version; } |
-            shasum -a 256 | cut -c1-12
-          )"
-          echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
-
-      # Rolling key (github.sha suffix) so the primary key is never an exact hit
-      # here. pr-check.yml is restore-only by design — main-post-merge.yml is the
-      # sole writer (issue #804). restore-keys fall through to the freshest cache.
-      # The third path entry is a glob (issue #1295): the redirect above makes
-      # tuist generate's implicit resolve write into a per-project hash-named
-      # subfolder under .derivedData/CI (Xcode's normal global-default naming),
-      # a different shape from the flat SourcePackages/Build the explicit
-      # -derivedDataPath build step below writes to. The glob covers both
-      # without the workflow needing to predict the hash name.
-      - name: Restore Xcode build cache
-        id: xcode-cache
-        if: steps.changes.outputs.needs_build == 'true'
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: ./.github/actions/xcode-ci-setup
         with:
-          path: |
-            .derivedData/CI/SourcePackages
-            .derivedData/CI/Build
-            .derivedData/CI/*/SourcePackages
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-
-            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-
-            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-
-
-      - name: Log Xcode cache restore
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          echo "==> Xcode cache (debug lane): matched=${{ steps.xcode-cache.outputs.cache-matched-key }} hit=${{ steps.xcode-cache.outputs.cache-hit }}"
-
-      - name: Generate Xcode project
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist generate --no-open
-          # Generated project / DerivedData must never be committed.
-          git status --porcelain -- '*.xcodeproj' '*.xcworkspace' '.derivedData'
-
-      - name: Log DerivedData package-resolution location
-        if: steps.changes.outputs.needs_build == 'true'
-        run: find "$DERIVED_DATA_PATH" -maxdepth 3 -type d -name SourcePackages -print 2>/dev/null || true
+          derived-data-path: ${{ env.DERIVED_DATA_PATH }}
 
       - name: Build (debug, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
@@ -296,11 +214,6 @@ jobs:
           # build runs. Do not re-shallow without explicitly fetching BASE_SHA.
           fetch-depth: 0
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: latest-stable
-
       - name: Detect code changes
         id: changes
         env:
@@ -308,81 +221,13 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: scripts/ci/classify-changes.sh "$BASE_SHA" "$HEAD_SHA"
 
-      - name: Verify environment
+      # #2592: same shared setup as build-debug — see that lane's comment.
+      - name: Xcode CI setup
+        id: setup
         if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          swift --version
-          xcodebuild -version
-          SDK_VER="$(xcrun --sdk macosx --show-sdk-version)"
-          echo "macOS SDK: $SDK_VER"
-
-          if ! swift --version 2>&1 | grep -q "Swift version 6"; then
-            echo "::error::Swift 6.0+ required"
-            exit 1
-          fi
-
-          if [ "$(printf '%s\n' "26.0" "$SDK_VER" | sort -V | head -n1)" != "26.0" ]; then
-            echo "::error::macOS SDK 26.0+ required for FoundationModels (found: $SDK_VER)"
-            exit 1
-          fi
-
-      - name: Install mise + Tuist
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          curl https://mise.run | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/mise" install tuist@4.195.11
-          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version
-
-      # See build-debug's "Configure DerivedData cache redirect" comment
-      # (issue #1295) — same rationale, mirrored for this lane.
-      - name: Configure DerivedData cache redirect
-        if: steps.changes.outputs.needs_build == 'true'
-        run: scripts/ci/configure-tuist-deriveddata-cache.sh "$GITHUB_WORKSPACE/${{ env.DERIVED_DATA_PATH }}"
-
-      - name: Compute Xcode build cache key
-        id: xcode-cache-key
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          TOOLCHAIN_ID="$(
-            { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist version; } |
-            shasum -a 256 | cut -c1-12
-          )"
-          echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
-
-      - name: Restore Xcode build cache
-        id: xcode-cache
-        if: steps.changes.outputs.needs_build == 'true'
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: ./.github/actions/xcode-ci-setup
         with:
-          path: |
-            .derivedData/CI/SourcePackages
-            .derivedData/CI/Build
-            .derivedData/CI/*/SourcePackages
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Tuist/**/*.swift') }}-
-            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-${{ steps.xcode-cache-key.outputs.toolchain_id }}-
-            ${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}-xcode-
-
-      - name: Log Xcode cache restore
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          echo "==> Xcode cache (release lane): matched=${{ steps.xcode-cache.outputs.cache-matched-key }} hit=${{ steps.xcode-cache.outputs.cache-hit }}"
-
-      - name: Generate Xcode project
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          "$HOME/.local/bin/mise" x tuist@4.195.11 -- tuist generate --no-open
-          git status --porcelain -- '*.xcodeproj' '*.xcworkspace' '.derivedData'
-
-      - name: Log DerivedData package-resolution location
-        if: steps.changes.outputs.needs_build == 'true'
-        run: find "$DERIVED_DATA_PATH" -maxdepth 3 -type d -name SourcePackages -print 2>/dev/null || true
+          derived-data-path: ${{ env.DERIVED_DATA_PATH }}
 
       - name: Build (release, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
@@ -715,11 +560,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - name: CI self-tests (classify-changes + fetch-depth lint)
+      - name: CI self-tests (classify-changes + fetch-depth + compile cache + cache paths)
         run: |
           set -euo pipefail
           scripts/ci/classify-changes.sh --self-test
           scripts/ci/check-pr-check-fetch-depth.sh
+          # #2580. `actions/cache` hashes the PATH LIST into a cache version, and
+          # a restore matches on version BEFORE key — so two lists that differ in
+          # any way describe caches that can never see each other, with nothing
+          # red and every lane simply rebuilding forever. Measured: eight lines of
+          # prose written inside a `path: |` block scalar became eight paths,
+          # because YAML block scalars have no comments. Verified to fail against
+          # that exact commit.
+          python3 scripts/ci/check-cache-paths.py --self-test
+          python3 scripts/ci/check-cache-paths.py
+          # #2580. Runs here because the failure it catches is SILENT: a config
+          # missing a setting, or written and never exported, leaves every lane
+          # building correctly and slowly with nothing red. Needs no Xcode, so
+          # this ubuntu aggregator can hold it.
+          scripts/ci/configure-compilation-cache.sh --self-test
 
       - name: Lane verdict self-test (#2401)
         run: |

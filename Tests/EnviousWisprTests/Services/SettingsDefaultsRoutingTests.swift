@@ -94,20 +94,21 @@ struct SettingsDefaultsRoutingTests {
       SettingsManager.unifiedDefaultsKeys.filter { $0 == "smartInsertion" }.count == 1)
   }
 
-  /// #2087. Tested in the ON direction because OFF is the default: writing the
-  /// default proves nothing about persistence, since a store that dropped the
-  /// write entirely would still read back `false`.
-  @Test("Escape Recovery persists ON and belongs to unified defaults")
-  func escapeRecoveryPersistsOn() {
+  /// #2087, default flipped to ON 2026-09-01. Tested in the OFF direction
+  /// because ON is now the default: writing the default proves nothing about
+  /// persistence, since a store that dropped the write entirely would still read
+  /// back the default.
+  @Test("Escape Recovery persists OFF and belongs to unified defaults")
+  func escapeRecoveryPersistsOff() {
     let suite = Self.freshSuite()
     let settings = SettingsManager(defaults: suite)
 
-    #expect(settings.escapeRecoveryEnabled == false, "ships OFF — the product decision")
+    #expect(settings.escapeRecoveryEnabled == true, "ships ON — the product decision")
 
-    settings.escapeRecoveryEnabled = true
+    settings.escapeRecoveryEnabled = false
 
-    #expect(suite.object(forKey: "escapeRecoveryEnabled") as? Bool == true)
-    #expect(SettingsManager(defaults: suite).escapeRecoveryEnabled == true)
+    #expect(suite.object(forKey: "escapeRecoveryEnabled") as? Bool == false)
+    #expect(SettingsManager(defaults: suite).escapeRecoveryEnabled == false)
     #expect(
       SettingsManager.unifiedDefaultsKeys.filter { $0 == "escapeRecoveryEnabled" }.count == 1,
       "missing from unified keys means it never migrates to the shared suite (#923)")
@@ -122,13 +123,13 @@ struct SettingsDefaultsRoutingTests {
       if case .escapeRecoveryEnabled = key { matchingChanges += 1 }
     }
 
-    settings.escapeRecoveryEnabled = true
+    settings.escapeRecoveryEnabled = false
     #expect(matchingChanges == 1)
   }
 
   // MARK: - Quick Add's shortcut (#2381)
 
-  @Test("Quick Add ships on Control-Option-W and belongs to unified defaults")
+  @Test("Quick Add ships on Control-Shift-W and belongs to unified defaults")
   func quickAddShortcutDefaults() {
     let suite = Self.freshSuite()
     let settings = SettingsManager(defaults: suite)
@@ -136,7 +137,7 @@ struct SettingsDefaultsRoutingTests {
     // W (13), not a modifier: the default is deliberately a CHORD, so it takes the Carbon path and
     // nobody who has never heard of the feature reaches it by accident.
     #expect(settings.quickAddKeyCode == 13)
-    #expect(settings.quickAddModifiers == [.control, .option])
+    #expect(settings.quickAddModifiers == [.control, .shift])
     #expect(
       SettingsManager.unifiedDefaultsKeys.filter { $0 == "quickAddKeyCode" }.count == 1,
       "missing from unified keys means it never migrates to the shared suite (#923)")
@@ -299,12 +300,67 @@ struct SettingsDefaultsRoutingTests {
     #expect(SettingsManager(defaults: suite).overlayPillPosition == .top)
   }
 
+  // MARK: - What an UPGRADE does to the three 2026-09-01 defaults
+
+  /// The founder's question, asserted rather than reasoned about: does an
+  /// existing user get the new default, and does their own choice survive?
+  ///
+  /// **Both halves in one row per setting, because either alone is satisfiable
+  /// by a broken store.** A store that ignored every write would pass the
+  /// "new default reaches an untouched install" half; a store that never applied
+  /// defaults would pass the "a user's choice survives" half.
+  ///
+  /// The absent key IS the upgrade case. Nothing in the app writes any of these
+  /// keys unless a person changes something, so a user who never opened the
+  /// setting arrives at a new version with no stored value and resolves to
+  /// whatever `SettingsDefaultValues` now says.
+  /// Keyed by the DEFAULTS KEY NAME rather than by `SettingKey`, which is not
+  /// `Sendable` and so cannot cross into a parameterised test. The name is also
+  /// the thing the store is actually addressed by, which is what this row is
+  /// about.
+  @Test(
+    "an untouched install takes the new default; a stored choice survives a reload",
+    arguments: ["escapeRecoveryEnabled", "livePreviewEnabled", "playRecordingSounds"])
+  func upgradeTakesTheDefaultButNeverOverridesAChoice(_ name: String) {
+    let shipped: Bool
+    let read: (SettingsManager) -> Bool
+    let write: (SettingsManager, Bool) -> Void
+    switch name {
+    case "escapeRecoveryEnabled":
+      shipped = SettingsDefaultValues.escapeRecoveryEnabled
+      read = { $0.escapeRecoveryEnabled }
+      write = { $0.escapeRecoveryEnabled = $1 }
+    case "livePreviewEnabled":
+      shipped = SettingsDefaultValues.livePreviewEnabled
+      read = { $0.livePreviewEnabled }
+      write = { $0.livePreviewEnabled = $1 }
+    default:
+      shipped = SettingsDefaultValues.playRecordingSounds
+      read = { $0.playRecordingSounds }
+      write = { $0.playRecordingSounds = $1 }
+    }
+
+    // 1. The upgrade case: no stored value, so the shipped default applies.
+    let upgraded = Self.freshSuite()
+    #expect(upgraded.object(forKey: name) == nil, "the upgrade case IS the absent key")
+    #expect(read(SettingsManager(defaults: upgraded)) == shipped)
+    #expect(shipped, "all three ship ON as of 2026-09-01")
+
+    // 2. The user's own choice, written to the value the default is NOT, and
+    //    read back through a SECOND manager — which is what a relaunch is.
+    let chosen = Self.freshSuite()
+    write(SettingsManager(defaults: chosen), !shipped)
+    #expect(
+      read(SettingsManager(defaults: chosen)) == !shipped,
+      "a stored choice outranks the default")
+  }
+
   // MARK: - Recording sound cues (#1342)
 
-  @Test("recording sounds default to off, whisperTick pairing, on a fresh install")
+  @Test("recording sounds default to on, whisperTick pairing, on a fresh install")
   func recordingSoundsDefaults() {
     let settings = SettingsManager(defaults: Self.freshSuite())
-    #expect(settings.playRecordingSounds == false)
+    #expect(settings.playRecordingSounds == true)
     #expect(settings.recordingSoundPairing == .whisperTick)
   }
 
@@ -312,13 +368,15 @@ struct SettingsDefaultsRoutingTests {
   func recordingSoundsPersist() {
     let suite = Self.freshSuite()
     let settings = SettingsManager(defaults: suite)
-    settings.playRecordingSounds = true
+    // Written to the NON-default value: sounds now ship ON, so writing `true`
+    // would read back identically from a store that dropped the write entirely.
+    settings.playRecordingSounds = false
     settings.recordingSoundPairing = .cloudPop
-    #expect(suite.object(forKey: "playRecordingSounds") as? Bool == true)
+    #expect(suite.object(forKey: "playRecordingSounds") as? Bool == false)
     #expect(suite.string(forKey: "recordingSoundPairing") == "cloudPop")
     // Reload from the same store → the choice survives.
     let reloaded = SettingsManager(defaults: suite)
-    #expect(reloaded.playRecordingSounds == true)
+    #expect(reloaded.playRecordingSounds == false)
     #expect(reloaded.recordingSoundPairing == .cloudPop)
     #expect(SettingsManager.unifiedDefaultsKeys.contains("playRecordingSounds"))
     #expect(SettingsManager.unifiedDefaultsKeys.contains("recordingSoundPairing"))

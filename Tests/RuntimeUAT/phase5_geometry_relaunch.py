@@ -47,6 +47,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
+import defaults_store as ds  # noqa: E402  (type-preserving park-and-restore)
 import phase5_overlay_lifecycle as lc  # noqa: E402
 import wispr_eyes as rk  # noqa: E402  (record-key helpers; merged in #2425)
 
@@ -367,7 +368,7 @@ def main():
     # BEFORE ANY MUTATION OR STOP. This row relaunches, so it needs this
     # checkout's build; asking here means a missing one costs nothing.
     require_bundle()
-    snapshot = {k: read_default(k) for k in KEYS}
+    snapshot = ds.snapshot(DOMAIN, KEYS)  # text AND type; see the restore below
     # Recorded, not refused: every frame this row takes is captured BY WINDOW ID,
     # which the lock cannot substitute. A row taking a full-SCREEN artifact still
     # has to refuse.
@@ -417,16 +418,16 @@ def main():
             report["rows"][name] = row
             print(f"  {name}: pid={pid} overlay={(record or {}).get('overlay')} err={err}")
     finally:
-        for k, v in snapshot.items():
-            if v is None:
-                subprocess.run(["defaults", "delete", DOMAIN, k], capture_output=True)
-            elif k in BOOL_KEYS:
-                subprocess.run(["defaults", "write", DOMAIN, k, "-bool",
-                                "YES" if v == "1" else "NO"], check=True)
-            else:
-                subprocess.run(["defaults", "write", DOMAIN, k, v], check=True)
-        report["restored"] = {k: read_default(k) for k in KEYS}
-        report["restore_clean"] = report["restored"] == snapshot
+        # RESTORE THE TYPE, NOT ONLY THE TEXT. The old form wrote a FIXED flag
+        # per key rather than the type the value actually had, so a preference
+        # stored as the string "0" came back as boolean `false` -- which the app
+        # reads differently (a string yields nil and the shipped default applies)
+        # while `defaults read` prints both as `0` and the check passed. Owner:
+        # defaults_store, found by cloud review on PR #2578.
+        landed = ds.restore(DOMAIN, snapshot)
+        report["restored"] = {k: ds.read_typed(DOMAIN, k) for k in KEYS}
+        report["restore_clean"] = all(landed.values())
+        report["restore_failed_keys"] = [k for k, good in landed.items() if not good]
         widths = {n: (r.get("overlay") or {}).get("w") for n, r in report["rows"].items()}
         heights = {n: (r.get("overlay") or {}).get("h") for n, r in report["rows"].items()}
         report["widths"] = widths

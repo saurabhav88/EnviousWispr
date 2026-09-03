@@ -172,6 +172,7 @@ DEFAULT_CUSTOM_VOCAB = [
         ],
     ),
     ("Envious Labs", ["envious laps"]),
+    ("EG-1", ["E G One", "EG 1", "E G 1"]),
     ("macOS", ["mac OS", "Mack OS"]),
     ("iOS", ["I OS", "eye OS"]),
     ("GitHub", ["git hub", "get hub"]),

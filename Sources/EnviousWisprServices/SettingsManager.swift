@@ -602,7 +602,10 @@ public final class SettingsManager {
 
   /// #1342: play a short sound when recording starts and stops. UI-only —
   /// no pipeline sync; read live by `RecordingSoundCue` at each cue moment.
-  /// Default OFF (`SettingsDefaultValues.playRecordingSounds`).
+  /// Default: `SettingsDefaultValues.playRecordingSounds`, named rather than
+  /// restated. A doc comment carrying the VALUE is a second source of truth with
+  /// nothing linking the two edits, so it goes stale the first time the default
+  /// moves — as this one did on 2026-09-01.
   public var playRecordingSounds: Bool {
     didSet {
       defaults.set(playRecordingSounds, forKey: "playRecordingSounds")

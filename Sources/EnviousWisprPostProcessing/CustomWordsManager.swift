@@ -145,24 +145,13 @@ public final class CustomWordsManager {
   /// case a backup restore or user action loosened permissions. Soft-fails on
   /// any filesystem operation. (V3 audit #561 / #562.)
   private static func prepareAppSupportDirectory(at url: URL) {
-    let fm = FileManager.default
-    try? fm.createDirectory(at: url, withIntermediateDirectories: true)
-    try? fm.setAttributes(
-      [.posixPermissions: 0o700],
-      ofItemAtPath: url.path
-    )
-    let marker = url.appendingPathComponent(".metadata_never_index")
-    if !fm.fileExists(atPath: marker.path) {
-      fm.createFile(atPath: marker.path, contents: Data(), attributes: nil)
-    }
+    DurableJSONFile.prepareDirectory(at: url)
   }
 
   /// Force `custom-words.json` to 0600 if it already exists. Migrates installs
   /// that pre-date this hardening.
   private static func tightenFileIfPresent(at url: URL) {
-    let fm = FileManager.default
-    guard fm.fileExists(atPath: url.path) else { return }
-    try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    DurableJSONFile.tightenFileIfPresent(at: url)
   }
 
   // MARK: - Built-in Defaults
@@ -176,7 +165,41 @@ public final class CustomWordsManager {
           "envious whisper", "envious wisper", "envious whispr",
           "envious visper", "envious cisper", "mbs cisper",
           "in vious wispr", "envy us wispr", "NVS Visper", "NBS Vesper",
+          // Added 2026-09-01 from the founder's own library, where each of these
+          // is a mishearing his recognizer actually produced. They are kept
+          // verbatim rather than tidied: the alias has to match what the engine
+          // emits, not what the phrase looks like written down.
+          "envious wispr", "Enviousvisper", "NVSBesper", "NVSBSPur",
+          "NVIS VICPRSO", "EnvyS Visper", "senvy wpr", "Dambius Bispe",
         ],
+        category: .brand
+      )),
+    BuiltinWord(
+      id: "eg1",
+      word: CustomWord(
+        canonical: "EG-1",
+        // Our own on-device polish model. Every alias here carries the DIGIT,
+        // and that is the whole design rather than a stylistic preference.
+        //
+        // **The spelled-out "one" forms were proposed and REMOVED, measured
+        // rather than reasoned about.** The fuzzy multi-word pass matches a
+        // two-token alias against any two-token phrase close enough to it, and
+        // English is full of near neighbours: "egg one" ate "she cracked an egg
+        // on the pan", and "E G one" ate "the item is e g on the list". Both came
+        // out with "EG-1" swallowing the following preposition. Matching is
+        // case-insensitive, so dropping only the lowercase spelling would have
+        // changed nothing.
+        //
+        // "EG1" is a single token and therefore reaches the single-word fuzzy
+        // pass; its neighbours are checked as standing controls rather than
+        // assumed safe.
+        //
+        // The cost is stated rather than hidden: a user who says "EG one" and
+        // whose recognizer writes it out in words gets no correction. That is a
+        // missed fix, and the alternative was corrupting ordinary sentences.
+        // `BuiltinDictionaryCorrectionTests` keeps every one of those sentences,
+        // so re-adding a spelled-out form fails a test rather than shipping.
+        aliases: ["EG 1", "E G 1", "EG-one", "EG1"],
         category: .brand
       )),
     BuiltinWord(
@@ -184,6 +207,13 @@ public final class CustomWordsManager {
       word: CustomWord(
         canonical: "Envious Labs",
         aliases: ["envious laps"],
+        category: .brand
+      )),
+    BuiltinWord(
+      id: "eg1",
+      word: CustomWord(
+        canonical: "EG-1",
+        aliases: ["E G One", "EG 1", "E G 1"],
         category: .brand
       )),
     BuiltinWord(
@@ -491,25 +521,18 @@ public final class CustomWordsManager {
   private func withExclusiveFileLock<T>(
     blocking: Bool = false, _ body: () throws -> T
   ) throws -> T {
-    let lockURL = fileURL.appendingPathExtension("lock")
-    let fd = lockURL.path.withCString {
-      Foundation.open($0, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
-    }
-    guard fd >= 0 else {
+    // The companion-file `flock` mechanism moved to `DurableJSONFile.withExclusiveLock` when
+    // #628 gave a second user-owned store the same need. Still exactly ONE declaration here,
+    // and this function keeps what is genuinely this type's: the mapping onto
+    // `CustomWordsPersistenceError`, which callers throughout this file catch by case.
+    do {
+      return try DurableJSONFile.withExclusiveLock(
+        on: fileURL, blocking: blocking, lockSyscall: lockSyscall, body)
+    } catch DurableJSONFile.LockFailure.busy {
+      throw CustomWordsPersistenceError.libraryBusy
+    } catch DurableJSONFile.LockFailure.unavailable {
       throw CustomWordsPersistenceError.coordinationUnavailable
     }
-    defer { close(fd) }
-
-    let flags: Int32 = blocking ? LOCK_EX : (LOCK_EX | LOCK_NB)
-    guard lockSyscall(fd, flags) == 0 else {
-      if !blocking, errno == EWOULDBLOCK {
-        throw CustomWordsPersistenceError.libraryBusy
-      }
-      throw CustomWordsPersistenceError.coordinationUnavailable
-    }
-    defer { _ = flock(fd, LOCK_UN) }
-
-    return try body()
   }
 
   /// Wraps an explicit mutation's load-transform-save in one non-blocking
@@ -1647,67 +1670,11 @@ public final class CustomWordsManager {
   /// `loadFileWhileLocked()` (reached only while a caller of THAT holds the
   /// lock).
   private func saveFileWhileLocked(_ file: CustomWordsFile) throws {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    let data = try encoder.encode(file)
-    let tmpURL = fileURL.deletingLastPathComponent()
-      .appendingPathComponent(".custom-words.json.\(UUID().uuidString).tmp")
-    let fm = FileManager.default
-    do {
-      let fd = Foundation.open(tmpURL.path, O_CREAT | O_EXCL | O_WRONLY, 0o600)
-      guard fd >= 0 else {
-        throw CocoaError(.fileWriteUnknown)
-      }
-      let fh = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-      try fh.write(contentsOf: data)
-      // #1744: atomic (via the rename below) is not durable on its own — force
-      // the just-written bytes off the drive's write cache before the rename
-      // makes them live, so a crash/power-loss immediately after this call
-      // returns cannot silently revert to the prior save. Mirrors the shipped
-      // pattern in RecoverySpoolStore.writeAttemptMarker (write, F_FULLFSYNC,
-      // then atomic rename) — same primitive, this call's own error shape.
-      guard fcntl(fd, F_FULLFSYNC) != -1 else {
-        throw NSError(
-          domain: NSPOSIXErrorDomain, code: Int(errno),
-          userInfo: [
-            NSLocalizedDescriptionKey: String(cString: strerror(errno)),
-            NSFilePathErrorKey: tmpURL.path,
-          ])
-      }
-      try fh.close()
-
-      // Same-directory temp file means same filesystem, which is what makes
-      // rename legal here.
-      guard Foundation.rename(tmpURL.path, fileURL.path) == 0 else {
-        throw NSError(
-          domain: NSPOSIXErrorDomain, code: Int(errno),
-          userInfo: [
-            NSLocalizedDescriptionKey: String(cString: strerror(errno)),
-            NSFilePathErrorKey: fileURL.path,
-          ])
-      }
-
-      // F_FULLFSYNC on the file makes the BYTES durable, but not the rename
-      // itself -- if the Mac loses power after rename() returns but before
-      // APFS commits the directory metadata, the new file's content is safe
-      // on disk while the rename that made it live can still be lost.
-      // Sync the containing directory too, BEST-EFFORT: by this point
-      // `rename()` has already succeeded, the new content is live, and the
-      // caller's in-memory state is about to be treated as consistent with
-      // disk. Throwing here (round 1 of this fix did) would make the caller
-      // believe the save failed and skip updating its own state while the
-      // file on disk had already changed -- correctness regression Codex
-      // review caught. A failure at this point only narrows the crash
-      // window this hardening closes; it does not undo the save.
-      let dirFD = Foundation.open(fileURL.deletingLastPathComponent().path, O_RDONLY)
-      if dirFD >= 0 {
-        _ = fcntl(dirFD, F_FULLFSYNC)
-        close(dirFD)
-      }
-    } catch {
-      try? fm.removeItem(at: tmpURL)
-      throw error
-    }
+    // The write sequence — unique temp, 0600, F_FULLFSYNC, atomic rename, best-effort
+    // directory sync — moved to `DurableJSONFile` when #628 added a second user-owned store.
+    // Same primitive, same order, same reasoning; it lives in one place so the next fix lands
+    // once. `DurableJSONFile`'s header carries the reasoning that used to sit here.
+    try DurableJSONFile.write(file, to: fileURL, tempPrefix: ".custom-words.json")
   }
 
   // MARK: - Runtime Merge

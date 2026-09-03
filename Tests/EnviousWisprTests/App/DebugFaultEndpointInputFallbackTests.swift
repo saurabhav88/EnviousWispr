@@ -36,6 +36,7 @@ import Testing
       let clock = FakeClock()
       let engine = FakeEngine(behavior: .batchSuccess(text: "x"), clock: clock)
       let steps = LimbSteps(
+        snippetExpansion: SnippetExpansionStep(),
         wordCorrection: WordCorrectionStep(),
         fillerRemoval: FillerRemovalStep(),
         emojiFormatter: EmojiFormatterStep(),

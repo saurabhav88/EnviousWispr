@@ -56,6 +56,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import phase5_geometry_relaunch as g  # noqa: E402
 import phase5_overlay_lifecycle as lc  # noqa: E402
 import phase5_paste_target as pt  # noqa: E402
+import defaults_store as ds  # noqa: E402  (type-preserving park-and-restore)
 import wispr_eyes as rk  # noqa: E402  (record-key helpers; merged in #2425)
 import faultInjection as fi  # noqa: E402
 import wispr_eyes as w  # noqa: E402
@@ -311,7 +312,11 @@ def _terminal_after_start():
 def main():
     # BEFORE ANY MUTATION OR STOP (see phase5_geometry_relaunch.require_bundle).
     g.require_bundle()
-    snapshot = {k: read_default(k) for k in PINNED}
+    # TEXT AND TYPE. A text-only park-and-restore rewrites a preference stored as
+    # the string "0" into boolean `false`, which the app reads differently while
+    # `defaults read` prints both as `0` -- so the restore check cannot see it.
+    # Owner: defaults_store, found by cloud review on PR #2578.
+    snapshot = ds.snapshot_multi(DOMAIN_OF, list(PINNED))
     report = {"snapshot": snapshot, "screen_locked": g.screen_is_locked(),
               "cap_seconds": CAP_SECONDS,
               "lead_seconds": LEAD_SECONDS,
@@ -588,21 +593,17 @@ def main():
         # THE SAME TYPE FLAG THE KEY WAS WRITTEN WITH. Restoring the user's own
         # appearance through `-float` would leave them on a number, which is not a
         # design at all — this row must give the machine back exactly what it took.
-        for k, v in snapshot.items():
-            if v is None:
-                subprocess.run(["defaults", "delete", DOMAIN_OF[k], k], capture_output=True)
-            else:
-                value = bool_word(v) if PINNED[k] == "-bool" else v
-                subprocess.run(["defaults", "write", DOMAIN_OF[k], k, PINNED[k], value], check=True)
-        report["restored"] = {k: read_default(k) for k in PINNED}
-        # Compared by MEANING per key, not by dict equality: `defaults` hands a
-        # bool back as `1` where it was written as `true`, so a literal comparison
-        # reports a clean restore as dirty.
-        report["restore_clean"] = all(
-            (report["restored"][k] is None and snapshot[k] is None)
-            or (report["restored"][k] is not None and snapshot[k] is not None
-                and same_default(flag, report["restored"][k], snapshot[k]))
-            for k, flag in PINNED.items())
+        landed = ds.restore_multi(DOMAIN_OF, snapshot)
+        report["restored"] = {k: ds.read_typed(DOMAIN_OF[k], k) for k in PINNED}
+        # **The meaning-versus-literal comparison this replaced is no longer
+        # needed, and that is the point.** It existed because the restore wrote
+        # `true` and the read-back printed `1`, so the two could never be compared
+        # directly. Restoring the SNAPSHOTTED type makes the read-back equal the
+        # snapshot exactly, so the check is an identity rather than a rule about
+        # how `defaults` renders each type -- and an identity has no per-type case
+        # to get wrong.
+        report["restore_clean"] = all(landed.values())
+        report["restore_failed_keys"] = [k for k, good in landed.items() if not good]
 
         # **A DIRTY RESTORE INVALIDATES THE VERDICT, it does not sit beside it.**
         # `defaults delete` failures are not checked and cannot be, so the only
@@ -617,11 +618,11 @@ def main():
         if not report["restore_clean"]:
             report["verdict_before_restore_check"] = report.get("verdict")
             report["verdict"] = "DIRTY_RESTORE"
-            report["dirty_keys"] = sorted(
-                k for k, flag in PINNED.items()
-                if not ((report["restored"][k] is None and snapshot[k] is None)
-                        or (report["restored"][k] is not None and snapshot[k] is not None
-                            and same_default(flag, report["restored"][k], snapshot[k]))))
+            # Named by the restore itself rather than re-derived here. Deriving
+            # the dirty set a second way is how the verdict and its explanation
+            # come to disagree, and only one of them is the thing the restore
+            # actually observed.
+            report["dirty_keys"] = sorted(report["restore_failed_keys"])
 
         (UAT / "warning-morph.json").write_text(json.dumps(report, indent=2, default=str))
         # **`morph_row` AND `clear_row` ARE IN THE PRINTED SUMMARY.** Without them

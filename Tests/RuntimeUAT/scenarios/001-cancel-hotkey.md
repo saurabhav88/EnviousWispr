@@ -6,21 +6,28 @@ The cancel shortcut (Escape by default, configurable) ends an active recording.
 **What it then does depends on the Escape Recovery setting (#2087), so every
 scenario below states which state it assumes.**
 
-- **Escape Recovery OFF (the default, and what every scenario below assumes
-  unless it says otherwise):** the recording is discarded immediately — audio
-  dropped, nothing transcribed, nothing pasted, nothing saved.
-- **Escape Recovery ON:** the recording is KEPT. It finishes transcribing and
-  polishing, the text is held for 24 hours in History, and a pill offers to
-  paste it. Nothing is pasted unless the user asks.
+- **Escape Recovery ON — THE SHIPPED DEFAULT since 2026-09-01:** the recording is
+  KEPT. It finishes transcribing and polishing, the text is held for 24 hours in
+  History, and a pill offers to paste it. Nothing is pasted unless the user asks.
+- **Escape Recovery OFF:** the recording is discarded immediately — audio dropped,
+  nothing transcribed, nothing pasted, nothing saved.
+
+**THE DEFAULT FLIPPED ON 2026-09-01 AND THIS FILE'S SETUP BURDEN FLIPPED WITH
+IT.** Read this before running anything below. The off-path scenarios in the
+first section were written when OFF was the default, so they used to need no
+setup at all; they now REQUIRE Escape Recovery to be switched OFF first, and a
+tester who skips that step will run every one of them against a build that keeps
+the recording, and report a correct app as broken. The Escape Recovery ON section
+is the one that now needs no setting change, and its old "turn it back OFF
+afterwards" instruction is gone, because OFF is no longer the state to restore.
 
 **The Cancel BUTTON in the main window discards immediately in BOTH states.**
 Only the shortcut recovers. A scenario that presses the button is testing the
 destructive path whatever the setting says.
 
-**This file was rewritten rather than replaced when Escape Recovery shipped.**
-The off-path scenarios below are the regression suite for the promise that
-carries almost every user: with the setting off, cancel behaves exactly as it
-did before the feature existed.
+**The off-path scenarios are still the regression suite for the promise that
+carries every user who switches the setting off:** cancel then behaves exactly as
+it did before the feature existed.
 
 ## Test Scenarios
 
@@ -209,8 +216,10 @@ THEN recording is cancelled
 ## Escape Recovery ON (#2087)
 
 Every scenario in this section requires **Settings → Shortcuts → Escape
-Recovery** switched ON. Turn it back OFF afterwards: it is off by default and a
-left-on toggle silently changes the meaning of every scenario above.
+Recovery** switched ON, which is the shipped default, so a fresh install needs no
+setup here. Do NOT "restore" it to OFF afterwards — that instruction belonged to
+the old default and following it now leaves the machine in a non-default state
+that silently changes the meaning of every later run.
 
 ### P0: Critical
 
@@ -290,15 +299,16 @@ THEN the row is still there with a countdown
 **Why**: the 24-hour window starts when the user pressed cancel, not when the
 app last started. A row whose countdown restarts on relaunch is a bug.
 
-#### test_off_by_default_for_a_fresh_install
+#### test_on_by_default_for_a_fresh_install
 **Suite**: escape_recovery
 **Layers**: AX structure
 ```
 GIVEN a fresh install with no prior settings
 WHEN the user opens Settings and finds Shortcuts
-THEN Escape Recovery is OFF
-  AND the cancel hotkey description says the recording is discarded
+THEN Escape Recovery is ON
+  AND the cancel hotkey description says the recording is kept and offered back
 ```
-**Why**: opt-in is a founder decision, not a default worth drifting. The
-description assertion catches the case where the toggle ships off but the copy
-already describes the on behaviour.
+**Why**: the default is a founder decision (2026-09-01, replacing the opt-in one
+of #2087), not a value worth drifting. The description assertion is the half that
+catches the real hazard in either direction: a toggle whose state and whose copy
+disagree tells the user their cancel key does the opposite of what it does.

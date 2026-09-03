@@ -75,9 +75,10 @@ env:
 # ~36 after the debug run has eaten into them.
 #
 # `release-validation` remains the sole cache WRITER and still builds BOTH
-# configurations, because pr-check.yml restores this cache (two restore steps,
-# no save) and depends on its directory shape. Splitting the cache across two
-# writers would change that contract; this change deliberately does not.
+# configurations, because pr-check.yml restores this cache (both lanes, through
+# the same composite action, no save) and depends on its directory shape.
+# Splitting the cache across two writers would change that contract; this
+# change deliberately does not.
 jobs:
   # Cheap Linux gate so both macOS jobs share ONE classification decision
   # rather than each computing its own and risking disagreement.
@@ -243,6 +244,33 @@ jobs:
             ONLY_ACTIVE_ARCH=YES \
             VALID_ARCHS=arm64
 
+      # #2580: THE WRITER MUST BUILD WHAT THE READERS BUILD, and this is the one
+      # part of the original fix that survives. The only job that saves the cache
+      # built the Debug PRODUCT and never the Debug TESTS, so `EnviousWisprTests`
+      # — 624 files, ~350s, 62% of the PR compile window — could not be in any
+      # cache it wrote. Not a miss: by construction. A content-addressed cache
+      # changes nothing about that: it only holds compile jobs it has SEEN.
+      #
+      # NO COVERAGE FLAG, and that is load-bearing rather than an omission.
+      # debug-validation runs the same suite with `-enableCodeCoverage YES`,
+      # which instruments every first-party module and changes every compile
+      # command line — a different cache key. Those entries could not serve
+      # pr-check.yml's uninstrumented build-debug, so caching them would look
+      # correct, ship, and move wall clock by zero. The flags below mirror that
+      # lane's `xcodebuild test` invocation exactly, destination included.
+      - name: Build for testing (debug, Xcode)
+        run: |
+          set -euo pipefail
+          xcodebuild build-for-testing \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            -destination 'platform=macOS,arch=arm64' \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            VALID_ARCHS=arm64
+
       - name: Build (release, Xcode)
         run: |
           set -euo pipefail
@@ -339,9 +367,12 @@ jobs:
           # MUST stay identical to the restore paths in
           # .github/actions/xcode-ci-setup/action.yml — a save/restore pair that
           # disagrees produces a permanently cold cache with no error anywhere.
+          # Since #2592 that restore is the ONLY other copy of this list (all
+          # four macOS lanes go through it), and scripts/ci/check-cache-paths.py
+          # holds both to the same literal expectation.
           path: |
             ${{ env.DERIVED_DATA_PATH }}/SourcePackages
-            ${{ env.DERIVED_DATA_PATH }}/Build
+            ${{ env.DERIVED_DATA_PATH }}/CompilationCache.noindex
             ${{ env.DERIVED_DATA_PATH }}/*/SourcePackages
           key: ${{ steps.setup.outputs.cache-primary-key }}
 

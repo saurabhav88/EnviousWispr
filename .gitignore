@@ -231,6 +231,11 @@ scripts/lib/*
 # CI tooling scripts invoked by .github/workflows (issue #1151)
 !scripts/ci/
 !scripts/ci/**
+# ...but the negation above un-ignores EVERYTHING under scripts/ci, including
+# build detritus. Re-ignore it explicitly (#2580: a __pycache__ directory was
+# staged the first time a Python checker landed there).
+scripts/ci/**/__pycache__/
+scripts/ci/**/*.pyc
 # Polish eval harness — PUBLIC tracked files only (see .claude/knowledge/polish-eval.md for scope rules)
 !scripts/eval/
 scripts/eval/*
@@ -263,6 +268,12 @@ scripts/eval/apple_runner/Package.resolved
 !scripts/eval/model-registry.json
 !scripts/eval/model_registry.py
 !scripts/eval/rebuild-model-registry.py
+# The release gate, and the harness that proves a scorer change moved no score.
+# Tracked because the rubric-equivalence claims in model-registry.json cite them:
+# an equivalence nobody can re-run is an assertion, not evidence.
+!scripts/eval/release_gate.py
+!scripts/eval/replay_receipts.py
+!scripts/eval/diff_replays.py
 !scripts/eval/classify_redundant.py
 !scripts/eval/run_cloud_type_b.py
 !scripts/eval/tts_corpus.py

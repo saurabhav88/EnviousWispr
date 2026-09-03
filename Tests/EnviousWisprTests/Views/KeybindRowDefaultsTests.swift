@@ -34,7 +34,7 @@ struct KeybindRowDefaultsTests {
     #expect(ShortcutRole.cancel.defaultBinding == .keyboard(keyCode: 53, modifiers: []))
     #expect(
       ShortcutRole.quickAdd.defaultBinding
-        == .keyboard(keyCode: 13, modifiers: [.control, .option]))
+        == .keyboard(keyCode: 13, modifiers: [.control, .shift]))
   }
 
   @Test("Quick Add ships as a CHORD, which is what keeps it out of an unsuspecting user's way")
