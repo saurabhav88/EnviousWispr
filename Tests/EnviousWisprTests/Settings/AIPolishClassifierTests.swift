@@ -30,6 +30,54 @@ struct AIPolishClassifierTests {
     #expect(AIPolishModelClassifier.isRecommendedForCleanup("GPT-5.6-Luna"))
   }
 
+  /// Product Outcome (cloud review on #2603). A dated snapshot of a named id IS
+  /// that id. A tier WORD survives its own snapshot for free, because `mini` is
+  /// still a token of `gpt-5-mini-2025-08-07`; an exact-name lookup does not, so
+  /// without this a dated Luna would sit under "Other" while its own alias sat
+  /// under "Recommended".
+  @Test("A dated snapshot of a named id is still recommended")
+  func datedSnapshotOfNamedIDIsRecommended() {
+    #expect(AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.6-luna-2026-07-09"))
+    // Anthropic's compact spelling of the same thing.
+    #expect(AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.6-luna-20260709"))
+    // A leap day is a real date.
+    #expect(AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.6-luna-2024-02-29"))
+  }
+
+  /// The stripper is swept in every meaning-changing class, because one that
+  /// trims too much is worse than one that trims nothing: it makes an id inherit
+  /// a DIFFERENT model's verdict.
+  @Test("Only a real trailing date is treated as a snapshot")
+  func snapshotStripperIsExact() {
+    #expect(AIPolishModelClassifier.withoutSnapshot("gpt-5-mini-2025-08-07") == "gpt-5-mini")
+    #expect(AIPolishModelClassifier.withoutSnapshot("claude-haiku-4-5-20251001") == "claude-haiku-4-5")
+    // A version that merely ends in digits must survive untouched.
+    #expect(AIPolishModelClassifier.withoutSnapshot("claude-fable-5-1") == nil)
+    #expect(AIPolishModelClassifier.withoutSnapshot("gemini-2.5-flash") == nil)
+    #expect(AIPolishModelClassifier.withoutSnapshot("gpt-4.1-mini") == nil)
+    // Digits that are not a date.
+    #expect(AIPolishModelClassifier.withoutSnapshot("model-99999999") == nil)
+    #expect(AIPolishModelClassifier.withoutSnapshot("model-20251301") == nil)
+    #expect(AIPolishModelClassifier.withoutSnapshot("model-20250231") == nil)
+    #expect(AIPolishModelClassifier.withoutSnapshot("model-20250229") == nil)
+    #expect(AIPolishModelClassifier.withoutSnapshot("model-19991001") == nil)
+    // Mixed separators are nobody's format.
+    #expect(AIPolishModelClassifier.withoutSnapshot("model-2025-1001") == nil)
+    #expect(AIPolishModelClassifier.withoutSnapshot("model-202510-01") == nil)
+    // OpenAI's older four-digit MMDD snapshot is deliberately left alone.
+    #expect(AIPolishModelClassifier.withoutSnapshot("gpt-3.5-turbo-0125") == nil)
+    // A date anywhere but the end is not a suffix, and a bare date is not an id.
+    #expect(AIPolishModelClassifier.withoutSnapshot("gpt-20240806-preview") == nil)
+    #expect(AIPolishModelClassifier.withoutSnapshot("-2026-07-09") == nil)
+  }
+
+  /// Stripping must never rescue a disqualified id: the veto reads the FULL id.
+  @Test("A dated snapshot does not launder a disqualifier")
+  func datedSnapshotDoesNotLaunderDisqualifier() {
+    #expect(!AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.6-luna-transcribe-2026-01-01"))
+    #expect(!AIPolishModelClassifier.isRecommendedForCleanup("gpt-4o-mini-transcribe-2025-12-15"))
+  }
+
   /// The other two 5.6 codenames are the middle and large tiers. Both are
   /// available and both must stay under the other heading, or "recommended for
   /// cleanup" stops meaning cheap and fast.

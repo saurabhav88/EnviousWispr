@@ -176,11 +176,77 @@ enum AIPolishModelClassifier {
         .split(whereSeparator: { "-._/".contains($0) })
         .map(String.init)
     )
-    // A disqualifier still vetoes a NAMED id. Nothing in the set trips one, so
-    // this can only fire on our own mistake, and failing closed on that is
-    // cheaper than shipping a named id that says `transcribe`.
+    // A disqualifier still vetoes a NAMED id, and it is judged on the FULL id,
+    // never the stripped one — `gpt-5.6-luna-transcribe-2026-01-01` must not
+    // become recommended by having its date removed. Nothing in the named set
+    // trips a disqualifier, so this can only fire on our own mistake, and
+    // failing closed on that is cheaper than shipping a named id that says
+    // `transcribe`.
     guard tokens.isDisjoint(with: disqualifiers) else { return false }
-    return namedFastTierIDs.contains(lowered) || !tokens.isDisjoint(with: positives)
+    if namedFastTierIDs.contains(lowered) { return true }
+    // A DATED SNAPSHOT of a named id is that id (cloud review #2603). A token
+    // survives its own snapshot because `mini` is still a token of
+    // `gpt-5-mini-2025-08-07`, which is why the tier words never needed this;
+    // an exact-name lookup does not, so `gpt-5.6-luna-2026-07-09` would have
+    // landed under the other heading while its own alias sat under Recommended.
+    if let base = withoutSnapshot(lowered), namedFastTierIDs.contains(base) { return true }
+    return !tokens.isDisjoint(with: positives)
+  }
+
+  /// The id with a trailing DATED SNAPSHOT removed, or `nil` when there is none.
+  ///
+  /// Two shapes and only two, because those are the two the providers ship:
+  /// OpenAI's `-YYYY-MM-DD` (`gpt-5-mini-2025-08-07`) and Anthropic's compact
+  /// `-YYYYMMDD` (`claude-haiku-4-5-20251001`). Mixed separators are refused —
+  /// `-2025-1001` is nobody's format, and accepting it would let an id inherit
+  /// a different model's verdict.
+  ///
+  /// A REAL CALENDAR DATE is required, not eight digits, because a model id may
+  /// legitimately end in a number: `claude-fable-5-1` and `gemini-2.5-flash`
+  /// must survive untouched. OpenAI's older four-digit `MMDD` snapshots
+  /// (`gpt-3.5-turbo-0125`) are deliberately NOT stripped: four digits cannot be
+  /// told from a version, and no named id has one.
+  static func withoutSnapshot(_ id: String) -> String? {
+    // Hyphenated first: it is the longer suffix, so trying it first cannot be
+    // shadowed by the compact form.
+    strippingSuffix(of: id, separated: true) ?? strippingSuffix(of: id, separated: false)
+  }
+
+  /// Removes a trailing `-` plus a `YYYY MM DD` date, either `-`-separated
+  /// between the groups or run together, when it is a real date.
+  private static func strippingSuffix(of id: String, separated: Bool) -> String? {
+    let digitGroups = [4, 2, 2]
+    let separatorCount = separated ? digitGroups.count - 1 : 0
+    let suffixLength = digitGroups.reduce(0, +) + separatorCount + 1  // + the leading "-"
+    guard id.count > suffixLength else { return nil }
+    let suffix = String(id.suffix(suffixLength))
+    guard suffix.hasPrefix("-") else { return nil }
+
+    var remainder = Substring(suffix.dropFirst())
+    var values: [Int] = []
+    for (index, groupLength) in digitGroups.enumerated() {
+      if separated && index > 0 {
+        guard remainder.first == "-" else { return nil }
+        remainder = remainder.dropFirst()
+      }
+      let group = remainder.prefix(groupLength)
+      guard group.count == groupLength, group.allSatisfy(\.isASCII), group.allSatisfy(\.isNumber),
+        let value = Int(group)
+      else { return nil }
+      values.append(value)
+      remainder = remainder.dropFirst(groupLength)
+    }
+    guard remainder.isEmpty, values.count == 3 else { return nil }
+
+    var components = DateComponents()
+    components.year = values[0]
+    components.month = values[1]
+    components.day = values[2]
+    guard (2000...2099).contains(values[0]),
+      components.isValidDate(in: Calendar(identifier: .gregorian))
+    else { return nil }
+
+    return String(id.dropLast(suffixLength))
   }
 }
 
