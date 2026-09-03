@@ -1529,7 +1529,7 @@ export function rankMovers({ measurements, selection }) {
 
   if (displayed.length < 2) {
     // Fewer than two displayed releases: render the grid, invent no comparison.
-    return { movers: [], ages, rows: buildRows(), summary, comparisonPair: null };
+    return { movers: [], comparableMeasures: 0, ages, rows: buildRows(), summary, comparisonPair: null };
   }
 
   const [newest, previous] = displayed;
@@ -1621,7 +1621,11 @@ export function rankMovers({ measurements, selection }) {
   // labelled with the basis used. Founder may overrule.
   const movers = [...normalizedFirst.sort(byScore), ...rawOnly.sort(byScore)].slice(0, 2);
 
-  return { movers, ages, rows: buildRows(), summary,
+  // How many measures were RANKABLE, before the zero-movement drop. The
+  // formatter needs it to tell "nothing moved" from "nothing could be ranked"
+  // (cloud review on #2622): an empty mover list means either, and only the
+  // first is a fact about the product.
+  return { movers, comparableMeasures: candidates.length, ages, rows: buildRows(), summary,
            comparisonPair: [newest.version, previous.version] };
 }
 

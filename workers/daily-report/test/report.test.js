@@ -3201,6 +3201,15 @@ test("scorecard formatting freezes coverage release age rows reasons and missing
   assert.match(text, /^Biggest shifts: Slowest 5% 3\.00s to 5\.00s\.$/m);
   assert.ok(!ranking.movers.some((m) => m.metricKey === "speed_p50"),
     "a measure that did not move is not a mover");
+  assert.ok(ranking.comparableMeasures >= 2, "the ranker reports how many measures it could rank");
+  // Every measure identical across the two releases: ranked, none moved, and
+  // the page says so rather than claiming there was nothing to rank.
+  const flatMeasurements = fakeMeasurements({ "2.4.1": Array(8).fill(5), "2.3.2": Array(8).fill(5) });
+  const flatRanking = rankMovers({ measurements: flatMeasurements, selection });
+  assert.deepEqual(flatRanking.movers, []);
+  assert.ok(flatRanking.comparableMeasures > 0);
+  assert.match(formatScorecard({ ranking: flatRanking }).join("\n"),
+    /^Biggest shifts: none, nothing moved between these two releases\.$/m);
   // A non-comparable row separates its cells with a bar, never "vs".
   assert.match(text, /^Failed dictations: 1\.0% \| 1\.0% \(not compared: /m);
   // 2.4.1 and 2.3.2 straddle the typed-code boundary, so that row is not
@@ -3226,6 +3235,7 @@ test("scorecard cells format counts with separators and a missing value as 'no d
     summary: { releases: [{ version: "2.4.6", observed: true }, { version: "2.4.5", observed: true }], coverage: 0.807 },
     movers: [{ metricKey: "speed_p50", unit: "seconds", previousValue: 0.6, newestValue: 0.84 },
              { metricKey: "autopaste_direct", unit: "share", previousValue: 0.977, newestValue: 0.983 }],
+    comparableMeasures: 5,
   };
   const lines = formatScorecard({ ranking });
   assert.deepEqual(lines, [
@@ -3265,6 +3275,17 @@ test("scorecard cells format counts with separators and a missing value as 'no d
     movers: [{ metricKey: "speed_p50", unit: "seconds", previousValue: 0.6, newestValue: 0.6000001 }],
   };
   assert.ok(formatScorecard({ ranking: tiny }).includes("Biggest shifts: Typical speed 0.600000s to 0.600000s."));
+  // An empty mover list means one of two things, and the page must say which:
+  // measures were ranked and none moved, or nothing was rankable at all.
+  const still = { ...ranking, movers: [], comparableMeasures: 5 };
+  assert.ok(formatScorecard({ ranking: still }).includes(
+    "Biggest shifts: none, nothing moved between these two releases."));
+  const unrankable = { ...ranking, movers: [], comparableMeasures: 0 };
+  assert.ok(formatScorecard({ ranking: unrankable }).includes("Biggest shifts: nothing to rank yet."));
+  // The count is REQUIRED: a ranking that omits it cannot be rendered, so a
+  // producer that forgets it fails loud rather than defaulting to one wording.
+  const { comparableMeasures: _omitted, ...without } = ranking;
+  assert.throws(() => formatScorecard({ ranking: without }), /comparableMeasures/);
 });
 
 test("ranked-change formatting freezes normalized raw-fallback and unavailable copy", async () => {

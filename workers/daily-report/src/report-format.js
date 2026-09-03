@@ -99,8 +99,11 @@ function releaseHeading(release, age) {
 /** One deterministic scorecard section, as an array of lines. */
 export function formatScorecard({ ranking }) {
   if (!ranking || !Array.isArray(ranking.rows) || !(ranking.ages instanceof Map) ||
-      !ranking.summary || !Array.isArray(ranking.summary.releases)) {
-    throw new TypeError("formatScorecard requires ranking.rows, ranking.ages and ranking.summary");
+      !ranking.summary || !Array.isArray(ranking.summary.releases) ||
+      !Array.isArray(ranking.movers) || !Number.isInteger(ranking.comparableMeasures)) {
+    throw new TypeError(
+      "formatScorecard requires ranking.rows, ranking.ages, ranking.summary, ranking.movers and ranking.comparableMeasures"
+    );
   }
   // The formatter takes ONLY the ranking. It has no access to the raw selection
   // at all, so a raw tag form, a stale coverage figure or a stale cap flag
@@ -148,9 +151,13 @@ export function formatScorecard({ ranking }) {
  * which is the whole fact, with no verdict attached. */
 function formatShifts(ranking) {
   if (ranking.movers.length === 0) {
-    // Not "nothing changed": with one release, or insufficient history, there
-    // was nothing rankable to begin with, which is a different statement.
-    return "Biggest shifts: nothing to rank yet.";
+    // Two different facts hide behind an empty list (cloud review on #2622):
+    // measures were ranked and none moved, which is a statement about the
+    // product; or nothing was rankable - one release, no comparable contract -
+    // which is a statement about the data. Only the ranker knows which.
+    return ranking.comparableMeasures > 0
+      ? "Biggest shifts: none, nothing moved between these two releases."
+      : "Biggest shifts: nothing to rank yet.";
   }
   // Every mover the ranker handed over is printed: which rows are movers, and
   // in what order, is the ranker's decision alone (it already drops a measure
