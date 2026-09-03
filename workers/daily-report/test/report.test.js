@@ -2037,20 +2037,23 @@ test("resolveReleases: a malformed appcast fails loud, never silently", async ()
 });
 
 test("resolveReleases: network, 5xx and 429 take 3 attempts with real backoff, then are TRANSIENT", async () => {
-  for (const [label, answer, detail] of [
-    ["network rejection", () => { throw new Error("ECONNRESET"); }, /network error/],
+  for (const [label, answer, detail, drains] of [
+    ["network rejection", () => { throw new Error("ECONNRESET"); }, /network error/, 0],
     // A body that fails to READ is a reset mid-stream: transport, not contract.
     ["body read failure", () => ({ ok: true, status: 200, text: async () => { throw new Error("stream reset"); } }),
-      /network error/],
-    ["503", () => appcastResponse(503, ""), /HTTP 503/],
-    ["429", () => appcastResponse(429, ""), /HTTP 429/],
+      /network error/, 0],
+    // Every retryable response carries a body, so the drain-before-retry path
+    // is exercised here and not only on the contract-failure side.
+    ["503", (onCancel) => appcastResponse(503, "", { onCancel }), /HTTP 503/, 3],
+    ["429", (onCancel) => appcastResponse(429, "", { onCancel }), /HTTP 429/, 3],
   ]) {
     let attempts = 0;
+    let cancelled = 0;
     const sleeps = [];
     await assert.rejects(
       () => resolveReleases({ APPCAST_URL }, [], {
         windowEndExclusive: "2026-07-29",
-        fetchFn: async () => { attempts += 1; return answer(); },
+        fetchFn: async () => { attempts += 1; return answer(() => { cancelled += 1; }); },
         sleepFn: async (ms) => { sleeps.push(ms); },
       }),
       (err) =>
@@ -2059,6 +2062,7 @@ test("resolveReleases: network, 5xx and 429 take 3 attempts with real backoff, t
       label
     );
     assert.equal(attempts, 3, `${label}: three attempts`);
+    assert.equal(cancelled, drains, `${label}: every failed body is drained before the retry`);
     assert.deepEqual(sleeps, [500, 1500], `${label}: real backoff between attempts, none after the last`);
   }
   // Recovery on a later attempt still returns the list - the retry has an effect.

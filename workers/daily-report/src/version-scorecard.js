@@ -192,6 +192,10 @@ const APPCAST_RETRY_DELAYS_MS = [500, 1500];
 // unbalanced `<item>` would otherwise be skipped by the non-greedy match while
 // its neighbours succeed, and a skipped item is a release that silently
 // vanishes (#2619 review r2).
+// These regexes parse the ONE document shape `.github/workflows/release.yml`
+// writes, not XML in general: no comments, CDATA, attributes on the two
+// elements read, or entity escapes occur in it, and a drift toward any of them
+// fails LOUD here and in the suite's real-file control, never silently.
 const APPCAST_ROOT =
   /^\s*(?:<\?xml\b[\s\S]*?\?>\s*)?<rss\b(?=[^>]*\bxmlns:sparkle\s*=\s*(["'])http:\/\/www\.andymatuschak\.org\/xml-namespaces\/sparkle\1)[^>]*>[\s\S]*<\/rss>\s*$/;
 const APPCAST_RSS_OPEN = /<rss\b/g;

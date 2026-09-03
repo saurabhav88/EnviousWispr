@@ -42,7 +42,8 @@ shipped. Both come from **our own Sparkle appcast**, `APPCAST_URL` in
 `wrangler.toml` (`https://enviouswispr.com/appcast.xml`): `.github/workflows/release.yml` writes
 an `<item>` on every release, Cloudflare Pages serves the file, and every
 installed app reads it to learn a release exists. No token, no secret, no
-external rate limit, one request per run.
+GitHub API quota. One request on the successful path, with up to three
+attempts on a 429, a 5xx or a transport failure.
 
 It replaced GitHub's releases API on 2026-09-03 (#2619). That API allows 60
 unauthenticated requests an hour **per IP**, a Worker's outbound IP is shared
