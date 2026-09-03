@@ -260,6 +260,8 @@ enum SettingsProjection {
     "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-4.1", "gpt-4.1-mini",
     "gpt-4.1-nano", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro",
     "o1", "o1-mini", "o1-preview", "o3", "o3-mini", "o4-mini", "chatgpt-4o-latest",
+    "gpt-5.1", "gpt-5.2", "gpt-5.2-pro", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano",
+    "gpt-5.4-pro", "gpt-5.5", "gpt-5.5-pro", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol",
     // Gemini
     "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b",
     "gemini-2.0-flash", "gemini-2.0-flash-lite",
@@ -277,29 +279,31 @@ enum SettingsProjection {
     "gemini-3.1-pro-preview", "gemini-3.1-pro-preview-customtools",
     "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash",
     "gemini-3.7-flash",
+    // #2602: enumerated from the live model lists of all three keys on
+    // 2026-09-02, not from the previous entries. The same gap #1770 records for
+    // Gemini 3.x had reopened for every generation shipped since: OpenAI 5.1
+    // through 5.6 and Gemini 3.8 were all reconstructing as `custom`, which
+    // hides exactly the generation a settings snapshot is asked about. Luna is
+    // the one this issue promotes to Recommended, so it would have become the
+    // most-selected invisible model.
+    "gemini-3.8-flash",
     // Claude
     "claude-sonnet-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7",
     "claude-sonnet-4-6", "claude-opus-4-6", "claude-opus-4-5", "claude-haiku-4-5",
-    "claude-sonnet-4-5", "claude-opus-4-1",
+    "claude-sonnet-4-5", "claude-opus-4-1", "claude-fable-5-1", "claude-opus-5",
   ]
 
   /// Strip a trailing provider date-snapshot suffix so dated variants match
   /// their base allowlist entry. The suffix is public/non-sensitive; this
-  /// only collapses cardinality. Two forms: OpenAI/Gemini's dashed
-  /// `-YYYY-MM-DD` (e.g. `gpt-5-mini-2025-08-07`) and Anthropic's compact,
-  /// undashed `-YYYYMMDD` (e.g. `claude-haiku-4-5-20251001`) — the two do
-  /// not share a pattern, so both are matched explicitly rather than
-  /// widening one regex to accidentally admit the other's shape.
+  /// only collapses cardinality.
+  ///
+  /// #2602 moved the rule itself to `ProviderModelID`, which the AI Polish
+  /// classifier also needs, and gave it a real calendar-date check. The one
+  /// behaviour change: an id whose digits are not a DATE no longer collapses
+  /// onto a base model, so `gpt-4-20259999` reports `custom` rather than
+  /// `gpt-4`. That is the honest answer for an id no provider ships.
   private static func stripDateSnapshotSuffix(_ id: String) -> String {
-    if let r = id.range(
-      of: "-[0-9]{4}-[0-9]{2}-[0-9]{2}$", options: .regularExpression)
-    {
-      return String(id[..<r.lowerBound])
-    }
-    if let r = id.range(of: "-[0-9]{8}$", options: .regularExpression) {
-      return String(id[..<r.lowerBound])
-    }
-    return id
+    ProviderModelID.withoutDateSnapshot(id) ?? id
   }
 
   private static func languageModeLabel(_ mode: LanguageMode) -> String {

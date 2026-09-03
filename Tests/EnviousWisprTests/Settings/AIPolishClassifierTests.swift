@@ -49,26 +49,26 @@ struct AIPolishClassifierTests {
   /// a DIFFERENT model's verdict.
   @Test("Only a real trailing date is treated as a snapshot")
   func snapshotStripperIsExact() {
-    #expect(AIPolishModelClassifier.withoutSnapshot("gpt-5-mini-2025-08-07") == "gpt-5-mini")
-    #expect(AIPolishModelClassifier.withoutSnapshot("claude-haiku-4-5-20251001") == "claude-haiku-4-5")
+    #expect(ProviderModelID.withoutDateSnapshot("gpt-5-mini-2025-08-07") == "gpt-5-mini")
+    #expect(ProviderModelID.withoutDateSnapshot("claude-haiku-4-5-20251001") == "claude-haiku-4-5")
     // A version that merely ends in digits must survive untouched.
-    #expect(AIPolishModelClassifier.withoutSnapshot("claude-fable-5-1") == nil)
-    #expect(AIPolishModelClassifier.withoutSnapshot("gemini-2.5-flash") == nil)
-    #expect(AIPolishModelClassifier.withoutSnapshot("gpt-4.1-mini") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("claude-fable-5-1") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("gemini-2.5-flash") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("gpt-4.1-mini") == nil)
     // Digits that are not a date.
-    #expect(AIPolishModelClassifier.withoutSnapshot("model-99999999") == nil)
-    #expect(AIPolishModelClassifier.withoutSnapshot("model-20251301") == nil)
-    #expect(AIPolishModelClassifier.withoutSnapshot("model-20250231") == nil)
-    #expect(AIPolishModelClassifier.withoutSnapshot("model-20250229") == nil)
-    #expect(AIPolishModelClassifier.withoutSnapshot("model-19991001") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("model-99999999") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("model-20251301") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("model-20250231") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("model-20250229") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("model-19991001") == nil)
     // Mixed separators are nobody's format.
-    #expect(AIPolishModelClassifier.withoutSnapshot("model-2025-1001") == nil)
-    #expect(AIPolishModelClassifier.withoutSnapshot("model-202510-01") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("model-2025-1001") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("model-202510-01") == nil)
     // OpenAI's older four-digit MMDD snapshot is deliberately left alone.
-    #expect(AIPolishModelClassifier.withoutSnapshot("gpt-3.5-turbo-0125") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("gpt-3.5-turbo-0125") == nil)
     // A date anywhere but the end is not a suffix, and a bare date is not an id.
-    #expect(AIPolishModelClassifier.withoutSnapshot("gpt-20240806-preview") == nil)
-    #expect(AIPolishModelClassifier.withoutSnapshot("-2026-07-09") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("gpt-20240806-preview") == nil)
+    #expect(ProviderModelID.withoutDateSnapshot("-2026-07-09") == nil)
   }
 
   /// Stripping must never rescue a disqualified id: the veto reads the FULL id.
