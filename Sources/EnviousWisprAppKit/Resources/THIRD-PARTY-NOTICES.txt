@@ -8,7 +8,7 @@ None of these components is GPL/LGPL-licensed.
 
 --------------------------------------------------------------------------------
 WhisperKit (argmax-oss-swift)
-  Version: 1.0.0
+  Version: 1.1.0
   License: MIT
   Source:  https://github.com/argmaxinc/argmax-oss-swift
 --------------------------------------------------------------------------------
@@ -524,7 +524,7 @@ SOFTWARE.
 
 --------------------------------------------------------------------------------
 Sentry Cocoa
-  Version: 9.23.0
+  Version: 9.26.1
   License: MIT
   Source:  https://github.com/getsentry/sentry-cocoa
 --------------------------------------------------------------------------------
@@ -554,7 +554,7 @@ SOFTWARE.
 
 --------------------------------------------------------------------------------
 Sparkle
-  Version: 2.9.4
+  Version: 2.9.6
   License: MIT (with bundled BSD/MIT components)
   Source:  https://github.com/sparkle-project/Sparkle
 --------------------------------------------------------------------------------

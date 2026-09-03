@@ -30,7 +30,7 @@ CO="${PROJ_ROOT}/.build/checkouts"
 # cross-check below hard-fails if Package.resolved gains/loses a direct dep that
 # this list does not cover, so the notices can't silently go stale (Codex #2).
 COMPONENTS=(
-  "WhisperKit (argmax-oss-swift)|1.0.0|MIT|argmax-oss-swift/LICENSE|https://github.com/argmaxinc/argmax-oss-swift|argmax-oss-swift"
+  "WhisperKit (argmax-oss-swift)|1.1.0|MIT|argmax-oss-swift/LICENSE|https://github.com/argmaxinc/argmax-oss-swift|argmax-oss-swift"
   # Argmax OSS itself is MIT, but it incorporates Apache-2.0 swift-transformers
   # code (Sources/ArgmaxCore/External) and ships the required attribution in its
   # own NOTICES file. Apache §4(d) / good-faith attribution: carry that NOTICES
@@ -39,8 +39,8 @@ COMPONENTS=(
   "swift-transformers (incorporated into Argmax OSS)|n/a|Apache-2.0|argmax-oss-swift/NOTICES|https://github.com/huggingface/swift-transformers|"
   "FluidAudio|bf9fe27f (fork saurabhav88/FluidAudio)|Apache-2.0|FluidAudio/LICENSE|https://github.com/saurabhav88/FluidAudio|fluidaudio"
   "PostHog iOS|3.68.2|MIT|posthog-ios/LICENSE|https://github.com/PostHog/posthog-ios|posthog-ios"
-  "Sentry Cocoa|9.23.0|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
-  "Sparkle|2.9.4|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
+  "Sentry Cocoa|9.26.1|MIT|sentry-cocoa/LICENSE.md|https://github.com/getsentry/sentry-cocoa|sentry-cocoa"
+  "Sparkle|2.9.6|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
   "swift-argument-parser|1.7.1|Apache-2.0|swift-argument-parser/LICENSE.txt|https://github.com/apple/swift-argument-parser|swift-argument-parser"
   # #1741: test-only — the freeze test's Swift parser. Never linked into the
   # shipped app (Package.swift depends on it solely from the EnviousWisprTests
