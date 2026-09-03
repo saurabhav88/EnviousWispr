@@ -84,16 +84,26 @@ struct LanguageGateBenchmarkTests {
   }
 
   /// Runs one transcript through the chain exactly as the live path seeds it under Automatic:
-  /// the locked language is nil, and nothing else about the language reaches the runner.
+  /// the locked language is nil, WhisperKit reports the language it detected for the clip
+  /// (`engine_language` in the fixture, from the same run that produced `raw`), and Parakeet
+  /// reports nothing because it does not detect. This is the `LanguageEvidence`
+  /// `KernelFinalizationWiring` builds from the adapter (#2614).
   static func clean(_ row: Row) async throws -> String {
+    try await cleanContext(row).text
+  }
+
+  static func cleanContext(_ row: Row) async throws -> TextProcessingContext {
     let executor = FakeTimeoutExecutor(throwBelowSeconds: 0.0)
     let runner = TextProcessingRunner(telemetry: .silent, timeoutExecutor: executor.run)
     let result = try await runner.run(
       rawText: row.raw,
-      language: nil,
+      evidence: LanguageEvidence(
+        lockedLanguage: nil,
+        engineDetectsLanguage: row.engine == "whisperkit",
+        engineReportedLanguage: row.engine == "whisperkit" ? row.engine_language : nil),
       targetAppName: nil,
       steps: deterministicChain(engine: row.engine))
-    return result.context.text
+    return result.context
   }
 
   // MARK: - Oracle
@@ -199,6 +209,33 @@ struct LanguageGateBenchmarkTests {
       "\(unexpected.count) of \(staged.count) staged foreign rows lost a real word to the English rules: \(unexpected.joined(separator: ", "))"
     )
     #expect(damaged.count <= 1, "veto exceeded its measured one-row residual: \(damaged.count)")
+  }
+
+  /// Whitespace the chain normalises regardless of language: the filler step collapses runs
+  /// and trims ends even when it removes nothing, and WhisperKit emits a leading space.
+  static func normalizedWhitespace(_ text: String) -> String {
+    text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+  }
+
+  @Test("a foreign row the resolver placed comes out of the deterministic chain untouched")
+  func resolvedForeignRowsAreUntouched() async throws {
+    let rows = try Self.loadRows().filter { !$0.bucket.hasPrefix("english") && $0.lang != "en" }
+    var resolved = 0
+    var changed: [String] = []
+    for row in rows {
+      let ctx = try await Self.cleanContext(row)
+      guard ctx.languageSource == .engine || ctx.languageSource == .dictation,
+        ctx.language != "en"
+      else { continue }
+      resolved += 1
+      if Self.normalizedWhitespace(ctx.text) != Self.normalizedWhitespace(row.raw) {
+        changed.append("\(row.id) [\(row.engine)] \(ctx.language ?? "?"): \(row.raw) -> \(ctx.text)")
+      }
+    }
+    for c in changed { print("  RESOLVED-CHANGED \(c)") }
+    #expect(resolved >= 150, "too few resolved foreign rows to mean anything: \(resolved)")
+    let changeList = changed.joined(separator: "\n")
+    #expect(changed.isEmpty, "\(changed.count) resolved foreign rows were rewritten:\n\(changeList)")
   }
 
   @Test("English controls still convert numbers and still drop fillers, on both engines")

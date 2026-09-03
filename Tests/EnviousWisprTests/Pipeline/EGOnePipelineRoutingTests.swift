@@ -69,7 +69,7 @@ struct EGOnePipelineRoutingTests {
         recordPolishSkipped: TextProcessingRunner.TelemetrySeams.live.recordPolishSkipped),
       timeoutExecutor: executor.run)
     return try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
   }
 
   // MARK: - Silent bypasses

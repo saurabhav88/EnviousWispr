@@ -15,7 +15,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "hello world",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: "Notes",
       steps: []
     )
@@ -51,7 +51,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "héllo 世界",
-      language: "pl",
+      evidence: .locked("pl"),
       targetAppName: "Notes",
       steps: [first, second]
     )
@@ -106,7 +106,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [first, disabled, third]
     )
@@ -140,7 +140,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [first, failing, third]
     )
@@ -176,7 +176,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [first, llm, third]
     )
@@ -202,7 +202,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "de",
+      evidence: .locked("de"),
       targetAppName: nil,
       steps: [llm, after]
     )
@@ -231,7 +231,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "de",
+      evidence: .locked("de"),
       targetAppName: nil,
       steps: [llm, after]
     )
@@ -274,7 +274,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [first, llm, after]
     )
@@ -310,7 +310,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [llm, after]
     )
@@ -347,7 +347,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [llm, after]
     )
@@ -387,7 +387,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [first, slow, third]
     )
@@ -431,7 +431,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [first, slowLLM, third]
     )
@@ -471,7 +471,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [first, cancelling, third]
     )
@@ -500,7 +500,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [renamed]
     )
@@ -524,7 +524,7 @@ struct TextProcessingRunnerTests {
 
     let result = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [collide]
     )
@@ -553,7 +553,7 @@ struct TextProcessingRunnerTests {
 
     _ = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [step]
     )
@@ -579,7 +579,7 @@ struct TextProcessingRunnerTests {
 
     _ = try await runner.run(
       rawText: "raw",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [step]
     )
@@ -610,7 +610,7 @@ struct TextProcessingRunnerTests {
 
     _ = try await runner.run(
       rawText: "start",
-      language: "en",
+      evidence: .locked("en"),
       targetAppName: nil,
       steps: [slow]
     )
@@ -681,4 +681,162 @@ private func deterministicRunner(
     return TextProcessingRunner(logger: logger, timeoutExecutor: executor.run)
   }
   return TextProcessingRunner(timeoutExecutor: executor.run)
+}
+
+// MARK: - #2614 language resolution happens ONCE, in the runner
+
+/// The runner resolves the dictation's language from the caller's `LanguageEvidence`
+/// through `DictationLanguageResolver` and seeds the context every step reads. Before
+/// #2614 the context carried only the locked code, so Automatic on the default engine
+/// ran English-only rules over every language (issue #2259, #2614).
+@MainActor
+extension TextProcessingRunnerTests {
+
+  /// The two deterministic steps the language decides: filler removal and inverse text
+  /// normalization, both ON, spoken punctuation OFF (#1794).
+  private static func cleanupSteps(backendSupportsLID: Bool) -> (
+    steps: [any TextProcessingStep], itn: InverseTextNormalizationStep
+  ) {
+    let filler = FillerRemovalStep()
+    filler.fillerRemovalEnabled = true
+    let itn = InverseTextNormalizationStep()
+    itn.spokenPunctuationEnabled = false
+    itn.backendSupportsLID = backendSupportsLID
+    return ([filler, itn], itn)
+  }
+
+  /// A runner whose recogniser answers with a fixed hypothesis: real output cannot
+  /// reproducibly land under the floor at a chosen bucket.
+  private static func seamRunner(
+    _ identify: @escaping (String) -> (language: String, confidence: Double)?
+  ) -> TextProcessingRunner {
+    TextProcessingRunner(
+      languageIdentifier: identify,
+      timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0.0).run)
+  }
+
+  static let germanSentence = "Ich gehe heute Abend zum See und danach in die Stadt zurück."
+
+  @Test("#2614 the ladder through run: locked beats engine beats text; abstention seeds nil")
+  func languageLadderThroughRun() async throws {
+    let runner = deterministicRunner()
+
+    let locked = try await runner.run(
+      rawText: Self.germanSentence,
+      evidence: LanguageEvidence(
+        lockedLanguage: "fr", engineDetectsLanguage: true, engineReportedLanguage: "es"),
+      targetAppName: nil, steps: [])
+    #expect(locked.context.language == "fr")
+    #expect(locked.context.languageSource == .locked)
+    #expect(locked.context.languageConfidenceBucket == DictationLanguageResolver.Resolution.Bucket.none)
+    #expect(locked.context.englishRulesVetoed == false)
+
+    let engine = try await runner.run(
+      rawText: Self.germanSentence,
+      evidence: LanguageEvidence(
+        lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: "es"),
+      targetAppName: nil, steps: [])
+    #expect(engine.context.language == "es")
+    #expect(engine.context.languageSource == .engine)
+
+    let text = try await runner.run(
+      rawText: Self.germanSentence, evidence: .none, targetAppName: nil, steps: [])
+    #expect(text.context.language == "de", "the text itself settles it on the default engine")
+    #expect(text.context.languageSource == .dictation)
+    #expect(text.context.languageConfidenceBucket == .ge90)
+    #expect(text.context.englishRulesVetoed == false)
+
+    let abstained = try await Self.seamRunner { _ in nil }.run(
+      rawText: Self.germanSentence, evidence: .none, targetAppName: nil, steps: [])
+    #expect(abstained.context.language == nil)
+    #expect(abstained.context.languageSource == DictationLanguageResolver.Resolution.Source.none)
+    #expect(
+      abstained.context.languageConfidenceBucket == DictationLanguageResolver.Resolution.Bucket.none)
+    #expect(abstained.context.englishRulesVetoed == false)
+  }
+
+  @Test("#2614 a locked non-English take keeps its lock even when the text reads as English")
+  func lockedLanguageOutranksTheText() async throws {
+    // Spanish locked, English spoken numbers. Automatic would resolve this text to
+    // English and format the number; the lock says Spanish, so the English-only ITN
+    // skips exactly as today's locked path did, and the take is byte-identical.
+    let spoken = "call me at two zero three please"
+    let (steps, itn) = Self.cleanupSteps(backendSupportsLID: false)
+    let result = try await deterministicRunner().run(
+      rawText: spoken, evidence: .locked("es"), targetAppName: nil, steps: steps)
+    #expect(result.context.text == spoken)
+    #expect(result.context.language == "es")
+    #expect(result.context.languageSource == .locked)
+    #expect(itn.lastRun?.skipReason == "non_english")
+  }
+
+  @Test("#2614 under the floor with an English top hypothesis: today's behaviour, no veto")
+  func underFloorEnglishTopKeepsTodaysBehaviour() async throws {
+    let spoken = "uh call me at two zero three"
+    let (steps, itn) = Self.cleanupSteps(backendSupportsLID: false)
+    let result = try await Self.seamRunner { _ in ("en", 0.62) }.run(
+      rawText: spoken, evidence: .none, targetAppName: nil, steps: steps)
+    // Byte-identical to a run where the recogniser had nothing to say.
+    let (legacySteps, _) = Self.cleanupSteps(backendSupportsLID: false)
+    let legacy = try await Self.seamRunner { _ in nil }.run(
+      rawText: spoken, evidence: .none, targetAppName: nil, steps: legacySteps)
+    #expect(result.context.text == legacy.context.text)
+    #expect(result.context.text == "call me at 203")
+    #expect(result.context.language == nil)
+    #expect(result.context.languageSource == DictationLanguageResolver.Resolution.Source.none)
+    #expect(result.context.languageConfidenceBucket == .f50to70)
+    #expect(result.context.englishRulesVetoed == false)
+    #expect(itn.lastRun?.ran == true)
+  }
+
+  @Test("#2614 under the floor with a non-English top hypothesis: English rules stand down")
+  func underFloorForeignTopVetoesEnglishRules() async throws {
+    // A Dutch-shaped take the recogniser cannot place above the floor. "er" (there) and
+    // "ten" (at least) are real words; "uh" is a hesitation in every language measured.
+    let spoken = "uh er zijn er ten minste twee"
+    let (steps, itn) = Self.cleanupSteps(backendSupportsLID: false)
+    let vetoed = try await Self.seamRunner { _ in ("nl", 0.55) }.run(
+      rawText: spoken, evidence: .none, targetAppName: nil, steps: steps)
+    #expect(vetoed.context.text == "er zijn er ten minste twee")
+    #expect(vetoed.context.englishRulesVetoed == true)
+    #expect(vetoed.context.language == nil, "a veto is not a resolution")
+    #expect(vetoed.context.languageSource == DictationLanguageResolver.Resolution.Source.none)
+    #expect(itn.lastRun?.ran == false)
+    #expect(itn.lastRun?.skipReason == "language_vetoed")
+
+    // Two-way control: the same take at the same confidence with an ENGLISH top
+    // hypothesis is damaged exactly as before, so the veto is what saved it.
+    let (controlSteps, controlITN) = Self.cleanupSteps(backendSupportsLID: false)
+    let control = try await Self.seamRunner { _ in ("en", 0.55) }.run(
+      rawText: spoken, evidence: .none, targetAppName: nil, steps: controlSteps)
+    #expect(control.context.text == "zijn 10 minste twee")
+    #expect(controlITN.lastRun?.ran == true)
+  }
+
+  @Test("#2614 a detecting engine that reports English runs ITN: the dead path is closed")
+  func detectingEngineReportingEnglishRunsITN() async throws {
+    let spoken = "the budget is seventy eight thousand dollars"
+    let (steps, itn) = Self.cleanupSteps(backendSupportsLID: true)
+    let result = try await deterministicRunner().run(
+      rawText: spoken,
+      evidence: LanguageEvidence(
+        lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: "en"),
+      targetAppName: nil, steps: steps)
+    #expect(result.context.language == "en")
+    #expect(result.context.languageSource == .engine)
+    #expect(result.context.text.contains("78,000"), "\(result.context.text)")
+    #expect(itn.lastRun?.ran == true)
+    #expect(itn.lastRun?.skipReason == nil)
+
+    // Two-way control: the same engine with nothing to report and a recogniser with
+    // nothing to say still skips defensively, as it always has.
+    let (controlSteps, controlITN) = Self.cleanupSteps(backendSupportsLID: true)
+    let control = try await Self.seamRunner { _ in nil }.run(
+      rawText: spoken,
+      evidence: LanguageEvidence(
+        lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: nil),
+      targetAppName: nil, steps: controlSteps)
+    #expect(control.context.text == spoken)
+    #expect(controlITN.lastRun?.skipReason == "lid_backend_nil")
+  }
 }

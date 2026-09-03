@@ -764,7 +764,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       provider: provider,
       modelID: model,
       appName: context.targetAppName,
-      language: context.language,
+      // #2614: the builders' contract is "populated ONLY when the session
+      // language is locked" (`CloudFixedPromptBuilder.swift`,
+      // `LocalFixedPromptBuilder.swift`). The context now carries a RESOLVED
+      // language, so pass it through only for a lock — or for a legacy context
+      // that never went through the resolver (`languageSource == nil`), where
+      // `language` still means the lock. The unconditional no-translate rule
+      // already covers Automatic.
+      language: context.languageSource == nil || context.languageSource == .locked
+        ? context.language : nil,
       polishVocabulary: polishVocabulary,
       focusSnapshot: nil,  // PR 3
       customVocabulary: vocabularySnapshot,

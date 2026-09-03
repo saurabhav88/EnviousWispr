@@ -148,7 +148,7 @@ struct TextProcessingRunnerCaptureTests {
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") { LLMError.invalidAPIKey }
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(
       result.polishError
@@ -190,7 +190,7 @@ struct TextProcessingRunnerCaptureTests {
     }
 
     _ = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(spy.calls.isEmpty, "\(reason) must never page us")
     #expect(records.calls.count == 1)
@@ -212,7 +212,7 @@ struct TextProcessingRunnerCaptureTests {
     }
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     // The notice the user reads is untouched by the downgrade.
     #expect(
@@ -239,7 +239,7 @@ struct TextProcessingRunnerCaptureTests {
     }
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(
       result.polishError
@@ -263,7 +263,7 @@ struct TextProcessingRunnerCaptureTests {
     }
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(
       result.polishError == "AI polish failed: Ollama isn't reachable. Start Ollama and try again.")
@@ -292,7 +292,7 @@ struct TextProcessingRunnerCaptureTests {
     }
 
     _ = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(spy.calls.isEmpty)
     #expect(records.calls.count == 1)
@@ -313,7 +313,7 @@ struct TextProcessingRunnerCaptureTests {
       LLMError.classified(.modelUnavailable)
     }
     _ = try await makeRunner(cloudSpy, cloudRecords).run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [cloudStep])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [cloudStep])
 
     #expect(cloudSpy.calls.count == 1)
     #expect(cloudSpy.calls.first?.fingerprintDetail == "model_unavailable")
@@ -325,7 +325,7 @@ struct TextProcessingRunnerCaptureTests {
       LLMError.classified(.modelUnavailable)
     }
     _ = try await makeRunner(localSpy, localRecords).run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [localStep])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [localStep])
 
     #expect(localSpy.calls.isEmpty)
     #expect(localRecords.calls.count == 1)
@@ -342,7 +342,7 @@ struct TextProcessingRunnerCaptureTests {
     }
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     // Same sentence the no-key user reads; a different fingerprint for us.
     #expect(
@@ -362,7 +362,7 @@ struct TextProcessingRunnerCaptureTests {
     }
 
     _ = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(spy.calls.count == 1)
     let call = try #require(spy.calls.first)
@@ -386,7 +386,7 @@ struct TextProcessingRunnerCaptureTests {
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") { URLError(.badURL) }
 
     _ = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(spy.calls.count == 1)
     let call = try #require(spy.calls.first)
@@ -425,7 +425,7 @@ struct TextProcessingRunnerCaptureTests {
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") { OpaqueError() }
 
     _ = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(spy.calls.count == 1)
     let call = try #require(spy.calls.first)
@@ -452,7 +452,7 @@ struct TextProcessingRunnerCaptureTests {
     }
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(spy.calls.count == 1)
     #expect(spy.calls.first?.tags["polish.error_case"] == "timed_out")
@@ -476,7 +476,7 @@ struct TextProcessingRunnerCaptureTests {
     }
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(
       result.polishError == "AI polish failed: "
@@ -508,7 +508,7 @@ struct TextProcessingRunnerCaptureTests {
     }
 
     _ = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(spy.calls.isEmpty)
     #expect(records.calls.count == 1)
@@ -536,7 +536,7 @@ struct TextProcessingRunnerCaptureTests {
     let step = makeStep(provider: .appleIntelligence, model: "apple-intelligence") { error }
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     // Raw deterministic text, no pill, and no FAILURE reported: these degrade
     // quietly by design (#1080, #1055). Counting them as failures would inflate
@@ -576,7 +576,7 @@ struct TextProcessingRunnerCaptureTests {
     step.onWillProcess = { step.llmProvider = .egOne }
 
     _ = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(spy.calls.isEmpty)
     #expect(records.calls.isEmpty)
@@ -602,7 +602,7 @@ struct TextProcessingRunnerCaptureTests {
         AFMContextWindowExceeded(stage: stage)
       }
       _ = try await runner.run(
-        rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+        rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
       #expect(skips.calls.count == 1)
       #expect(skips.calls.first?.provider == "appleIntelligence")
       #expect(skips.calls.first?.reason == tag)
@@ -620,7 +620,7 @@ struct TextProcessingRunnerCaptureTests {
       }
       step.ollamaReadinessProbe = { _ in readiness }
       _ = try await runner.run(
-        rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+        rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
       #expect(skips.calls.count == 1)
       #expect(skips.calls.first?.provider == "ollama")
       #expect(skips.calls.first?.reason == tag)
@@ -649,7 +649,7 @@ struct TextProcessingRunnerCaptureTests {
     }
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step],
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step],
       takeID: Self.takeA)
 
     // An on-device timeout on a long dictation degrades quietly to raw text.
@@ -674,7 +674,7 @@ struct TextProcessingRunnerCaptureTests {
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") { URLError(.cancelled) }
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(result.polishError == nil)
     #expect(spy.calls.isEmpty)
@@ -694,7 +694,7 @@ struct TextProcessingRunnerCaptureTests {
     step.makePolisher = { _, _, _ in SucceedingPolisher() }
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
 
     #expect(result.polishError == nil)
     #expect(spy.calls.isEmpty)
@@ -731,7 +731,7 @@ struct TextProcessingRunnerCaptureTests {
     let downstream = RecordingStep()
 
     let result = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil,
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil,
       steps: [step, downstream])
 
     // Complete pre-polish text retained exactly; no partial output accepted.
@@ -785,7 +785,7 @@ struct TextProcessingRunnerCaptureTests {
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") { LLMError.invalidAPIKey }
 
     _ = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [step],
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step],
       takeID: Self.takeA)
 
     #expect(records.calls.count == 1)
@@ -803,7 +803,7 @@ struct TextProcessingRunnerCaptureTests {
     let runner = makeRunner(spy)
 
     _ = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [observer],
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [observer],
       takeID: Self.takeA)
 
     #expect(observer.callCount == 1, "the observer must run exactly once")
@@ -820,7 +820,7 @@ struct TextProcessingRunnerCaptureTests {
     let runner = makeRunner(spy, records)
 
     _ = try await runner.run(
-      rawText: Self.longTranscript, language: "en", targetAppName: nil, steps: [observer])
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [observer])
 
     #expect(observer.callCount == 1, "the observer must run exactly once")
     #expect(observer.observedTakeID == nil)

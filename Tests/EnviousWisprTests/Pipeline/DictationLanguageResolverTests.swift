@@ -416,3 +416,66 @@ struct DictationLanguageResolverTests {
     #expect(resolved.confidenceBucket == .f50to70)
   }
 }
+
+// MARK: - #2614 the English veto on the abstention path
+
+/// Below the floor the resolver still abstains; it now also says whether its top
+/// hypothesis was confidently NOT English, so English-only cleanup can stand down.
+/// A veto, never an authorisation: `language` stays nil and `source` stays `.none`.
+extension DictationLanguageResolverTests {
+
+  @Test(
+    "#2614 an abstention vetoes English rules only for a non-English top hypothesis at or above 0.50",
+    arguments: [
+      ("nl", 0.49, false),
+      ("nl", 0.50, true),
+      ("nl", 0.89, true),
+      ("en", 0.50, false),
+      ("en", 0.89, false),
+    ])
+  func abstentionVetoBoundary(_ language: String, _ confidence: Double, _ vetoes: Bool) {
+    let resolved = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "any text at all",
+      identify: Self.fixed(language, confidence))
+    #expect(resolved.language == nil, "an abstention resolves nothing")
+    #expect(resolved.source == .none)
+    #expect(resolved.englishVeto == vetoes, "\(language) at \(confidence)")
+  }
+
+  @Test("#2614 a non-finite score never vetoes")
+  func nonFiniteScoreNeverVetoes() {
+    let resolved = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "any text at all",
+      identify: Self.fixed("nl", .nan))
+    #expect(resolved.englishVeto == false)
+    #expect(resolved.confidenceBucket == .none)
+  }
+
+  @Test("#2614 every resolved answer carries no veto")
+  func resolvedAnswersNeverVeto() {
+    let locked = DictationLanguageResolver.resolve(
+      lockedLanguage: "de", engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "x", identify: Self.fixed("nl", 0.6))
+    #expect(locked.source == .locked && locked.englishVeto == false)
+
+    let engine = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: true, engineReportedLanguage: "de",
+      text: "x", identify: Self.fixed("nl", 0.6))
+    #expect(engine.source == .engine && engine.englishVeto == false)
+
+    let dictation = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "x", identify: Self.fixed("nl", 0.95))
+    #expect(dictation.source == .dictation && dictation.englishVeto == false)
+
+    // The document rung: the insertion alone sits under the floor, the window
+    // carries it over. The closure keys on length to answer each call differently.
+    let document = DictationLanguageResolver.resolve(
+      lockedLanguage: nil, engineDetectsLanguage: false, engineReportedLanguage: nil,
+      text: "x", surroundingText: "a much longer surrounding window",
+      identify: { $0.count > 1 ? ("de", 0.95) : ("de", 0.6) })
+    #expect(document.source == .document && document.englishVeto == false)
+  }
+}

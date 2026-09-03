@@ -8,11 +8,28 @@ public struct TextProcessingContext: Sendable {
   public var text: String
   /// Optional polished/enhanced version of the text.
   public var polishedText: String?
-  /// The user's locked dictation language, or nil on Auto-detect. NOT a
-  /// per-utterance ASR detection — populated from the frozen session config's
-  /// locked language code (or nil), the same source
-  /// `InverseTextNormalizationStep`'s language gate reads (issue #2259).
+  /// The RESOLVED dictation language (#2614): the user's lock, an engine that
+  /// really detects, or the text itself at `DictationLanguageResolver`'s
+  /// confidence floor — or nil when nothing established it. Seeded once by
+  /// `TextProcessingRunner` from the caller's `LanguageEvidence`; every step
+  /// reads this one answer (the ITN gate, filler protection, polish). Before
+  /// #2614 this carried only the locked code, so Automatic on the default
+  /// engine ran English-only rules over every language (issue #2259).
   public let language: String?
+  /// Which rung of the resolver answered `language` (#2614). `nil` means the
+  /// resolution was never attempted — a context built directly by a test or a
+  /// future caller — and consumers keep their legacy nil-language behaviour.
+  /// Every production runner call records a non-nil source, `.none` included.
+  /// `package` because `Resolution.Source` is `package`.
+  package var languageSource: DictationLanguageResolver.Resolution.Source?
+  /// The text rung's confidence bucket for telemetry (#2614). Nil when never
+  /// attempted; `.none` when the answer came from a lock or an engine.
+  package var languageConfidenceBucket: DictationLanguageResolver.Resolution.Bucket?
+  /// #2614: the resolver abstained but its top hypothesis was confidently NOT
+  /// English, so English-only cleanup rules must stand down. See
+  /// `DictationLanguageResolver.Resolution.englishVeto`. Read by the ITN gate
+  /// and the filler protection set; nothing else.
+  public var englishRulesVetoed: Bool = false
   /// #1846: which dictation this text belongs to, frozen by `TextProcessingRunner`
   /// at the start of the chain. Observation-only: never persisted, never `Codable`,
   /// and it never influences a processing decision.

@@ -81,7 +81,9 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     let lenBefore = input.count
 
     // Backend-aware language gate (plan §"What changes" #4). On skip, no-op.
-    if let skip = skipReason(language: context.language) {
+    if let skip = skipReason(
+      language: context.language, englishVetoed: context.englishRulesVetoed)
+    {
       lastRun = RunOutcome(
         ran: false, changed: false, skipReason: skip,
         latencyMs: 0, lenBefore: lenBefore, lenAfter: lenBefore)
@@ -135,15 +137,20 @@ final class InverseTextNormalizationStep: TextProcessingStep {
 
   /// Backend-aware language gate. Returns `nil` to RUN, or a skip-reason bucket.
   ///
+  /// - The resolver vetoed English rules (#2614): skip (`language_vetoed`). First,
+  ///   because a veto is only ever set on the nil-language abstention path, so a
+  ///   locked or engine-resolved take can never reach it.
   /// - Explicit English language → run.
   /// - Explicit non-English language → skip (`non_english`).
-  /// - No language (nil/empty): the live context carries only the locked-config
-  ///   language else nil. (Parakeet used to stamp "en" on its result, which never
-  ///   reached here anyway; #1678 removed that constant — it reports nil now.)
-  ///   Run for non-LID backends (Parakeet-class, legacy English); defensively skip
-  ///   for LID backends (WhisperKit), where nil means "couldn't identify"
-  ///   (`lid_backend_nil`).
-  private func skipReason(language: String?) -> String? {
+  /// - No language (nil/empty): since #2614 the context carries the RESOLVED
+  ///   language (lock, detecting engine, or the text at the resolver's floor), so
+  ///   nil now means the resolver abstained without a veto. (Parakeet used to
+  ///   stamp "en" on its result, which never reached here anyway; #1678 removed
+  ///   that constant — it reports nil now.) Run for non-LID backends
+  ///   (Parakeet-class, legacy English); defensively skip for LID backends
+  ///   (WhisperKit), where nil means "couldn't identify" (`lid_backend_nil`).
+  private func skipReason(language: String?, englishVetoed: Bool) -> String? {
+    if englishVetoed { return "language_vetoed" }
     let lang = language?.lowercased()
     if let lang, !lang.isEmpty {
       let isEnglish = lang == "en" || lang.hasPrefix("en-") || lang.hasPrefix("en_")

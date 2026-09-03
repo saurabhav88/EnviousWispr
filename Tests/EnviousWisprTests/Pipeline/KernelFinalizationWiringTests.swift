@@ -2357,3 +2357,57 @@ private struct EmptyPolisher: TranscriptPolisher {
 private final class SavedTranscriptBox {
   var transcript: Transcript?
 }
+
+// MARK: - #2614 cleanup language reaches the transcript metrics
+
+@MainActor
+extension KernelFinalizationWiringTests {
+
+  @Test("#2614 the cleanup language, its source and bucket reach the transcript metrics")
+  func cleanupLanguageReachesMetrics() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    // The default fake adapter is Parakeet-class (no language detection) and stamps
+    // "en" on its result; the resolver refuses that constant and reads the text.
+    let wiring = makeWiring(outcome: outcome, context: context)
+
+    let german = "Ich gehe heute Abend zum See und danach in die Stadt zurück."
+    let text = try await wiring.processText(german) {}
+    try await wiring.store(text, UUID(), .ordinary)
+    _ = await wiring.deliver(text, .ordinary)
+
+    #expect(outcome.cleanupLanguage == "de")
+    #expect(outcome.cleanupLanguageSource == "dictation")
+    #expect(outcome.cleanupLanguageBucket == "ge90")
+    #expect(outcome.itnSkipReason == "non_english", "a resolved German take skips English ITN")
+
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.cleanupLanguage == "de")
+    #expect(metrics.cleanupLanguageSource == "dictation")
+    #expect(metrics.cleanupLanguageBucket == "ge90")
+    #expect(metrics.itnSkipReason == "non_english")
+  }
+
+  @Test("#2614 the live wiring hands a detecting engine's answer to the chain: ITN runs on English")
+  func detectingEngineAnswerReachesTheChain() async throws {
+    let outcome = KernelFinalizationOutcome()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    let engine = Self.transcribedEngine(language: "en")
+    engine.detectsLanguage = true
+    let wiring = makeWiring(outcome: outcome, context: context, adapter: engine)
+
+    let text = try await wiring.processText("the budget is seventy eight thousand dollars") {}
+    try await wiring.store(text, UUID(), .ordinary)
+    _ = await wiring.deliver(text, .ordinary)
+
+    #expect(text.contains("78,000"), "\(text)")
+    #expect(outcome.itnRan == true)
+    #expect(outcome.itnSkipReason == nil)
+    #expect(outcome.cleanupLanguage == "en")
+    #expect(outcome.cleanupLanguageSource == "engine")
+    let metrics = try #require(outcome.transcript?.metrics)
+    #expect(metrics.cleanupLanguageSource == "engine")
+  }
+}

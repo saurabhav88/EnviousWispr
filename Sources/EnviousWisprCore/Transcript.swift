@@ -106,6 +106,14 @@ public struct ExecutionMetrics: Codable, Sendable {
   public var itnLatencyMs: Double?
   public var itnLenBefore: Int?
   public var itnLenAfter: Int?
+  /// #2614: the language the deterministic cleanup chain resolved (base code),
+  /// which resolver rung answered (`locked` / `engine` / `dictation` / `none`),
+  /// and the text rung's confidence bucket. Nil on pre-#2614 transcripts on disk
+  /// (additive optional Codable, back-compatible). Metadata only
+  /// (`telemetry-privacy-boundary`).
+  public var cleanupLanguage: String?
+  public var cleanupLanguageSource: String?
+  public var cleanupLanguageBucket: String?
   /// #950 tail-trim diagnostic. Populated only for eligible Parakeet batch
   /// successes; nil for streaming, WhisperKit, non-success, and pre-#950
   /// transcripts on disk (additive optional Codable, back-compatible).
@@ -211,6 +219,9 @@ public struct ExecutionMetrics: Codable, Sendable {
     itnLatencyMs: Double? = nil,
     itnLenBefore: Int? = nil,
     itnLenAfter: Int? = nil,
+    cleanupLanguage: String? = nil,
+    cleanupLanguageSource: String? = nil,
+    cleanupLanguageBucket: String? = nil,
     tailDroppedMs: Int? = nil,
     tailHadEnergy: Bool? = nil,
     usedTailPreservation: Bool? = nil,
@@ -270,6 +281,9 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.itnLatencyMs = itnLatencyMs
     self.itnLenBefore = itnLenBefore
     self.itnLenAfter = itnLenAfter
+    self.cleanupLanguage = cleanupLanguage
+    self.cleanupLanguageSource = cleanupLanguageSource
+    self.cleanupLanguageBucket = cleanupLanguageBucket
     self.tailDroppedMs = tailDroppedMs
     self.tailHadEnergy = tailHadEnergy
     self.usedTailPreservation = usedTailPreservation

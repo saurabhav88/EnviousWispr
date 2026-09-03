@@ -58,25 +58,46 @@ struct RecoveryTextProcessorTests {
   }
 
   /// The recovered take must hit the SAME inverse-text-normalization language
-  /// gate the live pipeline does (Codex PR0 P2). For a LID engine with unknown
-  /// language, ITN must skip rather than rewrite possibly-non-English numbers.
+  /// gate the live pipeline does (Codex PR0 P2). Since #2614 both engines resolve
+  /// the language through the runner: a recovered take has no persisted engine
+  /// answer, so the text itself decides, and confidently English text runs ITN
+  /// on BOTH engines. Before #2614 the WhisperKit arm skipped (`lid_backend_nil`)
+  /// because nil meant "unknown"; nil now means "the resolver abstained", and it
+  /// does not abstain on this sentence.
   @Test("the ITN language gate matches the live pipeline for the recorded engine")
   func itnLanguageGateMatchesLiveEngine() async {
     let spoken = "call me at two zero three"
 
-    // Non-LID engine (Parakeet-class): unknown language runs ITN → digits.
+    // Non-LID engine (Parakeet-class): English text runs ITN → digits.
     let parakeet = RecoveryTextProcessor(keychainManager: KeychainManager())
     parakeet.applySettings(
       snapshot(fillerRemoval: false, backendType: .parakeet, lidCapable: false))
     let parakeetOut = await parakeet.process(rawText: spoken)
     #expect(parakeetOut.text == "call me at 203")
 
-    // LID engine (WhisperKit) with unknown language: ITN skips → text untouched.
+    // LID engine (WhisperKit): the text resolves to English, so ITN runs here too
+    // (#2614 closed the Automatic dead path on this engine).
     let whisperKit = RecoveryTextProcessor(keychainManager: KeychainManager())
     whisperKit.applySettings(
       snapshot(fillerRemoval: false, backendType: .whisperKit, lidCapable: true))
     let whisperKitOut = await whisperKit.process(rawText: spoken)
-    #expect(whisperKitOut.text == spoken)
+    #expect(whisperKitOut.text == "call me at 203")
+  }
+
+  /// #2614: an Automatic snapshot on the default engine used to replay Dutch under
+  /// English rules and strip every "er" (there). The runner now resolves the
+  /// language from the text, so the filler table protects it.
+  @Test("#2614 an Automatic Dutch take on the default engine keeps every \"er\"")
+  func automaticDutchTakeKeepsEr() async {
+    let spoken = "Er zijn er nog twee over, dus we hebben er genoeg."
+    // Control: the English rules alone would have damaged this exact sentence.
+    #expect(FillerRemovalStep.removingFillers(from: spoken, language: nil) != spoken)
+
+    let processor = RecoveryTextProcessor(keychainManager: KeychainManager())
+    processor.applySettings(
+      snapshot(fillerRemoval: true, backendType: .parakeet, lidCapable: false))
+    let outcome = await processor.process(rawText: spoken)
+    #expect(outcome.text == spoken)
   }
 
   /// A take recorded with a LOCKED non-English language must replay under THAT

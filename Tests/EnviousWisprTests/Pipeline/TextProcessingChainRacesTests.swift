@@ -37,7 +37,7 @@ struct TextProcessingChainRacesTests {
     let task = Task { @MainActor in
       try await runner.run(
         rawText: "start",
-        language: "en",
+        evidence: .locked("en"),
         targetAppName: nil,
         steps: [suspending, after]
       )
@@ -96,7 +96,7 @@ struct TextProcessingChainRacesTests {
     let firstTask = Task { @MainActor in
       try await runner.run(
         rawText: "start",
-        language: "en",
+        evidence: .locked("en"),
         targetAppName: nil,
         steps: [blocking]
       )
@@ -108,7 +108,7 @@ struct TextProcessingChainRacesTests {
     let secondTask = Task { @MainActor in
       try await runner.run(
         rawText: "start",
-        language: "en",
+        evidence: .locked("en"),
         targetAppName: nil,
         steps: [blocking]
       )

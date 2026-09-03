@@ -44,6 +44,11 @@ public final class RecoveryTextProcessor {
   /// path derives the runner language from the frozen session config — never a
   /// caller-supplied or re-detected language (Codex PR0 P2).
   private var recordedLanguage: String?
+  /// #2614: whether the recording's engine really detected language, from the
+  /// snapshot. Defaults to `false` so a `process` call that arrives before
+  /// `applySettings` (the public API does not enforce the order) resolves from
+  /// the text rather than trusting a phantom engine.
+  private var recordedEngineDetectsLanguage = false
 
   public init(
     keychainManager: KeychainManager, outputClassifierHolder: OutputClassifierHolder? = nil,
@@ -134,6 +139,7 @@ public final class RecoveryTextProcessor {
     } else {
       recordedLanguage = nil
     }
+    recordedEngineDetectsLanguage = snapshot.backendSupportsLanguageDetection
   }
 
   /// Assign the CURRENT custom-words vocabulary, best-effort (#1063 PR2). The
@@ -187,9 +193,15 @@ public final class RecoveryTextProcessor {
     -> RecoveryTextOutcome
   {
     do {
+      // #2614: no persisted per-take engine answer exists for a recovered take, so
+      // the engine rung reports nothing and the runner resolves from the lock or
+      // the text — the same ladder the live path walks.
       let result = try await runner.run(
         rawText: rawText,
-        language: recordedLanguage,
+        evidence: LanguageEvidence(
+          lockedLanguage: recordedLanguage,
+          engineDetectsLanguage: recordedEngineDetectsLanguage,
+          engineReportedLanguage: nil),
         targetAppName: targetAppName,
         steps: steps.orderedChain)
       // #1948: a BLANK polish is not a polish. Live finalization has an empty-output

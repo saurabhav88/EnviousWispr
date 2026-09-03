@@ -428,6 +428,51 @@ struct DictationCompletedRouteFieldsTests {
       #expect(props.keys.contains("resolution_source") == false)
     }
 
+    // MARK: - #2614 cleanup-language telemetry, end to end
+
+    @Test("#2614 the cleanup language, source and bucket reach the real dictation.completed payload")
+    func cleanupLanguageReachesDictationCompleted() throws {
+      let log = EventLog()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { log.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      var metrics = ExecutionMetrics()
+      metrics.cleanupLanguage = "nl"
+      metrics.cleanupLanguageSource = "dictation"
+      metrics.cleanupLanguageBucket = "ge90"
+      var transcript = Transcript(text: "hello")
+      transcript.metrics = metrics
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: transcript, inputMode: "ptt")
+
+      let completed = log.events.filter { $0.name == "dictation.completed" }
+      #expect(completed.count == 1, "exactly one dictation.completed, got \(completed.count)")
+      let props = try #require(completed.first).stringProps
+      #expect(props["cleanup_language"] == "nl")
+      #expect(props["cleanup_language_source"] == "dictation")
+      #expect(props["cleanup_language_bucket"] == "ge90")
+    }
+
+    @Test("#2614 a transcript without the cleanup fields omits all three keys")
+    func absentCleanupLanguageOmitsKeys() throws {
+      let log = EventLog()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { log.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.reportDictationCompleted(
+        transcript: Transcript(text: "hello"), inputMode: "ptt")
+
+      let props = try #require(log.events.first { $0.name == "dictation.completed" }).stringProps
+      #expect(props.keys.contains("cleanup_language") == false)
+      #expect(props.keys.contains("cleanup_language_source") == false)
+      #expect(props.keys.contains("cleanup_language_bucket") == false)
+    }
+
     @Test("#1921 a transcript without the fields omits both keys entirely")
     func absentLanguageResolutionOmitsBothKeys() throws {
       let log = EventLog()
