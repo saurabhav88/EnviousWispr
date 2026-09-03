@@ -112,34 +112,75 @@ enum AIPolishKeychainFailureMessage {
 /// can reach it via `@testable import EnviousWispr`.** Has no other consumers
 /// inside the app module; do not adopt it elsewhere without revisiting placement.
 ///
-/// A model is recommended when its lowercased id (split on `-./_/`) contains a
-/// positive token (mini, nano, flash) AND no disqualifier token. Disqualifiers
-/// rule out specialized variants that would polish poorly (code, audio, image,
-/// realtime, search, transcribe, native/live audio variants, music gen).
+/// A model is recommended when we have NAMED it, or when its lowercased id
+/// (split on `-./_/`) contains a positive token AND no disqualifier token.
+/// Disqualifiers rule out specialized variants that would polish poorly (code,
+/// audio, image, realtime, search, transcribe, native/live audio variants,
+/// music gen).
 ///
 /// Live validation against OpenAI + Gemini APIs (2026-05-04):
 /// `docs/audits/2026-05-04-issue-617-classifier-validation.txt`.
+/// Re-validated against OpenAI, Gemini and Claude (2026-09-02, #2602):
+/// `docs/audits/2026-09-02-issue-2602-classifier-revalidation.txt`.
 enum AIPolishModelClassifier {
+  /// #2602: ids whose vendor name carries NO tier word but which ARE the
+  /// cheap-and-fast tier.
+  ///
+  /// **A token cannot do this job any more, and that is what the 2026-09-02
+  /// sweep found.** `mini` and `nano` were OpenAI's small tier through the 4.x
+  /// and 5.0–5.5 generations; at 5.6 the tiers became CODENAMES — `luna` cheap,
+  /// `terra` middle, `sol` large. `luna` is a NAME, not a word meaning "small",
+  /// so adding it to `positives` would read as a rule and behave as a one-model
+  /// exception that expires at the next rename.
+  ///
+  /// Same move `OllamaModelPickerPresentation.groups(from:)` already made for
+  /// Ollama in #1950, for the reason stated there: the token classifier was
+  /// "wrong in both directions" for a naming scheme it was not built for, so
+  /// that provider got a curated verdict instead. And the same instrument
+  /// `LLMModelCapabilities` justifies — OpenAI's models endpoint returns ids
+  /// only, so a live tier lookup cannot exist.
+  ///
+  /// **A new generation needs a row here, not a new token.** Only the
+  /// cheap-and-fast member earns one: `terra` and `sol` are correctly absent,
+  /// both measured available on 2026-09-02 and both correctly left under the
+  /// other heading.
+  static let namedFastTierIDs: Set<String> = ["gpt-5.6-luna"]
+
   // "haiku" is Claude's fast/cheap tier — it has no "mini"/"nano"/"flash"
   // analog in Anthropic's naming, so without it no Claude model would ever
   // land in "Recommended for cleanup." Zero collision risk: no existing
   // OpenAI/Gemini id contains "haiku."
-  static let positives: Set<String> = ["mini", "nano", "flash", "haiku"]
+  //
+  // #2602 added "lite", Google's own second small-tier word. It closes no live
+  // gap on 2026-09-02 — every `-lite` id Gemini returns also carries `flash` —
+  // and is here so a lite that arrives without `flash` is not misfiled.
+  static let positives: Set<String> = ["mini", "nano", "flash", "haiku", "lite"]
+
+  // #2602 added "omni". `gemini-omni-1.1-flash` and `gemini-omni-flash-preview`
+  // are flash-named and would read as good cleanup models. Both answer the
+  // discovery probe with HTTP 400 (measured 2026-09-02), so `groups(from:)`
+  // sends them to `locked` and they never reach this function today — this is
+  // classifier hygiene, not a live fix, and it keeps the rule identical to the
+  // Android port of it.
   static let disqualifiers: Set<String> = [
     "realtime", "audio", "native", "live",
-    "tts", "image", "search", "transcribe", "banana", "codex",
+    "tts", "image", "search", "transcribe", "banana", "codex", "omni",
   ]
 
-  /// Returns true if the model id is a Mini/Nano/Flash variant suitable for
-  /// transcript cleanup.
+  /// Returns true if the model id is one we named, or a Mini/Nano/Flash/Lite
+  /// variant, suitable for transcript cleanup.
   static func isRecommendedForCleanup(_ id: String) -> Bool {
+    let lowered = id.lowercased()
     let tokens = Set(
-      id.lowercased()
+      lowered
         .split(whereSeparator: { "-._/".contains($0) })
         .map(String.init)
     )
-    return !tokens.isDisjoint(with: positives)
-      && tokens.isDisjoint(with: disqualifiers)
+    // A disqualifier still vetoes a NAMED id. Nothing in the set trips one, so
+    // this can only fire on our own mistake, and failing closed on that is
+    // cheaper than shipping a named id that says `transcribe`.
+    guard tokens.isDisjoint(with: disqualifiers) else { return false }
+    return namedFastTierIDs.contains(lowered) || !tokens.isDisjoint(with: positives)
   }
 }
 
