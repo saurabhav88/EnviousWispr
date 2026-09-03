@@ -235,3 +235,16 @@ struct CustomWordsTransferDocumentTests {
     #expect(user.ownedByUser() == user)
   }
 }
+
+@MainActor
+@Suite("Built-in custom words", .tags(.productOutcome))
+struct BuiltinCustomWordsTests {
+  @Test(
+    "EG-1 corrects the real split ASR spellings",
+    arguments: ["E G One", "e G One", "EG 1", "E G 1"])
+  func egOneBuiltinCorrectsRealSplitSpellings(_ alias: String) throws {
+    let word = try #require(CustomWordsManager.builtinDefaults.first { $0.id == "eg1" }).word
+    let result = WordCorrector().correct("Use the \(alias) prompt", against: [word])
+    #expect(result.corrected == "Use the EG-1 prompt")
+  }
+}
