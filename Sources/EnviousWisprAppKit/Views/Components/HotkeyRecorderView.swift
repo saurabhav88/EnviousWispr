@@ -30,15 +30,161 @@ final class KeyCaptureNSView: NSView {
   /// and could be forgotten by the next surface.
   var isRecording = false {
     didSet {
+      // `updateNSView` assigns this on EVERY SwiftUI update pass, not only when it
+      // changes, so an unguarded body would wipe an in-progress capture on any
+      // unrelated redraw. #2613's state below only survives because of this guard.
+      guard isRecording != oldValue else { return }
+      resetCaptureState()
+
       // Stop holding focus the instant recording ends. `acceptsFirstResponder`
       // going false does not resign an existing first-responder status, so without
       // this the view keeps receiving keys until something else takes focus.
-      guard !isRecording, oldValue, let window, window.firstResponder === self else { return }
+      guard !isRecording, let window, window.firstResponder === self else { return }
       window.makeFirstResponder(nil)
     }
   }
 
   override var acceptsFirstResponder: Bool { isRecording }
+
+  /// #2613 — re-take the physically-held snapshot at the moment event delivery is
+  /// actually OWNED, not when the box was armed.
+  ///
+  /// `updateNSView` arms this view and then defers `makeFirstResponder` into a
+  /// `Task`, so there is a real gap in which the box is armed and someone else
+  /// still owns the keyboard. A modifier pressed inside that gap is never seen
+  /// going down, and its release is then read as a press — the same phantom the
+  /// neutral boundary exists to prevent, arriving through a door the arming-time
+  /// read cannot watch. If the phantom is Globe, every later key is refused as a
+  /// Globe chord and the box goes silently dead.
+  ///
+  /// **This covers the FIRST acquisition only, and that is not the whole gap.**
+  /// AppKit does not call this again when the user leaves the app and comes back,
+  /// because the window keeps its stored first responder across losing key status —
+  /// so no responder change happens and nothing here fires. Key events do go
+  /// elsewhere while the window is not key, which is a second window of missed
+  /// transitions with the same phantom outcome. `windowDidBecomeKey` below closes
+  /// that one; neither is sufficient alone.
+  override func becomeFirstResponder() -> Bool {
+    let accepted = super.becomeFirstResponder()
+    if accepted, isRecording { resetCaptureState() }
+    return accepted
+  }
+
+  /// #2613 — the SECOND gap: key events went to another application while this
+  /// window was not key, so any modifier transition in that period was never seen.
+  ///
+  /// Failing sequence without this: click the box, hold Shift, click another app
+  /// while still holding it, release Shift there, come back, press Shift. The
+  /// release was missed, so Shift is still in `held`, and that press is read as a
+  /// release — committing bare Shift on the way DOWN, with the user never having
+  /// finished.
+  ///
+  /// **Re-syncing on RETURN is not the same action as ending a capture on focus
+  /// LOSS, which this plan deliberately left alone (#2624).** That one can cancel
+  /// work the user is in the middle of, and this repo measured it cancelling the
+  /// Quick Add panel 339 ms after opening. This cannot cancel anything: it only
+  /// replaces a stale belief about which keys are down with a fresh reading.
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    NotificationCenter.default.removeObserver(
+      self, name: NSWindow.didBecomeKeyNotification, object: nil)
+    guard let window else { return }
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(windowDidBecomeKey),
+      name: NSWindow.didBecomeKeyNotification,
+      object: window)
+  }
+
+  @objc private func windowDidBecomeKey() {
+    guard isRecording, window?.firstResponder === self else { return }
+    resetCaptureState()
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
+
+  // MARK: - #2613 capture state
+  //
+  // Until #2613 this view was stateless between events and forwarded the FIRST one
+  // it saw. Because a bare modifier is a legal shortcut here (the default record key
+  // is a bare right Option, and #1987 added Globe), a modifier press was already a
+  // complete binding — so pressing Control as the first half of Control-Shift-W
+  // saved Control and stopped listening, and no combination could be entered at all.
+  //
+  // `onKeyEvent` now means "this event COMPLETES a binding", not "a key happened".
+  // Restoring unconditional forwarding reintroduces #2613.
+
+  /// Known standalone modifier key codes currently DOWN.
+  ///
+  /// **Direction comes from membership here, never from the event's modifier flag.**
+  /// Left and right Shift are two key codes sharing one `.shift` flag, so the flag
+  /// cannot say which of them moved: releasing left while right is held reports the
+  /// flag as still present. `HotkeyService.handleFlagsChangedValues` uses the flag
+  /// test and carries a documented workaround for exactly that
+  /// (`HotkeyService.swift:1205-1216`); this path does not repeat it.
+  private var held: Set<UInt16> = []
+
+  /// Every key code this capture has ADMITTED. Ambient modifiers rejected by
+  /// `ModifierKeyCodes.flag(for:)` — Caps Lock, Help — never enter, so toggling
+  /// Caps Lock mid-capture cannot change what commits.
+  private var seen: Set<UInt16> = []
+
+  /// A completion has already been forwarded. Idempotence only — it carries no
+  /// policy. Both owners stop recording through a deferred `Task`, and this view
+  /// only learns about it on the next SwiftUI update, so without this a held key's
+  /// auto-repeat can forward a second binding inside that window.
+  private var completed = false
+
+  /// Set at arming when a supported modifier is ALREADY physically down, and
+  /// cleared when every one of them is released.
+  ///
+  /// Without it, `held` starts empty while a key is really down, so that key's
+  /// RELEASE is read as a press and the next physical press is read as a release.
+  /// The phantom then never clears: if it is Globe, every later key takes the
+  /// refusal path below and the box goes silently dead. Waiting for a neutral
+  /// boundary is what makes "absent from `held` means a press" true rather than
+  /// merely usual — and a key already held when the box was clicked could not have
+  /// been part of the shortcut anyway. Founder decision, 2026-09-03.
+  private var awaitingNeutralBoundary = false
+
+  /// The union of every flag a standalone modifier key can set, derived from the
+  /// one mapping in `ModifierKeyCodes` rather than restated, so a key added there
+  /// is covered here with no second edit.
+  private static let trackedModifierFlags: NSEvent.ModifierFlags =
+    ModifierKeyCodes.all.reduce(into: NSEvent.ModifierFlags()) { union, keyCode in
+      union.formUnion(ModifierKeyCodes.flag(for: keyCode) ?? [])
+    }
+
+  /// The one piece of GLOBAL state this view reads, behind a seam.
+  ///
+  /// Not a guard and not a policy switch: it answers "which modifiers are physically
+  /// down right now", which no `NSEvent` handed to a unit test can describe. Without
+  /// the seam a suite could only test the empty-keyboard case, and it would go flaky
+  /// the moment the person running it had a finger on Shift. Production never
+  /// overrides it.
+  var modifierFlagsNow: () -> NSEvent.ModifierFlags = { NSEvent.modifierFlags }
+
+  private func trackedFlagsDown() -> NSEvent.ModifierFlags {
+    modifierFlagsNow().intersection(Self.trackedModifierFlags)
+  }
+
+  private func resetCaptureState() {
+    held = []
+    seen = []
+    completed = false
+    awaitingNeutralBoundary = isRecording && !trackedFlagsDown().isEmpty
+  }
+
+  /// True while the capture is armed but deliberately not listening yet.
+  /// Consumes the event either way: the box is armed, so a key equivalent reaching
+  /// it must not also perform its own action.
+  private func consumedWhileWaitingForNeutralBoundary() -> Bool {
+    guard awaitingNeutralBoundary else { return false }
+    if trackedFlagsDown().isEmpty { awaitingNeutralBoundary = false }
+    return true
+  }
 
   /// Called BEFORE the system handles key equivalents (e.g. Command+Left, Option+Arrow).
   /// Returning true tells AppKit this view handled the event, preventing system consumption.
@@ -52,7 +198,7 @@ final class KeyCaptureNSView: NSView {
   /// and fail to perform its own action.
   override func performKeyEquivalent(with event: NSEvent) -> Bool {
     guard isRecording else { return super.performKeyEquivalent(with: event) }
-    onKeyEvent?(event)
+    forwardIfNonModifierCompletesTheBinding(event)
     return true
   }
 
@@ -62,6 +208,34 @@ final class KeyCaptureNSView: NSView {
       super.keyDown(with: event)
       return
     }
+    forwardIfNonModifierCompletesTheBinding(event)
+  }
+
+  /// The non-modifier arm of #2613's table, shared by `keyDown` and
+  /// `performKeyEquivalent` so the two cannot disagree about what completes.
+  private func forwardIfNonModifierCompletesTheBinding(_ event: NSEvent) {
+    guard !completed else { return }
+    guard !consumedWhileWaitingForNeutralBoundary() else { return }
+
+    // Auto-repeat. `completed` cannot cover this case on its own, because the Globe
+    // refusal below forwards nothing and so leaves `completed` false while the same
+    // physical key keeps repeating.
+    guard !seen.contains(where: { !ModifierKeyCodes.isModifierOnly($0) }) else { return }
+    seen.insert(event.keyCode)
+
+    // A Globe chord cannot be registered — `.function` is not a Carbon modifier, so
+    // `carbonModifiers` drops it and `symbolsForModifiers` never renders it. Saving
+    // one would store, display and fire as the bare key alone: Globe+W would make W
+    // a global hotkey. Refusing is the honest answer, and because W is now in
+    // `seen`, the later Globe release takes the reset arm rather than committing
+    // Globe the user never asked for.
+    //
+    // Keyed on the Globe KEY being held, never on `.function` being present: arrow
+    // keys carry that flag, and `arrowKeysNotAccepted` exists because matching on it
+    // once bound the recorder to an arrow key.
+    guard !held.contains(ModifierKeyCodes.globe) else { return }
+
+    completed = true
     onKeyEvent?(event)
   }
 
@@ -75,22 +249,43 @@ final class KeyCaptureNSView: NSView {
       super.flagsChanged(with: event)
       return
     }
-
-    // Determine which device-independent modifier bits changed compared to the
-    // previous event. NSEvent does not expose a "previous flags" property, so
-    // we rely on the keyCode to identify the specific modifier key that changed
-    // and the direction of the transition from the modifier flags themselves.
-    let currentFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+    guard !completed else { return }
+    guard !consumedWhileWaitingForNeutralBoundary() else { return }
 
     // Map the physical key code to the modifier flag it represents. One shared
     // authority with the dispatch path (#1987): nil means "not a standalone
     // modifier", which is distinguishable from a real flag in a way an empty
-    // OptionSet is not.
-    guard let addedFlag = ModifierKeyCodes.flag(for: event.keyCode) else { return }
+    // OptionSet is not. Ambient modifiers land here — Caps Lock and Help — and are
+    // dropped without entering `seen`, so toggling Caps Lock mid-capture changes
+    // nothing about what commits.
+    guard ModifierKeyCodes.flag(for: event.keyCode) != nil else { return }
 
-    // Only forward the event when the modifier is being pressed (added), not released.
-    if currentFlags.contains(addedFlag) {
+    // PRESS. `held` is authoritative rather than the event's flag, and the neutral
+    // boundary at arming is what makes "absent from `held`" mean a press rather
+    // than the release of a key we never saw go down.
+    guard held.contains(event.keyCode) else {
+      held.insert(event.keyCode)
+      seen.insert(event.keyCode)
+      return
+    }
+
+    // RELEASE.
+    held.remove(event.keyCode)
+
+    // A bare-modifier binding is ONE key, so it commits only if this key is the
+    // only thing this capture ever admitted. #1991 settled that bare modifiers are
+    // legal for every role, so this arm has to keep working — it is the reason the
+    // commit point is the release at all, and #1987's Globe key rides on it.
+    if seen == [event.keyCode] {
+      completed = true
       onKeyEvent?(event)
+      return
+    }
+
+    // Nothing committed and nothing left down: start over, so a user who fumbles
+    // can simply let go and try again without reopening the box.
+    if held.isEmpty {
+      seen = []
     }
   }
 }
@@ -124,12 +319,28 @@ enum HotkeyCapture {
   /// that flag would require the user to hold Globe while pressing Globe and the
   /// shortcut could never fire. Those come back with empty modifiers; an ordinary
   /// chord keeps its modifiers.
+  ///
+  /// #2613 — a chord's modifiers are narrowed to `ShortcutMatcher.carbonEffectiveModifiers`,
+  /// and the reason is that this function had no reachable chord case until #2613.
+  /// `.deviceIndependentFlagsMask` also carries Caps Lock, Numeric Pad, Help and
+  /// Function, and NEITHER consumer keeps them: `KeySymbols.symbolsForModifiers`
+  /// renders only these four, and `HotkeyService.carbonModifiers` maps only these
+  /// four on the way to `RegisterEventHotKey`. Storing a bit both of them drop
+  /// gives a binding that displays and fires as something other than what is
+  /// saved — a Caps-Lock-contaminated default stops comparing equal to its own
+  /// default, and Globe+W would store as W with an invisible `.function`.
+  ///
+  /// Narrowing HERE rather than at the capture view is deliberate: this is the one
+  /// authority both recording surfaces ask what an event MEANS, so a value the
+  /// view produced and this function disagreed with would be the #1987 drift all
+  /// over again. The set is not redefined here either — `ShortcutMatcher` already
+  /// owns it and already documents why those four are the whole answer.
   static func binding(for event: NSEvent) -> (keyCode: UInt16, modifiers: NSEvent.ModifierFlags) {
     let keyCode = event.keyCode
     if event.type == .flagsChanged && ModifierKeyCodes.isModifierOnly(keyCode) {
       return (keyCode, [])
     }
-    return (keyCode, event.modifierFlags.intersection(.deviceIndependentFlagsMask))
+    return (keyCode, event.modifierFlags.intersection(ShortcutMatcher.carbonEffectiveModifiers))
   }
 }
 
