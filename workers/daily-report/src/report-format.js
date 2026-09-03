@@ -41,8 +41,26 @@ const ROW_LABELS = {
   transcription_failed: "Failed dictations",
 };
 
-const pct = (v) => `${(v * 100).toFixed(1)}%`;
-const secs = (v) => `${v.toFixed(2)}s`;
+const pct = (v, decimals = 1) => `${(v * 100).toFixed(decimals)}%`;
+const secs = (v, decimals = 2) => `${v.toFixed(decimals)}s`;
+
+/** Two values of one unit, rendered so the reader can SEE the movement between
+ * them. The ranker decides which rows are movers; a nonzero movement smaller
+ * than the page's usual precision would otherwise print as "0.60s to 0.60s"
+ * under "Biggest shifts" (cloud review on #2622). Rather than the formatter
+ * dropping the mover - a second authority on membership - it adds decimals
+ * until the two differ, up to a bound: past four extra places the movement is
+ * not a shift a reader can act on, and both values print at the bound. */
+function renderPair(unit, from, to) {
+  const fmt = unit === "seconds" ? secs : pct;
+  const base = unit === "seconds" ? 2 : 1;
+  for (let decimals = base; decimals <= base + 4; decimals += 1) {
+    const a = fmt(from, decimals);
+    const b = fmt(to, decimals);
+    if (a !== b || decimals === base + 4) return [a, b];
+  }
+  /* unreachable: the loop returns at the bound */
+}
 // Explicit locale: a Worker's default locale is not something a reader can
 // see, and "9902" against "9,902" is the difference between a glance and a
 // count. Counts are integers; a fractional count would be a producer defect
@@ -138,8 +156,8 @@ function formatShifts(ranking) {
   // in what order, is the ranker's decision alone (it already drops a measure
   // that did not move).
   const parts = ranking.movers.map((m) => {
-    const unit = m.unit === "seconds" ? secs : pct;
-    return `${ROW_LABELS[m.metricKey]} ${unit(m.previousValue)} to ${unit(m.newestValue)}`;
+    const [from, to] = renderPair(m.unit, m.previousValue, m.newestValue);
+    return `${ROW_LABELS[m.metricKey]} ${from} to ${to}`;
   });
   return `Biggest shifts: ${parts.join("; ")}.`;
 }

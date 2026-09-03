@@ -3249,13 +3249,22 @@ test("scorecard cells format counts with separators and a missing value as 'no d
       () => formatScorecard({ ranking: { ...ranking, ages: new Map([["2.4.6", bad], ["2.4.5", 7]]) } }),
       /release age must be a non-negative integer/, String(bad));
   }
-  // Every mover handed over is printed, in the ranker's order, even when the
-  // two values round to the same string: membership is the ranker's call.
+  // Every mover handed over is printed, in the ranker's order: membership is
+  // the ranker's call. A movement below the page's usual precision gains
+  // decimals until it is VISIBLE, never printing "0.60s to 0.60s" as a shift.
   const near = {
     ...ranking,
-    movers: [{ metricKey: "speed_p50", unit: "seconds", previousValue: 0.6, newestValue: 0.604 }],
+    movers: [{ metricKey: "speed_p50", unit: "seconds", previousValue: 0.6, newestValue: 0.604 },
+             { metricKey: "autopaste_direct", unit: "share", previousValue: 0.977, newestValue: 0.97724 }],
   };
-  assert.ok(formatScorecard({ ranking: near }).includes("Biggest shifts: Typical speed 0.60s to 0.60s."));
+  assert.ok(formatScorecard({ ranking: near }).includes(
+    "Biggest shifts: Typical speed 0.600s to 0.604s; Auto-paste worked 97.70% to 97.72%."));
+  // Bounded: a movement past four extra places prints both at the bound.
+  const tiny = {
+    ...ranking,
+    movers: [{ metricKey: "speed_p50", unit: "seconds", previousValue: 0.6, newestValue: 0.6000001 }],
+  };
+  assert.ok(formatScorecard({ ranking: tiny }).includes("Biggest shifts: Typical speed 0.600000s to 0.600000s."));
 });
 
 test("ranked-change formatting freezes normalized raw-fallback and unavailable copy", async () => {
