@@ -251,6 +251,17 @@ struct LanguageGateBenchmarkTests {
         controls.contains { !$0.must_convert.isEmpty }, "\(engine) has no number-conversion oracle")
       #expect(controls.contains { !$0.must_drop.isEmpty }, "\(engine) has no filler-removal oracle")
     }
+    // An oracle is only a test of the CHAIN when the engine did not already write the converted
+    // form. Parakeet leaves English numbers spelled out, so at least one of its controls must
+    // require a real conversion, or the ITN half of this test proves nothing. WhisperKit writes
+    // digits itself (measured: 0 of its 9 conversion controls are absent from `raw`), so on that
+    // engine this test proves filler removal only; WhisperKit ITN under Automatic is proven
+    // positively at the unit level (`TextProcessingRunnerTests.detectingEngineReportingEnglishRunsITN`)
+    // and through the live wiring (`KernelFinalizationWiringTests.detectingEngineAnswerReachesTheChain`).
+    let parakeetNeedsConversion = rows.contains { row in
+      row.engine == "parakeet" && row.must_convert.contains { !row.raw.contains($0) }
+    }
+    #expect(parakeetNeedsConversion, "no Parakeet control leaves a number for the chain to convert")
     var failures: [String] = []
     for row in rows {
       let cleaned = try await Self.clean(row)

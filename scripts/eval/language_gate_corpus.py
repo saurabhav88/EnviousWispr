@@ -22,6 +22,13 @@ Authoring note, honest limit: sentences are LLM-authored and not native-reviewed
 They exist to put a specific colliding word in front of a real recogniser; they
 are not a native-idiom corpus (same limit as `stress_lang_packs.py`).
 
+Reuse, stated: every stage reuses what is already in the run directory (a WAV
+over 1,000 bytes, an engine output file that exists). Change a sentence, a voice,
+or an engine and you must delete the affected outputs yourself; the fixture
+stage refuses to write when either engine lacks a row for any case, so a
+killed or partial engine run cannot become a fixture, but a STALE complete run
+can. The `_meta` header records the repo revision and the run name.
+
 Usage (three stages, each resumable):
   ~/.claude/bin/get-key launch azure-speech-key AZURE_SPEECH_KEY -- \\
   ~/.claude/bin/get-key launch azure-speech-region AZURE_SPEECH_REGION -- \\
@@ -47,6 +54,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PARAKEET_RUNNER = ROOT / "scripts/eval/parakeet_runner/.build/release/ParakeetRunner"
 WHISPERKIT_RUNNER = ROOT / "scripts/multilingual-eval/runner/.build/release/MultilingualEvalRunner"
+# Default WhisperKit model location on the dev machine; override with --whisperkit-model-folder.
 WHISPERKIT_MODEL_FOLDER = (
     Path.home()
     / "Documents/huggingface/models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3-v20240930_turbo_632MB"
@@ -381,7 +389,7 @@ def synth(run: Path) -> None:
 
 # ---- Stage 2: both engines ---------------------------------------------------------
 
-def transcribe(run: Path) -> None:
+def transcribe(run: Path, whisperkit_model_folder: Path = WHISPERKIT_MODEL_FOLDER) -> None:
     rows = cases()
     wav_dir = run / "wav"
     missing = [r["id"] for r in rows if not (wav_dir / f"{r['id']}.wav").exists()]
@@ -390,14 +398,24 @@ def transcribe(run: Path) -> None:
     for tool in (PARAKEET_RUNNER, WHISPERKIT_RUNNER):
         if not tool.exists():
             sys.exit(f"missing runner binary: {tool}\nBuild it with `swift build -c release` in its package.")
-    if not WHISPERKIT_MODEL_FOLDER.exists():
-        sys.exit(f"WhisperKit model folder missing: {WHISPERKIT_MODEL_FOLDER}")
+    expected = {r["id"] for r in rows}
+
+    def _complete(path: Path) -> bool:
+        """An existing engine output is reused only when it is complete; a partial
+        one (a killed runner) is an error here, not at the fixture stage."""
+        if not path.exists():
+            return False
+        _jsonl(path, expected)  # raises with the delete-and-rerun message
+        return True
+
+    if not whisperkit_model_folder.exists():
+        sys.exit(f"WhisperKit model folder missing: {whisperkit_model_folder}")
 
     pk_manifest = run / "parakeet-manifest.jsonl"
     pk_manifest.write_text("".join(
         json.dumps({"id": r["id"], "wav": str(wav_dir / f"{r['id']}.wav")}) + "\n" for r in rows))
     pk_out = run / "parakeet.jsonl"
-    if not pk_out.exists():
+    if not _complete(pk_out):
         print("Parakeet v3 …", file=sys.stderr)
         subprocess.run([str(PARAKEET_RUNNER), str(pk_manifest), str(pk_out)], check=True)
 
@@ -407,45 +425,60 @@ def transcribe(run: Path) -> None:
         "audio_path": str(wav_dir / f"{r['id']}.wav"),
     }, ensure_ascii=False) + "\n" for r in rows))
     wk_out = run / "whisperkit.jsonl"
-    if not wk_out.exists():
+    if not _complete(wk_out):
         print("WhisperKit large-v3-turbo (autodetect) …", file=sys.stderr)
         subprocess.run([
             str(WHISPERKIT_RUNNER), "--manifest", str(wk_manifest), "--mode", "autodetect",
-            "--output", str(wk_out), "--model-folder", str(WHISPERKIT_MODEL_FOLDER),
+            "--output", str(wk_out), "--model-folder", str(whisperkit_model_folder),
         ], check=True)
     print("transcribe: done", file=sys.stderr)
 
 
 # ---- Stage 3: the fixture the Swift benchmark reads --------------------------------
 
-def _jsonl(path: Path) -> dict[str, dict]:
+def _jsonl(path: Path, expected_ids: set[str]) -> dict[str, dict]:
+    """Engine output keyed by case id. Fails closed: a duplicate, unknown, or
+    missing id is an error, never a silent last-row-wins or a silent omission."""
     out = {}
     for line in path.read_text().splitlines():
-        if line.strip():
-            d = json.loads(line)
-            out[d["id"]] = d
+        if not line.strip():
+            continue
+        d = json.loads(line)
+        cid = d.get("id")
+        if cid not in expected_ids:
+            raise ValueError(f"{path.name}: unexpected id {cid!r}")
+        if cid in out:
+            raise ValueError(f"{path.name}: duplicate id {cid!r}")
+        out[cid] = d
+    missing = sorted(expected_ids - out.keys())
+    if missing:
+        raise ValueError(f"{path.name}: {len(missing)} case(s) have no row, e.g. {missing[:5]}; "
+                         "delete the file and rerun --transcribe")
     return out
 
 
 def fixture(run: Path, dest: Path) -> None:
     rows = cases()
-    pk = _jsonl(run / "parakeet.jsonl")
-    wk = _jsonl(run / "whisperkit.jsonl")
+    expected = {r["id"] for r in rows}
+    pk = _jsonl(run / "parakeet.jsonl", expected)
+    wk = _jsonl(run / "whisperkit.jsonl", expected)
     rev = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
                          capture_output=True, text=True).stdout.strip()
     lines = []
     for r in rows:
         base = {k: r[k] for k in ("id", "locale", "lang", "bucket", "text", "voice",
                                   "must_keep", "must_convert", "must_drop")}
-        p = pk.get(r["id"], {})
-        if "text" in p:
-            lines.append({**base, "engine": "parakeet", "raw": p["text"],
-                          "engine_language": None})
-        w = wk.get(r["id"], {})
-        if "transcript" in w:
-            lines.append({**base, "engine": "whisperkit", "raw": w["transcript"],
-                          "engine_language": w.get("detected_lang"),
-                          "engine_language_prob": w.get("detected_prob")})
+        p = pk[r["id"]]
+        if "text" not in p:
+            raise ValueError(f"parakeet.jsonl: {r['id']} has no 'text'")
+        lines.append({**base, "engine": "parakeet", "raw": p["text"], "engine_language": None})
+        w = wk[r["id"]]
+        if "transcript" not in w:
+            raise ValueError(f"whisperkit.jsonl: {r['id']} has no 'transcript'")
+        lines.append({**base, "engine": "whisperkit", "raw": w["transcript"],
+                      "engine_language": w.get("detected_lang"),
+                      "engine_language_prob": w.get("detected_prob")})
+    assert len(lines) == 2 * len(rows), (len(lines), len(rows))
     dest.parent.mkdir(parents=True, exist_ok=True)
     header = {"_meta": {"generated_at_repo_rev": rev, "run": run.name, "rows": len(lines),
                         "tts": "Azure Neural TTS, riff-16khz-16bit-mono-pcm",
@@ -463,6 +496,8 @@ def main() -> None:
     ap.add_argument("--transcribe", action="store_true")
     ap.add_argument("--fixture", metavar="DEST", help="write the Swift benchmark fixture here")
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--whisperkit-model-folder", type=Path, default=WHISPERKIT_MODEL_FOLDER,
+                    help=f"WhisperKit CoreML model folder (default: {WHISPERKIT_MODEL_FOLDER})")
     a = ap.parse_args()
     run = Path(a.run)
     if a.list:
@@ -472,7 +507,7 @@ def main() -> None:
     if a.synth:
         synth(run)
     if a.transcribe:
-        transcribe(run)
+        transcribe(run, a.whisperkit_model_folder)
     if a.fixture:
         fixture(run, Path(a.fixture))
 
