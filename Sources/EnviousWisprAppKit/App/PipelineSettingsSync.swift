@@ -357,6 +357,16 @@ final class PipelineSettingsSync {
       runtime.activateAndProbe()
       return
     }
+    // #2649 (local review, after the class sweep): an unselected engine is
+    // stopped in the FIRST pass only. The second pass used to stop it again,
+    // which claimed a THIRD intent stamp after the selected engine's start.
+    // Intents run in separate tasks that Swift does not order, so if that
+    // later stop reached the coordinator first it stopped the resident and
+    // advanced the honoured stamp past the start, which was then refused,
+    // leaving BOTH engines off until the next activation. One stop, one
+    // start, two stamps: the coordinator's ordering then does the right thing
+    // whichever task runs first.
+    guard deselectFirst else { return }
     // The guard is about the RECORDING, not about which engine it froze:
     // stopping ANY local server underneath a session that froze a local
     // provider degrades that take's polish to raw. `isEGOnePinnedInFlight`
