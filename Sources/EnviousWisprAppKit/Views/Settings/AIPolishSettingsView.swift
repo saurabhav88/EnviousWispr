@@ -1178,7 +1178,7 @@ struct AIPolishSettingsView: View {
       .settingsReadingCopy()
 
       Text(
-        "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there."
+        "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there. Handles dictations up to about 20 minutes."
       )
       .settingsReadingCopy()
     }
@@ -1211,7 +1211,7 @@ struct AIPolishSettingsView: View {
       .settingsReadingCopy()
 
       Text(
-        "When to use it. Pick \(LLMProvider.s1Mini.displayName) if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice."
+        "When to use it. Pick \(LLMProvider.s1Mini.displayName) if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice. Best for dictations up to about 12 minutes."
       )
       .settingsReadingCopy()
     }
@@ -1247,7 +1247,7 @@ struct AIPolishSettingsView: View {
       .settingsReadingCopy()
 
       Text(
-        "When to use it. Reach for Apple Intelligence when you want zero setup and clean results on short notes. For longer recordings, lists, or code, EG-1 or a cloud model handles structure better."
+        "When to use it. Reach for Apple Intelligence when you want zero setup and clean results on short notes. For longer recordings, lists, or code, EG-1 or a cloud model handles structure better. Handles dictations up to about 8 minutes."
       )
       .settingsReadingCopy()
 
@@ -1284,7 +1284,7 @@ struct AIPolishSettingsView: View {
       .settingsReadingCopy()
 
       Text(
-        "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler."
+        "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler. How long a dictation it handles depends on the model you choose."
       )
       .settingsReadingCopy()
     }
