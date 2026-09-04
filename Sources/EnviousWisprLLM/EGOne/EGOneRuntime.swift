@@ -457,8 +457,11 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
     removalPending = false
     activationGeneration += 1
+    // Stamped on the main actor, in the order the user acted. Inside the task
+    // the order would be whatever the scheduler chose.
+    let intent = server.claimIntent()
     Task {
-      await self.server.stop(self.provider)
+      await self.server.transition(to: nil, intent: intent)
       _ = await delivery.remove()
     }
   }
@@ -500,11 +503,12 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       return nil
     }
     let generation = activationGeneration
+    let intent = server.claimIntent()
     return Task {
       // First hop back onto the main actor: a switch-to-then-away that beat
       // this task bumped the generation — do not start the server.
       guard generation == self.activationGeneration else { return }
-      await self.startServerIfInstalled(generation: generation)
+      await self.startServerIfInstalled(generation: generation, intent: intent)
       // A deactivate DURING the start already stopped the server (the
       // manager's mid-start guards handle that); just don't probe or stamp
       // health for a stale generation.
@@ -556,7 +560,11 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// Provider switched away: free the RAM (isolate-limbs).
   public func deactivate() {
     activationGeneration += 1
-    Task { await self.server.stop(self.provider) }
+    // The switch-away and the matching switch-to are separate tasks, and Swift
+    // does not order them. Claiming both stamps here, on the main actor, is
+    // what makes the later request win regardless of which task runs first.
+    let intent = server.claimIntent()
+    Task { await self.server.transition(to: nil, intent: intent) }
   }
 
   /// App-quit path (#1271 Codex r1 P1): `applicationWillTerminate` cannot
@@ -576,7 +584,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// the user's back — only the explicit Download button (`startDownload`)
   /// fetches. Delivery may continue after a provider switch-away, but the boot
   /// is generation-gated.
-  private func startServerIfInstalled(generation: Int) async {
+  private func startServerIfInstalled(generation: Int, intent: Int) async {
     guard let manifest, let delivery, serverBinaryURL != nil else { return }
     let admitted = await delivery.adoptIfPresent()
     guard generation == self.activationGeneration else { return }
@@ -589,7 +597,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       }
       return
     }
-    await bootServer(manifest: manifest, delivery: delivery)
+    await bootServer(manifest: manifest, delivery: delivery, intent: intent)
     // #1348 §16.5: the controller reported `.admitted` but the server has no
     // usable endpoint (file missing/unreadable/rejected after admission — a
     // stale marker or post-admission mutation). Run ONE repair pass + ONE
@@ -598,11 +606,15 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       guard generation == self.activationGeneration else { return }
       guard case .admitted = await delivery.repair() else { return }
       guard generation == self.activationGeneration else { return }
-      await bootServer(manifest: manifest, delivery: delivery)
+      // Same stamp deliberately: the repair retry is the SAME user intent, so
+      // it must not out-rank a switch that arrived while the repair ran.
+      await bootServer(manifest: manifest, delivery: delivery, intent: intent)
     }
   }
 
-  private func bootServer(manifest: EGOneManifest, delivery: EGOneDeliveryAdapter) async {
+  private func bootServer(
+    manifest: EGOneManifest, delivery: EGOneDeliveryAdapter, intent: Int
+  ) async {
     guard let serverBinaryURL else { return }
     let configuration = EGOneServerManager.Configuration(
       serverBinaryURL: serverBinaryURL,
@@ -619,7 +631,8 @@ public final class EGOneRuntime: EGOneEndpointProviding {
         "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0",
       ]
     )
-    await server.start(provider, configuration: configuration)
+    await server.transition(
+      to: LocalPolishTarget(provider: provider, configuration: configuration), intent: intent)
   }
 
   // MARK: - EGOneEndpointProviding (pipeline seam)

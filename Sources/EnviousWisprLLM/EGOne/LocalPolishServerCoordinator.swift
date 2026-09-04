@@ -23,6 +23,20 @@ import os
 /// containment, because this holds the single manager and hands it to nobody;
 /// and identity, because it records WHICH model that manager is running and
 /// stops the old one before starting a different one.
+/// What the app wants running: a model and the configuration to run it with.
+///
+/// Nil-as-absence is the whole point — "stop" and "start" become one value, so
+/// a caller states an intent rather than issuing two commands that can cross.
+public struct LocalPolishTarget: Sendable {
+  public let provider: LLMProvider
+  public let configuration: EGOneServerManager.Configuration
+
+  public init(provider: LLMProvider, configuration: EGOneServerManager.Configuration) {
+    self.provider = provider
+    self.configuration = configuration
+  }
+}
+
 public actor LocalPolishServerCoordinator {
   /// The one manager. Deliberately not exposed: handing it out would restore
   /// exactly the two-owners situation this type exists to remove.
@@ -44,21 +58,34 @@ public actor LocalPolishServerCoordinator {
   /// exactly the window this closes.
   private let observedResident = OSAllocatedUnfairLock<LLMProvider?>(initialState: nil)
 
-  /// Monotonic token for a residency TRANSITION.
+  /// Monotonic intent stamp, CLAIMED BY THE CALLER before it spawns its task.
   ///
-  /// **The class, named because two instances of it reached review one at a
-  /// time.** An actor does not hold isolation across an `await`, so every
-  /// `guard resident == provider` followed by an await is a check-then-act:
-  /// the value that was true when checked can be false when used. Five sites
-  /// had this shape — both mutating paths and all three reading ones — and
-  /// fixing them individually would have left the next one to be found by the
-  /// next reviewer.
+  /// **The earlier design derived order from execution and that is the wrong
+  /// clock.** A counter bumped inside the transition records which task got
+  /// here first, not which switch the user asked for last — and activate and
+  /// deactivate reach this actor as separate unstructured tasks, which Swift
+  /// does not order. So an ordinary EG-1 to S1-mini switch could run the stop
+  /// after the start: the stop superseded the newer start, the start bailed at
+  /// its own guard, and the user's selected engine never came up with nothing
+  /// reporting it.
   ///
-  /// Mutating paths bump this and re-check it after every await, so a superseded
-  /// transition abandons rather than overwriting a newer one. Reading paths
-  /// re-check RESIDENCY after their await, because the answer is only useful if
-  /// it is still about the model that asked.
-  private var transitionGeneration = 0
+  /// The order that matters is the order the user's actions were OBSERVED, and
+  /// that is known synchronously on the main actor. `claimIntent()` is taken
+  /// there, before any task exists, and `transition` obeys only the newest
+  /// stamp it has seen. Two methods guarded separately cannot express "latest
+  /// intent wins" at all, which is why they are gone rather than tightened.
+  private let intentCounter = OSAllocatedUnfairLock<Int>(initialState: 0)
+  private var honouredIntent = 0
+
+  /// Claim the next intent stamp. Synchronous and callable from any isolation,
+  /// so a main-actor caller can stamp its request in the order the user made
+  /// it and hand that stamp to whatever task carries it out.
+  public nonisolated func claimIntent() -> Int {
+    intentCounter.withLock { value in
+      value += 1
+      return value
+    }
+  }
 
   /// One writer for both, so the mirror cannot drift from the field it mirrors.
   private func setResident(_ provider: LLMProvider?) {
@@ -68,49 +95,38 @@ public actor LocalPolishServerCoordinator {
 
   public init() {}
 
-  /// Start `provider`'s server, stopping a DIFFERENT model's first.
+  /// Drive the server to `target`, or to nothing when `target` is nil.
   ///
-  /// Re-activating the model that is already resident stays idempotent, which
-  /// is required: launch, provider switch and settings-open all call this and
-  /// must not restart a working server.
-  public func start(_ provider: LLMProvider, configuration: EGOneServerManager.Configuration)
-    async
-  {
-    transitionGeneration += 1
-    let generation = transitionGeneration
+  /// One entry point, because starting and stopping are not independent
+  /// operations on a single-process resource — they are two values of one
+  /// question, "what should be running now". Expressed as two methods, the
+  /// answer depends on which task the runtime happens to schedule first.
+  ///
+  /// Re-stating the resident model stays idempotent, which is required:
+  /// launch, provider switch and settings-open all arrive here and must not
+  /// restart a working server.
+  public func transition(to target: LocalPolishTarget?, intent: Int) async {
+    // A stamp older than one already honoured describes a world the user has
+    // moved on from. Obeying it is exactly the defect this replaced.
+    guard intent >= honouredIntent else { return }
+    honouredIntent = intent
 
-    if let resident, resident != provider {
-      // A different model holds the process. Stop it BEFORE recording the new
-      // resident, so a failure to start leaves the field honestly empty rather
-      // than claiming a model that is not running.
+    if let resident, resident != target?.provider {
+      // Stop the outgoing model BEFORE recording the new resident, so a start
+      // that fails leaves the field honestly empty rather than naming a model
+      // that is not running.
       await manager.stop()
-      // Two rapid switches can both reach here having seen the same outgoing
-      // model. Without this the older continuation resumes afterwards and
-      // overwrites the newer resident, so the field names a model nobody
-      // selected.
-      guard generation == transitionGeneration else { return }
+      guard intent >= honouredIntent else { return }
+      // Whoever actually lost the process is told so, rather than whichever
+      // provider the caller named: its row must not keep showing a live server
+      // it no longer owns.
       observers[resident]?(.stopped)
       setResident(nil)
     }
-    guard generation == transitionGeneration else { return }
-    setResident(provider)
-    await manager.start(configuration: configuration)
-  }
 
-  /// Stop `provider`'s server. A stop request from a model that is NOT resident
-  /// is ignored rather than obeyed: during a switch the outgoing model's
-  /// deactivate can arrive after the incoming model has started, and obeying it
-  /// would kill the server the user is now waiting on.
-  public func stop(_ provider: LLMProvider) async {
-    guard resident == provider else { return }
-    transitionGeneration += 1
-    let generation = transitionGeneration
-    await manager.stop()
-    // A switch that started during the stop owns the field now; clearing it
-    // here would evict the model the user just selected.
-    guard generation == transitionGeneration else { return }
-    observers[provider]?(.stopped)
-    setResident(nil)
+    guard intent >= honouredIntent, let target else { return }
+    setResident(target.provider)
+    await manager.start(configuration: target.configuration)
   }
 
   /// Health for `provider`. Returns red when a DIFFERENT model is resident,
