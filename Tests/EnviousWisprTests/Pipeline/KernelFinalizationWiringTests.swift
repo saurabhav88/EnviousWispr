@@ -434,6 +434,61 @@ import os
     #expect(recorder.copies == ["hello"], "clipboardOnly must mean it actually copied")
   }
 
+  /// #2639. A multi-line snippet is DELIVERED, not diverted to the clipboard.
+  ///
+  /// The removed #628 guard sent any snippet-bearing payload containing a newline straight to
+  /// `copyToClipboard` without calling the cascade at all, so nothing appeared at the caret and
+  /// the user had to press Cmd+V by hand. Founder decision 2026-09-03: a user who saved a
+  /// multi-line snippet asked for a multi-line snippet.
+  ///
+  /// The fixture is deliberately the exact state the old branch keyed on — auto-paste ON and
+  /// `snippetExpansionFired` TRUE — because a fixture missing either one passes whether or not
+  /// the branch is still there, and would pin nothing.
+  ///
+  /// Both assertions are required for the same reason. "Outcome is `.pasted`" alone does not
+  /// prove the newline survived, and "the clipboard is untouched" alone does not prove the
+  /// cascade ever ran. The pair is what the promise actually is.
+  @Test("#2639 a multi-line snippet reaches the paste cascade with its line breaks intact")
+  func multiLineSnippetIsDeliveredNotDivertedToTheClipboard() async {
+    let recorder = ClipboardRecorder()
+    let requests = PasteRequestRecorder()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true)
+    context.snippetExpansionFired = true
+
+    let signature = "Thanks,\nSaurabh\nEnvious Labs"
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        requests.record(request.legacyText)
+        return Self.deliveredResult
+      },
+      copyToClipboard: { recorder.record($0) })
+
+    let outcome = await wiring.deliver(signature, .ordinary)
+
+    #expect(outcome == .pasted)
+    #expect(requests.legacyTexts.count == 1, "the cascade is called exactly once")
+
+    // TRAILING whitespace only. The legacy payload always carries a trailing space —
+    // `PasteCascadeExecutor.swift`: "Today's payload, including its trailing space. ALWAYS
+    // present" — which predates snippets and is owned by the insertion repair, not by
+    // anything here. Trimming the tail cannot hide what this test is for: both line breaks
+    // sit in the MIDDLE of the string, so they survive the trim and are compared byte for
+    // byte. Pinning the trailing space instead would make this test fail the day somebody
+    // legitimately changes spacing, on a property it was never about.
+    let received = requests.legacyTexts.first ?? ""
+    let withoutTrailingWhitespace = String(
+      received.reversed().drop(while: \.isWhitespace).reversed())
+    #expect(
+      withoutTrailingWhitespace == signature,
+      "the cascade must receive the snippet text with its line breaks intact")
+
+    #expect(
+      recorder.copies.isEmpty,
+      "nothing may be diverted to the clipboard behind the cascade's back")
+  }
+
   @Test("#1921 A clipboard-only delivery cannot inherit the previous session's language fields")
   func clipboardOnlyDeliveryClearsStaleLanguageFields() async {
     // `outcome` is SHARED and reused across sessions, and everything describing
@@ -1811,6 +1866,15 @@ import os
   private final class ClipboardRecorder {
     private(set) var copies: [String] = []
     func record(_ text: String) { copies.append(text) }
+  }
+
+  /// #2639. What the cascade was actually handed. Records the legacy payload rather than a
+  /// call count, because the question is whether the NEWLINE survived the trip, and a count
+  /// cannot answer that. Takes the String rather than the request: `legacyText` is main-actor
+  /// isolated, so it is read at the call site inside the closure and handed over as a value.
+  private final class PasteRequestRecorder {
+    private(set) var legacyTexts: [String] = []
+    func record(_ legacyText: String) { legacyTexts.append(legacyText) }
   }
 
   // MARK: Fallback metrics gate (#1624, widened #158)
