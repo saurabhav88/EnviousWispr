@@ -149,6 +149,9 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// Namespace for this model's persisted values. EG-1's is `eg1.` exactly as
   /// before, so nothing it already wrote moves.
   private let defaultsKeyPrefix: String
+  /// Which model the health probe should present itself as. See
+  /// `EGOneServerManager.ProbeSpec`.
+  private let probeSpec: EGOneServerManager.ProbeSpec
   private let serverBinaryURL: URL?
 
   // MARK: - Init
@@ -170,6 +173,10 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   ) {
     self.provider = provider
     let keyPrefix = provider == .egOne ? "eg1." : "s1."
+    // Derived from the provider rather than taken as a parameter: the two must
+    // agree, and a caller free to pair `.s1Mini` with EG-1's probe would
+    // recreate the defect this replaced.
+    self.probeSpec = provider == .egOne ? .egOne : .s1Mini
     self.defaultsKeyPrefix = keyPrefix
     self.pausedProjectionKey = "\(keyPrefix)pausedInstallProjection"
     self.manifest = manifest
@@ -210,7 +217,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     Task { [weak self] in
       guard let self else { return }
       let seq = OSAllocatedUnfairLock(initialState: 0)
-      await self.server.setStateObserver { [weak self] state in
+      await self.server.setStateObserver(for: self.provider) { [weak self] state in
         let mySeq = seq.withLock {
           $0 += 1
           return $0
@@ -489,7 +496,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       guard generation == self.activationGeneration else { return }
       guard let family = manifest.promptFamily else { return }
       let result = await self.server.probeHealth(
-        self.provider, promptFamily: family, spec: .egOne)
+        self.provider, promptFamily: family, spec: self.probeSpec)
       // Probe verdict wins over the cheap projection while server is ready.
       guard generation == self.activationGeneration else { return }
       if case .ready = self.serverState { self.health = result }

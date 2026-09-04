@@ -87,7 +87,13 @@ final class PipelineSettingsSync {
     // `.egOne`. The pinned-session authority is THIS class (it owns both
     // drivers), so it wires the runtime's read itself.
     egOneRuntime?.isPinnedInFlight = { [weak self] in
-      self?.isEGOnePinnedInFlight() ?? false
+      self?.pinnedLocalProvider() == .egOne
+    }
+    // #2649: each engine's Remove refusal asks about ITS OWN frozen session.
+    // Sharing EG-1's answer would refuse an S1-mini removal while an EG-1 take
+    // was running, and allow one while an S1-mini take was.
+    s1MiniRuntime?.isPinnedInFlight = { [weak self] in
+      self?.pinnedLocalProvider() == .s1Mini
     }
   }
 
@@ -302,6 +308,14 @@ final class PipelineSettingsSync {
   /// stop on switch-away — but never underneath an in-flight session that
   /// froze `.egOne` at recording start.
   private func reconcileEGOneActivation(settings: SettingsManager) {
+    // #2649: a session that froze EITHER local engine blocks the whole
+    // reconciliation, not just the stop half. Deferring only the stop and then
+    // starting the incoming model would have the coordinator evict the frozen
+    // engine to make room, which is the outcome the defer exists to prevent.
+    if isLocalPolishPinnedInFlight(), pinnedLocalProvider() != settings.llmProvider {
+      egOneDeactivationPending = true
+      return
+    }
     // #2649: BOTH local engines are reconciled on every switch, and the order
     // is load-bearing. The outgoing model is stopped FIRST, so the incoming one
     // is never started while the other still holds the server — the coordinator
@@ -326,10 +340,14 @@ final class PipelineSettingsSync {
       runtime.activateAndProbe()
       return
     }
-    // The pinned-in-flight guard is about the RECORDING, not about which engine
-    // it froze: stopping any local server underneath a session that froze a
-    // local provider degrades that take's polish to raw.
-    if isEGOnePinnedInFlight() {
+    // The guard is about the RECORDING, not about which engine it froze:
+    // stopping ANY local server underneath a session that froze a local
+    // provider degrades that take's polish to raw. `isEGOnePinnedInFlight`
+    // reads the frozen provider, so it already answers for both — but the
+    // reconciliation must return BEFORE starting the incoming model too,
+    // otherwise the coordinator evicts the frozen one anyway on the caller's
+    // behalf and the defer buys nothing.
+    if isLocalPolishPinnedInFlight() {
       egOneDeactivationPending = true
       return
     }
@@ -343,6 +361,10 @@ final class PipelineSettingsSync {
   /// actually pending.
   func retryDeferredEGOneDeactivation(settings: SettingsManager) {
     egOneRuntime?.retryPendingRemoval()
+    // #2649: a deferred REMOVAL belongs to whichever engine the user asked to
+    // remove, so both are retried. Retrying only EG-1 left an S1-mini removal
+    // pending forever, with the model still on disk and nothing saying so.
+    s1MiniRuntime?.retryPendingRemoval()
     guard egOneDeactivationPending else { return }
     reconcileEGOneActivation(settings: settings)
   }
@@ -359,11 +381,27 @@ final class PipelineSettingsSync {
   /// Single authority (#1271 matrix gap 3) — the runtime's Remove Model
   /// defer reads it through the closure the bootstrapper wires.
   func isEGOnePinnedInFlight() -> Bool {
-    for cfg in [kernelDriver.currentSessionConfig, whisperKitKernelDriver.currentSessionConfig] {
-      if cfg?.llmProvider == .egOne { return true }
-    }
-    return false
+    pinnedLocalProvider() == .egOne
   }
+
+  /// #2649: which LOCAL engine an in-flight recording froze, if any.
+  ///
+  /// The old check named EG-1 because it was the only bundled engine. With two,
+  /// a name is the wrong shape: the question is "is a local server load-bearing
+  /// for a take that is still running", and the answer has to say WHICH, so a
+  /// switch back to the frozen engine is not needlessly deferred.
+  func pinnedLocalProvider() -> LLMProvider? {
+    for cfg in [kernelDriver.currentSessionConfig, whisperKitKernelDriver.currentSessionConfig] {
+      switch cfg?.llmProvider {
+      case .egOne: return .egOne
+      case .s1Mini: return .s1Mini
+      default: continue
+      }
+    }
+    return nil
+  }
+
+  func isLocalPolishPinnedInFlight() -> Bool { pinnedLocalProvider() != nil }
 
   private func reconcileOllamaEviction(settings: SettingsManager) {
     let new = OllamaConnector.effectiveOllamaModel(

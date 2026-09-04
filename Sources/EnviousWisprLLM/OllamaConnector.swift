@@ -300,6 +300,14 @@ public struct OllamaConnector: TranscriptPolisher {
 
     Self.logTelemetry(json: json, message: message ?? [:], model: config.model)
 
+    // #2649: on the S1-mini raw path a non-`stop` finish means the content is a
+    // PARTIAL rewrite, and returning it pastes a truncated polish. The chat path
+    // below only LOGS this, which is right for a user's own model whose budget
+    // they chose; it is wrong for a model we route deliberately, and it is the
+    // same rule the bundled connectors enforce through `truncationGuard`.
+    if isS1Mini, let doneReason = json?["done_reason"] as? String, doneReason != "stop" {
+      throw LLMError.egOneSkipped(.outputTruncated)
+    }
     if let doneReason = json?["done_reason"] as? String, doneReason != "stop" {
       Task {
         await AppLogger.shared.log(

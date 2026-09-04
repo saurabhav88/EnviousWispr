@@ -32,6 +32,11 @@ public actor LocalPolishServerCoordinator {
   /// process half, and neither alone is sufficient.
   private var resident: LLMProvider?
 
+  /// One observer per model. See `setStateObserver(for:_:)` for why a single
+  /// slot was a regression rather than merely a limitation.
+  private var observers: [LLMProvider: @Sendable (EGOneServerManager.ServerState) -> Void] = [:]
+  private var managerObserverInstalled = false
+
   public init() {}
 
   /// Start `provider`'s server, stopping a DIFFERENT model's first.
@@ -47,6 +52,7 @@ public actor LocalPolishServerCoordinator {
       // resident, so a failure to start leaves the field honestly empty rather
       // than claiming a model that is not running.
       await manager.stop()
+      observers[resident]?(.stopped)
       self.resident = nil
     }
     resident = provider
@@ -60,6 +66,7 @@ public actor LocalPolishServerCoordinator {
   public func stop(_ provider: LLMProvider) async {
     guard resident == provider else { return }
     await manager.stop()
+    observers[provider]?(.stopped)
     resident = nil
   }
 
@@ -84,10 +91,44 @@ public actor LocalPolishServerCoordinator {
     await manager.reapOrphansIfIdle(binaryPath: binaryPath)
   }
 
-  public func setStateObserver(_ observer: @escaping @Sendable (EGOneServerManager.ServerState) -> Void)
-    async
-  {
-    await manager.setStateObserver(observer)
+  /// Server-state observation, KEYED BY MODEL.
+  ///
+  /// `EGOneServerManager.setStateObserver` holds ONE closure, so two runtimes
+  /// registering against it meant the second silently replaced the first. That
+  /// is an EG-1 REGRESSION, not just a gap in the new model: depending on which
+  /// unstructured registration task won, EG-1 could stop receiving state
+  /// entirely and sit on "Starting", or receive S1-mini's state and report
+  /// health about the wrong process.
+  ///
+  /// Keying by provider fixes the replacement. Gating delivery on residency
+  /// fixes the other half: a model that does not hold the process must not be
+  /// told the process changed, because the change is not about it.
+  public func setStateObserver(
+    for provider: LLMProvider,
+    _ observer: @escaping @Sendable (EGOneServerManager.ServerState) -> Void
+  ) async {
+    observers[provider] = observer
+    // Seed with the caller's OWN truth rather than the manager's state: a model
+    // that is not resident is stopped as far as it is concerned, whatever the
+    // other one is doing.
+    observer(resident == provider ? await manager.currentState() : .stopped)
+    await installManagerObserverIfNeeded()
+  }
+
+  /// One closure on the manager, forever, fanning out to whoever is resident.
+  /// Re-registering per model is what created the replacement in the first
+  /// place, so this installs exactly once.
+  private func installManagerObserverIfNeeded() async {
+    guard !managerObserverInstalled else { return }
+    managerObserverInstalled = true
+    await manager.setStateObserver { [weak self] state in
+      Task { await self?.publish(state) }
+    }
+  }
+
+  private func publish(_ state: EGOneServerManager.ServerState) {
+    guard let resident, let observer = observers[resident] else { return }
+    observer(state)
   }
 
   /// App quit. Synchronous by necessity: `applicationWillTerminate` cannot await

@@ -99,6 +99,10 @@ public actor EGOneServerManager {
 
   public init() {}
 
+  /// #2649: read the current state without registering, so the coordinator can
+  /// seed a per-model observer without disturbing the single manager observer.
+  public func currentState() -> ServerState { state }
+
   public func setStateObserver(_ observer: @escaping @Sendable (ServerState) -> Void) {
     onStateChange = observer
     observer(state)
@@ -381,6 +385,14 @@ public actor EGOneServerManager {
     public static let egOne = ProbeSpec(
       provider: .egOne, modelID: LLMProvider.egOneModelName,
       makeConnector: { EGOneConnector(endpoint: $0) })
+
+    /// #2649. Without this the second model was health-checked AS EG-1 — right
+    /// endpoint, wrong connector, wrong provider stamp, wrong model id. The
+    /// verdict would have been about EG-1's contract, and the connector's
+    /// empty-answer rule is exactly where the two disagree.
+    public static let s1Mini = ProbeSpec(
+      provider: .s1Mini, modelID: LLMProvider.s1MiniModelName,
+      makeConnector: { S1MiniConnector(endpoint: $0) })
   }
 
   /// `spec` is REQUIRED and has no default. A defaulted argument leaves no

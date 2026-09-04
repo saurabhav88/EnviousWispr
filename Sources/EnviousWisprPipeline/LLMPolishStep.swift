@@ -679,15 +679,26 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         throw LLMError.egOneSkipped(.notReady)
       }
       // Context preflight: polish whole or skip whole, never a silent
-      // truncation. WORST-CASE on both sides (Codex r15+r16): input at
-      // ~1 token/char (true for unsegmented CJK; a 3x overestimate for
-      // Latin) plus the SAME output cap the request later sends
-      // (`max(text.count, 256)`, r14) plus prompt overhead. Conservative
-      // by design — it bounds polishable dictations at ~8k chars, well
-      // past the product's 5-minute dictation target; anything longer
-      // silently pastes raw rather than risking truncated polish.
+      // truncation. WORST-CASE on both sides (Codex r15+r16): the output side
+      // is the SAME cap the request later sends (`max(text.count, 256)`, r14).
+      //
+      // #2649 changed the input side from `count` to `utf8.count`, and the
+      // difference is the defect rather than a refinement. `String.count`
+      // counts GRAPHEMES, so one Japanese character, one emoji or one combining
+      // sequence counts as 1 while tokenising to several. That direction is the
+      // dangerous one: the guard passes an input the server then cannot fit,
+      // which is the silent truncation this check exists to prevent. Bytes are
+      // a true upper bound, because no token is shorter than one byte — very
+      // conservative for ASCII, which is the safe way to be wrong here.
+      //
+      // The prompt allowance is 1,536 rather than 256, also measured: EG-1's
+      // v2 system prompt alone is 1,147 bytes, so the old constant was already
+      // too small for the engine that shipped with it and was only survivable
+      // because that engine launches with a 16,384-token window. S1-mini's is
+      // 230 bytes and its window is 8,192, where the slack does not exist.
+      let inputUpperBound = context.text.utf8.count
       let outputBudget = max(context.text.count, LLMConstants.ollamaMaxTokens)
-      if context.text.count + outputBudget + 256 > endpoint.contextTokens {
+      if inputUpperBound + outputBudget + 1536 > endpoint.contextTokens {
         throw LLMError.egOneSkipped(.inputTooLong)
       }
       polisher = handles.make(endpoint)
