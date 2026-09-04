@@ -143,7 +143,9 @@ public struct OpenAIConnector: TranscriptPolisher {
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
-    request.timeoutInterval = 60
+    // #2635: no per-request timeout. `LLMNetworkSession`'s configuration owns
+    // the idle ceiling for every request on the shared session, and a
+    // per-request value would SHADOW it (measured; see that file).
     return request
   }
 

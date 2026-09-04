@@ -193,7 +193,9 @@ public struct OllamaConnector: TranscriptPolisher {
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
-    request.timeoutInterval = 60
+    // #2635: no per-request timeout. `LLMNetworkSession`'s configuration owns
+    // the idle ceiling for every request on the shared session, and a
+    // per-request value would SHADOW it (measured; see that file).
 
     let (data, _) = try await performWithRetry(request: request, config: config)
 
@@ -261,7 +263,9 @@ public struct OllamaConnector: TranscriptPolisher {
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
-    request.timeoutInterval = 60
+    // #2635: no per-request timeout. `LLMNetworkSession`'s configuration owns
+    // the idle ceiling for every request on the shared session, and a
+    // per-request value would SHADOW it (measured; see that file).
 
     let (data, _) = try await performWithRetry(request: request, config: config)
 
@@ -478,6 +482,11 @@ public struct OllamaConnector: TranscriptPolisher {
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    // #2635: a DELIBERATE per-request ceiling, not a shadow of the session's.
+    // A fire-and-forget unload must give up long before a polish would, and the
+    // shared session cannot express that. `RequestTimeoutOwnerTests` asserts this
+    // line stays VISIBLE as well as that no site restates the session's own
+    // value — deleting it would silently give an eviction a 60-second ceiling.
     request.timeoutInterval = 3.0
 
     let start = Date()

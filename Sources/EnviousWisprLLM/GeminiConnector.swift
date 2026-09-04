@@ -41,7 +41,9 @@ public struct GeminiConnector: TranscriptPolisher {
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
-    request.timeoutInterval = 60
+    // #2635: no per-request timeout. `LLMNetworkSession`'s configuration owns
+    // the idle ceiling for every request on the shared session, and a
+    // per-request value would SHADOW it (measured; see that file).
 
     // Allocate the call number once per logical polish. Retries reuse the
     // same number so logs never mistake a retried polish for multiple
