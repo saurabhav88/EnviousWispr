@@ -147,17 +147,19 @@ struct HeartPathTelemetryEmitterTests {
 
   // MARK: - Stall dedup
 
-  @Test("stallFired emits once per session and returns true the first time")
+  @Test("stallFired emits the alerting mode once per session")
   func stallFiresOnce() {
     let recorder = Recorder()
     let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
     let ctx = Self.stallContext(sessionID: 7)
 
-    let firstFired = emitter.stallFired(ctx: ctx, isActivelyCapturing: true)
-    let secondFired = emitter.stallFired(ctx: ctx, isActivelyCapturing: true)
+    // #1810: the method no longer returns a Bool — neither production caller
+    // read it, and "true" would have meant "an alert fired", which stopped
+    // being true for the two zero-sample modes. Assert the SUBJECT (what
+    // reached Sentry), never a marker beside it.
+    emitter.stallFired(ctx: ctx, isActivelyCapturing: true)
+    emitter.stallFired(ctx: ctx, isActivelyCapturing: true)
 
-    #expect(firstFired)
-    #expect(!secondFired)
     #expect(recorder.errors.count == 1)
     let captured = recorder.errors[0]
     #expect(captured.category == .audioCaptureStalled)
@@ -233,6 +235,38 @@ struct HeartPathTelemetryEmitterTests {
     #expect(crumb.message == "No audio captured (deduped)")
     #expect(crumb.data["deduped_from"] as? String == "audio_capture_stalled")
     #expect(crumb.data["capture_session_id"] as? Int == 9)
+  }
+
+  /// #1810 — THE regression the downgrade could silently cause, and the reason
+  /// the `capturedStallModes` insert stays ABOVE the routing branch.
+  ///
+  /// A zero-sample stall now creates no Sentry error, so it is tempting to skip
+  /// the latch for it. `noAudioCaptured` reads that latch to choose breadcrumb
+  /// over error: skip the insert and a stalled session's `no_audio_captured`
+  /// becomes a NEW alerting error, moving the noise instead of removing it. The
+  /// session must end with ZERO errors on both channels.
+  @Test("#1810: a zero-sample stall still latches, so noAudioCaptured stays a breadcrumb")
+  func noAudioDedupsAfterZeroSampleStall() {
+    for mode in [CaptureStallFailureMode.allZeroFromStart, .becameZeroMidCapture] {
+      let recorder = Recorder()
+      let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
+
+      emitter.stallFired(
+        ctx: Self.stallContext(sessionID: 9, failureMode: mode), isActivelyCapturing: true)
+      emitter.noAudioCaptured(ctx: Self.noAudioContext(sessionID: 9))
+
+      #expect(
+        recorder.errors.isEmpty,
+        """
+        \(mode.rawValue): the downgrade leaked into no_audio_captured — the \
+        capturedStallModes insert must stay above the routing branch
+        """)
+      #expect(recorder.breadcrumbs.count == 1)
+      let crumb = recorder.breadcrumbs[0]
+      #expect(crumb.message == "No audio captured (deduped)")
+      #expect(crumb.data["deduped_from"] as? String == "audio_capture_stalled")
+      #expect(crumb.data["capture_session_id"] as? Int == 9)
+    }
   }
 
   @Test("noAudioCaptured dedup breadcrumb for WhisperKit carries WhisperKit-tagged message")
@@ -421,19 +455,68 @@ struct HeartPathTelemetryEmitterTests {
       "stall extras key-set drift: \(actualKeys.symmetricDifference(Self.stallExtraKeys))")
   }
 
-  // MARK: - #1844: elapsed-since-last-good on EVERY stall mode
+  // MARK: - #1810: only the no-buffer mode reaches the alerting channel
   //
-  // `stallFired` is the SHARED stall emitter, so this field lands on all three
-  // failure modes, not only the classified zero-signal pair. That is a wider blast
-  // radius than the coverage finding asked for and is deliberate: the key is
-  // optional and omitted when nil, it breaks no schema, and "how long since this
-  // user last had a working recording" is diagnostic on any capture stall.
+  // Every mode still latches into `capturedStallModes` — that set is what
+  // `noAudioCaptured` reads to choose breadcrumb over error, so a downgrade that
+  // skipped the insert would turn a stalled session's `no_audio_captured` into a
+  // NEW alerting error. `noAudioDedupsAfterZeroSampleStall` below is the guard
+  // for exactly that.
   //
-  // Both tests drive ALL THREE modes, because `capturedStallModes` dedups per mode
-  // within a session — one passing mode cannot stand in for the others.
+  // The zero-sample modes reach NEITHER channel from this method, deliberately:
+  // `deadMicRetireAttempted` already fans out a breadcrumb AND the PostHog event
+  // from one set of computed values, so a second breadcrumb here would split the
+  // source of truth.
 
-  @Test("every stall mode carries elapsed ms when a prior success is known (#1844)")
-  func allStallsCarryElapsedWhenKnown() {
+  @Test("#1810: only stall_window_elapsed reaches Sentry; zero-sample modes reach neither channel")
+  func onlyNoBuffersAlerts() {
+    let modes: [CaptureStallFailureMode] = [
+      .noBuffers, .allZeroFromStart, .becameZeroMidCapture,
+    ]
+    // A fresh emitter per mode so each assertion sees an empty recorder and a
+    // failure names the mode whose routing changed. NOT for dedup reasons:
+    // `capturedStallModes` is keyed BY MODE, so one shared emitter would pass
+    // all three through perfectly well.
+    for mode in modes {
+      let recorder = Recorder()
+      let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
+
+      emitter.stallFired(
+        ctx: Self.stallContext(failureMode: mode), isActivelyCapturing: true)
+
+      switch mode {
+      case .noBuffers:
+        #expect(
+          recorder.errors.count == 1,
+          "\(mode.rawValue) must keep its alerting Sentry error")
+        #expect(
+          recorder.errors[0].extra["capture.failure_mode"] as? String == mode.rawValue)
+        #expect(recorder.breadcrumbs.isEmpty)
+      case .allZeroFromStart, .becameZeroMidCapture:
+        #expect(
+          recorder.errors.isEmpty,
+          "\(mode.rawValue) must not create an alerting Sentry error (#1810)")
+        #expect(
+          recorder.breadcrumbs.isEmpty,
+          """
+          \(mode.rawValue) must not add a SECOND breadcrumb here — \
+          deadMicRetireAttempted already emits one for the same take
+          """)
+      }
+    }
+  }
+
+  // MARK: - #1844: elapsed-since-last-good on the alerting stall
+  //
+  // Scoped to `.noBuffers` since #1810: the two zero-sample modes no longer
+  // build a Sentry payload at all, so there is nothing here to carry the field.
+  // The measurement is NOT lost for them — `audio.dead_mic_retire_attempted`
+  // reads the same `captureTelemetry` for `ms_since_last_good` on every
+  // zero-signal retire. Same source, different sampling instant (stop, not
+  // mid-take), so the two numbers are not interchangeable.
+
+  @Test("the alerting stall carries elapsed ms when a prior success is known (#1844)")
+  func noBufferStallCarriesElapsedWhenKnown() {
     let clock = ManualInstantClock()
     let recorder = Recorder()
     let captureTelemetry = CaptureTelemetryState(currentInstant: { clock.now })
@@ -443,58 +526,39 @@ struct HeartPathTelemetryEmitterTests {
     captureTelemetry.recordSuccessfulRecording(recoveryTransport: "built_in_mic", sessionID: 1)
     clock.advance(by: .milliseconds(4_500))  // fake clock: no real wait
 
-    let modes: [CaptureStallFailureMode] = [
-      .noBuffers, .allZeroFromStart, .becameZeroMidCapture,
-    ]
-    for mode in modes {
-      _ = emitter.stallFired(
-        ctx: Self.stallContext(failureMode: mode), isActivelyCapturing: true)
-    }
+    emitter.stallFired(
+      ctx: Self.stallContext(failureMode: .noBuffers), isActivelyCapturing: true)
 
-    // All three modes genuinely emitted — otherwise a per-mode dedup regression
-    // would leave this test asserting over fewer events than it claims to cover.
-    #expect(recorder.errors.count == modes.count)
-    // Exact enriched key set per MODE, matching the nil test's per-mode sweep, so
-    // a key added or renamed on only one mode's payload cannot hide behind
-    // another mode's.
+    #expect(recorder.errors.count == 1)
+    let extra = recorder.errors[0].extra
     let expectedKeys =
       Self.stallExtraKeys.union(["capture.time_since_last_successful_recording_ms"])
-    for (index, mode) in modes.enumerated() {
-      let extra = recorder.errors[index].extra
-      #expect(
-        extra["capture.time_since_last_successful_recording_ms"] as? Int == 4_500,
-        "mode \(mode.rawValue) lost the elapsed-time field")
-      #expect(extra["capture.failure_mode"] as? String == mode.rawValue)
-      #expect(
-        Set(extra.keys) == expectedKeys,
-        "mode \(mode.rawValue) key drift: \(Set(extra.keys).symmetricDifference(expectedKeys))")
-    }
+    #expect(
+      extra["capture.time_since_last_successful_recording_ms"] as? Int == 4_500,
+      "the alerting stall lost the elapsed-time field")
+    #expect(extra["capture.failure_mode"] as? String == "stall_window_elapsed")
+    #expect(
+      Set(extra.keys) == expectedKeys,
+      "key drift: \(Set(extra.keys).symmetricDifference(expectedKeys))")
   }
 
-  @Test("every stall mode omits elapsed ms before the first success (#1844)")
-  func allStallsOmitElapsedBeforeFirstSuccess() {
+  @Test("the alerting stall omits elapsed ms before the first success (#1844)")
+  func noBufferStallOmitsElapsedBeforeFirstSuccess() {
     let recorder = Recorder()
     // Fresh state: no successful recording has ever been recorded.
     let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
 
-    let modes: [CaptureStallFailureMode] = [
-      .noBuffers, .allZeroFromStart, .becameZeroMidCapture,
-    ]
-    for mode in modes {
-      _ = emitter.stallFired(
-        ctx: Self.stallContext(failureMode: mode), isActivelyCapturing: true)
-    }
+    emitter.stallFired(
+      ctx: Self.stallContext(failureMode: .noBuffers), isActivelyCapturing: true)
 
-    #expect(recorder.errors.count == modes.count)
-    for (index, mode) in modes.enumerated() {
-      let extra = recorder.errors[index].extra
-      // ABSENT, not zero and not a placeholder — zero would read as "this user
-      // had a working recording a moment ago," the opposite of the truth.
-      #expect(
-        extra["capture.time_since_last_successful_recording_ms"] == nil,
-        "mode \(mode.rawValue) emitted a placeholder instead of omitting the field")
-      #expect(Set(extra.keys) == Self.stallExtraKeys)
-    }
+    #expect(recorder.errors.count == 1)
+    let extra = recorder.errors[0].extra
+    // ABSENT, not zero and not a placeholder — zero would read as "this user
+    // had a working recording a moment ago," the opposite of the truth.
+    #expect(
+      extra["capture.time_since_last_successful_recording_ms"] == nil,
+      "emitted a placeholder instead of omitting the field")
+    #expect(Set(extra.keys) == Self.stallExtraKeys)
   }
 
   /// Codex code-review gap #1 (noAudio fresh): exact key-set when no prior

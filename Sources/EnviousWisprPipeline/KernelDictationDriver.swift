@@ -1363,10 +1363,16 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   public func handleCaptureStall(_ ctx: CaptureStallContext) {
     // Two-arm fan-out:
-    //   1. observer.handleCaptureStall — drives the rich Sentry emission
-    //      via `HeartPathTelemetryEmitter.stallFired(ctx:)`.
+    //   1. observer.handleCaptureStall — routes the telemetry via
+    //      `HeartPathTelemetryEmitter.stallFired(ctx:)`. Since #1810
+    //      (2026-09-03) that produces an alerting Sentry error ONLY for
+    //      `stall_window_elapsed`; the two zero-sample shapes are recorded by
+    //      `audio.dead_mic_retire_attempted` and its breadcrumb instead.
     //   2. kernel.externalCaptureStalled — flips the kernel FSM to
     //      `failed(.captureStalled)` so the session actually stops.
+    // **The arms are independent and #1810 changed only arm 1.** Every failure
+    // mode still ends the take, and source retirement still happens on the stop
+    // path; a quieter Sentry channel is not a quieter product.
     // PR-4b.1 dropped the kernel's direct `audioCapture.onCaptureStalled`
     // subscription; PR-4b.2 closes the loop by fanning out from this
     // App-facing entry. Without the kernel call, a real stall would
