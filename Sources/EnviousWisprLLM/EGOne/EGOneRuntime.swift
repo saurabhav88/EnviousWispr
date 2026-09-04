@@ -130,7 +130,16 @@ public final class EGOneRuntime: EGOneEndpointProviding {
 
   public let manifest: EGOneManifest?
   private let delivery: EGOneDeliveryAdapter?
-  private let server: EGOneServerManager
+  /// The SHARED process owner (#2649). Previously each runtime constructed its
+  /// own `EGOneServerManager`, so a second model meant a second manager, a
+  /// second llama-server and 3.4 GB resident. One-at-a-time is a property of
+  /// the SET of local models, and a property of a set cannot be enforced by
+  /// members that cannot see each other.
+  private let server: LocalPolishServerCoordinator
+  /// Which model this runtime speaks for. The coordinator refuses to hand an
+  /// endpoint or a health verdict to a model that is not the resident one, so
+  /// this value is what stops a polish being answered by other weights.
+  private let provider: LLMProvider
   private let serverBinaryURL: URL?
 
   // MARK: - Init
@@ -140,10 +149,17 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// adapter exists before launch activation calls it (#1348 §Decision A
   /// construction-order fix). A nil adapter (bundled-manifest load failure)
   /// is a RED limb state, never a crash.
+  /// `coordinator` is optional ONLY so existing tests that construct a runtime
+  /// in isolation keep working; production passes the app's single instance.
+  /// Two runtimes constructed with nil would each own a process again, which is
+  /// why `WisprBootstrapper` builds one coordinator and injects it.
   public init(
     manifest: EGOneManifest?, serverBinaryURL: URL?, delivery: EGOneDeliveryAdapter?,
-    defaults: UserDefaults? = nil
+    defaults: UserDefaults? = nil,
+    coordinator: LocalPolishServerCoordinator? = nil,
+    provider: LLMProvider = .egOne
   ) {
+    self.provider = provider
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL
     self.delivery = delivery
@@ -155,7 +171,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // starts and the duration this event exists to measure is uncomputable.
     self.lastPausedProjection = (self.defaults.string(forKey: Self.pausedProjectionKey))
       .flatMap(EGOnePausedInstallState.init(rawValue:))
-    self.server = EGOneServerManager()
+    self.server = coordinator ?? LocalPolishServerCoordinator()
     if let manifest {
       self.activationBlockers = manifest.activationBlockers()
     } else {
@@ -403,7 +419,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     removalPending = false
     activationGeneration += 1
     Task {
-      await self.server.stop()
+      await self.server.stop(self.provider)
       _ = await delivery.remove()
     }
   }
@@ -455,7 +471,8 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       // health for a stale generation.
       guard generation == self.activationGeneration else { return }
       guard let family = manifest.promptFamily else { return }
-      let result = await self.server.probeHealth(promptFamily: family, spec: .egOne)
+      let result = await self.server.probeHealth(
+        self.provider, promptFamily: family, spec: .egOne)
       // Probe verdict wins over the cheap projection while server is ready.
       guard generation == self.activationGeneration else { return }
       if case .ready = self.serverState { self.health = result }
@@ -500,7 +517,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// Provider switched away: free the RAM (isolate-limbs).
   public func deactivate() {
     activationGeneration += 1
-    Task { await self.server.stop() }
+    Task { await self.server.stop(self.provider) }
   }
 
   /// App-quit path (#1271 Codex r1 P1): `applicationWillTerminate` cannot
@@ -508,7 +525,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// when the parent exits — kill synchronously or orphan a multi-GB
   /// server. Crash orphans are reaped by the stale-sweep on next start.
   public func terminateServerForAppQuit() {
-    server.terminateImmediately()
+    server.terminateForAppQuit()
   }
 
   /// Adopt-if-present THEN boot (#1348 §16.4, refined grounded r4 P2): a legacy
@@ -538,7 +555,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // usable endpoint (file missing/unreadable/rejected after admission — a
     // stale marker or post-admission mutation). Run ONE repair pass + ONE
     // retry; a second failure is terminal (limb-red + raw fallback).
-    if await server.activeEndpoint() == nil {
+    if await server.endpoint(for: provider) == nil {
       guard generation == self.activationGeneration else { return }
       guard case .admitted = await delivery.repair() else { return }
       guard generation == self.activationGeneration else { return }
@@ -563,13 +580,13 @@ public final class EGOneRuntime: EGOneEndpointProviding {
         "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0",
       ]
     )
-    await server.start(configuration: configuration)
+    await server.start(provider, configuration: configuration)
   }
 
   // MARK: - EGOneEndpointProviding (pipeline seam)
 
   public func activeEndpoint() async -> EGOneEndpoint? {
-    await server.activeEndpoint()
+    await server.endpoint(for: provider)
   }
 
   // MARK: - Helpers
