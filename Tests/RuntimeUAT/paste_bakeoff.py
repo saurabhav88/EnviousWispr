@@ -281,11 +281,18 @@ def _close_fixture_tabs(app: str) -> None:
 
     Scoped to our own fixture URLs so the operator's real tabs are never touched.
     """
-    subprocess.run(
-        ["osascript", "-e",
-         f'tell application "{app}" to close (every tab of every window '
-         'whose URL contains "EnviousWispr-bakeoff")'],
-        capture_output=True)
+    # Bounded. The script enumerates every tab of every window, which on a browser the
+    # operator actually uses is slow enough to stall a run: measured 2026-09-04, one call
+    # sat for 35 seconds and the bench made no progress behind it. Cleanup is best-effort
+    # housekeeping, so a timeout here costs one noisy cell rather than the whole run.
+    try:
+        subprocess.run(
+            ["osascript", "-e",
+             f'tell application "{app}" to close (every tab of every window '
+             'whose URL contains "EnviousWispr-bakeoff")'],
+            capture_output=True, timeout=20)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def _setup_browser(app: str, bundle_id: str, focus_id: str):
@@ -317,11 +324,38 @@ def _setup_composer(app_name: str, bundle_id: str):
     def setup(pre_image: str, file_token: str) -> tuple[bool, str]:
         if ax_oracle.pid_for_bundle(bundle_id) is None:
             return False, f"{app_name}_not_running"
-        ax_oracle.activate(bundle_id, handoff=2.0)
+        if not ax_oracle.activate(bundle_id, handoff=2.0):
+            return False, f"{app_name}_would_not_come_forward"
+
+        # CLEAR the composer first, and this is correctness rather than tidiness.
+        #
+        # A browser cell gets a brand new tab each trial. A chat composer does not: it
+        # keeps whatever the last trial left. Measured 2026-09-04 — WhatsApp's composer
+        # held `PRE-32EE4C1F The quick brown fox jumps. PRE-ACA6175F The quick brown fox
+        # jumps. PRE-3ED5B80E The quick brown fox jumps.` after three trials, and the
+        # scorer counted the PREVIOUS trial's sentence and reported a DUPLICATE. Those
+        # were the first duplicates this bench had ever produced, in a bench built to
+        # count duplicates, and every one of them was manufactured here.
+        #
+        # Select-all-and-delete is only ever aimed at an element already CONFIRMED to be
+        # an editable text field, so it cannot reach a message list or a document.
+        focused = ax_oracle.read_focused(bundle_id)
+        if not focused.ok or focused.fields[0].role not in EDITABLE_ROLES:
+            return False, f"{app_name}_composer_not_focused"
+        if focused.fields[0].value.strip():
+            subprocess.run(
+                ["osascript", "-e",
+                 'tell application "System Events" to keystroke "a" using command down'],
+                capture_output=True)
+            subprocess.run(
+                ["osascript", "-e",
+                 'tell application "System Events" to key code 51'],
+                capture_output=True)
+
         subprocess.run(
             ["osascript", "-e",
              f'tell application "System Events" to keystroke "{pre_image} "'],
-            capture_output=True)
+            capture_output=True, timeout=20)
         return ax_oracle.assert_precondition(bundle_id, pre_image)
 
     return setup

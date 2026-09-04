@@ -165,7 +165,11 @@ def activate(bundle_id: str, handoff: float = 1.0) -> bool:
             except AttributeError:
                 app.activateWithOptions_(_ACTIVATE_IGNORING)
             break
-    deadline = time.monotonic() + max(handoff, 3.0)
+    # Ten seconds, not three. Measured 2026-09-04: Slack took longer than three to come
+    # forward from a minimised state and every Slack trial was recorded
+    # `would_not_come_forward` — honest, and useless. An activation deadline is a
+    # PARAMETER, and a parameter that is too small turns a slow app into an unmeasured one.
+    deadline = time.monotonic() + max(handoff, 10.0)
     while time.monotonic() < deadline:
         # settle: poll gap between two reads of the signal this loop gates on
         time.sleep(0.25)
