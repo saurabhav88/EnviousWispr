@@ -968,8 +968,11 @@ struct KernelFinalizationWiring {
         // A newline pasted into a terminal CAN submit the line before it. That hazard is real,
         // this code does not remove it, and nothing here should be read as claiming otherwise:
         // what decides the outcome is the terminal's bracketed-paste mode, which we neither set
-        // nor observe. `pipeline-mechanics.md` FACT: insertion-repair-runs-after-the-chain says
-        // the same thing for the repair's own payload.
+        // nor observe. The insertion repair has the same limitation for its own payload, and
+        // refuses a newline outright when the caret context is screen-derived
+        // (`CursorInsertionRepair.swift`, the `isScreenDerived` newline guard). That is a
+        // SEPARATE mechanism in a different module, still live, and untouched here — which is
+        // also why the site count below is scoped to the two modules it names.
         //
         // The branch removed here never addressed that hazard either, on two counts:
         //
