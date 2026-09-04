@@ -9,10 +9,28 @@ public struct SnippetExpansionRecord: Sendable, Equatable {
   public let sentinel: String
   /// The user's saved text, byte-for-byte. Never sent to a model.
   public let expansion: String
+  /// True when THIS SNIPPET OWNS ITS ENDING (#2637), so `SnippetFinalizer` must strip a
+  /// sentence terminator sitting immediately after the sentinel in whatever polish returns.
+  ///
+  /// It records the DECISION, not whether anything was removed from the recogniser's text: a
+  /// whole-dictation snippet the recogniser left unpunctuated still owns its ending, and the
+  /// model is what puts a terminator there.
+  ///
+  /// **The decision has to TRAVEL, because a whole-dictation expansion CAN reach a model.**
+  /// `LLMPolishStep` bypasses polish at three words or fewer, which is why an English lone
+  /// sentinel never gets there — but that gate is whitespace-segmented, and for an unsegmented
+  /// script (ja/zh/th/lo) the sibling gate counts CHARACTERS with a minimum of 10
+  /// (`LLMPolishStep.swift:437`). A sentinel is 38 characters, so it clears that gate every
+  /// time. Measured EG-1 does not add a terminator, but this is not a claim about one model:
+  /// the user picks the provider, and `SnippetFinalizer` substitutes into whatever comes back.
+  public let suppressFollowingSentenceEnding: Bool
 
-  public init(sentinel: String, expansion: String) {
+  public init(
+    sentinel: String, expansion: String, suppressFollowingSentenceEnding: Bool = false
+  ) {
     self.sentinel = sentinel
     self.expansion = expansion
+    self.suppressFollowingSentenceEnding = suppressFollowingSentenceEnding
   }
 }
 
@@ -41,8 +59,9 @@ public struct SnippetExpansionOutcome: Sendable, Equatable {
 /// - A snippet fires only when the keyword is spoken immediately before its trigger.
 /// - Trigger tokens compare through `SnippetText.normalize` — literal, never fuzzy.
 /// - **Longest match wins** when several triggers match at one position.
-/// - Trailing punctuation clinging to the last trigger word is re-attached AFTER the
-///   substitution, so "…backslash my email address." keeps its full stop.
+/// - Trailing punctuation clinging to the last trigger word is normally re-attached AFTER the
+///   substitution, so "…backslash my email address." keeps its full stop. A SENTENCE ending is
+///   suppressed instead when the snippet owns its ending — see `trailingToRestore` (#2637).
 /// - The keyword is consumed on a hit and left in place on a miss, which is what makes
 ///   "the path is backslash users" come through untouched.
 public struct SnippetExpander: Sendable {
@@ -128,8 +147,15 @@ public struct SnippetExpander: Sendable {
       let sentinel = mintSentinel(
         rawInput: text, expansions: vocabulary.snippets.map(\.expansion), alreadyIssued: issued)
       issued.insert(sentinel)
+      let trailing = Self.trailingToRestore(
+        lastToken: lastToken,
+        expansion: hit.snippet.expansion,
+        isWholeDictation: cursor == 0 && cursor + hit.length == wordIndices.count - 1)
       records.append(
-        SnippetExpansionRecord(sentinel: sentinel, expansion: hit.snippet.expansion))
+        SnippetExpansionRecord(
+          sentinel: sentinel,
+          expansion: hit.snippet.expansion,
+          suppressFollowingSentenceEnding: trailing.suppressed))
 
       // The punctuation the user actually spoke belongs AROUND the pasted text, not swallowed
       // with the trigger. Both ends, and both are load-bearing: the opening mark is stripped
@@ -145,12 +171,52 @@ public struct SnippetExpander: Sendable {
       out +=
         SnippetText.leadingPunctuation(token)
         + SnippetText.leadingPunctuation(firstTriggerToken) + sentinel
-        + SnippetText.trailingPunctuation(lastToken)
+        + trailing.restored
       if let gap = Self.whitespaceAfter(lastWordIndex, in: pieces) { out += gap }
       cursor += hit.length + 1
     }
 
     return SnippetExpansionOutcome(text: out, records: records)
+  }
+
+  /// The trailing punctuation to re-attach after the expansion (#2637).
+  ///
+  /// Re-attaching is the DEFAULT and stays: in `Please contact me at <keyword> my email.` the
+  /// full stop is the user's sentence, not the trigger's, and swallowing it was the original
+  /// defect. What changed is that the recogniser's terminator is suppressed in the two cases
+  /// where the snippet's own text is the authority on how it ends.
+  ///
+  /// Founder, 2026-09-03: "People will add punctuation and formatting to their snippet. We
+  /// would honor that."
+  ///
+  /// - `isWholeDictation` — the keyword is the first word and the last trigger word is the
+  ///   last word, so there is no surrounding sentence for the stop to belong to. Parakeet
+  ///   punctuates a complete utterance, and a dictation that is nothing but a snippet phrase
+  ///   IS one, so `Insert my email.` welded a stop onto an email address on every single use.
+  ///   Measured on the founder's own log, three times at 23:22 on 2026-09-03.
+  /// - the saved text already ends a sentence — otherwise a canned reply ending in `.`
+  ///   arrives as `..`
+  ///
+  /// Scoped to a run that is ENTIRELY sentence-ending. A comma, a closing bracket or a closing
+  /// quote is re-attached exactly as before, because the comma in `<keyword> my email, and let
+  /// me know` belongs to the user's sentence and nothing about the snippet makes it wrong.
+  /// Deliberately NOT widened to "strip any terminator": that would need a claim about every
+  /// mark the recogniser can emit, and this needs a claim about three.
+  /// `suppressed` reports the DECISION and is independent of whether the run contained anything
+  /// to remove, because the model is a second source of terminators and the finalizer needs the
+  /// decision either way.
+  ///
+  /// The run is FILTERED rather than tested wholesale. Refusing a run that is not entirely
+  /// sentence-ending looked conservative and left `.\u{201D}` and `.)` untouched, so a saved
+  /// expansion ending in a full stop still arrived as `..\u{201D}` — the exact outcome this
+  /// exists to prevent, hidden behind one closing mark. Only the terminator goes; commas,
+  /// brackets and closing quotes are re-attached exactly as before.
+  static func trailingToRestore(
+    lastToken: String, expansion: String, isWholeDictation: Bool
+  ) -> (restored: String, suppressed: Bool) {
+    let run = SnippetText.trailingPunctuation(lastToken)
+    guard isWholeDictation || SnippetText.endsSentence(expansion) else { return (run, false) }
+    return (SnippetText.droppingSentenceEndings(from: run), true)
   }
 
   /// A sentinel that appears in NONE of: the raw input, any saved expansion, or the sentinels
@@ -212,8 +278,8 @@ public struct SnippetExpander: Sendable {
           matched = false
           break
         }
-        // Only an INTERIOR boundary blocks: punctuation on the LAST token is the sentence the
-        // trigger legitimately ends, and it is re-attached after the expansion. The keyword's
+        // Only an INTERIOR boundary blocks: punctuation on the LAST token belongs to the
+        // trigger's surrounding context and is decided by `trailingToRestore`. The keyword's
         // own boundary is checked by the CALLER, because the keyword is consumed too and this
         // loop cannot see it — see `consumedTokensSpanASentenceBoundary`.
         if offset < tokens.count - 1, SnippetText.endsSentence(piece.text) {

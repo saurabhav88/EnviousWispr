@@ -16,13 +16,22 @@ public enum SnippetText {
   /// Punctuation dropped from the FRONT of a spoken token before comparison.
   static let leading: Set<Character> = ["(", "[", "{", "\"", "'", "\u{201C}", "\u{2018}"]
 
-  /// Punctuation dropped from the END of a spoken token before comparison. This is also the
-  /// set `SnippetExpander` re-attaches AFTER an expansion, so a full stop that clung to the
-  /// last trigger word survives the substitution. The two uses share this one list on purpose:
-  /// a token stripped here and not re-attached there would silently eat the user's punctuation.
-  public static let trailing: Set<Character> = [
-    ".", ",", "!", "?", ";", ":", ")", "]", "}", "\"", "'", "\u{201D}", "\u{2019}",
-  ]
+  /// Punctuation that CLOSES rather than terminates: a bracket or a quote that can sit AFTER a
+  /// full stop and hide it from anything reading only a token's last character (#2605).
+  public static let closing: Set<Character> = [")", "]", "}", "\"", "'", "\u{201D}", "\u{2019}"]
+
+  /// Punctuation dropped from the END of a spoken token before comparison. `SnippetExpander`
+  /// normally re-attaches the same run after the expansion, so a full stop that clung to the
+  /// last trigger word survives the substitution; a SENTENCE ending is suppressed instead when
+  /// the snippet owns its ending (#2637). The two uses share this one list on purpose: a token
+  /// stripped here and re-attached from a different list there would drift.
+  ///
+  /// Composed from the three ROLES rather than spelled out, so the roles cannot drift apart.
+  /// Before #2605 `closing` was a hand-copied subset of a literal list here, which is how a
+  /// closing quote came to be strippable for matching and invisible to `endsSentence` at the
+  /// same time. Membership is pinned by a literal in `SnippetTextPunctuationSetTests`.
+  public static let trailing: Set<Character> =
+    sentenceEnding.union(closing).union([",", ";", ":"])
 
   /// A spoken token reduced to its comparison form.
   ///
@@ -46,9 +55,45 @@ public enum SnippetText {
   public static let sentenceEnding: Set<Character> = [".", "!", "?"]
 
   /// True when this token ends a sentence.
+  ///
+  /// Reads THROUGH trailing whitespace and closing marks rather than at the final character
+  /// (#2605). `my.\u{201D}` ends a sentence; its last character is the quote. The two callers
+  /// need that for different reasons and both failed the same way: the boundary guard let a
+  /// snippet span a real sentence break, and the trailing-punctuation decision could not see
+  /// that a saved expansion already terminated itself.
+  ///
+  /// Whitespace first, because a saved expansion is deliberately NOT trimmed (`SnippetEditSheet`
+  /// keeps a trailing newline that a user meant), so `Saurabh\n` must answer for `Saurabh`.
   public static func endsSentence(_ token: String) -> Bool {
-    guard let last = token.last else { return false }
+    var s = Substring(token).trimmingWhitespace()
+    while let last = s.last, closing.contains(last) { s = s.dropLast() }
+    guard let last = s.last else { return false }
     return sentenceEnding.contains(last)
+  }
+
+  /// The maximal run of trailing punctuation at the START of `s`.
+  ///
+  /// The mirror of `trailingPunctuation`, which reads from the END of a token. This direction
+  /// exists because `SnippetFinalizer` looks FORWARD from a sentinel into text a model wrote,
+  /// and it must see the WHOLE run before deciding anything — a loop that stops at the first
+  /// non-terminator cannot see a full stop standing behind a bracket.
+  public static func punctuationRunPrefix(of s: Substring) -> Substring {
+    var end = s.startIndex
+    while end < s.endIndex, trailing.contains(s[end]) { end = s.index(after: end) }
+    return s[s.startIndex..<end]
+  }
+
+  /// A trailing-punctuation run with its sentence terminators removed and everything else kept,
+  /// in source order.
+  ///
+  /// **This is the one answer to "a terminator can hide behind a closing mark", and every site
+  /// that decides about a run calls it.** Three separate sites each grew their own version of
+  /// that question and two of them got it wrong in the same way — reading only the last
+  /// character, and stopping at the first closer — so the question is asked in one place now.
+  /// A fourth site of this class is not another patch: it means the per-site handling comes out
+  /// and the run is normalised once, at one point.
+  public static func droppingSentenceEndings(from run: some StringProtocol) -> String {
+    String(run.filter { !sentenceEnding.contains($0) })
   }
 
   /// The leading punctuation run on a token, in source order.
