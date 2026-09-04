@@ -248,6 +248,194 @@ struct SnippetExpanderTests {
     #expect(out.text == "email me at EWSNIPcomma today")
   }
 
+  // MARK: - The snippet's own ending wins (#2637)
+
+  /// Speaking ONLY the snippet is how a snippet is mostly used — into an empty field, a search
+  /// box, a form. Parakeet punctuates a complete utterance, and a dictation that is nothing but
+  /// the phrase IS one, so the recogniser writes `snippet.` and the reconstruction welded that
+  /// stop onto an email address every single time. Measured on the founder's log, 2026-09-03
+  /// 23:22, three consecutive takes.
+  @Test("A snippet spoken on its own does not get a full stop welded on")
+  func wholeDictationDropsTheRecognisersStop() {
+    let expander = fixedExpander(["EWSNIPalone"])
+    let out = expander.expand(
+      "backslash my email address.",
+      using: vocabulary([("my email address", "sam@example.com")]))
+
+    #expect(out.text == "EWSNIPalone")
+    #expect(out.records.count == 1)
+    #expect(out.records[0].expansion == "sam@example.com")
+    #expect(out.records[0].suppressFollowingSentenceEnding)
+  }
+
+  /// The two-way control on the test above: with no stop to suppress the output is unchanged,
+  /// so a green there cannot come from the suppression firing on everything.
+  @Test("A snippet spoken on its own with no stop is unchanged")
+  func wholeDictationWithoutAStopIsUnchanged() {
+    let expander = fixedExpander(["EWSNIPalone2"])
+    let out = expander.expand(
+      "backslash my email address",
+      using: vocabulary([("my email address", "sam@example.com")]))
+
+    #expect(out.text == "EWSNIPalone2")
+    // The flag records the DECISION, not whether anything was removed here. A whole-dictation
+    // snippet the recogniser left unpunctuated still owns its ending, and a model is the other
+    // source of a terminator.
+    #expect(out.records[0].suppressFollowingSentenceEnding)
+  }
+
+  /// Scoping control. Suppression is for the recogniser's TERMINATOR, not for punctuation in
+  /// general, so a comma is re-attached exactly as before even in the whole-dictation case.
+  /// Widening this to "strip whatever clings to the last token" is the change this row refuses.
+  @Test("A comma on a snippet spoken on its own is still re-attached")
+  func wholeDictationKeepsANonTerminator() {
+    let expander = fixedExpander(["EWSNIPcomma2"])
+    let out = expander.expand(
+      "backslash my email address,",
+      using: vocabulary([("my email address", "sam@example.com")]))
+
+    #expect(out.text == "EWSNIPcomma2,")
+  }
+
+  /// The in-sentence case is the one the re-attachment exists for and it must not regress: this
+  /// full stop is the USER'S sentence, not the trigger's.
+  @Test("A snippet inside a sentence still keeps the sentence's full stop")
+  func inSentenceKeepsTheStop() {
+    let expander = fixedExpander(["EWSNIPmid"])
+    let out = expander.expand(
+      "please contact me at backslash my email address.",
+      using: vocabulary([("my email address", "sam@example.com")]))
+
+    #expect(out.text == "please contact me at EWSNIPmid.")
+    #expect(!out.records[0].suppressFollowingSentenceEnding)
+  }
+
+  /// Founder, 2026-09-03: "People will add punctuation and formatting to their snippet. We
+  /// would honor that." A canned reply that ends itself must not arrive with a second stop.
+  @Test("A saved expansion that already ends a sentence does not get a second stop")
+  func expansionEndingASentenceSuppressesTheStop() {
+    let expander = fixedExpander(["EWSNIPsig"])
+    let out = expander.expand(
+      "tell them backslash my sign off. Then send it.",
+      using: vocabulary([("my sign off", "Let me know if that works.")]))
+
+    #expect(out.text == "tell them EWSNIPsig Then send it.")
+    #expect(out.records[0].expansion == "Let me know if that works.")
+  }
+
+  /// A saved expansion is deliberately NOT trimmed on save, so a real multi-line snippet ends
+  /// with the newline the user typed. Reading only the final character answers `newline`, which
+  /// is why the whitespace hop is inside `endsSentence` rather than at this call site.
+  @Test("A trailing newline does not hide the expansion's own full stop")
+  func expansionEndingASentenceThenANewline() {
+    let expander = fixedExpander(["EWSNIPnl"])
+    let out = expander.expand(
+      "tell them backslash my sign off. Then send it.",
+      using: vocabulary([("my sign off", "Speak soon.\n")]))
+
+    #expect(out.text == "tell them EWSNIPnl Then send it.")
+  }
+
+  /// An expansion that does NOT end a sentence is the other half of the pair, and without it a
+  /// suppression that fired on every in-sentence expansion would still pass the row above.
+  @Test("An expansion that ends mid-phrase still receives the sentence's stop")
+  func expansionNotEndingASentenceKeepsTheStop() {
+    let expander = fixedExpander(["EWSNIPmid2"])
+    let out = expander.expand(
+      "tell them backslash my sign off. Then send it.",
+      using: vocabulary([("my sign off", "Best,\nSaurabh")]))
+
+    #expect(out.text == "tell them EWSNIPmid2. Then send it.")
+  }
+
+  /// "Whole dictation" has to mean the WHOLE dictation. With two snippets neither one is, so
+  /// both keep their marks — the guard cannot be reading "a snippet fired" and calling it whole.
+  @Test("With two snippets in one utterance neither counts as the whole dictation")
+  func twoSnippetsAreNeitherWhole() {
+    let expander = fixedExpander(["EWSNIPa", "EWSNIPb"])
+    let out = expander.expand(
+      "backslash my email. backslash my cell.",
+      using: vocabulary([("my email", "sam@example.com"), ("my cell", "555-0100")]))
+
+    #expect(out.text == "EWSNIPa. EWSNIPb.")
+    #expect(out.records.count == 2)
+  }
+
+  /// A terminator hidden inside a MIXED run. Testing the run wholesale ("is every character a
+  /// terminator?") looked conservative and left this untouched, so a self-terminating expansion
+  /// still arrived as `..\u{201D}` — the defect this exists to prevent, behind one closing mark.
+  @Test("A full stop followed by a closing quote is suppressed, and the quote is kept")
+  func mixedTrailingRunLosesOnlyTheTerminator() {
+    let expander = fixedExpander(["EWSNIPmix"])
+    let out = expander.expand(
+      "he said \u{201C}backslash my sign off.\u{201D} Then he left.",
+      using: vocabulary([("my sign off", "Let me know if that works.")]))
+
+    #expect(out.text == "he said \u{201C}EWSNIPmix\u{201D} Then he left.")
+    #expect(out.records[0].suppressFollowingSentenceEnding)
+  }
+
+  // MARK: - A sentence boundary hiding behind a closing mark (#2605)
+
+  /// `endsSentence` read only a token's FINAL character, so a stop followed by a closing quote
+  /// was invisible and a snippet could span a real sentence break, eating the first words of
+  /// the next sentence. The quote is what makes this different from the plain boundary rows
+  /// above, so those passing says nothing about this one.
+  @Test("A sentence boundary hidden behind a closing quote blocks the match")
+  func boundaryBehindAClosingQuoteBlocks() {
+    let expander = fixedExpander(["EWSNIPquote"])
+    let out = expander.expand(
+      "he said backslash my.\u{201D} Email address is below",
+      using: vocabulary([("my email address", "sam@example.com")]))
+
+    #expect(out.text == "he said backslash my.\u{201D} Email address is below")
+    #expect(out.records.isEmpty)
+  }
+
+  /// The same shape with a closing bracket, because the fix hops a SET and a row proving one
+  /// member proves only that member.
+  @Test("A sentence boundary hidden behind a closing bracket blocks the match")
+  func boundaryBehindAClosingBracketBlocks() {
+    let expander = fixedExpander(["EWSNIPparen"])
+    let out = expander.expand(
+      "he said (backslash my.) Email address is below",
+      using: vocabulary([("my email address", "sam@example.com")]))
+
+    #expect(out.records.isEmpty)
+  }
+
+  // MARK: - The punctuation sets themselves
+
+  /// `trailing` is composed from the three roles rather than spelled out, so this pins the
+  /// resulting MEMBERSHIP against a literal. Building the expectation from the same union would
+  /// pass against any definition, including one that dropped a role entirely.
+  @Test("The trailing set is exactly the thirteen marks normalisation strips")
+  func trailingSetMembershipIsPinned() {
+    #expect(
+      SnippetText.trailing == Set<Character>([
+        ".", ",", "!", "?", ";", ":", ")", "]", "}", "\"", "'", "\u{201D}", "\u{2019}",
+      ]))
+    #expect(SnippetText.sentenceEnding.isSubset(of: SnippetText.trailing))
+    #expect(SnippetText.closing.isSubset(of: SnippetText.trailing))
+    #expect(SnippetText.sentenceEnding.isDisjoint(with: SnippetText.closing))
+  }
+
+  @Test("endsSentence reads through trailing closing marks and whitespace")
+  func endsSentenceReadsThroughClosersAndWhitespace() {
+    #expect(SnippetText.endsSentence("done."))
+    #expect(SnippetText.endsSentence("my.\u{201D}"))
+    #expect(SnippetText.endsSentence("email.)"))
+    #expect(SnippetText.endsSentence("done.\"'"))
+    #expect(SnippetText.endsSentence("Speak soon.\n"))
+    #expect(SnippetText.endsSentence("What?  "))
+
+    #expect(!SnippetText.endsSentence("Saurabh"))
+    #expect(!SnippetText.endsSentence("email,"))
+    #expect(!SnippetText.endsSentence("\u{201D}"))
+    #expect(!SnippetText.endsSentence(""))
+    #expect(!SnippetText.endsSentence("   "))
+  }
+
   // MARK: - The disabled path, which is what an ordinary user takes
 
   @Test("An empty store returns the input unchanged and identical")

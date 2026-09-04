@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import EnviousWisprPostProcessing
 import Foundation
 
@@ -100,9 +101,52 @@ enum SnippetFinalizer {
   ) -> String {
     var out = text
     for record in records {
+      if record.suppressFollowingSentenceEnding {
+        out = removingSentenceEndingsAfter(record.sentinel, in: out)
+      }
       out = out.replacingOccurrences(of: record.sentinel, with: record.expansion)
     }
     return out
+  }
+
+  /// Drop any sentence terminator sitting immediately after a sentinel whose snippet owns its
+  /// ending (#2637).
+  ///
+  /// **The model is the LAST writer, so the expander's decision cannot be enforced upstream of
+  /// it.** `SnippetExpander` removes the recogniser's terminator; polish then receives the
+  /// sentinel and can put one back, and this type substitutes into that output.
+  ///
+  /// A lone sentinel reaching a model is not hypothetical. `LLMPolishStep` bypasses polish at
+  /// three words or fewer, which covers the English case — but that gate is whitespace-based,
+  /// and the sibling gate for unsegmented scripts (ja/zh/th/lo) counts CHARACTERS with a
+  /// minimum of 10 (`LLMPolishStep.swift:437`). A sentinel is 38 characters and clears it every
+  /// time. EG-1 was measured not to add a terminator; the user chooses the provider, so that is
+  /// a fact about one model rather than about the path.
+  ///
+  /// Applied to the deterministic text too, where it is a no-op by construction. That is the
+  /// point: one path cannot drift from the other by having the rule in only one of them.
+  ///
+  /// Scoped to `sentenceEnding`. A comma the model added is the model punctuating a sentence it
+  /// can see, and this leaves it alone, as it leaves brackets and closing quotes alone.
+  ///
+  /// **Reads the WHOLE punctuation run before deciding, never a terminator prefix.** A loop that
+  /// stopped at the first non-terminator left the period in `(EWSNIPccc).` and `"EWSNIPccc".`,
+  /// which is the trailing-period bug back again for a quoted or bracketed snippet. That is the
+  /// same property as `endsSentence` reading only a token's last character and as the expander
+  /// once refusing a mixed run, so all three now ask `SnippetText.droppingSentenceEndings`.
+  private static func removingSentenceEndingsAfter(
+    _ sentinel: String, in text: String
+  ) -> String {
+    var out = ""
+    var rest = Substring(text)
+    while let found = rest.range(of: sentinel) {
+      out += rest[rest.startIndex..<found.upperBound]
+      let after = rest[found.upperBound...]
+      let run = SnippetText.punctuationRunPrefix(of: after)
+      out += SnippetText.droppingSentenceEndings(from: run)
+      rest = after[run.endIndex...]
+    }
+    return out + rest
   }
 
   private static func occurrences(of needle: String, in haystack: String) -> Int {
