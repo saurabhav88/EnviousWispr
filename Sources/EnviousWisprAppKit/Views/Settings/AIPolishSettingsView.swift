@@ -477,7 +477,9 @@ struct AIPolishSettingsView: View {
       // #2649: S1-mini is one model with three dials. They are text at the top
       // of every request, not model variants, so they live in a card of their
       // own rather than in the model picker (which this engine does not show).
-      if settings.llmProvider == .s1Mini {
+      if S1ControlCardVisibility.shows(
+        provider: settings.llmProvider, effectiveModel: settings.effectiveLLMModel)
+      {
         detailCard(label: S1ControlCopy.cardLabel) {
           s1ControlRows
           FrozenPerRecordingFootnote()
@@ -1244,7 +1246,7 @@ struct AIPolishSettingsView: View {
       .settingsReadingCopy()
 
       Text(
-        "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there. Handles dictations up to about 20 minutes."
+        "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there. Handles dictations up to about \(LocalEngineDescriptor.egOne.dictationMinutes) minutes."
       )
       .settingsReadingCopy()
     }
@@ -1277,7 +1279,7 @@ struct AIPolishSettingsView: View {
       .settingsReadingCopy()
 
       Text(
-        "When to use it. Pick \(LLMProvider.s1Mini.displayName) if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice. Best for dictations up to about 12 minutes."
+        "When to use it. Pick \(LLMProvider.s1Mini.displayName) if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice. Best for dictations up to about \(LocalEngineDescriptor.s1Mini.dictationMinutes) minutes."
       )
       .settingsReadingCopy()
     }
@@ -2258,6 +2260,24 @@ struct AIPolishSettingsView: View {
       .buttonStyle(.borderless)
       .help("Prepare model")
       .accessibilityLabel("Prepare model")
+    }
+  }
+}
+
+// MARK: - S1-mini control-line card visibility (#2649)
+
+/// Who gets the writing-style card. The managed engine, AND an S1-mini the
+/// user pulled into Ollama themselves: the planner sends that route the same
+/// control line from the same persisted picks (`DefaultPromptPlanner.family`),
+/// so hiding the card there would leave those users configured by a setting
+/// they cannot see. Same recogniser as the planner, so the two cannot disagree
+/// about which Ollama models count.
+enum S1ControlCardVisibility {
+  static func shows(provider: LLMProvider, effectiveModel: String) -> Bool {
+    switch provider {
+    case .s1Mini: return true
+    case .ollama: return OllamaSetupService.isS1MiniModel(effectiveModel)
+    case .egOne, .appleIntelligence, .openAI, .gemini, .claude, .none: return false
     }
   }
 }

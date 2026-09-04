@@ -7,11 +7,13 @@ import Testing
 /// #2649 §3.6.1, founder-added scope. Every on-device engine's "Why use"
 /// section states how long a dictation it handles.
 ///
-/// **A number on a settings screen is a public claim with no compiler.** Two of
-/// these sentences borrow #2648's measurements rather than this change's own
-/// runs, so if that harness re-measures, this copy is a thing it has to update.
-/// This suite is the reminder: it fails loudly rather than letting a stale
-/// number sit on screen unnoticed.
+/// **A number on a settings screen is a public claim with no compiler.** The
+/// two bundled-engine sentences used to carry typed numbers borrowed from
+/// #2648's measurements, and a review found them false against the shipped
+/// length guard. They are now DERIVED (`LocalEngineDescriptor.dictationMinutes`
+/// reads the guard's own ceiling), so this suite pins the derived FORM here and
+/// `LocalEngineDescriptorTests` pins the numbers it renders. Apple Intelligence
+/// still carries a typed number; it has no local guard to derive from.
 @Suite("Polish length copy (#2649)", .tags(.driftGuard))
 struct PolishLengthCopyTests {
   static var settingsSource: String {
@@ -32,8 +34,10 @@ struct PolishLengthCopyTests {
     #expect(!source.isEmpty, "a check that cannot reach its subject is not a check")
 
     for sentence in [
-      "Handles dictations up to about 20 minutes.",            // EG-1
-      "Best for dictations up to about 12 minutes.",           // S1-mini
+      // EG-1 and S1-mini: the number is interpolated from the guard, so the
+      // source must carry the interpolation and never a typed digit.
+      #"Handles dictations up to about \(LocalEngineDescriptor.egOne.dictationMinutes) minutes."#,
+      #"Best for dictations up to about \(LocalEngineDescriptor.s1Mini.dictationMinutes) minutes."#,
       "Handles dictations up to about 8 minutes.",             // Apple Intelligence
       "How long a dictation it handles depends on the model you choose.",  // Ollama
     ] {
@@ -48,6 +52,8 @@ struct PolishLengthCopyTests {
     let source = Self.settingsSource
     for exact in [
       "up to 20 minutes", "up to 12 minutes", "up to 8 minutes",
+      // The retired typed numbers must not come back beside the derived ones.
+      "about 20 minutes", "about 12 minutes",
     ] {
       #expect(
         !source.contains(exact),

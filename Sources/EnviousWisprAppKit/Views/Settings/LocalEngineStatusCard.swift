@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprPipeline
 import SwiftUI
 
 /// Which bundled local engine a status card is about (#2649).
@@ -22,9 +23,29 @@ struct LocalEngineDescriptor: Equatable {
   /// strains one; S1-mini is a sixth of that and does not, so the warning would
   /// be noise that teaches users to ignore the real one.
   let showsLowMemoryNote: Bool
+  /// The engine's context window, bound to its manifest by
+  /// `LocalEngineDescriptorTests`. Here so the dictation-length promise in the
+  /// explainer is DERIVED from the guard that enforces it, never typed.
+  let contextTokens: Int
+
+  /// Characters of dictated English per minute, for turning the guard's
+  /// character ceiling into the "about N minutes" a user can act on. 150 words
+  /// a minute at 5.5 characters a word plus the space. An estimate, stated as
+  /// "about", and deliberately on the generous side of typical speech so the
+  /// promise rounds down rather than up.
+  static let charactersPerDictatedMinute = 850
+
+  /// The longest dictation the shipped path polishes whole, to the nearest
+  /// minute. Reads the pipeline's own ceiling so a guard change moves the
+  /// copy with it (#2649 cloud review P2).
+  var dictationMinutes: Int {
+    let ceiling = LLMPolishStep.localPolishTranscriptCeiling(contextTokens: contextTokens)
+    return Int((Double(ceiling) / Double(Self.charactersPerDictatedMinute)).rounded())
+  }
 
   static let egOne = LocalEngineDescriptor(
-    name: "EG-1", downloadSize: "2.9 GB", installHeadroom: "6 GB", showsLowMemoryNote: true)
+    name: "EG-1", downloadSize: "2.9 GB", installHeadroom: "6 GB", showsLowMemoryNote: true,
+    contextTokens: 16384)
 
   static let s1Mini = LocalEngineDescriptor(
     // 484,219,808 bytes. Stated DECIMAL, because that is what EG-1's "2.9 GB"
@@ -32,7 +53,7 @@ struct LocalEngineDescriptor: Equatable {
     // The publisher's card says "462 MiB" for the same file; quoting that here
     // would have the app disagree with the user's own disk.
     name: LLMProvider.s1Mini.displayName, downloadSize: "484 MB", installHeadroom: "1 GB",
-    showsLowMemoryNote: false)
+    showsLowMemoryNote: false, contextTokens: 8192)
 }
 
 /// The actionable status/download/remove card for a bundled local engine.

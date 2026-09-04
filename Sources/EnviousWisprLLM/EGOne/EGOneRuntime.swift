@@ -126,6 +126,16 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// stop the server and delete the artifact underneath a recording that
   /// still needs it.
   public var isPinnedInFlight: (@MainActor () -> Bool)?
+  /// Live "did an in-flight recording freeze the OTHER local engine?" read,
+  /// set by the composition root (#2649, cloud review P1). Two engines share
+  /// one server, so starting this one evicts whichever is resident, and a
+  /// recording that froze the other engine would then silently polish to raw.
+  /// `PipelineSettingsSync` already defers its own reconciliation on this
+  /// condition; this closure puts the same refusal on the two entry points
+  /// that bypass it, the status card's refresh button and a completed
+  /// download's auto-start. The deferred reconciliation retries once the
+  /// recording ends, so a refused start is delayed, never lost.
+  public var isBlockedByOtherPinnedSession: (@MainActor () -> Bool)?
   private var removalPending = false
 
   public let manifest: EGOneManifest?
@@ -511,6 +521,10 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // followed by re-selecting EG-1 still deletes the model the user just
     // re-picked once the recording ends (#1271 seam review P1).
     removalPending = false
+    // Refused, not deferred here: the sync layer owns the retry and already
+    // has one pending for exactly this situation (a switch that arrived while
+    // the other engine's take was in flight).
+    if isBlockedByOtherPinnedSession?() == true { return nil }
     guard let manifest, activationBlockers.isEmpty else {
       // Blocked manifest = spawn will never run this session, so its
       // pre-spawn sweep never reaps a crash orphan; reap here (idle-gated

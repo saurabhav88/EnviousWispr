@@ -151,6 +151,41 @@ import Testing
       event == .healthChanged(from: "yellow", to: "red", reason: "server_binary_missing"))
   }
 
+  /// #2649 (cloud review P1): the two bundled engines share one server, so a
+  /// direct activation of THIS engine, from the status card's refresh button
+  /// or a completed download, would evict the engine a running take froze and
+  /// that take would silently polish to raw. Both direct entry points refuse
+  /// while the OTHER engine is pinned; the sync layer's deferred retry starts
+  /// this one once the take ends.
+  @MainActor
+  @Test func directActivationRefusesWhileTheOtherEngineIsPinnedInFlight() async throws {
+    let h = try makeHarness(egOneActive: true)
+    defer { h.cleanup() }
+    try stageValidShards(h.registration)
+    #expect(await h.adapter.adoptIfPresent())
+    h.runtime.isBlockedByOtherPinnedSession = { true }
+
+    // Refresh button path.
+    #expect(h.runtime.activateAndProbe() == nil)
+    // Completed-download path.
+    #expect(h.runtime.activateAfterAutomaticReplacementIfNeeded() == nil)
+    // Nothing reached the server manager: the missing-binary signal that a
+    // real start produces on this harness never fires.
+    for _ in 0..<50 { await Task.yield() }
+    #expect(!h.signal.sawServerBinaryMissing)
+
+    // Two-way control: the same runtime, unblocked, starts (and reports the
+    // missing binary exactly as the row above this one does).
+    h.runtime.isBlockedByOtherPinnedSession = { false }
+    _ = try #require(h.runtime.activateAndProbe())
+    let event = await h.signal.next { event in
+      if case .healthChanged(_, _, "server_binary_missing") = event { return true }
+      return false
+    }
+    #expect(
+      event == .healthChanged(from: "yellow", to: "red", reason: "server_binary_missing"))
+  }
+
   @MainActor
   @Test func automaticReplacementAdmissionDoesNotStartWhenPolishIsOff() async throws {
     // Polish off IS provider .none (LLMPolishStep.isEnabled == llmProvider != .none):

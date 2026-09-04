@@ -95,6 +95,21 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// check from where checking matters.
   package nonisolated static let localPromptOverheadBytes = 1536
 
+  /// The longest ASCII transcript the context preflight below admits for a
+  /// local engine with this window, in characters. ONE formula, read by the
+  /// settings copy that promises a dictation length, so the promise cannot
+  /// outrun the guard (#2649 cloud review P2: the S1-mini explainer claimed
+  /// 12 minutes against a guard that skips anything over about 4).
+  ///
+  /// Derived from the preflight's own terms, worst case on both sides: input
+  /// counted in bytes (ASCII: one per character), output budget equal to the
+  /// input length, plus the prompt overhead. For ASCII that solves to
+  /// `(window - overhead) / 2`. Non-ASCII text admits fewer characters, which
+  /// is the safe direction for a promise.
+  public nonisolated static func localPolishTranscriptCeiling(contextTokens: Int) -> Int {
+    max(0, (contextTokens - localPromptOverheadBytes) / 2)
+  }
+
   public var egOneRuntime: (any EGOneEndpointProviding)?
 
   /// S1-mini runtime handle (#2649). SEPARATE from EG-1's, deliberately: both

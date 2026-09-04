@@ -82,7 +82,9 @@ struct S1MiniPipelineRoutingTests {
     return step
   }
 
-  private func run(_ step: LLMPolishStep, spy: CaptureSpy) async throws
+  private func run(
+    _ step: LLMPolishStep, spy: CaptureSpy, rawText: String = S1MiniPipelineRoutingTests.transcript
+  ) async throws
     -> TextProcessingRunResult
   {
     let executor = FakeTimeoutExecutor(throwBelowSeconds: 0.0)
@@ -92,7 +94,62 @@ struct S1MiniPipelineRoutingTests {
         recordPolishSkipped: TextProcessingRunner.TelemetrySeams.live.recordPolishSkipped),
       timeoutExecutor: executor.run)
     return try await runner.run(
-      rawText: Self.transcript, evidence: .locked("en"), targetAppName: nil, steps: [step])
+      rawText: rawText, evidence: .locked("en"), targetAppName: nil, steps: [step])
+  }
+
+  /// Records whether the connector was reached, and echoes the input so the
+  /// output validator has nothing to reject on a long transcript.
+  @MainActor
+  final class ReachedBox { var reached = false }
+
+  private struct EchoPolisher: TranscriptPolisher {
+    let box: ReachedBox
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      await MainActor.run { box.reached = true }
+      return LLMResult(polishedText: text)
+    }
+    func polish(
+      envelope: PromptEnvelope, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      await MainActor.run { box.reached = true }
+      let user = envelope.messages.last { $0.role == .user }?.content ?? ""
+      return LLMResult(polishedText: String(user.split(separator: "\n", maxSplits: 1).last ?? ""))
+    }
+  }
+
+  /// #2649 cloud review P2: the settings copy promises a dictation length
+  /// DERIVED from `localPolishTranscriptCeiling`, so that function must agree
+  /// with the guard it describes. Boundary on both sides: a transcript of
+  /// exactly the ceiling reaches the connector; one character more is skipped
+  /// whole, silently.
+  @Test("the published transcript ceiling is exactly where the length guard bites")
+  func ceilingMatchesTheGuard() async throws {
+    let window = 8192
+    let ceiling = LLMPolishStep.localPolishTranscriptCeiling(contextTokens: window)
+    #expect(ceiling == 3328)
+    let endpoint = EGOneEndpoint(port: 1, authToken: "t", contextTokens: window)
+    // Words, not one long token: the runner's other steps treat the text as
+    // prose, and the guard counts bytes either way.
+    func transcript(_ count: Int) -> String {
+      var s = ""
+      while s.count < count { s += (s.count % 6 == 5) ? " " : "a" }
+      return s
+    }
+
+    for (length, shouldReach) in [(ceiling, true), (ceiling + 1, false)] {
+      let box = ReachedBox()
+      let step = makeStep(s1Runtime: FakeRuntime(endpoint: endpoint))
+      step.makeS1MiniPolisher = { _ in EchoPolisher(box: box) }
+      let spy = CaptureSpy()
+      let result = try await run(step, spy: spy, rawText: transcript(length))
+      #expect(box.reached == shouldReach, "length \(length)")
+      #expect(spy.count == 0, "the skip is silent either way")
+      if !shouldReach { #expect(result.context.polishedText == nil) }
+    }
   }
 
   @Test("no S1-mini runtime handle means a silent raw fallback")

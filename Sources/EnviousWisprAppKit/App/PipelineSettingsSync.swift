@@ -95,6 +95,18 @@ final class PipelineSettingsSync {
     s1MiniRuntime?.isPinnedInFlight = { [weak self] in
       self?.pinnedLocalProvider() == .s1Mini
     }
+    // #2649 (cloud review P1): a direct activation (refresh button, completed
+    // download) must not evict the engine a running take froze. Same authority
+    // as `reconcileEGOneActivation`'s own defer, wired to the two entry points
+    // that do not pass through it.
+    egOneRuntime?.isBlockedByOtherPinnedSession = { [weak self] in
+      guard let pinned = self?.pinnedLocalProvider() else { return false }
+      return pinned != .egOne
+    }
+    s1MiniRuntime?.isBlockedByOtherPinnedSession = { [weak self] in
+      guard let pinned = self?.pinnedLocalProvider() else { return false }
+      return pinned != .s1Mini
+    }
   }
 
   /// #1271 (Codex r2): EG-1 server lifecycle follows the PROVIDER SETTING,

@@ -38,6 +38,25 @@ struct S1ControlCopyTests {
     #expect(!S1ControlCopy.intro.contains("SuperWhisper"))
   }
 
+  /// Who sees the card (#2649 cloud review P2). An S1-mini pulled into Ollama
+  /// gets the same control line from the same picks, so it must get the same
+  /// card; every other engine must not, or a picker would appear for a model
+  /// that ignores it.
+  @Test("the card shows for the managed engine and for an Ollama S1-mini, and nowhere else")
+  func cardVisibility() {
+    #expect(S1ControlCardVisibility.shows(provider: .s1Mini, effectiveModel: "s1-mini"))
+    #expect(
+      S1ControlCardVisibility.shows(
+        provider: .ollama, effectiveModel: "hf.co/superwhisper/s1-mini-GGUF:Q4_K_M"))
+    #expect(!S1ControlCardVisibility.shows(provider: .ollama, effectiveModel: "qwen2.5:3b"))
+    #expect(!S1ControlCardVisibility.shows(provider: .ollama, effectiveModel: "eg-1"))
+    for provider in [LLMProvider.egOne, .appleIntelligence, .openAI, .gemini, .claude, .none] {
+      #expect(
+        !S1ControlCardVisibility.shows(provider: provider, effectiveModel: "s1-mini"),
+        Comment(rawValue: provider.rawValue))
+    }
+  }
+
   /// Every segment label is a distinct word, so two options can never render
   /// as the same pill.
   @Test("option labels are distinct within each axis")

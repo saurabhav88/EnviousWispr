@@ -5,6 +5,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
 @testable import EnviousWisprModelDelivery
+@testable import EnviousWisprPipeline
 
 /// #2649. The two bundled engines render through ONE status card, so what makes
 /// them different is a value, and these rows are about that value being right.
@@ -46,6 +47,45 @@ struct LocalEngineDescriptorTests {
     #expect(
       abs(Double(manifest.totalBytes) / 1_048_576 - claimed) > 20,
       "484 and 462 must not both satisfy this row, or the unit is untested")
+  }
+
+  /// #2649 cloud review P2. The explainer's "up to about N minutes" used to be
+  /// typed (12 for S1-mini, 20 for EG-1) against a preflight that skips any
+  /// transcript over about 4 and 9 minutes respectively. Now the number is
+  /// DERIVED from the guard, and these rows bind both ends: the window each
+  /// descriptor carries is the window its manifest ships, and the minutes are
+  /// what the guard's ceiling actually allows.
+  @Test("each engine's context window is the one its manifest ships")
+  func contextWindowsMatchManifests() throws {
+    for (descriptor, leaf) in [
+      (LocalEngineDescriptor.s1Mini, "s1-manifest.json"),
+      (LocalEngineDescriptor.egOne, "eg1-manifest.json"),
+    ] {
+      let url = ParakeetShippedManifestTests.repoRoot
+        .appendingPathComponent("Sources/EnviousWispr/Resources/\(leaf)")
+      let manifest = try JSONDecoder().decode(EGOneManifest.self, from: Data(contentsOf: url))
+      #expect(descriptor.contextTokens == manifest.contextTokens, Comment(rawValue: leaf))
+    }
+  }
+
+  @Test("the promised dictation length is what the length guard admits")
+  func dictationMinutesFollowTheGuard() {
+    for descriptor in [LocalEngineDescriptor.s1Mini, LocalEngineDescriptor.egOne] {
+      let ceiling = LLMPolishStep.localPolishTranscriptCeiling(
+        contextTokens: descriptor.contextTokens)
+      let minutes = descriptor.dictationMinutes
+      // A whole dictation of the promised length fits under the guard.
+      #expect(
+        Double(minutes) * Double(LocalEngineDescriptor.charactersPerDictatedMinute)
+          <= Double(ceiling) + Double(LocalEngineDescriptor.charactersPerDictatedMinute) / 2,
+        Comment(rawValue: descriptor.name))
+      #expect(minutes >= 1, Comment(rawValue: descriptor.name))
+    }
+    // The numbers the copy renders today, pinned so a silent drift is loud.
+    // 8,192 tokens: (8192 - 1536) / 2 = 3,328 characters, about 4 minutes.
+    // 16,384 tokens: (16384 - 1536) / 2 = 7,424 characters, about 9 minutes.
+    #expect(LocalEngineDescriptor.s1Mini.dictationMinutes == 4)
+    #expect(LocalEngineDescriptor.egOne.dictationMinutes == 9)
   }
 
   @Test("EG-1's stated download size is the size of the file we actually serve")
