@@ -141,10 +141,32 @@ public final class LLMNetworkSession: Sendable {
     }
   }
 
+  /// The idle timeout every LLM request gets, and the ONLY place it is written.
+  ///
+  /// #2635: it used to be restated as `request.timeoutInterval = 60` at five call
+  /// sites as well. Those were not decoration — MEASURED 2026-09-04 against a
+  /// server that accepts and never answers, a per-request value WINS over the
+  /// session's in both directions (config 2s + request 8s timed out at 8.00s;
+  /// config 8s + request 2s timed out at 2.00s; request unset fell back to the
+  /// config's 2s at 2.02s). Both numbers were 60, so they agreed and the
+  /// shadowing was invisible — anyone raising THIS value to chase a slow provider
+  /// would have changed nothing, because every request overrode it straight back.
+  ///
+  /// Apple's inactivity model: the timer resets whenever new data arrives, so
+  /// this bounds silence, never total duration. Total duration is
+  /// `resourceTimeoutSeconds` below.
+  public static let requestTimeoutSeconds: TimeInterval = 60
+
+  /// The whole-transfer ceiling. `LLMPolishStep.cloudMaxBudgetSeconds` caps the
+  /// polish budget to match it: beyond this the transport kills the attempt
+  /// regardless, so a larger logical budget buys another attempt rather than
+  /// preserving the first response.
+  public static let resourceTimeoutSeconds: TimeInterval = 180
+
   private init() {
     let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 60
-    config.timeoutIntervalForResource = 180
+    config.timeoutIntervalForRequest = Self.requestTimeoutSeconds
+    config.timeoutIntervalForResource = Self.resourceTimeoutSeconds
     config.waitsForConnectivity = false
     config.networkServiceType = .responsiveData
     session = URLSession(configuration: config)

@@ -271,13 +271,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// That base was 5 s when #1831 wrote this and is 15 s since #2093; the point
   /// the paragraph makes is that there is only one of it, not what it equals.
   ///
-  /// Capped at 180 s to match `URLSession`'s `timeoutIntervalForResource`
-  /// (`LLMNetworkSession`): beyond that the transport terminates the attempt
-  /// anyway, so a larger logical budget buys another long attempt rather than
-  /// preserving the first response.
+  /// Capped at `LLMNetworkSession.resourceTimeoutSeconds`, which this file now
+  /// READS rather than restating (#2635): beyond that the transport terminates
+  /// the attempt anyway, so a larger logical budget buys another long attempt
+  /// rather than preserving the first response.
   ///
   /// Transport liveness is NOT reimplemented here — the shared session already
-  /// provides a 60 s inter-data idle timer and the 180 s resource cap.
+  /// provides the inter-data idle timer (`requestTimeoutSeconds`) and the
+  /// whole-transfer cap (`resourceTimeoutSeconds`). Both numbers live there and
+  /// nowhere else, so this paragraph cannot go stale by them changing.
   /// Reads `llmProvider` live, exactly as the existing `maxDuration` above
   /// already does at this same call site. Safe because `PipelineSettingsSync`
   /// deliberately does NOT mirror it onto a live step — `.llmProvider` ("live
@@ -311,9 +313,14 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   private static let cloudBaseSeconds: Double = 15
   /// Budgeted throughput, ~2.6x slower than the slowest measured rate (#1770).
   private static let cloudCharsPerSecond: Double = 500
-  /// Matches `URLSession.timeoutIntervalForResource`; beyond it the transport
-  /// kills the attempt regardless.
-  private static let cloudMaxBudgetSeconds: Double = 180
+  /// #2635: READS the transport ceiling rather than restating it. It used to be
+  /// a literal `180` with a comment claiming it matched
+  /// `URLSession.timeoutIntervalForResource` — a claim nothing enforced, so the
+  /// two could drift apart with the comment still asserting they had not.
+  /// Beyond this the transport kills the attempt regardless, so a larger logical
+  /// budget buys another attempt rather than preserving the first response.
+  private static let cloudMaxBudgetSeconds: Double =
+    LLMNetworkSession.resourceTimeoutSeconds
 
   public init(keychainManager: KeychainManager) {
     self.keychainManager = keychainManager
