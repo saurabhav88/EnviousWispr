@@ -99,6 +99,10 @@ public actor EGOneServerManager {
 
   public init() {}
 
+  /// #2649: read the current state without registering, so the coordinator can
+  /// seed a per-model observer without disturbing the single manager observer.
+  public func currentState() -> ServerState { state }
+
   public func setStateObserver(_ observer: @escaping @Sendable (ServerState) -> Void) {
     onStateChange = observer
     observer(state)
@@ -242,7 +246,7 @@ public actor EGOneServerManager {
     } catch {
       transition(to: .failed(reason: "spawn_failed"))
       await AppLogger.shared.log(
-        "EG-1 server spawn failed: \(error.localizedDescription)",
+        "Local polish server spawn failed: \(error.localizedDescription)",
         level: .info, category: "LLM")
       return
     }
@@ -277,7 +281,7 @@ public actor EGOneServerManager {
     guard case .starting = state else { return }
     transition(to: .ready(endpoint))
     await AppLogger.shared.log(
-      "EG-1 server ready on 127.0.0.1:\(port)", level: .info, category: "LLM")
+      "Local polish server ready on 127.0.0.1:\(port)", level: .info, category: "LLM")
   }
 
   private func handleTermination(configuration: Configuration, generation: Int) async {
@@ -297,7 +301,7 @@ public actor EGOneServerManager {
     if restartedOnceThisGeneration {
       transition(to: .failed(reason: "crashed_twice"))
       await AppLogger.shared.log(
-        "EG-1 server crashed twice this session — staying down", level: .info, category: "LLM")
+        "Local polish server crashed twice this session — staying down", level: .info, category: "LLM")
       return
     }
     restartedOnceThisGeneration = true
@@ -306,7 +310,7 @@ public actor EGOneServerManager {
     // endpoint and `start()` would no-op against a lie (#1271 seam review).
     transition(to: .starting)
     await AppLogger.shared.log(
-      "EG-1 server crashed — restarting once", level: .info, category: "LLM")
+      "Local polish server crashed — restarting once", level: .info, category: "LLM")
     // Actor reentrancy: `stop()` / memory-pressure pause / a fresh `start()`
     // may have run during the await above — only the crashed generation
     // (still `.starting`, no new process; this handler nulled `process`
@@ -342,7 +346,7 @@ public actor EGOneServerManager {
     tearDownProcess()
     transition(to: .pausedForMemoryPressure)
     await AppLogger.shared.log(
-      "EG-1 server paused: critical memory pressure", level: .info, category: "LLM")
+      "Local polish server paused: critical memory pressure", level: .info, category: "LLM")
   }
 
   // MARK: - Health probe
@@ -351,7 +355,52 @@ public actor EGOneServerManager {
   /// through the real prompt path; GREEN requires the expected
   /// TRANSFORMATION (contains "Friday", drops "um"), not merely HTTP 200 —
   /// a model that echoes raw text must read yellow, never green.
-  public func probeHealth(promptFamily: PromptFamily) async -> EGOneHealth {
+  /// #2649: WHICH model is being probed is now an argument, not three
+  /// constants in the body. The launch configuration was always generic; the
+  /// probe was EG-1 by construction — it built an `EGOneConnector`, stamped
+  /// `provider: .egOne` and sent `LLMProvider.egOneModelName`. A second model
+  /// served by the same manager would have been health-checked as EG-1, which
+  /// reads green or yellow about the wrong thing.
+  ///
+  /// The TRANSFORMATION the probe demands stays shared and is not part of the
+  /// spec, deliberately: both engines exist to do the same job to a dictation,
+  /// so a model that cannot do it must read yellow whichever one it is. Making
+  /// the success condition per-model would let a weaker model be graded on an
+  /// easier exam.
+  public struct ProbeSpec: Sendable {
+    public var provider: LLMProvider
+    public var modelID: String
+    public var makeConnector: @Sendable (EGOneEndpoint) -> any TranscriptPolisher
+
+    public init(
+      provider: LLMProvider, modelID: String,
+      makeConnector: @escaping @Sendable (EGOneEndpoint) -> any TranscriptPolisher
+    ) {
+      self.provider = provider
+      self.modelID = modelID
+      self.makeConnector = makeConnector
+    }
+
+    /// EG-1's exact current values, so its probe is unchanged by this move.
+    public static let egOne = ProbeSpec(
+      provider: .egOne, modelID: LLMProvider.egOneModelName,
+      makeConnector: { EGOneConnector(endpoint: $0) })
+
+    /// #2649. Without this the second model was health-checked AS EG-1 — right
+    /// endpoint, wrong connector, wrong provider stamp, wrong model id. The
+    /// verdict would have been about EG-1's contract, and the connector's
+    /// empty-answer rule is exactly where the two disagree.
+    public static let s1Mini = ProbeSpec(
+      provider: .s1Mini, modelID: LLMProvider.s1MiniModelName,
+      makeConnector: { S1MiniConnector(endpoint: $0) })
+  }
+
+  /// `spec` is REQUIRED and has no default. A defaulted argument leaves no
+  /// token at the call site, so no sweep could find the callers still probing
+  /// as EG-1, and the wrong-model probe would be invisible rather than merely
+  /// wrong. `.egOne` below is a named VALUE a caller passes, not a fallback the
+  /// language supplies.
+  public func probeHealth(promptFamily: PromptFamily, spec: ProbeSpec) async -> EGOneHealth {
     switch state {
     case .stopped:
       return .red(reason: "not_running")
@@ -363,19 +412,19 @@ public actor EGOneServerManager {
       return .red(reason: reason)
     case .ready(let endpoint):
       let probeTranscript = "so um move the meeting to thursday no wait friday"
-      let connector = EGOneConnector(endpoint: endpoint)
+      let connector = spec.makeConnector(endpoint)
       let builder = DefaultPromptPlanner.builder(for: promptFamily)
       let input = PromptBuildInput(
         transcript: probeTranscript,
-        provider: .egOne,
-        modelID: LLMProvider.egOneModelName,
+        provider: spec.provider,
+        modelID: spec.modelID,
         appName: nil,
         language: nil,
         polishVocabulary: PolishVocabulary(terms: [], generation: 0)
       )
       let envelope = builder.build(input: input, mode: .message)
       let config = LLMProviderConfig(
-        model: LLMProvider.egOneModelName,
+        model: spec.modelID,
         apiKeyKeychainId: nil,
         outputTokens: .capped(128),
         temperature: 0,

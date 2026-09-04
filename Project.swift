@@ -573,6 +573,17 @@ let project = Project(
         // EG-1's convergence onto the shared engine (the runtime trust root
         // stays eg1-manifest.json). Same Bundle.main route.
         "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json",
+        // #2649: S1-mini — the third-party normalizer that sits beside EG-1 in
+        // the polish picker. Same Bundle.main route and the same two trust
+        // roots as EG-1: s1-manifest.json is the RUNTIME root (what to launch
+        // and which prompt it was trained with), s1-delivery-manifest.json is
+        // the DELIVERY root (bytes, hashes, sources). The licence text rides
+        // along because its ADDITIONAL TERM binds us to show the model's exact
+        // name wherever it appears, and a link is not a copy.
+        "Sources/EnviousWispr/Resources/s1-manifest.json",
+        "Sources/EnviousWispr/Resources/s1-delivery-manifest.json",
+        "Sources/EnviousWispr/Resources/S1-MINI-LICENSE.txt",
+        "Sources/EnviousWispr/Resources/S1-MINI-NOTICE.txt",
         "Sources/EnviousWispr/Resources/llama-server",
         // #1224 (#1543): the bundled VAD model for `CaptureVADSignalSource`'s
         // in-process VAD loop. Relocated into the app target's own resources

@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import Testing
 
+@testable import EnviousWisprLLM
 @testable import EnviousWisprModelDelivery
 
 // MARK: - Fixture support
@@ -135,7 +136,7 @@ enum ManifestFixture {
 
     // The carve-out MUST NOT leak: every other family still hard-requires
     // our_copy first (a non-our_copy primary is refused).
-    for family in ["parakeet", "eg_one"] {
+    for family in ["parakeet", "eg_one", "s1_mini"] {
       let leaky = try ManifestFixture.manifestJSON(
         files: ManifestFixture.smallFiles, sources: hfOnly, family: family)
       #expect(throws: (any Error).self) { try DeliveryManifest.load(from: leaky) }
@@ -572,4 +573,179 @@ enum ManifestFixture {
     flags = DeliveryFlags.snapshot(family: .parakeet, defaults: d)
     #expect(flags.orderedSources(from: manifest).map(\.id) == ["our_copy", "backup"])
   }
+}
+
+/// The FOURTH family (#2649): S1-mini, a third-party ASR-output normalizer
+/// served by the same bundled llama-server as EG-1 and offered beside it in
+/// the polish picker.
+///
+/// Nothing loads this manifest yet — the runtime, the prompt and the picker
+/// row arrive in later chunks. It is registered and provable now so those
+/// chunks build on a pinned, digest-locked artifact rather than authoring one
+/// under deadline, exactly as the WhisperKit Preview manifest was.
+///
+/// Two sources here, unlike WhisperKit's single pinned mirror: the naming term
+/// in the S1-mini licence restricts what we must CALL the model, not whether we
+/// may re-host its bytes, so the mirror-first invariant applies unchanged and
+/// `our_copy` leads.
+@Suite("S1-mini shipped manifest (#2649)", .tags(.driftGuard))
+struct S1MiniShippedManifestTests {
+  static var shippedManifestURL: URL {
+    ParakeetShippedManifestTests.repoRoot.appendingPathComponent(
+      "Sources/EnviousWispr/Resources/s1-delivery-manifest.json")
+  }
+
+  /// The committed golden digest: the Python authoring validator and the Swift
+  /// loader must both reproduce it, or a valid manifest is rejected on every
+  /// launch.
+  static let goldenDigest = "602b8cf6eb7112ff919f3e5cd5e8a86b2c9e70bba571edc27d36a87f1e89b2b1"
+
+  /// The byte constants were MEASURED, not transcribed: the file was hashed
+  /// locally with `shasum -a 256` and the same value read back independently
+  /// from the Hugging Face API's LFS oid for the pinned revision, which is the
+  /// SHA-256 of the object. Both agree.
+  ///
+  /// A digest alone would lock whatever was authored, INCLUDING the wrong
+  /// artifact — an internally consistent manifest for the f16 build (three
+  /// times the size) would pass a digest-only test. These assertions are what
+  /// make the digest mean "the model we chose".
+  @Test func s1ManifestLoadsAndMatchesGoldenDigest() throws {
+    let data = try Data(contentsOf: Self.shippedManifestURL)
+    let manifest = try DeliveryManifest.load(from: data)
+    #expect(manifest.manifestDigest == Self.goldenDigest)
+    #expect(try DeliveryManifest.canonicalDigest(of: data) == Self.goldenDigest)
+
+    #expect(manifest.identity.family == .s1Mini)
+    #expect(manifest.identity.name == "s1-mini")
+    #expect(manifest.identity.variant == "q4km")
+    #expect(manifest.identity.runtimeABI == "llamacpp-eg1-v1")
+    #expect(manifest.files.count == 1, "one object, deliberately unsharded at 462 MB")
+    #expect(manifest.totalBytes == 484_219_808)
+    #expect(manifest.optionalFiles.isEmpty)
+
+    let file = try #require(manifest.files.first)
+    #expect(file.path == "s1-mini-q4_k_m.gguf")
+    // The FETCH name and the INSTALL name differ on purpose: upstream ships a
+    // quantisation-tagged filename, and on disk the artifact is versioned so a
+    // pin bump is an atomic swap rather than an in-place rewrite. Component
+    // promotion moves `staging/component -> install/component`, so `component`
+    // tracks the INSTALL name; naming it after the fetch file is the mistake
+    // this asserts against.
+    #expect(file.resolvedInstallPath == "s1-mini-1.0.gguf")
+    #expect(file.component == file.resolvedInstallPath)
+    #expect(
+      file.sha256 == "3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634")
+    // The quantisation is load-bearing, not incidental: the f16 build at the
+    // same revision is 1,509,347,232 bytes and would be a different product
+    // decision. Asserting the size pins which one we ship.
+    #expect(file.sizeBytes == 484_219_808)
+  }
+
+  /// The backup source is pinned to an immutable commit. Our own mirror leads,
+  /// so a moved upstream ref could not change the bytes a user actually gets —
+  /// but it could change what the FALLBACK serves, silently, on exactly the
+  /// occasions the mirror is unreachable and nobody is watching.
+  @Test func s1BackupSourceIsPinnedToAnImmutableCommitNotABranch() throws {
+    let manifest = try DeliveryManifest.load(from: Data(contentsOf: Self.shippedManifestURL))
+    #expect(manifest.sources.count == 2)
+    #expect(manifest.sources.first?.id == "our_copy", "mirror-first invariant, contract §7")
+
+    let revision = manifest.identity.revision
+    #expect(revision.count == 40, "revision must be a full commit SHA, never a short ref or tag")
+    #expect(revision.allSatisfy { $0.isHexDigit })
+    #expect(revision == "34add00a48a2e5d24e5a4ee5405a99620a3a240c")
+    #expect(manifest.sources.map(\.id) == ["our_copy", "backup"])
+
+    let backup = try #require(manifest.sources.last?.baseURL.absoluteString)
+    #expect(backup.hasPrefix("https://huggingface.co/superwhisper/s1-mini-GGUF/resolve/"))
+    #expect(!backup.contains("/resolve/main/"), "a branch ref would let the bytes change")
+    #expect(backup.contains(revision), "the fetch URL must pin the SAME commit the identity names")
+    #expect(!backup.contains("@") && !backup.contains("token"))
+
+    // Our own mirror is revision-scoped too, so a future pin bump is a NEW
+    // object rather than an in-place replacement of the one users already
+    // verified against a now-stale hash.
+    let mirror = try #require(manifest.sources.first?.baseURL.absoluteString)
+    #expect(mirror.contains(revision))
+  }
+
+  /// The two manifests name the same on-disk artifact through two different
+  /// fields, in two different files, and nothing links them. `EGOneManifest`
+  /// derives `artifactFileName` from `modelName`-`version`; the delivery
+  /// manifest declares `installPath` and `entrypointFile`. If they disagree
+  /// the download succeeds and the server is launched against a path that does
+  /// not exist.
+  @Test func theRuntimeAndDeliveryManifestsAgreeOnTheArtifactFilename() throws {
+    let manifest = try DeliveryManifest.load(from: Data(contentsOf: Self.shippedManifestURL))
+    let installPath = try #require(manifest.files.first).resolvedInstallPath
+
+    let runtimeURL = ParakeetShippedManifestTests.repoRoot.appendingPathComponent(
+      "Sources/EnviousWispr/Resources/s1-manifest.json")
+    let runtime = try JSONDecoder().decode(
+      EGOneManifest.self, from: try Data(contentsOf: runtimeURL))
+
+    // Exercise the SHIPPING accessor rather than restating its formula here.
+    // Rebuilding the name from `modelName` and `version` would agree with a
+    // broken `artifactFileName` and pass. Decoding does not call
+    // `activationBlockers()`, so this type's EG-1-only model-name guard is not
+    // in the way until a later chunk parameterises it.
+    #expect(installPath == runtime.artifactFileName)
+    #expect(manifest.admission.entrypointFile == installPath)
+    #expect(runtime.modelName == manifest.identity.name)
+  }
+
+  /// S1-mini and EG-1 are served by the SAME bundled `llama-server`, so they
+  /// share one code pin. `runtimeABI` participates in the canonical JSON, which
+  /// is what makes bumping it invalidate existing admission markers and force
+  /// one revalidation pass. Two different strings for one binary would let a
+  /// bump revalidate whichever family somebody remembered and leave the other's
+  /// bytes admitted against a runtime they were never checked with.
+  @Test func bothLlamaServerFamiliesShareOneRuntimePin() throws {
+    let root = ParakeetShippedManifestTests.repoRoot
+    let s1 = try DeliveryManifest.load(from: Data(contentsOf: Self.shippedManifestURL))
+    let eg1 = try DeliveryManifest.load(
+      from: Data(
+        contentsOf: root.appendingPathComponent(
+          "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json")))
+    #expect(
+      s1.identity.runtimeABI == eg1.identity.runtimeABI,
+      "one binary, one pin: bump both manifests together or neither is revalidated")
+  }
+
+  /// The licence's ADDITIONAL TERM requires the exact string "S1-mini" by
+  /// "Superwhisper" wherever the model is identified, so the text must ship
+  /// with the app rather than only be linked. A link is not a copy, and a
+  /// bundled resource that is not declared in `Project.swift` ships in no
+  /// build — nothing globs `Resources/`.
+  @Test func theLicenceAndNoticeShipAsDeclaredResources() throws {
+    let root = ParakeetShippedManifestTests.repoRoot
+    for leaf in ["S1-MINI-LICENSE.txt", "S1-MINI-NOTICE.txt"] {
+      let url = root.appendingPathComponent("Sources/EnviousWispr/Resources/\(leaf)")
+      let text = try String(contentsOf: url, encoding: .utf8)
+      #expect(text.contains("Superwhisper"), "\(leaf) is not the S1-mini text")
+    }
+    let notice = try String(
+      contentsOf: root.appendingPathComponent("Sources/EnviousWispr/Resources/S1-MINI-NOTICE.txt"),
+      encoding: .utf8)
+    #expect(
+      notice.contains("\"S1-mini\" by \"Superwhisper\""),
+      "the naming term is the clause every user-facing label is bound by")
+
+    let project = try String(
+      contentsOf: root.appendingPathComponent("Project.swift"), encoding: .utf8)
+    // Match a DECLARATION LINE, not any substring. `contains` would be
+    // satisfied by a comment that merely mentions the path, so deleting the
+    // real entry could leave this green.
+    let declarations = Set(
+      project.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) })
+    for leaf in [
+      "s1-manifest.json", "s1-delivery-manifest.json", "S1-MINI-LICENSE.txt",
+      "S1-MINI-NOTICE.txt",
+    ] {
+      #expect(
+        declarations.contains("\"Sources/EnviousWispr/Resources/\(leaf)\","),
+        "\(leaf) must be listed in the app target's resources or it ships in no build")
+    }
+  }
+
 }

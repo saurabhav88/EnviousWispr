@@ -300,7 +300,12 @@ internal final class TextProcessingRunner {
         // dictation) is the same class of silent skip as the AFM timeout —
         // raw deterministically-cleaned text ships, no "AI polish failed".
         // Cloud-provider timeouts still surface (transient network signal).
-        let isEGOnePolishTimeout = isTimeout && polishProviderAtStart == .egOne
+        // #2649 (cloud review): S1-mini is the same class. Naming only EG-1
+        // here sent an S1-mini timeout down the surfaced-failure path, so a
+        // slow Mac on a long dictation saw "AI polish failed" for the engine
+        // that shares EG-1's server and EG-1's contract.
+        let isLocalEnginePolishTimeout =
+          isTimeout && (polishProviderAtStart == .egOne || polishProviderAtStart == .s1Mini)
         // #1305: the Ollama readiness preflight found local polish not usable
         // (server down / model missing) BEFORE any attempt started. This is
         // the third, SURFACED-SKIP class between Failure and Bypass: user
@@ -321,7 +326,7 @@ internal final class TextProcessingRunner {
         if isAppleIntelligencePolishTimeout {
           reason =
             "skipped: on-device AI polish timed out on a long dictation, using deterministic text"
-        } else if isEGOnePolishTimeout {
+        } else if isLocalEnginePolishTimeout {
           reason =
             "skipped: EG-1 polish timed out on a long dictation, using deterministic text"
         } else if isTimeout {
@@ -390,7 +395,7 @@ internal final class TextProcessingRunner {
             ?? skipReason.composedMessage(provider: .ollama)
         } else if step.errorSurfacePolicy == .surface && !isSilentPolishSkip
           && contextWindowSkip == nil && !isAppleIntelligencePolishTimeout
-          && !isEGOnePolishTimeout
+          && !isLocalEnginePolishTimeout
           && !isCancellationLike
         {
           let model = polishModelAtStart ?? "unknown"
@@ -468,9 +473,12 @@ internal final class TextProcessingRunner {
         } else if isAppleIntelligencePolishTimeout {
           let reason = PolishSkipReason.contextWindowTimeout
           recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
-        } else if isEGOnePolishTimeout {
-          // #1271: one `local_polish_` prefix family for every EG-1 skip mode.
-          let reason = PolishSkipReason.localPolishTimeout
+        } else if isLocalEnginePolishTimeout {
+          // #1271: one `local_polish_` prefix family for every local-engine skip
+          // mode. The provider is the step's entry snapshot, and the branch
+          // above is only reachable when that snapshot is one of the two
+          // bundled engines, so the fallback is unreachable by construction.
+          let reason = PolishSkipReason.localPolishTimeout(polishProviderAtStart ?? .egOne)
           recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
         } else if let silentPolishSkipReason {
           // #1448: covers all 3 AFM cases (frameworkUnavailable,

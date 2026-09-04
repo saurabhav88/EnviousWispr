@@ -242,7 +242,19 @@ public struct OllamaConnector: TranscriptPolisher {
       return ["role": role, "content": msg.content]
     }
 
-    let endpointURL = "\(baseURL)/api/chat"
+    // #2649/#2634: S1-mini takes the RAW endpoint. Its GGUF ships an Ollama
+    // template ending in an unclosed `<|im_start|>assistant\n<think>\n`, so over
+    // `/api/chat` the model is asked to think and answers with thinking and no
+    // content — measured as 161 empty responses and 22 timeouts for one real
+    // user across two releases. Every chat-shaped variant returned empty; only
+    // `/api/generate` with `raw: true` and the trained prefix works.
+    //
+    // Selected by MODEL IDENTITY, never by sniffing the outgoing prompt, which a
+    // user's own dictation could satisfy. Same authority the planner routes on,
+    // so the transport and the prompt can never disagree about which model this
+    // is.
+    let isS1Mini = OllamaSetupService.isS1MiniModel(config.model)
+    let endpointURL = "\(baseURL)/api/\(isS1Mini ? "generate" : "chat")"
     guard let url = URL(string: endpointURL) else {
       throw LLMError.requestFailed("Invalid Ollama URL: \(endpointURL)")
     }
@@ -251,13 +263,18 @@ public struct OllamaConnector: TranscriptPolisher {
     guard case .capped(let maxTokens) = config.outputTokens else {
       throw LLMError.requestFailed("Local polish requires an explicit output-token cap")
     }
-    let body = Self.makeRequestBody(
-      model: config.model,
-      messages: messages,
-      maxTokens: maxTokens,
-      temperature: config.temperature,
-      thinking: config.thinking
-    )
+    let body =
+      isS1Mini
+      ? S1MiniRawTransport.makeRequestBody(
+        model: config.model, envelope: envelope, maxTokens: maxTokens,
+        temperature: config.temperature)
+      : Self.makeRequestBody(
+        model: config.model,
+        messages: messages,
+        maxTokens: maxTokens,
+        temperature: config.temperature,
+        thinking: config.thinking
+      )
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -270,15 +287,39 @@ public struct OllamaConnector: TranscriptPolisher {
     let (data, _) = try await performWithRetry(request: request, config: config)
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-    guard let message = json?["message"] as? [String: Any],
-      let content = message["content"] as? String,
-      !content.isEmpty
-    else {
-      throw LLMError.emptyResponse
+    // `/api/generate` returns the text at the TOP LEVEL as `response`;
+    // `/api/chat` nests it under `message.content`. Reading the chat shape from
+    // a generate reply would find nothing and report an empty response, which is
+    // the very symptom this path exists to fix.
+    let message = json?["message"] as? [String: Any]
+    let content: String
+    if isS1Mini {
+      // #2649 (confirming review): the same empty-answer rule the bundled
+      // S1-mini connector applies. Empty is the CORRECT answer to filler-only
+      // input, and a user with filler removal off can dictate exactly that.
+      content = try Self.s1MiniContent(rawContent: json?["response"] as? String, envelope: envelope)
+      if content.isEmpty {
+        // A correct empty result: the empty-output floor keeps the user's
+        // deterministic text, and no failure is recorded for a model doing its job.
+        return LLMResult(polishedText: "")
+      }
+    } else {
+      guard let chatContent = message?["content"] as? String, !chatContent.isEmpty else {
+        throw LLMError.emptyResponse
+      }
+      content = chatContent
     }
 
-    Self.logTelemetry(json: json, message: message, model: config.model)
+    Self.logTelemetry(json: json, message: message ?? [:], model: config.model)
 
+    // #2649: on the S1-mini raw path a non-`stop` finish means the content is a
+    // PARTIAL rewrite, and returning it pastes a truncated polish. The chat path
+    // below only LOGS this, which is right for a user's own model whose budget
+    // they chose; it is wrong for a model we route deliberately, and it is the
+    // same rule the bundled connectors enforce through `truncationGuard`.
+    if isS1Mini, let doneReason = json?["done_reason"] as? String, doneReason != "stop" {
+      throw LLMError.egOneSkipped(.outputTruncated)
+    }
     if let doneReason = json?["done_reason"] as? String, doneReason != "stop" {
       Task {
         await AppLogger.shared.log(
@@ -518,6 +559,29 @@ public struct OllamaConnector: TranscriptPolisher {
 
   /// Logs Ollama `/api/chat` timing + reasoning-output telemetry (#276).
   ///
+  /// The S1-mini raw route's answer, with the empty case decided by the INPUT.
+  ///
+  /// Mirrors `S1MiniConnector.parseSuccess`: a missing field is a malformed
+  /// reply and stays a failure; an empty string is valid for filler-only input
+  /// and a failure otherwise. Without this the Ollama route threw
+  /// `emptyResponse` for every empty answer, so a user who turned filler
+  /// removal off and dictated only filler got an "AI polish failed" banner and
+  /// failure telemetry for correct model behaviour. `internal` so a test can
+  /// drive it with a canned payload, the same seam the bundled connector offers.
+  static func s1MiniContent(rawContent: String?, envelope: PromptEnvelope) throws -> String {
+    guard let rawContent else { throw LLMError.emptyResponse }
+    guard rawContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      return rawContent
+    }
+    let userMessage = envelope.messages.last { $0.role == .user }?.content ?? ""
+    switch LocalPolishEmptyDisposition.classify(
+      input: S1MiniConnector.transcript(fromUserMessage: userMessage))
+    {
+    case .validEmpty: return ""
+    case .unexpectedEmpty: throw LLMError.emptyResponse
+    }
+  }
+
   /// `thinking` captures the char count of `message.thinking`, which we
   /// discard but which gemma4 spends significant eval time producing. Non-
   /// thinking models (llama3.2 etc.) log `thinking=0`. Compare against

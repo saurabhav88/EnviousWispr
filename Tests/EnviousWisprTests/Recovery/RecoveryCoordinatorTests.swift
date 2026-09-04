@@ -151,6 +151,26 @@ struct RecoveryCoordinatorTests {
     #expect(storedKey == directive.keyData)
   }
 
+  /// #2649: the record-time S1-mini picks ride in the spool, so a take
+  /// recovered after a crash polishes under the tone the user had chosen when
+  /// they spoke. A NON-default value, so a coordinator writing the default
+  /// would fail here.
+  @Test("the directive records the S1-mini picks the user had when recording")
+  func directiveRecordsControlPicks() async throws {
+    let h = Self.makeHarness()
+    let settings = Self.freshSettings(crashRecoveryEnabled: true)
+    settings.s1MiniStyling = .formal
+    settings.s1MiniStructure = .prose
+    settings.s1MiniContext = .email
+    let result = await h.coordinator.makeDirective(
+      settings: settings, backendType: .parakeet, supportsLanguageDetection: false)
+    let armed = try #require(result)
+    let directive = try JSONDecoder().decode(RecoverySpoolDirective.self, from: armed.payload)
+    #expect(
+      directive.settingsSnapshot.s1Control
+        == S1ControlSettings(styling: .formal, structure: .prose, context: .email))
+  }
+
   @Test("durable save deletes that session's spool + key")
   func durableSaveDeletes() async throws {
     let h = Self.makeHarness()

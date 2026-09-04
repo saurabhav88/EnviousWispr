@@ -16,7 +16,8 @@ struct RecoveryTextProcessorTests {
   private func snapshot(
     fillerRemoval: Bool, provider: String = "none",
     backendType: ASRBackendType = .parakeet, lidCapable: Bool = false,
-    languageMode: LanguageMode = .auto
+    languageMode: LanguageMode = .auto,
+    s1Control: S1ControlSettings? = nil
   ) -> RecordingSettingsSnapshot {
     RecordingSettingsSnapshot(
       backendType: backendType,
@@ -29,7 +30,28 @@ struct RecoveryTextProcessorTests {
       customWordsVersion: nil,
       llmProvider: provider,
       llmModel: "none",
-      polishPromptVersion: nil)
+      polishPromptVersion: nil,
+      s1Control: s1Control)
+  }
+
+  /// #2649: a recovered take polishes under the tone the user had picked WHEN
+  /// THEY SPOKE, and a spool from before the pickers existed replays under the
+  /// shipped default, because that is what it was polished under.
+  @Test("the snapshot's S1-mini picks reach the polish step, and a legacy spool gets the default")
+  func s1ControlReplaysFromSnapshot() {
+    let picks = S1ControlSettings(styling: .formal, structure: .prose, context: .email)
+    #expect(picks != .default, "a default-valued pick could not show the write happened")
+
+    let recorded = RecoveryTextProcessor(keychainManager: KeychainManager())
+    recorded.applySettings(snapshot(fillerRemoval: false, s1Control: picks))
+    #expect(recorded.llmPolishStep.s1Control == picks)
+
+    let legacy = RecoveryTextProcessor(keychainManager: KeychainManager())
+    // Poison first, so the nil branch is shown to WRITE the default rather than
+    // merely leave a fresh step's default in place.
+    legacy.llmPolishStep.s1Control = picks
+    legacy.applySettings(snapshot(fillerRemoval: false, s1Control: nil))
+    #expect(legacy.llmPolishStep.s1Control == .default)
   }
 
   @Test("the recovery chain runs the standard steps end to end, polish disabled")

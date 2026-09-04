@@ -326,6 +326,9 @@ struct AIPolishSettingsView: View {
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
   @Environment(EGOneRuntime.self) private var egOne
+  /// #2649: both engines are `EGOneRuntime`, so the set is how this view names
+  /// the second one rather than getting whichever was injected last.
+  @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
   @Environment(\.keychainManager) private var keychainManagerEnv
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
@@ -371,8 +374,12 @@ struct AIPolishSettingsView: View {
 
   private var showModelSection: Bool {
     // EG-1 excluded: one fixed first-party model, no model picker (#1271).
+    // S1-mini excluded for the same reason (#2649): it is one bundled model, so
+    // a picker offers a choice that does not exist. Left in, it rendered
+    // Ollama's discovery dropdown on the S1-mini pane showing the lower-case
+    // Ollama model id, which also reads as the wrong name for the model.
     settings.llmProvider != .none && settings.llmProvider != .appleIntelligence
-      && settings.llmProvider != .egOne
+      && settings.llmProvider != .egOne && settings.llmProvider != .s1Mini
   }
 
   private var ollamaShowsManageModels: Bool {
@@ -399,6 +406,8 @@ struct AIPolishSettingsView: View {
       for: settings.llmProvider,
       egOneInstall: egOne.installState,
       egOneHealth: egOne.health,
+      s1MiniInstall: localPolishRuntimes.s1Mini.installState,
+      s1MiniHealth: localPolishRuntimes.s1Mini.health,
       appleStatus: aiAvailability.latestReport?.overallStatus,
       cloudValidation: llmDiscovery.keyValidationState,
       cloudKeyPresent: cloudKeyPresent,
@@ -463,6 +472,18 @@ struct AIPolishSettingsView: View {
 
       detailCard {
         providerSubConfig
+      }
+
+      // #2649: S1-mini is one model with three dials. They are text at the top
+      // of every request, not model variants, so they live in a card of their
+      // own rather than in the model picker (which this engine does not show).
+      if S1ControlCardVisibility.shows(
+        provider: settings.llmProvider, effectiveModel: settings.effectiveLLMModel)
+      {
+        detailCard(label: S1ControlCopy.cardLabel) {
+          s1ControlRows
+          FrozenPerRecordingFootnote()
+        }
       }
 
       if showModelSection {
@@ -565,8 +586,61 @@ struct AIPolishSettingsView: View {
     if settings.llmProvider == .appleIntelligence {
       appleIntelligenceStatus
     }
+    // Both bundled engines render the SAME card (#2649). Written as two
+    // explicit branches rather than one derived runtime because the pairing of
+    // runtime to descriptor is what must not slip: handing EG-1's runtime an
+    // S1-mini descriptor would offer a 484 MB download for a 2.9 GB model, and
+    // nothing downstream would notice.
     if settings.llmProvider == .egOne {
-      egOneStatusContent
+      LocalEngineStatusCard(runtime: egOne, engine: .egOne) {
+        egOne.removeModel()
+        // Removing the selected engine must move the user somewhere that
+        // works, or polish silently stops. Apple Intelligence is what a fresh
+        // install selects, so it is where a removal lands.
+        settings.llmProvider = .appleIntelligence
+      }
+    }
+    if settings.llmProvider == .s1Mini {
+      LocalEngineStatusCard(runtime: localPolishRuntimes.s1Mini, engine: .s1Mini) {
+        localPolishRuntimes.s1Mini.removeModel()
+        settings.llmProvider = .appleIntelligence
+      }
+    }
+  }
+
+  /// The three S1-mini control-line pickers (#2649). Each writes its own stored
+  /// setting so one change emits one delta. Every option label maps to exactly
+  /// one trained value; the enum is what keeps an untrained token off the wire.
+  @ViewBuilder
+  private var s1ControlRows: some View {
+    @Bindable var settings = settings
+    VStack(alignment: .leading, spacing: 14) {
+      Text(S1ControlCopy.intro)
+        .settingsReadingCopy()
+
+      VStack(alignment: .leading, spacing: 6) {
+        Text(S1ControlCopy.stylingLabel).settingsRowLabel()
+        BrandedSegmentedPicker(
+          options: S1Styling.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
+          selection: $settings.s1MiniStyling)
+        Text(S1ControlCopy.stylingHint).font(.stHelper).foregroundStyle(.stTextSecondary)
+      }
+
+      VStack(alignment: .leading, spacing: 6) {
+        Text(S1ControlCopy.structureLabel).settingsRowLabel()
+        BrandedSegmentedPicker(
+          options: S1Structure.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
+          selection: $settings.s1MiniStructure)
+        Text(S1ControlCopy.structureHint).font(.stHelper).foregroundStyle(.stTextSecondary)
+      }
+
+      VStack(alignment: .leading, spacing: 6) {
+        Text(S1ControlCopy.contextLabel).settingsRowLabel()
+        BrandedSegmentedPicker(
+          options: S1Context.allCases.map { (S1ControlCopy.label(for: $0), nil, $0) },
+          selection: $settings.s1MiniContext)
+        Text(S1ControlCopy.contextHint).font(.stHelper).foregroundStyle(.stTextSecondary)
+      }
     }
   }
 
@@ -773,6 +847,11 @@ struct AIPolishSettingsView: View {
         // #1271: settings-open is one of the two probe moments (the other is
         // provider activation via PipelineSettingsSync). No background polling.
         egOne.activateAndProbe()
+      } else if settings.llmProvider == .s1Mini {
+        // #2649: same two probe moments for the second bundled engine. Found by
+        // the class sweep "code that names EG-1 where it means any bundled
+        // engine"; without this arm S1-mini fell through to model discovery.
+        localPolishRuntimes.s1Mini.activateAndProbe()
       } else if settings.llmProvider != .none {
         llmDiscovery.loadCachedModels(for: settings.llmProvider)
       }
@@ -816,12 +895,15 @@ struct AIPolishSettingsView: View {
         Task { await setup.ollamaSetup.refreshCloudCatalog() }
       case .appleIntelligence:
         Task { await aiAvailability.checkAvailability(trigger: "provider_switch") }
-      case .egOne:
+      case .egOne, .s1Mini:
         // Fixed local model — no API key, no model discovery. Routing it
         // into the default key-provider path would hand the discovery
         // coordinator an empty model list and let it overwrite `llmModel`
         // (#1271 Codex r7). Activation/probe rides PipelineSettingsSync;
         // the status section's own onAppear probe covers settings-open.
+        // #2649: S1-mini is the same shape, and was falling into the default
+        // arm, which flipped the key-validation state for a model that has
+        // no key.
         break
       default:
         llmDiscovery.loadCachedModels(for: newProvider)
@@ -1128,6 +1210,9 @@ struct AIPolishSettingsView: View {
     // could run a model on its own servers.
     case .ollama: return "Why use Ollama"
     case .egOne: return "Why use EG-1"
+    // The exact name is licence-bound, so it comes from one place rather than
+    // being retyped per surface.
+    case .s1Mini: return "Why use \(LLMProvider.s1Mini.displayName)"
     case .none: return ""
     }
   }
@@ -1148,6 +1233,8 @@ struct AIPolishSettingsView: View {
       ollamaExplainer
     case .egOne:
       egOneExplainer
+    case .s1Mini:
+      s1MiniExplainer
     case .none:
       EmptyView()
     }
@@ -1167,7 +1254,40 @@ struct AIPolishSettingsView: View {
       .settingsReadingCopy()
 
       Text(
-        "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there."
+        "When to use it. EG-1 is the recommended default for most people who want private, free, on-device polish that is tuned for this exact job. If you need a very large general model, the cloud options are there. Handles dictations up to about \(LocalEngineDescriptor.egOne.dictationMinutes) minutes."
+      )
+      .settingsReadingCopy()
+    }
+  }
+
+  /// #2649. Three paragraphs, matching the shape every other on-device engine
+  /// uses. Two constraints shaped this copy rather than taste:
+  ///
+  /// The licence carries an ADDITIONAL TERM requiring the exact string "S1-mini"
+  /// by "Superwhisper" wherever the model is identified, so the name comes from
+  /// `displayName` and the maker is credited in the first sentence rather than
+  /// buried. Nothing here may be reworded in a way that drops either.
+  ///
+  /// And it must not oversell. The model is a NORMALIZER, not a general writing
+  /// model: it cleans a transcript and does nothing else. Measured English-only
+  /// in practice — it never translates, but it resolves a spoken self-correction
+  /// in only 6 of the 25 languages our transcription supports — so the copy says
+  /// English rather than implying parity.
+  @ViewBuilder
+  private var s1MiniExplainer: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(
+        "\(LLMProvider.s1Mini.displayName) by Superwhisper is a small open model built for one job: tidying up dictated text. It runs entirely on this Mac, so nothing you say leaves your device, and it is free with no API key to manage."
+      )
+      .settingsReadingCopy()
+
+      Text(
+        "It is about a sixth the size of EG-1, so it starts faster and uses far less memory. It is also happiest in English. It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence."
+      )
+      .settingsReadingCopy()
+
+      Text(
+        "When to use it. Pick \(LLMProvider.s1Mini.displayName) if you dictate in English and want the lightest on-device option, or if EG-1 is more than your Mac has room for. EG-1 stays the recommended choice. Best for dictations up to about \(LocalEngineDescriptor.s1Mini.dictationMinutes) minutes."
       )
       .settingsReadingCopy()
     }
@@ -1203,7 +1323,7 @@ struct AIPolishSettingsView: View {
       .settingsReadingCopy()
 
       Text(
-        "When to use it. Reach for Apple Intelligence when you want zero setup and clean results on short notes. For longer recordings, lists, or code, EG-1 or a cloud model handles structure better."
+        "When to use it. Reach for Apple Intelligence when you want zero setup and clean results on short notes. For longer recordings, lists, or code, EG-1 or a cloud model handles structure better. Handles dictations up to about 8 minutes."
       )
       .settingsReadingCopy()
 
@@ -1240,7 +1360,7 @@ struct AIPolishSettingsView: View {
       .settingsReadingCopy()
 
       Text(
-        "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler."
+        "When to use it. Choose Ollama if you want to run a specific open model on device or to experiment. For the best on-device cleanup with no setup, EG-1 is simpler. How long a dictation it handles depends on the model you choose."
       )
       .settingsReadingCopy()
     }
@@ -1471,235 +1591,9 @@ struct AIPolishSettingsView: View {
 
   // MARK: - EG-1 native model (#1271)
 
-  /// Whole-section content for the EG-1 provider: explainer with the
-  /// founder-approved benchmark claim (real numbers, no competitor names),
-  /// download flow with size disclosure, the green/yellow/red activation
-  /// pill (a REAL inference probe, never process-exists), Remove Model, and
-  /// the 8 GB heads-up. Copy rules: no em or en dashes in these strings.
-  @ViewBuilder
-  private var egOneStatusContent: some View {
-    // The pitch (tuned, on-device, benchmark) lives in the "Why use EG-1" card
-    // now (#1286); this card is just the actionable status/download/remove.
-    if isLowMemoryMac {
-      Label(
-        "This Mac has 8 GB of memory. EG-1 may run slower here. "
-          + "Dictation always works, even when polish is unavailable.",
-        systemImage: "exclamationmark.triangle"
-      )
-      .font(.stHelper)
-      .foregroundStyle(.stWarning)
-      .fixedSize(horizontal: false, vertical: true)
-    }
 
-    // One presentation value for the whole row (#2109). Hoisted above the
-    // switch deliberately: when only some branches consumed it, the remaining
-    // mappings were still ASSERTED by the agreement tests while the real row
-    // rendered something else, so the tests described a value the UI did not
-    // use. Every branch now reads from the tested value.
-    let presentation = EGOneRowPresentation.forState(egOne.installState)
-    switch egOne.installState {
-    case .notInstalled:
-      HStack {
-        // NOT "one-time" (#2096): a new model revision downloads again, on its own, when an app
-        // update ships one. Promising a single download was true only while EG-1 could never be
-        // replaced, and that stopped being true the moment the automatic upgrade path existed.
-        Text("Download size: 2.9 GB")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-        Spacer()
-        if let action = presentation.primaryAction {
-          Button(action) { egOne.startDownload() }
-        }
-      }
-    case .downloading(let fraction, _):
-      VStack(alignment: .leading, spacing: 4) {
-        ProgressView(value: max(0, min(1, fraction))) {
-          // An UPGRADE says so and names the version arriving; a first install
-          // keeps the original sentence (founder, 2026-08-17, from Live UAT).
-          // Both used to read "Downloading EG-1 (2.9 GB)", so a user who
-          // already had EG-1 could not tell a 2.9 GB upgrade from a 2.9 GB
-          // first install and was never told which version was coming.
-          //
-          // The version comes from `presentation.versionLabel`, composed from
-          // the manifest — never a literal here. A revision ships as a manifest
-          // edit with no Swift change, so a hard-coded number would keep naming
-          // the previous model after the real one moved on.
-          Text(
-            presentation.versionLabel.map { "Upgrading to \($0) (2.9 GB)" }
-              ?? "Downloading EG-1 (2.9 GB)"
-          )
-          .font(.stHelper)
-        }
-        if let action = presentation.primaryAction {
-          Button(action) { egOne.cancelDownload() }
-            .buttonStyle(.borderless)
-            .font(.stHelper)
-        }
-      }
-    // #2109: an interrupted FIRST install. Ported from the founder ruling of
-    // 2026-07-17 already shipped for Parakeet and WhisperKit — paused, Resume
-    // anytime. This used to render through the failure branch with a red row
-    // and a Try Again button, for something the user deliberately chose.
-    case .paused:
-      VStack(alignment: .leading, spacing: 4) {
-        Text(presentation.message)
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-        if let action = presentation.primaryAction {
-          Button(action) { egOne.startDownload() }
-        }
-      }
-    // A working older EG-1 is installed and the pinned one is not, so AI
-    // cleanup is off until this finishes. The old revision is deliberately
-    // NOT named: this app bundle does not contain its manifest, so any name
-    // for it would be invented.
-    case .updatePaused:
-      VStack(alignment: .leading, spacing: 4) {
-        Text(presentation.message)
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-        HStack {
-          if let action = presentation.primaryAction {
-            Button(action) { egOne.startDownload() }
-          }
-          Spacer()
-          if presentation.showsRemove {
-            Button("Remove Model") {
-              egOne.removeModel()
-              settings.llmProvider = .appleIntelligence
-            }
-            .buttonStyle(.borderless)
-            .font(.stHelper)
-          }
-        }
-      }
-    case .verifying:
-      HStack {
-        ProgressView().controlSize(.small)
-        Text("Verifying download integrity")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-      }
-    case .failed(let failure):
-      Text(egOneFailureCopy(failure))
-        .font(.stHelper)
-        .foregroundStyle(.stError)
-        .fixedSize(horizontal: false, vertical: true)
-      if let action = presentation.primaryAction {
-        Button(action) { egOne.startDownload() }
-      }
-    case .installed:
-      HStack {
-        Text("Status:")
-        // #2109: the version, as a quiet secondary label. Deliberately not
-        // prominent — Priya and Dr. Vasquez want to know which model they are
-        // on, Frank and Meera must be able to ignore it entirely, and nobody
-        // is being asked to make a decision here.
-        //
-        // Composed by `EGOneRowPresentation`, not here, so the same value the
-        // tests assert is the value that renders. nil and blank both render
-        // NOTHING: an absent label is honest, "Unknown version" is a string
-        // Frank should never see, and `EG-1 V` with an empty tail reads as a
-        // rendering bug.
-        if let versionLabel = presentation.versionLabel {
-          Text(versionLabel)
-            .font(.stHelper)
-            .foregroundStyle(Color.stTextSecondary)
-        }
-        Spacer()
-        egOneHealthLabel
-        Button {
-          egOne.activateAndProbe()
-        } label: {
-          Image(systemName: "arrow.clockwise")
-            .settingsHoverQuiet()
-        }
-        .buttonStyle(.borderless)
-        .help("Test that EG-1 is live")
-        .accessibilityLabel("Test that EG-1 is live")
-      }
-      if let reason = egOneHealthDetail {
-        Text(reason)
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      if presentation.showsRemove {
-        Button("Remove Model") {
-          egOne.removeModel()
-          settings.llmProvider = .appleIntelligence
-        }
-        .buttonStyle(.borderless)
-        .font(.stHelper)
-      }
-    }
-  }
 
-  @ViewBuilder
-  private var egOneHealthLabel: some View {
-    switch egOne.health {
-    case .green:
-      Label("Live", systemImage: "checkmark.circle.fill")
-        .foregroundStyle(.stSuccess)
-    case .yellow:
-      Label("Attention", systemImage: "exclamationmark.triangle.fill")
-        .foregroundStyle(.stWarning)
-    case .red:
-      Label("Not working", systemImage: "xmark.circle.fill")
-        .foregroundStyle(.stError)
-    }
-  }
 
-  /// Plain-language reason line under the health pill (nil for green).
-  private var egOneHealthDetail: String? {
-    switch egOne.health {
-    case .green:
-      return nil
-    case .yellow(let reason):
-      switch reason {
-      case "starting": return "The model is starting up. This takes a few seconds."
-      case "paused_for_memory":
-        return "Paused to free memory for other apps. Use the refresh button to restart it."
-      case "probe_slow": return "Working, but responding slowly right now."
-      case "probe_output_unexpected":
-        return "The model responded, but not as expected. Try re-downloading it."
-      case "downloading", "verifying": return nil
-      default: return "Something needs attention. Try the refresh button."
-      }
-    case .red(let reason):
-      switch reason {
-      case "download_required": return "Download the model to get started."
-      case "app_update_required":
-        return "This model needs a newer version of EnviousWispr."
-      case "crashed_twice":
-        return "The model stopped twice in a row. Use the refresh button to try again."
-      default: return "Not running. Use the refresh button to try again."
-      }
-    }
-  }
-
-  private func egOneFailureCopy(_ failure: EGOneDownloadFailure) -> String {
-    switch failure {
-    case .network:
-      return "Could not download the model from models.enviouslabs.co. "
-        + "Check your connection. On a managed network, ask IT to allow this domain."
-    case .checksum:
-      return "The download did not verify correctly and was discarded. Please try again."
-    case .disk:
-      return "Not enough free disk space. The download needs about 6 GB free during install."
-    case .cancelled:
-      return "Download canceled. Your progress is saved."
-    case .rangeUnsupported, .http:
-      return "The download server had a problem. Please try again in a few minutes."
-    case .stubURL:
-      return "This build has no download source configured."
-    }
-  }
-
-  private var isLowMemoryMac: Bool {
-    ProcessInfo.processInfo.physicalMemory <= (8 << 30)
-  }
 
   // MARK: - Apple Intelligence Status
 
@@ -2374,6 +2268,69 @@ struct AIPolishSettingsView: View {
       .buttonStyle(.borderless)
       .help("Prepare model")
       .accessibilityLabel("Prepare model")
+    }
+  }
+}
+
+// MARK: - S1-mini control-line card visibility (#2649)
+
+/// Who gets the writing-style card. The managed engine, AND an S1-mini the
+/// user pulled into Ollama themselves: the planner sends that route the same
+/// control line from the same persisted picks (`DefaultPromptPlanner.family`),
+/// so hiding the card there would leave those users configured by a setting
+/// they cannot see. Same recogniser as the planner, so the two cannot disagree
+/// about which Ollama models count.
+enum S1ControlCardVisibility {
+  static func shows(provider: LLMProvider, effectiveModel: String) -> Bool {
+    switch provider {
+    case .s1Mini: return true
+    case .ollama: return OllamaSetupService.isS1MiniModel(effectiveModel)
+    case .egOne, .appleIntelligence, .openAI, .gemini, .claude, .none: return false
+    }
+  }
+}
+
+// MARK: - S1-mini control-line copy (#2649)
+
+/// Every user-facing string on the S1-mini writing-style card, in one place so
+/// a test can read them and the no-dash rule can be checked on the whole set.
+/// The option labels are a total function over each enum, so adding a trained
+/// value cannot leave a segment without a name.
+enum S1ControlCopy {
+  static let cardLabel = "Writing style"
+  static let intro =
+    "Superwhisper trained \(LLMProvider.s1Mini.displayName) on these three settings. Change them any time; a new pick applies to your next dictation."
+
+  static let stylingLabel = "Tone"
+  static let stylingHint =
+    "Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text."
+  static let structureLabel = "Structure"
+  static let structureHint =
+    "Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences."
+  static let contextLabel = "Context"
+  static let contextHint =
+    "Email lays out a greeting line and a sign-off block when you dictate them. It changes nothing else."
+
+  static func label(for styling: S1Styling) -> String {
+    switch styling {
+    case .casual: return "Casual"
+    case .semiCasual: return "Semi-casual"
+    case .semiFormal: return "Semi-formal"
+    case .formal: return "Formal"
+    }
+  }
+
+  static func label(for structure: S1Structure) -> String {
+    switch structure {
+    case .prose: return "Prose"
+    case .lists: return "Lists"
+    }
+  }
+
+  static func label(for context: S1Context) -> String {
+    switch context {
+    case .general: return "General"
+    case .email: return "Email"
     }
   }
 }

@@ -360,9 +360,11 @@ public final class EGOneUpgradeCoordinator {
     try? removeItem(revisionDeclineMarkerURL)
   }
 
-  // C1 - One real switch for adapter and coordinator.
+  // C1 - One real switch for adapter and coordinator. #2649: read through THIS
+  // coordinator's own identity, so the pair still share one switch and it is
+  // still the right one now that a second family exists.
   private var isEnabled: Bool {
-    EGOneDeliveryAdapter.isDeliveryEnabled(defaults: defaults)
+    EGOneDeliveryAdapter.isDeliveryEnabled(defaults: defaults, family: identity.family)
   }
 
   // C2 - Prepare before the admitted return so an exact reintroduced monolith

@@ -20,6 +20,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   public var llmProvider: LLMProvider = .none
   public var llmModel: String = LLMProvider.defaultModel(for: .openAI)
   public var polishInstructions: PolishInstructions = .default
+  /// #2649: the user's S1-mini control-line picks. Frozen per recording like
+  /// provider and model (`DictationSessionConfig`), replayed from the spool on
+  /// recovery, and read by exactly one builder. Every other provider ignores it.
+  public var s1Control: S1ControlSettings = .default
   public var polishVocabulary: PolishVocabulary = .empty
 
   // MARK: - Multilingual v1 (W3)
@@ -66,6 +70,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // return nil and let the call site's `.egOne` branch throw the silent
     // bypass (never the surfaced `providerUnavailable`).
     case .egOne: nil
+    // #2649: same shape as EG-1 above and for the same reason — the S1-mini
+    // connector needs the live server endpoint, which this seam does not carry.
+    // Chunk 3 routes `.s1Mini` through the coordinator before consulting this
+    // factory; reaching this case means no runtime handle was injected.
+    case .s1Mini: nil
     case .none: nil
     }
   }
@@ -74,13 +83,54 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// `KernelDictationDriverFactory` / `RecoveryTextProcessor` — same
   /// threading as `keychainManager`. Nil (standalone callsites, tests, or
   /// pre-wiring) means every `.egOne` polish silently skips.
+  /// Bytes the context preflight reserves for everything that is NOT the
+  /// transcript: the system prompt and the chat framing around it.
+  ///
+  /// `package` so `LocalPolishPromptOverheadTests` binds THIS value rather than
+  /// restating it. A test that restates a constant passes when production
+  /// changes, which is how the previous 256 survived beside EG-1's 1,147-byte
+  /// system prompt with nothing failing.
+  /// `nonisolated` so a test can bind to it without a main-actor hop. It is a
+  /// constant, so isolation buys nothing and only makes the value harder to
+  /// check from where checking matters.
+  package nonisolated static let localPromptOverheadBytes = 1536
+
+  /// The longest ASCII transcript the context preflight below admits for a
+  /// local engine with this window, in characters. ONE formula, read by the
+  /// settings copy that promises a dictation length, so the promise cannot
+  /// outrun the guard (#2649 cloud review P2: the S1-mini explainer claimed
+  /// 12 minutes against a guard that skips anything over about 4).
+  ///
+  /// Derived from the preflight's own terms, worst case on both sides: input
+  /// counted in bytes (ASCII: one per character), output budget equal to the
+  /// input length, plus the prompt overhead. For ASCII that solves to
+  /// `(window - overhead) / 2`. Non-ASCII text admits fewer characters, which
+  /// is the safe direction for a promise.
+  public nonisolated static func localPolishTranscriptCeiling(contextTokens: Int) -> Int {
+    max(0, (contextTokens - localPromptOverheadBytes) / 2)
+  }
+
   public var egOneRuntime: (any EGOneEndpointProviding)?
+
+  /// S1-mini runtime handle (#2649). SEPARATE from EG-1's, deliberately: both
+  /// resolve an endpoint from the same coordinator, and that coordinator returns
+  /// nil for a model that is not the resident one. Sharing one handle would
+  /// throw that answer away and let a polish be served by other weights.
+  public var s1MiniRuntime: (any EGOneEndpointProviding)?
 
   /// Test seam for `.egOne` (mirrors `makePolisher` for the other
   /// providers): production builds the localhost connector from the live
   /// endpoint; tests substitute a spy without a real server.
   var makeEGOnePolisher: @MainActor (EGOneEndpoint) -> any TranscriptPolisher = {
     EGOneConnector(endpoint: $0)
+  }
+
+  /// #2649 test seam, mirroring `makeEGOnePolisher`. A separate factory rather
+  /// than one that switches on provider: the two connectors differ in what an
+  /// empty answer MEANS, and a single factory would put that decision in the
+  /// pipeline instead of in the connector that owns it.
+  var makeS1MiniPolisher: @MainActor (EGOneEndpoint) -> any TranscriptPolisher = {
+    S1MiniConnector(endpoint: $0)
   }
 
   /// #1305 test seam (mirrors `makeEGOnePolisher`): the Ollama readiness
@@ -196,6 +246,12 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // precedent-cited from the `.ollama` line above. A timeout is a SILENT
     // skip for this provider (TextProcessingRunner), never a surfaced error.
     case .egOne: return .seconds(15)
+    // #2649: S1-mini is a 0.6B model, far smaller than EG-1's 4B, so this
+    // budget is generous rather than tight. It is deliberately the SAME number
+    // and not a tuned smaller one: a separate constant would be a second thing
+    // to keep in step for no measured benefit, and the §3.7 length guard —
+    // not the clock — is what bounds this provider's worst case.
+    case .s1Mini: return .seconds(15)
     case .appleIntelligence: return .seconds(10)
     // #158 pre-merge latency receipt (30 real calls, Haiku + Sonnet 4.6,
     // short/medium/long): observed max 7.47s (Sonnet, long bucket), with
@@ -502,6 +558,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // read below uses these locals, never `self`, so reentrancy cannot tear it.
     let provider = llmProvider
     let model = llmModel
+    let s1Control = s1Control
     telemetry.breadcrumbStarted(
       "LLM polish started",
       [
@@ -632,26 +689,51 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // bypass (`egOneSkipped`), never the surfaced `providerUnavailable` —
     // a local limb that is not ready must degrade to raw text quietly.
     let polisher: any TranscriptPolisher
-    if provider == .egOne {
-      guard let runtime = egOneRuntime else {
-        throw LLMError.egOneSkipped(.notReady)
+    // #2649: both bundled-server engines take this path, and they take it for
+    // the same reason — the endpoint is live state, not a keychain lookup. What
+    // differs is only WHICH runtime answers and WHICH connector reads the reply.
+    let localServerHandles: (runtime: (any EGOneEndpointProviding)?,
+      make: (@MainActor (EGOneEndpoint) -> any TranscriptPolisher))? =
+      switch provider {
+      case .egOne: (egOneRuntime, makeEGOnePolisher)
+      case .s1Mini: (s1MiniRuntime, makeS1MiniPolisher)
+      default: nil
+      }
+    if let handles = localServerHandles {
+      guard let runtime = handles.runtime else {
+        throw LLMError.localEngineSkipped(.notReady, provider)
       }
       guard let endpoint = await runtime.activeEndpoint() else {
-        throw LLMError.egOneSkipped(.notReady)
+        // Also the answer when ANOTHER model holds the server: the coordinator
+        // refuses an endpoint to a non-resident model, so this is the branch
+        // that stops a polish being served by different weights. Silent bypass,
+        // so the user keeps their deterministic text.
+        throw LLMError.localEngineSkipped(.notReady, provider)
       }
       // Context preflight: polish whole or skip whole, never a silent
-      // truncation. WORST-CASE on both sides (Codex r15+r16): input at
-      // ~1 token/char (true for unsegmented CJK; a 3x overestimate for
-      // Latin) plus the SAME output cap the request later sends
-      // (`max(text.count, 256)`, r14) plus prompt overhead. Conservative
-      // by design — it bounds polishable dictations at ~8k chars, well
-      // past the product's 5-minute dictation target; anything longer
-      // silently pastes raw rather than risking truncated polish.
+      // truncation. WORST-CASE on both sides (Codex r15+r16): the output side
+      // is the SAME cap the request later sends (`max(text.count, 256)`, r14).
+      //
+      // #2649 changed the input side from `count` to `utf8.count`, and the
+      // difference is the defect rather than a refinement. `String.count`
+      // counts GRAPHEMES, so one Japanese character, one emoji or one combining
+      // sequence counts as 1 while tokenising to several. That direction is the
+      // dangerous one: the guard passes an input the server then cannot fit,
+      // which is the silent truncation this check exists to prevent. Bytes are
+      // a true upper bound, because no token is shorter than one byte — very
+      // conservative for ASCII, which is the safe way to be wrong here.
+      //
+      // The prompt allowance is 1,536 rather than 256, also measured: EG-1's
+      // v2 system prompt alone is 1,147 bytes, so the old constant was already
+      // too small for the engine that shipped with it and was only survivable
+      // because that engine launches with a 16,384-token window. S1-mini's is
+      // 230 bytes and its window is 8,192, where the slack does not exist.
+      let inputUpperBound = context.text.utf8.count
       let outputBudget = max(context.text.count, LLMConstants.ollamaMaxTokens)
-      if context.text.count + outputBudget + 256 > endpoint.contextTokens {
-        throw LLMError.egOneSkipped(.inputTooLong)
+      if inputUpperBound + outputBudget + Self.localPromptOverheadBytes > endpoint.contextTokens {
+        throw LLMError.localEngineSkipped(.inputTooLong, provider)
       }
-      polisher = makeEGOnePolisher(endpoint)
+      polisher = handles.make(endpoint)
     } else if let made = makePolisher(
       provider, keychainManager, outputClassifierHolder?.classifier)
     {
@@ -821,7 +903,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       // #1948: the daemon-reported execution location decides which Ollama prompt is sent.
       // Already captured for this attempt at the readiness probe above; nil for every
       // non-Ollama provider, which routes nothing.
-      ollamaIsRemote: ollamaRemote
+      ollamaIsRemote: ollamaRemote,
+      s1Control: s1Control
     )
     let plan = promptPlanner.plan(input: input)
 
@@ -831,20 +914,35 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // only, never transcript or prompt content.
     let systemChars =
       plan.envelope.messages.first(where: { $0.role == .system })?.content.count ?? 0
+    // #2649: the control line is three closed-enum policy values, never content,
+    // and it is the only way Live UAT can see which picks reached the model.
+    // Logged only for the family that reads it, so other engines' lines do not
+    // carry a field that means nothing to them.
+    let controlReceipt =
+      plan.family == .s1ControlLine ? ", control_line=\(s1Control.controlLine)" : ""
     Task {
       await AppLogger.shared.log(
         "LLM prompt route: provider=\(provider.rawValue), model=\(model), "
-          + "prompt_family=\(plan.family.rawValue), system_chars=\(systemChars)",
+          + "prompt_family=\(plan.family.rawValue), system_chars=\(systemChars)"
+          + controlReceipt,
         level: .info, category: "LLM"
       )
     }
 
     let llmStart = CFAbsoluteTimeGetCurrent()
-    let result = try await polisher.polish(
-      envelope: plan.envelope,
-      config: config,
-      onToken: onToken
-    )
+    let result: LLMResult
+    do {
+      result = try await polisher.polish(
+        envelope: plan.envelope,
+        config: config,
+        onToken: onToken
+      )
+    } catch LLMError.egOneSkipped(let reason) {
+      // #2649 (cloud review): the connectors share one transport and throw one
+      // error; the ENGINE is this step's entry snapshot, stamped here so the
+      // runner attributes the skip without a snapshot of its own (#1448).
+      throw LLMError.localEngineSkipped(reason, provider)
+    }
     let llmEnd = CFAbsoluteTimeGetCurrent()
 
     logPolishCompletion(
@@ -1178,6 +1276,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       // at the cap and paste a TRUNCATED polish. Latin gets ~4x headroom;
       // the tight 256 floor stays (fixed-prompt instruct tune, no thinking
       // tokens) and the 15 s budget bounds wall-clock.
+      return .capped(max(textCount, LLMConstants.ollamaMaxTokens))
+    case .s1Mini:
+      // #2649: same CJK-safe character-count shape as EG-1 above, and the same
+      // hazard it exists to avoid — a `count/3` estimate under-budgets
+      // unsegmented scripts, the server stops at the cap, and the connector is
+      // handed a TRUNCATED polish. Measured on this model: an input that fits
+      // can still exhaust the window during generation and come back HTTP 200
+      // with `finish_reason: length`, so the cap is one of two defences and the
+      // connector's length check is the other.
       return .capped(max(textCount, LLMConstants.ollamaMaxTokens))
     case .claude:
       // The Anthropic API requires `max_tokens`; fixed generous value.

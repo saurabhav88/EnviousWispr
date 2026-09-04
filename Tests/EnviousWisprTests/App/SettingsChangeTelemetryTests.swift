@@ -339,6 +339,28 @@ import Testing
       #expect(d.first?.stringProps["to"] == "bottom")
     }
 
+    @Test("S1-mini control picks emit one delta per axis, as the trained token (#2649)")
+    func s1ControlDeltas() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      settings.s1MiniStyling = .formal
+      settings.s1MiniStructure = .prose
+      settings.s1MiniContext = .email
+      telemetry.flush()
+      for (setting, from, to) in [
+        ("s1_styling", "semi-formal", "formal"),
+        ("s1_structure", "lists", "prose"),
+        ("s1_context", "general", "email"),
+      ] {
+        let d = deltas(box, setting: setting)
+        let why = Comment(rawValue: setting)
+        #expect(d.count == 1, why)
+        #expect(d.first?.stringProps["from"] == from, why)
+        #expect(d.first?.stringProps["to"] == to, why)
+        #expect(d.first?.stringProps["source"] == "user", why)
+      }
+    }
+
     @Test("recording sound settings emit deltas and project correctly (#1342)")
     func recordingSoundsDelta() {
       let (settings, telemetry, box, _) = makeHarness()

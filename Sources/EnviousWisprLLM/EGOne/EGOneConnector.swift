@@ -61,57 +61,16 @@ public struct EGOneConnector: TranscriptPolisher {
     ]
   }
 
+  /// The transport moved to `LocalPolishTransport` when a second model began
+  /// using the same server (#2649). EG-1's behaviour is unchanged: the request,
+  /// the timeout and the single restart-window retry are the same code, and
+  /// this connector still owns what a response MEANS.
   private func send(
     system: String, user: String, config: LLMProviderConfig
   ) async throws -> LLMResult {
-    let body = try Self.makeRequestBody(system: system, user: user, config: config)
-
-    var request = URLRequest(url: endpoint.chatCompletionsURL)
-    request.httpMethod = "POST"
-    request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.httpBody = try JSONSerialization.data(withJSONObject: body)
-    // The pipeline's 15 s budget is the real cap; this transport timeout
-    // only stops a zombie socket from outliving the step.
-    request.timeoutInterval = 20
-
-    // One internal retry on connection-refused/reset: covers the
-    // restart-once window after a server crash (plan §4). This is the
-    // EXPLICIT retry decision for EG-1 — `LLMRetryPolicy` deliberately
-    // treats the bypass error below as non-retryable so outer machinery
-    // never stacks retries on top.
-    var lastConnectionError = false
-    for attempt in 0...1 {
-      if attempt > 0 {
-        try await Task.sleep(for: .milliseconds(750))
-      }
-      do {
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-          throw LLMError.egOneSkipped(.crashed)
-        }
-        guard http.statusCode == 200 else {
-          Task {
-            await AppLogger.shared.log(
-              "EG-1 server HTTP \(http.statusCode)", level: .verbose, category: "LLM")
-          }
-          throw LLMError.egOneSkipped(.crashed)
-        }
-        return try Self.parseSuccess(data: data)
-      } catch let urlError as URLError {
-        switch urlError.code {
-        case .cannotConnectToHost, .networkConnectionLost:
-          lastConnectionError = true
-          continue
-        case .cancelled:
-          throw CancellationError()
-        default:
-          throw LLMError.egOneSkipped(.crashed)
-        }
-      }
-    }
-    _ = lastConnectionError
-    throw LLMError.egOneSkipped(.crashed)
+    try await LocalPolishTransport.send(
+      endpoint: endpoint, system: system, user: user, config: config,
+      parse: Self.parseSuccess(data:))
   }
 
   /// `internal` (not private) so the tag-echo regression test drives it
@@ -122,12 +81,10 @@ public struct EGOneConnector: TranscriptPolisher {
     // cap — the content is a partial rewrite. Accepting it pastes a
     // truncated polish, the exact failure the EG-1 contract forbids; the
     // token budgets make this rare, this check makes it impossible
-    // (#1271 cloud review P2).
-    if let finish = (json?["choices"] as? [[String: Any]])?.first?["finish_reason"] as? String,
-      finish == "length"
-    {
-      throw LLMError.egOneSkipped(.outputTruncated)
-    }
+    // (#1271 cloud review P2). Moved to `LocalPolishTransport` in #2649 so a
+    // second model's connector cannot be written without it — an inherited
+    // guard is exactly what a freshly authored sibling drops.
+    try LocalPolishTransport.truncationGuard(json)
     guard let choices = json?["choices"] as? [[String: Any]],
       let message = choices.first?["message"] as? [String: Any],
       let content = message["content"] as? String,

@@ -1,0 +1,249 @@
+import EnviousWisprCore
+import EnviousWisprServices
+import Foundation
+import Testing
+
+@testable import EnviousWisprLLM
+@testable import EnviousWisprPipeline
+
+/// S1-mini pipeline routing (#2649). The sibling of `EGOnePipelineRoutingTests`,
+/// and the rows that earn their place are the ones a single-model suite cannot
+/// express: that the two engines resolve through SEPARATE handles, and that a
+/// model which does not hold the server gets no polish rather than someone
+/// else's.
+@MainActor
+@Suite("S1-mini pipeline routing (#2649)", .tags(.productOutcome))
+struct S1MiniPipelineRoutingTests {
+
+  private static let transcript =
+    "so i was thinking we could maybe ship the new thing some time next week or so"
+
+  /// Two plausible rewrites, differing only in a word the validator does not
+  /// care about. That is what lets a row prove WHICH connector answered.
+  private static let s1Answer =
+    "I was thinking we could ship the new thing next week."
+  private static let egOneAnswer =
+    "I was thinking we could ship the new thing sometime next week."
+
+  @MainActor
+  final class FakeRuntime: EGOneEndpointProviding {
+    var endpoint: EGOneEndpoint?
+    init(endpoint: EGOneEndpoint? = nil) { self.endpoint = endpoint }
+    func activeEndpoint() async -> EGOneEndpoint? { endpoint }
+  }
+
+  private struct CannedPolisher: TranscriptPolisher {
+    let output: String
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      LLMResult(polishedText: output)
+    }
+    func polish(
+      envelope: PromptEnvelope, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      LLMResult(polishedText: output)
+    }
+  }
+
+  @MainActor
+  final class CaptureSpy {
+    private(set) var count = 0
+    func sink(
+      _ error: any Error, _ category: SentryBreadcrumb.ErrorCategory,
+      _ stage: String, _ extra: [String: Any]?, _ tags: [String: String],
+      _ fingerprintDetail: String?
+    ) { count += 1 }
+  }
+
+  private static func endpoint() -> EGOneEndpoint {
+    EGOneEndpoint(port: 1, authToken: "t", contextTokens: 32768)
+  }
+
+  private func makeStep(
+    s1Runtime: FakeRuntime?, egOneRuntime: FakeRuntime? = nil,
+    polished: String = S1MiniPipelineRoutingTests.s1Answer
+  ) -> LLMPolishStep {
+    let step = LLMPolishStep(keychainManager: KeychainManager())
+    step.llmProvider = .s1Mini
+    step.llmModel = LLMProvider.s1MiniModelName
+    step.s1MiniRuntime = s1Runtime
+    step.egOneRuntime = egOneRuntime
+    step.makeS1MiniPolisher = { _ in CannedPolisher(output: polished) }
+    // Deliberately a DIFFERENT output, so a row that ends up on EG-1's factory
+    // is visible in the assertion rather than passing by coincidence. Both
+    // strings are REALISTIC rewrites of the transcript: the output validator
+    // rejects a result that diverges wildly from the input, so an obviously
+    // fake marker would be discarded and every row would pass for the wrong
+    // reason.
+    step.makeEGOnePolisher = { _ in CannedPolisher(output: Self.egOneAnswer) }
+    return step
+  }
+
+  private func run(
+    _ step: LLMPolishStep, spy: CaptureSpy, rawText: String = S1MiniPipelineRoutingTests.transcript,
+    timeoutBelow: Double = 0.0
+  ) async throws
+    -> TextProcessingRunResult
+  {
+    let executor = FakeTimeoutExecutor(throwBelowSeconds: timeoutBelow)
+    let runner = TextProcessingRunner(
+      telemetry: .init(
+        captureError: spy.sink, recordPolishFailed: { _, _, _, _, _ in },
+        recordPolishSkipped: TextProcessingRunner.TelemetrySeams.live.recordPolishSkipped),
+      timeoutExecutor: executor.run)
+    return try await runner.run(
+      rawText: rawText, evidence: .locked("en"), targetAppName: nil, steps: [step])
+  }
+
+  // testEventHook is DEBUG-only (CI also compiles tests in release).
+  #if DEBUG
+    /// #2649 (cloud review): a skip raised INSIDE the step (here: no endpoint,
+    /// because another model holds the server) is attributed to S1-mini. The
+    /// connectors throw one shared error; the step stamps the engine on it.
+    @Test("a not-ready skip is attributed to S1-mini, never to EG-1")
+    func notReadySkipIsAttributedToS1Mini() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      let spy = CaptureSpy()
+      let step = makeStep(
+        s1Runtime: FakeRuntime(endpoint: nil),
+        egOneRuntime: FakeRuntime(endpoint: Self.endpoint()))
+      _ = try await run(step, spy: spy)
+
+      let event = try await waiter.waitForEvent(named: "llm.polish_skipped")
+      #expect(event.stringProps["provider"] == LLMProvider.s1Mini.rawValue)
+      #expect(event.stringProps["skip_reason"] == "local_polish_not_ready")
+    }
+
+    /// #2649 (cloud review): an S1-mini polish that runs past its budget is the
+    /// same silent local skip as EG-1's, and the skip is attributed to S1-mini.
+    /// Before this, the runner named only EG-1, so an S1-mini timeout took the
+    /// surfaced-failure path and the user saw "AI polish failed" on a slow Mac.
+    @Test("a timeout is a silent local skip, attributed to S1-mini and never to EG-1")
+    func timeoutIsSilentAndAttributedToS1Mini() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      let spy = CaptureSpy()
+      let step = makeStep(s1Runtime: FakeRuntime(endpoint: Self.endpoint()))
+      // Every budget is below 100 s, so the polish step's own budget times out.
+      let result = try await run(step, spy: spy, timeoutBelow: 100)
+
+      #expect(result.polishError == nil, "a local timeout must not surface a failure")
+      #expect(result.context.polishedText == nil)
+      #expect(result.context.text == Self.transcript)
+      #expect(spy.count == 0)
+
+      let event = try await waiter.waitForEvent(named: "llm.polish_skipped")
+      #expect(event.stringProps["provider"] == LLMProvider.s1Mini.rawValue)
+      #expect(event.stringProps["provider"] != LLMProvider.egOne.rawValue)
+      #expect(event.stringProps["skip_reason"] == "local_polish_timeout")
+    }
+  #endif
+
+  /// Records whether the connector was reached, and echoes the input so the
+  /// output validator has nothing to reject on a long transcript.
+  @MainActor
+  final class ReachedBox { var reached = false }
+
+  private struct EchoPolisher: TranscriptPolisher {
+    let box: ReachedBox
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      await MainActor.run { box.reached = true }
+      return LLMResult(polishedText: text)
+    }
+    func polish(
+      envelope: PromptEnvelope, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      await MainActor.run { box.reached = true }
+      let user = envelope.messages.last { $0.role == .user }?.content ?? ""
+      return LLMResult(polishedText: String(user.split(separator: "\n", maxSplits: 1).last ?? ""))
+    }
+  }
+
+  /// #2649 cloud review P2: the settings copy promises a dictation length
+  /// DERIVED from `localPolishTranscriptCeiling`, so that function must agree
+  /// with the guard it describes. Boundary on both sides: a transcript of
+  /// exactly the ceiling reaches the connector; one character more is skipped
+  /// whole, silently.
+  @Test("the published transcript ceiling is exactly where the length guard bites")
+  func ceilingMatchesTheGuard() async throws {
+    let window = 8192
+    let ceiling = LLMPolishStep.localPolishTranscriptCeiling(contextTokens: window)
+    #expect(ceiling == 3328)
+    let endpoint = EGOneEndpoint(port: 1, authToken: "t", contextTokens: window)
+    // Words, not one long token: the runner's other steps treat the text as
+    // prose, and the guard counts bytes either way.
+    func transcript(_ count: Int) -> String {
+      var s = ""
+      while s.count < count { s += (s.count % 6 == 5) ? " " : "a" }
+      return s
+    }
+
+    for (length, shouldReach) in [(ceiling, true), (ceiling + 1, false)] {
+      let box = ReachedBox()
+      let step = makeStep(s1Runtime: FakeRuntime(endpoint: endpoint))
+      step.makeS1MiniPolisher = { _ in EchoPolisher(box: box) }
+      let spy = CaptureSpy()
+      let result = try await run(step, spy: spy, rawText: transcript(length))
+      #expect(box.reached == shouldReach, "length \(length)")
+      #expect(spy.count == 0, "the skip is silent either way")
+      if !shouldReach { #expect(result.context.polishedText == nil) }
+    }
+  }
+
+  @Test("no S1-mini runtime handle means a silent raw fallback")
+  func missingRuntimeIsSilent() async throws {
+    let spy = CaptureSpy()
+    let result = try await run(makeStep(s1Runtime: nil), spy: spy)
+    #expect(result.polishError == nil)
+    #expect(spy.count == 0)
+    #expect(result.context.text == Self.transcript)
+    #expect(result.context.polishedText == nil)
+  }
+
+  /// THE row this suite exists for. EG-1 holds the server, so the coordinator
+  /// returns nil for S1-mini and its runtime reports no endpoint. The user must
+  /// get their own words back, never EG-1's rewrite labelled as S1-mini's.
+  @Test("another model holding the server means no polish, never the wrong one")
+  func nonResidentModelGetsNoPolish() async throws {
+    let spy = CaptureSpy()
+    let step = makeStep(
+      s1Runtime: FakeRuntime(endpoint: nil),          // coordinator refused it
+      egOneRuntime: FakeRuntime(endpoint: Self.endpoint()))  // EG-1 is resident
+    let result = try await run(step, spy: spy)
+
+    #expect(result.context.polishedText == nil)
+    #expect(result.context.text == Self.transcript)
+    #expect(
+      result.context.polishedText != Self.egOneAnswer,
+      "a polish must never be served by another model's weights")
+    #expect(spy.count == 0, "an unavailable local limb is a silent bypass")
+  }
+
+  @Test("a live endpoint routes to the S1-mini connector, not EG-1's")
+  func liveEndpointUsesItsOwnConnector() async throws {
+    let spy = CaptureSpy()
+    let step = makeStep(
+      s1Runtime: FakeRuntime(endpoint: Self.endpoint()),
+      egOneRuntime: FakeRuntime(endpoint: Self.endpoint()),
+      polished: Self.s1Answer)
+    let result = try await run(step, spy: spy)
+
+    #expect(result.context.polishedText == Self.s1Answer)
+    #expect(result.context.polishedText != Self.egOneAnswer)
+    #expect(spy.count == 0)
+  }
+}

@@ -6,7 +6,7 @@ section: "Dictionary"
 order: 1
 keywords: ["custom words", "vocabulary", "add a word", "my name", "names", "jargon", "technical terms", "spells my name wrong", "dictionary", "teach it a word", "acronyms", "how do I add a name", "where is your words", "fix a misspelled name", "turn on vocabulary packs", "import my contacts"]
 related: ["why-is-my-dictation-inaccurate", "how-custom-word-correction-works"]
-updated: 2026-09-01
+updated: 2026-09-04
 ---
 When EnviousWispr repeatedly misspells a name or a specialised word, you can teach it the exact spelling you want to use.
 
@@ -51,6 +51,6 @@ This needs macOS 26 or later with Apple Intelligence switched on, and it all hap
 
 Your custom spellings are applied to your transcribed text before AI Polish runs, on every dictation, whether or not polish is switched on.
 
-OpenAI, Gemini, Claude, and every Ollama model except EG-1 are also sent your custom word list, so their rewrites keep your spellings. One thing holds it back: if the app cannot tell with confidence which language you spoke, it keeps the list to itself for that dictation, rather than risk pushing English spellings onto text in another language. Apple Intelligence and EG-1 are never sent it, because they do better with shorter instructions. Either way your words have already been applied to the text by that stage, so nothing is lost.
+OpenAI, Gemini, Claude, and every Ollama model except EG-1 and S1-mini are also sent your custom word list, so their rewrites keep your spellings. One thing holds it back: if the app cannot tell with confidence which language you spoke, it keeps the list to itself for that dictation, rather than risk pushing English spellings onto text in another language. Apple Intelligence, EG-1, and S1-mini are never sent it, because they do better with shorter instructions. Either way your words have already been applied to the text by that stage, so nothing is lost.
 
 To move your words between Macs, or bring them in from another app, read [_Importing and Exporting Custom Words_](/help/importing-and-exporting-custom-words/).

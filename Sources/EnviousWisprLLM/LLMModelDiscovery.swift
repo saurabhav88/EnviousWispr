@@ -123,6 +123,12 @@ public struct LLMModelDiscovery: Sendable {
       // #1271: fixed first-party model — nothing to discover; the settings
       // row renders manifest identity from `EGOneRuntime`, not from here.
       return []
+    case .s1Mini:
+      // #2649: fixed third-party model, same answer. Routing it into the
+      // key-provider discovery path instead would hand the coordinator an empty
+      // model list and let it overwrite `llmModel` — the defect #1271 Codex r7
+      // already fixed once for EG-1.
+      return []
     case .none:
       return []
     }
@@ -542,6 +548,7 @@ public struct LLMModelDiscovery: Sendable {
     case .ollama: return true  // If model appears in tags list, it's available
     case .appleIntelligence: return true
     case .egOne: return true  // #1271: availability is the health probe's job, not discovery's
+    case .s1Mini: return true  // #2649: same — a fixed local model, health-probed, never discovered
     case .none: return false
     }
   }

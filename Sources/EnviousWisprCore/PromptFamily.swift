@@ -38,4 +38,21 @@ public enum PromptFamily: String, Sendable {
   /// Selected from the shipped manifest's `promptTemplateID`, never from the model's name.
   /// Canonical text: `scripts/eval/prompts/eg1-polish-prompt-v2.txt`.
   case egOneEnvelope
+
+  /// S1-mini's published input format (#2649): the model card's exact system
+  /// prompt, then a user message whose FIRST line is a control line
+  /// `[Styling: …] [Structure: …] [Context: …]` and whose remainder is the
+  /// transcript.
+  ///
+  /// The card is explicit that skipping either part, rewording the system
+  /// prompt, or sending a value outside the trained sets makes the model
+  /// hallucinate or garble. So this is a training contract in the same sense
+  /// `egOneFixed` is, with one difference worth stating: the model is not ours,
+  /// so the text cannot be changed by retraining. It can only be reproduced.
+  ///
+  /// ONE family covers BOTH routes — the managed `.s1Mini` provider and an
+  /// S1-mini pulled through Ollama by a user who brought their own copy. The
+  /// transport differs; the prompt must not. Canonical text:
+  /// `scripts/eval/prompts/s1-mini-control-line-v1.txt`.
+  case s1ControlLine
 }

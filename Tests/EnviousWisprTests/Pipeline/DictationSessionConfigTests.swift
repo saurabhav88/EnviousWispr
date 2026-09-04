@@ -26,6 +26,9 @@ struct DictationSessionConfigTests {
     #expect(config.polishInstructions.systemPrompt == PolishInstructions.default.systemPrompt)
     #expect(config.selectedInputDeviceUID == "")
     #expect(config.preferredInputDeviceIDOverride == "")
+    // #2649: the shipped control line, which is also what a site that forgets
+    // the argument gets.
+    #expect(config.s1Control == .default)
   }
 
   @Test("per-field overrides survive construction intact")
@@ -42,7 +45,8 @@ struct DictationSessionConfigTests {
       llmProvider: .appleIntelligence,
       llmModel: "apple-intelligence",
       selectedInputDeviceUID: "BuiltInMic",
-      preferredInputDeviceIDOverride: "ExternalMic"
+      preferredInputDeviceIDOverride: "ExternalMic",
+      s1Control: S1ControlSettings(styling: .casual, structure: .prose, context: .email)
     )
 
     #expect(config.autoCopyToClipboard == false)
@@ -57,6 +61,8 @@ struct DictationSessionConfigTests {
     #expect(config.selectedInputDeviceUID == "BuiltInMic")
     #expect(config.preferredInputDeviceIDOverride == "ExternalMic")
     #expect(config.smartInsertion == true)
+    #expect(
+      config.s1Control == S1ControlSettings(styling: .casual, structure: .prose, context: .email))
   }
 
   @Test("Sendable value semantics — modifying a copy's source does not mutate the snapshot")

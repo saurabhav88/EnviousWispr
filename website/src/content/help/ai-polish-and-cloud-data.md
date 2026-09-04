@@ -7,7 +7,7 @@ order: 3
 keywords: ["cloud", "does it send my text anywhere", "sent to openai", "sent to google", "leaves my mac", "third party", "who sees my text", "confidential", "work data", "hipaa"]
 related: ["privacy-overview", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini"]
 seeAlso: "cloud-ai-polish-not-stored"
-updated: 2026-08-06
+updated: 2026-09-04
 ---
 Whether any of your text leaves your Mac depends entirely on which AI Polish option you picked. Go to **Settings** \> **AI Polish** to check your current selection.
 
@@ -18,6 +18,7 @@ These options keep your transcription and the polish request entirely on your de
 - **None.** No AI step runs at all.
 - **Apple Intelligence.** Apple's model, running directly on your Mac.
 - **EG-1.** The model built by Envious Labs, running directly on your Mac.
+- **S1-mini.** The small model made by Superwhisper, running directly on your Mac.
 - **Ollama, when you pick a model you downloaded.** Ollama also offers hosted models that run on its own servers, and those do send your transcribed text. EnviousWispr shows the hosted models under a separate heading so you can tell which kind you are choosing.
 
 ### Your text is sent

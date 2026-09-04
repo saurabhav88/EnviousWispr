@@ -6,7 +6,7 @@ section: "Transcription"
 order: 3
 keywords: ["download model", "model download", "stuck downloading", "how big", "disk space", "gb", "storage", "redownload", "model files", "where are the models"]
 related: ["uninstalling-enviouswispr"]
-updated: 2026-08-06
+updated: 2026-09-04
 ---
 EnviousWispr keeps its speech models on your own Mac rather than on a server, which is what lets your audio stay on the device. The trade for that is a download the first time and some disk space to manage afterwards.
 
@@ -35,6 +35,8 @@ You can remove local models you no longer need to recover storage, and you can d
 **Remove a WhisperKit model.** Open **Transcription** and use **Remove Model**.
 
 **Remove EG-1.** EG-1 is the polish model EnviousWispr built. Open **AI Polish** and use the remove button there. The button appears once EG-1 is installed and ready. If a newer EG-1 is waiting to install, that row offers the upgrade instead, and the remove button comes back once the upgrade finishes.
+
+**Remove S1-mini.** S1-mini is the small polish model made by Superwhisper. It has the same card on the **AI Polish** page as EG-1, with the same remove button once it is installed and ready.
 
 **Remove Ollama models.** Local Ollama models are removed from that same **AI Polish** page. Hosted Ollama models cannot be removed because there is nothing on your Mac to remove.
 

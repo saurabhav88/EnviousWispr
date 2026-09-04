@@ -1,0 +1,10 @@
+{
+  "modelName": "s1-mini",
+  "version": "1.0",
+  "contextTokens": 8192,
+  "promptTemplateID": "s1-control-line-v1",
+  "minAppVersion": "2.5.0",
+  "downloadURL": "https://models.enviouslabs.co/s1/34add00a48a2e5d24e5a4ee5405a99620a3a240c/s1-mini-q4_k_m.gguf",
+  "licenseURL": "https://huggingface.co/superwhisper/s1-mini-GGUF/resolve/34add00a48a2e5d24e5a4ee5405a99620a3a240c/LICENSE",
+  "displayVersion": "1.0"
+}

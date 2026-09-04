@@ -10,6 +10,11 @@ public final class SettingsManager {
     case llmProvider
     case llmModel
     case ollamaModel
+    /// #2649: S1-mini's three control-line picks, one key each so a change to
+    /// one axis emits one delta and telemetry can answer which axis users touch.
+    case s1MiniStyling
+    case s1MiniStructure
+    case s1MiniContext
     case autoCopyToClipboard
     case hotkeyEnabled
     case vadAutoStop
@@ -80,6 +85,7 @@ public final class SettingsManager {
   /// live setting and is stripped on load by the #734 migration below.
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
+    "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
     "autoCopyToClipboard", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
@@ -200,12 +206,16 @@ public final class SettingsManager {
   /// until async discovery happened to repair it (#158, Codex r4):
   /// `modelIDLooksLikeCloudProvider` catches that case as well.
   private func canonicalizeLLMModelForProvider() {
-    let fixedLiterals = ["apple-intelligence", LLMProvider.egOneModelName]
+    let fixedLiterals = [
+      "apple-intelligence", LLMProvider.egOneModelName, LLMProvider.s1MiniModelName,
+    ]
     switch llmProvider {
     case .appleIntelligence:
       llmModel = "apple-intelligence"
     case .egOne:
       llmModel = LLMProvider.egOneModelName
+    case .s1Mini:
+      llmModel = LLMProvider.s1MiniModelName
     case .ollama:
       // #1305: empty stays empty for Ollama — refilling from `ollamaModel`
       // here silently re-armed the phantom picker selection at every launch
@@ -241,6 +251,40 @@ public final class SettingsManager {
       defaults.set(ollamaModel, forKey: "ollamaModel")
       onChange?(.ollamaModel)
     }
+  }
+
+  // MARK: - S1-mini control line (#2649)
+
+  /// Persisted as three raw strings, one per axis. Each raw value is the exact
+  /// token the model was trained on (`S1ControlSettings`), and an unknown or
+  /// missing stored string falls back to the shipped default at load, so a key
+  /// written by a newer build can never put an untrained value on the wire.
+  public var s1MiniStyling: S1Styling {
+    didSet {
+      defaults.set(s1MiniStyling.rawValue, forKey: "s1MiniStyling")
+      onChange?(.s1MiniStyling)
+    }
+  }
+
+  public var s1MiniStructure: S1Structure {
+    didSet {
+      defaults.set(s1MiniStructure.rawValue, forKey: "s1MiniStructure")
+      onChange?(.s1MiniStructure)
+    }
+  }
+
+  public var s1MiniContext: S1Context {
+    didSet {
+      defaults.set(s1MiniContext.rawValue, forKey: "s1MiniContext")
+      onChange?(.s1MiniContext)
+    }
+  }
+
+  /// The three axes as the one value the pipeline freezes per recording. Read
+  /// by `DictationSessionConfigFactory` and `RecoveryCoordinator`; the pickers
+  /// write the three stored properties above directly.
+  public var s1Control: S1ControlSettings {
+    S1ControlSettings(styling: s1MiniStyling, structure: s1MiniStructure, context: s1MiniContext)
   }
 
   public var autoCopyToClipboard: Bool {
@@ -735,6 +779,10 @@ public final class SettingsManager {
     // #1271: fixed literal, the apple-intelligence pattern — Services cannot
     // import the LLM-module manifest; version detail rides eg1.* telemetry.
     case .egOne: return LLMProvider.egOneModelName
+    // #2649: same fixed-literal pattern. The value is deliberately NOT the
+    // Ollama route's id, so polish telemetry can tell the managed path from a
+    // model the user pulled themselves.
+    case .s1Mini: return LLMProvider.s1MiniModelName
     case .ollama: return ollamaModel
     case .openAI, .gemini, .claude, .none: return llmModel
     }
@@ -978,6 +1026,15 @@ public final class SettingsManager {
       WarmEnginePolicy(
         rawValue: defaults.string(forKey: "warmEnginePolicy") ?? ""
       ) ?? SettingsDefaultValues.warmEnginePolicy
+    s1MiniStyling =
+      S1Styling(rawValue: defaults.string(forKey: "s1MiniStyling") ?? "")
+      ?? SettingsDefaultValues.s1Control.styling
+    s1MiniStructure =
+      S1Structure(rawValue: defaults.string(forKey: "s1MiniStructure") ?? "")
+      ?? SettingsDefaultValues.s1Control.structure
+    s1MiniContext =
+      S1Context(rawValue: defaults.string(forKey: "s1MiniContext") ?? "")
+      ?? SettingsDefaultValues.s1Control.context
 
     appearancePreference =
       AppearancePreference(

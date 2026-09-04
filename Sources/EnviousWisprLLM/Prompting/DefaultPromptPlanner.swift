@@ -63,6 +63,7 @@ public struct DefaultPromptPlanner: PromptPlanning {
     case .localFixed: return LocalFixedPromptBuilder()
     case .egOneFixed: return EGOnePromptBuilder()
     case .egOneEnvelope: return EGOneEnvelopePromptBuilder()
+    case .s1ControlLine: return S1ControlLinePromptBuilder()
     }
   }
 
@@ -86,6 +87,16 @@ public struct DefaultPromptPlanner: PromptPlanning {
       // over execution location. An EG-1 served from anywhere still needs its exact
       // training prompt. Single first-party definition shared with telemetry:
       // `OllamaSetupService.isFirstPartyModel`.
+      // #2649: S1-mini checked alongside the first-party model and BEFORE the
+      // local-versus-hosted branch, for the same reason: the model's training
+      // format outranks where it happens to be running. A user who pulled
+      // S1-mini into Ollama themselves gets the identical prompt the managed
+      // `.s1Mini` provider sends, from the identical builder. Without this the
+      // same prompt would exist twice, in two modules, with only one of them
+      // pinned by the byte-identity test.
+      if OllamaSetupService.isS1MiniModel(modelID) {
+        return .s1ControlLine
+      }
       if OllamaSetupService.isFirstPartyModel(modelID) {
         // KNOWN LIMIT, stated rather than hidden: an EG-1 pulled through Ollama carries no
         // manifest, so the app cannot learn which revision those bytes are and holds the
@@ -109,6 +120,14 @@ public struct DefaultPromptPlanner: PromptPlanning {
       // is manifest-enforced by `EGOneRuntime` (activation refuses a name/template
       // mismatch), so no per-model-id heuristics apply here.
       return egOneFamily
+    case .s1Mini:
+      // #2649: a fixed third-party training format. Unlike EG-1 this is NOT read
+      // from the manifest's `promptTemplateID`: the two EG-1 families exist
+      // because WE retrained the model and had to keep serving 1.1 users their
+      // 1.1 prompt. S1-mini's text is not ours to change, so a second family
+      // could only arise from upstream publishing a different format, which
+      // would be a new artifact and a new manifest.
+      return .s1ControlLine
     case .appleIntelligence, .none:
       // Should not reach the planner — Apple Intelligence has its own prompt path
       // (`LLMPolishStep` branches before planning). Fall back to the fixed cloud prompt,

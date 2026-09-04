@@ -40,7 +40,7 @@ enum LLMRetryPolicy {
         // fail-fast reasons (out-of-credits, key problems, the Gemini
         // rate-or-quota ambiguity) surface their actionable notice immediately.
         return reason.isRetryable
-      case .egOneSkipped:
+      case .egOneSkipped, .localEngineSkipped:
         // EXPLICIT (#1271): EG-1 bypasses are silent skips, and the single
         // connection-refused retry that covers the server restart-once
         // window already happened inside `EGOneConnector`. Retrying here

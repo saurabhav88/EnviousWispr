@@ -151,6 +151,41 @@ import Testing
       event == .healthChanged(from: "yellow", to: "red", reason: "server_binary_missing"))
   }
 
+  /// #2649 (cloud review P1): the two bundled engines share one server, so a
+  /// direct activation of THIS engine, from the status card's refresh button
+  /// or a completed download, would evict the engine a running take froze and
+  /// that take would silently polish to raw. Both direct entry points refuse
+  /// while the OTHER engine is pinned; the sync layer's deferred retry starts
+  /// this one once the take ends.
+  @MainActor
+  @Test func directActivationRefusesWhileTheOtherEngineIsPinnedInFlight() async throws {
+    let h = try makeHarness(egOneActive: true)
+    defer { h.cleanup() }
+    try stageValidShards(h.registration)
+    #expect(await h.adapter.adoptIfPresent())
+    h.runtime.isBlockedByOtherPinnedSession = { true }
+
+    // Refresh button path.
+    #expect(h.runtime.activateAndProbe() == nil)
+    // Completed-download path.
+    #expect(h.runtime.activateAfterAutomaticReplacementIfNeeded() == nil)
+    // Nothing reached the server manager: the missing-binary signal that a
+    // real start produces on this harness never fires.
+    for _ in 0..<50 { await Task.yield() }
+    #expect(!h.signal.sawServerBinaryMissing)
+
+    // Two-way control: the same runtime, unblocked, starts (and reports the
+    // missing binary exactly as the row above this one does).
+    h.runtime.isBlockedByOtherPinnedSession = { false }
+    _ = try #require(h.runtime.activateAndProbe())
+    let event = await h.signal.next { event in
+      if case .healthChanged(_, _, "server_binary_missing") = event { return true }
+      return false
+    }
+    #expect(
+      event == .healthChanged(from: "yellow", to: "red", reason: "server_binary_missing"))
+  }
+
   @MainActor
   @Test func automaticReplacementAdmissionDoesNotStartWhenPolishIsOff() async throws {
     // Polish off IS provider .none (LLMPolishStep.isEnabled == llmProvider != .none):
@@ -277,5 +312,69 @@ import Testing
 
     #expect(h.runtime.installState == .notInstalled)
     #expect(!h.signal.sawServerBinaryMissing)
+  }
+
+  /// A removal whose stop is superseded must not delete the model the user has
+  /// just selected.
+  ///
+  /// The race is real on an ordinary click: Remove and the provider switch
+  /// arrive as separate tasks, the stop is correctly rejected as superseded,
+  /// and the deletion that followed it in the same task used to run anyway.
+  /// Losing 462 MB the user is now waiting on is the worst outcome in this
+  /// whole area, because unlike a wrong process it cannot be undone by
+  /// switching back.
+  ///
+  /// **The control runs FIRST and is not optional.** "The file is still there"
+  /// is also what a task that has not run yet looks like, so without a control
+  /// proving this harness observes a real deletion within the same wait, the
+  /// subject row passes against a coordinator that never removes anything.
+  @MainActor
+  @Test func aRemovalSupersededByReselectionDoesNotDeleteTheModel() async throws {
+    // CONTROL: nobody re-selects, so the deletion must actually happen.
+    let control = try makeHarness(egOneActive: false)
+    defer { control.cleanup() }
+    try stageValidShards(control.registration)
+    let controlShard = control.registration.installDirectory
+      .appendingPathComponent("eg-1-00001-of-00002.gguf")
+    #expect(FileManager.default.fileExists(atPath: controlShard.path), "fixture did not stage")
+
+    control.runtime.removeModel()
+    let controlGone = await Self.settle {
+      !FileManager.default.fileExists(atPath: controlShard.path)
+    }
+    #expect(controlGone, "control: an unselected model must really be deleted")
+
+    // SUBJECT: the user re-selects this engine while the stop is in flight.
+    // This test is @MainActor and `removeModel` spawns its work, so the switch
+    // below lands before that work can observe anything — which is exactly the
+    // ordering the defect needs.
+    let h = try makeHarness(egOneActive: false)
+    defer { h.cleanup() }
+    try stageValidShards(h.registration)
+    let shard = h.registration.installDirectory
+      .appendingPathComponent("eg-1-00001-of-00002.gguf")
+
+    h.runtime.removeModel()
+    h.provider.isEGOneActive = true
+
+    // Watch for the BAD outcome, so the wait runs to its full length. Polling
+    // for "still there" would return on the first tick and prove nothing,
+    // which is the shape this row exists to avoid.
+    let deleted = await Self.settle {
+      !FileManager.default.fileExists(atPath: shard.path)
+    }
+    #expect(!deleted, "the model the user just re-selected must not be deleted")
+  }
+
+  /// Bounded settle. Used only to let a fire-and-forget task run, never as the
+  /// assertion itself — every caller pairs it with a control that fails if the
+  /// window is too short to observe the real effect.
+  @MainActor
+  private static func settle(_ condition: () -> Bool) async -> Bool {
+    for _ in 0..<200 {
+      if condition() { return true }
+      try? await Task.sleep(nanoseconds: 10_000_000)
+    }
+    return condition()
   }
 }

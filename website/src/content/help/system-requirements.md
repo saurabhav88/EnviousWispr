@@ -5,7 +5,7 @@ category: "getting-started"
 section: "Basics"
 order: 2
 keywords: ["requirements", "supported macs", "will it run", "intel", "apple silicon", "m1", "m2", "m3", "m4", "macos version", "sonoma", "sequoia", "compatible", "does it work on my mac", "old mac"]
-updated: 2026-08-06
+updated: 2026-09-04
 ---
 EnviousWispr is a free dictation app for macOS. It runs on any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or later. Intel Macs are not supported.
 
@@ -22,5 +22,6 @@ AI polish is an optional feature that removes filler words and corrects grammar.
 
 - **Apple Intelligence** requires macOS 26 or later, running on a Mac model that supports Apple Intelligence.
 - **EG-1**, the model built by Envious Labs, requires a one-time 2.9 GB download and around 6 GB of free disk space while it installs.
+- **S1-mini**, the small model made by Superwhisper, requires a one-time 484 MB download and around 1 GB of free disk space while it installs.
 - **Ollama** running on your Mac requires enough free memory to load the model you choose. Ollama also offers models hosted on its own servers, which need an internet connection instead.
 - **OpenAI, Gemini, or Claude** require an internet connection and your own API key from that provider.

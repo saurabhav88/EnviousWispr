@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
@@ -11,21 +12,28 @@ import Foundation
 /// exclusively on `model_delivery.*` with `family=eg1` (#1348 Phase 3, which retired this path's
 /// own `download_started/completed/failed`).
 enum EGOneTelemetryBridge {
-  static var handler: @Sendable (EGOneRuntimeEvent) -> Void {
+  /// #2649 (cloud review): both bundled engines report through ONE handler,
+  /// keyed by `engine`. The event family stays `eg1.*` because every dashboard
+  /// and worker reads that name; the `engine` property, a closed enum value,
+  /// is what separates the two. Before this the S1-mini runtime had no handler
+  /// at all, so every S1-mini health and paused-install signal was dropped.
+  static func handler(engine: LLMProvider) -> @Sendable (EGOneRuntimeEvent) -> Void {
     { event in
       Task { @MainActor in
         switch event {
         case .healthChanged(let from, let to, let reason):
           TelemetryService.shared.egOneDownloadEvent(
             name: "health_changed",
-            properties: ["from": from, "to": to, "reason": reason ?? "none"])
+            properties: [
+              "from": from, "to": to, "reason": reason ?? "none", "engine": engine.rawValue,
+            ])
         case .pausedInstallStateChanged(let projection):
           // One property from a closed set of four (three paused states plus
           // "none" for leaving one). No transcript, no path, no version string
           // beyond what this app already ships — shape, never content.
           TelemetryService.shared.egOneDownloadEvent(
             name: "paused_install_state_changed",
-            properties: ["state": projection?.rawValue ?? "none"])
+            properties: ["state": projection?.rawValue ?? "none", "engine": engine.rawValue])
         }
       }
     }

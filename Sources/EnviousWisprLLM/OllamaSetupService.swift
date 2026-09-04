@@ -364,6 +364,29 @@ public final class OllamaSetupService {
     return canonicalModelName(lower) == "eg-1" || lower.hasPrefix("eg-1:")
   }
 
+  /// The single definition of "this Ollama model id is S1-mini" (#2649).
+  ///
+  /// Separate from `isFirstPartyModel` on purpose: S1-mini is NOT ours. It gets
+  /// its own prompt and its own transport for reasons of training format, not
+  /// of ownership, and folding it into the first-party predicate would put a
+  /// third party's model behind our name in telemetry.
+  ///
+  /// Matches the Hugging Face repository the model card publishes, with ANY tag
+  /// (`:Q4_K_M`, `:F16`, `:latest`), case-insensitively — Ollama preserves the
+  /// case a user typed while treating the reference as case-insensitive, so a
+  /// case-sensitive match would miss the user in #2634, whose id was
+  /// `hf.co/superwhisper/s1-mini-GGUF:Q4_K_M`.
+  ///
+  /// Deliberately NOT a loose `contains`: a user who renames a copy to
+  /// `s1-mini-acme` has a model we know nothing about, and sending it a prompt
+  /// tuned for different weights is how a working setup silently gets worse.
+  /// That copy routes through the normal local heuristics instead.
+  public nonisolated static func isS1MiniModel(_ modelID: String) -> Bool {
+    let lower = modelID.lowercased()
+    let repository = "hf.co/superwhisper/s1-mini-gguf"
+    return lower == repository || lower.hasPrefix(repository + ":")
+  }
+
   /// Dynamic catalog: downloaded models first (with real metadata), then undownloaded suggestions.
   ///
   /// #1956: hosted suggestions are supplied only from a `.loaded` cloud catalog.

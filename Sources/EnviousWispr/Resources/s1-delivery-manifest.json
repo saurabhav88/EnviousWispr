@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "family": "s1_mini",
+    "name": "s1-mini",
+    "revision": "34add00a48a2e5d24e5a4ee5405a99620a3a240c",
+    "variant": "q4km",
+    "runtimeABI": "llamacpp-eg1-v1"
+  },
+  "runtimeCompatibility": {
+    "minAppVersion": "2.5.0"
+  },
+  "files": [
+    {
+      "path": "s1-mini-q4_k_m.gguf",
+      "installPath": "s1-mini-1.0.gguf",
+      "sizeBytes": 484219808,
+      "sha256": "3b41ebe2502cbd03e811d5d16b022f5ab551eda58d62597d152f89535003c634",
+      "component": "s1-mini-1.0.gguf"
+    }
+  ],
+  "optionalFiles": [],
+  "totalBytes": 484219808,
+  "sources": [
+    {
+      "id": "our_copy",
+      "baseURL": "https://models.enviouslabs.co/s1/34add00a48a2e5d24e5a4ee5405a99620a3a240c/"
+    },
+    {
+      "id": "backup",
+      "baseURL": "https://huggingface.co/superwhisper/s1-mini-GGUF/resolve/34add00a48a2e5d24e5a4ee5405a99620a3a240c/"
+    }
+  ],
+  "license": {
+    "name": "Apache-2.0 with S1-mini naming term",
+    "url": "https://huggingface.co/superwhisper/s1-mini-GGUF/resolve/34add00a48a2e5d24e5a4ee5405a99620a3a240c/LICENSE"
+  },
+  "admission": {
+    "layout": "componentSet",
+    "installLocation": "polishModelsCache",
+    "diskHeadroomFactor": "2.2",
+    "evictPreviousRevisions": true,
+    "entrypointFile": "s1-mini-1.0.gguf"
+  },
+  "manifestDigest": "602b8cf6eb7112ff919f3e5cd5e8a86b2c9e70bba571edc27d36a87f1e89b2b1"
+}

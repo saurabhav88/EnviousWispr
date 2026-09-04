@@ -45,6 +45,10 @@ final class BackendMetadata {
     case .none: "Off"
     case .appleIntelligence: "Apple Intelligence"
     case .egOne: "EG-1"  // #1271: fixed name, like Apple Intelligence above
+    // #2649 (cloud review): falling through to `llmLabel` rendered the model id
+    // `s1-mini`, and the licence requires the exact spelling wherever the
+    // model is identified. One owner for that string.
+    case .s1Mini: LLMProvider.s1Mini.displayName
     default: llmLabel
     }
   }

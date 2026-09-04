@@ -126,11 +126,42 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// stop the server and delete the artifact underneath a recording that
   /// still needs it.
   public var isPinnedInFlight: (@MainActor () -> Bool)?
+  /// Live "did an in-flight recording freeze the OTHER local engine?" read,
+  /// set by the composition root (#2649, cloud review P1). Two engines share
+  /// one server, so starting this one evicts whichever is resident, and a
+  /// recording that froze the other engine would then silently polish to raw.
+  /// `PipelineSettingsSync` already defers its own reconciliation on this
+  /// condition; this closure puts the same refusal on the two entry points
+  /// that bypass it, the status card's refresh button and a completed
+  /// download's auto-start. The deferred reconciliation retries once the
+  /// recording ends, so a refused start is delayed, never lost.
+  public var isBlockedByOtherPinnedSession: (@MainActor () -> Bool)?
   private var removalPending = false
 
   public let manifest: EGOneManifest?
   private let delivery: EGOneDeliveryAdapter?
-  private let server: EGOneServerManager
+  /// The SHARED process owner (#2649). Previously each runtime constructed its
+  /// own `EGOneServerManager`, so a second model meant a second manager, a
+  /// second llama-server and 3.4 GB resident. One-at-a-time is a property of
+  /// the SET of local models, and a property of a set cannot be enforced by
+  /// members that cannot see each other.
+  private let server: LocalPolishServerCoordinator
+
+  /// #2649: the composition root reads this to hand the SAME coordinator to the
+  /// second model's runtime. Exposed read-only and named for what it is, rather
+  /// than letting the root construct two — two coordinators mean two processes,
+  /// which is the regression one-model-at-a-time exists to prevent.
+  public var serverCoordinator: LocalPolishServerCoordinator { server }
+  /// Which model this runtime speaks for. The coordinator refuses to hand an
+  /// endpoint or a health verdict to a model that is not the resident one, so
+  /// this value is what stops a polish being answered by other weights.
+  private let provider: LLMProvider
+  /// Namespace for this model's persisted values. EG-1's is `eg1.` exactly as
+  /// before, so nothing it already wrote moves.
+  private let defaultsKeyPrefix: String
+  /// Which model the health probe should present itself as. See
+  /// `EGOneServerManager.ProbeSpec`.
+  private let probeSpec: EGOneServerManager.ProbeSpec
   private let serverBinaryURL: URL?
 
   // MARK: - Init
@@ -140,10 +171,39 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// adapter exists before launch activation calls it (#1348 §Decision A
   /// construction-order fix). A nil adapter (bundled-manifest load failure)
   /// is a RED limb state, never a crash.
+  /// `coordinator` is optional ONLY so existing tests that construct a runtime
+  /// in isolation keep working; production passes the app's single instance.
+  /// Two runtimes constructed with nil would each own a process again, which is
+  /// why `WisprBootstrapper` builds one coordinator and injects it.
   public init(
     manifest: EGOneManifest?, serverBinaryURL: URL?, delivery: EGOneDeliveryAdapter?,
-    defaults: UserDefaults? = nil
+    defaults: UserDefaults? = nil,
+    coordinator: LocalPolishServerCoordinator? = nil,
+    provider: LLMProvider = .egOne
   ) {
+    self.provider = provider
+    // Derived from the provider rather than taken as a parameter: the two must
+    // agree, and a caller free to pair `.s1Mini` with EG-1's probe would
+    // recreate the defect this replaced.
+    //
+    // EXHAUSTIVE rather than a ternary, deliberately. `provider == .egOne ? ... :
+    // ...` gave every OTHER provider S1-mini's identity silently, which is the
+    // same fail-open default this file exists to remove — a third bundled model
+    // would have been health-checked as S1-mini with nothing failing. The switch
+    // makes a new case a compile error here.
+    let keyPrefix: String
+    switch provider {
+    case .egOne:
+      keyPrefix = "eg1."
+      self.probeSpec = .egOne
+    case .s1Mini:
+      keyPrefix = "s1."
+      self.probeSpec = .s1Mini
+    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
+      preconditionFailure("EGOneRuntime serves a bundled local model; \(provider) is not one")
+    }
+    self.defaultsKeyPrefix = keyPrefix
+    self.pausedProjectionKey = "\(keyPrefix)pausedInstallProjection"
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL
     self.delivery = delivery
@@ -153,11 +213,12 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // leaves an upgrade paused and quits emits a fresh ENTRY on every launch
     // with no matching exit — the eventual exit then has several candidate
     // starts and the duration this event exists to measure is uncomputable.
-    self.lastPausedProjection = (self.defaults.string(forKey: Self.pausedProjectionKey))
+    self.lastPausedProjection = (self.defaults.string(forKey: self.pausedProjectionKey))
       .flatMap(EGOnePausedInstallState.init(rawValue:))
-    self.server = EGOneServerManager()
+    self.server = coordinator ?? LocalPolishServerCoordinator()
     if let manifest {
-      self.activationBlockers = manifest.activationBlockers()
+      self.activationBlockers = manifest.activationBlockers(
+        expectedModelName: LLMProvider.defaultModel(for: provider))
     } else {
       self.activationBlockers = ["manifest_missing"]
     }
@@ -181,7 +242,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     Task { [weak self] in
       guard let self else { return }
       let seq = OSAllocatedUnfairLock(initialState: 0)
-      await self.server.setStateObserver { [weak self] state in
+      await self.server.setStateObserver(for: self.provider) { [weak self] state in
         let mySeq = seq.withLock {
           $0 += 1
           return $0
@@ -313,14 +374,18 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   private var lastPausedProjection: EGOnePausedInstallState? {
     didSet {
       if let raw = lastPausedProjection?.rawValue {
-        defaults.set(raw, forKey: Self.pausedProjectionKey)
+        defaults.set(raw, forKey: self.pausedProjectionKey)
       } else {
-        defaults.removeObject(forKey: Self.pausedProjectionKey)
+        defaults.removeObject(forKey: self.pausedProjectionKey)
       }
     }
   }
 
-  private static let pausedProjectionKey = "eg1.pausedInstallProjection"
+  /// #2649: per-model, because two runtimes writing one key would each read the
+  /// other's paused upgrade and emit an entry with no matching exit — the exact
+  /// defect #2109 added this projection to fix. EG-1 keeps `eg1.` verbatim, so
+  /// no persisted value moves and there is no migration.
+  private let pausedProjectionKey: String
   private let defaults: UserDefaults
 
   private var serverState: EGOneServerManager.ServerState = .stopped
@@ -402,8 +467,27 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     }
     removalPending = false
     activationGeneration += 1
+    // Stamped on the main actor, in the order the user acted. Inside the task
+    // the order would be whatever the scheduler chose.
+    let intent = server.claimIntent()
     Task {
-      await self.server.stop()
+      await self.server.transition(to: .idle(self.provider), intent: intent)
+      // The stop can be superseded, and the two halves of this task do NOT
+      // deserve the same guard. A superseded stop is harmless — the server is
+      // running because somebody newer asked for it. A superseded DELETE
+      // removes bytes, and if the newer intent was a switch to this very
+      // engine it removes the model the user just picked.
+      //
+      // Intent is the wrong authority for that question, which is why this is
+      // not the stamp check the stop uses: a newer intent about the OTHER
+      // engine must not abandon this removal, or the model stays on disk with
+      // nothing saying so. Selection is the question that decides whether
+      // deleting is right, so selection is what is asked.
+      //
+      // Unset reads as "not selected" and the deletion proceeds: the user
+      // asked for this explicitly, and refusing on a missing closure would
+      // make removal unreachable rather than safe.
+      guard self.isActiveProvider?() != true else { return }
       _ = await delivery.remove()
     }
   }
@@ -437,6 +521,10 @@ public final class EGOneRuntime: EGOneEndpointProviding {
     // followed by re-selecting EG-1 still deletes the model the user just
     // re-picked once the recording ends (#1271 seam review P1).
     removalPending = false
+    // Refused, not deferred here: the sync layer owns the retry and already
+    // has one pending for exactly this situation (a switch that arrived while
+    // the other engine's take was in flight).
+    if isBlockedByOtherPinnedSession?() == true { return nil }
     guard let manifest, activationBlockers.isEmpty else {
       // Blocked manifest = spawn will never run this session, so its
       // pre-spawn sweep never reaps a crash orphan; reap here (idle-gated
@@ -445,17 +533,19 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       return nil
     }
     let generation = activationGeneration
+    let intent = server.claimIntent()
     return Task {
       // First hop back onto the main actor: a switch-to-then-away that beat
       // this task bumped the generation — do not start the server.
       guard generation == self.activationGeneration else { return }
-      await self.startServerIfInstalled(generation: generation)
+      await self.startServerIfInstalled(generation: generation, intent: intent)
       // A deactivate DURING the start already stopped the server (the
       // manager's mid-start guards handle that); just don't probe or stamp
       // health for a stale generation.
       guard generation == self.activationGeneration else { return }
       guard let family = manifest.promptFamily else { return }
-      let result = await self.server.probeHealth(promptFamily: family)
+      let result = await self.server.probeHealth(
+        self.provider, promptFamily: family, spec: self.probeSpec)
       // Probe verdict wins over the cheap projection while server is ready.
       guard generation == self.activationGeneration else { return }
       if case .ready = self.serverState { self.health = result }
@@ -500,7 +590,11 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// Provider switched away: free the RAM (isolate-limbs).
   public func deactivate() {
     activationGeneration += 1
-    Task { await self.server.stop() }
+    // The switch-away and the matching switch-to are separate tasks, and Swift
+    // does not order them. Claiming both stamps here, on the main actor, is
+    // what makes the later request win regardless of which task runs first.
+    let intent = server.claimIntent()
+    Task { await self.server.transition(to: .idle(self.provider), intent: intent) }
   }
 
   /// App-quit path (#1271 Codex r1 P1): `applicationWillTerminate` cannot
@@ -508,7 +602,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// when the parent exits — kill synchronously or orphan a multi-GB
   /// server. Crash orphans are reaped by the stale-sweep on next start.
   public func terminateServerForAppQuit() {
-    server.terminateImmediately()
+    server.terminateForAppQuit()
   }
 
   /// Adopt-if-present THEN boot (#1348 §16.4, refined grounded r4 P2): a legacy
@@ -520,7 +614,7 @@ public final class EGOneRuntime: EGOneEndpointProviding {
   /// the user's back — only the explicit Download button (`startDownload`)
   /// fetches. Delivery may continue after a provider switch-away, but the boot
   /// is generation-gated.
-  private func startServerIfInstalled(generation: Int) async {
+  private func startServerIfInstalled(generation: Int, intent: Int) async {
     guard let manifest, let delivery, serverBinaryURL != nil else { return }
     let admitted = await delivery.adoptIfPresent()
     guard generation == self.activationGeneration else { return }
@@ -533,43 +627,84 @@ public final class EGOneRuntime: EGOneEndpointProviding {
       }
       return
     }
-    await bootServer(manifest: manifest, delivery: delivery)
+    await bootServer(manifest: manifest, delivery: delivery, intent: intent)
     // #1348 §16.5: the controller reported `.admitted` but the server has no
     // usable endpoint (file missing/unreadable/rejected after admission — a
     // stale marker or post-admission mutation). Run ONE repair pass + ONE
     // retry; a second failure is terminal (limb-red + raw fallback).
-    if await server.activeEndpoint() == nil {
+    if await server.endpoint(for: provider) == nil {
       guard generation == self.activationGeneration else { return }
       guard case .admitted = await delivery.repair() else { return }
       guard generation == self.activationGeneration else { return }
-      await bootServer(manifest: manifest, delivery: delivery)
+      // Same stamp deliberately: the repair retry is the SAME user intent, so
+      // it must not out-rank a switch that arrived while the repair ran.
+      await bootServer(manifest: manifest, delivery: delivery, intent: intent)
     }
   }
 
-  private func bootServer(manifest: EGOneManifest, delivery: EGOneDeliveryAdapter) async {
+  /// llama-server flags, per model.
+  ///
+  /// The shared pair is a FOOTPRINT choice, measured 2026-07-02 (M4 Pro, real
+  /// EG-1 v1 GGUF): flash-attention plus a q8 KV cache at 16384 context is
+  /// 4.1 GB RSS against 7.4 GB at the naive 32768/fp16 config, with identical
+  /// probe output and about 0.2 s warm latency. Engine flags live here; model
+  /// identity lives in the manifest.
+  ///
+  /// **S1-mini needs two more or it answers with nothing.** It inherits Qwen3's
+  /// chat template, which turns thinking ON by default, and the model was
+  /// trained with thinking off; left on, it emits an empty think block and
+  /// stops. Its publisher calls this the single most common way to get a blank
+  /// result. `--jinja` makes llama-server apply the template's own logic, and
+  /// `--chat-template-kwargs` is what passes the flag through to it.
+  ///
+  /// Measured on the shipped binary and the shipped weights, 2026-09-04, two
+  /// arms differing only in these flags: without them the response is a valid
+  /// 200 with `finish_reason: stop` and ZERO characters of content; with them,
+  /// "So I need to send the report by Thursday." A blank body is what the
+  /// founder saw as "The model did not answer a test request."
+  ///
+  /// Do NOT reach for `--reasoning-budget 0` instead. It suppresses the think
+  /// block a different way and the publisher documents that it degrades the
+  /// output.
+  ///
+  /// Exhaustive rather than defaulted: a third bundled engine must state its
+  /// own flags, because inheriting another model's template handling is
+  /// exactly the failure above.
+  /// `nonisolated` because it is a pure function of its argument, and because
+  /// a test that has to hop to the main actor to read a constant is a test
+  /// nobody writes.
+  nonisolated static func engineArguments(for provider: LLMProvider) -> [String] {
+    let footprint = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
+    switch provider {
+    case .egOne:
+      return footprint
+    case .s1Mini:
+      return footprint + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
+    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
+      preconditionFailure("EGOneRuntime serves a bundled local model; \(provider) is not one")
+    }
+  }
+
+  private func bootServer(
+    manifest: EGOneManifest, delivery: EGOneDeliveryAdapter, intent: Int
+  ) async {
     guard let serverBinaryURL else { return }
     let configuration = EGOneServerManager.Configuration(
       serverBinaryURL: serverBinaryURL,
       // The verified admitted location (install dir + resolved install path).
       modelURL: delivery.installedArtifactURL,
       contextTokens: manifest.contextTokens,
-      // Measured 2026-07-02 (M4 Pro, real EG-1 v1 GGUF): flash-attention +
-      // q8 KV cache at 16384 context = 4.1 GB RSS vs 7.4 GB at the naive
-      // 32768/fp16 config, with identical probe output and ~0.2 s warm
-      // latency. The MacBook-friendly footprint is a launch-flag choice,
-      // not a model choice — engine flags live here, model identity in the
-      // manifest.
-      extraArguments: [
-        "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0",
-      ]
+      extraArguments: Self.engineArguments(for: provider)
     )
-    await server.start(configuration: configuration)
+    await server.transition(
+      to: .run(LocalPolishTarget(provider: provider, configuration: configuration)),
+      intent: intent)
   }
 
   // MARK: - EGOneEndpointProviding (pipeline seam)
 
   public func activeEndpoint() async -> EGOneEndpoint? {
-    await server.activeEndpoint()
+    await server.endpoint(for: provider)
   }
 
   // MARK: - Helpers

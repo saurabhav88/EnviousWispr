@@ -81,13 +81,19 @@ import Testing
     @Test("handle(.toggleRecording) writes the LLM-polish fields to LimbSteps.llmPolish")
     func toggleRecordingAppliesLLMConfig() async throws {
       let fx = makeFixture()
+      // #2649: a NON-default control value, so a driver that never copied the
+      // field would fail here rather than pass on default-equals-default.
+      let picks = S1ControlSettings(styling: .formal, structure: .prose, context: .email)
+      #expect(picks != .default)
       let config: DictationSessionConfig = .testDefault(
         llmProvider: .openAI,
         llmModel: "gpt-4o-mini",
-        polishInstructions: .default)
+        polishInstructions: .default,
+        s1Control: picks)
       try await fx.driver.handle(event: .toggleRecording(config))
       #expect(fx.steps.llmPolish.llmProvider == .openAI)
       #expect(fx.steps.llmPolish.llmModel == "gpt-4o-mini")
+      #expect(fx.steps.llmPolish.s1Control == picks)
       // PolishInstructions is .default — set to the same value the config
       // carries; assertion is that the write happened (default == default).
       // No equality on PolishInstructions to assert further.

@@ -213,7 +213,8 @@ final class RecoveryCoordinator {
       emojiFormatterEnabled: settings.emojiFormatterEnabled,
       spokenPunctuationEnabled: settings.spokenPunctuationEnabled,
       llmProvider: settings.llmProvider.rawValue,
-      llmModel: resolvedModel)
+      llmModel: resolvedModel,
+      s1Control: settings.s1Control)
 
     // Constructing the store prepares the spool directory before the helper
     // opens the file at this path. Cheap local FS (not securityd IPC).

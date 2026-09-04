@@ -28,11 +28,17 @@ struct EGOneRowPresentation: Equatable {
   /// display version must render NOTHING, never "EG-1 V" with an empty tail.
   let versionLabel: String?
 
-  static func forState(_ state: EGOneInstallState) -> EGOneRowPresentation {
+  /// `engine` is the model's display name, and it is REQUIRED rather than
+  /// defaulted. Two bundled engines render through this one value now, and a
+  /// default would let a caller silently inherit the other model's name — the
+  /// same fail-open shape removed from the health-probe spec earlier in #2649.
+  /// For S1-mini the name is licence-bound and must arrive exactly as
+  /// `LLMProvider.s1Mini.displayName` spells it.
+  static func forState(_ state: EGOneInstallState, engine: String) -> EGOneRowPresentation {
     switch state {
     case .notInstalled:
       return .init(
-        message: "", primaryAction: "Download EG-1", showsRemove: false, versionLabel: nil)
+        message: "", primaryAction: "Download \(engine)", showsRemove: false, versionLabel: nil)
     case .paused:
       return .init(
         message: "Download paused. Resume anytime.",
@@ -42,7 +48,7 @@ struct EGOneRowPresentation: Equatable {
       // ships as a manifest edit with no Swift change, so a hard-coded "V1.1"
       // would keep naming the previous model after the real one moved on —
       // confidently wrong, which is worse than saying nothing.
-      let target = targetVersion.map { "EG-1 V\($0)" } ?? "the new EG-1"
+      let target = targetVersion.map { "\(engine) V\($0)" } ?? "the new \(engine)"
       return .init(
         message: resumable
           ? "AI cleanup is paused. Your upgrade to \(target) stopped part-way."
@@ -79,8 +85,8 @@ struct EGOneRowPresentation: Equatable {
           // degrading into the first-install sentence, which is what the P2
           // was: an upgrade that stopped looking like one.
           switch $0 {
-          case .named(let v): return "EG-1 V\(v)"
-          case .unnamed: return "the new EG-1"
+          case .named(let v): return "\(engine) V\(v)"
+          case .unnamed: return "the new \(engine)"
           }
         })
     case .verifying:
@@ -88,7 +94,7 @@ struct EGOneRowPresentation: Equatable {
     case .installed(let version):
       return .init(
         message: "", primaryAction: nil, showsRemove: true,
-        versionLabel: version.flatMap { $0.isEmpty ? nil : "EG-1 V\($0)" })
+        versionLabel: version.flatMap { $0.isEmpty ? nil : "\(engine) V\($0)" })
     case .failed:
       return .init(message: "", primaryAction: "Try Again", showsRemove: false, versionLabel: nil)
     }

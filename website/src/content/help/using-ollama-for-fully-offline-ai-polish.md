@@ -6,7 +6,7 @@ section: "Polish"
 order: 6
 keywords: ["ollama", "offline ai", "local ai", "local model", "llama", "run ai locally", "no internet ai", "free local"]
 related: ["ollama-polish-not-working"]
-updated: 2026-08-11
+updated: 2026-09-04
 ---
 Ollama is a separate free application that runs language models directly on your Mac, and EnviousWispr can hand your dictation to one of those models for tidying up. Once you have completed the setup, you do not need an API key or an account, and your transcribed text stays on your Mac.
 
@@ -44,4 +44,4 @@ If Ollama is not running when you dictate, the polish step is skipped. You still
 
 ### An option with nothing to install
 
-If you want AI polish on your Mac without installing a separate application, try EG-1, the model Envious Labs built for this. It downloads from inside the EnviousWispr settings and needs no other software.
+If you want AI polish on your Mac without installing a separate application, try EG-1, the model Envious Labs built for this, or S1-mini by Superwhisper, the lightest option. Both download from inside the EnviousWispr settings and need no other software.

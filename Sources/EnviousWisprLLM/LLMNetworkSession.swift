@@ -51,7 +51,7 @@ public final class LLMNetworkSession: Sendable {
     case .openAI, .claude: return .whenCold
     // Local providers never had a warm-up: `warmupKeychainId(for:)` returns nil
     // for them, so this arm is belt-and-braces rather than a behaviour change.
-    case .ollama, .egOne, .appleIntelligence, .none: return .never
+    case .ollama, .egOne, .s1Mini, .appleIntelligence, .none: return .never
     }
   }
 
