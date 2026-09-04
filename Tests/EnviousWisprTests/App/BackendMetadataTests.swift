@@ -117,6 +117,18 @@ struct BackendMetadataTests {
     #expect(bm.polishLabel == "gemini-2.0-flash")
   }
 
+  /// #2649 (cloud review): the sidebar fell through to the raw model id and
+  /// rendered `s1-mini`. The licence requires the exact spelling wherever the
+  /// model is identified, so this row pins the surface, not only the constant.
+  @Test("polishLabel: S1-mini is the licensed spelling, never the raw model id")
+  func polishLabelS1MiniIsLicenceExact() {
+    let bm = makeBackendMetadata()
+    bm.settings.llmProvider = .s1Mini
+    #expect(bm.settings.llmModel == "s1-mini", "the canonical id is lower-case; that is the trap")
+    #expect(bm.polishLabel == "S1-mini")
+    #expect(bm.polishLabel != "s1-mini")
+  }
+
   @Test("polishLabel: Apple Intelligence is named directly, never the raw model id")
   func polishLabelAppleIntelligenceNamedDirectly() {
     let bm = makeBackendMetadata()

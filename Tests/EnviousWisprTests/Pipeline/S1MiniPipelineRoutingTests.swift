@@ -83,11 +83,12 @@ struct S1MiniPipelineRoutingTests {
   }
 
   private func run(
-    _ step: LLMPolishStep, spy: CaptureSpy, rawText: String = S1MiniPipelineRoutingTests.transcript
+    _ step: LLMPolishStep, spy: CaptureSpy, rawText: String = S1MiniPipelineRoutingTests.transcript,
+    timeoutBelow: Double = 0.0
   ) async throws
     -> TextProcessingRunResult
   {
-    let executor = FakeTimeoutExecutor(throwBelowSeconds: 0.0)
+    let executor = FakeTimeoutExecutor(throwBelowSeconds: timeoutBelow)
     let runner = TextProcessingRunner(
       telemetry: .init(
         captureError: spy.sink, recordPolishFailed: { _, _, _, _, _ in },
@@ -96,6 +97,57 @@ struct S1MiniPipelineRoutingTests {
     return try await runner.run(
       rawText: rawText, evidence: .locked("en"), targetAppName: nil, steps: [step])
   }
+
+  // testEventHook is DEBUG-only (CI also compiles tests in release).
+  #if DEBUG
+    /// #2649 (cloud review): a skip raised INSIDE the step (here: no endpoint,
+    /// because another model holds the server) is attributed to S1-mini. The
+    /// connectors throw one shared error; the step stamps the engine on it.
+    @Test("a not-ready skip is attributed to S1-mini, never to EG-1")
+    func notReadySkipIsAttributedToS1Mini() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      let spy = CaptureSpy()
+      let step = makeStep(
+        s1Runtime: FakeRuntime(endpoint: nil),
+        egOneRuntime: FakeRuntime(endpoint: Self.endpoint()))
+      _ = try await run(step, spy: spy)
+
+      let event = try await waiter.waitForEvent(named: "llm.polish_skipped")
+      #expect(event.stringProps["provider"] == LLMProvider.s1Mini.rawValue)
+      #expect(event.stringProps["skip_reason"] == "local_polish_not_ready")
+    }
+
+    /// #2649 (cloud review): an S1-mini polish that runs past its budget is the
+    /// same silent local skip as EG-1's, and the skip is attributed to S1-mini.
+    /// Before this, the runner named only EG-1, so an S1-mini timeout took the
+    /// surfaced-failure path and the user saw "AI polish failed" on a slow Mac.
+    @Test("a timeout is a silent local skip, attributed to S1-mini and never to EG-1")
+    func timeoutIsSilentAndAttributedToS1Mini() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      let spy = CaptureSpy()
+      let step = makeStep(s1Runtime: FakeRuntime(endpoint: Self.endpoint()))
+      // Every budget is below 100 s, so the polish step's own budget times out.
+      let result = try await run(step, spy: spy, timeoutBelow: 100)
+
+      #expect(result.polishError == nil, "a local timeout must not surface a failure")
+      #expect(result.context.polishedText == nil)
+      #expect(result.context.text == Self.transcript)
+      #expect(spy.count == 0)
+
+      let event = try await waiter.waitForEvent(named: "llm.polish_skipped")
+      #expect(event.stringProps["provider"] == LLMProvider.s1Mini.rawValue)
+      #expect(event.stringProps["provider"] != LLMProvider.egOne.rawValue)
+      #expect(event.stringProps["skip_reason"] == "local_polish_timeout")
+    }
+  #endif
 
   /// Records whether the connector was reached, and echoes the input so the
   /// output validator has nothing to reject on a long transcript.

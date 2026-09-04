@@ -189,6 +189,12 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
   /// `LLMRetryPolicy` (the connector already performs the single
   /// connection-refused retry that covers the restart-once window).
   case egOneSkipped(EGOneSkipReason)
+  /// #2649 (cloud review): the same bypass, stamped with the ENGINE that
+  /// produced it. Connectors throw `egOneSkipped` because they share one
+  /// transport; `LLMPolishStep` wraps it with its own entry snapshot before
+  /// the error leaves the step, so attribution never depends on a runner-side
+  /// snapshot (#1448) and an S1-mini skip is never counted as EG-1's.
+  case localEngineSkipped(EGOneSkipReason, LLMProvider)
   /// #1305: the Ollama readiness preflight found local polish not usable —
   /// server down (`.providerUnreachable`) or armed model not installed
   /// (`.modelUnavailable`). Thrown by the `LLMPolishStep` entry gate BEFORE any
@@ -227,6 +233,8 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
     case .egOneSkipped(let reason):
       // Silent bypass — never an on-screen notice; log/debug reads only.
       return "EG-1 polish skipped (\(String(describing: reason)))."
+    case .localEngineSkipped(let reason, let provider):
+      return "\(provider.displayName) polish skipped (\(String(describing: reason)))."
     case .localPolishNotReady(let reason):
       // Surfaced skip (#1305) — the on-screen notice is the pinned copy in
       // `PolishFailureReason.ollamaPreflightSkipMessage`, composed by the
@@ -258,6 +266,8 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
       return le == re && la == ra
     case (.egOneSkipped(let a), .egOneSkipped(let b)):
       return a == b
+    case (.localEngineSkipped(let a, let pa), .localEngineSkipped(let b, let pb)):
+      return a == b && pa == pb
     case (.localPolishNotReady(let a), .localPolishNotReady(let b)):
       return a == b
     case (.classified(let a), .classified(let b)):
@@ -299,6 +309,7 @@ extension LLMError: StableSentryErrorIdentity {
     case .unsupportedInputLanguage: return "EnviousWisprLLM.LLMError#4"
     case .outputLanguageDrift: return "EnviousWisprLLM.LLMError#5"
     case .egOneSkipped: return "EnviousWisprLLM.LLMError#6"
+    case .localEngineSkipped: return "EnviousWisprLLM.LLMError#13"
     case .localPolishNotReady: return "EnviousWisprLLM.LLMError#7"
     case .classified: return "EnviousWisprLLM.LLMError#8"
     case .invalidAPIKey: return "EnviousWisprLLM.LLMError#9"
@@ -317,6 +328,7 @@ extension LLMError: StableSentryErrorIdentity {
     case .unsupportedInputLanguage: return "llm.unsupported_input_language"
     case .outputLanguageDrift: return "llm.output_language_drift"
     case .egOneSkipped: return "llm.eg_one_skipped"
+    case .localEngineSkipped: return "llm.local_engine_skipped"
     case .localPolishNotReady: return "llm.local_polish_not_ready"
     case .classified: return "llm.classified"
     case .invalidAPIKey: return "llm.invalid_api_key"

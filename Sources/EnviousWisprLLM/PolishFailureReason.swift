@@ -416,7 +416,7 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
         // it means exactly "the selected model isn't available".
         return .modelUnavailable
       case .frameworkUnavailable,
-        .unsupportedInputLanguage, .outputLanguageDrift, .egOneSkipped:
+        .unsupportedInputLanguage, .outputLanguageDrift, .egOneSkipped, .localEngineSkipped:
         // Silent-skip cases the runner never routes here (permanent AFM
         // incapability, language gates, and EG-1 bypasses, #1271). Defensive.
         return .unknown

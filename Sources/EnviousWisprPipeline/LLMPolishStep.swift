@@ -701,14 +701,14 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       }
     if let handles = localServerHandles {
       guard let runtime = handles.runtime else {
-        throw LLMError.egOneSkipped(.notReady)
+        throw LLMError.localEngineSkipped(.notReady, provider)
       }
       guard let endpoint = await runtime.activeEndpoint() else {
         // Also the answer when ANOTHER model holds the server: the coordinator
         // refuses an endpoint to a non-resident model, so this is the branch
         // that stops a polish being served by different weights. Silent bypass,
         // so the user keeps their deterministic text.
-        throw LLMError.egOneSkipped(.notReady)
+        throw LLMError.localEngineSkipped(.notReady, provider)
       }
       // Context preflight: polish whole or skip whole, never a silent
       // truncation. WORST-CASE on both sides (Codex r15+r16): the output side
@@ -731,7 +731,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       let inputUpperBound = context.text.utf8.count
       let outputBudget = max(context.text.count, LLMConstants.ollamaMaxTokens)
       if inputUpperBound + outputBudget + Self.localPromptOverheadBytes > endpoint.contextTokens {
-        throw LLMError.egOneSkipped(.inputTooLong)
+        throw LLMError.localEngineSkipped(.inputTooLong, provider)
       }
       polisher = handles.make(endpoint)
     } else if let made = makePolisher(
@@ -930,11 +930,19 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     }
 
     let llmStart = CFAbsoluteTimeGetCurrent()
-    let result = try await polisher.polish(
-      envelope: plan.envelope,
-      config: config,
-      onToken: onToken
-    )
+    let result: LLMResult
+    do {
+      result = try await polisher.polish(
+        envelope: plan.envelope,
+        config: config,
+        onToken: onToken
+      )
+    } catch LLMError.egOneSkipped(let reason) {
+      // #2649 (cloud review): the connectors share one transport and throw one
+      // error; the ENGINE is this step's entry snapshot, stamped here so the
+      // runner attributes the skip without a snapshot of its own (#1448).
+      throw LLMError.localEngineSkipped(reason, provider)
+    }
     let llmEnd = CFAbsoluteTimeGetCurrent()
 
     logPolishCompletion(

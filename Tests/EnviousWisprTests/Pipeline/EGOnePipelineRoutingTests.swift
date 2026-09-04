@@ -206,7 +206,10 @@ struct EGOnePipelineRoutingTests {
     for reason in [
       EGOneSkipReason.notReady, .downloadPending, .crashed, .inputTooLong, .outputTruncated,
     ] {
-      #expect(PolishSkipReason.egOne(reason).telemetryTag.hasPrefix("local_polish_"))
+      #expect(PolishSkipReason.localEngine(reason, .egOne).telemetryTag.hasPrefix("local_polish_"))
+      // #2649: the same skip under S1-mini is attributed to S1-mini, never EG-1.
+      #expect(PolishSkipReason.localEngine(reason, .s1Mini).provider == .s1Mini)
+      #expect(PolishSkipReason.localEngine(reason, .egOne).provider == .egOne)
     }
   }
 }

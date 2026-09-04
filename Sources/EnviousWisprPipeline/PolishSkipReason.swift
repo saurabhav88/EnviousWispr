@@ -23,8 +23,12 @@ enum PolishSkipReason: Sendable, Equatable {
   case contextWindowPredicted
   case contextWindowCaught
   case contextWindowTimeout
-  case localPolishTimeout
-  case egOne(EGOneSkipReason)
+  /// #2649 (cloud review): the two bundled engines share one skip family, so
+  /// the PROVIDER rides on the case. Hard-coding `.egOne` here attributed every
+  /// S1-mini skip and timeout to EG-1 in `llm.polish_skipped`, which is the
+  /// query that diagnosed #2634 and would have pointed at the wrong engine.
+  case localPolishTimeout(LLMProvider)
+  case localEngine(EGOneSkipReason, LLMProvider)
   case ollamaProviderUnreachable
   case ollamaModelUnavailable
   case ollamaNoModelSelected
@@ -39,7 +43,7 @@ enum PolishSkipReason: Sendable, Equatable {
     case .contextWindowCaught: return "context_window_caught"
     case .contextWindowTimeout: return "context_window_timeout"
     case .localPolishTimeout: return "local_polish_timeout"
-    case .egOne(let reason):
+    case .localEngine(let reason, _):
       switch reason {
       case .notReady: return "local_polish_not_ready"
       case .downloadPending: return "local_polish_download_pending"
@@ -66,8 +70,8 @@ enum PolishSkipReason: Sendable, Equatable {
     case .contextWindowPredicted, .contextWindowCaught, .contextWindowTimeout,
       .frameworkUnavailable, .unsupportedInputLanguage, .outputLanguageDrift:
       return .appleIntelligence
-    case .localPolishTimeout, .egOne:
-      return .egOne
+    case .localPolishTimeout(let provider), .localEngine(_, let provider):
+      return provider
     case .ollamaProviderUnreachable, .ollamaModelUnavailable, .ollamaNoModelSelected:
       return .ollama
     case .tooShort(let provider):
@@ -96,12 +100,18 @@ enum PolishSkipReason: Sendable, Equatable {
   /// has two producer paths (a normal preflight throw, and a rarer wrapped path
   /// via `AppleIntelligenceConnector.makeSession`'s defensive re-check) — both
   /// classify the same way here regardless of which one actually threw.
+  /// Attribution comes from the ERROR, never from a runner-side snapshot
+  /// (#1448). `LLMPolishStep` wraps every connector `egOneSkipped` with its own
+  /// entry snapshot as `localEngineSkipped`; a bare `egOneSkipped` reaching
+  /// here is one that escaped the wrap, and its name is the only engine it can
+  /// honestly claim.
   init?(silentLLMError error: LLMError) {
     switch error {
     case .frameworkUnavailable: self = .frameworkUnavailable
     case .unsupportedInputLanguage: self = .unsupportedInputLanguage
     case .outputLanguageDrift: self = .outputLanguageDrift
-    case .egOneSkipped(let reason): self = .egOne(reason)
+    case .localEngineSkipped(let reason, let provider): self = .localEngine(reason, provider)
+    case .egOneSkipped(let reason): self = .localEngine(reason, .egOne)
     default: return nil
     }
   }
