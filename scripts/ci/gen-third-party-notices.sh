@@ -149,6 +149,19 @@ if [[ "$MODE" == "check" ]]; then
   done
   [[ "$stale" -eq 1 ]] && exit 1
 
+  # The S1-mini section is appended after the COMPONENTS loop, so the loop
+  # above cannot see it. Its naming term is a LICENCE REQUIREMENT, not a
+  # nicety: the model must be identified as "S1-mini" by "Superwhisper" with
+  # that exact capitalisation wherever it appears. Checked here so regenerating
+  # without it fails the release gate rather than shipping quietly.
+  for needle in 'S1-mini by Superwhisper' '"S1-mini" by "Superwhisper"'; do
+    if ! grep -qF "$needle" "$NOTICES"; then
+      echo "error: THIRD-PARTY-NOTICES.txt is missing '$needle' — regenerate it (scripts/ci/gen-third-party-notices.sh > THIRD-PARTY-NOTICES.txt)." >&2
+      stale=1
+    fi
+  done
+  [[ "$stale" -eq 1 ]] && exit 1
+
   # #1487: EnviousWisprAppKit/Resources carries a SECOND copy of LICENSE +
   # THIRD-PARTY-NOTICES.txt (bundled via Bundle.module for the in-app Open
   # Source Licenses screen — the release DMG's Contents/Resources/Licenses
@@ -214,3 +227,33 @@ printf 'EnviousWispr downloads the Parakeet TDT speech model (CoreML) from Huggi
 printf 'Face on first use; it is not distributed inside this disk image. The model\n'
 printf 'is provided under CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/).\n'
 printf 'Source: https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml\n'
+
+# S1-mini differs from Parakeet above in the one way that changes our
+# obligations: we SERVE its bytes from models.enviouslabs.co rather than
+# pointing the app at the publisher, which makes us a redistributor under
+# Apache-2.0 section 4. That owes recipients a copy of the licence (4a) and the
+# NOTICE attributions (4d). The text is CAT'd from the same bundled resources
+# the app ships, never restated, so this section cannot drift away from them.
+printf '\n'
+printf -- '--------------------------------------------------------------------------------\n'
+printf 'S1-mini by Superwhisper (polish model, downloaded at runtime from Envious Labs)\n'
+printf '  Version: 1.0 (Hugging Face revision 34add00a)\n'
+printf '  License: Apache-2.0, plus a naming term\n'
+printf '  Source:  https://huggingface.co/superwhisper/s1-mini-GGUF\n'
+printf -- '--------------------------------------------------------------------------------\n\n'
+printf 'EnviousWispr downloads S1-mini only when a user selects it. The file is\n'
+printf 'served from models.enviouslabs.co and is byte-identical to the publisher\n'
+printf 'build; it is not distributed inside this disk image. Because Envious Labs\n'
+printf 'serves those bytes, the full licence and notice follow.\n\n'
+S1_NOTICE="${PROJ_ROOT}/Sources/EnviousWispr/Resources/S1-MINI-NOTICE.txt"
+S1_LICENSE="${PROJ_ROOT}/Sources/EnviousWispr/Resources/S1-MINI-LICENSE.txt"
+for f in "$S1_NOTICE" "$S1_LICENSE"; do
+  if [[ ! -f "$f" ]]; then
+    echo "error: S1-mini licence text not found: ${f}" >&2
+    exit 1
+  fi
+done
+cat "$S1_NOTICE"
+printf '\n'
+cat "$S1_LICENSE"
+printf '\n'
