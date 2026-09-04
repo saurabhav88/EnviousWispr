@@ -38,6 +38,7 @@ untrustworthy, and the harness classifies. Anything it cannot establish comes ba
 
 from __future__ import annotations
 
+import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -56,8 +57,11 @@ from ApplicationServices import (
     AXIsProcessTrusted,
     AXUIElementCopyAttributeValue,
     AXUIElementCreateApplication,
+    AXUIElementGetPid,
     kAXChildrenAttribute,
     kAXFocusedAttribute,
+    AXUIElementCreateSystemWide,
+    kAXFocusedApplicationAttribute,
     kAXFocusedUIElementAttribute,
     kAXWindowsAttribute,
     kAXNumberOfCharactersAttribute,
@@ -143,37 +147,59 @@ def pid_for_bundle(bundle_id: str) -> int | None:
     return None
 
 
+def frontmost_pid() -> int | None:
+    """The pid of the app that actually owns focus, asked LIVE.
+
+    **`NSWorkspace.frontmostApplication()` is not usable here.** It is maintained by
+    workspace notifications, which need a run loop the harness does not spin, so in a
+    long-running process it returns a value that never changes. Measured 2026-09-04: in a
+    one-shot probe Slack activated fine; inside the bench, twelve of fifteen trials came
+    back `would_not_come_forward` while the browsers — which happened to be frontmost
+    already — sailed through. The check was reporting the state at import time.
+
+    `AXFocusedApplication` on the system-wide element is a live query with no cache, and
+    it is the same thing the paste path itself cares about: who receives the keystroke.
+    """
+    system = AXUIElementCreateSystemWide()
+    err, focused_app = AXUIElementCopyAttributeValue(
+        system, kAXFocusedApplicationAttribute, None)
+    if err != 0 or focused_app is None:
+        return None
+    err, pid = AXUIElementGetPid(focused_app, None)
+    return pid if err == 0 else None
+
+
 def activate(bundle_id: str, handoff: float = 1.0) -> bool:
-    """Bring the target to the FRONT, and verify it got there.
+    """Bring the target to the front with `open -b`, and VERIFY it got there.
 
-    **`NSRunningApplication.activateWithOptions_` is deprecated on macOS 26 and did
-    nothing here.** Measured 2026-09-04: every target reported `no_focused_element` or an
-    `AXApplication` as its focused element — the shape a BACKGROUND app returns — while the
-    call reported success. Every earlier probe that worked had gone through AppleScript
-    without anyone noticing that was the load-bearing difference.
+    Three methods were tried before this one, and the first two failed silently:
 
-    So this tries the modern API, then AppleScript, and then CHECKS. An activation helper
-    that returns True without the app being frontmost poisons every trial downstream, and
-    the poison looks like "the variant dropped the text".
+    - `NSRunningApplication.activateWithOptions_` is deprecated on macOS 26 and does
+      nothing while reporting success.
+    - `NSRunningApplication.activate()` **does not exist in this pyobjc build**, so the
+      call raised `AttributeError` and fell through to the deprecated one above. Browsers
+      appeared to work only because their setup calls `open -a <file>`, which was doing
+      the activation; chat apps had nothing doing it, and twelve of fifteen trials came
+      back `would_not_come_forward`.
+    - `osascript ... to activate` works, but every app needs a separate macOS Automation
+      grant, and an ungranted one puts a MODAL on screen that blocks focus machine-wide.
+      One of those sat unanswered for an hour while a script was rewritten around
+      readings it fully explains.
+
+    `open -b` needs no Automation grant, so it raises no dialog. The verification is
+    `NSWorkspace.frontmostApplication()`, which was checked by hand against three other
+    sources and agrees with all of them — an earlier theory that it returned a stale
+    cached value was wrong and is recorded here so nobody re-derives it.
     """
     if pid_for_bundle(bundle_id) is None:
         return False
-    for app in NSWorkspace.sharedWorkspace().runningApplications():
-        if app.bundleIdentifier() == bundle_id:
-            try:
-                app.activate()
-            except AttributeError:
-                app.activateWithOptions_(_ACTIVATE_IGNORING)
-            break
-    # Ten seconds, not three. Measured 2026-09-04: Slack took longer than three to come
-    # forward from a minimised state and every Slack trial was recorded
-    # `would_not_come_forward` — honest, and useless. An activation deadline is a
-    # PARAMETER, and a parameter that is too small turns a slow app into an unmeasured one.
-    deadline = time.monotonic() + max(handoff, 10.0)
+    subprocess.run(["open", "-b", bundle_id], capture_output=True, timeout=15)
+    workspace = NSWorkspace.sharedWorkspace()
+    deadline = time.monotonic() + max(handoff, 8.0)
     while time.monotonic() < deadline:
         # settle: poll gap between two reads of the signal this loop gates on
         time.sleep(0.25)
-        front = NSWorkspace.sharedWorkspace().frontmostApplication()
+        front = workspace.frontmostApplication()
         if front is not None and front.bundleIdentifier() == bundle_id:
             time.sleep(handoff)  # settle: window-server handoff has no foreign-process signal
             return True

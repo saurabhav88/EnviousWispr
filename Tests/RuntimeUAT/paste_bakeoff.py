@@ -269,36 +269,17 @@ def setup_textedit(pre_image: str, file_token: str) -> tuple[bool, str]:
     return ax_oracle.assert_precondition("com.apple.TextEdit", pre_image)
 
 
-def _close_fixture_tabs(app: str) -> None:
-    """Close every tab this harness opened. NOT hygiene — correctness.
-
-    Each trial opens a new tab and, without this, they accumulate. Measured 2026-09-04:
-    after ~40 trials Safari's accessibility tree exceeded the oracle's whole node budget,
-    so the walk never reached the newest tab and returned a scan with no fields — which
-    the scorer reads as "nothing landed". The bench degraded as it ran, and the later a
-    variant was scheduled the worse it looked. Randomised variant order limits the damage
-    to noise rather than bias; closing the tabs removes it.
-
-    Scoped to our own fixture URLs so the operator's real tabs are never touched.
-    """
-    # Bounded. The script enumerates every tab of every window, which on a browser the
-    # operator actually uses is slow enough to stall a run: measured 2026-09-04, one call
-    # sat for 35 seconds and the bench made no progress behind it. Cleanup is best-effort
-    # housekeeping, so a timeout here costs one noisy cell rather than the whole run.
-    try:
-        subprocess.run(
-            ["osascript", "-e",
-             f'tell application "{app}" to close (every tab of every window '
-             'whose URL contains "EnviousWispr-bakeoff")'],
-            capture_output=True, timeout=20)
-    except subprocess.TimeoutExpired:
-        pass
-
+# Tab cleanup DELETED, not fixed.
+#
+# It existed because the old oracle walked the whole application looking for the right
+# field, and forty accumulated tabs blew past its node budget. The oracle now asks the
+# system which element has focus, so stray tabs cost nothing at all. The cleanup also
+# needed an Automation grant per browser, and an ungranted one raises a modal that blocks
+# focus for the whole machine — paying a permission prompt to solve a problem that no
+# longer exists.
 
 def _setup_browser(app: str, bundle_id: str, focus_id: str):
     def setup(pre_image: str, file_token: str) -> tuple[bool, str]:
-        if ax_oracle.pid_for_bundle(bundle_id) is not None:
-            _close_fixture_tabs(app)
         path = _write_fixture(file_token, pre_image, focus_id)
         subprocess.run(["open", "-a", app, str(path)], capture_output=True)
         ax_oracle.activate(bundle_id, handoff=2.0)
