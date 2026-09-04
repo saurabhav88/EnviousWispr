@@ -1012,25 +1012,51 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     rows: list[dict] = []
-    # Variant order is randomized so a drift in the machine's state cannot be mistaken
-    # for a property of whichever variant happened to run last.
-    schedule = [(v, t) for v in variants for t in targets]
-    random.shuffle(schedule)
+    # RELAUNCH ONCE PER VARIANT, NOT ONCE PER CELL.
+    #
+    # The variant is baked into the app's launch environment, so it is the variant — never
+    # the destination — that a relaunch exists to change. The old schedule interleaved
+    # (variant, target) pairs and relaunched for every one of them, which on a 5-variant,
+    # 4-target run meant 20 relaunches to change 5 things.
+    #
+    # Measured 2026-09-04 mid-run, from delivery timestamps in `app.log`: 12s between
+    # dictations inside a cell, 65s between cells. The 65s is TERM, launch, model load and
+    # the control line; it is not overhead that can be tuned away, it is a whole app
+    # start. Twenty of them is 22 minutes of a 34-minute run spent restarting an app to
+    # give it a setting it already had.
+    #
+    # **The cost of grouping, stated rather than glossed.** Interleaving was there so a
+    # drift in the machine's state could not be read as a property of whichever variant
+    # ran last. Blocks give that up: every trial of one variant is now adjacent, so a
+    # drift during a block lands on that block. Two things bound it. The variant ORDER and
+    # the target order within each block are still shuffled, so no variant occupies a
+    # fixed position across runs. And the veto this bench turns on is DROPS — a variant
+    # losing text where the baseline delivers — which is a coarse, near-binary signal
+    # rather than a rate that a slow machine could nudge across a threshold.
+    variant_order = list(variants)
+    random.shuffle(variant_order)
 
-    for variant, target in schedule:
+    for variant in variant_order:
         launched, why = launch_dev_app(variant, run_id)
+        block = list(targets)
+        random.shuffle(block)
         if not launched:
-            rows.append({"variant": variant, "target": target.key,
-                         "verdict": "invalid", "why": f"launch:{why}"})
-            print(f"[{variant}/{target.key}] LAUNCH FAILED: {why}", flush=True)
+            for target in block:
+                rows.append({"variant": variant, "target": target.key,
+                             "verdict": "invalid", "why": f"launch:{why}"})
+            print(f"[{variant}] LAUNCH FAILED: {why}", flush=True)
             continue
-        print(f"[{variant}/{target.key}] launched ({why})", flush=True)
-        for i in range(args.reps):
-            row = run_trial(variant, run_id, target, args.sentence, args.marker)
-            row["rep"] = i
-            rows.append(row)
-            print(f"  rep {i}: {row.get('verdict')} tier={row.get('tier')} "
-                  f"{row.get('why', '')}", flush=True)
+        print(f"[{variant}] launched ({why}) — "
+              f"{len(block)} cells on this launch: {', '.join(t.key for t in block)}",
+              flush=True)
+        for target in block:
+            print(f"  [{variant}/{target.key}]", flush=True)
+            for i in range(args.reps):
+                row = run_trial(variant, run_id, target, args.sentence, args.marker)
+                row["rep"] = i
+                rows.append(row)
+                print(f"    rep {i}: {row.get('verdict')} tier={row.get('tier')} "
+                      f"{row.get('why', '')}", flush=True)
 
     summary: dict = {}
     for row in rows:
