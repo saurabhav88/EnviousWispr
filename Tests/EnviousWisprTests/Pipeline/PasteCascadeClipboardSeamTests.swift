@@ -60,7 +60,7 @@ struct PasteCascadeClipboardSeamTests {
     let board = NSPasteboard.withUniqueName()
     defer { board.releaseGlobally() }
 
-    let executor = PasteCascadeExecutor(pasteboard: board)
+    let executor = PasteCascadeExecutor(pasteboard: board, policy: .baseline)
     let result = await executor.deliver(request("the words the user just said"))
 
     #expect(result.tier == .clipboardOnly)
@@ -111,8 +111,8 @@ struct PasteCascadeClipboardSeamTests {
       second.releaseGlobally()
     }
 
-    let firstExecutor = PasteCascadeExecutor(pasteboard: first)
-    let secondExecutor = PasteCascadeExecutor(pasteboard: second)
+    let firstExecutor = PasteCascadeExecutor(pasteboard: first, policy: .baseline)
+    let secondExecutor = PasteCascadeExecutor(pasteboard: second, policy: .baseline)
     _ = await firstExecutor.deliver(request("first"))
     _ = await secondExecutor.deliver(request("second"))
 

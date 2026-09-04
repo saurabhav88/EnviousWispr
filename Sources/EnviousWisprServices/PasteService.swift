@@ -155,8 +155,9 @@ public enum PasteService {
   public static func saveClipboard(from pasteboard: NSPasteboard = .general) -> ClipboardSnapshot {
     // Unbounded by contract, which is correct for a delivery: whatever the user had, they get back.
     // A caller that must bound its memory asks for the budgeted variant below and handles the nil.
-    boundedSaveClipboard(from: pasteboard, maximumBytes: nil) ?? ClipboardSnapshot(
-      items: [], changeCount: pasteboard.changeCount)
+    boundedSaveClipboard(from: pasteboard, maximumBytes: nil)
+      ?? ClipboardSnapshot(
+        items: [], changeCount: pasteboard.changeCount)
   }
 
   /// Capture the pasteboard, giving up as soon as the cumulative bytes exceed `maximumBytes`.
@@ -457,20 +458,53 @@ public enum PasteService {
   /// Replaces a `(outcome, submitted)` tuple. The decision evidence used to be
   /// discarded at this return boundary, which is why nothing downstream could
   /// say why the fast route lost.
+  /// Whether the AX write CALL was made, and with what text (#2652).
+  ///
+  /// `AXInsertOutcome` alone cannot answer this. `.noMutation` is returned both when we
+  /// declined before touching the element and when the write ran and provably changed
+  /// nothing — opposite facts, one value, because the cascade only ever needed to know
+  /// whether a retry was safe. The V2 arm needs the other question: once the setter has
+  /// RETURNED SUCCESS, no later writer may run, regardless of what verification says.
+  ///
+  /// The attempted text rides as an ASSOCIATED VALUE rather than a sibling field so
+  /// "not attempted, but here is the text" and "succeeded, but no text" cannot be
+  /// spelled. A first draft carried them as independent properties and the reviewer
+  /// found the contradictory pair immediately; this shape deletes the states instead of
+  /// documenting them.
+  package enum AXWriteCall: Equatable, Sendable {
+    /// The setter was never called. Nothing was mutated; fallback is safe.
+    case notAttempted
+    /// The setter was called and returned an error. Nothing was mutated.
+    case failed(attemptedText: String)
+    /// The setter returned success. The mutation MAY be in the document.
+    case succeeded(attemptedText: String)
+
+    /// The exact string handed to the setter, for the bake-off submission ledger.
+    package var attemptedText: String? {
+      switch self {
+      case .notAttempted: return nil
+      case .failed(let text), .succeeded(let text): return text
+      }
+    }
+  }
+
   package struct AXInsertResult: Sendable {
     package let outcome: AXInsertOutcome
     package let submitted: PastePayloadKind?
+    package let writeCall: AXWriteCall
     package let declineReason: AXDeclineReason?
     package let settability: AXSettability?
 
     package init(
       outcome: AXInsertOutcome,
       submitted: PastePayloadKind?,
+      writeCall: AXWriteCall,
       declineReason: AXDeclineReason?,
       settability: AXSettability?
     ) {
       self.outcome = outcome
       self.submitted = submitted
+      self.writeCall = writeCall
       self.declineReason = declineReason
       self.settability = settability
     }
@@ -482,7 +516,21 @@ public enum PasteService {
       _ reason: AXDeclineReason, settability: AXSettability? = nil
     ) -> AXInsertResult {
       AXInsertResult(
-        outcome: .noMutation, submitted: nil, declineReason: reason, settability: settability)
+        outcome: .noMutation, submitted: nil, writeCall: .notAttempted, declineReason: reason,
+        settability: settability)
+    }
+
+    /// The setter RAN and returned an error. Distinct from `declined` on purpose: this
+    /// factory is the only way to spell a failed write call, so no pre-write decline can
+    /// accidentally claim one, and no failed call can accidentally claim it never ran.
+    /// Nothing was mutated either way, so the cascade's retry rules are unchanged.
+    static func writeCallFailed(
+      attemptedText: String, settability: AXSettability?
+    ) -> AXInsertResult {
+      AXInsertResult(
+        outcome: .noMutation, submitted: nil,
+        writeCall: .failed(attemptedText: attemptedText), declineReason: .setFailed,
+        settability: settability)
     }
   }
 
@@ -1386,7 +1434,10 @@ public enum PasteService {
         bundleIdentifier: bundleIdentifier, axIdentifier: nil, axDOMClassList: axDOMClassList)
     }
     guard signatureMatches else { return nil }
-    return ancestorChainVerifiedFreeOfWebArea(element) ? family : nil
+    // Exactly the projection the Boolean version computed: only a chain walked to a
+    // verified native root yields a browser family. `containsWebArea` and
+    // `unverifiable` both yield nil, as `false` did before.
+    return ancestorChainVerifiedFreeOfWebArea(element) == .verifiedNative ? family : nil
   }
 
   /// Whether `element`'s AX ancestor chain can be POSITIVELY VERIFIED clean of
@@ -1413,9 +1464,29 @@ public enum PasteService {
   /// the walk was cut short, not that it reached the top, and must not be
   /// read as verification — the existing `.attributeUnsupported`/`.noValue`
   /// idiom in `firstPasteItem` above draws the same distinction one type over.
-  private static func ancestorChainVerifiedFreeOfWebArea(
+  /// Three states, because two callers need different halves of the answer (#2652).
+  ///
+  /// `addressBarFamily(of:)` needs only "is this positively native chrome", which is
+  /// what the Boolean said. The bake-off's V1 arm needs "is this positively PAGE
+  /// CONTENT", and those are not each other's negation: a chain we could not read is
+  /// neither. Collapsing the two into one Bool would route an unreadable chain as if it
+  /// were a web area, which would change behaviour on a target the arm is not testing.
+  ///
+  /// The traversal below is byte-for-byte what the Boolean version did; only the return
+  /// vocabulary widened. `.verifiedNative` is returned in exactly the one place the old
+  /// code returned `true`, so the projection `== .verifiedNative` reproduces it exactly.
+  package enum AXWebAreaAncestry: Equatable, Sendable {
+    /// An `AXWebArea` was found in the chain. Positively page content.
+    case containsWebArea
+    /// The chain was walked to a verified `AXApplication` root with no web area.
+    case verifiedNative
+    /// The walk was cut short. Proof of nothing, in either direction.
+    case unverifiable
+  }
+
+  package static func ancestorChainVerifiedFreeOfWebArea(
     _ element: AXUIElement, maxDepth: Int = 10
-  ) -> Bool {
+  ) -> AXWebAreaAncestry {
     var current = element
     var depth = 0
     while depth < maxDepth {
@@ -1423,8 +1494,8 @@ public enum PasteService {
       guard
         AXUIElementCopyAttributeValue(current, kAXRoleAttribute as CFString, &roleRef) == .success,
         let role = roleRef as? String
-      else { return false }
-      if role == "AXWebArea" { return false }
+      else { return .unverifiable }
+      if role == "AXWebArea" { return .containsWebArea }
 
       var parentRef: CFTypeRef?
       let parentRead = AXUIElementCopyAttributeValue(
@@ -1436,16 +1507,16 @@ public enum PasteService {
         // codes — for whatever reason, including a page-content quirk — would
         // be read as "verified clean" without ever having been checked past
         // this point. `role` is already in hand from this same iteration.
-        return role == "AXApplication"
+        return role == "AXApplication" ? .verifiedNative : .unverifiable
       }
       guard parentRead == .success, let parentRef,
         CFGetTypeID(parentRef) == AXUIElementGetTypeID()
-      else { return false }
+      else { return .unverifiable }
       // swift-format-ignore: NeverForceUnwrap — guarded by the CFGetTypeID check above.
       current = (parentRef as! AXUIElement)
       depth += 1
     }
-    return false
+    return .unverifiable
   }
 
   /// Exact UTF-16 code-unit identity.
@@ -1541,8 +1612,23 @@ public enum PasteService {
     repaired: String? = nil,
     context: CaretContext? = nil,
     element: AXUIElement,
-    requireFocusedElementMatch: Bool = false
+    requireFocusedElementMatch: Bool = false,
+    boundMessagingTimeout: Bool = false
   ) -> AXInsertResult {
+    // #2652 V4/V5: bound THIS element's own AX round trips.
+    //
+    // We already set a messaging timeout for app-scoped focused-element reads and menu
+    // probing. What has never been bounded is the captured Tier 1 element across its
+    // read/write/read sequence — the one place the stale-read hazard lives, and the one
+    // difference between us and the three competitors that import this call.
+    //
+    // It bounds how long a single call may BLOCK. It cannot make a destination's state
+    // settle sooner, and this arm exists to measure whether that distinction matters
+    // here rather than to assume either way. Off in every shipped build.
+    if boundMessagingTimeout {
+      _ = AXUIElementSetMessagingTimeout(element, Float(axMessagingTimeoutSeconds))
+    }
+
     // Verify the element is a text field or text area.
     var roleRef: CFTypeRef?
     let roleErr = AXUIElementCopyAttributeValue(
@@ -1688,7 +1774,9 @@ public enum PasteService {
       kAXSelectedTextAttribute as CFString,
       text as CFTypeRef
     )
-    guard err == .success else { return .declined(.setFailed, settability: settability) }
+    guard err == .success else {
+      return .writeCallFailed(attemptedText: text, settability: settability)
+    }
 
     // From here the write may have landed, so every remaining failure is
     // `unverifiable`, never `noMutation`.
@@ -1733,6 +1821,7 @@ public enum PasteService {
     return AXInsertResult(
       outcome: outcome,
       submitted: payload.kind,
+      writeCall: .succeeded(attemptedText: text),
       declineReason: Self.declineReason(for: outcome),
       settability: settability
     )

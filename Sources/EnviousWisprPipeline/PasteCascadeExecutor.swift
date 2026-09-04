@@ -3,6 +3,10 @@ import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
 
+#if DEBUG
+  import CryptoKit
+#endif
+
 /// Input for a paste delivery operation. Captures session-scoped target info.
 @MainActor
 internal struct PasteDeliveryRequest {
@@ -232,6 +236,30 @@ internal func dispositionForAXDirect(
   }
 }
 
+/// Policy-aware disposition (#2652).
+///
+/// Under the shipped baseline this is the function above, unchanged. Under the V2 arm a
+/// setter that RETURNED SUCCESS ends the cascade whatever verification concluded, which
+/// is the arm's whole hypothesis: `.noMutation` after a successful write is exactly the
+/// state the reporter's duplicate came from, and the reading may simply be stale.
+///
+/// The V2 branch keys on `writeCall`, never on `outcome`, because `.noMutation` is
+/// returned both for "we declined before touching it" and for "the write ran and
+/// provably did nothing" — and only the second may stop the cascade. Stopping on the
+/// first would refuse the fallback for every Electron app that never accepts the write,
+/// which is the coverage loss this bake-off exists to detect rather than to cause.
+internal func dispositionForAXDirect(
+  _ result: PasteService.AXInsertResult,
+  writerPolicy: PasteDeliveryPolicy.WriterPolicy
+) -> AXDirectDisposition {
+  #if DEBUG
+    if writerPolicy == .axOneWriter, case .succeeded = result.writeCall {
+      return result.outcome == .verified ? .delivered : .stopUnverified
+    }
+  #endif
+  return dispositionForAXDirect(result.outcome)
+}
+
 extension PasteFocusClassification {
   /// Whether a key-based paste (Tier 2 Cmd+V / Tier 2b AppleScript) should be
   /// attempted. True for `.textField` and `.missing`; false for `.nonText`.
@@ -331,9 +359,45 @@ internal final class PasteCascadeExecutor {
     pasteboard === NSPasteboard.general
   }
 
-  internal init(pasteboard: NSPasteboard) {
+  /// Which delivery policy this cascade runs (#2652).
+  ///
+  /// Required and undefaulted for the same reason `pasteboard` is: a capability reached
+  /// through a defaulted argument leaves no call-site token, so no sweep can enumerate
+  /// who is using it. There is exactly one production construction site, so requiring it
+  /// costs one line there and buys a grep that cannot miss a future one.
+  private let policy: PasteDeliveryPolicy
+
+  internal init(pasteboard: NSPasteboard, policy: PasteDeliveryPolicy) {
     self.pasteboard = pasteboard
+    self.policy = policy
   }
+
+  #if DEBUG
+    /// The harness run this process belongs to, set once at bootstrap beside the policy.
+    ///
+    /// Nil in every ordinary DEBUG session. A scored row whose run id does not match the
+    /// one the harness launched with is `invalid` rather than attributed to the wrong
+    /// run — the cheapest defence against scoring a stale line from a previous process.
+    nonisolated(unsafe) static var bakeoffRunID: String?
+
+    /// One entry per ACTUAL writer call, in the order the calls were made (#2652).
+    ///
+    /// The bake-off's cursor-context veto asks whether a variant changed the bytes we
+    /// submit. Nothing in the shipped code could answer that: the result records a
+    /// payload KIND (`legacy` / `repaired`), never the bytes, and two variants can agree
+    /// on the kind while disagreeing on the string. So the ledger records the route, the
+    /// UTF-8 byte count, and a digest of the exact string handed to that call.
+    ///
+    /// **No raw text, and this may never be widened.** It is DEBUG-only and lands in the
+    /// operator's own `app.log`, which is for local troubleshooting. A digest of a short
+    /// dictated sentence is guessable, so promoting this to Sentry or PostHog would cross
+    /// the privacy boundary that says user content never reaches Envious Labs.
+    private func submissionToken(tier: PasteTier, text: String) -> String {
+      let bytes = Data(text.utf8)
+      let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+      return "\(tier.rawValue):\(bytes.count):\(digest.prefix(16))"
+    }
+  #endif
 
   func deliver(_ request: PasteDeliveryRequest) async -> PasteDeliveryResult {
     let pasteStart = CFAbsoluteTimeGetCurrent()
@@ -447,7 +511,32 @@ internal final class PasteCascadeExecutor {
     // gets the text — Tier 3 puts it on the clipboard and shows the existing
     // "press Cmd+V" notice — but we never place it twice on their behalf.
     var axAllowsRetry = true
-    if classification == .textField, !isChromiumOmnibox, let element = request.targetElement {
+    #if DEBUG
+      // One entry per actual writer call, in call order. See `submissionToken`.
+      var submissionLedger: [String] = []
+    #endif
+
+    // #2652 V1/V5: refuse Tier 1 when the target is POSITIVELY inside web content.
+    //
+    // Both confirmed doubled takes landed in WebKit-backed fields, and the one delivery
+    // that took the direct route cleanly on the same machine was Safari's address bar,
+    // which is native chrome rather than page content. The discriminator already ships —
+    // the ancestor walk that `addressBarFamily` uses — and it fails closed, so an
+    // unreadable chain is NOT treated as web content and keeps baseline behaviour. That
+    // asymmetry is deliberate: this arm is a claim about page content, not about AX
+    // uncertainty in general.
+    let skipTier1ForWebContent: Bool = {
+      #if DEBUG
+        guard policy.writer == .webCmdV, let element = request.targetElement else { return false }
+        return PasteService.ancestorChainVerifiedFreeOfWebArea(element) == .containsWebArea
+      #else
+        return false
+      #endif
+    }()
+
+    if classification == .textField, !isChromiumOmnibox, !skipTier1ForWebContent,
+      let element = request.targetElement
+    {
       tiersAttempted.append(.axDirect)
       // The payload choice happens INSIDE the write, against the range read in
       // the same breath as the write itself (plan §6). Nothing is chosen here.
@@ -456,8 +545,14 @@ internal final class PasteCascadeExecutor {
         repaired: request.repairedText,
         context: request.caretContext,
         element: element,
-        requireFocusedElementMatch: request.targetElementIsRetried)
-      let disposition = dispositionForAXDirect(insert.outcome)
+        requireFocusedElementMatch: request.targetElementIsRetried,
+        boundMessagingTimeout: policy.boundTier1MessagingTimeout)
+      #if DEBUG
+        if let attempted = insert.writeCall.attemptedText {
+          submissionLedger.append(submissionToken(tier: .axDirect, text: attempted))
+        }
+      #endif
+      let disposition = dispositionForAXDirect(insert, writerPolicy: policy.writer)
       submittedKind = insert.submitted
       axDeclineReason = insert.declineReason
       axSettability = insert.settability
@@ -538,6 +633,9 @@ internal final class PasteCascadeExecutor {
             ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
             : { ClipboardCleanup.deliveryClaimsBoard(); return nil }()
           submittedKind = payload.kind
+          #if DEBUG
+            submissionLedger.append(submissionToken(tier: .cgEvent, text: payload.text))
+          #endif
           let dispatchResult = PasteService.pasteToActiveApp(
             payload.text, to: self.pasteboard)
           submittedClipboardChangeCount = dispatchResult.changeCount
@@ -593,6 +691,9 @@ internal final class PasteCascadeExecutor {
           ? ClipboardCleanup.snapshotForDelivery(from: pasteboard)
           : { ClipboardCleanup.deliveryClaimsBoard(); return nil }()
         submittedKind = payload.kind
+        #if DEBUG
+          submissionLedger.append(submissionToken(tier: .appleScript, text: payload.text))
+        #endif
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
           payload.text, to: self.pasteboard)
         submittedClipboardChangeCount = changeCount
@@ -672,6 +773,9 @@ internal final class PasteCascadeExecutor {
           requireCaretUnchanged: request.targetElementIsRetried,
           terminalBudget: request.terminalBudget)
         submittedKind = payload.kind
+        #if DEBUG
+          submissionLedger.append(submissionToken(tier: .menuPaste, text: payload.text))
+        #endif
         let changeCount = PasteService.copyToClipboardReturningChangeCount(
           payload.text, to: self.pasteboard)
         submittedClipboardChangeCount = changeCount
@@ -784,6 +888,25 @@ internal final class PasteCascadeExecutor {
         level: .info, category: "PipelineTiming"
       )
     }
+
+    // #2652 bake-off evidence. DEBUG-only and emitted only under a forced variant, so a
+    // release build's log format is byte-identical to what it was before this existed —
+    // the scored comparison needs no release-observable, and adding one would widen the
+    // blast radius of a measurement to every user.
+    #if DEBUG
+      if !policy.isBaseline {
+        let attempts = tiersAttempted.map(\.rawValue).joined(separator: ">")
+        let ledger = submissionLedger.joined(separator: "|")
+        Task { [runID = Self.bakeoffRunID, variant = policy.id] in
+          await AppLogger.shared.log(
+            "PASTE_BAKEOFF_TRIAL run_id=\(runID ?? "none") variant=\(variant) "
+              + "tier=\(tier.rawValue) app=\(bundleId) attempts=\(attempts) "
+              + "ledger=\(ledger) duration=\(durationMs)ms",
+            level: .info, category: "PipelineTiming"
+          )
+        }
+      }
+    #endif
 
     // Construct typed outcome. `cgEventCreationFailed` takes priority over
     // `clipboardOnly` when both would be true — CGEvent failure is a more

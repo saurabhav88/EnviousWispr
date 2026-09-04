@@ -31,6 +31,45 @@ import Foundation
 @MainActor
 public enum KernelDictationDriverFactory {
 
+  /// The delivery policy every production dictation runs under (#2652).
+  ///
+  /// **Release is a literal baseline with no path to anything else.** The bake-off's
+  /// other policies do not exist in a release binary — their enum cases are compiled
+  /// out — so this is not a switch a user could flip, an environment variable they could
+  /// set, or a string an artifact scan could find.
+  ///
+  /// Resolved ONCE, lazily, and held for the process lifetime. Resolving per delivery
+  /// would let a variant change mid-run and make a scored row describe two policies;
+  /// resolving once means the harness's "relaunch to change variant" rule is enforced by
+  /// construction rather than by the harness remembering to.
+  ///
+  /// A rejection is LOGGED rather than swallowed. A bake-off that quietly ran the
+  /// baseline while the harness believed it was measuring V2 would produce a scorecard
+  /// full of confident rows about a policy that never ran, and nothing downstream could
+  /// tell. That is the one failure the whole control plane exists to prevent.
+  static let pasteDeliveryPolicy: PasteDeliveryPolicy = {
+    #if DEBUG
+      let resolved = PasteDeliveryPolicy.resolve(environment: ProcessInfo.processInfo.environment)
+      PasteCascadeExecutor.bakeoffRunID = resolved.runID
+      if let rejection = resolved.rejection {
+        Task {
+          await AppLogger.shared.log(
+            "PASTE_BAKEOFF_CONTROL rejected: \(rejection)", level: .info,
+            category: "PipelineTiming")
+        }
+      } else if !resolved.policy.isBaseline, let runID = resolved.runID {
+        Task { [id = resolved.policy.id] in
+          await AppLogger.shared.log(
+            "PASTE_BAKEOFF_CONTROL run_id=\(runID) variant=\(id)", level: .info,
+            category: "PipelineTiming")
+        }
+      }
+      return resolved.policy
+    #else
+      return .baseline
+    #endif
+  }()
+
   /// Heart-path infrastructure-error sink. Defaults to the global
   /// `SentryBreadcrumb.captureError` so production behavior is byte-identical;
   /// tests inject a per-instance spy/no-op closure so a pipeline-under-test
@@ -300,6 +339,17 @@ public enum KernelDictationDriverFactory {
   /// Build the driver stack for the Parakeet engine and arm both observation
   /// arms before returning. Live App caller in `EnviousWisprApp`.
   package static func makeForParakeet(inputs: ParakeetInputs) -> KernelDictationDriver {
+    // Resolve the delivery policy HERE, while the driver is being built, not lazily on
+    // the first paste. A `static let` is lazy, so without this touch the control line
+    // that proves which policy a process resolved would not appear until a dictation had
+    // already been delivered — and the harness that waits for it before running any
+    // trial would time out on a perfectly healthy launch. Measured 2026-09-04: the
+    // environment variables reached the process and the line still never came.
+    //
+    // Resolving at construction also makes "immutable for the process lifetime" true at
+    // the moment the harness checks it, rather than true eventually.
+    _ = Self.pasteDeliveryPolicy
+
     // PR-6 (#827): concrete adapter construction is owned by
     // `KernelAdapterFactory` (the single construction site). This file no
     // longer names a concrete adapter type in code (EngineIdentityFreezeTests
@@ -331,6 +381,17 @@ public enum KernelDictationDriverFactory {
   /// invariant inverts to `makeForWhisperKitHasExactlyOneProductionCaller`
   /// (locked in the same architecture freeze file).
   package static func makeForWhisperKit(inputs: WhisperKitInputs) -> KernelDictationDriver {
+    // Resolve the delivery policy HERE, while the driver is being built, not lazily on
+    // the first paste. A `static let` is lazy, so without this touch the control line
+    // that proves which policy a process resolved would not appear until a dictation had
+    // already been delivered — and the harness that waits for it before running any
+    // trial would time out on a perfectly healthy launch. Measured 2026-09-04: the
+    // environment variables reached the process and the line still never came.
+    //
+    // Resolving at construction also makes "immutable for the process lifetime" true at
+    // the moment the harness checks it, rather than true eventually.
+    _ = Self.pasteDeliveryPolicy
+
     // PR-5 Rung 4.5 (#827): plumb the audio-capture session-id source to the
     // adapter so it can snapshot at `beginSession` (race-safe for delayed LID
     // perf signposts like `t_clipboard_write`).
@@ -494,7 +555,8 @@ public enum KernelDictationDriverFactory {
       // omission; this is the production wiring, so here it is passed
       // explicitly. Same shape as the required seam two hundred lines above.
       deliverPaste: { request in
-        await PasteCascadeExecutor(pasteboard: .general).deliver(request)
+        await PasteCascadeExecutor(pasteboard: .general, policy: Self.pasteDeliveryPolicy)
+          .deliver(request)
       },
       pasteCompletionRegistry: pasteCompletionRegistry,
       // #950 — share the SAME telemetry state the kernel stamps so the metrics
